@@ -1,4 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GerberViewer } from "../components/viewer/GerberViewer";
+import { GerberWorkspace } from "../components/gerber/GerberWorkspace";
 
-export const Route = createFileRoute("/")({ component: GerberViewer });
+export const Route = createFileRoute("/")({ component: GerberWorkspace });

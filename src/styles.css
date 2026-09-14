@@ -3,14 +3,14 @@
 :root { font-family: system-ui, sans-serif; color: #ddd; background: #111318; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; }
-.gerber-viewer { height: 100dvh; display: flex; flex-direction: column; }
+.gerber-workspace { height: 100dvh; display: flex; flex-direction: column; }
 .file-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 12px 16px; border-bottom: 1px solid #30343c; background: #1b1e24; }
 .file-bar input { font: inherit; font-size: 14px; max-width: 260px; }
 .file-bar input::file-selector-button { padding: 6px 12px; margin-right: 12px; border: 1px solid #555b66; border-radius: 4px; background: #30353e; color: #eee; }
 .file-name { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .renderer-label { margin-left: auto; color: #929ba9; font-size: 12px; white-space: nowrap; }
 .viewer-message { margin: 0; padding: 10px 16px; background: #392e25; color: #edc49a; font-size: 14px; max-height: 100px; overflow: auto; }
-.drawing-area { flex: 1; position: relative; min-height: 0; }
+.drawing-area { position: absolute; inset: 0; min-height: 0; }
 .drawing-area canvas { display: block; width: 100%; height: 100%; }
 .empty-message { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #818b99; font-size: 14px; pointer-events: none; }
 @media (max-width: 600px) { .file-bar { gap: 8px; flex-wrap: wrap; } .file-name { display: none; } .renderer-label { font-size: 11px; } }
@@ -20,7 +20,7 @@ body { margin: 0; }
 .view-controls button.zoom-level { width: 60px; font-variant-numeric: tabular-nums; font-size: 13px; }
 .view-controls button:hover:not(:disabled) { background: #3d4552; }
 .view-controls button:disabled { opacity: .35; }
-.view-controls button:focus-visible, .drawing-area:focus-visible { outline: 2px solid #e8b77e; outline-offset: -2px; }
+.view-controls button:focus-visible, .drawing-area canvas:focus-visible { outline: 2px solid #e8b77e; outline-offset: -2px; }
 .controls-divider { height: 20px; width: 1px; background: #414955; margin: 0 4px; }
 .drawing-area { touch-action: none; overscroll-behavior: contain; user-select: none; }
 .navigation-hint { position: absolute; left: 12px; bottom: 74px; margin: 0; padding: 4px 7px; color: #a1aab6; background: #111318cc; font-size: 12px; pointer-events: none; }

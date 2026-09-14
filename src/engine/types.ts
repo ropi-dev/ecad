@@ -70,6 +70,12 @@ export interface RenderOptions {
 	mirrored?: boolean;
 }
 export interface GraphicsRenderer {
+	getDiagnostics?(): {
+		drawCalls: number;
+		triangles: number;
+		geometries: number;
+		textures: number;
+	};
 	/** Redraw when the canvas emits renderinvalidated after async geometry preparation. */
 	render(
 		canvas: HTMLCanvasElement,

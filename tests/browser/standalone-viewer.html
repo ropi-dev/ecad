@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Standalone Gerber viewer</title></head>
+  <body>
+    <div id="root" class="relative h-screen"></div>
+    <output id="snapshot" hidden></output>
+    <script type="module">
+      import { createElement, StrictMode } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { GerberViewer } from '/src/components/viewer/GerberViewer.tsx';
+      import { parsers } from '/src/formats/registry.ts';
+      import { demoFiles } from '/tests/fixtures/demo-gerbers.ts';
+      import '/src/styles.css';
+      const { name, source } = demoFiles[0];
+      const { layer } = parsers.parse(source, name);
+      createRoot(document.getElementById('root')).render(createElement(StrictMode, null, createElement(GerberViewer, {
+        layer: { ...layer, color: '#e8b77e', visible: true, opacity: 1 },
+        onChange: (snapshot) => document.getElementById('snapshot').textContent = JSON.stringify(snapshot),
+      })));
+    </script>
+  </body>
+</html>
