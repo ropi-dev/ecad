@@ -16,6 +16,7 @@ import {
 	vec4,
 } from "three/tsl";
 import {
+	AdditiveBlending,
 	BufferGeometry,
 	Color,
 	DataTexture,
@@ -40,10 +41,11 @@ import {
 import { gridSpacing } from "./camera";
 import { curveTolerance, GeometryCompiler, hitTestScene } from "./geometry";
 import {
-	mutedLayerColor,
+	hoverLayerColor,
 	UNFOCUSED_FILL_OPACITY,
 	UNFOCUSED_OUTLINE_OPACITY,
 	UNFOCUSED_OUTLINE_WIDTH,
+	UNFOCUSED_XRAY_COLOR,
 } from "./layer-style";
 import type { MeshRequest, MeshResult } from "./mesh";
 import type {
@@ -92,9 +94,17 @@ export class ThreeRenderer implements GraphicsRenderer {
 		depthWrite: false,
 		toneMapped: false,
 	});
+	private xrayMaterial = Object.assign(new NodeMaterial(), {
+		transparent: true,
+		blending: AdditiveBlending,
+		depthTest: false,
+		depthWrite: false,
+		toneMapped: false,
+	});
 	private quad = new QuadMesh(this.backgroundMaterial);
 	private backgroundColor = uniform(new Color());
 	private layerColor = uniform(new Color());
+	private hoverColor = uniform(new Color());
 	private layerOpacity = uniform(1);
 	private unfocusedLayer = uniform(0);
 	private outlineStep = uniform(new Vector2());
@@ -167,10 +177,15 @@ export class ThreeRenderer implements GraphicsRenderer {
 		const alpha = mix(mask.r, faded, this.unfocusedLayer);
 		const rgb = this.layerColor
 			.mul(mask.r.sub(mask.g))
-			.add(vec3(mask.g))
+			.add(this.hoverColor.mul(mask.g))
 			.div(mask.r.max(0.00001));
 		this.compositeMaterial.fragmentNode = vec4(
 			rgb,
+			alpha.mul(this.layerOpacity),
+		);
+		// Additive compositing makes overlapping layers resemble denser film.
+		this.xrayMaterial.fragmentNode = vec4(
+			this.layerColor,
 			alpha.mul(this.layerOpacity),
 		);
 		this.meshWorker = new Worker(new URL("./mesh.worker.ts", import.meta.url), {
@@ -435,11 +450,14 @@ export class ThreeRenderer implements GraphicsRenderer {
 				this.renderer.setRenderTarget(null);
 				const unfocused = focused && source.id !== options.focusedLayerId;
 				this.layerColor.value.set(
-					unfocused ? mutedLayerColor(source.color) : source.color,
+					unfocused ? UNFOCUSED_XRAY_COLOR : source.color,
 				);
+				this.hoverColor.value.set(hoverLayerColor(source.color));
 				this.unfocusedLayer.value = unfocused ? 1 : 0;
 				this.layerOpacity.value = Math.max(0, Math.min(1, source.opacity));
-				this.quad.material = this.compositeMaterial;
+				this.quad.material = unfocused
+					? this.xrayMaterial
+					: this.compositeMaterial;
 				this.quad.render(this.renderer);
 			}
 		} finally {
@@ -478,6 +496,7 @@ export class ThreeRenderer implements GraphicsRenderer {
 		this.mask.dispose();
 		this.backgroundMaterial.dispose();
 		this.compositeMaterial.dispose();
+		this.xrayMaterial.dispose();
 		void this.renderer.dispose();
 	}
 }

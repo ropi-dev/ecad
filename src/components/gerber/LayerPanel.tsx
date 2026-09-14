@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Focus, GripVertical, Layers, X } from "lucide-react";
+import { Eye, EyeOff, GripVertical, X } from "lucide-react";
 import { useState } from "react";
 import type { SceneLayer } from "../../engine/types";
 
@@ -27,15 +27,6 @@ export function LayerPanel({
 	};
 	return (
 		<aside className="layer-panel" aria-label="Layers">
-			<div className="layer-panel-heading">
-				<h2>
-					<Layers size={16} /> Layers <span>{layers.length}</span>
-				</h2>
-				<span className="layer-stack-label">Top to bottom</span>
-			</div>
-			<p className="layer-panel-hint">
-				Drag to reorder. Focus to see through other layers.
-			</p>
 			<ol
 				className="layer-list"
 				onDragOver={(event) => {
@@ -116,27 +107,24 @@ export function LayerPanel({
 							>
 								<GripVertical size={16} />
 							</button>
-							<span
-								className="layer-swatch"
-								style={{
-									backgroundColor: layer.color,
-									borderColor: layer.color,
-								}}
-							/>
-							<div className="layer-info">
-								<span className="layer-name" title={layer.name}>
-									{layer.name}
-								</span>
-							</div>
 							<button
 								type="button"
-								className="layer-icon layer-focus"
+								className="layer-select"
 								aria-label={`Focus ${layer.name}`}
 								title={focused ? "Exit layer focus" : `Focus ${layer.name}`}
 								aria-pressed={focused}
 								onClick={() => onFocus(focused ? undefined : layer.id)}
 							>
-								<Focus size={17} />
+								<span
+									className="layer-swatch"
+									style={{
+										backgroundColor: layer.color,
+										borderColor: layer.color,
+									}}
+								/>
+								<span className="layer-name" title={layer.name}>
+									{layer.name}
+								</span>
 							</button>
 							<button
 								type="button"
@@ -161,10 +149,6 @@ export function LayerPanel({
 					);
 				})}
 			</ol>
-			<div className="layer-panel-footer">
-				<span>{layers.filter((layer) => layer.visible).length} visible</span>
-				<span>{focusedLayerId ? "Focus mode" : "All layers filled"}</span>
-			</div>
 			<p id="layer-reorder-help" className="sr-only">
 				Use the up and down arrow keys to reorder a layer.
 			</p>

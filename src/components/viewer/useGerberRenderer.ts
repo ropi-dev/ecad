@@ -57,7 +57,7 @@ export function useGerberRenderer(
 				active = result.renderer;
 				renderer.current = active;
 				setSession(result);
-				setMessage(result.reason ?? "");
+				setMessage("");
 			})
 			.catch((error: unknown) => {
 				if (!disposed) {

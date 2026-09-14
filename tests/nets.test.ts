@@ -26,15 +26,16 @@ test('all segments and disconnected pads with the same Gerber net share one sele
   assert.deepEqual([...index.get(other.id)!], [other.id])
   assert.equal(index.has(layer.objects.at(-1)!.id), false, 'Clear exposures are never selected')
 })
-test('N/C, empty, and absent net names do not join unrelated objects', () => {
+test('N/C, empty, whitespace-only, and absent net names are not hover targets', () => {
   const { layer } = parseGerber(source, 'nets.gbr')
+  layer.objects[6].attributes['.N'] = ['  ', '\t']
   const index = indexGerberNets(layer)
   for (const object of layer.objects.slice(4,10))
-    assert.deepEqual([...index.get(object.id)!], [object.id])
+    assert.equal(index.has(object.id), false)
 })
 test('objects declaring multiple nets select the members of each declared net', () => {
   const { layer } = parseGerber(source, 'nets.gbr')
-  layer.objects[0].attributes['.N'] = ['SIGNAL', 'OTHER', 'SIGNAL']
+  layer.objects[0].attributes['.N'] = ['SIGNAL', 'OTHER', 'SIGNAL', '', '  ', 'N/C']
   const index = indexGerberNets(layer)
   assert.deepEqual(new Set(index.get(layer.objects[0].id)), new Set(layer.objects.slice(0,4).map(o=>o.id)))
 })

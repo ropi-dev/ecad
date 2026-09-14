@@ -150,6 +150,9 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 				Array.from(data.slice((y * width + x) * 4, (y * width + x) * 4 + 3));
 			const normal = await capture(options);
 			const focused = await capture({ ...options, focusedLayerId: "lower" });
+			layers[1].color = "#00ff00";
+			const recolored = await capture({ ...options, focusedLayerId: "lower" });
+			layers[1].color = "#ff0000";
 			layers[1].opacity = 0.5;
 			const dimmed = await capture({ ...options, focusedLayerId: "lower" });
 			layers[1].opacity = 1;
@@ -167,6 +170,13 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 				selectedIds: new Set(["outer"]),
 			});
 			const unselected = await capture(options);
+			layers[1].color = "#76b8e8";
+			const hoveredBlue = await capture({
+				...options,
+				selectedIds: new Set(["outer"]),
+			});
+			const unhoveredBlue = await capture(options);
+			layers[1].color = "#ff0000";
 			const mirrored = await capture({ ...options, mirrored: true });
 			const panned = await capture({
 				...options,
@@ -193,6 +203,7 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 			canvas.remove();
 			return {
 				backend,
+				recolored: pixel(recolored, 40),
 				dimmed: pixel(dimmed, 32),
 				dimmedFill: pixel(dimmed, 40),
 				focused: [
@@ -223,6 +234,8 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 					pixel(selected, 72),
 				],
 				unselected: pixel(unselected, 40),
+				hoveredBlue: pixel(hoveredBlue, 40),
+				unhoveredBlue: pixel(unhoveredBlue, 40),
 				mirrored: [pixel(mirrored, 56), pixel(mirrored, 72)],
 				panned: [pixel(panned, 56), pixel(panned, 72)],
 				translucent: pixel(translucent, 40),
@@ -232,14 +245,14 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 		expect(result.backend).toBe(
 			mode === "canvas" ? "Canvas 2D" : mode === "webgl" ? "WebGL 2" : "WebGPU",
 		);
-		// The red fill is muted to rgb(142, 84, 94) before compositing.
+		// Unfocused layers share a cool film tone and add light over the focused layer.
 		// GPU blending uses linear color; Canvas blends in sRGB.
 		const expectedFill = (opacity: number) =>
-			[142, 84, 94].map((value, index) => {
+			[157, 189, 203].map((value, index) => {
 				const srgb = value / 255;
 				const channel =
 					mode === "canvas" ? srgb : ((srgb + 0.055) / 1.055) ** 2.4;
-				const blended = channel * opacity + (index === 2 ? 1 - opacity : 0);
+				const blended = Math.min(1, channel * opacity + (index === 2 ? 1 : 0));
 				return Math.round(
 					255 *
 						(mode === "canvas"
@@ -247,31 +260,32 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 							: 1.055 * blended ** (1 / 2.4) - 0.055),
 				);
 			});
-		// A four-pixel outline covers the entire eight-pixel island.
+		// The outline covers the entire eight-pixel island.
 		for (const index of [0, 2, 4, 5]) {
 			const fill = result.focused[index];
-			expectedFill(0.20).forEach((value, channel) =>
+			expectedFill(0.14).forEach((value, channel) =>
 				expect(Math.abs(fill[channel] - value)).toBeLessThanOrEqual(1),
 			);
 		}
 		for (const index of [1]) {
-			expectedFill(0.15).forEach((value, channel) =>
+			expectedFill(0.1).forEach((value, channel) =>
 				expect(
 					Math.abs(result.focused[index][channel] - value),
 				).toBeLessThanOrEqual(1),
 			);
 		}
-		expectedFill(0.075).forEach((value, channel) =>
+		expectedFill(0.05).forEach((value, channel) =>
 			expect(Math.abs(result.dimmedFill[channel] - value)).toBeLessThanOrEqual(
 				1,
 			),
 		);
 		expect(result.focused[3]).toEqual([0, 0, 255]);
-		expectedFill(0.10).forEach((value, channel) =>
+		expect(result.recolored).toEqual(result.focused[1]);
+		expectedFill(0.07).forEach((value, channel) =>
 			expect(Math.abs(result.dimmed[channel] - value)).toBeLessThanOrEqual(1),
 		);
 		for (const fill of result.clipped) {
-			expectedFill(0.15).forEach((value, channel) =>
+			expectedFill(0.1).forEach((value, channel) =>
 				expect(Math.abs(fill[channel] - value)).toBeLessThanOrEqual(1),
 			);
 		}
@@ -287,11 +301,18 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 			[255, 0, 0],
 		]);
 		expect(result.selected).toEqual([
-			[255, 255, 255],
+			[255, 51, 51],
 			[0, 0, 255],
 			[255, 0, 0],
 		]);
 		expect(result.unselected).toEqual([255, 0, 0]);
+		expect(result.unhoveredBlue).toEqual([118, 184, 232]);
+		result.hoveredBlue.forEach((channel, index) => {
+			expect(channel).toBeGreaterThan(result.unhoveredBlue[index]);
+			expect(channel - result.unhoveredBlue[index]).toBeLessThan(50);
+		});
+		expect(result.hoveredBlue[2]).toBeGreaterThan(result.hoveredBlue[1]);
+		expect(result.hoveredBlue[1]).toBeGreaterThan(result.hoveredBlue[0]);
 		expect(result.mirrored).toEqual([
 			[255, 0, 0],
 			[0, 0, 255],

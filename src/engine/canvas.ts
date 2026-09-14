@@ -1,10 +1,11 @@
 import { gridSpacing, screenToWorld, worldToScreen } from "./camera";
 import { curveTolerance, GeometryCompiler, hitTestScene } from "./geometry";
 import {
-	mutedLayerColor,
+	hoverLayerColor,
 	UNFOCUSED_FILL_OPACITY,
 	UNFOCUSED_OUTLINE_OPACITY,
 	UNFOCUSED_OUTLINE_WIDTH,
+	UNFOCUSED_XRAY_COLOR,
 } from "./layer-style";
 import type {
 	Geometry,
@@ -92,7 +93,8 @@ export class CanvasRenderer implements GraphicsRenderer {
 				(height / 2 + camera.y * camera.scale) * ratio,
 			);
 			const unfocused = focused && layer.id !== options.focusedLayerId;
-			const color = unfocused ? mutedLayerColor(layer.color) : layer.color;
+			const color = unfocused ? UNFOCUSED_XRAY_COLOR : layer.color;
+			const hoverColor = hoverLayerColor(layer.color);
 			layerContext.fillStyle = color;
 			for (const object of layer.objects) {
 				layerContext.save();
@@ -107,9 +109,10 @@ export class CanvasRenderer implements GraphicsRenderer {
 							1,
 						)
 					: 1;
-				layerContext.fillStyle = options.selectedIds?.has(object.id)
-					? "#ffffff"
-					: color;
+				layerContext.fillStyle =
+					!unfocused && options.selectedIds?.has(object.id)
+						? hoverColor
+						: color;
 				layerContext.fill(
 					this.path(
 						object.geometry,
@@ -123,9 +126,12 @@ export class CanvasRenderer implements GraphicsRenderer {
 			context.globalAlpha =
 				Math.max(0, Math.min(1, layer.opacity)) *
 				(unfocused ? UNFOCUSED_OUTLINE_OPACITY : 1);
+			// Overlapping X-ray layers accumulate light instead of covering each other.
+			context.globalCompositeOperation = unfocused ? "lighter" : "source-over";
 			context.drawImage(this.scratch, 0, 0, width, height);
 		}
 		context.globalAlpha = 1;
+		context.globalCompositeOperation = "source-over";
 	}
 
 	/** Fade the interior while retaining the boundary of the composited shapes. */

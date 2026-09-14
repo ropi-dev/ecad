@@ -5,7 +5,6 @@ import type { ViewerSnapshot } from "../viewer/types/ViewerSnapshot";
 import { GerberFooter } from "./GerberFooter";
 import { GerberHeader } from "./GerberHeader";
 import { LayerPanel } from "./LayerPanel";
-import { RendererDiagnostics } from "./RendererDiagnostics";
 import { useGerberFile } from "./useGerberFile";
 
 export function GerberWorkspace() {
@@ -23,9 +22,7 @@ export function GerberWorkspace() {
 	return (
 		<main className="gerber-workspace">
 			<GerberHeader
-				filename={layers.at(-1)?.name}
 				loading={loading}
-				backend={layers.length ? (snapshot?.backend ?? "") : ""}
 				onOpenFile={(files) => {
 					void openFile(files);
 				}}
@@ -94,13 +91,6 @@ export function GerberWorkspace() {
 									: "Choose a Gerber file to view it."}
 						</p>
 					)}
-					<RendererDiagnostics
-						snapshot={layers.length ? snapshot : null}
-						objects={layers.reduce(
-							(total, layer) => total + layer.objects.length,
-							0,
-						)}
-					/>
 					<GerberFooter
 						enabled={
 							layers.length > 0 &&
@@ -110,7 +100,6 @@ export function GerberWorkspace() {
 						zoom={snapshot?.zoom ?? 1}
 						resetView={() => viewer.current?.resetView()}
 						zoomView={(factor) => viewer.current?.zoomView(factor)}
-						panView={(x, y) => viewer.current?.panView(x, y)}
 					/>
 				</div>
 			</div>

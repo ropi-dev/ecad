@@ -1,20 +1,16 @@
 import { Plus } from "lucide-react";
 
 export function GerberHeader({
-	filename,
 	loading,
-	backend,
 	onOpenFile,
 }: {
-	filename?: string;
 	loading: boolean;
-	backend: string;
 	onOpenFile: (files: File[]) => void;
 }) {
 	return (
 		<header className="file-bar">
 			<label className="add-gerber-files">
-				<Plus size={16} /> Add Gerber files
+				<Plus size={16} /> {loading ? "Reading…" : "Add files"}
 				<input
 					type="file"
 					multiple
@@ -26,9 +22,6 @@ export function GerberHeader({
 					}}
 				/>
 			</label>
-			<span className="file-name">{loading ? "Reading file…" : filename}</span>
-
-			<span className="renderer-label">{backend}</span>
 		</header>
 	);
 }

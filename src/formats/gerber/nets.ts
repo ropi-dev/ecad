@@ -1,6 +1,6 @@
 import type { SceneLayer } from "../../engine/types";
 
-/** Gerber .N names identify nets; empty and N/C names must never join objects. */
+/** Only objects with a named Gerber .N net are hover targets. */
 export function indexGerberNets(
 	layer: SceneLayer,
 ): Map<string, ReadonlySet<string>> {
@@ -9,8 +9,9 @@ export function indexGerberNets(
 	for (const object of layer.objects) {
 		if (object.polarity === "clear") continue;
 		const names = [...new Set(object.attributes[".N"] ?? [])]
-			.filter((name) => name !== "" && name !== "N/C")
+			.filter((name) => name.trim() !== "" && name !== "N/C")
 			.sort();
+		if (!names.length) continue;
 		namesByObject.set(object.id, names);
 		for (const name of names) {
 			const ids = objectsByName.get(name) ?? [];
@@ -21,11 +22,6 @@ export function indexGerberNets(
 	const groups = new Map<string, ReadonlySet<string>>();
 	const index = new Map<string, ReadonlySet<string>>();
 	for (const [id, names] of namesByObject) {
-		// Missing metadata cannot establish electrical connectivity.
-		if (!names.length) {
-			index.set(id, new Set([id]));
-			continue;
-		}
 		const key = JSON.stringify(names);
 		let group = groups.get(key);
 		if (!group) {
