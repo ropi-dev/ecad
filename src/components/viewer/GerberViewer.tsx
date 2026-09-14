@@ -9,13 +9,28 @@ import { useNetHover } from "./useNetHover";
 
 export function GerberViewer({
 	layer,
+	layers: suppliedLayers,
+	focusedLayerId,
 	ref,
 	onChange,
 }: {
-	layer: SceneLayer;
+	layer?: SceneLayer;
+	layers?: readonly SceneLayer[];
+	focusedLayerId?: string;
 	ref?: Ref<GerberViewerHandle>;
 	onChange?: (snapshot: ViewerSnapshot) => void;
 }) {
+	const layers = useMemo(
+		() => suppliedLayers ?? (layer ? [layer] : []),
+		[suppliedLayers, layer],
+	);
+	const hoverLayers = useMemo(
+		() =>
+			focusedLayerId
+				? layers.filter((entry) => entry.id === focusedLayerId)
+				: layers,
+		[layers, focusedLayerId],
+	);
 	const renderer = useRef<GraphicsRenderer | null>(null);
 	const {
 		container,
@@ -26,14 +41,21 @@ export function GerberViewer({
 		zoomView,
 		panView,
 		onKeyDown,
-	} = useGerberCamera(layer);
-	const hoveredIds = useNetHover(container, renderer, layer, camera, size);
+	} = useGerberCamera(layers);
+	const hoveredIds = useNetHover(
+		container,
+		renderer,
+		hoverLayers,
+		camera,
+		size,
+	);
 	const { canvasHost, backend, message, diagnostics } = useGerberRenderer(
 		renderer,
-		layer,
+		layers,
 		camera,
 		size,
 		hoveredIds,
+		focusedLayerId,
 	);
 	useImperativeHandle(ref, () => ({ resetView, zoomView, panView }), [
 		resetView,

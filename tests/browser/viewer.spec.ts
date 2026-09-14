@@ -188,3 +188,89 @@ test("handles parse failures and keeps the latest file selection", async ({
 	await expect(page.locator(".file-name")).toHaveText(demoFiles[0].name);
 	await expect(page.locator("canvas")).toHaveCount(1);
 });
+
+test("reorders layers and preserves focus, visibility and camera", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.addInitScript(() =>
+		Object.defineProperty(navigator, "gpu", { value: undefined }),
+	);
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles(
+		demoFiles.slice(0, 3).map((file) => ({
+			name: file.name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(file.source),
+		})),
+	);
+	const rows = page.locator(".layer-row");
+	const names = page.locator(".layer-name");
+	await expect(rows).toHaveCount(3);
+	await expect(names).toHaveText(
+		demoFiles
+			.slice(0, 3)
+			.reverse()
+			.map((file) => file.name),
+	);
+	await expect(page.locator(".renderer-label")).toContainText("WebGL 2");
+	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect(page.locator(".zoom-level")).toHaveText("125%");
+	const zoom = "125%";
+	const focused = demoFiles[1].name;
+	await page
+		.getByRole("button", { name: `Focus ${focused}`, exact: true })
+		.click();
+	await expect(page.locator('.layer-focus[aria-pressed="true"]')).toHaveCount(
+		1,
+	);
+	await expect(page.locator(".layer-detail")).toHaveCount(0);
+	const handle = page.getByRole("button", {
+		name: `Reorder ${focused}`,
+		exact: true,
+	});
+	await handle.focus();
+	await page.keyboard.press("ArrowUp");
+	await expect(names.first()).toHaveText(focused);
+	await expect(
+		page.getByRole("button", { name: `Focus ${focused}`, exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
+	await handle.dragTo(rows.last(), { targetPosition: { x: 80, y: 40 } });
+	await expect(names.last()).toHaveText(focused);
+	await expect(page.locator(".zoom-level")).toHaveText(zoom);
+	await page
+		.getByRole("button", { name: `Hide ${focused}`, exact: true })
+		.click();
+	await expect(page.locator('.layer-focus[aria-pressed="true"]')).toHaveCount(
+		0,
+	);
+	await expect(page.locator('.layer-row[data-hidden="true"]')).toHaveCount(1);
+	await page
+		.getByRole("button", { name: `Focus ${focused}`, exact: true })
+		.click();
+	await expect(page.locator('.layer-row[data-hidden="true"]')).toHaveCount(0);
+	await page
+		.getByRole("button", { name: `Focus ${focused}`, exact: true })
+		.click();
+	await expect(page.locator('.layer-focus[aria-pressed="true"]')).toHaveCount(
+		0,
+	);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page
+		.getByRole("button", { name: `Focus ${focused}`, exact: true })
+		.click();
+	await page.screenshot({ path: test.info().outputPath("layer-focus.png") });
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect(rows.first()).toBeVisible();
+	await expect(page.locator("canvas")).toBeVisible();
+	await page.screenshot({ path: test.info().outputPath("layers-mobile.png") });
+	await page
+		.getByRole("button", { name: `Remove ${focused}`, exact: true })
+		.click();
+	await expect(rows).toHaveCount(2);
+	await expect(page.locator('.layer-focus[aria-pressed="true"]')).toHaveCount(
+		0,
+	);
+	expect(errors).toEqual([]);
+});

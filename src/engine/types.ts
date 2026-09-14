@@ -67,6 +67,8 @@ export interface RenderOptions {
 	grid: boolean;
 	background: string;
 	selectedIds?: ReadonlySet<string>;
+	/** Other visible layers use muted 15% fills and 35% outlines when this layer is visible. */
+	focusedLayerId?: string;
 	mirrored?: boolean;
 }
 export interface GraphicsRenderer {

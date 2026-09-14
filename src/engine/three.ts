@@ -39,6 +39,12 @@ import {
 } from "three/webgpu";
 import { gridSpacing } from "./camera";
 import { curveTolerance, GeometryCompiler, hitTestScene } from "./geometry";
+import {
+	mutedLayerColor,
+	UNFOCUSED_FILL_OPACITY,
+	UNFOCUSED_OUTLINE_OPACITY,
+	UNFOCUSED_OUTLINE_WIDTH,
+} from "./layer-style";
 import type { MeshRequest, MeshResult } from "./mesh";
 import type {
 	GraphicsRenderer,
@@ -90,6 +96,8 @@ export class ThreeRenderer implements GraphicsRenderer {
 	private backgroundColor = uniform(new Color());
 	private layerColor = uniform(new Color());
 	private layerOpacity = uniform(1);
+	private unfocusedLayer = uniform(0);
+	private outlineStep = uniform(new Vector2());
 	private viewport = uniform(new Vector2(1, 1));
 	private center = uniform(new Vector2());
 	private scale = uniform(1);
@@ -146,13 +154,24 @@ export class ThreeRenderer implements GraphicsRenderer {
 			1,
 		);
 		const mask = texture(this.mask.texture);
+		// Derive edges from the final mask to preserve holes and shape unions.
+		const step = this.outlineStep;
+		const interior = mask.r
+			.min(texture(this.mask.texture, uv().add(vec2(step.x, 0))).r)
+			.min(texture(this.mask.texture, uv().sub(vec2(step.x, 0))).r)
+			.min(texture(this.mask.texture, uv().add(vec2(0, step.y))).r)
+			.min(texture(this.mask.texture, uv().sub(vec2(0, step.y))).r);
+		const faded = mask.r
+			.mul(UNFOCUSED_OUTLINE_OPACITY)
+			.sub(interior.mul(UNFOCUSED_OUTLINE_OPACITY - UNFOCUSED_FILL_OPACITY));
+		const alpha = mix(mask.r, faded, this.unfocusedLayer);
 		const rgb = this.layerColor
 			.mul(mask.r.sub(mask.g))
 			.add(vec3(mask.g))
 			.div(mask.r.max(0.00001));
 		this.compositeMaterial.fragmentNode = vec4(
 			rgb,
-			mask.r.mul(this.layerOpacity),
+			alpha.mul(this.layerOpacity),
 		);
 		this.meshWorker = new Worker(new URL("./mesh.worker.ts", import.meta.url), {
 			type: "module",
@@ -348,6 +367,16 @@ export class ThreeRenderer implements GraphicsRenderer {
 			this.renderer.setSize(width, height, false);
 		}
 		this.mask.setSize(width, height);
+		this.outlineStep.value.set(
+			(UNFOCUSED_OUTLINE_WIDTH * ratio) / width,
+			(UNFOCUSED_OUTLINE_WIDTH * ratio) / height,
+		);
+		const focused = layers.some(
+			(layer) =>
+				layer.id === options.focusedLayerId &&
+				layer.visible &&
+				layer.opacity > 0,
+		);
 		const halfWidth = options.width / options.camera.scale / 2;
 		const halfHeight = options.height / options.camera.scale / 2;
 		this.camera.left = -halfWidth * (options.mirrored ? -1 : 1);
@@ -404,7 +433,11 @@ export class ThreeRenderer implements GraphicsRenderer {
 				this.renderer.render(this.scene, this.camera);
 				this.scene.remove(layer.mesh);
 				this.renderer.setRenderTarget(null);
-				this.layerColor.value.set(source.color);
+				const unfocused = focused && source.id !== options.focusedLayerId;
+				this.layerColor.value.set(
+					unfocused ? mutedLayerColor(source.color) : source.color,
+				);
+				this.unfocusedLayer.value = unfocused ? 1 : 0;
 				this.layerOpacity.value = Math.max(0, Math.min(1, source.opacity));
 				this.quad.material = this.compositeMaterial;
 				this.quad.render(this.renderer);

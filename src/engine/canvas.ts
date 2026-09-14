@@ -1,5 +1,11 @@
 import { gridSpacing, screenToWorld, worldToScreen } from "./camera";
 import { curveTolerance, GeometryCompiler, hitTestScene } from "./geometry";
+import {
+	mutedLayerColor,
+	UNFOCUSED_FILL_OPACITY,
+	UNFOCUSED_OUTLINE_OPACITY,
+	UNFOCUSED_OUTLINE_WIDTH,
+} from "./layer-style";
 import type {
 	Geometry,
 	GraphicsRenderer,
@@ -12,10 +18,12 @@ import type {
 export class CanvasRenderer implements GraphicsRenderer {
 	private compiler = new GeometryCompiler();
 	private scratch: HTMLCanvasElement;
+	private interior: HTMLCanvasElement;
 	private paths = new WeakMap<Geometry, { path: Path2D; tolerance: number }>();
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.scratch = canvas.ownerDocument.createElement("canvas");
+		this.interior = canvas.ownerDocument.createElement("canvas");
 		if (!canvas.getContext("2d"))
 			throw new Error("Could not initialize a canvas renderer.");
 	}
@@ -64,6 +72,12 @@ export class CanvasRenderer implements GraphicsRenderer {
 		context.fillStyle = options.background;
 		context.fillRect(0, 0, width, height);
 		if (options.grid) this.grid(context, options);
+		const focused = layers.some(
+			(layer) =>
+				layer.id === options.focusedLayerId &&
+				layer.visible &&
+				layer.opacity > 0,
+		);
 		for (const layer of layers) {
 			if (!layer.visible || layer.opacity <= 0) continue;
 			layerContext.resetTransform();
@@ -77,7 +91,9 @@ export class CanvasRenderer implements GraphicsRenderer {
 				(width / 2 - camera.x * camera.scale * mirror) * ratio,
 				(height / 2 + camera.y * camera.scale) * ratio,
 			);
-			layerContext.fillStyle = layer.color;
+			const unfocused = focused && layer.id !== options.focusedLayerId;
+			const color = unfocused ? mutedLayerColor(layer.color) : layer.color;
+			layerContext.fillStyle = color;
 			for (const object of layer.objects) {
 				layerContext.save();
 				if (object.transform) layerContext.transform(...object.transform);
@@ -93,7 +109,7 @@ export class CanvasRenderer implements GraphicsRenderer {
 					: 1;
 				layerContext.fillStyle = options.selectedIds?.has(object.id)
 					? "#ffffff"
-					: layer.color;
+					: color;
 				layerContext.fill(
 					this.path(
 						object.geometry,
@@ -103,10 +119,54 @@ export class CanvasRenderer implements GraphicsRenderer {
 				);
 				layerContext.restore();
 			}
-			context.globalAlpha = Math.max(0, Math.min(1, layer.opacity));
+			if (unfocused) this.fadeInterior(UNFOCUSED_OUTLINE_WIDTH * ratio);
+			context.globalAlpha =
+				Math.max(0, Math.min(1, layer.opacity)) *
+				(unfocused ? UNFOCUSED_OUTLINE_OPACITY : 1);
 			context.drawImage(this.scratch, 0, 0, width, height);
 		}
 		context.globalAlpha = 1;
+	}
+
+	/** Fade the interior while retaining the boundary of the composited shapes. */
+	private fadeInterior(radius: number): void {
+		const { width, height } = this.scratch;
+		if (this.interior.width !== width || this.interior.height !== height) {
+			this.interior.width = width;
+			this.interior.height = height;
+		}
+		const interior = this.interior.getContext("2d")!;
+		interior.globalCompositeOperation = "source-over";
+		interior.clearRect(0, 0, width, height);
+		interior.drawImage(this.scratch, 0, 0);
+		interior.globalCompositeOperation = "destination-in";
+		for (const [x, y] of [
+			[radius, 0],
+			[-radius, 0],
+			[0, radius],
+			[0, -radius],
+		]) {
+			// The viewport boundary is not a shape edge.
+			interior.save();
+			interior.beginPath();
+			interior.rect(
+				Math.max(0, x),
+				Math.max(0, y),
+				width - Math.abs(x),
+				height - Math.abs(y),
+			);
+			interior.clip();
+			interior.drawImage(this.scratch, x, y);
+			interior.restore();
+		}
+		const context = this.scratch.getContext("2d")!;
+		context.save();
+		context.resetTransform();
+		context.globalCompositeOperation = "destination-out";
+		context.globalAlpha =
+			1 - UNFOCUSED_FILL_OPACITY / UNFOCUSED_OUTLINE_OPACITY;
+		context.drawImage(this.interior, 0, 0);
+		context.restore();
 	}
 
 	private grid(
@@ -157,5 +217,7 @@ export class CanvasRenderer implements GraphicsRenderer {
 	dispose(): void {
 		this.scratch.width = 0;
 		this.scratch.height = 0;
+		this.interior.width = 0;
+		this.interior.height = 0;
 	}
 }

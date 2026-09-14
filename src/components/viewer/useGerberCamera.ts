@@ -1,12 +1,12 @@
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fitCamera } from "../../engine/camera";
+import { fitCamera, getSceneBounds } from "../../engine/camera";
 import type { Camera, SceneLayer } from "../../engine/types";
 import { ViewportControls } from "../../engine/viewport-controls";
 
-export function useGerberCamera(layer: SceneLayer) {
+export function useGerberCamera(layers: readonly SceneLayer[]) {
 	const container = useRef<HTMLDivElement>(null);
-	const fittedLayer = useRef<SceneLayer | null>(null);
+	const fittedLayer = useRef<string | null>(null);
 	const controls = useRef<ViewportControls | null>(null);
 	const [size, setSize] = useState({ width: 1, height: 1 });
 	const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
@@ -31,23 +31,28 @@ export function useGerberCamera(layer: SceneLayer) {
 			controls.current = null;
 		};
 	}, []);
+	const sceneKey = JSON.stringify(
+		layers
+			.map(({ id, bounds }) => ({ id, bounds }))
+			.sort((a, b) => a.id.localeCompare(b.id)),
+	);
 	useEffect(() => {
 		const navigation = controls.current;
 		if (!navigation || size.width <= 1 || size.height <= 1) return;
-		if (layer === fittedLayer.current) {
+		if (sceneKey === fittedLayer.current) {
 			navigation.resize(size.width, size.height);
 			return;
 		}
-		fittedLayer.current = layer;
+		fittedLayer.current = sceneKey;
 		const fitted = fitCamera(
-			layer.bounds,
+			getSceneBounds(layers, false),
 			size.width,
 			size.height,
 			Math.min(40, size.width / 10),
 		);
 		setHomeCamera(fitted);
 		navigation.fit(fitted, size.width, size.height);
-	}, [layer, size]);
+	}, [layers, sceneKey, size]);
 	const resetView = useCallback(() => controls.current?.reset(), []);
 	const zoomView = useCallback(
 		(factor: number) => controls.current?.zoom(factor),

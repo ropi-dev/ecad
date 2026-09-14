@@ -1,19 +1,26 @@
 import { expect, test } from "@playwright/test";
 
-for (const forceWebGL of [false, true]) {
-	test(`preserves Gerber compositing and selection on ${forceWebGL ? "WebGL 2" : "WebGPU"}`, async ({
+for (const mode of ["webgpu", "webgl", "canvas"] as const) {
+	test(`preserves Gerber compositing and selection on ${mode}`, async ({
 		page,
 	}) => {
 		const errors: string[] = [];
 		page.on("pageerror", (error) => errors.push(error.message));
 		await page.goto("/tests/browser/renderer.html");
-		const result = await page.evaluate(async (forceWebGL) => {
+		const result = await page.evaluate(async (mode) => {
 			const path = "/src/engine/three.ts";
 			const { ThreeRenderer }: typeof import("../../src/engine/three") =
 				await import(path);
 			const canvas = document.createElement("canvas");
 			document.body.append(canvas);
-			const engine = await ThreeRenderer.create(canvas, forceWebGL);
+			const canvasPath = "/src/engine/canvas.ts";
+			const { CanvasRenderer }: typeof import("../../src/engine/canvas") =
+				await import(canvasPath);
+			const engine =
+				mode === "canvas"
+					? new CanvasRenderer(canvas)
+					: await ThreeRenderer.create(canvas, mode === "webgl");
+			const backend = "backend" in engine ? engine.backend : "Canvas 2D";
 			const failures: string[] = [];
 			canvas.addEventListener("renderererror", (event) =>
 				failures.push((event as CustomEvent<string>).detail),
@@ -76,14 +83,18 @@ for (const forceWebGL of [false, true]) {
 				canvas.addEventListener("renderinvalidated", accept);
 			});
 			engine.render(canvas, layers, options);
-			await ready;
+			if (mode !== "canvas") await ready;
 			async function capture(
 				next: import("../../src/engine/types").RenderOptions,
 			) {
 				engine.render(canvas, layers, next);
 				const width = canvas.width,
 					height = canvas.height;
-				if (engine.backend === "WebGPU") {
+				if (mode === "canvas")
+					return new Uint8Array(
+						canvas.getContext("2d")!.getImageData(0, 0, width, height).data,
+					);
+				if (backend === "WebGPU") {
 					const context = canvas.getContext("webgpu")!;
 					const { device, format } = context.getConfiguration()!;
 					const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
@@ -138,6 +149,19 @@ for (const forceWebGL of [false, true]) {
 			const pixel = (data: Uint8Array, x: number, y = 64, width = 128) =>
 				Array.from(data.slice((y * width + x) * 4, (y * width + x) * 4 + 3));
 			const normal = await capture(options);
+			const focused = await capture({ ...options, focusedLayerId: "lower" });
+			layers[1].opacity = 0.5;
+			const dimmed = await capture({ ...options, focusedLayerId: "lower" });
+			layers[1].opacity = 1;
+			const clipped = await capture({
+				...options,
+				focusedLayerId: "lower",
+				camera: { x: -3, y: 0, scale: 128 },
+			});
+			const restored = await capture(options);
+			layers.reverse();
+			const reordered = await capture(options);
+			layers.reverse();
 			const selected = await capture({
 				...options,
 				selectedIds: new Set(["outer"]),
@@ -151,7 +175,7 @@ for (const forceWebGL of [false, true]) {
 			layers[1].opacity = 0.5;
 			const translucent = await capture(options);
 			layers[1].visible = false;
-			const hidden = await capture(options);
+			const hidden = await capture({ ...options, focusedLayerId: "upper" });
 			layers[1].visible = true;
 			layers[1].opacity = 1;
 			const resized = await capture({
@@ -162,13 +186,26 @@ for (const forceWebGL of [false, true]) {
 			});
 			const dimensions = [canvas.width, canvas.height];
 			const resizedIsland = pixel(resized, 208, 96, 384);
-			const stats = engine.getDiagnostics();
-			const backend = engine.backend;
+			const stats =
+				"getDiagnostics" in engine ? engine.getDiagnostics() : undefined;
 			engine.dispose();
 			engine.dispose();
 			canvas.remove();
 			return {
 				backend,
+				dimmed: pixel(dimmed, 32),
+				dimmedFill: pixel(dimmed, 40),
+				focused: [
+					pixel(focused, 32),
+					pixel(focused, 40),
+					pixel(focused, 47),
+					pixel(focused, 52),
+					pixel(focused, 68),
+					pixel(focused, 72),
+				],
+				clipped: [pixel(clipped, 0), pixel(clipped, 64), pixel(clipped, 127)],
+				restored: pixel(restored, 40),
+				reordered: pixel(reordered, 40),
 				failures,
 				stats,
 				dimensions,
@@ -191,8 +228,55 @@ for (const forceWebGL of [false, true]) {
 				translucent: pixel(translucent, 40),
 				hidden: pixel(hidden, 40),
 			};
-		}, forceWebGL);
-		expect(result.backend).toBe(forceWebGL ? "WebGL 2" : "WebGPU");
+		}, mode);
+		expect(result.backend).toBe(
+			mode === "canvas" ? "Canvas 2D" : mode === "webgl" ? "WebGL 2" : "WebGPU",
+		);
+		// The red fill is muted to rgb(142, 84, 94) before compositing.
+		// GPU blending uses linear color; Canvas blends in sRGB.
+		const expectedFill = (opacity: number) =>
+			[142, 84, 94].map((value, index) => {
+				const srgb = value / 255;
+				const channel =
+					mode === "canvas" ? srgb : ((srgb + 0.055) / 1.055) ** 2.4;
+				const blended = channel * opacity + (index === 2 ? 1 - opacity : 0);
+				return Math.round(
+					255 *
+						(mode === "canvas"
+							? blended
+							: 1.055 * blended ** (1 / 2.4) - 0.055),
+				);
+			});
+		// A four-pixel outline covers the entire eight-pixel island.
+		for (const index of [0, 2, 4, 5]) {
+			const fill = result.focused[index];
+			expectedFill(0.20).forEach((value, channel) =>
+				expect(Math.abs(fill[channel] - value)).toBeLessThanOrEqual(1),
+			);
+		}
+		for (const index of [1]) {
+			expectedFill(0.15).forEach((value, channel) =>
+				expect(
+					Math.abs(result.focused[index][channel] - value),
+				).toBeLessThanOrEqual(1),
+			);
+		}
+		expectedFill(0.075).forEach((value, channel) =>
+			expect(Math.abs(result.dimmedFill[channel] - value)).toBeLessThanOrEqual(
+				1,
+			),
+		);
+		expect(result.focused[3]).toEqual([0, 0, 255]);
+		expectedFill(0.10).forEach((value, channel) =>
+			expect(Math.abs(result.dimmed[channel] - value)).toBeLessThanOrEqual(1),
+		);
+		for (const fill of result.clipped) {
+			expectedFill(0.15).forEach((value, channel) =>
+				expect(Math.abs(fill[channel] - value)).toBeLessThanOrEqual(1),
+			);
+		}
+		expect(result.restored).toEqual([255, 0, 0]);
+		expect(result.reordered).toEqual([0, 0, 255]);
 		expect(result.failures).toEqual([]);
 		expect(errors).toEqual([]);
 		expect(result.normal).toEqual([
@@ -216,12 +300,16 @@ for (const forceWebGL of [false, true]) {
 			[255, 0, 0],
 			[255, 0, 0],
 		]);
-		expect(result.translucent[0]).toBeGreaterThan(150);
+		expect(result.translucent[0]).toBeGreaterThan(
+			mode === "canvas" ? 120 : 150,
+		);
 		expect(result.translucent[1]).toBe(0);
-		expect(result.translucent[2]).toBeGreaterThan(150);
+		expect(result.translucent[2]).toBeGreaterThan(
+			mode === "canvas" ? 120 : 150,
+		);
 		expect(result.hidden).toEqual([0, 0, 255]);
 		expect(result.dimensions).toEqual([384, 192]);
 		expect(result.resizedIsland).toEqual([255, 0, 0]);
-		expect(result.stats.drawCalls).toBeGreaterThan(2);
+		if (mode !== "canvas") expect(result.stats?.drawCalls).toBeGreaterThan(2);
 	});
 }

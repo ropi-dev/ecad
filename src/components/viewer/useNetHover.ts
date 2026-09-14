@@ -1,22 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { indexGerberNets } from "../../formats/gerber/nets";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { screenToWorld } from "../../engine/camera";
 import type { Camera, GraphicsRenderer, SceneLayer } from "../../engine/types";
+import { indexGerberNets } from "../../formats/gerber/nets";
 
 /** Coalesce pointer movement, and redraw only when the hovered net changes. */
 export function useNetHover(
 	target: RefObject<HTMLDivElement | null>,
 	renderer: RefObject<GraphicsRenderer | null>,
-	layer: SceneLayer | null,
+	layers: readonly SceneLayer[],
 	camera: Camera,
 	size: { width: number; height: number },
 ) {
 	const [hoveredIds, setHoveredIds] = useState<ReadonlySet<string>>();
 	const nets = useMemo(
-		() =>
-			layer ? indexGerberNets(layer) : new Map<string, ReadonlySet<string>>(),
-		[layer],
+		() => new Map(layers.flatMap((layer) => [...indexGerberNets(layer)])),
+		[layers],
 	);
 	const pointer = useRef<{ x: number; y: number } | null>(null);
 	const pick = useRef<() => void>(() => {});
@@ -69,7 +68,12 @@ export function useNetHover(
 
 	useEffect(() => {
 		pick.current = () => {
-			if (!pointer.current || !layer || !renderer.current || !target.current) {
+			if (
+				!pointer.current ||
+				!layers.length ||
+				!renderer.current ||
+				!target.current
+			) {
 				setHoveredIds(undefined);
 				return;
 			}
@@ -81,11 +85,11 @@ export function useNetHover(
 				size.height,
 			);
 			// A small screen-space margin makes thin traces practical to target.
-			const hit = renderer.current.hitTest([layer], point, 2 / camera.scale);
+			const hit = renderer.current.hitTest(layers, point, 2 / camera.scale);
 			setHoveredIds(hit ? nets.get(hit.object.id) : undefined);
 		};
 		schedule.current();
-	}, [target, renderer, layer, camera, size, nets]);
+	}, [target, renderer, layers, camera, size, nets]);
 
 	return hoveredIds;
 }

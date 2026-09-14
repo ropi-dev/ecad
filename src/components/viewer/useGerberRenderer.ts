@@ -7,10 +7,11 @@ import { useRenderDiagnostics } from "./useRenderDiagnostics";
 
 export function useGerberRenderer(
 	renderer: RefObject<GraphicsRenderer | null>,
-	layer: SceneLayer,
+	layers: readonly SceneLayer[],
 	camera: Camera,
 	size: { width: number; height: number },
 	selectedIds: ReadonlySet<string> | undefined,
+	focusedLayerId?: string,
 ) {
 	const canvasHost = useRef<HTMLDivElement>(null);
 	const frame = useRef<number | null>(null);
@@ -88,12 +89,13 @@ export function useGerberRenderer(
 		draw.current = () => {
 			try {
 				const started = performance.now();
-				session.renderer.render(session.canvas, [layer], {
+				session.renderer.render(session.canvas, layers, {
 					...size,
 					camera,
 					pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
 					grid: false,
 					selectedIds,
+					focusedLayerId,
 					background: "#111318",
 				});
 				const duration = performance.now() - started;
@@ -107,7 +109,16 @@ export function useGerberRenderer(
 			}
 		};
 		schedule();
-	}, [session, unavailable, layer, camera, size, selectedIds, schedule]);
+	}, [
+		session,
+		unavailable,
+		layers,
+		camera,
+		size,
+		selectedIds,
+		focusedLayerId,
+		schedule,
+	]);
 	const diagnostics = useRenderDiagnostics(session, sample, !unavailable);
 	const backend = unavailable
 		? "Renderer unavailable"
