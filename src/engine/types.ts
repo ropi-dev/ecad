@@ -66,7 +66,7 @@ export interface RenderOptions {
 	camera: Camera;
 	grid: boolean;
 	background: string;
-	selectedId?: string;
+	selectedIds?: ReadonlySet<string>;
 	mirrored?: boolean;
 }
 export interface GraphicsRenderer {

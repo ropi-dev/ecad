@@ -21,23 +21,24 @@ struct View {
 `;
 
 const GEOMETRY_WGSL = `${VIEW_WGSL}
+@group(1) @binding(0) var<storage, read> selection: array<f32>;
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) coverage: f32,
+  @location(1) @interpolate(flat) selected: f32,
 };
-@vertex fn vertexMain(@location(0) position: vec2f, @location(1) coverage: f32) -> VertexOutput {
+@vertex fn vertexMain(@location(0) position: vec2f, @location(1) coverage: f32, @location(2) objectIndex: f32) -> VertexOutput {
   var output: VertexOutput;
   let world = (position - view.camera.xy) * view.camera.z;
   output.position = vec4f(world.x * view.camera.w * 2.0 / view.viewport.x, world.y * 2.0 / view.viewport.y, 0.0, 1.0);
   output.coverage = coverage;
+  output.selected = selection[u32(objectIndex)];
   return output;
 }
 @fragment fn maskMain(input: VertexOutput) -> @location(0) vec4f {
-  return vec4f(input.coverage);
+  return vec4f(input.coverage, input.coverage * input.selected, 0.0, 0.0);
 }
-@fragment fn highlightMain() -> @location(0) vec4f {
-  return vec4f(1.0, 0.83, 0.39, 1.0);
-}
+
 `;
 
 const FULLSCREEN_WGSL = `
@@ -73,8 +74,9 @@ const COMPOSITE_WGSL = `${FULLSCREEN_WGSL}
 @group(0) @binding(1) var coverageSampler: sampler;
 @group(0) @binding(2) var<uniform> color: vec4f;
 @fragment fn fragmentMain(input: QuadOutput) -> @location(0) vec4f {
-  let alpha = textureSample(coverageTexture, coverageSampler, input.uv).r * color.a;
-  return vec4f(color.rgb * alpha, alpha);
+  let mask = textureSample(coverageTexture, coverageSampler, input.uv).rg;
+  let rgb = color.rgb * (mask.r - mask.g) + vec3f(mask.g);
+  return vec4f(rgb * color.a, mask.r * color.a);
 }
 `;
 
@@ -84,6 +86,10 @@ interface LayerBuffers {
 	vertices: GPUBuffer;
 	count: number;
 	color: GPUBuffer;
+	selection: GPUBuffer;
+	selectionBindGroup: GPUBindGroup;
+	selectionFlags: Float32Array<ArrayBuffer>;
+	selectedIds?: ReadonlySet<string>;
 	revision: number;
 	building: boolean;
 	failed: boolean;
@@ -104,14 +110,12 @@ export class WebGPURenderer implements GraphicsRenderer {
 	private height = 0;
 	private lost = false;
 	private disposed = false;
-	private highlightBuffer: GPUBuffer;
 	private viewBuffer: GPUBuffer;
 	private viewLayout: GPUBindGroupLayout;
 	private viewBindGroup: GPUBindGroup;
 	private maskPipeline!: GPURenderPipeline;
 	private backgroundPipeline!: GPURenderPipeline;
 	private compositePipeline!: GPURenderPipeline;
-	private highlightPipeline!: GPURenderPipeline;
 	private sampler: GPUSampler;
 
 	private constructor(
@@ -138,11 +142,7 @@ export class WebGPURenderer implements GraphicsRenderer {
 			size: 64,
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		});
-		this.highlightBuffer = device.createBuffer({
-			label: "Selection outline",
-			size: 288,
-			usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-		});
+
 		this.viewLayout = device.createBindGroupLayout({
 			entries: [
 				{
@@ -210,78 +210,82 @@ export class WebGPURenderer implements GraphicsRenderer {
 		const layout = device.createPipelineLayout({
 			bindGroupLayouts: [viewLayout],
 		});
+		const selectionLayout = device.createBindGroupLayout({
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.VERTEX,
+					buffer: { type: "read-only-storage" },
+				},
+			],
+		});
+		const geometryLayout = device.createPipelineLayout({
+			bindGroupLayouts: [viewLayout, selectionLayout],
+		});
 		const vertex: GPUVertexState = {
 			module: geometryModule,
 			entryPoint: "vertexMain",
 			buffers: [
 				{
-					arrayStride: 12,
+					arrayStride: 16,
 					attributes: [
 						{ shaderLocation: 0, offset: 0, format: "float32x2" },
 						{ shaderLocation: 1, offset: 8, format: "float32" },
+						{ shaderLocation: 2, offset: 12, format: "float32" },
 					],
 				},
 			],
 		};
 		try {
-			const [
-				maskPipeline,
-				backgroundPipeline,
-				compositePipeline,
-				highlightPipeline,
-			] = await Promise.all([
-				device.createRenderPipelineAsync({
-					label: "Ordered dark and clear geometry",
-					layout,
-					vertex,
-					fragment: {
-						module: geometryModule,
-						entryPoint: "maskMain",
-						targets: [{ format: "rgba8unorm" }],
-					},
-					primitive: { topology: "triangle-list" },
-					multisample: { count: 4 },
-				}),
-				device.createRenderPipelineAsync({
-					label: "Background and millimetre grid",
-					layout,
-					vertex: { module: backgroundModule, entryPoint: "vertexMain" },
-					fragment: {
-						module: backgroundModule,
-						entryPoint: "fragmentMain",
-						targets: [{ format }],
-					},
-				}),
-				device.createRenderPipelineAsync({
-					label: "Layer color and opacity",
-					layout: "auto",
-					vertex: { module: compositeModule, entryPoint: "vertexMain" },
-					fragment: {
-						module: compositeModule,
-						entryPoint: "fragmentMain",
-						targets: [
-							{
-								format,
-								blend: {
-									color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
-									alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
+			const [maskPipeline, backgroundPipeline, compositePipeline] =
+				await Promise.all([
+					device.createRenderPipelineAsync({
+						label: "Ordered dark and clear geometry",
+						layout: geometryLayout,
+						vertex,
+						fragment: {
+							module: geometryModule,
+							entryPoint: "maskMain",
+							targets: [{ format: "rgba8unorm" }],
+						},
+						primitive: { topology: "triangle-list" },
+						multisample: { count: 4 },
+					}),
+					device.createRenderPipelineAsync({
+						label: "Background and millimetre grid",
+						layout,
+						vertex: { module: backgroundModule, entryPoint: "vertexMain" },
+						fragment: {
+							module: backgroundModule,
+							entryPoint: "fragmentMain",
+							targets: [{ format }],
+						},
+					}),
+					device.createRenderPipelineAsync({
+						label: "Layer color and opacity",
+						layout: "auto",
+						vertex: { module: compositeModule, entryPoint: "vertexMain" },
+						fragment: {
+							module: compositeModule,
+							entryPoint: "fragmentMain",
+							targets: [
+								{
+									format,
+									blend: {
+										color: {
+											srcFactor: "one",
+											dstFactor: "one-minus-src-alpha",
+										},
+										alpha: {
+											srcFactor: "one",
+											dstFactor: "one-minus-src-alpha",
+										},
+									},
 								},
-							},
-						],
-					},
-				}),
-				device.createRenderPipelineAsync({
-					label: "Selection outline",
-					layout,
-					vertex,
-					fragment: {
-						module: geometryModule,
-						entryPoint: "highlightMain",
-						targets: [{ format }],
-					},
-					primitive: { topology: "triangle-list" },
-				}),
-			]);
+							],
+						},
+					}),
+				]);
 			const context = canvas.getContext("webgpu");
 			if (!context)
 				throw new Error("This canvas does not support a WebGPU context.");
@@ -289,7 +293,6 @@ export class WebGPURenderer implements GraphicsRenderer {
 			renderer.maskPipeline = maskPipeline;
 			renderer.backgroundPipeline = backgroundPipeline;
 			renderer.compositePipeline = compositePipeline;
-			renderer.highlightPipeline = highlightPipeline;
 			return renderer;
 		} catch (error) {
 			device.destroy();
@@ -382,7 +385,7 @@ export class WebGPURenderer implements GraphicsRenderer {
 			);
 		buffers.vertices.destroy();
 		buffers.vertices = vertices;
-		buffers.count = data.length / 3;
+		buffers.count = data.length / 4;
 		buffers.tolerance = result.tolerance;
 		this.canvas.dispatchEvent(new Event("renderinvalidated"));
 		// At most one job per layer is in flight. Skip intermediate zoom levels.
@@ -394,8 +397,19 @@ export class WebGPURenderer implements GraphicsRenderer {
 		if (!buffers || buffers.objects !== layer.objects) {
 			buffers?.vertices.destroy();
 			buffers?.color.destroy();
+			buffers?.selection.destroy();
+			const selection = this.device.createBuffer({
+				size: Math.max(4, layer.objects.length * 4),
+				usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+			});
 			buffers = {
 				objects: layer.objects,
+				selection,
+				selectionFlags: new Float32Array(layer.objects.length),
+				selectionBindGroup: this.device.createBindGroup({
+					layout: this.maskPipeline.getBindGroupLayout(1),
+					entries: [{ binding: 0, resource: { buffer: selection } }],
+				}),
 				tolerance: Infinity,
 				requestedTolerance: tolerance,
 				revision: ++this.nextRevision,
@@ -485,6 +499,7 @@ export class WebGPURenderer implements GraphicsRenderer {
 			if (!existing.has(id)) {
 				buffers.vertices.destroy();
 				buffers.color.destroy();
+				buffers.selection.destroy();
 				const release: MeshRequest = {
 					type: "release",
 					layerId: id,
@@ -501,6 +516,20 @@ export class WebGPURenderer implements GraphicsRenderer {
 				curveTolerance(camera.scale * ratio),
 			);
 			if (!buffers.count) continue;
+			if (buffers.selectedIds !== options.selectedIds) {
+				for (let i = 0; i < layer.objects.length; i++)
+					buffers.selectionFlags[i] = options.selectedIds?.has(
+						layer.objects[i].id,
+					)
+						? 1
+						: 0;
+				this.device.queue.writeBuffer(
+					buffers.selection,
+					0,
+					buffers.selectionFlags,
+				);
+				buffers.selectedIds = options.selectedIds;
+			}
 			const mask = encoder.beginRenderPass({
 				label: layer.name,
 				colorAttachments: [
@@ -515,6 +544,7 @@ export class WebGPURenderer implements GraphicsRenderer {
 			});
 			mask.setPipeline(this.maskPipeline);
 			mask.setBindGroup(0, this.viewBindGroup);
+			mask.setBindGroup(1, buffers.selectionBindGroup);
 			mask.setVertexBuffer(0, buffers.vertices);
 			mask.draw(buffers.count);
 			mask.end();
@@ -537,70 +567,7 @@ export class WebGPURenderer implements GraphicsRenderer {
 			composite.draw(3);
 			composite.end();
 		}
-		if (options.selectedId) {
-			const selected = layers
-				.filter((layer) => layer.visible)
-				.flatMap((layer) => layer.objects)
-				.find((object) => object.id === options.selectedId);
-			if (selected) this.highlight(encoder, output, selected, options);
-		}
 		this.device.queue.submit([encoder.finish()]);
-	}
-
-	private highlight(
-		encoder: GPUCommandEncoder,
-		output: GPUTextureView,
-		object: SceneObject,
-		options: RenderOptions,
-	): void {
-		const padding = 3 / options.camera.scale,
-			line = 1.3 / options.camera.scale;
-		const { minX, minY, maxX, maxY } = object.bounds;
-		const x0 = minX - padding,
-			y0 = minY - padding,
-			x1 = maxX + padding,
-			y1 = maxY + padding;
-		const data: number[] = [];
-		for (const [x, y, w, h] of [
-			[x0, y0, x1 - x0, line],
-			[x0, y1 - line, x1 - x0, line],
-			[x0, y0, line, y1 - y0],
-			[x1 - line, y0, line, y1 - y0],
-		]) {
-			data.push(
-				x,
-				y,
-				1,
-				x + w,
-				y,
-				1,
-				x,
-				y + h,
-				1,
-				x,
-				y + h,
-				1,
-				x + w,
-				y,
-				1,
-				x + w,
-				y + h,
-				1,
-			);
-		}
-		this.device.queue.writeBuffer(
-			this.highlightBuffer,
-			0,
-			new Float32Array(data),
-		);
-		const pass = encoder.beginRenderPass({
-			colorAttachments: [{ view: output, loadOp: "load", storeOp: "store" }],
-		});
-		pass.setPipeline(this.highlightPipeline);
-		pass.setBindGroup(0, this.viewBindGroup);
-		pass.setVertexBuffer(0, this.highlightBuffer);
-		pass.draw(24);
-		pass.end();
 	}
 
 	hitTest(layers: readonly SceneLayer[], point: Point, tolerance: number) {
@@ -614,10 +581,10 @@ export class WebGPURenderer implements GraphicsRenderer {
 		for (const buffers of this.layers.values()) {
 			buffers.vertices.destroy();
 			buffers.color.destroy();
+			buffers.selection.destroy();
 		}
 		this.layers.clear();
 		this.viewBuffer.destroy();
-		this.highlightBuffer.destroy();
 		this.maskTexture?.destroy();
 		this.multisampleTexture?.destroy();
 		if (this.context.getConfiguration?.()?.device === this.device)

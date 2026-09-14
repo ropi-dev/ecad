@@ -47,9 +47,9 @@ export function compileMesh(
 		(total, chunk) => total + chunk.mesh.length / 2,
 		0,
 	);
-	const data = new Float32Array(count * 3);
+	const data = new Float32Array(count * 4);
 	let cursor = 0;
-	for (const { object, mesh } of chunks)
+	for (const [objectIndex, { object, mesh }] of chunks.entries())
 		for (let index = 0; index < mesh.length; index += 2) {
 			const point = transformPoint(
 				{ x: mesh[index], y: mesh[index + 1] },
@@ -58,6 +58,7 @@ export function compileMesh(
 			data[cursor++] = point.x;
 			data[cursor++] = point.y;
 			data[cursor++] = object.polarity === "clear" ? 0 : 1;
+			data[cursor++] = objectIndex;
 		}
 	return data;
 }

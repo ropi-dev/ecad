@@ -91,6 +91,9 @@ export class CanvasRenderer implements GraphicsRenderer {
 							1,
 						)
 					: 1;
+				layerContext.fillStyle = options.selectedIds?.has(object.id)
+					? "#ffffff"
+					: layer.color;
 				layerContext.fill(
 					this.path(
 						object.geometry,
@@ -104,36 +107,6 @@ export class CanvasRenderer implements GraphicsRenderer {
 			context.drawImage(this.scratch, 0, 0, width, height);
 		}
 		context.globalAlpha = 1;
-		const selected = options.selectedId
-			? layers
-					.filter((layer) => layer.visible)
-					.flatMap((layer) => layer.objects)
-					.find((object) => object.id === options.selectedId)
-			: undefined;
-		if (selected) {
-			const a = worldToScreen(
-				{ x: selected.bounds.minX, y: selected.bounds.maxY },
-				camera,
-				width,
-				height,
-				options.mirrored,
-			);
-			const b = worldToScreen(
-				{ x: selected.bounds.maxX, y: selected.bounds.minY },
-				camera,
-				width,
-				height,
-				options.mirrored,
-			);
-			context.strokeStyle = "#ffd464";
-			context.lineWidth = 1.3;
-			context.strokeRect(
-				Math.min(a.x, b.x) - 3,
-				Math.min(a.y, b.y) - 3,
-				Math.abs(b.x - a.x) + 6,
-				Math.abs(b.y - a.y) + 6,
-			);
-		}
 	}
 
 	private grid(

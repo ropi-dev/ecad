@@ -13,6 +13,7 @@ import {
 	MIN_ZOOM,
 	MAX_ZOOM,
 } from "../../engine/navigation";
+import { useNetHover } from "./useNetHover";
 import { useViewportNavigation } from "./useViewportNavigation";
 import { createRenderer, fitCamera } from "../../engine";
 import type {
@@ -46,6 +47,7 @@ export function GerberViewer() {
 	const [loading, setLoading] = useState(false);
 	const [renderRevision, setRenderRevision] = useState(0);
 	useViewportNavigation(container, !!layer, homeCamera.scale, setCamera);
+	const hoveredIds = useNetHover(container, renderer, layer, camera, size);
 
 	function resetView() {
 		if (layer) setCamera(homeCamera);
@@ -150,6 +152,7 @@ export function GerberViewer() {
 					camera,
 					pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
 					grid: false,
+					selectedIds: hoveredIds,
 					background: "#111318",
 				});
 			} catch (error) {
@@ -163,7 +166,7 @@ export function GerberViewer() {
 				frame.current = null;
 				draw.current();
 			});
-	}, [layer, camera, size, backend, renderRevision]);
+	}, [layer, camera, size, backend, renderRevision, hoveredIds]);
 
 	useEffect(
 		() => () => {
