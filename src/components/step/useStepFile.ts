@@ -1,42 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { parseStepFile } from "../../formats/parseStepFile";
 import type { StepModel } from "../../formats/step/types/StepModel";
+import { useFileImport } from "../viewer/useFileImport";
+
+async function readStep(file: File, signal: AbortSignal) {
+	return { value: await parseStepFile(file, signal) };
+}
 
 export function useStepFile() {
-	const request = useRef<AbortController | null>(null);
 	const [model, setModel] = useState<StepModel | null>(null);
-	const [loading, setLoading] = useState(false);
-	const [message, setMessage] = useState("");
-	useEffect(() => () => request.current?.abort(), []);
-	const cancel = useCallback(() => {
-		request.current?.abort();
-		request.current = null;
-		setLoading(false);
-	}, []);
-	const openFile = useCallback(async (file: File) => {
-		request.current?.abort();
-		const controller = new AbortController();
-		request.current = controller;
-		setLoading(true);
-		setMessage("");
-		try {
-			const result = await parseStepFile(file, controller.signal);
-			if (controller.signal.aborted) return false;
-			setModel(result);
+	const { loading, message, readFiles, cancel, clearMessage } =
+		useFileImport(readStep);
+	const openFile = useCallback(
+		async (file: File) => {
+			const models = await readFiles([file]);
+			if (!models?.length) return false;
+			setModel(models[0]);
 			return true;
-		} catch (error) {
-			if (!controller.signal.aborted)
-				setMessage(
-					`${file.name}: ${error instanceof Error ? error.message : "Unable to read this file."}`,
-				);
-			return false;
-		} finally {
-			if (request.current === controller) {
-				request.current = null;
-				setLoading(false);
-			}
-		}
-	}, []);
+		},
+		[readFiles],
+	);
 	return {
 		model,
 		loading,
@@ -46,7 +29,7 @@ export function useStepFile() {
 		clear: () => {
 			cancel();
 			setModel(null);
-			setMessage("");
+			clearMessage();
 		},
 	};
 }

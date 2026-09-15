@@ -11,9 +11,12 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
+import { handleViewerKeyDown, viewerPixelRatio } from "../../engine/navigation";
 import { createFusionControls } from "../../engine/step/fusionControls";
 import { createStepGroup, disposeStepGroup } from "../../engine/step/model";
 import type { StepModel } from "../../formats/step/types/StepModel";
+import { useRenderFrame } from "../viewer/useRenderFrame";
+import { useViewportSize } from "../viewer/useViewportSize";
 import { AxisIndicator } from "./AxisIndicator";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
 import type { StepViewerHandle } from "./types/StepViewerHandle";
@@ -34,10 +37,13 @@ export function StepViewer({
 	onError: (message: string) => void;
 }) {
 	const host = useRef<HTMLDivElement>(null);
+	const size = useViewportSize(host);
+	const { draw, schedule, cancel } = useRenderFrame();
 	const axes = useRef<AxisIndicatorHandle>(null);
 	const runtime = useRef<
 		| (StepViewerHandle & {
 				update: (hidden: Set<number>, wireframe: boolean) => void;
+				resize: (width: number, height: number) => void;
 		  })
 		| null
 	>(null);
@@ -98,9 +104,24 @@ export function StepViewer({
 			camera.far = radius * 1000;
 			controls.minDistance = radius * 0.02;
 			controls.maxDistance = radius * 100;
-			const render = () => {
-				output.render(scene, camera);
-				axes.current?.update(camera.quaternion);
+			let ready = false;
+			draw.current = () => {
+				try {
+					output.render(scene, camera);
+					axes.current?.update(camera.quaternion);
+					if (!ready) {
+						ready = true;
+						onReady(true);
+					}
+				} catch (error) {
+					cancel();
+					onReady(false);
+					onError(
+						error instanceof Error
+							? error.message
+							: "Unable to draw this file.",
+					);
+				}
 			};
 			const fit = () => {
 				const halfFov = Math.atan(
@@ -116,7 +137,7 @@ export function StepViewer({
 					.copy(sphere.center)
 					.addScaledVector(direction, (radius / Math.sin(halfFov)) * 1.3);
 				controls.update();
-				render();
+				schedule();
 			};
 			const zoom = (factor: number) => {
 				if (!Number.isFinite(factor) || factor <= 0) return;
@@ -127,7 +148,7 @@ export function StepViewer({
 				);
 				camera.position.copy(controls.target).add(offset.setLength(distance));
 				controls.update();
-				render();
+				schedule();
 			};
 			const view = (direction: "iso" | "top" | "front") => {
 				camera.up.set(0, 0, 1);
@@ -140,25 +161,18 @@ export function StepViewer({
 				camera.position.copy(controls.target).add(offset);
 				fit();
 			};
-			const resize = () => {
-				const width = Math.max(element.clientWidth, 1);
-				const height = Math.max(element.clientHeight, 1);
-				output.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+			const resize = (width: number, height: number) => {
+				output.setPixelRatio(viewerPixelRatio());
 				output.setSize(width, height, false);
 				camera.aspect = width / height;
 				camera.updateProjectionMatrix();
-				render();
+				schedule();
 			};
-			const onKey = (event: KeyboardEvent) => {
-				if (event.ctrlKey || event.metaKey || event.altKey) return;
-				if (["F6", "f", "F", "0", "+", "=", "-"].includes(event.key)) {
-					event.preventDefault();
-					if (["F6", "f", "F", "0"].includes(event.key)) fit();
-					else zoom(event.key === "-" ? 0.8 : 1.25);
-				}
-			};
+			const onKey = (event: KeyboardEvent) =>
+				handleViewerKeyDown(event, { fit, zoom, fitOnF6: true });
 			const onLost = (event: Event) => {
 				event.preventDefault();
+				cancel();
 				onReady(false);
 				onError(
 					"The 3D graphics context was lost. Reopen the file to restore the viewer.",
@@ -166,13 +180,12 @@ export function StepViewer({
 			};
 			canvas.addEventListener("keydown", onKey);
 			canvas.addEventListener("webglcontextlost", onLost);
-			controls.addEventListener("change", render);
-			const observer = new ResizeObserver(resize);
-			observer.observe(element);
+			controls.addEventListener("change", schedule);
 			runtime.current = {
 				fit,
 				zoom,
 				view,
+				resize,
 				update: (hiddenParts, showWireframe) => {
 					group.children.forEach((object, index) => {
 						object.visible = !hiddenParts.has(index);
@@ -180,25 +193,28 @@ export function StepViewer({
 							for (const material of object.material)
 								material.wireframe = showWireframe;
 					});
-					render();
+					schedule();
 				},
 			};
 			cleanup = () => {
-				observer.disconnect();
+				controls.removeEventListener("change", schedule);
 				canvas.removeEventListener("keydown", onKey);
 				canvas.removeEventListener("webglcontextlost", onLost);
 				navigation.dispose();
 				disposeStepGroup(group);
 			};
-			resize();
+			resize(
+				Math.max(element.clientWidth, 1),
+				Math.max(element.clientHeight, 1),
+			);
 			view("iso");
-			onReady(true);
 		} catch (error) {
 			onError(
 				`3D viewer unavailable: ${error instanceof Error ? error.message : "WebGL is not supported in this browser."}`,
 			);
 		}
 		return () => {
+			cancel();
 			runtime.current = null;
 			cleanup();
 			grid?.dispose();
@@ -206,7 +222,10 @@ export function StepViewer({
 			renderer?.forceContextLoss();
 			renderer?.domElement.remove();
 		};
-	}, [model, onReady, onError]);
+	}, [model, onReady, onError, draw, schedule, cancel]);
+	useEffect(() => {
+		runtime.current?.resize(size.width, size.height);
+	}, [size]);
 	useEffect(() => {
 		if (model.meshes.length) runtime.current?.update(hidden, wireframe);
 	}, [model, hidden, wireframe]);

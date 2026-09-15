@@ -1,9 +1,11 @@
 import type { RefObject } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RendererResult } from "../../engine";
 import { createRenderer } from "../../engine";
+import { viewerPixelRatio } from "../../engine/navigation";
 import type { Camera, GraphicsRenderer, SceneLayer } from "../../engine/types";
 import { useRenderDiagnostics } from "./useRenderDiagnostics";
+import { useRenderFrame } from "./useRenderFrame";
 
 export function useGerberRenderer(
 	renderer: RefObject<GraphicsRenderer | null>,
@@ -14,19 +16,11 @@ export function useGerberRenderer(
 	focusedLayerId?: string,
 ) {
 	const canvasHost = useRef<HTMLDivElement>(null);
-	const frame = useRef<number | null>(null);
-	const draw = useRef<() => void>(() => {});
+	const { draw, schedule, cancel } = useRenderFrame();
 	const sample = useRef({ frames: 0, totalMs: 0, peakMs: 0 });
 	const [session, setSession] = useState<RendererResult | null>(null);
 	const [message, setMessage] = useState("");
 	const [unavailable, setUnavailable] = useState(false);
-	const schedule = useCallback(() => {
-		if (frame.current !== null) return;
-		frame.current = requestAnimationFrame(() => {
-			frame.current = null;
-			draw.current();
-		});
-	}, []);
 	useEffect(() => {
 		const host = canvasHost.current;
 		if (!host) return;
@@ -76,11 +70,9 @@ export function useGerberRenderer(
 			active?.dispose?.();
 			target.remove();
 			if (renderer.current === active) renderer.current = null;
-			if (frame.current !== null) cancelAnimationFrame(frame.current);
-			frame.current = null;
-			draw.current = () => {};
+			cancel();
 		};
-	}, [renderer, schedule]);
+	}, [renderer, schedule, cancel]);
 	useEffect(() => {
 		if (!session || unavailable) {
 			draw.current = () => {};
@@ -92,7 +84,7 @@ export function useGerberRenderer(
 				session.renderer.render(session.canvas, layers, {
 					...size,
 					camera,
-					pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+					pixelRatio: viewerPixelRatio(),
 					grid: false,
 					selectedIds,
 					focusedLayerId,
@@ -118,6 +110,7 @@ export function useGerberRenderer(
 		selectedIds,
 		focusedLayerId,
 		schedule,
+		draw,
 	]);
 	const diagnostics = useRenderDiagnostics(session, sample, !unavailable);
 	const backend = unavailable

@@ -1,14 +1,16 @@
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fitCamera, getSceneBounds } from "../../engine/camera";
+import { handleViewerKeyDown } from "../../engine/navigation";
 import type { Camera, SceneLayer } from "../../engine/types";
 import { ViewportControls } from "../../engine/viewport-controls";
+import { useViewportSize } from "./useViewportSize";
 
 export function useGerberCamera(layers: readonly SceneLayer[]) {
 	const container = useRef<HTMLDivElement>(null);
 	const fittedLayer = useRef<string | null>(null);
 	const controls = useRef<ViewportControls | null>(null);
-	const [size, setSize] = useState({ width: 1, height: 1 });
+	const size = useViewportSize(container);
 	const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
 	const [homeCamera, setHomeCamera] = useState<Camera>(camera);
 
@@ -18,15 +20,7 @@ export function useGerberCamera(layers: readonly SceneLayer[]) {
 		const navigation = new ViewportControls(target, setCamera);
 		controls.current = navigation;
 		fittedLayer.current = null;
-		const observer = new ResizeObserver(([entry]) =>
-			setSize({
-				width: entry.contentRect.width,
-				height: entry.contentRect.height,
-			}),
-		);
-		observer.observe(target);
 		return () => {
-			observer.disconnect();
 			navigation.dispose();
 			controls.current = null;
 		};
@@ -62,39 +56,12 @@ export function useGerberCamera(layers: readonly SceneLayer[]) {
 		(x: number, y: number) => controls.current?.pan(x, y),
 		[],
 	);
-	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (event.ctrlKey || event.metaKey || event.altKey) return;
-		const step = event.shiftKey ? 240 : 80;
-		switch (event.key) {
-			case "+":
-			case "=":
-				zoomView(1.25);
-				break;
-			case "-":
-				zoomView(1 / 1.25);
-				break;
-			case "f":
-			case "F":
-			case "0":
-				resetView();
-				break;
-			case "ArrowLeft":
-				panView(-step, 0);
-				break;
-			case "ArrowRight":
-				panView(step, 0);
-				break;
-			case "ArrowUp":
-				panView(0, -step);
-				break;
-			case "ArrowDown":
-				panView(0, step);
-				break;
-			default:
-				return;
-		}
-		event.preventDefault();
-	};
+	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) =>
+		handleViewerKeyDown(event, {
+			fit: resetView,
+			zoom: zoomView,
+			pan: panView,
+		});
 	return {
 		container,
 		size,

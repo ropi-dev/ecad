@@ -1,4 +1,5 @@
-import { Maximize, Minus, Plus } from "lucide-react";
+import { Maximize } from "lucide-react";
+import { ZoomControls } from "../viewer/ZoomControls";
 import type { StepViewerHandle } from "./types/StepViewerHandle";
 
 export function StepControls({
@@ -21,34 +22,16 @@ export function StepControls({
 			aria-label="3D view controls"
 			className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-0.5 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg sm:gap-1"
 		>
-			<button
-				type="button"
-				className={button}
-				disabled={!enabled}
-				aria-label="Zoom out"
-				onClick={() => zoom(0.8)}
-			>
-				<Minus size={16} />
-			</button>
-			<button
-				type="button"
-				className={button}
-				disabled={!enabled}
-				aria-label="Zoom in"
-				onClick={() => zoom(1.25)}
-			>
-				<Plus size={16} />
-			</button>
-			<button
-				type="button"
-				className={button}
-				disabled={!enabled}
-				aria-label="Fit model"
-				title="Fit model (F6 or double-click the mouse wheel)"
-				onClick={fit}
+			<ZoomControls
+				zoom={zoom}
+				fit={fit}
+				enabled={enabled}
+				buttonClassName={button}
+				fitLabel="Fit model"
+				fitTitle="Fit model (F6 or double-click the mouse wheel)"
 			>
 				<Maximize size={16} />
-			</button>
+			</ZoomControls>
 			<button
 				type="button"
 				className={button}

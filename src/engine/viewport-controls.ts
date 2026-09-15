@@ -1,6 +1,6 @@
 import { MOUSE, OrthographicCamera, TOUCH } from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
-import { MAX_ZOOM, MIN_ZOOM } from "./navigation";
+import { MAX_ZOOM, MIN_ZOOM, wheelDelta } from "./navigation";
 import type { Camera } from "./types";
 
 export class ViewportControls {
@@ -90,11 +90,8 @@ export class ViewportControls {
 		event.preventDefault();
 		event.stopImmediatePropagation();
 		if (this.safariScale !== null) return;
-		const unit = event.deltaMode === 1 ? 16 : 1;
-		this.pan(
-			event.deltaX * (event.deltaMode === 2 ? this.element.clientWidth : unit),
-			event.deltaY * (event.deltaMode === 2 ? this.element.clientHeight : unit),
-		);
+		const delta = wheelDelta(event, this.element);
+		this.pan(delta.x, delta.y);
 	};
 
 	private onGestureStart = (event: Event) => {

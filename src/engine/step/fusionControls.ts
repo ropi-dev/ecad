@@ -1,5 +1,6 @@
 import { MOUSE, type PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { wheelDelta } from "../navigation";
 
 export function createFusionControls(
 	camera: PerspectiveCamera,
@@ -42,15 +43,16 @@ export function createFusionControls(
 		event.preventDefault();
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
-		const height = Math.max(canvas.clientHeight, 1);
-		const unit =
-			event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1;
+		const delta = wheelDelta(event, canvas);
 		if (event.shiftKey) {
-			orbit(event.deltaX * unit, event.deltaY * unit);
+			orbit(
+				event.deltaMode === 2
+					? event.deltaX * Math.max(canvas.clientHeight, 1)
+					: delta.x,
+				delta.y,
+			);
 		} else if (controls.enablePan) {
-			const horizontalUnit =
-				event.deltaMode === 2 ? Math.max(canvas.clientWidth, 1) : unit;
-			controls.pan(-event.deltaX * horizontalUnit, -event.deltaY * unit);
+			controls.pan(-delta.x, -delta.y);
 		}
 	};
 	const onPointerDown = (event: PointerEvent) => {
