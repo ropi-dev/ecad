@@ -4,6 +4,8 @@ export const UNFOCUSED_FILL_OPACITY = 0.06;
 export const UNFOCUSED_OUTLINE_OPACITY = 0.1;
 /** Outline width in CSS pixels, independent of zoom and display density. */
 export const UNFOCUSED_OUTLINE_WIDTH = 6;
+/** Inward contour width in millimeters for perspective mesh viewers. */
+export const UNFOCUSED_OUTLINE_WIDTH_MM = 0.05;
 
 /** A single cool film tone keeps unfocused geometry separate from layer colors. */
 export const UNFOCUSED_XRAY_COLOR = "#467386";

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("mesh X-ray surfaces preserve holes, brighten overlaps and keep screen-sized outlines", async ({
+test("mesh X-ray surfaces preserve holes, brighten overlaps and scale outlines with edge distance", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/renderer.html");
@@ -72,16 +72,22 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and keep screen-size
 			if (!condition) failures.push(message);
 		};
 		try {
-			for (const distance of [20, 30])
+			const widths: number[][] = [];
+			for (const [distance, z] of [
+				[12, 0],
+				[24, 0],
+				[24, 12],
+			])
 				for (const ratio of [1, 2]) {
 					renderer.setPixelRatio(ratio);
-					renderer.setSize(256, 256);
+					renderer.setSize(1024, 1024);
+					for (const mesh of meshes) mesh.position.z = z;
 					camera.position.set(0, 0, distance);
 					camera.lookAt(0, 0, 0);
 					camera.updateMatrixWorld();
 					const width = renderer.domElement.width;
 					const projectX = (x: number) =>
-						((new Vector3(x, 0, 0).project(camera).x + 1) * width) / 2;
+						((new Vector3(x, 0, z).project(camera).x + 1) * width) / 2;
 					const sample = (x: number) => {
 						const pixel = new Uint8Array(4);
 						const gl = renderer.getContext();
@@ -103,30 +109,42 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and keep screen-size
 							"mesh display allocates no image textures",
 						);
 					};
-					const outerEdge = projectX(4);
-					const innerEdge = projectX(2);
 					stylePlanarObject3D(meshes[0], drawing.color, 1, false);
 					render();
 					const normal = sample(projectX(3));
 					stylePlanarObject3D(meshes[0], drawing.color, 1, true);
 					render();
-					const fill = sample(outerEdge - 10 * ratio);
-					const outline = sample(outerEdge - 3 * ratio);
-					const holeOutline = sample(innerEdge + 3 * ratio);
+					const fill = sample(projectX(3));
+					const outline = sample(projectX(4 - 0.025));
+					const holeOutline = sample(projectX(2 + 0.025));
 					check(
 						outline[3] > fill[3] && fill[3] > 0,
-						`outline brighter than interior at ${distance}/${ratio}: ${outline} ${fill}`,
+						`outline brighter than interior at ${distance}/${z}/${ratio}: ${outline} ${fill}`,
 					);
 					check(
 						holeOutline[3] > fill[3],
-						`hole outline at ${distance}/${ratio}`,
+						`hole outline at ${distance}/${z}/${ratio}`,
 					);
-					check(fill[2] > fill[0], `cool X-ray tint at ${distance}/${ratio}`);
+					// Measure rendered pixels, including perspective and raster rounding.
+					let outlinePixels = 0;
+					for (let x = Math.floor(projectX(3)); x < projectX(4.1); x++) {
+						if (sample(x)[3] > fill[3]) outlinePixels++;
+					}
+					const expectedWidth = projectX(4) - projectX(4 - 0.05);
+					check(
+						Math.abs(outlinePixels - expectedWidth) < 1.5,
+						`physical outline width at ${distance}/${z}/${ratio}: ${outlinePixels}, expected ${expectedWidth}`,
+					);
+					widths.push([distance, z, ratio, outlinePixels / ratio]);
+					check(
+						fill[2] > fill[0],
+						`cool X-ray tint at ${distance}/${z}/${ratio}`,
+					);
 					check(sample(projectX(0))[3] === 0, "clear hole stays empty");
 					stylePlanarObject3D(meshes[1], drawing.color, 1, true);
 					meshes[1].visible = true;
 					render();
-					const overlap = sample(outerEdge - 10 * ratio);
+					const overlap = sample(projectX(3));
 					check(overlap[2] > fill[2], "overlaps accumulate light");
 					check(sample(projectX(0))[3] === 0, "overlapping holes stay empty");
 					meshes[1].visible = false;
@@ -139,6 +157,15 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and keep screen-size
 						"clearing focus restores original appearance",
 					);
 				}
+			for (const ratio of [1, 2]) {
+				const [near, far, raised] = widths.filter((entry) => entry[2] === ratio);
+				check(near[3] > far[3] * 1.5, "zoom changes the apparent outline width");
+				check(
+					raised[3] > far[3] * 1.5,
+					"closer object edges have thicker outlines at the same camera position",
+				);
+				check(raised[3] === near[3], "equal edge depths have equal widths");
+			}
 		} finally {
 			display.dispose();
 			renderer.dispose();

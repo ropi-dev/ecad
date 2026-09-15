@@ -20,7 +20,7 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
 import {
 	UNFOCUSED_FILL_OPACITY,
 	UNFOCUSED_OUTLINE_OPACITY,
-	UNFOCUSED_OUTLINE_WIDTH,
+	UNFOCUSED_OUTLINE_WIDTH_MM,
 	UNFOCUSED_XRAY_COLOR,
 } from "./layer-style";
 import { compilePlanarGeometry, type PlanarGeometry } from "./planar-geometry";
@@ -67,8 +67,9 @@ export function createPlanarObject3D(
 			);
 			const edgeMaterial = new LineMaterial({
 				color: UNFOCUSED_XRAY_COLOR,
-				linewidth: UNFOCUSED_OUTLINE_WIDTH * 2,
-				worldUnits: false,
+				// Stencil clips the outer half, leaving the specified inward width.
+				linewidth: UNFOCUSED_OUTLINE_WIDTH_MM * 2,
+				worldUnits: true,
 				transparent: true,
 				depthWrite: false,
 				blending: AdditiveBlending,
