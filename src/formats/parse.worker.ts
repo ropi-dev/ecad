@@ -1,3 +1,4 @@
+import { compilePlanarGeometry } from "#/engine/planar-geometry";
 import { parsers } from "./registry";
 
 self.onmessage = (
@@ -5,7 +6,14 @@ self.onmessage = (
 ) => {
 	const { id, source, filename } = event.data;
 	try {
-		self.postMessage({ id, result: parsers.parse(source, filename) });
+		const result = parsers.parse(source, filename);
+		const mesh = result.diagnostics.some((entry) => entry.severity === "error")
+			? undefined
+			: compilePlanarGeometry(result.object.objects);
+		self.postMessage(
+			{ id, result: { ...result, mesh } },
+			{ transfer: mesh ? [mesh.positions.buffer, mesh.edges.buffer] : [] },
+		);
 	} catch (error) {
 		self.postMessage({
 			id,

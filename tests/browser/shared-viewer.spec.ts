@@ -29,8 +29,6 @@ for (const format of ["step", "gerber"] as const) {
 		const canvas = page.locator("canvas");
 		const capture = async () => {
 			await page.mouse.move(0, 0);
-			// Gerber refines curved geometry after zooming, so compare its camera zoom.
-			if (format === "gerber") return page.locator(".zoom-level").textContent();
 			return (
 				await canvas.screenshot({
 					style: "canvas { outline: none !important; }",

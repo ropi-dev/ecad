@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
-import type { GerberViewerHandle } from "../viewer/types/GerberViewerHandle";
-import type { ViewerSnapshot } from "../viewer/types/ViewerSnapshot";
+import type { Viewer2DHandle } from "../viewer/types/Viewer2DHandle";
 import { GerberFooter } from "./GerberFooter";
 import { GerberHeader } from "./GerberHeader";
 import { GerberViewer } from "./GerberViewer";
@@ -16,14 +15,16 @@ export function GerberWorkspace() {
 		setLayers,
 	} = useGerberFile();
 	const [focusedLayerId, setFocusedLayerId] = useState<string>();
-	const viewer = useRef<GerberViewerHandle>(null);
-	const [snapshot, setSnapshot] = useState<ViewerSnapshot | null>(null);
-	const message = [fileMessage, snapshot?.message].filter(Boolean).join("; ");
+	const viewer = useRef<Viewer2DHandle>(null);
+	const [ready, setReady] = useState(false);
+	const [rendererError, setRendererError] = useState("");
+	const message = [fileMessage, rendererError].filter(Boolean).join("; ");
 	return (
 		<main className="gerber-workspace">
 			<GerberHeader
 				loading={loading}
 				onOpenFile={(files) => {
+					setRendererError("");
 					void openFile(files);
 				}}
 			/>
@@ -78,9 +79,10 @@ export function GerberWorkspace() {
 					{layers.length ? (
 						<GerberViewer
 							ref={viewer}
-							layers={layers}
+							scene={layers}
 							focusedLayerId={focusedLayerId}
-							onChange={setSnapshot}
+							onReady={setReady}
+							onError={setRendererError}
 						/>
 					) : (
 						<p className="empty-message">
@@ -92,12 +94,7 @@ export function GerberWorkspace() {
 						</p>
 					)}
 					<GerberFooter
-						enabled={
-							layers.length > 0 &&
-							!!snapshot?.backend &&
-							snapshot.backend !== "Renderer unavailable"
-						}
-						zoom={snapshot?.zoom ?? 1}
+						enabled={layers.length > 0 && ready}
 						resetView={() => viewer.current?.resetView()}
 						zoomView={(factor) => viewer.current?.zoomView(factor)}
 					/>

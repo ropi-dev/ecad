@@ -23,11 +23,11 @@ import {
 	polygon,
 	rectangle,
 	regularPolygon,
+	type Shape,
 	transformBounds,
 	transformPoint,
 	translation,
 	union,
-	type Shape,
 } from "./geometry";
 import { buildMacro } from "./macros";
 
@@ -963,7 +963,8 @@ export function parseGerber(
 			.reduce((b, object) => union(b, object.bounds), emptyBounds()),
 	);
 	return {
-		layer: {
+		object: {
+			type: "planar",
 			id: `gerber-${filename}`,
 			name: filename,
 			objects,

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import createImporter from "occt-import-js";
 import { Box3, Color, Mesh, SRGBColorSpace, Vector3 } from "three";
-import { createStepGroup, disposeStepGroup } from "#/engine/step/model.ts";
+import { createStepGroup, disposeStepGroup } from "#/formats/step/scene.ts";
 import { parseStepFile } from "#/formats/parseStepFile.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
 

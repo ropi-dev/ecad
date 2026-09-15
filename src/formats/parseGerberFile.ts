@@ -1,18 +1,38 @@
 import type { ParseResult } from "#/engine";
+import type { PlanarGeometry } from "#/engine/planar-geometry";
+import {
+	createPlanarObject3D,
+	disposePlanarObject3D,
+} from "#/engine/planar-object";
+import type { PlanarObject, SpatialObject } from "#/engine/scene";
+
+interface WorkerResult extends ParseResult {
+	mesh?: PlanarGeometry;
+}
+export interface ParsedGerberObject
+	extends Omit<PlanarObject, "type">,
+		SpatialObject {
+	dispose: () => void;
+}
+export interface ParsedGerberFile extends Omit<ParseResult, "object"> {
+	object: ParsedGerberObject;
+	scene: readonly ParsedGerberObject[];
+	dispose: () => void;
+}
 
 export async function parseGerberFile(
 	file: File,
 	signal?: AbortSignal,
-): Promise<ParseResult> {
+): Promise<ParsedGerberFile> {
 	signal?.throwIfAborted();
 	const source = await file.text();
 	signal?.throwIfAborted();
-	return new Promise((resolve, reject) => {
+	const parsed = await new Promise<WorkerResult>((resolve, reject) => {
 		const worker = new Worker(new URL("./parse.worker.ts", import.meta.url), {
 			type: "module",
 		});
 		let settled = false;
-		const finish = (error: unknown, result?: ParseResult) => {
+		const finish = (error: unknown, result?: WorkerResult) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
@@ -32,7 +52,7 @@ export async function parseGerberFile(
 		);
 		signal?.addEventListener("abort", abort, { once: true });
 		worker.onmessage = (
-			event: MessageEvent<{ result?: ParseResult; error?: string }>,
+			event: MessageEvent<{ result?: WorkerResult; error?: string }>,
 		) => {
 			if (event.data.error || !event.data.result)
 				finish(new Error(event.data.error || "Unable to parse this file."));
@@ -47,4 +67,42 @@ export async function parseGerberFile(
 			finish(error);
 		}
 	});
+	signal?.throwIfAborted();
+	const errors = parsed.diagnostics.filter(
+		(entry) => entry.severity === "error",
+	);
+	if (errors.length)
+		throw new Error(errors.map((entry) => entry.message).join("; "));
+	if (!parsed.mesh?.positions.length)
+		throw new Error("This file contains no drawable geometry.");
+	const id = crypto.randomUUID();
+	const drawing: PlanarObject = {
+		...parsed.object,
+		id,
+		objects: parsed.object.objects.map((object) => ({
+			...object,
+			id: `${id}:${object.id}`,
+		})),
+	};
+	const mesh = createPlanarObject3D(drawing, parsed.mesh);
+	let disposed = false;
+	const dispose = () => {
+		if (disposed) return;
+		disposed = true;
+		disposePlanarObject3D(mesh);
+	};
+	const object: ParsedGerberObject = {
+		...drawing,
+		type: "spatial",
+		object: mesh,
+		dispose,
+	};
+	return {
+		diagnostics: parsed.diagnostics,
+		format: parsed.format,
+		units: parsed.units,
+		object,
+		scene: [object],
+		dispose,
+	};
 }

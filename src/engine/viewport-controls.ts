@@ -81,7 +81,10 @@ export class ViewportControls {
 	}
 
 	private focus = () => {
-		this.element.querySelector("canvas")?.focus({ preventScroll: true });
+		(this.element instanceof HTMLCanvasElement
+			? this.element
+			: this.element.querySelector("canvas")
+		)?.focus({ preventScroll: true });
 	};
 
 	private onWheel = (event: WheelEvent) => {

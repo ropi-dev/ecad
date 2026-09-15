@@ -1,16 +1,20 @@
-import { useCallback, useState } from "react";
-import { parseStepFile } from "#/formats/parseStepFile.ts";
-import type { StepModel } from "#/formats/step/types/StepModel.ts";
+import { useCallback, useEffect, useState } from "react";
+import { type ParsedStepFile, parseStepFile } from "#/formats/parseStepFile.ts";
 import { useFileImport } from "../viewer/useFileImport";
 
 async function readStep(file: File, signal: AbortSignal) {
 	return { value: await parseStepFile(file, signal) };
 }
 
+const release = (model: ParsedStepFile) => model.dispose();
+
 export function useStepFile() {
-	const [model, setModel] = useState<StepModel | null>(null);
-	const { loading, message, readFiles, cancel, clearMessage } =
-		useFileImport(readStep);
+	const [model, setModel] = useState<ParsedStepFile | null>(null);
+	useEffect(() => () => model?.dispose(), [model]);
+	const { loading, message, readFiles, cancel, clearMessage } = useFileImport(
+		readStep,
+		release,
+	);
 	const openFile = useCallback(
 		async (file: File) => {
 			const models = await readFiles([file]);

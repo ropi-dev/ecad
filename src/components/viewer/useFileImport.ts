@@ -8,6 +8,7 @@ interface ParsedFile<T> {
 /** Owns cancellation and errors; callers decide how imported values are stored. */
 export function useFileImport<T>(
 	parse: (file: File, signal: AbortSignal) => Promise<ParsedFile<T>>,
+	dispose?: (value: T) => void,
 ) {
 	const request = useRef<AbortController | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -32,8 +33,8 @@ export function useFileImport<T>(
 				for (const file of files) {
 					try {
 						const result = await parse(file, controller.signal);
-						if (controller.signal.aborted) return null;
 						values.push(result.value);
+						if (controller.signal.aborted) return null;
 						messages.push(
 							...(result.messages ?? []).map((text) => `${file.name}: ${text}`),
 						);
@@ -47,13 +48,15 @@ export function useFileImport<T>(
 				setMessage(messages.join("; "));
 				return values;
 			} finally {
+				if (controller.signal.aborted)
+					for (const value of values) dispose?.(value);
 				if (request.current === controller) {
 					request.current = null;
 					setLoading(false);
 				}
 			}
 		},
-		[parse],
+		[parse, dispose],
 	);
 	return { loading, message, readFiles, cancel, clearMessage };
 }

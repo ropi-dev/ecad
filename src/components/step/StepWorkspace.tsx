@@ -1,14 +1,14 @@
 import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import type { Viewer3DHandle } from "../viewer/types/Viewer3DHandle";
 import { StepControls } from "./StepControls";
 import { StepParts } from "./StepParts";
 import { StepViewer } from "./StepViewer";
-import type { StepViewerHandle } from "./types/StepViewerHandle";
 import { useStepFile } from "./useStepFile";
 
 export function StepWorkspace() {
 	const { model, loading, message, openFile, cancel, clear } = useStepFile();
-	const viewer = useRef<StepViewerHandle>(null);
+	const viewer = useRef<Viewer3DHandle>(null);
 	const [hidden, setHidden] = useState<Set<number>>(new Set());
 	const [wireframe, setWireframe] = useState(false);
 	const [ready, setReady] = useState(false);

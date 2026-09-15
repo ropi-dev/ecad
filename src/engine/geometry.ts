@@ -6,7 +6,7 @@ import type { Geometry, Point, SceneLayer, SceneObject } from "./types";
 
 type Pair = [number, number];
 type Ring = Pair[];
-type MultiPolygon = Ring[][];
+export type MultiPolygon = Ring[][];
 
 interface Contour {
 	points: Pair[];
@@ -303,7 +303,7 @@ function signedContours(polygons: MultiPolygon, sign = 1): Contour[] {
 }
 
 /** Positive winding implements A union B or A minus B on resolved coverage. */
-function combinePolygons(
+export function combinePolygons(
 	left: MultiPolygon,
 	right: MultiPolygon = [],
 	subtract = false,

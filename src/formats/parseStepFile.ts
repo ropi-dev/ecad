@@ -1,16 +1,25 @@
+import type { ViewerScene } from "#/engine/scene";
+import { createStepGroup, disposeStepGroup } from "./step/scene";
 import type { StepModel } from "./step/types/StepModel";
+
+export interface ParsedStepFile {
+	name: string;
+	parts: { id: string; name: string; triangles: number }[];
+	scene: ViewerScene;
+	dispose: () => void;
+}
 
 export async function parseStepFile(
 	file: File,
 	signal?: AbortSignal,
-): Promise<StepModel> {
+): Promise<ParsedStepFile> {
 	signal?.throwIfAborted();
 	if (!/\.(step|stp)$/i.test(file.name))
 		throw new Error("Choose a .step or .stp file.");
 	if (!file.size) throw new Error("This STEP file is empty.");
 	const buffer = await file.arrayBuffer();
 	signal?.throwIfAborted();
-	return new Promise((resolve, reject) => {
+	const model = await new Promise<StepModel>((resolve, reject) => {
 		const worker = new Worker(
 			new URL("./step/parse.worker.ts", import.meta.url),
 			{ type: "module" },
@@ -53,4 +62,22 @@ export async function parseStepFile(
 			finish(error);
 		}
 	});
+	signal?.throwIfAborted();
+	const object = createStepGroup(model);
+	let disposed = false;
+	return {
+		name: model.name,
+		parts: model.meshes.map((mesh) => ({
+			id: mesh.id,
+			name: mesh.name,
+			triangles: mesh.index.array.length / 3,
+		})),
+		scene: object.children.map((part) => ({ type: "spatial", object: part })),
+		dispose: () => {
+			if (!disposed) {
+				disposed = true;
+				disposeStepGroup(object);
+			}
+		},
+	};
 }

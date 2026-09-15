@@ -1,112 +1,121 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
 
-for (const fallback of ["webgl", "canvas"] as const) {
-	test(`keeps file loading and navigation with ${fallback} fallback`, async ({
-		page,
-	}) => {
-		const errors: string[] = [];
-		page.on("pageerror", (error) => errors.push(error.message));
-		await page.addInitScript((fallback) => {
-			Object.defineProperty(navigator, "gpu", { value: undefined });
-			if (fallback === "canvas") {
-				const original = HTMLCanvasElement.prototype.getContext;
-				HTMLCanvasElement.prototype.getContext = function (
-					this: HTMLCanvasElement,
-					type: string,
-					...args: unknown[]
-				) {
-					if (type === "webgl2") return null;
-					return Reflect.apply(original, this, [type, ...args]);
-				} as typeof original;
-			}
-		}, fallback);
-		await page.goto("/tests/browser/viewer.html");
-		await expect(page.locator(".empty-message")).toHaveText(
-			"Choose a Gerber file to view it.",
-		);
-		await expect(page.locator("canvas")).toHaveCount(0);
-		const file = demoFiles[0];
-		await page.locator("input[type=file]").setInputFiles({
-			name: file.name,
-			mimeType: "text/plain",
-			buffer: Buffer.from(file.source),
-		});
-		await expect(page.locator("canvas")).toHaveCount(1);
-		await expect(
-			page.getByRole("button", { name: "Zoom in", exact: true }),
-		).toBeEnabled();
-		await expect(
-			page.locator("dl, .renderer-label, .navigation-hint"),
-		).toHaveCount(0);
-		await expect(page.locator(".layer-name")).toHaveText(file.name);
-		await page.mouse.move(350, 350);
-		await page.mouse.wheel(100, 100);
-		await expect(page.locator(".zoom-level")).toHaveText("100%");
-		await page.keyboard.down("Control");
-		await page.mouse.wheel(0, -50);
-		await page.keyboard.up("Control");
-		await expect(page.locator(".zoom-level")).not.toHaveText("100%");
-		await page.getByRole("button", { name: "Reset zoom to 100%" }).click();
-		await expect(page.locator(".zoom-level")).toHaveText("100%");
-		await expect(page.locator(".viewer-message")).toHaveCount(0);
-		expect(errors).toEqual([]);
-		await page.screenshot({
-			path: test.info().outputPath(`${fallback}-viewer.png`),
-		});
-		await page.reload();
-		await expect(page.locator(".empty-message")).toHaveText(
-			"Choose a Gerber file to view it.",
-		);
-		await expect(page.locator("canvas")).toHaveCount(0);
+test("Gerber uses the locked top viewer and supports pan, zoom and fit", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/viewer.html");
+	await expect(page.locator(".empty-message")).toHaveText(
+		"Choose a Gerber file to view it.",
+	);
+	const file = demoFiles[0];
+	await page.locator("input[type=file]").setInputFiles({
+		name: file.name,
+		mimeType: "text/plain",
+		buffer: Buffer.from(file.source),
 	});
-}
+	const canvas = page.locator("canvas");
+	await expect(
+		page.getByRole("button", { name: "Fit drawing", exact: true }),
+	).toBeEnabled();
+	await expect(canvas).toHaveAttribute(
+		"aria-label",
+		/Gerber drawing.*Top view locked/,
+	);
+	const capture = async () => {
+		await page.mouse.move(0, 0);
+		return createHash("sha256")
+			.update(await canvas.screenshot())
+			.digest("hex");
+	};
+	const top = await capture();
+	await expect(
+		page.getByRole("button", { name: /^(Iso|Top|Front)$/ }),
+	).toHaveCount(0);
+	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect.poll(capture).not.toBe(top);
+	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
+	await expect.poll(capture).toBe(top);
+	await page.mouse.move(350, 350);
+	await page.keyboard.down("Shift");
+	await page.mouse.down();
+	await page.mouse.move(430, 390, { steps: 5 });
+	await page.mouse.up();
+	await page.keyboard.up("Shift");
+	await expect.poll(capture).not.toBe(top);
+	await expect(page.locator(".viewer-message")).toHaveCount(0);
+	expect(errors).toEqual([]);
+	await page.screenshot({ path: test.info().outputPath("gerber-3d.png") });
+	await page.reload();
+	await expect(canvas).toHaveCount(0);
+});
 
-test("displays an already parsed layer without file loading or page chrome", async ({
+test("Gerber reports unavailable 3D rendering and leaves file controls usable", async ({
+	page,
+}) => {
+	await page.addInitScript(() => {
+		const original = HTMLCanvasElement.prototype.getContext;
+		HTMLCanvasElement.prototype.getContext = function (
+			this: HTMLCanvasElement,
+			type: string,
+			...args: unknown[]
+		) {
+			return type === "webgl2"
+				? null
+				: Reflect.apply(original, this, [type, ...args]);
+		} as typeof original;
+	});
+	await page.goto("/tests/browser/viewer.html");
+	const file = demoFiles[0];
+	await page.locator("input[type=file]").setInputFiles({
+		name: file.name,
+		mimeType: "text/plain",
+		buffer: Buffer.from(file.source),
+	});
+	await expect(page.locator(".viewer-message")).toContainText(
+		"3D viewer unavailable",
+	);
+	await expect(page.locator("canvas")).toHaveCount(0);
+	await expect(
+		page.getByRole("toolbar", { name: "View controls" }),
+	).toHaveCount(0);
+	await page
+		.getByRole("button", { name: `Remove ${file.name}`, exact: true })
+		.click();
+	await expect(page.locator(".layer-row")).toHaveCount(0);
+	await expect(page.locator("input[type=file]")).toBeEnabled();
+});
+
+test("displays an already parsed object from the top without file loading or page chrome", async ({
 	page,
 }) => {
 	const requests: string[] = [];
 	page.on("request", (request) => requests.push(request.url()));
-	await page.addInitScript(() =>
-		Object.defineProperty(navigator, "gpu", { value: undefined }),
-	);
 	await page.goto("/tests/browser/standalone-viewer.html");
-	const snapshot = async () =>
-		JSON.parse((await page.locator("#snapshot").textContent()) || "{}");
-	await expect
-		.poll(async () => (await snapshot()).diagnostics?.triangles ?? 0)
-		.toBeGreaterThan(10);
-	await expect(page.locator("canvas")).toHaveCount(1);
+	await expect(page.locator("#ready")).toHaveText("true");
+	const canvas = page.locator("canvas");
+	await expect(canvas).toHaveCount(1);
+	await expect(canvas).toHaveAttribute(
+		"aria-label",
+		/Gerber drawing.*Top view locked/,
+	);
 	await expect(page.locator("header, footer, input, button, dl")).toHaveCount(
 		0,
 	);
 	expect(requests.some((url) => url.includes("parse.worker"))).toBe(false);
-	const before = await snapshot();
-	await page.locator("canvas").focus();
-	await page.keyboard.press("ArrowRight");
-	await expect
-		.poll(async () => (await snapshot()).camera.x)
-		.not.toBe(before.camera.x);
-	await page.keyboard.press("0");
-	await expect
-		.poll(async () => (await snapshot()).camera.x)
-		.toBe(before.camera.x);
-	await page.mouse.move(350, 350);
-	await page.mouse.wheel(70, 100);
-	await expect
-		.poll(async () => (await snapshot()).camera.y)
-		.not.toBe(before.camera.y);
-	expect((await snapshot()).zoom).toBe(before.zoom);
-	const panned = await snapshot();
-	await page.mouse.down();
-	await page.mouse.move(390, 380, { steps: 4 });
-	await page.mouse.up();
-	await expect
-		.poll(async () => (await snapshot()).camera.x)
-		.toBeCloseTo(panned.camera.x - 40 / panned.camera.scale);
-	await expect
-		.poll(async () => (await snapshot()).camera.y)
-		.toBeCloseTo(panned.camera.y + 30 / panned.camera.scale);
+	const capture = async () =>
+		(
+			await canvas.screenshot({ style: "canvas { outline: none !important; }" })
+		).toString("base64");
+	const before = await capture();
+	await canvas.focus();
+	await page.keyboard.press("+");
+	await expect.poll(capture).not.toBe(before);
+	await page.keyboard.press("F6");
+	await expect.poll(capture).toBe(before);
 });
 
 test("handles parse failures and keeps the latest file selection", async ({
@@ -188,8 +197,14 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await expect(page.locator(".zoom-level")).toHaveText("125%");
-	const zoom = "125%";
+	const canvasHandle = await page.locator("canvas").elementHandle();
+	const capture = async () => {
+		await page.mouse.move(0, 0);
+		return createHash("sha256")
+			.update(await page.locator("canvas").screenshot())
+			.digest("hex");
+	};
+	const zoomed = await capture();
 	const focused = demoFiles[1].name;
 	await names.filter({ hasText: focused }).click();
 	const focusButton = page.getByRole("button", {
@@ -199,6 +214,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	await expect(focusButton).toHaveAttribute("aria-pressed", "true");
 	await rows.filter({ hasText: focused }).click({ position: { x: 2, y: 2 } });
 	await expect(focusButton).toHaveAttribute("aria-pressed", "false");
+	await expect.poll(capture).toBe(zoomed);
 	await focusButton.focus();
 	await page.keyboard.press("Space");
 	await expect(focusButton).toHaveAttribute("aria-pressed", "true");
@@ -218,7 +234,11 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	).toHaveAttribute("aria-pressed", "true");
 	await handle.dragTo(rows.last(), { targetPosition: { x: 80, y: 40 } });
 	await expect(names.last()).toHaveText(focused);
-	await expect(page.locator(".zoom-level")).toHaveText(zoom);
+	expect(
+		await canvasHandle!.evaluate(
+			(element) => element === document.querySelector("canvas"),
+		),
+	).toBe(true);
 	await page
 		.getByRole("button", { name: `Hide ${focused}`, exact: true })
 		.click();
@@ -305,15 +325,13 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 	names.push(
 		"midi-pedal-pcb-with-a-very-long-project-name-and-revision-F_Cu.gtl",
 	);
-	await page
-		.locator("input[type=file]")
-		.setInputFiles(
-			names.map((name) => ({
-				name,
-				mimeType: "text/plain",
-				buffer: Buffer.from(demoFiles[0].source),
-			})),
-		);
+	await page.locator("input[type=file]").setInputFiles(
+		names.map((name) => ({
+			name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(demoFiles[0].source),
+		})),
+	);
 	await expect(page.locator(".layer-row")).toHaveCount(names.length);
 	await page
 		.getByRole("button", { name: `Focus ${names.at(-1)}`, exact: true })
@@ -363,4 +381,74 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 	await page
 		.locator(".layer-panel")
 		.screenshot({ path: test.info().outputPath("layer-alignment-mobile.png") });
+});
+
+test("Gerber layers occupy separate Z positions and fit the full stack", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/viewer.html");
+	const file = (name: string) => ({
+		name,
+		mimeType: "text/plain",
+		buffer: Buffer.from("%FSLAX46Y46*%%MOMM*%%ADD10C,0.02*%D10*X0Y0D03*M02*"),
+	});
+	const input = page.locator("input[type=file]");
+	await input.setInputFiles([
+		file("bottom.gbr"),
+		file("middle.gbr"),
+		file("top.gbr"),
+	]);
+	const state = async () =>
+		JSON.parse((await page.locator("#scene-state").textContent()) || "{}");
+	const heights = async () =>
+		Object.fromEntries(
+			((await state()).objects ?? []).map(
+				(object: { name: string; z: number }) => [object.name, object.z],
+			),
+		);
+	await expect
+		.poll(heights)
+		.toEqual({ "bottom.gbr": 0, "middle.gbr": 0.1, "top.gbr": 0.2 });
+	const initial = await state();
+	// A tall, narrow stack catches fitting against the original coplanar bounds.
+	for (const object of initial.objects) {
+		for (const corner of object.corners) {
+			for (const value of corner) expect(Math.abs(value)).toBeLessThan(1);
+		}
+	}
+	await page
+		.getByRole("button", { name: "Hide middle.gbr", exact: true })
+		.click();
+	await expect
+		.poll(
+			async () =>
+				(await state()).objects.find(
+					(object: { name: string }) => object.name === "middle.gbr",
+				).visible,
+		)
+		.toBe(false);
+	await expect
+		.poll(heights)
+		.toEqual({ "bottom.gbr": 0, "middle.gbr": 0.1, "top.gbr": 0.2 });
+	expect((await state()).camera).toEqual(initial.camera);
+	await page
+		.getByRole("button", { name: "Reorder middle.gbr", exact: true })
+		.focus();
+	await page.keyboard.press("ArrowUp");
+	await expect
+		.poll(heights)
+		.toEqual({ "bottom.gbr": 0, "middle.gbr": 0.2, "top.gbr": 0.1 });
+	expect((await state()).camera).toEqual(initial.camera);
+	await page
+		.getByRole("button", { name: "Remove middle.gbr", exact: true })
+		.click();
+	await expect.poll(heights).toEqual({ "bottom.gbr": 0, "top.gbr": 0.1 });
+	await input.setInputFiles(file("new.gbr"));
+	await expect
+		.poll(heights)
+		.toEqual({ "bottom.gbr": 0, "top.gbr": 0.1, "new.gbr": 0.2 });
+	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
+	await page.screenshot({
+		path: test.info().outputPath("separated-layers.png"),
+	});
 });

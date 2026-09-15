@@ -3,11 +3,27 @@
   <head><meta charset="utf-8"><title>Viewer regression tests</title></head>
   <body>
     <div id="root"></div>
+    <output id="scene-state" hidden></output>
     <script type="module">
       import { createElement, StrictMode } from 'react';
       import { createRoot } from 'react-dom/client';
+      import { Scene, Box3, Vector3 } from 'three';
       import { GerberWorkspace } from '/src/components/gerber/GerberWorkspace.tsx';
       import '/src/styles.css';
+      Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
+        const objects = [];
+        this.traverse(object => {
+          if (!object.userData.planarObject) return;
+          const bounds = new Box3().setFromObject(object);
+          const corners = [];
+          for (const x of [bounds.min.x, bounds.max.x])
+            for (const y of [bounds.min.y, bounds.max.y])
+              for (const z of [bounds.min.z, bounds.max.z])
+                corners.push(new Vector3(x, y, z).project(camera).toArray());
+          objects.push({ name: object.name, z: object.position.z, visible: object.visible, corners });
+        });
+        document.getElementById('scene-state').textContent = JSON.stringify({ objects, camera: camera.position.toArray() });
+      };
       createRoot(document.getElementById('root')).render(createElement(StrictMode, null, createElement(GerberWorkspace)));
     </script>
   </body>

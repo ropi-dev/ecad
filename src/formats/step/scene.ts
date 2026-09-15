@@ -85,6 +85,9 @@ export function createStepGroup(model: StepModel) {
 		)
 			throw new Error("The STEP model has invalid geometry.");
 		bounds.getCenter(group.position).negate();
+		// Keep parts independently displayable when scenes are combined.
+		for (const part of group.children) part.position.copy(group.position);
+		group.position.set(0, 0, 0);
 		return group;
 	} catch (error) {
 		disposeStepGroup(group);

@@ -1,4 +1,4 @@
-import type { StepModel } from "#/formats/step/types/StepModel.ts";
+import type { ParsedStepFile } from "#/formats/parseStepFile";
 
 export function StepParts({
 	model,
@@ -6,7 +6,7 @@ export function StepParts({
 	onToggle,
 	onClear,
 }: {
-	model: StepModel;
+	model: ParsedStepFile;
 	hidden: Set<number>;
 	onToggle: (index: number) => void;
 	onClear: () => void;
@@ -29,14 +29,14 @@ export function StepParts({
 				</button>
 			</div>
 			<p className="mb-2 text-xs text-slate-400">
-				{model.meshes.length} {model.meshes.length === 1 ? "part" : "parts"} ·{" "}
-				{model.meshes
-					.reduce((count, mesh) => count + mesh.index.array.length / 3, 0)
+				{model.parts.length} {model.parts.length === 1 ? "part" : "parts"} ·{" "}
+				{model.parts
+					.reduce((count, mesh) => count + mesh.triangles, 0)
 					.toLocaleString()}{" "}
 				triangles · mm
 			</p>
 			<ul className="min-h-0 overflow-y-auto">
-				{model.meshes.map((part, index) => (
+				{model.parts.map((part, index) => (
 					<li key={part.id}>
 						<label className="flex min-h-11 cursor-pointer items-center gap-3 rounded px-2 hover:bg-white/10">
 							<input

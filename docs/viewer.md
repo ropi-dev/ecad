@@ -1,26 +1,35 @@
 # Gerber viewer
 
-Choose one Gerber file. The viewer parses it in a browser worker and fits the drawing to the canvas. WebGPU is the preferred backend; the file bar identifies software adapters and the Canvas fallback.
+Open Gerber files to view their planar objects in the shared perspective viewport. Files are parsed in browser workers. Layer visibility, ordering, removal, and focus remain available; focusing a layer shows the others as cool blue X-ray outlines with faint interiors. Overlapping unfocused layers accumulate light, while clear holes stay transparent. The viewport requires WebGL 2 and reports an error if it cannot initialize.
 
 The Gerber adapter in `src/formats/gerber` targets Ucamco's [2026.05 specification](https://www.ucamco.com/en/guest/downloads/gerber-format), including X3 component attributes. Unsupported commands and malformed input produce diagnostics. Legacy negative images, nonidentity image transforms, and rectangular-aperture arc strokes are rejected.
 
-`src/engine/types.ts` defines the shared geometry in millimetres. Parsers return a `SceneLayer`; the WebGPU and Canvas renderers consume that layer without importing a file parser. To add another format, implement `FormatParser` and register it in `src/formats/registry.ts`. Gerber attributes remain on scene objects. Net grouping lives in the Gerber adapter; the graphics engine accepts a format-independent set of selected object IDs.
+`src/engine/types.ts` defines the shared geometry in millimetres. The low-level Gerber parser returns vector geometry in `ParseResult.object`, alongside diagnostics, format, and units. The file parser resolves exposures in a worker and constructs the Three.js object before returning. The WebGPU and Canvas renderers consume its vector geometry without importing a file parser. To add another format, implement `FormatParser` and register it in `src/formats/registry.ts`. Gerber attributes remain on scene objects. Net grouping lives in the Gerber adapter; the graphics engine accepts a format-independent set of selected object IDs.
 
-Run `npm run dev` for the app and `npm test` for parser and renderer geometry tests. WebGPU requires a compatible browser and HTTPS or localhost.
+Run `npm run dev` for the app and `npm test` for parser and renderer geometry tests.
 
-The floating toolbar provides zoom, directional pan, and a zoom percentage button. The initial fitted view is 100%; clicking the percentage recenters and resets to that view. Zoom is limited to 25–800% through all controls. Drag with a mouse or one finger to pan. Scroll the wheel or pinch a touchpad or touchscreen to zoom around the pointer or gesture midpoint. The drawing also accepts arrow keys, `+`/`-`, and `0` or `F` to reset while focused. Resizing preserves the chosen view.
+Gerber uses `Viewer2D`, a perspective camera locked above the scene looking down the Z axis. Drag or swipe to pan, pinch or Ctrl + scroll to zoom, and use `F6` to fit. Mouse modifiers and touch gestures cannot rotate the camera. Gerber and STEP share the zoom and fit toolbar; STEP additionally exposes isometric, top, and front views. Visibility, focus, and reordering update the displayed objects without rebuilding geometry or resetting the camera. X-ray outlines keep their width in screen pixels through zoom and display-density changes.
 
-WebGPU prepares triangles in a separate worker and transfers vertex buffers back to the renderer. Pan and zoom reuse the existing GPU buffers while finer curves are prepared. Obsolete refinement requests are coalesced. The canvas emits `renderinvalidated` when new geometry is ready, so engine consumers should request another frame.
+Gerber objects remain flat surfaces, separated by a 0.1 mm display gap along Z. The bottom entry in the layer panel is at Z = 0; higher entries sit progressively higher. Reordering updates these positions, hiding preserves the gaps, and removing a layer closes its gap. This spacing does not represent physical PCB thickness. Camera fitting includes the full stack. Each file is a Three.js object containing triangle meshes and contour geometry. Curves are tessellated with a 0.0001 mm tolerance. There are no texture maps or backing images. Net hover selection is not implemented in the shared perspective viewport.
 
-Hovering fills all objects with the same Gerber `.N` net name white, including disconnected pieces. Clear exposures and aperture holes remain transparent. Objects with missing or empty net names, or the reserved `N/C` name, are selected individually; the viewer does not infer connectivity from geometry. Moving within the same net reuses its selection. WebGPU updates selection flags without rebuilding triangle buffers.
+## Compatible 2D and 3D scene inputs
 
-## Shared STEP and Gerber code
+Both `Viewer2D` and `Viewer3D` accept the same `scene: ViewerScene` prop, defined in `src/engine/scene.ts`. A scene is an ordered array of `ViewerObject` entries. Each entry is either a `PlanarObject` (vector primitives, bounds, and display settings) or a `SpatialObject` (a Three.js `Object3D`). There are no separate layer and model slots; any number of either object type can appear in the array. The same scene can be shown in both viewers at once.
 
-Both viewers use the hooks and controls in `src/components/viewer`:
+```tsx
+const step = await parseStepFile(stepFile);
+const gerber = await parseGerberFile(gerberFile);
+const scene = [...step.scene, ...gerber.scene];
+<Viewer2D scene={scene} />
+<Viewer3D scene={scene} />
+```
 
-- `useFileImport` handles cancellation, loading state, per-file errors, and partial batch success. Format hooks parse files and decide whether to replace a STEP model or append Gerber layers.
-- `useViewportSize` observes the viewport without resetting the camera.
-- `useRenderFrame` batches redraw requests into one animation frame and cancels pending work during cleanup.
-- `ZoomControls` provides zoom and fit buttons with each viewer's labels, limits, and styling.
+`parseStepFile` constructs one spatial object per part before resolving and returns the scene, part names and triangle counts, and an idempotent `dispose()` method. Raw importer meshes stay inside the parsing implementation. `parseGerberFile` returns a spatial scene object containing the completed mesh group as `result.object` and `result.scene[0]`, with an idempotent `dispose()` method. Clear exposures are subtracted from earlier dark geometry; later dark exposures can add geometry back. Aperture holes stay local to their shapes. Workspaces can combine parsed objects and change their display colors without rebuilding their geometry.
 
-`src/engine/navigation.ts` shares keyboard shortcuts, wheel delta conversion, zoom increments, and the pixel ratio limit. STEP keeps its perspective camera and orbit controls; Gerber keeps its orthographic camera, layer compositing, and renderer fallbacks. Their public viewer handles remain compatible with existing callers.
+Both viewers use the same perspective camera, scene display, rendering, and navigation code. `Viewer2D` locks rotation to the top view and keeps pan and zoom available; `Viewer3D` allows orbiting. Both planar and solid inputs become actual Three.js mesh objects; planar data supplied directly is triangulated by the shared scene builder. No separate orthographic or vector viewport is used by `Viewer2D`.
+
+Viewers borrow input geometry and materials. Each viewer owns its display materials, renderer, controls, and grid; parsed geometry remains owned by the caller. Close every viewer using a parsed scene before disposing it. The file hooks release removed or replaced objects and clean up on unmount. `useFileImport` releases disposable results from cancelled imports.
+
+`StepViewer` applies part visibility and wireframe controls to the parsed scene. `GerberViewer` passes mesh scene objects to `Viewer2D` and applies layer visibility, order, and focus. Both workspaces use `ViewControls3D`. Array order determines planar stacking; clear exposures remain scoped to their own object. Shared viewer and graphics engine modules do not import format adapters.
+
+Both viewers also share viewport sizing, redraw scheduling, zoom buttons, keyboard shortcuts, and wheel delta conversion. `Viewer2DHandle` exposes reset, zoom, and pan; `Viewer3DHandle` exposes fit, zoom, and isometric/top/front views. The 2D `onChange` callback reports camera state and rendering diagnostics.

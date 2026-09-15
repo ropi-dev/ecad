@@ -6,7 +6,7 @@ import { evaluateExpression } from '#/formats/gerber/macros.ts'
 
 const header='%FSLAX46Y46*%\n%MOMM*%\n'
 const parse=(body:string)=>parseGerber(header+body+'\nM02*','test.gbr')
-const clean=(body:string)=> { const result=parse(body);assert.deepEqual(result.diagnostics,[]);return result.layer }
+const clean=(body:string)=> { const result=parse(body);assert.deepEqual(result.diagnostics,[]);return result.object }
 const close=(actual:number,expected:number)=>assert.ok(Math.abs(actual-expected)<1e-8,`${actual} != ${expected}`)
 
 test('declares the latest Gerber specification and detects common extensions by content',()=> {
@@ -14,6 +14,17 @@ test('declares the latest Gerber specification and detects common extensions by 
   assert.equal(gerberParser.detect(header,'unknown.txt'),true)
   assert.equal(gerberParser.detect('plain text','notes.txt'),false)
   assert.equal(gerberParser.detect('M48\nMETRIC,TZ\nT01C0.8\n%\nT01\nX1Y1\nM30','drill.drl'),false)
+})
+
+test('returns a planar scene object with parse metadata',()=> {
+  const result=parse('%ADD10C,1*%D10*X0Y0D03*')
+  assert.equal(result.object.type,'planar')
+  assert.equal(result.object.name,'test.gbr')
+  assert.equal(result.object.objects.length,1)
+  assert.equal(result.units,'mm')
+  assert.equal(result.format,'Gerber RS-274X')
+  assert.deepEqual(result.diagnostics,[])
+  assert.equal('layer' in result,false)
 })
 
 test('normalizes flashes and modal coordinates to millimetres',()=> {
@@ -28,7 +39,7 @@ test('normalizes inch coordinates, aperture sizes and bounds',()=> {
   const result=parseGerber('%FSLAX25Y25*%%MOIN*%%ADD10R,0.1X0.2*%D10*X100000Y200000D03*M02*','inch.gbr')
   assert.deepEqual(result.diagnostics,[])
   assert.equal(result.units,'in')
-  const object=result.layer.objects[0]
+  const object=result.object.objects[0]
   close(object.transform![4],25.4);close(object.transform![5],50.8)
   assert.equal(object.geometry.type,'rect')
   if(object.geometry.type==='rect') { close(object.geometry.width,2.54);close(object.geometry.height,5.08) }
@@ -38,8 +49,8 @@ test('supports legacy trailing zero suppression and incremental coordinates with
   const result=parseGerber('%FSTIX24Y24*%%MOMM*%%ADD10C,1*%D10*X01Y02D03*X005Y-005D03*M02*','legacy.gbr')
   assert.equal(result.diagnostics.filter(d=>d.severity==='error').length,0)
   assert.ok(result.diagnostics.some(d=>d.message.includes('incremental')))
-  close(result.layer.objects[0].transform![4],1);close(result.layer.objects[0].transform![5],2)
-  close(result.layer.objects[1].transform![4],1.5);close(result.layer.objects[1].transform![5],1.5)
+  close(result.object.objects[0].transform![4],1);close(result.object.objects[0].transform![5],2)
+  close(result.object.objects[1].transform![4],1.5);close(result.object.objects[1].transform![5],1.5)
 })
 
 test('X3 component metadata survives scoped attribute deletion and decodes escapes',()=> {
@@ -62,10 +73,10 @@ X20000000Y12000000D03*
 %TD*%`)
   assert.deepEqual(result.diagnostics,[])
   assert.equal(result.format,'Gerber X3')
-  assert.deepEqual(result.layer.metadata['.FileFunction'],['Component','L1','Top'])
-  assert.deepEqual(result.layer.objects[0].attributes,{'.AperFunction':['ComponentMain'],'.C':['U1'],'.CRot':['90'],'.CMfr':['Acme, Inc'],'.CMPN':['MCU-42'],'.CVal':['Ω 10k'],'.CFtp':['QFN-32'],'.CMnt':['Pressfit']})
-  assert.equal(result.layer.objects[1].attributes['.CVal'],undefined)
-  assert.deepEqual(result.layer.objects[1].attributes['.C'],['U2'])
+  assert.deepEqual(result.object.metadata['.FileFunction'],['Component','L1','Top'])
+  assert.deepEqual(result.object.objects[0].attributes,{'.AperFunction':['ComponentMain'],'.C':['U1'],'.CRot':['90'],'.CMfr':['Acme, Inc'],'.CMPN':['MCU-42'],'.CVal':['Ω 10k'],'.CFtp':['QFN-32'],'.CMnt':['Pressfit']})
+  assert.equal(result.object.objects[1].attributes['.CVal'],undefined)
+  assert.deepEqual(result.object.objects[1].attributes['.C'],['U2'])
 })
 
 test('comment attributes have the same semantics as extended attributes',()=> {
@@ -77,7 +88,7 @@ test('comment attributes have the same semantics as extended attributes',()=> {
 
 test('file attributes are immutable and TD cannot delete them',()=> {
   const result=parse('%TF.Part,Single*%%TD.Part*%%TF.Part,Array*%')
-  assert.deepEqual(result.layer.metadata['.Part'],['Single'])
+  assert.deepEqual(result.object.metadata['.Part'],['Single'])
   assert.ok(result.diagnostics.some(d=>d.severity==='error' && d.message.includes('immutable')))
 })
 
@@ -131,7 +142,7 @@ test('full circles are two SVG arcs instead of a zero-length arc',()=> {
 test('single-quadrant arcs find the center from unsigned offsets',()=> {
   const result=parse('%ADD10C,0.2*%D10*G74*X1000000Y0D02*G03*X0Y1000000I1000000J0D01*')
   assert.equal(result.diagnostics.filter(d=>d.severity==='error').length,0)
-  const object=result.layer.objects[0]
+  const object=result.object.objects[0]
   close(object.bounds.minX,-0.1);close(object.bounds.minY,-0.1);close(object.bounds.maxX,1.1)
 })
 
@@ -203,7 +214,7 @@ test('macro primitive rotation is around the macro origin',()=> {
 
 test('unsupported macro geometry and malformed files produce explicit errors',()=> {
   const result=parse('%AMBad*99,1,2*%%ADD10Bad*%D10*X0Y0D03*')
-  assert.equal(result.layer.objects.length,0)
+  assert.equal(result.object.objects.length,0)
   assert.ok(result.diagnostics.some(d=>d.severity==='error' && d.message.includes('Unsupported aperture macro primitive 99')))
   const truncated=parseGerber(header+'%ADD10C,1*%D10*X0Y0D03*','truncated.gbr')
   assert.ok(truncated.diagnostics.some(d=>d.message.includes('Missing M02')))
@@ -213,15 +224,15 @@ test('unsupported macro geometry and malformed files produce explicit errors',()
 
 test('rejects non-circular modern draws without approximating their aperture as a circle',()=> {
   const result=parse('%ADD10P,2X6*%D10*X0Y0D02*X1000000Y1000000D01*')
-  assert.equal(result.layer.objects.length,0)
+  assert.equal(result.object.objects.length,0)
   assert.ok(result.diagnostics.some(d=>d.severity==='error' && d.message.includes('modern Gerber draws require')))
 })
 
 test('legacy rectangular draws sweep a fixed rectangle, including diagonal strokes',()=> {
   const result=parse('%ADD10R,2X1*%D10*X0Y0D02*X1000000Y1000000D01*')
   assert.equal(result.diagnostics.filter(d=>d.severity==='error').length,0)
-  assert.deepEqual(result.layer.bounds,{minX:-1,minY:-0.5,maxX:2,maxY:1.5})
-  assert.equal(result.layer.objects[0].geometry.type,'path')
+  assert.deepEqual(result.object.bounds,{minX:-1,minY:-0.5,maxX:2,maxY:1.5})
+  assert.equal(result.object.objects[0].geometry.type,'path')
 })
 
 test('rejects unclosed regions, unmatched blocks, invalid holes and excessive repeats',()=> {
@@ -241,8 +252,8 @@ test('all six bundled demo layers parse without warnings or errors',()=> {
   for(const file of demoFiles) {
     const result=parseGerber(file.source,file.name)
     assert.deepEqual(result.diagnostics,[],file.name)
-    assert.ok(result.layer.objects.length>0,file.name)
-    assert.ok(result.layer.bounds.maxX>result.layer.bounds.minX,file.name)
+    assert.ok(result.object.objects.length>0,file.name)
+    assert.ok(result.object.bounds.maxX>result.object.bounds.minX,file.name)
   }
   assert.equal(parseGerber(demoFiles[5].source,demoFiles[5].name).format,'Gerber X3')
 })

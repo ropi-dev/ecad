@@ -1,16 +1,29 @@
-import { MOUSE, type PerspectiveCamera, Quaternion, Vector3 } from "three";
+import {
+	MOUSE,
+	type PerspectiveCamera,
+	Quaternion,
+	TOUCH,
+	Vector3,
+} from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { wheelDelta } from "../navigation";
+import { wheelDelta } from "./navigation";
 
-export function createFusionControls(
+export function create3DControls(
 	camera: PerspectiveCamera,
 	canvas: HTMLElement,
 	fit: () => void,
+	{ lockTop = false }: { lockTop?: boolean } = {},
 ) {
 	const controls = new OrbitControls(camera, canvas);
 	controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: null };
 	controls.zoomToCursor = true;
 	controls.touches.ONE = null;
+	if (lockTop) {
+		controls.enableRotate = false;
+		controls.minPolarAngle = controls.maxPolarAngle = Math.PI / 2;
+		controls.minAzimuthAngle = controls.maxAzimuthAngle = 0;
+		controls.touches.ONE = TOUCH.PAN;
+	}
 	controls.listenToKeyEvents(canvas);
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
@@ -44,7 +57,7 @@ export function createFusionControls(
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
 		const delta = wheelDelta(event, canvas);
-		if (event.shiftKey) {
+		if (event.shiftKey && !lockTop) {
 			orbit(
 				event.deltaMode === 2
 					? event.deltaX * Math.max(canvas.clientHeight, 1)
@@ -68,6 +81,13 @@ export function createFusionControls(
 		)
 			return;
 		const button = event.button === 0 ? "LEFT" : "MIDDLE";
+		if (lockTop) {
+			controls.mouseButtons[button] =
+				event.ctrlKey || event.metaKey || event.shiftKey
+					? MOUSE.ROTATE
+					: MOUSE.PAN;
+			return;
+		}
 		if (event.shiftKey) {
 			orbitPointer = event.pointerId;
 			controls.mouseButtons[button] = null;
@@ -98,6 +118,7 @@ export function createFusionControls(
 	};
 	const onMouseDown = (event: MouseEvent) => {
 		if (
+			!lockTop &&
 			event.button !== 1 &&
 			!(
 				event.button === 0 &&

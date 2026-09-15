@@ -1,7 +1,7 @@
 import type { Camera } from "#/engine";
 import type { RenderDiagnostics } from "./RenderDiagnostics";
 
-export interface ViewerSnapshot {
+export interface Viewer2DSnapshot {
 	backend: string;
 	message: string;
 	camera: Camera;

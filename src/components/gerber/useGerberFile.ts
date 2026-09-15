@@ -1,6 +1,8 @@
-import { useCallback, useState } from "react";
-import type { SceneLayer } from "#/engine";
-import { parseGerberFile } from "#/formats/parseGerberFile.ts";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type ParsedGerberObject,
+	parseGerberFile,
+} from "#/formats/parseGerberFile.ts";
 import { useFileImport } from "../viewer/useFileImport";
 
 const COLORS = [
@@ -13,31 +15,26 @@ const COLORS = [
 ];
 
 async function readGerber(file: File, signal: AbortSignal) {
-	const { layer, diagnostics } = await parseGerberFile(file, signal);
-	const errors = diagnostics.filter((entry) => entry.severity === "error");
-	if (errors.length)
-		throw new Error(errors.map((entry) => entry.message).join("; "));
-	if (!layer.objects.length)
-		throw new Error("This file contains no drawable geometry.");
-	const id = crypto.randomUUID();
-	return {
-		value: {
-			...layer,
-			id,
-			objects: layer.objects.map((object) => ({
-				...object,
-				id: `${id}:${object.id}`,
-			})),
-			visible: true,
-			opacity: 1,
-		},
-		messages: diagnostics.map((entry) => entry.message),
-	};
+	const { object, diagnostics } = await parseGerberFile(file, signal);
+	return { value: object, messages: diagnostics.map((entry) => entry.message) };
 }
+const release = (object: ParsedGerberObject) => object.dispose();
 
 export function useGerberFile() {
-	const [layers, setLayers] = useState<SceneLayer[]>([]);
-	const { loading, message, readFiles } = useFileImport(readGerber);
+	const [layers, setLayers] = useState<ParsedGerberObject[]>([]);
+	const owned = useRef(new Set<() => void>());
+	useEffect(() => {
+		const next = new Set(layers.map((object) => object.dispose));
+		for (const dispose of owned.current) if (!next.has(dispose)) dispose();
+		owned.current = next;
+	}, [layers]);
+	useEffect(
+		() => () => {
+			for (const dispose of owned.current) dispose();
+		},
+		[],
+	);
+	const { loading, message, readFiles } = useFileImport(readGerber, release);
 	const openFile = useCallback(
 		async (files: File[]) => {
 			const imported = await readFiles(files);

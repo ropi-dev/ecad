@@ -37,13 +37,17 @@ export interface SceneLayer {
 	opacity: number;
 	metadata: Attributes;
 }
+/** A planar scene object retains its vector primitives and compositing settings. */
+export interface PlanarObject extends SceneLayer {
+	type: "planar";
+}
 export interface Diagnostic {
 	severity: "warning" | "error";
 	message: string;
 	line?: number;
 }
 export interface ParseResult {
-	layer: SceneLayer;
+	object: PlanarObject;
 	diagnostics: Diagnostic[];
 	format: string;
 	units: "mm" | "in";
