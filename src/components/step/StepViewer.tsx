@@ -73,7 +73,7 @@ export function StepViewer({
 			canvas.tabIndex = 0;
 			canvas.setAttribute(
 				"aria-label",
-				"3D STEP model. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.",
+				"3D STEP model. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.",
 			);
 			canvas.className =
 				"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200";

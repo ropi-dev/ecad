@@ -66,6 +66,23 @@ test("Fusion gestures pan, orbit, zoom toward the cursor and fit with the middle
 	};
 	const initial = await state();
 	const navigation = page.locator("#navigation");
+	for (const button of ["left", "middle"] as const) {
+		for (const [x, y] of [[40, 0], [0, 25]]) {
+			const before = await state();
+			await page.mouse.move(400, 300);
+			await page.keyboard.down("Shift");
+			await page.mouse.down({ button });
+			await page.mouse.move(400 + x, 300 + y);
+			const after = await state();
+			const up = new Vector3().fromArray(before.up);
+			const direction = new Vector3().fromArray(before.direction);
+			const axis = x ? up : up.clone().cross(direction);
+			expect(direction.cross(new Vector3().fromArray(after.direction)).dot(axis)).toBeLessThan(0);
+			await page.mouse.move(400, 300);
+			await page.mouse.up({ button });
+			await page.keyboard.up("Shift");
+		}
+	}
 	await navigation.dispatchEvent("wheel", { shiftKey: true, deltaX: 30 });
 	const horizontalOrbit = await state();
 	expect(horizontalOrbit.up[2]).toBeCloseTo(initial.up[2], 8);
@@ -178,9 +195,39 @@ test("Fusion gestures pan, orbit, zoom toward the cursor and fit with the middle
 		mixedOrbit = current;
 	}
 	expect(invertedDuringMixedOrbit).toBe(true);
+	for (const modifier of ["Shift", "Control"]) {
+		const before = await state();
+		await page.keyboard.down(modifier);
+		await drag("left");
+		await page.keyboard.up(modifier);
+		const after = await state();
+		expect(after.distance).toBeCloseTo(before.distance, 8);
+		if (modifier === "Shift") {
+			expect(after.target).toEqual(before.target);
+			expect(after.direction).not.toEqual(before.direction);
+		} else {
+			expect(after.target).not.toEqual(before.target);
+			after.direction.forEach((value, index) => expect(value).toBeCloseTo(before.direction[index], 8));
+			after.up.forEach((value, index) => expect(value).toBeCloseTo(before.up[index], 8));
+		}
+		await expect(navigation).toBeFocused();
+		await drag("left");
+		expect(await state()).toEqual(after);
+		await page.mouse.move(400, 300);
+		await page.keyboard.down(modifier);
+		await page.mouse.down({ button: "left" });
+		await page.mouse.move(850, 350, { steps: 4 });
+		expect(await state()).not.toEqual(after);
+		await page.mouse.up({ button: "left" });
+		await page.keyboard.up(modifier);
+		const released = await state();
+		await page.mouse.move(400, 300);
+		expect(await state()).toEqual(released);
+	}
+	const finalState = await state();
 	await page.locator("#navigation").dispatchEvent("dispose-navigation");
 	await page.locator("#navigation").dispatchEvent("wheel", { shiftKey: true, deltaX: 50, deltaY: 20 });
-	expect(await state()).toEqual(mixedOrbit);
+	expect(await state()).toEqual(finalState);
 	await page.mouse.click(400, 300, { button: "middle", clickCount: 2 });
 	expect((await state()).fits).toBe(1);
 });

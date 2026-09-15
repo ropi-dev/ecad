@@ -126,8 +126,8 @@ export function StepWorkspace() {
 			{model && (
 				<>
 					<p className="pointer-events-none absolute bottom-20 left-0 w-full px-4 text-center text-xs text-slate-400">
-						Two-finger swipe to pan · Shift + swipe to orbit · Pinch to zoom ·
-						F6 to fit
+						Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom
+						· F6 to fit
 					</p>
 					<StepControls
 						enabled={ready}

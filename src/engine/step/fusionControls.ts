@@ -60,16 +60,23 @@ export function createFusionControls(
 			y: event.clientY,
 			touch: event.pointerType === "touch",
 		});
-		if (event.pointerType === "touch" || event.button !== 1) return;
+		if (
+			event.pointerType === "touch" ||
+			(event.button !== 0 && event.button !== 1)
+		)
+			return;
+		const button = event.button === 0 ? "LEFT" : "MIDDLE";
 		if (event.shiftKey) {
 			orbitPointer = event.pointerId;
-			controls.mouseButtons.MIDDLE = null;
+			controls.mouseButtons[button] = null;
 			return;
 		}
-		controls.mouseButtons.MIDDLE =
-			!event.shiftKey && (event.ctrlKey || event.metaKey)
+		controls.mouseButtons[button] =
+			event.ctrlKey || event.metaKey
 				? MOUSE.ROTATE
-				: MOUSE.PAN;
+				: event.button === 1
+					? MOUSE.PAN
+					: null;
 	};
 	const onPointerMove = (event: PointerEvent) => {
 		const previous = pointers.get(event.pointerId);
@@ -78,7 +85,7 @@ export function createFusionControls(
 			orbitPointer === event.pointerId ||
 			(previous.touch && pointers.size === 1)
 		) {
-			orbit(event.clientX - previous.x, event.clientY - previous.y);
+			orbit(previous.x - event.clientX, previous.y - event.clientY);
 		}
 		previous.x = event.clientX;
 		previous.y = event.clientY;
@@ -88,7 +95,14 @@ export function createFusionControls(
 		if (orbitPointer === event.pointerId) orbitPointer = null;
 	};
 	const onMouseDown = (event: MouseEvent) => {
-		if (event.button !== 1) return;
+		if (
+			event.button !== 1 &&
+			!(
+				event.button === 0 &&
+				(event.shiftKey || event.ctrlKey || event.metaKey)
+			)
+		)
+			return;
 		event.preventDefault();
 		canvas.focus({ preventScroll: true });
 	};
