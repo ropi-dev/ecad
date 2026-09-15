@@ -2,6 +2,7 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import {
 	Box3,
 	DirectionalLight,
+	GridHelper,
 	HemisphereLight,
 	Mesh,
 	PerspectiveCamera,
@@ -55,6 +56,7 @@ export function StepViewer({
 		onReady(false);
 		let cleanup = () => {};
 		let renderer: WebGLRenderer | undefined;
+		let grid: GridHelper | undefined;
 		try {
 			renderer = new WebGLRenderer({ antialias: true, alpha: true });
 			const output = renderer;
@@ -78,10 +80,20 @@ export function StepViewer({
 			element.append(canvas);
 			const navigation = createFusionControls(camera, canvas, () => fit());
 			const { controls } = navigation;
-			const sphere = new Box3()
-				.setFromObject(group)
-				.getBoundingSphere(new Sphere());
+			const bounds = new Box3().setFromObject(group);
+			const sphere = bounds.getBoundingSphere(new Sphere());
 			const radius = Math.max(sphere.radius, 0.001);
+			grid = new GridHelper(radius * 6, 60, "#64748b", "#334155");
+			grid.rotation.x = Math.PI / 2;
+			grid.position.set(
+				sphere.center.x,
+				sphere.center.y,
+				bounds.min.z - radius * 0.002,
+			);
+			grid.material.transparent = true;
+			grid.material.opacity = 0.6;
+			grid.material.depthWrite = false;
+			scene.add(grid);
 			camera.near = radius / 1000;
 			camera.far = radius * 1000;
 			controls.minDistance = radius * 0.02;
@@ -189,6 +201,7 @@ export function StepViewer({
 		return () => {
 			runtime.current = null;
 			cleanup();
+			grid?.dispose();
 			renderer?.dispose();
 			renderer?.forceContextLoss();
 			renderer?.domElement.remove();
