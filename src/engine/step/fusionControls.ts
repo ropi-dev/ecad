@@ -1,0 +1,130 @@
+import { MOUSE, type PerspectiveCamera, Quaternion, Vector3 } from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+export function createFusionControls(
+	camera: PerspectiveCamera,
+	canvas: HTMLElement,
+	fit: () => void,
+) {
+	const controls = new OrbitControls(camera, canvas);
+	controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: null };
+	controls.zoomToCursor = true;
+	controls.touches.ONE = null;
+	controls.listenToKeyEvents(canvas);
+	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
+	let orbitPointer: number | null = null;
+	const orbit = (deltaX: number, deltaY: number) => {
+		if (!controls.enabled || !controls.enableRotate) return;
+		const distance = Math.hypot(deltaX, deltaY);
+		if (distance === 0) return;
+		const scale =
+			(2 * Math.PI * controls.rotateSpeed) / Math.max(canvas.clientHeight, 1);
+		const offset = camera.position.clone().sub(controls.target);
+		const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+		const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+		const rotation = new Quaternion().setFromAxisAngle(
+			new Vector3(0, 0, 1),
+			deltaX * scale * (up.z < 0 ? -1 : 1),
+		);
+		offset.applyQuaternion(rotation);
+		up.applyQuaternion(rotation);
+		right.applyQuaternion(rotation);
+		rotation.setFromAxisAngle(right, deltaY * scale);
+		offset.applyQuaternion(rotation);
+		camera.up.copy(up).applyQuaternion(rotation).normalize();
+		camera.position.copy(controls.target).add(offset);
+		camera.lookAt(controls.target);
+		camera.updateMatrixWorld();
+		controls.dispatchEvent({ type: "change" });
+	};
+	const onWheel = (event: WheelEvent) => {
+		if (event.ctrlKey || event.metaKey) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		if (!controls.enabled) return;
+		const height = Math.max(canvas.clientHeight, 1);
+		const unit =
+			event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1;
+		if (event.shiftKey) {
+			orbit(event.deltaX * unit, event.deltaY * unit);
+		} else if (controls.enablePan) {
+			const horizontalUnit =
+				event.deltaMode === 2 ? Math.max(canvas.clientWidth, 1) : unit;
+			controls.pan(-event.deltaX * horizontalUnit, -event.deltaY * unit);
+		}
+	};
+	const onPointerDown = (event: PointerEvent) => {
+		if (!controls.enabled) return;
+		pointers.set(event.pointerId, {
+			x: event.clientX,
+			y: event.clientY,
+			touch: event.pointerType === "touch",
+		});
+		if (event.pointerType === "touch" || event.button !== 1) return;
+		if (event.shiftKey) {
+			orbitPointer = event.pointerId;
+			controls.mouseButtons.MIDDLE = null;
+			return;
+		}
+		controls.mouseButtons.MIDDLE =
+			!event.shiftKey && (event.ctrlKey || event.metaKey)
+				? MOUSE.ROTATE
+				: MOUSE.PAN;
+	};
+	const onPointerMove = (event: PointerEvent) => {
+		const previous = pointers.get(event.pointerId);
+		if (!previous) return;
+		if (
+			orbitPointer === event.pointerId ||
+			(previous.touch && pointers.size === 1)
+		) {
+			orbit(event.clientX - previous.x, event.clientY - previous.y);
+		}
+		previous.x = event.clientX;
+		previous.y = event.clientY;
+	};
+	const onPointerEnd = (event: PointerEvent) => {
+		pointers.delete(event.pointerId);
+		if (orbitPointer === event.pointerId) orbitPointer = null;
+	};
+	const onMouseDown = (event: MouseEvent) => {
+		if (event.button !== 1) return;
+		event.preventDefault();
+		canvas.focus({ preventScroll: true });
+	};
+	const onAuxClick = (event: MouseEvent) => {
+		if (event.button !== 1) return;
+		event.preventDefault();
+		if (
+			event.detail === 2 &&
+			!event.shiftKey &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			!event.altKey
+		)
+			fit();
+	};
+	canvas.addEventListener("pointerdown", onPointerDown, true);
+	canvas.addEventListener("pointermove", onPointerMove, true);
+	canvas.addEventListener("pointerup", onPointerEnd, true);
+	canvas.addEventListener("pointercancel", onPointerEnd, true);
+	canvas.addEventListener("lostpointercapture", onPointerEnd, true);
+	canvas.addEventListener("wheel", onWheel, { capture: true, passive: false });
+	canvas.addEventListener("mousedown", onMouseDown);
+	canvas.addEventListener("auxclick", onAuxClick);
+	return {
+		controls,
+		dispose: () => {
+			canvas.removeEventListener("pointerdown", onPointerDown, true);
+			canvas.removeEventListener("pointermove", onPointerMove, true);
+			canvas.removeEventListener("pointerup", onPointerEnd, true);
+			canvas.removeEventListener("pointercancel", onPointerEnd, true);
+			canvas.removeEventListener("lostpointercapture", onPointerEnd, true);
+			pointers.clear();
+			canvas.removeEventListener("wheel", onWheel, true);
+			canvas.removeEventListener("mousedown", onMouseDown);
+			canvas.removeEventListener("auxclick", onAuxClick);
+			controls.dispose();
+		},
+	};
+}

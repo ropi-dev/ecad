@@ -8,7 +8,7 @@ export function GerberHeader({
 	onOpenFile: (files: File[]) => void;
 }) {
 	return (
-		<header className="file-bar">
+		<header className="file-bar flex items-center gap-2">
 			<label className="add-gerber-files">
 				<Plus size={16} /> {loading ? "Reading…" : "Add files"}
 				<input
@@ -22,6 +22,12 @@ export function GerberHeader({
 					}}
 				/>
 			</label>
+			<a
+				href="/step"
+				className="add-gerber-files no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
+			>
+				STEP viewer
+			</a>
 		</header>
 	);
 }

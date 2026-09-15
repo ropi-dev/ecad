@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as McpRouteImport } from './routes/mcp'
+import { Route as StepRouteImport } from './routes/step'
 import { Route as DemoDrizzleRouteImport } from './routes/demo/drizzle'
 import { Route as DemoMcpTodosRouteImport } from './routes/demo/mcp-todos'
 import { Route as DemoStoreRouteImport } from './routes/demo/store'
@@ -36,6 +37,11 @@ const AboutRoute = AboutRouteImport.update({
 const McpRoute = McpRouteImport.update({
   id: '/mcp',
   path: '/mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StepRoute = StepRouteImport.update({
+  id: '/step',
+  path: '/step',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoDrizzleRoute = DemoDrizzleRouteImport.update({
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/mcp': typeof McpRoute
+  '/step': typeof StepRoute
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/demo/mcp-todos': typeof DemoMcpTodosRoute
   '/demo/store': typeof DemoStoreRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/mcp': typeof McpRoute
+  '/step': typeof StepRoute
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/demo/mcp-todos': typeof DemoMcpTodosRoute
   '/demo/store': typeof DemoStoreRoute
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/mcp': typeof McpRoute
+  '/step': typeof StepRoute
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/demo/mcp-todos': typeof DemoMcpTodosRoute
   '/demo/store': typeof DemoStoreRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/mcp'
+    | '/step'
     | '/demo/drizzle'
     | '/demo/mcp-todos'
     | '/demo/store'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/mcp'
+    | '/step'
     | '/demo/drizzle'
     | '/demo/mcp-todos'
     | '/demo/store'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/mcp'
+    | '/step'
     | '/demo/drizzle'
     | '/demo/mcp-todos'
     | '/demo/store'
@@ -187,6 +199,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   McpRoute: typeof McpRoute
+  StepRoute: typeof StepRoute
   DemoDrizzleRoute: typeof DemoDrizzleRoute
   DemoMcpTodosRoute: typeof DemoMcpTodosRoute
   DemoStoreRoute: typeof DemoStoreRoute
@@ -220,6 +233,13 @@ declare module '@tanstack/react-router' {
       path: '/mcp'
       fullPath: '/mcp'
       preLoaderRoute: typeof McpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/step': {
+      id: '/step'
+      path: '/step'
+      fullPath: '/step'
+      preLoaderRoute: typeof StepRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/drizzle': {
@@ -299,6 +319,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   McpRoute: McpRoute,
+  StepRoute: StepRoute,
   DemoDrizzleRoute: DemoDrizzleRoute,
   DemoMcpTodosRoute: DemoMcpTodosRoute,
   DemoStoreRoute: DemoStoreRoute,
