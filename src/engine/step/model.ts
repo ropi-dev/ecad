@@ -9,7 +9,7 @@ import {
 	MeshStandardMaterial,
 	SRGBColorSpace,
 } from "three";
-import type { StepModel } from "../../formats/step/types/StepModel";
+import type { StepModel } from "#/formats/step/types/StepModel.ts";
 
 function addMaterialGroup(
 	geometry: BufferGeometry,

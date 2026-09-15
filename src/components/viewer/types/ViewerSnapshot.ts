@@ -1,4 +1,4 @@
-import type { Camera } from "../../../engine/types";
+import type { Camera } from "#/engine";
 import type { RenderDiagnostics } from "./RenderDiagnostics";
 
 export interface ViewerSnapshot {

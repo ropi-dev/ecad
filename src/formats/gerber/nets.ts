@@ -1,4 +1,4 @@
-import type { SceneLayer } from "../../engine/types";
+import type { SceneLayer } from "#/engine";
 
 /** Only objects with a named Gerber .N net are hover targets. */
 export function indexGerberNets(

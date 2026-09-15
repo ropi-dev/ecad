@@ -1,9 +1,9 @@
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fitCamera, getSceneBounds } from "../../engine/camera";
-import { handleViewerKeyDown } from "../../engine/navigation";
-import type { Camera, SceneLayer } from "../../engine/types";
-import { ViewportControls } from "../../engine/viewport-controls";
+import { fitCamera, getSceneBounds } from "#/engine";
+import { handleViewerKeyDown } from "#/engine/navigation.ts";
+import type { Camera, SceneLayer } from "#/engine";
+import { ViewportControls } from "#/engine/viewport-controls.ts";
 import { useViewportSize } from "./useViewportSize";
 
 export function useGerberCamera(layers: readonly SceneLayer[]) {

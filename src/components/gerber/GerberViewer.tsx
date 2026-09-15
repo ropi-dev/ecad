@@ -1,11 +1,11 @@
 import type { Ref } from "react";
 import { useEffect, useImperativeHandle, useMemo, useRef } from "react";
-import type { GraphicsRenderer, SceneLayer } from "../../engine/types";
-import type { GerberViewerHandle } from "./types/GerberViewerHandle";
-import type { ViewerSnapshot } from "./types/ViewerSnapshot";
-import { useGerberCamera } from "./useGerberCamera";
-import { useGerberRenderer } from "./useGerberRenderer";
-import { useNetHover } from "./useNetHover";
+import type { GraphicsRenderer, SceneLayer } from "#/engine";
+import type { GerberViewerHandle } from "../viewer/types/GerberViewerHandle";
+import type { ViewerSnapshot } from "../viewer/types/ViewerSnapshot";
+import { useGerberCamera } from "../viewer/useGerberCamera";
+import { useGerberRenderer } from "../viewer/useGerberRenderer";
+import { useNetHover } from "../viewer/useNetHover";
 
 export function GerberViewer({
 	layer,

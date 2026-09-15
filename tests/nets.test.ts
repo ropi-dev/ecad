@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseGerber } from '../src/formats/gerber'
-import { indexGerberNets } from '../src/formats/gerber/nets'
+import { parseGerber } from '#/formats/gerber'
+import { indexGerberNets } from '#/formats/gerber/nets.ts'
 
 const source = `%FSLAX46Y46*%%MOMM*%%ADD10C,1*%
 D10*

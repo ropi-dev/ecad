@@ -1,4 +1,4 @@
-import type { Bounds, Geometry, Matrix, Point } from "../../engine/types";
+import type { Bounds, Geometry, Matrix, Point } from "#/engine";
 
 export interface Shape {
 	geometry: Geometry;

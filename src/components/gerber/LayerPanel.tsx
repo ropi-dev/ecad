@@ -1,6 +1,6 @@
 import { Eye, EyeOff, GripVertical, X } from "lucide-react";
 import { useState } from "react";
-import type { SceneLayer } from "../../engine/types";
+import type { SceneLayer } from "#/engine";
 
 export function LayerPanel({
 	layers,

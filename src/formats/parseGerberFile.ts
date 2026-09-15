@@ -1,4 +1,4 @@
-import type { ParseResult } from "../engine/types";
+import type { ParseResult } from "#/engine";
 
 export async function parseGerberFile(
 	file: File,

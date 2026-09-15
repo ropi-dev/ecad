@@ -1,4 +1,4 @@
-import type { StepModel } from "../../formats/step/types/StepModel";
+import type { StepModel } from "#/formats/step/types/StepModel.ts";
 
 export function StepParts({
 	model,

@@ -1,6 +1,6 @@
 import { Minus, Plus } from "lucide-react";
 import type { ReactNode } from "react";
-import { ZOOM_FACTOR } from "../../engine/navigation";
+import { ZOOM_FACTOR } from "#/engine/navigation.ts";
 
 export function ZoomControls({
 	zoom,

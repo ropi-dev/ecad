@@ -1,8 +1,8 @@
 import type { RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { screenToWorld } from "../../engine/camera";
-import type { Camera, GraphicsRenderer, SceneLayer } from "../../engine/types";
-import { indexGerberNets } from "../../formats/gerber/nets";
+import { screenToWorld } from "#/engine";
+import type { Camera, GraphicsRenderer, SceneLayer } from "#/engine";
+import { indexGerberNets } from "#/formats/gerber/nets.ts";
 
 /** Coalesce pointer movement, and redraw only when the hovered net changes. */
 export function useNetHover(

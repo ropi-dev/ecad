@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { handleViewerKeyDown, wheelDelta } from "../src/engine/navigation";
+import { handleViewerKeyDown, wheelDelta } from "#/engine/navigation.ts";
 
 test("viewer shortcuts leave modified keys and camera-specific navigation to their owners", () => {
 	const calls: unknown[] = [];

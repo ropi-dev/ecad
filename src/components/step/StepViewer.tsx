@@ -11,10 +11,10 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
-import { handleViewerKeyDown, viewerPixelRatio } from "../../engine/navigation";
-import { createFusionControls } from "../../engine/step/fusionControls";
-import { createStepGroup, disposeStepGroup } from "../../engine/step/model";
-import type { StepModel } from "../../formats/step/types/StepModel";
+import { handleViewerKeyDown, viewerPixelRatio } from "#/engine/navigation.ts";
+import { createFusionControls } from "#/engine/step/fusionControls.ts";
+import { createStepGroup, disposeStepGroup } from "#/engine/step/model.ts";
+import type { StepModel } from "#/formats/step/types/StepModel.ts";
 import { useRenderFrame } from "../viewer/useRenderFrame";
 import { useViewportSize } from "../viewer/useViewportSize";
 import { AxisIndicator } from "./AxisIndicator";

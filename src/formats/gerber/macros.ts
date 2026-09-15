@@ -1,4 +1,4 @@
-import type { Point } from "../../engine/types";
+import type { Point } from "#/engine";
 import {
 	apertureMatrix,
 	circle,

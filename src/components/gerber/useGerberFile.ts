@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import type { SceneLayer } from "../../engine/types";
-import { parseGerberFile } from "../../formats/parseGerberFile";
+import type { SceneLayer } from "#/engine";
+import { parseGerberFile } from "#/formats/parseGerberFile.ts";
 import { useFileImport } from "../viewer/useFileImport";
 
 const COLORS = [

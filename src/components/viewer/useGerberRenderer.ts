@@ -1,9 +1,9 @@
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { RendererResult } from "../../engine";
-import { createRenderer } from "../../engine";
-import { viewerPixelRatio } from "../../engine/navigation";
-import type { Camera, GraphicsRenderer, SceneLayer } from "../../engine/types";
+import type { RendererResult } from "#/engine";
+import { createRenderer } from "#/engine";
+import { viewerPixelRatio } from "#/engine/navigation.ts";
+import type { Camera, GraphicsRenderer, SceneLayer } from "#/engine";
 import { useRenderDiagnostics } from "./useRenderDiagnostics";
 import { useRenderFrame } from "./useRenderFrame";
 

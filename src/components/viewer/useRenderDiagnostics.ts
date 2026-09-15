@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { useEffect, useState } from "react";
-import type { RendererResult } from "../../engine";
+import type { RendererResult } from "#/engine";
 import type { RenderDiagnostics } from "./types/RenderDiagnostics";
 
 export function useRenderDiagnostics(

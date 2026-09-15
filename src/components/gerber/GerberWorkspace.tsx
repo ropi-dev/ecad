@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
-import { GerberViewer } from "../viewer/GerberViewer";
 import type { GerberViewerHandle } from "../viewer/types/GerberViewerHandle";
 import type { ViewerSnapshot } from "../viewer/types/ViewerSnapshot";
 import { GerberFooter } from "./GerberFooter";
 import { GerberHeader } from "./GerberHeader";
+import { GerberViewer } from "./GerberViewer";
 import { LayerPanel } from "./LayerPanel";
 import { useGerberFile } from "./useGerberFile";
 

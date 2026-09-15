@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import { parseStepFile } from "../../formats/parseStepFile";
-import type { StepModel } from "../../formats/step/types/StepModel";
+import { parseStepFile } from "#/formats/parseStepFile.ts";
+import type { StepModel } from "#/formats/step/types/StepModel.ts";
 import { useFileImport } from "../viewer/useFileImport";
 
 async function readStep(file: File, signal: AbortSignal) {

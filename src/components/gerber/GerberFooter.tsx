@@ -1,4 +1,4 @@
-import { MAX_ZOOM, MIN_ZOOM } from "../../engine/navigation";
+import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation.ts";
 import type { GerberViewerHandle } from "../viewer/types/GerberViewerHandle";
 import { ZoomControls } from "../viewer/ZoomControls";
 

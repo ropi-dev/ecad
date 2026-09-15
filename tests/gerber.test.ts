@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { demoFiles } from './fixtures/demo-gerbers'
-import { GERBER_SPEC_REVISION, gerberParser, parseGerber } from '../src/formats/gerber'
-import { evaluateExpression } from '../src/formats/gerber/macros'
+import { GERBER_SPEC_REVISION, gerberParser, parseGerber } from '#/formats/gerber'
+import { evaluateExpression } from '#/formats/gerber/macros.ts'
 
 const header='%FSLAX46Y46*%\n%MOMM*%\n'
 const parse=(body:string)=>parseGerber(header+body+'\nM02*','test.gbr')

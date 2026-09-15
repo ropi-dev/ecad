@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GeometryCompiler } from '../src/engine/geometry'
-import { compileMesh, type MeshObject } from '../src/engine/mesh'
+import { GeometryCompiler } from '#/engine/geometry.ts'
+import { compileMesh, type MeshObject } from '#/engine/mesh.ts'
 
 test('worker mesh preserves exposure order and transforms all vertices', () => {
   const geometry = { type: 'rect' as const, x: 0, y: 0, width: 2, height: 4 }
