@@ -83,6 +83,6 @@ test("planar objects are real mesh geometry without maps or backing images", () 
 			assert.ok(!("map" in material) || !material.map);
 		}
 	});
-	assert.equal(meshes, 2);
+	assert.equal(meshes, 3);
 	disposePlanarObject3D(object);
 });
