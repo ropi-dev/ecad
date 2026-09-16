@@ -1,4 +1,5 @@
 import { type Unzipped, unzip } from "fflate";
+import { gerberLayerOrder } from "./gerber/layer-order";
 
 const GERBER_EXTENSION =
 	/\.(gbr|ger|gerber|gbx|pho|art|cmp|sol|plc|stc|sts|g[bt][lspoa]|gko|gml|gm\d+|gl?\d+)$/i;
@@ -42,17 +43,25 @@ export async function expandGerberFile(file: File, signal: AbortSignal) {
 	signal.throwIfAborted();
 	const decoder = new TextDecoder();
 	const files = Object.entries(contents)
-		.filter(
-			([name, bytes]) =>
-				GERBER_EXTENSION.test(name) ||
-				/%(?:FS[LT][AI]X\d\dY\d\d|MO(?:IN|MM)|ADD\d|TF\.FileFunction)/.test(
-					decoder.decode(bytes),
-				),
-		)
-		.map(
-			([name, bytes]) =>
-				new File([new Uint8Array(bytes)], name, { type: "text/plain" }),
-		);
+		.flatMap(([name, bytes]) => {
+			const source = decoder.decode(bytes);
+			if (
+				!GERBER_EXTENSION.test(name) &&
+				!/%(?:FS[LT][AI]X\d\dY\d\d|MO(?:IN|MM)|ADD\d|TF\.FileFunction)/.test(
+					source,
+				)
+			)
+				return [];
+			return [
+				{
+					file: new File([new Uint8Array(bytes)], name, { type: "text/plain" }),
+					order: gerberLayerOrder(name, source),
+				},
+			];
+		})
+		// The renderer stacks from bottom to top; the layer panel reverses this.
+		.sort((a, b) => b.order[0] - a.order[0] || b.order[1] - a.order[1])
+		.map(({ file }) => file);
 	if (!files.length)
 		throw new Error("This ZIP archive contains no Gerber files.");
 	return files;

@@ -162,6 +162,47 @@ test("Gerber ZIP contents become individual layers alongside selected files", as
 	await expect(page.locator(".layer-name")).toHaveCount(4);
 });
 
+test("Gerber ZIP layers display in PCB stack order regardless of archive order", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/viewer.html");
+	const layers = [
+		["F_Silkscreen.gto", "Legend,Top"],
+		["F_Paste.gtp", "Paste,Top"],
+		["F_Mask.gts", "Soldermask,Top"],
+		["F_Cu.gtl", "Copper,L1,Top"],
+		["In1_Cu.g1", "Copper,L2,Inr"],
+		["In2_Cu.g2", "Copper,L3,Inr"],
+		["B_Cu.gbl", "Copper,L4,Bot"],
+		["B_Mask.gbs", "Soldermask,Bot"],
+		["B_Paste.gbp", "Paste,Bot"],
+		["B_Silkscreen.gbo", "Legend,Bot"],
+		["Edge_Cuts.gm1", "Profile,NP"],
+		["PTH-drl_map.gbr", "Drillmap"],
+	];
+	const archive = Object.fromEntries(
+		[5, 9, 1, 7, 3, 10, 0, 6, 4, 8, 11, 2].map((index) => {
+			const [name, fileFunction] = layers[index];
+			return [
+				name,
+				strToU8(
+					`%TF.FileFunction,${fileFunction}*%%FSLAX46Y46*%%MOMM*%%ADD10C,1*%D10*X0Y0D03*M02*`,
+				),
+			];
+		}),
+	);
+	await page
+		.locator("input[type=file]")
+		.setInputFiles({
+			name: "pcb.zip",
+			mimeType: "application/zip",
+			buffer: Buffer.from(zipSync(archive)),
+		});
+	await expect(page.locator(".layer-name")).toHaveText(
+		layers.map(([name]) => name),
+	);
+});
+
 test("Gerber ZIP errors do not discard valid files in the selection", async ({
 	page,
 }) => {
