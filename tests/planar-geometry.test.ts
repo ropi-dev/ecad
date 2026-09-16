@@ -9,7 +9,9 @@ import {
 	disposePlanarObject3D,
 } from "#/engine/planar-object";
 import type { SceneObject } from "#/engine/types";
+import { parseGerber } from "#/formats/gerber";
 import { Box3, Mesh } from "three";
+import { pthGerber } from "./fixtures/pth-gerber";
 
 const rect = (
 	size: number,
@@ -60,6 +62,49 @@ test("planar meshes apply transforms before resolving exposures", () => {
 	assert.equal(Math.max(...xs), 14);
 	assert.equal(Math.min(...ys), 18);
 	assert.equal(Math.max(...ys), 22);
+});
+
+test("separate exposure groups preserve cutouts, refills and bridging geometry", () => {
+	const at = (
+		size: number,
+		x: number,
+		polarity: "dark" | "clear" = "dark",
+	): SceneObject => ({
+		...rect(size, polarity),
+		transform: [1, 0, 0, 1, x, 0],
+	});
+	const compiled = compilePlanarGeometry([
+		at(4, 20, "clear"), // Clearing before drawing must not erase later dark.
+		at(4, 0),
+		at(4, 20),
+		at(4, 4), // Touching dark boundaries must merge without an internal seam.
+		at(2, 2, "clear"), // This cutout crosses both adjacent dark rectangles.
+		at(2, 20, "clear"),
+		at(1, 2),
+	]);
+	assert.equal(area(compiled.positions), 41);
+	for (let i = 0; i < compiled.edges.length; i += 6) {
+		assert.ok(!(compiled.edges[i] === 2 && compiled.edges[i + 3] === 2));
+	}
+	assert.equal(compilePlanarGeometry([at(2, 50, "clear")]).positions.length, 0);
+});
+
+test("PTH aperture holes and alternating clear flashes produce the same coverage", () => {
+	const meshes = [false, true].map((alternating) => {
+		const result = parseGerber(pthGerber(200, alternating), "PTH.gbr");
+		assert.deepEqual(result.diagnostics, []);
+		return compilePlanarGeometry(result.object.objects);
+	});
+	assert.equal(meshes[0].positions.length, meshes[1].positions.length);
+	assert.equal(meshes[0].edges.length, meshes[1].edges.length);
+	assert.ok(
+		Math.abs(area(meshes[0].positions) - area(meshes[1].positions)) < 0.001,
+	);
+	assert.ok(
+		Math.abs(
+			area(meshes[0].positions) - 200 * Math.PI * (0.75 ** 2 - 0.4 ** 2),
+		) < 0.05,
+	);
 });
 
 test("planar objects are real mesh geometry without maps or backing images", () => {

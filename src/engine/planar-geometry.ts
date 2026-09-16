@@ -5,7 +5,8 @@ import {
 	type MultiPolygon,
 	triangulate,
 } from "./geometry";
-import type { SceneObject } from "./types";
+import { partitionOverlaps } from "./partition-overlaps";
+import type { Bounds, SceneObject } from "./types";
 
 export interface PlanarGeometry {
 	positions: Float32Array;
@@ -78,19 +79,12 @@ export function compilePlanarGeometry(
 	tolerance = 0.0001,
 ): PlanarGeometry {
 	const compiler = new GeometryCompiler();
-	let polygons: MultiPolygon = [];
-	let pending: MultiPolygon = [];
-	let polarity: "dark" | "clear" = "dark";
-	const flush = () => {
-		if (pending.length)
-			polygons = combinePolygons(polygons, pending, polarity === "clear");
-		pending = [];
-	};
+	const exposures: {
+		polygons: MultiPolygon;
+		bounds: Bounds;
+		polarity: "dark" | "clear";
+	}[] = [];
 	for (const object of objects) {
-		if (object.polarity !== polarity) {
-			flush();
-			polarity = object.polarity;
-		}
 		const matrix = object.transform;
 		const scale = matrix
 			? Math.max(
@@ -100,17 +94,54 @@ export function compilePlanarGeometry(
 				)
 			: 1;
 		const compiled = compiler.compile(object.geometry, tolerance / scale);
+		const polygons: MultiPolygon = [];
+		const bounds: Bounds = {
+			minX: Infinity,
+			minY: Infinity,
+			maxX: -Infinity,
+			maxY: -Infinity,
+		};
 		for (const polygon of compiled.polygons)
-			pending.push(
+			polygons.push(
 				polygon.map((ring) =>
 					ring.map(([x, y]) => {
 						const point = transformPoint({ x, y }, matrix);
+						bounds.minX = Math.min(bounds.minX, point.x);
+						bounds.minY = Math.min(bounds.minY, point.y);
+						bounds.maxX = Math.max(bounds.maxX, point.x);
+						bounds.maxY = Math.max(bounds.maxY, point.y);
 						return [point.x, point.y];
 					}),
 				),
 			);
+		if (polygons.length)
+			exposures.push({ polygons, bounds, polarity: object.polarity });
 	}
-	flush();
+	// Disjoint groups cannot affect one another. Keep exposure order within each
+	// group so clear cutouts and later dark fills retain their original meaning.
+	const polygons: MultiPolygon = [];
+	for (const group of partitionOverlaps(
+		exposures.map((entry) => entry.bounds),
+	)) {
+		let resolved: MultiPolygon = [];
+		let pending: MultiPolygon = [];
+		let polarity: "dark" | "clear" = "dark";
+		const flush = () => {
+			if (pending.length)
+				resolved = combinePolygons(resolved, pending, polarity === "clear");
+			pending = [];
+		};
+		for (const index of group) {
+			const exposure = exposures[index];
+			if (exposure.polarity !== polarity) {
+				flush();
+				polarity = exposure.polarity;
+			}
+			for (const polygon of exposure.polygons) pending.push(polygon);
+		}
+		flush();
+		for (const polygon of resolved) polygons.push(polygon);
+	}
 	const triangles = triangulate(polygons);
 	const positions = new Float32Array((triangles.length / 2) * 3);
 	for (let index = 0; index < triangles.length / 2; index++) {

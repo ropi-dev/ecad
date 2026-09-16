@@ -343,7 +343,14 @@ function strokePolygons(
 			]);
 		}
 	}
-	return parts.length ? combinePolygons(parts) : [];
+	// A finely flattened arc can contain hundreds of overlapping discs. Resolve
+	// neighboring pieces in a balanced tree to keep intermediate tessellations small.
+	const resolve = (start: number, end: number): MultiPolygon => {
+		if (end - start <= 32) return combinePolygons(parts.slice(start, end));
+		const middle = Math.floor((start + end) / 2);
+		return combinePolygons(resolve(start, middle), resolve(middle, end));
+	};
+	return parts.length ? resolve(0, parts.length) : [];
 }
 
 export function triangulate(polygons: MultiPolygon): Float32Array {
