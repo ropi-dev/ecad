@@ -52,8 +52,9 @@ export function GerberViewer({
 				mesh.visible = object.visible;
 				mesh.userData.hoverEnabled = !focused || object.id === focusedLayerId;
 				mesh.position.z = order * LAYER_SPACING;
-				// Keep each object's surface and X-ray contours together in top-view order.
-				mesh.renderOrder = order;
+				// Draw the focused fill last so other layers' X-ray contours cannot tint it.
+				mesh.renderOrder =
+					focused && object.id === focusedLayerId ? scene.length : order;
 				stylePlanarObject3D(
 					mesh,
 					object.color,
