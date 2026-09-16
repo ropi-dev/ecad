@@ -72,6 +72,8 @@ export function SceneViewport({
 }: SceneViewportProps) {
 	const [controlsReady, setControlsReady] = useState(false);
 	const [zoomLevel, setZoomLevel] = useState(1);
+	const [activeProjection, setActiveProjection] = useState(projection);
+	useEffect(() => setActiveProjection(projection), [projection]);
 	const host = useRef<HTMLDivElement>(null);
 	const size = useViewportSize(host);
 	const { draw, schedule, cancel } = useRenderFrame();
@@ -103,11 +105,11 @@ export function SceneViewport({
 		}),
 		[],
 	);
-	const currentProjection = useRef(projection);
+	const currentProjection = useRef(activeProjection);
 	useEffect(() => {
-		currentProjection.current = projection;
-		runtime.current?.setProjection(projection);
-	}, [projection]);
+		currentProjection.current = activeProjection;
+		runtime.current?.setProjection(activeProjection);
+	}, [activeProjection]);
 	const sceneUpdate = useRef(updateScene);
 	useEffect(() => {
 		sceneUpdate.current = updateScene;
@@ -161,9 +163,10 @@ export function SceneViewport({
 				"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200";
 			element.append(canvas);
 			const topView = cameraMode === "top";
+			const fieldOfView = topView ? 25 : 40;
 			let camera: PerspectiveCamera | OrthographicCamera =
-				new PerspectiveCamera(40, 1, 0.01, 10000);
-			const halfFovTangent = Math.tan((40 * Math.PI) / 360);
+				new PerspectiveCamera(fieldOfView, 1, 0.01, 10000);
+			const halfFovTangent = Math.tan((fieldOfView * Math.PI) / 360);
 			const visibleHeight = () =>
 				camera instanceof OrthographicCamera
 					? (camera.top - camera.bottom) / camera.zoom
@@ -200,6 +203,7 @@ export function SceneViewport({
 				grid.material.transparent = true;
 				grid.material.opacity = 0.6;
 				grid.material.depthWrite = false;
+				grid.renderOrder = -1;
 				scene.add(grid);
 			}
 			camera.near = radius / 1000;
@@ -365,7 +369,7 @@ export function SceneViewport({
 					projection === "orthographic"
 						? new OrthographicCamera(-1, 1, 1, -1, camera.near, camera.far)
 						: new PerspectiveCamera(
-								40,
+								fieldOfView,
 								Math.max(element.clientWidth, 1) /
 									Math.max(element.clientHeight, 1),
 								camera.near,
@@ -483,13 +487,22 @@ export function SceneViewport({
 	}, [size]);
 	return (
 		<>
-			<div ref={host} className="absolute inset-0 z-[1] overflow-hidden" />
+			<div
+				ref={host}
+				className="viewport-canvas absolute inset-0 overflow-hidden"
+			/>
 			{cameraMode === "top" && <ViewportRulers ref={rulers} />}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
+					projection={activeProjection}
+					toggleProjection={() =>
+						setActiveProjection((current) =>
+							current === "perspective" ? "orthographic" : "perspective",
+						)
+					}
 					fit={() => runtime.current?.fit()}
 					zoom={(factor) => runtime.current?.zoom(factor)}
 					view={

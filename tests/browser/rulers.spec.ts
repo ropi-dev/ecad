@@ -1,6 +1,29 @@
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
 
+test("the background grid does not draw over opaque layer geometry", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/generic-viewers.html");
+	await expect(page.locator(".viewport-grid")).toBeVisible();
+	await page.mouse.move(0, 0);
+	const { camera, viewport } = JSON.parse(
+		(await page.locator("#snapshot").textContent())!,
+	);
+	const canvas = (await page.locator("canvas").boundingBox())!;
+	const clip = {
+		x: canvas.x + viewport.width / 2 + (-12 - camera.x) * camera.scale - 20,
+		y: canvas.y + viewport.height / 2 + camera.y * camera.scale - 20,
+		width: 40,
+		height: 40,
+	};
+	const withGrid = await page.screenshot({ clip });
+	await page.locator(".viewport-grid").evaluate((element) => {
+		element.style.visibility = "hidden";
+	});
+	expect((await page.screenshot({ clip })).equals(withGrid)).toBe(true);
+});
+
 test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
 	await page.goto("/tests/browser/generic-viewers.html");
 	const rulers = page.getByRole("img", {

@@ -1,3 +1,4 @@
+import { Box, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
@@ -11,20 +12,24 @@ export function ViewControls3D({
 	zoom,
 	zoomLevel,
 	view,
+	projection,
+	toggleProjection,
 }: Pick<Viewer3DHandle, "fit" | "zoom"> & {
 	view?: Viewer3DHandle["view"];
 	enabled: boolean;
 	zoomLevel: number;
+	projection: "perspective" | "orthographic";
+	toggleProjection: () => void;
 	children?: ReactNode;
 	fitLabel?: string;
 }) {
 	const button =
-		"flex h-10 min-w-10 items-center justify-center rounded border border-white/20 px-2 text-xs text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white disabled:pointer-events-none disabled:opacity-40";
+		"flex h-10 min-w-10 items-center justify-center whitespace-nowrap rounded border border-white/20 px-2 text-xs text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white disabled:pointer-events-none disabled:opacity-40";
 	return (
 		<div
 			role="toolbar"
 			aria-label={view ? "3D view controls" : "View controls"}
-			className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-0.5 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg sm:gap-1"
+			className="absolute bottom-4 left-1/2 z-10 flex w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap justify-center gap-0.5 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg sm:gap-1"
 		>
 			<ZoomControls
 				zoom={zoom}
@@ -39,6 +44,25 @@ export function ViewControls3D({
 			>
 				{Math.round(zoomLevel * 100)}%
 			</ZoomControls>
+			<button
+				type="button"
+				className={button}
+				disabled={!enabled}
+				aria-label="Orthographic camera"
+				aria-pressed={projection === "orthographic"}
+				title={
+					projection === "orthographic"
+						? "Switch to perspective camera"
+						: "Switch to orthographic camera"
+				}
+				onClick={toggleProjection}
+			>
+				{projection === "orthographic" ? (
+					<Square size={18} aria-hidden="true" />
+				) : (
+					<Box size={18} aria-hidden="true" />
+				)}
+			</button>
 			{view && (
 				<>
 					<button

@@ -38,6 +38,11 @@ for (const projection of ["perspective", "orthographic"] as const) {
 		await expect(
 			page.getByRole("toolbar", { name: "View controls", exact: true }),
 		).toHaveCount(1);
+		await expect(
+			page
+				.getByRole("toolbar")
+				.getByRole("button", { name: "Orthographic camera" }),
+		).toHaveCount(1);
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 		await expect.poll(async () => (await state()).zoom).toBeCloseTo(1.25);
 		await page.getByRole("button", { name: "Zoom out", exact: true }).click();
@@ -208,30 +213,33 @@ test("3D viewer borrows a synthetic mesh while its owner manages resources", asy
 	expect(requests.filter((url) => url.includes("/formats/"))).toEqual([]);
 });
 
-for (const mode of ["perspective", "orthographic", "3d"] as const) {
+for (const mode of [
+	"perspective",
+	"orthographic",
+	"3d",
+	"3d-orthographic",
+] as const) {
 	test(`${mode} zoom percentage and camera stay within 25% to 800%`, async ({
 		page,
 	}) => {
-		await page.goto(
-			`/tests/browser/generic-viewers.html${mode === "3d" ? "?3d" : ""}`,
-		);
+		const orbit = mode.startsWith("3d");
+		const orthographic = mode.endsWith("orthographic");
+		await page.goto(`/tests/browser/generic-viewers.html${orbit ? "?3d" : ""}`);
 		const canvas = page.locator("canvas");
 		const fit = page.getByRole("button", {
-			name: mode === "3d" ? "Fit model" : "Fit drawing",
+			name: orbit ? "Fit model" : "Fit drawing",
 			exact: true,
 		});
 		const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
 		const zoomOut = page.getByRole("button", { name: "Zoom out", exact: true });
 		await expect(fit).toHaveText("100%");
-		if (mode === "orthographic")
+		if (orthographic)
 			await page.getByRole("button", { name: "Orthographic camera" }).click();
 		const camera = async () =>
 			JSON.parse((await page.locator("#camera").textContent()) || "{}");
 		await expect
 			.poll(async () => (await camera()).type)
-			.toBe(
-				mode === "orthographic" ? "OrthographicCamera" : "PerspectiveCamera",
-			);
+			.toBe(orthographic ? "OrthographicCamera" : "PerspectiveCamera");
 		const initial = await camera();
 		const viewDistance = (value: { position: number[]; target: number[] }) =>
 			Math.hypot(
@@ -241,7 +249,7 @@ for (const mode of ["perspective", "orthographic", "3d"] as const) {
 			);
 		const actualZoom = async () => {
 			const current = await camera();
-			return mode === "orthographic"
+			return orthographic
 				? current.projectionY / initial.projectionY
 				: viewDistance(initial) / viewDistance(current);
 		};
