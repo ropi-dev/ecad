@@ -9,6 +9,7 @@ interface ParsedFile<T> {
 export function useFileImport<T>(
 	parse: (file: File, signal: AbortSignal) => Promise<ParsedFile<T>>,
 	dispose?: (value: T) => void,
+	expand?: (file: File, signal: AbortSignal) => Promise<readonly File[]>,
 ) {
 	const request = useRef<AbortController | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -31,18 +32,33 @@ export function useFileImport<T>(
 			const messages: string[] = [];
 			try {
 				for (const file of files) {
+					let entries: readonly File[];
 					try {
-						const result = await parse(file, controller.signal);
-						values.push(result.value);
-						if (controller.signal.aborted) return null;
-						messages.push(
-							...(result.messages ?? []).map((text) => `${file.name}: ${text}`),
-						);
+						entries = expand ? await expand(file, controller.signal) : [file];
 					} catch (error) {
 						if (controller.signal.aborted) return null;
 						messages.push(
 							`${file.name}: ${error instanceof Error ? error.message : "Unable to read this file."}`,
 						);
+						continue;
+					}
+					for (const entry of entries) {
+						if (controller.signal.aborted) return null;
+						try {
+							const result = await parse(entry, controller.signal);
+							values.push(result.value);
+							if (controller.signal.aborted) return null;
+							messages.push(
+								...(result.messages ?? []).map(
+									(text) => `${entry.name}: ${text}`,
+								),
+							);
+						} catch (error) {
+							if (controller.signal.aborted) return null;
+							messages.push(
+								`${entry.name}: ${error instanceof Error ? error.message : "Unable to read this file."}`,
+							);
+						}
 					}
 				}
 				setMessage(messages.join("; "));
@@ -56,7 +72,7 @@ export function useFileImport<T>(
 				}
 			}
 		},
-		[parse, dispose],
+		[parse, dispose, expand],
 	);
 	return { loading, message, readFiles, cancel, clearMessage };
 }

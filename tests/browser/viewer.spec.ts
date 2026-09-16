@@ -9,7 +9,7 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/viewer.html");
 	await expect(page.locator(".empty-message")).toHaveText(
-		"Choose a Gerber file to view it.",
+		"Choose Gerber files or a ZIP archive to view them.",
 	);
 	const file = demoFiles[0];
 	await page.locator("input[type=file]").setInputFiles({

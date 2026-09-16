@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+import { strToU8, zipSync } from "fflate";
 import { demoFiles } from "../fixtures/demo-gerbers";
 
 for (const format of ["step", "gerber"] as const) {
@@ -103,3 +104,148 @@ test("Gerber imports retain successful files and report errors within one batch"
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
 });
+
+test("Gerber ZIP contents become individual layers alongside selected files", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/viewer.html");
+	const input = page.locator("input[type=file]");
+	const standalone = {
+		name: demoFiles[0].name,
+		mimeType: "text/plain",
+		buffer: Buffer.from(demoFiles[0].source),
+	};
+	await input.setInputFiles(standalone);
+	await expect(page.locator(".layer-name")).toHaveText([standalone.name]);
+	await input.setInputFiles([
+		{
+			name: "board.ZIP",
+			mimeType: "application/zip",
+			buffer: Buffer.from(
+				zipSync({
+					"board/top.GTL": strToU8(demoFiles[1].source),
+					"board/invalid.gbr": strToU8("invalid gerber"),
+					"board/bottom.copper": strToU8(demoFiles[2].source),
+					"README.txt": strToU8("Manufacturing instructions"),
+					"board/": new Uint8Array(),
+					"__MACOSX/._top.gbr": strToU8(demoFiles[0].source),
+					".hidden.gbr": strToU8(demoFiles[0].source),
+				}),
+			),
+		},
+		{ ...standalone, name: "loose.gbr" },
+		{
+			name: "stored.zip",
+			mimeType: "application/zip",
+			buffer: Buffer.from(
+				zipSync({ "outline.gbr": strToU8(demoFiles[4].source) }, { level: 0 }),
+			),
+		},
+	]);
+	await expect(page.locator(".layer-name")).toHaveText([
+		"outline.gbr",
+		"loose.gbr",
+		"board/bottom.copper",
+		"board/top.GTL",
+		standalone.name,
+	]);
+	await expect(page.locator(".viewer-message")).toContainText(
+		"board/invalid.gbr:",
+	);
+	await expect(page.locator(".viewer-message")).not.toContainText("README");
+	await expect(
+		page.getByRole("button", { name: "Zoom in", exact: true }),
+	).toBeEnabled();
+	await page
+		.getByRole("button", { name: "Remove board/top.GTL", exact: true })
+		.click();
+	await expect(page.locator(".layer-name")).toHaveCount(4);
+});
+
+test("Gerber ZIP errors do not discard valid files in the selection", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles([
+		{
+			name: "broken.zip",
+			mimeType: "application/zip",
+			buffer: Buffer.from("broken"),
+		},
+		{
+			name: "empty.zip",
+			mimeType: "application/zip",
+			buffer: Buffer.from(zipSync({})),
+		},
+		{
+			name: "notes.zip",
+			mimeType: "application/zip",
+			buffer: Buffer.from(zipSync({ "README.txt": strToU8("Notes") })),
+		},
+		{
+			name: demoFiles[0].name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(demoFiles[0].source),
+		},
+	]);
+	await expect(page.locator(".layer-name")).toHaveText([demoFiles[0].name]);
+	await expect(page.locator(".viewer-message")).toContainText(
+		"broken.zip: Unable to read this ZIP archive.",
+	);
+	await expect(page.locator(".viewer-message")).toContainText(
+		"empty.zip: This ZIP archive contains no Gerber files.",
+	);
+	await expect(page.locator(".viewer-message")).toContainText(
+		"notes.zip: This ZIP archive contains no Gerber files.",
+	);
+});
+
+for (const stage of ["archive", "entry"] as const) {
+	test(`new Gerber selection cancels a ZIP import during ${stage} reading`, async ({
+		page,
+	}) => {
+		await page.addInitScript((stage) => {
+			const method = stage === "archive" ? "arrayBuffer" : "text";
+			const original = File.prototype[method];
+			Object.defineProperty(File.prototype, method, {
+				value: async function (this: File) {
+					if (this.name === (stage === "archive" ? "slow.zip" : "slow.gbr")) {
+						document.documentElement.dataset.importPaused = "true";
+						await new Promise((resolve) =>
+							window.addEventListener("resume-import", resolve, { once: true }),
+						);
+					}
+					return Reflect.apply(original, this, []);
+				},
+			});
+		}, stage);
+		await page.goto("/tests/browser/viewer.html");
+		const input = page.locator("input[type=file]");
+		await input.setInputFiles({
+			name: "slow.zip",
+			mimeType: "application/zip",
+			buffer: Buffer.from(
+				zipSync({
+					"first.gbr": strToU8(demoFiles[0].source),
+					"slow.gbr": strToU8(demoFiles[1].source),
+				}),
+			),
+		});
+		await expect(page.locator("html")).toHaveAttribute(
+			"data-import-paused",
+			"true",
+		);
+		await input.setInputFiles({
+			name: "latest.gbr",
+			mimeType: "text/plain",
+			buffer: Buffer.from(demoFiles[2].source),
+		});
+		await expect(page.locator(".layer-name")).toHaveText(["latest.gbr"]);
+		await page.evaluate(() => window.dispatchEvent(new Event("resume-import")));
+		await expect(
+			page.getByRole("button", { name: "Zoom in", exact: true }),
+		).toBeEnabled();
+		await expect(page.locator(".layer-name")).toHaveText(["latest.gbr"]);
+		await expect(page.locator(".viewer-message")).toHaveCount(0);
+	});
+}

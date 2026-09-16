@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { expandGerberFile } from "#/formats/expandGerberFile";
 import {
 	type ParsedGerberObject,
 	parseGerberFile,
@@ -34,7 +35,11 @@ export function useGerberFile() {
 		},
 		[],
 	);
-	const { loading, message, readFiles } = useFileImport(readGerber, release);
+	const { loading, message, readFiles } = useFileImport(
+		readGerber,
+		release,
+		expandGerberFile,
+	);
 	const openFile = useCallback(
 		async (files: File[]) => {
 			const imported = await readFiles(files);

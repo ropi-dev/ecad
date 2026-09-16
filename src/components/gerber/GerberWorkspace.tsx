@@ -90,7 +90,7 @@ export function GerberWorkspace() {
 								? "Reading file…"
 								: message
 									? ""
-									: "Choose a Gerber file to view it."}
+									: "Choose Gerber files or a ZIP archive to view them."}
 						</p>
 					)}
 					<GerberFooter
