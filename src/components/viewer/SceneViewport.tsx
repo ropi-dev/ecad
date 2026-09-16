@@ -11,6 +11,7 @@ import {
 	GridHelper,
 	HemisphereLight,
 	type Object3D,
+	OrthographicCamera,
 	PerspectiveCamera,
 	Scene,
 	Sphere,
@@ -34,6 +35,7 @@ export interface SceneViewportHandle extends Viewer3DHandle {
 export interface SceneViewportProps {
 	scene: ViewerScene;
 	cameraMode: "top" | "orbit";
+	projection?: "perspective" | "orthographic";
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
 	updateScene?: (object: Object3D) => void;
@@ -46,6 +48,7 @@ export interface SceneViewportProps {
 export function SceneViewport({
 	scene: sourceScene,
 	cameraMode,
+	projection = "perspective",
 	onChange,
 	updateScene,
 	ref,
@@ -66,6 +69,7 @@ export function SceneViewport({
 		| (SceneViewportHandle & {
 				update: (update: (object: Object3D) => void) => void;
 				resize: (width: number, height: number) => void;
+				setProjection: (projection: "perspective" | "orthographic") => void;
 		  })
 		| null
 	>(null);
@@ -79,6 +83,11 @@ export function SceneViewport({
 		}),
 		[],
 	);
+	const currentProjection = useRef(projection);
+	useEffect(() => {
+		currentProjection.current = projection;
+		runtime.current?.setProjection(projection);
+	}, [projection]);
 	const sceneUpdate = useRef(updateScene);
 	useEffect(() => {
 		sceneUpdate.current = updateScene;
@@ -130,7 +139,13 @@ export function SceneViewport({
 				"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200";
 			element.append(canvas);
 			const topView = cameraMode === "top";
-			const camera = new PerspectiveCamera(40, 1, 0.01, 10000);
+			let camera: PerspectiveCamera | OrthographicCamera =
+				new PerspectiveCamera(40, 1, 0.01, 10000);
+			const halfFovTangent = Math.tan((40 * Math.PI) / 360);
+			const visibleHeight = () =>
+				camera instanceof OrthographicCamera
+					? (camera.top - camera.bottom) / camera.zoom
+					: 2 * camera.position.distanceTo(controls.target) * halfFovTangent;
 			camera.up.set(0, topView ? 1 : 0, topView ? 0 : 1);
 			const navigation = create3DControls(camera, canvas, () => fit(), {
 				lockTop: topView,
@@ -176,16 +191,14 @@ export function SceneViewport({
 					if (topView) {
 						const width = Math.max(element.clientWidth, 1);
 						const height = Math.max(element.clientHeight, 1);
-						const distance = camera.position.distanceTo(controls.target);
+						const distance = visibleHeight() / (2 * halfFovTangent);
 						reportChange({
 							backend: "WebGL 2 · Three.js",
 							message: "",
 							camera: {
 								x: camera.position.x,
 								y: camera.position.y,
-								scale:
-									height /
-									(2 * distance * Math.tan((camera.fov * Math.PI) / 360)),
+								scale: height / visibleHeight(),
 							},
 							zoom: fittedDistance / distance,
 							viewport: { width, height },
@@ -219,7 +232,12 @@ export function SceneViewport({
 			};
 			const fit = () => {
 				const halfFov = Math.atan(
-					Math.tan((camera.fov * Math.PI) / 360) * Math.min(camera.aspect, 1),
+					halfFovTangent *
+						Math.min(
+							Math.max(element.clientWidth, 1) /
+								Math.max(element.clientHeight, 1),
+							1,
+						),
 				);
 				const direction = camera.position
 					.clone()
@@ -232,11 +250,25 @@ export function SceneViewport({
 					.copy(sphere.center)
 					.addScaledVector(direction, (radius / Math.sin(halfFov)) * 1.3);
 				fittedDistance = camera.position.distanceTo(controls.target);
+				if (camera instanceof OrthographicCamera) {
+					camera.zoom = 1;
+					setOrthographicBounds(camera, 2 * fittedDistance * halfFovTangent);
+				}
 				controls.update();
 				schedule();
 			};
 			const zoom = (factor: number) => {
 				if (!Number.isFinite(factor) || factor <= 0) return;
+				if (camera instanceof OrthographicCamera) {
+					camera.zoom = Math.max(
+						controls.minZoom,
+						Math.min(controls.maxZoom, camera.zoom * factor),
+					);
+					camera.updateProjectionMatrix();
+					controls.update();
+					schedule();
+					return;
+				}
 				const offset = camera.position.clone().sub(controls.target);
 				const distance = Math.max(
 					controls.minDistance,
@@ -258,10 +290,61 @@ export function SceneViewport({
 				camera.position.copy(controls.target).add(offset);
 				fit();
 			};
+			const setOrthographicBounds = (
+				orthographic: OrthographicCamera,
+				height: number,
+			) => {
+				const aspect =
+					Math.max(element.clientWidth, 1) / Math.max(element.clientHeight, 1);
+				orthographic.top = height / 2;
+				orthographic.bottom = -height / 2;
+				orthographic.left = (-height * aspect) / 2;
+				orthographic.right = (height * aspect) / 2;
+				orthographic.updateProjectionMatrix();
+				controls.minZoom = height / (2 * controls.maxDistance * halfFovTangent);
+				controls.maxZoom = height / (2 * controls.minDistance * halfFovTangent);
+			};
+			const setProjection = (projection: "perspective" | "orthographic") => {
+				if (
+					camera instanceof OrthographicCamera ===
+					(projection === "orthographic")
+				)
+					return;
+				const height = visibleHeight();
+				const next =
+					projection === "orthographic"
+						? new OrthographicCamera(-1, 1, 1, -1, camera.near, camera.far)
+						: new PerspectiveCamera(
+								40,
+								Math.max(element.clientWidth, 1) /
+									Math.max(element.clientHeight, 1),
+								camera.near,
+								camera.far,
+							);
+				next.position.copy(camera.position);
+				next.quaternion.copy(camera.quaternion);
+				next.up.copy(camera.up);
+				if (next instanceof OrthographicCamera) {
+					setOrthographicBounds(next, height);
+				} else {
+					next.position.copy(controls.target).add(
+						camera.position
+							.clone()
+							.sub(controls.target)
+							.setLength(height / (2 * halfFovTangent)),
+					);
+				}
+				camera = next;
+				controls.object = next;
+				controls.update();
+				schedule();
+			};
 			const resize = (width: number, height: number) => {
 				output.setPixelRatio(viewerPixelRatio());
 				output.setSize(width, height, false);
-				camera.aspect = width / height;
+				if (camera instanceof OrthographicCamera) {
+					setOrthographicBounds(camera, camera.top - camera.bottom);
+				} else camera.aspect = width / height;
 				camera.updateProjectionMatrix();
 				schedule();
 			};
@@ -290,6 +373,7 @@ export function SceneViewport({
 				zoom,
 				view,
 				resize,
+				setProjection,
 				update: (update) => {
 					update(group);
 					schedule();
@@ -307,6 +391,7 @@ export function SceneViewport({
 				Math.max(element.clientHeight, 1),
 			);
 			view(topView ? "top" : "iso");
+			setProjection(currentProjection.current);
 		} catch (error) {
 			dispose();
 			reportError(

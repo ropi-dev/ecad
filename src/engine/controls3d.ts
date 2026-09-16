@@ -1,5 +1,6 @@
 import {
 	MOUSE,
+	type OrthographicCamera,
 	type PerspectiveCamera,
 	Quaternion,
 	TOUCH,
@@ -9,7 +10,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { wheelDelta } from "./navigation";
 
 export function create3DControls(
-	camera: PerspectiveCamera,
+	camera: PerspectiveCamera | OrthographicCamera,
 	canvas: HTMLElement,
 	fit: () => void,
 	{ lockTop = false }: { lockTop?: boolean } = {},
@@ -29,6 +30,7 @@ export function create3DControls(
 	let orbitPointer: number | null = null;
 	const orbit = (deltaX: number, deltaY: number) => {
 		if (!controls.enabled || !controls.enableRotate) return;
+		const camera = controls.object;
 		const distance = Math.hypot(deltaX, deltaY);
 		if (distance === 0) return;
 		const scale =
