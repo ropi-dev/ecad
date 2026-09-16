@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("mesh X-ray surfaces preserve holes, brighten overlaps and scale outlines with edge distance", async ({
+test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-relative and scene-relative outlines", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/renderer.html");
@@ -74,16 +74,17 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and scale outlines w
 		try {
 			const widths: number[][] = [];
 			for (const [distance, z] of [
-				[12, 0],
+				[6, 0],
 				[24, 0],
-				[24, 12],
+				[24, 18],
+				[48, 0],
 			])
 				for (const ratio of [1, 2]) {
 					renderer.setPixelRatio(ratio);
 					renderer.setSize(1024, 1024);
 					for (const mesh of meshes) mesh.position.z = z;
-					camera.position.set(0, 0, distance);
-					camera.lookAt(0, 0, 0);
+					camera.position.set(3, 0, distance);
+					camera.lookAt(3, 0, 0);
 					camera.updateMatrixWorld();
 					const width = renderer.domElement.width;
 					const projectX = (x: number) =>
@@ -118,6 +119,15 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and scale outlines w
 					const outline = sample(projectX(4 - 0.025));
 					const holeOutline = sample(projectX(2 + 0.025));
 					check(
+						Math.abs(outline[3] - 255 * 0.1) <= 1,
+						"overlapping contours retain a single outline opacity",
+					);
+					check(
+						sample(projectX(4) + 2 * ratio)[3] === 0 &&
+							sample(projectX(2) - 2 * ratio)[3] === 0,
+						"both contours stay inside the filled surface",
+					);
+					check(
 						outline[3] > fill[3] && fill[3] > 0,
 						`outline brighter than interior at ${distance}/${z}/${ratio}: ${outline} ${fill}`,
 					);
@@ -125,28 +135,30 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and scale outlines w
 						holeOutline[3] > fill[3],
 						`hole outline at ${distance}/${z}/${ratio}`,
 					);
-					// Measure rendered pixels, including perspective and raster rounding.
 					let outlinePixels = 0;
 					for (let x = Math.floor(projectX(3)); x < projectX(4.1); x++) {
 						if (sample(x)[3] > fill[3]) outlinePixels++;
 					}
-					const expectedWidth = projectX(4) - projectX(4 - 0.05);
+					const expectedWidth = Math.max(
+						6 * ratio,
+						projectX(4) - projectX(4 - 0.05),
+					);
 					check(
 						Math.abs(outlinePixels - expectedWidth) < 1.5,
-						`physical outline width at ${distance}/${z}/${ratio}: ${outlinePixels}, expected ${expectedWidth}`,
+						`combined outline width at ${distance}/${z}/${ratio}: ${outlinePixels}, expected ${expectedWidth}`,
 					);
 					widths.push([distance, z, ratio, outlinePixels / ratio]);
 					check(
 						fill[2] > fill[0],
 						`cool X-ray tint at ${distance}/${z}/${ratio}`,
 					);
-					check(sample(projectX(0))[3] === 0, "clear hole stays empty");
+					check(sample(projectX(1.5))[3] === 0, "clear hole stays empty");
 					stylePlanarObject3D(meshes[1], drawing.color, 1, true);
 					meshes[1].visible = true;
 					render();
 					const overlap = sample(projectX(3));
 					check(overlap[2] > fill[2], "overlaps accumulate light");
-					check(sample(projectX(0))[3] === 0, "overlapping holes stay empty");
+					check(sample(projectX(1.5))[3] === 0, "overlapping holes stay empty");
 					meshes[1].visible = false;
 					stylePlanarObject3D(meshes[0], drawing.color, 1, false);
 					render();
@@ -158,7 +170,13 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and scale outlines w
 					);
 				}
 			for (const ratio of [1, 2]) {
-				const [near, far, raised] = widths.filter((entry) => entry[2] === ratio);
+				const [near, far, raised, distant] = widths.filter(
+					(entry) => entry[2] === ratio,
+				);
+				check(
+					Math.abs(far[3] - 6) < 1 && Math.abs(distant[3] - 6) < 1,
+					"camera-relative outline keeps its CSS width across zoom levels",
+				);
 				check(near[3] > far[3] * 1.5, "zoom changes the apparent outline width");
 				check(
 					raised[3] > far[3] * 1.5,
