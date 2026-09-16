@@ -1,0 +1,122 @@
+import { expect, test } from "@playwright/test";
+import { demoFiles } from "../fixtures/demo-gerbers";
+
+test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
+	await page.goto("/tests/browser/generic-viewers.html");
+	const rulers = page.getByRole("img", {
+		name: "Drawing rulers in millimetres",
+	});
+	await expect(rulers).toBeVisible();
+	const xZero = rulers.locator('[data-axis="x"][data-value="0"] line');
+	const yZero = rulers.locator('[data-axis="y"][data-value="0"] line');
+	await expect(xZero).toHaveAttribute("x1", "400");
+	await expect
+		.poll(async () => Number(await yZero.getAttribute("y1")))
+		.toBeCloseTo(300);
+	const checkProjection = async () => {
+		await expect
+			.poll(async () =>
+				page.evaluate(() => {
+					const { position, projectionY, type } = JSON.parse(
+						document.querySelector("#camera")!.textContent!,
+					);
+					const scale =
+						(300 * projectionY) /
+						(type === "OrthographicCamera" ? 1 : position[2]);
+					const ticks = [
+						...document.querySelectorAll<SVGGElement>(".viewport-rulers g"),
+					];
+					const grid = [
+						...document.querySelectorAll<SVGLineElement>(".viewport-grid line"),
+					];
+					return (
+						grid.length > 10 &&
+						grid.length === ticks.length &&
+						ticks.every((tick, index) => {
+							const horizontal = tick.dataset.axis === "x";
+							const value = Number(tick.dataset.value);
+							const actual = Number(
+								tick
+									.querySelector("line")!
+									.getAttribute(horizontal ? "x1" : "y1"),
+							);
+							const expected = horizontal
+								? 400 + (value - position[0]) * scale
+								: 300 - (value - position[1]) * scale;
+							return (
+								Math.abs(actual - expected) < 0.01 &&
+								Number(grid[index].getAttribute(horizontal ? "x1" : "y1")) ===
+									actual &&
+								Number(grid[index].getAttribute(horizontal ? "y2" : "x2")) ===
+									(horizontal ? 600 : 800)
+							);
+						})
+					);
+				}),
+			)
+			.toBe(true);
+	};
+	for (const orthographic of [false, true]) {
+		if (orthographic)
+			await page.getByRole("button", { name: "Orthographic camera" }).click();
+		await page.getByRole("button", { name: "Pan", exact: true }).click();
+		await expect(xZero).not.toHaveAttribute("x1", "400");
+		await checkProjection();
+		const beforeZoom = await page.locator("#snapshot").textContent();
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await expect(page.locator("#snapshot")).not.toHaveText(beforeZoom!);
+		await checkProjection();
+		await page.getByRole("button", { name: "Reset", exact: true }).click();
+		await expect(xZero).toHaveAttribute("x1", "400");
+	}
+	// Panning well beyond the board still leaves a full, aligned grid.
+	await page.locator("canvas").hover({ position: { x: 500, y: 100 } });
+	const beforePan = await page.locator("#snapshot").textContent();
+	await page.mouse.wheel(2000, 1500);
+	await expect(page.locator("#snapshot")).not.toHaveText(beforePan!);
+	await checkProjection();
+	// The ruler overlay must leave canvas navigation available.
+	expect(
+		await rulers.evaluate((element) => getComputedStyle(element).pointerEvents),
+	).toBe("none");
+});
+
+test("rulers fit desktop and mobile Gerber viewports without covering controls", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles(
+		demoFiles.slice(0, 3).map((file) => ({
+			name: file.name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(file.source),
+		})),
+	);
+	const rulers = page.getByRole("img", {
+		name: "Drawing rulers in millimetres",
+	});
+	for (const [width, height] of [
+		[1280, 800],
+		[390, 844],
+	]) {
+		await page.setViewportSize({ width, height });
+		await expect(rulers).toHaveAttribute("width", String(width));
+		await expect(rulers).toHaveAttribute("height", String(height));
+		await expect(page.locator(".viewport-grid")).toHaveAttribute(
+			"width",
+			String(width),
+		);
+		await expect(page.locator(".viewport-grid")).toHaveAttribute(
+			"height",
+			String(height),
+		);
+		for (const selector of [".file-bar", ".layer-panel"]) {
+			const box = (await page.locator(selector).boundingBox())!;
+			expect(box.x).toBeGreaterThan(24);
+			expect(box.y).toBeGreaterThan(24);
+		}
+		await page.screenshot({
+			path: test.info().outputPath(`rulers-${width}.png`),
+		});
+	}
+});

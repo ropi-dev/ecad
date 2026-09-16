@@ -46,7 +46,7 @@ export function Viewer2D({
 						: "Switch to orthographic camera"
 				}
 				onClick={() => setOrthographic((value) => !value)}
-				className="absolute bottom-16 left-3 z-10 min-h-10 sm:bottom-3 rounded-lg border border-white/20 bg-slate-900 px-3 text-sm font-semibold text-white/80 hover:bg-slate-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+				className="absolute bottom-16 left-9 z-10 min-h-10 sm:bottom-3 rounded-lg border border-white/20 bg-slate-900 px-3 text-sm font-semibold text-white/80 hover:bg-slate-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 			>
 				{orthographic ? "Orthographic" : "Perspective"}
 			</button>

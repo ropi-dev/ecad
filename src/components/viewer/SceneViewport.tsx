@@ -38,6 +38,7 @@ import type { Viewer3DHandle } from "./types/Viewer3DHandle";
 import { useRenderFrame } from "./useRenderFrame";
 import { useViewportSize } from "./useViewportSize";
 import { ViewControls3D } from "./ViewControls3D";
+import { ViewportRulers, type ViewportRulersHandle } from "./ViewportRulers";
 
 export interface SceneViewportHandle extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;
@@ -75,6 +76,7 @@ export function SceneViewport({
 	const size = useViewportSize(host);
 	const { draw, schedule, cancel } = useRenderFrame();
 	const axes = useRef<AxisIndicatorHandle>(null);
+	const rulers = useRef<ViewportRulersHandle>(null);
 	const reportChange = useEffectEvent((snapshot: Viewer2DSnapshot) =>
 		onChange?.(snapshot),
 	);
@@ -187,17 +189,19 @@ export function SceneViewport({
 				throw new Error("The scene has no finite geometry to display.");
 			const sphere = bounds.getBoundingSphere(new Sphere());
 			const radius = Math.max(sphere.radius, 0.001);
-			grid = new GridHelper(radius * 6, 60, "#64748b", "#334155");
-			grid.rotation.x = Math.PI / 2;
-			grid.position.set(
-				sphere.center.x,
-				sphere.center.y,
-				bounds.min.z - radius * 0.002,
-			);
-			grid.material.transparent = true;
-			grid.material.opacity = 0.6;
-			grid.material.depthWrite = false;
-			scene.add(grid);
+			if (!topView) {
+				grid = new GridHelper(radius * 6, 60, "#64748b", "#334155");
+				grid.rotation.x = Math.PI / 2;
+				grid.position.set(
+					sphere.center.x,
+					sphere.center.y,
+					bounds.min.z - radius * 0.002,
+				);
+				grid.material.transparent = true;
+				grid.material.opacity = 0.6;
+				grid.material.depthWrite = false;
+				scene.add(grid);
+			}
 			camera.near = radius / 1000;
 			camera.far = radius * 1000;
 			let fittedDistance = 1;
@@ -228,6 +232,14 @@ export function SceneViewport({
 					if (topView) {
 						const width = Math.max(element.clientWidth, 1);
 						const height = Math.max(element.clientHeight, 1);
+						rulers.current?.update({
+							camera: {
+								x: camera.position.x,
+								y: camera.position.y,
+								scale: height / visibleHeight(),
+							},
+							viewport: { width, height },
+						});
 						reportChange({
 							backend: "WebGL 2 · Three.js",
 							message: "",
@@ -471,7 +483,8 @@ export function SceneViewport({
 	}, [size]);
 	return (
 		<>
-			<div ref={host} className="absolute inset-0 overflow-hidden" />
+			<div ref={host} className="absolute inset-0 z-[1] overflow-hidden" />
+			{cameraMode === "top" && <ViewportRulers ref={rulers} />}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D

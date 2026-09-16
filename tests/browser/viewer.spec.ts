@@ -277,7 +277,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 				return (
 					!!panel &&
 					!!canvas &&
-					Math.abs(panel.y - (width <= 600 ? 64 : 16)) < 1 &&
+					Math.abs(panel.y - (width <= 600 ? 88 : 40)) < 1 &&
 					panel.x > width / 4 &&
 					panel.x + panel.width <= width &&
 					canvas.x === 0 &&
