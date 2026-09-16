@@ -2,6 +2,7 @@ import { Color, SRGBColorSpace } from "three";
 
 export const UNFOCUSED_FILL_OPACITY = 0.06;
 export const UNFOCUSED_OUTLINE_OPACITY = 0.1;
+export const UNFOCUSED_CAMERA_OUTLINE_OPACITY = 0.15;
 /** Outline width in CSS pixels, independent of zoom and display density. */
 export const UNFOCUSED_OUTLINE_WIDTH = 6;
 /** Inward contour width in millimeters for perspective mesh viewers. */

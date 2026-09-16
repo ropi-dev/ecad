@@ -119,9 +119,14 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 					const outline = sample(projectX(4 - 0.025));
 					const holeOutline = sample(projectX(2 + 0.025));
 					check(
-						Math.abs(outline[3] - 255 * 0.1) <= 1,
-						"overlapping contours retain a single outline opacity",
+						Math.abs(sample(projectX(4) - 2 * ratio)[3] - 255 * 0.2) <= 1,
+						"camera-relative contour retains its stronger opacity where contours overlap",
 					);
+					if (projectX(4) - projectX(4 - 0.04) > 7 * ratio)
+						check(
+							Math.abs(sample(projectX(4 - 0.04))[3] - 255 * 0.1) <= 1,
+							"scene-relative contour retains its opacity beyond the camera-relative contour",
+						);
 					check(
 						sample(projectX(4) + 2 * ratio)[3] === 0 &&
 							sample(projectX(2) - 2 * ratio)[3] === 0,

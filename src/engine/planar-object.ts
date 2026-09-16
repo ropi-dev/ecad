@@ -18,6 +18,7 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import {
+	UNFOCUSED_CAMERA_OUTLINE_OPACITY,
 	UNFOCUSED_FILL_OPACITY,
 	UNFOCUSED_OUTLINE_OPACITY,
 	UNFOCUSED_OUTLINE_WIDTH,
@@ -64,8 +65,8 @@ export function createPlanarObject3D(
 		object.add(fill);
 		for (const { linewidth, worldUnits } of compiled.edges.length
 			? [
-					{ linewidth: UNFOCUSED_OUTLINE_WIDTH_MM * 2, worldUnits: true },
 					{ linewidth: UNFOCUSED_OUTLINE_WIDTH * 2, worldUnits: false },
+					{ linewidth: UNFOCUSED_OUTLINE_WIDTH_MM * 2, worldUnits: true },
 				]
 			: []) {
 			const edgeGeometry = new LineSegmentsGeometry().setPositions(
@@ -86,7 +87,7 @@ export function createPlanarObject3D(
 			const edges = new LineSegments2(edgeGeometry, edgeMaterial);
 			edges.userData.planarPart = "outline";
 			edges.visible = false;
-			edges.renderOrder = 1;
+			edges.renderOrder = worldUnits ? 2 : 1;
 			object.add(edges);
 		}
 		return object;
@@ -118,8 +119,11 @@ export function stylePlanarObject3D(
 			part.material instanceof LineMaterial
 		) {
 			part.visible = xray;
+			const outlineOpacity = part.material.worldUnits
+				? UNFOCUSED_OUTLINE_OPACITY
+				: UNFOCUSED_CAMERA_OUTLINE_OPACITY;
 			part.material.opacity =
-				opacity * (UNFOCUSED_OUTLINE_OPACITY - UNFOCUSED_FILL_OPACITY);
+				opacity * (outlineOpacity - UNFOCUSED_FILL_OPACITY);
 		}
 	});
 }
