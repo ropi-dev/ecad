@@ -186,6 +186,7 @@ export function SceneViewport({
 			let ready = false;
 			draw.current = () => {
 				try {
+					content.update(output, camera);
 					output.render(scene, camera);
 					axes.current?.update(camera.quaternion);
 					if (topView) {

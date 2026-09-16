@@ -1,5 +1,13 @@
-import { Group, type Material, Mesh, type Object3D } from "three";
+import {
+	type Camera,
+	Group,
+	type Material,
+	Mesh,
+	type Object3D,
+	type WebGLRenderer,
+} from "three";
 import { createPlanarObject3D, disposePlanarObject3D } from "./planar-object";
+import { PlanarOutline } from "./planar-outline";
 import type { PlanarObject, SceneLayer } from "./types";
 
 export type { PlanarObject } from "./types";
@@ -51,7 +59,19 @@ export function createSceneDisplay(source: ViewerScene) {
 				group.add(object);
 			}
 		}
-		return { object: group, dispose };
+		let hasOutlines = false;
+		group.traverse((part) => {
+			if (part instanceof PlanarOutline) hasOutlines = true;
+		});
+		const update = (renderer: WebGLRenderer, camera: Camera) => {
+			if (!hasOutlines) return;
+			group.updateWorldMatrix(true, true);
+			camera.updateWorldMatrix(true, false);
+			group.traverseVisible((part) => {
+				if (part instanceof PlanarOutline) part.updateDetail(renderer, camera);
+			});
+		};
+		return { object: group, dispose, update };
 	} catch (error) {
 		dispose();
 		throw error;

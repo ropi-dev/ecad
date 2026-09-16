@@ -12,6 +12,66 @@ export interface PlanarGeometry {
 	edges: Float32Array;
 }
 
+export function simplifyPlanarEdges(edges: Float32Array, tolerance: number) {
+	const result: number[] = [];
+	const squaredTolerance = tolerance * tolerance;
+	for (let start = 0; start < edges.length; ) {
+		let end = start + 6;
+		while (
+			end < edges.length &&
+			edges[end - 3] === edges[end] &&
+			edges[end - 2] === edges[end + 1] &&
+			(edges[end] !== edges[start] || edges[end + 1] !== edges[start + 1])
+		)
+			end += 6;
+		const count = (end - start) / 6;
+		const point = (index: number) =>
+			index === count ? end - 3 : start + index * 6;
+		const keep = new Set([0, count]);
+		const pending = [[0, count]];
+		while (pending.length) {
+			const [first, last] = pending[pending.length - 1];
+			pending.pop();
+			const a = point(first),
+				b = point(last);
+			const dx = edges[b] - edges[a],
+				dy = edges[b + 1] - edges[a + 1];
+			const length = dx * dx + dy * dy;
+			let furthest = -1;
+			let distance = squaredTolerance;
+			for (let index = first + 1; index < last; index++) {
+				const p = point(index);
+				const px = edges[p] - edges[a],
+					py = edges[p + 1] - edges[a + 1];
+				const t = length
+					? Math.max(0, Math.min(1, (px * dx + py * dy) / length))
+					: 0;
+				const squared = (px - t * dx) ** 2 + (py - t * dy) ** 2;
+				if (squared > distance) {
+					distance = squared;
+					furthest = index;
+				}
+			}
+			if (furthest !== -1) {
+				keep.add(furthest);
+				pending.push([first, furthest], [furthest, last]);
+			}
+		}
+		if (keep.size < 4) {
+			for (let index = start; index < end; index++) result.push(edges[index]);
+		} else {
+			const indices = [...keep].sort((a, b) => a - b);
+			for (let index = 1; index < indices.length; index++) {
+				const a = point(indices[index - 1]),
+					b = point(indices[index]);
+				result.push(edges[a], edges[a + 1], 0, edges[b], edges[b + 1], 0);
+			}
+		}
+		start = end;
+	}
+	return new Float32Array(result);
+}
+
 /** Resolve ordered exposures into real surfaces and their boundary segments. */
 export function compilePlanarGeometry(
 	objects: readonly SceneObject[],

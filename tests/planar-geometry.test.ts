@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compilePlanarGeometry } from "#/engine/planar-geometry";
+import {
+	compilePlanarGeometry,
+	simplifyPlanarEdges,
+} from "#/engine/planar-geometry";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
@@ -85,4 +88,52 @@ test("planar objects are real mesh geometry without maps or backing images", () 
 	});
 	assert.equal(meshes, 3);
 	disposePlanarObject3D(object);
+});
+
+test("outline simplification preserves closed contours within its distance tolerance", () => {
+	const circle = (radius: number, polarity: "dark" | "clear"): SceneObject => ({
+		...rect(radius * 2, polarity),
+		geometry: { type: "circle", x: 0, y: 0, radius },
+	});
+	const { edges } = compilePlanarGeometry([
+		circle(4, "dark"),
+		circle(2, "clear"),
+	]);
+	const tolerance = 0.005;
+	const simplified = simplifyPlanarEdges(edges, tolerance);
+	assert.ok(simplified.length < edges.length / 4);
+	for (let i = 0; i < edges.length; i += 6) {
+		let distance = Infinity;
+		for (let j = 0; j < simplified.length; j += 6) {
+			const dx = simplified[j + 3] - simplified[j];
+			const dy = simplified[j + 4] - simplified[j + 1];
+			const x = edges[i] - simplified[j];
+			const y = edges[i + 1] - simplified[j + 1];
+			const t = Math.max(
+				0,
+				Math.min(1, (x * dx + y * dy) / (dx * dx + dy * dy)),
+			);
+			distance = Math.min(distance, Math.hypot(x - t * dx, y - t * dy));
+		}
+		assert.ok(distance <= tolerance + 0.000001);
+	}
+	let rings = 0;
+	let start = 0;
+	for (let i = 0; i < simplified.length; i += 6) {
+		if (
+			simplified[i + 3] === simplified[start] &&
+			simplified[i + 4] === simplified[start + 1]
+		) {
+			rings++;
+			start = i + 6;
+		} else {
+			assert.equal(simplified[i + 3], simplified[i + 6]);
+			assert.equal(simplified[i + 4], simplified[i + 7]);
+		}
+	}
+	assert.equal(rings, 2);
+	const tiny = compilePlanarGeometry([circle(0.001, "dark")]).edges;
+	assert.deepEqual(simplifyPlanarEdges(tiny, tolerance), tiny);
+	const corners = compilePlanarGeometry([rect(4)]).edges;
+	assert.deepEqual(simplifyPlanarEdges(corners, tolerance), corners);
 });

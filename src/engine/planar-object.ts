@@ -15,7 +15,6 @@ import {
 	ZeroStencilOp,
 } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
-import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import {
 	UNFOCUSED_CAMERA_OUTLINE_OPACITY,
@@ -26,6 +25,7 @@ import {
 	UNFOCUSED_XRAY_COLOR,
 } from "./layer-style";
 import { compilePlanarGeometry, type PlanarGeometry } from "./planar-geometry";
+import { PlanarOutline } from "./planar-outline";
 import type { PlanarObject } from "./types";
 
 class PlanarFillMesh extends Mesh<BufferGeometry, MeshBasicMaterial> {
@@ -56,6 +56,7 @@ export function createPlanarObject3D(
 			opacity: source.opacity,
 			depthWrite: false,
 			side: DoubleSide,
+			forceSinglePass: true,
 			stencilRef: 1,
 			stencilFunc: AlwaysStencilFunc,
 			stencilZPass: ReplaceStencilOp,
@@ -84,7 +85,7 @@ export function createPlanarObject3D(
 				stencilFunc: EqualStencilFunc,
 				stencilZPass: ZeroStencilOp,
 			});
-			const edges = new LineSegments2(edgeGeometry, edgeMaterial);
+			const edges = new PlanarOutline(edgeGeometry, edgeMaterial);
 			edges.userData.planarPart = "outline";
 			edges.visible = false;
 			edges.renderOrder = worldUnits ? 2 : 1;
@@ -131,7 +132,8 @@ export function stylePlanarObject3D(
 export function disposePlanarObject3D(object: Object3D) {
 	object.traverse((part) => {
 		if (!(part instanceof Mesh)) return;
-		part.geometry.dispose();
+		if (part instanceof PlanarOutline) part.disposeGeometry();
+		else part.geometry.dispose();
 		for (const material of Array.isArray(part.material)
 			? part.material
 			: [part.material])

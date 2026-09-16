@@ -5,6 +5,13 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 }) => {
 	await page.goto("/tests/browser/renderer.html");
 	const result = await page.evaluate(async () => {
+		const stylePath = "/src/engine/layer-style.ts";
+		const {
+			UNFOCUSED_CAMERA_OUTLINE_OPACITY,
+			UNFOCUSED_OUTLINE_OPACITY,
+			UNFOCUSED_OUTLINE_WIDTH,
+			UNFOCUSED_OUTLINE_WIDTH_MM,
+		} = await import(stylePath);
 		const scenePath = "/src/engine/scene.ts";
 		const { createSceneDisplay }: typeof import("../../src/engine/scene") =
 			await import(scenePath);
@@ -104,6 +111,7 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 						return [...pixel];
 					};
 					const render = () => {
+						display.update(renderer, camera);
 						renderer.render(scene, camera);
 						check(
 							renderer.info.memory.textures === 0,
@@ -119,12 +127,20 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 					const outline = sample(projectX(4 - 0.025));
 					const holeOutline = sample(projectX(2 + 0.025));
 					check(
-						Math.abs(sample(projectX(4) - 2 * ratio)[3] - 255 * 0.2) <= 1,
+						Math.abs(
+							sample(projectX(4) - 2 * ratio)[3] -
+								255 * UNFOCUSED_CAMERA_OUTLINE_OPACITY,
+						) <= 1,
 						"camera-relative contour retains its stronger opacity where contours overlap",
 					);
-					if (projectX(4) - projectX(4 - 0.04) > 7 * ratio)
+					if (
+						projectX(4) - projectX(4 - 0.04) >
+						(UNFOCUSED_OUTLINE_WIDTH + 1) * ratio
+					)
 						check(
-							Math.abs(sample(projectX(4 - 0.04))[3] - 255 * 0.1) <= 1,
+							Math.abs(
+								sample(projectX(4 - 0.04))[3] - 255 * UNFOCUSED_OUTLINE_OPACITY,
+							) <= 1,
 							"scene-relative contour retains its opacity beyond the camera-relative contour",
 						);
 					check(
@@ -145,8 +161,8 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 						if (sample(x)[3] > fill[3]) outlinePixels++;
 					}
 					const expectedWidth = Math.max(
-						6 * ratio,
-						projectX(4) - projectX(4 - 0.05),
+						UNFOCUSED_OUTLINE_WIDTH * ratio,
+						projectX(4) - projectX(4 - UNFOCUSED_OUTLINE_WIDTH_MM),
 					);
 					check(
 						Math.abs(outlinePixels - expectedWidth) < 1.5,
@@ -179,10 +195,14 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 					(entry) => entry[2] === ratio,
 				);
 				check(
-					Math.abs(far[3] - 6) < 1 && Math.abs(distant[3] - 6) < 1,
+					Math.abs(far[3] - UNFOCUSED_OUTLINE_WIDTH) < 1 &&
+						Math.abs(distant[3] - UNFOCUSED_OUTLINE_WIDTH) < 1,
 					"camera-relative outline keeps its CSS width across zoom levels",
 				);
-				check(near[3] > far[3] * 1.5, "zoom changes the apparent outline width");
+				check(
+					near[3] > far[3] * 1.5,
+					"zoom changes the apparent outline width",
+				);
 				check(
 					raised[3] > far[3] * 1.5,
 					"closer object edges have thicker outlines at the same camera position",
