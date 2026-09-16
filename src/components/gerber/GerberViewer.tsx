@@ -50,6 +50,7 @@ export function GerberViewer({
 				}
 				const { object, index: order } = entry;
 				mesh.visible = object.visible;
+				mesh.userData.hoverEnabled = !focused || object.id === focusedLayerId;
 				mesh.position.z = order * LAYER_SPACING;
 				// Keep each object's surface and X-ray contours together in top-view order.
 				mesh.renderOrder = order;

@@ -15,8 +15,10 @@ import {
 	type Object3D,
 	OrthographicCamera,
 	PerspectiveCamera,
+	Raycaster,
 	Scene,
 	Sphere,
+	Vector2,
 	Vector3,
 	WebGLRenderer,
 } from "three";
@@ -28,6 +30,7 @@ import {
 	viewerPixelRatio,
 } from "#/engine/navigation.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene";
+import { createSceneHover, type SceneHover } from "#/engine/scene-hover";
 import { AxisIndicator } from "./AxisIndicator";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
 import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
@@ -115,6 +118,7 @@ export function SceneViewport({
 		let cleanup = () => {};
 		let renderer: WebGLRenderer | undefined;
 		let grid: GridHelper | undefined;
+		let hover: SceneHover | undefined;
 		let disposed = false;
 		const dispose = () => {
 			if (disposed) return;
@@ -122,6 +126,7 @@ export function SceneViewport({
 			cancel();
 			runtime.current = null;
 			cleanup();
+			hover?.dispose();
 			grid?.dispose();
 			renderer?.dispose();
 			renderer?.forceContextLoss();
@@ -197,8 +202,19 @@ export function SceneViewport({
 			camera.far = radius * 1000;
 			let fittedDistance = 1;
 			let ready = false;
+			let pointer: Vector2 | null = null;
+			const raycaster = new Raycaster();
+			hover = createSceneHover(content.entries);
+			scene.add(hover.object);
 			draw.current = () => {
 				try {
+					camera.updateMatrixWorld();
+					if (pointer) raycaster.setFromCamera(pointer, camera);
+					const highlighted =
+						hover?.update(
+							pointer ? raycaster.ray : null,
+							visibleHeight() / Math.max(element.clientHeight, 1),
+						) ?? 0;
 					content.update(output, camera);
 					output.render(scene, camera);
 					axes.current?.update(camera.quaternion);
@@ -222,7 +238,7 @@ export function SceneViewport({
 							},
 							zoom: currentZoom,
 							viewport: { width, height },
-							highlighted: 0,
+							highlighted,
 							diagnostics: {
 								fps: 0,
 								averageMs: 0,
@@ -386,6 +402,29 @@ export function SceneViewport({
 					"The 3D graphics context was lost. Reload the scene to restore the viewer.",
 				);
 			};
+			const clearHover = () => {
+				pointer = null;
+				schedule();
+			};
+			const moveHover = (event: PointerEvent) => {
+				if (event.buttons || event.pointerType === "touch") {
+					clearHover();
+					return;
+				}
+				const rect = canvas.getBoundingClientRect();
+				pointer = new Vector2(
+					((event.clientX - rect.left) / rect.width) * 2 - 1,
+					1 - ((event.clientY - rect.top) / rect.height) * 2,
+				);
+				schedule();
+			};
+			if (hover) {
+				canvas.addEventListener("pointermove", moveHover);
+				canvas.addEventListener("pointerleave", clearHover);
+				canvas.addEventListener("pointerdown", clearHover);
+				canvas.addEventListener("pointercancel", clearHover);
+				window.addEventListener("blur", clearHover);
+			}
 			canvas.addEventListener("keydown", onKey);
 			canvas.addEventListener("webglcontextlost", onLost);
 			controls.addEventListener("change", schedule);
@@ -402,6 +441,11 @@ export function SceneViewport({
 				},
 			};
 			cleanup = () => {
+				canvas.removeEventListener("pointermove", moveHover);
+				canvas.removeEventListener("pointerleave", clearHover);
+				canvas.removeEventListener("pointerdown", clearHover);
+				canvas.removeEventListener("pointercancel", clearHover);
+				window.removeEventListener("blur", clearHover);
 				controls.removeEventListener("change", schedule);
 				canvas.removeEventListener("keydown", onKey);
 				canvas.removeEventListener("webglcontextlost", onLost);

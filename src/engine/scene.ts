@@ -6,7 +6,12 @@ import {
 	type Object3D,
 	type WebGLRenderer,
 } from "three";
-import { createPlanarObject3D, disposePlanarObject3D } from "./planar-object";
+import type { PlanarGeometry } from "./planar-geometry";
+import {
+	createPlanarObject3D,
+	disposePlanarObject3D,
+	getPlanarGeometry,
+} from "./planar-object";
 import { PlanarOutline } from "./planar-outline";
 import type { PlanarObject, SceneLayer } from "./types";
 
@@ -18,6 +23,10 @@ export interface SpatialObject {
 export type ViewerObject = PlanarObject | SpatialObject;
 /** Ordered objects shared by both viewports. Units are millimetres. */
 export type ViewerScene = readonly ViewerObject[];
+export interface SceneDisplayEntry {
+	object: Object3D;
+	planar?: PlanarGeometry;
+}
 export function createPlanarObject(layer: SceneLayer): PlanarObject {
 	return { ...layer, type: "planar" };
 }
@@ -30,6 +39,7 @@ export function createSceneDisplay(source: ViewerScene) {
 	};
 	try {
 		const group = new Group();
+		const entries: SceneDisplayEntry[] = [];
 		const materials = new Map<Material, Material>();
 		const cloneMaterial = (material: Material) => {
 			let clone = materials.get(material);
@@ -52,11 +62,13 @@ export function createSceneDisplay(source: ViewerScene) {
 							: cloneMaterial(part.material);
 				});
 				group.add(object);
+				entries.push({ object, planar: getPlanarGeometry(entry.object) });
 			} else {
 				const object = createPlanarObject3D(entry);
 				object.renderOrder = index;
 				resources.push(() => disposePlanarObject3D(object));
 				group.add(object);
+				entries.push({ object, planar: getPlanarGeometry(object) });
 			}
 		}
 		let hasOutlines = false;
@@ -71,7 +83,7 @@ export function createSceneDisplay(source: ViewerScene) {
 				if (part instanceof PlanarOutline) part.updateDetail(renderer, camera);
 			});
 		};
-		return { object: group, dispose, update };
+		return { object: group, entries, dispose, update };
 	} catch (error) {
 		dispose();
 		throw error;

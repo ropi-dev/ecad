@@ -11,6 +11,17 @@ import type { Bounds, SceneObject } from "./types";
 export interface PlanarGeometry {
 	positions: Float32Array;
 	edges: Float32Array;
+	regions: PlanarRegion[];
+}
+
+export interface PlanarRegion {
+	/** Regions touching at a boundary vertex share a connected component. */
+	component: number;
+	start: number;
+	count: number;
+	edgeStart: number;
+	edgeCount: number;
+	bounds: Bounds;
 }
 
 export function simplifyPlanarEdges(edges: Float32Array, tolerance: number) {
@@ -142,19 +153,59 @@ export function compilePlanarGeometry(
 		flush();
 		for (const polygon of resolved) polygons.push(polygon);
 	}
-	const triangles = triangulate(polygons);
-	const positions = new Float32Array((triangles.length / 2) * 3);
-	for (let index = 0; index < triangles.length / 2; index++) {
-		positions[index * 3] = triangles[index * 2];
-		positions[index * 3 + 1] = triangles[index * 2 + 1];
-	}
+	const triangles = polygons.map((polygon) => triangulate([polygon]));
+	const positions = new Float32Array(
+		triangles.reduce((count, vertices) => count + (vertices.length / 2) * 3, 0),
+	);
 	const edges: number[] = [];
-	for (const polygon of polygons)
+	const regions: PlanarRegion[] = [];
+	const parents = polygons.map((_, index) => index);
+	const root = (index: number): number => {
+		while (parents[index] !== index) {
+			parents[index] = parents[parents[index]];
+			index = parents[index];
+		}
+		return index;
+	};
+	const vertices = new Map<string, number>();
+	let offset = 0;
+	for (const [component, polygon] of polygons.entries()) {
+		const triangle = triangles[component];
+		const region: PlanarRegion = {
+			component,
+			start: offset,
+			count: triangle.length / 2,
+			edgeStart: edges.length,
+			edgeCount: 0,
+			bounds: {
+				minX: Infinity,
+				minY: Infinity,
+				maxX: -Infinity,
+				maxY: -Infinity,
+			},
+		};
+		for (let index = 0; index < region.count; index++) {
+			positions[(offset + index) * 3] = triangle[index * 2];
+			positions[(offset + index) * 3 + 1] = triangle[index * 2 + 1];
+		}
+		offset += region.count;
 		for (const ring of polygon)
 			for (let index = 0; index < ring.length; index++) {
 				const a = ring[index],
 					b = ring[(index + 1) % ring.length];
+				const key = `${a[0]},${a[1]}`;
+				const previous = vertices.get(key);
+				if (previous !== undefined) parents[root(component)] = root(previous);
+				else vertices.set(key, component);
+				region.bounds.minX = Math.min(region.bounds.minX, a[0]);
+				region.bounds.minY = Math.min(region.bounds.minY, a[1]);
+				region.bounds.maxX = Math.max(region.bounds.maxX, a[0]);
+				region.bounds.maxY = Math.max(region.bounds.maxY, a[1]);
 				edges.push(a[0], a[1], 0, b[0], b[1], 0);
 			}
-	return { positions, edges: new Float32Array(edges) };
+		region.edgeCount = edges.length - region.edgeStart;
+		regions.push(region);
+	}
+	for (const region of regions) region.component = root(region.component);
+	return { positions, edges: new Float32Array(edges), regions };
 }

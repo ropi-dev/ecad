@@ -28,6 +28,11 @@ import { compilePlanarGeometry, type PlanarGeometry } from "./planar-geometry";
 import { PlanarOutline } from "./planar-outline";
 import type { PlanarObject } from "./types";
 
+const geometries = new WeakMap<Object3D, PlanarGeometry>();
+
+/** Reuse resolved surfaces for picking, including meshes borrowed by another viewer. */
+export const getPlanarGeometry = (object: Object3D) => geometries.get(object);
+
 class PlanarFillMesh extends Mesh<BufferGeometry, MeshBasicMaterial> {
 	onBeforeRender(renderer: WebGLRenderer) {
 		if (this.material.stencilWrite) renderer.clearStencil();
@@ -43,6 +48,7 @@ export function createPlanarObject3D(
 	object.name = source.name;
 	object.visible = source.visible;
 	object.userData.planarObject = true;
+	geometries.set(object, compiled);
 	try {
 		const geometry = new BufferGeometry();
 		geometry.setAttribute(
