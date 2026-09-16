@@ -1,4 +1,4 @@
-import { type Ref, useCallback } from "react";
+import { type ReactNode, type Ref, useCallback } from "react";
 import { Mesh, type Object3D } from "three";
 import type { ParsedStepFile } from "#/formats/parseStepFile";
 import type { Viewer3DHandle } from "../viewer/types/Viewer3DHandle";
@@ -12,6 +12,7 @@ export function StepViewer({
 	ref,
 	onReady,
 	onError,
+	extraControls,
 }: {
 	model: ParsedStepFile;
 	hidden: Set<number>;
@@ -19,6 +20,7 @@ export function StepViewer({
 	ref?: Ref<Viewer3DHandle>;
 	onReady: (ready: boolean) => void;
 	onError: (message: string) => void;
+	extraControls?: ReactNode;
 }) {
 	const updateScene = useCallback(
 		(group: Object3D) => {
@@ -41,6 +43,7 @@ export function StepViewer({
 			updateScene={updateScene}
 			onReady={onReady}
 			onError={onError}
+			extraControls={extraControls}
 			ariaLabel="3D STEP model"
 		/>
 	);

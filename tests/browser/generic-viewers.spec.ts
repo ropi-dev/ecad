@@ -35,6 +35,18 @@ for (const projection of ["perspective", "orthographic"] as const) {
 		};
 		await locked();
 		const canvas = page.locator("canvas");
+		await expect(
+			page.getByRole("toolbar", { name: "View controls", exact: true }),
+		).toHaveCount(1);
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await expect.poll(async () => (await state()).zoom).toBeCloseTo(1.25);
+		await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+		await expect.poll(async () => (await state()).zoom).toBeCloseTo(1);
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await page
+			.getByRole("button", { name: "Fit drawing", exact: true })
+			.click();
+		await expect.poll(async () => (await state()).zoom).toBeCloseTo(1);
 		const original = await state();
 		await page.getByRole("button", { name: "Pan", exact: true }).click();
 		await expect
@@ -150,6 +162,7 @@ test("3D viewer borrows a synthetic mesh while its owner manages resources", asy
 	expect(initial.created - initial.disposed).toBe(1);
 	const canvas = page.locator("canvas");
 	const capture = async () => {
+		await page.mouse.move(0, 0);
 		let image: Buffer = Buffer.alloc(0);
 		await expect(async () => {
 			image = await canvas.screenshot();
@@ -157,6 +170,13 @@ test("3D viewer borrows a synthetic mesh while its owner manages resources", asy
 		return image;
 	};
 	const original = await capture();
+	await expect(
+		page.getByRole("toolbar", { name: "3D view controls", exact: true }),
+	).toHaveCount(1);
+	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	expect((await capture()).equals(original)).toBe(false);
+	await page.getByRole("button", { name: "Fit model", exact: true }).click();
+	await expect.poll(async () => (await capture()).equals(original)).toBe(true);
 	await page.getByRole("button", { name: "Visibility" }).click();
 	expect((await capture()).equals(original)).toBe(false);
 	await page.getByRole("button", { name: "Replace scene" }).click();
@@ -187,3 +207,119 @@ test("3D viewer borrows a synthetic mesh while its owner manages resources", asy
 	expect(errors).toEqual([]);
 	expect(requests.filter((url) => url.includes("/formats/"))).toEqual([]);
 });
+
+for (const mode of ["perspective", "orthographic", "3d"] as const) {
+	test(`${mode} zoom percentage and camera stay within 25% to 800%`, async ({
+		page,
+	}) => {
+		await page.goto(
+			`/tests/browser/generic-viewers.html${mode === "3d" ? "?3d" : ""}`,
+		);
+		const canvas = page.locator("canvas");
+		const fit = page.getByRole("button", {
+			name: mode === "3d" ? "Fit model" : "Fit drawing",
+			exact: true,
+		});
+		const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
+		const zoomOut = page.getByRole("button", { name: "Zoom out", exact: true });
+		await expect(fit).toHaveText("100%");
+		if (mode === "orthographic")
+			await page.getByRole("button", { name: "Orthographic camera" }).click();
+		const camera = async () =>
+			JSON.parse((await page.locator("#camera").textContent()) || "{}");
+		await expect
+			.poll(async () => (await camera()).type)
+			.toBe(
+				mode === "orthographic" ? "OrthographicCamera" : "PerspectiveCamera",
+			);
+		const initial = await camera();
+		const viewDistance = (value: { position: number[]; target: number[] }) =>
+			Math.hypot(
+				...value.position.map(
+					(position, index) => position - value.target[index],
+				),
+			);
+		const actualZoom = async () => {
+			const current = await camera();
+			return mode === "orthographic"
+				? current.projectionY / initial.projectionY
+				: viewDistance(initial) / viewDistance(current);
+		};
+		const checkLimit = async (level: number) => {
+			await expect(fit).toHaveText(`${level * 100}%`);
+			await expect.poll(actualZoom).toBeCloseTo(level, 8);
+			await expect(level === 8 ? zoomIn : zoomOut).toBeDisabled();
+			await expect(level === 8 ? zoomOut : zoomIn).toBeEnabled();
+		};
+		await zoomIn.click();
+		await expect(fit).toHaveText("125%");
+		for (let index = 0; index < 9; index++) await zoomIn.click();
+		await checkLimit(8);
+		await canvas.focus();
+		await page.keyboard.press("+");
+		await checkLimit(8);
+		for (let index = 0; index < 16; index++) await zoomOut.click();
+		await checkLimit(0.25);
+		await canvas.focus();
+		await page.keyboard.press("-");
+		await checkLimit(0.25);
+		await fit.click();
+		await expect(fit).toHaveText("100%");
+		for (const deltaY of [-2000, 2000]) {
+			await canvas.evaluate((element, deltaY) => {
+				const bounds = element.getBoundingClientRect();
+				element.dispatchEvent(
+					new WheelEvent("wheel", {
+						ctrlKey: true,
+						deltaY,
+						clientX: bounds.x + bounds.width / 2,
+						clientY: bounds.y + bounds.height / 2,
+						bubbles: true,
+						cancelable: true,
+					}),
+				);
+			}, deltaY);
+			await checkLimit(deltaY < 0 ? 8 : 0.25);
+		}
+		await fit.click();
+		const bounds = (await canvas.boundingBox())!;
+		const cdp = await page.context().newCDPSession(page);
+		for (const [start, end, level] of [
+			[5, bounds.width * 0.4, 8],
+			[bounds.width * 0.4, 1, 0.25],
+		]) {
+			const points = (distance: number) =>
+				[-1, 1].map((direction, id) => ({
+					id,
+					x: bounds.x + bounds.width / 2 + direction * distance,
+					y: bounds.y + bounds.height / 2,
+				}));
+			await cdp.send("Input.dispatchTouchEvent", {
+				type: "touchStart",
+				touchPoints: points(start),
+			});
+			await cdp.send("Input.dispatchTouchEvent", {
+				type: "touchMove",
+				touchPoints: points(end),
+			});
+			await cdp.send("Input.dispatchTouchEvent", {
+				type: "touchEnd",
+				touchPoints: [],
+			});
+			await checkLimit(level);
+		}
+		await cdp.detach();
+		if (mode !== "3d") {
+			await page.getByRole("button", { name: "Orthographic camera" }).click();
+			await expect(fit).toHaveText("25%");
+			await expect(zoomOut).toBeDisabled();
+			await canvas.focus();
+			await page.keyboard.press("-");
+			await expect(fit).toHaveText("25%");
+		}
+		await fit.click();
+		await expect(fit).toHaveText("100%");
+		await expect(zoomIn).toBeEnabled();
+		await expect(zoomOut).toBeEnabled();
+	});
+}

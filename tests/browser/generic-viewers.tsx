@@ -9,6 +9,7 @@ import {
 	MeshStandardMaterial,
 	type Object3D,
 } from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { SceneLayer } from "../../src/engine/types";
 import { createPlanarObject } from "../../src/engine/scene";
 import { Viewer2D } from "../../src/components/viewer/Viewer2D";
@@ -35,9 +36,18 @@ const layer: SceneLayer = {
 	})),
 };
 const drawingScene = [createPlanarObject(layer)];
+const cameraTargets = new WeakMap<Object3D, number[]>();
+const updateControls = OrbitControls.prototype.update;
+OrbitControls.prototype.update = function (...args) {
+	const changed = updateControls.apply(this, args);
+	cameraTargets.set(this.object, this.target.toArray());
+	return changed;
+};
 Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
 	document.querySelector("#camera")!.textContent = JSON.stringify({
 		type: camera.type,
+		projectionY: camera.projectionMatrix.elements[5],
+		target: cameraTargets.get(camera),
 		direction: camera.getWorldDirection(new Vector3()).toArray(),
 		up: new Vector3(0, 1, 0).applyQuaternion(camera.quaternion).toArray(),
 		position: camera.position.toArray(),

@@ -1,6 +1,5 @@
 import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
-import type { Viewer3DHandle } from "../viewer/types/Viewer3DHandle";
 import { StepControls } from "./StepControls";
 import { StepParts } from "./StepParts";
 import { StepViewer } from "./StepViewer";
@@ -8,7 +7,6 @@ import { useStepFile } from "./useStepFile";
 
 export function StepWorkspace() {
 	const { model, loading, message, openFile, cancel, clear } = useStepFile();
-	const viewer = useRef<Viewer3DHandle>(null);
 	const [hidden, setHidden] = useState<Set<number>>(new Set());
 	const [wireframe, setWireframe] = useState(false);
 	const [ready, setReady] = useState(false);
@@ -83,9 +81,15 @@ export function StepWorkspace() {
 						model={model}
 						hidden={hidden}
 						wireframe={wireframe}
-						ref={viewer}
 						onReady={setReady}
 						onError={setRendererError}
+						extraControls={
+							<StepControls
+								enabled={ready}
+								wireframe={wireframe}
+								onWireframe={() => setWireframe((value) => !value)}
+							/>
+						}
 					/>
 					<StepParts
 						model={model}
@@ -124,20 +128,10 @@ export function StepWorkspace() {
 				</output>
 			)}
 			{model && (
-				<>
-					<p className="pointer-events-none absolute bottom-20 left-0 w-full px-4 text-center text-xs text-slate-400">
-						Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom
-						· F6 to fit
-					</p>
-					<StepControls
-						enabled={ready}
-						wireframe={wireframe}
-						onWireframe={() => setWireframe((value) => !value)}
-						fit={() => viewer.current?.fit()}
-						zoom={(factor) => viewer.current?.zoom(factor)}
-						view={(direction) => viewer.current?.view(direction)}
-					/>
-				</>
+				<p className="pointer-events-none absolute bottom-20 left-0 w-full px-4 text-center text-xs text-slate-400">
+					Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom ·
+					F6 to fit
+				</p>
 			)}
 			{dragging && (
 				<div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-xl border-2 border-dashed border-amber-200 bg-slate-900/90 text-lg text-amber-200">

@@ -1,6 +1,4 @@
-import { useRef, useState } from "react";
-import type { Viewer2DHandle } from "../viewer/types/Viewer2DHandle";
-import { GerberFooter } from "./GerberFooter";
+import { useState } from "react";
 import { GerberHeader } from "./GerberHeader";
 import { GerberViewer } from "./GerberViewer";
 import { LayerPanel } from "./LayerPanel";
@@ -15,8 +13,6 @@ export function GerberWorkspace() {
 		setLayers,
 	} = useGerberFile();
 	const [focusedLayerId, setFocusedLayerId] = useState<string>();
-	const viewer = useRef<Viewer2DHandle>(null);
-	const [ready, setReady] = useState(false);
 	const [rendererError, setRendererError] = useState("");
 	const message = [fileMessage, rendererError].filter(Boolean).join("; ");
 	return (
@@ -78,10 +74,8 @@ export function GerberWorkspace() {
 				<div className="relative min-h-0 min-w-0 flex-1">
 					{layers.length ? (
 						<GerberViewer
-							ref={viewer}
 							scene={layers}
 							focusedLayerId={focusedLayerId}
-							onReady={setReady}
 							onError={setRendererError}
 						/>
 					) : (
@@ -93,11 +87,6 @@ export function GerberWorkspace() {
 									: "Choose Gerber files or a ZIP archive to view them."}
 						</p>
 					)}
-					<GerberFooter
-						enabled={layers.length > 0 && ready}
-						resetView={() => viewer.current?.resetView()}
-						zoomView={(factor) => viewer.current?.zoomView(factor)}
-					/>
 				</div>
 			</div>
 		</main>

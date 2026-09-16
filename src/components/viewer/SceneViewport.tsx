@@ -1,9 +1,11 @@
 import {
+	type ReactNode,
 	type Ref,
 	useEffect,
 	useEffectEvent,
 	useImperativeHandle,
 	useRef,
+	useState,
 } from "react";
 import {
 	Box3,
@@ -19,7 +21,12 @@ import {
 	WebGLRenderer,
 } from "three";
 import { create3DControls } from "#/engine/controls3d.ts";
-import { handleViewerKeyDown, viewerPixelRatio } from "#/engine/navigation.ts";
+import {
+	handleViewerKeyDown,
+	MAX_ZOOM,
+	MIN_ZOOM,
+	viewerPixelRatio,
+} from "#/engine/navigation.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene";
 import { AxisIndicator } from "./AxisIndicator";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
@@ -27,6 +34,7 @@ import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
 import { useRenderFrame } from "./useRenderFrame";
 import { useViewportSize } from "./useViewportSize";
+import { ViewControls3D } from "./ViewControls3D";
 
 export interface SceneViewportHandle extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;
@@ -43,6 +51,7 @@ export interface SceneViewportProps {
 	onReady?: (ready: boolean) => void;
 	onError?: (message: string) => void;
 	ariaLabel?: string;
+	extraControls?: ReactNode;
 }
 
 export function SceneViewport({
@@ -55,7 +64,10 @@ export function SceneViewport({
 	onReady,
 	onError,
 	ariaLabel = "3D model",
+	extraControls,
 }: SceneViewportProps) {
+	const [controlsReady, setControlsReady] = useState(false);
+	const [zoomLevel, setZoomLevel] = useState(1);
 	const host = useRef<HTMLDivElement>(null);
 	const size = useViewportSize(host);
 	const { draw, schedule, cancel } = useRenderFrame();
@@ -63,7 +75,10 @@ export function SceneViewport({
 	const reportChange = useEffectEvent((snapshot: Viewer2DSnapshot) =>
 		onChange?.(snapshot),
 	);
-	const reportReady = useEffectEvent((ready: boolean) => onReady?.(ready));
+	const reportReady = useEffectEvent((ready: boolean) => {
+		setControlsReady(ready);
+		onReady?.(ready);
+	});
 	const reportError = useEffectEvent((message: string) => onError?.(message));
 	const runtime = useRef<
 		| (SceneViewportHandle & {
@@ -177,11 +192,9 @@ export function SceneViewport({
 			grid.material.transparent = true;
 			grid.material.opacity = 0.6;
 			grid.material.depthWrite = false;
-			if (cameraMode === "orbit") scene.add(grid);
+			scene.add(grid);
 			camera.near = radius / 1000;
 			camera.far = radius * 1000;
-			controls.minDistance = radius * 0.02;
-			controls.maxDistance = radius * 100;
 			let fittedDistance = 1;
 			let ready = false;
 			draw.current = () => {
@@ -189,10 +202,16 @@ export function SceneViewport({
 					content.update(output, camera);
 					output.render(scene, camera);
 					axes.current?.update(camera.quaternion);
+					const currentZoom =
+						fittedDistance / (visibleHeight() / (2 * halfFovTangent));
+					setZoomLevel(
+						Math.round(
+							Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom)) * 1e6,
+						) / 1e6,
+					);
 					if (topView) {
 						const width = Math.max(element.clientWidth, 1);
 						const height = Math.max(element.clientHeight, 1);
-						const distance = visibleHeight() / (2 * halfFovTangent);
 						reportChange({
 							backend: "WebGL 2 · Three.js",
 							message: "",
@@ -201,7 +220,7 @@ export function SceneViewport({
 								y: camera.position.y,
 								scale: height / visibleHeight(),
 							},
-							zoom: fittedDistance / distance,
+							zoom: currentZoom,
 							viewport: { width, height },
 							highlighted: 0,
 							diagnostics: {
@@ -251,6 +270,8 @@ export function SceneViewport({
 					.copy(sphere.center)
 					.addScaledVector(direction, (radius / Math.sin(halfFov)) * 1.3);
 				fittedDistance = camera.position.distanceTo(controls.target);
+				controls.minDistance = fittedDistance / MAX_ZOOM;
+				controls.maxDistance = fittedDistance / MIN_ZOOM;
 				if (camera instanceof OrthographicCamera) {
 					camera.zoom = 1;
 					setOrthographicBounds(camera, 2 * fittedDistance * halfFovTangent);
@@ -408,6 +429,22 @@ export function SceneViewport({
 		<>
 			<div ref={host} className="absolute inset-0 overflow-hidden" />
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
+			{controlsReady && (
+				<ViewControls3D
+					enabled={controlsReady}
+					zoomLevel={zoomLevel}
+					fit={() => runtime.current?.fit()}
+					zoom={(factor) => runtime.current?.zoom(factor)}
+					view={
+						cameraMode === "orbit"
+							? (direction) => runtime.current?.view(direction)
+							: undefined
+					}
+					fitLabel={cameraMode === "top" ? "Fit drawing" : "Fit model"}
+				>
+					{extraControls}
+				</ViewControls3D>
+			)}
 		</>
 	);
 }

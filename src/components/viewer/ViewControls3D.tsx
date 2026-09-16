@@ -1,5 +1,5 @@
-import { Maximize } from "lucide-react";
 import type { ReactNode } from "react";
+import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
 import { ZoomControls } from "./ZoomControls";
 
@@ -9,10 +9,12 @@ export function ViewControls3D({
 	fitLabel = "Fit model",
 	fit,
 	zoom,
+	zoomLevel,
 	view,
 }: Pick<Viewer3DHandle, "fit" | "zoom"> & {
 	view?: Viewer3DHandle["view"];
 	enabled: boolean;
+	zoomLevel: number;
 	children?: ReactNode;
 	fitLabel?: string;
 }) {
@@ -28,11 +30,14 @@ export function ViewControls3D({
 				zoom={zoom}
 				fit={fit}
 				enabled={enabled}
+				canZoomIn={zoomLevel < MAX_ZOOM}
+				canZoomOut={zoomLevel > MIN_ZOOM}
 				buttonClassName={button}
+				fitClassName={`${button} min-w-14 tabular-nums`}
 				fitLabel={fitLabel}
 				fitTitle={`${fitLabel} (F6 or double-click the mouse wheel)`}
 			>
-				<Maximize size={16} />
+				{Math.round(zoomLevel * 100)}%
 			</ZoomControls>
 			{view && (
 				<>

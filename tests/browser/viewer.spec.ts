@@ -89,7 +89,7 @@ test("Gerber reports unavailable 3D rendering and leaves file controls usable", 
 	await expect(page.locator("input[type=file]")).toBeEnabled();
 });
 
-test("displays an already parsed object from the top without file loading or page chrome", async ({
+test("displays an already parsed object with shared view controls and no file loading", async ({
 	page,
 }) => {
 	const requests: string[] = [];
@@ -102,15 +102,22 @@ test("displays an already parsed object from the top without file loading or pag
 		"aria-label",
 		/Gerber drawing.*Top view locked/,
 	);
-	await expect(page.locator("header, footer, input, button, dl")).toHaveCount(
-		0,
-	);
+	await expect(page.locator("header, footer, input, dl")).toHaveCount(0);
+	await expect(
+		page.getByRole("toolbar", { name: "View controls", exact: true }),
+	).toHaveCount(1);
 	expect(requests.some((url) => url.includes("parse.worker"))).toBe(false);
-	const capture = async () =>
-		(
+	const capture = async () => {
+		await page.mouse.move(0, 0);
+		return (
 			await canvas.screenshot({ style: "canvas { outline: none !important; }" })
 		).toString("base64");
+	};
 	const before = await capture();
+	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect.poll(capture).not.toBe(before);
+	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
+	await expect.poll(capture).toBe(before);
 	await canvas.focus();
 	await page.keyboard.press("+");
 	await expect.poll(capture).not.toBe(before);
