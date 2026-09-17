@@ -17,11 +17,16 @@ import type { SceneDisplayEntry } from "./scene";
 
 export interface SceneHover {
 	object: Object3D;
-	update: (ray: Ray | null, pixelSize: number) => number;
+	update: (
+		ray: Ray | null,
+		pixelSize: number,
+		target?: SceneTarget | null,
+	) => number;
+	getTarget: () => SceneTarget | undefined;
 	dispose: () => void;
 }
 
-interface Target {
+export interface SceneTarget {
 	entry: SceneDisplayEntry;
 	mesh: Mesh;
 	region?: number;
@@ -42,9 +47,10 @@ function materials(mesh: Mesh): Material[] {
 /** Geometry-based picking shared by planar drawings and spatial model parts. */
 export function createSceneHover(
 	entries: readonly SceneDisplayEntry[],
+	mode: "hover" | "selection" = "hover",
 ): SceneHover {
 	const object = new Group();
-	object.renderOrder = 1_000_000;
+	object.renderOrder = mode === "selection" ? 1_000_001 : 1_000_000;
 	object.userData.hoverHighlight = true;
 	const raycaster = new Raycaster();
 	const plane = new Plane();
@@ -62,7 +68,7 @@ export function createSceneHover(
 		});
 		return { entry, meshes };
 	});
-	let selected: Target | undefined;
+	let selected: SceneTarget | undefined;
 	let overlay: Mesh | undefined;
 	let ownsGeometry = false;
 	const clear = () => {
@@ -85,6 +91,13 @@ export function createSceneHover(
 			target.color.set(hoverLayerColor(`#${source.color.getHexString()}`));
 			// White surfaces cannot brighten further, but still need visible feedback.
 			if (target.color.equals(source.color)) target.color.set("#ffd166");
+			if (mode === "selection") target.color.set("#ffcc33");
+		}
+		if (mode === "selection") {
+			target.opacity = Math.max(source.opacity, 0.9);
+			// Keep selected model parts bright even on faces turned away from the light.
+			if ("emissive" in target && target.emissive instanceof Color)
+				target.emissive.set("#805000");
 		}
 		target.depthWrite = false;
 		target.polygonOffset = true;
@@ -97,9 +110,18 @@ export function createSceneHover(
 	};
 	return {
 		object,
-		update(ray, pixelSize) {
-			let target: Target | undefined;
-			if (ray) {
+		getTarget: () => selected,
+		update(ray, pixelSize, pinned) {
+			let target: SceneTarget | undefined = pinned ?? undefined;
+			if (
+				target &&
+				(!hoverable(target.mesh) ||
+					!materials(target.mesh).some(
+						(material) => material.visible && material.opacity > 0,
+					))
+			)
+				target = undefined;
+			if (ray && pinned === undefined) {
 				raycaster.ray.copy(ray);
 				for (const { entry, meshes } of surfaces) {
 					if (!hoverable(entry.object)) continue;

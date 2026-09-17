@@ -30,7 +30,11 @@ import {
 	viewerPixelRatio,
 } from "#/engine/navigation.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene";
-import { createSceneHover, type SceneHover } from "#/engine/scene-hover";
+import {
+	createSceneHover,
+	type SceneHover,
+	type SceneTarget,
+} from "#/engine/scene-hover";
 import { AxisIndicator } from "./AxisIndicator";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
 import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
@@ -70,6 +74,11 @@ export function SceneViewport({
 	ariaLabel = "3D model",
 	extraControls,
 }: SceneViewportProps) {
+	const [selectionInfo, setSelectionInfo] = useState<{
+		name: string;
+		kind: string;
+		dimensions: string;
+	} | null>(null);
 	const [controlsReady, setControlsReady] = useState(false);
 	const [zoomLevel, setZoomLevel] = useState(1);
 	const [activeProjection, setActiveProjection] = useState(projection);
@@ -119,10 +128,12 @@ export function SceneViewport({
 		const element = host.current;
 		if (!element) return;
 		reportReady(false);
+		setSelectionInfo(null);
 		let cleanup = () => {};
 		let renderer: WebGLRenderer | undefined;
 		let grid: GridHelper | undefined;
 		let hover: SceneHover | undefined;
+		let selection: SceneHover | undefined;
 		let disposed = false;
 		const dispose = () => {
 			if (disposed) return;
@@ -131,6 +142,7 @@ export function SceneViewport({
 			runtime.current = null;
 			cleanup();
 			hover?.dispose();
+			selection?.dispose();
 			grid?.dispose();
 			renderer?.dispose();
 			renderer?.forceContextLoss();
@@ -214,6 +226,14 @@ export function SceneViewport({
 			const raycaster = new Raycaster();
 			hover = createSceneHover(content.entries);
 			scene.add(hover.object);
+			selection = createSceneHover(content.entries, "selection");
+			scene.add(selection.object);
+			let selected: SceneTarget | null = null;
+			const clearSelection = () => {
+				selected = null;
+				setSelectionInfo(null);
+				schedule();
+			};
 			draw.current = () => {
 				try {
 					camera.updateMatrixWorld();
@@ -223,6 +243,8 @@ export function SceneViewport({
 							pointer ? raycaster.ray : null,
 							visibleHeight() / Math.max(element.clientHeight, 1),
 						) ?? 0;
+					if (selection?.update(null, 0, selected) === 0 && selected)
+						clearSelection();
 					content.update(output, camera);
 					output.render(scene, camera);
 					axes.current?.update(camera.quaternion);
@@ -404,12 +426,14 @@ export function SceneViewport({
 			};
 			const reset = fit;
 			const pan = (x: number, y: number) => controls.pan(-x, -y);
-			const onKey = (event: KeyboardEvent) =>
+			const onKey = (event: KeyboardEvent) => {
+				if (event.key === "Escape") clearSelection();
 				handleViewerKeyDown(event, {
 					fit: reset,
 					zoom,
 					fitOnF6: true,
 				});
+			};
 			const onLost = (event: Event) => {
 				event.preventDefault();
 				cancel();
@@ -422,7 +446,87 @@ export function SceneViewport({
 				pointer = null;
 				schedule();
 			};
+			let press: { id: number; x: number; y: number } | null = null;
+			const cancelPress = () => {
+				press = null;
+				clearHover();
+			};
+			const startPress = (event: PointerEvent) => {
+				press =
+					!press &&
+					event.isPrimary &&
+					event.button === 0 &&
+					!event.shiftKey &&
+					!event.ctrlKey &&
+					!event.altKey &&
+					!event.metaKey
+						? { id: event.pointerId, x: event.clientX, y: event.clientY }
+						: null;
+				clearHover();
+			};
+			const endPress = (event: PointerEvent) => {
+				const start = press;
+				press = null;
+				if (
+					!start ||
+					start.id !== event.pointerId ||
+					Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4
+				)
+					return;
+				const rect = canvas.getBoundingClientRect();
+				pointer = new Vector2(
+					((event.clientX - rect.left) / rect.width) * 2 - 1,
+					1 - ((event.clientY - rect.top) / rect.height) * 2,
+				);
+				camera.updateMatrixWorld();
+				raycaster.setFromCamera(pointer, camera);
+				hover?.update(
+					raycaster.ray,
+					visibleHeight() / Math.max(element.clientHeight, 1),
+				);
+				selected = hover?.getTarget() ?? null;
+				if (selected) {
+					const box = new Box3();
+					const planar = selected.entry.planar;
+					if (planar && selected.region !== undefined) {
+						for (const region of planar.regions.filter(
+							(region) => region.component === selected?.region,
+						)) {
+							box.expandByPoint(
+								new Vector3(region.bounds.minX, region.bounds.minY, 0),
+							);
+							box.expandByPoint(
+								new Vector3(region.bounds.maxX, region.bounds.maxY, 0),
+							);
+						}
+						box.applyMatrix4(selected.entry.object.matrixWorld);
+					} else box.setFromObject(selected.mesh);
+					const dimensions = box.getSize(new Vector3());
+					setSelectionInfo({
+						name:
+							selected.mesh.name ||
+							selected.entry.object.name ||
+							"Unnamed component",
+						kind:
+							planar && selected.region !== undefined
+								? `Connected shape ${selected.region + 1}`
+								: "3D part",
+						dimensions: `${(planar
+							? [dimensions.x, dimensions.y]
+							: dimensions.toArray()
+						)
+							.map((value) => value.toFixed(2))
+							.join(" × ")} mm`,
+					});
+				} else setSelectionInfo(null);
+				schedule();
+			};
 			const moveHover = (event: PointerEvent) => {
+				if (
+					press &&
+					Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4
+				)
+					press = null;
 				if (event.buttons || event.pointerType === "touch") {
 					clearHover();
 					return;
@@ -437,9 +541,10 @@ export function SceneViewport({
 			if (hover) {
 				canvas.addEventListener("pointermove", moveHover);
 				canvas.addEventListener("pointerleave", clearHover);
-				canvas.addEventListener("pointerdown", clearHover);
-				canvas.addEventListener("pointercancel", clearHover);
-				window.addEventListener("blur", clearHover);
+				canvas.addEventListener("pointerdown", startPress);
+				canvas.addEventListener("pointerup", endPress);
+				canvas.addEventListener("pointercancel", cancelPress);
+				window.addEventListener("blur", cancelPress);
 			}
 			canvas.addEventListener("keydown", onKey);
 			canvas.addEventListener("webglcontextlost", onLost);
@@ -459,9 +564,10 @@ export function SceneViewport({
 			cleanup = () => {
 				canvas.removeEventListener("pointermove", moveHover);
 				canvas.removeEventListener("pointerleave", clearHover);
-				canvas.removeEventListener("pointerdown", clearHover);
-				canvas.removeEventListener("pointercancel", clearHover);
-				window.removeEventListener("blur", clearHover);
+				canvas.removeEventListener("pointerdown", startPress);
+				canvas.removeEventListener("pointerup", endPress);
+				canvas.removeEventListener("pointercancel", cancelPress);
+				window.removeEventListener("blur", cancelPress);
 				controls.removeEventListener("change", schedule);
 				canvas.removeEventListener("keydown", onKey);
 				canvas.removeEventListener("webglcontextlost", onLost);
@@ -491,6 +597,20 @@ export function SceneViewport({
 				ref={host}
 				className="viewport-canvas absolute inset-0 overflow-hidden"
 			/>
+			{selectionInfo && (
+				<div
+					role="tooltip"
+					aria-label="Selected component"
+					className="pointer-events-none absolute bottom-20 left-4 z-20 max-w-[calc(100%-2rem)] rounded-lg border border-white/20 bg-slate-950/95 px-4 py-3 text-sm text-slate-100 shadow-lg"
+				>
+					<p className="break-words font-semibold">{selectionInfo.name}</p>
+					<p className="text-slate-300">{selectionInfo.kind}</p>
+					<p>Dimensions: {selectionInfo.dimensions}</p>
+					<p className="mt-1 text-xs text-slate-400">
+						Click empty space or press Escape to clear
+					</p>
+				</div>
+			)}
 			{cameraMode === "top" && <ViewportRulers ref={rulers} />}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (
