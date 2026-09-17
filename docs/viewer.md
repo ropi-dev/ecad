@@ -1,5 +1,15 @@
 # Gerber viewer
 
+## 2D shape editor
+
+Open `/editor`, or choose **2D editor** from either viewer. The editor uses `OrthographicViewer2D`, which reuses the shared viewport, rulers, grid, pan, zoom, and fit controls with a locked orthographic camera. The sheet border is landscape A3, 420 × 297 mm, with the origin at its lower-left corner.
+
+The drawing fills the screen, with navigation links at the upper left and the attributes panel floating at the upper right, as in the Gerber viewer. Choose Rectangle, Circle, Triangle, or Line from the bottom floating toolbar, then click inside the sheet to place a shape. The same toolbar contains Select, Pan, Delete, zoom, and fit controls. Placement returns to Select. Drag a shape to move it; shapes stay inside the sheet. The most recently placed shape wins when shapes overlap. Drag empty space to select every shape touched by a selection rectangle. Shift + drag adds shapes to the selection; Shift + click toggles a shape. Drag a selected shape to move the group, keeping its spacing at the sheet edges. Use Pan or middle-drag to move the view. Ctrl + scroll or pinch zooms, and F6 fits the sheet. Selecting a shape opens an attributes drawer with its type, ID, center position, and dimensions. Multiple selections show their count and overall bounds. Clearing the selection closes the drawer. With the drawing focused, arrow keys move the selected shapes by 1 mm, Shift + arrows by 10 mm, and Delete or Backspace removes the selection. Escape cancels a drag or clears selection. Shapes use fixed initial sizes and remain in memory for the current page session.
+
+`src/components/editor` owns the shapes and their graphics resources. Edits update the existing scene without resetting the camera. `OrthographicViewer2D` also accepts a general `ViewerScene` and the same reset, zoom, and pan handle as `Viewer2D`.
+
+## Viewing Gerber files
+
 Open Gerber files or ZIP archives to view their planar objects in the shared perspective viewport. Each Gerber file in an archive, including subfolders, becomes a separate layer, just as if it had been selected individually. Archive paths identify the layers; unrelated files and hidden metadata are skipped. Archives and individual files can be selected together and are added to the existing layers. Invalid files produce errors without discarding successful imports. Files are parsed in browser workers. Layer visibility, ordering, removal, and focus remain available; focusing a layer shows the others as cool blue X-ray outlines with faint interiors. Overlapping unfocused layers accumulate light, while clear holes stay transparent. The viewport requires WebGL 2 and reports an error if it cannot initialize.
 
 The Gerber adapter in `src/formats/gerber` targets Ucamco's [2026.05 specification](https://www.ucamco.com/en/guest/downloads/gerber-format), including X3 component attributes. Unsupported commands and malformed input produce diagnostics. Legacy negative images, nonidentity image transforms, and rectangular-aperture arc strokes are rejected.

@@ -66,6 +66,9 @@ export function StepWorkspace() {
 				<a href="/" className={button}>
 					Gerber viewer
 				</a>
+				<a href="/editor" className={button}>
+					2D editor
+				</a>
 			</header>
 			{(message || rendererError) && (
 				<div

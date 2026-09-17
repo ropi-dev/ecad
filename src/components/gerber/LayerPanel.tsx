@@ -1,6 +1,7 @@
 import { Eye, EyeOff, GripVertical, X } from "lucide-react";
 import { useState } from "react";
 import type { SceneLayer } from "#/engine";
+import { FloatingPanel } from "../viewer/FloatingPanel";
 
 export function LayerPanel({
 	layers,
@@ -26,7 +27,7 @@ export function LayerPanel({
 		setDrop(undefined);
 	};
 	return (
-		<aside className="layer-panel" aria-label="Layers">
+		<FloatingPanel label="Layers">
 			<ol
 				className="layer-list"
 				onDragOver={(event) => {
@@ -155,6 +156,6 @@ export function LayerPanel({
 			<output className="sr-only" aria-live="polite">
 				{announcement}
 			</output>
-		</aside>
+		</FloatingPanel>
 	);
 }

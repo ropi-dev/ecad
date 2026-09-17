@@ -58,3 +58,19 @@ body { margin: 0; }
 .viewport-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 .viewport-grid line { stroke: #334155; stroke-width: 1; opacity: .35; }
 .viewport-grid line[data-major="true"] { stroke: #64748b; opacity: .35; }
+
+.editor-tool[aria-pressed="true"] { border-color: #b88f61; background: #e8b77e12; color: #e8b77e; }
+.editor-surface { position: relative; flex: 1; min-width: 0; touch-action: none; }
+.editor-surface[data-tool="pan"] canvas { cursor: grab; }
+.editor-surface:not([data-tool="pan"]):not([data-tool="select"]) canvas { cursor: crosshair; }
+.editor-selection-rectangle { position: absolute; z-index: 2; pointer-events: none; border: 1px solid #e8b77e; background: #e8b77e25; }
+.editor-attributes { padding: 10px; }
+.editor-attributes header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editor-attributes h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.editor-attributes header button { width: 28px; }
+.editor-attributes p { margin: 12px 0 0; color: #9ba7b8; font-size: 12px; line-height: 1.7; }
+.editor-attributes .editor-selection-name { color: #e8b77e; font-size: 14px; }
+.editor-attributes dl { margin: 16px 0; font-size: 12px; }
+.editor-attributes dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #ffffff0a; }
+.editor-attributes dt { color: #9ba7b8; }
+.editor-attributes dd { margin: 0; font-variant-numeric: tabular-nums; }

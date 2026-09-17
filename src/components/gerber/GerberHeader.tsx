@@ -28,6 +28,12 @@ export function GerberHeader({
 			>
 				STEP viewer
 			</a>
+			<a
+				href="/editor"
+				className="add-gerber-files no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
+			>
+				2D editor
+			</a>
 		</header>
 	);
 }

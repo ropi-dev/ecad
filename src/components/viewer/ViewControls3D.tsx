@@ -4,6 +4,9 @@ import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
 import { ZoomControls } from "./ZoomControls";
 
+export const viewControlButtonClassName =
+	"flex h-10 min-w-10 items-center justify-center whitespace-nowrap rounded border border-white/20 px-2 text-xs text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white disabled:pointer-events-none disabled:opacity-40";
+
 export function ViewControls3D({
 	enabled,
 	children,
@@ -19,12 +22,11 @@ export function ViewControls3D({
 	enabled: boolean;
 	zoomLevel: number;
 	projection: "perspective" | "orthographic";
-	toggleProjection: () => void;
+	toggleProjection?: () => void;
 	children?: ReactNode;
 	fitLabel?: string;
 }) {
-	const button =
-		"flex h-10 min-w-10 items-center justify-center whitespace-nowrap rounded border border-white/20 px-2 text-xs text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white disabled:pointer-events-none disabled:opacity-40";
+	const button = viewControlButtonClassName;
 	return (
 		<div
 			role="toolbar"
@@ -44,25 +46,27 @@ export function ViewControls3D({
 			>
 				{Math.round(zoomLevel * 100)}%
 			</ZoomControls>
-			<button
-				type="button"
-				className={button}
-				disabled={!enabled}
-				aria-label="Orthographic camera"
-				aria-pressed={projection === "orthographic"}
-				title={
-					projection === "orthographic"
-						? "Switch to perspective camera"
-						: "Switch to orthographic camera"
-				}
-				onClick={toggleProjection}
-			>
-				{projection === "orthographic" ? (
-					<Square size={18} aria-hidden="true" />
-				) : (
-					<Box size={18} aria-hidden="true" />
-				)}
-			</button>
+			{toggleProjection && (
+				<button
+					type="button"
+					className={button}
+					disabled={!enabled}
+					aria-label="Orthographic camera"
+					aria-pressed={projection === "orthographic"}
+					title={
+						projection === "orthographic"
+							? "Switch to perspective camera"
+							: "Switch to orthographic camera"
+					}
+					onClick={toggleProjection}
+				>
+					{projection === "orthographic" ? (
+						<Square size={18} aria-hidden="true" />
+					) : (
+						<Box size={18} aria-hidden="true" />
+					)}
+				</button>
+			)}
 			{view && (
 				<>
 					<button

@@ -52,6 +52,9 @@ export interface SceneViewportProps {
 	scene: ViewerScene;
 	cameraMode: "top" | "orbit";
 	projection?: "perspective" | "orthographic";
+	lockProjection?: boolean;
+	selectionEnabled?: boolean;
+	interactionHint?: string;
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
 	updateScene?: (object: Object3D) => void;
@@ -66,6 +69,9 @@ export function SceneViewport({
 	scene: sourceScene,
 	cameraMode,
 	projection = "perspective",
+	lockProjection = false,
+	selectionEnabled = true,
+	interactionHint,
 	onChange,
 	updateScene,
 	ref,
@@ -167,9 +173,11 @@ export function SceneViewport({
 			canvas.tabIndex = 0;
 			canvas.setAttribute(
 				"aria-label",
-				cameraMode === "top"
-					? `${ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
-					: `${ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
+				interactionHint
+					? `${ariaLabel}. ${interactionHint}`
+					: cameraMode === "top"
+						? `${ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
+						: `${ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
 			);
 			canvas.className =
 				"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200";
@@ -177,7 +185,9 @@ export function SceneViewport({
 			const topView = cameraMode === "top";
 			const fieldOfView = topView ? 25 : 40;
 			let camera: PerspectiveCamera | OrthographicCamera =
-				new PerspectiveCamera(fieldOfView, 1, 0.01, 10000);
+				currentProjection.current === "orthographic"
+					? new OrthographicCamera(-1, 1, 1, -1, 0.01, 10000)
+					: new PerspectiveCamera(fieldOfView, 1, 0.01, 10000);
 			const halfFovTangent = Math.tan((fieldOfView * Math.PI) / 360);
 			const visibleHeight = () =>
 				camera instanceof OrthographicCamera
@@ -320,9 +330,23 @@ export function SceneViewport({
 				if (topView) direction.set(0, 0, 1);
 				else if (!direction.lengthSq()) direction.set(1, -1, 0.8).normalize();
 				controls.target.copy(sphere.center);
+				// A flat editor sheet fits its rectangle, with room for rulers and controls.
+				const viewportWidth = Math.max(element.clientWidth, 1);
+				const viewportHeight = Math.max(element.clientHeight, 1);
+				const sheetSize = bounds.getSize(new Vector3());
+				const fitDistance =
+					topView && lockProjection
+						? Math.max(
+								(sheetSize.y * viewportHeight) /
+									Math.max(viewportHeight - 144, 1),
+								(sheetSize.x * viewportHeight) /
+									Math.max(viewportWidth - 144, 1),
+							) /
+							(2 * halfFovTangent)
+						: (radius / Math.sin(halfFov)) * 1.3;
 				camera.position
 					.copy(sphere.center)
-					.addScaledVector(direction, (radius / Math.sin(halfFov)) * 1.3);
+					.addScaledVector(direction, fitDistance);
 				fittedDistance = camera.position.distanceTo(controls.target);
 				controls.minDistance = fittedDistance / MAX_ZOOM;
 				controls.maxDistance = fittedDistance / MIN_ZOOM;
@@ -538,7 +562,7 @@ export function SceneViewport({
 				);
 				schedule();
 			};
-			if (hover) {
+			if (hover && selectionEnabled) {
 				canvas.addEventListener("pointermove", moveHover);
 				canvas.addEventListener("pointerleave", clearHover);
 				canvas.addEventListener("pointerdown", startPress);
@@ -587,7 +611,17 @@ export function SceneViewport({
 			);
 		}
 		return dispose;
-	}, [sourceScene, cameraMode, ariaLabel, draw, schedule, cancel]);
+	}, [
+		sourceScene,
+		cameraMode,
+		ariaLabel,
+		interactionHint,
+		selectionEnabled,
+		lockProjection,
+		draw,
+		schedule,
+		cancel,
+	]);
 	useEffect(() => {
 		runtime.current?.resize(size.width, size.height);
 	}, [size]);
@@ -618,10 +652,13 @@ export function SceneViewport({
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
 					projection={activeProjection}
-					toggleProjection={() =>
-						setActiveProjection((current) =>
-							current === "perspective" ? "orthographic" : "perspective",
-						)
+					toggleProjection={
+						lockProjection
+							? undefined
+							: () =>
+									setActiveProjection((current) =>
+										current === "perspective" ? "orthographic" : "perspective",
+									)
 					}
 					fit={() => runtime.current?.fit()}
 					zoom={(factor) => runtime.current?.zoom(factor)}
