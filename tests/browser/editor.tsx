@@ -12,7 +12,7 @@ Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
 		camera: camera.type,
 		direction: camera.getWorldDirection(new Vector3()).toArray(),
 		origin: origin.toArray(), corner: corner.toArray(),
-		shapes: shapes?.children.filter((shape) => shape instanceof Mesh).map((shape) => ({ name: shape.name, x: shape.position.x, y: shape.position.y, selected: shape.material instanceof MeshBasicMaterial && shape.material.color.getHexString() === "e8b77e" })),
+		shapes: shapes?.children.filter((shape) => shape instanceof Mesh).map((shape) => ({ name: shape.name, width: shape.scale.x, height: shape.scale.y, rotation: shape.rotation.z, x: shape.position.x, y: shape.position.y, selected: shape.material instanceof MeshBasicMaterial && shape.material.color.getHexString() === "e8b77e" })),
 	});
 };
 

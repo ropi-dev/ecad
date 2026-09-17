@@ -20,12 +20,11 @@ import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { SelectionAttributes } from "./SelectionAttributes";
 import {
-	A3,
+	drawShape,
 	type EditorShape,
 	hitShape,
 	intersectsSelection,
 	moveShapes,
-	placeShape,
 	type ShapeKind,
 } from "./shapes";
 import { useEditorScene } from "./useEditorScene";
@@ -45,9 +44,10 @@ interface Drag {
 	start: Point;
 	startScreen: Point;
 	previousSelection: Set<number>;
-	mode: "move" | "marquee";
+	mode: "move" | "marquee" | "draw";
 	originals: EditorShape[];
 	created: boolean;
+	valid: boolean;
 	additive: boolean;
 }
 interface Marquee {
@@ -92,6 +92,21 @@ export function Editor2D() {
 		stop(event);
 		const point = pointAt(event, active.canvas);
 		if (!point) return;
+		if (active.mode === "draw") {
+			const original = active.originals[0];
+			const draft = drawShape(original.id, original.kind, active.start, point);
+			const scale = snapshot.current?.camera.scale ?? 1;
+			active.valid =
+				draft.width > 0 &&
+				draft.height > 0 &&
+				(draft.kind === "line"
+					? draft.width
+					: Math.min(draft.width, draft.height)) *
+					scale >=
+					3;
+			replaceShapes([draft]);
+			return;
+		}
 		if (active.mode === "move") {
 			replaceShapes(
 				moveShapes(active.originals, {
@@ -127,7 +142,7 @@ export function Editor2D() {
 		if (!active) return;
 		drag.current = null;
 		setMarquee(null);
-		if (cancel) {
+		if (cancel || (active.created && !active.valid)) {
 			if (active.created) {
 				const createdIds = new Set(active.originals.map((shape) => shape.id));
 				setShapes((current) =>
@@ -135,7 +150,7 @@ export function Editor2D() {
 				);
 			} else if (active.mode === "move") replaceShapes(active.originals);
 			setSelectedIds(active.previousSelection);
-		}
+		} else if (active.created) setTool("select");
 		if (active.canvas.hasPointerCapture(active.pointerId))
 			active.canvas.releasePointerCapture(active.pointerId);
 	};
@@ -196,20 +211,9 @@ export function Editor2D() {
 						let shape: EditorShape | undefined;
 						const created = tool !== "select";
 						if (created) {
-							if (
-								point.x < 0 ||
-								point.x > A3.width ||
-								point.y < 0 ||
-								point.y > A3.height
-							)
-								return;
-							shape = placeShape(
-								{ id: nextId.current++, kind: tool, ...point },
-								point,
-							);
+							shape = drawShape(nextId.current++, tool, point, point);
 							const added = shape;
 							setShapes((current) => [...current, added]);
-							setTool("select");
 						} else
 							shape = [...shapes]
 								.reverse()
@@ -246,9 +250,10 @@ export function Editor2D() {
 								y: event.clientY - rect.top,
 							},
 							previousSelection: selectedIds,
-							mode: shape ? "move" : "marquee",
+							mode: created ? "draw" : shape ? "move" : "marquee",
 							originals,
 							created,
+							valid: false,
 							additive: event.shiftKey,
 						};
 						canvas.setPointerCapture(event.pointerId);
@@ -272,7 +277,6 @@ export function Editor2D() {
 						if (event.key === "Escape") {
 							if (drag.current) finishDrag(true);
 							else setSelectedIds(new Set());
-							setTool("select");
 						} else if (
 							selected.length > 0 &&
 							(event.key === "Delete" || event.key === "Backspace")
@@ -348,7 +352,7 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Choose a shape, then click the sheet to place it. Drag shapes to move. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. Arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
+							interactionHint="Choose a shape, then drag to draw it. Rectangles and triangles use two opposite corners, circles use a center and radius, and lines use two endpoints. Release to finish or press Escape to cancel. Drag shapes to move. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. Arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
 						/>
 					)}
 					{marquee && (

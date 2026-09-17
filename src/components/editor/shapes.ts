@@ -1,34 +1,73 @@
 import type { Bounds, Point } from "#/engine/types";
 
 export const A3 = { width: 420, height: 297 } as const;
-export const shapeSizes = {
-	rectangle: { width: 50, height: 30 },
-	circle: { width: 30, height: 30 },
-	triangle: { width: 40, height: 35 },
-	line: { width: 55, height: 1 },
-} as const;
-export type ShapeKind = keyof typeof shapeSizes;
+export type ShapeKind = "rectangle" | "circle" | "triangle" | "line";
 export interface EditorShape extends Point {
 	id: number;
 	kind: ShapeKind;
+	width: number;
+	height: number;
+	rotation: number;
 }
 
-export function placeShape(shape: EditorShape, point: Point): EditorShape {
-	const { width, height } = shapeSizes[shape.kind];
+/** Rectangles and triangles use opposite corners; circles use center/radius; lines use endpoints. */
+export function drawShape(
+	id: number,
+	kind: ShapeKind,
+	start: Point,
+	end: Point,
+): EditorShape {
+	const first = start;
+	const last = end;
+	const dx = last.x - first.x;
+	const dy = last.y - first.y;
+	if (kind === "circle") {
+		const radius = Math.hypot(dx, dy);
+		return {
+			id,
+			kind,
+			...first,
+			width: radius * 2,
+			height: radius * 2,
+			rotation: 0,
+		};
+	}
 	return {
-		...shape,
-		x: Math.max(width / 2, Math.min(A3.width - width / 2, point.x)),
-		y: Math.max(height / 2, Math.min(A3.height - height / 2, point.y)),
+		id,
+		kind,
+		x: (first.x + last.x) / 2,
+		y: (first.y + last.y) / 2,
+		width: kind === "line" ? Math.hypot(dx, dy) : Math.abs(dx),
+		height: kind === "line" ? 1 : Math.abs(dy),
+		rotation: kind === "line" ? Math.atan2(dy, dx) : 0,
+	};
+}
+
+export function shapeBounds(shape: EditorShape): Bounds {
+	const cos = Math.abs(Math.cos(shape.rotation));
+	const sin = Math.abs(Math.sin(shape.rotation));
+	const halfWidth = (shape.width * cos + shape.height * sin) / 2;
+	const halfHeight = (shape.width * sin + shape.height * cos) / 2;
+	return {
+		minX: shape.x - halfWidth,
+		maxX: shape.x + halfWidth,
+		minY: shape.y - halfHeight,
+		maxY: shape.y + halfHeight,
 	};
 }
 
 export function hitShape(shape: EditorShape, point: Point, tolerance: number) {
-	const { width, height } = shapeSizes[shape.kind];
-	const x = Math.abs(point.x - shape.x);
-	const y = point.y - shape.y;
+	const { width, height } = shape;
+	const dx = point.x - shape.x;
+	const dy = point.y - shape.y;
+	const x = Math.abs(
+		dx * Math.cos(shape.rotation) + dy * Math.sin(shape.rotation),
+	);
+	const y = -dx * Math.sin(shape.rotation) + dy * Math.cos(shape.rotation);
 	if (shape.kind === "circle") return Math.hypot(x, y) <= width / 2;
 	if (shape.kind === "triangle") {
 		return (
+			height > 0 &&
 			y >= -height / 2 &&
 			y <= height / 2 &&
 			x <= (width / 2) * (0.5 - y / height)
@@ -42,47 +81,48 @@ export function hitShape(shape: EditorShape, point: Point, tolerance: number) {
 
 /** Select any shape touched by the rectangle, including partially covered shapes. */
 export function intersectsSelection(shape: EditorShape, bounds: Bounds) {
-	const { width, height } = shapeSizes[shape.kind];
+	const { width, height } = shape;
 	if (shape.kind === "circle") {
 		const x = Math.max(bounds.minX, Math.min(bounds.maxX, shape.x));
 		const y = Math.max(bounds.minY, Math.min(bounds.maxY, shape.y));
 		return Math.hypot(x - shape.x, y - shape.y) <= width / 2;
 	}
-	const left = shape.x - width / 2;
-	const right = shape.x + width / 2;
-	const bottom = shape.y - height / 2;
-	const top = shape.y + height / 2;
+	const own = shapeBounds(shape);
 	if (
-		right < bounds.minX ||
-		left > bounds.maxX ||
-		top < bounds.minY ||
-		bottom > bounds.maxY
+		own.maxX < bounds.minX ||
+		own.minX > bounds.maxX ||
+		own.maxY < bounds.minY ||
+		own.minY > bounds.maxY
 	)
 		return false;
+	if (shape.kind === "line") {
+		// The remaining separating axes are the line's local X and Y axes.
+		const dx = (bounds.minX + bounds.maxX) / 2 - shape.x;
+		const dy = (bounds.minY + bounds.maxY) / 2 - shape.y;
+		const halfWidth = (bounds.maxX - bounds.minX) / 2;
+		const halfHeight = (bounds.maxY - bounds.minY) / 2;
+		const cos = Math.cos(shape.rotation),
+			sin = Math.sin(shape.rotation);
+		return (
+			Math.abs(dx * cos + dy * sin) <=
+				width / 2 + halfWidth * Math.abs(cos) + halfHeight * Math.abs(sin) &&
+			Math.abs(-dx * sin + dy * cos) <=
+				height / 2 + halfWidth * Math.abs(sin) + halfHeight * Math.abs(cos)
+		);
+	}
 	if (shape.kind !== "triangle") return true;
-	// At the lowest overlapping Y, the triangle has its widest overlapping slice.
-	const y = Math.max(bottom, bounds.minY);
-	const halfWidth = ((width / 2) * (top - y)) / height;
+	const y = Math.max(own.minY, bounds.minY);
+	const halfWidth = height > 0 ? ((width / 2) * (own.maxY - y)) / height : 0;
 	return (
 		shape.x + halfWidth >= bounds.minX && shape.x - halfWidth <= bounds.maxX
 	);
 }
 
-/** Clamp the whole selection together so its spacing survives contact with the sheet edge. */
+/** Translate every selected shape equally, including outside the paper guide. */
 export function moveShapes(shapes: EditorShape[], delta: Point): EditorShape[] {
-	if (!shapes.length) return shapes;
-	let minX = -Infinity,
-		maxX = Infinity,
-		minY = -Infinity,
-		maxY = Infinity;
-	for (const shape of shapes) {
-		const { width, height } = shapeSizes[shape.kind];
-		minX = Math.max(minX, width / 2 - shape.x);
-		maxX = Math.min(maxX, A3.width - width / 2 - shape.x);
-		minY = Math.max(minY, height / 2 - shape.y);
-		maxY = Math.min(maxY, A3.height - height / 2 - shape.y);
-	}
-	const x = Math.max(minX, Math.min(maxX, delta.x));
-	const y = Math.max(minY, Math.min(maxY, delta.y));
-	return shapes.map((shape) => ({ ...shape, x: shape.x + x, y: shape.y + y }));
+	return shapes.map((shape) => ({
+		...shape,
+		x: shape.x + delta.x,
+		y: shape.y + delta.y,
+	}));
 }

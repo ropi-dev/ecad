@@ -14,7 +14,7 @@ import {
 	Vector3,
 } from "three";
 import type { ViewerScene } from "#/engine/scene";
-import { A3, type EditorShape, shapeSizes } from "./shapes";
+import { A3, type EditorShape } from "./shapes";
 
 function createEditorAssets() {
 	const triangle = new Shape();
@@ -89,7 +89,7 @@ export function useEditorScene(
 			// Geometry and materials are shared and owned by this hook, including removed shapes.
 			drawing.clear();
 			for (const [index, shape] of shapes.entries()) {
-				const size = shapeSizes[shape.kind];
+				const size = shape;
 				const mesh = new Mesh(
 					assets.geometries[shape.kind],
 					selectedIds.has(shape.id) ? assets.selected : assets.fill,
@@ -97,11 +97,13 @@ export function useEditorScene(
 				mesh.name = `${shape.kind} ${shape.id}`;
 				mesh.position.set(shape.x, shape.y, 0);
 				mesh.scale.set(size.width, size.height, 1);
+				mesh.rotation.z = shape.rotation;
 				mesh.renderOrder = index + 1;
 				drawing.add(mesh);
 				if (selectedIds.has(shape.id)) {
 					const outline = new LineLoop(assets.frame, assets.selection);
 					outline.position.copy(mesh.position);
+					outline.rotation.copy(mesh.rotation);
 					outline.scale.set(size.width + 4, size.height + 4, 1);
 					outline.renderOrder = shapes.length + 1;
 					drawing.add(outline);

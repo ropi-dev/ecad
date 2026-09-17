@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { FloatingPanel } from "../viewer/FloatingPanel";
-import { type EditorShape, shapeSizes } from "./shapes";
+import { type EditorShape, shapeBounds } from "./shapes";
 
 export function SelectionAttributes({
 	shapes,
@@ -11,18 +11,11 @@ export function SelectionAttributes({
 }) {
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
-	const left = Math.min(
-		...shapes.map((shape) => shape.x - shapeSizes[shape.kind].width / 2),
-	);
-	const right = Math.max(
-		...shapes.map((shape) => shape.x + shapeSizes[shape.kind].width / 2),
-	);
-	const bottom = Math.min(
-		...shapes.map((shape) => shape.y - shapeSizes[shape.kind].height / 2),
-	);
-	const top = Math.max(
-		...shapes.map((shape) => shape.y + shapeSizes[shape.kind].height / 2),
-	);
+	const bounds = shapes.map(shapeBounds);
+	const left = Math.min(...bounds.map((box) => box.minX));
+	const right = Math.max(...bounds.map((box) => box.maxX));
+	const bottom = Math.min(...bounds.map((box) => box.minY));
+	const top = Math.max(...bounds.map((box) => box.maxY));
 	const mm = (value: number) => `${value.toFixed(1)} mm`;
 	const attributes = single
 		? [
@@ -30,11 +23,17 @@ export function SelectionAttributes({
 				["ID", String(single.id)],
 				["Center X", mm(single.x)],
 				["Center Y", mm(single.y)],
-				["Width", mm(shapeSizes[single.kind].width)],
-				["Height", mm(shapeSizes[single.kind].height)],
-				...(single.kind === "circle"
-					? [["Radius", mm(shapeSizes.circle.width / 2)]]
-					: []),
+				...(single.kind === "line"
+					? [
+							["Length", mm(single.width)],
+							["Stroke width", mm(single.height)],
+							["Angle", `${((single.rotation * 180) / Math.PI).toFixed(1)}°`],
+						]
+					: [
+							["Width", mm(single.width)],
+							["Height", mm(single.height)],
+						]),
+				...(single.kind === "circle" ? [["Radius", mm(single.width / 2)]] : []),
 			]
 		: [
 				["Shapes", String(shapes.length)],

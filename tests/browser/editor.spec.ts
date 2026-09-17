@@ -5,7 +5,7 @@ interface State {
 	direction: number[];
 	origin: number[];
 	corner: number[];
-	shapes: { name: string; x: number; y: number; selected: boolean }[];
+	shapes: { name: string; x: number; y: number; selected: boolean; width: number; height: number; rotation: number }[];
 }
 const state = async (page: Page): Promise<State> => JSON.parse(await page.locator("#editor-scene").textContent() || "{}");
 async function screen(page: Page, x: number, y: number) {
@@ -28,18 +28,26 @@ async function dragTo(page: Page, from: [number, number], to: [number, number]) 
 	await page.mouse.move(end.x, end.y, { steps: 4 });
 	await page.mouse.up();
 }
+async function createShape(page: Page, kind: string, x: number, y: number) {
+	await page.getByRole("button", { name: kind, exact: true }).click();
+	if (kind === "Circle") await dragTo(page, [x, y], [x + 15, y]);
+	else if (kind === "Line") await dragTo(page, [x - 27.5, y], [x + 27.5, y]);
+	else {
+		const [width, height] = kind === "Rectangle" ? [50, 30] : [40, 35];
+		await dragTo(page, [x - width / 2, y - height / 2], [x + width / 2, y + height / 2]);
+	}
+}
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
 });
 
-test("places every shape, drags without panning, clamps to A3, and deletes", async ({ page }) => {
+test("draws every shape, moves beyond A3 without panning, and deletes", async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	const before = await state(page);
 	for (const [index, kind] of ["Rectangle", "Circle", "Triangle", "Line"].entries()) {
-		await page.getByRole("button", { name: kind, exact: true }).click();
-		await clickAt(page, 70 + index * 85, 150);
+		await createShape(page, kind, 70 + index * 85, 150);
 		await expect.poll(async () => (await state(page)).shapes.length).toBe(index + 1);
 	}
 	await dragTo(page, [70, 150], [100, 180]);
@@ -47,12 +55,12 @@ test("places every shape, drags without panning, clamps to A3, and deletes", asy
 	expect((await state(page)).shapes[0].y).toBeCloseTo(180, 1);
 	expect((await state(page)).origin).toEqual(before.origin);
 	await dragTo(page, [100, 180], [-30, 330]);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(25);
-	expect((await state(page)).shapes[0].y).toBe(282);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-30, 4);
+	expect((await state(page)).shapes[0].y).toBeCloseTo(330, 4);
 	await page.keyboard.press("ArrowRight");
 	await page.keyboard.press("Shift+ArrowDown");
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(26);
-	expect((await state(page)).shapes[0].y).toBe(272);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-29, 4);
+	expect((await state(page)).shapes[0].y).toBeCloseTo(320, 4);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
@@ -80,8 +88,7 @@ test("stays orthographic through navigation and edits after zoom and resize", as
 	await page.setViewportSize({ width: 1000, height: 800 });
 	await expect.poll(async () => (await page.locator("canvas").boundingBox())?.width).toBe(1000);
 	await expect(checkCamera).toPass();
-	await page.getByRole("button", { name: "Circle", exact: true }).click();
-	await clickAt(page, 210, 150);
+	await createShape(page, "Circle", 210, 150);
 	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(210, 1);
 	await dragTo(page, [210, 150], [230, 180]);
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(180, 1);
@@ -92,8 +99,7 @@ test("stays orthographic through navigation and edits after zoom and resize", as
 
 test("Escape rolls back a drag and overlapping shapes select the top shape", async ({ page }) => {
 	for (const kind of ["Rectangle", "Circle"]) {
-		await page.getByRole("button", { name: kind, exact: true }).click();
-		await clickAt(page, 210, 150);
+		await createShape(page, kind, 210, 150);
 	}
 	await dragTo(page, [210, 150], [260, 180]);
 	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(260, 1);
@@ -115,8 +121,7 @@ const selectedNames = async (page: Page) => (await state(page)).shapes.filter((s
 
 test("rectangle selection previews, moves and deletes the group without panning", async ({ page }) => {
 	for (const [kind, x] of [["Rectangle", 100], ["Circle", 180], ["Triangle", 260]] as const) {
-		await page.getByRole("button", { name: kind, exact: true }).click();
-		await clickAt(page, x, 150);
+		await createShape(page, kind, x, 150);
 	}
 	const before = await state(page);
 	// Start at the upper-right and drag backwards across both shapes.
@@ -135,11 +140,11 @@ test("rectangle selection previews, moves and deletes the group without panning"
 	await dragTo(page, [100, 150], [120, 170]);
 	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(200, 1);
 	await dragTo(page, [120, 170], [-25, 170]);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(25);
-	expect((await state(page)).shapes[1].x).toBeCloseTo(105, 1);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-25, 4);
+	expect((await state(page)).shapes[1].x).toBeCloseTo(55, 1);
 	await page.keyboard.press("Shift+ArrowRight");
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(35);
-	expect((await state(page)).shapes[1].x).toBeCloseTo(115, 1);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-15, 4);
+	expect((await state(page)).shapes[1].x).toBeCloseTo(65, 1);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await state(page)).shapes.map((shape) => shape.name)).toEqual(["triangle 3"]);
 	await expect(page.getByRole("complementary", { name: "Selection attributes" })).toHaveCount(0);
@@ -147,8 +152,7 @@ test("rectangle selection previews, moves and deletes the group without panning"
 
 test("selection works after zoom, supports Shift additions and cancels with Escape", async ({ page }) => {
 	for (const [kind, x] of [["Rectangle", 100], ["Circle", 180], ["Triangle", 260], ["Line", 330]] as const) {
-		await page.getByRole("button", { name: kind, exact: true }).click();
-		await clickAt(page, x, 100);
+		await createShape(page, kind, x, 100);
 	}
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
@@ -181,8 +185,7 @@ test("selection works after zoom, supports Shift additions and cancels with Esca
 test("attributes reuse the floating layer panel and follow the selected shape", async ({ page }) => {
 	const panel = page.getByRole("complementary", { name: "Selection attributes" });
 	await expect(panel).toHaveCount(0);
-	await page.getByRole("button", { name: "Circle", exact: true }).click();
-	await clickAt(page, 150, 100);
+	await createShape(page, "Circle", 150, 100);
 	await expect(panel).toHaveClass("layer-panel");
 	await expect(panel.locator(".layer-list")).toHaveCount(1);
 	await expect(panel.getByRole("list")).toHaveCount(0);
@@ -197,4 +200,92 @@ test("attributes reuse the floating layer panel and follow the selected shape", 
 	await panel.getByRole("button", { name: "Clear selection" }).click();
 	await expect(panel).toHaveCount(0);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+});
+
+test("draws a live two-corner rectangle and retains its dimensions when moved", async ({ page }) => {
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	const start = await screen(page, 80, 100);
+	const end = await screen(page, 160, 145);
+	const original = await state(page);
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y, { steps: 4 });
+	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(80, 4);
+	await expect.poll(async () => (await state(page)).shapes[0]?.height).toBeCloseTo(45, 4);
+	await expect(page.getByRole("complementary", { name: "Selection attributes" })).toContainText("80.0 mm");
+	await page.screenshot({ path: test.info().outputPath("drawing-rectangle.png") });
+	await page.mouse.up();
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+	expect((await state(page)).origin).toEqual(original.origin);
+	await dragTo(page, [120, 122.5], [140, 152.5]);
+	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(140, 4);
+	expect((await state(page)).shapes[0].width).toBeCloseTo(80, 4);
+	expect((await state(page)).shapes[0].height).toBeCloseTo(45, 4);
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await dragTo(page, [280, 200], [220, 175]);
+	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(60, 4);
+	expect((await state(page)).shapes[1].height).toBeCloseTo(25, 4);
+	expect((await state(page)).shapes[1].x).toBeCloseTo(250, 4);
+});
+
+test("clicks and cancelled drafts create nothing, and drawing extends beyond the paper", async ({ page }) => {
+	await createShape(page, "Circle", 210, 150);
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await clickAt(page, 100, 100);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toHaveAttribute("aria-pressed", "true");
+	const start = await screen(page, 100, 100);
+	const end = await screen(page, 160, 140);
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	await page.keyboard.press("Escape");
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	await expect.poll(() => selectedNames(page)).toEqual(["circle 1"]);
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await dragTo(page, [100, 100], [160, 100]);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	await dragTo(page, [100, 100], [-30, -30]);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(35, 4);
+	const drawn = (await state(page)).shapes[1];
+	expect(drawn.x).toBeCloseTo(35, 4);
+	expect(drawn.y).toBeCloseTo(35, 4);
+	expect(drawn.width).toBeCloseTo(130, 4);
+	expect(drawn.height).toBeCloseTo(130, 4);
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await dragTo(page, [-40, 160], [-10, 190]);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	await expect.poll(async () => (await state(page)).shapes[2].x).toBeCloseTo(-25, 4);
+	await dragTo(page, [-25, 175], [-10, 200]);
+	await expect.poll(async () => (await state(page)).shapes[2].y).toBeCloseTo(200, 4);
+	await page.screenshot({ path: test.info().outputPath("drawn-outside-paper.png") });
+});
+
+test("draws circles, triangles and diagonal lines with accurate hit selection", async ({ page }) => {
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await dragTo(page, [100, 100], [130, 140]);
+	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(50, 4);
+	expect((await state(page)).shapes[0].rotation).toBeCloseTo(Math.atan2(40, 30), 4);
+	await clickAt(page, 70, 70);
+	await clickAt(page, 115, 120);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
+	// The empty corner of the diagonal line's bounding box is not part of the line.
+	await dragTo(page, [99, 135], [103, 139]);
+	await expect.poll(() => selectedNames(page)).toEqual([]);
+	await dragTo(page, [100, 115], [125, 130]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
+	await dragTo(page, [115, 120], [135, 140]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(135, 4);
+	await page.getByRole("button", { name: "Circle", exact: true }).click();
+	await dragTo(page, [250, 100], [290, 100]);
+	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(80, 4);
+	expect((await state(page)).shapes[1].height).toBeCloseTo(80, 4);
+	await expect(page.getByRole("complementary", { name: "Selection attributes" })).toContainText("40.0 mm");
+	await page.getByRole("button", { name: "Triangle", exact: true }).click();
+	await dragTo(page, [100, 200], [160, 240]);
+	await expect.poll(async () => (await state(page)).shapes[2]?.width).toBeCloseTo(60, 4);
+	expect((await state(page)).shapes[2].height).toBeCloseTo(40, 4);
 });
