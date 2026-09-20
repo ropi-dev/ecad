@@ -5,9 +5,15 @@ interface State {
 	direction: number[];
 	origin: number[];
 	corner: number[];
+	preview: { x: number; y: number; width: number; height: number; rotation: number } | null;
 	shapes: { name: string; x: number; y: number; selected: boolean; width: number; height: number; rotation: number }[];
 }
 const state = async (page: Page): Promise<State> => JSON.parse(await page.locator("#editor-scene").textContent() || "{}");
+const lineEndpoints = async (page: Page) => (await state(page)).shapes.filter((shape) => shape.name.startsWith("line ")).map((shape) => {
+	const dx = Math.cos(shape.rotation) * shape.width / 2;
+	const dy = Math.sin(shape.rotation) * shape.width / 2;
+	return [shape.x - dx, shape.y - dy, shape.x + dx, shape.y + dy].map((value) => Number(value.toFixed(4)));
+});
 async function screen(page: Page, x: number, y: number) {
 	const view = await state(page);
 	const box = (await page.locator("canvas").boundingBox())!;
@@ -20,6 +26,10 @@ async function clickAt(page: Page, x: number, y: number) {
 	const point = await screen(page, x, y);
 	await page.mouse.click(point.x, point.y);
 }
+async function moveAt(page: Page, x: number, y: number) {
+	const point = await screen(page, x, y);
+	await page.mouse.move(point.x, point.y);
+}
 async function dragTo(page: Page, from: [number, number], to: [number, number]) {
 	const start = await screen(page, ...from);
 	const end = await screen(page, ...to);
@@ -31,11 +41,19 @@ async function dragTo(page: Page, from: [number, number], to: [number, number]) 
 async function createShape(page: Page, kind: string, x: number, y: number) {
 	await page.getByRole("button", { name: kind, exact: true }).click();
 	if (kind === "Circle") await dragTo(page, [x, y], [x + 15, y]);
-	else if (kind === "Line") await dragTo(page, [x - 27.5, y], [x + 27.5, y]);
-	else {
+	else if (kind === "Line") {
+		await clickAt(page, x - 27.5, y);
+		await clickAt(page, x + 27.5, y);
+		await page.keyboard.press("Enter");
+	} else {
 		const [width, height] = kind === "Rectangle" ? [50, 30] : [40, 35];
 		await dragTo(page, [x - width / 2, y - height / 2], [x + width / 2, y + height / 2]);
 	}
+}
+async function createLineChain(page: Page, points: [number, number][]) {
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	for (const point of points) await clickAt(page, ...point);
+	await page.keyboard.press("Enter");
 }
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
@@ -274,21 +292,345 @@ test("clicks and cancelled drafts create nothing, and drawing extends beyond the
 	await page.screenshot({ path: test.info().outputPath("drawn-outside-paper.png") });
 });
 
-test("draws circles, triangles and diagonal lines with accurate hit selection", async ({ page }) => {
+test("line clicks commit orthogonal segments and pointer release keeps the preview", async ({ page }) => {
+	const lineTool = page.getByRole("button", { name: "Line", exact: true });
+	await lineTool.click();
+	await dragTo(page, [100, 100], [160, 120]);
+	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(60, 4);
+	let view = await state(page);
+	expect(view.shapes).toEqual([]);
+	expect(view.preview?.x).toBeCloseTo(130, 4);
+	expect(view.preview?.y).toBeCloseTo(100, 4);
+	expect(view.preview?.rotation).toBeCloseTo(0, 4);
+	await clickAt(page, 160, 120);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	await expect(lineTool).toHaveAttribute("aria-pressed", "true");
+	await moveAt(page, 172, 165);
+	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(65, 4);
+	view = await state(page);
+	expect(view.shapes).toHaveLength(1);
+	expect(view.preview?.x).toBeCloseTo(160, 4);
+	expect(view.preview?.y).toBeCloseTo(132.5, 4);
+	expect(view.preview?.rotation).toBeCloseTo(Math.PI / 2, 4);
+	await clickAt(page, 172, 165);
+	await clickAt(page, 105, 174);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	view = await state(page);
+	expect(view.shapes.map((shape) => shape.name)).toEqual(["line 1", "line 2", "line 3"]);
+	const [first, second, third] = view.shapes;
+	expect(first.x).toBeCloseTo(130, 4);
+	expect(first.y).toBeCloseTo(100, 4);
+	expect(first.width).toBeCloseTo(60, 4);
+	expect(first.rotation).toBeCloseTo(0, 4);
+	expect(second.x).toBeCloseTo(160, 4);
+	expect(second.y).toBeCloseTo(132.5, 4);
+	expect(second.width).toBeCloseTo(65, 4);
+	expect(second.rotation).toBeCloseTo(Math.PI / 2, 4);
+	expect(third.x).toBeCloseTo(132.5, 4);
+	expect(third.y).toBeCloseTo(165, 4);
+	expect(third.width).toBeCloseTo(55, 4);
+	expect(Math.abs(third.rotation)).toBeCloseTo(Math.PI, 4);
+	await moveAt(page, 115, 210);
+	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(45, 4);
+	await page.screenshot({ path: test.info().outputPath("drawing-line-chain.png") });
+	await clickAt(page, 105, 165);
+	await clickAt(page, 105, 165);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	await page.keyboard.press("Escape");
+	await expect.poll(async () => (await state(page)).preview).toBeNull();
+});
+
+for (const finishKey of ["Escape", "Enter"]) {
+	test(`${finishKey} finishes a line chain and discards only the unfinished segment`, async ({ page }) => {
+		await page.getByRole("button", { name: "Line", exact: true }).click();
+		await clickAt(page, 100, 100);
+		await clickAt(page, 160, 120);
+		await clickAt(page, 170, 165);
+		await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+		const committed = (await state(page)).shapes;
+		await moveAt(page, 220, 170);
+		await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(60, 4);
+		await page.keyboard.press(finishKey);
+		await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+		await expect.poll(async () => (await state(page)).preview).toBeNull();
+		expect((await state(page)).shapes).toEqual(committed);
+		await moveAt(page, 190, 180);
+		expect((await state(page)).shapes).toEqual(committed);
+	});
+}
+
+test("switching tools clears an uncommitted line and starts the next chain independently", async ({ page }) => {
 	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await dragTo(page, [100, 100], [130, 140]);
-	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(50, 4);
-	expect((await state(page)).shapes[0].rotation).toBeCloseTo(Math.atan2(40, 30), 4);
-	await clickAt(page, 70, 70);
-	await clickAt(page, 115, 120);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
-	// The empty corner of the diagonal line's bounding box is not part of the line.
-	await dragTo(page, [99, 135], [103, 139]);
+	await clickAt(page, 100, 100);
+	await clickAt(page, 100, 100);
+	await moveAt(page, 160, 120);
+	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(60, 4);
+	expect((await state(page)).shapes).toEqual([]);
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await expect.poll(async () => (await state(page)).preview).toBeNull();
+	expect((await state(page)).shapes).toEqual([]);
+	await createShape(page, "Line", 240, 140);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	const line = (await state(page)).shapes[0];
+	expect(line.x).toBeCloseTo(240, 4);
+	expect(line.y).toBeCloseTo(140, 4);
+	expect(line.width).toBeCloseTo(55, 4);
+});
+
+test("snapped line chains keep consecutive corners on the grid", async ({ page }) => {
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await clickAt(page, 93, 103);
+	await clickAt(page, 153, 122);
+	await moveAt(page, 163, 167);
+	await expect.poll(async () => (await state(page)).preview?.width).toBe(70);
+	const preview = (await state(page)).preview;
+	expect(preview?.x).toBe(150);
+	expect(preview?.y).toBe(135);
+	await clickAt(page, 163, 167);
+	await page.keyboard.press("Enter");
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	const [first, second] = (await state(page)).shapes;
+	expect(first.x).toBe(120);
+	expect(first.y).toBe(100);
+	expect(first.width).toBe(60);
+	expect(first.rotation).toBe(0);
+	expect(second.x).toBe(150);
+	expect(second.y).toBe(135);
+	expect(second.width).toBe(70);
+	expect(second.rotation).toBeCloseTo(Math.PI / 2, 4);
+});
+
+test("line chains keep placed corners when grid snapping and zoom change", async ({ page }) => {
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await clickAt(page, 93, 103);
+	await clickAt(page, 153, 122);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	const first = (await state(page)).shapes[0];
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await clickAt(page, 163, 167);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	for (let index = 0; index < 4; index++) {
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	}
+	await expect.poll(() => visibleGridStep(page)).toBe(4);
+	await clickAt(page, 201, 181);
+	await page.keyboard.press("Enter");
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	const lines = (await state(page)).shapes;
+	expect(lines[0].x).toBe(first.x);
+	expect(lines[0].y).toBe(first.y);
+	expect(lines[0].width).toBe(first.width);
+	expect(lines[1].x).toBeCloseTo(153, 4);
+	expect(lines[1].y).toBeCloseTo(136.5, 4);
+	expect(lines[1].width).toBeCloseTo(67, 4);
+	expect(lines[1].rotation).toBeCloseTo(Math.PI / 2, 4);
+	expect(lines[2].x).toBeCloseTo(176.5, 4);
+	expect(lines[2].y).toBeCloseTo(170, 4);
+	expect(lines[2].width).toBeCloseTo(47, 4);
+	expect(lines[2].rotation).toBeCloseTo(0, 4);
+});
+
+test("moving one segment keeps connected endpoints together while resize and delete stay independent", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
+	await createShape(page, "Rectangle", 280, 120);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(4);
+	await clickAt(page, 160, 132.5);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
+	const originals = (await state(page)).shapes;
+	await dragTo(page, [160, 132.5], [190, 142.5]);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	const moved = (await state(page)).shapes;
+	expect(moved.map((shape) => shape.name)).toEqual(["line 1", "line 2", "line 3", "rectangle 4"]);
+	expect(moved[3]).toEqual(originals[3]);
+	await page.screenshot({ path: test.info().outputPath("moving-connected-endpoints.png") });
+	await dragHandle(page, "1,0", [220, 210]);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(100, 1);
+	const shapes = (await state(page)).shapes;
+	expect(shapes[1].x).toBeCloseTo(190, 1);
+	expect(shapes[1].y).toBeCloseTo(160, 1);
+	expect(shapes[1].rotation).toBeCloseTo(Math.PI / 2, 4);
+	expect(shapes[0]).toEqual(moved[0]);
+	expect(shapes[2]).toEqual(moved[2]);
+	expect(shapes[3]).toEqual(originals[3]);
+	await page.keyboard.press("Delete");
+	await expect.poll(async () => (await state(page)).shapes).toEqual([moved[0], moved[2], originals[3]]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
+});
+
+test("snapped segment dragging and keyboard movement carry neighboring endpoints", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160]]);
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await clickAt(page, 160, 135);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	const original = (await state(page)).shapes;
+	await clickAt(page, 160, 135);
+	await expect.poll(async () => (await state(page)).shapes).toEqual(original);
+	await dragTo(page, [160, 135], [173, 148]);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 170, 110], [170, 110, 170, 170], [170, 170, 100, 170]]);
+	await page.keyboard.press("ArrowRight");
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 180, 110], [180, 110, 180, 170], [180, 170, 100, 170]]);
+	await page.keyboard.press("Shift+ArrowUp");
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 210, 180, 210], [180, 210, 180, 270], [180, 270, 100, 270]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	expect((await state(page)).shapes).toHaveLength(3);
+});
+
+for (const cancelWith of ["Escape", "pointercancel"]) {
+	test(`${cancelWith} restores the dragged segment and all affected neighbors`, async ({ page }) => {
+		await createLineChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
+		await clickAt(page, 160, 132.5);
+		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+		const originals = (await state(page)).shapes;
+		await moveAt(page, 160, 132.5);
+		await page.mouse.down();
+		await moveAt(page, 190, 142.5);
+		await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
+		const duringDrag = await state(page);
+		await page.keyboard.press("ArrowRight");
+		await expect.poll(async () => (await state(page)).shapes).toEqual(duringDrag.shapes);
+		expect((await state(page)).origin).toEqual(duringDrag.origin);
+		await moveAt(page, 220, 152.5);
+		await expect.poll(() => lineEndpoints(page)).toEqual([[100, 120, 220, 120], [220, 120, 220, 185], [220, 185, 105, 185]]);
+		if (cancelWith === "Escape") await page.keyboard.press("Escape");
+		else await page.locator("canvas").dispatchEvent("pointercancel", { pointerId: 1 });
+		await page.mouse.up();
+		await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
+		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	});
+}
+
+test("moving multiple selected segments carries their shared unselected neighbor once", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
+	await clickAt(page, 130, 100);
+	await page.keyboard.down("Shift");
+	await clickAt(page, 160, 132.5);
+	await page.keyboard.up("Shift");
+	await expect.poll(() => selectedNames(page)).toEqual(["line 1", "line 2"]);
+	await dragTo(page, [160, 132.5], [190, 142.5]);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[130, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
+	await page.keyboard.press("ArrowLeft");
+	await expect.poll(() => lineEndpoints(page)).toEqual([[129, 110, 189, 110], [189, 110, 189, 175], [189, 175, 105, 175]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 1", "line 2"]);
+	expect((await state(page)).shapes).toHaveLength(3);
+});
+
+test("folding a loop removes collapsed edges and keeps the selected merged segment usable", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(4);
+	await clickAt(page, 160, 130);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await dragTo(page, [160, 130], [100, 130]);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 160]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
+	await page.screenshot({ path: test.info().outputPath("merged-collapsed-loop.png") });
+	await dragTo(page, [100, 130], [120, 140]);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[120, 110, 120, 170]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await page.keyboard.press("Delete");
+	await expect.poll(async () => (await state(page)).shapes).toEqual([]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
+});
+
+for (const cancelWith of ["Escape", "pointercancel"]) {
+	test(`${cancelWith} restores a loop while its edges are collapsed and overlapping`, async ({ page }) => {
+		await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+		await clickAt(page, 160, 130);
+		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+		const originals = (await state(page)).shapes;
+		await moveAt(page, 160, 130);
+		await page.mouse.down();
+		await moveAt(page, 100, 130);
+		await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 100], [100, 100, 100, 160], [100, 160, 100, 160], [100, 160, 100, 100]]);
+		if (cancelWith === "Escape") await page.keyboard.press("Escape");
+		else await page.locator("canvas").dispatchEvent("pointercancel", { pointerId: 1 });
+		await page.mouse.up();
+		await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
+		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	});
+}
+
+test("a drag can pass through a collapsed loop and reopen it before release", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+	await moveAt(page, 160, 130);
+	await page.mouse.down();
+	await moveAt(page, 100, 130);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 100], [100, 100, 100, 160], [100, 160, 100, 160], [100, 160, 100, 100]]);
+	await moveAt(page, 80, 130);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 80, 100], [80, 100, 80, 160], [80, 160, 100, 160], [100, 160, 100, 100]]);
+	// Pointer release can carry a newer position than the last pointer move.
+	const release = await screen(page, 130, 130);
+	await page.locator("canvas").dispatchEvent("pointerup", { pointerId: 1, clientX: release.x, clientY: release.y, button: 0, buttons: 0 });
+	await page.mouse.up();
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 130, 100], [130, 100, 130, 160], [130, 160, 100, 160], [100, 160, 100, 100]]);
+	expect((await state(page)).shapes.map((shape) => shape.name)).toEqual(["line 1", "line 2", "line 3", "line 4"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+});
+
+test("keyboard folding merges overlap while preserving separate parallel and gapped segments", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [110, 100], [110, 160], [100, 160], [100, 100]]);
+	await createLineChain(page, [[100, 200], [100, 240]]);
+	await createLineChain(page, [[130, 100], [130, 160]]);
+	await clickAt(page, 110, 130);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	const separate = (await state(page)).shapes.slice(4);
+	await page.keyboard.press("Shift+ArrowLeft");
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 160], [100, 200, 100, 240], [130, 100, 130, 160]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	expect((await state(page)).shapes.slice(1)).toEqual(separate);
+});
+
+test("drawing duplicate and overlapping segments merges their extent and continues from the clicked corner", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100]]);
+	await createLineChain(page, [[100, 100], [160, 100]]);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 160, 100]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await clickAt(page, 130, 100);
+	await clickAt(page, 190, 100);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 190, 100]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 3"]);
+	await clickAt(page, 140, 100);
+	await expect.poll(() => lineEndpoints(page)).toEqual([[190, 100, 100, 100]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 4"]);
+	await clickAt(page, 150, 160);
+	await page.keyboard.press("Enter");
+	await expect.poll(() => lineEndpoints(page)).toEqual([[190, 100, 100, 100], [140, 100, 140, 160]]);
+	expect((await state(page)).shapes.map((shape) => shape.name)).toEqual(["line 4", "line 5"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 5"]);
+});
+
+test("resizing a snapped segment to zero removes it and clears its selection", async ({ page }) => {
+	await createLineChain(page, [[100, 100], [160, 100], [160, 160]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	const retained = (await state(page)).shapes[0];
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await dragHandle(page, "-1,0", [160, 160]);
+	await expect.poll(async () => (await state(page)).shapes).toEqual([retained]);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
-	await dragTo(page, [100, 115], [125, 130]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
+});
+
+test("draws circles, triangles and orthogonal lines with accurate hit selection", async ({ page }) => {
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await clickAt(page, 100, 100);
+	await clickAt(page, 130, 140);
+	await page.keyboard.press("Enter");
+	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(40, 4);
+	expect((await state(page)).shapes[0].rotation).toBeCloseTo(Math.PI / 2, 4);
+	await clickAt(page, 70, 70);
+	await clickAt(page, 100, 120);
 	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
-	await dragTo(page, [115, 120], [135, 140]);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(135, 4);
+	await dragTo(page, [109, 135], [113, 139]);
+	await expect.poll(() => selectedNames(page)).toEqual([]);
+	await dragTo(page, [95, 115], [105, 130]);
+	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
+	await dragTo(page, [100, 120], [120, 140]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(120, 4);
 	await page.getByRole("button", { name: "Circle", exact: true }).click();
 	await dragTo(page, [250, 100], [290, 100]);
 	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(80, 4);
@@ -333,7 +675,7 @@ test("corner and edge handles resize shapes while keeping the opposite side fixe
 	expect((await state(page)).shapes[1].height).toBeCloseTo(57.5, 1);
 });
 
-test("circle radius and diagonal line endpoints resize independently", async ({ page }) => {
+test("circle radius and orthogonal line endpoints resize independently", async ({ page }) => {
 	await createShape(page, "Circle", 150, 150);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(4);
 	await dragHandle(page, "1,0", [180, 150]);
@@ -343,14 +685,21 @@ test("circle radius and diagonal line endpoints resize independently", async ({ 
 	expect(circle.x).toBeCloseTo(150, 1);
 	expect(circle.y).toBeCloseTo(150, 1);
 	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await dragTo(page, [220, 100], [250, 140]);
+	await clickAt(page, 220, 100);
+	await clickAt(page, 250, 140);
+	await page.keyboard.press("Enter");
 	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
 	await dragHandle(page, "1,0", [280, 180]);
-	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(100, 1);
-	await dragHandle(page, "-1,0", [200, 180]);
 	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(80, 1);
-	const line = (await state(page)).shapes[1];
-	expect(line.x).toBeCloseTo(240, 1);
+	let line = (await state(page)).shapes[1];
+	expect(line.x).toBeCloseTo(220, 1);
+	expect(line.y).toBeCloseTo(140, 1);
+	expect(line.rotation).toBeCloseTo(Math.PI / 2, 1);
+	await dragHandle(page, "-1,0", [200, 180]);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(20, 1);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(210, 1);
+	line = (await state(page)).shapes[1];
+	expect(line.x).toBeCloseTo(210, 1);
 	expect(line.y).toBeCloseTo(180, 1);
 	expect(line.rotation).toBeCloseTo(0, 1);
 });
@@ -503,14 +852,16 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	circle = (await state(page)).shapes[0];
 	expect(circle.height).toBe(56);
 	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await dragTo(page, [9, 9], [25, 21]);
-	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(20, 4);
+	await clickAt(page, 9, 9);
+	await clickAt(page, 25, 21);
+	await page.keyboard.press("Enter");
+	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(16, 4);
 	await dragHandle(page, "1,0", [39, 33]);
-	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(40, 4);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(32, 4);
 	const line = (await state(page)).shapes[1];
 	expect(line.x - Math.cos(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
 	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
 	expect(line.x + Math.cos(line.rotation) * line.width / 2).toBeCloseTo(40, 4);
-	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(32, 4);
+	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
 	await page.screenshot({ path: test.info().outputPath("snap-to-grid.png") });
 });

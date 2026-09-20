@@ -27,6 +27,18 @@ export function snapPoint(point: Point, step: number): Point {
 	return { x: snapCoordinate(point.x, step), y: snapCoordinate(point.y, step) };
 }
 
+/** Keep the start fixed and project the snapped endpoint onto its nearest axis. */
+export function constrainLineEndpoint(
+	start: Point,
+	end: Point,
+	gridStep = 0,
+): Point {
+	const target = snapPoint(end, gridStep);
+	return Math.abs(target.x - start.x) >= Math.abs(target.y - start.y)
+		? { x: target.x, y: start.y }
+		: { x: start.x, y: target.y };
+}
+
 function localToWorld(shape: EditorShape, x: number, y: number): Point {
 	return {
 		x: shape.x + x * Math.cos(shape.rotation) - y * Math.sin(shape.rotation),
@@ -98,33 +110,18 @@ export function resizeShape(
 		const diameter = radius * 2;
 		return { ...shape, width: diameter, height: diameter };
 	}
-	const point = snapPoint(target, gridStep);
 	if (shape.kind === "line") {
 		const fixed = localToWorld(
 			shape,
 			(-handle.xDirection * shape.width) / 2,
 			0,
 		);
-		const length = Math.hypot(point.x - fixed.x, point.y - fixed.y);
-		if (length < 0.1) {
-			if (gridStep > 0) return shape;
-			point.x =
-				fixed.x +
-				(length > 0
-					? (point.x - fixed.x) / length
-					: handle.xDirection * Math.cos(shape.rotation)) *
-					0.1;
-			point.y =
-				fixed.y +
-				(length > 0
-					? (point.y - fixed.y) / length
-					: handle.xDirection * Math.sin(shape.rotation)) *
-					0.1;
-		}
+		const point = constrainLineEndpoint(fixed, target, gridStep);
 		return handle.xDirection === 1
 			? drawShape(shape.id, "line", fixed, point)
 			: drawShape(shape.id, "line", point, fixed);
 	}
+	const point = snapPoint(target, gridStep);
 	const deltaX = point.x - handle.x;
 	const deltaY = point.y - handle.y;
 	const dx =
@@ -162,7 +159,12 @@ export function drawShape(
 	gridStep = 0,
 ): EditorShape {
 	const first = snapPoint(start, gridStep);
-	const last = kind === "circle" ? end : snapPoint(end, gridStep);
+	const last =
+		kind === "circle"
+			? end
+			: kind === "line"
+				? constrainLineEndpoint(first, end, gridStep)
+				: snapPoint(end, gridStep);
 	const dx = last.x - first.x;
 	const dy = last.y - first.y;
 	if (kind === "circle") {
@@ -262,12 +264,242 @@ export function intersectsSelection(shape: EditorShape, bounds: Bounds) {
 	);
 }
 
-/** Translate every selected shape equally, including outside the paper guide. */
+// Pointer-to-world conversion can leave roughly 0.00001 mm after a visual collapse.
+const connectionTolerance = 1e-4;
+const normalizationTolerance = connectionTolerance;
+
+/** Normalize committed segments; drag previews keep their original separate IDs. */
+export function normalizeLineSegments(
+	shapes: EditorShape[],
+	preferredIds: ReadonlySet<number> = new Set(),
+): { shapes: EditorShape[]; idMap: Map<number, number> } {
+	const lines = shapes.flatMap((shape, index) => {
+		if (shape.kind !== "line" || shape.width <= normalizationTolerance)
+			return [];
+		const start = localToWorld(shape, -shape.width / 2, 0);
+		const end = localToWorld(shape, shape.width / 2, 0);
+		const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
+		return [
+			{
+				shape,
+				index,
+				vertical,
+				coordinate: vertical ? shape.x : shape.y,
+				min: Math.min(vertical ? start.y : start.x, vertical ? end.y : end.x),
+				max: Math.max(vertical ? start.y : start.x, vertical ? end.y : end.x),
+				forward: vertical ? end.y >= start.y : end.x >= start.x,
+			},
+		];
+	});
+	const parents = lines.map((_, index) => index);
+	const root = (index: number): number => {
+		while (parents[index] !== index) {
+			parents[index] = parents[parents[index]];
+			index = parents[index];
+		}
+		return index;
+	};
+	for (let first = 0; first < lines.length; first++) {
+		for (let second = first + 1; second < lines.length; second++) {
+			const a = lines[first];
+			const b = lines[second];
+			if (
+				a.vertical === b.vertical &&
+				a.shape.height === b.shape.height &&
+				Math.abs(a.coordinate - b.coordinate) <= normalizationTolerance &&
+				a.min <= b.max + normalizationTolerance &&
+				b.min <= a.max + normalizationTolerance
+			)
+				parents[root(second)] = root(first);
+		}
+	}
+	const clusters = new Map<number, typeof lines>();
+	for (const [index, line] of lines.entries()) {
+		const key = root(index);
+		const cluster = clusters.get(key) ?? [];
+		cluster.push(line);
+		clusters.set(key, cluster);
+	}
+	const replacements = new Map<number, EditorShape>();
+	const idMap = new Map<number, number>();
+	for (const cluster of clusters.values()) {
+		const survivor =
+			cluster.find(({ shape }) => preferredIds.has(shape.id)) ?? cluster[0];
+		for (const { shape } of cluster) idMap.set(shape.id, survivor.shape.id);
+		if (cluster.length === 1) {
+			replacements.set(cluster[0].index, survivor.shape);
+			continue;
+		}
+		const min = Math.min(...cluster.map((line) => line.min));
+		const max = Math.max(...cluster.map((line) => line.max));
+		const start = survivor.forward ? min : max;
+		const end = survivor.forward ? max : min;
+		const point = (value: number): Point =>
+			survivor.vertical
+				? { x: survivor.coordinate, y: value }
+				: { x: value, y: survivor.coordinate };
+		replacements.set(cluster[0].index, {
+			...drawShape(survivor.shape.id, "line", point(start), point(end)),
+			height: survivor.shape.height,
+		});
+	}
+	return {
+		shapes: shapes.flatMap((shape, index) => {
+			if (shape.kind !== "line") {
+				idMap.set(shape.id, shape.id);
+				return [shape];
+			}
+			const replacement = replacements.get(index);
+			return replacement ? [replacement] : [];
+		}),
+		idMap,
+	};
+}
+
+function pointOnLine(point: Point, start: Point, end: Point) {
+	const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
+	const along = vertical ? "y" : "x";
+	const across = vertical ? "x" : "y";
+	return (
+		Math.abs(point[across] - start[across]) <= connectionTolerance &&
+		point[along] >= Math.min(start[along], end[along]) - connectionTolerance &&
+		point[along] <= Math.max(start[along], end[along]) + connectionTolerance
+	);
+}
+
+/** Preserve endpoint junctions using the drawing as it was when movement began. */
+function moveConnectedLines(
+	selected: EditorShape[],
+	delta: Point,
+	allShapes: EditorShape[],
+): EditorShape[] {
+	const selectedIds = new Set(selected.map((shape) => shape.id));
+	const originals = new Map(allShapes.map((shape) => [shape.id, shape]));
+	for (const shape of selected) originals.set(shape.id, shape);
+	const lines = [...originals.values()]
+		.filter((shape) => shape.kind === "line")
+		.map((shape) => ({
+			shape,
+			start: localToWorld(shape, -shape.width / 2, 0),
+			end: localToWorld(shape, shape.width / 2, 0),
+		}));
+	const points = lines.flatMap(({ start, end }) => [start, end]);
+	const connections = {
+		x: points.map(() => new Set<number>()),
+		y: points.map(() => new Set<number>()),
+	};
+	const connect = (axis: "x" | "y", first: number, second: number) => {
+		connections[axis][first].add(second);
+		connections[axis][second].add(first);
+	};
+	const seeds = new Set<number>();
+	const attachments: { point: number; line: number }[] = [];
+	for (let first = 0; first < points.length; first++) {
+		for (let second = first + 1; second < points.length; second++) {
+			if (
+				Math.hypot(
+					points[first].x - points[second].x,
+					points[first].y - points[second].y,
+				) <= connectionTolerance
+			) {
+				connect("x", first, second);
+				connect("y", first, second);
+			}
+		}
+	}
+	for (const [index, line] of lines.entries()) {
+		const first = index * 2;
+		const second = first + 1;
+		const axis =
+			Math.abs(line.end.x - line.start.x) < Math.abs(line.end.y - line.start.y)
+				? "x"
+				: "y";
+		connect(axis, first, second);
+		const selectedLine = selectedIds.has(line.shape.id);
+		if (selectedLine) {
+			seeds.add(first);
+			seeds.add(second);
+		}
+		for (const [pointIndex, point] of points.entries()) {
+			if (Math.floor(pointIndex / 2) === index) continue;
+			if (!pointOnLine(point, line.start, line.end)) continue;
+			attachments.push({ point: pointIndex, line: index });
+			// A T junction shares the coordinate perpendicular to the line.
+			connect(axis, first, pointIndex);
+			connect(axis, second, pointIndex);
+			// Attachments on a translated selected segment follow it in both axes.
+			if (selectedLine) seeds.add(pointIndex);
+		}
+	}
+	const reachable = (axis: "x" | "y") => {
+		const reached = new Set(seeds);
+		const pending = [...seeds];
+		for (let index = 0; index < pending.length; index++) {
+			for (const next of connections[axis][pending[index]]) {
+				if (reached.has(next)) continue;
+				reached.add(next);
+				pending.push(next);
+			}
+		}
+		return reached;
+	};
+	const moveX = reachable("x");
+	const moveY = reachable("y");
+	const affected = lines.filter((_, index) =>
+		[index * 2, index * 2 + 1].some(
+			(point) => moveX.has(point) || moveY.has(point),
+		),
+	);
+	const replacements = [
+		...selected,
+		...affected
+			.filter(({ shape }) => !selectedIds.has(shape.id))
+			.map(({ shape }) => shape),
+	];
+	// Include unchanged neighbors so reversing a drag restores their original ends.
+	if (delta.x === 0 && delta.y === 0) return replacements;
+	const moved = points.map((point, index) => ({
+		x: point.x + (moveX.has(index) ? delta.x : 0),
+		y: point.y + (moveY.has(index) ? delta.y : 0),
+	}));
+	// Sliding a T junction is allowed while it remains on its attached segment.
+	if (
+		attachments.some(
+			({ point, line }) =>
+				!pointOnLine(moved[point], moved[line * 2], moved[line * 2 + 1]),
+		)
+	)
+		return replacements;
+	const updated = new Map<number, EditorShape>();
+	for (const [index, line] of lines.entries()) {
+		const start = moved[index * 2];
+		const end = moved[index * 2 + 1];
+		if (
+			start.x === line.start.x &&
+			start.y === line.start.y &&
+			end.x === line.end.x &&
+			end.y === line.end.y
+		)
+			continue;
+		updated.set(line.shape.id, {
+			...drawShape(line.shape.id, "line", start, end),
+			height: line.shape.height,
+		});
+	}
+	return replacements.map((shape) =>
+		shape.kind === "line"
+			? (updated.get(shape.id) ?? shape)
+			: { ...shape, x: shape.x + delta.x, y: shape.y + delta.y },
+	);
+}
+
+/** Move selected shapes rigidly and adjust connected line ends without selecting them. */
 export function moveShapes(
 	shapes: EditorShape[],
 	delta: Point,
 	gridStep = 0,
 	anchorShape = shapes[0],
+	allShapes = shapes,
 ): EditorShape[] {
 	if (gridStep > 0 && anchorShape) {
 		// Keep corners on the grid even when the center lies halfway between lines.
@@ -285,6 +517,8 @@ export function moveShapes(
 		);
 		delta = { x: target.x - anchor.x, y: target.y - anchor.y };
 	}
+	if (shapes.some((shape) => shape.kind === "line"))
+		return moveConnectedLines(shapes, delta, allShapes);
 	return shapes.map((shape) => ({
 		...shape,
 		x: shape.x + delta.x,

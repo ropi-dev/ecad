@@ -83,6 +83,7 @@ function createEditorAssets() {
 export function useEditorScene(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
+	linePreview: EditorShape | null = null,
 ) {
 	const [assets, setAssets] = useState<ReturnType<typeof createEditorAssets>>();
 	useEffect(() => {
@@ -122,8 +123,18 @@ export function useEditorScene(
 					drawing.add(outline);
 				}
 			}
+			root.getObjectByName("editor-line-preview")?.removeFromParent();
+			if (linePreview && linePreview.width > 0) {
+				const preview = new Mesh(assets.geometries.line, assets.selected);
+				preview.name = "editor-line-preview";
+				preview.position.set(linePreview.x, linePreview.y, 0);
+				preview.scale.set(linePreview.width, linePreview.height, 1);
+				preview.rotation.z = linePreview.rotation;
+				preview.renderOrder = shapes.length + 2;
+				root.add(preview);
+			}
 		},
-		[assets, shapes, selectedIds],
+		[assets, shapes, selectedIds, linePreview],
 	);
 	return { scene: assets?.scene, updateScene };
 }

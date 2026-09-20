@@ -22,11 +22,13 @@ import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { SelectionAttributes } from "./SelectionAttributes";
 import {
+	constrainLineEndpoint,
 	drawShape,
 	type EditorShape,
 	hitShape,
 	intersectsSelection,
 	moveShapes,
+	normalizeLineSegments,
 	type ResizeHandle,
 	resizeHandles,
 	resizeShape,
@@ -56,6 +58,7 @@ interface Drag {
 	gridStep: number;
 	moved: boolean;
 	originals: EditorShape[];
+	initialShapes: EditorShape[];
 	created: boolean;
 	valid: boolean;
 	additive: boolean;
@@ -64,9 +67,14 @@ interface Marquee {
 	start: Point;
 	end: Point;
 }
+interface LineChain {
+	start: Point;
+	pointerId: number;
+}
 
 export function Editor2D() {
 	const [shapes, setShapes] = useState<EditorShape[]>([]);
+	const currentShapes = useRef(shapes);
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
@@ -76,8 +84,14 @@ export function Editor2D() {
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
 	const [view, setView] = useState<Viewer2DSnapshot | null>(null);
 	const drag = useRef<Drag | null>(null);
+	const lineChain = useRef<LineChain | null>(null);
+	const [linePreview, setLinePreview] = useState<EditorShape | null>(null);
 	const nextId = useRef(1);
-	const { scene, updateScene } = useEditorScene(shapes, selectedIds);
+	const { scene, updateScene } = useEditorScene(
+		shapes,
+		selectedIds,
+		linePreview,
+	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
 	const handles =
@@ -111,9 +125,45 @@ export function Editor2D() {
 		event.preventDefault();
 		event.stopPropagation();
 	};
-	const replaceShapes = (replacements: EditorShape[]) => {
+	const applyShapes = (next: EditorShape[]) => {
+		// Pointer-up updates geometry and commits it before React renders again.
+		currentShapes.current = next;
+		setShapes(next);
+	};
+	const commitShapes = (next: EditorShape[], ids = selectedIds) => {
+		const normalized = normalizeLineSegments(next, ids);
+		applyShapes(normalized.shapes);
+		const selection = new Set<number>();
+		for (const id of ids) {
+			const survivor = normalized.idMap.get(id);
+			if (survivor !== undefined) selection.add(survivor);
+		}
+		setSelectedIds(selection);
+	};
+	const replaceShapes = (replacements: EditorShape[], commit = false) => {
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
-		setShapes((current) => current.map((shape) => byId.get(shape.id) ?? shape));
+		const next = currentShapes.current.map(
+			(shape) => byId.get(shape.id) ?? shape,
+		);
+		if (commit) commitShapes(next);
+		else applyShapes(next);
+	};
+	const previewLine = (point: Point) => {
+		const active = lineChain.current;
+		if (!active) return null;
+		const snapStep =
+			snapEnabled && snapshot.current
+				? rulerSpacing(snapshot.current.camera.scale).minor
+				: 0;
+		const end = constrainLineEndpoint(active.start, point, snapStep);
+		// Only snap the new endpoint so changing the grid never separates corners.
+		const shape = drawShape(nextId.current, "line", active.start, end);
+		setLinePreview(shape);
+		return { shape, end };
+	};
+	const finishLine = () => {
+		lineChain.current = null;
+		setLinePreview(null);
 	};
 	const updateDrag = (event: ReactPointerEvent) => {
 		const active = drag.current;
@@ -156,11 +206,7 @@ export function Editor2D() {
 			active.valid =
 				draft.width > 0 &&
 				draft.height > 0 &&
-				(draft.kind === "line"
-					? draft.width
-					: Math.min(draft.width, draft.height)) *
-					scale >=
-					3;
+				Math.min(draft.width, draft.height) * scale >= 3;
 			replaceShapes([draft]);
 			return;
 		}
@@ -174,6 +220,7 @@ export function Editor2D() {
 					},
 					active.gridStep,
 					active.anchorShape,
+					active.initialShapes,
 				),
 			);
 			return;
@@ -206,19 +253,28 @@ export function Editor2D() {
 		if (cancel || (active.created && !active.valid)) {
 			if (active.created) {
 				const createdIds = new Set(active.originals.map((shape) => shape.id));
-				setShapes((current) =>
-					current.filter((shape) => !createdIds.has(shape.id)),
+				applyShapes(
+					currentShapes.current.filter((shape) => !createdIds.has(shape.id)),
 				);
-			} else if (active.mode === "move" || active.mode === "resize")
-				replaceShapes(active.originals);
+			} else if (active.mode === "move") applyShapes(active.initialShapes);
+			else if (active.mode === "resize") replaceShapes(active.originals);
 			setSelectedIds(active.previousSelection);
 		} else if (active.created) setTool("select");
+		else if (
+			(active.mode === "move" || active.mode === "resize") &&
+			active.originals.some((shape) => shape.kind === "line")
+		)
+			commitShapes(currentShapes.current);
 		if (active.canvas.hasPointerCapture(active.pointerId))
 			active.canvas.releasePointerCapture(active.pointerId);
 	};
 	const removeSelected = () => {
-		setShapes((current) =>
-			current.filter((shape) => !selectedIds.has(shape.id)),
+		if (lineChain.current) {
+			finishLine();
+			setTool("select");
+		}
+		applyShapes(
+			currentShapes.current.filter((shape) => !selectedIds.has(shape.id)),
 		);
 		setSelectedIds(new Set());
 	};
@@ -279,10 +335,32 @@ export function Editor2D() {
 								? rulerSpacing(snapshot.current.camera.scale).minor
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
+						if (tool === "line") {
+							const active = lineChain.current;
+							if (!active) {
+								lineChain.current = { start, pointerId: event.pointerId };
+								previewLine(start);
+								return;
+							}
+							const next = previewLine(point);
+							if (
+								!next ||
+								next.shape.width * (snapshot.current?.camera.scale ?? 1) < 3
+							)
+								return;
+							nextId.current++;
+							commitShapes(
+								[...currentShapes.current, next.shape],
+								new Set([next.shape.id]),
+							);
+							active.start = next.end;
+							active.pointerId = event.pointerId;
+							setLinePreview(null);
+							return;
+						}
 						if (created) {
 							shape = drawShape(nextId.current++, tool, start, start);
-							const added = shape;
-							setShapes((current) => [...current, added]);
+							applyShapes([...currentShapes.current, shape]);
 						} else if (resize) shape = resize.shape;
 						else
 							shape = [...shapes]
@@ -334,6 +412,7 @@ export function Editor2D() {
 							gridStep: snapStep,
 							moved: false,
 							originals,
+							initialShapes: currentShapes.current,
 							created,
 							valid: false,
 							additive: event.shiftKey,
@@ -347,6 +426,18 @@ export function Editor2D() {
 						}
 						if (!(event.target instanceof HTMLCanvasElement)) return;
 						const point = pointAt(event, event.target);
+						if (
+							lineChain.current &&
+							event.isPrimary &&
+							(event.buttons & ~1) === 0 &&
+							!event.ctrlKey &&
+							!event.metaKey &&
+							!event.altKey
+						) {
+							stop(event);
+							if (point) previewLine(point);
+							return;
+						}
 						event.target.style.cursor = point
 							? (handleAt(point)?.handle.cursor ?? "")
 							: "";
@@ -357,6 +448,12 @@ export function Editor2D() {
 						finishDrag();
 					}}
 					onPointerCancelCapture={(event) => {
+						if (lineChain.current?.pointerId === event.pointerId) {
+							stop(event);
+							finishLine();
+							setTool("select");
+							return;
+						}
 						if (drag.current?.pointerId !== event.pointerId) return;
 						stop(event);
 						finishDrag(true);
@@ -365,6 +462,16 @@ export function Editor2D() {
 						if (drag.current?.pointerId === event.pointerId) finishDrag(true);
 					}}
 					onKeyDownCapture={(event) => {
+						if (
+							lineChain.current &&
+							(event.key === "Escape" || event.key === "Enter")
+						) {
+							finishLine();
+							setTool("select");
+							event.preventDefault();
+							event.stopPropagation();
+							return;
+						}
 						if (!(event.target instanceof HTMLCanvasElement)) return;
 						if (event.key === "Escape") {
 							if (drag.current) finishDrag(true);
@@ -376,6 +483,15 @@ export function Editor2D() {
 							finishDrag();
 							removeSelected();
 						} else if (selected.length > 0 && event.key.startsWith("Arrow")) {
+							if (drag.current) {
+								event.preventDefault();
+								event.stopPropagation();
+								return;
+							}
+							if (lineChain.current) {
+								finishLine();
+								setTool("select");
+							}
 							const snapStep = snapEnabled ? gridStep : 0;
 							const step = (snapStep || 1) * (event.shiftKey ? 10 : 1);
 							replaceShapes(
@@ -396,7 +512,10 @@ export function Editor2D() {
 													: 0,
 									},
 									snapStep,
+									selected[0],
+									currentShapes.current,
 								),
+								selected.some((shape) => shape.kind === "line"),
 							);
 						} else return;
 						event.preventDefault();
@@ -440,7 +559,10 @@ export function Editor2D() {
 												aria-label={label}
 												title={label}
 												aria-pressed={tool === kind}
-												onClick={() => setTool(kind)}
+												onClick={() => {
+													finishLine();
+													setTool(kind);
+												}}
 											>
 												<Icon size={18} aria-hidden="true" />
 											</button>
@@ -470,7 +592,7 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Choose a shape, then drag to draw it. Rectangles and triangles use two opposite corners, circles use a center and radius, and lines use two endpoints. Release to finish or press Escape to cancel. Drag shapes to move. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
+							interactionHint="Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For lines, click to start, then click to place each corner and keep drawing. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. F6 fits the sheet."
 						/>
 					)}
 					{view && (
