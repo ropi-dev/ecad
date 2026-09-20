@@ -27,6 +27,19 @@ for (const format of ["step", "gerber"] as const) {
 					};
 		const input = page.locator("input[type=file]");
 		await input.setInputFiles(file);
+		const waitForImport = async () => {
+			if (format === "gerber") {
+				await expect
+					.poll(async () => {
+						const state = JSON.parse(
+							(await page.locator("#scene-state").textContent())!,
+						);
+						return state.objects.map((object: { name: string }) => object.name);
+					})
+					.toEqual([demoFiles[0].name]);
+			}
+		};
+		await waitForImport();
 		const canvas = page.locator("canvas");
 		const capture = async () => {
 			await page.mouse.move(0, 0);
@@ -74,6 +87,7 @@ for (const format of ["step", "gerber"] as const) {
 			await expect.poll(async () => JSON.parse((await page.locator("#scene-state").textContent())!).objects).toEqual([]);
 		}
 		await input.setInputFiles(file);
+		await waitForImport();
 		await expect(zoomIn).toBeEnabled({ timeout: 30000 });
 		await canvas.focus();
 		await expect.poll(capture).toBe(initial);

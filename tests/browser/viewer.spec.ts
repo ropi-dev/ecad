@@ -26,6 +26,14 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 		mimeType: "text/plain",
 		buffer: Buffer.from(file.source),
 	});
+	await expect
+		.poll(async () => {
+			const state = JSON.parse(
+				(await page.locator("#scene-state").textContent())!,
+			);
+			return state.objects.map((object: { name: string }) => object.name);
+		})
+		.toEqual([file.name]);
 	const canvas = page.locator("canvas");
 	await expect(
 		page.getByRole("button", { name: "Fit drawing", exact: true }),
