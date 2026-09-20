@@ -17,6 +17,16 @@ export interface ResizeHandle extends Point {
 	cursor: string;
 }
 
+export function snapCoordinate(value: number, step: number): number {
+	return step > 0
+		? Number((Math.round(value / step) * step).toPrecision(12))
+		: value;
+}
+
+export function snapPoint(point: Point, step: number): Point {
+	return { x: snapCoordinate(point.x, step), y: snapCoordinate(point.y, step) };
+}
+
 function localToWorld(shape: EditorShape, x: number, y: number): Point {
 	return {
 		x: shape.x + x * Math.cos(shape.rotation) - y * Math.sin(shape.rotation),
@@ -73,15 +83,22 @@ export function resizeShape(
 	shape: EditorShape,
 	handle: ResizeHandle,
 	delta: Point,
+	gridStep = 0,
 ): EditorShape {
-	const point = { x: handle.x + delta.x, y: handle.y + delta.y };
+	const target = { x: handle.x + delta.x, y: handle.y + delta.y };
 	if (shape.kind === "circle") {
-		const diameter = Math.max(
-			0.1,
-			2 * Math.hypot(point.x - shape.x, point.y - shape.y),
+		const radius = Math.max(
+			gridStep,
+			0.05,
+			snapCoordinate(
+				Math.hypot(target.x - shape.x, target.y - shape.y),
+				gridStep,
+			),
 		);
+		const diameter = radius * 2;
 		return { ...shape, width: diameter, height: diameter };
 	}
+	const point = snapPoint(target, gridStep);
 	if (shape.kind === "line") {
 		const fixed = localToWorld(
 			shape,
@@ -90,6 +107,7 @@ export function resizeShape(
 		);
 		const length = Math.hypot(point.x - fixed.x, point.y - fixed.y);
 		if (length < 0.1) {
+			if (gridStep > 0) return shape;
 			point.x =
 				fixed.x +
 				(length > 0
@@ -107,12 +125,22 @@ export function resizeShape(
 			? drawShape(shape.id, "line", fixed, point)
 			: drawShape(shape.id, "line", point, fixed);
 	}
+	const deltaX = point.x - handle.x;
+	const deltaY = point.y - handle.y;
 	const dx =
-		delta.x * Math.cos(shape.rotation) + delta.y * Math.sin(shape.rotation);
+		deltaX * Math.cos(shape.rotation) + deltaY * Math.sin(shape.rotation);
 	const dy =
-		-delta.x * Math.sin(shape.rotation) + delta.y * Math.cos(shape.rotation);
-	const width = Math.max(0.1, shape.width + handle.xDirection * dx);
-	const height = Math.max(0.1, shape.height + handle.yDirection * dy);
+		-deltaX * Math.sin(shape.rotation) + deltaY * Math.cos(shape.rotation);
+	const width = Math.max(
+		handle.xDirection ? gridStep : 0,
+		0.1,
+		shape.width + handle.xDirection * dx,
+	);
+	const height = Math.max(
+		handle.yDirection ? gridStep : 0,
+		0.1,
+		shape.height + handle.yDirection * dy,
+	);
 	return {
 		...shape,
 		...localToWorld(
@@ -131,13 +159,14 @@ export function drawShape(
 	kind: ShapeKind,
 	start: Point,
 	end: Point,
+	gridStep = 0,
 ): EditorShape {
-	const first = start;
-	const last = end;
+	const first = snapPoint(start, gridStep);
+	const last = kind === "circle" ? end : snapPoint(end, gridStep);
 	const dx = last.x - first.x;
 	const dy = last.y - first.y;
 	if (kind === "circle") {
-		const radius = Math.hypot(dx, dy);
+		const radius = snapCoordinate(Math.hypot(dx, dy), gridStep);
 		return {
 			id,
 			kind,
@@ -234,7 +263,28 @@ export function intersectsSelection(shape: EditorShape, bounds: Bounds) {
 }
 
 /** Translate every selected shape equally, including outside the paper guide. */
-export function moveShapes(shapes: EditorShape[], delta: Point): EditorShape[] {
+export function moveShapes(
+	shapes: EditorShape[],
+	delta: Point,
+	gridStep = 0,
+	anchorShape = shapes[0],
+): EditorShape[] {
+	if (gridStep > 0 && anchorShape) {
+		// Keep corners on the grid even when the center lies halfway between lines.
+		const anchor =
+			anchorShape.kind === "circle"
+				? anchorShape
+				: localToWorld(
+						anchorShape,
+						-anchorShape.width / 2,
+						anchorShape.kind === "line" ? 0 : -anchorShape.height / 2,
+					);
+		const target = snapPoint(
+			{ x: anchor.x + delta.x, y: anchor.y + delta.y },
+			gridStep,
+		);
+		delta = { x: target.x - anchor.x, y: target.y - anchor.y };
+	}
 	return shapes.map((shape) => ({
 		...shape,
 		x: shape.x + delta.x,

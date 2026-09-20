@@ -4,6 +4,15 @@ export interface RulerTick {
 	label?: string;
 }
 
+/** Shared by the visible grid, ruler ticks, and editor snapping. */
+export function rulerSpacing(scale: number) {
+	const desired = 80 / scale;
+	const magnitude = 10 ** Math.floor(Math.log10(desired));
+	const major =
+		([1, 2, 5, 10].find((n) => n * magnitude >= desired) ?? 10) * magnitude;
+	return { major, minor: major / 5 };
+}
+
 /** Screen positions for millimetre coordinates, with labels at least 80px apart. */
 export function rulerTicks(
 	center: number,
@@ -17,11 +26,7 @@ export function rulerTicks(
 		length <= 0
 	)
 		return [];
-	const desired = 80 / scale;
-	const magnitude = 10 ** Math.floor(Math.log10(desired));
-	const major =
-		([1, 2, 5, 10].find((n) => n * magnitude >= desired) ?? 10) * magnitude;
-	const minor = major / 5;
+	const { major, minor } = rulerSpacing(scale);
 	const precision = Math.max(0, -Math.floor(Math.log10(major)));
 	const first = Math.ceil((center - length / (2 * scale)) / minor);
 	const last = Math.floor((center + length / (2 * scale)) / minor);

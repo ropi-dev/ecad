@@ -401,3 +401,111 @@ test("resizing one of several selected shapes preserves the others and pointer c
 	await page.mouse.up();
 	await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
 });
+
+async function fitCenteredEditor(page: Page) {
+	await page.locator("canvas").focus();
+	await page.keyboard.press("F6");
+	await expect.poll(async () => (await state(page)).origin.slice(0, 2)).toEqual([0, 0]);
+}
+
+async function visibleGridStep(page: Page) {
+	return page.locator('.viewport-rulers [data-axis="x"]').evaluateAll((ticks) =>
+		Math.abs(Number(ticks[1].getAttribute("data-value")) - Number(ticks[0].getAttribute("data-value"))),
+	);
+}
+
+test("snap mode aligns drawing, resizing and keyboard placement to the visible grid", async ({ page }) => {
+	await fitCenteredEditor(page);
+	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
+	await expect(snap).toHaveAttribute("aria-pressed", "false");
+	expect(await visibleGridStep(page)).toBe(10);
+	await snap.click();
+	await expect(snap).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await dragTo(page, [-83, -37], [-23, 32]);
+	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(60, 4);
+	let shape = (await state(page)).shapes[0];
+	expect(shape.x).toBe(-50);
+	expect(shape.y).toBe(-5);
+	expect(shape.height).toBe(70);
+	await dragHandle(page, "1,1", [13, 56]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(90, 4);
+	shape = (await state(page)).shapes[0];
+	expect(shape.height).toBe(100);
+	expect(shape.x - shape.width / 2).toBe(-80);
+	expect(shape.y - shape.height / 2).toBe(-40);
+	await page.keyboard.press("ArrowRight");
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(-25);
+	await page.keyboard.press("Shift+ArrowUp");
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(110);
+	await snap.click();
+	await page.getByRole("button", { name: "Triangle", exact: true }).click();
+	await dragTo(page, [-83, -37], [-23, 32]);
+	await expect.poll(async () => (await state(page)).shapes[1]?.height).toBeCloseTo(69, 4);
+	expect((await state(page)).shapes[1].x).toBeCloseTo(-53, 4);
+});
+
+test("snapped moves respect grab offsets, preserve groups, and cancel without changing selection", async ({ page }) => {
+	await fitCenteredEditor(page);
+	await createShape(page, "Rectangle", -130, 0);
+	await createShape(page, "Circle", -62, 8);
+	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(30, 4);
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.keyboard.down("Shift");
+	await clickAt(page, -130, 0);
+	await page.keyboard.up("Shift");
+	await expect.poll(() => selectedNames(page)).toEqual(["rectangle 1", "circle 2"]);
+	const originals = (await state(page)).shapes;
+	await clickAt(page, -60, 10);
+	await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
+	await dragTo(page, [-60, 10], [-47, 23]);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBe(-50);
+	const moved = (await state(page)).shapes;
+	expect(moved[1].y).toBe(20);
+	expect(moved[1].x - moved[0].x).toBeCloseTo(originals[1].x - originals[0].x, 4);
+	expect(moved[1].y - moved[0].y).toBeCloseTo(originals[1].y - originals[0].y, 4);
+	const start = await screen(page, -50, 20);
+	const end = await screen(page, -27, 43);
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBe(-30);
+	await page.keyboard.press("Escape");
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).shapes).toEqual(moved);
+});
+
+test("snap spacing follows grid zoom for circle radii and line endpoints", async ({ page }) => {
+	await fitCenteredEditor(page);
+	const initialStep = await visibleGridStep(page);
+	for (let index = 0; index < 4; index++) {
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	}
+	await expect.poll(() => visibleGridStep(page)).not.toBe(initialStep);
+	const step = await visibleGridStep(page);
+	expect(step).toBe(4);
+	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
+	await expect(snap).toHaveAttribute("title", `Snap to grid (${step} mm)`);
+	await snap.click();
+	await page.getByRole("button", { name: "Circle", exact: true }).click();
+	await dragTo(page, [-31, -19], [-19, -7]);
+	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBe(40);
+	let circle = (await state(page)).shapes[0];
+	expect(circle.x).toBe(-32);
+	expect(circle.y).toBe(-20);
+	await dragHandle(page, "1,0", [-3, -20]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBe(56);
+	circle = (await state(page)).shapes[0];
+	expect(circle.height).toBe(56);
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await dragTo(page, [9, 9], [25, 21]);
+	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(20, 4);
+	await dragHandle(page, "1,0", [39, 33]);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(40, 4);
+	const line = (await state(page)).shapes[1];
+	expect(line.x - Math.cos(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
+	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
+	expect(line.x + Math.cos(line.rotation) * line.width / 2).toBeCloseTo(40, 4);
+	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(32, 4);
+	await page.screenshot({ path: test.info().outputPath("snap-to-grid.png") });
+});

@@ -4,9 +4,11 @@ import { type EditorShape, shapeBounds } from "./shapes";
 
 export function SelectionAttributes({
 	shapes,
+	snapStep = 0,
 	onClear,
 }: {
 	shapes: EditorShape[];
+	snapStep?: number;
 	onClear: () => void;
 }) {
 	if (!shapes.length) return null;
@@ -72,8 +74,9 @@ export function SelectionAttributes({
 					))}
 				</dl>
 				<p>
-					Drag to move. Arrow keys move 1 mm; Shift + arrows move 10 mm when the
-					drawing is focused.
+					Drag to move; drag handles to resize. Arrow keys move {snapStep || 1}{" "}
+					mm; Shift + arrows move {(snapStep || 1) * 10} mm when the drawing is
+					focused.
 				</p>
 			</div>
 		</FloatingPanel>

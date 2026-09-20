@@ -1,6 +1,7 @@
 import {
 	Circle,
 	Hand,
+	Magnet,
 	MousePointer2,
 	Slash,
 	Square,
@@ -14,6 +15,7 @@ import {
 	useState,
 } from "react";
 import { screenToWorld, worldToScreen } from "#/engine/camera";
+import { rulerSpacing } from "#/engine/ruler";
 import type { Point } from "#/engine/types";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
@@ -29,6 +31,7 @@ import {
 	resizeHandles,
 	resizeShape,
 	type ShapeKind,
+	snapPoint,
 } from "./shapes";
 import { useEditorScene } from "./useEditorScene";
 
@@ -49,6 +52,9 @@ interface Drag {
 	previousSelection: Set<number>;
 	mode: "move" | "marquee" | "draw" | "resize";
 	handle?: ResizeHandle;
+	anchorShape?: EditorShape;
+	gridStep: number;
+	moved: boolean;
 	originals: EditorShape[];
 	created: boolean;
 	valid: boolean;
@@ -64,6 +70,7 @@ export function Editor2D() {
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
+	const [snapEnabled, setSnapEnabled] = useState(false);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
@@ -72,6 +79,7 @@ export function Editor2D() {
 	const nextId = useRef(1);
 	const { scene, updateScene } = useEditorScene(shapes, selectedIds);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
+	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
 	const handles =
 		tool === "select"
 			? selected.flatMap((shape) =>
@@ -113,18 +121,37 @@ export function Editor2D() {
 		stop(event);
 		const point = pointAt(event, active.canvas);
 		if (!point) return;
+		const rect = active.canvas.getBoundingClientRect();
+		const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+		active.moved ||=
+			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) >=
+			3;
+		// Selecting an off-grid shape must not move or resize it.
+		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
+			return;
 		if (active.mode === "resize" && active.handle) {
 			replaceShapes([
-				resizeShape(active.originals[0], active.handle, {
-					x: point.x - active.start.x,
-					y: point.y - active.start.y,
-				}),
+				resizeShape(
+					active.originals[0],
+					active.handle,
+					{
+						x: point.x - active.start.x,
+						y: point.y - active.start.y,
+					},
+					active.gridStep,
+				),
 			]);
 			return;
 		}
 		if (active.mode === "draw") {
 			const original = active.originals[0];
-			const draft = drawShape(original.id, original.kind, active.start, point);
+			const draft = drawShape(
+				original.id,
+				original.kind,
+				active.start,
+				point,
+				active.gridStep,
+			);
 			const scale = snapshot.current?.camera.scale ?? 1;
 			active.valid =
 				draft.width > 0 &&
@@ -139,15 +166,18 @@ export function Editor2D() {
 		}
 		if (active.mode === "move") {
 			replaceShapes(
-				moveShapes(active.originals, {
-					x: point.x - active.start.x,
-					y: point.y - active.start.y,
-				}),
+				moveShapes(
+					active.originals,
+					{
+						x: point.x - active.start.x,
+						y: point.y - active.start.y,
+					},
+					active.gridStep,
+					active.anchorShape,
+				),
 			);
 			return;
 		}
-		const rect = active.canvas.getBoundingClientRect();
-		const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
 		if (
 			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) < 3
 		) {
@@ -244,8 +274,13 @@ export function Editor2D() {
 						canvas.style.cursor = resize?.handle.cursor ?? "";
 						let shape: EditorShape | undefined;
 						const created = tool !== "select";
+						const snapStep =
+							snapEnabled && snapshot.current
+								? rulerSpacing(snapshot.current.camera.scale).minor
+								: 0;
+						const start = created ? snapPoint(point, snapStep) : point;
 						if (created) {
-							shape = drawShape(nextId.current++, tool, point, point);
+							shape = drawShape(nextId.current++, tool, start, start);
 							const added = shape;
 							setShapes((current) => [...current, added]);
 						} else if (resize) shape = resize.shape;
@@ -281,7 +316,7 @@ export function Editor2D() {
 						drag.current = {
 							pointerId: event.pointerId,
 							canvas,
-							start: point,
+							start,
 							startScreen: {
 								x: event.clientX - rect.left,
 								y: event.clientY - rect.top,
@@ -295,6 +330,9 @@ export function Editor2D() {
 										? "move"
 										: "marquee",
 							handle: resize?.handle,
+							anchorShape: shape,
+							gridStep: snapStep,
+							moved: false,
 							originals,
 							created,
 							valid: false,
@@ -338,22 +376,27 @@ export function Editor2D() {
 							finishDrag();
 							removeSelected();
 						} else if (selected.length > 0 && event.key.startsWith("Arrow")) {
-							const step = event.shiftKey ? 10 : 1;
+							const snapStep = snapEnabled ? gridStep : 0;
+							const step = (snapStep || 1) * (event.shiftKey ? 10 : 1);
 							replaceShapes(
-								moveShapes(selected, {
-									x:
-										event.key === "ArrowRight"
-											? step
-											: event.key === "ArrowLeft"
-												? -step
-												: 0,
-									y:
-										event.key === "ArrowUp"
-											? step
-											: event.key === "ArrowDown"
-												? -step
-												: 0,
-								}),
+								moveShapes(
+									selected,
+									{
+										x:
+											event.key === "ArrowRight"
+												? step
+												: event.key === "ArrowLeft"
+													? -step
+													: 0,
+										y:
+											event.key === "ArrowUp"
+												? step
+												: event.key === "ArrowDown"
+													? -step
+													: 0,
+									},
+									snapStep,
+								),
 							);
 						} else return;
 						event.preventDefault();
@@ -405,6 +448,17 @@ export function Editor2D() {
 									))}
 									<button
 										type="button"
+										className={`${viewControlButtonClassName} editor-tool`}
+										disabled={!ready}
+										aria-label="Snap to grid"
+										aria-pressed={snapEnabled}
+										title={`Snap to grid (${gridStep} mm)`}
+										onClick={() => setSnapEnabled((enabled) => !enabled)}
+									>
+										<Magnet size={18} aria-hidden="true" />
+									</button>
+									<button
+										type="button"
 										className={viewControlButtonClassName}
 										disabled={!selected.length}
 										aria-label="Delete"
@@ -416,7 +470,7 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Choose a shape, then drag to draw it. Rectangles and triangles use two opposite corners, circles use a center and radius, and lines use two endpoints. Release to finish or press Escape to cancel. Drag shapes to move. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. Arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
+							interactionHint="Choose a shape, then drag to draw it. Rectangles and triangles use two opposite corners, circles use a center and radius, and lines use two endpoints. Release to finish or press Escape to cancel. Drag shapes to move. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
 						/>
 					)}
 					{view && (
@@ -462,6 +516,7 @@ export function Editor2D() {
 				</div>
 				<SelectionAttributes
 					shapes={selected}
+					snapStep={snapEnabled ? gridStep : 0}
 					onClear={() => setSelectedIds(new Set())}
 				/>
 			</div>
