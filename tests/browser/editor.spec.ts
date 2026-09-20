@@ -60,7 +60,7 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 	await page.keyboard.press("ArrowRight");
 	await page.keyboard.press("Shift+ArrowDown");
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-29, 4);
-	expect((await state(page)).shapes[0].y).toBeCloseTo(320, 4);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(320, 4);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
@@ -288,4 +288,109 @@ test("draws circles, triangles and diagonal lines with accurate hit selection", 
 	await dragTo(page, [100, 200], [160, 240]);
 	await expect.poll(async () => (await state(page)).shapes[2]?.width).toBeCloseTo(60, 4);
 	expect((await state(page)).shapes[2].height).toBeCloseTo(40, 4);
+});
+
+// DOM handle positions are rounded to CSS subpixels, so resize assertions allow 0.05 mm.
+async function dragHandle(page: Page, handle: string, to: [number, number]) {
+	const box = (await page.locator(`[data-testid="resize-handle"][data-handle="${handle}"]`).last().boundingBox())!;
+	const end = await screen(page, ...to);
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y, { steps: 4 });
+	await page.mouse.up();
+}
+
+test("corner and edge handles resize shapes while keeping the opposite side fixed", async ({ page }) => {
+	await createShape(page, "Rectangle", 150, 150);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(8);
+	const before = await state(page);
+	await dragHandle(page, "1,1", [200, 200]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(75, 1);
+	let shape = (await state(page)).shapes[0];
+	expect(shape.height).toBeCloseTo(65, 1);
+	expect(shape.x - shape.width / 2).toBeCloseTo(125, 1);
+	expect(shape.y - shape.height / 2).toBeCloseTo(135, 1);
+	await dragHandle(page, "-1,0", [110, 160]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(90, 1);
+	shape = (await state(page)).shapes[0];
+	expect(shape.height).toBeCloseTo(65, 1);
+	expect(shape.x + shape.width / 2).toBeCloseTo(200, 1);
+	expect((await state(page)).origin).toEqual(before.origin);
+	await page.screenshot({ path: test.info().outputPath("resize-handles.png") });
+	await createShape(page, "Triangle", 280, 100);
+	await dragHandle(page, "1,1", [320, 140]);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(60, 1);
+	expect((await state(page)).shapes[1].height).toBeCloseTo(57.5, 1);
+});
+
+test("circle radius and diagonal line endpoints resize independently", async ({ page }) => {
+	await createShape(page, "Circle", 150, 150);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(4);
+	await dragHandle(page, "1,0", [180, 150]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(60, 1);
+	const circle = (await state(page)).shapes[0];
+	expect(circle.height).toBeCloseTo(60, 1);
+	expect(circle.x).toBeCloseTo(150, 1);
+	expect(circle.y).toBeCloseTo(150, 1);
+	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await dragTo(page, [220, 100], [250, 140]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
+	await dragHandle(page, "1,0", [280, 180]);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(100, 1);
+	await dragHandle(page, "-1,0", [200, 180]);
+	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(80, 1);
+	const line = (await state(page)).shapes[1];
+	expect(line.x).toBeCloseTo(240, 1);
+	expect(line.y).toBeCloseTo(180, 1);
+	expect(line.rotation).toBeCloseTo(0, 1);
+});
+
+test("handles track zoom and viewport changes and cancelled resizing restores dimensions", async ({ page }) => {
+	await createShape(page, "Rectangle", 150, 150);
+	const original = (await state(page)).shapes[0];
+	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
+	await page.setViewportSize({ width: 1000, height: 800 });
+	await expect.poll(async () => (await page.locator("canvas").boundingBox())?.width).toBe(1000);
+	const handle = page.locator('[data-testid="resize-handle"][data-handle="1,1"]');
+	await expect(async () => {
+		const box = (await handle.boundingBox())!;
+		const point = await screen(page, 175, 165);
+		expect(box.width).toBe(10);
+		expect(box.x + 5).toBeCloseTo(point.x, 1);
+		expect(box.y + 5).toBeCloseTo(point.y, 1);
+	}).toPass();
+	const box = (await handle.boundingBox())!;
+	const end = await screen(page, 220, 200);
+	await page.mouse.move(box.x + 5, box.y + 5);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(95, 1);
+	await page.keyboard.press("Escape");
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).shapes[0]).toEqual(original);
+	await dragHandle(page, "1,1", [220, 200]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(95, 1);
+});
+
+test("resizing one of several selected shapes preserves the others and pointer cancellation restores it", async ({ page }) => {
+	await createShape(page, "Rectangle", 130, 150);
+	await createShape(page, "Circle", 230, 150);
+	await page.keyboard.down("Shift");
+	await clickAt(page, 130, 150);
+	await page.keyboard.up("Shift");
+	await expect(page.getByTestId("resize-handle")).toHaveCount(12);
+	const originals = (await state(page)).shapes;
+	const handle = page.locator('[data-shape-id="1"][data-handle="1,1"]');
+	const box = (await handle.boundingBox())!;
+	const end = await screen(page, 180, 180);
+	await page.mouse.move(box.x + 5, box.y + 5);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(75, 1);
+	expect((await state(page)).shapes[1]).toEqual(originals[1]);
+	await expect.poll(() => selectedNames(page)).toEqual(["rectangle 1", "circle 2"]);
+	await page.locator("canvas").dispatchEvent("pointercancel", { pointerId: 1 });
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
 });

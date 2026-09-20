@@ -10,6 +10,121 @@ export interface EditorShape extends Point {
 	rotation: number;
 }
 
+export interface ResizeHandle extends Point {
+	id: string;
+	xDirection: number;
+	yDirection: number;
+	cursor: string;
+}
+
+function localToWorld(shape: EditorShape, x: number, y: number): Point {
+	return {
+		x: shape.x + x * Math.cos(shape.rotation) - y * Math.sin(shape.rotation),
+		y: shape.y + x * Math.sin(shape.rotation) + y * Math.cos(shape.rotation),
+	};
+}
+
+/** Handle positions use the same local axes as the rendered shape. */
+export function resizeHandles(shape: EditorShape): ResizeHandle[] {
+	const directions =
+		shape.kind === "line"
+			? [
+					[-1, 0],
+					[1, 0],
+				]
+			: shape.kind === "circle"
+				? [
+						[-1, 0],
+						[1, 0],
+						[0, -1],
+						[0, 1],
+					]
+				: [
+						[-1, -1],
+						[0, -1],
+						[1, -1],
+						[-1, 0],
+						[1, 0],
+						[-1, 1],
+						[0, 1],
+						[1, 1],
+					];
+	return directions.map(([xDirection, yDirection]) => {
+		const angle = Math.atan2(yDirection, xDirection) + shape.rotation;
+		const cursor = ["ew-resize", "nesw-resize", "ns-resize", "nwse-resize"][
+			((Math.round(angle / (Math.PI / 4)) % 4) + 4) % 4
+		];
+		return {
+			...localToWorld(
+				shape,
+				(xDirection * shape.width) / 2,
+				(yDirection * shape.height) / 2,
+			),
+			id: `${xDirection},${yDirection}`,
+			xDirection,
+			yDirection,
+			cursor: shape.kind === "line" ? "crosshair" : cursor,
+		};
+	});
+}
+
+/** Resize from the initial shape so a drag never accumulates rounding errors. */
+export function resizeShape(
+	shape: EditorShape,
+	handle: ResizeHandle,
+	delta: Point,
+): EditorShape {
+	const point = { x: handle.x + delta.x, y: handle.y + delta.y };
+	if (shape.kind === "circle") {
+		const diameter = Math.max(
+			0.1,
+			2 * Math.hypot(point.x - shape.x, point.y - shape.y),
+		);
+		return { ...shape, width: diameter, height: diameter };
+	}
+	if (shape.kind === "line") {
+		const fixed = localToWorld(
+			shape,
+			(-handle.xDirection * shape.width) / 2,
+			0,
+		);
+		const length = Math.hypot(point.x - fixed.x, point.y - fixed.y);
+		if (length < 0.1) {
+			point.x =
+				fixed.x +
+				(length > 0
+					? (point.x - fixed.x) / length
+					: handle.xDirection * Math.cos(shape.rotation)) *
+					0.1;
+			point.y =
+				fixed.y +
+				(length > 0
+					? (point.y - fixed.y) / length
+					: handle.xDirection * Math.sin(shape.rotation)) *
+					0.1;
+		}
+		return handle.xDirection === 1
+			? drawShape(shape.id, "line", fixed, point)
+			: drawShape(shape.id, "line", point, fixed);
+	}
+	const dx =
+		delta.x * Math.cos(shape.rotation) + delta.y * Math.sin(shape.rotation);
+	const dy =
+		-delta.x * Math.sin(shape.rotation) + delta.y * Math.cos(shape.rotation);
+	const width = Math.max(0.1, shape.width + handle.xDirection * dx);
+	const height = Math.max(0.1, shape.height + handle.yDirection * dy);
+	return {
+		...shape,
+		...localToWorld(
+			shape,
+			(handle.xDirection * (width - shape.width)) / 2,
+			(handle.yDirection * (height - shape.height)) / 2,
+		),
+		width,
+		height,
+	};
+}
+
 /** Rectangles and triangles use opposite corners; circles use center/radius; lines use endpoints. */
 export function drawShape(
 	id: number,

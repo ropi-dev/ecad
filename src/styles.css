@@ -64,6 +64,8 @@ body { margin: 0; }
 .editor-surface[data-tool="pan"] canvas { cursor: grab; }
 .editor-surface:not([data-tool="pan"]):not([data-tool="select"]) canvas { cursor: crosshair; }
 .editor-selection-rectangle { position: absolute; z-index: 2; pointer-events: none; border: 1px solid #e8b77e; background: #e8b77e25; }
+.editor-resize-handles { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.editor-resize-handle { position: absolute; width: 10px; height: 10px; transform: translate(-50%, -50%); border: 1px solid #e8b77e; background: #19212e; }
 .editor-attributes { padding: 10px; }
 .editor-attributes header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .editor-attributes h2 { margin: 0; font-size: 13px; font-weight: 600; }

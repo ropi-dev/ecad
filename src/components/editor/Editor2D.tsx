@@ -13,7 +13,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { screenToWorld } from "#/engine/camera";
+import { screenToWorld, worldToScreen } from "#/engine/camera";
 import type { Point } from "#/engine/types";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
@@ -25,6 +25,9 @@ import {
 	hitShape,
 	intersectsSelection,
 	moveShapes,
+	type ResizeHandle,
+	resizeHandles,
+	resizeShape,
 	type ShapeKind,
 } from "./shapes";
 import { useEditorScene } from "./useEditorScene";
@@ -44,7 +47,8 @@ interface Drag {
 	start: Point;
 	startScreen: Point;
 	previousSelection: Set<number>;
-	mode: "move" | "marquee" | "draw";
+	mode: "move" | "marquee" | "draw" | "resize";
+	handle?: ResizeHandle;
 	originals: EditorShape[];
 	created: boolean;
 	valid: boolean;
@@ -63,10 +67,27 @@ export function Editor2D() {
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
+	const [view, setView] = useState<Viewer2DSnapshot | null>(null);
 	const drag = useRef<Drag | null>(null);
 	const nextId = useRef(1);
 	const { scene, updateScene } = useEditorScene(shapes, selectedIds);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
+	const handles =
+		tool === "select"
+			? selected.flatMap((shape) =>
+					resizeHandles(shape).map((handle) => ({ shape, handle })),
+				)
+			: [];
+	const handleAt = (point: Point) => {
+		const tolerance = 7 / (snapshot.current?.camera.scale ?? 1);
+		return [...handles]
+			.reverse()
+			.find(
+				({ handle }) =>
+					Math.abs(handle.x - point.x) <= tolerance &&
+					Math.abs(handle.y - point.y) <= tolerance,
+			);
+	};
 	const pointAt = (event: ReactPointerEvent, canvas: HTMLCanvasElement) => {
 		const view = snapshot.current;
 		if (!view) return null;
@@ -92,6 +113,15 @@ export function Editor2D() {
 		stop(event);
 		const point = pointAt(event, active.canvas);
 		if (!point) return;
+		if (active.mode === "resize" && active.handle) {
+			replaceShapes([
+				resizeShape(active.originals[0], active.handle, {
+					x: point.x - active.start.x,
+					y: point.y - active.start.y,
+				}),
+			]);
+			return;
+		}
 		if (active.mode === "draw") {
 			const original = active.originals[0];
 			const draft = drawShape(original.id, original.kind, active.start, point);
@@ -141,6 +171,7 @@ export function Editor2D() {
 		const active = drag.current;
 		if (!active) return;
 		drag.current = null;
+		active.canvas.style.cursor = "";
 		setMarquee(null);
 		if (cancel || (active.created && !active.valid)) {
 			if (active.created) {
@@ -148,7 +179,8 @@ export function Editor2D() {
 				setShapes((current) =>
 					current.filter((shape) => !createdIds.has(shape.id)),
 				);
-			} else if (active.mode === "move") replaceShapes(active.originals);
+			} else if (active.mode === "move" || active.mode === "resize")
+				replaceShapes(active.originals);
 			setSelectedIds(active.previousSelection);
 		} else if (active.created) setTool("select");
 		if (active.canvas.hasPointerCapture(active.pointerId))
@@ -208,13 +240,16 @@ export function Editor2D() {
 						if (!point) return;
 						stop(event);
 						canvas.focus({ preventScroll: true });
+						const resize = handleAt(point);
+						canvas.style.cursor = resize?.handle.cursor ?? "";
 						let shape: EditorShape | undefined;
 						const created = tool !== "select";
 						if (created) {
 							shape = drawShape(nextId.current++, tool, point, point);
 							const added = shape;
 							setShapes((current) => [...current, added]);
-						} else
+						} else if (resize) shape = resize.shape;
+						else
 							shape = [...shapes]
 								.reverse()
 								.find((candidate) =>
@@ -224,21 +259,23 @@ export function Editor2D() {
 										6 / (snapshot.current?.camera.scale ?? 1),
 									),
 								);
-						if (shape && event.shiftKey && !created) {
+						if (shape && event.shiftKey && !created && !resize) {
 							selectShape(shape.id, true);
 							return;
 						}
 						const originals = shape
-							? !created && selectedIds.has(shape.id)
+							? !created && !resize && selectedIds.has(shape.id)
 								? selected
 								: [shape]
 							: [];
 						setSelectedIds(
-							shape
-								? new Set(originals.map((item) => item.id))
-								: event.shiftKey
-									? selectedIds
-									: new Set(),
+							resize
+								? selectedIds
+								: shape
+									? new Set(originals.map((item) => item.id))
+									: event.shiftKey
+										? selectedIds
+										: new Set(),
 						);
 						const rect = canvas.getBoundingClientRect();
 						drag.current = {
@@ -250,7 +287,14 @@ export function Editor2D() {
 								y: event.clientY - rect.top,
 							},
 							previousSelection: selectedIds,
-							mode: created ? "draw" : shape ? "move" : "marquee",
+							mode: created
+								? "draw"
+								: resize
+									? "resize"
+									: shape
+										? "move"
+										: "marquee",
+							handle: resize?.handle,
 							originals,
 							created,
 							valid: false,
@@ -258,7 +302,17 @@ export function Editor2D() {
 						};
 						canvas.setPointerCapture(event.pointerId);
 					}}
-					onPointerMoveCapture={updateDrag}
+					onPointerMoveCapture={(event) => {
+						if (drag.current) {
+							updateDrag(event);
+							return;
+						}
+						if (!(event.target instanceof HTMLCanvasElement)) return;
+						const point = pointAt(event, event.target);
+						event.target.style.cursor = point
+							? (handleAt(point)?.handle.cursor ?? "")
+							: "";
+					}}
 					onPointerUpCapture={(event) => {
 						if (drag.current?.pointerId !== event.pointerId) return;
 						updateDrag(event);
@@ -315,6 +369,16 @@ export function Editor2D() {
 							onError={setError}
 							onChange={(value) => {
 								snapshot.current = value;
+								setView((current) =>
+									current &&
+									current.camera.x === value.camera.x &&
+									current.camera.y === value.camera.y &&
+									current.camera.scale === value.camera.scale &&
+									current.viewport.width === value.viewport.width &&
+									current.viewport.height === value.viewport.height
+										? current
+										: value,
+								);
 							}}
 							extraControls={
 								<fieldset aria-label="Drawing tools" className="contents">
@@ -352,8 +416,30 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Choose a shape, then drag to draw it. Rectangles and triangles use two opposite corners, circles use a center and radius, and lines use two endpoints. Release to finish or press Escape to cancel. Drag shapes to move. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. Arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
+							interactionHint="Choose a shape, then drag to draw it. Rectangles and triangles use two opposite corners, circles use a center and radius, and lines use two endpoints. Release to finish or press Escape to cancel. Drag shapes to move. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. Arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Escape cancels. F6 fits the sheet."
 						/>
+					)}
+					{view && (
+						<div className="editor-resize-handles" aria-hidden="true">
+							{handles.map(({ shape, handle }) => {
+								const point = worldToScreen(
+									handle,
+									view.camera,
+									view.viewport.width,
+									view.viewport.height,
+								);
+								return (
+									<span
+										key={`${shape.id}:${handle.id}`}
+										className="editor-resize-handle"
+										data-testid="resize-handle"
+										data-shape-id={shape.id}
+										data-handle={handle.id}
+										style={{ left: point.x, top: point.y }}
+									/>
+								);
+							})}
+						</div>
 					)}
 					{marquee && (
 						<div
