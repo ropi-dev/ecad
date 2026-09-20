@@ -20,6 +20,16 @@ import type { Point } from "#/engine/types";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
+import { HistoryControls } from "./HistoryControls";
+import {
+	commitHistory,
+	createHistory,
+	getHistoryState,
+	type History,
+	jumpHistory,
+	redoHistory,
+	undoHistory,
+} from "./history";
 import { SelectionAttributes } from "./SelectionAttributes";
 import {
 	constrainLineEndpoint,
@@ -71,11 +81,41 @@ interface LineChain {
 	start: Point;
 	pointerId: number;
 }
+interface DrawingState {
+	shapes: EditorShape[];
+	selectedIds: number[];
+}
+
+function sameDrawing(first: DrawingState, second: DrawingState) {
+	return (
+		first.shapes.length === second.shapes.length &&
+		first.shapes.every((shape, index) => {
+			const other = second.shapes[index];
+			return (
+				shape.id === other.id &&
+				shape.kind === other.kind &&
+				Math.abs(shape.x - other.x) < 1e-9 &&
+				Math.abs(shape.y - other.y) < 1e-9 &&
+				Math.abs(shape.width - other.width) < 1e-9 &&
+				Math.abs(shape.height - other.height) < 1e-9 &&
+				Math.abs(shape.rotation - other.rotation) < 1e-9
+			);
+		})
+	);
+}
 
 export function Editor2D() {
 	const [shapes, setShapes] = useState<EditorShape[]>([]);
 	const currentShapes = useRef(shapes);
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+	const currentSelection = useRef(selectedIds);
+	const [history, setHistory] = useState(() =>
+		createHistory<DrawingState>(
+			{ shapes: [], selectedIds: [] },
+			"Empty drawing",
+		),
+	);
+	const currentHistory = useRef(history);
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
 	const [snapEnabled, setSnapEnabled] = useState(true);
@@ -130,7 +170,32 @@ export function Editor2D() {
 		currentShapes.current = next;
 		setShapes(next);
 	};
-	const commitShapes = (next: EditorShape[], ids = selectedIds) => {
+	const applySelection = (ids: Set<number>) => {
+		currentSelection.current = ids;
+		setSelectedIds(ids);
+	};
+	const applyHistory = (next: History<DrawingState>) => {
+		currentHistory.current = next;
+		setHistory(next);
+	};
+	const recordEdit = (label: string) => {
+		applyHistory(
+			commitHistory(
+				currentHistory.current,
+				{
+					shapes: currentShapes.current,
+					selectedIds: [...currentSelection.current],
+				},
+				label,
+				sameDrawing,
+			),
+		);
+	};
+	const commitShapes = (
+		next: EditorShape[],
+		label: string,
+		ids = currentSelection.current,
+	) => {
 		const normalized = normalizeLineSegments(next, ids);
 		applyShapes(normalized.shapes);
 		const selection = new Set<number>();
@@ -138,14 +203,15 @@ export function Editor2D() {
 			const survivor = normalized.idMap.get(id);
 			if (survivor !== undefined) selection.add(survivor);
 		}
-		setSelectedIds(selection);
+		applySelection(selection);
+		recordEdit(label);
 	};
-	const replaceShapes = (replacements: EditorShape[], commit = false) => {
+	const replaceShapes = (replacements: EditorShape[], label?: string) => {
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
 		const next = currentShapes.current.map(
 			(shape) => byId.get(shape.id) ?? shape,
 		);
-		if (commit) commitShapes(next);
+		if (label) commitShapes(next, label);
 		else applyShapes(next);
 	};
 	const previewLine = (point: Point) => {
@@ -229,7 +295,7 @@ export function Editor2D() {
 			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) < 3
 		) {
 			setMarquee(null);
-			setSelectedIds(active.additive ? active.previousSelection : new Set());
+			applySelection(active.additive ? active.previousSelection : new Set());
 			return;
 		}
 		setMarquee({ start: active.startScreen, end });
@@ -242,7 +308,7 @@ export function Editor2D() {
 		const ids = new Set(active.additive ? active.previousSelection : []);
 		for (const shape of shapes)
 			if (intersectsSelection(shape, bounds)) ids.add(shape.id);
-		setSelectedIds(ids);
+		applySelection(ids);
 	};
 	const finishDrag = (cancel = false) => {
 		const active = drag.current;
@@ -258,35 +324,83 @@ export function Editor2D() {
 				);
 			} else if (active.mode === "move") applyShapes(active.initialShapes);
 			else if (active.mode === "resize") replaceShapes(active.originals);
-			setSelectedIds(active.previousSelection);
-		} else if (active.created) setTool("select");
-		else if (
-			(active.mode === "move" || active.mode === "resize") &&
-			active.originals.some((shape) => shape.kind === "line")
-		)
-			commitShapes(currentShapes.current);
+			applySelection(active.previousSelection);
+		} else if (active.created) {
+			commitShapes(currentShapes.current, `Draw ${active.originals[0].kind}`);
+			setTool("select");
+		} else if (active.mode === "move" || active.mode === "resize")
+			commitShapes(
+				currentShapes.current,
+				active.mode === "move"
+					? "Move selection"
+					: `Resize ${active.originals[0].kind}`,
+			);
 		if (active.canvas.hasPointerCapture(active.pointerId))
 			active.canvas.releasePointerCapture(active.pointerId);
 	};
+	const restoreHistory = (next: History<DrawingState>) => {
+		// Discard transient geometry before navigating to a committed drawing.
+		finishDrag(true);
+		finishLine();
+		const restored = getHistoryState(next);
+		applyHistory(next);
+		applyShapes(restored.shapes);
+		applySelection(new Set(restored.selectedIds));
+	};
+	const undo = () => {
+		const next = undoHistory(currentHistory.current);
+		if (next !== currentHistory.current || drag.current || lineChain.current)
+			restoreHistory(next);
+	};
+	const redo = () => {
+		const next = redoHistory(currentHistory.current);
+		if (next !== currentHistory.current || drag.current || lineChain.current)
+			restoreHistory(next);
+	};
 	const removeSelected = () => {
+		finishDrag();
 		if (lineChain.current) {
 			finishLine();
 			setTool("select");
 		}
-		applyShapes(
-			currentShapes.current.filter((shape) => !selectedIds.has(shape.id)),
+		commitShapes(
+			currentShapes.current.filter(
+				(shape) => !currentSelection.current.has(shape.id),
+			),
+			"Delete selection",
+			new Set(),
 		);
-		setSelectedIds(new Set());
 	};
 	const selectShape = (id: number, additive: boolean) => {
 		const ids = new Set(additive ? selectedIds : []);
 		if (additive && ids.has(id)) ids.delete(id);
 		else ids.add(id);
-		setSelectedIds(ids);
+		applySelection(ids);
 	};
 
 	return (
-		<main className="relative flex h-dvh flex-col overflow-hidden">
+		<main
+			className="relative flex h-dvh flex-col overflow-hidden"
+			onKeyDownCapture={(event) => {
+				const target = event.target;
+				if (
+					!(event.ctrlKey || event.metaKey) ||
+					event.altKey ||
+					(target instanceof HTMLElement &&
+						(target.isContentEditable ||
+							target.closest("input, textarea, select")))
+				)
+					return;
+				const key = event.key.toLowerCase();
+				if (key === "z") {
+					if (event.shiftKey) redo();
+					else undo();
+				} else if (key === "y" && !event.shiftKey) redo();
+				else return;
+				event.preventDefault();
+				event.stopPropagation();
+			}}
+		>
 			<h1 className="sr-only">2D editor · A3 landscape · 420 × 297 mm</h1>
 			<header className="absolute top-10 left-10 z-2 flex items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
 				<a
@@ -351,6 +465,7 @@ export function Editor2D() {
 							nextId.current++;
 							commitShapes(
 								[...currentShapes.current, next.shape],
+								"Draw line",
 								new Set([next.shape.id]),
 							);
 							active.start = next.end;
@@ -381,7 +496,7 @@ export function Editor2D() {
 								? selected
 								: [shape]
 							: [];
-						setSelectedIds(
+						applySelection(
 							resize
 								? selectedIds
 								: shape
@@ -462,6 +577,7 @@ export function Editor2D() {
 						if (drag.current?.pointerId === event.pointerId) finishDrag(true);
 					}}
 					onKeyDownCapture={(event) => {
+						if (!(event.target instanceof HTMLCanvasElement)) return;
 						if (
 							lineChain.current &&
 							(event.key === "Escape" || event.key === "Enter")
@@ -472,10 +588,9 @@ export function Editor2D() {
 							event.stopPropagation();
 							return;
 						}
-						if (!(event.target instanceof HTMLCanvasElement)) return;
 						if (event.key === "Escape") {
 							if (drag.current) finishDrag(true);
-							else setSelectedIds(new Set());
+							else applySelection(new Set());
 						} else if (
 							selected.length > 0 &&
 							(event.key === "Delete" || event.key === "Backspace")
@@ -515,7 +630,7 @@ export function Editor2D() {
 									selected[0],
 									currentShapes.current,
 								),
-								selected.some((shape) => shape.kind === "line"),
+								"Move selection",
 							);
 						} else return;
 						event.preventDefault();
@@ -544,6 +659,15 @@ export function Editor2D() {
 							}}
 							extraControls={
 								<fieldset aria-label="Drawing tools" className="contents">
+									<HistoryControls
+										history={history}
+										disabled={!ready}
+										onUndo={undo}
+										onRedo={redo}
+										onRestore={(id) =>
+											restoreHistory(jumpHistory(currentHistory.current, id))
+										}
+									/>
 									{tools.map(({ kind, label, icon: Icon }) => (
 										<Fragment key={kind}>
 											{(kind === "select" || kind === "rectangle") && (
@@ -592,7 +716,7 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For lines, click to start, then click to place each corner and keep drawing. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. F6 fits the sheet."
+							interactionHint="Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For lines, click to start, then click to place each corner and keep drawing. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
 						/>
 					)}
 					{view && (
@@ -645,7 +769,7 @@ export function Editor2D() {
 				<SelectionAttributes
 					shapes={selected}
 					snapStep={snapEnabled ? gridStep : 0}
-					onClear={() => setSelectedIds(new Set())}
+					onClear={() => applySelection(new Set())}
 				/>
 			</div>
 		</main>
