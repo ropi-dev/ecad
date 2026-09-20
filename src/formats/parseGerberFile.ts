@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import type { ParseResult } from "#/engine";
 import type { PlanarGeometry } from "#/engine/planar-geometry";
 import {
@@ -5,6 +6,13 @@ import {
 	disposePlanarObject3D,
 } from "#/engine/planar-object";
 import type { PlanarObject, SpatialObject } from "#/engine/scene";
+import { runEffect } from "#/lib/effect";
+import {
+	acquireImported,
+	InvalidFile,
+	readFile,
+	requestWorker,
+} from "./import-effects";
 
 interface WorkerResult extends ParseResult {
 	mesh?: PlanarGeometry;
@@ -20,89 +28,83 @@ export interface ParsedGerberFile extends Omit<ParseResult, "object"> {
 	dispose: () => void;
 }
 
-export async function parseGerberFile(
+export function parseGerberFileEffect(file: File) {
+	return Effect.gen(function* () {
+		const source = yield* readFile(() => file.text());
+		const parsed = yield* requestWorker<WorkerResult>({
+			create: () =>
+				new Worker(new URL("./parse.worker.ts", import.meta.url), {
+					type: "module",
+				}),
+			message: { id: 0, source, filename: file.name },
+			timeout: 20_000,
+			timeoutMessage: "Parsing timed out. Try a smaller file.",
+			parseMessage: "Unable to parse this file.",
+			startMessage: "Unable to parse this file.",
+			receiveMessage: "Unable to receive the parsed file.",
+		});
+		const errors = parsed.diagnostics.filter(
+			(entry) => entry.severity === "error",
+		);
+		if (errors.length)
+			return yield* new InvalidFile({
+				message: errors.map((entry) => entry.message).join("; "),
+			});
+		if (!parsed.mesh?.positions.length)
+			return yield* new InvalidFile({
+				message: "This file contains no drawable geometry.",
+			});
+		const geometry = parsed.mesh;
+		return yield* acquireImported(
+			Effect.try({
+				try: (): ParsedGerberFile => {
+					const id = crypto.randomUUID();
+					const drawing: PlanarObject = {
+						...parsed.object,
+						id,
+						objects: parsed.object.objects.map((object) => ({
+							...object,
+							id: `${id}:${object.id}`,
+						})),
+					};
+					const mesh = createPlanarObject3D(drawing, geometry);
+					let disposed = false;
+					const dispose = () => {
+						if (disposed) return;
+						disposed = true;
+						disposePlanarObject3D(mesh);
+					};
+					const object: ParsedGerberObject = {
+						...drawing,
+						type: "spatial",
+						object: mesh,
+						dispose,
+					};
+					return {
+						diagnostics: parsed.diagnostics,
+						format: parsed.format,
+						units: parsed.units,
+						object,
+						scene: [object],
+						dispose,
+					};
+				},
+				catch: (cause) =>
+					new InvalidFile({
+						message:
+							cause instanceof Error
+								? cause.message
+								: "Unable to create the Gerber geometry.",
+					}),
+			}),
+			(parsed) => parsed.dispose(),
+		);
+	});
+}
+
+export function parseGerberFile(
 	file: File,
 	signal?: AbortSignal,
 ): Promise<ParsedGerberFile> {
-	signal?.throwIfAborted();
-	const source = await file.text();
-	signal?.throwIfAborted();
-	const parsed = await new Promise<WorkerResult>((resolve, reject) => {
-		const worker = new Worker(new URL("./parse.worker.ts", import.meta.url), {
-			type: "module",
-		});
-		let settled = false;
-		const finish = (error: unknown, result?: WorkerResult) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeout);
-			signal?.removeEventListener("abort", abort);
-			worker.terminate();
-			if (result) resolve(result);
-			else reject(error);
-		};
-		const abort = () =>
-			finish(
-				signal?.reason ??
-					new DOMException("File loading cancelled.", "AbortError"),
-			);
-		const timeout = setTimeout(
-			() => finish(new Error("Parsing timed out. Try a smaller file.")),
-			20000,
-		);
-		signal?.addEventListener("abort", abort, { once: true });
-		worker.onmessage = (
-			event: MessageEvent<{ result?: WorkerResult; error?: string }>,
-		) => {
-			if (event.data.error || !event.data.result)
-				finish(new Error(event.data.error || "Unable to parse this file."));
-			else finish(null, event.data.result);
-		};
-		worker.onerror = (event) =>
-			finish(new Error(event.message || "Unable to parse this file."));
-		try {
-			if (signal?.aborted) abort();
-			else worker.postMessage({ id: 0, source, filename: file.name });
-		} catch (error) {
-			finish(error);
-		}
-	});
-	signal?.throwIfAborted();
-	const errors = parsed.diagnostics.filter(
-		(entry) => entry.severity === "error",
-	);
-	if (errors.length)
-		throw new Error(errors.map((entry) => entry.message).join("; "));
-	if (!parsed.mesh?.positions.length)
-		throw new Error("This file contains no drawable geometry.");
-	const id = crypto.randomUUID();
-	const drawing: PlanarObject = {
-		...parsed.object,
-		id,
-		objects: parsed.object.objects.map((object) => ({
-			...object,
-			id: `${id}:${object.id}`,
-		})),
-	};
-	const mesh = createPlanarObject3D(drawing, parsed.mesh);
-	let disposed = false;
-	const dispose = () => {
-		if (disposed) return;
-		disposed = true;
-		disposePlanarObject3D(mesh);
-	};
-	const object: ParsedGerberObject = {
-		...drawing,
-		type: "spatial",
-		object: mesh,
-		dispose,
-	};
-	return {
-		diagnostics: parsed.diagnostics,
-		format: parsed.format,
-		units: parsed.units,
-		object,
-		scene: [object],
-		dispose,
-	};
+	return runEffect(Effect.scoped(parseGerberFileEffect(file)), signal);
 }

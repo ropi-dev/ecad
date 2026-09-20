@@ -1,53 +1,33 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { createFileRoute } from '@tanstack/react-router'
-import z from 'zod'
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createFileRoute } from "@tanstack/react-router";
+import z from "zod";
+import { addTodo } from "#/mcp-todos";
+import { handleMcpRequest } from "#/utils/mcp-handler";
 
-import { handleMcpRequest } from '#/utils/mcp-handler'
+function createTodoServer() {
+	const server = new McpServer({ name: "start-server", version: "1.0.0" });
+	server.registerTool(
+		"addTodo",
+		{
+			title: "Tool to add a todo to a list of todos",
+			description: "Add a todo to a list of todos",
+			inputSchema: {
+				title: z.string().min(1).describe("The title of the todo"),
+			},
+		},
+		async ({ title }, { signal }) => ({
+			content: [
+				{ type: "text", text: JSON.stringify(await addTodo(title, signal)) },
+			],
+		}),
+	);
+	return server;
+}
 
-import { addTodo } from '#/mcp-todos'
-
-const server = new McpServer({
-  name: 'start-server',
-  version: '1.0.0',
-})
-
-server.registerTool(
-  'addTodo',
-  {
-    title: 'Tool to add a todo to a list of todos',
-    description: 'Add a todo to a list of todos',
-    inputSchema: {
-      title: z.string().describe('The title of the todo'),
-    },
-  },
-  ({ title }) => ({
-    content: [{ type: 'text', text: String(addTodo(title)) }],
-  }),
-)
-
-// server.registerResource(
-//   "counter-value",
-//   "count://",
-//   {
-//     title: "Counter Resource",
-//     description: "Returns the current value of the counter",
-//   },
-//   async (uri) => {
-//     return {
-//       contents: [
-//         {
-//           uri: uri.href,
-//           text: `The counter is at 20!`,
-//         },
-//       ],
-//     };
-//   }
-// );
-
-export const Route = createFileRoute('/mcp')({
-  server: {
-    handlers: {
-      POST: async ({ request }) => handleMcpRequest(request, server),
-    },
-  },
-})
+export const Route = createFileRoute("/mcp")({
+	server: {
+		handlers: {
+			POST: ({ request }) => handleMcpRequest(request, createTodoServer),
+		},
+	},
+});

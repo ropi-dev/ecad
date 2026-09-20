@@ -97,6 +97,15 @@ test("imported Gerber geometry highlights without component or net attributes", 
 		mimeType: "text/plain",
 		buffer: Buffer.from("%FSLAX46Y46*%%MOMM*%%ADD10R,4X4*%D10*X0Y0D03*M02*"),
 	});
+	// The empty viewer is already ready; wait for the imported scene to render.
+	await expect
+		.poll(async () => {
+			const text = await page.locator("#scene-state").textContent();
+			return text
+				? JSON.parse(text).objects.map((object: { name: string }) => object.name)
+				: [];
+		})
+		.toEqual(["shapes.gbr"]);
 	await expect(
 		page.getByRole("button", { name: "Fit drawing", exact: true }),
 	).toBeEnabled();

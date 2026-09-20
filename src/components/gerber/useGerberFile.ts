@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { expandGerberFile } from "#/formats/expandGerberFile";
+import { Effect } from "effect";
+import {
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
+import { expandGerberFileEffect } from "#/formats/expandGerberFile";
+import { ImportOwnership } from "#/formats/import-ownership";
 import {
 	type ParsedGerberObject,
-	parseGerberFile,
+	parseGerberFileEffect,
 } from "#/formats/parseGerberFile.ts";
 import { useFileImport } from "../viewer/useFileImport";
 
@@ -15,44 +23,50 @@ const COLORS = [
 	"#d2cf7d",
 ];
 
-async function readGerber(file: File, signal: AbortSignal) {
-	const { object, diagnostics } = await parseGerberFile(file, signal);
-	return { value: object, messages: diagnostics.map((entry) => entry.message) };
+function readGerber(file: File) {
+	return Effect.map(parseGerberFileEffect(file), ({ object, diagnostics }) => ({
+		value: object,
+		messages: diagnostics.map((entry) => entry.message),
+	}));
 }
 const release = (object: ParsedGerberObject) => object.dispose();
 
 export function useGerberFile() {
-	const [layers, setLayers] = useState<ParsedGerberObject[]>([]);
-	const owned = useRef(new Set<() => void>());
-	useEffect(() => {
-		const next = new Set(layers.map((object) => object.dispose));
-		for (const dispose of owned.current) if (!next.has(dispose)) dispose();
-		owned.current = next;
-	}, [layers]);
-	useEffect(
-		() => () => {
-			for (const dispose of owned.current) dispose();
+	const [layers, updateLayers] = useState<ParsedGerberObject[]>([]);
+	const latest = useRef(layers);
+	const [ownership] = useState(() => new ImportOwnership());
+	const setLayers = useCallback(
+		(action: SetStateAction<ParsedGerberObject[]>) => {
+			const next =
+				typeof action === "function" ? action(latest.current) : action;
+			latest.current = next;
+			ownership.stage(next.map((object) => object.dispose));
+			updateLayers(next);
 		},
-		[],
+		[ownership],
 	);
+	useEffect(() => {
+		ownership.commit(layers.map((object) => object.dispose));
+	}, [layers, ownership]);
+	useEffect(() => () => ownership.dispose(), [ownership]);
 	const { loading, message, readFiles } = useFileImport(
 		readGerber,
 		release,
-		expandGerberFile,
+		expandGerberFileEffect,
 	);
 	const openFile = useCallback(
 		async (files: File[]) => {
-			const imported = await readFiles(files);
-			if (!imported) return;
-			setLayers((previous) => [
-				...previous,
-				...imported.map((layer, index) => ({
-					...layer,
-					color: COLORS[(previous.length + index) % COLORS.length],
-				})),
-			]);
+			await readFiles(files, (imported) => {
+				setLayers((previous) => [
+					...previous,
+					...imported.map((layer, index) => ({
+						...layer,
+						color: COLORS[(previous.length + index) % COLORS.length],
+					})),
+				]);
+			});
 		},
-		[readFiles],
+		[readFiles, setLayers],
 	);
 	return { layers, loading, message, openFile, setLayers };
 }

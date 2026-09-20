@@ -1,4 +1,6 @@
-Welcome to your new TanStack Start app!
+ECAD is a browser-based Gerber and STEP viewer with a 2D drawing editor, built with TanStack Start, React, and Three.js.
+
+Async operations and resource lifetimes use Effect 3. See [the Effect integration guide](docs/effect.md) for framework boundaries, service layers, cancellation, and geometry ownership.
 
 # Getting Started
 

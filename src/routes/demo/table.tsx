@@ -25,6 +25,8 @@ import type { RankingInfo } from '@tanstack/match-sorter-utils'
 import type { Person } from '#/data/demo-table-data'
 
 export const Route = createFileRoute('/demo/table')({
+  // Generate random demo rows once in the browser to avoid hydration mismatches.
+  ssr: false,
   component: TableDemo,
 })
 

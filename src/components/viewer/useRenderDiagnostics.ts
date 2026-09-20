@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { useEffect, useState } from "react";
 import type { RendererResult } from "#/engine";
+import { createLifecycle } from "#/lib/lifecycle";
 import type { RenderDiagnostics } from "./types/RenderDiagnostics";
 
 export function useRenderDiagnostics(
@@ -21,6 +22,7 @@ export function useRenderDiagnostics(
 	});
 	useEffect(() => {
 		if (!session || !active) return;
+		const lifecycle = createLifecycle();
 		let sampleStart = performance.now();
 		sample.current = { frames: 0, totalMs: 0, peakMs: 0 };
 		const reset = () => {
@@ -58,11 +60,9 @@ export function useRenderDiagnostics(
 			sample.current = { frames: 0, totalMs: 0, peakMs: 0 };
 			sampleStart = now;
 		}, 500);
-		document.addEventListener("visibilitychange", reset);
-		return () => {
-			window.clearInterval(interval);
-			document.removeEventListener("visibilitychange", reset);
-		};
+		lifecycle.addFinalizer(() => window.clearInterval(interval));
+		lifecycle.listen(document, "visibilitychange", reset);
+		return lifecycle.dispose;
 	}, [session, sample, active]);
 	return diagnostics;
 }

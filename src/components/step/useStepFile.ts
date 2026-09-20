@@ -1,28 +1,44 @@
+import { Effect } from "effect";
 import { useCallback, useEffect, useState } from "react";
-import { type ParsedStepFile, parseStepFile } from "#/formats/parseStepFile.ts";
+import { ImportOwnership } from "#/formats/import-ownership";
+import {
+	type ParsedStepFile,
+	parseStepFileEffect,
+} from "#/formats/parseStepFile.ts";
 import { useFileImport } from "../viewer/useFileImport";
 
-async function readStep(file: File, signal: AbortSignal) {
-	return { value: await parseStepFile(file, signal) };
+function readStep(file: File) {
+	return Effect.map(parseStepFileEffect(file), (value) => ({ value }));
 }
 
 const release = (model: ParsedStepFile) => model.dispose();
 
 export function useStepFile() {
-	const [model, setModel] = useState<ParsedStepFile | null>(null);
-	useEffect(() => () => model?.dispose(), [model]);
+	const [model, updateModel] = useState<ParsedStepFile | null>(null);
+	const [ownership] = useState(() => new ImportOwnership());
+	const setModel = useCallback(
+		(next: ParsedStepFile | null) => {
+			ownership.stage(next ? [next.dispose] : []);
+			updateModel(next);
+		},
+		[ownership],
+	);
+	useEffect(() => {
+		ownership.commit(model ? [model.dispose] : []);
+	}, [model, ownership]);
+	useEffect(() => () => ownership.dispose(), [ownership]);
 	const { loading, message, readFiles, cancel, clearMessage } = useFileImport(
 		readStep,
 		release,
 	);
 	const openFile = useCallback(
 		async (file: File) => {
-			const models = await readFiles([file]);
-			if (!models?.length) return false;
-			setModel(models[0]);
-			return true;
+			const models = await readFiles([file], (imported) => {
+				if (imported.length) setModel(imported[0]);
+			});
+			return Boolean(models?.length);
 		},
-		[readFiles],
+		[readFiles, setModel],
 	);
 	return {
 		model,

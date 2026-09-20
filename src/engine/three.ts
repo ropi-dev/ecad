@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
 
+import { Effect, Exit, type Scope } from "effect";
 import {
 	attribute,
 	float,
@@ -38,6 +39,8 @@ import {
 	WebGPUBackend,
 	WebGPURenderer,
 } from "three/webgpu";
+import { runEffect } from "#/lib/effect";
+import { createLifecycle } from "#/lib/lifecycle";
 import { gridSpacing } from "./camera";
 import { curveTolerance, GeometryCompiler, hitTestScene } from "./geometry";
 import {
@@ -48,6 +51,7 @@ import {
 	UNFOCUSED_XRAY_COLOR,
 } from "./layer-style";
 import type { MeshRequest, MeshResult } from "./mesh";
+import { type RendererError, rendererError } from "./renderer-error";
 import type {
 	GraphicsRenderer,
 	Point,
@@ -70,6 +74,7 @@ interface LayerMesh {
 }
 
 export class ThreeRenderer implements GraphicsRenderer {
+	private lifecycle = createLifecycle();
 	private compiler = new GeometryCompiler();
 	private layers = new Map<string, LayerMesh>();
 	private meshWorker: Worker;
@@ -121,115 +126,172 @@ export class ThreeRenderer implements GraphicsRenderer {
 		private canvas: HTMLCanvasElement,
 		private renderer: WebGPURenderer,
 	) {
-		this.backend =
-			renderer.backend instanceof WebGPUBackend ? "WebGPU" : "WebGL 2";
-		const context = renderer.getContext();
-		this.maxTextureSize =
-			this.backend === "WebGPU"
-				? ((context as GPUCanvasContext).getConfiguration()?.device.limits
-						.maxTextureDimension2D ?? 8192)
-				: (context as WebGL2RenderingContext).getParameter(
-						(context as WebGL2RenderingContext).MAX_TEXTURE_SIZE,
-					);
-		renderer.autoClear = false;
-		renderer.info.autoReset = false;
-		renderer.toneMapping = NoToneMapping;
-		this.camera.position.z = 1;
-		const world = uv()
-			.sub(0.5)
-			.mul(this.viewport)
-			.div(this.scale)
-			.mul(vec2(this.mirror, -1))
-			.add(this.center);
-		const gridDistance = world
-			.div(this.gridStep)
-			.sub(world.div(this.gridStep).round())
-			.abs()
-			.mul(this.gridStep)
-			.mul(this.scale);
-		const dot = float(1)
-			.sub(gridDistance.length().smoothstep(0.4, 1.2))
-			.mul(0.2);
-		const axis = float(1)
-			.sub(
-				world.x.abs().min(world.y.abs()).mul(this.scale).smoothstep(0.2, 0.9),
-			)
-			.mul(0.14);
-		this.backgroundMaterial.fragmentNode = vec4(
-			mix(
-				this.backgroundColor,
-				uniform(new Color("#8fb0b3")),
-				dot.max(axis).mul(this.showGrid),
-			),
-			1,
-		);
-		const mask = texture(this.mask.texture);
-		// Derive edges from the final mask to preserve holes and shape unions.
-		const step = this.outlineStep;
-		const interior = mask.r
-			.min(texture(this.mask.texture, uv().add(vec2(step.x, 0))).r)
-			.min(texture(this.mask.texture, uv().sub(vec2(step.x, 0))).r)
-			.min(texture(this.mask.texture, uv().add(vec2(0, step.y))).r)
-			.min(texture(this.mask.texture, uv().sub(vec2(0, step.y))).r);
-		const faded = mask.r
-			.mul(UNFOCUSED_OUTLINE_OPACITY)
-			.sub(interior.mul(UNFOCUSED_OUTLINE_OPACITY - UNFOCUSED_FILL_OPACITY));
-		const alpha = mix(mask.r, faded, this.unfocusedLayer);
-		const rgb = this.layerColor
-			.mul(mask.r.sub(mask.g))
-			.add(this.hoverColor.mul(mask.g))
-			.div(mask.r.max(0.00001));
-		this.compositeMaterial.fragmentNode = vec4(
-			rgb,
-			alpha.mul(this.layerOpacity),
-		);
-		// Additive compositing makes overlapping layers resemble denser film.
-		this.xrayMaterial.fragmentNode = vec4(
-			this.layerColor,
-			alpha.mul(this.layerOpacity),
-		);
-		this.meshWorker = new Worker(new URL("./mesh.worker.ts", import.meta.url), {
-			type: "module",
+		for (const resource of [
+			this.mask,
+			this.backgroundMaterial,
+			this.compositeMaterial,
+			this.xrayMaterial,
+		]) {
+			this.lifecycle.addFinalizer(() => resource.dispose());
+		}
+		this.lifecycle.addFinalizer(() => {
+			for (const layer of this.layers.values()) this.disposeLayer(layer);
+			this.layers.clear();
+			this.scene.clear();
 		});
-		this.meshWorker.onmessage = (event: MessageEvent<MeshResult>) =>
-			this.acceptMesh(event.data);
-		this.meshWorker.onerror = (event) =>
-			this.reportError(event.message || "Geometry worker failed.");
-		renderer.onDeviceLost = (info) => {
-			this.lost = true;
-			this.reportError(
-				`${info.api} device lost: ${info.message}. Reload the viewer to reconnect.`,
+		try {
+			this.backend =
+				renderer.backend instanceof WebGPUBackend ? "WebGPU" : "WebGL 2";
+			const context = renderer.getContext();
+			this.maxTextureSize =
+				this.backend === "WebGPU"
+					? ((context as GPUCanvasContext).getConfiguration()?.device.limits
+							.maxTextureDimension2D ?? 8192)
+					: (context as WebGL2RenderingContext).getParameter(
+							(context as WebGL2RenderingContext).MAX_TEXTURE_SIZE,
+						);
+			renderer.autoClear = false;
+			renderer.info.autoReset = false;
+			renderer.toneMapping = NoToneMapping;
+			this.camera.position.z = 1;
+			const world = uv()
+				.sub(0.5)
+				.mul(this.viewport)
+				.div(this.scale)
+				.mul(vec2(this.mirror, -1))
+				.add(this.center);
+			const gridDistance = world
+				.div(this.gridStep)
+				.sub(world.div(this.gridStep).round())
+				.abs()
+				.mul(this.gridStep)
+				.mul(this.scale);
+			const dot = float(1)
+				.sub(gridDistance.length().smoothstep(0.4, 1.2))
+				.mul(0.2);
+			const axis = float(1)
+				.sub(
+					world.x.abs().min(world.y.abs()).mul(this.scale).smoothstep(0.2, 0.9),
+				)
+				.mul(0.14);
+			this.backgroundMaterial.fragmentNode = vec4(
+				mix(
+					this.backgroundColor,
+					uniform(new Color("#8fb0b3")),
+					dot.max(axis).mul(this.showGrid),
+				),
+				1,
 			);
-		};
-		renderer.onError = (error: unknown) => {
-			const message =
-				typeof error === "object" && error !== null && "message" in error
-					? String(error.message)
-					: String(error);
-			this.reportError(`${this.backend}: ${message}`);
-		};
+			const mask = texture(this.mask.texture);
+			// Derive edges from the final mask to preserve holes and shape unions.
+			const step = this.outlineStep;
+			const interior = mask.r
+				.min(texture(this.mask.texture, uv().add(vec2(step.x, 0))).r)
+				.min(texture(this.mask.texture, uv().sub(vec2(step.x, 0))).r)
+				.min(texture(this.mask.texture, uv().add(vec2(0, step.y))).r)
+				.min(texture(this.mask.texture, uv().sub(vec2(0, step.y))).r);
+			const faded = mask.r
+				.mul(UNFOCUSED_OUTLINE_OPACITY)
+				.sub(interior.mul(UNFOCUSED_OUTLINE_OPACITY - UNFOCUSED_FILL_OPACITY));
+			const alpha = mix(mask.r, faded, this.unfocusedLayer);
+			const rgb = this.layerColor
+				.mul(mask.r.sub(mask.g))
+				.add(this.hoverColor.mul(mask.g))
+				.div(mask.r.max(0.00001));
+			this.compositeMaterial.fragmentNode = vec4(
+				rgb,
+				alpha.mul(this.layerOpacity),
+			);
+			// Additive compositing makes overlapping layers resemble denser film.
+			this.xrayMaterial.fragmentNode = vec4(
+				this.layerColor,
+				alpha.mul(this.layerOpacity),
+			);
+			this.meshWorker = this.lifecycle.acquire(
+				() =>
+					new Worker(new URL("./mesh.worker.ts", import.meta.url), {
+						type: "module",
+					}),
+				(worker) => worker.terminate(),
+			);
+			this.meshWorker.onmessage = (event: MessageEvent<MeshResult>) =>
+				this.acceptMesh(event.data);
+			this.meshWorker.onerror = (event) =>
+				this.reportError(event.message || "Geometry worker failed.");
+			renderer.onDeviceLost = (info) => {
+				this.lost = true;
+				this.reportError(
+					`${info.api} device lost: ${info.message}. Reload the viewer to reconnect.`,
+				);
+			};
+			renderer.onError = (error: unknown) => {
+				const message =
+					typeof error === "object" && error !== null && "message" in error
+						? String(error.message)
+						: String(error);
+				this.reportError(`${this.backend}: ${message}`);
+			};
+		} catch (error) {
+			this.lifecycle.dispose();
+			throw error;
+		}
 	}
 
-	static async create(
+	static createEffect(
+		canvas: HTMLCanvasElement,
+		forceWebGL = false,
+	): Effect.Effect<ThreeRenderer, RendererError, Scope.Scope> {
+		return Effect.acquireRelease(
+			ThreeRenderer.initializeEffect(canvas, forceWebGL),
+			(renderer) => renderer.disposeEffect(),
+		);
+	}
+
+	private static initializeEffect(
+		canvas: HTMLCanvasElement,
+		forceWebGL: boolean,
+	): Effect.Effect<ThreeRenderer, RendererError> {
+		return Effect.scoped(
+			Effect.gen(function* () {
+				const renderer = yield* Effect.acquireRelease(
+					Effect.try({
+						try: () =>
+							new WebGPURenderer({
+								canvas,
+								forceWebGL,
+								alpha: false,
+								antialias: false,
+								powerPreference: "high-performance",
+							}),
+						catch: rendererError,
+					}),
+					(renderer, exit) =>
+						Exit.isFailure(exit)
+							? Effect.tryPromise(() => renderer.dispose()).pipe(
+									Effect.catchAll((error) =>
+										Effect.logError("Renderer cleanup failed", error),
+									),
+								)
+							: Effect.void,
+				);
+				yield* Effect.tryPromise({
+					try: () => renderer.init(),
+					catch: rendererError,
+				});
+				// A successful renderer owns its resources until its caller disposes it.
+				return yield* Effect.try({
+					try: () => new ThreeRenderer(canvas, renderer),
+					catch: rendererError,
+				});
+			}),
+		).pipe(Effect.uninterruptible);
+	}
+
+	static create(
 		canvas: HTMLCanvasElement,
 		forceWebGL = false,
 	): Promise<ThreeRenderer> {
-		const renderer = new WebGPURenderer({
-			canvas,
-			forceWebGL,
-			alpha: false,
-			antialias: false,
-			powerPreference: "high-performance",
-		});
-		let initialized = false;
-		try {
-			await renderer.init();
-			initialized = true;
-			return new ThreeRenderer(canvas, renderer);
-		} catch (error) {
-			if (initialized) await renderer.dispose();
-			throw error;
-		}
+		return runEffect(ThreeRenderer.initializeEffect(canvas, forceWebGL));
 	}
 
 	private reportError(message: string): void {
@@ -486,17 +548,23 @@ export class ThreeRenderer implements GraphicsRenderer {
 		layer.selection.dispose();
 	}
 
+	private disposeEffect(): Effect.Effect<void> {
+		return Effect.suspend(() => {
+			if (this.disposed) return Effect.void;
+			this.disposed = true;
+			return Effect.sync(() => this.lifecycle.dispose()).pipe(
+				Effect.ensuring(
+					Effect.tryPromise(() => this.renderer.dispose()).pipe(
+						Effect.catchAll((error) =>
+							Effect.logError("Renderer cleanup failed", error),
+						),
+					),
+				),
+			);
+		});
+	}
+
 	dispose(): void {
-		if (this.disposed) return;
-		this.disposed = true;
-		this.meshWorker.terminate();
-		for (const layer of this.layers.values()) this.disposeLayer(layer);
-		this.layers.clear();
-		this.scene.clear();
-		this.mask.dispose();
-		this.backgroundMaterial.dispose();
-		this.compositeMaterial.dispose();
-		this.xrayMaterial.dispose();
-		void this.renderer.dispose();
+		Effect.runFork(this.disposeEffect());
 	}
 }

@@ -1,20 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type ExpandFile,
+	type ImportFile,
+	importFilesEffect,
+} from "#/formats/importFiles";
+import { runEffect } from "#/lib/effect";
 
-interface ParsedFile<T> {
-	value: T;
-	messages?: string[];
-}
-
-/** Owns cancellation and errors; callers decide how imported values are stored. */
+/** Runs imports at the React boundary; parsers register ownership in the scope. */
 export function useFileImport<T>(
-	parse: (file: File, signal: AbortSignal) => Promise<ParsedFile<T>>,
+	parse: ImportFile<T>,
 	dispose?: (value: T) => void,
-	expand?: (file: File, signal: AbortSignal) => Promise<readonly File[]>,
+	expand?: ExpandFile,
 ) {
 	const request = useRef<AbortController | null>(null);
+	const mounted = useRef(true);
 	const [loading, setLoading] = useState(false);
 	const [message, setMessage] = useState("");
-	useEffect(() => () => request.current?.abort(), []);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+			request.current?.abort();
+			request.current = null;
+		};
+	}, []);
 	const cancel = useCallback(() => {
 		request.current?.abort();
 		request.current = null;
@@ -22,53 +31,42 @@ export function useFileImport<T>(
 	}, []);
 	const clearMessage = useCallback(() => setMessage(""), []);
 	const readFiles = useCallback(
-		async (files: readonly File[]) => {
+		async (files: readonly File[], accept: (values: T[]) => void) => {
 			request.current?.abort();
 			const controller = new AbortController();
 			request.current = controller;
 			setLoading(true);
 			setMessage("");
-			const values: T[] = [];
-			const messages: string[] = [];
 			try {
-				for (const file of files) {
-					let entries: readonly File[];
-					try {
-						entries = expand ? await expand(file, controller.signal) : [file];
-					} catch (error) {
-						if (controller.signal.aborted) return null;
-						messages.push(
-							`${file.name}: ${error instanceof Error ? error.message : "Unable to read this file."}`,
-						);
-						continue;
-					}
-					for (const entry of entries) {
-						if (controller.signal.aborted) return null;
-						try {
-							const result = await parse(entry, controller.signal);
-							values.push(result.value);
-							if (controller.signal.aborted) return null;
-							messages.push(
-								...(result.messages ?? []).map(
-									(text) => `${entry.name}: ${text}`,
-								),
-							);
-						} catch (error) {
-							if (controller.signal.aborted) return null;
-							messages.push(
-								`${entry.name}: ${error instanceof Error ? error.message : "Unable to read this file."}`,
-							);
-						}
-					}
+				const imported = await runEffect(
+					importFilesEffect(files, parse, expand),
+					controller.signal,
+				);
+				// A completed Effect can be superseded before its Promise is observed.
+				if (
+					controller.signal.aborted ||
+					request.current !== controller ||
+					!mounted.current
+				) {
+					for (const value of imported.values) dispose?.(value);
+					return null;
 				}
-				setMessage(messages.join("; "));
-				return values;
+				// Register ownership before another microtask can cancel or unmount.
+				try {
+					accept(imported.values);
+				} catch (error) {
+					for (const value of imported.values) dispose?.(value);
+					throw error;
+				}
+				setMessage(imported.messages.join("; "));
+				return imported.values;
+			} catch (error) {
+				if (controller.signal.aborted) return null;
+				throw error;
 			} finally {
-				if (controller.signal.aborted)
-					for (const value of values) dispose?.(value);
 				if (request.current === controller) {
 					request.current = null;
-					setLoading(false);
+					if (mounted.current) setLoading(false);
 				}
 			}
 		},

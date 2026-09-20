@@ -1,27 +1,36 @@
-import { z } from 'zod'
-
-import { createTRPCRouter, publicProcedure } from './init'
-
-import type { TRPCRouterRecord } from '@trpc/server'
-
-const todos = [
-  { id: 1, name: 'Get groceries' },
-  { id: 2, name: 'Buy a new phone' },
-  { id: 3, name: 'Finish the project' },
-]
+import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
+import { Effect } from "effect";
+import { z } from "zod";
+import {
+	addTrpcTodo,
+	listTrpcTodos,
+	TrpcTodosLive,
+} from "#/services/server/trpc-todos";
+import { createTRPCRouter, publicProcedure, runTRPCEffect } from "./init";
 
 const todosRouter = {
-  list: publicProcedure.query(() => todos),
-  add: publicProcedure
-    .input(z.object({ name: z.string() }))
-    .mutation(({ input }) => {
-      const newTodo = { id: todos.length + 1, name: input.name }
-      todos.push(newTodo)
-      return newTodo
-    }),
-} satisfies TRPCRouterRecord
+	list: publicProcedure.query(({ signal }) =>
+		runTRPCEffect(listTrpcTodos.pipe(Effect.provide(TrpcTodosLive)), signal),
+	),
+	add: publicProcedure
+		.input(z.object({ name: z.string() }))
+		.mutation(({ input, signal }) =>
+			runTRPCEffect(
+				addTrpcTodo(input.name).pipe(
+					Effect.provide(TrpcTodosLive),
+					Effect.mapError(
+						(error) =>
+							new TRPCError({
+								code: "BAD_REQUEST",
+								message: error.message,
+								cause: error,
+							}),
+					),
+				),
+				signal,
+			),
+		),
+} satisfies TRPCRouterRecord;
 
-export const trpcRouter = createTRPCRouter({
-  todos: todosRouter,
-})
-export type TRPCRouter = typeof trpcRouter
+export const trpcRouter = createTRPCRouter({ todos: todosRouter });
+export type TRPCRouter = typeof trpcRouter;

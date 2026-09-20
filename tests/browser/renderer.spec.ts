@@ -248,7 +248,7 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 		// Unfocused layers share a cool film tone and add light over the focused layer.
 		// GPU blending uses linear color; Canvas blends in sRGB.
 		const expectedFill = (opacity: number) =>
-			[157, 189, 203].map((value, index) => {
+			[70, 115, 134].map((value, index) => {
 				const srgb = value / 255;
 				const channel =
 					mode === "canvas" ? srgb : ((srgb + 0.055) / 1.055) ** 2.4;
@@ -263,29 +263,29 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 		// The outline covers the entire eight-pixel island.
 		for (const index of [0, 2, 4, 5]) {
 			const fill = result.focused[index];
-			expectedFill(0.14).forEach((value, channel) =>
+			expectedFill(0.1).forEach((value, channel) =>
 				expect(Math.abs(fill[channel] - value)).toBeLessThanOrEqual(1),
 			);
 		}
 		for (const index of [1]) {
-			expectedFill(0.1).forEach((value, channel) =>
+			expectedFill(0.06).forEach((value, channel) =>
 				expect(
 					Math.abs(result.focused[index][channel] - value),
 				).toBeLessThanOrEqual(1),
 			);
 		}
-		expectedFill(0.05).forEach((value, channel) =>
+		expectedFill(0.03).forEach((value, channel) =>
 			expect(Math.abs(result.dimmedFill[channel] - value)).toBeLessThanOrEqual(
 				1,
 			),
 		);
 		expect(result.focused[3]).toEqual([0, 0, 255]);
 		expect(result.recolored).toEqual(result.focused[1]);
-		expectedFill(0.07).forEach((value, channel) =>
+		expectedFill(0.05).forEach((value, channel) =>
 			expect(Math.abs(result.dimmed[channel] - value)).toBeLessThanOrEqual(1),
 		);
 		for (const fill of result.clipped) {
-			expectedFill(0.1).forEach((value, channel) =>
+			expectedFill(0.06).forEach((value, channel) =>
 				expect(Math.abs(fill[channel] - value)).toBeLessThanOrEqual(1),
 			);
 		}

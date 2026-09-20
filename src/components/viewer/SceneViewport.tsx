@@ -31,11 +31,8 @@ import {
 	viewerPixelRatio,
 } from "#/engine/navigation.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene";
-import {
-	createSceneHover,
-	type SceneHover,
-	type SceneTarget,
-} from "#/engine/scene-hover";
+import { createSceneHover, type SceneTarget } from "#/engine/scene-hover";
+import { createLifecycle } from "#/lib/lifecycle";
 import { AxisIndicator } from "./AxisIndicator";
 import { FloatingPanel } from "./FloatingPanel";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
@@ -137,35 +134,37 @@ export function SceneViewport({
 		if (!element) return;
 		reportReady(false);
 		setSelectionInfo(null);
-		let cleanup = () => {};
-		let renderer: WebGLRenderer | undefined;
-		let grid: GridHelper | undefined;
-		let hover: SceneHover | undefined;
-		let selection: SceneHover | undefined;
+		const lifecycle = createLifecycle();
 		let disposed = false;
 		const dispose = () => {
 			if (disposed) return;
 			disposed = true;
 			cancel();
 			runtime.current = null;
-			cleanup();
-			hover?.dispose();
-			selection?.dispose();
-			grid?.dispose();
-			renderer?.dispose();
-			renderer?.forceContextLoss();
-			renderer?.domElement.remove();
+			draw.current = () => {};
+			lifecycle.dispose();
 		};
 		try {
-			renderer = new WebGLRenderer({
-				antialias: true,
-				alpha: true,
-				stencil: true,
-			});
-			const output = renderer;
-			const content = createSceneDisplay(sourceScene);
+			const output = lifecycle.acquire(
+				() =>
+					new WebGLRenderer({ antialias: true, alpha: true, stencil: true }),
+				(renderer) => {
+					try {
+						renderer.dispose();
+					} finally {
+						try {
+							renderer.forceContextLoss();
+						} finally {
+							renderer.domElement.remove();
+						}
+					}
+				},
+			);
+			const content = lifecycle.acquire(
+				() => createSceneDisplay(sourceScene),
+				(display) => display.dispose(),
+			);
 			const group = content.object;
-			cleanup = () => content.dispose();
 			const scene = new Scene();
 			scene.add(group, new HemisphereLight("white", "#566173", 2.5));
 			const light = new DirectionalLight("white", 3);
@@ -196,14 +195,12 @@ export function SceneViewport({
 					? (camera.top - camera.bottom) / camera.zoom
 					: 2 * camera.position.distanceTo(controls.target) * halfFovTangent;
 			camera.up.set(0, topView ? 1 : 0, topView ? 0 : 1);
-			const navigation = create3DControls(camera, canvas, () => fit(), {
-				lockTop: topView,
-			});
+			const navigation = lifecycle.acquire(
+				() =>
+					create3DControls(camera, canvas, () => fit(), { lockTop: topView }),
+				(navigation) => navigation.dispose(),
+			);
 			const { controls } = navigation;
-			cleanup = () => {
-				navigation.dispose();
-				content.dispose();
-			};
 			// Include caller-supplied placement in camera fitting and clipping bounds.
 			sceneUpdate.current?.(group);
 			const bounds = new Box3().setFromObject(group);
@@ -225,7 +222,10 @@ export function SceneViewport({
 			const sphere = bounds.getBoundingSphere(new Sphere());
 			const radius = Math.max(sphere.radius, 0.001);
 			if (!topView) {
-				grid = new GridHelper(radius * 6, 60, "#64748b", "#334155");
+				const grid = lifecycle.acquire(
+					() => new GridHelper(radius * 6, 60, "#64748b", "#334155"),
+					(grid) => grid.dispose(),
+				);
 				grid.rotation.x = Math.PI / 2;
 				grid.position.set(
 					sphere.center.x,
@@ -244,9 +244,15 @@ export function SceneViewport({
 			let ready = false;
 			let pointer: Vector2 | null = null;
 			const raycaster = new Raycaster();
-			hover = createSceneHover(content.entries);
+			const hover = lifecycle.acquire(
+				() => createSceneHover(content.entries),
+				(hover) => hover.dispose(),
+			);
 			scene.add(hover.object);
-			selection = createSceneHover(content.entries, "selection");
+			const selection = lifecycle.acquire(
+				() => createSceneHover(content.entries, "selection"),
+				(selection) => selection.dispose(),
+			);
 			scene.add(selection.object);
 			let selected: SceneTarget | null = null;
 			const clearSelection = () => {
@@ -573,16 +579,19 @@ export function SceneViewport({
 				schedule();
 			};
 			if (hover && selectionEnabled) {
-				canvas.addEventListener("pointermove", moveHover);
-				canvas.addEventListener("pointerleave", clearHover);
-				canvas.addEventListener("pointerdown", startPress);
-				canvas.addEventListener("pointerup", endPress);
-				canvas.addEventListener("pointercancel", cancelPress);
-				window.addEventListener("blur", cancelPress);
+				lifecycle.listen(canvas, "pointermove", moveHover);
+				lifecycle.listen(canvas, "pointerleave", clearHover);
+				lifecycle.listen(canvas, "pointerdown", startPress);
+				lifecycle.listen(canvas, "pointerup", endPress);
+				lifecycle.listen(canvas, "pointercancel", cancelPress);
+				lifecycle.listen(window, "blur", cancelPress);
 			}
-			canvas.addEventListener("keydown", onKey);
-			canvas.addEventListener("webglcontextlost", onLost);
+			lifecycle.listen(canvas, "keydown", onKey);
+			lifecycle.listen(canvas, "webglcontextlost", onLost);
 			controls.addEventListener("change", schedule);
+			lifecycle.addFinalizer(() =>
+				controls.removeEventListener("change", schedule),
+			);
 			runtime.current = {
 				fit: reset,
 				pan,
@@ -594,19 +603,6 @@ export function SceneViewport({
 					update(group);
 					schedule();
 				},
-			};
-			cleanup = () => {
-				canvas.removeEventListener("pointermove", moveHover);
-				canvas.removeEventListener("pointerleave", clearHover);
-				canvas.removeEventListener("pointerdown", startPress);
-				canvas.removeEventListener("pointerup", endPress);
-				canvas.removeEventListener("pointercancel", cancelPress);
-				window.removeEventListener("blur", cancelPress);
-				controls.removeEventListener("change", schedule);
-				canvas.removeEventListener("keydown", onKey);
-				canvas.removeEventListener("webglcontextlost", onLost);
-				navigation.dispose();
-				content.dispose();
 			};
 			resize(
 				Math.max(element.clientWidth, 1),
