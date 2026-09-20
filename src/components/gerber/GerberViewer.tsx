@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { Object3D } from "three";
+import { Box3, type Object3D, Vector3 } from "three";
 import type { PlanarObject } from "#/engine";
 import { stylePlanarObject3D } from "#/engine/planar-object";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile";
@@ -43,7 +43,8 @@ export function GerberViewer({
 					object.id === focusedLayerId && object.visible && object.opacity > 0,
 			);
 			group.children.forEach((mesh, index) => {
-				const entry = entries.get(geometryScene[index].id);
+				const source = geometryScene[index];
+				const entry = source && entries.get(source.id);
 				if (!entry) {
 					mesh.visible = false;
 					return;
@@ -62,6 +63,14 @@ export function GerberViewer({
 					focused && object.id !== focusedLayerId,
 				);
 			});
+			// Center the displayed board on the grid origin without changing source coordinates.
+			// Include every layer so visibility and focus changes cannot move the board.
+			group.position.set(0, 0, 0);
+			const bounds = new Box3().setFromObject(group);
+			if (!bounds.isEmpty()) {
+				const center = bounds.getCenter(new Vector3());
+				group.position.set(-center.x, -center.y, 0);
+			}
 		},
 		[scene, geometryScene, focusedLayerId],
 	);

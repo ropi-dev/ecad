@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 for (const projection of ["perspective", "orthographic"]) {
-	test(`click selects a shape in ${projection} and keeps its tooltip after leaving`, async ({ page }) => {
+	test(`click selects a shape in ${projection} and keeps its attributes after leaving`, async ({ page }) => {
 		await page.goto("/tests/browser/generic-viewers.html");
 		await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toBeEnabled();
 		if (projection === "orthographic") await page.getByRole("button", { name: "Orthographic camera" }).click();
@@ -13,25 +13,28 @@ for (const projection of ["perspective", "orthographic"]) {
 		await page.mouse.move(0, 0);
 		const before = await canvas.screenshot();
 		await page.mouse.click(x, y);
-		const tooltip = page.getByRole("tooltip", { name: "Selected component" });
-		await expect(tooltip).toContainText("Shapes");
-		await expect(tooltip).toContainText("10.00 × 10.00 mm");
+		const attributes = page.getByRole("complementary", { name: "Selection attributes" });
+		await expect(attributes).toContainText("Shapes");
+		await expect(attributes).toContainText("10.00 × 10.00 mm");
+		const panel = (await attributes.boundingBox())!;
+		expect(panel.x + panel.width).toBeCloseTo(bounds.x + bounds.width - 16, 4);
+		expect(panel.y).toBeCloseTo(bounds.y + 40, 4);
 		await page.mouse.move(0, 0);
-		await expect(tooltip).toBeVisible();
+		await expect(attributes).toBeVisible();
 		expect(await canvas.screenshot()).not.toEqual(before);
 		await canvas.press("Escape");
-		await expect(tooltip).toHaveCount(0);
+		await expect(attributes).toHaveCount(0);
 		await canvas.evaluate(element => (element as HTMLCanvasElement).blur());
 		await expect.poll(async () => (await canvas.screenshot()).equals(before)).toBe(true);
 		await page.mouse.click(x, y);
-		await expect(tooltip).toBeVisible();
+		await expect(attributes).toBeVisible();
 		await page.mouse.click(bounds.x + bounds.width / 2, y);
-		await expect(tooltip).toHaveCount(0);
+		await expect(attributes).toHaveCount(0);
 		await page.mouse.move(x, y);
 		await page.mouse.down();
 		await page.mouse.move(x + 40, y, { steps: 5 });
 		await page.mouse.up();
-		await expect(tooltip).toHaveCount(0);
+		await expect(attributes).toHaveCount(0);
 	});
 }
 
@@ -40,10 +43,10 @@ test("3D selection clears when the selected part is hidden", async ({ page }) =>
 	await expect(page.getByRole("button", { name: "Zoom", exact: true })).toBeEnabled();
 	const bounds = (await page.locator("canvas").boundingBox())!;
 	await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-	const tooltip = page.getByRole("tooltip");
-	await expect(tooltip).toContainText("3D part");
+	const attributes = page.getByRole("complementary", { name: "Selection attributes" });
+	await expect(attributes).toContainText("3D part");
 	await page.mouse.move(0, 0);
-	await expect(tooltip).toBeVisible();
+	await expect(attributes).toBeVisible();
 	await page.getByRole("button", { name: "Visibility", exact: true }).click();
-	await expect(tooltip).toHaveCount(0);
+	await expect(attributes).toHaveCount(0);
 });

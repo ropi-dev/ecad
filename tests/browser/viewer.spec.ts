@@ -8,9 +8,18 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/viewer.html");
-	await expect(page.getByText("Choose Gerber files or a ZIP archive to view them.", { exact: true })).toHaveText(
-		"Choose Gerber files or a ZIP archive to view them.",
-	);
+	await expect(page.getByText("Choose Gerber files or a ZIP archive to view them.", { exact: true })).toHaveCount(0);
+	await expect(page.getByTestId("viewport-grid")).toBeVisible();
+	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toBeEnabled();
+	await expect(page.getByRole("complementary", { name: "Layers" })).toHaveCount(0);
+	const emptyState = JSON.parse((await page.locator("#scene-state").textContent())!);
+	expect(emptyState.objects).toEqual([]);
+	expect(emptyState.camera[0]).toBeCloseTo(0, 8);
+	expect(emptyState.camera[1]).toBeCloseTo(0, 8);
+	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
+	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
+	await page.screenshot({ path: test.info().outputPath("empty-gerber-grid.png") });
 	const file = demoFiles[0];
 	await page.locator("input[type=file]").setInputFiles({
 		name: file.name,
@@ -39,10 +48,11 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	await expect.poll(capture).not.toBe(top);
 	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
 	await expect.poll(capture).toBe(top);
-	await page.mouse.move(350, 350);
+	// Start clear of the layer panel on the left.
+	await page.mouse.move(400, 350);
 	await page.keyboard.down("Shift");
 	await page.mouse.down();
-	await page.mouse.move(430, 390, { steps: 5 });
+	await page.mouse.move(480, 390, { steps: 5 });
 	await page.mouse.up();
 	await page.keyboard.up("Shift");
 	await expect.poll(capture).not.toBe(top);
@@ -50,7 +60,8 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	expect(errors).toEqual([]);
 	await page.screenshot({ path: test.info().outputPath("gerber-3d.png") });
 	await page.reload();
-	await expect(canvas).toHaveCount(0);
+	await expect(canvas).toHaveCount(1);
+	await expect(page.getByTestId("viewport-grid")).toBeVisible();
 });
 
 test("Gerber reports unavailable 3D rendering and leaves file controls usable", async ({
@@ -145,7 +156,8 @@ test("handles parse failures and keeps the latest file selection", async ({
 		buffer: Buffer.from("not a gerber file"),
 	});
 	await expect(page.locator("[data-testid=viewer-message]")).toBeVisible();
-	await expect(page.locator("canvas")).toHaveCount(0);
+	await expect(page.locator("canvas")).toHaveCount(1);
+	await expect(page.getByTestId("viewport-grid")).toBeVisible();
 	await input.setInputFiles({
 		name: "slow.gbr",
 		mimeType: "text/plain",
@@ -277,8 +289,8 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 				return (
 					!!panel &&
 					!!canvas &&
-					Math.abs(panel.y - (width <= 600 ? 88 : 40)) < 1 &&
-					panel.x > width / 4 &&
+					Math.abs(panel.y + panel.height / 2 - height / 2) < 1 &&
+					Math.abs(panel.x - (width <= 600 ? 36 : 40)) < 1 &&
 					panel.x + panel.width <= width &&
 					canvas.x === 0 &&
 					canvas.y === 0 &&
@@ -458,4 +470,42 @@ test("Gerber layers occupy separate Z positions and fit the full stack", async (
 	await page.screenshot({
 		path: test.info().outputPath("separated-layers.png"),
 	});
+});
+
+test("Gerber imports away from the origin fit around world 0,0", async ({ page }) => {
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles({
+		name: "offset-board.gbr",
+		mimeType: "text/plain",
+		buffer: Buffer.from("%FSLAX46Y46*%%MOMM*%%ADD10R,40X20*%D10*X123000000Y-47000000D03*M02*"),
+	});
+	const fit = page.getByRole("button", { name: "Fit drawing", exact: true });
+	await expect(fit).toBeEnabled();
+	const state = async () => JSON.parse((await page.locator("#scene-state").textContent()) || "{}");
+	const checkCenter = async () => {
+		await expect(async () => {
+			const current = await state();
+			expect(current.camera[0]).toBeCloseTo(0, 8);
+			expect(current.camera[1]).toBeCloseTo(0, 8);
+			const corners: number[][] = current.objects[0].corners;
+			for (const axis of [0, 1]) {
+				const values = corners.map((corner) => corner[axis]);
+				expect((Math.min(...values) + Math.max(...values)) / 2).toBeCloseTo(0, 8);
+				expect(Math.max(...values.map(Math.abs))).toBeLessThan(1);
+			}
+		}).toPass();
+	};
+	await checkCenter();
+	await page.mouse.move(640, 360);
+	await page.mouse.wheel(120, 80);
+	await expect.poll(async () => (await state()).camera[0]).not.toBeCloseTo(0, 4);
+	await fit.click();
+	await checkCenter();
+	await page.getByRole("button", { name: "Orthographic camera" }).click();
+	await checkCenter();
+	await page.getByRole("button", { name: "Hide offset-board.gbr", exact: true }).click();
+	await page.getByRole("button", { name: "Show offset-board.gbr", exact: true }).click();
+	await fit.click();
+	await checkCenter();
+	await page.screenshot({ path: test.info().outputPath("origin-centered-gerber.png") });
 });

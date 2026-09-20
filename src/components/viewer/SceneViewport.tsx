@@ -22,6 +22,7 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
+import { getSceneBounds } from "#/engine/camera";
 import { create3DControls } from "#/engine/controls3d.ts";
 import {
 	handleViewerKeyDown,
@@ -36,6 +37,7 @@ import {
 	type SceneTarget,
 } from "#/engine/scene-hover";
 import { AxisIndicator } from "./AxisIndicator";
+import { FloatingPanel } from "./FloatingPanel";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
 import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
@@ -205,6 +207,14 @@ export function SceneViewport({
 			// Include caller-supplied placement in camera fitting and clipping bounds.
 			sceneUpdate.current?.(group);
 			const bounds = new Box3().setFromObject(group);
+			if (topView && sourceScene.length === 0 && bounds.isEmpty()) {
+				// An unopened drawing still provides a navigable grid centered at the origin.
+				const empty = getSceneBounds([]);
+				bounds.set(
+					new Vector3(empty.minX, empty.minY, 0),
+					new Vector3(empty.maxX, empty.maxY, 0),
+				);
+			}
 			if (
 				bounds.isEmpty() ||
 				![...bounds.min.toArray(), ...bounds.max.toArray()].every(
@@ -629,18 +639,33 @@ export function SceneViewport({
 		<>
 			<div ref={host} className="absolute inset-0 z-1 overflow-hidden" />
 			{selectionInfo && (
-				<div
-					role="tooltip"
-					aria-label="Selected component"
-					className="pointer-events-none absolute bottom-20 left-4 z-20 max-w-[calc(100%-2rem)] rounded-lg border border-white/20 bg-slate-950/95 px-4 py-3 text-sm text-slate-100 shadow-lg"
-				>
-					<p className="break-words font-semibold">{selectionInfo.name}</p>
-					<p className="text-slate-300">{selectionInfo.kind}</p>
-					<p>Dimensions: {selectionInfo.dimensions}</p>
-					<p className="mt-1 text-xs text-slate-400">
-						Click empty space or press Escape to clear
-					</p>
-				</div>
+				<FloatingPanel label="Selection attributes" position="top-right">
+					<div className="min-h-0 overflow-y-auto overscroll-contain p-2.5">
+						<h2 className="text-[13px] font-semibold">Attributes</h2>
+						<p className="mt-3 break-words text-[14px] leading-[1.7] text-[#e8b77e]">
+							{selectionInfo.name}
+						</p>
+						<dl className="my-4 text-[12px]">
+							{[
+								["Type", selectionInfo.kind],
+								["Dimensions", selectionInfo.dimensions],
+							].map(([label, value]) => (
+								<div
+									key={label}
+									className="flex justify-between gap-3 border-b border-[#ffffff0a] py-2"
+								>
+									<dt className="text-[#9ba7b8]">{label}</dt>
+									<dd className="min-w-0 break-words text-right tabular-nums">
+										{value}
+									</dd>
+								</div>
+							))}
+						</dl>
+						<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
+							Click empty space or press Escape to clear
+						</p>
+					</div>
+				</FloatingPanel>
 			)}
 			{cameraMode === "top" && <ViewportRulers ref={rulers} />}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}

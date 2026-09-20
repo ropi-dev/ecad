@@ -79,21 +79,11 @@ export function GerberWorkspace() {
 					/>
 				)}
 				<div className="relative min-h-0 min-w-0 flex-1">
-					{layers.length ? (
-						<GerberViewer
-							scene={layers}
-							focusedLayerId={focusedLayerId}
-							onError={setRendererError}
-						/>
-					) : (
-						<p className="pointer-events-none absolute inset-0 m-0 grid place-items-center text-[14px] text-[#818b99]">
-							{loading
-								? "Reading file…"
-								: message
-									? ""
-									: "Choose Gerber files or a ZIP archive to view them."}
-						</p>
-					)}
+					<GerberViewer
+						scene={layers}
+						focusedLayerId={focusedLayerId}
+						onError={setRendererError}
+					/>
 				</div>
 			</div>
 		</main>

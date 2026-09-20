@@ -45,7 +45,7 @@ export function SelectionAttributes({
 				["Height", mm(top - bottom)],
 			];
 	return (
-		<FloatingPanel label="Selection attributes">
+		<FloatingPanel label="Selection attributes" position="top-right">
 			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5">
 				<header className="flex items-center justify-between gap-3">
 					<h2 className="m-0 text-[13px] font-semibold">Attributes</h2>

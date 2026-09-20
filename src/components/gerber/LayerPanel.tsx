@@ -27,7 +27,7 @@ export function LayerPanel({
 		setDrop(undefined);
 	};
 	return (
-		<FloatingPanel label="Layers">
+		<FloatingPanel label="Layers" position="left-center">
 			<ol
 				className="m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0.5"
 				onDragOver={(event) => {

@@ -68,7 +68,11 @@ for (const format of ["step", "gerber"] as const) {
 						exact: true,
 					});
 		await close.click();
-		await expect(canvas).toHaveCount(0);
+		await expect(canvas).toHaveCount(format === "gerber" ? 1 : 0);
+		if (format === "gerber") {
+			await expect(page.getByTestId("viewport-grid")).toBeVisible();
+			await expect.poll(async () => JSON.parse((await page.locator("#scene-state").textContent())!).objects).toEqual([]);
+		}
 		await input.setInputFiles(file);
 		await expect(zoomIn).toBeEnabled({ timeout: 30000 });
 		await canvas.focus();
