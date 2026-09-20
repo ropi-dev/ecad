@@ -40,6 +40,10 @@ async function createShape(page: Page, kind: string, x: number, y: number) {
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
+	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
+	await expect(snap).toHaveAttribute("aria-pressed", "true");
+	// Free-placement fixtures opt out of the default; snapping tests enable it explicitly.
+	await snap.click();
 	await expect.poll(async () => (await state(page)).origin.slice(0, 2)).toEqual([0, 0]);
 	// Keep the existing interaction fixtures' positive world coordinates in view.
 	await page.getByRole("button", { name: "Pan", exact: true }).click();

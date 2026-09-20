@@ -70,7 +70,7 @@ export function Editor2D() {
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
-	const [snapEnabled, setSnapEnabled] = useState(false);
+	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
