@@ -47,7 +47,6 @@ function createEditorAssets() {
 	const paper = new Group();
 	const outline = new LineLoop(frame, border);
 	outline.scale.set(A3.width, A3.height, 1);
-	outline.position.set(A3.width / 2, A3.height / 2, 0);
 	outline.name = "A3 landscape, 420 × 297 mm";
 	paper.add(outline);
 	const scene: ViewerScene = [{ type: "spatial", object: paper }];

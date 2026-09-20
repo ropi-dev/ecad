@@ -40,6 +40,11 @@ async function createShape(page: Page, kind: string, x: number, y: number) {
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
+	await expect.poll(async () => (await state(page)).origin.slice(0, 2)).toEqual([0, 0]);
+	// Keep the existing interaction fixtures' positive world coordinates in view.
+	await page.getByRole("button", { name: "Pan", exact: true }).click();
+	await dragTo(page, [0, 0], [-210, -148.5]);
+	await page.getByRole("button", { name: "Select", exact: true }).click();
 });
 
 test("draws every shape, moves beyond A3 without panning, and deletes", async ({ page }) => {
@@ -347,6 +352,7 @@ test("circle radius and diagonal line endpoints resize independently", async ({ 
 
 test("handles track zoom and viewport changes and cancelled resizing restores dimensions", async ({ page }) => {
 	await createShape(page, "Rectangle", 150, 150);
+	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(50, 4);
 	const original = (await state(page)).shapes[0];
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
@@ -380,6 +386,7 @@ test("resizing one of several selected shapes preserves the others and pointer c
 	await clickAt(page, 130, 150);
 	await page.keyboard.up("Shift");
 	await expect(page.getByTestId("resize-handle")).toHaveCount(12);
+	await expect.poll(() => selectedNames(page)).toEqual(["rectangle 1", "circle 2"]);
 	const originals = (await state(page)).shapes;
 	const handle = page.locator('[data-shape-id="1"][data-handle="1,1"]');
 	const box = (await handle.boundingBox())!;
