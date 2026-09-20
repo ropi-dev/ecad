@@ -195,8 +195,9 @@ test("attributes reuse the floating layer panel and follow the selected shape", 
 	const panel = page.getByRole("complementary", { name: "Selection attributes" });
 	await expect(panel).toHaveCount(0);
 	await createShape(page, "Circle", 150, 100);
-	await expect(panel).toHaveClass("layer-panel");
-	await expect(panel.locator(".layer-list")).toHaveCount(1);
+	await expect(panel).toHaveCSS("position", "absolute");
+	await expect(panel).toHaveCSS("width", "320px");
+	await expect(panel.locator(":scope > div")).toHaveCSS("overflow-y", "auto");
 	await expect(panel.getByRole("list")).toHaveCount(0);
 	const attribute = (label: string) => panel.locator("dl > div").filter({ has: page.getByText(label, { exact: true }) }).locator("dd");
 	await expect(attribute("Type")).toHaveText("circle");
@@ -413,7 +414,7 @@ async function fitCenteredEditor(page: Page) {
 }
 
 async function visibleGridStep(page: Page) {
-	return page.locator('.viewport-rulers [data-axis="x"]').evaluateAll((ticks) =>
+	return page.getByRole("img", { name: "Drawing rulers in millimetres" }).locator('[data-axis="x"]').evaluateAll((ticks) =>
 		Math.abs(Number(ticks[1].getAttribute("data-value")) - Number(ticks[0].getAttribute("data-value"))),
 	);
 }

@@ -115,7 +115,7 @@ test("imported Gerber geometry highlights without component or net attributes", 
 	await expect
 		.poll(async () => imageHash(await canvas.screenshot()))
 		.toBe(before);
-	await expect(page.locator(".viewer-message")).toHaveCount(0);
+	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 });
 
 test("focused Gerber layers restrict hover and restore other layers when focus clears", async ({
@@ -131,7 +131,7 @@ test("focused Gerber layers restrict hover and restore other layers when focus c
 			),
 		})),
 	);
-	await expect(page.locator(".layer-name")).toHaveCount(2);
+	await expect(page.locator("[data-testid=layer-name]")).toHaveCount(2);
 	await expect(
 		page.getByRole("button", { name: "Fit drawing", exact: true }),
 	).toBeEnabled();
@@ -225,5 +225,5 @@ test("focused Gerber layers restrict hover and restore other layers when focus c
 			imageHash(await canvas.screenshot({ animations: "disabled" })),
 		)
 		.not.toBe(before);
-	await expect(page.locator(".viewer-message")).toHaveCount(0);
+	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 });

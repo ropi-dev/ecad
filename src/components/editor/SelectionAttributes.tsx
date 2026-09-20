@@ -46,12 +46,12 @@ export function SelectionAttributes({
 			];
 	return (
 		<FloatingPanel label="Selection attributes">
-			<div className="layer-list editor-attributes">
-				<header>
-					<h2>Attributes</h2>
+			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5">
+				<header className="flex items-center justify-between gap-3">
+					<h2 className="m-0 text-[13px] font-semibold">Attributes</h2>
 					<button
 						type="button"
-						className="layer-icon"
+						className="relative z-1 grid h-[30px] w-7 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-[#98a4b6] hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e]"
 						onClick={onClear}
 						aria-label="Clear selection"
 						title="Clear selection"
@@ -59,21 +59,28 @@ export function SelectionAttributes({
 						<X size={17} />
 					</button>
 				</header>
-				<p className="editor-selection-name">
+				<p className="mt-3 text-[14px] leading-[1.7] text-[#e8b77e]">
 					{single
 						? `${single.kind} ${single.id}`
 						: `${shapes.length} shapes selected`}
 				</p>
-				{!single && <p>Selection bounds</p>}
-				<dl>
+				{!single && (
+					<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
+						Selection bounds
+					</p>
+				)}
+				<dl className="my-4 text-[12px]">
 					{attributes.map(([label, value]) => (
-						<div key={label}>
-							<dt>{label}</dt>
-							<dd>{value}</dd>
+						<div
+							key={label}
+							className="flex justify-between gap-3 border-b border-[#ffffff0a] py-2"
+						>
+							<dt className="text-[#9ba7b8]">{label}</dt>
+							<dd className="m-0 tabular-nums">{value}</dd>
 						</div>
 					))}
 				</dl>
-				<p>
+				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
 					Drag to move; drag handles to resize. Arrow keys move {snapStep || 1}{" "}
 					mm; Shift + arrows move {(snapStep || 1) * 10} mm when the drawing is
 					focused.

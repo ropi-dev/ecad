@@ -627,10 +627,7 @@ export function SceneViewport({
 	}, [size]);
 	return (
 		<>
-			<div
-				ref={host}
-				className="viewport-canvas absolute inset-0 overflow-hidden"
-			/>
+			<div ref={host} className="absolute inset-0 z-1 overflow-hidden" />
 			{selectionInfo && (
 				<div
 					role="tooltip"

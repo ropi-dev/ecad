@@ -39,7 +39,8 @@ export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
 	return (
 		<>
 			<svg
-				className="viewport-grid"
+				data-testid="viewport-grid"
+				className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
 				width={width}
 				height={height}
 				aria-hidden="true"
@@ -51,6 +52,7 @@ export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
 						x2={tick.position}
 						y1="0"
 						y2={height}
+						className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
 						data-major={tick.label !== undefined}
 					/>
 				))}
@@ -61,12 +63,13 @@ export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
 						x2={width}
 						y1={tick.position}
 						y2={tick.position}
+						className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
 						data-major={tick.label !== undefined}
 					/>
 				))}
 			</svg>
 			<svg
-				className="viewport-rulers"
+				className="pointer-events-none absolute inset-0 z-2 overflow-hidden text-[#9ba7b8] [&_line]:stroke-[#657183] [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums"
 				width={width}
 				height={height}
 				role="img"
@@ -77,10 +80,13 @@ export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
 					increases upward.
 				</title>
 				<path
-					className="ruler-background"
+					className="fill-[#191c22]"
 					d={`M0 0H${width}V24H24V${height}H0Z`}
 				/>
-				<path className="ruler-border" d={`M24 ${height}V24H${width}`} />
+				<path
+					className="fill-none stroke-[#414955]"
+					d={`M24 ${height}V24H${width}`}
+				/>
 				{horizontal.map((tick) => (
 					<g key={tick.value} data-axis="x" data-value={tick.value}>
 						<line
@@ -113,7 +119,7 @@ export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
 						)}
 					</g>
 				))}
-				<path className="ruler-background" d="M0 0H24V24H0Z" />
+				<path className="fill-[#191c22]" d="M0 0H24V24H0Z" />
 				<text x="12" y="15" textAnchor="middle">
 					mm
 				</text>

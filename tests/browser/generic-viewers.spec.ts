@@ -129,7 +129,7 @@ for (const projection of ["perspective", "orthographic"] as const) {
 		await page.keyboard.press("F6");
 		await expect.poll(async () => (await state()).zoom).toBeCloseTo(1);
 		const beforeResize = await state();
-		await page.locator(".drawing-area").evaluate((element) => {
+		await page.getByRole("application").evaluate((element) => {
 			element.parentElement!.style.width = "600px";
 		});
 		await expect.poll(async () => (await state()).viewport.width).toBe(600);
@@ -137,7 +137,7 @@ for (const projection of ["perspective", "orthographic"] as const) {
 			beforeResize.camera.scale,
 			8,
 		);
-		await page.locator(".drawing-area").evaluate((element) => {
+		await page.getByRole("application").evaluate((element) => {
 			element.parentElement!.style.width = "800px";
 		});
 		await expect.poll(async () => (await state()).viewport.width).toBe(800);

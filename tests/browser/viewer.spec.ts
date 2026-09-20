@@ -8,7 +8,7 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/viewer.html");
-	await expect(page.locator(".empty-message")).toHaveText(
+	await expect(page.getByText("Choose Gerber files or a ZIP archive to view them.", { exact: true })).toHaveText(
 		"Choose Gerber files or a ZIP archive to view them.",
 	);
 	const file = demoFiles[0];
@@ -46,7 +46,7 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	await page.mouse.up();
 	await page.keyboard.up("Shift");
 	await expect.poll(capture).not.toBe(top);
-	await expect(page.locator(".viewer-message")).toHaveCount(0);
+	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 	expect(errors).toEqual([]);
 	await page.screenshot({ path: test.info().outputPath("gerber-3d.png") });
 	await page.reload();
@@ -75,7 +75,7 @@ test("Gerber reports unavailable 3D rendering and leaves file controls usable", 
 		mimeType: "text/plain",
 		buffer: Buffer.from(file.source),
 	});
-	await expect(page.locator(".viewer-message")).toContainText(
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
 		"3D viewer unavailable",
 	);
 	await expect(page.locator("canvas")).toHaveCount(0);
@@ -85,7 +85,7 @@ test("Gerber reports unavailable 3D rendering and leaves file controls usable", 
 	await page
 		.getByRole("button", { name: `Remove ${file.name}`, exact: true })
 		.click();
-	await expect(page.locator(".layer-row")).toHaveCount(0);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(0);
 	await expect(page.locator("input[type=file]")).toBeEnabled();
 });
 
@@ -144,7 +144,7 @@ test("handles parse failures and keeps the latest file selection", async ({
 		mimeType: "text/plain",
 		buffer: Buffer.from("not a gerber file"),
 	});
-	await expect(page.locator(".viewer-message")).toBeVisible();
+	await expect(page.locator("[data-testid=viewer-message]")).toBeVisible();
 	await expect(page.locator("canvas")).toHaveCount(0);
 	await input.setInputFiles({
 		name: "slow.gbr",
@@ -157,19 +157,19 @@ test("handles parse failures and keeps the latest file selection", async ({
 		mimeType: "text/plain",
 		buffer: Buffer.from(latest.source),
 	});
-	await expect(page.locator(".layer-name").first()).toHaveText(latest.name);
+	await expect(page.locator("[data-testid=layer-name]").first()).toHaveText(latest.name);
 	await expect(
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
-	await expect(page.locator(".viewer-message")).toHaveCount(0);
+	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 	await expect(page.locator("canvas")).toHaveCount(1);
-	await expect(page.locator(".layer-name").first()).toHaveText(latest.name);
+	await expect(page.locator("[data-testid=layer-name]").first()).toHaveText(latest.name);
 	await input.setInputFiles({
 		name: demoFiles[0].name,
 		mimeType: "text/plain",
 		buffer: Buffer.from(demoFiles[0].source),
 	});
-	await expect(page.locator(".layer-name").first()).toHaveText(
+	await expect(page.locator("[data-testid=layer-name]").first()).toHaveText(
 		demoFiles[0].name,
 	);
 	await expect(page.locator("canvas")).toHaveCount(1);
@@ -191,8 +191,8 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 			buffer: Buffer.from(file.source),
 		})),
 	);
-	const rows = page.locator(".layer-row");
-	const names = page.locator(".layer-name");
+	const rows = page.locator("[data-layer-id]");
+	const names = page.locator("[data-testid=layer-name]");
 	await expect(rows).toHaveCount(3);
 	await expect(names).toHaveText(
 		demoFiles
@@ -225,7 +225,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	await focusButton.focus();
 	await page.keyboard.press("Space");
 	await expect(focusButton).toHaveAttribute("aria-pressed", "true");
-	await expect(page.locator('.layer-select[aria-pressed="true"]')).toHaveCount(
+	await expect(page.locator('[data-testid=layer-select][aria-pressed="true"]')).toHaveCount(
 		1,
 	);
 	await expect(page.locator(".layer-detail")).toHaveCount(0);
@@ -249,18 +249,18 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	await page
 		.getByRole("button", { name: `Hide ${focused}`, exact: true })
 		.click();
-	await expect(page.locator('.layer-select[aria-pressed="true"]')).toHaveCount(
+	await expect(page.locator('[data-testid=layer-select][aria-pressed="true"]')).toHaveCount(
 		0,
 	);
-	await expect(page.locator('.layer-row[data-hidden="true"]')).toHaveCount(1);
+	await expect(page.locator('[data-layer-id][data-hidden="true"]')).toHaveCount(1);
 	await page
 		.getByRole("button", { name: `Focus ${focused}`, exact: true })
 		.click();
-	await expect(page.locator('.layer-row[data-hidden="true"]')).toHaveCount(0);
+	await expect(page.locator('[data-layer-id][data-hidden="true"]')).toHaveCount(0);
 	await page
 		.getByRole("button", { name: `Focus ${focused}`, exact: true })
 		.click();
-	await expect(page.locator('.layer-select[aria-pressed="true"]')).toHaveCount(
+	await expect(page.locator('[data-testid=layer-select][aria-pressed="true"]')).toHaveCount(
 		0,
 	);
 	await page.setViewportSize({ width: 1440, height: 900 });
@@ -272,7 +272,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	const checkFloatingPanel = async (width: number, height: number) => {
 		await expect
 			.poll(async () => {
-				const panel = await page.locator(".layer-panel").boundingBox();
+				const panel = await page.getByRole("complementary", { name: "Layers" }).boundingBox();
 				const canvas = await page.locator("canvas").boundingBox();
 				return (
 					!!panel &&
@@ -302,7 +302,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 		.getByRole("button", { name: `Remove ${focused}`, exact: true })
 		.click();
 	await expect(rows).toHaveCount(2);
-	await expect(page.locator('.layer-select[aria-pressed="true"]')).toHaveCount(
+	await expect(page.locator('[data-testid=layer-select][aria-pressed="true"]')).toHaveCount(
 		0,
 	);
 	expect(errors).toEqual([]);
@@ -339,16 +339,16 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 			buffer: Buffer.from(demoFiles[0].source),
 		})),
 	);
-	await expect(page.locator(".layer-row")).toHaveCount(names.length);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(names.length);
 	await page
 		.getByRole("button", { name: `Focus ${names.at(-1)}`, exact: true })
 		.click();
 	const checkColumns = async () => {
-		const rows = await page.locator(".layer-row").evaluateAll((elements) =>
+		const rows = await page.locator("[data-layer-id]").evaluateAll((elements) =>
 			elements.map((row) => {
 				const buttons = row.querySelectorAll("button");
-				const swatch = row.querySelector(".layer-swatch")!;
-				const name = row.querySelector(".layer-name")!;
+				const swatch = row.querySelector("[data-testid=layer-swatch]")!;
+				const name = row.querySelector("[data-testid=layer-name]")!;
 				return {
 					visibility: buttons[2].getBoundingClientRect().x,
 					remove: buttons[3].getBoundingClientRect().x,
@@ -367,16 +367,16 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 		expect(rows[0].truncated).toBe(true);
 	};
 	await checkColumns();
-	await expect(page.locator(".layer-name").first()).toHaveAttribute(
+	await expect(page.locator("[data-testid=layer-name]").first()).toHaveAttribute(
 		"title",
 		names.at(-1)!,
 	);
 	await page
-		.locator(".layer-panel")
+		.getByRole("complementary", { name: "Layers" })
 		.screenshot({ path: test.info().outputPath("layer-alignment.png") });
 	await page.setViewportSize({ width: 390, height: 500 });
 	await checkColumns();
-	const list = page.locator(".layer-list");
+	const list = page.locator("[aria-label=Layers] ol");
 	await list.hover();
 	await page.mouse.wheel(0, 1000);
 	await expect
@@ -386,7 +386,7 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 		page.getByRole("button", { name: `Remove ${names[0]}`, exact: true }),
 	).toBeVisible();
 	await page
-		.locator(".layer-panel")
+		.getByRole("complementary", { name: "Layers" })
 		.screenshot({ path: test.info().outputPath("layer-alignment-mobile.png") });
 });
 

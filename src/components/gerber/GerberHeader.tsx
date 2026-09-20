@@ -8,11 +8,12 @@ export function GerberHeader({
 	onOpenFile: (files: File[]) => void;
 }) {
 	return (
-		<header className="file-bar flex items-center gap-2">
-			<label className="add-gerber-files">
+		<header className="absolute top-10 left-10 z-2 flex items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
+			<label className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e]">
 				<Plus size={16} /> {loading ? "Reading…" : "Add files"}
 				<input
 					type="file"
+					className="absolute inset-0 size-full cursor-pointer opacity-0"
 					multiple
 					aria-label="Open Gerber file"
 					onChange={(event) => {
@@ -24,13 +25,13 @@ export function GerberHeader({
 			</label>
 			<a
 				href="/step"
-				className="add-gerber-files no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
+				className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
 			>
 				STEP viewer
 			</a>
 			<a
 				href="/editor"
-				className="add-gerber-files no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
+				className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
 			>
 				2D editor
 			</a>

@@ -93,13 +93,13 @@ test("Gerber imports retain successful files and report errors within one batch"
 			buffer: Buffer.from(file.source),
 		})),
 	]);
-	await expect(page.locator(".layer-name")).toHaveText(
+	await expect(page.locator("[data-testid=layer-name]")).toHaveText(
 		demoFiles
 			.slice(0, 2)
 			.reverse()
 			.map((file) => file.name),
 	);
-	await expect(page.locator(".viewer-message")).toContainText("invalid.gbr:");
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText("invalid.gbr:");
 	await expect(
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
@@ -116,7 +116,7 @@ test("Gerber ZIP contents become individual layers alongside selected files", as
 		buffer: Buffer.from(demoFiles[0].source),
 	};
 	await input.setInputFiles(standalone);
-	await expect(page.locator(".layer-name")).toHaveText([standalone.name]);
+	await expect(page.locator("[data-testid=layer-name]")).toHaveText([standalone.name]);
 	await input.setInputFiles([
 		{
 			name: "board.ZIP",
@@ -142,24 +142,24 @@ test("Gerber ZIP contents become individual layers alongside selected files", as
 			),
 		},
 	]);
-	await expect(page.locator(".layer-name")).toHaveText([
+	await expect(page.locator("[data-testid=layer-name]")).toHaveText([
 		"outline.gbr",
 		"loose.gbr",
 		"board/bottom.copper",
 		"board/top.GTL",
 		standalone.name,
 	]);
-	await expect(page.locator(".viewer-message")).toContainText(
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
 		"board/invalid.gbr:",
 	);
-	await expect(page.locator(".viewer-message")).not.toContainText("README");
+	await expect(page.locator("[data-testid=viewer-message]")).not.toContainText("README");
 	await expect(
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
 	await page
 		.getByRole("button", { name: "Remove board/top.GTL", exact: true })
 		.click();
-	await expect(page.locator(".layer-name")).toHaveCount(4);
+	await expect(page.locator("[data-testid=layer-name]")).toHaveCount(4);
 });
 
 test("Gerber ZIP layers display in PCB stack order regardless of archive order", async ({
@@ -198,7 +198,7 @@ test("Gerber ZIP layers display in PCB stack order regardless of archive order",
 			mimeType: "application/zip",
 			buffer: Buffer.from(zipSync(archive)),
 		});
-	await expect(page.locator(".layer-name")).toHaveText(
+	await expect(page.locator("[data-testid=layer-name]")).toHaveText(
 		layers.map(([name]) => name),
 	);
 });
@@ -229,14 +229,14 @@ test("Gerber ZIP errors do not discard valid files in the selection", async ({
 			buffer: Buffer.from(demoFiles[0].source),
 		},
 	]);
-	await expect(page.locator(".layer-name")).toHaveText([demoFiles[0].name]);
-	await expect(page.locator(".viewer-message")).toContainText(
+	await expect(page.locator("[data-testid=layer-name]")).toHaveText([demoFiles[0].name]);
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
 		"broken.zip: Unable to read this ZIP archive.",
 	);
-	await expect(page.locator(".viewer-message")).toContainText(
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
 		"empty.zip: This ZIP archive contains no Gerber files.",
 	);
-	await expect(page.locator(".viewer-message")).toContainText(
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
 		"notes.zip: This ZIP archive contains no Gerber files.",
 	);
 });
@@ -281,12 +281,12 @@ for (const stage of ["archive", "entry"] as const) {
 			mimeType: "text/plain",
 			buffer: Buffer.from(demoFiles[2].source),
 		});
-		await expect(page.locator(".layer-name")).toHaveText(["latest.gbr"]);
+		await expect(page.locator("[data-testid=layer-name]")).toHaveText(["latest.gbr"]);
 		await page.evaluate(() => window.dispatchEvent(new Event("resume-import")));
 		await expect(
 			page.getByRole("button", { name: "Zoom in", exact: true }),
 		).toBeEnabled();
-		await expect(page.locator(".layer-name")).toHaveText(["latest.gbr"]);
-		await expect(page.locator(".viewer-message")).toHaveCount(0);
+		await expect(page.locator("[data-testid=layer-name]")).toHaveText(["latest.gbr"]);
+		await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 	});
 }

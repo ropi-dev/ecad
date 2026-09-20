@@ -5,7 +5,7 @@ test("the background grid does not draw over opaque layer geometry", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/generic-viewers.html");
-	await expect(page.locator(".viewport-grid")).toBeVisible();
+	await expect(page.getByTestId("viewport-grid")).toBeVisible();
 	await page.mouse.move(0, 0);
 	const { camera, viewport } = JSON.parse(
 		(await page.locator("#snapshot").textContent())!,
@@ -18,7 +18,7 @@ test("the background grid does not draw over opaque layer geometry", async ({
 		height: 40,
 	};
 	const withGrid = await page.screenshot({ clip });
-	await page.locator(".viewport-grid").evaluate((element) => {
+	await page.getByTestId("viewport-grid").evaluate((element) => {
 		element.style.visibility = "hidden";
 	});
 	expect((await page.screenshot({ clip })).equals(withGrid)).toBe(true);
@@ -47,10 +47,10 @@ test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
 						(300 * projectionY) /
 						(type === "OrthographicCamera" ? 1 : position[2]);
 					const ticks = [
-						...document.querySelectorAll<SVGGElement>(".viewport-rulers g"),
+						...document.querySelectorAll<SVGGElement>('[role="img"][aria-label="Drawing rulers in millimetres"] g'),
 					];
 					const grid = [
-						...document.querySelectorAll<SVGLineElement>(".viewport-grid line"),
+						...document.querySelectorAll<SVGLineElement>('[data-testid="viewport-grid"] line'),
 					];
 					return (
 						grid.length > 10 &&
@@ -125,15 +125,15 @@ test("rulers fit desktop and mobile Gerber viewports without covering controls",
 		await page.setViewportSize({ width, height });
 		await expect(rulers).toHaveAttribute("width", String(width));
 		await expect(rulers).toHaveAttribute("height", String(height));
-		await expect(page.locator(".viewport-grid")).toHaveAttribute(
+		await expect(page.getByTestId("viewport-grid")).toHaveAttribute(
 			"width",
 			String(width),
 		);
-		await expect(page.locator(".viewport-grid")).toHaveAttribute(
+		await expect(page.getByTestId("viewport-grid")).toHaveAttribute(
 			"height",
 			String(height),
 		);
-		for (const selector of [".file-bar", ".layer-panel"]) {
+		for (const selector of ["header", '[aria-label="Layers"]']) {
 			const box = (await page.locator(selector).boundingBox())!;
 			expect(box.x).toBeGreaterThan(24);
 			expect(box.y).toBeGreaterThan(24);

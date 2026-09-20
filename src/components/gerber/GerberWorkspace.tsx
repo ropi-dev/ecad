@@ -16,7 +16,7 @@ export function GerberWorkspace() {
 	const [rendererError, setRendererError] = useState("");
 	const message = [fileMessage, rendererError].filter(Boolean).join("; ");
 	return (
-		<main className="gerber-workspace">
+		<main className="relative flex h-dvh flex-col overflow-hidden">
 			<GerberHeader
 				loading={loading}
 				onOpenFile={(files) => {
@@ -24,8 +24,15 @@ export function GerberWorkspace() {
 					void openFile(files);
 				}}
 			/>
-			{message && <output className="viewer-message">{message}</output>}
-			<div className="workspace-body">
+			{message && (
+				<output
+					data-testid="viewer-message"
+					className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] text-[#edc49a]"
+				>
+					{message}
+				</output>
+			)}
+			<div className="relative flex min-h-0 flex-1">
 				{layers.length > 0 && (
 					<LayerPanel
 						layers={layers}
@@ -79,7 +86,7 @@ export function GerberWorkspace() {
 							onError={setRendererError}
 						/>
 					) : (
-						<p className="empty-message">
+						<p className="pointer-events-none absolute inset-0 m-0 grid place-items-center text-[14px] text-[#818b99]">
 							{loading
 								? "Reading file…"
 								: message

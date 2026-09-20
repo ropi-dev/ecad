@@ -230,25 +230,25 @@ export function Editor2D() {
 	};
 
 	return (
-		<main className="gerber-workspace">
+		<main className="relative flex h-dvh flex-col overflow-hidden">
 			<h1 className="sr-only">2D editor · A3 landscape · 420 × 297 mm</h1>
-			<header className="file-bar flex items-center gap-2">
+			<header className="absolute top-10 left-10 z-2 flex items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
 				<a
 					href="/"
-					className="add-gerber-files no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
+					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
 				>
 					Gerber viewer
 				</a>
 				<a
 					href="/step"
-					className="add-gerber-files no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
+					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
 				>
 					STEP viewer
 				</a>
 			</header>
-			<div className="workspace-body">
+			<div className="relative flex min-h-0 flex-1">
 				<div
-					className="editor-surface"
+					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					data-tool={tool}
 					onPointerDownCapture={(event) => {
 						const canvas = event.target;
@@ -435,7 +435,7 @@ export function Editor2D() {
 											)}
 											<button
 												type="button"
-												className={`${viewControlButtonClassName} editor-tool`}
+												className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
 												disabled={!ready}
 												aria-label={label}
 												title={label}
@@ -448,7 +448,7 @@ export function Editor2D() {
 									))}
 									<button
 										type="button"
-										className={`${viewControlButtonClassName} editor-tool`}
+										className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
 										disabled={!ready}
 										aria-label="Snap to grid"
 										aria-pressed={snapEnabled}
@@ -474,7 +474,10 @@ export function Editor2D() {
 						/>
 					)}
 					{view && (
-						<div className="editor-resize-handles" aria-hidden="true">
+						<div
+							className="pointer-events-none absolute inset-0 z-2 overflow-hidden"
+							aria-hidden="true"
+						>
 							{handles.map(({ shape, handle }) => {
 								const point = worldToScreen(
 									handle,
@@ -485,7 +488,7 @@ export function Editor2D() {
 								return (
 									<span
 										key={`${shape.id}:${handle.id}`}
-										className="editor-resize-handle"
+										className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 border border-[#e8b77e] bg-[#19212e]"
 										data-testid="resize-handle"
 										data-shape-id={shape.id}
 										data-handle={handle.id}
@@ -497,7 +500,7 @@ export function Editor2D() {
 					)}
 					{marquee && (
 						<div
-							className="editor-selection-rectangle"
+							className="pointer-events-none absolute z-2 border border-[#e8b77e] bg-[#e8b77e25]"
 							data-testid="selection-rectangle"
 							aria-hidden="true"
 							style={{
@@ -509,7 +512,10 @@ export function Editor2D() {
 						/>
 					)}
 					{error && (
-						<p className="viewer-message" role="alert">
+						<p
+							className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] text-[#edc49a]"
+							role="alert"
+						>
 							{error}
 						</p>
 					)}

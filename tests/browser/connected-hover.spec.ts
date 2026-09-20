@@ -15,7 +15,7 @@ D11*X-4000000Y0D03*X4000000Y0D03*X9000000Y0D03*M02*`;
 			buffer: Buffer.from("%FSLAX46Y46*%%MOMM*%%ADD10R,20X2*%D10*X0Y0D03*M02*"),
 		},
 	]);
-	await expect(page.locator(".layer-name")).toHaveCount(2);
+	await expect(page.locator("[data-testid=layer-name]")).toHaveCount(2);
 	await expect(
 		page.getByRole("button", { name: "Fit drawing", exact: true }),
 	).toBeEnabled();
@@ -63,5 +63,5 @@ D11*X-4000000Y0D03*X4000000Y0D03*X9000000Y0D03*M02*`;
 		.toBeCloseTo(8, 2);
 	await moveTo(6.5);
 	await expect.poll(async () => (await state()).highlighted).toBe(0);
-	await expect(page.locator(".viewer-message")).toHaveCount(0);
+	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 });
