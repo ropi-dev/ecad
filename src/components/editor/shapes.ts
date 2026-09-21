@@ -218,7 +218,7 @@ export function drawShape(
 			width: radius * 2,
 			height: radius * 2,
 			rotation: 0,
-			lineWidth: 0.1,
+			lineWidth: 0.2,
 		};
 	}
 	return {
@@ -229,7 +229,7 @@ export function drawShape(
 		width: kind === "line" ? Math.hypot(dx, dy) : Math.abs(dx),
 		height: kind === "line" ? 1 : Math.abs(dy),
 		rotation: kind === "line" ? Math.atan2(dy, dx) : 0,
-		lineWidth: 0.1,
+		lineWidth: 0.2,
 	};
 }
 

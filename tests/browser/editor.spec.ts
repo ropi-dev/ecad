@@ -1086,12 +1086,12 @@ test("undo and redo clear unfinished previews and active drags without adding hi
 test("line width edits apply to shapes and groups and support undo and redo", async ({ page }) => {
 	const width = page.getByRole("spinbutton", { name: "Line width", exact: true });
 	await createShape(page, "Rectangle", 90, 150);
-	await expect(width).toHaveValue("0.1");
+	await expect(width).toHaveValue("0.2");
 	await width.fill("2.5");
 	await expect(width).toBeFocused();
 	await expect(width).toHaveValue("2.5");
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
-	await expect(width).toHaveValue("0.1");
+	await expect(width).toHaveValue("0.2");
 	await page.getByRole("button", { name: "Redo", exact: true }).click();
 	await expect(width).toHaveValue("2.5");
 	await createShape(page, "Line", 180, 150);
