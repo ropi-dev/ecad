@@ -1,16 +1,82 @@
 import { X } from "lucide-react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { FloatingPanel } from "../viewer/FloatingPanel";
-import { type EditorShape, shapeBounds } from "./shapes";
+import { type EditorShape, type ShapeAttribute, shapeBounds } from "./shapes";
+
+function AttributeInput({
+	label,
+	value,
+	unit = "mm",
+	positive = false,
+	step = "any",
+	onChange,
+}: {
+	label: string;
+	value: number | "";
+	unit?: string;
+	positive?: boolean;
+	step?: string;
+	onChange: (value: number) => void;
+}) {
+	const inputRef = useRef<HTMLInputElement>(null);
+	const displayValue = value === "" ? "" : Number(value.toFixed(4)) || value;
+	useEffect(() => {
+		const input = inputRef.current;
+		// Hide pointer-conversion noise without rewriting a value being typed.
+		if (input && input.valueAsNumber !== value)
+			input.value = String(displayValue);
+	}, [displayValue, value]);
+	return (
+		<span className="flex items-center gap-2">
+			<input
+				ref={inputRef}
+				type="number"
+				aria-label={label}
+				min={positive ? 0 : undefined}
+				step={step}
+				title={step === "90" ? "Lines use angles in 90° increments" : undefined}
+				placeholder="Mixed"
+				defaultValue={displayValue}
+				className="w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-right text-[#f0f3f8] tabular-nums focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+				onChange={(event) => {
+					const next = event.currentTarget.valueAsNumber;
+					if (
+						Number.isFinite(next) &&
+						(!positive || next > 0) &&
+						(step !== "90" || next % 90 === 0)
+					)
+						onChange(next);
+				}}
+				onBlur={(event) => {
+					if (event.currentTarget.valueAsNumber !== value)
+						event.currentTarget.value = String(displayValue);
+				}}
+				onKeyDown={(event) => {
+					if (event.key === "Enter" || event.key === "Escape")
+						event.currentTarget.blur();
+				}}
+			/>
+			<span className="w-5 text-[#9ba7b8]">{unit}</span>
+		</span>
+	);
+}
 
 export function SelectionAttributes({
 	shapes,
 	snapStep = 0,
 	onClear,
+	onAttributeChange,
 }: {
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
+	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
 }) {
+	const lineWidth =
+		shapes.length &&
+		shapes.every((shape) => shape.lineWidth === shapes[0].lineWidth)
+			? shapes[0].lineWidth
+			: "";
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
 	const bounds = shapes.map(shapeBounds);
@@ -19,23 +85,40 @@ export function SelectionAttributes({
 	const bottom = Math.min(...bounds.map((box) => box.minY));
 	const top = Math.max(...bounds.map((box) => box.maxY));
 	const mm = (value: number) => `${value.toFixed(1)} mm`;
-	const attributes = single
+	const editable = (
+		label: string,
+		attribute: ShapeAttribute,
+		value: number,
+	): [string, ReactNode] => [
+		label,
+		<AttributeInput
+			key={`${single?.id}:${attribute}`}
+			label={label}
+			value={value}
+			positive={attribute !== "x" && attribute !== "y" && attribute !== "angle"}
+			unit={attribute === "angle" ? "°" : "mm"}
+			step={attribute === "angle" ? "90" : "any"}
+			onChange={(next) => onAttributeChange(attribute, next)}
+		/>,
+	];
+	const attributes: [string, ReactNode][] = single
 		? [
 				["Type", single.kind],
 				["ID", String(single.id)],
-				["Center X", mm(single.x)],
-				["Center Y", mm(single.y)],
+				editable("Center X", "x", single.x),
+				editable("Center Y", "y", single.y),
 				...(single.kind === "line"
 					? [
-							["Length", mm(single.width)],
-							["Stroke width", mm(single.height)],
-							["Angle", `${((single.rotation * 180) / Math.PI).toFixed(1)}°`],
+							editable("Length", "width", single.width),
+							editable("Angle", "angle", (single.rotation * 180) / Math.PI),
 						]
 					: [
-							["Width", mm(single.width)],
-							["Height", mm(single.height)],
+							editable("Width", "width", single.width),
+							editable("Height", "height", single.height),
 						]),
-				...(single.kind === "circle" ? [["Radius", mm(single.width / 2)]] : []),
+				...(single.kind === "circle"
+					? [editable("Radius", "radius", single.width / 2)]
+					: []),
 			]
 		: [
 				["Shapes", String(shapes.length)],
@@ -73,13 +156,23 @@ export function SelectionAttributes({
 					{attributes.map(([label, value]) => (
 						<div
 							key={label}
-							className="flex justify-between gap-3 border-b border-[#ffffff0a] py-2"
+							className="flex items-center justify-between gap-3 border-b border-[#ffffff0a] py-2"
 						>
 							<dt className="text-[#9ba7b8]">{label}</dt>
 							<dd className="m-0 tabular-nums">{value}</dd>
 						</div>
 					))}
 				</dl>
+				<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
+					<span>Line width</span>
+					<AttributeInput
+						key={shapes.map((shape) => shape.id).join(",")}
+						label="Line width"
+						value={lineWidth}
+						positive
+						onChange={(value) => onAttributeChange("lineWidth", value)}
+					/>
+				</div>
 				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
 					Drag to move; drag handles to resize. Arrow keys move {snapStep || 1}{" "}
 					mm; Shift + arrows move {(snapStep || 1) * 10} mm when the drawing is

@@ -35,6 +35,7 @@ import {
 	constrainLineEndpoint,
 	drawShape,
 	type EditorShape,
+	editShapeAttribute,
 	hitShape,
 	intersectsSelection,
 	moveShapes,
@@ -98,6 +99,7 @@ function sameDrawing(first: DrawingState, second: DrawingState) {
 				Math.abs(shape.y - other.y) < 1e-9 &&
 				Math.abs(shape.width - other.width) < 1e-9 &&
 				Math.abs(shape.height - other.height) < 1e-9 &&
+				shape.lineWidth === other.lineWidth &&
 				Math.abs(shape.rotation - other.rotation) < 1e-9
 			);
 		})
@@ -770,6 +772,28 @@ export function Editor2D() {
 					shapes={selected}
 					snapStep={snapEnabled ? gridStep : 0}
 					onClear={() => applySelection(new Set())}
+					onAttributeChange={(attribute, value) => {
+						if (!Number.isFinite(value)) return;
+						const replacements =
+							attribute === "x" || attribute === "y"
+								? moveShapes(
+										selected,
+										{
+											x: attribute === "x" ? value - selected[0].x : 0,
+											y: attribute === "y" ? value - selected[0].y : 0,
+										},
+										0,
+										selected[0],
+										currentShapes.current,
+									)
+								: selected.map((shape) =>
+										editShapeAttribute(shape, attribute, value),
+									);
+						replaceShapes(
+							replacements,
+							`Change ${attribute === "lineWidth" ? "line width" : attribute}`,
+						);
+					}}
 				/>
 			</div>
 		</main>

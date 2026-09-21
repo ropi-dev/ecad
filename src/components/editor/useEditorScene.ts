@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import {
 	BufferGeometry,
-	CircleGeometry,
 	Group,
 	LineBasicMaterial,
 	LineLoop,
 	Mesh,
 	MeshBasicMaterial,
 	type Object3D,
-	PlaneGeometry,
-	Shape,
-	ShapeGeometry,
 	Vector3,
 } from "three";
 import type { ViewerScene } from "#/engine/scene";
 import { createLifecycle } from "#/lib/lifecycle";
+import { createShapeGeometry } from "./shapeGeometry";
 import { A3, type EditorShape } from "./shapes";
 
 function createEditorAssets() {
@@ -22,16 +19,25 @@ function createEditorAssets() {
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
 	try {
-		const triangle = new Shape();
-		triangle.moveTo(-0.5, -0.5);
-		triangle.lineTo(0.5, -0.5);
-		triangle.lineTo(0, 0.5);
-		triangle.closePath();
-		const geometries = {
-			rectangle: own(() => new PlaneGeometry(1, 1)),
-			circle: own(() => new CircleGeometry(0.5, 96)),
-			triangle: own(() => new ShapeGeometry(triangle)),
-			line: own(() => new PlaneGeometry(1, 1)),
+		const geometries = new Map<
+			number,
+			{ key: string; geometry: BufferGeometry }
+		>();
+		lifetime.acquire(
+			() => geometries,
+			(cache) => {
+				for (const { geometry } of cache.values()) geometry.dispose();
+				cache.clear();
+			},
+		);
+		const geometryFor = (shape: EditorShape) => {
+			const key = `${shape.kind}:${shape.width}:${shape.height}:${shape.lineWidth}`;
+			const cached = geometries.get(shape.id);
+			if (cached?.key === key) return cached.geometry;
+			cached?.geometry.dispose();
+			const geometry = createShapeGeometry(shape);
+			geometries.set(shape.id, { key, geometry });
+			return geometry;
 		};
 		const frame = own(() => new BufferGeometry()).setFromPoints([
 			new Vector3(-0.5, -0.5, 0),
@@ -39,7 +45,7 @@ function createEditorAssets() {
 			new Vector3(0.5, 0.5, 0),
 			new Vector3(-0.5, 0.5, 0),
 		]);
-		const fill = own(
+		const stroke = own(
 			() => new MeshBasicMaterial({ color: "#76c4c0", depthTest: false }),
 		);
 		const selected = own(
@@ -69,7 +75,8 @@ function createEditorAssets() {
 			scene,
 			geometries,
 			frame,
-			fill,
+			stroke,
+			geometryFor,
 			selected,
 			selection,
 			dispose: lifetime.dispose,
@@ -100,17 +107,28 @@ export function useEditorScene(
 				drawing.name = "editor-shapes";
 				root.add(drawing);
 			}
-			// Geometry and materials are shared and owned by this hook, including removed shapes.
+			// Dispose cached strokes when their shapes are removed, including canceled previews.
+			const activeIds = new Set(shapes.map((shape) => shape.id));
+			if (linePreview) activeIds.add(linePreview.id);
+			for (const [id, { geometry }] of assets.geometries) {
+				if (activeIds.has(id)) continue;
+				geometry.dispose();
+				assets.geometries.delete(id);
+			}
 			drawing.clear();
 			for (const [index, shape] of shapes.entries()) {
 				const size = shape;
 				const mesh = new Mesh(
-					assets.geometries[shape.kind],
-					selectedIds.has(shape.id) ? assets.selected : assets.fill,
+					assets.geometryFor(shape),
+					selectedIds.has(shape.id) ? assets.selected : assets.stroke,
 				);
 				mesh.name = `${shape.kind} ${shape.id}`;
 				mesh.position.set(shape.x, shape.y, 0);
-				mesh.scale.set(size.width, size.height, 1);
+				mesh.scale.set(
+					size.width,
+					shape.kind === "line" ? shape.lineWidth : size.height,
+					1,
+				);
 				mesh.rotation.z = shape.rotation;
 				mesh.renderOrder = index + 1;
 				drawing.add(mesh);
@@ -118,17 +136,20 @@ export function useEditorScene(
 					const outline = new LineLoop(assets.frame, assets.selection);
 					outline.position.copy(mesh.position);
 					outline.rotation.copy(mesh.rotation);
-					outline.scale.set(size.width + 4, size.height + 4, 1);
+					outline.scale.set(size.width + 4, mesh.scale.y + 4, 1);
 					outline.renderOrder = shapes.length + 1;
 					drawing.add(outline);
 				}
 			}
 			root.getObjectByName("editor-line-preview")?.removeFromParent();
 			if (linePreview && linePreview.width > 0) {
-				const preview = new Mesh(assets.geometries.line, assets.selected);
+				const preview = new Mesh(
+					assets.geometryFor(linePreview),
+					assets.selected,
+				);
 				preview.name = "editor-line-preview";
 				preview.position.set(linePreview.x, linePreview.y, 0);
-				preview.scale.set(linePreview.width, linePreview.height, 1);
+				preview.scale.set(linePreview.width, linePreview.lineWidth, 1);
 				preview.rotation.z = linePreview.rotation;
 				preview.renderOrder = shapes.length + 2;
 				root.add(preview);

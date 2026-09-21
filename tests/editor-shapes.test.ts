@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { constrainLineEndpoint, drawShape, type EditorShape, moveShapes, normalizeLineSegments, resizeHandles, resizeShape, snapPoint } from "../src/components/editor/shapes.ts";
+import { constrainLineEndpoint, drawShape, editShapeAttribute, type EditorShape, moveShapes, normalizeLineSegments, resizeHandles, resizeShape, snapPoint } from "../src/components/editor/shapes.ts";
 
 import { rulerSpacing, rulerTicks } from "../src/engine/ruler.ts";
 
@@ -361,7 +361,7 @@ test("normalization keeps gaps, offset parallels, crossings and different stroke
 		segment(2, 10.001, 0, 20, 0),
 		segment(3, 0, 0.001, 10, 0.001),
 		segment(4, 5, -10, 5, 10),
-		{ ...segment(5, 0, 0, 10, 0), height: 2 },
+		{ ...segment(5, 0, 0, 10, 0), lineWidth: 2 },
 	];
 	const result = normalizeLineSegments(shapes);
 	assert.deepEqual(result.shapes, shapes);
@@ -421,4 +421,30 @@ test("normalization cleans pointer precision remnants and preserves attached bra
 	const distant = segment(7, 220.001, 100, 240, 100);
 	const independent = moveShapes([nearTouching], { x: 0, y: 10 }, 0, nearTouching, [nearTouching, distant]);
 	assert.deepEqual(independent.map(({ id }) => id), [nearTouching.id]);
+});
+
+test("attribute edits retain centers and strokes and keep circle dimensions linked", () => {
+	const circle = { ...drawShape(1, "circle", { x: 10, y: 20 }, { x: 30, y: 20 }), lineWidth: 2.5 };
+	for (const attribute of ["width", "height", "radius"] as const) {
+		const edited = editShapeAttribute(circle, attribute, 12);
+		assert.equal(edited.width, attribute === "radius" ? 24 : 12);
+		assert.equal(edited.height, edited.width);
+		assert.equal(edited.x, circle.x);
+		assert.equal(edited.y, circle.y);
+		assert.equal(edited.lineWidth, 2.5);
+	}
+	const rectangle = drawShape(2, "rectangle", { x: 0, y: 0 }, { x: 30, y: 20 });
+	assert.deepEqual(editShapeAttribute(rectangle, "width", 45), { ...rectangle, width: 45 });
+	assert.equal(editShapeAttribute(rectangle, "x", -5).x, -5);
+	assert.equal(editShapeAttribute(rectangle, "y", 0).y, 0);
+	for (const value of [0, -1, Number.NaN, Infinity]) {
+		assert.equal(editShapeAttribute(rectangle, "width", value), rectangle);
+	}
+});
+
+test("angle attributes preserve the orthogonal line constraint", () => {
+	const line = segment(1, 0, 0, 20, 0);
+	assert.equal(editShapeAttribute(line, "angle", 90).rotation, Math.PI / 2);
+	assert.equal(editShapeAttribute(line, "angle", -90).rotation, -Math.PI / 2);
+	assert.equal(editShapeAttribute(line, "angle", 45), line);
 });

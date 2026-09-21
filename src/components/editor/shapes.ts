@@ -7,7 +7,47 @@ export interface EditorShape extends Point {
 	kind: ShapeKind;
 	width: number;
 	height: number;
+	lineWidth: number;
 	rotation: number;
+}
+
+export type ShapeAttribute =
+	| "x"
+	| "y"
+	| "width"
+	| "height"
+	| "radius"
+	| "angle"
+	| "lineWidth";
+
+/** Dimension edits keep the center fixed; circles always retain equal diameters. */
+export function editShapeAttribute(
+	shape: EditorShape,
+	attribute: ShapeAttribute,
+	value: number,
+): EditorShape {
+	if (!Number.isFinite(value)) return shape;
+	if (attribute === "x" || attribute === "y")
+		return { ...shape, [attribute]: value };
+	if (attribute === "angle") {
+		// Line drawing and junction movement require horizontal or vertical segments.
+		if (shape.kind !== "line" || value % 90 !== 0) return shape;
+		return { ...shape, rotation: (value * Math.PI) / 180 };
+	}
+	if (value <= 0) return shape;
+	if (attribute === "radius") {
+		return shape.kind === "circle"
+			? { ...shape, width: value * 2, height: value * 2 }
+			: shape;
+	}
+	if (
+		shape.kind === "circle" &&
+		(attribute === "width" || attribute === "height")
+	) {
+		return { ...shape, width: value, height: value };
+	}
+	if (shape.kind === "line" && attribute === "height") return shape;
+	return { ...shape, [attribute]: value };
 }
 
 export interface ResizeHandle extends Point {
@@ -117,9 +157,11 @@ export function resizeShape(
 			0,
 		);
 		const point = constrainLineEndpoint(fixed, target, gridStep);
-		return handle.xDirection === 1
-			? drawShape(shape.id, "line", fixed, point)
-			: drawShape(shape.id, "line", point, fixed);
+		const resized =
+			handle.xDirection === 1
+				? drawShape(shape.id, "line", fixed, point)
+				: drawShape(shape.id, "line", point, fixed);
+		return { ...resized, lineWidth: shape.lineWidth };
 	}
 	const point = snapPoint(target, gridStep);
 	const deltaX = point.x - handle.x;
@@ -176,6 +218,7 @@ export function drawShape(
 			width: radius * 2,
 			height: radius * 2,
 			rotation: 0,
+			lineWidth: 0.1,
 		};
 	}
 	return {
@@ -186,14 +229,16 @@ export function drawShape(
 		width: kind === "line" ? Math.hypot(dx, dy) : Math.abs(dx),
 		height: kind === "line" ? 1 : Math.abs(dy),
 		rotation: kind === "line" ? Math.atan2(dy, dx) : 0,
+		lineWidth: 0.1,
 	};
 }
 
 export function shapeBounds(shape: EditorShape): Bounds {
+	const height = shape.kind === "line" ? shape.lineWidth : shape.height;
 	const cos = Math.abs(Math.cos(shape.rotation));
 	const sin = Math.abs(Math.sin(shape.rotation));
-	const halfWidth = (shape.width * cos + shape.height * sin) / 2;
-	const halfHeight = (shape.width * sin + shape.height * cos) / 2;
+	const halfWidth = (shape.width * cos + height * sin) / 2;
+	const halfHeight = (shape.width * sin + height * cos) / 2;
 	return {
 		minX: shape.x - halfWidth,
 		maxX: shape.x + halfWidth,
@@ -221,7 +266,10 @@ export function hitShape(shape: EditorShape, point: Point, tolerance: number) {
 	}
 	return (
 		x <= width / 2 &&
-		Math.abs(y) <= Math.max(height / 2, shape.kind === "line" ? tolerance : 0)
+		Math.abs(y) <=
+			(shape.kind === "line"
+				? Math.max(shape.lineWidth / 2, tolerance)
+				: height / 2)
 	);
 }
 
@@ -253,7 +301,9 @@ export function intersectsSelection(shape: EditorShape, bounds: Bounds) {
 			Math.abs(dx * cos + dy * sin) <=
 				width / 2 + halfWidth * Math.abs(cos) + halfHeight * Math.abs(sin) &&
 			Math.abs(-dx * sin + dy * cos) <=
-				height / 2 + halfWidth * Math.abs(sin) + halfHeight * Math.abs(cos)
+				shape.lineWidth / 2 +
+					halfWidth * Math.abs(sin) +
+					halfHeight * Math.abs(cos)
 		);
 	}
 	if (shape.kind !== "triangle") return true;
@@ -305,7 +355,7 @@ export function normalizeLineSegments(
 			const b = lines[second];
 			if (
 				a.vertical === b.vertical &&
-				a.shape.height === b.shape.height &&
+				a.shape.lineWidth === b.shape.lineWidth &&
 				Math.abs(a.coordinate - b.coordinate) <= normalizationTolerance &&
 				a.min <= b.max + normalizationTolerance &&
 				b.min <= a.max + normalizationTolerance
@@ -340,7 +390,7 @@ export function normalizeLineSegments(
 				: { x: value, y: survivor.coordinate };
 		replacements.set(cluster[0].index, {
 			...drawShape(survivor.shape.id, "line", point(start), point(end)),
-			height: survivor.shape.height,
+			lineWidth: survivor.shape.lineWidth,
 		});
 	}
 	return {
@@ -483,7 +533,7 @@ function moveConnectedLines(
 			continue;
 		updated.set(line.shape.id, {
 			...drawShape(line.shape.id, "line", start, end),
-			height: line.shape.height,
+			lineWidth: line.shape.lineWidth,
 		});
 	}
 	return replacements.map((shape) =>
