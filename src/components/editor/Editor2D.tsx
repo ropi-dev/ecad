@@ -8,6 +8,7 @@ import {
 	Square,
 	Trash2,
 	Triangle,
+	Type,
 } from "lucide-react";
 import {
 	Fragment,
@@ -51,6 +52,7 @@ import {
 	snapPoint,
 } from "./shapes";
 import { createSymbol, type SymbolDefinition } from "./symbols";
+import { createTextShape, updateText } from "./text";
 import { useEditorScene } from "./useEditorScene";
 
 const tools = [
@@ -61,6 +63,7 @@ const tools = [
 	{ kind: "triangle", label: "Triangle", icon: Triangle },
 	{ kind: "wire", label: "Wire", icon: Slash },
 	{ kind: "pin", label: "Pin", icon: MapPin },
+	{ kind: "text", label: "Text", icon: Type },
 ] as const;
 type Tool = ShapeKind | "select" | "pan" | "symbol";
 interface Drag {
@@ -108,6 +111,10 @@ function sameDrawing(first: DrawingState, second: DrawingState) {
 						shape.attributes.name === other.attributes.name &&
 						shape.attributes.reference === other.attributes.reference &&
 						shape.attributes.value === other.attributes.value)) &&
+				(shape.kind !== "text" ||
+					(other.kind === "text" &&
+						shape.text === other.text &&
+						shape.fontSize === other.fontSize)) &&
 				Math.abs(shape.x - other.x) < 1e-9 &&
 				Math.abs(shape.y - other.y) < 1e-9 &&
 				Math.abs(shape.width - other.width) < 1e-9 &&
@@ -136,6 +143,7 @@ export function Editor2D() {
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
 	const [symbolPreview, setSymbolPreview] = useState<EditorShape | null>(null);
+	const [textFocusId, setTextFocusId] = useState<number | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
@@ -169,7 +177,10 @@ export function Editor2D() {
 					Math.abs(handle.y - point.y) <= tolerance,
 			);
 	};
-	const pointAt = (event: ReactPointerEvent, canvas: HTMLCanvasElement) => {
+	const pointAt = (
+		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
+		canvas: HTMLCanvasElement,
+	) => {
 		const view = snapshot.current;
 		if (!view) return null;
 		const rect = canvas.getBoundingClientRect();
@@ -290,7 +301,7 @@ export function Editor2D() {
 		}
 		if (active.mode === "draw") {
 			const original = active.originals[0];
-			if (original.kind === "symbol") return;
+			if (original.kind === "symbol" || original.kind === "text") return;
 			const draft = drawShape(
 				original.id,
 				original.kind,
@@ -462,6 +473,22 @@ export function Editor2D() {
 						setSymbolPreview(null);
 						setConnectionHover(null);
 					}}
+					onDoubleClickCapture={(event) => {
+						if (
+							!(event.target instanceof HTMLCanvasElement) ||
+							tool !== "select"
+						)
+							return;
+						const point = pointAt(event, event.target);
+						const shape =
+							point &&
+							[...shapes].reverse().find((shape) => hitShape(shape, point, 0));
+						if (shape?.kind !== "text") return;
+						event.preventDefault();
+						event.stopPropagation();
+						applySelection(new Set([shape.id]));
+						setTextFocusId(shape.id);
+					}}
 					onPointerDownCapture={(event) => {
 						const canvas = event.target;
 						if (!(canvas instanceof HTMLCanvasElement) || !ready) return;
@@ -491,6 +518,17 @@ export function Editor2D() {
 								? rulerSpacing(snapshot.current.camera.scale).minor
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
+						if (tool === "text") {
+							const text = createTextShape(nextId.current++, start);
+							commitShapes(
+								[...currentShapes.current, text],
+								"Draw text",
+								new Set([text.id]),
+							);
+							setTool("select");
+							setTextFocusId(text.id);
+							return;
+						}
 						if (tool === "symbol") {
 							if (!symbolDefinition) return;
 							const symbol = createSymbol(
@@ -837,7 +875,7 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
+							interactionHint="Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
 						/>
 					)}
 					{view && (
@@ -935,6 +973,12 @@ export function Editor2D() {
 					}}
 					snapStep={snapEnabled ? gridStep : 0}
 					onClear={() => applySelection(new Set())}
+					textFocusId={textFocusId}
+					onTextFocus={() => setTextFocusId(null)}
+					onTextChange={(text) => {
+						if (selected.length === 1 && selected[0].kind === "text")
+							replaceShapes([updateText(selected[0], text)], "Edit text");
+					}}
 					onAttributeChange={(attribute, value) => {
 						if (!Number.isFinite(value)) return;
 						const replacements =
@@ -954,7 +998,7 @@ export function Editor2D() {
 									);
 						replaceShapes(
 							replacements,
-							`Change ${attribute === "lineWidth" ? "wire width" : attribute}`,
+							`Change ${attribute === "lineWidth" ? "wire width" : attribute === "fontSize" ? "font size" : attribute}`,
 						);
 					}}
 				/>

@@ -33,7 +33,7 @@ export function createShapeGeometry(shape: EditorShape): BufferGeometry {
 			for (const child of children) child.dispose();
 		}
 	}
-	if (shape.kind === "wire") return new PlaneGeometry(1, 1);
+	if (shape.kind === "wire" || shape.kind === "text") return new PlaneGeometry(1, 1);
 	if (shape.kind === "pin") return new CircleGeometry(0.5, 32);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();

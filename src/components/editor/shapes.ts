@@ -1,7 +1,13 @@
 import type { Bounds, Point } from "#/engine/types";
 
 export const A3 = { width: 420, height: 297 } as const;
-export type ShapeKind = "rectangle" | "circle" | "triangle" | "wire" | "pin";
+export type ShapeKind =
+	| "rectangle"
+	| "circle"
+	| "triangle"
+	| "wire"
+	| "pin"
+	| "text";
 interface ShapeGeometry extends Point {
 	id: number;
 	width: number;
@@ -11,7 +17,7 @@ interface ShapeGeometry extends Point {
 }
 
 export interface PrimitiveShape extends ShapeGeometry {
-	kind: ShapeKind;
+	kind: Exclude<ShapeKind, "text">;
 }
 
 export interface EditorSymbol extends ShapeGeometry {
@@ -22,7 +28,13 @@ export interface EditorSymbol extends ShapeGeometry {
 	attributes: { name: string; reference: string; value: string };
 }
 
-export type EditorShape = PrimitiveShape | EditorSymbol;
+export interface TextShape extends ShapeGeometry {
+	kind: "text";
+	text: string;
+	fontSize: number;
+}
+
+export type EditorShape = PrimitiveShape | EditorSymbol | TextShape;
 
 /** Resolve children only for geometry; editing always acts on their parent. */
 export function symbolShapes(symbol: EditorSymbol): PrimitiveShape[] {
@@ -41,6 +53,7 @@ export type ShapeAttribute =
 	| "height"
 	| "radius"
 	| "angle"
+	| "fontSize"
 	| "lineWidth";
 
 /** Dimension edits keep the center fixed; circles always retain equal diameters. */
@@ -55,12 +68,29 @@ export function editShapeAttribute(
 	if (shape.kind === "pin" && attribute !== "lineWidth") return shape;
 	if (attribute === "angle") {
 		// Wire drawing and junction movement require horizontal or vertical segments.
-		if ((shape.kind !== "wire" && shape.kind !== "symbol") || value % 90 !== 0)
+		if (
+			shape.kind !== "text" &&
+			((shape.kind !== "wire" && shape.kind !== "symbol") || value % 90 !== 0)
+		)
 			return shape;
 		return { ...shape, rotation: (value * Math.PI) / 180 };
 	}
 	if (value <= 0) return shape;
 	if (shape.kind === "symbol" && attribute !== "lineWidth") return shape;
+	if (
+		attribute === "fontSize" ||
+		(shape.kind === "text" && (attribute === "width" || attribute === "height"))
+	) {
+		if (shape.kind !== "text") return shape;
+		const scale = value / shape[attribute];
+		return {
+			...shape,
+			width: shape.width * scale,
+			height: shape.height * scale,
+			fontSize: shape.fontSize * scale,
+		};
+	}
+	if (shape.kind === "text" && attribute === "lineWidth") return shape;
 	if (attribute === "radius") {
 		return shape.kind === "circle"
 			? { ...shape, width: value * 2, height: value * 2 }
@@ -116,28 +146,35 @@ function localToWorld(shape: EditorShape, x: number, y: number): Point {
 export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 	if (shape.kind === "symbol" || shape.kind === "pin") return [];
 	const directions =
-		shape.kind === "wire"
+		shape.kind === "text"
 			? [
-					[-1, 0],
-					[1, 0],
+					[-1, -1],
+					[1, -1],
+					[-1, 1],
+					[1, 1],
 				]
-			: shape.kind === "circle"
+			: shape.kind === "wire"
 				? [
 						[-1, 0],
 						[1, 0],
-						[0, -1],
-						[0, 1],
 					]
-				: [
-						[-1, -1],
-						[0, -1],
-						[1, -1],
-						[-1, 0],
-						[1, 0],
-						[-1, 1],
-						[0, 1],
-						[1, 1],
-					];
+				: shape.kind === "circle"
+					? [
+							[-1, 0],
+							[1, 0],
+							[0, -1],
+							[0, 1],
+						]
+					: [
+							[-1, -1],
+							[0, -1],
+							[1, -1],
+							[-1, 0],
+							[1, 0],
+							[-1, 1],
+							[0, 1],
+							[1, 1],
+						];
 	return directions.map(([xDirection, yDirection]) => {
 		const angle = Math.atan2(yDirection, xDirection) + shape.rotation;
 		const cursor = ["ew-resize", "nesw-resize", "ns-resize", "nwse-resize"][
@@ -198,6 +235,28 @@ export function resizeShape(
 		deltaX * Math.cos(shape.rotation) + deltaY * Math.sin(shape.rotation);
 	const dy =
 		-deltaX * Math.sin(shape.rotation) + deltaY * Math.cos(shape.rotation);
+	if (shape.kind === "text") {
+		const scale = Math.max(
+			0.1 / shape.fontSize,
+			1 +
+				(handle.xDirection * dx * shape.width +
+					handle.yDirection * dy * shape.height) /
+					(shape.width ** 2 + shape.height ** 2),
+		);
+		const width = shape.width * scale;
+		const height = shape.height * scale;
+		return {
+			...shape,
+			...localToWorld(
+				shape,
+				(handle.xDirection * (width - shape.width)) / 2,
+				(handle.yDirection * (height - shape.height)) / 2,
+			),
+			width,
+			height,
+			fontSize: shape.fontSize * scale,
+		};
+	}
 	const width = Math.max(
 		handle.xDirection ? gridStep : 0,
 		0.1,
@@ -223,7 +282,7 @@ export function resizeShape(
 /** Rectangles and triangles use opposite corners; circles use center/radius; wires use endpoints. */
 export function drawShape(
 	id: number,
-	kind: ShapeKind,
+	kind: Exclude<ShapeKind, "text">,
 	start: Point,
 	end: Point,
 	gridStep = 0,
@@ -691,7 +750,8 @@ export function moveShapes(
 		const anchor =
 			anchorShape.kind === "circle" ||
 			anchorShape.kind === "symbol" ||
-			anchorShape.kind === "pin"
+			anchorShape.kind === "pin" ||
+			anchorShape.kind === "text"
 				? anchorShape
 				: localToWorld(
 						anchorShape,

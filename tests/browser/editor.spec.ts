@@ -1,12 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
 
 interface State {
+	textures: number;
 	camera: string;
 	direction: number[];
 	origin: number[];
 	corner: number[];
 	preview: { x: number; y: number; width: number; height: number; rotation: number } | null;
-	shapes: { name: string; x: number; y: number; selected: boolean; width: number; height: number; rotation: number }[];
+	shapes: { name: string; texture?: string; x: number; y: number; selected: boolean; width: number; height: number; rotation: number }[];
 }
 const state = async (page: Page): Promise<State> => JSON.parse(await page.locator("#editor-scene").textContent() || "{}");
 const nonPinState = async (page: Page): Promise<State> => {
@@ -1420,4 +1421,95 @@ test("compact symbols span 6 mm with KiCad proportions and the grid has ten cell
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  }
  await page.screenshot({ path: test.info().outputPath("compact-symbols-dense-grid.png") });
+});
+
+test("text tool places editable multiline text and preserves glyphs through history", async ({ page }) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	const baselineTextures = (await state(page)).textures;
+	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await clickAt(page, 150, 150);
+	const content = page.getByRole("textbox", { name: "Text content" });
+	await expect(content).toBeFocused();
+	await expect(content).toHaveValue("Text");
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByRole("spinbutton", { name: "Line width", exact: true })).toHaveCount(0);
+	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures + 1);
+	await content.fill("Board label\nÁrvíz 12Ω");
+	await expect(content).toBeFocused();
+	await expect.poll(async () => (await state(page)).shapes[0].height).toBeCloseTo(13.75, 4);
+	const original = (await state(page)).shapes[0];
+	await page.getByRole("spinbutton", { name: "Font size", exact: true }).fill("10");
+	await expect.poll(async () => (await state(page)).shapes[0].height).toBe(27.5);
+	expect((await state(page)).shapes[0].texture).toBe(original.texture);
+	await content.fill("Another label\nÁrvíz 12Ω");
+	await expect.poll(async () => (await state(page)).shapes[0].texture).not.toBe(original.texture);
+	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures + 1);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect(content).toHaveValue("Board label\nÁrvíz 12Ω");
+	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await expect(content).toHaveValue("Another label\nÁrvíz 12Ω");
+	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+	await page.screenshot({ path: test.info().outputPath("text-label.png") });
+	await clickAt(page, 150, 150);
+	await page.getByRole("button", { name: "Delete", exact: true }).click();
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
+	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect(content).toHaveValue("Another label\nÁrvíz 12Ω");
+	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures + 1);
+	expect(errors).toEqual([]);
+});
+
+test("text supports dragging, proportional handles, rotation and double-click editing", async ({ page }) => {
+	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await clickAt(page, 140, 130);
+	const content = page.getByRole("textbox", { name: "Text content" });
+	await content.fill("Hello editor");
+	await page.getByRole("spinbutton", { name: "Font size", exact: true }).fill("10");
+	await dragTo(page, [140, 130], [170, 150]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(170, 4);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(150, 4);
+	const before = (await state(page)).shapes[0];
+	await expect(page.getByTestId("resize-handle")).toHaveCount(4);
+	await dragHandle(page, "1,1", [before.x + before.width, before.y + before.height]);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(before.width * 1.5, 2);
+	await expect.poll(async () => (await state(page)).shapes[0].height).toBeCloseTo(before.height * 1.5, 2);
+	expect((await state(page)).shapes[0].width / (await state(page)).shapes[0].height).toBeCloseTo(before.width / before.height, 8);
+	await page.getByRole("spinbutton", { name: "Angle", exact: true }).fill("30");
+	await expect.poll(async () => (await state(page)).shapes[0].rotation).toBeCloseTo(Math.PI / 6, 8);
+	const shape = (await state(page)).shapes[0];
+	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+	const point = await screen(page, shape.x, shape.y);
+	await page.mouse.dblclick(point.x, point.y);
+	await expect(content).toBeFocused();
+	await page.keyboard.insertText("Renamed");
+	await expect(content).toHaveValue("Renamed");
+	await content.fill("");
+	await expect(content).toBeFocused();
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeGreaterThan(0);
+	await content.fill("Restored");
+	await page.locator("canvas").focus();
+	await page.keyboard.press("ArrowRight");
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(shape.x + 1, 3);
+});
+
+test("text placement snaps to the grid and equal-width content changes remain undoable", async ({ page }) => {
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await clickAt(page, 153, 148);
+	const content = page.getByRole("textbox", { name: "Text content" });
+	await expect(content).toBeFocused();
+	await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue("155");
+	await expect(page.getByRole("spinbutton", { name: "Center Y", exact: true })).toHaveValue("150");
+	await content.fill("222");
+	await page.getByRole("spinbutton", { name: "Font size", exact: true }).fill("10");
+	const originalWidth = (await state(page)).shapes[0].width;
+	await content.fill("333");
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect(content).toHaveValue("222");
+	expect((await state(page)).shapes[0].width).toBe(originalWidth);
+	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await expect(content).toHaveValue("333");
+	expect((await state(page)).shapes[0].width).toBe(originalWidth);
 });

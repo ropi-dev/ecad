@@ -72,6 +72,9 @@ export function SelectionAttributes({
 	onClear,
 	onAttributeChange,
 	onSymbolAttributeChange,
+	onTextChange,
+	textFocusId,
+	onTextFocus,
 }: {
 	shapes: EditorShape[];
 	snapStep?: number;
@@ -81,11 +84,17 @@ export function SelectionAttributes({
 		attribute: keyof EditorSymbol["attributes"],
 		value: string,
 	) => void;
+	onTextChange: (text: string) => void;
+	textFocusId: number | null;
+	onTextFocus: () => void;
 }) {
+	const outlinedShapes = shapes.filter((shape) => shape.kind !== "text");
 	const lineWidth =
-		shapes.length &&
-		shapes.every((shape) => shape.lineWidth === shapes[0].lineWidth)
-			? shapes[0].lineWidth
+		outlinedShapes.length &&
+		outlinedShapes.every(
+			(shape) => shape.lineWidth === outlinedShapes[0].lineWidth,
+		)
+			? outlinedShapes[0].lineWidth
 			: "";
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
@@ -108,7 +117,12 @@ export function SelectionAttributes({
 			value={value}
 			positive={attribute !== "x" && attribute !== "y" && attribute !== "angle"}
 			unit={attribute === "angle" ? "°" : "mm"}
-			step={attribute === "angle" ? "90" : "any"}
+			step={
+				attribute === "angle" &&
+				(single?.kind === "wire" || single?.kind === "symbol")
+					? "90"
+					: "any"
+			}
 			onChange={(next) => onAttributeChange(attribute, next)}
 		/>,
 	];
@@ -155,6 +169,12 @@ export function SelectionAttributes({
 				...(single.kind === "circle"
 					? [editable("Radius", "radius", single.width / 2)]
 					: []),
+				...(single.kind === "text"
+					? [
+							editable("Font size", "fontSize", single.fontSize),
+							editable("Angle", "angle", (single.rotation * 180) / Math.PI),
+						]
+					: []),
 			]
 		: [
 				["Shapes", String(shapes.length)],
@@ -190,6 +210,30 @@ export function SelectionAttributes({
 						Selection bounds
 					</p>
 				)}
+				{single?.kind === "text" && (
+					<label className="mt-3 block text-[12px] text-[#9ba7b8]">
+						Text
+						<textarea
+							key={single.id}
+							ref={(input) => {
+								if (input && textFocusId === single.id) {
+									input.focus({ preventScroll: true });
+									input.select();
+									onTextFocus();
+								}
+							}}
+							aria-label="Text content"
+							value={single.text}
+							rows={3}
+							maxLength={2000}
+							className="mt-2 block w-full resize-y rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+							onChange={(event) => onTextChange(event.currentTarget.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Escape") event.currentTarget.blur();
+							}}
+						/>
+					</label>
+				)}
 				<dl className="my-4 text-[12px]">
 					{attributes.map(([label, value]) => (
 						<div
@@ -201,16 +245,18 @@ export function SelectionAttributes({
 						</div>
 					))}
 				</dl>
-				<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
-					<span>Line width</span>
-					<AttributeInput
-						key={shapes.map((shape) => shape.id).join(",")}
-						label="Line width"
-						value={lineWidth}
-						positive
-						onChange={(value) => onAttributeChange("lineWidth", value)}
-					/>
-				</div>
+				{outlinedShapes.length > 0 && (
+					<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
+						<span>Line width</span>
+						<AttributeInput
+							key={shapes.map((shape) => shape.id).join(",")}
+							label="Line width"
+							value={lineWidth}
+							positive
+							onChange={(value) => onAttributeChange("lineWidth", value)}
+						/>
+					</div>
+				)}
 				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
 					{symbol
 						? "Select any part to move or delete the whole symbol."

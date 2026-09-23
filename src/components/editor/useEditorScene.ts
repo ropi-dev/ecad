@@ -13,12 +13,24 @@ import type { ViewerScene } from "#/engine/scene";
 import { createLifecycle } from "#/lib/lifecycle";
 import { createShapeGeometry } from "./shapeGeometry";
 import { A3, type EditorShape } from "./shapes";
+import { createTextMaterial } from "./text";
 
 function createEditorAssets() {
 	const lifetime = createLifecycle();
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
 	try {
+		const texts = new Map<
+			number,
+			ReturnType<typeof createTextMaterial> & { text: string }
+		>();
+		lifetime.acquire(
+			() => texts,
+			(cache) => {
+				for (const text of cache.values()) text.dispose();
+				cache.clear();
+			},
+		);
 		const geometries = new Map<
 			number,
 			{ key: string; geometry: BufferGeometry }
@@ -58,6 +70,18 @@ function createEditorAssets() {
 		const border = own(
 			() => new LineBasicMaterial({ color: "#9ba7b8", depthTest: false }),
 		);
+		const materialFor = (shape: EditorShape, isSelected: boolean) => {
+			const color = isSelected ? selected : stroke;
+			if (shape.kind !== "text") return color;
+			let cached = texts.get(shape.id);
+			if (!cached || cached.text !== shape.text) {
+				cached?.dispose();
+				cached = { ...createTextMaterial(shape.text), text: shape.text };
+				texts.set(shape.id, cached);
+			}
+			cached.material.color.copy(color.color);
+			return cached.material;
+		};
 		const selection = own(
 			() =>
 				new LineBasicMaterial({
@@ -74,6 +98,8 @@ function createEditorAssets() {
 		return {
 			scene,
 			geometries,
+			texts,
+			materialFor,
 			frame,
 			stroke,
 			geometryFor,
@@ -115,12 +141,17 @@ export function useEditorScene(
 				geometry.dispose();
 				assets.geometries.delete(id);
 			}
+			for (const [id, text] of assets.texts) {
+				if (activeIds.has(id)) continue;
+				text.dispose();
+				assets.texts.delete(id);
+			}
 			drawing.clear();
 			for (const [index, shape] of shapes.entries()) {
 				const size = shape;
 				const mesh = new Mesh(
 					assets.geometryFor(shape),
-					selectedIds.has(shape.id) ? assets.selected : assets.stroke,
+					assets.materialFor(shape, selectedIds.has(shape.id)),
 				);
 				mesh.name = `${shape.kind} ${shape.id}`;
 				mesh.position.set(shape.x, shape.y, 0);

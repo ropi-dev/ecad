@@ -448,3 +448,27 @@ test("angle attributes preserve the orthogonal line constraint", () => {
 	assert.equal(editShapeAttribute(line, "angle", -90).rotation, -Math.PI / 2);
 	assert.equal(editShapeAttribute(line, "angle", 45), line);
 });
+
+test("text resizing preserves aspect ratio, font size and the opposite corner", () => {
+	const text: EditorShape = { id: 1, kind: "text", text: "Label", fontSize: 5, x: 10, y: 20, width: 30, height: 10, rotation: Math.PI / 4, lineWidth: 0.2 };
+	const handle = resizeHandles(text).find((handle) => handle.id === "1,1")!;
+	const fixed = resizeHandles(text).find((handle) => handle.id === "-1,-1")!;
+	const resized = resizeShape(text, handle, { x: handle.x - fixed.x, y: handle.y - fixed.y });
+	assert.equal(resized.kind, "text");
+	if (resized.kind !== "text") return;
+	close(resized.fontSize, 10);
+	close(resized.width / resized.height, 3);
+	const anchor = resizeHandles(resized).find((handle) => handle.id === "-1,-1")!;
+	close(anchor.x, fixed.x);
+	close(anchor.y, fixed.y);
+	assert.equal(resized.text, "Label");
+	const edited = editShapeAttribute(text, "fontSize", 12);
+	close(edited.width, 72);
+	close(edited.height, 24);
+	assert.equal(editShapeAttribute(text, "fontSize", 0), text);
+	close(editShapeAttribute(text, "angle", 30).rotation, Math.PI / 6);
+	const moved = moveShapes([text], { x: 3, y: 7 }, 10)[0];
+	close(moved.x, 10);
+	close(moved.y, 30);
+	assert.equal(moved.kind === "text" && moved.text, "Label");
+});
