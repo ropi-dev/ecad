@@ -1,4 +1,4 @@
-import { Box, Square } from "lucide-react";
+import { Box, Download, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
@@ -17,6 +17,8 @@ export function ViewControls3D({
 	view,
 	projection,
 	toggleProjection,
+	exportPng,
+	exporting = false,
 }: Pick<Viewer3DHandle, "fit" | "zoom"> & {
 	view?: Viewer3DHandle["view"];
 	enabled: boolean;
@@ -25,6 +27,8 @@ export function ViewControls3D({
 	toggleProjection?: () => void;
 	children?: ReactNode;
 	fitLabel?: string;
+	exportPng?: () => void;
+	exporting?: boolean;
 }) {
 	const button = viewControlButtonClassName;
 	return (
@@ -94,6 +98,20 @@ export function ViewControls3D({
 						Front
 					</button>
 				</>
+			)}
+			{exportPng && (
+				<button
+					type="button"
+					className={`${button} gap-1.5`}
+					disabled={!enabled || exporting}
+					aria-label="Export PNG"
+					aria-busy={exporting}
+					title="Download the current scene as a PNG image"
+					onClick={exportPng}
+				>
+					<Download size={18} aria-hidden="true" />
+					{exporting ? "Exporting…" : "PNG"}
+				</button>
 			)}
 			{children}
 		</div>

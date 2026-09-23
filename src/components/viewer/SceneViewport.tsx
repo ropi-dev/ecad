@@ -35,6 +35,7 @@ import { createSceneHover, type SceneTarget } from "#/engine/scene-hover";
 import type { Bounds } from "#/engine/types";
 import { createLifecycle } from "#/lib/lifecycle";
 import { AxisIndicator } from "./AxisIndicator";
+import { capturePng, downloadPng } from "./exportPng";
 import { FloatingPanel } from "./FloatingPanel";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
 import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
@@ -92,6 +93,8 @@ export function SceneViewport({
 		dimensions: string;
 	} | null>(null);
 	const [controlsReady, setControlsReady] = useState(false);
+	const [exporting, setExporting] = useState(false);
+	const [exportError, setExportError] = useState("");
 	const [zoomLevel, setZoomLevel] = useState(1);
 	const [activeProjection, setActiveProjection] = useState(projection);
 	useEffect(() => setActiveProjection(projection), [projection]);
@@ -110,6 +113,7 @@ export function SceneViewport({
 	const reportError = useEffectEvent((message: string) => onError?.(message));
 	const runtime = useRef<
 		| (SceneViewportHandle & {
+				capture: () => Promise<Blob>;
 				update: (update: (object: Object3D) => void) => void;
 				resize: (width: number, height: number) => void;
 				setProjection: (projection: "perspective" | "orthographic") => void;
@@ -371,7 +375,8 @@ export function SceneViewport({
 					.copy(sphere.center)
 					.addScaledVector(
 						direction,
-						fitDistance / (Number.isFinite(fitZoom) && fitZoom > 0 ? fitZoom : 1),
+						fitDistance /
+							(Number.isFinite(fitZoom) && fitZoom > 0 ? fitZoom : 1),
 					);
 				fittedDistance = camera.position.distanceTo(controls.target);
 				controls.minDistance = fittedDistance / MAX_ZOOM;
@@ -609,6 +614,15 @@ export function SceneViewport({
 				view,
 				resize,
 				setProjection,
+				capture: () => {
+					if (output.getContext().isContextLost())
+						throw new Error("The graphics context is unavailable.");
+					// Render and copy in the same task; preserveDrawingBuffer stays disabled.
+					camera.updateMatrixWorld();
+					content.update(output, camera);
+					output.render(scene, camera);
+					return capturePng(canvas);
+				},
 				update: (update) => {
 					update(group);
 					schedule();
@@ -642,9 +656,32 @@ export function SceneViewport({
 	useEffect(() => {
 		runtime.current?.resize(size.width, size.height);
 	}, [size]);
+	const exportPng = async () => {
+		if (!runtime.current || exporting) return;
+		setExporting(true);
+		setExportError("");
+		try {
+			const blob = await runtime.current.capture();
+			downloadPng(blob, ariaLabel);
+		} catch (error) {
+			setExportError(
+				`PNG export failed: ${error instanceof Error ? error.message : "Please try again."}`,
+			);
+		} finally {
+			setExporting(false);
+		}
+	};
 	return (
 		<>
 			<div ref={host} className="absolute inset-0 z-1 overflow-hidden" />
+			{exportError && (
+				<p
+					role="alert"
+					className="absolute bottom-32 left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg border border-amber-200/30 bg-slate-900 p-3 text-sm text-amber-200"
+				>
+					{exportError}
+				</p>
+			)}
 			{selectionInfo && (
 				<FloatingPanel label="Selection attributes" position="top-right">
 					<div className="min-h-0 overflow-y-auto overscroll-contain p-2.5">
@@ -682,6 +719,8 @@ export function SceneViewport({
 				<ViewControls3D
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
+					exportPng={exportPng}
+					exporting={exporting}
 					projection={activeProjection}
 					toggleProjection={
 						lockProjection
