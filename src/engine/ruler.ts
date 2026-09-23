@@ -4,13 +4,15 @@ export interface RulerTick {
 	label?: string;
 }
 
+const subdivisions = 10;
+
 /** Shared by the visible grid, ruler ticks, and editor snapping. */
 export function rulerSpacing(scale: number) {
 	const desired = 80 / scale;
 	const magnitude = 10 ** Math.floor(Math.log10(desired));
 	const major =
 		([1, 2, 5, 10].find((n) => n * magnitude >= desired) ?? 10) * magnitude;
-	return { major, minor: major / 5 };
+	return { major, minor: major / subdivisions };
 }
 
 /** Screen positions for millimetre coordinates, with labels at least 80px apart. */
@@ -39,7 +41,7 @@ export function rulerTicks(
 		ticks.push({
 			position,
 			value,
-			label: index % 5 === 0 ? value.toFixed(precision) : undefined,
+			label: index % subdivisions === 0 ? value.toFixed(precision) : undefined,
 		});
 	}
 	return ticks;

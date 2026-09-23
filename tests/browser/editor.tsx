@@ -6,7 +6,7 @@ import "../../src/styles.css";
 
 Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
 	const shapes = this.getObjectByName("editor-shapes");
-	const preview = this.getObjectByName("editor-line-preview");
+	const preview = this.getObjectByName("editor-wire-preview");
 	const origin = new Vector3(0, 0, 0).project(camera);
 	const corner = new Vector3(420, 297, 0).project(camera);
 	document.querySelector("#editor-scene")!.textContent = JSON.stringify({

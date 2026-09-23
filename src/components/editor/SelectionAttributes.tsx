@@ -1,7 +1,12 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { FloatingPanel } from "../viewer/FloatingPanel";
-import { type EditorShape, type ShapeAttribute, shapeBounds } from "./shapes";
+import {
+	type EditorShape,
+	type EditorSymbol,
+	type ShapeAttribute,
+	shapeBounds,
+} from "./shapes";
 
 function AttributeInput({
 	label,
@@ -34,7 +39,7 @@ function AttributeInput({
 				aria-label={label}
 				min={positive ? 0 : undefined}
 				step={step}
-				title={step === "90" ? "Lines use angles in 90° increments" : undefined}
+				title={step === "90" ? "Angle in 90° increments" : undefined}
 				placeholder="Mixed"
 				defaultValue={displayValue}
 				className="w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-right text-[#f0f3f8] tabular-nums focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
@@ -66,11 +71,16 @@ export function SelectionAttributes({
 	snapStep = 0,
 	onClear,
 	onAttributeChange,
+	onSymbolAttributeChange,
 }: {
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
+	onSymbolAttributeChange: (
+		attribute: keyof EditorSymbol["attributes"],
+		value: string,
+	) => void;
 }) {
 	const lineWidth =
 		shapes.length &&
@@ -79,6 +89,7 @@ export function SelectionAttributes({
 			: "";
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
+	const symbol = single?.kind === "symbol" ? single : undefined;
 	const bounds = shapes.map(shapeBounds);
 	const left = Math.min(...bounds.map((box) => box.minX));
 	const right = Math.max(...bounds.map((box) => box.maxX));
@@ -105,17 +116,42 @@ export function SelectionAttributes({
 		? [
 				["Type", single.kind],
 				["ID", String(single.id)],
+				...(symbol
+					? [
+							...["name", "reference", "value"].map((attribute) => {
+								const key = attribute as keyof EditorSymbol["attributes"];
+								const label = attribute[0].toUpperCase() + attribute.slice(1);
+								return [
+									label,
+									<input
+										key={`${symbol.id}:${key}`}
+										aria-label={label}
+										value={symbol.attributes[key]}
+										className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+										onChange={(event) =>
+											onSymbolAttributeChange(key, event.currentTarget.value)
+										}
+									/>,
+								] as [string, ReactNode];
+							}),
+							["Shapes", String(symbol.children.length)] as [string, ReactNode],
+						]
+					: []),
 				editable("Center X", "x", single.x),
 				editable("Center Y", "y", single.y),
-				...(single.kind === "line"
-					? [
-							editable("Length", "width", single.width),
-							editable("Angle", "angle", (single.rotation * 180) / Math.PI),
-						]
-					: [
-							editable("Width", "width", single.width),
-							editable("Height", "height", single.height),
-						]),
+				...(single.kind === "pin"
+					? []
+					: symbol
+						? [editable("Angle", "angle", (symbol.rotation * 180) / Math.PI)]
+						: single.kind === "wire"
+							? [
+									editable("Length", "width", single.width),
+									editable("Angle", "angle", (single.rotation * 180) / Math.PI),
+								]
+							: [
+									editable("Width", "width", single.width),
+									editable("Height", "height", single.height),
+								]),
 				...(single.kind === "circle"
 					? [editable("Radius", "radius", single.width / 2)]
 					: []),
@@ -144,7 +180,9 @@ export function SelectionAttributes({
 				</header>
 				<p className="mt-3 text-[14px] leading-[1.7] text-[#e8b77e]">
 					{single
-						? `${single.kind} ${single.id}`
+						? symbol
+							? `${symbol.attributes.name} · ${symbol.attributes.reference}`
+							: `${single.kind} ${single.id}`
 						: `${shapes.length} shapes selected`}
 				</p>
 				{!single && (
@@ -174,9 +212,13 @@ export function SelectionAttributes({
 					/>
 				</div>
 				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
-					Drag to move; drag handles to resize. Arrow keys move {snapStep || 1}{" "}
-					mm; Shift + arrows move {(snapStep || 1) * 10} mm when the drawing is
-					focused.
+					{symbol
+						? "Select any part to move or delete the whole symbol."
+						: single?.kind === "pin"
+							? "Drag to move the connection point."
+							: "Drag to move; drag handles to resize."}{" "}
+					Arrow keys move {snapStep || 1} mm; Shift + arrows move{" "}
+					{(snapStep || 1) * 10} mm when the drawing is focused.
 				</p>
 			</div>
 		</FloatingPanel>

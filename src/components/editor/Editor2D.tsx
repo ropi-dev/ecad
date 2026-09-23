@@ -2,6 +2,7 @@ import {
 	Circle,
 	Hand,
 	Magnet,
+	MapPin,
 	MousePointer2,
 	Slash,
 	Square,
@@ -31,21 +32,25 @@ import {
 	undoHistory,
 } from "./history";
 import { SelectionAttributes } from "./SelectionAttributes";
+import { SymbolPicker } from "./SymbolPicker";
 import {
-	constrainLineEndpoint,
+	constrainWireEndpoint,
 	drawShape,
 	type EditorShape,
 	editShapeAttribute,
+	findWireConnection,
 	hitShape,
 	intersectsSelection,
 	moveShapes,
-	normalizeLineSegments,
+	normalizeWireSegments,
 	type ResizeHandle,
 	resizeHandles,
 	resizeShape,
+	routeWire,
 	type ShapeKind,
 	snapPoint,
 } from "./shapes";
+import { createSymbol, type SymbolDefinition } from "./symbols";
 import { useEditorScene } from "./useEditorScene";
 
 const tools = [
@@ -54,9 +59,10 @@ const tools = [
 	{ kind: "rectangle", label: "Rectangle", icon: Square },
 	{ kind: "circle", label: "Circle", icon: Circle },
 	{ kind: "triangle", label: "Triangle", icon: Triangle },
-	{ kind: "line", label: "Line", icon: Slash },
+	{ kind: "wire", label: "Wire", icon: Slash },
+	{ kind: "pin", label: "Pin", icon: MapPin },
 ] as const;
-type Tool = ShapeKind | "select" | "pan";
+type Tool = ShapeKind | "select" | "pan" | "symbol";
 interface Drag {
 	pointerId: number;
 	canvas: HTMLCanvasElement;
@@ -78,7 +84,7 @@ interface Marquee {
 	start: Point;
 	end: Point;
 }
-interface LineChain {
+interface WireChain {
 	start: Point;
 	pointerId: number;
 }
@@ -95,6 +101,13 @@ function sameDrawing(first: DrawingState, second: DrawingState) {
 			return (
 				shape.id === other.id &&
 				shape.kind === other.kind &&
+				(shape.kind !== "symbol" ||
+					(other.kind === "symbol" &&
+						shape.definitionId === other.definitionId &&
+						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
+						shape.attributes.name === other.attributes.name &&
+						shape.attributes.reference === other.attributes.reference &&
+						shape.attributes.value === other.attributes.value)) &&
 				Math.abs(shape.x - other.x) < 1e-9 &&
 				Math.abs(shape.y - other.y) < 1e-9 &&
 				Math.abs(shape.width - other.width) < 1e-9 &&
@@ -120,19 +133,23 @@ export function Editor2D() {
 	const currentHistory = useRef(history);
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
+	const [symbolDefinition, setSymbolDefinition] =
+		useState<SymbolDefinition | null>(null);
+	const [symbolPreview, setSymbolPreview] = useState<EditorShape | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
 	const [view, setView] = useState<Viewer2DSnapshot | null>(null);
 	const drag = useRef<Drag | null>(null);
-	const lineChain = useRef<LineChain | null>(null);
-	const [linePreview, setLinePreview] = useState<EditorShape | null>(null);
+	const wireChain = useRef<WireChain | null>(null);
+	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
+	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const nextId = useRef(1);
 	const { scene, updateScene } = useEditorScene(
 		shapes,
 		selectedIds,
-		linePreview,
+		wirePreview ?? (symbolPreview ? [symbolPreview] : []),
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
@@ -198,7 +215,7 @@ export function Editor2D() {
 		label: string,
 		ids = currentSelection.current,
 	) => {
-		const normalized = normalizeLineSegments(next, ids);
+		const normalized = normalizeWireSegments(next, ids);
 		applyShapes(normalized.shapes);
 		const selection = new Set<number>();
 		for (const id of ids) {
@@ -216,22 +233,32 @@ export function Editor2D() {
 		if (label) commitShapes(next, label);
 		else applyShapes(next);
 	};
-	const previewLine = (point: Point) => {
-		const active = lineChain.current;
+	const previewWire = (point: Point) => {
+		const active = wireChain.current;
 		if (!active) return null;
 		const snapStep =
 			snapEnabled && snapshot.current
 				? rulerSpacing(snapshot.current.camera.scale).minor
 				: 0;
-		const end = constrainLineEndpoint(active.start, point, snapStep);
+		const connection = findWireConnection(
+			currentShapes.current,
+			point,
+			8 / (snapshot.current?.camera.scale ?? 1),
+			active.start,
+		);
+		const end =
+			connection ?? constrainWireEndpoint(active.start, point, snapStep);
+		setConnectionHover(connection ?? null);
 		// Only snap the new endpoint so changing the grid never separates corners.
-		const shape = drawShape(nextId.current, "line", active.start, end);
-		setLinePreview(shape);
-		return { shape, end };
+		const segments = routeWire(nextId.current, active.start, end);
+		setWirePreview(segments);
+		return { segments, end, connected: !!connection };
 	};
-	const finishLine = () => {
-		lineChain.current = null;
-		setLinePreview(null);
+	const finishWire = () => {
+		wireChain.current = null;
+		setWirePreview(null);
+		setConnectionHover(null);
+		setSymbolPreview(null);
 	};
 	const updateDrag = (event: ReactPointerEvent) => {
 		const active = drag.current;
@@ -263,6 +290,7 @@ export function Editor2D() {
 		}
 		if (active.mode === "draw") {
 			const original = active.originals[0];
+			if (original.kind === "symbol") return;
 			const draft = drawShape(
 				original.id,
 				original.kind,
@@ -343,7 +371,8 @@ export function Editor2D() {
 	const restoreHistory = (next: History<DrawingState>) => {
 		// Discard transient geometry before navigating to a committed drawing.
 		finishDrag(true);
-		finishLine();
+		finishWire();
+		if (tool === "symbol") setTool("select");
 		const restored = getHistoryState(next);
 		applyHistory(next);
 		applyShapes(restored.shapes);
@@ -351,18 +380,18 @@ export function Editor2D() {
 	};
 	const undo = () => {
 		const next = undoHistory(currentHistory.current);
-		if (next !== currentHistory.current || drag.current || lineChain.current)
+		if (next !== currentHistory.current || drag.current || wireChain.current)
 			restoreHistory(next);
 	};
 	const redo = () => {
 		const next = redoHistory(currentHistory.current);
-		if (next !== currentHistory.current || drag.current || lineChain.current)
+		if (next !== currentHistory.current || drag.current || wireChain.current)
 			restoreHistory(next);
 	};
 	const removeSelected = () => {
 		finishDrag();
-		if (lineChain.current) {
-			finishLine();
+		if (wireChain.current) {
+			finishWire();
 			setTool("select");
 		}
 		commitShapes(
@@ -385,6 +414,13 @@ export function Editor2D() {
 			className="relative flex h-dvh flex-col overflow-hidden"
 			onKeyDownCapture={(event) => {
 				const target = event.target;
+				if (event.key === "Escape" && tool === "symbol") {
+					setSymbolPreview(null);
+					setTool("select");
+					event.preventDefault();
+					event.stopPropagation();
+					return;
+				}
 				if (
 					!(event.ctrlKey || event.metaKey) ||
 					event.altKey ||
@@ -422,6 +458,10 @@ export function Editor2D() {
 				<div
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					data-tool={tool}
+					onPointerLeave={() => {
+						setSymbolPreview(null);
+						setConnectionHover(null);
+					}}
 					onPointerDownCapture={(event) => {
 						const canvas = event.target;
 						if (!(canvas instanceof HTMLCanvasElement) || !ready) return;
@@ -451,28 +491,70 @@ export function Editor2D() {
 								? rulerSpacing(snapshot.current.camera.scale).minor
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
-						if (tool === "line") {
-							const active = lineChain.current;
+						if (tool === "symbol") {
+							if (!symbolDefinition) return;
+							const symbol = createSymbol(
+								nextId.current++,
+								symbolDefinition,
+								start,
+							);
+							commitShapes(
+								[...currentShapes.current, symbol],
+								`Insert ${symbol.attributes.name}`,
+								new Set([symbol.id]),
+							);
+							setSymbolPreview(null);
+							setTool("select");
+							return;
+						}
+						if (tool === "pin") {
+							const pin = drawShape(nextId.current++, "pin", start, start);
+							commitShapes(
+								[...currentShapes.current, pin],
+								"Place pin",
+								new Set([pin.id]),
+							);
+							setTool("select");
+							return;
+						}
+						if (tool === "wire") {
+							const active = wireChain.current;
 							if (!active) {
-								lineChain.current = { start, pointerId: event.pointerId };
-								previewLine(start);
+								const connection = findWireConnection(
+									currentShapes.current,
+									point,
+									8 / (snapshot.current?.camera.scale ?? 1),
+								);
+								if (!connection) return;
+								wireChain.current = {
+									start: connection,
+									pointerId: event.pointerId,
+								};
+								previewWire(connection);
 								return;
 							}
-							const next = previewLine(point);
+							const next = previewWire(point);
 							if (
 								!next ||
-								next.shape.width * (snapshot.current?.camera.scale ?? 1) < 3
+								next.segments.reduce((sum, segment) => sum + segment.width, 0) *
+									(snapshot.current?.camera.scale ?? 1) <
+									3
 							)
 								return;
-							nextId.current++;
+							nextId.current += next.segments.length;
 							commitShapes(
-								[...currentShapes.current, next.shape],
-								"Draw line",
-								new Set([next.shape.id]),
+								[...currentShapes.current, ...next.segments],
+								"Draw wire",
+								new Set(next.segments.map((segment) => segment.id)),
 							);
+							if (next.connected) {
+								finishWire();
+								setTool("select");
+								return;
+							}
 							active.start = next.end;
 							active.pointerId = event.pointerId;
-							setLinePreview(null);
+							setWirePreview(null);
 							return;
 						}
 						if (created) {
@@ -543,8 +625,30 @@ export function Editor2D() {
 						}
 						if (!(event.target instanceof HTMLCanvasElement)) return;
 						const point = pointAt(event, event.target);
+						if (tool === "wire" && !wireChain.current && point) {
+							const connection = findWireConnection(
+								currentShapes.current,
+								point,
+								8 / (snapshot.current?.camera.scale ?? 1),
+							);
+							setConnectionHover(connection ?? null);
+							event.target.style.cursor = connection
+								? "crosshair"
+								: "not-allowed";
+							return;
+						}
+						if (tool === "symbol" && symbolDefinition && point) {
+							setSymbolPreview(
+								createSymbol(
+									nextId.current,
+									symbolDefinition,
+									snapPoint(point, snapEnabled ? gridStep : 0),
+								),
+							);
+							return;
+						}
 						if (
-							lineChain.current &&
+							wireChain.current &&
 							event.isPrimary &&
 							(event.buttons & ~1) === 0 &&
 							!event.ctrlKey &&
@@ -552,7 +656,7 @@ export function Editor2D() {
 							!event.altKey
 						) {
 							stop(event);
-							if (point) previewLine(point);
+							if (point) previewWire(point);
 							return;
 						}
 						event.target.style.cursor = point
@@ -565,9 +669,14 @@ export function Editor2D() {
 						finishDrag();
 					}}
 					onPointerCancelCapture={(event) => {
-						if (lineChain.current?.pointerId === event.pointerId) {
+						if (tool === "symbol") {
+							setSymbolPreview(null);
+							setTool("select");
+							return;
+						}
+						if (wireChain.current?.pointerId === event.pointerId) {
 							stop(event);
-							finishLine();
+							finishWire();
 							setTool("select");
 							return;
 						}
@@ -581,10 +690,10 @@ export function Editor2D() {
 					onKeyDownCapture={(event) => {
 						if (!(event.target instanceof HTMLCanvasElement)) return;
 						if (
-							lineChain.current &&
+							wireChain.current &&
 							(event.key === "Escape" || event.key === "Enter")
 						) {
-							finishLine();
+							finishWire();
 							setTool("select");
 							event.preventDefault();
 							event.stopPropagation();
@@ -605,8 +714,8 @@ export function Editor2D() {
 								event.stopPropagation();
 								return;
 							}
-							if (lineChain.current) {
-								finishLine();
+							if (wireChain.current) {
+								finishWire();
 								setTool("select");
 							}
 							const snapStep = snapEnabled ? gridStep : 0;
@@ -686,7 +795,7 @@ export function Editor2D() {
 												title={label}
 												aria-pressed={tool === kind}
 												onClick={() => {
-													finishLine();
+													finishWire();
 													setTool(kind);
 												}}
 											>
@@ -694,6 +803,16 @@ export function Editor2D() {
 											</button>
 										</Fragment>
 									))}
+									<SymbolPicker
+										disabled={!ready}
+										active={tool === "symbol"}
+										onChoose={(definition) => {
+											finishDrag();
+											finishWire();
+											setSymbolDefinition(definition);
+											setTool("symbol");
+										}}
+									/>
 									<button
 										type="button"
 										className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
@@ -718,7 +837,7 @@ export function Editor2D() {
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For lines, click to start, then click to place each corner and keep drawing. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and line handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
+							interactionHint="Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
 						/>
 					)}
 					{view && (
@@ -726,6 +845,23 @@ export function Editor2D() {
 							className="pointer-events-none absolute inset-0 z-2 overflow-hidden"
 							aria-hidden="true"
 						>
+							{connectionHover &&
+								tool === "wire" &&
+								(() => {
+									const point = worldToScreen(
+										connectionHover,
+										view.camera,
+										view.viewport.width,
+										view.viewport.height,
+									);
+									return (
+										<span
+											data-testid="wire-connection"
+											className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#e8b77e]"
+											style={{ left: point.x, top: point.y }}
+										/>
+									);
+								})()}
 							{handles.map(({ shape, handle }) => {
 								const point = worldToScreen(
 									handle,
@@ -759,6 +895,20 @@ export function Editor2D() {
 							}}
 						/>
 					)}
+					{(tool === "wire" || tool === "pin") && (
+						<output className="pointer-events-none absolute bottom-32 left-1/2 z-2 -translate-x-1/2 rounded-lg border border-[#414955] bg-[#191c22] px-3 py-2 text-sm text-[#e8b77e]">
+							{tool === "pin"
+								? "Click to place a pin."
+								: wireChain.current
+									? "Click for a corner or connect to a pin or open wire end. Enter finishes."
+									: "Start at a pin or an open wire end."}
+						</output>
+					)}
+					{tool === "symbol" && symbolDefinition && (
+						<output className="pointer-events-none absolute bottom-32 left-1/2 z-2 -translate-x-1/2 rounded-lg border border-[#414955] bg-[#191c22] px-3 py-2 text-sm text-[#e8b77e]">
+							Click to place {symbolDefinition.name}. Escape cancels.
+						</output>
+					)}
 					{error && (
 						<p
 							className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] text-[#edc49a]"
@@ -770,6 +920,19 @@ export function Editor2D() {
 				</div>
 				<SelectionAttributes
 					shapes={selected}
+					onSymbolAttributeChange={(attribute, value) => {
+						replaceShapes(
+							selected.map((shape) =>
+								shape.kind === "symbol"
+									? {
+											...shape,
+											attributes: { ...shape.attributes, [attribute]: value },
+										}
+									: shape,
+							),
+							`Change symbol ${attribute}`,
+						);
+					}}
 					snapStep={snapEnabled ? gridStep : 0}
 					onClear={() => applySelection(new Set())}
 					onAttributeChange={(attribute, value) => {
@@ -791,7 +954,7 @@ export function Editor2D() {
 									);
 						replaceShapes(
 							replacements,
-							`Change ${attribute === "lineWidth" ? "line width" : attribute}`,
+							`Change ${attribute === "lineWidth" ? "wire width" : attribute}`,
 						);
 					}}
 				/>

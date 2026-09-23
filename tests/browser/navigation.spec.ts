@@ -59,7 +59,7 @@ test("Three.js controls preserve pixel panning, zoom anchors, limits and reset",
 				close(after.x, world.x) && close(after.y, world.y),
 				`zoom anchor at ${deltaY}`,
 			);
-			check(state.scale >= 2 && state.scale <= 64, `zoom bounds at ${deltaY}`);
+			check(state.scale >= 2 && state.scale <= 128, `zoom bounds at ${deltaY}`);
 		}
 		navigation.reset();
 		check(
@@ -75,7 +75,7 @@ test("Three.js controls preserve pixel panning, zoom anchors, limits and reset",
 		for (const factor of [NaN, Infinity, -1, 0]) navigation.zoom(factor);
 		check(state.scale === home.scale, "invalid zoom factor");
 		navigation.zoom(1e10);
-		check(state.scale === 64, "maximum zoom");
+		check(state.scale === 128, "maximum zoom");
 		navigation.zoom(1e-10);
 		check(state.scale === 2, "minimum zoom");
 		navigation.reset();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { rulerTicks } from "../src/engine/ruler";
+import { rulerSpacing, rulerTicks } from "../src/engine/ruler";
 
 test("rulers place signed coordinates and reverse the vertical axis", () => {
 	const horizontal = rulerTicks(10, 10, 400);
@@ -17,7 +17,7 @@ test("ruler labels remain readable from submillimetre to board overview scales",
 		const ticks = rulerTicks(0, scale, 800);
 		const labels = ticks.filter((tick) => tick.label !== undefined);
 		assert.ok(labels.length >= 4);
-		assert.ok(ticks.length <= 51);
+		assert.ok(ticks.length <= 101);
 		for (let index = 1; index < labels.length; index++) {
 			assert.ok(labels[index].position - labels[index - 1].position >= 79.99);
 			assert.equal(
@@ -39,4 +39,15 @@ test("invalid or unmeasured viewports have no ruler ticks", () => {
 	for (const scale of [0, -1, NaN, Infinity])
 		assert.deepEqual(rulerTicks(0, scale, 800), []);
 	assert.deepEqual(rulerTicks(0, 10, 0), []);
+});
+
+
+test("each major grid square has ten subdivisions at every zoom", () => {
+ for (const scale of [0.01, 0.8, 8, 80, 800, 8000]) {
+  const { major, minor } = rulerSpacing(scale);
+  assert.ok(Math.abs(major / minor - 10) < 1e-10);
+  const ticks = rulerTicks(0, scale, 800);
+  const labelled = ticks.flatMap((tick, index) => tick.label === undefined ? [] : [index]);
+  for (let index = 1; index < labelled.length; index++) assert.equal(labelled[index] - labelled[index - 1], 10);
+ }
 });

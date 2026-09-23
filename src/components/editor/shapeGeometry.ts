@@ -1,16 +1,40 @@
 import {
 	BufferGeometry,
+	CircleGeometry,
 	Path,
 	PlaneGeometry,
 	Shape,
 	ShapeGeometry,
 	Vector2,
 } from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { EditorShape } from "./shapes";
 
 /** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: EditorShape): BufferGeometry {
-	if (shape.kind === "line") return new PlaneGeometry(1, 1);
+	if (shape.kind === "symbol") {
+		const children = shape.children.map((child) =>
+			createShapeGeometry({ ...child, lineWidth: shape.lineWidth })
+				.scale(
+					child.width,
+					child.kind === "wire" ? shape.lineWidth : child.height,
+					1,
+				)
+				.rotateZ(child.rotation)
+				.translate(child.x, child.y, 0),
+		);
+		try {
+			return (mergeGeometries(children) ?? new BufferGeometry()).scale(
+				1 / shape.width,
+				1 / shape.height,
+				1,
+			);
+		} finally {
+			for (const child of children) child.dispose();
+		}
+	}
+	if (shape.kind === "wire") return new PlaneGeometry(1, 1);
+	if (shape.kind === "pin") return new CircleGeometry(0.5, 32);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();
 	const halfStroke = lineWidth / 2;

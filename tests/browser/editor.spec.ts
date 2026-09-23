@@ -9,8 +9,16 @@ interface State {
 	shapes: { name: string; x: number; y: number; selected: boolean; width: number; height: number; rotation: number }[];
 }
 const state = async (page: Page): Promise<State> => JSON.parse(await page.locator("#editor-scene").textContent() || "{}");
+const nonPinState = async (page: Page): Promise<State> => {
+ const view = await state(page);
+ return { ...view, shapes: view.shapes.filter((shape) => !shape.name.startsWith("pin ")) };
+};
+async function placePin(page: Page, x: number, y: number) {
+ await page.getByRole("button", { name: "Pin", exact: true }).click();
+ await clickAt(page, x, y);
+}
 const drawing = async (page: Page) => (await state(page)).shapes.map(({ selected: _selected, ...shape }) => shape);
-const lineEndpoints = async (page: Page) => (await state(page)).shapes.filter((shape) => shape.name.startsWith("line ")).map((shape) => {
+const wireEndpoints = async (page: Page) => (await state(page)).shapes.filter((shape) => shape.name.startsWith("wire ")).map((shape) => {
 	const dx = Math.cos(shape.rotation) * shape.width / 2;
 	const dy = Math.sin(shape.rotation) * shape.width / 2;
 	return [shape.x - dx, shape.y - dy, shape.x + dx, shape.y + dy].map((value) => Number(value.toFixed(4)));
@@ -42,7 +50,9 @@ async function dragTo(page: Page, from: [number, number], to: [number, number]) 
 async function createShape(page: Page, kind: string, x: number, y: number) {
 	await page.getByRole("button", { name: kind, exact: true }).click();
 	if (kind === "Circle") await dragTo(page, [x, y], [x + 15, y]);
-	else if (kind === "Line") {
+	else if (kind === "Wire") {
+		await placePin(page, x - 27.5, y);
+		await page.getByRole("button", { name: "Wire", exact: true }).click();
 		await clickAt(page, x - 27.5, y);
 		await clickAt(page, x + 27.5, y);
 		await page.keyboard.press("Enter");
@@ -51,8 +61,9 @@ async function createShape(page: Page, kind: string, x: number, y: number) {
 		await dragTo(page, [x - width / 2, y - height / 2], [x + width / 2, y + height / 2]);
 	}
 }
-async function createLineChain(page: Page, points: [number, number][]) {
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+async function createWireChain(page: Page, points: [number, number][]) {
+	await placePin(page, ...points[0]);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
 	for (const point of points) await clickAt(page, ...point);
 	await page.keyboard.press("Enter");
 }
@@ -73,27 +84,27 @@ test.beforeEach(async ({ page }) => {
 test("draws every shape, moves beyond A3 without panning, and deletes", async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
-	const before = await state(page);
-	for (const [index, kind] of ["Rectangle", "Circle", "Triangle", "Line"].entries()) {
+	const before = await nonPinState(page);
+	for (const [index, kind] of ["Rectangle", "Circle", "Triangle", "Wire"].entries()) {
 		await createShape(page, kind, 70 + index * 85, 150);
-		await expect.poll(async () => (await state(page)).shapes.length).toBe(index + 1);
+		await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(index + 1);
 	}
 	await dragTo(page, [70, 150], [100, 180]);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(100, 1);
-	expect((await state(page)).shapes[0].y).toBeCloseTo(180, 1);
-	expect((await state(page)).origin).toEqual(before.origin);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].x).toBeCloseTo(100, 1);
+	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(180, 1);
+	expect((await nonPinState(page)).origin).toEqual(before.origin);
 	await dragTo(page, [100, 180], [-30, 330]);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-30, 4);
-	expect((await state(page)).shapes[0].y).toBeCloseTo(330, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].x).toBeCloseTo(-30, 4);
+	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(330, 4);
 	await page.keyboard.press("ArrowRight");
 	await page.keyboard.press("Shift+ArrowDown");
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(-29, 4);
-	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(320, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].x).toBeCloseTo(-29, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].y).toBeCloseTo(320, 4);
 	await page.keyboard.press("Delete");
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
 	await clickAt(page, -25, 150);
-	expect((await state(page)).shapes.length).toBe(3);
+	expect((await nonPinState(page)).shapes.length).toBe(3);
 	expect(errors).toEqual([]);
 });
 
@@ -179,7 +190,7 @@ test("rectangle selection previews, moves and deletes the group without panning"
 });
 
 test("selection works after zoom, supports Shift additions and cancels with Escape", async ({ page }) => {
-	for (const [kind, x] of [["Rectangle", 100], ["Circle", 180], ["Triangle", 260], ["Line", 330]] as const) {
+	for (const [kind, x] of [["Rectangle", 100], ["Circle", 180], ["Triangle", 260], ["Wire", 330]] as const) {
 		await createShape(page, kind, x, 100);
 	}
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
@@ -205,7 +216,7 @@ test("selection works after zoom, supports Shift additions and cancels with Esca
 	await expect.poll(() => selectedNames(page)).toEqual(["circle 2"]);
 	// A narrow crossing rectangle must include the line, even without its center.
 	await dragTo(page, [307, 90], [310, 110]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 4"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 5"]);
 	await clickAt(page, 60, 60);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
 });
@@ -293,31 +304,32 @@ test("clicks and cancelled drafts create nothing, and drawing extends beyond the
 	await page.screenshot({ path: test.info().outputPath("drawn-outside-paper.png") });
 });
 
-test("line clicks commit orthogonal segments and pointer release keeps the preview", async ({ page }) => {
-	const lineTool = page.getByRole("button", { name: "Line", exact: true });
+test("wire clicks commit orthogonal segments and pointer release keeps the preview", async ({ page }) => {
+	const lineTool = page.getByRole("button", { name: "Wire", exact: true });
+	await placePin(page, 100, 100);
 	await lineTool.click();
 	await dragTo(page, [100, 100], [160, 120]);
-	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(60, 4);
-	let view = await state(page);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(60, 4);
+	let view = await nonPinState(page);
 	expect(view.shapes).toEqual([]);
 	expect(view.preview?.x).toBeCloseTo(130, 4);
 	expect(view.preview?.y).toBeCloseTo(100, 4);
 	expect(view.preview?.rotation).toBeCloseTo(0, 4);
 	await clickAt(page, 160, 120);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(1);
 	await expect(lineTool).toHaveAttribute("aria-pressed", "true");
 	await moveAt(page, 172, 165);
-	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(65, 4);
-	view = await state(page);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(65, 4);
+	view = await nonPinState(page);
 	expect(view.shapes).toHaveLength(1);
 	expect(view.preview?.x).toBeCloseTo(160, 4);
 	expect(view.preview?.y).toBeCloseTo(132.5, 4);
 	expect(view.preview?.rotation).toBeCloseTo(Math.PI / 2, 4);
 	await clickAt(page, 172, 165);
 	await clickAt(page, 105, 174);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
-	view = await state(page);
-	expect(view.shapes.map((shape) => shape.name)).toEqual(["line 1", "line 2", "line 3"]);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
+	view = await nonPinState(page);
+	expect(view.shapes.map((shape) => shape.name)).toEqual(["wire 2", "wire 3", "wire 4"]);
 	const [first, second, third] = view.shapes;
 	expect(first.x).toBeCloseTo(130, 4);
 	expect(first.y).toBeCloseTo(100, 4);
@@ -332,47 +344,49 @@ test("line clicks commit orthogonal segments and pointer release keeps the previ
 	expect(third.width).toBeCloseTo(55, 4);
 	expect(Math.abs(third.rotation)).toBeCloseTo(Math.PI, 4);
 	await moveAt(page, 115, 210);
-	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(45, 4);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(45, 4);
 	await page.screenshot({ path: test.info().outputPath("drawing-line-chain.png") });
 	await clickAt(page, 105, 165);
 	await clickAt(page, 105, 165);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
 	await page.keyboard.press("Escape");
-	await expect.poll(async () => (await state(page)).preview).toBeNull();
+	await expect.poll(async () => (await nonPinState(page)).preview).toBeNull();
 });
 
 for (const finishKey of ["Escape", "Enter"]) {
 	test(`${finishKey} finishes a line chain and discards only the unfinished segment`, async ({ page }) => {
-		await page.getByRole("button", { name: "Line", exact: true }).click();
+		await placePin(page, 100, 100);
+		await page.getByRole("button", { name: "Wire", exact: true }).click();
 		await clickAt(page, 100, 100);
 		await clickAt(page, 160, 120);
 		await clickAt(page, 170, 165);
-		await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
-		const committed = (await state(page)).shapes;
+		await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(2);
+		const committed = (await nonPinState(page)).shapes;
 		await moveAt(page, 220, 170);
-		await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(60, 4);
+		await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(60, 4);
 		await page.keyboard.press(finishKey);
 		await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
-		await expect.poll(async () => (await state(page)).preview).toBeNull();
-		expect((await state(page)).shapes).toEqual(committed);
+		await expect.poll(async () => (await nonPinState(page)).preview).toBeNull();
+		expect((await nonPinState(page)).shapes).toEqual(committed);
 		await moveAt(page, 190, 180);
-		expect((await state(page)).shapes).toEqual(committed);
+		expect((await nonPinState(page)).shapes).toEqual(committed);
 	});
 }
 
 test("switching tools clears an uncommitted line and starts the next chain independently", async ({ page }) => {
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await placePin(page, 100, 100);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
 	await clickAt(page, 100, 100);
 	await clickAt(page, 100, 100);
 	await moveAt(page, 160, 120);
-	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(60, 4);
-	expect((await state(page)).shapes).toEqual([]);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(60, 4);
+	expect((await nonPinState(page)).shapes).toEqual([]);
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
-	await expect.poll(async () => (await state(page)).preview).toBeNull();
-	expect((await state(page)).shapes).toEqual([]);
-	await createShape(page, "Line", 240, 140);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
-	const line = (await state(page)).shapes[0];
+	await expect.poll(async () => (await nonPinState(page)).preview).toBeNull();
+	expect((await nonPinState(page)).shapes).toEqual([]);
+	await createShape(page, "Wire", 240, 140);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(1);
+	const line = (await nonPinState(page)).shapes[0];
 	expect(line.x).toBeCloseTo(240, 4);
 	expect(line.y).toBeCloseTo(140, 4);
 	expect(line.width).toBeCloseTo(55, 4);
@@ -380,76 +394,78 @@ test("switching tools clears an uncommitted line and starts the next chain indep
 
 test("snapped line chains keep consecutive corners on the grid", async ({ page }) => {
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await clickAt(page, 93, 103);
+	await placePin(page, 93, 103);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await clickAt(page, 95, 105);
 	await clickAt(page, 153, 122);
 	await moveAt(page, 163, 167);
-	await expect.poll(async () => (await state(page)).preview?.width).toBe(70);
-	const preview = (await state(page)).preview;
-	expect(preview?.x).toBe(150);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBe(60);
+	const preview = (await nonPinState(page)).preview;
+	expect(preview?.x).toBe(155);
 	expect(preview?.y).toBe(135);
 	await clickAt(page, 163, 167);
 	await page.keyboard.press("Enter");
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
-	const [first, second] = (await state(page)).shapes;
-	expect(first.x).toBe(120);
-	expect(first.y).toBe(100);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(2);
+	const [first, second] = (await nonPinState(page)).shapes;
+	expect(first.x).toBe(125);
+	expect(first.y).toBe(105);
 	expect(first.width).toBe(60);
 	expect(first.rotation).toBe(0);
-	expect(second.x).toBe(150);
+	expect(second.x).toBe(155);
 	expect(second.y).toBe(135);
-	expect(second.width).toBe(70);
+	expect(second.width).toBe(60);
 	expect(second.rotation).toBeCloseTo(Math.PI / 2, 4);
 });
 
-test("line chains keep placed corners when grid snapping and zoom change", async ({ page }) => {
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+test("wire chains keep placed corners when grid snapping and zoom change", async ({ page }) => {
+	await placePin(page, 93, 103);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
 	await clickAt(page, 93, 103);
 	await clickAt(page, 153, 122);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
-	const first = (await state(page)).shapes[0];
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(1);
+	const first = (await nonPinState(page)).shapes[0];
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await clickAt(page, 163, 167);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(2);
 	for (let index = 0; index < 4; index++) {
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	}
-	await expect.poll(() => visibleGridStep(page)).toBe(4);
-	await clickAt(page, 201, 181);
+	await expect.poll(() => visibleGridStep(page)).toBe(2);
+	await clickAt(page, 201.2, 181);
 	await page.keyboard.press("Enter");
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
-	const lines = (await state(page)).shapes;
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
+	const lines = (await nonPinState(page)).shapes;
 	expect(lines[0].x).toBe(first.x);
 	expect(lines[0].y).toBe(first.y);
 	expect(lines[0].width).toBe(first.width);
 	expect(lines[1].x).toBeCloseTo(153, 4);
-	expect(lines[1].y).toBeCloseTo(136.5, 4);
-	expect(lines[1].width).toBeCloseTo(67, 4);
+	expect(lines[1].y).toBeCloseTo(134, 4);
+	expect(lines[1].width).toBeCloseTo(62, 4);
 	expect(lines[1].rotation).toBeCloseTo(Math.PI / 2, 4);
-	expect(lines[2].x).toBeCloseTo(176.5, 4);
-	expect(lines[2].y).toBeCloseTo(170, 4);
-	expect(lines[2].width).toBeCloseTo(47, 4);
+	expect(lines[2].x).toBeCloseTo(177.5, 4);
+	expect(lines[2].y).toBeCloseTo(165, 4);
+	expect(lines[2].width).toBeCloseTo(49, 4);
 	expect(lines[2].rotation).toBeCloseTo(0, 4);
 });
 
 test("moving one segment keeps connected endpoints together while resize and delete stay independent", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
+	await createWireChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
 	await createShape(page, "Rectangle", 280, 120);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(4);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(4);
 	await clickAt(page, 160, 132.5);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
-	const originals = (await state(page)).shapes;
+	const originals = (await nonPinState(page)).shapes;
 	await dragTo(page, [160, 132.5], [190, 142.5]);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	const moved = (await state(page)).shapes;
-	expect(moved.map((shape) => shape.name)).toEqual(["line 1", "line 2", "line 3", "rectangle 4"]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	const moved = (await nonPinState(page)).shapes;
+	expect(moved.map((shape) => shape.name)).toEqual(["wire 2", "wire 3", "wire 4", "rectangle 5"]);
 	expect(moved[3]).toEqual(originals[3]);
 	await page.screenshot({ path: test.info().outputPath("moving-connected-endpoints.png") });
 	await dragHandle(page, "1,0", [220, 210]);
-	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(100, 1);
-	const shapes = (await state(page)).shapes;
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(100, 1);
+	const shapes = (await nonPinState(page)).shapes;
 	expect(shapes[1].x).toBeCloseTo(190, 1);
 	expect(shapes[1].y).toBeCloseTo(160, 1);
 	expect(shapes[1].rotation).toBeCloseTo(Math.PI / 2, 4);
@@ -457,190 +473,194 @@ test("moving one segment keeps connected endpoints together while resize and del
 	expect(shapes[2]).toEqual(moved[2]);
 	expect(shapes[3]).toEqual(originals[3]);
 	await page.keyboard.press("Delete");
-	await expect.poll(async () => (await state(page)).shapes).toEqual([moved[0], moved[2], originals[3]]);
+	await expect.poll(async () => (await nonPinState(page)).shapes).toEqual([moved[0], moved[2], originals[3]]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
 });
 
 test("snapped segment dragging and keyboard movement carry neighboring endpoints", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160]]);
+	await createWireChain(page, [[100, 100], [160, 100], [160, 160], [100, 160]]);
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await clickAt(page, 160, 135);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	const original = (await state(page)).shapes;
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	const original = (await nonPinState(page)).shapes;
 	await clickAt(page, 160, 135);
-	await expect.poll(async () => (await state(page)).shapes).toEqual(original);
+	await expect.poll(async () => (await nonPinState(page)).shapes).toEqual(original);
 	await dragTo(page, [160, 135], [173, 148]);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 170, 110], [170, 110, 170, 170], [170, 170, 100, 170]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 115, 175, 115], [175, 115, 175, 175], [175, 175, 100, 175]]);
 	await page.keyboard.press("ArrowRight");
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 180, 110], [180, 110, 180, 170], [180, 170, 100, 170]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 115, 180, 115], [180, 115, 180, 175], [180, 175, 100, 175]]);
 	await page.keyboard.press("Shift+ArrowUp");
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 210, 180, 210], [180, 210, 180, 270], [180, 270, 100, 270]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	expect((await state(page)).shapes).toHaveLength(3);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 165, 180, 165], [180, 165, 180, 225], [180, 225, 100, 225]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	expect((await nonPinState(page)).shapes).toHaveLength(3);
 });
 
 for (const cancelWith of ["Escape", "pointercancel"]) {
 	test(`${cancelWith} restores the dragged segment and all affected neighbors`, async ({ page }) => {
-		await createLineChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
+		await createWireChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
 		await clickAt(page, 160, 132.5);
-		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-		const originals = (await state(page)).shapes;
+		await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+		const originals = (await nonPinState(page)).shapes;
 		await moveAt(page, 160, 132.5);
 		await page.mouse.down();
 		await moveAt(page, 190, 142.5);
-		await expect.poll(() => lineEndpoints(page)).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
-		const duringDrag = await state(page);
+		await expect.poll(() => wireEndpoints(page)).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
+		const duringDrag = await nonPinState(page);
 		await page.keyboard.press("ArrowRight");
-		await expect.poll(async () => (await state(page)).shapes).toEqual(duringDrag.shapes);
-		expect((await state(page)).origin).toEqual(duringDrag.origin);
+		await expect.poll(async () => (await nonPinState(page)).shapes).toEqual(duringDrag.shapes);
+		expect((await nonPinState(page)).origin).toEqual(duringDrag.origin);
 		await moveAt(page, 220, 152.5);
-		await expect.poll(() => lineEndpoints(page)).toEqual([[100, 120, 220, 120], [220, 120, 220, 185], [220, 185, 105, 185]]);
+		await expect.poll(() => wireEndpoints(page)).toEqual([[100, 120, 220, 120], [220, 120, 220, 185], [220, 185, 105, 185]]);
 		if (cancelWith === "Escape") await page.keyboard.press("Escape");
 		else await page.locator("canvas").dispatchEvent("pointercancel", { pointerId: 1 });
 		await page.mouse.up();
-		await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
-		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+		await expect.poll(async () => (await nonPinState(page)).shapes).toEqual(originals);
+		await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	});
 }
 
 test("moving multiple selected segments carries their shared unselected neighbor once", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
+	await createWireChain(page, [[100, 100], [160, 100], [160, 165], [105, 165]]);
 	await clickAt(page, 130, 100);
 	await page.keyboard.down("Shift");
 	await clickAt(page, 160, 132.5);
 	await page.keyboard.up("Shift");
-	await expect.poll(() => selectedNames(page)).toEqual(["line 1", "line 2"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 2", "wire 3"]);
 	await dragTo(page, [160, 132.5], [190, 142.5]);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[130, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[130, 110, 190, 110], [190, 110, 190, 175], [190, 175, 105, 175]]);
 	await page.keyboard.press("ArrowLeft");
-	await expect.poll(() => lineEndpoints(page)).toEqual([[129, 110, 189, 110], [189, 110, 189, 175], [189, 175, 105, 175]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 1", "line 2"]);
-	expect((await state(page)).shapes).toHaveLength(3);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[129, 110, 189, 110], [189, 110, 189, 175], [189, 175, 105, 175]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 2", "wire 3"]);
+	expect((await nonPinState(page)).shapes).toHaveLength(3);
 });
 
 test("folding a loop removes collapsed edges and keeps the selected merged segment usable", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(4);
+	await createWireChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(4);
 	await clickAt(page, 160, 130);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	await dragTo(page, [160, 130], [100, 130]);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 160]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 160]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
 	await page.screenshot({ path: test.info().outputPath("merged-collapsed-loop.png") });
 	await dragTo(page, [100, 130], [120, 140]);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[120, 110, 120, 170]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[120, 110, 120, 170]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	await page.keyboard.press("Delete");
-	await expect.poll(async () => (await state(page)).shapes).toEqual([]);
+	await expect.poll(async () => (await nonPinState(page)).shapes).toEqual([]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
 });
 
 for (const cancelWith of ["Escape", "pointercancel"]) {
 	test(`${cancelWith} restores a loop while its edges are collapsed and overlapping`, async ({ page }) => {
-		await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+		await createWireChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
 		await clickAt(page, 160, 130);
-		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-		const originals = (await state(page)).shapes;
+		await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+		const originals = (await nonPinState(page)).shapes;
 		await moveAt(page, 160, 130);
 		await page.mouse.down();
 		await moveAt(page, 100, 130);
-		await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 100], [100, 100, 100, 160], [100, 160, 100, 160], [100, 160, 100, 100]]);
+		await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 100], [100, 100, 100, 160], [100, 160, 100, 160], [100, 160, 100, 100]]);
 		if (cancelWith === "Escape") await page.keyboard.press("Escape");
 		else await page.locator("canvas").dispatchEvent("pointercancel", { pointerId: 1 });
 		await page.mouse.up();
-		await expect.poll(async () => (await state(page)).shapes).toEqual(originals);
-		await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+		await expect.poll(async () => (await nonPinState(page)).shapes).toEqual(originals);
+		await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	});
 }
 
 test("a drag can pass through a collapsed loop and reopen it before release", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+	await createWireChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
 	await moveAt(page, 160, 130);
 	await page.mouse.down();
 	await moveAt(page, 100, 130);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 100], [100, 100, 100, 160], [100, 160, 100, 160], [100, 160, 100, 100]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 100], [100, 100, 100, 160], [100, 160, 100, 160], [100, 160, 100, 100]]);
 	await moveAt(page, 80, 130);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 80, 100], [80, 100, 80, 160], [80, 160, 100, 160], [100, 160, 100, 100]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 80, 100], [80, 100, 80, 160], [80, 160, 100, 160], [100, 160, 100, 100]]);
 	// Pointer release can carry a newer position than the last pointer move.
 	const release = await screen(page, 130, 130);
 	await page.locator("canvas").dispatchEvent("pointerup", { pointerId: 1, clientX: release.x, clientY: release.y, button: 0, buttons: 0 });
 	await page.mouse.up();
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 130, 100], [130, 100, 130, 160], [130, 160, 100, 160], [100, 160, 100, 100]]);
-	expect((await state(page)).shapes.map((shape) => shape.name)).toEqual(["line 1", "line 2", "line 3", "line 4"]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 130, 100], [130, 100, 130, 160], [130, 160, 100, 160], [100, 160, 100, 100]]);
+	expect((await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["wire 2", "wire 3", "wire 4", "wire 5"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 });
 
 test("keyboard folding merges overlap while preserving separate parallel and gapped segments", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [110, 100], [110, 160], [100, 160], [100, 100]]);
-	await createLineChain(page, [[100, 200], [100, 240]]);
-	await createLineChain(page, [[130, 100], [130, 160]]);
+	await createWireChain(page, [[100, 100], [110, 100], [110, 160], [100, 160], [100, 100]]);
+	await createWireChain(page, [[100, 200], [100, 240]]);
+	await createWireChain(page, [[130, 100], [130, 160]]);
 	await clickAt(page, 110, 130);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	const separate = (await state(page)).shapes.slice(4);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	const separate = (await nonPinState(page)).shapes.slice(4);
 	await page.keyboard.press("Shift+ArrowLeft");
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 160], [100, 200, 100, 240], [130, 100, 130, 160]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	expect((await state(page)).shapes.slice(1)).toEqual(separate);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 160], [100, 200, 100, 240], [130, 100, 130, 160]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	expect((await nonPinState(page)).shapes.slice(1)).toEqual(separate);
 });
 
-test("drawing duplicate and overlapping segments merges their extent and continues from the clicked corner", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100]]);
-	await createLineChain(page, [[100, 100], [160, 100]]);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 160, 100]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await clickAt(page, 130, 100);
-	await clickAt(page, 190, 100);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 190, 100]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 3"]);
-	await clickAt(page, 140, 100);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[190, 100, 100, 100]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 4"]);
-	await clickAt(page, 150, 160);
-	await page.keyboard.press("Enter");
-	await expect.poll(() => lineEndpoints(page)).toEqual([[190, 100, 100, 100], [140, 100, 140, 160]]);
-	expect((await state(page)).shapes.map((shape) => shape.name)).toEqual(["line 4", "line 5"]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 5"]);
+test("drawing duplicate and overlapping wires merges their extent from valid anchors", async ({ page }) => {
+ await createWireChain(page, [[100, 100], [160, 100]]);
+ await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await clickAt(page, 100, 100);
+ await clickAt(page, 160, 100);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
+ await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+ // Extend the now-open endpoint, then double back to overlap the existing wire.
+ await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await clickAt(page, 160, 100);
+ await clickAt(page, 190, 100);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 190, 100]]);
+ await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
+ await clickAt(page, 140, 100);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 100, 100]]);
+ await expect.poll(() => selectedNames(page)).toEqual(["wire 5"]);
+ await clickAt(page, 150, 160);
+ await page.keyboard.press("Enter");
+ await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 100, 100], [140, 100, 140, 160]]);
+ expect((await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["wire 5", "wire 6"]);
+ await expect.poll(() => selectedNames(page)).toEqual(["wire 6"]);
 });
 
 test("resizing a snapped segment to zero removes it and clears its selection", async ({ page }) => {
-	await createLineChain(page, [[100, 100], [160, 100], [160, 160]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	const retained = (await state(page)).shapes[0];
+	await createWireChain(page, [[100, 100], [160, 100], [160, 160]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	const retained = (await nonPinState(page)).shapes[0];
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await dragHandle(page, "-1,0", [160, 160]);
-	await expect.poll(async () => (await state(page)).shapes).toEqual([retained]);
+	await expect.poll(async () => (await nonPinState(page)).shapes).toEqual([retained]);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
 });
 
 test("draws circles, triangles and orthogonal lines with accurate hit selection", async ({ page }) => {
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await placePin(page, 100, 100);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
 	await clickAt(page, 100, 100);
 	await clickAt(page, 130, 140);
 	await page.keyboard.press("Enter");
-	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(40, 4);
-	expect((await state(page)).shapes[0].rotation).toBeCloseTo(Math.PI / 2, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.width).toBeCloseTo(40, 4);
+	expect((await nonPinState(page)).shapes[0].rotation).toBeCloseTo(Math.PI / 2, 4);
 	await clickAt(page, 70, 70);
 	await clickAt(page, 100, 120);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 2"]);
 	await dragTo(page, [109, 135], [113, 139]);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
 	await dragTo(page, [95, 115], [105, 130]);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 1"]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 2"]);
 	await dragTo(page, [100, 120], [120, 140]);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(120, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].x).toBeCloseTo(120, 4);
 	await page.getByRole("button", { name: "Circle", exact: true }).click();
 	await dragTo(page, [250, 100], [290, 100]);
-	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(80, 4);
-	expect((await state(page)).shapes[1].height).toBeCloseTo(80, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1]?.width).toBeCloseTo(80, 4);
+	expect((await nonPinState(page)).shapes[1].height).toBeCloseTo(80, 4);
 	await expect(page.getByRole("spinbutton", { name: "Radius", exact: true })).toHaveValue("40");
 	await page.getByRole("button", { name: "Triangle", exact: true }).click();
 	await dragTo(page, [100, 200], [160, 240]);
-	await expect.poll(async () => (await state(page)).shapes[2]?.width).toBeCloseTo(60, 4);
-	expect((await state(page)).shapes[2].height).toBeCloseTo(40, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[2]?.width).toBeCloseTo(60, 4);
+	expect((await nonPinState(page)).shapes[2].height).toBeCloseTo(40, 4);
 });
 
 // DOM handle positions are rounded to CSS subpixels, so resize assertions allow 0.05 mm.
@@ -680,26 +700,27 @@ test("circle radius and orthogonal line endpoints resize independently", async (
 	await createShape(page, "Circle", 150, 150);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(4);
 	await dragHandle(page, "1,0", [180, 150]);
-	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(60, 1);
-	const circle = (await state(page)).shapes[0];
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].width).toBeCloseTo(60, 1);
+	const circle = (await nonPinState(page)).shapes[0];
 	expect(circle.height).toBeCloseTo(60, 1);
 	expect(circle.x).toBeCloseTo(150, 1);
 	expect(circle.y).toBeCloseTo(150, 1);
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await placePin(page, 220, 100);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
 	await clickAt(page, 220, 100);
 	await clickAt(page, 250, 140);
 	await page.keyboard.press("Enter");
 	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
 	await dragHandle(page, "1,0", [280, 180]);
-	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(80, 1);
-	let line = (await state(page)).shapes[1];
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(80, 1);
+	let line = (await nonPinState(page)).shapes[1];
 	expect(line.x).toBeCloseTo(220, 1);
 	expect(line.y).toBeCloseTo(140, 1);
 	expect(line.rotation).toBeCloseTo(Math.PI / 2, 1);
 	await dragHandle(page, "-1,0", [200, 180]);
-	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(20, 1);
-	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(210, 1);
-	line = (await state(page)).shapes[1];
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(20, 1);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].x).toBeCloseTo(210, 1);
+	line = (await nonPinState(page)).shapes[1];
 	expect(line.x).toBeCloseTo(210, 1);
 	expect(line.y).toBeCloseTo(180, 1);
 	expect(line.rotation).toBeCloseTo(0, 1);
@@ -773,26 +794,26 @@ test("snap mode aligns drawing, resizing and keyboard placement to the visible g
 	await fitCenteredEditor(page);
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await expect(snap).toHaveAttribute("aria-pressed", "false");
-	expect(await visibleGridStep(page)).toBe(10);
+	expect(await visibleGridStep(page)).toBe(5);
 	await snap.click();
 	await expect(snap).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
 	await dragTo(page, [-83, -37], [-23, 32]);
 	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(60, 4);
 	let shape = (await state(page)).shapes[0];
-	expect(shape.x).toBe(-50);
-	expect(shape.y).toBe(-5);
-	expect(shape.height).toBe(70);
+	expect(shape.x).toBe(-55);
+	expect(shape.y).toBe(-2.5);
+	expect(shape.height).toBe(65);
 	await dragHandle(page, "1,1", [13, 56]);
-	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(90, 4);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(100, 4);
 	shape = (await state(page)).shapes[0];
-	expect(shape.height).toBe(100);
-	expect(shape.x - shape.width / 2).toBe(-80);
-	expect(shape.y - shape.height / 2).toBe(-40);
+	expect(shape.height).toBe(90);
+	expect(shape.x - shape.width / 2).toBe(-85);
+	expect(shape.y - shape.height / 2).toBe(-35);
 	await page.keyboard.press("ArrowRight");
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(-25);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(-30);
 	await page.keyboard.press("Shift+ArrowUp");
-	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(110);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(60);
 	await snap.click();
 	await page.getByRole("button", { name: "Triangle", exact: true }).click();
 	await dragTo(page, [-83, -37], [-23, 32]);
@@ -824,7 +845,7 @@ test("snapped moves respect grab offsets, preserve groups, and cancel without ch
 	await page.mouse.move(start.x, start.y);
 	await page.mouse.down();
 	await page.mouse.move(end.x, end.y);
-	await expect.poll(async () => (await state(page)).shapes[1].x).toBe(-30);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBe(-25);
 	await page.keyboard.press("Escape");
 	await page.mouse.up();
 	await expect.poll(async () => (await state(page)).shapes).toEqual(moved);
@@ -838,32 +859,33 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	}
 	await expect.poll(() => visibleGridStep(page)).not.toBe(initialStep);
 	const step = await visibleGridStep(page);
-	expect(step).toBe(4);
+	expect(step).toBe(2);
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await expect(snap).toHaveAttribute("title", `Snap to grid (${step} mm)`);
 	await snap.click();
 	await page.getByRole("button", { name: "Circle", exact: true }).click();
-	await dragTo(page, [-31, -19], [-19, -7]);
-	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBe(40);
-	let circle = (await state(page)).shapes[0];
+	await dragTo(page, [-31.2, -19.2], [-19, -7]);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.width).toBe(36);
+	let circle = (await nonPinState(page)).shapes[0];
 	expect(circle.x).toBe(-32);
 	expect(circle.y).toBe(-20);
-	await dragHandle(page, "1,0", [-3, -20]);
-	await expect.poll(async () => (await state(page)).shapes[0].width).toBe(56);
-	circle = (await state(page)).shapes[0];
+	await dragHandle(page, "1,0", [-3.1, -20]);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0].width).toBe(56);
+	circle = (await nonPinState(page)).shapes[0];
 	expect(circle.height).toBe(56);
-	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await clickAt(page, 9, 9);
-	await clickAt(page, 25, 21);
+	await placePin(page, 9.2, 9.2);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await clickAt(page, 10, 10);
+	await clickAt(page, 25.2, 21);
 	await page.keyboard.press("Enter");
-	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(16, 4);
-	await dragHandle(page, "1,0", [39, 33]);
-	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(32, 4);
-	const line = (await state(page)).shapes[1];
-	expect(line.x - Math.cos(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
-	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1]?.width).toBeCloseTo(16, 4);
+	await dragHandle(page, "1,0", [39.2, 33]);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(30, 4);
+	const line = (await nonPinState(page)).shapes[1];
+	expect(line.x - Math.cos(line.rotation) * line.width / 2).toBeCloseTo(10, 4);
+	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(10, 4);
 	expect(line.x + Math.cos(line.rotation) * line.width / 2).toBeCloseTo(40, 4);
-	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
+	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(10, 4);
 	await page.screenshot({ path: test.info().outputPath("snap-to-grid.png") });
 });
 
@@ -978,22 +1000,22 @@ test("history ignores selection, view settings, cancelled gestures and moves tha
 
 test("history records line corners separately and connected collapse and merge as one edit", async ({ page }) => {
 	const history = await openHistory(page);
-	await createLineChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
-	await expectHistoryCount(page, 5);
-	await expect(history.getByRole("button", { name: /^Restore #\d+: Draw line$/ })).toHaveCount(4);
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(4);
+	await createWireChain(page, [[100, 100], [160, 100], [160, 160], [100, 160], [100, 100]]);
+	await expectHistoryCount(page, 6);
+	await expect(history.getByRole("button", { name: /^Restore #\d+: Draw wire$/ })).toHaveCount(4);
+	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(4);
 	const loop = await drawing(page);
 	await clickAt(page, 160, 130);
 	await dragTo(page, [160, 130], [100, 130]);
-	await expectHistoryCount(page, 6);
-	await expect.poll(() => lineEndpoints(page)).toEqual([[100, 100, 100, 160]]);
+	await expectHistoryCount(page, 7);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 160]]);
 	const merged = await drawing(page);
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
 	await expect.poll(() => drawing(page)).toEqual(loop);
 	await page.getByRole("button", { name: "Redo", exact: true }).click();
 	await expect.poll(() => drawing(page)).toEqual(merged);
-	await expect.poll(() => selectedNames(page)).toEqual(["line 2"]);
-	await expectHistoryCount(page, 6);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
+	await expectHistoryCount(page, 7);
 });
 
 test("history keeps old futures after a new edit and restores either branch", async ({ page }) => {
@@ -1001,17 +1023,17 @@ test("history keeps old futures after a new edit and restores either branch", as
 	const undo = page.getByRole("button", { name: "Undo", exact: true });
 	const redo = page.getByRole("button", { name: "Redo", exact: true });
 	await createShape(page, "Rectangle", 150, 100);
-	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(150, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.x).toBeCloseTo(150, 4);
 	const created = await drawing(page);
 	await dragTo(page, [150, 100], [180, 120]);
 	await expectHistoryCount(page, 3);
-	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(180, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.x).toBeCloseTo(180, 4);
 	const oldFuture = await drawing(page);
 	await undo.click();
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await dragHandle(page, "1,1", [200, 130]);
 	await expectHistoryCount(page, 4);
-	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(75, 1);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.width).toBeCloseTo(75, 1);
 	const newFuture = await drawing(page);
 	const moveNode = history.getByRole("button", { name: /^Restore #\d+: Move selection$/ });
 	const resizeNode = history.getByRole("button", { name: /^Restore #\d+: Resize rectangle$/ });
@@ -1029,40 +1051,41 @@ test("history keeps old futures after a new edit and restores either branch", as
 	await expect.poll(() => drawing(page)).toEqual(newFuture);
 	await expect(resizeNode).toHaveAttribute("aria-current", "step");
 	await history.screenshot({ path: test.info().outputPath("drawing-history-branches.png") });
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await placePin(page, 100, 160);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
 	await clickAt(page, 100, 160);
 	await moveAt(page, 180, 170);
-	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(80, 4);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(80, 4);
 	await openHistory(page);
 	await history.getByRole("button", { name: /^Restore #\d+: Empty drawing$/ }).focus();
 	await page.keyboard.press("Enter");
 	await expect.poll(() => drawing(page)).toEqual([]);
-	await expect.poll(async () => (await state(page)).preview).toBeNull();
+	await expect.poll(async () => (await nonPinState(page)).preview).toBeNull();
 	await history.getByRole("button", { name: /^Restore #\d+: Draw rectangle$/ }).click();
 	await expect.poll(() => drawing(page)).toEqual(created);
-	await expectHistoryCount(page, 4);
+	await expectHistoryCount(page, 5);
 	await createShape(page, "Circle", 250, 100);
-	await expect.poll(async () => (await state(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "circle 2"]);
+	await expect.poll(async () => (await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "circle 3"]);
 	await undo.click();
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await createShape(page, "Triangle", 250, 100);
-	await expect.poll(async () => (await state(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "triangle 3"]);
-	await expectHistoryCount(page, 6);
+	await expect.poll(async () => (await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "triangle 4"]);
+	await expectHistoryCount(page, 7);
 	await history.getByRole("button", { name: /^Restore #\d+: Draw circle$/ }).click();
-	await expect.poll(async () => (await state(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "circle 2"]);
+	await expect.poll(async () => (await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "circle 3"]);
 	await history.getByRole("button", { name: /^Restore #\d+: Draw triangle$/ }).click();
-	await expect.poll(async () => (await state(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "triangle 3"]);
+	await expect.poll(async () => (await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "triangle 4"]);
 });
 
 test("undo and redo clear unfinished previews and active drags without adding history", async ({ page }) => {
 	await openHistory(page);
-	await createShape(page, "Circle", 150, 100);
+	await placePin(page, 150, 100);
 	await expectHistoryCount(page, 2);
 	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(150, 4);
 	const created = await drawing(page);
-	await page.getByRole("button", { name: "Line", exact: true }).click();
-	await clickAt(page, 100, 160);
-	await moveAt(page, 180, 170);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await clickAt(page, 150, 100);
+	await moveAt(page, 230, 110);
 	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(80, 4);
 	await page.keyboard.press("Control+z");
 	await expect.poll(() => drawing(page)).toEqual([]);
@@ -1083,7 +1106,7 @@ test("undo and redo clear unfinished previews and active drags without adding hi
 	await expectHistoryCount(page, 2);
 });
 
-test("line width edits apply to shapes and groups and support undo and redo", async ({ page }) => {
+test("wire width edits apply to shapes and groups and support undo and redo", async ({ page }) => {
 	const width = page.getByRole("spinbutton", { name: "Line width", exact: true });
 	await createShape(page, "Rectangle", 90, 150);
 	await expect(width).toHaveValue("0.2");
@@ -1094,14 +1117,14 @@ test("line width edits apply to shapes and groups and support undo and redo", as
 	await expect(width).toHaveValue("0.2");
 	await page.getByRole("button", { name: "Redo", exact: true }).click();
 	await expect(width).toHaveValue("2.5");
-	await createShape(page, "Line", 180, 150);
+	await createShape(page, "Wire", 180, 150);
 	await width.fill("4");
 	await expect(width).toBeFocused();
-	await expect.poll(async () => (await state(page)).shapes[1].height).toBe(4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(4);
 	await width.fill("");
 	await width.pressSequentially("4.5");
 	await expect(width).toBeFocused();
-	await expect.poll(async () => (await state(page)).shapes[1].height).toBe(4.5);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(4.5);
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
 	await expect(width).toHaveValue("4");
 	await width.fill("0");
@@ -1116,11 +1139,11 @@ test("line width edits apply to shapes and groups and support undo and redo", as
 	await width.fill("3");
 	await expect(width).toBeFocused();
 	await expect(width).toHaveValue("3");
-	await expect.poll(async () => (await state(page)).shapes[1].height).toBe(3);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(3);
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
 	// Undo restores the selection saved with the preceding edit.
 	await expect(width).toHaveValue("4");
-	await expect.poll(async () => (await state(page)).shapes[1].height).toBe(4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(4);
 	await clickAt(page, 90, 150);
 	await expect(width).toHaveValue("2.5");
 });
@@ -1180,22 +1203,221 @@ test("circle dimension fields keep width, height and radius in sync", async ({ p
 	await expect(field("Radius")).toHaveValue("30");
 });
 
-test("line center edits move connected endpoints and length and angle fields preserve orthogonal lines", async ({ page }) => {
+test("wire center edits move connected endpoints and length and angle fields preserve orthogonal lines", async ({ page }) => {
 	const field = (name: string) => page.getByRole("spinbutton", { name, exact: true });
-	await createLineChain(page, [[80, 100], [140, 100], [140, 150]]);
+	await createWireChain(page, [[80, 100], [140, 100], [140, 150]]);
 	await clickAt(page, 110, 100);
 	await field("Center Y").fill("110");
 	await expect(field("Center Y")).toBeFocused();
-	await expect.poll(() => lineEndpoints(page)).toEqual([[80, 110, 140, 110], [140, 110, 140, 150]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[80, 110, 140, 110], [140, 110, 140, 150]]);
 	await field("Length").fill("40");
-	await expect.poll(() => lineEndpoints(page)).toEqual([[90, 110, 130, 110], [140, 110, 140, 150]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[90, 110, 130, 110], [140, 110, 140, 150]]);
 	await field("Angle").fill("90");
 	await expect(field("Angle")).toBeFocused();
-	await expect.poll(() => lineEndpoints(page)).toEqual([[110, 90, 110, 130], [140, 110, 140, 150]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[110, 90, 110, 130], [140, 110, 140, 150]]);
 	await field("Angle").fill("45");
 	await field("Angle").press("Tab");
 	await expect(field("Angle")).toHaveValue("90");
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
 	await expect(field("Angle")).toHaveValue("0");
 	await expect(field("Length")).toHaveValue("40");
+});
+
+async function insertSymbol(page: Page, name: string, x: number, y: number) {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: `Insert ${name}`, exact: true }).click();
+	await clickAt(page, x, y);
+}
+
+test("symbols select through any child, move and delete as one, and restore with history", async ({ page }) => {
+	await insertSymbol(page, "Resistor", 100, 150);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await expect(page.getByLabel("Reference", { exact: true })).toHaveValue("R1");
+	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
+	await page.getByLabel("Value", { exact: true }).fill("22 kΩ");
+	await insertSymbol(page, "Capacitor", 200, 150);
+	await insertSymbol(page, "Ground", 290, 150);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
+	// Grab only the resistor's left lead.
+	await dragTo(page, [97, 150], [117, 170]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(120, 4);
+	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("22 kΩ");
+	await page.keyboard.press("ArrowRight");
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(121, 4);
+	await page.getByLabel("Center Y", { exact: true }).fill("180");
+	await page.getByLabel("Angle", { exact: true }).fill("90");
+	await clickAt(page, 121, 177);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await page.keyboard.press("Delete");
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("22 kΩ");
+	await expect(page.getByLabel("Angle", { exact: true })).toHaveValue("90");
+	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+});
+
+test("marquee and shift selection keep symbols intact alongside ordinary shapes", async ({ page }) => {
+	await insertSymbol(page, "Capacitor", 100, 150);
+	await insertSymbol(page, "Capacitor", 200, 150);
+	await createShape(page, "Rectangle", 290, 150);
+	// Touch just the first symbol's left lead with a marquee.
+	await dragTo(page, [91, 156], [98, 148]);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await page.keyboard.down("Shift");
+	await clickAt(page, 197, 150);
+	await clickAt(page, 290, 150);
+	await page.keyboard.up("Shift");
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1", "symbol 2", "rectangle 3"]);
+	await dragTo(page, [97, 150], [107, 160]);
+	await expect.poll(async () => (await state(page)).shapes.map(({ x }) => Math.round(x))).toEqual([110, 210, 300]);
+	await page.keyboard.down("Shift");
+	await clickAt(page, 207, 160);
+	await page.keyboard.up("Shift");
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1", "rectangle 3"]);
+	await page.keyboard.press("Delete");
+	await expect.poll(async () => (await state(page)).shapes.map(({ name }) => name)).toEqual(["symbol 2"]);
+});
+
+test("symbol picker cancels placement and attributes belong to each instance", async ({ page }) => {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await expect(page.getByRole("dialog", { name: "Symbol library" })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(page.getByRole("dialog", { name: "Symbol library" })).toHaveCount(0);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+	await moveAt(page, 100, 150);
+	await page.keyboard.press("Escape");
+	await clickAt(page, 100, 150);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
+	await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+	await insertSymbol(page, "Resistor", 100, 150);
+	await page.getByLabel("Reference", { exact: true }).fill("R_INPUT");
+	await page.getByLabel("Value", { exact: true }).fill("47 kΩ");
+	await insertSymbol(page, "Resistor", 200, 150);
+	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("10 kΩ");
+	await clickAt(page, 100, 150);
+	await expect(page.getByLabel("Reference", { exact: true })).toHaveValue("R_INPUT");
+	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("47 kΩ");
+	await page.screenshot({ path: test.info().outputPath("symbols.png") });
+});
+
+test("symbol placement snaps and selection-only clicks do not add history", async ({ page }) => {
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await insertSymbol(page, "Resistor", 101, 151);
+	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[100, 150]]);
+	await clickAt(page, 97, 150);
+	await clickAt(page, 103, 150);
+	await expectHistoryCount(page, 2);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
+	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+});
+
+test("pins restrict wire starts and open ends accept both starts and finishes", async ({ page }) => {
+ const wireTool = page.getByRole("button", { name: "Wire", exact: true });
+ await expect(page.getByRole("button", { name: "Line", exact: true })).toHaveCount(0);
+ await wireTool.click();
+ await clickAt(page, 100, 100);
+ await moveAt(page, 160, 100);
+ await clickAt(page, 160, 100);
+ expect((await state(page)).shapes).toEqual([]);
+ expect((await state(page)).preview).toBeNull();
+ await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+ await placePin(page, 100, 100);
+ await expect.poll(async () => (await state(page)).shapes.map(s => s.name)).toEqual(["pin 1"]);
+ await expect(page.getByTestId("resize-handle")).toHaveCount(0);
+ await wireTool.click();
+ await moveAt(page, 101, 101);
+ await expect(page.getByTestId("wire-connection")).toBeVisible();
+ await clickAt(page, 101, 101);
+ await clickAt(page, 160, 100);
+ await page.keyboard.press("Enter");
+ await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
+ // Neither the midpoint of a segment nor an arbitrary shape is a valid start.
+ await wireTool.click();
+ await clickAt(page, 130, 100);
+ await moveAt(page, 130, 150);
+ expect((await state(page)).preview).toBeNull();
+ // Continue from the unconnected end with snapping disabled.
+ await clickAt(page, 161, 101);
+ await clickAt(page, 160, 160);
+ await page.keyboard.press("Escape");
+ await placePin(page, 240, 160);
+ await wireTool.click();
+ await clickAt(page, 240, 160);
+ await clickAt(page, 161, 160);
+ await expect(wireTool).toHaveAttribute("aria-pressed", "false");
+ await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100], [160, 100, 160, 160], [240, 160, 160, 160]]);
+ await expect.poll(async () => (await state(page)).preview).toBeNull();
+ await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
+ await page.getByRole("button", { name: "Redo", exact: true }).click();
+ await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
+ await page.screenshot({ path: test.info().outputPath("pins-and-wires.png") });
+});
+
+test("wires finish exactly at off-grid pins and rotated symbol terminals", async ({ page }) => {
+ await placePin(page, 101, 103);
+ await placePin(page, 181, 103);
+ await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+ await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await clickAt(page, 102, 103);
+ await clickAt(page, 180, 103);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103]]);
+ await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+ await insertSymbol(page, "Resistor", 250, 150);
+ await page.getByLabel("Angle", { exact: true }).fill("90");
+ await placePin(page, 300, 173.81);
+ await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await clickAt(page, 300, 175);
+ await clickAt(page, 250, 152.8125);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [300, 175, 250, 175], [250, 175, 250, 152.8125]]);
+ await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+ // The other symbol terminal can start a wire too.
+ await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await clickAt(page, 250, 147.1875);
+ await clickAt(page, 300, 147.1875);
+ await page.keyboard.press("Enter");
+ await expect.poll(async () => (await wireEndpoints(page)).length).toBe(4);
+});
+
+
+test("offset off-grid pins connect with a right-angle bend and undo together", async ({ page }) => {
+ await placePin(page, 101, 103);
+ await placePin(page, 181, 153);
+ await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+ await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await clickAt(page, 101, 103);
+ await moveAt(page, 182, 152);
+ await expect(page.getByTestId("wire-connection")).toBeVisible();
+ await clickAt(page, 182, 152);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [181, 103, 181, 153]]);
+ await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+ await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await expect.poll(() => wireEndpoints(page)).toEqual([]);
+ await page.getByRole("button", { name: "Redo", exact: true }).click();
+ await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
+});
+
+
+test("compact symbols span 6 mm with KiCad proportions and the grid has ten cells per major square", async ({ page }) => {
+ await insertSymbol(page, "Resistor", 100, 150);
+ await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(6, 3);
+ await expect(page.getByRole("spinbutton", { name: "Line width", exact: true })).toHaveValue("0.254");
+ await insertSymbol(page, "Capacitor", 120, 150);
+ await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(6, 3);
+ await insertSymbol(page, "Ground", 140, 150);
+ await expect.poll(async () => Math.max((await state(page)).shapes[2].width, (await state(page)).shapes[2].height)).toBeCloseTo(6, 3);
+ for (let zoom = 0; zoom < 3; zoom++) {
+  const ticks = await page.getByRole("img", { name: "Drawing rulers in millimetres" }).locator('[data-axis="x"]').evaluateAll(nodes => nodes.map(node => ({ value: Number(node.getAttribute("data-value")), major: !!node.querySelector("text") })));
+  const majors = ticks.flatMap((tick, index) => tick.major ? [index] : []);
+  expect(majors.length).toBeGreaterThan(1);
+  expect(majors[1] - majors[0]).toBe(10);
+  const step = ticks[1].value - ticks[0].value;
+  await expect(page.getByRole("button", { name: "Snap to grid", exact: true })).toHaveAttribute("title", `Snap to grid (${step} mm)`);
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+ }
+ await page.screenshot({ path: test.info().outputPath("compact-symbols-dense-grid.png") });
 });

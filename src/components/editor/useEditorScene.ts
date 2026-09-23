@@ -31,7 +31,7 @@ function createEditorAssets() {
 			},
 		);
 		const geometryFor = (shape: EditorShape) => {
-			const key = `${shape.kind}:${shape.width}:${shape.height}:${shape.lineWidth}`;
+			const key = `${shape.kind}:${shape.width}:${shape.height}:${shape.lineWidth}:${shape.kind === "symbol" ? JSON.stringify(shape.children) : ""}`;
 			const cached = geometries.get(shape.id);
 			if (cached?.key === key) return cached.geometry;
 			cached?.geometry.dispose();
@@ -90,7 +90,7 @@ function createEditorAssets() {
 export function useEditorScene(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
-	linePreview: EditorShape | null = null,
+	previews: EditorShape[] = [],
 ) {
 	const [assets, setAssets] = useState<ReturnType<typeof createEditorAssets>>();
 	useEffect(() => {
@@ -109,7 +109,7 @@ export function useEditorScene(
 			}
 			// Dispose cached strokes when their shapes are removed, including canceled previews.
 			const activeIds = new Set(shapes.map((shape) => shape.id));
-			if (linePreview) activeIds.add(linePreview.id);
+			for (const preview of previews) activeIds.add(preview.id);
 			for (const [id, { geometry }] of assets.geometries) {
 				if (activeIds.has(id)) continue;
 				geometry.dispose();
@@ -126,7 +126,7 @@ export function useEditorScene(
 				mesh.position.set(shape.x, shape.y, 0);
 				mesh.scale.set(
 					size.width,
-					shape.kind === "line" ? shape.lineWidth : size.height,
+					shape.kind === "wire" ? shape.lineWidth : size.height,
 					1,
 				);
 				mesh.rotation.z = shape.rotation;
@@ -141,21 +141,35 @@ export function useEditorScene(
 					drawing.add(outline);
 				}
 			}
-			root.getObjectByName("editor-line-preview")?.removeFromParent();
-			if (linePreview && linePreview.width > 0) {
+			root.getObjectByName("editor-wire-preview")?.removeFromParent();
+			root.getObjectByName("editor-wire-tail-preview")?.removeFromParent();
+			root.getObjectByName("editor-symbol-preview")?.removeFromParent();
+			for (const [index, wirePreview] of previews.entries()) {
+				if (wirePreview.width <= 0) continue;
 				const preview = new Mesh(
-					assets.geometryFor(linePreview),
+					assets.geometryFor(wirePreview),
 					assets.selected,
 				);
-				preview.name = "editor-line-preview";
-				preview.position.set(linePreview.x, linePreview.y, 0);
-				preview.scale.set(linePreview.width, linePreview.lineWidth, 1);
-				preview.rotation.z = linePreview.rotation;
+				preview.name =
+					wirePreview.kind === "symbol"
+						? "editor-symbol-preview"
+						: index === 0
+							? "editor-wire-preview"
+							: "editor-wire-tail-preview";
+				preview.position.set(wirePreview.x, wirePreview.y, 0);
+				preview.scale.set(
+					wirePreview.width,
+					wirePreview.kind === "wire"
+						? wirePreview.lineWidth
+						: wirePreview.height,
+					1,
+				);
+				preview.rotation.z = wirePreview.rotation;
 				preview.renderOrder = shapes.length + 2;
 				root.add(preview);
 			}
 		},
-		[assets, shapes, selectedIds, linePreview],
+		[assets, shapes, selectedIds, previews],
 	);
 	return { scene: assets?.scene, updateScene };
 }

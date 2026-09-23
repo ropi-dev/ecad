@@ -33,11 +33,11 @@ test("commits copy new snapshots and leave prior history values untouched", () =
 	const first = createHistory({ values: [1] }, "Empty drawing");
 	const before = structuredClone(first);
 	const next = { values: [1, 2] };
-	const committed = commitHistory(first, next, "Draw line", (a, b) => JSON.stringify(a) === JSON.stringify(b));
+	const committed = commitHistory(first, next, "Draw wire", (a, b) => JSON.stringify(a) === JSON.stringify(b));
 	next.values.push(3);
 	assert.deepEqual(first, before);
 	assert.deepEqual(getHistoryState(committed), { values: [1, 2] });
-	assert.equal(getHistoryNode(committed)?.label, "Draw line");
+	assert.equal(getHistoryNode(committed)?.label, "Draw wire");
 	assert.equal(getHistoryNode(committed)?.parentId, 0);
 	assert.deepEqual(committed.nodes[0].childIds, [1]);
 	assert.equal(committed.nodes[0].preferredChildId, 1);

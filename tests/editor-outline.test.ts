@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
-import { drawShape, hitShape, intersectsSelection, moveShapes, normalizeLineSegments, resizeHandles, resizeShape } from "../src/components/editor/shapes.ts";
+import { drawShape, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, resizeHandles, resizeShape } from "../src/components/editor/shapes.ts";
 
 for (const kind of ["rectangle", "circle", "triangle"] as const) {
 	test(`${kind} has an empty center and a constant-width mesh outline`, () => {
@@ -31,21 +31,21 @@ for (const kind of ["rectangle", "circle", "triangle"] as const) {
 	});
 }
 
-test("line width survives resizing, connected movement and merging", () => {
-	const line = { ...drawShape(1, "line", { x: 0, y: 0 }, { x: 20, y: 0 }), lineWidth: 3 };
-	const neighbor = { ...drawShape(2, "line", { x: 20, y: 0 }, { x: 20, y: 20 }), lineWidth: 2 };
+test("wire width survives resizing, connected movement and merging", () => {
+	const line = { ...drawShape(1, "wire", { x: 0, y: 0 }, { x: 20, y: 0 }), lineWidth: 3 };
+	const neighbor = { ...drawShape(2, "wire", { x: 20, y: 0 }, { x: 20, y: 20 }), lineWidth: 2 };
 	for (const handle of resizeHandles(line)) assert.equal(resizeShape(line, handle, { x: 5, y: 0 }).lineWidth, 3);
 	const moved = moveShapes([line], { x: 0, y: 5 }, 0, line, [line, neighbor]);
 	assert.deepEqual(moved.map((shape) => shape.lineWidth), [3, 2]);
-	const continuation = { ...drawShape(3, "line", { x: 20, y: 0 }, { x: 40, y: 0 }), lineWidth: 3 };
-	const merged = normalizeLineSegments([line, continuation]).shapes;
+	const continuation = { ...drawShape(3, "wire", { x: 20, y: 0 }, { x: 40, y: 0 }), lineWidth: 3 };
+	const merged = normalizeWireSegments([line, continuation]).shapes;
 	assert.equal(merged.length, 1);
 	assert.equal(merged[0].lineWidth, 3);
 	assert.equal(merged[0].width, 40);
 });
 
-test("line selection uses the independent width attribute", () => {
-	const line = { ...drawShape(1, "line", { x: 0, y: 0 }, { x: 20, y: 0 }), lineWidth: 8 };
+test("wire selection uses the independent width attribute", () => {
+	const line = { ...drawShape(1, "wire", { x: 0, y: 0 }, { x: 20, y: 0 }), lineWidth: 8 };
 	assert.equal(hitShape(line, { x: 10, y: 3 }, 0), true);
 	assert.equal(hitShape(line, { x: 10, y: 5 }, 0), false);
 	assert.equal(intersectsSelection(line, { minX: 5, maxX: 15, minY: 3, maxY: 6 }), true);
