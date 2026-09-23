@@ -4,17 +4,20 @@ export interface RulerTick {
 	label?: string;
 }
 
+export interface GridTick {
+	value: number;
+	position: number;
+	opacity: number;
+	majorOpacity: number;
+}
+
 const subdivisions = 10;
-const gridChangeoverPixels = 125;
+const minimumMinorPixels = 10;
 
 /** Shared by the visible grid, ruler ticks, and editor snapping. */
 export function rulerSpacing(scale: number) {
-	const desired = gridChangeoverPixels / scale;
-	const magnitude = 10 ** Math.floor(Math.log10(desired));
-	const interval =
-		([1, 2, 5, 10].find((n) => n * magnitude >= desired) ?? 10) * magnitude;
-	// Keep minor spacing and zoom cutoffs independent of major-line frequency.
-	const minor = interval / 5;
+	const desired = minimumMinorPixels / scale;
+	const minor = 10 ** Math.ceil(Math.log10(desired));
 	return { major: minor * subdivisions, minor };
 }
 
@@ -25,14 +28,22 @@ export function rulerTicks(
 	length: number,
 	reversed = false,
 ): RulerTick[] {
+	return ticksForSpacing(center, scale, length, reversed, rulerSpacing(scale));
+}
+
+function ticksForSpacing(
+	center: number,
+	scale: number,
+	length: number,
+	reversed: boolean,
+	{ minor }: ReturnType<typeof rulerSpacing>,
+): RulerTick[] {
 	if (
 		![center, scale, length].every(Number.isFinite) ||
 		scale <= 0 ||
 		length <= 0
 	)
 		return [];
-	const { major, minor } = rulerSpacing(scale);
-	const precision = Math.max(0, -Math.floor(Math.log10(major)));
 	const first = Math.ceil((center - length / (2 * scale)) / minor);
 	const last = Math.floor((center + length / (2 * scale)) / minor);
 	const ticks: RulerTick[] = [];
@@ -44,8 +55,67 @@ export function rulerTicks(
 		ticks.push({
 			position,
 			value,
-			label: index % subdivisions === 0 ? value.toFixed(precision) : undefined,
+			label:
+				index % subdivisions === 0
+					? String(Number(value.toPrecision(12)))
+					: undefined,
 		});
 	}
 	return ticks;
+}
+
+/** Crossfade over a 25% zoom band centered on the ruler and snapping cutoff. */
+export function gridTicks(
+	center: number,
+	scale: number,
+	length: number,
+	reversed = false,
+): GridTick[] {
+	if (!Number.isFinite(scale) || scale <= 0) return [];
+	const halfBand = 0.125;
+	const coarse = rulerSpacing(scale / (1 + halfBand));
+	const fine = rulerSpacing(scale / (1 - halfBand));
+	const cutoff = minimumMinorPixels / fine.minor;
+	const progress = Math.max(
+		0,
+		Math.min(1, (scale / cutoff - (1 - halfBand)) / (halfBand * 2)),
+	);
+	const blend = progress * progress * (3 - 2 * progress);
+	const layers =
+		coarse.minor === fine.minor
+			? [{ spacing: fine, opacity: 1 }]
+			: [
+					{ spacing: coarse, opacity: 1 - blend },
+					{ spacing: fine, opacity: blend },
+				];
+	const ticks = new Map<string, GridTick>();
+	for (const { spacing, opacity } of layers) {
+		if (opacity === 0) continue;
+		for (const tick of ticksForSpacing(
+			center,
+			scale,
+			length,
+			reversed,
+			spacing,
+		)) {
+			// Merge coincident lines so shared grid points never dim or draw twice.
+			const key = tick.value.toPrecision(14);
+			const existing = ticks.get(key);
+			const majorOpacity = tick.label === undefined ? 0 : opacity;
+			if (existing) {
+				existing.opacity += opacity;
+				existing.majorOpacity += majorOpacity;
+			} else {
+				ticks.set(key, {
+					value: tick.value,
+					position: tick.position,
+					opacity,
+					majorOpacity,
+				});
+			}
+		}
+	}
+	return [...ticks.values()].sort(
+		(first, second) => first.value - second.value,
+	);
 }

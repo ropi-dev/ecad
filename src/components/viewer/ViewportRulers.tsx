@@ -1,6 +1,6 @@
 import { type Ref, useId, useImperativeHandle, useState } from "react";
 import type { Camera } from "#/engine";
-import { rulerTicks } from "#/engine/ruler";
+import { type GridTick, gridTicks, rulerTicks } from "#/engine/ruler";
 import type { Bounds } from "#/engine/types";
 
 interface RulerView {
@@ -10,6 +10,11 @@ interface RulerView {
 
 export interface ViewportRulersHandle {
 	update: (view: RulerView) => void;
+}
+
+function gridStroke(tick: GridTick) {
+	const major = tick.majorOpacity / tick.opacity;
+	return `rgb(${51 + 49 * major}, ${65 + 51 * major}, ${85 + 54 * major})`;
 }
 
 export function ViewportRulers({
@@ -44,6 +49,8 @@ export function ViewportRulers({
 	} = view;
 	const horizontal = rulerTicks(camera.x, camera.scale, width);
 	const vertical = rulerTicks(camera.y, camera.scale, height, true);
+	const horizontalGrid = gridTicks(camera.x, camera.scale, width);
+	const verticalGrid = gridTicks(camera.y, camera.scale, height, true);
 	return (
 		<>
 			<svg
@@ -79,26 +86,30 @@ export function ViewportRulers({
 					mask={gridBounds ? `url(#${gridMaskId})` : undefined}
 					opacity={gridBounds ? 0.6 : 1}
 				>
-					{horizontal.map((tick) => (
+					{horizontalGrid.map((tick) => (
 						<line
 							key={tick.value}
 							x1={tick.position}
 							x2={tick.position}
 							y1="0"
 							y2={height}
-							className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
-							data-major={tick.label !== undefined}
+							stroke={gridStroke(tick)}
+							strokeWidth={1}
+							opacity={0.35 * tick.opacity}
+							data-major={tick.majorOpacity === tick.opacity}
 						/>
 					))}
-					{vertical.map((tick) => (
+					{verticalGrid.map((tick) => (
 						<line
 							key={tick.value}
 							x1="0"
 							x2={width}
 							y1={tick.position}
 							y2={tick.position}
-							className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
-							data-major={tick.label !== undefined}
+							stroke={gridStroke(tick)}
+							strokeWidth={1}
+							opacity={0.35 * tick.opacity}
+							data-major={tick.majorOpacity === tick.opacity}
 						/>
 					))}
 				</g>

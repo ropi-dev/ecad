@@ -1,25 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { rulerSpacing, rulerTicks } from "../src/engine/ruler";
+import { gridTicks, rulerSpacing, rulerTicks } from "../src/engine/ruler";
 
 test("rulers place signed coordinates and reverse the vertical axis", () => {
-	const horizontal = rulerTicks(10, 10, 400);
-	assert.equal(horizontal.find((tick) => tick.value === 0)?.position, 100);
-	assert.equal(horizontal.find((tick) => tick.value === 20)?.position, 300);
-	assert.equal(horizontal.find((tick) => tick.value === -4)?.position, 60);
-	const vertical = rulerTicks(10, 10, 400, true);
-	assert.equal(vertical.find((tick) => tick.value === 0)?.position, 300);
-	assert.equal(vertical.find((tick) => tick.value === 20)?.position, 100);
+	const horizontal = rulerTicks(10, 5, 400);
+	assert.equal(horizontal.find((tick) => tick.value === 0)?.position, 150);
+	assert.equal(horizontal.find((tick) => tick.value === 20)?.position, 250);
+	assert.equal(horizontal.find((tick) => tick.value === -20)?.position, 50);
+	const vertical = rulerTicks(10, 5, 400, true);
+	assert.equal(vertical.find((tick) => tick.value === 0)?.position, 250);
+	assert.equal(vertical.find((tick) => tick.value === 20)?.position, 150);
 });
 
 test("ruler labels remain readable from submillimetre to board overview scales", () => {
 	for (const scale of [0.01, 0.8, 8, 80, 800, 8000]) {
 		const ticks = rulerTicks(0, scale, 800);
 		const labels = ticks.filter((tick) => tick.label !== undefined);
-		assert.ok(labels.length >= 2);
+		assert.ok(labels.length >= 1);
 		assert.ok(ticks.length <= 101);
 		for (let index = 1; index < labels.length; index++) {
-			assert.ok(labels[index].position - labels[index - 1].position >= 249.99);
+			assert.ok(labels[index].position - labels[index - 1].position >= 99.99);
 			assert.equal(
 				Number(labels[index].label),
 				Number(labels[index].value.toPrecision(12)),
@@ -30,15 +30,67 @@ test("ruler labels remain readable from submillimetre to board overview scales",
 		);
 	}
 	assert.equal(
-		rulerTicks(0, 800, 800).find((tick) => tick.value === 0.4)?.label,
-		"0.4",
+		rulerTicks(0, 2500, 800).find((tick) => tick.value === 0.1)?.label,
+		"0.1",
 	);
 });
 
 test("invalid or unmeasured viewports have no ruler ticks", () => {
-	for (const scale of [0, -1, NaN, Infinity])
+	for (const scale of [0, -1, NaN, Infinity]) {
 		assert.deepEqual(rulerTicks(0, scale, 800), []);
+		assert.deepEqual(gridTicks(0, scale, 800), []);
+	}
 	assert.deepEqual(rulerTicks(0, 10, 0), []);
+	assert.deepEqual(gridTicks(0, 10, 0), []);
+});
+
+test("grid crossfades unique lines while shared lines retain their strength", () => {
+	const ticks = gridTicks(0, 10, 6000);
+	const tickAt = (value: number) => ticks.find((tick) => tick.value === value)!;
+	assert.equal(new Set(ticks.map((tick) => tick.value)).size, ticks.length);
+	for (const value of [-5, -1, 1, 5])
+		assert.ok(Math.abs(tickAt(value).opacity - 0.5) < 1e-10);
+	for (const value of [-100, -50, -20, 0, 20, 50, 100])
+		assert.equal(tickAt(value).opacity, 1);
+	assert.equal(tickAt(0).majorOpacity, 1);
+	assert.ok(Math.abs(tickAt(20).majorOpacity - 0.5) < 1e-10);
+	assert.ok(Math.abs(tickAt(50).majorOpacity - 0.5) < 1e-10);
+	assert.equal(tickAt(100).majorOpacity, 1);
+	const earlyFineLine = gridTicks(0, 9, 997).find((tick) => tick.value === 1)!;
+	assert.ok(earlyFineLine.opacity > 0 && earlyFineLine.opacity < 0.5);
+	assert.equal(rulerSpacing(9).minor, 10);
+	assert.equal(rulerSpacing(10).minor, 1);
+});
+
+test("grid appearance stays continuous across the discrete snapping cutoff", () => {
+	for (const cutoff of [0.01, 0.1, 1, 10]) {
+		const beforeScale = cutoff * (1 - 1e-8);
+		const afterScale = cutoff * (1 + 1e-8);
+		const before = gridTicks(0, beforeScale, 997);
+		const after = gridTicks(0, afterScale, 997);
+		assert.notEqual(rulerSpacing(beforeScale).minor, rulerSpacing(afterScale).minor);
+		assert.equal(before.length, after.length);
+		for (const [index, tick] of before.entries()) {
+			assert.equal(tick.value, after[index].value);
+			assert.ok(Math.abs(tick.opacity - after[index].opacity) < 1e-6);
+			assert.ok(Math.abs(tick.majorOpacity - after[index].majorOpacity) < 1e-6);
+		}
+		for (const factor of [0.87, 1.13]) {
+			const scale = cutoff * factor;
+			const settled = gridTicks(0, scale, 997);
+			assert.deepEqual(settled.map((tick) => tick.value), rulerTicks(0, scale, 997).map((tick) => tick.value));
+			assert.ok(settled.every((tick) => tick.opacity === 1));
+		}
+	}
+});
+
+test("grid spacing changes by a factor of ten at every level", () => {
+	assert.deepEqual([0.04, 0.4, 4, 40, 400, 4000].map((scale) => rulerSpacing(scale).major), [10000, 1000, 100, 10, 1, 0.1]);
+	for (const scale of [0.01, 0.8, 8, 80, 800, 8000]) {
+		const current = rulerSpacing(scale);
+		assert.equal(rulerSpacing(scale * 10).major, current.major / 10);
+		assert.equal(rulerSpacing(scale / 10).minor, current.minor * 10);
+	}
 });
 
 

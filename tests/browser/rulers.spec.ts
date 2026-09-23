@@ -53,9 +53,9 @@ test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
 						...document.querySelectorAll<SVGLineElement>('[data-testid="viewport-grid"] line'),
 					];
 					return (
-						grid.length > 10 &&
-						grid.length === ticks.length &&
-						ticks.every((tick, index) => {
+						grid.length > 0 &&
+						grid.length >= ticks.length &&
+						ticks.every((tick) => {
 							const horizontal = tick.dataset.axis === "x";
 							const value = Number(tick.dataset.value);
 							const actual = Number(
@@ -66,11 +66,14 @@ test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
 							const expected = horizontal
 								? 400 + (value - position[0]) * scale
 								: 300 - (value - position[1]) * scale;
+							const matchingLine = grid.find((line) =>
+								Number(line.getAttribute(horizontal ? "y1" : "x1")) === 0 &&
+								Math.abs(Number(line.getAttribute(horizontal ? "x1" : "y1")) - actual) < 0.01,
+							);
 							return (
 								Math.abs(actual - expected) < 0.01 &&
-								Number(grid[index].getAttribute(horizontal ? "x1" : "y1")) ===
-									actual &&
-								Number(grid[index].getAttribute(horizontal ? "y2" : "x2")) ===
+								matchingLine !== undefined &&
+								Number(matchingLine.getAttribute(horizontal ? "y2" : "x2")) ===
 									(horizontal ? 600 : 800)
 							);
 						})
