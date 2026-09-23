@@ -1264,6 +1264,36 @@ test("symbols select through any child, move and delete as one, and restore with
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
 });
 
+test("symbol movement keeps attached wires orthogonal through drag, history, keyboard and attributes", async ({ page }) => {
+	await insertSymbol(page, "Resistor", 100, 150);
+	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await clickAt(page, 102.8125, 150);
+	await clickAt(page, 180, 150);
+	await clickAt(page, 180, 210);
+	await page.keyboard.press("Enter");
+	const original = await wireEndpoints(page);
+	await dragTo(page, [100, 150], [120, 170]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[122.8125, 170, 180, 170], [180, 170, 180, 210]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect.poll(() => wireEndpoints(page)).toEqual(original);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(100, 4);
+	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await expect.poll(() => wireEndpoints(page)).toEqual([[122.8125, 170, 180, 170], [180, 170, 180, 210]]);
+	await clickAt(page, 120, 170);
+	await page.keyboard.press("ArrowRight");
+	await expect.poll(() => wireEndpoints(page)).toEqual([[123.8125, 170, 180, 170], [180, 170, 180, 210]]);
+	await page.getByLabel("Center Y", { exact: true }).fill("180");
+	await expect.poll(() => wireEndpoints(page)).toEqual([[123.8125, 180, 180, 180], [180, 180, 180, 210]]);
+	await moveAt(page, 121, 180);
+	await page.mouse.down();
+	await moveAt(page, 141, 190);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[143.8125, 190, 180, 190], [180, 190, 180, 210]]);
+	await page.keyboard.press("Escape");
+	await page.mouse.up();
+	await expect.poll(() => wireEndpoints(page)).toEqual([[123.8125, 180, 180, 180], [180, 180, 180, 210]]);
+});
+
 test("marquee and shift selection keep symbols intact alongside ordinary shapes", async ({ page }) => {
 	await insertSymbol(page, "Capacitor", 100, 150);
 	await insertSymbol(page, "Capacitor", 200, 150);

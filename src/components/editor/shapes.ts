@@ -627,7 +627,11 @@ function moveConnectedWires(
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
-	const points = wires.flatMap(({ start, end }) => [start, end]);
+	const wirePointCount = wires.length * 2;
+	const points = [
+		...wires.flatMap(({ start, end }) => [start, end]),
+		...selected.flatMap(pinTerminals),
+	];
 	const connections = {
 		x: points.map(() => new Set<number>()),
 		y: points.map(() => new Set<number>()),
@@ -637,6 +641,9 @@ function moveConnectedWires(
 		connections[axis][second].add(first);
 	};
 	const seeds = new Set<number>();
+	// Selected pins move rigidly with their symbol and drive attached wire ends.
+	for (let index = wirePointCount; index < points.length; index++)
+		seeds.add(index);
 	const attachments: { point: number; wire: number }[] = [];
 	for (let first = 0; first < points.length; first++) {
 		for (let second = first + 1; second < points.length; second++) {
@@ -764,7 +771,9 @@ export function moveShapes(
 		);
 		delta = { x: target.x - anchor.x, y: target.y - anchor.y };
 	}
-	if (shapes.some((shape) => shape.kind === "wire"))
+	if (
+		shapes.some((shape) => shape.kind === "wire" || pinTerminals(shape).length > 0)
+	)
 		return moveConnectedWires(shapes, delta, allShapes);
 	return shapes.map((shape) => ({
 		...shape,
