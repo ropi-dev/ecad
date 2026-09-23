@@ -54,6 +54,7 @@ import {
 import { createSymbol, type SymbolDefinition } from "./symbols";
 import { createTextShape, updateText } from "./text";
 import { useEditorScene } from "./useEditorScene";
+import { defaultSheet, type SheetSize } from "./worksheet";
 
 const tools = [
 	{ kind: "select", label: "Select", icon: MousePointer2 },
@@ -126,7 +127,7 @@ function sameDrawing(first: DrawingState, second: DrawingState) {
 	);
 }
 
-export function Editor2D() {
+export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 	const [shapes, setShapes] = useState<EditorShape[]>([]);
 	const currentShapes = useRef(shapes);
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -158,6 +159,7 @@ export function Editor2D() {
 		shapes,
 		selectedIds,
 		wirePreview ?? (symbolPreview ? [symbolPreview] : []),
+		sheet,
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
@@ -450,7 +452,10 @@ export function Editor2D() {
 				event.stopPropagation();
 			}}
 		>
-			<h1 className="sr-only">2D editor · A3 landscape · 420 × 297 mm</h1>
+			<h1 className="sr-only">
+				2D editor · {sheet.name ? `${sheet.name} · ` : ""}
+				{sheet.width} × {sheet.height} mm
+			</h1>
 			<header className="absolute top-10 left-10 z-2 flex items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
 				<a
 					href="/"
@@ -789,6 +794,13 @@ export function Editor2D() {
 					{scene && (
 						<OrthographicViewer2D
 							scene={scene}
+							fitZoom={1.1}
+							gridBounds={{
+								minX: -sheet.width / 2,
+								maxX: sheet.width / 2,
+								minY: -sheet.height / 2,
+								maxY: sheet.height / 2,
+							}}
 							updateScene={updateScene}
 							selectionEnabled={false}
 							onReady={setReady}

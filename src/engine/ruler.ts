@@ -5,17 +5,20 @@ export interface RulerTick {
 }
 
 const subdivisions = 10;
+const gridChangeoverPixels = 125;
 
 /** Shared by the visible grid, ruler ticks, and editor snapping. */
 export function rulerSpacing(scale: number) {
-	const desired = 80 / scale;
+	const desired = gridChangeoverPixels / scale;
 	const magnitude = 10 ** Math.floor(Math.log10(desired));
-	const major =
+	const interval =
 		([1, 2, 5, 10].find((n) => n * magnitude >= desired) ?? 10) * magnitude;
-	return { major, minor: major / subdivisions };
+	// Keep minor spacing and zoom cutoffs independent of major-line frequency.
+	const minor = interval / 5;
+	return { major: minor * subdivisions, minor };
 }
 
-/** Screen positions for millimetre coordinates, with labels at least 80px apart. */
+/** Screen positions for millimetre coordinates, labelled every ten grid cells. */
 export function rulerTicks(
 	center: number,
 	scale: number,

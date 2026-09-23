@@ -1,6 +1,7 @@
-import { type Ref, useImperativeHandle, useState } from "react";
+import { type Ref, useId, useImperativeHandle, useState } from "react";
 import type { Camera } from "#/engine";
 import { rulerTicks } from "#/engine/ruler";
+import type { Bounds } from "#/engine/types";
 
 interface RulerView {
 	camera: Camera;
@@ -11,7 +12,14 @@ export interface ViewportRulersHandle {
 	update: (view: RulerView) => void;
 }
 
-export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
+export function ViewportRulers({
+	ref,
+	gridBounds,
+}: {
+	ref: Ref<ViewportRulersHandle>;
+	gridBounds?: Bounds;
+}) {
+	const gridMaskId = useId();
 	const [view, setView] = useState<RulerView>();
 	useImperativeHandle(
 		ref,
@@ -45,28 +53,55 @@ export function ViewportRulers({ ref }: { ref: Ref<ViewportRulersHandle> }) {
 				height={height}
 				aria-hidden="true"
 			>
-				{horizontal.map((tick) => (
-					<line
-						key={tick.value}
-						x1={tick.position}
-						x2={tick.position}
-						y1="0"
-						y2={height}
-						className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
-						data-major={tick.label !== undefined}
-					/>
-				))}
-				{vertical.map((tick) => (
-					<line
-						key={tick.value}
-						x1="0"
-						x2={width}
-						y1={tick.position}
-						y2={tick.position}
-						className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
-						data-major={tick.label !== undefined}
-					/>
-				))}
+				{gridBounds && (
+					<defs>
+						<mask
+							id={gridMaskId}
+							maskUnits="userSpaceOnUse"
+							x="0"
+							y="0"
+							width={width}
+							height={height}
+							style={{ maskType: "alpha" }}
+						>
+							<rect width={width} height={height} fill="white" opacity={0.3} />
+							<rect
+								x={width / 2 + (gridBounds.minX - camera.x) * camera.scale}
+								y={height / 2 + (camera.y - gridBounds.maxY) * camera.scale}
+								width={(gridBounds.maxX - gridBounds.minX) * camera.scale}
+								height={(gridBounds.maxY - gridBounds.minY) * camera.scale}
+								fill="white"
+							/>
+						</mask>
+					</defs>
+				)}
+				<g
+					mask={gridBounds ? `url(#${gridMaskId})` : undefined}
+					opacity={gridBounds ? 0.6 : 1}
+				>
+					{horizontal.map((tick) => (
+						<line
+							key={tick.value}
+							x1={tick.position}
+							x2={tick.position}
+							y1="0"
+							y2={height}
+							className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
+							data-major={tick.label !== undefined}
+						/>
+					))}
+					{vertical.map((tick) => (
+						<line
+							key={tick.value}
+							x1="0"
+							x2={width}
+							y1={tick.position}
+							y2={tick.position}
+							className="stroke-[#334155] stroke-1 opacity-35 data-[major=true]:stroke-[#64748b]"
+							data-major={tick.label !== undefined}
+						/>
+					))}
+				</g>
 			</svg>
 			<svg
 				className="pointer-events-none absolute inset-0 z-2 overflow-hidden text-[#9ba7b8] [&_line]:stroke-[#657183] [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums"

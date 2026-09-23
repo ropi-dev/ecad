@@ -12,10 +12,11 @@ import {
 import type { ViewerScene } from "#/engine/scene";
 import { createLifecycle } from "#/lib/lifecycle";
 import { createShapeGeometry } from "./shapeGeometry";
-import { A3, type EditorShape } from "./shapes";
+import type { EditorShape } from "./shapes";
 import { createTextMaterial } from "./text";
+import { createWorksheet, defaultSheet, type SheetSize } from "./worksheet";
 
-function createEditorAssets() {
+function createEditorAssets(sheet: SheetSize) {
 	const lifetime = createLifecycle();
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
@@ -67,9 +68,6 @@ function createEditorAssets() {
 					depthTest: false,
 				}),
 		);
-		const border = own(
-			() => new LineBasicMaterial({ color: "#9ba7b8", depthTest: false }),
-		);
 		const materialFor = (shape: EditorShape, isSelected: boolean) => {
 			const color = isSelected ? selected : stroke;
 			if (shape.kind !== "text") return color;
@@ -89,11 +87,7 @@ function createEditorAssets() {
 					depthTest: false,
 				}),
 		);
-		const paper = new Group();
-		const outline = new LineLoop(frame, border);
-		outline.scale.set(A3.width, A3.height, 1);
-		outline.name = "A3 landscape, 420 × 297 mm";
-		paper.add(outline);
+		const { paper } = own(() => createWorksheet(sheet));
 		const scene: ViewerScene = [{ type: "spatial", object: paper }];
 		return {
 			scene,
@@ -117,13 +111,18 @@ export function useEditorScene(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
 	previews: EditorShape[] = [],
+	sheet: SheetSize = defaultSheet,
 ) {
 	const [assets, setAssets] = useState<ReturnType<typeof createEditorAssets>>();
 	useEffect(() => {
-		const next = createEditorAssets();
+		const next = createEditorAssets({
+			width: sheet.width,
+			height: sheet.height,
+			name: sheet.name,
+		});
 		setAssets(next);
 		return () => next.dispose();
-	}, []);
+	}, [sheet.width, sheet.height, sheet.name]);
 	const updateScene = useCallback(
 		(root: Object3D) => {
 			if (!assets) return;

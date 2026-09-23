@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { Editor2D } from "../../src/components/editor/Editor2D";
+import type { SheetSize } from "../../src/components/editor/worksheet";
 import "../../src/styles.css";
 
 Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
@@ -10,6 +11,7 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	const origin = new Vector3(0, 0, 0).project(camera);
 	const corner = new Vector3(420, 297, 0).project(camera);
 	document.querySelector("#editor-scene")!.textContent = JSON.stringify({
+		worksheet: this.getObjectByName("Worksheet frame")?.parent?.name,
 		camera: camera.type,
 		textures: renderer.info.memory.textures,
 		direction: camera.getWorldDirection(new Vector3()).toArray(),
@@ -19,4 +21,11 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	});
 };
 
-createRoot(document.getElementById("root")!).render(<StrictMode><Editor2D /></StrictMode>);
+const root = createRoot(document.getElementById("root")!);
+function renderEditor(sheet?: SheetSize) {
+	root.render(<StrictMode><Editor2D sheet={sheet} /></StrictMode>);
+}
+window.addEventListener("editor-sheet-size", (event) => {
+	renderEditor((event as CustomEvent<SheetSize>).detail);
+});
+renderEditor();

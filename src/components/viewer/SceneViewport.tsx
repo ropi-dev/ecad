@@ -32,6 +32,7 @@ import {
 } from "#/engine/navigation.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene";
 import { createSceneHover, type SceneTarget } from "#/engine/scene-hover";
+import type { Bounds } from "#/engine/types";
 import { createLifecycle } from "#/lib/lifecycle";
 import { AxisIndicator } from "./AxisIndicator";
 import { FloatingPanel } from "./FloatingPanel";
@@ -52,8 +53,12 @@ export interface SceneViewportProps {
 	cameraMode: "top" | "orbit";
 	projection?: "perspective" | "orthographic";
 	lockProjection?: boolean;
+	/** Magnification applied to the fitted view that defines 100% zoom. */
+	fitZoom?: number;
 	selectionEnabled?: boolean;
 	interactionHint?: string;
+	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
+	gridBounds?: Bounds;
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
 	updateScene?: (object: Object3D) => void;
@@ -69,8 +74,10 @@ export function SceneViewport({
 	cameraMode,
 	projection = "perspective",
 	lockProjection = false,
+	fitZoom = 1,
 	selectionEnabled = true,
 	interactionHint,
+	gridBounds,
 	onChange,
 	updateScene,
 	ref,
@@ -362,7 +369,10 @@ export function SceneViewport({
 						: (radius / Math.sin(halfFov)) * 1.3;
 				camera.position
 					.copy(sphere.center)
-					.addScaledVector(direction, fitDistance);
+					.addScaledVector(
+						direction,
+						fitDistance / (Number.isFinite(fitZoom) && fitZoom > 0 ? fitZoom : 1),
+					);
 				fittedDistance = camera.position.distanceTo(controls.target);
 				controls.minDistance = fittedDistance / MAX_ZOOM;
 				controls.maxDistance = fittedDistance / MIN_ZOOM;
@@ -624,6 +634,7 @@ export function SceneViewport({
 		interactionHint,
 		selectionEnabled,
 		lockProjection,
+		fitZoom,
 		draw,
 		schedule,
 		cancel,
@@ -663,7 +674,9 @@ export function SceneViewport({
 					</div>
 				</FloatingPanel>
 			)}
-			{cameraMode === "top" && <ViewportRulers ref={rulers} />}
+			{cameraMode === "top" && (
+				<ViewportRulers ref={rulers} gridBounds={gridBounds} />
+			)}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D

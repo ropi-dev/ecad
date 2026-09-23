@@ -1,5 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 
+// Coordinate fixtures use a desktop viewport with a 10 mm grid at the fitted view.
+test.use({ viewport: { width: 1440, height: 900 } });
+
 interface State {
 	textures: number;
 	camera: string;
@@ -110,6 +113,7 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 });
 
 test("stays orthographic through navigation and edits after zoom and resize", async ({ page }) => {
+	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("100%");
 	await expect(page.getByRole("button", { name: "Orthographic camera" })).toHaveCount(0);
 	const checkCamera = async () => {
 		const view = await state(page);
@@ -397,24 +401,24 @@ test("snapped line chains keep consecutive corners on the grid", async ({ page }
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await placePin(page, 93, 103);
 	await page.getByRole("button", { name: "Wire", exact: true }).click();
-	await clickAt(page, 95, 105);
+	await clickAt(page, 90, 100);
 	await clickAt(page, 153, 122);
 	await moveAt(page, 163, 167);
-	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBe(60);
+	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBe(70);
 	const preview = (await nonPinState(page)).preview;
-	expect(preview?.x).toBe(155);
+	expect(preview?.x).toBe(150);
 	expect(preview?.y).toBe(135);
 	await clickAt(page, 163, 167);
 	await page.keyboard.press("Enter");
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(2);
 	const [first, second] = (await nonPinState(page)).shapes;
-	expect(first.x).toBe(125);
-	expect(first.y).toBe(105);
+	expect(first.x).toBe(120);
+	expect(first.y).toBe(100);
 	expect(first.width).toBe(60);
 	expect(first.rotation).toBe(0);
-	expect(second.x).toBe(155);
+	expect(second.x).toBe(150);
 	expect(second.y).toBe(135);
-	expect(second.width).toBe(60);
+	expect(second.width).toBe(70);
 	expect(second.rotation).toBeCloseTo(Math.PI / 2, 4);
 });
 
@@ -431,7 +435,7 @@ test("wire chains keep placed corners when grid snapping and zoom change", async
 	for (let index = 0; index < 4; index++) {
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	}
-	await expect.poll(() => visibleGridStep(page)).toBe(2);
+	await expect.poll(() => visibleGridStep(page)).toBe(4);
 	await clickAt(page, 201.2, 181);
 	await page.keyboard.press("Enter");
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
@@ -440,12 +444,12 @@ test("wire chains keep placed corners when grid snapping and zoom change", async
 	expect(lines[0].y).toBe(first.y);
 	expect(lines[0].width).toBe(first.width);
 	expect(lines[1].x).toBeCloseTo(153, 4);
-	expect(lines[1].y).toBeCloseTo(134, 4);
-	expect(lines[1].width).toBeCloseTo(62, 4);
+	expect(lines[1].y).toBeCloseTo(136.5, 4);
+	expect(lines[1].width).toBeCloseTo(67, 4);
 	expect(lines[1].rotation).toBeCloseTo(Math.PI / 2, 4);
-	expect(lines[2].x).toBeCloseTo(177.5, 4);
-	expect(lines[2].y).toBeCloseTo(165, 4);
-	expect(lines[2].width).toBeCloseTo(49, 4);
+	expect(lines[2].x).toBeCloseTo(176.5, 4);
+	expect(lines[2].y).toBeCloseTo(170, 4);
+	expect(lines[2].width).toBeCloseTo(47, 4);
 	expect(lines[2].rotation).toBeCloseTo(0, 4);
 });
 
@@ -487,11 +491,11 @@ test("snapped segment dragging and keyboard movement carry neighboring endpoints
 	await clickAt(page, 160, 135);
 	await expect.poll(async () => (await nonPinState(page)).shapes).toEqual(original);
 	await dragTo(page, [160, 135], [173, 148]);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 115, 175, 115], [175, 115, 175, 175], [175, 175, 100, 175]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 110, 170, 110], [170, 110, 170, 170], [170, 170, 100, 170]]);
 	await page.keyboard.press("ArrowRight");
-	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 115, 180, 115], [180, 115, 180, 175], [180, 175, 100, 175]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 110, 180, 110], [180, 110, 180, 170], [180, 170, 100, 170]]);
 	await page.keyboard.press("Shift+ArrowUp");
-	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 165, 180, 165], [180, 165, 180, 225], [180, 225, 100, 225]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 210, 180, 210], [180, 210, 180, 270], [180, 270, 100, 270]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	expect((await nonPinState(page)).shapes).toHaveLength(3);
 });
@@ -795,26 +799,26 @@ test("snap mode aligns drawing, resizing and keyboard placement to the visible g
 	await fitCenteredEditor(page);
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await expect(snap).toHaveAttribute("aria-pressed", "false");
-	expect(await visibleGridStep(page)).toBe(5);
+	expect(await visibleGridStep(page)).toBe(10);
 	await snap.click();
 	await expect(snap).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
 	await dragTo(page, [-83, -37], [-23, 32]);
 	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(60, 4);
 	let shape = (await state(page)).shapes[0];
-	expect(shape.x).toBe(-55);
-	expect(shape.y).toBe(-2.5);
-	expect(shape.height).toBe(65);
+	expect(shape.x).toBe(-50);
+	expect(shape.y).toBe(-5);
+	expect(shape.height).toBe(70);
 	await dragHandle(page, "1,1", [13, 56]);
-	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(100, 4);
+	await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(90, 4);
 	shape = (await state(page)).shapes[0];
-	expect(shape.height).toBe(90);
-	expect(shape.x - shape.width / 2).toBe(-85);
-	expect(shape.y - shape.height / 2).toBe(-35);
+	expect(shape.height).toBe(100);
+	expect(shape.x - shape.width / 2).toBe(-80);
+	expect(shape.y - shape.height / 2).toBe(-40);
 	await page.keyboard.press("ArrowRight");
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(-30);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBe(-25);
 	await page.keyboard.press("Shift+ArrowUp");
-	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(60);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(110);
 	await snap.click();
 	await page.getByRole("button", { name: "Triangle", exact: true }).click();
 	await dragTo(page, [-83, -37], [-23, 32]);
@@ -846,7 +850,7 @@ test("snapped moves respect grab offsets, preserve groups, and cancel without ch
 	await page.mouse.move(start.x, start.y);
 	await page.mouse.down();
 	await page.mouse.move(end.x, end.y);
-	await expect.poll(async () => (await state(page)).shapes[1].x).toBe(-25);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBe(-30);
 	await page.keyboard.press("Escape");
 	await page.mouse.up();
 	await expect.poll(async () => (await state(page)).shapes).toEqual(moved);
@@ -860,13 +864,13 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	}
 	await expect.poll(() => visibleGridStep(page)).not.toBe(initialStep);
 	const step = await visibleGridStep(page);
-	expect(step).toBe(2);
+	expect(step).toBe(4);
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await expect(snap).toHaveAttribute("title", `Snap to grid (${step} mm)`);
 	await snap.click();
 	await page.getByRole("button", { name: "Circle", exact: true }).click();
 	await dragTo(page, [-31.2, -19.2], [-19, -7]);
-	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.width).toBe(36);
+	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.width).toBe(40);
 	let circle = (await nonPinState(page)).shapes[0];
 	expect(circle.x).toBe(-32);
 	expect(circle.y).toBe(-20);
@@ -876,17 +880,17 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	expect(circle.height).toBe(56);
 	await placePin(page, 9.2, 9.2);
 	await page.getByRole("button", { name: "Wire", exact: true }).click();
-	await clickAt(page, 10, 10);
+	await clickAt(page, 8, 8);
 	await clickAt(page, 25.2, 21);
 	await page.keyboard.press("Enter");
 	await expect.poll(async () => (await nonPinState(page)).shapes[1]?.width).toBeCloseTo(16, 4);
 	await dragHandle(page, "1,0", [39.2, 33]);
-	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(30, 4);
+	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(32, 4);
 	const line = (await nonPinState(page)).shapes[1];
-	expect(line.x - Math.cos(line.rotation) * line.width / 2).toBeCloseTo(10, 4);
-	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(10, 4);
+	expect(line.x - Math.cos(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
+	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
 	expect(line.x + Math.cos(line.rotation) * line.width / 2).toBeCloseTo(40, 4);
-	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(10, 4);
+	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(8, 4);
 	await page.screenshot({ path: test.info().outputPath("snap-to-grid.png") });
 });
 
@@ -1500,10 +1504,11 @@ test("text placement snaps to the grid and equal-width content changes remain un
 	await clickAt(page, 153, 148);
 	const content = page.getByRole("textbox", { name: "Text content" });
 	await expect(content).toBeFocused();
-	await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue("155");
+	await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue("150");
 	await expect(page.getByRole("spinbutton", { name: "Center Y", exact: true })).toHaveValue("150");
 	await content.fill("222");
 	await page.getByRole("spinbutton", { name: "Font size", exact: true }).fill("10");
+	await expect.poll(async () => (await state(page)).shapes[0].height).toBe(15);
 	const originalWidth = (await state(page)).shapes[0].width;
 	await content.fill("333");
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
