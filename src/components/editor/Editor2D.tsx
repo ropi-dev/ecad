@@ -53,7 +53,7 @@ import { defaultSheet, type SheetSize } from "#/drawing/worksheet";
 import { screenToWorld, worldToScreen } from "#/engine/camera";
 import { rulerSpacing } from "#/engine/ruler";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
-import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
+import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { HistoryControls } from "./HistoryControls";
 import { SelectionAttributes } from "./SelectionAttributes";

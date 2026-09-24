@@ -1,11 +1,11 @@
 import { Effect } from "effect";
-import { placeRectangleEffect, replaceShapesEffect, removeShapesEffect } from "../../src/commands/drawing-commands";
-import { createDrawingStore, DrawingStore } from "../../src/commands/drawing-store";
+import { placeRectangleEffect, replaceShapesEffect, removeShapesEffect } from "#/commands/drawing-commands.ts";
+import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
-import { Editor2D } from "../../src/components/editor/Editor2D";
-import type { SheetSize } from "../../src/components/editor/worksheet";
+import { Editor2D } from "#/components/editor/Editor2D.tsx";
+import type { SheetSize } from "#/drawing/worksheet.ts";
 import "../../src/styles.css";
 
 Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
