@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
+import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { Editor2D } from "../../src/components/editor/Editor2D";
 import type { SheetSize } from "../../src/components/editor/worksheet";
 import "../../src/styles.css";
@@ -14,6 +14,8 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 		worksheet: this.getObjectByName("Worksheet frame")?.parent?.name,
 		camera: camera.type,
 		textures: renderer.info.memory.textures,
+		outlines: shapes?.children.filter((shape) => shape instanceof LineLoop).map((shape) => ({ width: shape.scale.x, height: shape.scale.y })),
+		wireTerminals: this.getObjectByName("editor-wire-terminals")?.children.map((terminal) => ({ x: terminal.position.x, y: terminal.position.y, width: terminal.scale.x, height: terminal.scale.y })),
 		direction: camera.getWorldDirection(new Vector3()).toArray(),
 		origin: origin.toArray(), corner: corner.toArray(),
 		preview: preview instanceof Mesh ? { width: preview.scale.x, height: preview.scale.y, rotation: preview.rotation.z, x: preview.position.x, y: preview.position.y } : null,

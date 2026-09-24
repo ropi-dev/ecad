@@ -140,8 +140,8 @@ test("symbols expose only their external pins, including after rotation", () => 
 		rotation: Math.PI / 2,
 	};
 	assert.deepEqual(pinTerminals(symbol), [
-		{ x: 50, y: 57.1875 },
-		{ x: 50, y: 62.8125 },
+		{ x: 50, y: 57 },
+		{ x: 50, y: 63 },
 	]);
 	assert.deepEqual(wireConnectionPoints([symbol]), pinTerminals(symbol));
 	assert.equal(findWireConnection([symbol], { x: 50, y: 50 }, 1), undefined);

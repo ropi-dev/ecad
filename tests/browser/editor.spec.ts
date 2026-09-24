@@ -4,6 +4,8 @@ import { expect, type Page, test } from "@playwright/test";
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface State {
+	outlines: { width: number; height: number }[];
+	wireTerminals: { x: number; y: number; width: number; height: number }[];
 	textures: number;
 	camera: string;
 	direction: number[];
@@ -436,7 +438,7 @@ test("wire chains keep placed corners when grid snapping and zoom change", async
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	}
 	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("244%");
-	await expect.poll(() => visibleGridStep(page)).toBe(10);
+	await expect.poll(() => visibleGridStep(page)).toBe(2);
 	await clickAt(page, 201.2, 181);
 	await page.keyboard.press("Enter");
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
@@ -448,9 +450,9 @@ test("wire chains keep placed corners when grid snapping and zoom change", async
 	expect(lines[1].y).toBeCloseTo(136.5, 4);
 	expect(lines[1].width).toBeCloseTo(67, 4);
 	expect(lines[1].rotation).toBeCloseTo(Math.PI / 2, 4);
-	expect(lines[2].x).toBeCloseTo(176.5, 4);
+	expect(lines[2].x).toBeCloseTo(177.5, 4);
 	expect(lines[2].y).toBeCloseTo(170, 4);
-	expect(lines[2].width).toBeCloseTo(47, 4);
+	expect(lines[2].width).toBeCloseTo(49, 4);
 	expect(lines[2].rotation).toBeCloseTo(0, 4);
 });
 
@@ -863,7 +865,7 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	for (let index = 0; index < 10; index++) {
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	}
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("931%");
+	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("800%");
 	await expect.poll(() => visibleGridStep(page)).not.toBe(initialStep);
 	const step = await visibleGridStep(page);
 	expect(step).toBe(1);
@@ -1264,34 +1266,58 @@ test("symbols select through any child, move and delete as one, and restore with
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
 });
 
+test("symbols select and drag anywhere inside their compact outline, including after rotation", async ({ page }) => {
+	await insertSymbol(page, "Capacitor", 200, 150);
+	const symbol = (await state(page)).shapes[0];
+	await expect.poll(async () => (await state(page)).outlines).toEqual([{ width: symbol.width + 0.5, height: symbol.height + 0.5 }]);
+	for (let index = 0; index < 4; index++)
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await clickAt(page, 200 + symbol.width / 2 + 0.4, 150);
+	await expect.poll(() => selectedNames(page)).toEqual([]);
+	await clickAt(page, 200, 150);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await dragTo(page, [203.3, 151.7], [223.3, 161.7]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(220, 4);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(160, 4);
+	await page.getByLabel("Angle", { exact: true }).fill("90");
+	await dragTo(page, [218.3, 163.3], [208.3, 168.3]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(210, 4);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(165, 4);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(220, 4);
+	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(210, 4);
+});
+
 test("symbol movement keeps attached wires orthogonal through drag, history, keyboard and attributes", async ({ page }) => {
 	await insertSymbol(page, "Resistor", 100, 150);
 	await page.getByRole("button", { name: "Wire", exact: true }).click();
-	await clickAt(page, 102.8125, 150);
+	await clickAt(page, 103, 150);
 	await clickAt(page, 180, 150);
 	await clickAt(page, 180, 210);
 	await page.keyboard.press("Enter");
+	await expect.poll(() => wireEndpoints(page)).toEqual([[103, 150, 180, 150], [180, 150, 180, 210]]);
 	const original = await wireEndpoints(page);
 	await dragTo(page, [100, 150], [120, 170]);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[122.8125, 170, 180, 170], [180, 170, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[123, 170, 180, 170], [180, 170, 180, 210]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	await page.getByRole("button", { name: "Undo", exact: true }).click();
 	await expect.poll(() => wireEndpoints(page)).toEqual(original);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(100, 4);
 	await page.getByRole("button", { name: "Redo", exact: true }).click();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[122.8125, 170, 180, 170], [180, 170, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[123, 170, 180, 170], [180, 170, 180, 210]]);
 	await clickAt(page, 120, 170);
 	await page.keyboard.press("ArrowRight");
-	await expect.poll(() => wireEndpoints(page)).toEqual([[123.8125, 170, 180, 170], [180, 170, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 170, 180, 170], [180, 170, 180, 210]]);
 	await page.getByLabel("Center Y", { exact: true }).fill("180");
-	await expect.poll(() => wireEndpoints(page)).toEqual([[123.8125, 180, 180, 180], [180, 180, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 180, 180, 180], [180, 180, 180, 210]]);
 	await moveAt(page, 121, 180);
 	await page.mouse.down();
 	await moveAt(page, 141, 190);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[143.8125, 190, 180, 190], [180, 190, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[144, 190, 180, 190], [180, 190, 180, 210]]);
 	await page.keyboard.press("Escape");
 	await page.mouse.up();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[123.8125, 180, 180, 180], [180, 180, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 180, 180, 180], [180, 180, 180, 210]]);
 });
 
 test("marquee and shift selection keep symbols intact alongside ordinary shapes", async ({ page }) => {
@@ -1372,6 +1398,7 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await clickAt(page, 160, 100);
  await page.keyboard.press("Enter");
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
+ await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y, width, height }) => [Math.round(x), Math.round(y), width, height])).toEqual([[160, 100, 2, 2]]);
  // Neither the midpoint of a segment nor an arbitrary shape is a valid start.
  await wireTool.click();
  await clickAt(page, 130, 100);
@@ -1381,6 +1408,7 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await clickAt(page, 161, 101);
  await clickAt(page, 160, 160);
  await page.keyboard.press("Escape");
+ await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y }) => [Math.round(x), Math.round(y)])).toEqual([[160, 160]]);
  await placePin(page, 240, 160);
  await wireTool.click();
  await clickAt(page, 240, 160);
@@ -1388,10 +1416,13 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await expect(wireTool).toHaveAttribute("aria-pressed", "false");
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100], [160, 100, 160, 160], [240, 160, 160, 160]]);
  await expect.poll(async () => (await state(page)).preview).toBeNull();
+ await expect.poll(async () => (await state(page)).wireTerminals).toEqual([]);
  await page.getByRole("button", { name: "Undo", exact: true }).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
+ await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y }) => [Math.round(x), Math.round(y)])).toEqual([[160, 160]]);
  await page.getByRole("button", { name: "Redo", exact: true }).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
+ await expect.poll(async () => (await state(page)).wireTerminals).toEqual([]);
  await page.screenshot({ path: test.info().outputPath("pins-and-wires.png") });
 });
 
@@ -1408,14 +1439,14 @@ test("wires finish exactly at off-grid pins and rotated symbol terminals", async
  await page.getByLabel("Angle", { exact: true }).fill("90");
  await placePin(page, 300, 173.81);
  await page.getByRole("button", { name: "Wire", exact: true }).click();
- await clickAt(page, 300, 175);
- await clickAt(page, 250, 152.8125);
- await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [300, 175, 250, 175], [250, 175, 250, 152.8125]]);
+ await clickAt(page, 300, 170);
+ await clickAt(page, 250, 153);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [300, 170, 250, 170], [250, 170, 250, 153]]);
  await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
  // The other symbol terminal can start a wire too.
  await page.getByRole("button", { name: "Wire", exact: true }).click();
- await clickAt(page, 250, 147.1875);
- await clickAt(page, 300, 147.1875);
+ await clickAt(page, 250, 147);
+ await clickAt(page, 300, 147);
  await page.keyboard.press("Enter");
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(4);
 });
@@ -1439,14 +1470,14 @@ test("offset off-grid pins connect with a right-angle bend and undo together", a
 });
 
 
-test("compact symbols span 6 mm with KiCad proportions and the grid has ten cells per major square", async ({ page }) => {
+test("compact symbols have a 6 mm pin span and the grid has ten cells per major square", async ({ page }) => {
  await insertSymbol(page, "Resistor", 100, 150);
- await expect.poll(async () => (await state(page)).shapes[0].width).toBeCloseTo(6, 3);
+ await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(6.4, 3);
  await expect(page.getByRole("spinbutton", { name: "Line width", exact: true })).toHaveValue("0.254");
  await insertSymbol(page, "Capacitor", 120, 150);
- await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(6, 3);
+ await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(6.4, 3);
  await insertSymbol(page, "Ground", 140, 150);
- await expect.poll(async () => Math.max((await state(page)).shapes[2].width, (await state(page)).shapes[2].height)).toBeCloseTo(6, 3);
+ await expect.poll(async () => Math.max((await state(page)).shapes[2]?.width, (await state(page)).shapes[2]?.height)).toBeCloseTo(6.4, 3);
  for (let zoom = 0; zoom < 3; zoom++) {
   const ticks = await page.getByRole("img", { name: "Drawing rulers in millimetres" }).locator('[data-axis="x"]').evaluateAll(nodes => nodes.map(node => ({ value: Number(node.getAttribute("data-value")), major: !!node.querySelector("text") })));
   const majors = ticks.flatMap((tick, index) => tick.major ? [index] : []);

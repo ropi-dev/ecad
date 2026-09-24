@@ -344,16 +344,21 @@ export function shapeBounds(shape: EditorShape): Bounds {
 	};
 }
 
+export function selectionSize(shape: EditorShape) {
+	const padding = shape.kind === "symbol" ? 0.5 : 4;
+	return {
+		width: shape.width + padding,
+		height: (shape.kind === "wire" ? shape.lineWidth : shape.height) + padding,
+	};
+}
+
 export function hitShape(
 	shape: EditorShape,
 	point: Point,
 	tolerance: number,
 ): boolean {
-	if (shape.kind === "symbol")
-		return symbolShapes(shape).some((child) =>
-			hitShape(child, point, tolerance),
-		);
-	const { width, height } = shape;
+	const { width, height } =
+		shape.kind === "symbol" ? selectionSize(shape) : shape;
 	const dx = point.x - shape.x;
 	const dy = point.y - shape.y;
 	if (shape.kind === "pin")
@@ -386,8 +391,9 @@ export function intersectsSelection(
 	bounds: Bounds,
 ): boolean {
 	if (shape.kind === "symbol")
-		return symbolShapes(shape).some((child) =>
-			intersectsSelection(child, bounds),
+		return intersectsSelection(
+			{ ...shape, kind: "rectangle", ...selectionSize(shape) },
+			bounds,
 		);
 	const { width, height } = shape;
 	if (shape.kind === "circle" || shape.kind === "pin") {
@@ -440,8 +446,7 @@ export function pinTerminals(shape: EditorShape): Point[] {
 		: [];
 }
 
-/** Only pins and exposed wire ends can begin or finish a connection. */
-export function wireConnectionPoints(shapes: EditorShape[]): Point[] {
+export function openWireEnds(shapes: EditorShape[]) {
 	const pins = shapes.flatMap(pinTerminals);
 	const wires = shapes
 		.filter((shape) => shape.kind === "wire")
@@ -450,20 +455,29 @@ export function wireConnectionPoints(shapes: EditorShape[]): Point[] {
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
-	const openEnds = wires.flatMap((wire) =>
-		[wire.start, wire.end].filter(
-			(point) =>
-				!pins.some(
-					(pin) =>
-						Math.hypot(pin.x - point.x, pin.y - point.y) <= connectionTolerance,
-				) &&
-				!wires.some(
-					(other) =>
-						other !== wire && pointOnWire(point, other.start, other.end),
-				),
-		),
+	return wires.flatMap((wire) =>
+		[wire.start, wire.end]
+			.filter(
+				(point) =>
+					!pins.some(
+						(pin) =>
+							Math.hypot(pin.x - point.x, pin.y - point.y) <=
+							connectionTolerance,
+					) &&
+					!wires.some(
+						(other) =>
+							other !== wire && pointOnWire(point, other.start, other.end),
+					),
+			)
+			.map((point) => ({ shape: wire.shape, point })),
 	);
-	return [...pins, ...openEnds];
+}
+
+export function wireConnectionPoints(shapes: EditorShape[]): Point[] {
+	return [
+		...shapes.flatMap(pinTerminals),
+		...openWireEnds(shapes).map(({ point }) => point),
+	];
 }
 
 /** Resolve against the pointer before grid snapping so off-grid pins stay exact. */
@@ -772,7 +786,9 @@ export function moveShapes(
 		delta = { x: target.x - anchor.x, y: target.y - anchor.y };
 	}
 	if (
-		shapes.some((shape) => shape.kind === "wire" || pinTerminals(shape).length > 0)
+		shapes.some(
+			(shape) => shape.kind === "wire" || pinTerminals(shape).length > 0,
+		)
 	)
 		return moveConnectedWires(shapes, delta, allShapes);
 	return shapes.map((shape) => ({

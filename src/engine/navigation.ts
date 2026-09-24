@@ -1,5 +1,5 @@
 export const MIN_ZOOM = 0.25;
-export const MAX_ZOOM = 16;
+export const MAX_ZOOM = 8;
 export const ZOOM_FACTOR = 1.25;
 
 export function handleViewerKeyDown(

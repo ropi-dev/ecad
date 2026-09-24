@@ -2,13 +2,37 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
-import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, resizeHandles, symbolShapes } from "../src/components/editor/shapes.ts";
+import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, pinTerminals, resizeHandles, selectionSize, symbolShapes } from "../src/components/editor/shapes.ts";
 import { createSymbol, symbolDefinitions } from "../src/components/editor/symbols.ts";
 
 for (const definition of symbolDefinitions) {
 	test(`${definition.name} selects through each child and renders all its strokes`, () => {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
-		assert.equal(Math.max(symbol.width, symbol.height), 6);
+		assert.equal(Math.max(symbol.width, symbol.height), 6.4);
+		for (const terminal of pinTerminals(symbol)) {
+			assert.equal(terminal.x, Math.round(terminal.x));
+			assert.equal(terminal.y, Math.round(terminal.y));
+		}
+		const selection = selectionSize(symbol);
+		assert.equal(selection.width, symbol.width + 0.5);
+		assert.equal(selection.height, symbol.height + 0.5);
+		for (const angle of [0, 90, 180, 270]) {
+			const rotated = editShapeAttribute(symbol, "angle", angle);
+			for (const [x, y, expected] of [
+				[0, 0, true],
+				[selection.width / 2 - 0.01, selection.height / 2 - 0.01, true],
+				[selection.width / 2 + 0.01, 0, false],
+				[0, selection.height / 2 + 0.01, false],
+			] as const) {
+				const point = {
+					x: rotated.x + x * Math.cos(rotated.rotation) - y * Math.sin(rotated.rotation),
+					y: rotated.y + x * Math.sin(rotated.rotation) + y * Math.cos(rotated.rotation),
+				};
+				assert.equal(hitShape(rotated, point, 0), expected);
+				assert.equal(intersectsSelection(rotated, { minX: point.x, maxX: point.x, minY: point.y, maxY: point.y }), expected);
+			}
+		}
+
 		const geometry = createShapeGeometry(symbol);
 		const material = new MeshBasicMaterial();
 		const mesh = new Mesh(geometry, material);
@@ -59,6 +83,6 @@ test("rotation transforms symbol children and instances own their attributes", (
 	symbol.attributes.value = "22 kΩ";
 	symbol.children[0].width = 999;
 	assert.equal(second.attributes.value, "10 kΩ");
-	assert.equal(second.children[0].width, 0.9375);
-	assert.equal(symbolDefinitions[0].children[0].width, 0.9375);
+	assert.ok(Math.abs(second.children[0].width - 1) < 1e-12);
+	assert.ok(Math.abs(symbolDefinitions[0].children[0].width - 1) < 1e-12);
 });

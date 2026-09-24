@@ -73,19 +73,22 @@ const referenceDefinitions: SymbolDefinition[] = [
 	},
 ];
 
-/** Fit the whole symbol, including its terminal markers, into a 6 mm square. */
 export const symbolDefinitions: SymbolDefinition[] = referenceDefinitions.map(
 	(definition) => {
-		const reference = createSymbol(0, definition, { x: 0, y: 0 });
-		const scale = 6 / Math.max(reference.width, reference.height);
+		const terminalExtent = Math.max(
+			...definition.children
+				.filter((child) => child.kind === "pin")
+				.flatMap((child) => [Math.abs(child.x), Math.abs(child.y)]),
+		);
+		const scale = 3 / terminalExtent;
 		return {
 			...definition,
 			children: definition.children.map((child) => ({
 				...child,
 				x: child.x * scale,
 				y: child.y * scale,
-				width: child.width * scale,
-				height: child.height * scale,
+				width: child.kind === "pin" ? 0.4 : child.width * scale,
+				height: child.kind === "pin" ? 0.4 : child.height * scale,
 			})),
 		};
 	},

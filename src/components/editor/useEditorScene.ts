@@ -12,7 +12,12 @@ import {
 import type { ViewerScene } from "#/engine/scene";
 import { createLifecycle } from "#/lib/lifecycle";
 import { createShapeGeometry } from "./shapeGeometry";
-import type { EditorShape } from "./shapes";
+import {
+	drawShape,
+	type EditorShape,
+	openWireEnds,
+	selectionSize,
+} from "./shapes";
 import { createTextMaterial } from "./text";
 import { createWorksheet, defaultSheet, type SheetSize } from "./worksheet";
 
@@ -21,6 +26,8 @@ function createEditorAssets(sheet: SheetSize) {
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
 	try {
+		const terminal = drawShape(0, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+		const terminalGeometry = own(() => createShapeGeometry(terminal));
 		const texts = new Map<
 			number,
 			ReturnType<typeof createTextMaterial> & { text: string }
@@ -91,6 +98,8 @@ function createEditorAssets(sheet: SheetSize) {
 		const scene: ViewerScene = [{ type: "spatial", object: paper }];
 		return {
 			scene,
+			terminal,
+			terminalGeometry,
 			geometries,
 			texts,
 			materialFor,
@@ -163,14 +172,28 @@ export function useEditorScene(
 				mesh.renderOrder = index + 1;
 				drawing.add(mesh);
 				if (selectedIds.has(shape.id)) {
+					const selection = selectionSize(shape);
 					const outline = new LineLoop(assets.frame, assets.selection);
 					outline.position.copy(mesh.position);
 					outline.rotation.copy(mesh.rotation);
-					outline.scale.set(size.width + 4, mesh.scale.y + 4, 1);
+					outline.scale.set(selection.width, selection.height, 1);
 					outline.renderOrder = shapes.length + 1;
 					drawing.add(outline);
 				}
 			}
+			const terminals = new Group();
+			terminals.name = "editor-wire-terminals";
+			for (const { shape, point } of openWireEnds(shapes)) {
+				const terminal = new Mesh(
+					assets.terminalGeometry,
+					selectedIds.has(shape.id) ? assets.selected : assets.stroke,
+				);
+				terminal.position.set(point.x, point.y, 0);
+				terminal.scale.set(assets.terminal.width, assets.terminal.height, 1);
+				terminal.renderOrder = shapes.length + 1;
+				terminals.add(terminal);
+			}
+			drawing.add(terminals);
 			root.getObjectByName("editor-wire-preview")?.removeFromParent();
 			root.getObjectByName("editor-wire-tail-preview")?.removeFromParent();
 			root.getObjectByName("editor-symbol-preview")?.removeFromParent();

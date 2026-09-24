@@ -17,7 +17,8 @@ const minimumMinorPixels = 10;
 /** Shared by the visible grid, ruler ticks, and editor snapping. */
 export function rulerSpacing(scale: number) {
 	const desired = minimumMinorPixels / scale;
-	const minor = 10 ** Math.ceil(Math.log10(desired));
+	const decade = 10 ** Math.ceil(Math.log10(desired));
+	const minor = decade / 5 >= desired ? decade / 5 : decade;
 	return { major: minor * subdivisions, minor };
 }
 

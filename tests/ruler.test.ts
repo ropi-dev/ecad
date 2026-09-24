@@ -50,20 +50,20 @@ test("grid crossfades unique lines while shared lines retain their strength", ()
 	assert.equal(new Set(ticks.map((tick) => tick.value)).size, ticks.length);
 	for (const value of [-5, -1, 1, 5])
 		assert.ok(Math.abs(tickAt(value).opacity - 0.5) < 1e-10);
-	for (const value of [-100, -50, -20, 0, 20, 50, 100])
+	for (const value of [-100, -50, -20, -2, 0, 2, 20, 50, 100])
 		assert.equal(tickAt(value).opacity, 1);
 	assert.equal(tickAt(0).majorOpacity, 1);
-	assert.ok(Math.abs(tickAt(20).majorOpacity - 0.5) < 1e-10);
+	assert.equal(tickAt(20).majorOpacity, 1);
 	assert.ok(Math.abs(tickAt(50).majorOpacity - 0.5) < 1e-10);
 	assert.equal(tickAt(100).majorOpacity, 1);
 	const earlyFineLine = gridTicks(0, 9, 997).find((tick) => tick.value === 1)!;
 	assert.ok(earlyFineLine.opacity > 0 && earlyFineLine.opacity < 0.5);
-	assert.equal(rulerSpacing(9).minor, 10);
+	assert.equal(rulerSpacing(9).minor, 2);
 	assert.equal(rulerSpacing(10).minor, 1);
 });
 
 test("grid appearance stays continuous across the discrete snapping cutoff", () => {
-	for (const cutoff of [0.01, 0.1, 1, 10]) {
+	for (const cutoff of [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50]) {
 		const beforeScale = cutoff * (1 - 1e-8);
 		const afterScale = cutoff * (1 + 1e-8);
 		const before = gridTicks(0, beforeScale, 997);
@@ -84,7 +84,7 @@ test("grid appearance stays continuous across the discrete snapping cutoff", () 
 	}
 });
 
-test("grid spacing changes by a factor of ten at every level", () => {
+test("grid spacing repeats its intermediate steps at every decade", () => {
 	assert.deepEqual([0.04, 0.4, 4, 40, 400, 4000].map((scale) => rulerSpacing(scale).major), [10000, 1000, 100, 10, 1, 0.1]);
 	for (const scale of [0.01, 0.8, 8, 80, 800, 8000]) {
 		const current = rulerSpacing(scale);
@@ -103,4 +103,16 @@ test("each major grid square has ten subdivisions at every zoom", () => {
   const labelled = ticks.flatMap((tick, index) => tick.label === undefined ? [] : [index]);
   for (let index = 1; index < labelled.length; index++) assert.equal(labelled[index] - labelled[index - 1], 10);
  }
+});
+
+test("minor grid spacing stays between 10 and 50 pixels across zoom levels", () => {
+	for (let step = -600; step <= 600; step++) {
+		const scale = 10 ** (step / 100);
+		const pixels = rulerSpacing(scale).minor * scale;
+		assert.ok(pixels >= 10 - 1e-10 && pixels <= 50 + 1e-10, `${pixels} px at scale ${scale}`);
+	}
+	assert.equal(rulerSpacing(4.99).minor, 10);
+	assert.equal(rulerSpacing(5).minor, 2);
+	assert.equal(rulerSpacing(9.99).minor, 2);
+	assert.equal(rulerSpacing(10).minor, 1);
 });

@@ -219,7 +219,7 @@ for (const mode of [
 	"3d",
 	"3d-orthographic",
 ] as const) {
-	test(`${mode} zoom percentage and camera stay within 25% to 1600%`, async ({
+	test(`${mode} zoom percentage and camera stay within 25% to 800%`, async ({
 		page,
 	}) => {
 		const orbit = mode.startsWith("3d");
@@ -256,17 +256,17 @@ for (const mode of [
 		const checkLimit = async (level: number) => {
 			await expect(fit).toHaveText(`${level * 100}%`);
 			await expect.poll(actualZoom).toBeCloseTo(level, 8);
-			await expect(level === 16 ? zoomIn : zoomOut).toBeDisabled();
-			await expect(level === 16 ? zoomOut : zoomIn).toBeEnabled();
+			await expect(level === 8 ? zoomIn : zoomOut).toBeDisabled();
+			await expect(level === 8 ? zoomOut : zoomIn).toBeEnabled();
 		};
 		await zoomIn.click();
 		await expect(fit).toHaveText("125%");
-		for (let index = 0; index < 12; index++) await zoomIn.click();
-		await checkLimit(16);
+		for (let index = 0; index < 9; index++) await zoomIn.click();
+		await checkLimit(8);
 		await canvas.focus();
 		await page.keyboard.press("+");
-		await checkLimit(16);
-		for (let index = 0; index < 19; index++) await zoomOut.click();
+		await checkLimit(8);
+		for (let index = 0; index < 16; index++) await zoomOut.click();
 		await checkLimit(0.25);
 		await canvas.focus();
 		await page.keyboard.press("-");
@@ -287,13 +287,13 @@ for (const mode of [
 					}),
 				);
 			}, deltaY);
-			await checkLimit(deltaY < 0 ? 16 : 0.25);
+			await checkLimit(deltaY < 0 ? 8 : 0.25);
 		}
 		await fit.click();
 		const bounds = (await canvas.boundingBox())!;
 		const cdp = await page.context().newCDPSession(page);
 		for (const [start, end, level] of [
-			[5, bounds.width * 0.4, 16],
+			[5, bounds.width * 0.4, 8],
 			[bounds.width * 0.4, 1, 0.25],
 		]) {
 			const points = (distance: number) =>
