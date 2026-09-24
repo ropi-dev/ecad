@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { placeRectangleEffect, replaceShapesEffect, removeShapesEffect } from "../../src/commands/drawing-commands";
+import { createDrawingStore, DrawingStore } from "../../src/commands/drawing-store";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
@@ -23,9 +26,30 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	});
 };
 
+export const drawingStore = createDrawingStore();
+export function placeRectangle(input: Parameters<typeof placeRectangleEffect>[0]) {
+	return Effect.runSync(placeRectangleEffect(input).pipe(Effect.provideService(DrawingStore, drawingStore)));
+}
+export function replaceShapes(shapes: Parameters<typeof replaceShapesEffect>[0]) {
+	return Effect.runSync(replaceShapesEffect(shapes, "External edit").pipe(Effect.provideService(DrawingStore, drawingStore)));
+}
+export function removeShapes(ids: number[]) {
+	return Effect.runSync(removeShapesEffect(ids).pipe(Effect.provideService(DrawingStore, drawingStore)));
+}
+const showDocument = () => {
+	const snapshot = drawingStore.getSnapshot();
+	document.querySelector("#editor-document")!.textContent = JSON.stringify({
+		shapes: snapshot.shapes,
+		historyId: snapshot.history.currentId,
+		historySize: Object.keys(snapshot.history.nodes).length,
+		nextShapeId: snapshot.nextShapeId,
+	});
+};
+drawingStore.subscribe(showDocument);
+showDocument();
 const root = createRoot(document.getElementById("root")!);
 function renderEditor(sheet?: SheetSize) {
-	root.render(<StrictMode><Editor2D sheet={sheet} /></StrictMode>);
+	root.render(<StrictMode><Editor2D sheet={sheet} store={drawingStore} /></StrictMode>);
 }
 window.addEventListener("editor-sheet-size", (event) => {
 	renderEditor((event as CustomEvent<SheetSize>).detail);

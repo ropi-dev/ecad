@@ -1,3 +1,4 @@
+import { Effect, Either } from "effect";
 import {
 	Circle,
 	Hand,
@@ -13,27 +14,23 @@ import {
 import {
 	Fragment,
 	type PointerEvent as ReactPointerEvent,
+	useEffect,
+	useEffectEvent,
 	useRef,
 	useState,
+	useSyncExternalStore,
 } from "react";
-import { screenToWorld, worldToScreen } from "#/engine/camera";
-import { rulerSpacing } from "#/engine/ruler";
-import type { Point } from "#/engine/types";
-import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
-import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
-import { viewControlButtonClassName } from "../viewer/ViewControls3D";
-import { HistoryControls } from "./HistoryControls";
 import {
-	commitHistory,
-	createHistory,
-	getHistoryState,
-	type History,
-	jumpHistory,
-	redoHistory,
-	undoHistory,
-} from "./history";
-import { SelectionAttributes } from "./SelectionAttributes";
-import { SymbolPicker } from "./SymbolPicker";
+	type CommandResult,
+	type InvalidDrawingCommand,
+	jumpHistoryEffect,
+	placeShapesEffect,
+	redoEffect,
+	removeShapesEffect,
+	replaceShapesEffect,
+	undoEffect,
+} from "#/commands/drawing-commands";
+import { createDrawingStore, DrawingStore } from "#/commands/drawing-store";
 import {
 	constrainWireEndpoint,
 	drawShape,
@@ -43,18 +40,26 @@ import {
 	hitShape,
 	intersectsSelection,
 	moveShapes,
-	normalizeWireSegments,
 	type ResizeHandle,
 	resizeHandles,
 	resizeShape,
 	routeWire,
 	type ShapeKind,
 	snapPoint,
-} from "./shapes";
-import { createSymbol, type SymbolDefinition } from "./symbols";
+} from "#/drawing/shapes";
+import { createSymbol, type SymbolDefinition } from "#/drawing/symbols";
+import type { Point } from "#/drawing/types";
+import { defaultSheet, type SheetSize } from "#/drawing/worksheet";
+import { screenToWorld, worldToScreen } from "#/engine/camera";
+import { rulerSpacing } from "#/engine/ruler";
+import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
+import type { Viewer2DSnapshot } from "../viewer/types/Viewer2DSnapshot";
+import { viewControlButtonClassName } from "../viewer/ViewControls3D";
+import { HistoryControls } from "./HistoryControls";
+import { SelectionAttributes } from "./SelectionAttributes";
+import { SymbolPicker } from "./SymbolPicker";
 import { createTextShape, updateText } from "./text";
 import { useEditorScene } from "./useEditorScene";
-import { defaultSheet, type SheetSize } from "./worksheet";
 
 const tools = [
 	{ kind: "select", label: "Select", icon: MousePointer2 },
@@ -92,53 +97,38 @@ interface WireChain {
 	start: Point;
 	pointerId: number;
 }
-interface DrawingState {
-	shapes: EditorShape[];
-	selectedIds: number[];
+export interface Editor2DProps {
+	sheet?: SheetSize;
+	/** Supply a store to run commands from outside the editor as well. */
+	store?: ReturnType<typeof createDrawingStore>;
 }
 
-function sameDrawing(first: DrawingState, second: DrawingState) {
-	return (
-		first.shapes.length === second.shapes.length &&
-		first.shapes.every((shape, index) => {
-			const other = second.shapes[index];
-			return (
-				shape.id === other.id &&
-				shape.kind === other.kind &&
-				(shape.kind !== "symbol" ||
-					(other.kind === "symbol" &&
-						shape.definitionId === other.definitionId &&
-						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
-						shape.attributes.name === other.attributes.name &&
-						shape.attributes.reference === other.attributes.reference &&
-						shape.attributes.value === other.attributes.value)) &&
-				(shape.kind !== "text" ||
-					(other.kind === "text" &&
-						shape.text === other.text &&
-						shape.fontSize === other.fontSize)) &&
-				Math.abs(shape.x - other.x) < 1e-9 &&
-				Math.abs(shape.y - other.y) < 1e-9 &&
-				Math.abs(shape.width - other.width) < 1e-9 &&
-				Math.abs(shape.height - other.height) < 1e-9 &&
-				shape.lineWidth === other.lineWidth &&
-				Math.abs(shape.rotation - other.rotation) < 1e-9
-			);
-		})
+export function Editor2D({
+	sheet = defaultSheet,
+	store: suppliedStore,
+}: Editor2DProps = {}) {
+	const [ownedStore] = useState(() => createDrawingStore());
+	const store = suppliedStore ?? ownedStore;
+	const drawing = useSyncExternalStore(
+		store.subscribe,
+		store.getSnapshot,
+		store.getSnapshot,
 	);
-}
-
-export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
-	const [shapes, setShapes] = useState<EditorShape[]>([]);
-	const currentShapes = useRef(shapes);
+	const history = drawing.history;
+	const executingCommand = useRef(false);
+	// A gesture changes only this preview. Commands receive the completed geometry.
+	const [draftShapes, setDraftShapes] = useState<EditorShape[] | null>(null);
+	const currentDraft = useRef<EditorShape[] | null>(null);
+	const shapes = draftShapes ?? drawing.shapes;
+	const currentShapes = {
+		get current() {
+			return currentDraft.current ?? store.getSnapshot().shapes;
+		},
+	};
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 	const currentSelection = useRef(selectedIds);
-	const [history, setHistory] = useState(() =>
-		createHistory<DrawingState>(
-			{ shapes: [], selectedIds: [] },
-			"Empty drawing",
-		),
-	);
-	const currentHistory = useRef(history);
+	// Selection restoration is an editor preference, separate from document history.
+	const historySelection = useRef(new Map<number, number[]>([[0, []]]));
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
@@ -154,7 +144,11 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 	const wireChain = useRef<WireChain | null>(null);
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
-	const nextId = useRef(1);
+	const nextId = {
+		get current() {
+			return store.getSnapshot().nextShapeId;
+		},
+	};
 	const { scene, updateScene } = useEditorScene(
 		shapes,
 		selectedIds,
@@ -197,54 +191,69 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 		event.preventDefault();
 		event.stopPropagation();
 	};
-	const applyShapes = (next: EditorShape[]) => {
-		// Pointer-up updates geometry and commits it before React renders again.
-		currentShapes.current = next;
-		setShapes(next);
+	const setPreviewShapes = (next: EditorShape[] | null) => {
+		currentDraft.current = next;
+		setDraftShapes(next);
 	};
 	const applySelection = (ids: Set<number>) => {
 		currentSelection.current = ids;
 		setSelectedIds(ids);
 	};
-	const applyHistory = (next: History<DrawingState>) => {
-		currentHistory.current = next;
-		setHistory(next);
+	const execute = <A,>(
+		program: Effect.Effect<A, InvalidDrawingCommand, DrawingStore>,
+	): A | undefined => {
+		executingCommand.current = true;
+		try {
+			const result = Effect.runSync(
+				program.pipe(Effect.provideService(DrawingStore, store), Effect.either),
+			);
+			if (Either.isLeft(result)) {
+				setError(result.left.message);
+				return undefined;
+			}
+			return result.right;
+		} finally {
+			executingCommand.current = false;
+		}
 	};
-	const recordEdit = (label: string) => {
-		applyHistory(
-			commitHistory(
-				currentHistory.current,
-				{
-					shapes: currentShapes.current,
-					selectedIds: [...currentSelection.current],
-				},
-				label,
-				sameDrawing,
-			),
-		);
-	};
-	const commitShapes = (
-		next: EditorShape[],
-		label: string,
+	const acceptEdit = (
+		result: CommandResult,
+		previousHistoryId: number,
 		ids = currentSelection.current,
 	) => {
-		const normalized = normalizeWireSegments(next, ids);
-		applyShapes(normalized.shapes);
+		setPreviewShapes(null);
+		const committed = store.getSnapshot();
+		const existingIds = new Set(committed.shapes.map((shape) => shape.id));
 		const selection = new Set<number>();
 		for (const id of ids) {
-			const survivor = normalized.idMap.get(id);
-			if (survivor !== undefined) selection.add(survivor);
+			const survivor = result.idMap.get(id);
+			if (survivor !== undefined && existingIds.has(survivor))
+				selection.add(survivor);
 		}
 		applySelection(selection);
-		recordEdit(label);
+		const historyId = committed.history.currentId;
+		if (historyId !== previousHistoryId)
+			historySelection.current.set(historyId, [...selection]);
 	};
-	const replaceShapes = (replacements: EditorShape[], label?: string) => {
-		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
-		const next = currentShapes.current.map(
-			(shape) => byId.get(shape.id) ?? shape,
+	const placeShapes = (next: EditorShape[], label: string) => {
+		const previousHistoryId = store.getSnapshot().history.currentId;
+		const result = execute(placeShapesEffect(next, label));
+		if (result) acceptEdit(result, previousHistoryId, new Set(result.ids));
+		else setPreviewShapes(null);
+	};
+	const commitReplacements = (replacements: EditorShape[], label: string) => {
+		const previousHistoryId = store.getSnapshot().history.currentId;
+		const result = execute(
+			replaceShapesEffect(replacements, label, [...currentSelection.current]),
 		);
-		if (label) commitShapes(next, label);
-		else applyShapes(next);
+		if (result) acceptEdit(result, previousHistoryId);
+		else setPreviewShapes(null);
+	};
+	const previewReplacements = (replacements: EditorShape[]) => {
+		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
+		setPreviewShapes(
+			currentShapes.current.map((shape) => byId.get(shape.id) ?? shape),
+		);
 	};
 	const previewWire = (point: Point) => {
 		const active = wireChain.current;
@@ -288,7 +297,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
 			return;
 		if (active.mode === "resize" && active.handle) {
-			replaceShapes([
+			previewReplacements([
 				resizeShape(
 					active.originals[0],
 					active.handle,
@@ -316,11 +325,11 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 				draft.width > 0 &&
 				draft.height > 0 &&
 				Math.min(draft.width, draft.height) * scale >= 3;
-			replaceShapes([draft]);
+			previewReplacements([draft]);
 			return;
 		}
 		if (active.mode === "move") {
-			replaceShapes(
+			previewReplacements(
 				moveShapes(
 					active.originals,
 					{
@@ -360,60 +369,60 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 		active.canvas.style.cursor = "";
 		setMarquee(null);
 		if (cancel || (active.created && !active.valid)) {
-			if (active.created) {
-				const createdIds = new Set(active.originals.map((shape) => shape.id));
-				applyShapes(
-					currentShapes.current.filter((shape) => !createdIds.has(shape.id)),
-				);
-			} else if (active.mode === "move") applyShapes(active.initialShapes);
-			else if (active.mode === "resize") replaceShapes(active.originals);
+			setPreviewShapes(null);
 			applySelection(active.previousSelection);
 		} else if (active.created) {
-			commitShapes(currentShapes.current, `Draw ${active.originals[0].kind}`);
+			const createdIds = new Set(active.originals.map((shape) => shape.id));
+			placeShapes(
+				currentShapes.current.filter((shape) => createdIds.has(shape.id)),
+				`Draw ${active.originals[0].kind}`,
+			);
 			setTool("select");
-		} else if (active.mode === "move" || active.mode === "resize")
-			commitShapes(
-				currentShapes.current,
+		} else if (active.mode === "move" || active.mode === "resize") {
+			const initial = new Map(
+				active.initialShapes.map((shape) => [shape.id, shape]),
+			);
+			commitReplacements(
+				currentShapes.current.filter(
+					(shape) => shape !== initial.get(shape.id),
+				),
 				active.mode === "move"
 					? "Move selection"
 					: `Resize ${active.originals[0].kind}`,
 			);
+		}
 		if (active.canvas.hasPointerCapture(active.pointerId))
 			active.canvas.releasePointerCapture(active.pointerId);
 	};
-	const restoreHistory = (next: History<DrawingState>) => {
-		// Discard transient geometry before navigating to a committed drawing.
+	const restoreHistory = (
+		program: Effect.Effect<unknown, InvalidDrawingCommand, DrawingStore>,
+	) => {
 		finishDrag(true);
 		finishWire();
 		if (tool === "symbol") setTool("select");
-		const restored = getHistoryState(next);
-		applyHistory(next);
-		applyShapes(restored.shapes);
-		applySelection(new Set(restored.selectedIds));
+		execute(program);
+		const restored = store.getSnapshot();
+		setPreviewShapes(null);
+		const existing = new Set(restored.shapes.map((shape) => shape.id));
+		applySelection(
+			new Set(
+				(historySelection.current.get(restored.history.currentId) ?? []).filter(
+					(id) => existing.has(id),
+				),
+			),
+		);
 	};
-	const undo = () => {
-		const next = undoHistory(currentHistory.current);
-		if (next !== currentHistory.current || drag.current || wireChain.current)
-			restoreHistory(next);
-	};
-	const redo = () => {
-		const next = redoHistory(currentHistory.current);
-		if (next !== currentHistory.current || drag.current || wireChain.current)
-			restoreHistory(next);
-	};
+	const undo = () => restoreHistory(undoEffect);
+	const redo = () => restoreHistory(redoEffect);
 	const removeSelected = () => {
 		finishDrag();
 		if (wireChain.current) {
 			finishWire();
 			setTool("select");
 		}
-		commitShapes(
-			currentShapes.current.filter(
-				(shape) => !currentSelection.current.has(shape.id),
-			),
-			"Delete selection",
-			new Set(),
-		);
+		const previousHistoryId = store.getSnapshot().history.currentId;
+		const result = execute(removeShapesEffect([...currentSelection.current]));
+		if (result) acceptEdit(result, previousHistoryId, new Set());
 	};
 	const selectShape = (id: number, additive: boolean) => {
 		const ids = new Set(additive ? selectedIds : []);
@@ -421,6 +430,24 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 		else ids.add(id);
 		applySelection(ids);
 	};
+
+	const reconcileExternalEdit = useEffectEvent(() => {
+		if (executingCommand.current) return;
+		// Another caller changed the document. A stale gesture must not overwrite it.
+		finishDrag(true);
+		finishWire();
+		const existing = new Set(
+			store.getSnapshot().shapes.map((shape) => shape.id),
+		);
+		applySelection(
+			new Set([...currentSelection.current].filter((id) => existing.has(id))),
+		);
+	});
+	useEffect(() => {
+		historySelection.current = new Map([[0, []]]);
+		reconcileExternalEdit();
+		return store.subscribe(reconcileExternalEdit);
+	}, [store]);
 
 	return (
 		<main
@@ -524,12 +551,8 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
 						if (tool === "text") {
-							const text = createTextShape(nextId.current++, start);
-							commitShapes(
-								[...currentShapes.current, text],
-								"Draw text",
-								new Set([text.id]),
-							);
+							const text = createTextShape(nextId.current, start);
+							placeShapes([text], "Draw text");
 							setTool("select");
 							setTextFocusId(text.id);
 							return;
@@ -537,26 +560,18 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 						if (tool === "symbol") {
 							if (!symbolDefinition) return;
 							const symbol = createSymbol(
-								nextId.current++,
+								nextId.current,
 								symbolDefinition,
 								start,
 							);
-							commitShapes(
-								[...currentShapes.current, symbol],
-								`Insert ${symbol.attributes.name}`,
-								new Set([symbol.id]),
-							);
+							placeShapes([symbol], `Insert ${symbol.attributes.name}`);
 							setSymbolPreview(null);
 							setTool("select");
 							return;
 						}
 						if (tool === "pin") {
-							const pin = drawShape(nextId.current++, "pin", start, start);
-							commitShapes(
-								[...currentShapes.current, pin],
-								"Place pin",
-								new Set([pin.id]),
-							);
+							const pin = drawShape(nextId.current, "pin", start, start);
+							placeShapes([pin], "Place pin");
 							setTool("select");
 							return;
 						}
@@ -584,12 +599,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 									3
 							)
 								return;
-							nextId.current += next.segments.length;
-							commitShapes(
-								[...currentShapes.current, ...next.segments],
-								"Draw wire",
-								new Set(next.segments.map((segment) => segment.id)),
-							);
+							placeShapes(next.segments, "Draw wire");
 							if (next.connected) {
 								finishWire();
 								setTool("select");
@@ -601,8 +611,8 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 							return;
 						}
 						if (created) {
-							shape = drawShape(nextId.current++, tool, start, start);
-							applyShapes([...currentShapes.current, shape]);
+							shape = drawShape(nextId.current, tool, start, start);
+							setPreviewShapes([...currentShapes.current, shape]);
 						} else if (resize) shape = resize.shape;
 						else
 							shape = [...shapes]
@@ -763,7 +773,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 							}
 							const snapStep = snapEnabled ? gridStep : 0;
 							const step = (snapStep || 1) * (event.shiftKey ? 10 : 1);
-							replaceShapes(
+							commitReplacements(
 								moveShapes(
 									selected,
 									{
@@ -825,9 +835,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 										disabled={!ready}
 										onUndo={undo}
 										onRedo={redo}
-										onRestore={(id) =>
-											restoreHistory(jumpHistory(currentHistory.current, id))
-										}
+										onRestore={(id) => restoreHistory(jumpHistoryEffect(id))}
 									/>
 									{tools.map(({ kind, label, icon: Icon }) => (
 										<Fragment key={kind}>
@@ -971,7 +979,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 				<SelectionAttributes
 					shapes={selected}
 					onSymbolAttributeChange={(attribute, value) => {
-						replaceShapes(
+						commitReplacements(
 							selected.map((shape) =>
 								shape.kind === "symbol"
 									? {
@@ -989,7 +997,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 					onTextFocus={() => setTextFocusId(null)}
 					onTextChange={(text) => {
 						if (selected.length === 1 && selected[0].kind === "text")
-							replaceShapes([updateText(selected[0], text)], "Edit text");
+							commitReplacements([updateText(selected[0], text)], "Edit text");
 					}}
 					onAttributeChange={(attribute, value) => {
 						if (!Number.isFinite(value)) return;
@@ -1008,7 +1016,7 @@ export function Editor2D({ sheet = defaultSheet }: { sheet?: SheetSize } = {}) {
 								: selected.map((shape) =>
 										editShapeAttribute(shape, attribute, value),
 									);
-						replaceShapes(
+						commitReplacements(
 							replacements,
 							`Change ${attribute === "lineWidth" ? "wire width" : attribute === "fontSize" ? "font size" : attribute}`,
 						);

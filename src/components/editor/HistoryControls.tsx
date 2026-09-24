@@ -1,7 +1,7 @@
 import { History as HistoryIcon, Redo2, Undo2, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import type { History } from "#/drawing/history";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
-import type { History } from "./history";
 
 export function HistoryControls({
 	history,

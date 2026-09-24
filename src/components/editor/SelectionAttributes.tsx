@@ -1,12 +1,12 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
-import { FloatingPanel } from "../viewer/FloatingPanel";
 import {
 	type EditorShape,
 	type EditorSymbol,
 	type ShapeAttribute,
 	shapeBounds,
-} from "./shapes";
+} from "#/drawing/shapes";
+import { FloatingPanel } from "../viewer/FloatingPanel";
 
 function AttributeInput({
 	label,

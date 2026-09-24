@@ -1,5 +1,1 @@
-export interface Viewer3DHandle {
-	fit: () => void;
-	zoom: (factor: number) => void;
-	view: (direction: "iso" | "top" | "front") => void;
-}
+export type { Viewer3DHandle } from "#/engine/viewport-types";

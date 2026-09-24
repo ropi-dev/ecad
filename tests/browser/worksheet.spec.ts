@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { BufferGeometry, Material, Mesh, MeshBasicMaterial, Texture } from "three";
+import type { EditorShape } from "../../src/drawing/shapes";
 
 test("changing sheet dimensions keeps drawn shapes and updates the worksheet", async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 1000 });
 	await page.goto("/tests/browser/editor.html");
+	const scene = async () => JSON.parse((await page.locator("#editor-scene").textContent()) || '{"shapes":[]}');
+	await expect.poll(async () => (await scene()).worksheet).toBe("A3, 420 × 297 mm");
 	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
 	const canvas = page.locator("canvas");
 	const bounds = (await canvas.boundingBox())!;
@@ -11,9 +14,15 @@ test("changing sheet dimensions keeps drawn shapes and updates the worksheet", a
 	await page.mouse.down();
 	await page.mouse.move(bounds.x + bounds.width / 2 + 80, bounds.y + bounds.height / 2 + 50, { steps: 5 });
 	await page.mouse.up();
-	const shapes = async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes;
-	await expect.poll(async () => (await shapes()).length).toBe(1);
-	const original = await shapes();
+	const shapes = async () => (await scene()).shapes;
+	const documentState = async () => JSON.parse((await page.locator("#editor-document").textContent()) || '{"shapes":[]}');
+	await expect.poll(async () => (await documentState()).shapes.length).toBe(1);
+	const originalDocument = await documentState();
+	const original = originalDocument.shapes.map(({ id, kind, width, height, rotation, x, y }: EditorShape) => ({
+		name: `${kind} ${id}`, width, height, rotation, x, y, selected: true,
+	}));
+	// A preview already has one mesh. Wait for the committed geometry to render.
+	await expect.poll(shapes).toEqual(original);
 	for (const size of [
 		{ width: 210, height: 297, name: "A4" },
 		{ width: 600, height: 180, name: "Custom" },
@@ -23,11 +32,12 @@ test("changing sheet dimensions keeps drawn shapes and updates the worksheet", a
 			window.dispatchEvent(new CustomEvent("editor-sheet-size", { detail: sheet }));
 		}, size);
 		await expect(page.getByRole("heading", { level: 1 })).toContainText(`${size.width} × ${size.height} mm`);
-		await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).worksheet).toBe(`${size.name}, ${size.width} × ${size.height} mm`);
+		await expect.poll(async () => (await scene()).worksheet).toBe(`${size.name}, ${size.width} × ${size.height} mm`);
 		await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
 		await canvas.focus();
 		await page.keyboard.press("F6");
 		await expect.poll(shapes).toEqual(original);
+		expect(await documentState()).toEqual(originalDocument);
 		await page.screenshot({ path: test.info().outputPath(`worksheet-${size.name}.png`) });
 	}
 });

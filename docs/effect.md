@@ -1,6 +1,8 @@
 # Effect integration
 
-The project uses Effect 3 for file imports, browser requests, subscriptions, server operations, and resource cleanup. React owns UI state. TanStack owns routing and query caching. Geometry algorithms and frame rendering remain synchronous TypeScript.
+The project uses Effect 3 for drawing commands, file imports, browser requests, subscriptions, server operations, and resource cleanup. React owns transient UI state. Drawing commands own committed drawing data and history. TanStack owns routing and query caching. Geometry algorithms and frame rendering remain synchronous TypeScript.
+
+See [drawing architecture](architecture.md) for complete command inputs, the document store, gesture previews, and rendering boundaries. Synchronous drawing commands run at event boundaries after input is resolved, using `Effect.runSync`. React effects bind rendering resources and subscriptions; they do not trigger document edits.
 
 ## Running operations
 

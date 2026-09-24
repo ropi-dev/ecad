@@ -2,6 +2,8 @@ ECAD is a browser-based Gerber and STEP viewer with a 2D drawing editor, built w
 
 Async operations and resource lifetimes use Effect 3. See [the Effect integration guide](docs/effect.md) for framework boundaries, service layers, cancellation, and geometry ownership.
 
+The [drawing architecture guide](docs/architecture.md) describes the editor, headless Effect commands, display models, and Three.js rendering layers, with an example of placing a rectangle without UI state.
+
 # Getting Started
 
 To run this application:

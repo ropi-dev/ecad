@@ -1,8 +1,8 @@
 import { Shapes } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useState } from "react";
+import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
-import { type SymbolDefinition, symbolDefinitions } from "./symbols";
 
 export function SymbolPicker({
 	disabled,
