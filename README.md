@@ -4,6 +4,8 @@ Async operations and resource lifetimes use Effect 3. See [the Effect integratio
 
 The [drawing architecture guide](docs/architecture.md) describes the editor, headless Effect commands, display models, and Three.js rendering layers, with an example of placing a rectangle without UI state.
 
+The [MCP guide](docs/mcp.md) explains how to enable client access to an open drawing, configure its endpoint, and use drawing tools.
+
 # Getting Started
 
 To run this application:

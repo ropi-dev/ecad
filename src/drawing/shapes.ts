@@ -1,4 +1,4 @@
-import type { Bounds, Point } from "./types";
+import type { Bounds, Point } from "#/drawing/types.ts";
 
 export const A3 = { width: 420, height: 297 } as const;
 export type ShapeKind =

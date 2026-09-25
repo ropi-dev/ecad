@@ -12,7 +12,7 @@ import {
 	type DrawingDocument,
 	type DrawingSnapshot,
 	DrawingStore,
-} from "./drawing-store";
+} from "#/commands/drawing-store.ts";
 
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 /** Complete geometry, already resolved by the caller. Commands allocate IDs. */

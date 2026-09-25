@@ -56,6 +56,7 @@ import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { HistoryControls } from "./HistoryControls";
+import { McpControls } from "#/components/editor/McpControls.tsx";
 import { SelectionAttributes } from "./SelectionAttributes";
 import { SymbolPicker } from "./SymbolPicker";
 import { createTextShape, updateText } from "./text";
@@ -483,7 +484,7 @@ export function Editor2D({
 				2D editor · {sheet.name ? `${sheet.name} · ` : ""}
 				{sheet.width} × {sheet.height} mm
 			</h1>
-			<header className="absolute top-10 left-10 z-2 flex items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
+			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
 				<a
 					href="/"
 					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
@@ -496,6 +497,7 @@ export function Editor2D({
 				>
 					STEP viewer
 				</a>
+				<McpControls store={store} />
 			</header>
 			<div className="relative flex min-h-0 flex-1">
 				<div

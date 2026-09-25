@@ -14,16 +14,19 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as StepRouteImport } from './routes/step'
+import { Route as ApiEditorMcpRouteImport } from './routes/api.editor-mcp'
 import { Route as DemoDrizzleRouteImport } from './routes/demo/drizzle'
 import { Route as DemoMcpTodosRouteImport } from './routes/demo/mcp-todos'
 import { Route as DemoStoreRouteImport } from './routes/demo/store'
 import { Route as DemoTableRouteImport } from './routes/demo/table'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as DemoTrpcTodoRouteImport } from './routes/demo/trpc-todo'
+import { Route as ApiEditorMcpSessionIdRouteImport } from './routes/api.editor-mcp.$sessionId'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api.trpc.$'
 import { Route as DemoApiMcpTodosRouteImport } from './routes/demo/api.mcp-todos'
 import { Route as DemoFormAddressRouteImport } from './routes/demo/form.address'
 import { Route as DemoFormSimpleRouteImport } from './routes/demo/form.simple'
+import { Route as McpEditorSessionIdRouteImport } from './routes/mcp.editor.$sessionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,6 +51,11 @@ const McpRoute = McpRouteImport.update({
 const StepRoute = StepRouteImport.update({
   id: '/step',
   path: '/step',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEditorMcpRoute = ApiEditorMcpRouteImport.update({
+  id: '/api/editor-mcp',
+  path: '/api/editor-mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoDrizzleRoute = DemoDrizzleRouteImport.update({
@@ -80,6 +88,11 @@ const DemoTrpcTodoRoute = DemoTrpcTodoRouteImport.update({
   path: '/demo/trpc-todo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiEditorMcpSessionIdRoute = ApiEditorMcpSessionIdRouteImport.update({
+  id: '/$sessionId',
+  path: '/$sessionId',
+  getParentRoute: () => ApiEditorMcpRoute,
+} as any)
 const ApiTrpcSplatRoute = ApiTrpcSplatRouteImport.update({
   id: '/api/trpc/$',
   path: '/api/trpc/$',
@@ -100,58 +113,72 @@ const DemoFormSimpleRoute = DemoFormSimpleRouteImport.update({
   path: '/demo/form/simple',
   getParentRoute: () => rootRouteImport,
 } as any)
+const McpEditorSessionIdRoute = McpEditorSessionIdRouteImport.update({
+  id: '/editor/$sessionId',
+  path: '/editor/$sessionId',
+  getParentRoute: () => McpRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
-  '/mcp': typeof McpRoute
+  '/mcp': typeof McpRouteWithChildren
   '/step': typeof StepRoute
+  '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/demo/mcp-todos': typeof DemoMcpTodosRoute
   '/demo/store': typeof DemoStoreRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/demo/trpc-todo': typeof DemoTrpcTodoRoute
+  '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
   '/demo/api/mcp-todos': typeof DemoApiMcpTodosRoute
   '/demo/form/address': typeof DemoFormAddressRoute
   '/demo/form/simple': typeof DemoFormSimpleRoute
+  '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
-  '/mcp': typeof McpRoute
+  '/mcp': typeof McpRouteWithChildren
   '/step': typeof StepRoute
+  '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/demo/mcp-todos': typeof DemoMcpTodosRoute
   '/demo/store': typeof DemoStoreRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/demo/trpc-todo': typeof DemoTrpcTodoRoute
+  '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
   '/demo/api/mcp-todos': typeof DemoApiMcpTodosRoute
   '/demo/form/address': typeof DemoFormAddressRoute
   '/demo/form/simple': typeof DemoFormSimpleRoute
+  '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
-  '/mcp': typeof McpRoute
+  '/mcp': typeof McpRouteWithChildren
   '/step': typeof StepRoute
+  '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/demo/mcp-todos': typeof DemoMcpTodosRoute
   '/demo/store': typeof DemoStoreRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/demo/trpc-todo': typeof DemoTrpcTodoRoute
+  '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
   '/demo/api/mcp-todos': typeof DemoApiMcpTodosRoute
   '/demo/form/address': typeof DemoFormAddressRoute
   '/demo/form/simple': typeof DemoFormSimpleRoute
+  '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -161,16 +188,19 @@ export interface FileRouteTypes {
     | '/editor'
     | '/mcp'
     | '/step'
+    | '/api/editor-mcp'
     | '/demo/drizzle'
     | '/demo/mcp-todos'
     | '/demo/store'
     | '/demo/table'
     | '/demo/tanstack-query'
     | '/demo/trpc-todo'
+    | '/api/editor-mcp/$sessionId'
     | '/api/trpc/$'
     | '/demo/api/mcp-todos'
     | '/demo/form/address'
     | '/demo/form/simple'
+    | '/mcp/editor/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -178,16 +208,19 @@ export interface FileRouteTypes {
     | '/editor'
     | '/mcp'
     | '/step'
+    | '/api/editor-mcp'
     | '/demo/drizzle'
     | '/demo/mcp-todos'
     | '/demo/store'
     | '/demo/table'
     | '/demo/tanstack-query'
     | '/demo/trpc-todo'
+    | '/api/editor-mcp/$sessionId'
     | '/api/trpc/$'
     | '/demo/api/mcp-todos'
     | '/demo/form/address'
     | '/demo/form/simple'
+    | '/mcp/editor/$sessionId'
   id:
     | '__root__'
     | '/'
@@ -195,24 +228,28 @@ export interface FileRouteTypes {
     | '/editor'
     | '/mcp'
     | '/step'
+    | '/api/editor-mcp'
     | '/demo/drizzle'
     | '/demo/mcp-todos'
     | '/demo/store'
     | '/demo/table'
     | '/demo/tanstack-query'
     | '/demo/trpc-todo'
+    | '/api/editor-mcp/$sessionId'
     | '/api/trpc/$'
     | '/demo/api/mcp-todos'
     | '/demo/form/address'
     | '/demo/form/simple'
+    | '/mcp/editor/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   EditorRoute: typeof EditorRoute
-  McpRoute: typeof McpRoute
+  McpRoute: typeof McpRouteWithChildren
   StepRoute: typeof StepRoute
+  ApiEditorMcpRoute: typeof ApiEditorMcpRouteWithChildren
   DemoDrizzleRoute: typeof DemoDrizzleRoute
   DemoMcpTodosRoute: typeof DemoMcpTodosRoute
   DemoStoreRoute: typeof DemoStoreRoute
@@ -262,6 +299,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StepRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/editor-mcp': {
+      id: '/api/editor-mcp'
+      path: '/api/editor-mcp'
+      fullPath: '/api/editor-mcp'
+      preLoaderRoute: typeof ApiEditorMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/demo/drizzle': {
       id: '/demo/drizzle'
       path: '/demo/drizzle'
@@ -304,6 +348,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoTrpcTodoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/editor-mcp/$sessionId': {
+      id: '/api/editor-mcp/$sessionId'
+      path: '/$sessionId'
+      fullPath: '/api/editor-mcp/$sessionId'
+      preLoaderRoute: typeof ApiEditorMcpSessionIdRouteImport
+      parentRoute: typeof ApiEditorMcpRoute
+    }
     '/api/trpc/$': {
       id: '/api/trpc/$'
       path: '/api/trpc/$'
@@ -332,15 +383,45 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoFormSimpleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mcp/editor/$sessionId': {
+      id: '/mcp/editor/$sessionId'
+      path: '/editor/$sessionId'
+      fullPath: '/mcp/editor/$sessionId'
+      preLoaderRoute: typeof McpEditorSessionIdRouteImport
+      parentRoute: typeof McpRoute
+    }
   }
 }
+
+interface McpRouteChildren {
+  McpEditorSessionIdRoute: typeof McpEditorSessionIdRoute
+}
+
+const McpRouteChildren: McpRouteChildren = {
+  McpEditorSessionIdRoute: McpEditorSessionIdRoute,
+}
+
+const McpRouteWithChildren = McpRoute._addFileChildren(McpRouteChildren)
+
+interface ApiEditorMcpRouteChildren {
+  ApiEditorMcpSessionIdRoute: typeof ApiEditorMcpSessionIdRoute
+}
+
+const ApiEditorMcpRouteChildren: ApiEditorMcpRouteChildren = {
+  ApiEditorMcpSessionIdRoute: ApiEditorMcpSessionIdRoute,
+}
+
+const ApiEditorMcpRouteWithChildren = ApiEditorMcpRoute._addFileChildren(
+  ApiEditorMcpRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   EditorRoute: EditorRoute,
-  McpRoute: McpRoute,
+  McpRoute: McpRouteWithChildren,
   StepRoute: StepRoute,
+  ApiEditorMcpRoute: ApiEditorMcpRouteWithChildren,
   DemoDrizzleRoute: DemoDrizzleRoute,
   DemoMcpTodosRoute: DemoMcpTodosRoute,
   DemoStoreRoute: DemoStoreRoute,
