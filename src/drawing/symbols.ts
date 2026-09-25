@@ -1,10 +1,11 @@
+import type { Point } from "./types";
 import {
 	drawShape,
 	type EditorSymbol,
 	type PrimitiveShape,
+	type SymbolText,
 	shapeBounds,
 } from "./shapes";
-import type { Point } from "./types";
 
 export interface SymbolDefinition {
 	id: string;
@@ -13,6 +14,7 @@ export interface SymbolDefinition {
 	prefix: string;
 	value: string;
 	children: PrimitiveShape[];
+	texts: SymbolText[];
 }
 
 const wire = (id: number, x1: number, y1: number, x2: number, y2: number) =>
@@ -41,6 +43,10 @@ const referenceDefinitions: SymbolDefinition[] = [
 			pin(4, -3.81, 0),
 			pin(5, 3.81, 0),
 		],
+		texts: [
+			{ attribute: "reference", x: 0, y: 2.5, fontSize: 1.3 },
+			{ attribute: "value", x: 0, y: -2.5, fontSize: 1.3 },
+		],
 	},
 	{
 		id: "capacitor",
@@ -56,6 +62,10 @@ const referenceDefinitions: SymbolDefinition[] = [
 			pin(5, -3.81, 0),
 			pin(6, 3.81, 0),
 		],
+		texts: [
+			{ attribute: "reference", x: 0, y: 3.5, fontSize: 1.3 },
+			{ attribute: "value", x: 0, y: -3.5, fontSize: 1.3 },
+		],
 	},
 	{
 		id: "ground",
@@ -69,6 +79,10 @@ const referenceDefinitions: SymbolDefinition[] = [
 			wire(3, -0.635, -0.635, 0.635, -0.635),
 			wire(4, -0.127, -1.27, 0.127, -1.27),
 			pin(5, 0, 1.27),
+		],
+		texts: [
+			{ attribute: "reference", x: 2.4, y: 0.6, fontSize: 1.3 },
+			{ attribute: "value", x: 2.4, y: -1.2, fontSize: 1.3 },
 		],
 	},
 ];
@@ -89,6 +103,11 @@ export const symbolDefinitions: SymbolDefinition[] = referenceDefinitions.map(
 				y: child.y * scale,
 				width: child.kind === "pin" ? 0.4 : child.width * scale,
 				height: child.kind === "pin" ? 0.4 : child.height * scale,
+			})),
+			texts: definition.texts.map((label) => ({
+				...label,
+				x: label.x * scale,
+				y: label.y * scale,
 			})),
 		};
 	},
@@ -123,6 +142,7 @@ export function createSymbol(
 		rotation: 0,
 		lineWidth: 0.254,
 		children,
+		texts: definition.texts.map((label) => ({ ...label })),
 		attributes: { name: definition.name, reference, value: definition.value },
 	};
 }

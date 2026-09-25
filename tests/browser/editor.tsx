@@ -23,6 +23,7 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 		origin: origin.toArray(), corner: corner.toArray(),
 		preview: preview instanceof Mesh ? { width: preview.scale.x, height: preview.scale.y, rotation: preview.rotation.z, x: preview.position.x, y: preview.position.y } : null,
 		shapes: shapes?.children.filter((shape) => shape instanceof Mesh).map((shape) => ({ name: shape.name, texture: shape.material instanceof MeshBasicMaterial ? shape.material.map?.uuid : undefined, width: shape.scale.x, height: shape.scale.y, rotation: shape.rotation.z, x: shape.position.x, y: shape.position.y, selected: shape.material instanceof MeshBasicMaterial && shape.material.color.getHexString() === "e8b77e" })),
+		symbolTexts: shapes?.children.filter((shape) => shape instanceof Mesh && shape.name.startsWith("symbol ")).flatMap((symbol) => symbol.children.filter((child) => child instanceof Mesh).map((child) => ({ symbol: symbol.name, name: child.name, texture: child.material instanceof MeshBasicMaterial ? child.material.map?.uuid : undefined, x: child.getWorldPosition(new Vector3()).x, y: child.getWorldPosition(new Vector3()).y }))),
 	});
 };
 

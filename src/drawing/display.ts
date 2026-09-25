@@ -4,6 +4,7 @@ import {
 	openWireEnds,
 	type ShapeKind,
 	selectionSize,
+	symbolTextShapes,
 } from "./shapes";
 
 interface GeometrySize {
@@ -38,6 +39,7 @@ export interface DisplayShape extends DrawingTransform {
 	appearance: DrawingAppearance;
 	text?: string;
 	renderOrder: number;
+	children?: DisplayShape[];
 }
 
 export interface DisplaySelection extends DrawingTransform {
@@ -81,7 +83,7 @@ function displayShape(
 	appearance: DrawingAppearance,
 	renderOrder: number,
 ): DisplayShape {
-	return {
+	const display: DisplayShape = {
 		key,
 		name,
 		geometry: geometryFor(shape),
@@ -94,6 +96,24 @@ function displayShape(
 		...(shape.kind === "text" ? { text: shape.text } : {}),
 		renderOrder,
 	};
+	if (shape.kind === "symbol") {
+		const labels = shape.texts.filter((label) => shape.attributes[label.attribute]);
+		display.children = symbolTextShapes(shape).map((text, index) => ({
+			...displayShape(
+				text,
+				`${key}:${labels[index].attribute}`,
+				`${labels[index].attribute} ${shape.id}`,
+				appearance,
+				renderOrder + 1,
+			),
+			x: labels[index].x / shape.width,
+			y: labels[index].y / shape.height,
+			width: text.width / shape.width,
+			height: text.height / shape.height,
+			rotation: 0,
+		}));
+	}
+	return display;
 }
 
 /** Resolve document, selection, and temporary previews without a renderer or UI. */

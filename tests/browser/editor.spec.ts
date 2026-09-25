@@ -4,6 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface State {
+	symbolTexts: { symbol: string; name: string; texture?: string; x: number; y: number }[];
 	outlines: { width: number; height: number }[];
 	wireTerminals: { x: number; y: number; width: number; height: number }[];
 	textures: number;
@@ -1363,6 +1364,27 @@ test("symbol picker cancels placement and attributes belong to each instance", a
 	await expect(page.getByLabel("Reference", { exact: true })).toHaveValue("R_INPUT");
 	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("47 kΩ");
 	await page.screenshot({ path: test.info().outputPath("symbols.png") });
+});
+
+test("symbol labels follow attribute edits and remain instance specific", async ({ page }) => {
+	await insertSymbol(page, "Resistor", 100, 150);
+	await expect.poll(async () => (await state(page)).symbolTexts.map((label) => label.name)).toEqual(["reference 1", "value 1"]);
+	const original = (await state(page)).symbolTexts;
+	await page.getByLabel("Reference", { exact: true }).fill("R_INPUT");
+	await page.getByLabel("Value", { exact: true }).fill("47 kΩ");
+	await expect.poll(async () => (await state(page)).symbolTexts.every((label, index) => label.texture !== original[index].texture)).toBe(true);
+	const edited = (await state(page)).symbolTexts;
+	await insertSymbol(page, "Resistor", 200, 150);
+	await expect.poll(async () => (await state(page)).symbolTexts.map((label) => label.name)).toEqual(["reference 1", "value 1", "reference 2", "value 2"]);
+	const labels = (await state(page)).symbolTexts;
+	expect(labels.slice(0, 2)).toEqual(edited);
+	expect(labels[2].texture).not.toBe(edited[0].texture);
+	await clickAt(page, edited[0].x, edited[0].y);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await page.getByLabel("Angle", { exact: true }).fill("90");
+	await expect.poll(async () => (await state(page)).symbolTexts[0].x).not.toBeCloseTo(edited[0].x, 4);
+	for (let index = 0; index < 7; index++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await page.screenshot({ path: test.info().outputPath("symbol-text.png") });
 });
 
 test("symbol placement snaps and selection-only clicks do not add history", async ({ page }) => {

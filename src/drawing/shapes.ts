@@ -25,7 +25,13 @@ export interface EditorSymbol extends ShapeGeometry {
 	definitionId: string;
 	/** Children use coordinates relative to the symbol's center. */
 	children: PrimitiveShape[];
+	texts: SymbolText[];
 	attributes: { name: string; reference: string; value: string };
+}
+
+export interface SymbolText extends Point {
+	attribute: keyof EditorSymbol["attributes"];
+	fontSize: number;
 }
 
 export interface TextShape extends ShapeGeometry {
@@ -44,6 +50,30 @@ export function symbolShapes(symbol: EditorSymbol): PrimitiveShape[] {
 		rotation: child.rotation + symbol.rotation,
 		lineWidth: symbol.lineWidth,
 	}));
+}
+
+export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
+	return symbol.texts.flatMap((label, index) => {
+		const text = symbol.attributes[label.attribute];
+		if (!text) return [];
+		const width = Math.max(
+			label.fontSize / 2,
+			text.length * label.fontSize * 0.6,
+		);
+		return [
+			{
+				id: index,
+				kind: "text",
+				...localToWorld(symbol, label.x, label.y),
+				width,
+				height: label.fontSize * 1.5,
+				rotation: symbol.rotation,
+				lineWidth: 0,
+				fontSize: label.fontSize,
+				text,
+			},
+		];
+	});
 }
 
 export type ShapeAttribute =
@@ -357,6 +387,11 @@ export function hitShape(
 	point: Point,
 	tolerance: number,
 ): boolean {
+	if (
+		shape.kind === "symbol" &&
+		symbolTextShapes(shape).some((text) => hitShape(text, point, tolerance))
+	)
+		return true;
 	const { width, height } =
 		shape.kind === "symbol" ? selectionSize(shape) : shape;
 	const dx = point.x - shape.x;
@@ -391,9 +426,14 @@ export function intersectsSelection(
 	bounds: Bounds,
 ): boolean {
 	if (shape.kind === "symbol")
-		return intersectsSelection(
-			{ ...shape, kind: "rectangle", ...selectionSize(shape) },
-			bounds,
+		return (
+			symbolTextShapes(shape).some((text) =>
+				intersectsSelection(text, bounds),
+			) ||
+			intersectsSelection(
+				{ ...shape, kind: "rectangle", ...selectionSize(shape) },
+				bounds,
+			)
 		);
 	const { width, height } = shape;
 	if (shape.kind === "circle" || shape.kind === "pin") {

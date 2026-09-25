@@ -94,6 +94,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay) {
 			const mesh = new Mesh(geometryFor(display), materialFor(display));
 			mesh.name = display.name;
 			applyTransform(mesh, display);
+			for (const child of display.children ?? []) mesh.add(meshFor(child));
 			return mesh;
 		};
 		const { paper } = own(() => createWorksheetFromDisplay(worksheet));
@@ -115,9 +116,10 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay) {
 				...display.terminals,
 				...display.previews,
 			];
-			const activeKeys = new Set(meshes.map(({ key }) => key));
+			const allMeshes = meshes.flatMap((mesh) => [mesh, ...(mesh.children ?? [])]);
+			const activeKeys = new Set(allMeshes.map(({ key }) => key));
 			const textKeys = new Set(
-				meshes.filter(({ text }) => text !== undefined).map(({ key }) => key),
+				allMeshes.filter(({ text }) => text !== undefined).map(({ key }) => key),
 			);
 			for (const [key, { geometry }] of geometries) {
 				if (activeKeys.has(key)) continue;
