@@ -115,6 +115,14 @@ test("MCP places every shape kind including complete symbols and measured text i
 	assert.equal(reply.drawing.history.nodes[1].label, "Import complete drawing");
 	assert.equal(reply.drawing.shapes[5].kind, "symbol");
 	assert.deepEqual(reply.drawing.shapes[5], { ...symbolInput, id: 6 });
+	assert.ok(symbolInput.texts.length > 0);
+	const latest = await call("getDrawing");
+	assert.ok(latest.reply.ok);
+	assert.deepEqual(latest.reply.drawing.shapes[5], { ...symbolInput, id: 6 });
+	const movedSymbol = { ...symbolInput, id: 6, x: 70 };
+	const replaced = await call("replaceShapes", { shapes: [movedSymbol] });
+	assert.ok(replaced.reply.ok);
+	assert.deepEqual(replaced.reply.drawing.shapes[5], movedSymbol);
 });
 
 test("MCP replacement, deletion and history navigation use explicit IDs", async (context) => {

@@ -62,6 +62,18 @@ const symbolInputSchema = z.strictObject({
 		.describe(
 			"Primitive shapes in coordinates relative to the symbol center, with IDs local to this symbol.",
 		),
+	texts: z
+		.array(
+			z.strictObject({
+				attribute: z.enum(["name", "reference", "value"]),
+				x: z.number(),
+				y: z.number(),
+				fontSize: z.number().positive(),
+			}),
+		)
+		.describe(
+			"Attribute labels in coordinates relative to the symbol center, in millimetres.",
+		),
 	attributes: z.strictObject({
 		name: z.string(),
 		reference: z.string(),
