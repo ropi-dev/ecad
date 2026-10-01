@@ -7,6 +7,7 @@ export type ShapeKind =
 	| "rectangle"
 	| "circle"
 	| "triangle"
+	| "line"
 	| "wire"
 	| "pin"
 	| "text";
@@ -50,7 +51,6 @@ export function symbolShapes(symbol: EditorSymbol): PrimitiveShape[] {
 		...child,
 		...localToWorld(symbol, child.x, child.y),
 		rotation: child.rotation + symbol.rotation,
-		lineWidth: symbol.lineWidth,
 	}));
 }
 
@@ -102,13 +102,25 @@ export function editShapeAttribute(
 		// Wire drawing and junction movement require horizontal or vertical segments.
 		if (
 			shape.kind !== "text" &&
+			shape.kind !== "line" &&
 			((shape.kind !== "wire" && shape.kind !== "symbol") || value % 90 !== 0)
 		)
 			return shape;
 		return { ...shape, rotation: (value * Math.PI) / 180 };
 	}
 	if (value <= 0) return shape;
-	if (shape.kind === "symbol" && attribute !== "lineWidth") return shape;
+	if (shape.kind === "symbol") {
+		return attribute === "lineWidth"
+			? {
+					...shape,
+					lineWidth: value,
+					children: shape.children.map((child) => ({
+						...child,
+						lineWidth: value,
+					})),
+				}
+			: shape;
+	}
 	if (
 		attribute === "fontSize" ||
 		(shape.kind === "text" && (attribute === "width" || attribute === "height"))
@@ -134,7 +146,11 @@ export function editShapeAttribute(
 	) {
 		return { ...shape, width: value, height: value };
 	}
-	if (shape.kind === "wire" && attribute === "height") return shape;
+	if (
+		(shape.kind === "wire" || shape.kind === "line") &&
+		attribute === "height"
+	)
+		return shape;
 	return { ...shape, [attribute]: value };
 }
 
@@ -185,7 +201,7 @@ export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 					[-1, 1],
 					[1, 1],
 				]
-			: shape.kind === "wire"
+			: shape.kind === "wire" || shape.kind === "line"
 				? [
 						[-1, 0],
 						[1, 0],
@@ -221,7 +237,8 @@ export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 			id: `${xDirection},${yDirection}`,
 			xDirection,
 			yDirection,
-			cursor: shape.kind === "wire" ? "crosshair" : cursor,
+			cursor:
+				shape.kind === "wire" || shape.kind === "line" ? "crosshair" : cursor,
 		};
 	});
 }
@@ -247,17 +264,25 @@ export function resizeShape(
 		const diameter = radius * 2;
 		return { ...shape, width: diameter, height: diameter };
 	}
-	if (shape.kind === "wire") {
+	if (shape.kind === "wire" || shape.kind === "line") {
 		const fixed = localToWorld(
 			shape,
 			(-handle.xDirection * shape.width) / 2,
 			0,
 		);
-		const point = constrainWireEndpoint(fixed, target, gridStep);
+		const point =
+			shape.kind === "wire"
+				? constrainWireEndpoint(fixed, target, gridStep)
+				: snapPoint(target, gridStep);
+		if (
+			shape.kind === "line" &&
+			Math.hypot(point.x - fixed.x, point.y - fixed.y) < 0.05
+		)
+			return shape;
 		const resized =
 			handle.xDirection === 1
-				? drawShape(shape.id, "wire", fixed, point)
-				: drawShape(shape.id, "wire", point, fixed);
+				? drawShape(shape.id, shape.kind, fixed, point)
+				: drawShape(shape.id, shape.kind, point, fixed);
 		return { ...resized, lineWidth: shape.lineWidth };
 	}
 	const point = snapPoint(target, gridStep);
@@ -311,7 +336,7 @@ export function resizeShape(
 	};
 }
 
-/** Rectangles and triangles use opposite corners; circles use center/radius; wires use endpoints. */
+/** Rectangles and triangles use opposite corners; circles use center/radius; lines and wires use endpoints. */
 export function drawShape(
 	id: number,
 	kind: Exclude<ShapeKind, "text">,
@@ -355,15 +380,19 @@ export function drawShape(
 		kind,
 		x: (first.x + last.x) / 2,
 		y: (first.y + last.y) / 2,
-		width: kind === "wire" ? Math.hypot(dx, dy) : Math.abs(dx),
-		height: kind === "wire" ? 1 : Math.abs(dy),
-		rotation: kind === "wire" ? Math.atan2(dy, dx) : 0,
+		width:
+			kind === "wire" || kind === "line" ? Math.hypot(dx, dy) : Math.abs(dx),
+		height: kind === "wire" || kind === "line" ? 1 : Math.abs(dy),
+		rotation: kind === "wire" || kind === "line" ? Math.atan2(dy, dx) : 0,
 		lineWidth: 0.2,
 	};
 }
 
 export function shapeBounds(shape: EditorShape): Bounds {
-	const height = shape.kind === "wire" ? shape.lineWidth : shape.height;
+	const height =
+		shape.kind === "wire" || shape.kind === "line"
+			? shape.lineWidth
+			: shape.height;
 	const cos = Math.abs(Math.cos(shape.rotation));
 	const sin = Math.abs(Math.sin(shape.rotation));
 	const halfWidth = (shape.width * cos + height * sin) / 2;
@@ -380,7 +409,10 @@ export function selectionSize(shape: EditorShape) {
 	const padding = shape.kind === "symbol" ? 0.5 : 4;
 	return {
 		width: shape.width + padding,
-		height: (shape.kind === "wire" ? shape.lineWidth : shape.height) + padding,
+		height:
+			(shape.kind === "wire" || shape.kind === "line"
+				? shape.lineWidth
+				: shape.height) + padding,
 	};
 }
 
@@ -416,7 +448,7 @@ export function hitShape(
 	return (
 		x <= width / 2 &&
 		Math.abs(y) <=
-			(shape.kind === "wire"
+			(shape.kind === "wire" || shape.kind === "line"
 				? Math.max(shape.lineWidth / 2, tolerance)
 				: height / 2)
 	);
@@ -451,8 +483,8 @@ export function intersectsSelection(
 		own.minY > bounds.maxY
 	)
 		return false;
-	if (shape.kind === "wire") {
-		// The remaining separating axes are the wire's local X and Y axes.
+	if (shape.kind === "wire" || shape.kind === "line") {
+		// The remaining separating axes are the segment's local X and Y axes.
 		const dx = (bounds.minX + bounds.maxX) / 2 - shape.x;
 		const dy = (bounds.minY + bounds.maxY) / 2 - shape.y;
 		const halfWidth = (bounds.maxX - bounds.minX) / 2;
@@ -819,7 +851,9 @@ export function moveShapes(
 				: localToWorld(
 						anchorShape,
 						-anchorShape.width / 2,
-						anchorShape.kind === "wire" ? 0 : -anchorShape.height / 2,
+						anchorShape.kind === "wire" || anchorShape.kind === "line"
+							? 0
+							: -anchorShape.height / 2,
 					);
 		const target = snapPoint(
 			{ x: anchor.x + delta.x, y: anchor.y + delta.y },

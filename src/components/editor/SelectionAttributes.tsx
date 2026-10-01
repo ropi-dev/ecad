@@ -72,6 +72,7 @@ export function SelectionAttributes({
 	onClear,
 	onAttributeChange,
 	onSymbolAttributeChange,
+	onCreateSymbol,
 	onTextChange,
 	textFocusId,
 	onTextFocus,
@@ -79,6 +80,7 @@ export function SelectionAttributes({
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
+	onCreateSymbol: () => void;
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
@@ -88,7 +90,13 @@ export function SelectionAttributes({
 	textFocusId: number | null;
 	onTextFocus: () => void;
 }) {
-	const outlinedShapes = shapes.filter((shape) => shape.kind !== "text");
+	const outlinedShapes = shapes.flatMap((shape) =>
+		shape.kind === "symbol"
+			? shape.children
+			: shape.kind === "text"
+				? []
+				: [shape],
+	);
 	const lineWidth =
 		outlinedShapes.length &&
 		outlinedShapes.every(
@@ -98,6 +106,9 @@ export function SelectionAttributes({
 			: "";
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
+	const canCreateSymbol = shapes.every(
+		(shape) => shape.kind !== "text" && shape.kind !== "symbol",
+	);
 	const symbol = single?.kind === "symbol" ? single : undefined;
 	const bounds = shapes.map(shapeBounds);
 	const left = Math.min(...bounds.map((box) => box.minX));
@@ -157,7 +168,7 @@ export function SelectionAttributes({
 					? []
 					: symbol
 						? [editable("Angle", "angle", (symbol.rotation * 180) / Math.PI)]
-						: single.kind === "wire"
+						: single.kind === "wire" || single.kind === "line"
 							? [
 									editable("Length", "width", single.width),
 									editable("Angle", "angle", (single.rotation * 180) / Math.PI),
@@ -206,9 +217,25 @@ export function SelectionAttributes({
 						: `${shapes.length} shapes selected`}
 				</p>
 				{!single && (
-					<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
-						Selection bounds
-					</p>
+					<>
+						<button
+							type="button"
+							onClick={onCreateSymbol}
+							disabled={!canCreateSymbol}
+							className="mt-3 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
+						>
+							Create symbol
+						</button>
+						{!canCreateSymbol && (
+							<p className="mt-2 text-[12px] text-[#9ba7b8]">
+								Select shapes without text or existing symbols to create a
+								symbol.
+							</p>
+						)}
+						<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
+							Selection bounds
+						</p>
+					</>
 				)}
 				{single?.kind === "text" && (
 					<label className="mt-3 block text-[12px] text-[#9ba7b8]">

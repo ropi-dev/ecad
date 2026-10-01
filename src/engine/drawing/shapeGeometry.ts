@@ -14,10 +14,12 @@ import type { DrawingGeometry } from "#/drawing/display";
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
 		const children = shape.children.map((child) =>
-			createShapeGeometry({ ...child, lineWidth: shape.lineWidth })
+			createShapeGeometry(child)
 				.scale(
 					child.width,
-					child.kind === "wire" ? shape.lineWidth : child.height,
+					child.kind === "wire" || child.kind === "line"
+						? child.lineWidth
+						: child.height,
 					1,
 				)
 				.rotateZ(child.rotation)
@@ -33,7 +35,7 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 			for (const child of children) child.dispose();
 		}
 	}
-	if (shape.kind === "wire" || shape.kind === "text")
+	if (shape.kind === "wire" || shape.kind === "line" || shape.kind === "text")
 		return new PlaneGeometry(1, 1);
 	if (shape.kind === "pin") return new CircleGeometry(0.5, 32);
 	const { width, height, lineWidth } = shape;

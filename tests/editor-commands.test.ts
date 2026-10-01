@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Effect, Either } from "effect";
 import {
 	InvalidDrawingCommand,
+	createSymbolFromSelectionEffect,
 	jumpHistoryEffect,
 	placeRectangleEffect,
 	placeShapesEffect,
@@ -13,7 +14,7 @@ import {
 	undoEffect,
 } from "../src/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "../src/commands/drawing-store.ts";
-import { drawShape } from "../src/drawing/shapes.ts";
+import { drawShape, editShapeAttribute, pinTerminals, symbolShapes } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "../src/drawing/symbols.ts";
 
 const rectangle = {
@@ -33,6 +34,54 @@ function session() {
 			Effect.runSync(Effect.provideService(program, DrawingStore, store)),
 	};
 }
+
+test("creating a symbol preserves geometry, pins and strokes in one undoable transaction", () => {
+	const { store, run } = session();
+	const first = { ...drawShape(1, "rectangle", { x: 10, y: 20 }, { x: 30, y: 40 }), rotation: Math.PI / 6, lineWidth: 0.5 };
+	const wire = { ...drawShape(2, "wire", { x: 40, y: 25 }, { x: 60, y: 25 }), lineWidth: 0.8 };
+	const pin = drawShape(3, "pin", { x: 60, y: 25 }, { x: 60, y: 25 });
+	const outside = drawShape(4, "circle", { x: 100, y: 100 }, { x: 105, y: 100 });
+	run(placeShapesEffect([first, wire, pin, outside], "Draw shapes"));
+	const before = store.getSnapshot();
+	let publications = 0;
+	store.subscribe(() => publications++);
+	const result = run(createSymbolFromSelectionEffect([3, 1, 2]));
+	const converted = store.getSnapshot();
+	assert.equal(publications, 1);
+	assert.equal(converted.history.currentId, before.history.currentId + 1);
+	assert.equal(converted.nextShapeId, 6);
+	assert.deepEqual(result.ids, [5]);
+	for (const id of [1, 2, 3]) assert.equal(result.idMap.get(id), 5);
+	assert.equal(result.idMap.get(4), 4);
+	assert.equal(converted.shapes.length, 2);
+	assert.deepEqual(converted.shapes[1], outside);
+	const symbol = converted.shapes[0];
+	assert.equal(symbol.kind, "symbol");
+	if (symbol.kind !== "symbol") return;
+	assert.deepEqual(symbolShapes(symbol), before.shapes.slice(0, 3));
+	assert.deepEqual(pinTerminals(symbol), pinTerminals(pin));
+	const thicker = editShapeAttribute(symbol, "lineWidth", 1);
+	assert.equal(thicker.kind, "symbol");
+	if (thicker.kind === "symbol") assert.ok(symbolShapes(thicker).every((child) => child.lineWidth === 1));
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, converted.shapes);
+});
+
+test("invalid symbol selections leave the drawing and history unchanged", () => {
+	const { store, run } = session();
+	run(placeShapesEffect([
+		{ ...rectangle, kind: "rectangle" },
+		{ ...rectangle, kind: "text", text: "Label", fontSize: 2 },
+		createSymbol(3, symbolDefinitions[0], { x: 80, y: 90 }),
+	], "Shapes"));
+	const before = store.getSnapshot();
+	for (const ids of [[], [1], [1, 1], [1, 99], [1, 2], [1, 3]]) {
+		assert.ok(Either.isLeft(run(Effect.either(createSymbolFromSelectionEffect(ids)))));
+		assert.strictEqual(store.getSnapshot(), before);
+	}
+});
 
 test("placement is lazy and runs with complete geometry without React, DOM or a renderer", () => {
 	assert.equal(typeof document, "undefined");

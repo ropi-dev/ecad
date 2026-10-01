@@ -90,14 +90,19 @@ function displayShape(
 		x: shape.x,
 		y: shape.y,
 		width: shape.width,
-		height: shape.kind === "wire" ? shape.lineWidth : shape.height,
+		height:
+			shape.kind === "wire" || shape.kind === "line"
+				? shape.lineWidth
+				: shape.height,
 		rotation: shape.rotation,
 		appearance,
 		...(shape.kind === "text" ? { text: shape.text } : {}),
 		renderOrder,
 	};
 	if (shape.kind === "symbol") {
-		const labels = shape.texts.filter((label) => shape.attributes[label.attribute]);
+		const labels = shape.texts.filter(
+			(label) => shape.attributes[label.attribute],
+		);
 		display.children = symbolTextShapes(shape).map((text, index) => ({
 			...displayShape(
 				text,

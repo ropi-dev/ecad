@@ -1,5 +1,10 @@
 import { Data, Effect } from "effect";
 import {
+	type DrawingDocument,
+	type DrawingSnapshot,
+	DrawingStore,
+} from "#/commands/drawing-store.ts";
+import {
 	commitHistory,
 	getHistoryState,
 	type History,
@@ -8,11 +13,7 @@ import {
 	undoHistory,
 } from "#/drawing/history";
 import { type EditorShape, normalizeWireSegments } from "#/drawing/shapes";
-import {
-	type DrawingDocument,
-	type DrawingSnapshot,
-	DrawingStore,
-} from "#/commands/drawing-store.ts";
+import { createSymbolFromShapes } from "#/drawing/symbols";
 
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 /** Complete geometry, already resolved by the caller. Commands allocate IDs. */
@@ -58,6 +59,7 @@ function validateShape(shape: EditorShape) {
 			"rectangle",
 			"circle",
 			"triangle",
+			"line",
 			"wire",
 			"pin",
 			"text",
@@ -112,7 +114,9 @@ function validateShape(shape: EditorShape) {
 		validateIds(shape.children.map((child) => child.id));
 		for (const child of shape.children) {
 			if (
-				!["rectangle", "circle", "triangle", "wire", "pin"].includes(child.kind)
+				!["rectangle", "circle", "triangle", "line", "wire", "pin"].includes(
+					child.kind,
+				)
 			)
 				invalid("Symbol children must be primitive shapes.");
 			validateShape(child);
@@ -296,6 +300,62 @@ export function removeShapesEffect(
 				label,
 			);
 		}),
+	);
+}
+
+export function createSymbolFromSelectionEffect(
+	ids: readonly number[],
+	options: { name?: string; definitionId?: string } = {},
+) {
+	return capture(
+		{ ids, options },
+		({ ids: captured, options: capturedOptions }) =>
+			command((current) => {
+				const name = (capturedOptions.name ?? "Custom symbol").trim();
+				if (!name || name.length > 100)
+					invalid("Enter a symbol name of 1 to 100 characters.");
+				validateIds(captured);
+				if (captured.length < 2)
+					invalid("Select at least two shapes to create a symbol.");
+				const selectedIds = new Set(captured);
+				const selected = current.shapes.filter((shape) =>
+					selectedIds.has(shape.id),
+				);
+				if (selected.length !== captured.length)
+					invalid("A selected shape no longer exists.");
+				const primitives = selected.filter(
+					(shape) => shape.kind !== "text" && shape.kind !== "symbol",
+				);
+				if (primitives.length !== selected.length)
+					invalid(
+						"Select rectangles, circles, triangles, lines, wires or pins to create a symbol.",
+					);
+				if (!Number.isSafeInteger(current.nextShapeId + 1))
+					invalid("No more shape IDs are available.");
+				const symbol = createSymbolFromShapes(current.nextShapeId, primitives, {
+					...capturedOptions,
+					name,
+				});
+				validateShape(symbol);
+				const firstId = selected[0].id;
+				const shapes = current.shapes.flatMap((shape) =>
+					shape.id === firstId
+						? [symbol]
+						: selectedIds.has(shape.id)
+							? []
+							: [shape],
+				);
+				const [result, next] = commit(
+					current,
+					shapes,
+					[symbol.id],
+					"Create symbol",
+					current.nextShapeId + 1,
+				);
+				const idMap = new Map(result.idMap);
+				for (const id of captured) idMap.set(id, symbol.id);
+				return [{ ...result, idMap }, next];
+			}),
 	);
 }
 

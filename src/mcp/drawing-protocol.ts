@@ -38,7 +38,7 @@ export const rectangleInputSchema = z.strictObject({
 
 const primitiveInputSchema = z.strictObject({
 	...geometryFields,
-	kind: z.enum(["rectangle", "circle", "triangle", "wire", "pin"]),
+	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire", "pin"]),
 });
 const primitiveShapeSchema = primitiveInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({

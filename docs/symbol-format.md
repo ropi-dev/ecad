@@ -12,6 +12,8 @@ Open **Symbols → Upload symbols** to select one or several files, or **Upload 
 
 Imported symbols appear alongside the built-in symbols. Choose one, then click the drawing to place it. Their attributes, rotation, selection, connections, and undo/redo work like built-in symbols. Symbols are cached locally in this browser; keep their files as your library. If browser storage is unavailable, the menu reports that the import will only last until you leave or reload the editor.
 
+To create a symbol in the editor, select two or more drawing shapes, choose **Create symbol** in Attributes, and enter a name. The selection becomes one symbol and its definition appears in **Symbols**, saved in this browser for reuse. Undo restores the original shapes while keeping the reusable definition in the list.
+
 ## File structure
 
 ```json
@@ -45,11 +47,12 @@ All fields above are required. `description` and `value` may be empty strings. U
 
 ## Drawing primitives
 
-Coordinates are relative to the symbol's placement origin `(0, 0)`. Positive X points right; positive Y points up. Dimensions are in millimetres and are preserved on import, without automatic resizing. All strokes start at 0.254 mm; an instance's line width can be edited after placement.
+Coordinates are relative to the symbol's placement origin `(0, 0)`. Positive X points right; positive Y points up. Dimensions are in millimetres and are preserved on import, without automatic resizing. Strokes default to 0.254 mm. Every primitive accepts an optional positive `lineWidth` in millimetres, up to 1000 mm. Symbols created from selections preserve their shapes' stroke widths; an instance's line width can be edited after placement.
 
 | `kind` | Required geometry fields | Optional fields |
 | --- | --- | --- |
 | `wire` | `x1`, `y1`, `x2`, `y2`: line endpoints, including diagonal lines | None |
+| `line` | `x1`, `y1`, `x2`, `y2`: endpoints at any angle | None |
 | `rectangle` | `x`, `y`: centre; `width`, `height` | `rotation`: degrees counterclockwise, default 0 |
 | `triangle` | `x`, `y`: bounding-box centre; `width`, `height`. The unrotated triangle points up. | `rotation`: degrees counterclockwise, default 0 |
 | `circle` | `x`, `y`: centre; `radius` | None |
@@ -57,9 +60,9 @@ Coordinates are relative to the symbol's placement origin `(0, 0)`. Positive X p
 
 Every pin has a fixed radius of 0.254 mm (diameter 0.508 mm), including standalone pins and pins inside symbols. Pin size stays fixed when a symbol is fitted or its line width changes. Pin files specify only their position; `radius`, `width`, and `height` are not accepted for pins.
 
-Add a `pin` wherever an external wire should connect. A decorative `wire` primitive alone does not define a terminal. Text, nested symbols, SVG, and images are not part of version 1.
+Add a `pin` wherever an external wire should connect. A `line` or decorative `wire` primitive alone does not define a terminal. Text, nested symbols, SVG, and images are not part of version 1.
 
-Coordinates must be between -1000 and 1000 mm. Widths, heights, and radii must be between 0.01 and 1000 mm. Wires must be at least 0.01 mm long. Rotation must be between -360 and 360 degrees. Every number must be finite.
+Coordinates must be between -1000 and 1000 mm. Widths, heights, and radii must be between 0.01 and 1000 mm. Lines and wires must be at least 0.01 mm long. Rotation must be between -360 and 360 degrees. Every number must be finite.
 
 ## Import rules
 

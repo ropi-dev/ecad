@@ -3,7 +3,34 @@ import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
 import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, symbolShapes, symbolTextShapes } from "../src/components/editor/shapes.ts";
-import { createSymbol, symbolDefinitions } from "../src/components/editor/symbols.ts";
+import { createSymbol, createSymbolFromShapes, symbolDefinitions } from "#/drawing/symbols.ts";
+
+test("converted symbols render each original shape with its own stroke width", () => {
+	const originals = [
+		{ ...drawShape(1, "rectangle", { x: 10, y: 20 }, { x: 30, y: 40 }), rotation: Math.PI / 6, lineWidth: 0.5 },
+		{ ...drawShape(2, "wire", { x: 40, y: 25 }, { x: 60, y: 25 }), lineWidth: 0.8 },
+	];
+	const symbol = createSymbolFromShapes(3, originals);
+	const geometry = createShapeGeometry(symbol).scale(symbol.width, symbol.height, 1).translate(symbol.x, symbol.y, 0);
+	const actual = geometry.getAttribute("position");
+	let offset = 0;
+	try {
+		for (const shape of originals) {
+			const original = createShapeGeometry(shape)
+				.scale(shape.width, shape.kind === "wire" ? shape.lineWidth : shape.height, 1)
+				.rotateZ(shape.rotation).translate(shape.x, shape.y, 0);
+			try {
+				const expected = original.getAttribute("position");
+				for (let index = 0; index < expected.count; index++) {
+					assert.ok(Math.abs(actual.getX(offset + index) - expected.getX(index)) < 1e-4);
+					assert.ok(Math.abs(actual.getY(offset + index) - expected.getY(index)) < 1e-4);
+				}
+				offset += expected.count;
+			} finally { original.dispose(); }
+		}
+		assert.equal(actual.count, offset);
+	} finally { geometry.dispose(); }
+});
 
 for (const definition of symbolDefinitions) {
 	test(`${definition.name} selects through each child and renders all its strokes`, () => {

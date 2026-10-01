@@ -1,23 +1,25 @@
 import { Shapes, Upload } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useRef, useState } from "react";
+import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
-import { useSymbolLibrary } from "./useSymbolLibrary";
 
 export function SymbolPicker({
 	disabled,
 	active,
 	onChoose,
+	library,
 }: {
 	disabled: boolean;
 	active: boolean;
 	onChoose: (definition: SymbolDefinition) => void;
+	library: ReturnType<typeof useSymbolLibrary>;
 }) {
 	const [open, setOpen] = useState(false);
 	const input = useRef<HTMLInputElement>(null);
 	const directoryInput = useRef<HTMLInputElement>(null);
-	const { definitions, loading, message, error, upload } = useSymbolLibrary();
+	const { definitions, loading, message, error, upload } = library;
 	return (
 		<Popover.Root open={open} onOpenChange={setOpen}>
 			<Popover.Trigger asChild>
@@ -162,7 +164,7 @@ function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
 					stroke="currentColor"
 					strokeWidth="0.254"
 				>
-					{child.kind === "wire" ? (
+					{child.kind === "wire" || child.kind === "line" ? (
 						<line x1={-child.width / 2} x2={child.width / 2} y1="0" y2="0" />
 					) : child.kind === "pin" || child.kind === "circle" ? (
 						<circle

@@ -110,7 +110,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Place shapes",
 			description:
-				"Place complete rectangles, circles, triangles, orthogonal wires, pins, text or symbols as one undo step. Top-level IDs are allocated by the drawing. Supply final center coordinates and dimensions in millimetres and rotation in radians. Text dimensions must already be measured; symbol children use local coordinates and their own IDs. Wire overlaps normalize within this transaction.",
+				"Place complete rectangles, circles, triangles, lines at any angle, orthogonal wires, pins, text or symbols as one undo step. Top-level IDs are allocated by the drawing. Supply final center coordinates and dimensions in millimetres and rotation in radians. Text dimensions must already be measured; symbol children use local coordinates and their own IDs. Wire overlaps normalize within this transaction.",
 			inputSchema: placeShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: placement,

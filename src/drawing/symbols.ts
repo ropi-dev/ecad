@@ -97,6 +97,7 @@ export const symbolDefinitions: SymbolDefinition[] = referenceDefinitions.map(
 			...definition,
 			children: definition.children.map((child) => ({
 				...child,
+				lineWidth: 0.254,
 				x: child.x * scale,
 				y: child.y * scale,
 				width: child.kind === "pin" ? 2 * PIN_RADIUS : child.width * scale,
@@ -122,7 +123,6 @@ export function createSymbol(
 		...(child.kind === "pin"
 			? { width: 2 * PIN_RADIUS, height: 2 * PIN_RADIUS }
 			: {}),
-		lineWidth: 0.254,
 	}));
 	const bounds = children.map(shapeBounds);
 	return {
@@ -141,9 +141,47 @@ export function createSymbol(
 				...bounds.flatMap((box) => [Math.abs(box.minY), Math.abs(box.maxY)]),
 			),
 		rotation: 0,
-		lineWidth: 0.254,
+		lineWidth: children[0].lineWidth,
 		children,
 		texts: definition.texts.map((label) => ({ ...label })),
 		attributes: { name: definition.name, reference, value: definition.value },
+	};
+}
+
+/** Group existing geometry without fitting, snapping, or changing its stroke. */
+export function createSymbolFromShapes(
+	id: number,
+	shapes: readonly PrimitiveShape[],
+	options: { name?: string; definitionId?: string } = {},
+): EditorSymbol {
+	const bounds = shapes.map(shapeBounds);
+	const minX = Math.min(...bounds.map((box) => box.minX));
+	const maxX = Math.max(...bounds.map((box) => box.maxX));
+	const minY = Math.min(...bounds.map((box) => box.minY));
+	const maxY = Math.max(...bounds.map((box) => box.maxY));
+	const x = (minX + maxX) / 2;
+	const y = (minY + maxY) / 2;
+	return {
+		id,
+		kind: "symbol",
+		definitionId: options.definitionId ?? `custom-${id}`,
+		x,
+		y,
+		width: maxX - minX,
+		height: maxY - minY,
+		rotation: 0,
+		lineWidth: shapes[0].lineWidth,
+		children: shapes.map((shape, index) => ({
+			...shape,
+			id: index + 1,
+			x: shape.x - x,
+			y: shape.y - y,
+		})),
+		texts: [],
+		attributes: {
+			name: options.name ?? "Custom symbol",
+			reference: `U${id}`,
+			value: "",
+		},
 	};
 }

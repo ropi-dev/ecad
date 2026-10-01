@@ -1,11 +1,12 @@
 import { Effect, Either } from "effect";
 import {
+	Cable,
 	Circle,
 	Hand,
 	Magnet,
 	MapPin,
+	Minus,
 	MousePointer2,
-	Slash,
 	Square,
 	Trash2,
 	Triangle,
@@ -22,6 +23,7 @@ import {
 } from "react";
 import {
 	type CommandResult,
+	createSymbolFromSelectionEffect,
 	type InvalidDrawingCommand,
 	jumpHistoryEffect,
 	placeShapesEffect,
@@ -31,6 +33,10 @@ import {
 	undoEffect,
 } from "#/commands/drawing-commands";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store";
+import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
+import { McpControls } from "#/components/editor/McpControls.tsx";
+import { symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
+import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
 	constrainWireEndpoint,
 	drawShape,
@@ -47,16 +53,19 @@ import {
 	type ShapeKind,
 	snapPoint,
 } from "#/drawing/shapes";
-import { createSymbol, type SymbolDefinition } from "#/drawing/symbols";
+import {
+	createSymbol,
+	createSymbolFromShapes,
+	type SymbolDefinition,
+} from "#/drawing/symbols";
 import type { Point } from "#/drawing/types";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet";
 import { screenToWorld, worldToScreen } from "#/engine/camera";
 import { rulerSpacing } from "#/engine/ruler";
-import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
+import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { HistoryControls } from "./HistoryControls";
-import { McpControls } from "#/components/editor/McpControls.tsx";
 import { SelectionAttributes } from "./SelectionAttributes";
 import { SymbolPicker } from "./SymbolPicker";
 import { createTextShape, updateText } from "./text";
@@ -68,7 +77,8 @@ const tools = [
 	{ kind: "rectangle", label: "Rectangle", icon: Square },
 	{ kind: "circle", label: "Circle", icon: Circle },
 	{ kind: "triangle", label: "Triangle", icon: Triangle },
-	{ kind: "wire", label: "Wire", icon: Slash },
+	{ kind: "line", label: "Line", icon: Minus },
+	{ kind: "wire", label: "Wire", icon: Cable },
 	{ kind: "pin", label: "Pin", icon: MapPin },
 	{ kind: "text", label: "Text", icon: Type },
 ] as const;
@@ -136,6 +146,8 @@ export function Editor2D({
 		useState<SymbolDefinition | null>(null);
 	const [symbolPreview, setSymbolPreview] = useState<EditorShape | null>(null);
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
+	const [creatingSymbol, setCreatingSymbol] = useState(false);
+	const symbolLibrary = useSymbolLibrary();
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
@@ -325,7 +337,11 @@ export function Editor2D({
 			active.valid =
 				draft.width > 0 &&
 				draft.height > 0 &&
-				Math.min(draft.width, draft.height) * scale >= 3;
+				(draft.kind === "line"
+					? draft.width
+					: Math.min(draft.width, draft.height)) *
+					scale >=
+					3;
 			previewReplacements([draft]);
 			return;
 		}
@@ -425,6 +441,36 @@ export function Editor2D({
 		const result = execute(removeShapesEffect([...currentSelection.current]));
 		if (result) acceptEdit(result, previousHistoryId, new Set());
 	};
+	const createSelectionSymbol = (name: string): string | undefined => {
+		finishDrag();
+		finishWire();
+		const previousHistoryId = store.getSnapshot().history.currentId;
+		const ids = [...currentSelection.current];
+		const primitives = store
+			.getSnapshot()
+			.shapes.filter((shape) => currentSelection.current.has(shape.id))
+			.filter((shape) => shape.kind !== "text" && shape.kind !== "symbol");
+		if (primitives.length !== ids.length || ids.length < 2)
+			return "Select at least two drawing shapes to create a symbol.";
+		try {
+			const options = { name, definitionId: `custom.${crypto.randomUUID()}` };
+			const draft = createSymbolFromShapes(nextId.current, primitives, options);
+			const saveSymbol = symbolLibrary.prepareAddition(
+				symbolFileFromSymbol(draft),
+			);
+			const result = execute(createSymbolFromSelectionEffect(ids, options));
+			if (!result) return "Unable to create a symbol from this selection.";
+			historySelection.current.set(previousHistoryId, ids);
+			acceptEdit(result, previousHistoryId);
+			saveSymbol();
+			setTool("select");
+			setCreatingSymbol(false);
+		} catch (cause) {
+			return cause instanceof Error
+				? cause.message
+				: "Unable to save this symbol.";
+		}
+	};
 	const selectShape = (id: number, additive: boolean) => {
 		const ids = new Set(additive ? selectedIds : []);
 		if (additive && ids.has(id)) ids.delete(id);
@@ -454,6 +500,7 @@ export function Editor2D({
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
 			onKeyDownCapture={(event) => {
+				if (creatingSymbol) return;
 				const target = event.target;
 				if (event.key === "Escape" && tool === "symbol") {
 					setSymbolPreview(null);
@@ -864,6 +911,7 @@ export function Editor2D({
 										</Fragment>
 									))}
 									<SymbolPicker
+										library={symbolLibrary}
 										disabled={!ready}
 										active={tool === "symbol"}
 										onChoose={(definition) => {
@@ -897,7 +945,7 @@ export function Editor2D({
 								</fieldset>
 							}
 							ariaLabel="2D shape editor"
-							interactionHint="Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles and circles. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
+							interactionHint="Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
 						/>
 					)}
 					{view && (
@@ -980,6 +1028,7 @@ export function Editor2D({
 				</div>
 				<SelectionAttributes
 					shapes={selected}
+					onCreateSymbol={() => setCreatingSymbol(true)}
 					onSymbolAttributeChange={(attribute, value) => {
 						commitReplacements(
 							selected.map((shape) =>
@@ -1020,11 +1069,17 @@ export function Editor2D({
 									);
 						commitReplacements(
 							replacements,
-							`Change ${attribute === "lineWidth" ? "wire width" : attribute === "fontSize" ? "font size" : attribute}`,
+							`Change ${attribute === "lineWidth" ? "line width" : attribute === "fontSize" ? "font size" : attribute}`,
 						);
 					}}
 				/>
 			</div>
+			{creatingSymbol && (
+				<CreateSymbolDialog
+					onClose={() => setCreatingSymbol(false)}
+					onCreate={createSelectionSymbol}
+				/>
+			)}
 		</main>
 	);
 }

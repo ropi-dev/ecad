@@ -1,5 +1,9 @@
 import { Data, Effect, ParseResult, Schema } from "effect";
-import { PIN_RADIUS, type PrimitiveShape } from "#/drawing/shapes.ts";
+import {
+	type EditorSymbol,
+	PIN_RADIUS,
+	type PrimitiveShape,
+} from "#/drawing/shapes.ts";
 import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
 import { readFile } from "#/formats/import-effects";
 
@@ -9,9 +13,13 @@ export const SYMBOL_STORAGE_KEY = "ecad.symbol-library.v1";
 const coordinate = Schema.Number.pipe(Schema.between(-1000, 1000));
 const dimension = Schema.Number.pipe(Schema.between(0.01, 1000));
 const label = Schema.String.pipe(Schema.minLength(1), Schema.maxLength(100));
+const lineWidth = Schema.optional(
+	Schema.Number.pipe(Schema.greaterThan(0), Schema.lessThanOrEqualTo(1000)),
+);
 const shapeSchema = Schema.Union(
 	Schema.Struct({
-		kind: Schema.Literal("wire"),
+		kind: Schema.Literal("wire", "line"),
+		lineWidth,
 		x1: coordinate,
 		y1: coordinate,
 		x2: coordinate,
@@ -20,11 +28,12 @@ const shapeSchema = Schema.Union(
 		Schema.filter(
 			(line) =>
 				Math.hypot(line.x2 - line.x1, line.y2 - line.y1) >= 0.01 ||
-				"Wire length must be at least 0.01 mm.",
+				"Line or wire length must be at least 0.01 mm.",
 		),
 	),
 	Schema.Struct({
 		kind: Schema.Literal("rectangle", "triangle"),
+		lineWidth,
 		x: coordinate,
 		y: coordinate,
 		width: dimension,
@@ -33,12 +42,14 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("circle"),
+		lineWidth,
 		x: coordinate,
 		y: coordinate,
 		radius: dimension,
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("pin"),
+		lineWidth,
 		x: coordinate,
 		y: coordinate,
 	}),
@@ -116,6 +127,48 @@ export function parseSymbolFile(text: string): SymbolFile {
 	const symbol = decode(symbolFileSchema, decodeJson(text));
 	checkIds([symbol]);
 	return symbol;
+}
+
+/** Save a reusable definition using the same format as imported libraries. */
+export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
+	return parseSymbolFile(
+		JSON.stringify({
+			format: "ecad-symbol",
+			version: 1,
+			units: "mm",
+			id: symbol.definitionId,
+			name: symbol.attributes.name,
+			description: "",
+			prefix: "U",
+			value: symbol.attributes.value,
+			shapes: symbol.children.map((shape) => {
+				const base = { kind: shape.kind, lineWidth: shape.lineWidth };
+				if (shape.kind === "line" || shape.kind === "wire") {
+					const dx = (Math.cos(shape.rotation) * shape.width) / 2;
+					const dy = (Math.sin(shape.rotation) * shape.width) / 2;
+					return {
+						...base,
+						x1: shape.x - dx,
+						y1: shape.y - dy,
+						x2: shape.x + dx,
+						y2: shape.y + dy,
+					};
+				}
+				const position = { x: shape.x, y: shape.y };
+				if (shape.kind === "pin") return { ...base, ...position };
+				if (shape.kind === "circle")
+					return { ...base, ...position, radius: shape.width / 2 };
+				const degrees = (shape.rotation * 180) / Math.PI;
+				return {
+					...base,
+					...position,
+					width: shape.width,
+					height: shape.height,
+					rotation: (((degrees % 360) + 540) % 360) - 180,
+				};
+			}),
+		}),
+	);
 }
 
 /** Browser storage is an internal cache of the individual symbol files. */
@@ -262,13 +315,17 @@ export function libraryDefinitions(library: SymbolLibrary): SymbolDefinition[] {
 			...definition,
 			texts: [],
 			children: shapes.map((shape, index): PrimitiveShape => {
-				const base = { id: index + 1, lineWidth: 0.254, rotation: 0 };
-				if (shape.kind === "wire") {
+				const base = {
+					id: index + 1,
+					lineWidth: shape.lineWidth ?? 0.254,
+					rotation: 0,
+				};
+				if ("x1" in shape) {
 					const dx = shape.x2 - shape.x1;
 					const dy = shape.y2 - shape.y1;
 					return {
 						...base,
-						kind: "wire",
+						kind: shape.kind,
 						x: (shape.x1 + shape.x2) / 2,
 						y: (shape.y1 + shape.y2) / 2,
 						width: Math.hypot(dx, dy),
