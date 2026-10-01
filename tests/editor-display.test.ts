@@ -57,7 +57,7 @@ test("display suppresses connected terminals and colors each remaining wire end"
 			appearance,
 			renderOrder,
 		})),
-		[{ x: 40, y: 0, width: 2, height: 2, appearance: "selected", renderOrder: 4 }],
+		[{ x: 40, y: 0, width: 0.508, height: 0.508, appearance: "selected", renderOrder: 4 }],
 	);
 });
 

@@ -6,6 +6,8 @@ The [drawing architecture guide](docs/architecture.md) describes the editor, hea
 
 The [MCP guide](docs/mcp.md) explains how to enable client access to an open drawing, configure its endpoint, and use drawing tools.
 
+The 2D editor accepts one symbol per `.ecadsym` file. A library is a directory of symbol files: import individual files with **Symbols → Upload symbols**, or use **Upload library directory**. See the [symbol format guide](docs/symbol-format.md) and [example directory](public/examples/symbols).
+
 # Getting Started
 
 To run this application:

@@ -1,11 +1,12 @@
-import type { Point } from "./types";
 import {
 	drawShape,
 	type EditorSymbol,
+	PIN_RADIUS,
 	type PrimitiveShape,
 	type SymbolText,
 	shapeBounds,
 } from "./shapes";
+import type { Point } from "./types";
 
 export interface SymbolDefinition {
 	id: string;
@@ -19,11 +20,8 @@ export interface SymbolDefinition {
 
 const wire = (id: number, x1: number, y1: number, x2: number, y2: number) =>
 	drawShape(id, "wire", { x: x1, y: y1 }, { x: x2, y: y2 });
-const pin = (id: number, x: number, y: number) => ({
-	...drawShape(id, "pin", { x, y }, { x, y }),
-	width: 0.508,
-	height: 0.508,
-});
+const pin = (id: number, x: number, y: number) =>
+	drawShape(id, "pin", { x, y }, { x, y });
 
 // Millimetre dimensions reference KiCad Device:R/C and power:Earth.
 // https://github.com/KiCad/kicad-symbols/blob/master/Device.lib
@@ -101,8 +99,8 @@ export const symbolDefinitions: SymbolDefinition[] = referenceDefinitions.map(
 				...child,
 				x: child.x * scale,
 				y: child.y * scale,
-				width: child.kind === "pin" ? 0.4 : child.width * scale,
-				height: child.kind === "pin" ? 0.4 : child.height * scale,
+				width: child.kind === "pin" ? 2 * PIN_RADIUS : child.width * scale,
+				height: child.kind === "pin" ? 2 * PIN_RADIUS : child.height * scale,
 			})),
 			texts: definition.texts.map((label) => ({
 				...label,
@@ -121,6 +119,9 @@ export function createSymbol(
 ): EditorSymbol {
 	const children = definition.children.map((child) => ({
 		...child,
+		...(child.kind === "pin"
+			? { width: 2 * PIN_RADIUS, height: 2 * PIN_RADIUS }
+			: {}),
 		lineWidth: 0.254,
 	}));
 	const bounds = children.map(shapeBounds);

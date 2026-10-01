@@ -1,0 +1,44 @@
+{
+  "format": "ecad-symbol",
+  "version": 1,
+  "units": "mm",
+  "id": "custom.buffer",
+  "name": "Buffer",
+  "description": "Triangle body with input and output pins",
+  "prefix": "U",
+  "value": "Buffer",
+  "shapes": [
+    {
+      "kind": "triangle",
+      "x": 0,
+      "y": 0,
+      "width": 4,
+      "height": 4,
+      "rotation": -90
+    },
+    {
+      "kind": "wire",
+      "x1": -3,
+      "y1": 0,
+      "x2": -2,
+      "y2": 0
+    },
+    {
+      "kind": "wire",
+      "x1": 2,
+      "y1": 0,
+      "x2": 3,
+      "y2": 0
+    },
+    {
+      "kind": "pin",
+      "x": -3,
+      "y": 0
+    },
+    {
+      "kind": "pin",
+      "x": 3,
+      "y": 0
+    }
+  ]
+}

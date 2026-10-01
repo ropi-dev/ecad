@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
-import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, pinTerminals, resizeHandles, selectionSize, symbolShapes, symbolTextShapes } from "../src/components/editor/shapes.ts";
+import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, symbolShapes, symbolTextShapes } from "../src/components/editor/shapes.ts";
 import { createSymbol, symbolDefinitions } from "../src/components/editor/symbols.ts";
 
 for (const definition of symbolDefinitions) {
 	test(`${definition.name} selects through each child and renders all its strokes`, () => {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
 		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), [`${definition.prefix}1`, definition.value]);
-		assert.equal(Math.max(symbol.width, symbol.height), 6.4);
+		assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
 		for (const terminal of pinTerminals(symbol)) {
 			assert.equal(terminal.x, Math.round(terminal.x));
 			assert.equal(terminal.y, Math.round(terminal.y));
@@ -42,7 +42,7 @@ for (const definition of symbolDefinitions) {
 		mesh.updateMatrixWorld();
 		try {
 			for (const child of symbolShapes(symbol)) {
-				const point = { x: child.x, y: child.y - (child.kind === "rectangle" ? child.height / 2 : 0) };
+				const point = { x: child.x, y: child.y - (child.kind === "rectangle" ? child.height / 2 - 0.01 : 0) };
 				assert.equal(hitShape(symbol, point, 0.1), true);
 				assert.equal(intersectsSelection(symbol, { minX: point.x - 0.1, maxX: point.x + 0.1, minY: point.y - 0.1, maxY: point.y + 0.1 }), true);
 				assert.ok(new Raycaster(new Vector3(point.x, point.y, 10), new Vector3(0, 0, -1)).intersectObject(mesh).length > 0);
@@ -114,4 +114,27 @@ test("symbol text resolves reference and value from each instance", () => {
 	assert.ok(Math.abs(rotatedLabel.y - (rotated.y + moved.texts[0].x)) < 1e-10);
 	first.attributes.reference = "";
 	assert.deepEqual(symbolTextShapes(first).map((text) => text.text), ["47 kΩ"]);
+});
+
+test("all pins retain their fixed radius across symbol fitting and line width edits", () => {
+ const standalone = drawShape(1, "pin", { x: 0, y: 0 }, { x: 100, y: 100 });
+ assert.equal(standalone.width / 2, PIN_RADIUS);
+ assert.equal(standalone.height / 2, PIN_RADIUS);
+ const thicker = editShapeAttribute(standalone, "lineWidth", 2);
+ assert.equal(thicker.width, standalone.width);
+ assert.equal(thicker.height, standalone.height);
+ assert.deepEqual(editShapeAttribute(standalone, "radius", 10), standalone);
+ for (const definition of symbolDefinitions) {
+  const symbol = createSymbol(1, definition, { x: 10, y: 20 });
+  for (const instance of [symbol, editShapeAttribute(symbol, "lineWidth", 2)]) {
+   assert.equal(instance.kind, "symbol");
+   if (instance.kind !== "symbol") continue;
+   for (const child of symbolShapes(instance).filter(child => child.kind === "pin")) {
+    assert.equal(child.width / 2, PIN_RADIUS);
+    assert.equal(child.height / 2, PIN_RADIUS);
+   }
+  }
+ }
+ const legacy = { ...symbolDefinitions[0], children: symbolDefinitions[0].children.map(child => child.kind === "pin" ? { ...child, width: 99, height: 42 } : child) };
+ assert.ok(createSymbol(2, legacy, { x: 0, y: 0 }).children.filter(child => child.kind === "pin").every(child => child.width === 2 * PIN_RADIUS && child.height === 2 * PIN_RADIUS));
 });

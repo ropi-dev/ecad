@@ -1,8 +1,9 @@
-import { Shapes } from "lucide-react";
+import { Shapes, Upload } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useState } from "react";
-import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols";
+import { useRef, useState } from "react";
+import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
+import { useSymbolLibrary } from "./useSymbolLibrary";
 
 export function SymbolPicker({
 	disabled,
@@ -14,6 +15,9 @@ export function SymbolPicker({
 	onChoose: (definition: SymbolDefinition) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const input = useRef<HTMLInputElement>(null);
+	const directoryInput = useRef<HTMLInputElement>(null);
+	const { definitions, loading, message, error, upload } = useSymbolLibrary();
 	return (
 		<Popover.Root open={open} onOpenChange={setOpen}>
 			<Popover.Trigger asChild>
@@ -40,8 +44,79 @@ export function SymbolPicker({
 					<p className="mt-1 mb-3 text-xs text-[#9ba7b8]">
 						Choose a symbol, then click the drawing to place it.
 					</p>
+					<div className="mb-3 border-b border-[#414955] pb-3">
+						<input
+							ref={input}
+							type="file"
+							multiple
+							accept=".ecadsym,.json"
+							aria-label="Upload symbol files"
+							className="hidden"
+							disabled={loading}
+							onChange={(event) => {
+								const files = Array.from(event.currentTarget.files ?? []);
+								event.currentTarget.value = "";
+								if (files.length) void upload(files);
+							}}
+						/>
+						<input
+							ref={directoryInput}
+							type="file"
+							multiple
+							{...{ webkitdirectory: "" }}
+							aria-label="Upload symbol directory"
+							className="hidden"
+							disabled={loading}
+							onChange={(event) => {
+								const files = Array.from(event.currentTarget.files ?? []);
+								event.currentTarget.value = "";
+								if (files.length) void upload(files, true);
+							}}
+						/>
+						<button
+							type="button"
+							disabled={loading}
+							onClick={() => input.current?.click()}
+							className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-wait disabled:opacity-50"
+						>
+							<Upload size={14} aria-hidden="true" />
+							{loading ? "Importing…" : "Upload symbols"}
+						</button>
+						<button
+							type="button"
+							disabled={loading}
+							onClick={() => directoryInput.current?.click()}
+							className="mt-2 w-full cursor-pointer rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-wait disabled:opacity-50"
+						>
+							Upload library directory
+						</button>
+						<p className="mt-2 mb-0 text-xs text-[#9ba7b8]">
+							One symbol per .ecadsym or .json file. Select files or a
+							directory. Saved in this browser.
+						</p>
+						<a
+							href="/examples/symbols/test-point.ecadsym"
+							download
+							className="mt-1 inline-block text-xs text-[#76c4c0] underline"
+						>
+							Download example
+						</a>
+						{message && (
+							<output className="mt-2 mb-0 block text-xs text-[#76c4c0]">
+								{message}
+							</output>
+						)}
+						{error && (
+							<p
+								role="alert"
+								className="mt-2 mb-0 max-h-32 overflow-auto whitespace-pre-wrap break-words text-xs text-[#ffb4ab]"
+							>
+								{error}
+							</p>
+						)}
+					</div>
 					<div className="flex flex-col gap-1">
-						{symbolDefinitions.map((definition) => (
+						{definitions.map((definition) => (
 							<button
 								key={definition.id}
 								type="button"
@@ -52,42 +127,12 @@ export function SymbolPicker({
 									setOpen(false);
 								}}
 							>
-								<svg
-									viewBox="-5 -3 10 6"
-									className="h-10 w-16 shrink-0 text-[#76c4c0]"
-									aria-hidden="true"
-								>
-									{definition.children.map((child) => (
-										<g
-											key={child.id}
-											transform={`translate(${child.x} ${-child.y}) rotate(${(-child.rotation * 180) / Math.PI})`}
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="0.254"
-										>
-											{child.kind === "wire" ? (
-												<line
-													x1={-child.width / 2}
-													x2={child.width / 2}
-													y1="0"
-													y2="0"
-												/>
-											) : child.kind === "pin" ? (
-												<circle r={child.width / 2} fill="currentColor" />
-											) : (
-												<rect
-													x={-child.width / 2}
-													y={-child.height / 2}
-													width={child.width}
-													height={child.height}
-												/>
-											)}
-										</g>
-									))}
-								</svg>
-								<span>
-									<span className="block text-sm">{definition.name}</span>
-									<span className="block text-xs text-[#9ba7b8]">
+								<SymbolPreview definition={definition} />
+								<span className="min-w-0">
+									<span className="block break-words text-sm">
+										{definition.name}
+									</span>
+									<span className="block break-words text-xs text-[#9ba7b8]">
 										{definition.description}
 									</span>
 								</span>
@@ -97,5 +142,48 @@ export function SymbolPicker({
 				</Popover.Content>
 			</Popover.Portal>
 		</Popover.Root>
+	);
+}
+
+function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
+	const { width, height } = createSymbol(0, definition, { x: 0, y: 0 });
+	const padding = Math.max(0.5, Math.max(width, height) * 0.1);
+	return (
+		<svg
+			viewBox={`${-width / 2 - padding} ${-height / 2 - padding} ${width + 2 * padding} ${height + 2 * padding}`}
+			className="h-10 w-16 shrink-0 text-[#76c4c0]"
+			aria-hidden="true"
+		>
+			{definition.children.map((child) => (
+				<g
+					key={child.id}
+					transform={`translate(${child.x} ${-child.y}) rotate(${(-child.rotation * 180) / Math.PI})`}
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="0.254"
+				>
+					{child.kind === "wire" ? (
+						<line x1={-child.width / 2} x2={child.width / 2} y1="0" y2="0" />
+					) : child.kind === "pin" || child.kind === "circle" ? (
+						<circle
+							r={child.width / 2}
+							fill={child.kind === "pin" ? "currentColor" : "none"}
+							stroke={child.kind === "pin" ? "none" : "currentColor"}
+						/>
+					) : child.kind === "triangle" ? (
+						<polygon
+							points={`${-child.width / 2},${child.height / 2} ${child.width / 2},${child.height / 2} 0,${-child.height / 2}`}
+						/>
+					) : (
+						<rect
+							x={-child.width / 2}
+							y={-child.height / 2}
+							width={child.width}
+							height={child.height}
+						/>
+					)}
+				</g>
+			))}
+		</svg>
 	);
 }

@@ -1,6 +1,8 @@
 import type { Bounds, Point } from "#/drawing/types.ts";
 
 export const A3 = { width: 420, height: 297 } as const;
+/** All connection markers have the same radius in millimetres. */
+export const PIN_RADIUS = 0.254;
 export type ShapeKind =
 	| "rectangle"
 	| "circle"
@@ -323,8 +325,8 @@ export function drawShape(
 			id,
 			kind,
 			...first,
-			width: 2,
-			height: 2,
+			width: 2 * PIN_RADIUS,
+			height: 2 * PIN_RADIUS,
 			rotation: 0,
 			lineWidth: 0.2,
 		};

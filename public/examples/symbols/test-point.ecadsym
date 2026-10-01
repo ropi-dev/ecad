@@ -1,0 +1,30 @@
+{
+  "format": "ecad-symbol",
+  "version": 1,
+  "units": "mm",
+  "id": "custom.test-point",
+  "name": "Test point",
+  "description": "Circular test point with a connection pin",
+  "prefix": "TP",
+  "value": "Test",
+  "shapes": [
+    {
+      "kind": "circle",
+      "x": 0,
+      "y": 1,
+      "radius": 1
+    },
+    {
+      "kind": "wire",
+      "x1": 0,
+      "y1": -2,
+      "x2": 0,
+      "y2": 0
+    },
+    {
+      "kind": "pin",
+      "x": 0,
+      "y": -2
+    }
+  ]
+}

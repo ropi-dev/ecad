@@ -1420,7 +1420,7 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await clickAt(page, 160, 100);
  await page.keyboard.press("Enter");
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
- await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y, width, height }) => [Math.round(x), Math.round(y), width, height])).toEqual([[160, 100, 2, 2]]);
+ await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y, width, height }) => [Math.round(x), Math.round(y), width, height])).toEqual([[160, 100, 0.508, 0.508]]);
  // Neither the midpoint of a segment nor an arbitrary shape is a valid start.
  await wireTool.click();
  await clickAt(page, 130, 100);
@@ -1494,12 +1494,12 @@ test("offset off-grid pins connect with a right-angle bend and undo together", a
 
 test("compact symbols have a 6 mm pin span and the grid has ten cells per major square", async ({ page }) => {
  await insertSymbol(page, "Resistor", 100, 150);
- await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(6.4, 3);
+ await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(6.508, 3);
  await expect(page.getByRole("spinbutton", { name: "Line width", exact: true })).toHaveValue("0.254");
  await insertSymbol(page, "Capacitor", 120, 150);
- await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(6.4, 3);
+ await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(6.508, 3);
  await insertSymbol(page, "Ground", 140, 150);
- await expect.poll(async () => Math.max((await state(page)).shapes[2]?.width, (await state(page)).shapes[2]?.height)).toBeCloseTo(6.4, 3);
+ await expect.poll(async () => Math.max((await state(page)).shapes[2]?.width, (await state(page)).shapes[2]?.height)).toBeCloseTo(6.508, 3);
  for (let zoom = 0; zoom < 3; zoom++) {
   const ticks = await page.getByRole("img", { name: "Drawing rulers in millimetres" }).locator('[data-axis="x"]').evaluateAll(nodes => nodes.map(node => ({ value: Number(node.getAttribute("data-value")), major: !!node.querySelector("text") })));
   const majors = ticks.flatMap((tick, index) => tick.major ? [index] : []);
