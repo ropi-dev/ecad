@@ -90,6 +90,8 @@ function validateShape(shape: EditorShape) {
 		invalid("A circle must have equal width and height.");
 	if (shape.kind === "wire" && Math.abs(Math.sin(2 * shape.rotation)) > 1e-9)
 		invalid("Wire segments must be horizontal or vertical.");
+	if (shape.kind === "pin" && typeof shape.name !== "string")
+		invalid("Pins require a name string.");
 	if (shape.kind === "text") {
 		if (
 			typeof shape.text !== "string" ||
@@ -132,6 +134,8 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 			return (
 				shape.id === other.id &&
 				shape.kind === other.kind &&
+				(shape.kind !== "pin" ||
+					(other.kind === "pin" && shape.name === other.name)) &&
 				(shape.kind !== "symbol" ||
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&

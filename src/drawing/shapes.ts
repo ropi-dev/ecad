@@ -19,8 +19,13 @@ interface ShapeGeometry extends Point {
 	rotation: number;
 }
 
-export interface PrimitiveShape extends ShapeGeometry {
-	kind: Exclude<ShapeKind, "text">;
+export type PrimitiveShape =
+	| (ShapeGeometry & { kind: Exclude<ShapeKind, "text" | "pin"> })
+	| PinShape;
+
+export interface PinShape extends ShapeGeometry {
+	kind: "pin";
+	name: string;
 }
 
 export interface EditorSymbol extends ShapeGeometry {
@@ -349,6 +354,7 @@ export function drawShape(
 		return {
 			id,
 			kind,
+			name: "",
 			...first,
 			width: 2 * PIN_RADIUS,
 			height: 2 * PIN_RADIUS,

@@ -125,6 +125,28 @@ test("MCP places every shape kind including complete symbols and measured text i
 	assert.deepEqual(replaced.reply.drawing.shapes[5], movedSymbol);
 });
 
+test("MCP preserves pin names through placement, replacement, reads and history", async (context) => {
+	const { call } = await session(context);
+	const { id: _id, ...pin } = drawShape(1, "pin", { x: 10, y: 20 }, { x: 10, y: 20 });
+	const placed = await call("placeShapes", { shapes: [{ ...pin, name: "VCC" }] });
+	assert.ok(placed.reply.ok);
+	const named = { ...pin, id: 1, name: "VCC" };
+	assert.deepEqual(placed.reply.drawing.shapes, [named]);
+	const renamed = { ...named, name: "GND" };
+	const replaced = await call("replaceShapes", { shapes: [renamed] });
+	assert.ok(replaced.reply.ok);
+	assert.deepEqual(replaced.reply.drawing.shapes, [renamed]);
+	const read = await call("getDrawing");
+	assert.ok(read.reply.ok);
+	assert.deepEqual(read.reply.drawing.shapes, [renamed]);
+	const undone = await call("undo");
+	assert.ok(undone.reply.ok);
+	assert.deepEqual(undone.reply.drawing.shapes, [named]);
+	const redone = await call("redo");
+	assert.ok(redone.reply.ok);
+	assert.deepEqual(redone.reply.drawing.shapes, [renamed]);
+});
+
 test("MCP replacement, deletion and history navigation use explicit IDs", async (context) => {
 	const { call } = await session(context);
 	await call("placeRectangle", rectangle);

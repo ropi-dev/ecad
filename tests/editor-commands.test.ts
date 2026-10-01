@@ -39,7 +39,7 @@ test("creating a symbol preserves geometry, pins and strokes in one undoable tra
 	const { store, run } = session();
 	const first = { ...drawShape(1, "rectangle", { x: 10, y: 20 }, { x: 30, y: 40 }), rotation: Math.PI / 6, lineWidth: 0.5 };
 	const wire = { ...drawShape(2, "wire", { x: 40, y: 25 }, { x: 60, y: 25 }), lineWidth: 0.8 };
-	const pin = drawShape(3, "pin", { x: 60, y: 25 }, { x: 60, y: 25 });
+	const pin = { ...drawShape(3, "pin", { x: 60, y: 25 }, { x: 60, y: 25 }), name: "OUT" };
 	const outside = drawShape(4, "circle", { x: 100, y: 100 }, { x: 105, y: 100 });
 	run(placeShapesEffect([first, wire, pin, outside], "Draw shapes"));
 	const before = store.getSnapshot();
@@ -67,6 +67,25 @@ test("creating a symbol preserves geometry, pins and strokes in one undoable tra
 	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
 	run(redoEffect);
 	assert.deepEqual(store.getSnapshot().shapes, converted.shapes);
+});
+
+test("pin name changes commit without geometry changes and support undo and redo", () => {
+	const { store, run } = session();
+	const pin = drawShape(1, "pin", { x: 10, y: 20 }, { x: 10, y: 20 });
+	assert.equal(pin.kind, "pin");
+	if (pin.kind !== "pin") return;
+	assert.equal(pin.name, "");
+	run(placeShapesEffect([pin], "Place pin"));
+	const named = { ...pin, name: "VCC" };
+	run(replaceShapesEffect([named], "Change pin name"));
+	assert.deepEqual(store.getSnapshot().shapes, [named]);
+	const unchanged = store.getSnapshot();
+	run(replaceShapesEffect([named], "Change pin name"));
+	assert.strictEqual(store.getSnapshot(), unchanged);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [pin]);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [named]);
 });
 
 test("invalid symbol selections leave the drawing and history unchanged", () => {

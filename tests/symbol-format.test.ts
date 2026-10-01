@@ -6,6 +6,7 @@ import { createSymbol } from "../src/components/editor/symbols.ts";
 import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
 import { hitShape, symbolShapes } from "../src/components/editor/shapes.ts";
 import { runEffect } from "../src/lib/effect.ts";
+import { symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
 
 const example = readFileSync(new URL("../public/examples/symbols/test-point.ecadsym", import.meta.url), "utf8");
 const source = () => JSON.parse(example);
@@ -132,7 +133,7 @@ test("portable files reject multi-symbol containers while old browser caches mig
 });
 
 
-test("pin files have only position and cached pin radii migrate to the fixed size", () => {
+test("pin files keep a fixed size and cached pin radii migrate", () => {
  const data = source();
  const pin = data.shapes.find((shape: { kind: string }) => shape.kind === "pin");
  pin.radius = 5;
@@ -142,4 +143,22 @@ test("pin files have only position and cached pin radii migrate to the fixed siz
  assert.equal(restoredPin.width, 0.508);
  assert.equal(restoredPin.height, 0.508);
  assert.equal("radius" in restored[0].shapes[2], false);
+});
+
+test("pin names survive symbol file and library round trips, with unnamed legacy pins", () => {
+ const data = source();
+ const pin = data.shapes.find((shape: { kind: string }) => shape.kind === "pin");
+ delete pin.name;
+ const legacy = libraryDefinitions([parseSymbolFile(JSON.stringify(data))])[0];
+ assert.equal(legacy.children.find(child => child.kind === "pin")?.name, "");
+ pin.name = "VCC";
+ const file = parseSymbolFile(JSON.stringify(data));
+ const library = parseSavedSymbolLibrary(JSON.stringify([file]));
+ const symbol = createSymbol(1, libraryDefinitions(library)[0], { x: 10, y: 20 });
+ assert.equal(symbol.children.find(child => child.kind === "pin")?.name, "VCC");
+ const saved = symbolFileFromSymbol(symbol);
+ assert.equal(saved.shapes.find(shape => shape.kind === "pin")?.name, "VCC");
+ assert.equal(libraryDefinitions([parseSymbolFile(JSON.stringify(saved))])[0].children.find(child => child.kind === "pin")?.name, "VCC");
+ pin.name = 42;
+ assert.throws(() => parseSymbolFile(JSON.stringify(data)), /name/);
 });

@@ -49,6 +49,7 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("pin"),
+		name: Schema.optional(Schema.String),
 		lineWidth,
 		x: coordinate,
 		y: coordinate,
@@ -155,7 +156,8 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 					};
 				}
 				const position = { x: shape.x, y: shape.y };
-				if (shape.kind === "pin") return { ...base, ...position };
+				if (shape.kind === "pin")
+					return { ...base, ...position, name: shape.name };
 				if (shape.kind === "circle")
 					return { ...base, ...position, radius: shape.width / 2 };
 				const degrees = (shape.rotation * 180) / Math.PI;
@@ -346,6 +348,7 @@ export function libraryDefinitions(library: SymbolLibrary): SymbolDefinition[] {
 					return {
 						...base,
 						...shape,
+						name: shape.name ?? "",
 						width: 2 * PIN_RADIUS,
 						height: 2 * PIN_RADIUS,
 					};

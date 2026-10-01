@@ -43,18 +43,15 @@ function AttributeInput({
 				placeholder="Mixed"
 				defaultValue={displayValue}
 				className="w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-right text-[#f0f3f8] tabular-nums focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-				onChange={(event) => {
+				onBlur={(event) => {
 					const next = event.currentTarget.valueAsNumber;
 					if (
 						Number.isFinite(next) &&
 						(!positive || next > 0) &&
 						(step !== "90" || next % 90 === 0)
-					)
-						onChange(next);
-				}}
-				onBlur={(event) => {
-					if (event.currentTarget.valueAsNumber !== value)
-						event.currentTarget.value = String(displayValue);
+					) {
+						if (next !== value && next !== displayValue) onChange(next);
+					} else event.currentTarget.value = String(displayValue);
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" || event.key === "Escape")
@@ -72,6 +69,7 @@ export function SelectionAttributes({
 	onClear,
 	onAttributeChange,
 	onSymbolAttributeChange,
+	onPinNameChange,
 	onCreateSymbol,
 	onTextChange,
 	textFocusId,
@@ -87,6 +85,7 @@ export function SelectionAttributes({
 		value: string,
 	) => void;
 	onTextChange: (text: string) => void;
+	onPinNameChange: (name: string) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
 }) {
@@ -141,6 +140,20 @@ export function SelectionAttributes({
 		? [
 				["Type", single.kind],
 				["ID", String(single.id)],
+				...(single.kind === "pin"
+					? [
+							[
+								"Name",
+								<input
+									key={`${single.id}:name:${single.name}`}
+									aria-label="Name"
+									defaultValue={single.name}
+									className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+									onBlur={(event) => onPinNameChange(event.currentTarget.value)}
+								/>,
+							] as [string, ReactNode],
+						]
+					: []),
 				...(symbol
 					? [
 							...["name", "reference", "value"].map((attribute) => {
@@ -149,11 +162,11 @@ export function SelectionAttributes({
 								return [
 									label,
 									<input
-										key={`${symbol.id}:${key}`}
+										key={`${symbol.id}:${key}:${symbol.attributes[key]}`}
 										aria-label={label}
-										value={symbol.attributes[key]}
+										defaultValue={symbol.attributes[key]}
 										className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-										onChange={(event) =>
+										onBlur={(event) =>
 											onSymbolAttributeChange(key, event.currentTarget.value)
 										}
 									/>,
@@ -196,7 +209,21 @@ export function SelectionAttributes({
 			];
 	return (
 		<FloatingPanel label="Selection attributes" position="top-right">
-			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5">
+			<div
+				className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5"
+				onKeyDownCapture={(event) => {
+					const target = event.target;
+					if (
+						(target instanceof HTMLInputElement && event.key === "Enter") ||
+						((target instanceof HTMLInputElement ||
+							target instanceof HTMLTextAreaElement) &&
+							event.key === "Escape")
+					) {
+						event.preventDefault();
+						target.blur();
+					}
+				}}
+			>
 				<header className="flex items-center justify-between gap-3">
 					<h2 className="m-0 text-[13px] font-semibold">Attributes</h2>
 					<button
@@ -241,7 +268,7 @@ export function SelectionAttributes({
 					<label className="mt-3 block text-[12px] text-[#9ba7b8]">
 						Text
 						<textarea
-							key={single.id}
+							key={`${single.id}:${single.text}`}
 							ref={(input) => {
 								if (input && textFocusId === single.id) {
 									input.focus({ preventScroll: true });
@@ -250,11 +277,11 @@ export function SelectionAttributes({
 								}
 							}}
 							aria-label="Text content"
-							value={single.text}
+							defaultValue={single.text}
 							rows={3}
 							maxLength={2000}
 							className="mt-2 block w-full resize-y rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-							onChange={(event) => onTextChange(event.currentTarget.value)}
+							onBlur={(event) => onTextChange(event.currentTarget.value)}
 							onKeyDown={(event) => {
 								if (event.key === "Escape") event.currentTarget.blur();
 							}}

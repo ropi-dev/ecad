@@ -1029,6 +1029,10 @@ export function Editor2D({
 				<SelectionAttributes
 					shapes={selected}
 					onCreateSymbol={() => setCreatingSymbol(true)}
+					onPinNameChange={(name) => {
+						if (selected.length === 1 && selected[0].kind === "pin")
+							commitReplacements([{ ...selected[0], name }], "Change pin name");
+					}}
 					onSymbolAttributeChange={(attribute, value) => {
 						commitReplacements(
 							selected.map((shape) =>

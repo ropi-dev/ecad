@@ -38,9 +38,15 @@ export const rectangleInputSchema = z.strictObject({
 
 const primitiveInputSchema = z.strictObject({
 	...geometryFields,
-	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire", "pin"]),
+	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire"]),
 });
 const primitiveShapeSchema = primitiveInputSchema.extend({ id: shapeId });
+const pinInputSchema = z.strictObject({
+	...geometryFields,
+	kind: z.literal("pin"),
+	name: z.string().default("").describe("Pin name, such as VCC or GND."),
+});
+const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("text"),
@@ -57,7 +63,7 @@ const symbolInputSchema = z.strictObject({
 	kind: z.literal("symbol"),
 	definitionId: z.string(),
 	children: z
-		.array(primitiveShapeSchema)
+		.array(z.discriminatedUnion("kind", [primitiveShapeSchema, pinShapeSchema]))
 		.min(1)
 		.describe(
 			"Primitive shapes in coordinates relative to the symbol center, with IDs local to this symbol.",
@@ -83,11 +89,13 @@ const symbolInputSchema = z.strictObject({
 
 export const shapeInputSchema = z.discriminatedUnion("kind", [
 	primitiveInputSchema,
+	pinInputSchema,
 	textInputSchema,
 	symbolInputSchema,
 ]);
 export const drawingShapeSchema = z.discriminatedUnion("kind", [
 	primitiveShapeSchema,
+	pinShapeSchema,
 	textInputSchema.extend({ id: shapeId }),
 	symbolInputSchema.extend({ id: shapeId }),
 ]);
