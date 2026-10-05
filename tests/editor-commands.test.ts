@@ -123,6 +123,7 @@ test("a command captures nested symbol inputs and store snapshots cannot be muta
 	const place = placeShapesEffect([symbol], "Place symbol");
 	symbol.children[0].x = 1000;
 	symbol.attributes.reference = "changed";
+	symbol.texts[0].x = 1000;
 	run(place);
 	const saved = store.getSnapshot();
 	assert.deepEqual(saved.shapes, [{ ...original, id: 1 }]);
@@ -132,6 +133,65 @@ test("a command captures nested symbol inputs and store snapshots cannot be muta
 	assert.throws(() => { saved.history.nodes[1].state.shapes[0].x = 100; }, TypeError);
 	assert.deepEqual(run(place).ids, [2]);
 	assert.equal(store.getSnapshot().shapes[1].kind, "symbol");
+});
+
+test("symbol label edits commit independently of geometry and survive undo and redo", () => {
+	const { store, run } = session();
+	const symbol = createSymbol(1, symbolDefinitions[0], { x: 5, y: 8 });
+	run(placeShapesEffect([symbol], "Place symbol"));
+	const before = store.getSnapshot();
+	const moved = {
+		...symbol,
+		texts: symbol.texts.map((text) => ({ ...text, x: text.x + 2 })),
+	};
+	run(replaceShapesEffect([moved], "Move symbol labels"));
+	const after = store.getSnapshot();
+	assert.deepEqual(after.shapes, [moved]);
+	assert.equal(after.history.currentId, before.history.currentId + 1);
+	run(replaceShapesEffect([structuredClone(moved)], "Unchanged labels"));
+	assert.strictEqual(store.getSnapshot(), after);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [symbol]);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [moved]);
+	run(replaceShapesEffect([{ ...moved, texts: [] }], "Hide symbol labels"));
+	assert.deepEqual(store.getSnapshot().shapes, [{ ...moved, texts: [] }]);
+});
+
+test("invalid symbol labels reject placements and replacements atomically", () => {
+	const { store, run } = session();
+	const symbol = createSymbol(1, symbolDefinitions[0], { x: 5, y: 8 });
+	run(placeShapesEffect([symbol, { ...rectangle, kind: "rectangle" }], "Place shapes"));
+	const before = store.getSnapshot();
+	const label = symbol.texts[0];
+	const invalidTexts: unknown[] = [
+		undefined,
+		null,
+		{},
+		[null],
+		["reference"],
+		[{}],
+		[{ ...label, attribute: "missing" }],
+		[{ ...label, x: Number.NaN }],
+		[{ ...label, y: Number.POSITIVE_INFINITY }],
+		[{ ...label, fontSize: 0 }],
+		[{ ...label, fontSize: -1 }],
+		[{ ...label, fontSize: Number.NaN }],
+		[{ ...label, fontSize: Number.POSITIVE_INFINITY }],
+	];
+	for (const texts of invalidTexts) {
+		const invalidSymbol = { ...symbol, texts: texts as typeof symbol.texts };
+		const commands = [
+			placeShapesEffect([{ ...rectangle, kind: "rectangle" }, invalidSymbol], "Invalid placement"),
+			replaceShapesEffect([{ ...before.shapes[1], x: 100 }, invalidSymbol], "Invalid replacement"),
+		];
+		for (const command of commands) {
+			const result = run(Effect.either(command));
+			assert.ok(Either.isLeft(result));
+			assert.ok(result.left instanceof InvalidDrawingCommand);
+			assert.strictEqual(store.getSnapshot(), before);
+		}
+	}
 });
 
 test("invalid complete inputs and invalid replacement IDs leave the whole transaction unchanged", () => {

@@ -113,6 +113,18 @@ function validateShape(shape: EditorShape) {
 			].every((value) => typeof value === "string")
 		)
 			invalid("Symbols require a definition, children and text attributes.");
+		if (
+			!Array.isArray(shape.texts) ||
+			shape.texts.some(
+				(text) =>
+					!text ||
+					typeof text !== "object" ||
+					!["name", "reference", "value"].includes(text.attribute) ||
+					![text.x, text.y, text.fontSize].every(Number.isFinite) ||
+					text.fontSize <= 0,
+			)
+		)
+			invalid("Symbol texts require valid attributes, positions and font sizes.");
 		validateIds(shape.children.map((child) => child.id));
 		for (const child of shape.children) {
 			if (
@@ -140,6 +152,7 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&
 						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
+						JSON.stringify(shape.texts) === JSON.stringify(other.texts) &&
 						shape.attributes.name === other.attributes.name &&
 						shape.attributes.reference === other.attributes.reference &&
 						shape.attributes.value === other.attributes.value)) &&
