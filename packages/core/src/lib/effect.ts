@@ -1,4 +1,6 @@
-import { Cause, Effect, Exit } from "effect";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 
 /** Execute only at a framework boundary, preserving domain errors and cancellation. */
 export async function runEffect<A, E>(

@@ -15,6 +15,7 @@ import {
 	WebGLRenderer,
 } from "three";
 import { createLifecycle } from "#/lib/lifecycle.ts";
+import { getAppPerformance } from "#/performance/runtime.ts";
 import { getSceneBounds } from "./camera";
 import { capturePng } from "./capture-png";
 import { create3DControls } from "./controls3d";
@@ -209,6 +210,8 @@ export function createSceneViewport(
 			schedule();
 		};
 		draw = () => {
+			const recorder = getAppPerformance();
+			const started = recorder ? performance.now() : 0;
 			try {
 				camera.updateMatrixWorld();
 				if (pointer) raycaster.setFromCamera(pointer, camera);
@@ -265,6 +268,18 @@ export function createSceneViewport(
 				onReady?.(false);
 				onError?.(
 					error instanceof Error ? error.message : "Unable to draw this scene.",
+				);
+			} finally {
+				recorder?.record(
+					"renderer.frame",
+					performance.now() - started,
+					{
+						calls: output.info.render.calls,
+						triangles: output.info.render.triangles,
+						geometries: output.info.memory.geometries,
+						textures: output.info.memory.textures,
+					},
+					started,
 				);
 			}
 		};

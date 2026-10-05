@@ -1,6 +1,12 @@
+import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { SymbolLibrary } from "@ecad/core/components/editor/symbolFormat.ts";
+import type {
+	AssetKind,
+	ProjectDocument,
+	ProjectSnapshot,
+} from "@ecad/core/projects/format.ts";
 import {
 	app,
 	BrowserWindow,
@@ -10,7 +16,8 @@ import {
 	net,
 	protocol,
 } from "electron";
-import { libraryChannels } from "#/bridge.ts";
+import { libraryChannels, projectChannels } from "#/bridge.ts";
+import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
 
 protocol.registerSchemesAsPrivileged([
@@ -43,6 +50,10 @@ const library = new DesktopSymbolLibrary(
 	directoryArgument &&
 		resolve(process.env.INIT_CWD ?? process.cwd(), directoryArgument),
 );
+const projects = new DesktopProjects(
+	directoryArgument &&
+		resolve(process.env.INIT_CWD ?? process.cwd(), directoryArgument),
+);
 let window: BrowserWindow | null = null;
 
 function assertSender(event: IpcMainInvokeEvent) {
@@ -52,7 +63,7 @@ function assertSender(event: IpcMainInvokeEvent) {
 		event.senderFrame !== window.webContents.mainFrame ||
 		event.senderFrame.url !== rendererUrl
 	) {
-		throw new Error("Symbol library access is limited to the desktop editor.");
+		throw new Error("Filesystem access is limited to the desktop editor.");
 	}
 }
 
@@ -79,6 +90,79 @@ function registerLibraryHandlers() {
 		if (selected.canceled || !selected.filePaths[0]) return null;
 		return library.openDirectory(selected.filePaths[0]);
 	});
+}
+
+function registerProjectHandlers() {
+	const selectionFile = join(app.getPath("userData"), "project-directory.json");
+	async function remember(snapshot: ProjectSnapshot | null) {
+		if (snapshot)
+			await writeFile(selectionFile, JSON.stringify(snapshot.directory));
+		return snapshot;
+	}
+	ipcMain.handle(projectChannels.load, async (event) => {
+		assertSender(event);
+		if (!directoryArgument) {
+			try {
+				const directory = JSON.parse(await readFile(selectionFile, "utf8"));
+				if (typeof directory !== "string")
+					throw new Error("The saved project directory is invalid.");
+				return projects.openDirectory(directory);
+			} catch (cause) {
+				if (
+					!(cause instanceof Error) ||
+					!("code" in cause) ||
+					cause.code !== "ENOENT"
+				)
+					throw cause;
+			}
+		}
+		return projects.load();
+	});
+	ipcMain.handle(projectChannels.create, async (event, name: string) => {
+		assertSender(event);
+		if (!window) throw new Error("The desktop editor is closed.");
+		const selected = await dialog.showOpenDialog(window, {
+			title: "Choose parent directory for the project",
+			properties: ["openDirectory", "createDirectory"],
+		});
+		if (selected.canceled || !selected.filePaths[0]) return null;
+		return remember(await projects.create(name, selected.filePaths[0]));
+	});
+	ipcMain.handle(projectChannels.open, async (event) => {
+		assertSender(event);
+		if (!window) throw new Error("The desktop editor is closed.");
+		const selected = await dialog.showOpenDialog(window, {
+			title: "Open ECAD project directory",
+			properties: ["openDirectory"],
+		});
+		if (selected.canceled || !selected.filePaths[0]) return null;
+		return remember(await projects.openDirectory(selected.filePaths[0]));
+	});
+	ipcMain.handle(
+		projectChannels.save,
+		(event, directory: string, document: ProjectDocument) => {
+			assertSender(event);
+			return projects.save(directory, document);
+		},
+	);
+	ipcMain.handle(
+		projectChannels.importAssets,
+		(
+			event,
+			directory: string,
+			assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
+		) => {
+			assertSender(event);
+			return projects.importAssets(directory, assets);
+		},
+	);
+	ipcMain.handle(
+		projectChannels.readAsset,
+		(event, directory: string, path: string) => {
+			assertSender(event);
+			return projects.readAsset(directory, path);
+		},
+	);
 }
 
 function createWindow() {
@@ -139,6 +223,7 @@ void app.whenReady().then(() => {
 		});
 	});
 	registerLibraryHandlers();
+	registerProjectHandlers();
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();

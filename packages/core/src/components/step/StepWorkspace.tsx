@@ -1,11 +1,14 @@
 import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import { ProjectLink } from "#/projects/ProjectLink.tsx";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 import { StepControls } from "./StepControls";
 import { StepParts } from "./StepParts";
 import { StepViewer } from "./StepViewer";
 import { useStepFile } from "./useStepFile";
 
 export function StepWorkspace() {
+	const project = useProject();
 	const { model, loading, message, openFile, cancel, clear } = useStepFile();
 	const [hidden, setHidden] = useState<Set<number>>(new Set());
 	const [wireframe, setWireframe] = useState(false);
@@ -25,19 +28,22 @@ export function StepWorkspace() {
 		<main
 			className="relative h-dvh overflow-hidden"
 			onDragEnter={(event) => {
+				if (project) return;
 				if (!event.dataTransfer.types.includes("Files")) return;
 				event.preventDefault();
 				dragDepth.current++;
 				setDragging(true);
 			}}
 			onDragOver={(event) => {
-				if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+				if (!project && event.dataTransfer.types.includes("Files"))
+					event.preventDefault();
 			}}
 			onDragLeave={() => {
 				dragDepth.current = Math.max(0, dragDepth.current - 1);
 				if (!dragDepth.current) setDragging(false);
 			}}
 			onDrop={(event) => {
+				if (project) return;
 				event.preventDefault();
 				dragDepth.current = 0;
 				setDragging(false);
@@ -45,30 +51,35 @@ export function StepWorkspace() {
 				if (file) void load(file);
 			}}
 		>
-			<header className="absolute left-4 top-4 z-20 flex gap-2">
-				<label
-					className={`${button} relative cursor-pointer focus-within:outline-2 focus-within:outline-white`}
-				>
-					<Upload size={16} />
-					{loading ? "Reading STEP..." : "Open STEP"}
-					<input
-						type="file"
-						accept=".step,.stp"
-						aria-label="Open STEP file"
-						className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-						onChange={(event) => {
-							const file = event.target.files?.[0];
-							if (file) void load(file);
-							event.target.value = "";
-						}}
-					/>
-				</label>
-				<a href="/" className={button}>
+			<header className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
+				<ProjectLink href="/projects" className={button}>
+					Projects
+				</ProjectLink>
+				{!project && (
+					<label
+						className={`${button} relative cursor-pointer focus-within:outline-2 focus-within:outline-white`}
+					>
+						<Upload size={16} />
+						{loading ? "Reading STEP..." : "Open STEP"}
+						<input
+							type="file"
+							accept=".step,.stp"
+							aria-label="Open STEP file"
+							className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+							onChange={(event) => {
+								const file = event.target.files?.[0];
+								if (file) void load(file);
+								event.target.value = "";
+							}}
+						/>
+					</label>
+				)}
+				<ProjectLink href="/" className={button}>
 					Gerber viewer
-				</a>
-				<a href="/editor" className={button}>
+				</ProjectLink>
+				<ProjectLink href="/editor" className={button}>
 					2D editor
-				</a>
+				</ProjectLink>
 			</header>
 			{(message || rendererError) && (
 				<div
@@ -94,30 +105,34 @@ export function StepWorkspace() {
 							/>
 						}
 					/>
-					<StepParts
-						model={model}
-						hidden={hidden}
-						onToggle={(index) =>
-							setHidden((current) => {
-								const next = new Set(current);
-								if (next.has(index)) next.delete(index);
-								else next.add(index);
-								return next;
-							})
-						}
-						onClear={() => {
-							clear();
-							setReady(false);
-							setRendererError("");
-						}}
-					/>
+					{!project && (
+						<StepParts
+							model={model}
+							hidden={hidden}
+							onToggle={(index) =>
+								setHidden((current) => {
+									const next = new Set(current);
+									if (next.has(index)) next.delete(index);
+									else next.add(index);
+									return next;
+								})
+							}
+							onClear={() => {
+								clear();
+								setReady(false);
+								setRendererError("");
+							}}
+						/>
+					)}
 				</>
 			) : (
 				<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
 					<Box size={40} className="text-slate-500" />
 					<h1 className="text-xl font-medium text-slate-200">STEP viewer</h1>
 					<p className="text-sm text-slate-400">
-						Open or drop a .step or .stp file to explore it in 3D.
+						{project
+							? "Add a STEP file on the Projects page to explore it in 3D."
+							: "Open or drop a .step or .stp file to explore it in 3D."}
 					</p>
 					<p className="text-xs text-slate-400">Files stay on your device.</p>
 				</div>

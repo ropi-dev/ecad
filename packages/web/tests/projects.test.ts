@@ -1,0 +1,104 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
+import { PROJECT_FILE, parseProjectManifest } from "@ecad/core/projects/format.ts";
+import { type BrowserDirectory, createWebProjectStorage } from "#/projects/storage.ts";
+
+function browserFilesystem() {
+	const entries = new Map<string, Uint8Array>();
+	const directories = new Set([""]);
+	let failManifest = false;
+	const missing = () => new DOMException("Not found", "NotFoundError");
+	function handle(prefix: string): BrowserDirectory {
+		const path = (name: string) => prefix ? `${prefix}/${name}` : name;
+		return {
+			async getDirectoryHandle(name, options) {
+				const directory = path(name);
+				if (!directories.has(directory) && !options?.create) throw missing();
+				directories.add(directory);
+				return handle(directory);
+			},
+			async getFileHandle(name, options) {
+				const file = path(name);
+				if (!entries.has(file) && !options?.create) throw missing();
+				return {
+					async getFile() { return { async arrayBuffer() { const value = entries.get(file); if (!value) throw missing(); return new Uint8Array(value).buffer; } }; },
+					async createWritable() {
+						let pending: Uint8Array | undefined;
+						return {
+							async write(data) { if (failManifest && name === PROJECT_FILE) throw new DOMException("Quota exceeded", "QuotaExceededError"); pending = new Uint8Array(data); },
+							async close() { if (pending) entries.set(file, pending); },
+							async abort() { pending = undefined; },
+						};
+					},
+				};
+			},
+			async removeEntry(name) {
+				const entry = path(name);
+				for (const key of entries.keys()) if (key === entry || key.startsWith(`${entry}/`)) entries.delete(key);
+				for (const key of directories) if (key === entry || key.startsWith(`${entry}/`)) directories.delete(key);
+			},
+			async *keys() {
+				for (const key of directories) { if (key && key.startsWith(prefix) && key.split("/").length === (prefix ? prefix.split("/").length + 1 : 1)) yield key.split("/").at(-1) as string; }
+			},
+		};
+	}
+	const selection = new Map<string, string>();
+	return { entries, root: () => Promise.resolve(handle("")), selection: { getItem: (key: string) => selection.get(key) ?? null, setItem: (key: string, value: string) => { selection.set(key, value); } }, fail: (value = true) => { failManifest = value; } };
+}
+const shape: EditorShape = { id: 3, kind: "circle", x: 1, y: 2, width: 5, height: 5, rotation: 0, lineWidth: 0.2 };
+
+test("browser projects use named local directories, restore the active project and isolate source files", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	assert.equal(await storage.load(), null);
+	await storage.create("Controller");
+	await storage.save("Controller", { shapes: [shape], symbols: [] });
+	const bytes = new Uint8Array([0, 255, 200]);
+	const saved = await storage.importAssets("Controller", [{ name: "model.step", kind: "step", bytes }]);
+	const manifest = parseProjectManifest(new TextDecoder().decode(browser.entries.get("Controller/.ecadprj")));
+	assert.deepEqual(manifest, saved.manifest);
+	assert.deepEqual(await storage.readAsset("Controller", manifest.assets[0].path), bytes);
+	assert.deepEqual(await createWebProjectStorage(browser.root, browser.selection).load(), saved);
+	await storage.create("Power supply");
+	assert.deepEqual(await storage.list(), ["Controller", "Power supply"]);
+	await assert.rejects(storage.readAsset("Controller", manifest.assets[0].path), /no longer open/);
+	assert.deepEqual((await storage.open("Controller"))?.shapes, [shape]);
+	await assert.rejects(storage.readAsset("Controller", "../Power supply/.ecadprj"));
+	await assert.rejects(storage.create("Controller"), /already exists/);
+	await assert.rejects(storage.create("../Controller"));
+});
+
+test("browser quota failures keep the last complete drawing and remove failed writes", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	await storage.create("Controller");
+	await storage.save("Controller", { shapes: [shape], symbols: [] });
+	const before = [...browser.entries.keys()].sort();
+	browser.fail();
+	await assert.rejects(storage.save("Controller", { shapes: [], symbols: [] }), { name: "QuotaExceededError" });
+	assert.deepEqual([...browser.entries.keys()].sort(), before);
+	assert.deepEqual((await createWebProjectStorage(browser.root, browser.selection).load())?.shapes, [shape]);
+});
+
+test("corrupt browser project manifests remain untouched and do not switch the active project", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	await storage.create("Broken");
+	await storage.create("Working");
+	browser.entries.set("Broken/.ecadprj", new TextEncoder().encode("invalid = ["));
+	await assert.rejects(storage.open("Broken"));
+	assert.equal((await createWebProjectStorage(browser.root, browser.selection).load())?.manifest.name, "Working");
+	assert.equal(new TextDecoder().decode(browser.entries.get("Broken/.ecadprj")), "invalid = [");
+});
+
+
+test("failed browser project creation removes the incomplete directory and allows retrying", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	browser.fail();
+	await assert.rejects(storage.create("Controller"), { name: "QuotaExceededError" });
+	assert.deepEqual(await storage.list(), []);
+	browser.fail(false);
+	assert.equal((await storage.create("Controller"))?.manifest.name, "Controller");
+});

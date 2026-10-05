@@ -63,6 +63,8 @@ import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { screenToWorld, worldToScreen } from "#/engine/camera.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
+import { ProjectLink } from "#/projects/ProjectLink.tsx";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { HistoryControls } from "./HistoryControls";
@@ -122,7 +124,8 @@ export function Editor2D({
 	enableMcp = true,
 }: Editor2DProps = {}) {
 	const [ownedStore] = useState(() => createDrawingStore());
-	const store = suppliedStore ?? ownedStore;
+	const project = useProject();
+	const store = suppliedStore ?? project?.store ?? ownedStore;
 	const drawing = useSyncExternalStore(
 		store.subscribe,
 		store.getSnapshot,
@@ -540,18 +543,24 @@ export function Editor2D({
 				{sheet.width} × {sheet.height} mm
 			</h1>
 			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
-				<a
+				<ProjectLink
 					href="/"
 					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
 				>
 					Gerber viewer
-				</a>
-				<a
+				</ProjectLink>
+				<ProjectLink
 					href="/step"
 					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
 				>
 					STEP viewer
-				</a>
+				</ProjectLink>
+				<ProjectLink
+					href="/projects"
+					className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
+				>
+					Projects
+				</ProjectLink>
 				{enableMcp && <McpControls store={store} />}
 			</header>
 			<div className="relative flex min-h-0 flex-1">

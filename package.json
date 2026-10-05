@@ -70,6 +70,9 @@
     "db:migrate": "npm run db:migrate --workspace @ecad/web",
     "db:push": "npm run db:push --workspace @ecad/web",
     "db:pull": "npm run db:pull --workspace @ecad/web",
-    "db:studio": "npm run db:studio --workspace @ecad/web"
+    "db:studio": "npm run db:studio --workspace @ecad/web",
+    "perf": "tsx scripts/performance/run.ts",
+    "perf:dev": "tsx scripts/performance/run.ts --development",
+    "perf:baseline": "tsx scripts/performance/run.ts --baseline"
   }
 }

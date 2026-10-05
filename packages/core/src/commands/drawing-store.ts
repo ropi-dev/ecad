@@ -1,4 +1,4 @@
-import { Context } from "effect";
+import * as Context from "effect/Context";
 import { createHistory, type History } from "#/drawing/history.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 
@@ -34,11 +34,17 @@ function freeze<T>(value: T): T {
 }
 
 /** A drawing exists independently of any React component or rendering backend. */
-export function createDrawingStore(): DrawingStoreService {
+export function createDrawingStore(
+	shapes: EditorShape[] = [],
+): DrawingStoreService {
 	let snapshot = freeze<DrawingSnapshot>({
-		shapes: [],
-		history: createHistory<DrawingDocument>({ shapes: [] }, "Empty drawing"),
-		nextShapeId: 1,
+		shapes,
+		history: createHistory<DrawingDocument>(
+			{ shapes },
+			shapes.length ? "Loaded drawing" : "Empty drawing",
+		),
+		nextShapeId:
+			shapes.reduce((maximum, shape) => Math.max(maximum, shape.id), 0) + 1,
 	});
 	const listeners = new Set<() => void>();
 	return DrawingStore.of({
