@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PerformanceRecorder } from "#/performance/recorder.ts";
-import { compareBaseline, type Summary } from "./performance/comparison.ts";
+import { budgets } from "./performance/budgets.ts";
+import {
+	checkBudgets,
+	compareBaseline,
+	type Summary,
+} from "./performance/comparison.ts";
 
 test("performance records stay bounded while totals retain the whole session", () => {
 	let clock = 100;
@@ -140,4 +145,77 @@ test("performance baseline comparison rejects regressions, missing metrics, and 
 	const focused = structuredClone(baseline);
 	focused.scenarios = {};
 	assert.deepEqual(compareBaseline(baseline, focused), []);
+	const sampled = structuredClone(baseline);
+	sampled.scenarios["projects-empty"].eventLoopP95Ms = {
+		median: 100,
+		p95: 120,
+		samples: 3,
+	};
+	const noisy = structuredClone(sampled);
+	noisy.scenarios["projects-empty"].eventLoopP95Ms.median = 225;
+	assert.deepEqual(compareBaseline(sampled, noisy), []);
+	noisy.scenarios["projects-empty"].eventLoopP95Ms.median = 226;
+	assert.match(
+		compareBaseline(sampled, noisy)[0],
+		/exceeds baseline limit 225/,
+	);
+});
+
+test("absolute performance budgets use repeated-run medians and reject sustained or single-run regressions", () => {
+	const summary: Summary = {
+		version: 1,
+		profile: {
+			mode: "production",
+			cpu: 4,
+			platform: "linux",
+			browser: "Chromium",
+		},
+		scenarios: {
+			"projects-empty": Object.fromEntries(
+				Object.keys(budgets["projects-empty"]).map((name) => [
+					name,
+					{ median: 0, p95: 0, samples: 3 },
+				]),
+			),
+		},
+	};
+	const loop = summary.scenarios["projects-empty"].eventLoopP95Ms;
+	loop.median = budgets["projects-empty"].eventLoopP95Ms;
+	loop.p95 = 1500;
+	assert.deepEqual(checkBudgets(summary), []);
+	loop.median++;
+	assert.match(checkBudgets(summary)[0], /median 301.0 exceeds budget 300/);
+	loop.samples = 1;
+	assert.match(checkBudgets(summary)[0], /exceeds budget/);
+	summary.profile.mode = "development";
+	assert.deepEqual(checkBudgets(summary), []);
+	summary.scenarios["projects-empty"].domNodes.median = 1001;
+	assert.match(checkBudgets(summary)[0], /domNodes.*exceeds budget/);
+});
+
+test("absolute performance budgets reject missing or nonfinite measurements and unknown scenarios", () => {
+	const summary: Summary = {
+		version: 1,
+		profile: {
+			mode: "production",
+			cpu: 4,
+			platform: "linux",
+			browser: "Chromium",
+		},
+		scenarios: { "projects-empty": {} },
+	};
+	assert.equal(
+		checkBudgets(summary).length,
+		Object.keys(budgets["projects-empty"]).length,
+	);
+	for (const invalid of [NaN, Infinity, -Infinity]) {
+		summary.scenarios["projects-empty"].startupMs = {
+			median: invalid,
+			p95: invalid,
+			samples: 1,
+		};
+		assert.match(checkBudgets(summary)[0], /startupMs.*missing or invalid/);
+	}
+	summary.scenarios = { unknown: {} };
+	assert.match(checkBudgets(summary)[0], /no performance budgets are defined/);
 });

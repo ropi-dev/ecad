@@ -1,4 +1,4 @@
-import { regressionFloors } from "./budgets.ts";
+import { budgets, regressionFloors, type Scenario } from "./budgets.ts";
 
 export interface Summary {
 	version: number;
@@ -7,6 +7,33 @@ export interface Summary {
 		string,
 		Record<string, { median: number; p95: number; samples: number }>
 	>;
+}
+
+export function checkBudgets(summary: Summary): string[] {
+	const failures: string[] = [];
+	for (const [scenario, metrics] of Object.entries(summary.scenarios)) {
+		const limits = budgets[scenario as Scenario];
+		if (!limits) {
+			failures.push(`${scenario}: no performance budgets are defined.`);
+			continue;
+		}
+		for (const [metric, maximum] of Object.entries(limits)) {
+			const value = metrics[metric]?.median;
+			if (!Number.isFinite(value)) {
+				failures.push(
+					`${scenario}.${metric}: required measurement is missing or invalid.`,
+				);
+				continue;
+			}
+			if (summary.profile.mode === "development" && metric !== "domNodes")
+				continue;
+			if (value > maximum)
+				failures.push(
+					`${scenario}.${metric}: median ${value.toFixed(1)} exceeds budget ${maximum}.`,
+				);
+		}
+	}
+	return failures;
 }
 
 export function compareBaseline(baseline: Summary, current: Summary): string[] {

@@ -7,7 +7,7 @@ import type {
 	TestResult,
 	FullResult,
 } from "@playwright/test/reporter";
-import { compareBaseline, type Summary } from "./comparison.ts";
+import { checkBudgets, compareBaseline, type Summary } from "./comparison.ts";
 
 interface Result {
 	scenario: string;
@@ -63,6 +63,7 @@ export default class PerformanceReporter implements Reporter {
 		}
 		if (this.runs.length === 0)
 			this.failures.push("No performance reports were captured.");
+		this.failures.push(...checkBudgets(summary));
 		if (
 			process.env.ECAD_PERF_UPDATE_BASELINE !== "1" &&
 			existsSync(baselinePath)

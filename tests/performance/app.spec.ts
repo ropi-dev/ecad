@@ -79,11 +79,15 @@ async function finish(
 	});
 	for (const [name, maximum] of Object.entries(budgets[scenario])) {
 		expect(metrics[name], `${scenario}.${name} must be measured`).toBeDefined();
-		if (value.mode === "development" && name !== "domNodes") continue;
 		expect(
-			metrics[name],
-			`${scenario}.${name} budget ${maximum}`,
-		).toBeLessThanOrEqual(maximum);
+			Number.isFinite(metrics[name]),
+			`${scenario}.${name} must be finite`,
+		).toBe(true);
+		if (name === "domNodes")
+			expect(
+				metrics[name],
+				`${scenario}.${name} budget ${maximum}`,
+			).toBeLessThanOrEqual(maximum);
 	}
 	if (value.mode === "development")
 		expect(

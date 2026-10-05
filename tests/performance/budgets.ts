@@ -30,7 +30,7 @@ export const regressionFloors: Record<string, number> = {
 	importStepMs: 250,
 	blockingMs: 100,
 	frameP95Ms: 20,
-	eventLoopP95Ms: 25,
+	eventLoopP95Ms: 100,
 	scriptBytes: 100_000,
 	heapBytes: 5_000_000,
 	domNodes: 50,

@@ -24,7 +24,11 @@ The absolute timing budgets include the existing workload on GitHub's Ubuntu run
 
 These limits guard against regressions in this test environment; they are not responsiveness targets. Use the import and frame measurements to guide further optimization. Local baseline comparisons retain their tighter relative limits.
 
-`perf-artifacts/latest.json` contains individual reports and per-scenario medians and p95 values across runs. `perf-artifacts/baseline.json` stores the local comparison baseline. Artifacts are ignored by Git. Explicit budgets live in `tests/performance/budgets.ts`; tests fail when a required metric is absent or a budget is exceeded. With a baseline, the reporter also fails if a median exceeds the old median by 25% plus the metric's noise allowance. A baseline must match the mode, CPU throttle, platform, and browser version. Recapture it explicitly after an environment change. Baseline capture only succeeds when all executed tests and budgets pass.
+`perf-artifacts/latest.json` contains individual reports and per-scenario medians and p95 values across runs. `perf-artifacts/baseline.json` stores the local comparison baseline. Artifacts are ignored by Git. Explicit budgets live in `tests/performance/budgets.ts`. Every run must provide finite required measurements and stay within DOM limits. Timing budgets apply to the median across repeated runs, so a single hosted-runner spike does not fail the job. Individual outliers remain in the JSON report. A focused run with one sample still enforces its timing budgets.
+
+With a baseline, the reporter also fails if a median exceeds the old median by 25% plus the metric's noise allowance. A baseline must match the mode, CPU throttle, platform, and browser version. Recapture it explicitly after an environment change. Baseline capture only succeeds when all executed tests and budgets pass.
+
+Event-loop baseline comparisons allow 100 ms of sampling noise. The collector samples every 250 ms, so short scenarios vary with the timer's alignment to import tasks. Repeated local measurements of the same app build produced median event-loop p95 values between 156 and 258 ms while CPU frame submission stayed around 200 ms. Import duration, blocking time, and frame time retain their separate regression checks.
 
 The GitHub Actions performance job runs the production scenarios and uploads JSON, HTML, build logs, and failure traces. CI enforces the checked-in absolute budgets; local before/after checks use the baseline. It does not silently bless new results as a baseline.
 
