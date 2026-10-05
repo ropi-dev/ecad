@@ -12,7 +12,17 @@ Both commands build the web app and run Chromium against a fresh preview server 
 
 The scenarios cover startup without a project, restoring 10,000 project assets and interacting with the paginated list, and creating/editing/saving a drawing followed by a 2,000-hole Gerber import and a STEP import. Add scenarios for new flows and larger representative inputs as features grow.
 
-The initial import scenario produced 394–455 ms main-thread tasks and roughly 200–220 ms CPU frame submission on this environment. Its 500 ms event-loop budget accommodates that existing bottleneck; it is a regression guard, not a responsiveness target. Use the import and frame measurements to guide further optimization.
+The absolute timing budgets include the existing workload on GitHub's Ubuntu runners with 4× CPU throttling and software rendering. The limits allow for hosted-runner variation observed in [the first CI run](https://github.com/rolaca11/ecad/actions/runs/37324627616) and [the next CI run](https://github.com/rolaca11/ecad/actions/runs/37325490010):
+
+| Scenario and metric | Largest recorded value | Budget |
+| --- | --- | --- |
+| Empty-project event-loop p95 | 200 ms | 300 ms |
+| Large-project event-loop p95 | 321 ms | 500 ms |
+| Large-project interaction p95 | 579 ms | 750 ms |
+| Import CPU frame submission p95 | 362 ms | 500 ms |
+| Import event-loop p95 | 1,007 ms | 1,500 ms |
+
+These limits guard against regressions in this test environment; they are not responsiveness targets. Use the import and frame measurements to guide further optimization. Local baseline comparisons retain their tighter relative limits.
 
 `perf-artifacts/latest.json` contains individual reports and per-scenario medians and p95 values across runs. `perf-artifacts/baseline.json` stores the local comparison baseline. Artifacts are ignored by Git. Explicit budgets live in `tests/performance/budgets.ts`; tests fail when a required metric is absent or a budget is exceeded. With a baseline, the reporter also fails if a median exceeds the old median by 25% plus the metric's noise allowance. A baseline must match the mode, CPU throttle, platform, and browser version. Recapture it explicitly after an environment change. Baseline capture only succeeds when all executed tests and budgets pass.
 

@@ -4,21 +4,21 @@ export const budgets = {
 		blockingMs: 1000,
 		scriptBytes: 2_500_000,
 		domNodes: 1000,
-		eventLoopP95Ms: 100,
+		eventLoopP95Ms: 300,
 	},
 	"projects-large": {
 		startupMs: 5000,
-		interactionP95Ms: 500,
+		interactionP95Ms: 750,
 		blockingMs: 2000,
 		domNodes: 1000,
-		eventLoopP95Ms: 100,
+		eventLoopP95Ms: 500,
 	},
 	"editor-imports": {
 		navigationP95Ms: 5000,
 		importGerberMs: 10000,
 		importStepMs: 30000,
-		frameP95Ms: 250,
-		eventLoopP95Ms: 500,
+		frameP95Ms: 500,
+		eventLoopP95Ms: 1500,
 	},
 } as const;
 export type Scenario = keyof typeof budgets;
