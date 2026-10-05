@@ -1,4 +1,7 @@
-import { Data, Effect, ParseResult, Schema } from "effect";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as ParseResult from "effect/ParseResult";
+import * as Schema from "effect/Schema";
 import {
 	type EditorSymbol,
 	PIN_RADIUS,

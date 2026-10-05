@@ -3,8 +3,8 @@ ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron 
 | Package | Contents |
 | --- | --- |
 | [`@ecad/core`](packages/core) | Shared editor and viewers, drawing commands, symbol validation, parsers, workers, and rendering. |
-| [`@ecad/web`](packages/web) | TanStack Start app, browser symbol storage, routes, and HTTP services. |
-| [`@ecad/desktop`](packages/desktop) | Electron app and directory-backed symbol storage. |
+| [`@ecad/web`](packages/web) | TanStack Start app, browser project directories, symbol storage, routes, and HTTP services. |
+| [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
 
 Install dependencies from the repository root with npm. The root `package-lock.json` covers all workspaces.
 
@@ -23,7 +23,7 @@ Open `http://localhost:3000/editor` for the drawing editor. The web app can read
 ## Run the desktop app
 
 ```bash
-npm run dev:desktop -- /absolute/symbol-directory
+npm run dev:desktop -- /absolute/project-directory
 ```
 
 The directory argument is optional. Open **Symbols → Open library directory** to choose or change the directory, and use **Refresh library** to reload files after editing them outside ECAD. The desktop app reads matching symbol files in subdirectories. Uploaded and created symbols are written as `<id>.ecadsym` files into the opened directory. Open a directory before saving custom symbols. Built-in symbols remain available in both apps.
@@ -35,6 +35,31 @@ If Electron exits with a `chrome-sandbox` permissions error on Linux, configure 
 ```bash
 npm run dev:desktop -- --no-sandbox /absolute/symbol-directory
 ```
+
+## Projects
+
+The separate **Projects** page manages the active project and its files. Reach it using **Projects** from any workspace. Enter a name and choose **Create project** to save the current drawing, custom symbols, and imported files together. Creating another project copies the current work into its own directory. **Open project directory** on desktop or the saved-project list on web switches projects. Add Gerber, STEP, and symbol files on this page, then use **Open** to view a file in its workspace. File lists and import controls stay on the Projects page. The active project is shared across the app, and drawing undo history survives navigation between pages. Drawings save automatically after edits; **Save project** saves immediately. Reopening a project restores its drawing and symbols and loads its Gerber or STEP source files when you visit that viewer. Undo history starts again when you reopen a project or reload the app.
+
+On desktop, creating a project asks for a parent directory and creates a subdirectory named after the project. Each project has a TOML file named `.ecadprj`. You can pass either the project directory or its `.ecadprj` file when launching the desktop app. Without an argument, the last opened project is restored. A legacy symbol-library directory can still supply symbols when creating the first project.
+
+On web, projects use directories in the browser's Origin Private File System, with the project name as the directory name. Assets stay on the device and belong to this browser and site. Browser storage must support local filesystem directories; clearing site data removes saved projects. The active project's name is remembered in localStorage. Existing localStorage symbols are copied into the first project when you create it.
+
+The project file points to a drawing, portable `.ecadsym` files, and copied source files using relative paths:
+
+```toml
+format = "ecad-project"
+version = 1
+name = "Motor controller"
+drawing = ".ecad/<revision>/drawing.ecaddraw"
+symbols = [".ecad/<revision>/symbols/test-point.ecadsym"]
+
+[[assets]]
+path = "assets/<id>-board.gbr"
+name = "board.gbr"
+kind = "gerber"
+```
+
+The `.ecad` directory stores the current drawing and symbols. The `assets` directory stores imported Gerber files, archives, and STEP models. The whole project directory can be moved together. Saves publish a new revision before replacing `.ecadprj`, and remove the previous revision after success. A failed write leaves the previous saved version available. External changes to `.ecadprj` stop saves until the project is reopened. **Reload project** is available after a save error and discards unsaved drawing changes.
 
 ## Build and verify
 
@@ -53,6 +78,8 @@ npm run test:browser
 ```
 
 Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`.
+
+Capture performance before feature work with `npm run perf:baseline`, then run `npm run perf` after changes to check startup, large projects, drawing, and imports against budgets and the local baseline. `npm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
 
 ## Working in the packages
 

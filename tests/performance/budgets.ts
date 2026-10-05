@@ -1,0 +1,37 @@
+export const budgets = {
+	"projects-empty": {
+		startupMs: 5000,
+		blockingMs: 1000,
+		scriptBytes: 2_500_000,
+		domNodes: 1000,
+		eventLoopP95Ms: 100,
+	},
+	"projects-large": {
+		startupMs: 5000,
+		interactionP95Ms: 500,
+		blockingMs: 2000,
+		domNodes: 1000,
+		eventLoopP95Ms: 100,
+	},
+	"editor-imports": {
+		navigationP95Ms: 5000,
+		importGerberMs: 10000,
+		importStepMs: 30000,
+		frameP95Ms: 250,
+		eventLoopP95Ms: 500,
+	},
+} as const;
+export type Scenario = keyof typeof budgets;
+export const regressionFloors: Record<string, number> = {
+	startupMs: 100,
+	interactionP95Ms: 50,
+	navigationP95Ms: 100,
+	importGerberMs: 100,
+	importStepMs: 250,
+	blockingMs: 100,
+	frameP95Ms: 20,
+	eventLoopP95Ms: 25,
+	scriptBytes: 100_000,
+	heapBytes: 5_000_000,
+	domNodes: 50,
+};

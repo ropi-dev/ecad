@@ -12,6 +12,7 @@ import {
 	type ParsedGerberObject,
 	parseGerberFileEffect,
 } from "#/formats/parseGerberFile.ts";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useFileImport } from "../viewer/useFileImport";
 
 const COLORS = [
@@ -32,6 +33,8 @@ function readGerber(file: File) {
 const release = (object: ParsedGerberObject) => object.dispose();
 
 export function useGerberFile() {
+	const readAssets = useProject()?.readAssets;
+	const [restoreError, setRestoreError] = useState("");
 	const [layers, updateLayers] = useState<ParsedGerberObject[]>([]);
 	const latest = useRef(layers);
 	const [ownership] = useState(() => new ImportOwnership());
@@ -53,6 +56,7 @@ export function useGerberFile() {
 		readGerber,
 		release,
 		expandGerberFileEffect,
+		"gerber",
 	);
 	const openFile = useCallback(
 		async (files: File[]) => {
@@ -68,5 +72,40 @@ export function useGerberFile() {
 		},
 		[readFiles, setLayers],
 	);
-	return { layers, loading, message, openFile, setLayers };
+	useEffect(() => {
+		let cancelled = false;
+		void readAssets?.("gerber")
+			.then(async (files) => {
+				if (!cancelled && files.length)
+					await readFiles(
+						files,
+						(imported) =>
+							setLayers(
+								imported.map((layer, index) => ({
+									...layer,
+									color: COLORS[index % COLORS.length],
+								})),
+							),
+						false,
+					);
+			})
+			.catch((cause: unknown) => {
+				if (!cancelled)
+					setRestoreError(
+						cause instanceof Error
+							? cause.message
+							: "Unable to load project assets.",
+					);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [readAssets, readFiles, setLayers]);
+	return {
+		layers,
+		loading,
+		message: restoreError || message,
+		openFile,
+		setLayers,
+	};
 }

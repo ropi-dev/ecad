@@ -3,6 +3,7 @@ import { Popover } from "radix-ui";
 import { useRef, useState } from "react";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 import exampleSymbolUrl from "#/symbol-library/examples/test-point.ecadsym?url";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 
@@ -17,6 +18,7 @@ export function SymbolPicker({
 	onChoose: (definition: SymbolDefinition) => void;
 	library: ReturnType<typeof useSymbolLibrary>;
 }) {
+	const project = useProject();
 	const [open, setOpen] = useState(false);
 	const input = useRef<HTMLInputElement>(null);
 	const directoryInput = useRef<HTMLInputElement>(null);
@@ -58,109 +60,113 @@ export function SymbolPicker({
 					<p className="mt-1 mb-3 text-xs text-[#9ba7b8]">
 						Choose a symbol, then click the drawing to place it.
 					</p>
-					<div className="mb-3 border-b border-[#414955] pb-3">
-						{canOpenDirectory && (
-							<>
-								<button
-									type="button"
-									disabled={loading}
-									onClick={() => void openDirectory()}
-									className="mb-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-50"
-								>
-									<FolderOpen size={14} aria-hidden="true" />
-									Open library directory
-								</button>
-								{directory && (
-									<>
-										<p className="mb-2 break-words text-xs text-[#9ba7b8]">
-											{directory}
-										</p>
-										<button
-											type="button"
-											disabled={loading}
-											onClick={() => void refresh()}
-											className="mb-2 w-full cursor-pointer rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-50"
-										>
-											Refresh library
-										</button>
-									</>
-								)}
-							</>
-						)}
-						<input
-							ref={input}
-							type="file"
-							multiple
-							accept=".ecadsym,.json"
-							aria-label="Upload symbol files"
-							className="hidden"
-							disabled={loading || (mode === "desktop" && !directory)}
-							onChange={(event) => {
-								const files = Array.from(event.currentTarget.files ?? []);
-								event.currentTarget.value = "";
-								if (files.length) void upload(files);
-							}}
-						/>
-						<input
-							ref={directoryInput}
-							type="file"
-							multiple
-							{...{ webkitdirectory: "" }}
-							aria-label="Upload symbol directory"
-							className="hidden"
-							disabled={loading || (mode === "desktop" && !directory)}
-							onChange={(event) => {
-								const files = Array.from(event.currentTarget.files ?? []);
-								event.currentTarget.value = "";
-								if (files.length) void upload(files, true);
-							}}
-						/>
-						<button
-							type="button"
-							disabled={loading || (mode === "desktop" && !directory)}
-							onClick={() => input.current?.click()}
-							className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-wait disabled:opacity-50"
-						>
-							<Upload size={14} aria-hidden="true" />
-							{loading ? "Importing…" : "Upload symbols"}
-						</button>
-						<button
-							type="button"
-							disabled={loading || (mode === "desktop" && !directory)}
-							onClick={() => directoryInput.current?.click()}
-							className="mt-2 w-full cursor-pointer rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-wait disabled:opacity-50"
-						>
-							Upload library directory
-						</button>
-						<p className="mt-2 mb-0 text-xs text-[#9ba7b8]">
-							One symbol per .ecadsym or .json file.{" "}
-							{mode === "web"
-								? "Uploaded symbols are saved in this browser."
-								: mode === "desktop"
-									? "Open a directory to load and save symbols on disk."
-									: "Symbols last for this editor session."}
-						</p>
-						<a
-							href={exampleSymbolUrl}
-							download="test-point.ecadsym"
-							className="mt-1 inline-block text-xs text-[#76c4c0] underline"
-						>
-							Download example
-						</a>
-						{message && (
-							<output className="mt-2 mb-0 block text-xs text-[#76c4c0]">
-								{message}
-							</output>
-						)}
-						{error && (
-							<p
-								role="alert"
-								className="mt-2 mb-0 max-h-32 overflow-auto whitespace-pre-wrap break-words text-xs text-[#ffb4ab]"
+					{!project && (
+						<div className="mb-3 border-b border-[#414955] pb-3">
+							{canOpenDirectory && (
+								<>
+									<button
+										type="button"
+										disabled={loading}
+										onClick={() => void openDirectory()}
+										className="mb-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-50"
+									>
+										<FolderOpen size={14} aria-hidden="true" />
+										Open library directory
+									</button>
+									{directory && (
+										<>
+											<p className="mb-2 break-words text-xs text-[#9ba7b8]">
+												{directory}
+											</p>
+											<button
+												type="button"
+												disabled={loading}
+												onClick={() => void refresh()}
+												className="mb-2 w-full cursor-pointer rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-50"
+											>
+												Refresh library
+											</button>
+										</>
+									)}
+								</>
+							)}
+							<input
+								ref={input}
+								type="file"
+								multiple
+								accept=".ecadsym,.json"
+								aria-label="Upload symbol files"
+								className="hidden"
+								disabled={loading || (mode === "desktop" && !directory)}
+								onChange={(event) => {
+									const files = Array.from(event.currentTarget.files ?? []);
+									event.currentTarget.value = "";
+									if (files.length) void upload(files);
+								}}
+							/>
+							<input
+								ref={directoryInput}
+								type="file"
+								multiple
+								{...{ webkitdirectory: "" }}
+								aria-label="Upload symbol directory"
+								className="hidden"
+								disabled={loading || (mode === "desktop" && !directory)}
+								onChange={(event) => {
+									const files = Array.from(event.currentTarget.files ?? []);
+									event.currentTarget.value = "";
+									if (files.length) void upload(files, true);
+								}}
+							/>
+							<button
+								type="button"
+								disabled={loading || (mode === "desktop" && !directory)}
+								onClick={() => input.current?.click()}
+								className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-wait disabled:opacity-50"
 							>
-								{error}
+								<Upload size={14} aria-hidden="true" />
+								{loading ? "Importing…" : "Upload symbols"}
+							</button>
+							<button
+								type="button"
+								disabled={loading || (mode === "desktop" && !directory)}
+								onClick={() => directoryInput.current?.click()}
+								className="mt-2 w-full cursor-pointer rounded-md border border-[#414955] px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-wait disabled:opacity-50"
+							>
+								Upload library directory
+							</button>
+							<p className="mt-2 mb-0 text-xs text-[#9ba7b8]">
+								One symbol per .ecadsym or .json file.{" "}
+								{directory && !canOpenDirectory
+									? "Uploaded and created symbols are saved in this project."
+									: mode === "web"
+										? "Uploaded symbols are saved in this browser."
+										: mode === "desktop"
+											? "Open a directory to load and save symbols on disk."
+											: "Symbols last for this editor session."}
 							</p>
-						)}
-					</div>
+							<a
+								href={exampleSymbolUrl}
+								download="test-point.ecadsym"
+								className="mt-1 inline-block text-xs text-[#76c4c0] underline"
+							>
+								Download example
+							</a>
+							{message && (
+								<output className="mt-2 mb-0 block text-xs text-[#76c4c0]">
+									{message}
+								</output>
+							)}
+							{error && (
+								<p
+									role="alert"
+									className="mt-2 mb-0 max-h-32 overflow-auto whitespace-pre-wrap break-words text-xs text-[#ffb4ab]"
+								>
+									{error}
+								</p>
+							)}
+						</div>
+					)}
 					<div className="flex flex-col gap-1">
 						{definitions.map((definition) => (
 							<button

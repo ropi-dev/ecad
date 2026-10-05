@@ -1,5 +1,4 @@
 import appCss from "@ecad/core/styles.css?url";
-import { SymbolLibraryProvider } from "@ecad/core/symbol-library/storage.tsx";
 import type { QueryClient } from "@tanstack/react-query";
 import {
 	createRootRouteWithContext,
@@ -8,9 +7,7 @@ import {
 } from "@tanstack/react-router";
 import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import type { TRPCRouter } from "#/integrations/trpc/router.ts";
-import { createWebSymbolLibraryStorage } from "#/symbol-library/storage.ts";
-
-const symbolLibraryStorage = createWebSymbolLibraryStorage();
+import { AppProjects } from "#/projects/AppProjects.tsx";
 
 interface MyRouterContext {
 	queryClient: QueryClient;
@@ -31,6 +28,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 		links: [{ rel: "stylesheet", href: appCss }],
 	}),
 	shellComponent: RootDocument,
+	component: AppProjects,
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
@@ -40,9 +38,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body>
-				<SymbolLibraryProvider storage={symbolLibraryStorage}>
-					{children}
-				</SymbolLibraryProvider>
+				{children}
 				<Scripts />
 			</body>
 		</html>

@@ -1,4 +1,6 @@
-import { Data, Effect, Exit } from "effect";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 
 export class FileReadError extends Data.TaggedError("FileReadError")<{
 	readonly message: string;

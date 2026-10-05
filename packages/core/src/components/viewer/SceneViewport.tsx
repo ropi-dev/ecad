@@ -15,6 +15,7 @@ import {
 	type SceneViewportRuntime,
 } from "#/engine/scene-viewport.ts";
 import type { Bounds } from "#/engine/types.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 import { AxisIndicator } from "./AxisIndicator";
 import { downloadPng } from "./exportPng";
 import { FloatingPanel } from "./FloatingPanel";
@@ -117,28 +118,33 @@ export function SceneViewport({
 		setSelectionInfo(null);
 		let viewport: SceneViewportRuntime | undefined;
 		try {
-			viewport = createSceneViewport(element, {
-				scene: sourceScene,
-				cameraMode,
-				projection: currentProjection.current,
-				lockProjection,
-				fitZoom,
-				selectionEnabled,
-				ariaLabel: interactionHint
-					? `${ariaLabel}. ${interactionHint}`
-					: cameraMode === "top"
-						? `${ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
-						: `${ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
-				canvasClassName:
-					"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200",
-				updateScene: sceneUpdate.current,
-				onChange: reportChange,
-				onSelection: setSelectionInfo,
-				onOrientation: (rotation) => axes.current?.update(rotation),
-				onZoom: setZoomLevel,
-				onReady: reportReady,
-				onError: reportError,
-			});
+			viewport = measurePerformance(
+				"renderer.initialize",
+				() =>
+					createSceneViewport(element, {
+						scene: sourceScene,
+						cameraMode,
+						projection: currentProjection.current,
+						lockProjection,
+						fitZoom,
+						selectionEnabled,
+						ariaLabel: interactionHint
+							? `${ariaLabel}. ${interactionHint}`
+							: cameraMode === "top"
+								? `${ariaLabel}. Top view locked. Drag or swipe to pan; pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene.`
+								: `${ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
+						canvasClassName:
+							"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200",
+						updateScene: sceneUpdate.current,
+						onChange: reportChange,
+						onSelection: setSelectionInfo,
+						onOrientation: (rotation) => axes.current?.update(rotation),
+						onZoom: setZoomLevel,
+						onReady: reportReady,
+						onError: reportError,
+					}),
+				{ objects: sourceScene.length },
+			);
 			runtime.current = viewport;
 		} catch (error) {
 			reportError(

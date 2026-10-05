@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 import { GerberHeader } from "./GerberHeader";
 import { GerberViewer } from "./GerberViewer";
 import { LayerPanel } from "./LayerPanel";
 import { useGerberFile } from "./useGerberFile";
 
 export function GerberWorkspace() {
+	const project = useProject();
 	const {
 		layers,
 		loading,
@@ -33,7 +35,7 @@ export function GerberWorkspace() {
 				</output>
 			)}
 			<div className="relative flex min-h-0 flex-1">
-				{layers.length > 0 && (
+				{!project && layers.length > 0 && (
 					<LayerPanel
 						layers={layers}
 						focusedLayerId={focusedLayerId}

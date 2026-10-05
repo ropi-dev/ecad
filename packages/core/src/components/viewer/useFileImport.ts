@@ -5,13 +5,17 @@ import {
 	importFilesEffect,
 } from "#/formats/importFiles.ts";
 import { runEffect } from "#/lib/effect.ts";
+import { measurePerformanceAsync } from "#/performance/runtime.ts";
+import type { AssetKind } from "#/projects/format.ts";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 
-/** Runs imports at the React boundary; parsers register ownership in the scope. */
 export function useFileImport<T>(
 	parse: ImportFile<T>,
 	dispose?: (value: T) => void,
 	expand?: ExpandFile,
+	kind?: AssetKind,
 ) {
+	const importAssets = useProject()?.importAssets;
 	const request = useRef<AbortController | null>(null);
 	const mounted = useRef(true);
 	const [loading, setLoading] = useState(false);
@@ -31,18 +35,29 @@ export function useFileImport<T>(
 	}, []);
 	const clearMessage = useCallback(() => setMessage(""), []);
 	const readFiles = useCallback(
-		async (files: readonly File[], accept: (values: T[]) => void) => {
+		async (
+			files: readonly File[],
+			accept: (values: T[]) => void,
+			persist = true,
+		) => {
 			request.current?.abort();
 			const controller = new AbortController();
 			request.current = controller;
 			setLoading(true);
 			setMessage("");
 			try {
-				const imported = await runEffect(
-					importFilesEffect(files, parse, expand),
-					controller.signal,
+				const imported = await measurePerformanceAsync(
+					`import.${kind ?? "files"}`,
+					() =>
+						runEffect(
+							importFilesEffect(files, parse, expand),
+							controller.signal,
+						),
+					{
+						files: files.length,
+						bytes: files.reduce((sum, file) => sum + file.size, 0),
+					},
 				);
-				// A completed Effect can be superseded before its Promise is observed.
 				if (
 					controller.signal.aborted ||
 					request.current !== controller ||
@@ -51,8 +66,17 @@ export function useFileImport<T>(
 					for (const value of imported.values) dispose?.(value);
 					return null;
 				}
-				// Register ownership before another microtask can cancel or unmount.
 				try {
+					if (kind && persist && imported.values.length)
+						await importAssets?.(files, kind);
+					if (
+						controller.signal.aborted ||
+						request.current !== controller ||
+						!mounted.current
+					) {
+						for (const value of imported.values) dispose?.(value);
+						return null;
+					}
 					accept(imported.values);
 				} catch (error) {
 					for (const value of imported.values) dispose?.(value);
@@ -62,7 +86,11 @@ export function useFileImport<T>(
 				return imported.values;
 			} catch (error) {
 				if (controller.signal.aborted) return null;
-				throw error;
+				if (mounted.current)
+					setMessage(
+						error instanceof Error ? error.message : "Unable to import files.",
+					);
+				return null;
 			} finally {
 				if (request.current === controller) {
 					request.current = null;
@@ -70,7 +98,7 @@ export function useFileImport<T>(
 				}
 			}
 		},
-		[parse, dispose, expand],
+		[parse, dispose, expand, kind, importAssets],
 	);
 	return { loading, message, readFiles, cancel, clearMessage };
 }

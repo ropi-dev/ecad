@@ -5,6 +5,7 @@ import {
 	type ParsedStepFile,
 	parseStepFileEffect,
 } from "#/formats/parseStepFile.ts";
+import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useFileImport } from "../viewer/useFileImport";
 
 function readStep(file: File) {
@@ -14,6 +15,8 @@ function readStep(file: File) {
 const release = (model: ParsedStepFile) => model.dispose();
 
 export function useStepFile() {
+	const readAssets = useProject()?.readAssets;
+	const [restoreError, setRestoreError] = useState("");
 	const [model, updateModel] = useState<ParsedStepFile | null>(null);
 	const [ownership] = useState(() => new ImportOwnership());
 	const setModel = useCallback(
@@ -30,6 +33,8 @@ export function useStepFile() {
 	const { loading, message, readFiles, cancel, clearMessage } = useFileImport(
 		readStep,
 		release,
+		undefined,
+		"step",
 	);
 	const openFile = useCallback(
 		async (file: File) => {
@@ -40,10 +45,36 @@ export function useStepFile() {
 		},
 		[readFiles, setModel],
 	);
+	useEffect(() => {
+		let cancelled = false;
+		void readAssets?.("step")
+			.then(async (files) => {
+				const file = files.at(-1);
+				if (!cancelled && file)
+					await readFiles(
+						[file],
+						(imported) => {
+							if (imported.length) setModel(imported[0]);
+						},
+						false,
+					);
+			})
+			.catch((cause: unknown) => {
+				if (!cancelled)
+					setRestoreError(
+						cause instanceof Error
+							? cause.message
+							: "Unable to load project assets.",
+					);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [readAssets, readFiles, setModel]);
 	return {
 		model,
 		loading,
-		message,
+		message: restoreError || message,
 		openFile,
 		cancel,
 		clear: () => {
