@@ -35,7 +35,11 @@ test("desktop projects round trip TOML, drawing IDs, standalone symbols and bina
 	assert.deepEqual(reopened, imported);
 	assert.deepEqual(await projects.readAsset(saved.directory, imported.manifest.assets[0].path), bytes);
 	assert.equal(createDrawingStore(reopened?.shapes).getSnapshot().nextShapeId, 8);
-	assert.equal((await readdir(join(saved.directory, ".ecad"))).length, 1);
+	assert.equal(created.manifest.drawing, "drawing.ecaddraw");
+	assert.equal(saved.manifest.drawing, created.manifest.drawing);
+	assert.deepEqual(saved.manifest.symbols, ["symbols/test-point.ecadsym"]);
+	assert.equal(imported.manifest.assets[0].path, "assets/board.zip");
+	assert.deepEqual((await readdir(saved.directory)).sort(), [PROJECT_FILE, "assets", "drawing.ecaddraw", "symbols"]);
 }));
 
 test("project directories are isolated and stale renderer requests cannot access a previous project", async () => temporary(async (parent) => {
@@ -54,18 +58,21 @@ test("project directories are isolated and stale renderer requests cannot access
 	assert.deepEqual((await projects.load())?.shapes, [shape]);
 }));
 
-test("a failed manifest write keeps the previous project readable and removes incomplete revisions", async () => temporary(async (parent) => {
+test("a failed desktop manifest write restores the previous drawing and symbols", async () => temporary(async (parent) => {
 	const directory = await createDesktopProjectDirectory(parent);
 	let fail = false;
-	const repository = new ProjectRepository({ ...directory, write: async (path, bytes) => { if (fail && path === PROJECT_FILE) throw new Error("Disk full"); await directory.write(path, bytes); } });
+	const repository = new ProjectRepository({ ...directory, write: async (path, bytes) => { if (fail && path === PROJECT_FILE) throw new Error("Disk full"); await directory.write(path, bytes); } }, { layout: "files" });
 	await repository.create("Controller");
-	await repository.save({ shapes: [shape], symbols: [] });
+	await repository.save({ shapes: [shape], symbols: [symbol] });
 	const before = await readFile(join(parent, PROJECT_FILE), "utf8");
 	fail = true;
-	await assert.rejects(repository.save({ shapes: [], symbols: [symbol] }), /Disk full/);
+	await assert.rejects(repository.save({ shapes: [], symbols: [{ ...symbol, name: "Changed" }, { ...symbol, id: "new-symbol" }] }), /Disk full/);
 	assert.equal(await readFile(join(parent, PROJECT_FILE), "utf8"), before);
-	assert.deepEqual((await new ProjectRepository(directory).load()).shapes, [shape]);
-	assert.equal((await readdir(join(parent, ".ecad"))).length, 1);
+	const restored = await new ProjectRepository(directory).load();
+	assert.deepEqual(restored.shapes, [shape]);
+	assert.deepEqual(restored.symbols, [symbol]);
+	assert.deepEqual(await readdir(join(parent, "symbols")), ["test-point.ecadsym"]);
+	assert.deepEqual((await readdir(parent)).sort(), [PROJECT_FILE, "drawing.ecaddraw", "symbols"]);
 	await assert.rejects(repository.importAssets([{ name: "model.step", kind: "step", bytes: new Uint8Array([1]) }]), /Disk full/);
 	assert.deepEqual(await readdir(join(parent, "assets")), []);
 	fail = false;
@@ -115,4 +122,122 @@ test("legacy symbol directories still load without silently creating project fil
 	assert.deepEqual(await readdir(parent), []);
 	await writeFile(join(parent, PROJECT_FILE), "broken TOML [");
 	await assert.rejects(new DesktopProjects(parent).load());
+}));
+
+test("saving a legacy desktop project migrates its referenced files and removes empty hidden folders", async () => temporary(async (parent) => {
+	const directory = await createDesktopProjectDirectory(parent);
+	const legacy = new ProjectRepository(directory);
+	await legacy.create("Legacy");
+	await legacy.save({ shapes: [shape], symbols: [symbol] });
+	const bytes = new Uint8Array([0, 255, 42]);
+	const imported = await legacy.importAssets([{ name: "model.step", kind: "step", bytes }]);
+	const projects = new DesktopProjects(parent);
+	const opened = await projects.load();
+	assert.deepEqual(opened, imported);
+	const saved = await projects.save(parent, { shapes: opened!.shapes, symbols: opened!.symbols });
+	assert.equal(saved.manifest.drawing, "drawing.ecaddraw");
+	assert.deepEqual(saved.manifest.symbols, ["symbols/test-point.ecadsym"]);
+	assert.deepEqual(saved.manifest.assets, imported.manifest.assets);
+	assert.deepEqual(await projects.readAsset(parent, saved.manifest.assets[0].path), bytes);
+	assert.deepEqual((await readdir(parent)).sort(), [PROJECT_FILE, "assets", "drawing.ecaddraw", "symbols"]);
+	assert.deepEqual(await new DesktopProjects(parent).load(), saved);
+	const again = await projects.save(parent, { shapes: [], symbols: [symbol] });
+	assert.equal(again.manifest.drawing, saved.manifest.drawing);
+	assert.deepEqual(again.manifest.symbols, saved.manifest.symbols);
+}));
+
+test("legacy migration preserves unrelated files and chooses free visible filenames", async () => temporary(async (parent) => {
+	const directory = await createDesktopProjectDirectory(parent);
+	const legacy = new ProjectRepository(directory);
+	await legacy.create("Legacy");
+	const original = await legacy.save({ shapes: [shape], symbols: [symbol] });
+	await writeFile(join(parent, "drawing.ecaddraw"), "unrelated drawing");
+	await mkdir(join(parent, "symbols"));
+	await writeFile(join(parent, "symbols", "test-point.ecadsym"), "unrelated symbol");
+	const revision = original.manifest.drawing.slice(0, original.manifest.drawing.lastIndexOf("/"));
+	await writeFile(join(parent, revision, "notes.txt"), "keep these notes");
+	const projects = new DesktopProjects(parent);
+	await projects.load();
+	const saved = await projects.save(parent, { shapes: [shape], symbols: [symbol] });
+	assert.equal(saved.manifest.drawing, "drawing-2.ecaddraw");
+	assert.deepEqual(saved.manifest.symbols, ["symbols/test-point-2.ecadsym"]);
+	assert.equal(await readFile(join(parent, "drawing.ecaddraw"), "utf8"), "unrelated drawing");
+	assert.equal(await readFile(join(parent, "symbols", "test-point.ecadsym"), "utf8"), "unrelated symbol");
+	assert.deepEqual(await readdir(join(parent, revision)), ["notes.txt"]);
+	await projects.save(parent, { shapes: [], symbols: [] });
+	assert.deepEqual(await readdir(join(parent, "symbols")), ["test-point.ecadsym"]);
+}));
+
+test("failed legacy migration leaves the old project readable and allows retrying", async () => temporary(async (parent) => {
+	const directory = await createDesktopProjectDirectory(parent);
+	const legacy = new ProjectRepository(directory);
+	await legacy.create("Legacy");
+	const original = await legacy.save({ shapes: [shape], symbols: [symbol] });
+	let fail = true;
+	const repository = new ProjectRepository({ ...directory, write: async (path, bytes) => {
+		if (fail && path === PROJECT_FILE) throw new Error("Disk full");
+		await directory.write(path, bytes);
+	} }, { layout: "files" });
+	await repository.load();
+	await assert.rejects(repository.save({ shapes: [], symbols: [symbol] }), /Disk full/);
+	assert.deepEqual(await new ProjectRepository(directory).load(), original);
+	await assert.rejects(readFile(join(parent, "drawing.ecaddraw")), { code: "ENOENT" });
+	assert.deepEqual(await readdir(join(parent, "symbols")), []);
+	fail = false;
+	const saved = await repository.save({ shapes: [], symbols: [symbol] });
+	assert.equal(saved.manifest.drawing, "drawing.ecaddraw");
+	assert.equal((await readdir(parent)).includes(".ecad"), false);
+}));
+
+test("desktop imports preserve source filenames and never overwrite existing files", async () => temporary(async (parent) => {
+	const projects = new DesktopProjects();
+	const created = await projects.create("Controller", parent);
+	await mkdir(join(created.directory, "assets"));
+	await writeFile(join(created.directory, "assets", "board.step"), "external model");
+	const bytes = new Uint8Array([0, 128, 255]);
+	const inputs = ["board.step", "board.step", "layers.zip", "top.gbr"].map((name) => ({ name, kind: name.endsWith("step") ? "step" as const : "gerber" as const, bytes }));
+	const imported = await projects.importAssets(created.directory, inputs);
+	assert.deepEqual(imported.manifest.assets.map((asset) => asset.path), ["assets/board-2.step", "assets/board-3.step", "assets/layers.zip", "assets/top.gbr"]);
+	assert.equal(await readFile(join(created.directory, "assets", "board.step"), "utf8"), "external model");
+	for (const asset of imported.manifest.assets) assert.deepEqual(await projects.readAsset(created.directory, asset.path), bytes);
+	await mkdir(join(created.directory, "assets", "board-4.step"));
+	const again = await projects.importAssets(created.directory, [{ name: "board.step", kind: "step", bytes }]);
+	assert.equal(again.manifest.assets.at(-1)?.path, "assets/board-5.step");
+	assert.deepEqual(await readdir(join(created.directory, "assets", "board-4.step")), []);
+	assert.equal((await readdir(created.directory)).includes(".ecad"), false);
+}));
+
+test("direct drawing and symbol edits reject stale desktop saves and imports", async () => temporary(async (parent) => {
+	const projects = new DesktopProjects();
+	const created = await projects.create("Controller", parent);
+	const saved = await projects.save(created.directory, { shapes: [shape], symbols: [symbol] });
+	const drawingPath = join(saved.directory, saved.manifest.drawing);
+	const symbolPath = join(saved.directory, saved.manifest.symbols[0]);
+	await writeFile(drawingPath, JSON.stringify({ shapes: [] }));
+	await assert.rejects(projects.save(saved.directory, { shapes: [shape], symbols: [symbol] }), /changed on disk/);
+	await assert.rejects(projects.importAssets(saved.directory, [{ name: "model.step", kind: "step", bytes: new Uint8Array([1]) }]), /changed on disk/);
+	await projects.openDirectory(saved.directory);
+	await writeFile(symbolPath, JSON.stringify({ ...symbol, name: "External edit" }));
+	await assert.rejects(projects.save(saved.directory, { shapes: [], symbols: [] }), /changed on disk/);
+	assert.equal(JSON.parse(await readFile(symbolPath, "utf8")).name, "External edit");
+	const reopened = await projects.openDirectory(saved.directory);
+	assert.equal(reopened.symbols[0].name, "External edit");
+	await projects.save(saved.directory, { shapes: [shape], symbols: reopened.symbols });
+}));
+
+test("desktop saves retain drawing and symbol paths in user subdirectories", async () => temporary(async (parent) => {
+	const projects = new DesktopProjects();
+	const created = await projects.create("Controller", parent);
+	await projects.save(created.directory, { shapes: [shape], symbols: [symbol] });
+	const directory = await createDesktopProjectDirectory(created.directory);
+	await directory.write("drawings/controller.ecaddraw", new TextEncoder().encode(JSON.stringify({ shapes: [shape] })));
+	await directory.write("library/points.ecadsym", new TextEncoder().encode(JSON.stringify(symbol)));
+	const manifestPath = join(created.directory, PROJECT_FILE);
+	const manifest = parseProjectManifest(await readFile(manifestPath, "utf8"));
+	await writeFile(manifestPath, serializeProjectManifest({ ...manifest, drawing: "drawings/controller.ecaddraw", symbols: ["library/points.ecadsym"] }));
+	await projects.openDirectory(created.directory);
+	const saved = await projects.save(created.directory, { shapes: [], symbols: [symbol] });
+	assert.equal(saved.manifest.drawing, "drawings/controller.ecaddraw");
+	assert.deepEqual(saved.manifest.symbols, ["library/points.ecadsym"]);
+	assert.deepEqual(await new DesktopProjects(saved.directory).load(), saved);
 }));

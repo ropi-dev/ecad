@@ -1,4 +1,11 @@
 export const budgets = {
+	"desktop-storage": {
+		legacySaveMs: 2000,
+		migrationMs: 3000,
+		saveMs: 2000,
+		importAssetsMs: 3000,
+		loadMs: 2000,
+	},
 	"projects-empty": {
 		startupMs: 5000,
 		blockingMs: 1000,

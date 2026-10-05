@@ -1,0 +1,93 @@
+import { expect, test } from "@playwright/test";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import type { EditorShape } from "#/drawing/shapes.ts";
+import { ProjectRepository } from "#/projects/repository.ts";
+import { createDesktopProjectDirectory } from "../../packages/desktop/src/main/projects.ts";
+
+// This measures native filesystem I/O without browser CPU throttling or rendering.
+test("desktop-storage", async ({}, testInfo) => {
+	const directory = await mkdtemp(join(tmpdir(), "ecad-perf-"));
+	const metrics: Record<string, number> = {};
+	const measure = async <T>(name: string, run: () => Promise<T>) => {
+		const start = performance.now();
+		const result = await run();
+		metrics[name] = performance.now() - start;
+		return result;
+	};
+	try {
+		const disk = await createDesktopProjectDirectory(directory);
+		const legacy = new ProjectRepository(disk);
+		await legacy.create("Fixture");
+		const shapes: EditorShape[] = Array.from({ length: 2000 }, (_, id) => ({
+			id: id + 1,
+			kind: "rectangle",
+			x: id % 100,
+			y: Math.floor(id / 100),
+			width: 5,
+			height: 8,
+			rotation: 0,
+			lineWidth: 0.2,
+		}));
+		const symbols = Array.from({ length: 50 }, (_, index) =>
+			parseSymbolFile(
+				JSON.stringify({
+					format: "ecad-symbol",
+					version: 1,
+					units: "mm",
+					id: `point-${index}`,
+					name: "Test point",
+					description: "",
+					prefix: "TP",
+					value: "",
+					shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }],
+				}),
+			),
+		);
+		await measure("legacySaveMs", () => legacy.save({ shapes, symbols }));
+		const repository = new ProjectRepository(disk, { layout: "files" });
+		await repository.load();
+		await measure("migrationMs", () => repository.save({ shapes, symbols }));
+		expect(await readdir(directory)).not.toContain(".ecad");
+		const changed = shapes.map((shape) => ({ ...shape, x: shape.x + 1 }));
+		await measure("saveMs", () =>
+			repository.save({ shapes: changed, symbols }),
+		);
+		// The source bytes exercise copying and persistence, not STEP parsing.
+		const bytes = new Uint8Array(10 * 1024 * 1024).fill(42);
+		const imported = await measure("importAssetsMs", () =>
+			repository.importAssets([{ name: "model.step", kind: "step", bytes }]),
+		);
+		const reopened = await measure("loadMs", () =>
+			new ProjectRepository(disk, { layout: "files" }).load(),
+		);
+		expect(reopened.shapes).toEqual(changed);
+		expect(reopened.symbols).toEqual(symbols);
+		expect(
+			Buffer.from(
+				await repository.readAsset(imported.manifest.assets[0].path),
+			).equals(Buffer.from(bytes)),
+		).toBe(true);
+		await testInfo.attach("performance", {
+			body: JSON.stringify({
+				scenario: "desktop-storage",
+				metrics,
+				report: {
+					mode: process.env.ECAD_PERF_MODE ?? "production",
+					environment: {
+						userAgent: `Node/${process.versions.node}`,
+						platform: process.platform,
+						arch: process.arch,
+						cpuThrottle: 1,
+					},
+					workload: { shapes: 2000, symbols: 50, sourceBytes: bytes.length },
+				},
+			}),
+			contentType: "application/json",
+		});
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});

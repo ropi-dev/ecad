@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 const development = process.env.ECAD_PERF_MODE === "development";
 export default defineConfig({
 	testDir: ".",
-	testMatch: "app.spec.ts",
+	testMatch: ["app.spec.ts", "desktop-storage.spec.ts"],
 	outputDir: "../../perf-artifacts/results",
 	workers: 1,
 	fullyParallel: false,

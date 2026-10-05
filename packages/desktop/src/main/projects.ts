@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	open,
+	realpath,
+	rename,
+	rm,
+	rmdir,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
 	type AssetKind,
@@ -36,6 +44,20 @@ export async function createDesktopProjectDirectory(
 	}
 	return {
 		name: directory,
+		async exists(path) {
+			try {
+				await lstat(await target(path));
+				return true;
+			} catch (cause) {
+				if (
+					cause instanceof Error &&
+					"code" in cause &&
+					cause.code === "ENOENT"
+				)
+					return false;
+				throw cause;
+			}
+		},
 		async read(path) {
 			const filename = await target(path);
 			if (!(await lstat(filename)).isFile())
@@ -80,6 +102,9 @@ export async function createDesktopProjectDirectory(
 		async remove(path) {
 			await rm(await target(path), { recursive: true, force: true });
 		},
+		async removeEmptyDirectory(path) {
+			await rmdir(await target(path));
+		},
 	};
 }
 
@@ -101,7 +126,7 @@ export class DesktopProjects {
 	private async openPath(path: string) {
 		const selected = path.endsWith(PROJECT_FILE) ? dirname(path) : path;
 		const directory = await createDesktopProjectDirectory(selected);
-		const repository = new ProjectRepository(directory);
+		const repository = new ProjectRepository(directory, { layout: "files" });
 		const snapshot = await repository.load();
 		this.active = { directory: directory.name, repository };
 		return snapshot;
@@ -136,7 +161,9 @@ export class DesktopProjects {
 			await mkdir(selected);
 			try {
 				const directory = await createDesktopProjectDirectory(selected);
-				const repository = new ProjectRepository(directory);
+				const repository = new ProjectRepository(directory, {
+					layout: "files",
+				});
 				const snapshot = await repository.create(name);
 				this.active = { directory: directory.name, repository };
 				return snapshot;

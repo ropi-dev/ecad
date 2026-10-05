@@ -8,9 +8,11 @@ npm run perf:baseline
 npm run perf
 ```
 
-Both commands build the web app and run Chromium against a fresh preview server on port 4175. Each scenario runs three times, with one worker, an empty browser context, HTTP cache disabled, a 1280 × 800 viewport, and 4× CPU throttling. The large-project test seeds browser storage and reloads; this models opening an existing project. GPU tests use Chromium's software renderer so they also run in CI. These numbers describe that test environment, rather than a user's GPU performance.
+Both commands build the web app and run Chromium against a fresh preview server on port 4175. Each browser scenario runs three times, with one worker, an empty browser context, HTTP cache disabled, a 1280 × 800 viewport, and 4× CPU throttling. The large-project test seeds browser storage and reloads; this models opening an existing project. GPU tests use Chromium's software renderer so they also run in CI. These numbers describe that test environment, rather than a user's GPU performance.
 
 The scenarios cover startup without a project, restoring 10,000 project assets and interacting with the paginated list, and creating/editing/saving a drawing followed by a 2,000-hole Gerber import and a STEP import. Add scenarios for new flows and larger representative inputs as features grow.
+
+The `desktop-storage` scenario measures native Node filesystem operations without CPU throttling. It saves 2,000 drawing shapes and 50 symbols in the legacy layout, migrates them to visible files, edits and saves the drawing, copies a 10 MiB source file, and reopens the project. It checks that migration removes empty `.ecad` folders and that saved data survives reopening. Its budgets allow 2 seconds each for saving and loading, and 3 seconds each for migration and source copying. The source bytes measure storage I/O, not STEP parsing. Each report records the Node version and workload sizes.
 
 The absolute timing budgets include the existing workload on GitHub's Ubuntu runners with 4× CPU throttling and software rendering. The limits allow for hosted-runner variation observed in [the first CI run](https://github.com/rolaca11/ecad/actions/runs/37324627616) and [the next CI run](https://github.com/rolaca11/ecad/actions/runs/37325490010):
 

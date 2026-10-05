@@ -50,16 +50,20 @@ The project file points to a drawing, portable `.ecadsym` files, and copied sour
 format = "ecad-project"
 version = 1
 name = "Motor controller"
-drawing = ".ecad/<revision>/drawing.ecaddraw"
-symbols = [".ecad/<revision>/symbols/test-point.ecadsym"]
+drawing = "drawing.ecaddraw"
+symbols = ["symbols/test-point.ecadsym"]
 
 [[assets]]
-path = "assets/<id>-board.gbr"
+path = "assets/board.gbr"
 name = "board.gbr"
 kind = "gerber"
 ```
 
-The `.ecad` directory stores the current drawing and symbols. The `assets` directory stores imported Gerber files, archives, and STEP models. The whole project directory can be moved together. Saves publish a new revision before replacing `.ecadprj`, and remove the previous revision after success. A failed write leaves the previous saved version available. External changes to `.ecadprj` stop saves until the project is reopened. **Reload project** is available after a save error and discards unsaved drawing changes.
+Desktop projects store the drawing directly in the project directory, custom symbols in `symbols`, and imported Gerber files, archives, and STEP models in `assets`. These paths stay the same across saves. Imports retain their filenames and add a numbered suffix when a name already exists. Existing projects with `.ecad` revision folders move their drawing and symbols to visible paths on the next successful save. Migration removes the old referenced files and empty folders, and keeps unrelated files. Existing drawing and symbol paths outside `.ecad` remain unchanged. The whole project directory can be moved together.
+
+Desktop writes replace each file atomically and restore earlier files if a later write fails. A process interruption during a save can still leave files from different saves. External changes to `.ecadprj` stop saves until the project is reopened. Desktop also checks the saved drawing and symbol files for external edits before saving or importing. **Reload project** is available after a save error and discards unsaved drawing changes.
+
+Web projects keep revision folders in browser storage and publish each revision by replacing `.ecadprj`.
 
 ## Build and verify
 
