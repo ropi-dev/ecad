@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gridTicks, rulerSpacing, rulerTicks } from "../src/engine/ruler";
+import { gridTicks, rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
 
 test("rulers place signed coordinates and reverse the vertical axis", () => {
 	const horizontal = rulerTicks(10, 5, 400);

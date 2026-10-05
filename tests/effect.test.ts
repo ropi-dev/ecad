@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Effect } from "effect";
-import { runEffect } from "../src/lib/effect";
+import { runEffect } from "#/lib/effect.ts";
 
 test("framework boundary preserves values and domain error identity", async () => {
 	assert.equal(await runEffect(Effect.succeed(42)), 42);

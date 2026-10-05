@@ -8,8 +8,8 @@
       import { createElement, StrictMode } from 'react';
       import { createRoot } from 'react-dom/client';
       import { Scene, Box3, Vector3 } from 'three';
-      import { GerberWorkspace } from '/src/components/gerber/GerberWorkspace.tsx';
-      import '/src/styles.css';
+      import { GerberWorkspace } from '/packages/core/src/components/gerber/GerberWorkspace.tsx';
+      import '/packages/core/src/styles.css';
       Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
         const objects = [];
         this.traverse(object => {

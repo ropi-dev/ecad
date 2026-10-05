@@ -6,21 +6,21 @@ test("X-ray outlines reduce geometry at board scale and restore detail when zoom
 	test.setTimeout(120000);
 	await page.goto("/tests/browser/renderer.html");
 	const result = await page.evaluate(async () => {
-		const objectPath = "/src/engine/planar-object.ts";
-		const scenePath = "/src/engine/scene.ts";
-		const parserPath = "/src/formats/gerber/index.ts";
+		const objectPath = "/packages/core/src/engine/planar-object.ts";
+		const scenePath = "/packages/core/src/engine/scene.ts";
+		const parserPath = "/packages/core/src/formats/gerber/index.ts";
 		const fixturePath = "/tests/fixtures/demo-gerbers.ts";
 		const threePath = "/node_modules/three/build/three.module.js";
-		const { createSceneDisplay }: typeof import("../../src/engine/scene") =
+		const { createSceneDisplay }: typeof import("#/engine/scene.ts") =
 			await import(scenePath);
 		const {
 			createPlanarObject3D,
 			stylePlanarObject3D,
 			disposePlanarObject3D,
-		}: typeof import("../../src/engine/planar-object") = await import(
+		}: typeof import("#/engine/planar-object.ts") = await import(
 			objectPath
 		);
-		const { parseGerber }: typeof import("../../src/formats/gerber") =
+		const { parseGerber }: typeof import("#/formats/gerber/index.ts") =
 			await import(parserPath);
 		const { demoFiles }: typeof import("../fixtures/demo-gerbers") =
 			await import(fixturePath);

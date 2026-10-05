@@ -8,7 +8,7 @@ import {
 	jumpHistory,
 	redoHistory,
 	undoHistory,
-} from "../src/components/editor/history.ts";
+} from "#/components/editor/history.ts";
 
 test("creation and restoration isolate nested snapshots from caller edits", () => {
 	const initial = { shapes: [{ id: 1, x: 10 }], selectedIds: new Set([1]) };

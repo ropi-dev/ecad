@@ -12,10 +12,10 @@ import {
 	replaceShapesEffect,
 	type ShapeInput,
 	undoEffect,
-} from "../src/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "../src/commands/drawing-store.ts";
+} from "#/commands/drawing-commands.ts";
+import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { drawShape, editShapeAttribute, pinTerminals, symbolShapes } from "#/drawing/shapes.ts";
-import { createSymbol, symbolDefinitions } from "../src/drawing/symbols.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 
 const rectangle = {
 	x: 10,

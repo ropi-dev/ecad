@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Effect, Schema, Stream } from "effect";
-import { runEffect } from "../src/lib/effect";
-import { HttpClient, HttpError, makeHttpClient, requestJson } from "../src/lib/http";
-import { todoUpdates } from "../src/services/todos-client";
+import { runEffect } from "#/lib/effect.ts";
+import { HttpClient, HttpError, makeHttpClient, requestJson } from "#/lib/http.ts";
+import { todoUpdates } from "#web/services/todos-client.ts";
 
 const schema = Schema.Struct({ value: Schema.Number });
 const request = (fetcher: typeof fetch) => requestJson("/test", schema).pipe(

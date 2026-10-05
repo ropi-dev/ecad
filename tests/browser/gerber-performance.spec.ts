@@ -10,10 +10,10 @@ for (const alternating of [false, true]) {
 		await page.goto("/tests/browser/parser-viewers.html");
 		const result = await page.evaluate(
 			async (source) => {
-				const parserPath = "/src/formats/parseGerberFile.ts";
+				const parserPath = "/packages/core/src/formats/parseGerberFile.ts";
 				const {
 					parseGerberFile,
-				}: typeof import("../../src/formats/parseGerberFile") = await import(
+				}: typeof import("#/formats/parseGerberFile.ts") = await import(
 					/* @vite-ignore */ parserPath
 				);
 				const start = performance.now();
@@ -45,10 +45,10 @@ test("local Gerber regression file imports without timing out", async ({
 	await page.goto("/tests/browser/parser-viewers.html");
 	const result = await page.evaluate(
 		async ({ source, filename }) => {
-			const parserPath = "/src/formats/parseGerberFile.ts";
+			const parserPath = "/packages/core/src/formats/parseGerberFile.ts";
 			const {
 				parseGerberFile,
-			}: typeof import("../../src/formats/parseGerberFile") = await import(
+			}: typeof import("#/formats/parseGerberFile.ts") = await import(
 				/* @vite-ignore */ parserPath
 			);
 			const start = performance.now();

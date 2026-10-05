@@ -6,7 +6,7 @@ See [drawing architecture](architecture.md) for complete command inputs, the doc
 
 ## Running operations
 
-Compose operations with `Effect.gen`, and run them at a React hook, query function, server function, or HTTP handler using `runEffect` from `src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
+Compose operations with `Effect.gen`, and run them at a React hook, query function, server function, or HTTP handler using `runEffect` from `packages/core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
 
 ```ts
 const value = await runEffect(program, signal);
@@ -18,7 +18,7 @@ Domain functions return Effects and declare expected errors with `Data.TaggedErr
 
 ## Imports and ownership
 
-- `src/formats/import-effects.ts` contains file read errors, scoped worker requests, timeouts, and import ownership registration.
+- `packages/core/src/formats/import-effects.ts` contains file read errors, scoped worker requests, timeouts, and import ownership registration.
 - `parseGerberFileEffect`, `parseStepFileEffect`, and `expandGerberFileEffect` compose the import operations. The existing Promise functions remain available for callers outside Effect.
 - `importFilesEffect` processes files in order and collects per-file failures as messages. Valid files survive a neighboring invalid file. Gerber archives retain their physical layer ordering.
 - `useFileImport` runs a batch once, aborts a superseded batch, and updates React state. Its synchronous acceptance callback stages ownership before another request or unmount can intervene. `ImportOwnership` keeps pending and displayed resources alive through React commits, and releases uncommitted results on unmount.
@@ -37,18 +37,18 @@ Viewport renderers, scene displays, hover overlays, controls, listeners, diagnos
 
 ## Browser services
 
-`HttpClient` is an injectable service in `src/lib/http.ts`. `requestJson` checks HTTP status and decodes the response with Effect Schema. Its request scope remains open while the body is read, so aborting after headers still cancels the fetch. Use `HttpClientLive` in production and `makeHttpClient` with a test implementation in tests.
+`HttpClient` is an injectable service in `packages/core/src/lib/http.ts`. `requestJson` checks HTTP status and decodes the response with Effect Schema. Its request scope remains open while the body is read, so aborting after headers still cancels the fetch. Use `HttpClientLive` in production and `makeHttpClient` with a test implementation in tests.
 
-`src/services/todos-client.ts` uses a scoped Stream for EventSource updates. EventSource handles transient reconnects; the stream validates each snapshot and closes the connection when cancelled or when decoding fails. Its buffer keeps the latest snapshot because each message contains the complete list.
+`packages/web/src/services/todos-client.ts` uses a scoped Stream for EventSource updates. EventSource handles transient reconnects; the stream validates each snapshot and closes the connection when cancelled or when decoding fails. Its buffer keeps the latest snapshot because each message contains the complete list.
 
 TanStack Query query functions continue to return Promises. Pass their signal to `runEffect`; keep caching and retry policy in TanStack Query instead of duplicating it in the operation.
 
 ## Server services
 
-Server-only services stay behind Start server functions and server routes. Never import database or filesystem services into browser helpers.
+Web server services stay behind Start server functions and server routes. Desktop filesystem operations live in Electron's main process and are called through the preload bridge. Never import database or filesystem services into browser helpers or renderer components.
 
-- `Database` and `DatabaseLive` in `src/db/index.ts` acquire SQLite lazily and close each request's connection through a scoped Layer. `DATABASE_URL` is required when a database operation runs.
-- `TodoRepository` in `src/mcp-todos.ts` uses a `SubscriptionRef` to serialize file writes and publish successful updates. Failed writes preserve the previous state. The live repository initializes lazily and is shared by requests; tests can supply their own storage. A started write completes before cancellation so memory and disk remain consistent.
+- `Database` and `DatabaseLive` in `packages/web/src/db/index.ts` acquire SQLite lazily and close each request's connection through a scoped Layer. `DATABASE_URL` is required when a database operation runs.
+- `TodoRepository` in `packages/web/src/mcp-todos.ts` uses a `SubscriptionRef` to serialize file writes and publish successful updates. Failed writes preserve the previous state. The live repository initializes lazily and is shared by requests; tests can supply their own storage. A started write completes before cancellation so memory and disk remain consistent.
 - The todo HTTP adapter validates input and merges updates with heartbeat events. Cancelling its readable stream releases both the subscription and heartbeat.
 - `TrpcTodos` provides the in-memory tRPC demo state. The tRPC boundary maps domain failures into `TRPCError` values.
 - MCP creates a server for each request, waits for the response matching the JSON-RPC request ID, and applies a timeout. Transport resources are scoped to the request.

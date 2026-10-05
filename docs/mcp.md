@@ -1,6 +1,6 @@
 # MCP access to an open drawing
 
-MCP clients can read and edit the drawing open in `/editor`. MCP starts disabled. Each enabled editor has its own endpoint and bearer token, and commands run against that editor's existing `DrawingStore`.
+MCP clients can read and edit the drawing open in the web app's `/editor`. MCP starts disabled. Each enabled editor has its own endpoint and bearer token, and commands run against that editor's existing `DrawingStore`. The desktop app uses the same editor with MCP controls hidden; it does not host these HTTP endpoints.
 
 ## Connect a client
 
@@ -93,12 +93,12 @@ sequenceDiagram
 
 | Location | Responsibility |
 | --- | --- |
-| `src/mcp/drawing-protocol.ts` | Shared operation schemas, reply schemas, and Effect command execution. |
-| `src/mcp/drawing-server.ts` | MCP tool registration and protocol results. |
-| `src/mcp/editor-connection.ts` | Browser command stream, validation, execution, and acknowledgement. |
-| `src/services/server/editor-sessions.ts` | Session credentials, connected browsers, pending requests, and timeouts. |
-| `src/services/server/editor-mcp.ts` | HTTP handlers for session creation, browser connections, and MCP requests. |
-| `src/components/editor/McpControls.tsx` | Explicit enable/disable controls and client configuration. |
+| `packages/core/src/mcp/drawing-protocol.ts` | Shared operation schemas, reply schemas, and Effect command execution. |
+| `packages/core/src/mcp/drawing-server.ts` | MCP tool registration and protocol results. |
+| `packages/core/src/mcp/editor-connection.ts` | Browser command stream, validation, execution, and acknowledgement. |
+| `packages/core/src/services/server/editor-sessions.ts` | Session credentials, connected browsers, pending requests, and timeouts. |
+| `packages/core/src/services/server/editor-mcp.ts` | HTTP handlers for session creation, browser connections, and MCP requests. |
+| `packages/core/src/components/editor/McpControls.tsx` | Explicit enable/disable controls and client configuration. |
 
 `POST /api/editor-mcp` creates a session. The browser connects to `/api/editor-mcp/<session-id>` using a separate editor token, receives newline-delimited operations, and posts acknowledgements there. MCP clients authenticate to `/mcp/editor/<session-id>` with the copied MCP token. The browser token is not included in the client configuration.
 

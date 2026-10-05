@@ -5,20 +5,20 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 }) => {
 	await page.goto("/tests/browser/renderer.html");
 	const result = await page.evaluate(async () => {
-		const stylePath = "/src/engine/layer-style.ts";
+		const stylePath = "/packages/core/src/engine/layer-style.ts";
 		const {
 			UNFOCUSED_CAMERA_OUTLINE_OPACITY,
 			UNFOCUSED_OUTLINE_OPACITY,
 			UNFOCUSED_OUTLINE_WIDTH,
 			UNFOCUSED_OUTLINE_WIDTH_MM,
 		} = await import(stylePath);
-		const scenePath = "/src/engine/scene.ts";
-		const { createSceneDisplay }: typeof import("../../src/engine/scene") =
+		const scenePath = "/packages/core/src/engine/scene.ts";
+		const { createSceneDisplay }: typeof import("#/engine/scene.ts") =
 			await import(scenePath);
-		const objectPath = "/src/engine/planar-object.ts";
+		const objectPath = "/packages/core/src/engine/planar-object.ts";
 		const {
 			stylePlanarObject3D,
-		}: typeof import("../../src/engine/planar-object") = await import(
+		}: typeof import("#/engine/planar-object.ts") = await import(
 			objectPath
 		);
 		const threePath = "/node_modules/three/build/three.module.js";
@@ -28,7 +28,7 @@ test("mesh X-ray surfaces preserve holes, brighten overlaps and combine camera-r
 			WebGLRenderer,
 			Vector3,
 		}: typeof import("three") = await import(threePath);
-		const drawing: import("../../src/engine/types").PlanarObject = {
+		const drawing: import("#/engine/types.ts").PlanarObject = {
 			type: "planar",
 			id: "drawing",
 			name: "drawing",

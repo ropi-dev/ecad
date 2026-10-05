@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compilePlanarGeometry } from "#/engine/planar-geometry";
+import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	pickPlanarRegion,
 	planarRegionPositions,
-} from "#/engine/planar-regions";
-import { parseGerber } from "#/formats/gerber";
+} from "#/engine/planar-regions.ts";
+import { parseGerber } from "#/formats/gerber/index.ts";
 
 const compile = (body: string) => {
 	const result = parseGerber(`%FSLAX46Y46*%%MOMM*%${body}M02*`);

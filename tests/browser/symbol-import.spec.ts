@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
-const example = readFileSync(new URL("../../public/examples/symbols/test-point.ecadsym", import.meta.url));
+const example = readFileSync(new URL("../../packages/web/public/examples/symbols/test-point.ecadsym", import.meta.url));
 const upload = { name: "test-point.ecadsym", mimeType: "application/json", buffer: example };
-const bufferUpload = { name: "buffer.ecadsym", mimeType: "application/json", buffer: readFileSync(new URL("../../public/examples/symbols/buffer.ecadsym", import.meta.url)) };
+const bufferUpload = { name: "buffer.ecadsym", mimeType: "application/json", buffer: readFileSync(new URL("../../packages/web/public/examples/symbols/buffer.ecadsym", import.meta.url)) };
 const storageKey = "ecad.symbol-library.v1";
 
 test.use({ viewport: { width: 1440, height: 900 } });

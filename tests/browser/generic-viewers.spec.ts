@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Viewer2DSnapshot } from "../../src/components/viewer/types/Viewer2DSnapshot";
+import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
 
 for (const projection of ["perspective", "orthographic"] as const) {
 	test(`2D viewer uses a ${projection} camera locked to top through pan, zoom and gestures`, async ({

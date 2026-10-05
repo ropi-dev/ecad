@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { constrainWireEndpoint, drawShape, editShapeAttribute, type EditorShape, moveShapes, normalizeWireSegments, resizeHandles, resizeShape, snapPoint } from "../src/components/editor/shapes.ts";
+import { constrainWireEndpoint, drawShape, editShapeAttribute, type EditorShape, moveShapes, normalizeWireSegments, resizeHandles, resizeShape, snapPoint } from "#/components/editor/shapes.ts";
 
-import { rulerSpacing, rulerTicks } from "../src/engine/ruler.ts";
+import { rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
 
 const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 

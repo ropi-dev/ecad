@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial } from "three";
-import { createSceneDisplay, type ViewerScene } from "#/engine/scene";
+import { createSceneDisplay, type ViewerScene } from "#/engine/scene.ts";
 
 test("scene arrays display multiple objects in order without taking ownership", () => {
 	const geometry = new BoxGeometry(2, 2, 2);

@@ -7,10 +7,10 @@
     <script type="module">
       import { createElement, StrictMode } from 'react';
       import { createRoot } from 'react-dom/client';
-      import { GerberViewer } from '/src/components/gerber/GerberViewer.tsx';
-      import { parsers } from '/src/formats/registry.ts';
+      import { GerberViewer } from '/packages/core/src/components/gerber/GerberViewer.tsx';
+      import { parsers } from '/packages/core/src/formats/registry.ts';
       import { demoFiles } from '/tests/fixtures/demo-gerbers.ts';
-      import '/src/styles.css';
+      import '/packages/core/src/styles.css';
       const { name, source } = demoFiles[0];
       const { object } = parsers.parse(source, name);
       createRoot(document.getElementById('root')).render(createElement(StrictMode, null, createElement(GerberViewer, {

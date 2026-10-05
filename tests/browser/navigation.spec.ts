@@ -5,12 +5,12 @@ test("Three.js controls preserve pixel panning, zoom anchors, limits and reset",
 }) => {
 	await page.goto("/tests/browser/renderer.html");
 	const result = await page.evaluate(async () => {
-		const path = "/src/engine/viewport-controls.ts";
+		const path = "/packages/core/src/engine/viewport-controls.ts";
 		const {
 			ViewportControls,
-		}: typeof import("../../src/engine/viewport-controls") = await import(path);
-		const cameraPath = "/src/engine/camera.ts";
-		const { screenToWorld }: typeof import("../../src/engine/camera") =
+		}: typeof import("#/engine/viewport-controls.ts") = await import(path);
+		const cameraPath = "/packages/core/src/engine/camera.ts";
+		const { screenToWorld }: typeof import("#/engine/camera.ts") =
 			await import(cameraPath);
 		const element = document.createElement("div");
 		element.style.cssText =

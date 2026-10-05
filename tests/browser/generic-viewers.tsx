@@ -10,14 +10,14 @@ import {
 	type Object3D,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { SceneLayer } from "../../src/engine/types";
-import { createPlanarObject } from "../../src/engine/scene";
-import { Viewer2D } from "../../src/components/viewer/Viewer2D";
-import { Viewer3D } from "../../src/components/viewer/Viewer3D";
-import type { Viewer3DHandle } from "../../src/components/viewer/types/Viewer3DHandle";
-import type { Viewer2DSnapshot } from "../../src/components/viewer/types/Viewer2DSnapshot";
-import type { Viewer2DHandle } from "../../src/components/viewer/types/Viewer2DHandle";
-import "../../src/styles.css";
+import type { SceneLayer } from "#/engine/types.ts";
+import { createPlanarObject } from "#/engine/scene.ts";
+import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
+import { Viewer3D } from "#/components/viewer/Viewer3D.tsx";
+import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
+import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
+import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
+import "#/styles.css";
 
 const layer: SceneLayer = {
 	id: "shapes",
@@ -110,7 +110,7 @@ function Model() {
 		};
 	}, [revision, empty]);
 	const [scene, setScene] =
-		useState<import("../../src/engine/scene").ViewerScene>();
+		useState<import("#/engine/scene.ts").ViewerScene>();
 	useEffect(() => {
 		const result = createScene();
 		setScene([{ type: "spatial", object: result.object }]);

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Group, LineLoop, type Mesh } from "three";
-import { buildDrawingDisplay } from "../src/drawing/display.ts";
-import { drawShape } from "../src/drawing/shapes.ts";
-import { buildWorksheetDisplay } from "../src/drawing/worksheet.ts";
-import { createDrawingRenderer } from "../src/engine/drawing/renderer.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { drawShape } from "#/drawing/shapes.ts";
+import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
+import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
 
 test("display resolves wire stroke dimensions, selection, and drawing order without a browser", () => {
 	const rectangle = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 20, y: 10 });

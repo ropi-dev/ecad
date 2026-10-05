@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { partitionOverlaps } from "#/engine/partition-overlaps";
-import type { Bounds } from "#/engine/types";
+import { partitionOverlaps } from "#/engine/partition-overlaps.ts";
+import type { Bounds } from "#/engine/types.ts";
 
 const box = (x: number, y = 0): Bounds => ({
 	minX: x,

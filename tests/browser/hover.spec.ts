@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import type { Viewer2DSnapshot } from "../../src/components/viewer/types/Viewer2DSnapshot";
+import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
 
 const snapshot = async (page: Page): Promise<Viewer2DSnapshot> =>
 	JSON.parse((await page.locator("#snapshot").textContent()) || "{}");

@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+@source './';
+
+:root { font-family: system-ui, sans-serif; color: #ddd; background: #111318; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; }

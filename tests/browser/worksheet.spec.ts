@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { BufferGeometry, Material, Mesh, MeshBasicMaterial, Texture } from "three";
-import type { EditorShape } from "../../src/drawing/shapes";
+import type { EditorShape } from "#/drawing/shapes.ts";
 
 test("changing sheet dimensions keeps drawn shapes and updates the worksheet", async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 1000 });
@@ -45,8 +45,8 @@ test("changing sheet dimensions keeps drawn shapes and updates the worksheet", a
 test("worksheet fits portrait, landscape, small and extreme custom sizes", async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	const results = await page.evaluate(async () => {
-		const worksheetPath = "/src/components/editor/worksheet.ts";
-		const { createWorksheet }: typeof import("../../src/components/editor/worksheet") = await import(worksheetPath);
+		const worksheetPath = "/packages/core/src/components/editor/worksheet.ts";
+		const { createWorksheet }: typeof import("#/components/editor/worksheet.ts") = await import(worksheetPath);
 		const threePath = "/node_modules/three/build/three.module.js";
 		const { Box3 }: typeof import("three") = await import(threePath);
 		return [
@@ -88,8 +88,8 @@ test("worksheet fits portrait, landscape, small and extreme custom sizes", async
 test("worksheet rejects invalid sizes and releases shared rendering resources once", async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	const result = await page.evaluate(async () => {
-		const worksheetPath = "/src/components/editor/worksheet.ts";
-		const { createWorksheet }: typeof import("../../src/components/editor/worksheet") = await import(worksheetPath);
+		const worksheetPath = "/packages/core/src/components/editor/worksheet.ts";
+		const { createWorksheet }: typeof import("#/components/editor/worksheet.ts") = await import(worksheetPath);
 		const invalid = [0, -1, NaN, Infinity].every((value) => {
 			return [
 				{ width: value, height: 297 },

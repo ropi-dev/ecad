@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLifecycle } from "#/lib/lifecycle";
+import { createLifecycle } from "#/lib/lifecycle.ts";
 
 test("failed viewport setup releases earlier resources and listeners in reverse order", () => {
 	const lifecycle = createLifecycle();

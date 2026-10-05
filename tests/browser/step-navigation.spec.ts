@@ -4,8 +4,8 @@ import { Vector3 } from "three";
 test("Fusion gestures pan, orbit, zoom toward the cursor and fit with the middle button", async ({ page }) => {
 	await page.goto("/tests/browser/renderer.html");
 	await page.evaluate(async () => {
-		const path = "/src/engine/controls3d.ts";
-		const { create3DControls }: typeof import("../../src/engine/controls3d") = await import(path);
+		const path = "/packages/core/src/engine/controls3d.ts";
+		const { create3DControls }: typeof import("#/engine/controls3d.ts") = await import(path);
 		const threePath = "/node_modules/three/build/three.module.js";
 		const { PerspectiveCamera, Vector2, Vector3, Plane, Raycaster }: typeof import("three") = await import(threePath);
 		document.body.replaceChildren();

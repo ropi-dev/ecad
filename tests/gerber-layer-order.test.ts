@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { expandGerberFile } from "#/formats/expandGerberFile";
-import { gerberLayerOrder } from "#/formats/gerber/layer-order";
+import { expandGerberFile } from "#/formats/expandGerberFile.ts";
+import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
 
 const source = (fileFunction = "") =>
 	`${fileFunction ? `%TF.FileFunction,${fileFunction}*%` : ""}%FSLAX46Y46*%%MOMM*%%ADD10C,1*%D10*X0Y0D03*M02*`;

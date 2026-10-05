@@ -1,0 +1,59 @@
+{
+  "name": "@ecad/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "scripts": {
+    "dev": "vite dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:pull": "drizzle-kit pull",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.3.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@t3-oss/env-core": "^0.13.10",
+    "@tanstack/match-sorter-utils": "latest",
+    "@tanstack/react-form": "latest",
+    "@tanstack/react-query": "latest",
+    "@tanstack/react-query-devtools": "latest",
+    "@tanstack/react-router": "latest",
+    "@tanstack/react-router-ssr-query": "latest",
+    "@tanstack/react-start": "latest",
+    "@tanstack/react-store": "latest",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/store": "latest",
+    "@trpc/client": "^11.11.0",
+    "@trpc/server": "^11.11.0",
+    "@trpc/tanstack-react-query": "^11.11.0",
+    "better-sqlite3": "^12.6.2",
+    "drizzle-orm": "^0.45.1",
+    "effect": "^3.22.2",
+    "react": "^19.2.0",
+    "superjson": "^2.2.2",
+    "zod": "^4.3.6",
+    "@ecad/core": "*"
+  },
+  "devDependencies": {
+    "@tanstack/devtools-vite": "latest",
+    "@tanstack/router-cli": "^1.132.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "dotenv": "^17.3.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "tailwindcss": "^4.1.18",
+    "drizzle-kit": "^0.31.9",
+    "@tanstack/devtools-event-client": "latest"
+  }
+}

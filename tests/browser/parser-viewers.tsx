@@ -1,13 +1,13 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Viewer2D } from "../../src/components/viewer/Viewer2D";
-import { Viewer3D } from "../../src/components/viewer/Viewer3D";
-import type { Viewer2DHandle } from "../../src/components/viewer/types/Viewer2DHandle";
-import type { Viewer2DSnapshot } from "../../src/components/viewer/types/Viewer2DSnapshot";
-import type { ViewerScene } from "../../src/engine/scene";
-import { parseGerberFile } from "../../src/formats/parseGerberFile";
-import { parseStepFile } from "../../src/formats/parseStepFile";
-import "../../src/styles.css";
+import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
+import { Viewer3D } from "#/components/viewer/Viewer3D.tsx";
+import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
+import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
+import type { ViewerScene } from "#/engine/scene.ts";
+import { parseGerberFile } from "#/formats/parseGerberFile.ts";
+import { parseStepFile } from "#/formats/parseStepFile.ts";
+import "#/styles.css";
 
 function App() {
 	const [loaded, setLoaded] = useState<{

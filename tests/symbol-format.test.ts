@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { importSymbolFile, importSymbolFiles, libraryDefinitions, mergeSymbolLibraries, parseSavedSymbolLibrary, parseSymbolFile, SYMBOL_FILE_LIMIT } from "../src/components/editor/symbolFormat.ts";
-import { createSymbol } from "../src/components/editor/symbols.ts";
-import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
-import { hitShape, symbolShapes } from "../src/components/editor/shapes.ts";
-import { runEffect } from "../src/lib/effect.ts";
+import { importSymbolFile, importSymbolFiles, libraryDefinitions, mergeSymbolLibraries, parseSavedSymbolLibrary, parseSymbolFile, SYMBOL_FILE_LIMIT } from "#/components/editor/symbolFormat.ts";
+import { createSymbol } from "#/components/editor/symbols.ts";
+import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
+import { hitShape, symbolShapes } from "#/components/editor/shapes.ts";
+import { runEffect } from "#/lib/effect.ts";
 import { symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
 
-const example = readFileSync(new URL("../public/examples/symbols/test-point.ecadsym", import.meta.url), "utf8");
+const example = readFileSync(new URL("../packages/web/public/examples/symbols/test-point.ecadsym", import.meta.url), "utf8");
 const source = () => JSON.parse(example);
 
 test("example library imports at its authored size and all geometry remains finite", () => {
  const symbol = parseSymbolFile(example);
- const definitions = libraryDefinitions([symbol, parseSymbolFile(readFileSync(new URL("../public/examples/symbols/buffer.ecadsym", import.meta.url), "utf8"))]);
+ const definitions = libraryDefinitions([symbol, parseSymbolFile(readFileSync(new URL("../packages/web/public/examples/symbols/buffer.ecadsym", import.meta.url), "utf8"))]);
  const testPoint = createSymbol(1, definitions[0], { x: 10, y: 20 });
  assert.equal(testPoint.width, 2);
  assert.equal(testPoint.height, 4.508);

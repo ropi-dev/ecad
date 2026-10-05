@@ -5,8 +5,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
+import { SymbolLibraryProvider } from "#/symbol-library/storage.tsx";
+import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
-import "../../src/styles.css";
+import "#/styles.css";
 
 Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	const shapes = this.getObjectByName("editor-shapes");
@@ -49,8 +51,9 @@ const showDocument = () => {
 drawingStore.subscribe(showDocument);
 showDocument();
 const root = createRoot(document.getElementById("root")!);
+const symbolLibraryStorage = createWebSymbolLibraryStorage();
 function renderEditor(sheet?: SheetSize) {
-	root.render(<StrictMode><Editor2D sheet={sheet} store={drawingStore} /></StrictMode>);
+	root.render(<StrictMode><SymbolLibraryProvider storage={symbolLibraryStorage}><Editor2D sheet={sheet} store={drawingStore} /></SymbolLibraryProvider></StrictMode>);
 }
 window.addEventListener("editor-sheet-size", (event) => {
 	renderEditor((event as CustomEvent<SheetSize>).detail);

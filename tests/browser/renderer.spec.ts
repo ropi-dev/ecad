@@ -8,13 +8,13 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 		page.on("pageerror", (error) => errors.push(error.message));
 		await page.goto("/tests/browser/renderer.html");
 		const result = await page.evaluate(async (mode) => {
-			const path = "/src/engine/three.ts";
-			const { ThreeRenderer }: typeof import("../../src/engine/three") =
+			const path = "/packages/core/src/engine/three.ts";
+			const { ThreeRenderer }: typeof import("#/engine/three.ts") =
 				await import(path);
 			const canvas = document.createElement("canvas");
 			document.body.append(canvas);
-			const canvasPath = "/src/engine/canvas.ts";
-			const { CanvasRenderer }: typeof import("../../src/engine/canvas") =
+			const canvasPath = "/packages/core/src/engine/canvas.ts";
+			const { CanvasRenderer }: typeof import("#/engine/canvas.ts") =
 				await import(canvasPath);
 			const engine =
 				mode === "canvas"
@@ -30,7 +30,7 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 				width: number,
 				polarity: "dark" | "clear" = "dark",
 				x = 0,
-			): import("../../src/engine/types").SceneObject => ({
+			): import("#/engine/types.ts").SceneObject => ({
 				id,
 				geometry: { type: "rect", x, y: 0, width, height: width },
 				polarity,
@@ -45,8 +45,8 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 			const layer = (
 				id: string,
 				color: string,
-				objects: import("../../src/engine/types").SceneObject[],
-			): import("../../src/engine/types").SceneLayer => ({
+				objects: import("#/engine/types.ts").SceneObject[],
+			): import("#/engine/types.ts").SceneLayer => ({
 				id,
 				name: id,
 				color,
@@ -64,7 +64,7 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 					rect("island", 1, "dark", 1),
 				]),
 			];
-			const options: import("../../src/engine/types").RenderOptions = {
+			const options: import("#/engine/types.ts").RenderOptions = {
 				width: 128,
 				height: 128,
 				pixelRatio: 1,
@@ -85,7 +85,7 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 			engine.render(canvas, layers, options);
 			if (mode !== "canvas") await ready;
 			async function capture(
-				next: import("../../src/engine/types").RenderOptions,
+				next: import("#/engine/types.ts").RenderOptions,
 			) {
 				engine.render(canvas, layers, next);
 				const width = canvas.width,

@@ -3,13 +3,13 @@ import test from "node:test";
 import {
 	compilePlanarGeometry,
 	simplifyPlanarEdges,
-} from "#/engine/planar-geometry";
+} from "#/engine/planar-geometry.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
-} from "#/engine/planar-object";
-import type { SceneObject } from "#/engine/types";
-import { parseGerber } from "#/formats/gerber";
+} from "#/engine/planar-object.ts";
+import type { SceneObject } from "#/engine/types.ts";
+import { parseGerber } from "#/formats/gerber/index.ts";
 import { Box3, Mesh } from "three";
 import { pthGerber } from "./fixtures/pth-gerber";
 

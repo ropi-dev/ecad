@@ -2,6 +2,8 @@
 
 The editor gathers input, commands change the document, the display model decides what appears, and the engine renders it.
 
+The shared implementation lives in `packages/core`. `packages/web` hosts it in TanStack Start; `packages/desktop` hosts it in an Electron renderer. Both apps use the same drawing commands and editor components.
+
 ```mermaid
 flowchart LR
     Editor[Editor tools and gestures] -->|Completed geometry| Commands[Effect commands]
@@ -15,12 +17,12 @@ flowchart LR
 
 | Layer | Location | Responsibility |
 | --- | --- | --- |
-| Drawing model | `src/drawing/` | Shape data, geometry calculations, symbols, text layout, worksheet layout, history, and display descriptions. No React, Three.js, or DOM dependency. Text layout accepts a measurement function. |
-| Commands | `src/commands/` | Validate complete inputs, allocate IDs, normalize wires, and atomically publish document and history changes through Effect. |
-| Display | `src/drawing/display.ts` | Describe shape geometry, transforms, appearance, selection outlines, open wire terminals, and previews as plain data. |
-| Three.js engine | `src/engine/drawing/`, `src/engine/scene-viewport.ts` | Build meshes and textures, cache and dispose resources, operate cameras, render frames, and report viewport events. |
-| React adapters | `src/components/editor/useEditorScene.ts`, `src/components/viewer/SceneViewport.tsx` | Bind rendering resource lifetimes and engine events to React. |
-| Editor | `src/components/editor/Editor2D.tsx` | Choose tools, collect pointer input, resolve snapping and text measurements, maintain selection and temporary geometry, and execute completed commands. |
+| Drawing model | `packages/core/src/drawing/` | Shape data, geometry calculations, symbols, text layout, worksheet layout, history, and display descriptions. No React, Three.js, or DOM dependency. Text layout accepts a measurement function. |
+| Commands | `packages/core/src/commands/` | Validate complete inputs, allocate IDs, normalize wires, and atomically publish document and history changes through Effect. |
+| Display | `packages/core/src/drawing/display.ts` | Describe shape geometry, transforms, appearance, selection outlines, open wire terminals, and previews as plain data. |
+| Three.js engine | `packages/core/src/engine/drawing/`, `packages/core/src/engine/scene-viewport.ts` | Build meshes and textures, cache and dispose resources, operate cameras, render frames, and report viewport events. |
+| React adapters | `packages/core/src/components/editor/useEditorScene.ts`, `packages/core/src/components/viewer/SceneViewport.tsx` | Bind rendering resource lifetimes and engine events to React. |
+| Editor | `packages/core/src/components/editor/Editor2D.tsx` | Choose tools, collect pointer input, resolve snapping and text measurements, maintain selection and temporary geometry, and execute completed commands. |
 
 The former editor model and rendering helper paths re-export their new implementations for existing consumers.
 
@@ -55,7 +57,7 @@ console.log(result.ids, store.getSnapshot().shapes);
 
 Commands capture their input when constructed. They run only when executed with Effect, and can be composed in `Effect.gen`. Each command publishes one complete transaction; a sequence of separate commands produces separate undo steps. Invalid inputs fail with `InvalidDrawingCommand` and leave the document unchanged. Callers can handle that error with Effect combinators before running the program.
 
-The current commands are synchronous, so the React event boundary uses `Effect.runSync` and handles the error channel there. Commands themselves never call `runSync`, `runPromise`, or a React hook. Asynchronous callers can provide the same service and use `runEffect` from `src/lib/effect.ts`. See [Effect 3 execution boundaries](https://effect.website/docs/v3/getting-started/running-effects/).
+The current commands are synchronous, so the React event boundary uses `Effect.runSync` and handles the error channel there. Commands themselves never call `runSync`, `runPromise`, or a React hook. Asynchronous callers can provide the same service and use `runEffect` from `packages/core/src/lib/effect.ts`. See [Effect 3 execution boundaries](https://effect.website/docs/v3/getting-started/running-effects/).
 
 ## Previews and history
 
@@ -63,11 +65,17 @@ A rectangle drag starts with temporary editor geometry. Pointer movement updates
 
 The store exposes stable, immutable snapshots and a subscription for React's `useSyncExternalStore`. Pass it to `<Editor2D store={store} />` to display and edit the same document used by external commands. Without this prop, each editor creates its own store.
 
-The editor's **Enable MCP** control connects this same store to a session-specific MCP endpoint. The server forwards complete operations to the browser, where Effect executes them. See [MCP access to an open drawing](mcp.md) for client setup, tool inputs, and session lifetime.
+In the web app, the editor's **Enable MCP** control connects this same store to a session-specific MCP endpoint. The server forwards complete operations to the browser, where Effect executes them. The desktop renderer sets `enableMcp={false}` because these endpoints belong to the web app. See [MCP access to an open drawing](mcp.md) for client setup, tool inputs, and session lifetime.
 
 An external document change cancels any active gesture and removes deleted IDs from the editor's selection. A stale preview cannot overwrite the external command when the pointer is released.
 
 Document history contains only drawing data. The editor separately remembers selections for its own history navigation. Tool changes, selection, snapping, camera movement, and previews do not create document history entries. Shape IDs remain monotonic across undo branches.
+
+## Symbol storage
+
+`SymbolLibraryProvider` in `packages/core/src/symbol-library/storage.tsx` injects a `SymbolLibraryStorage` implementation into the shared editor. Core validates symbol files and owns the displayed definitions. The storage implementation loads and saves the library, and can expose a directory picker. Without a provider, symbols remain in memory for the editor session.
+
+`packages/web/src/symbol-library/storage.ts` persists uploaded and created symbols in localStorage. The desktop adapter calls a preload bridge; Electron's main process reads the opened directory and writes new symbol files. Filesystem access stays in the main process. Desktop refreshes replace the loaded custom definitions with the directory's current contents. Both hosts retain the built-in definitions.
 
 ## Rendering ownership
 

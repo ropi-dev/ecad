@@ -11,11 +11,11 @@ import {
 	resizeHandles,
 	routeWire,
 	wireConnectionPoints,
-} from "../src/components/editor/shapes.ts";
+} from "#/components/editor/shapes.ts";
 import {
 	createSymbol,
 	symbolDefinitions,
-} from "../src/components/editor/symbols.ts";
+} from "#/components/editor/symbols.ts";
 
 const pin = (id: number, x: number, y: number) =>
 	drawShape(id, "pin", { x, y }, { x, y });

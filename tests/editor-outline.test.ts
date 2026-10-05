@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
-import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
-import { drawShape, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, resizeHandles, resizeShape } from "../src/components/editor/shapes.ts";
+import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
+import { drawShape, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, resizeHandles, resizeShape } from "#/components/editor/shapes.ts";
 
 for (const kind of ["rectangle", "circle", "triangle"] as const) {
 	test(`${kind} has an empty center and a constant-width mesh outline`, () => {

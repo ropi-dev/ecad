@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
-import { createShapeGeometry } from "../src/components/editor/shapeGeometry.ts";
-import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, symbolShapes, symbolTextShapes } from "../src/components/editor/shapes.ts";
+import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
+import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, symbolShapes, symbolTextShapes } from "#/components/editor/shapes.ts";
 import { createSymbol, createSymbolFromShapes, symbolDefinitions } from "#/drawing/symbols.ts";
 
 test("converted symbols render each original shape with its own stroke width", () => {

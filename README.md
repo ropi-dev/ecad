@@ -1,233 +1,65 @@
-ECAD is a browser-based Gerber and STEP viewer with a 2D drawing editor, built with TanStack Start, React, and Three.js.
+ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron desktop apps share the same React editor, drawing model, and Three.js engine.
 
-Async operations and resource lifetimes use Effect 3. See [the Effect integration guide](docs/effect.md) for framework boundaries, service layers, cancellation, and geometry ownership.
+| Package | Contents |
+| --- | --- |
+| [`@ecad/core`](packages/core) | Shared editor and viewers, drawing commands, symbol validation, parsers, workers, and rendering. |
+| [`@ecad/web`](packages/web) | TanStack Start app, browser symbol storage, routes, and HTTP services. |
+| [`@ecad/desktop`](packages/desktop) | Electron app and directory-backed symbol storage. |
 
-The [drawing architecture guide](docs/architecture.md) describes the editor, headless Effect commands, display models, and Three.js rendering layers, with an example of placing a rectangle without UI state.
-
-The [MCP guide](docs/mcp.md) explains how to enable client access to an open drawing, configure its endpoint, and use drawing tools.
-
-The 2D editor accepts one symbol per `.ecadsym` file. A library is a directory of symbol files: import individual files with **Symbols → Upload symbols**, or use **Upload library directory**. See the [symbol format guide](docs/symbol-format.md) and [example directory](public/examples/symbols).
-
-# Getting Started
-
-To run this application:
+Install dependencies from the repository root with npm. The root `package-lock.json` covers all workspaces.
 
 ```bash
 npm install
+```
+
+## Run the web app
+
+```bash
 npm run dev
 ```
 
-# Building For Production
+Open `http://localhost:3000/editor` for the drawing editor. The web app can read files selected through **Symbols → Upload symbols** or **Upload library directory**. Uploaded and created symbols are saved in this browser's localStorage. Uploading a directory copies its current symbols; it does not keep access to that directory.
 
-To build this application for production:
+## Run the desktop app
 
 ```bash
+npm run dev:desktop -- /absolute/symbol-directory
+```
+
+The directory argument is optional. Open **Symbols → Open library directory** to choose or change the directory, and use **Refresh library** to reload files after editing them outside ECAD. The desktop app reads matching symbol files in subdirectories. Uploaded and created symbols are written as `<id>.ecadsym` files into the opened directory. Open a directory before saving custom symbols. Built-in symbols remain available in both apps.
+
+The desktop app uses files on disk for its symbol library. The web app's **Upload library directory** imports a snapshot into browser storage.
+
+If Electron exits with a `chrome-sandbox` permissions error on Linux, configure the system sandbox. For local development on that host, the launch command also accepts `--no-sandbox`:
+
+```bash
+npm run dev:desktop -- --no-sandbox /absolute/symbol-directory
+```
+
+## Build and verify
+
+```bash
+npm run build:web
+npm run build:desktop
+# Build both apps:
 npm run build
+
+# Launch the built desktop app:
+npm run start:desktop -- /absolute/symbol-directory
+
+npm run typecheck
+npm test
+npm run test:browser
 ```
 
-## Styling
+Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`.
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+## Working in the packages
 
-### Removing Tailwind CSS
+Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within the package. App packages import shared modules through `@ecad/core`, for example `@ecad/core/components/editor/Editor2D.tsx`.
 
-If you prefer not to use Tailwind CSS:
+Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `npm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
 
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
+Tailwind styles live in `packages/core/src/styles.css`. The shared Shadcn configuration is `packages/core/components.json`. Web environment validation lives in `packages/web/src/env.ts`. Database commands such as `npm run db:migrate` run in the web workspace and use `DATABASE_URL`.
 
-## Linting & Formatting
-
-This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
-
-
-```bash
-npm run lint
-npm run format
-npm run check
-```
-
-
-## Shadcn
-
-Add components using the latest version of [Shadcn](https://ui.shadcn.com/).
-
-```bash
-pnpm dlx shadcn@latest add button
-```
-
-
-## T3Env
-
-- You can use T3Env to add type safety to your environment variables.
-- Add Environment variables to the `src/env.mjs` file.
-- Use the environment variables in your code.
-
-### Usage
-
-```ts
-import { env } from "#/env";
-
-console.log(env.VITE_APP_TITLE);
-```
-
-
-
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
