@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000/editor` for the drawing editor. The web app can read files selected through **Symbols → Upload symbols** or **Upload library directory**. Uploaded and created symbols are saved in this browser's localStorage. Uploading a directory copies its current symbols; it does not keep access to that directory.
+Open `http://localhost:3000/editor` for the drawing editor. Manage symbol libraries under **Projects → Symbol libraries**, where you can upload files or directories into user or project libraries. User libraries live in project-independent localStorage. Project libraries save with the project. Uploading a directory copies its current symbols; it does not keep access to that directory.
 
 ## Run the desktop app
 
@@ -26,23 +26,23 @@ Open `http://localhost:3000/editor` for the drawing editor. The web app can read
 npm run dev:desktop -- /absolute/project-directory
 ```
 
-The directory argument is optional. Open **Symbols → Open library directory** to choose or change the directory, and use **Refresh library** to reload files after editing them outside ECAD. The desktop app reads matching symbol files in subdirectories. Uploaded and created symbols are written as `<id>.ecadsym` files into the opened directory. Open a directory before saving custom symbols. Built-in symbols remain available in both apps.
+The project directory argument is optional. Manage libraries under **Projects → Symbol libraries**. **Add library directory** adds a directory source, and **Reload libraries** rereads files after external edits. User settings live at `~/.ecad/config.json`. Uploaded and created symbols can be saved without opening a directory first. Built-in symbols are enabled by default.
 
-The desktop app uses files on disk for its symbol library. The web app's **Upload library directory** imports a snapshot into browser storage.
+The desktop app reads configured directories from disk. The web app's **Upload library directory** imports a snapshot into browser storage.
 
 If Electron exits with a `chrome-sandbox` permissions error on Linux, configure the system sandbox. For local development on that host, the launch command also accepts `--no-sandbox`:
 
 ```bash
-npm run dev:desktop -- --no-sandbox /absolute/symbol-directory
+npm run dev:desktop -- --no-sandbox /absolute/project-directory
 ```
 
 ## Projects
 
 The separate **Projects** page manages the active project and its files. Reach it using **Projects** from any workspace. Enter a name and choose **Create project** to save the current drawing, custom symbols, and imported files together. Creating another project copies the current work into its own directory. **Open project directory** on desktop or the saved-project list on web switches projects. Add Gerber, STEP, and symbol files on this page, then use **Open** to view a file in its workspace. File lists and import controls stay on the Projects page. The active project is shared across the app, and drawing undo history survives navigation between pages. Drawings save automatically after edits; **Save project** saves immediately. Reopening a project restores its drawing and symbols and loads its Gerber or STEP source files when you visit that viewer. Undo history starts again when you reopen a project or reload the app.
 
-On desktop, creating a project asks for a parent directory and creates a subdirectory named after the project. Each project has a TOML file named `.ecadprj`. You can pass either the project directory or its `.ecadprj` file when launching the desktop app. Without an argument, the last opened project is restored. A legacy symbol-library directory can still supply symbols when creating the first project.
+On desktop, creating a project asks for a parent directory and creates a subdirectory named after the project. Each project has a TOML file named `.ecadprj`. You can pass either the project directory or its `.ecadprj` file when launching the desktop app. Without an argument, the last opened project is restored. User symbol libraries are configured separately in `~/.ecad/config.json` and remain available across projects.
 
-On web, projects use directories in the browser's Origin Private File System, with the project name as the directory name. Assets stay on the device and belong to this browser and site. Browser storage must support local filesystem directories; clearing site data removes saved projects. The active project's name is remembered in localStorage. Existing localStorage symbols are copied into the first project when you create it.
+On web, projects use directories in the browser's Origin Private File System, with the project name as the directory name. Assets stay on the device and belong to this browser and site. Browser storage must support local filesystem directories; clearing site data removes saved projects. The active project's name is remembered in localStorage. User symbol libraries remain in project-independent localStorage and are available alongside each project's own libraries.
 
 The project file points to a drawing, portable `.ecadsym` files, and copied source files using relative paths:
 
@@ -74,7 +74,7 @@ npm run build:desktop
 npm run build
 
 # Launch the built desktop app:
-npm run start:desktop -- /absolute/symbol-directory
+npm run start:desktop -- /absolute/project-directory
 
 npm run typecheck
 npm test

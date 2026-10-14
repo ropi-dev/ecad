@@ -6,6 +6,7 @@ import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
 import { createDesktopProjectDirectory } from "../../packages/desktop/src/main/projects.ts";
+import { DesktopSymbolLibrary } from "../../packages/desktop/src/main/symbol-library.ts";
 
 // This measures native filesystem I/O without browser CPU throttling or rendering.
 test("desktop-storage", async ({}, testInfo) => {
@@ -70,6 +71,11 @@ test("desktop-storage", async ({}, testInfo) => {
 				await repository.readAsset(imported.manifest.assets[0].path),
 			).equals(Buffer.from(bytes)),
 		).toBe(true);
+		const library = new DesktopSymbolLibrary(undefined, directory);
+		const config = { version: 1 as const, symbolLibraries: [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory" as const, path: "symbols" } }] };
+		await measure("symbolConfigSaveMs", () => library.saveConfiguration(config));
+		expect(await measure("symbolConfigLoadMs", () => library.loadConfiguration())).toEqual(config);
+		expect(await measure("libraryReadMs", () => library.loadConfiguredDirectory("symbols"))).toHaveLength(50);
 		await testInfo.attach("performance", {
 			body: JSON.stringify({
 				scenario: "desktop-storage",

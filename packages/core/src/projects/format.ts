@@ -6,6 +6,10 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import {
+	type ConfiguredSymbolLibrary,
+	validateSymbolLibraries,
+} from "#/symbol-library/config.ts";
 
 export const PROJECT_FILE = ".ecadprj";
 export const projectNameSchema = z
@@ -54,6 +58,7 @@ export type AssetKind = ProjectAsset["kind"];
 export interface ProjectDocument {
 	shapes: EditorShape[];
 	symbols: SymbolLibrary;
+	symbolLibraries?: readonly ConfiguredSymbolLibrary[];
 }
 export interface ProjectSnapshot extends ProjectDocument {
 	directory: string;
@@ -76,5 +81,8 @@ export function validateProjectDocument(
 	return {
 		shapes,
 		symbols: parseSavedSymbolLibrary(JSON.stringify(document.symbols)),
+		...(document.symbolLibraries === undefined
+			? {}
+			: { symbolLibraries: validateSymbolLibraries(document.symbolLibraries) }),
 	};
 }

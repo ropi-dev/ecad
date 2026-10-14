@@ -40,3 +40,23 @@ test("desktop bridge errors reach the shared editor", async () => {
 	assert.ok(openDirectory);
 	await assert.rejects(openDirectory(), failure);
 });
+
+test("desktop configuration and scoped directory reads use the existing preload bridge", async () => {
+ const { defaultSymbolConfig } = await import("@ecad/core/symbol-library/config.ts");
+ const config = defaultSymbolConfig();
+ const calls: unknown[] = [];
+ const storage = createDesktopSymbolLibraryStorage({
+  async load() { return { symbols: [] }; },
+  async save() { return "Legacy save"; },
+  async openDirectory() { return null; },
+  async loadConfiguration() { calls.push("loadConfiguration"); return config; },
+  async saveConfiguration(next) { calls.push(["saveConfiguration", next]); return "Saved config"; },
+  async openLibraryDirectory(name) { calls.push(["openLibraryDirectory", name]); return null; },
+  async loadDirectory(path, scope, directory) { calls.push(["loadDirectory", path, scope, directory]); return []; },
+ });
+ assert.equal(await storage.loadConfiguration!(), config);
+ assert.equal(await storage.saveConfiguration!(config), "Saved config");
+ assert.equal(await storage.openLibraryDirectory!("Project parts"), null);
+ assert.deepEqual(await storage.loadDirectory!("libraries", "project", "/project"), []);
+ assert.deepEqual(calls, ["loadConfiguration", ["saveConfiguration", config], ["openLibraryDirectory", "Project parts"], ["loadDirectory", "libraries", "project", "/project"]]);
+});

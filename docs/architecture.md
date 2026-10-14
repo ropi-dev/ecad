@@ -73,9 +73,9 @@ Document history contains only drawing data. The editor separately remembers sel
 
 ## Symbol storage
 
-`SymbolLibraryProvider` in `packages/core/src/symbol-library/storage.tsx` injects a `SymbolLibraryStorage` implementation into the shared editor. Core validates symbol files and owns the displayed definitions. The storage implementation loads and saves the library, and can expose a directory picker. Without a provider, symbols remain in memory for the editor session.
+`SymbolLibraryProvider` in `packages/core/src/symbol-library/storage.tsx` injects user storage and optional project storage into the shared editor. Core validates named library configuration and resolves enabled definitions, with project definitions taking precedence over user definitions. Without a provider, user libraries remain in memory for the editor session.
 
-`packages/web/src/symbol-library/storage.ts` persists uploaded and created symbols in localStorage. The desktop adapter calls a preload bridge; Electron's main process reads the opened directory and writes new symbol files. Filesystem access stays in the main process. Desktop refreshes replace the loaded custom definitions with the directory's current contents. Both hosts retain the built-in definitions.
+`packages/web/src/symbol-library/storage.ts` persists user configuration in project-independent localStorage. The desktop adapter calls the preload bridge; Electron's main process reads and atomically writes `~/.ecad/config.json` and resolves configured directory sources. Project storage persists `symbolLibraries` with drawing data and keeps existing standalone project symbols in the manifest. The project provider exposes both scopes, so opening a project never replaces or copies the user's libraries. See [symbol library configuration](symbol-format.md#user-and-project-configuration).
 
 ## Rendering ownership
 

@@ -112,3 +112,67 @@ test("project STEP files are opened from the Projects page and copied with new p
 	await expect(page.getByRole("button", { name: "Fit model", exact: true })).toBeEnabled({ timeout: 30000 });
 	await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("user libraries remain available across projects while named project overrides persist separately", async ({ page }) => {
+ await page.goto("/tests/browser/projects.html");
+ await page.getByText("Symbol libraries", { exact: true }).click();
+ await page.getByLabel("Library name", { exact: true }).fill("User parts");
+ const symbol = { format: "ecad-symbol", version: 1, units: "mm", id: "shared-part", name: "User point", description: "", prefix: "TP", value: "", shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }] };
+ const upload = { name: "point.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) };
+ await page.getByLabel("Upload symbol files").setInputFiles(upload);
+ await expect(page.getByText("Added 1 symbol. Saved in this browser.", { exact: true })).toBeVisible();
+ const savedUser = await page.evaluate(() => localStorage.getItem("ecad.user-config.v1"));
+ await createProject(page, "Libraries first");
+ await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toBeVisible();
+ await page.keyboard.press("Escape");
+ await projectsPage(page);
+ await page.getByText("Symbol libraries", { exact: true }).click();
+ await page.getByLabel("Library scope").selectOption("project");
+ await page.getByLabel("Library name", { exact: true }).fill("Project parts");
+ await page.getByLabel("Upload symbol files").setInputFiles({ ...upload, buffer: Buffer.from(JSON.stringify({ ...symbol, name: "Project point" })) });
+ await expect(page.getByText("Added 1 symbol. Saved in this project.", { exact: true })).toBeVisible();
+ expect(await page.evaluate(() => localStorage.getItem("ecad.user-config.v1"))).toBe(savedUser);
+ await page.reload();
+ await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Insert Project point", exact: true })).toBeVisible();
+ await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toHaveCount(0);
+ await page.keyboard.press("Escape");
+ await projectsPage(page);
+ await page.getByText("Symbol libraries", { exact: true }).click();
+ const projectLibraries = page.getByRole("group", { name: "Project libraries", exact: true });
+ await projectLibraries.getByRole("checkbox", { name: "Project parts", exact: true }).uncheck();
+ await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toBeVisible();
+ await page.keyboard.press("Escape");
+ await createProject(page, "Libraries second");
+ await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toBeVisible();
+ expect(await page.evaluate(() => localStorage.getItem("ecad.user-config.v1"))).toBe(savedUser);
+});
+
+test("failed project library configuration saves restore the checkbox and saved definitions", async ({ page }) => {
+ await page.goto("/tests/browser/projects.html");
+ await createProject(page, "Library rollback");
+ await page.getByLabel("Add symbol files").setInputFiles({ name: "point.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "rollback-point", name: "Rollback point", description: "", prefix: "TP", value: "", shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }] })) });
+ await expect(page.getByText("rollback-point.ecadsym", { exact: true })).toBeVisible();
+ await page.getByText("Symbol libraries", { exact: true }).click();
+ await page.evaluate(() => {
+  const createWritable = FileSystemFileHandle.prototype.createWritable;
+  FileSystemFileHandle.prototype.createWritable = function(...args) {
+   if (this.name === ".ecadprj") throw new DOMException("Quota exceeded", "QuotaExceededError");
+   return createWritable.apply(this, args);
+  };
+ });
+ const enabled = page.getByRole("group", { name: "Project libraries", exact: true }).getByRole("checkbox", { name: "Project symbols", exact: true });
+ await enabled.uncheck();
+ await expect(page.getByRole("alert")).toContainText("Quota exceeded");
+ await expect(enabled).toBeChecked();
+ await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Insert Rollback point", exact: true })).toBeVisible();
+});

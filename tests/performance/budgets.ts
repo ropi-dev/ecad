@@ -5,6 +5,17 @@ export const budgets = {
 		saveMs: 2000,
 		importAssetsMs: 3000,
 		loadMs: 2000,
+		symbolConfigSaveMs: 1000,
+		symbolConfigLoadMs: 1000,
+		libraryReadMs: 1000,
+	},
+	"symbol-libraries": {
+		startupMs: 5000,
+		libraryLoadMs: 1200,
+		libraryResolveMs: 1200,
+		interactionP95Ms: 2000,
+		domNodes: 4000,
+		scriptBytes: 2_500_000,
 	},
 	"projects-empty": {
 		startupMs: 5000,

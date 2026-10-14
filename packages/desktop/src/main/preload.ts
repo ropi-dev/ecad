@@ -11,6 +11,14 @@ const bridge: DesktopSymbolLibraryBridge = {
 	save: (symbols, additions) =>
 		ipcRenderer.invoke(libraryChannels.save, symbols, additions),
 	openDirectory: () => ipcRenderer.invoke(libraryChannels.openDirectory),
+	loadConfiguration: () =>
+		ipcRenderer.invoke(libraryChannels.loadConfiguration),
+	saveConfiguration: (config) =>
+		ipcRenderer.invoke(libraryChannels.saveConfiguration, config),
+	openLibraryDirectory: (name) =>
+		ipcRenderer.invoke(libraryChannels.openLibraryDirectory, name),
+	loadDirectory: (path, scope, directory) =>
+		ipcRenderer.invoke(libraryChannels.loadDirectory, path, scope, directory),
 };
 
 contextBridge.exposeInMainWorld("ecadSymbolLibrary", bridge);

@@ -186,3 +186,18 @@ test("the browser storage getter is lazy and unavailable browser storage stays n
 		else Reflect.deleteProperty(globalThis, "localStorage");
 	}
 });
+
+test("user library configuration migrates the old cache and saves enabled libraries independently", async () => {
+ const { USER_SYMBOL_CONFIG_KEY } = await import("@ecad/core/symbol-library/config.ts");
+ const browser = memoryStorage(JSON.stringify([symbol()]));
+ const storage = createWebSymbolLibraryStorage(browser);
+ const config = await storage.loadConfiguration!();
+ assert.equal(config.symbolLibraries.length, 2);
+ assert.equal(browser.entries.has(USER_SYMBOL_CONFIG_KEY), false);
+ const disabled = { ...config, symbolLibraries: config.symbolLibraries.map(library => ({ ...library, enabled: false })) };
+ assert.equal(await storage.saveConfiguration!(disabled), "Saved in this browser.");
+ assert.deepEqual(await createWebSymbolLibraryStorage(browser).loadConfiguration!(), disabled);
+ assert.equal(browser.entries.has(SYMBOL_STORAGE_KEY), true);
+ await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
+ assert.deepEqual((await storage.loadConfiguration!()).symbolLibraries, []);
+});

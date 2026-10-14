@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 import {
 	link,
 	lstat,
+	mkdir,
 	readdir,
 	readFile,
 	realpath,
+	rename,
 	rm,
 	writeFile,
 } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import {
 	mergeSymbolLibraries,
 	parseSavedSymbolLibrary,
@@ -16,6 +19,15 @@ import {
 	SYMBOL_FILE_LIMIT,
 	type SymbolLibrary,
 } from "@ecad/core/components/editor/symbolFormat.ts";
+import {
+	type ConfiguredSymbolLibrary,
+	defaultSymbolConfig,
+	parseSymbolConfig,
+	SYMBOL_CONFIG_LIMIT,
+	type SymbolLibraryConfig,
+	serializeSymbolConfig,
+	validateSymbolLibraries,
+} from "@ecad/core/symbol-library/config.ts";
 import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.tsx";
 
 const symbolExtension = /\.(ecadsym|json)$/i;
@@ -93,9 +105,85 @@ function orderedLibrary(symbols: SymbolLibrary): string {
 export class DesktopSymbolLibrary {
 	private snapshot: SymbolLibrarySnapshot;
 	private operation: Promise<unknown> = Promise.resolve();
+	private approvedDirectories = new Set<string>();
+	readonly configurationPath: string;
 
-	constructor(directory?: string) {
+	constructor(
+		directory?: string,
+		private homeDirectory = homedir(),
+	) {
 		this.snapshot = { symbols: [], directory };
+		this.configurationPath = join(homeDirectory, ".ecad", "config.json");
+	}
+
+	private async readConfiguration(): Promise<SymbolLibraryConfig> {
+		try {
+			if ((await lstat(this.configurationPath)).size > SYMBOL_CONFIG_LIMIT)
+				throw new Error(
+					"Symbol library configuration must be 10 MB or smaller.",
+				);
+			return parseSymbolConfig(await readFile(this.configurationPath, "utf8"));
+		} catch (cause) {
+			if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+			return defaultSymbolConfig();
+		}
+	}
+
+	loadConfiguration() {
+		return this.sequential(() => this.readConfiguration());
+	}
+
+	saveConfiguration(config: SymbolLibraryConfig): Promise<string> {
+		return this.sequential(async () => {
+			const contents = serializeSymbolConfig(config);
+			await mkdir(dirname(this.configurationPath), { recursive: true });
+			const temporary = `${this.configurationPath}.${randomUUID()}.tmp`;
+			try {
+				await writeFile(temporary, contents, { mode: 0o600, flag: "wx" });
+				await rename(temporary, this.configurationPath);
+			} finally {
+				await rm(temporary, { force: true });
+			}
+			return `Saved to ${this.configurationPath}.`;
+		});
+	}
+
+	openLibraryDirectory(
+		directory: string,
+		name = "",
+	): Promise<ConfiguredSymbolLibrary> {
+		return this.sequential(async () => {
+			const snapshot = await readSymbolDirectory(directory);
+			const entry: ConfiguredSymbolLibrary = {
+				id: randomUUID(),
+				name: name.trim() || basename(snapshot.directory),
+				enabled: true,
+				source: { kind: "directory", path: snapshot.directory },
+			};
+			validateSymbolLibraries([entry]);
+			this.approvedDirectories.add(snapshot.directory);
+			return entry;
+		});
+	}
+
+	loadConfiguredDirectory(path: string): Promise<SymbolLibrary> {
+		return this.sequential(async () => {
+			const config = await this.readConfiguration();
+			if (
+				!this.approvedDirectories.has(path) &&
+				!config.symbolLibraries.some(
+					(library) =>
+						library.source.kind === "directory" && library.source.path === path,
+				)
+			)
+				throw new Error(
+					"This directory is not configured as a user symbol library.",
+				);
+			const directory = path.startsWith("~/")
+				? resolve(this.homeDirectory, path.slice(2))
+				: resolve(this.homeDirectory, path);
+			return (await readSymbolDirectory(directory)).symbols;
+		});
 	}
 
 	private sequential<T>(run: () => Promise<T>): Promise<T> {

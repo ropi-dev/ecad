@@ -275,3 +275,51 @@ test("editor-imports", async ({ page }, testInfo) => {
 	await expect(page.getByRole("alert")).toHaveCount(0);
 	await finish(page, testInfo, "editor-imports");
 });
+
+test("symbol-libraries", async ({ page }, testInfo) => {
+ await page.goto("/projects?perf=1");
+ await ready(page);
+ await page.evaluate(async () => {
+  const libraries = (scope: string) => Array.from({ length: 10 }, (_, libraryIndex) => ({
+   id: `${scope}-${libraryIndex}`, name: `${scope} ${libraryIndex}`, enabled: true,
+   source: { kind: "embedded", symbols: Array.from({ length: 20 }, (_, symbolIndex) => ({
+    format: "ecad-symbol", version: 1, units: "mm", id: `${scope}-${libraryIndex}-${symbolIndex}`,
+    name: `${scope} point ${libraryIndex}-${symbolIndex}`, description: "Test point", prefix: "TP", value: "",
+    shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }],
+   })) },
+  }));
+  localStorage.setItem("ecad.user-config.v1", JSON.stringify({ version: 1, symbolLibraries: [
+   { id: "builtin", name: "Built-in symbols", enabled: true, source: { kind: "builtin" } }, ...libraries("user"),
+  ] }));
+  const root = await navigator.storage.getDirectory();
+  const directory = await root.getDirectoryHandle("Library fixture", { create: true });
+  for (const [name, content] of [
+   [".ecadprj", 'format = "ecad-project"\nversion = 1\nname = "Library fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n'],
+   ["drawing.ecaddraw", JSON.stringify({ shapes: [], symbolLibraries: libraries("project") })],
+  ]) {
+   const writer = await (await directory.getFileHandle(name, { create: true })).createWritable();
+   await writer.write(content); await writer.close();
+  }
+  localStorage.setItem("ecad.active-project", "Library fixture");
+ });
+ await page.reload();
+ await ready(page);
+ await page.getByText("Symbol libraries", { exact: true }).click();
+ const user = page.getByRole("group", { name: "User libraries", exact: true });
+ await expect(user.getByRole("checkbox")).toHaveCount(11);
+ await interaction(page, "library.disable", async () => {
+  await user.getByRole("checkbox", { name: "user 0", exact: true }).uncheck();
+  await expect(user.getByRole("checkbox", { name: "user 0", exact: true })).toBeEnabled();
+ });
+ await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await interaction(page, "library.picker", async () => {
+  await page.getByRole("button", { name: "Symbols", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(383);
+ });
+ const value = await report(page);
+ await finish(page, testInfo, "symbol-libraries", {
+  libraryLoadMs: metric(value, "symbol-library.load")!,
+  libraryResolveMs: metric(value, "symbol-library.resolve")!,
+  interactionP95Ms: metric(value, "scenario.interaction")!,
+ });
+});

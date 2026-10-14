@@ -24,6 +24,10 @@ import type {
 } from "#/projects/format.ts";
 import type { ProjectLinkProps } from "#/projects/ProjectLink.tsx";
 import type { ProjectStorage } from "#/projects/storage.ts";
+import type {
+	ConfiguredSymbolLibrary,
+	SymbolLibraryConfig,
+} from "#/symbol-library/config.ts";
 import {
 	SymbolLibraryProvider,
 	type SymbolLibraryStorage,
@@ -70,6 +74,7 @@ export function ProjectProvider({
 	const [store, setStore] = useState(() => createDrawingStore());
 	const currentStore = useRef(store);
 	const symbols = useRef<SymbolLibrary>([]);
+	const libraries = useRef<readonly ConfiguredSymbolLibrary[]>([]);
 	const [epoch, setEpoch] = useState(0);
 	const generation = useRef(0);
 	const [busy, setBusy] = useState(true);
@@ -99,6 +104,7 @@ export function ProjectProvider({
 			update(snapshot);
 			setSelectedAsset(null);
 			symbols.current = snapshot.symbols;
+			libraries.current = snapshot.symbolLibraries ?? [];
 			const next = measurePerformance(
 				"project.adopt",
 				() => createDrawingStore(snapshot.shapes),
@@ -162,15 +168,30 @@ export function ProjectProvider({
 		[storage, update],
 	);
 	const persist = useCallback(
-		async (nextSymbols?: SymbolLibrary) => {
+		async (
+			nextSymbols?: SymbolLibrary,
+			nextLibraries?: readonly ConfiguredSymbolLibrary[],
+		) => {
 			const previous = active.current;
 			if (!previous) return;
 			const document = {
 				shapes: currentStore.current.getSnapshot().shapes,
 				symbols: nextSymbols ?? symbols.current,
+				symbolLibraries: (nextLibraries ?? libraries.current).map((library) =>
+					library.id === "project-symbols" && library.source.kind === "embedded"
+						? {
+								...library,
+								source: {
+									...library.source,
+									symbols: nextSymbols ?? symbols.current,
+								},
+							}
+						: library,
+				),
 			};
 			const next = await storage.save(previous.directory, document);
 			symbols.current = document.symbols;
+			libraries.current = document.symbolLibraries;
 			update(next);
 			if (mounted.current) {
 				needsSave.current =
@@ -233,9 +254,8 @@ export function ProjectProvider({
 					if (needsSave.current) await persist();
 					const document = {
 						shapes: currentStore.current.getSnapshot().shapes,
-						symbols: active.current
-							? symbols.current
-							: (await symbolStorage.load()).symbols,
+						symbols: symbols.current,
+						symbolLibraries: libraries.current,
 					};
 					const source = active.current;
 					const assets = [...pendingAssets.current];
@@ -259,6 +279,7 @@ export function ProjectProvider({
 						update(next);
 						pendingAssets.current = assets;
 						symbols.current = document.symbols;
+						libraries.current = document.symbolLibraries;
 						needsSave.current = true;
 						setDirty(true);
 						update(await storage.save(next.directory, document));
@@ -277,19 +298,19 @@ export function ProjectProvider({
 				setBusy(false);
 			}
 		},
-		[storage, symbolStorage, enqueue, persist, adopt, transferAssets, update],
+		[storage, enqueue, persist, adopt, transferAssets, update],
 	);
 	const hasProject = project !== null;
-	const projectSymbols = useMemo<SymbolLibraryStorage>(
+	const projectSymbols = useMemo<SymbolLibraryStorage | undefined>(
 		() =>
 			hasProject
 				? {
 						mode: storage.mode,
 						async load() {
-							return {
+							return enqueue(async () => ({
 								symbols: symbols.current,
 								directory: active.current?.directory,
-							};
+							}));
 						},
 						async save(next) {
 							await enqueue(() => {
@@ -299,9 +320,48 @@ export function ProjectProvider({
 							});
 							return "Saved in this project.";
 						},
+						async loadConfiguration(): Promise<SymbolLibraryConfig> {
+							return enqueue(async () => {
+								const configured = [...libraries.current];
+								const imported: ConfiguredSymbolLibrary = {
+									id: "project-symbols",
+									name: "Project symbols",
+									enabled: true,
+									source: { kind: "embedded", symbols: symbols.current },
+								};
+								const index = configured.findIndex(
+									(library) => library.id === imported.id,
+								);
+								if (index < 0) {
+									if (symbols.current.length || !configured.length)
+										configured.unshift(imported);
+								} else
+									configured[index] = {
+										...configured[index],
+										source: imported.source,
+									};
+								return { version: 1, symbolLibraries: configured };
+							});
+						},
+						async saveConfiguration(config) {
+							await enqueue(() => {
+								if (generation.current !== epoch)
+									throw new Error("This project is no longer open.");
+								const imported = config.symbolLibraries.find(
+									(library) => library.id === "project-symbols",
+								);
+								return persist(
+									imported?.source.kind === "embedded"
+										? imported.source.symbols
+										: [],
+									config.symbolLibraries,
+								);
+							});
+							return "Saved in this project.";
+						},
 					}
-				: symbolStorage,
-		[hasProject, storage.mode, symbolStorage, enqueue, persist, epoch],
+				: undefined,
+		[hasProject, storage.mode, enqueue, persist, epoch],
 	);
 	const importAssets = useCallback(
 		(files: readonly File[], kind: AssetKind) => {
@@ -382,7 +442,10 @@ export function ProjectProvider({
 	};
 	return (
 		<ProjectContext.Provider value={value}>
-			<SymbolLibraryProvider storage={projectSymbols}>
+			<SymbolLibraryProvider
+				storage={symbolStorage}
+				projectStorage={projectSymbols}
+			>
 				<div
 					key={epoch}
 					aria-busy={busy}

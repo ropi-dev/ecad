@@ -7,6 +7,7 @@ import {
 } from "#/projects/format.ts";
 import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
+import { SymbolLibraryControls } from "#/symbol-library/LibraryControls.tsx";
 
 const button =
 	"inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/20 px-3 text-sm text-white/90 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:pointer-events-none disabled:opacity-50";
@@ -28,6 +29,7 @@ export function ProjectPage() {
 	const [pageError, setPageError] = useState("");
 	const [importing, setImporting] = useState(false);
 	const [filePage, setFilePage] = useState(0);
+	const [librariesOpen, setLibrariesOpen] = useState(false);
 	const list = project?.list;
 	const mode = project?.mode;
 	useEffect(() => {
@@ -117,6 +119,25 @@ export function ProjectPage() {
 						</ProjectLink>
 					</nav>
 				</header>
+				<details
+					open={librariesOpen}
+					onToggle={(event) => setLibrariesOpen(event.currentTarget.open)}
+					className="rounded-xl border border-white/20 bg-slate-900 p-5"
+				>
+					<summary className="cursor-pointer text-sm font-medium">
+						Symbol libraries
+					</summary>
+					{librariesOpen && (
+						<div className="mt-4 max-w-md">
+							<SymbolLibraryControls library={library} feedback={false} />
+						</div>
+					)}
+				</details>
+				{library.message && (
+					<output className="block text-sm text-slate-300">
+						{library.message}
+					</output>
+				)}
 				{(project.error || pageError || library.error) && (
 					<p
 						role="alert"
@@ -237,11 +258,6 @@ export function ProjectPage() {
 								{importing && (
 									<output className="mb-3 block text-sm text-slate-300">
 										Adding project files...
-									</output>
-								)}
-								{library.message && (
-									<output className="mb-3 block text-sm text-slate-300">
-										{library.message}
 									</output>
 								)}
 								<div className="overflow-x-auto">

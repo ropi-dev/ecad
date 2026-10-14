@@ -241,3 +241,20 @@ test("desktop saves retain drawing and symbol paths in user subdirectories", asy
 	assert.deepEqual(saved.manifest.symbols, ["library/points.ecadsym"]);
 	assert.deepEqual(await new DesktopProjects(saved.directory).load(), saved);
 }));
+
+test("desktop project directory libraries resolve within their project and survive reopening", async t => {
+ const parent = await mkdtemp(join(tmpdir(), "ecad-project-libraries-"));
+ t.after(() => rm(parent, { recursive: true, force: true }));
+ const projects = new DesktopProjects();
+ const project = await projects.create("Library project", parent);
+ const libraryPath = join(project.directory, "libraries");
+ await mkdir(libraryPath);
+ await writeFile(join(libraryPath, "test-point.ecadsym"), JSON.stringify(symbol));
+ const symbolLibraries = [{ id: "local", name: "Local parts", enabled: true, source: { kind: "directory" as const, path: "libraries" } }];
+ await projects.save(project.directory, { shapes: [], symbols: [], symbolLibraries });
+ assert.deepEqual(await projects.readSymbolLibrary(project.directory, "libraries"), [symbol]);
+ await assert.rejects(projects.readSymbolLibrary(project.directory, "../"), /not configured/);
+ const reopened = new DesktopProjects(project.directory);
+ assert.deepEqual((await reopened.load())?.symbolLibraries, symbolLibraries);
+ assert.deepEqual(await reopened.readSymbolLibrary(project.directory, "libraries"), [symbol]);
+});

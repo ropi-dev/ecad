@@ -155,3 +155,39 @@ test("save checks actual existing file bytes before publishing additions", async
 		assert.deepEqual(await readdir(directory), ["original.ecadsym"]);
 	});
 });
+
+test("desktop user configuration persists in the home directory and validates before replacing it", async () => {
+ await withDirectory(async home => {
+  const { defaultSymbolConfig } = await import("@ecad/core/symbol-library/config.ts");
+  const storage = new DesktopSymbolLibrary(undefined, home);
+  assert.deepEqual(await storage.loadConfiguration(), defaultSymbolConfig());
+  const directory = join(home, "parts");
+  await mkdir(directory);
+  await writeFile(join(directory, "point.ecadsym"), JSON.stringify(symbol("point")));
+  const source = await storage.openLibraryDirectory(directory, "Parts");
+  const config = { version: 1 as const, symbolLibraries: [...defaultSymbolConfig().symbolLibraries, source] };
+  await storage.saveConfiguration(config);
+  assert.deepEqual(JSON.parse(await readFile(join(home, ".ecad", "config.json"), "utf8")), config);
+  const reopened = new DesktopSymbolLibrary(undefined, home);
+  assert.deepEqual(await reopened.loadConfiguration(), config);
+  assert.deepEqual(await reopened.loadConfiguredDirectory(directory), [symbol("point")]);
+  await assert.rejects(reopened.loadConfiguredDirectory(home), /not configured/);
+  await assert.rejects(storage.saveConfiguration({ ...config, symbolLibraries: [source, source] }), /duplicated/);
+  assert.deepEqual(await reopened.loadConfiguration(), config);
+  assert.deepEqual(await readdir(join(home, ".ecad")), ["config.json"]);
+  await writeFile(join(home, ".ecad", "config.json"), "{");
+  await assert.rejects(storage.loadConfiguration());
+ });
+});
+
+test("configured relative user directories resolve against the home directory", async () => {
+ await withDirectory(async home => {
+  await mkdir(join(home, "parts"));
+  await writeFile(join(home, "parts", "point.ecadsym"), JSON.stringify(symbol("point")));
+  const storage = new DesktopSymbolLibrary(undefined, home);
+  for (const path of ["parts", "~/parts"]) {
+   await storage.saveConfiguration({ version: 1, symbolLibraries: [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory", path } }] });
+   assert.deepEqual(await storage.loadConfiguredDirectory(path), [symbol("point")]);
+  }
+ });
+});

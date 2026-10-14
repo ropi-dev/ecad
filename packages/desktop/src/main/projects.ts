@@ -9,6 +9,7 @@ import {
 	rm,
 	rmdir,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
 	type AssetKind,
@@ -21,6 +22,7 @@ import {
 	type ProjectDirectory,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
+import { readSymbolDirectory } from "#/main/symbol-library.ts";
 
 export async function createDesktopProjectDirectory(
 	selected: string,
@@ -184,5 +186,26 @@ export class DesktopProjects {
 	}
 	readAsset(directory: string, path: string) {
 		return this.sequential(() => this.current(directory).readAsset(path));
+	}
+	readSymbolLibrary(directory: string, path: string) {
+		return this.sequential(async () => {
+			const repository = this.current(directory);
+			if (
+				!repository
+					.getSymbolLibraries()
+					.some(
+						(library) =>
+							library.source.kind === "directory" &&
+							library.source.path === path,
+					)
+			)
+				throw new Error(
+					"This directory is not configured as a project symbol library.",
+				);
+			const selected = path.startsWith("~/")
+				? resolve(homedir(), path.slice(2))
+				: resolve(directory, path);
+			return (await readSymbolDirectory(selected)).symbols;
+		});
 	}
 }

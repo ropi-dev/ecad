@@ -44,6 +44,10 @@ export class ProjectRepository {
 	private savedFiles = new Map<string, Uint8Array>();
 	private operation: Promise<unknown> = Promise.resolve();
 
+	getSymbolLibraries() {
+		return this.snapshot?.symbolLibraries ?? [];
+	}
+
 	constructor(
 		private directory: ProjectDirectory,
 		private options: { layout?: "files" | "revisions" } = {},
@@ -76,6 +80,7 @@ export class ProjectRepository {
 			const document = validateProjectDocument({
 				shapes: drawing.shapes,
 				symbols,
+				symbolLibraries: drawing.symbolLibraries,
 			});
 			this.snapshot = { directory: this.directory.name, manifest, ...document };
 			this.savedManifest = content;
@@ -146,7 +151,14 @@ export class ProjectRepository {
 		try {
 			await this.directory.write(
 				drawing,
-				encoder.encode(JSON.stringify({ shapes: document.shapes })),
+				encoder.encode(
+					JSON.stringify({
+						shapes: document.shapes,
+						...(document.symbolLibraries === undefined
+							? {}
+							: { symbolLibraries: document.symbolLibraries }),
+					}),
+				),
 			);
 			for (const symbol of document.symbols) {
 				const path = `${revision}/symbols/${symbol.id}.ecadsym`;
@@ -219,7 +231,17 @@ export class ProjectRepository {
 				: await this.unusedPath("drawing.ecaddraw", reserved);
 		reserved.add(drawing);
 		const files = new Map<string, Uint8Array>([
-			[drawing, encoder.encode(JSON.stringify({ shapes: snapshot.shapes }))],
+			[
+				drawing,
+				encoder.encode(
+					JSON.stringify({
+						shapes: snapshot.shapes,
+						...(snapshot.symbolLibraries === undefined
+							? {}
+							: { symbolLibraries: snapshot.symbolLibraries }),
+					}),
+				),
+			],
 		]);
 		const previousSymbols = new Map(
 			previous?.symbols.map((symbol, index) => [

@@ -74,7 +74,7 @@ const symbolFileSchema = Schema.Struct({
 });
 export type SymbolFile = typeof symbolFileSchema.Type;
 export type SymbolLibrary = readonly SymbolFile[];
-const savedLibrarySchema = Schema.Array(symbolFileSchema).pipe(
+export const savedLibrarySchema = Schema.Array(symbolFileSchema).pipe(
 	Schema.maxItems(100),
 );
 

@@ -10,13 +10,47 @@ my-library/
 
 Use **Download example** for a working symbol, or copy the [example directory](../packages/web/public/examples/symbols), which contains [test-point.ecadsym](../packages/web/public/examples/symbols/test-point.ecadsym) and [buffer.ecadsym](../packages/web/public/examples/symbols/buffer.ecadsym).
 
-In the web app, open **Symbols → Upload symbols** to select one or several files, or **Upload library directory** to import an entire directory. Directory uploads include matching files in subdirectories and ignore other extensions. The app caches imported symbols in this browser's localStorage. Uploading a directory copies its current contents; later file changes require another upload. If browser storage is unavailable, the menu reports that the import will only last until you leave or reload the editor. Keep the source files as your library.
+Manage libraries under **Projects → Symbol libraries**. Choose **User libraries** or **Project libraries** in **Add library to**, then enter a name and upload files or a directory. Without a project provider, these controls appear in the editor's **Symbols** menu. File uploads default to "Imported symbols" for the user scope and "Project symbols" for a project. Directory uploads default to the directory name. Uploading to an embedded library with the same name adds symbols to that library.
 
-In the desktop app, start with `npm run dev:desktop -- /absolute/symbol-directory` or choose **Symbols → Open library directory**. ECAD reads matching files recursively from that directory. **Refresh library** reloads changes made outside the app. Opening another directory replaces the custom symbol list. Upload controls add symbols to the opened directory as `<id>.ecadsym` files. Open a directory before uploading or creating custom symbols; the desktop library does not use localStorage.
+Each library has an enable checkbox. Custom named libraries also have a remove button. Built-in symbols are an enabled user library by default and can be disabled. Choose a symbol, then click the drawing to place it. Disabling or removing a library affects the picker. Placed symbols keep their geometry and attributes.
 
-Both apps show custom symbols alongside the built-in symbols, which remain available without a library. Choose one, then click the drawing to place it. Attributes, rotation, selection, connections, and undo/redo work like built-in symbols.
+To create a symbol, select two or more drawing shapes, choose **Create symbol** in Attributes, and enter a name. The selection becomes one symbol and its definition appears in **Symbols**. The app saves it to the project's default symbol library when a project is open, or to the user library otherwise. Undo restores the original shapes while keeping the reusable definition.
 
-To create a symbol in the editor, select two or more drawing shapes, choose **Create symbol** in Attributes, and enter a name. The selection becomes one symbol and its definition appears in **Symbols**. The web app saves the definition in browser storage; the desktop app writes it into the opened directory. Undo restores the original shapes while keeping the reusable definition in the list.
+## User and project configuration
+
+User libraries apply to every project. Opening or creating a project keeps them available without copying their definitions into the project. The picker loads enabled user libraries in configuration order, then enabled project libraries. Later definitions replace earlier definitions with the same symbol ID, so project definitions take precedence. Built-in symbol IDs remain reserved. An unreadable directory library reports an error without hiding other libraries.
+
+On the web, user configuration lives in localStorage under `ecad.user-config.v1`, independently of project data in the Origin Private File System. Uploaded libraries contain validated copies of their symbol files. The editor migrates the earlier `ecad.symbol-library.v1` cache into an "Imported symbols" user library. Once the new configuration has been saved, removed libraries do not return from the old cache. Other open browser editors receive changes to user configuration. Uploading a directory copies its current contents; import changed files into a new library or remove the old library before reimporting.
+
+On desktop, user configuration lives at `~/.ecad/config.json`. **Add library directory** opens the native directory picker and adds a directory source to the selected scope. **Reload libraries** rereads configuration and directory files. Uploaded or created symbols can also be stored as embedded definitions in the user config, without opening a directory first. Filesystem access stays in Electron's main process through the existing preload bridge.
+
+Project configuration lives in the drawing file's `symbolLibraries` field and survives saves, reopening, and source-file imports. Existing standalone project symbols remain in the manifest's `symbols` list and appear as the default "Project symbols" library. Project library settings stay outside drawing undo history. Desktop project directory sources may use absolute paths or paths relative to the project directory. Relative user directory sources resolve against the home directory. Both scopes accept paths beginning with `~/`.
+
+The user configuration has this shape:
+
+```json
+{
+  "version": 1,
+  "symbolLibraries": [
+    {
+      "id": "builtin",
+      "name": "Built-in symbols",
+      "enabled": true,
+      "source": { "kind": "builtin" }
+    },
+    {
+      "id": "my-parts",
+      "name": "My parts",
+      "enabled": true,
+      "source": { "kind": "directory", "path": "~/symbols/my-parts" }
+    }
+  ]
+}
+```
+
+An uploaded library uses `source: { kind: "embedded", symbols: [...] }`, where every array entry is a complete symbol file. A project stores the `symbolLibraries` array with its drawing data. Configuration supports at most 32 libraries per scope and 10 MiB of serialized data. Library IDs must be unique within their scope.
+
+If browser storage is unavailable, imports remain usable in the open editor and the picker reports their temporary lifetime. Desktop config and project saves report write failures and keep the previous configuration.
 
 ## File structure
 
@@ -72,8 +106,8 @@ Coordinates must be between -1000 and 1000 mm. Widths, heights, and radii must b
 
 - Each file describes exactly one symbol. The filename is for organization; the `id` identifies the symbol.
 - Select at most 100 symbol files per import, totaling at most 1 MiB (1,048,576 UTF-8 bytes). The browser cache and an opened desktop directory each hold at most 100 custom symbols and 1 MiB of serialized symbol data.
-- IDs must be unique across the selected files and already imported and built-in symbols (`resistor`, `capacitor`, `ground` are reserved).
-- Duplicate IDs are rejected, including when reimporting the same file. Give a revised symbol a new ID to import it alongside the original.
+- IDs must be unique within each library and cannot match built-in symbols (`resistor`, `capacitor`, `ground` are reserved).
+- Duplicate IDs within one library are rejected, including when reimporting the same file. Different libraries may define the same ID. The last enabled definition wins, with project libraries loaded after user libraries.
 - All selected symbol files are validated before any are added. Invalid files are reported by filename or directory path; duplicate conflicts report the symbol ID. Failed imports or directory reads leave the existing symbol list unchanged.
 - Desktop saves refuse to replace existing files. If files change after loading, refresh the library before saving additional symbols.
 - Multi-symbol library files are not accepted. Symbols already saved by the earlier importer remain available from the browser cache.

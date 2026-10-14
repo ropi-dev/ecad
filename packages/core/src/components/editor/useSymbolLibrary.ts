@@ -1,70 +1,175 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	importSymbolFiles,
-	libraryDefinitions,
 	mergeSymbolLibraries,
 	type SymbolFile,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { runEffect } from "#/lib/effect.ts";
+import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import {
-	type SymbolLibrarySnapshot,
+	type ConfiguredSymbolLibrary,
+	defaultSymbolConfig,
+	type LibraryScope,
+	parseSymbolConfig,
+	resolveSymbolLibraries,
+	type SymbolLibraryConfig,
+	serializeSymbolConfig,
+} from "#/symbol-library/config.ts";
+import {
+	type SymbolLibraryStorage,
+	useProjectSymbolLibraryStorage,
 	useSymbolLibraryStorage,
 } from "#/symbol-library/storage.tsx";
 
+const emptyConfig = (): SymbolLibraryConfig => ({
+	version: 1,
+	symbolLibraries: [],
+});
+async function loadConfig(
+	storage: SymbolLibraryStorage,
+	project = false,
+): Promise<SymbolLibraryConfig> {
+	if (storage.loadConfiguration)
+		return parseSymbolConfig(
+			serializeSymbolConfig(await storage.loadConfiguration()),
+		);
+	const snapshot = await storage.load();
+	const config = project ? emptyConfig() : defaultSymbolConfig();
+	if (!snapshot.symbols.length) return config;
+	return {
+		...config,
+		symbolLibraries: [
+			...config.symbolLibraries,
+			{
+				id: project ? "project-symbols" : "imported",
+				name: project ? "Project symbols" : "Imported symbols",
+				enabled: true,
+				source: {
+					kind: "embedded",
+					symbols: mergeSymbolLibraries([], snapshot.symbols),
+				},
+			},
+		],
+	};
+}
+
 export function useSymbolLibrary() {
 	const storage = useSymbolLibraryStorage();
-	const [library, setLibrary] = useState<SymbolLibrary>([]);
-	const currentLibrary = useRef<SymbolLibrary>([]);
-	const [directory, setDirectory] = useState<string>();
+	const projectStorage = useProjectSymbolLibraryStorage();
+	const [userConfig, setUserConfig] = useState(defaultSymbolConfig);
+	const [projectConfig, setProjectConfig] = useState(emptyConfig);
+	const currentUser = useRef(userConfig);
+	const currentProject = useRef(projectConfig);
+	const [definitions, setDefinitions] = useState(symbolDefinitions);
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
+	const [libraryErrors, setLibraryErrors] = useState<string[]>([]);
 	const request = useRef<AbortController | null>(null);
 
-	const acceptSnapshot = useCallback((snapshot: SymbolLibrarySnapshot) => {
-		const symbols = mergeSymbolLibraries([], snapshot.symbols);
-		currentLibrary.current = symbols;
-		setLibrary(symbols);
-		setDirectory(snapshot.directory);
-		if (snapshot.directory)
-			setMessage(
-				`Loaded ${symbols.length} symbols from ${snapshot.directory}.`,
-			);
-	}, []);
+	async function accept(
+		user: SymbolLibraryConfig,
+		project: SymbolLibraryConfig,
+		signal: AbortSignal,
+	) {
+		const loadDirectory = storage.loadDirectory;
+		const resolved = await measurePerformanceAsync(
+			"symbol-library.resolve",
+			() =>
+				resolveSymbolLibraries(
+					user.symbolLibraries,
+					project.symbolLibraries,
+					loadDirectory
+						? async (path, scope) => {
+								const directory =
+									scope === "project"
+										? (await projectStorage?.load())?.directory
+										: undefined;
+								return loadDirectory(path, scope, directory);
+							}
+						: undefined,
+				),
+			{
+				libraries: user.symbolLibraries.length + project.symbolLibraries.length,
+			},
+		);
+		if (signal.aborted) return;
+		currentUser.current = user;
+		currentProject.current = project;
+		setUserConfig(user);
+		setProjectConfig(project);
+		setDefinitions(resolved.definitions);
+		setLibraryErrors(resolved.errors);
+	}
+	const acceptRef = useRef(accept);
+	acceptRef.current = accept;
 
 	useEffect(() => {
-		const controller = new AbortController();
-		request.current = controller;
-		currentLibrary.current = [];
-		setLibrary([]);
-		setDirectory(undefined);
-		setLoading(true);
-		setError("");
-		setMessage("");
-		void storage
-			.load()
-			.then((snapshot) => {
-				if (!controller.signal.aborted) acceptSnapshot(snapshot);
-			})
-			.catch((cause: unknown) => {
-				if (!controller.signal.aborted)
+		let active = true;
+		async function load() {
+			if (request.current) return;
+			const controller = new AbortController();
+			request.current = controller;
+			setLoading(true);
+			setError("");
+			try {
+				const [user, project] = await measurePerformanceAsync(
+					"symbol-library.load",
+					() =>
+						Promise.allSettled([
+							loadConfig(storage),
+							projectStorage
+								? loadConfig(projectStorage, true)
+								: Promise.resolve(emptyConfig()),
+						]),
+				);
+				if (!active || controller.signal.aborted) return;
+				const failures = [user, project].filter(
+					(result) => result.status === "rejected",
+				);
+				await acceptRef.current(
+					user.status === "fulfilled" ? user.value : defaultSymbolConfig(),
+					project.status === "fulfilled" ? project.value : emptyConfig(),
+					controller.signal,
+				);
+				setError(
+					failures
+						.map((result) =>
+							result.status === "rejected"
+								? result.reason instanceof Error
+									? result.reason.message
+									: "Unable to load symbol libraries."
+								: "",
+						)
+						.join("\n"),
+				);
+			} catch (cause) {
+				if (active)
 					setError(
-						cause instanceof Error ? cause.message : "Unable to load symbols.",
+						cause instanceof Error
+							? cause.message
+							: "Unable to load symbol libraries.",
 					);
-			})
-			.finally(() => {
-				if (request.current === controller && !controller.signal.aborted) {
+			} finally {
+				if (active && request.current === controller) {
 					request.current = null;
 					setLoading(false);
 				}
-			});
+			}
+		}
+		void load();
+		const unsubscribe = storage.subscribe?.(() => {
+			if (active) void load();
+		});
 		return () => {
-			controller.abort();
+			active = false;
 			request.current?.abort();
+			request.current = null;
+			unsubscribe?.();
 		};
-	}, [storage, acceptSnapshot]);
+	}, [storage, projectStorage]);
 
 	async function perform<T>(work: (signal: AbortSignal) => Promise<T>) {
 		if (request.current)
@@ -90,34 +195,106 @@ export function useSymbolLibrary() {
 		}
 	}
 
-	async function saveLibrary(
-		next: SymbolLibrary,
-		incoming: SymbolLibrary,
+	const defaultScope: LibraryScope = projectStorage ? "project" : "user";
+	function config(scope: LibraryScope) {
+		return scope === "user" ? currentUser.current : currentProject.current;
+	}
+
+	async function save(
+		next: SymbolLibraryConfig,
+		scope: LibraryScope,
+		additions: SymbolLibrary,
 		signal: AbortSignal,
 	) {
-		const persistenceMessage = await storage.save(next, incoming);
-		if (signal.aborted) throw new Error("Symbol operation was cancelled.");
-		currentLibrary.current = next;
-		setLibrary(next);
-		setMessage(
-			`Added ${incoming.length} symbol${incoming.length === 1 ? "" : "s"}. ${persistenceMessage}`,
+		next = parseSymbolConfig(serializeSymbolConfig(next));
+		const target = scope === "project" ? projectStorage : storage;
+		if (!target)
+			throw new Error("Open a project before adding project libraries.");
+		const persistence = await measurePerformanceAsync(
+			"symbol-library.save",
+			() =>
+				target.saveConfiguration
+					? target.saveConfiguration(next)
+					: target.save(
+							next.symbolLibraries.flatMap((library) =>
+								library.source.kind === "embedded"
+									? [...library.source.symbols]
+									: [],
+							),
+							additions,
+						),
+			{ libraries: next.symbolLibraries.length },
 		);
+		if (signal.aborted) throw new Error("Symbol operation was cancelled.");
+		await accept(
+			scope === "user" ? next : currentUser.current,
+			scope === "project" ? next : currentProject.current,
+			signal,
+		);
+		setMessage(persistence);
+		return persistence;
+	}
+
+	function addition(
+		incoming: SymbolLibrary,
+		scope: LibraryScope,
+		name: string,
+	): SymbolLibraryConfig {
+		const current = config(scope);
+		const libraryName =
+			name.trim() ||
+			(scope === "project" ? "Project symbols" : "Imported symbols");
+		const existing = current.symbolLibraries.find(
+			(library) =>
+				library.name === libraryName && library.source.kind === "embedded",
+		);
+		const symbols = mergeSymbolLibraries(
+			existing?.source.kind === "embedded" ? existing.source.symbols : [],
+			incoming,
+		);
+		const entry: ConfiguredSymbolLibrary = {
+			id:
+				existing?.id ??
+				(libraryName === "Project symbols"
+					? "project-symbols"
+					: libraryName === "Imported symbols"
+						? "imported"
+						: crypto.randomUUID()),
+			name: libraryName,
+			enabled: true,
+			source: { kind: "embedded", symbols },
+		};
+		return {
+			...current,
+			symbolLibraries: existing
+				? current.symbolLibraries.map((library) =>
+						library.id === existing.id ? entry : library,
+					)
+				: [...current.symbolLibraries, entry],
+		};
 	}
 
 	function prepareAddition(symbol: SymbolFile) {
-		const current = currentLibrary.current;
-		const next = mergeSymbolLibraries(current, [symbol]);
+		const scope = defaultScope;
+		const current = config(scope);
+		const next = addition([symbol], scope, "");
 		return () =>
 			perform(async (signal) => {
-				if (currentLibrary.current !== current)
+				if (current !== config(scope))
 					throw new Error(
 						"The symbol library changed. Try creating the symbol again.",
 					);
-				await saveLibrary(next, [symbol], signal);
+				const persistence = await save(next, scope, [symbol], signal);
+				setMessage(`Added 1 symbol. ${persistence}`);
 			});
 	}
 
-	async function upload(files: readonly File[], directoryUpload = false) {
+	async function upload(
+		files: readonly File[],
+		directoryUpload = false,
+		scope = defaultScope,
+		name = "",
+	) {
 		try {
 			await perform(async (signal) => {
 				const incoming = await runEffect(
@@ -125,52 +302,105 @@ export function useSymbolLibrary() {
 					signal,
 				);
 				if (signal.aborted) return;
-				const next = mergeSymbolLibraries(currentLibrary.current, incoming);
-				await saveLibrary(next, incoming, signal);
+				const directoryName = directoryUpload
+					? files[0]?.webkitRelativePath?.split("/")[0]
+					: "";
+				const next = addition(incoming, scope, name || directoryName || "");
+				const persistence = await save(next, scope, incoming, signal);
+				setMessage(
+					`Added ${incoming.length} symbol${incoming.length === 1 ? "" : "s"}. ${persistence}`,
+				);
 			});
 		} catch {
-			/* perform reports import and persistence errors in the picker. */
+			/* perform reports failures. */
 		}
 	}
 
-	async function openDirectory() {
-		if (!storage.openDirectory) return;
+	async function updateLibrary(
+		id: string,
+		scope: LibraryScope,
+		remove = false,
+	) {
 		try {
 			await perform(async (signal) => {
-				const snapshot = await storage.openDirectory?.();
-				if (snapshot && !signal.aborted) acceptSnapshot(snapshot);
+				const current = config(scope);
+				const libraries = remove
+					? current.symbolLibraries.filter((library) => library.id !== id)
+					: current.symbolLibraries.map((library) =>
+							library.id === id
+								? { ...library, enabled: !library.enabled }
+								: library,
+						);
+				const next = { ...current, symbolLibraries: libraries };
+				const showConfig = scope === "user" ? setUserConfig : setProjectConfig;
+				if (!remove) showConfig(next);
+				try {
+					await save(next, scope, [], signal);
+				} catch (cause) {
+					if (!signal.aborted) showConfig(current);
+					throw cause;
+				}
 			});
 		} catch {
-			/* Keep the previous library available when opening fails. */
+			/* perform reports failures. */
+		}
+	}
+
+	async function openDirectory(scope = defaultScope, name = "") {
+		const openLibraryDirectory = storage.openLibraryDirectory;
+		if (!openLibraryDirectory) return;
+		try {
+			await perform(async (signal) => {
+				const library = await openLibraryDirectory(name);
+				if (!library || signal.aborted) return;
+				await save(
+					{
+						version: 1,
+						symbolLibraries: [...config(scope).symbolLibraries, library],
+					},
+					scope,
+					[],
+					signal,
+				);
+			});
+		} catch {
+			/* Keep existing libraries on failure or cancellation. */
 		}
 	}
 
 	async function refresh() {
 		try {
 			await perform(async (signal) => {
-				const snapshot = await storage.load();
-				if (!signal.aborted) acceptSnapshot(snapshot);
+				const [user, project] = await Promise.all([
+					loadConfig(storage),
+					projectStorage
+						? loadConfig(projectStorage, true)
+						: Promise.resolve(emptyConfig()),
+				]);
+				await accept(user, project, signal);
+				if (!signal.aborted) setMessage("Libraries reloaded.");
 			});
 		} catch {
-			/* Keep the previous library available when a disk read fails. */
+			/* Keep existing libraries on failure. */
 		}
 	}
 
-	const definitions = useMemo(
-		() => [...symbolDefinitions, ...libraryDefinitions(library)],
-		[library],
-	);
 	return {
 		definitions,
 		loading,
 		message,
-		error,
+		error: [error, ...libraryErrors].filter(Boolean).join("\n"),
 		upload,
 		prepareAddition,
-		directory,
 		mode: storage.mode,
-		canOpenDirectory: !!storage.openDirectory,
+		defaultScope,
+		hasProject: !!projectStorage,
+		canOpenDirectory: !!storage.openLibraryDirectory,
 		openDirectory,
 		refresh,
+		userLibraries: userConfig.symbolLibraries,
+		projectLibraries: projectConfig.symbolLibraries,
+		toggle: (id: string, scope: LibraryScope) => updateLibrary(id, scope),
+		remove: (id: string, scope: LibraryScope) => updateLibrary(id, scope, true),
 	};
 }

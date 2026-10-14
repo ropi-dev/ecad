@@ -9,5 +9,9 @@ export function createDesktopSymbolLibraryStorage(
 		load: () => bridge.load(),
 		save: (symbols, additions) => bridge.save(symbols, additions),
 		openDirectory: () => bridge.openDirectory(),
+		loadConfiguration: bridge.loadConfiguration?.bind(bridge),
+		saveConfiguration: bridge.saveConfiguration?.bind(bridge),
+		openLibraryDirectory: bridge.openLibraryDirectory?.bind(bridge),
+		loadDirectory: bridge.loadDirectory?.bind(bridge),
 	};
 }

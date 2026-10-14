@@ -7,6 +7,10 @@ import type {
 	ProjectDocument,
 	ProjectSnapshot,
 } from "@ecad/core/projects/format.ts";
+import type {
+	LibraryScope,
+	SymbolLibraryConfig,
+} from "@ecad/core/symbol-library/config.ts";
 import {
 	app,
 	BrowserWindow,
@@ -46,10 +50,7 @@ const rendererUrl = developmentRendererUrl() ?? "ecad://app/index.html";
 const directoryArgument = process.argv
 	.slice(2)
 	.find((argument) => !argument.startsWith("-"));
-const library = new DesktopSymbolLibrary(
-	directoryArgument &&
-		resolve(process.env.INIT_CWD ?? process.cwd(), directoryArgument),
-);
+const library = new DesktopSymbolLibrary();
 const projects = new DesktopProjects(
 	directoryArgument &&
 		resolve(process.env.INIT_CWD ?? process.cwd(), directoryArgument),
@@ -68,6 +69,40 @@ function assertSender(event: IpcMainInvokeEvent) {
 }
 
 function registerLibraryHandlers() {
+	ipcMain.handle(libraryChannels.loadConfiguration, (event) => {
+		assertSender(event);
+		return library.loadConfiguration();
+	});
+	ipcMain.handle(
+		libraryChannels.saveConfiguration,
+		(event, config: SymbolLibraryConfig) => {
+			assertSender(event);
+			return library.saveConfiguration(config);
+		},
+	);
+	ipcMain.handle(
+		libraryChannels.loadDirectory,
+		(event, path: string, scope: LibraryScope, projectDirectory?: string) => {
+			assertSender(event);
+			if (scope === "user") return library.loadConfiguredDirectory(path);
+			if (scope !== "project" || !projectDirectory)
+				throw new Error("Open a project before loading project directories.");
+			return projects.readSymbolLibrary(projectDirectory, path);
+		},
+	);
+	ipcMain.handle(
+		libraryChannels.openLibraryDirectory,
+		async (event, name: string) => {
+			assertSender(event);
+			if (!window) throw new Error("The desktop editor is closed.");
+			const selected = await dialog.showOpenDialog(window, {
+				title: "Add symbol library directory",
+				properties: ["openDirectory"],
+			});
+			if (selected.canceled || !selected.filePaths[0]) return null;
+			return library.openLibraryDirectory(selected.filePaths[0], name);
+		},
+	);
 	ipcMain.handle(libraryChannels.load, (event) => {
 		assertSender(event);
 		return library.load();
