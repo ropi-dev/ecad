@@ -34,7 +34,7 @@ With a baseline, the reporter also fails if a median exceeds the old median by 2
 
 Event-loop baseline comparisons allow 100 ms of sampling noise. The collector samples every 250 ms, so short scenarios vary with the timer's alignment to import tasks. Repeated local measurements of the same app build produced median event-loop p95 values between 156 and 258 ms while CPU frame submission stayed around 200 ms. Import duration, blocking time, and frame time retain their separate regression checks.
 
-The GitHub Actions performance job runs the production scenarios and uploads JSON, HTML, build logs, and failure traces. CI enforces the checked-in absolute budgets; local before/after checks use the baseline. It does not silently bless new results as a baseline.
+The GitHub Actions performance job checks Node 24.14.0, Node 25.4.0, and the latest Node 24 release. It runs the production scenarios on pull requests, pushes to main, published releases, and manual runs. It uploads JSON, HTML, build logs, and failure traces only for published releases, with a separate artifact for each Node version. CI enforces the checked-in absolute budgets; local before/after checks use the baseline. It does not silently bless new results as a baseline.
 
 Development profiling uses a separate Vite dependency cache and warms the server's routes and parser workers before measurements, preventing dependency discovery from reloading the app halfway through a scenario. Browser contexts and their HTTP caches still start empty. Development runs require the same measurements, enforce DOM limits, and compare against their development baseline; shipped time and byte budgets apply to production builds.
 

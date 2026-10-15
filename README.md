@@ -6,6 +6,8 @@ ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron 
 | [`@ecad/web`](packages/web) | TanStack Start app, browser project directories, symbol storage, routes, and HTTP services. |
 | [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
 
+Use Node.js 24.14.0 or newer in the Node 24 line, or Node.js 25.4.0 or newer. Run `nvm use` to select Node 24 if you use nvm. npm rejects unsupported Node versions.
+
 Install dependencies from the repository root with npm. The root `package-lock.json` covers all workspaces.
 
 ```bash

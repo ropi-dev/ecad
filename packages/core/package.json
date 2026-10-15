@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^24.14.0 || >=25.4.0"
+  },
   "imports": {
     "#/*": "./src/*"
   },

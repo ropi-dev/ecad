@@ -4,24 +4,31 @@ on:
   pull_request:
   push:
     branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
   performance:
+    name: Performance on Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24.14.0", "25.4.0", "24"]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run perf
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && github.event_name == 'release'
         with:
-          name: app-performance
+          name: app-performance-node-${{ matrix.node }}
           path: perf-artifacts/
           if-no-files-found: warn
