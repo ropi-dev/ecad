@@ -44,7 +44,7 @@ export function GerberHeader({
 				href="/editor"
 				className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
 			>
-				2D editor
+				Schematic editor
 			</ProjectLink>
 		</header>
 	);

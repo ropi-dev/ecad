@@ -105,7 +105,7 @@ export function ProjectPage() {
 					<h1 className="text-2xl font-medium">Projects</h1>
 					<nav aria-label="Workspaces" className="flex flex-wrap gap-2">
 						<ProjectLink href="/editor" className={button}>
-							2D editor
+							Schematic editor
 						</ProjectLink>
 						<ProjectLink
 							href="/"

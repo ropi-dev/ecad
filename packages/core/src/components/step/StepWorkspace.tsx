@@ -78,7 +78,7 @@ export function StepWorkspace() {
 					Gerber viewer
 				</ProjectLink>
 				<ProjectLink href="/editor" className={button}>
-					2D editor
+					Schematic editor
 				</ProjectLink>
 			</header>
 			{(message || rendererError) && (

@@ -1,14 +1,17 @@
-import { Box, Download, Square } from "lucide-react";
+import { Box, Download, Scan, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation.ts";
+import { ToolbarGroup, ToolbarGroups } from "./ToolbarGroup";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
 import { ZoomControls } from "./ZoomControls";
 
-export const viewControlButtonClassName =
-	"flex h-10 min-w-10 items-center justify-center whitespace-nowrap rounded border border-white/20 px-2 text-xs text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white disabled:pointer-events-none disabled:opacity-40";
+export { viewControlButtonClassName } from "./viewControlStyles";
+
+import { viewControlButtonClassName } from "./viewControlStyles";
 
 export function ViewControls3D({
 	enabled,
+	grouped = false,
 	children,
 	fitLabel = "Fit model",
 	fit,
@@ -22,6 +25,7 @@ export function ViewControls3D({
 }: Pick<Viewer3DHandle, "fit" | "zoom"> & {
 	view?: Viewer3DHandle["view"];
 	enabled: boolean;
+	grouped?: boolean;
 	zoomLevel: number;
 	projection: "perspective" | "orthographic";
 	toggleProjection?: () => void;
@@ -31,12 +35,8 @@ export function ViewControls3D({
 	exporting?: boolean;
 }) {
 	const button = viewControlButtonClassName;
-	return (
-		<div
-			role="toolbar"
-			aria-label={view ? "3D view controls" : "View controls"}
-			className="absolute bottom-4 left-1/2 z-10 flex w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap justify-center gap-0.5 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg sm:gap-1"
-		>
+	const viewControls = (
+		<>
 			<ZoomControls
 				zoom={zoom}
 				fit={fit}
@@ -113,7 +113,24 @@ export function ViewControls3D({
 					{exporting ? "Exporting…" : "PNG"}
 				</button>
 			)}
-			{children}
-		</div>
+		</>
+	);
+	return (
+		<ToolbarGroups>
+			<div
+				role="toolbar"
+				aria-label={view ? "3D view controls" : "View controls"}
+				className="absolute bottom-4 left-1/2 z-10 flex w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap justify-center gap-0.5 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg sm:gap-1"
+			>
+				{grouped ? (
+					<ToolbarGroup label="View tools" icon={Scan} disabled={!enabled}>
+						{viewControls}
+					</ToolbarGroup>
+				) : (
+					viewControls
+				)}
+				{children}
+			</div>
+		</ToolbarGroups>
 	);
 }

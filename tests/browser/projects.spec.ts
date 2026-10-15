@@ -1,3 +1,4 @@
+import { toolbarButton } from "./toolbar";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -17,7 +18,7 @@ async function createProject(page: Page, name: string) {
 	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
 }
 async function drawRectangle(page: Page) {
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await page.mouse.move(600, 300);
 	await page.mouse.down();
 	await page.mouse.move(710, 400);
@@ -27,16 +28,16 @@ async function drawRectangle(page: Page) {
 test("the global project preserves drawings and undo history across page navigation", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "History");
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(1);
 	const original = (await documentState(page)).shapes;
 	await projectsPage(page);
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await expect.poll(async () => (await documentState(page)).shapes).toEqual(original);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(0);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await documentState(page)).shapes).toEqual(original);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	await page.reload();
@@ -46,14 +47,14 @@ test("the global project preserves drawings and undo history across page navigat
 test("projects manage symbols on a separate page and isolate switched projects", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "First");
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(1);
 	const original = (await documentState(page)).shapes;
 	await projectsPage(page);
 	await page.getByLabel("Add symbol files").setInputFiles({ name: "sample.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "project-symbol", name: "Project symbol", description: "", prefix: "TP", value: "", shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }] })) });
 	await expect(page.getByText("project-symbol.ecadsym", { exact: true })).toBeVisible();
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Insert Project symbol", exact: true })).toBeVisible();
 	await expect(page.getByLabel("Upload symbol files")).toHaveCount(0);
@@ -61,12 +62,12 @@ test("projects manage symbols on a separate page and isolate switched projects",
 	await page.keyboard.press("Escape");
 	await page.reload();
 	await expect.poll(async () => (await documentState(page)).shapes).toEqual(original);
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Insert Project symbol", exact: true })).toBeVisible();
 	await page.keyboard.press("Escape");
 	await createProject(page, "Second");
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await page.getByRole("button", { name: "Select", exact: true }).click();
 	await page.mouse.click(650, 350);
 	await page.keyboard.press("Delete");
@@ -123,7 +124,7 @@ test("user libraries remain available across projects while named project overri
  await expect(page.getByText("Added 1 symbol. Saved in this browser.", { exact: true })).toBeVisible();
  const savedUser = await page.evaluate(() => localStorage.getItem("ecad.user-config.v1"));
  await createProject(page, "Libraries first");
- await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toBeVisible();
  await page.keyboard.press("Escape");
@@ -135,7 +136,7 @@ test("user libraries remain available across projects while named project overri
  await expect(page.getByText("Added 1 symbol. Saved in this project.", { exact: true })).toBeVisible();
  expect(await page.evaluate(() => localStorage.getItem("ecad.user-config.v1"))).toBe(savedUser);
  await page.reload();
- await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await expect(page.getByRole("button", { name: "Insert Project point", exact: true })).toBeVisible();
  await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toHaveCount(0);
@@ -144,12 +145,12 @@ test("user libraries remain available across projects while named project overri
  await page.getByText("Symbol libraries", { exact: true }).click();
  const projectLibraries = page.getByRole("group", { name: "Project libraries", exact: true });
  await projectLibraries.getByRole("checkbox", { name: "Project parts", exact: true }).uncheck();
- await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toBeVisible();
  await page.keyboard.press("Escape");
  await createProject(page, "Libraries second");
- await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await expect(page.getByRole("button", { name: "Insert User point", exact: true })).toBeVisible();
  expect(await page.evaluate(() => localStorage.getItem("ecad.user-config.v1"))).toBe(savedUser);
@@ -172,7 +173,7 @@ test("failed project library configuration saves restore the checkbox and saved 
  await enabled.uncheck();
  await expect(page.getByRole("alert")).toContainText("Quota exceeded");
  await expect(enabled).toBeChecked();
- await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await expect(page.getByRole("button", { name: "Insert Rollback point", exact: true })).toBeVisible();
 });

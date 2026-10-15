@@ -1,4 +1,9 @@
 export const budgets = {
+	"editor-toolbar": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+	},
 	"desktop-storage": {
 		legacySaveMs: 2000,
 		migrationMs: 3000,

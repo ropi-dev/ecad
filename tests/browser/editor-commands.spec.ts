@@ -1,3 +1,4 @@
+import { toolbarButton } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -9,7 +10,7 @@ const rendered = async (page: Page) =>
 
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
-	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
+	await expect((await toolbarButton(page, "Rectangle"))).toBeEnabled();
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await expect.poll(async () => {
 		const scene = JSON.parse((await page.locator("#editor-scene").textContent()) || "{}");
@@ -23,7 +24,7 @@ test("draw and move previews leave the document untouched until pointer release"
 	const x = box.x + box.width / 2;
 	const y = box.y + box.height / 2;
 	const empty = await committed(page);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await page.mouse.move(x, y);
 	await page.mouse.down();
 	await page.mouse.move(x + 100, y + 60, { steps: 4 });
@@ -48,7 +49,7 @@ test("draw and move previews leave the document untouched until pointer release"
 });
 
 test("an external Effect places exact geometry while the editor has another tool selected", async ({ page }) => {
-	await page.getByRole("button", { name: "Circle", exact: true }).click();
+	await (await toolbarButton(page, "Circle")).click();
 	await page.evaluate(async () => {
 		const fixturePath = "/tests/browser/editor.tsx";
 		const { placeRectangle }: typeof import("./editor") = await import(fixturePath);
@@ -58,10 +59,10 @@ test("an external Effect places exact geometry while the editor has another tool
 	expect((await committed(page)).shapes[0]).toEqual({
 		id: 1, kind: "rectangle", x: 12.3, y: -4.7, width: 25, height: 14, rotation: 0, lineWidth: 0.4,
 	});
-	await expect(page.getByRole("button", { name: "Circle", exact: true })).toHaveAttribute("aria-pressed", "true");
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect((await toolbarButton(page, "Circle"))).toHaveAttribute("aria-pressed", "true");
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await rendered(page)).length).toBe(0);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await rendered(page)).length).toBe(1);
 });
 
@@ -129,7 +130,7 @@ test("a selection-only click does not replace the selection saved by the last ed
 	const x = box.x + box.width / 2;
 	const y = box.y + box.height / 2;
 	for (const offset of [-180, 0]) {
-		await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+		await (await toolbarButton(page, "Rectangle")).click();
 		await page.mouse.move(x + offset, y);
 		await page.mouse.down();
 		await page.mouse.move(x + offset + 100, y + 60, { steps: 3 });
@@ -137,11 +138,11 @@ test("a selection-only click does not replace the selection saved by the last ed
 	}
 	await expect.poll(async () => (await committed(page)).historySize).toBe(3);
 	await page.mouse.click(x - 130, y + 30);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await page.mouse.move(x + 180, y);
 	await page.mouse.down();
 	await page.mouse.move(x + 280, y + 60, { steps: 3 });
 	await page.mouse.up();
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await rendered(page)).filter((shape: { selected: boolean }) => shape.selected).map((shape: { name: string }) => shape.name)).toEqual(["rectangle 2"]);
 });

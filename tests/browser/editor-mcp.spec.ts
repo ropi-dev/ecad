@@ -1,3 +1,4 @@
+import { toolbarButton } from "./toolbar";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, type Page, test } from "@playwright/test";
@@ -88,7 +89,7 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 			sessionRequests.push(request.url());
 	});
 	await openEditor(page);
-	await page.getByRole("button", { name: "Circle", exact: true }).click();
+	await (await toolbarButton(page, "Circle")).click();
 	expect(sessionRequests).toEqual([]);
 	await expect(page.getByLabel("MCP configuration", { exact: true })).toHaveCount(0);
 	const { client } = await enableMcp(page);
@@ -105,11 +106,11 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 		await expect.poll(async () => (await scene(page)).shapes).toEqual([
 			{ name: "rectangle 1", x: rectangle.x, y: rectangle.y, width: rectangle.width, height: rectangle.height, rotation: 0, selected: false },
 		]);
-		await expect(page.getByRole("button", { name: "Circle", exact: true })).toHaveAttribute("aria-pressed", "true");
+		await expect((await toolbarButton(page, "Circle"))).toHaveAttribute("aria-pressed", "true");
 		expect((await call(client, "getDrawing")).drawing.shapes).toEqual(placed.drawing.shapes);
-		await page.getByRole("button", { name: "Undo", exact: true }).click();
+		await (await toolbarButton(page, "Undo")).click();
 		expect((await call(client, "getDrawing")).drawing.shapes).toEqual([]);
-		await page.getByRole("button", { name: "Redo", exact: true }).click();
+		await (await toolbarButton(page, "Redo")).click();
 		expect((await call(client, "getDrawing")).drawing.shapes).toEqual(placed.drawing.shapes);
 		await call(client, "removeShapes", { ids: [1] });
 		await expect.poll(async () => (await scene(page)).shapes).toEqual([]);
@@ -189,7 +190,7 @@ test("an MCP command cancels an unfinished pointer gesture before it can overwri
 	await openEditor(page);
 	const { client } = await enableMcp(page);
 	try {
-		await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+		await (await toolbarButton(page, "Rectangle")).click();
 		const box = (await page.locator("canvas").boundingBox())!;
 		const x = box.x + box.width / 2;
 		const y = box.y + box.height / 2;

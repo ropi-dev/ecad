@@ -1,3 +1,4 @@
+import { toolbarButton } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
 
 // Coordinate fixtures use a desktop viewport with a 10 mm grid at the fitted view.
@@ -21,7 +22,7 @@ const nonPinState = async (page: Page): Promise<State> => {
  return { ...view, shapes: view.shapes.filter((shape) => !shape.name.startsWith("pin ")) };
 };
 async function placePin(page: Page, x: number, y: number) {
- await page.getByRole("button", { name: "Pin", exact: true }).click();
+ await (await toolbarButton(page, "Pin")).click();
  await clickAt(page, x, y);
 }
 const drawing = async (page: Page) => (await state(page)).shapes.map(({ selected: _selected, ...shape }) => shape);
@@ -55,13 +56,13 @@ async function dragTo(page: Page, from: [number, number], to: [number, number]) 
 	await page.mouse.up();
 }
 async function createShape(page: Page, kind: string, x: number, y: number) {
-	await page.getByRole("button", { name: kind, exact: true }).click();
+	await (await toolbarButton(page, kind)).click();
 	if (kind === "Circle") await dragTo(page, [x, y], [x + 15, y]);
 	else if (kind === "Wire") {
 		await placePin(page, x - 27.5, y);
 		// Keep the attributes panel from covering the wire's far endpoint.
 		await page.getByRole("button", { name: "Clear selection", exact: true }).click();
-		await page.getByRole("button", { name: "Wire", exact: true }).click();
+		await (await toolbarButton(page, "Wire")).click();
 		await clickAt(page, x - 27.5, y);
 		await clickAt(page, x + 27.5, y);
 		await page.keyboard.press("Enter");
@@ -72,13 +73,13 @@ async function createShape(page: Page, kind: string, x: number, y: number) {
 }
 async function createWireChain(page: Page, points: [number, number][]) {
 	await placePin(page, ...points[0]);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	for (const point of points) await clickAt(page, ...point);
 	await page.keyboard.press("Enter");
 }
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
-	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
+	await expect((await toolbarButton(page, "Rectangle"))).toBeEnabled();
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await expect(snap).toHaveAttribute("aria-pressed", "true");
 	// Free-placement fixtures opt out of the default; snapping tests enable it explicitly.
@@ -118,13 +119,13 @@ test("creates a symbol from multiple shapes and restores the selection with undo
 	await page.getByRole("textbox", { name: "Name", exact: true }).fill("Renamed connector");
 	await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Renamed connector");
 	await page.getByRole("textbox", { name: "Name", exact: true }).blur();
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Input connector");
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual(original);
 	await expect.poll(() => selectedNames(page)).toEqual(["rectangle 1", "circle 2"]);
 	await expect(create).toBeEnabled();
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 4"]);
 	const beforeMove = (await state(page)).shapes;
 	await page.locator("canvas").focus();
@@ -173,7 +174,7 @@ test("canceling symbol naming preserves the drawing and does not save a definiti
 });
 
 test("draws, resizes, and edits a line at any angle as a distinct shape", async ({ page }) => {
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await (await toolbarButton(page, "Line")).click();
 	await dragTo(page, [80, 100], [140, 140]);
 	await expect.poll(async () => (await state(page)).shapes.map((shape) => shape.name)).toEqual(["line 1"]);
 	const document = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
@@ -193,9 +194,9 @@ test("draws, resizes, and edits a line at any angle as a distinct shape", async 
 	await page.getByRole("spinbutton", { name: "Length", exact: true }).fill("25");
 	await page.getByRole("spinbutton", { name: "Length", exact: true }).blur();
 	await expect.poll(async () => (await document()).shapes[0].width).toBe(25);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await document()).shapes[0].width).toBeCloseTo(resized.width, 5);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await document()).shapes[0].width).toBe(25);
 	await page.locator("canvas").focus();
 	await page.keyboard.press("Delete");
@@ -204,10 +205,10 @@ test("draws, resizes, and edits a line at any angle as a distinct shape", async 
 
 test("horizontal and vertical lines snap to grid and can be turned into a symbol", async ({ page }) => {
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await (await toolbarButton(page, "Line")).click();
 	await dragTo(page, [83, 97], [137, 97]);
 	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(60, 5);
-	await page.getByRole("button", { name: "Line", exact: true }).click();
+	await (await toolbarButton(page, "Line")).click();
 	await dragTo(page, [163, 97], [163, 147]);
 	await expect.poll(async () => (await state(page)).shapes[1]?.rotation).toBeCloseTo(Math.PI / 2, 5);
 	await dragTo(page, [70, 80], [170, 160]);
@@ -219,7 +220,7 @@ test("horizontal and vertical lines snap to grid and can be turned into a symbol
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 3"]);
 	const shapes = JSON.parse((await page.locator("#editor-document").textContent())!).shapes;
 	expect(shapes[0].children.map((child: { kind: string }) => child.kind)).toEqual(["line", "line"]);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => selectedNames(page)).toEqual(["line 1", "line 2"]);
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
 	await page.getByRole("button", { name: "Insert Corner lines", exact: true }).click();
@@ -252,14 +253,14 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 	await expect.poll(async () => (await nonPinState(page)).shapes[0].y).toBeCloseTo(320, 4);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await clickAt(page, -25, 150);
 	expect((await nonPinState(page)).shapes.length).toBe(3);
 	expect(errors).toEqual([]);
 });
 
 test("stays orthographic through navigation and edits after zoom and resize", async ({ page }) => {
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("100%");
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("100%");
 	await expect(page.getByRole("button", { name: "Orthographic camera" })).toHaveCount(0);
 	const checkCamera = async () => {
 		const view = await state(page);
@@ -273,8 +274,8 @@ test("stays orthographic through navigation and edits after zoom and resize", as
 	await expect(checkCamera).toPass();
 	await page.getByRole("button", { name: "Pan", exact: true }).click();
 	await dragTo(page, [210, 150], [230, 160]);
-	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
+	await (await toolbarButton(page, "Zoom in")).click();
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("125%");
 	await page.setViewportSize({ width: 1000, height: 800 });
 	await expect.poll(async () => (await page.locator("canvas").boundingBox())?.width).toBe(1000);
 	await expect(checkCamera).toPass();
@@ -283,7 +284,7 @@ test("stays orthographic through navigation and edits after zoom and resize", as
 	await dragTo(page, [210, 150], [230, 180]);
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(180, 1);
 	await page.keyboard.press("F6");
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("100%");
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("100%");
 	await expect(checkCamera).toPass();
 });
 
@@ -344,8 +345,8 @@ test("selection works after zoom, supports Shift additions and cancels with Esca
 	for (const [kind, x] of [["Rectangle", 100], ["Circle", 180], ["Triangle", 260], ["Wire", 330]] as const) {
 		await createShape(page, kind, x, 100);
 	}
-	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
+	await (await toolbarButton(page, "Zoom in")).click();
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("125%");
 	await dragTo(page, [65, 70], [130, 125]);
 	await expect.poll(() => selectedNames(page)).toEqual(["rectangle 1"]);
 	await page.keyboard.down("Shift");
@@ -394,7 +395,7 @@ test("attributes reuse the floating layer panel and follow the selected shape", 
 });
 
 test("draws a live two-corner rectangle and retains its dimensions when moved", async ({ page }) => {
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	const start = await screen(page, 80, 100);
 	const end = await screen(page, 160, 145);
 	const original = await state(page);
@@ -412,7 +413,7 @@ test("draws a live two-corner rectangle and retains its dimensions when moved", 
 	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(140, 4);
 	expect((await state(page)).shapes[0].width).toBeCloseTo(80, 4);
 	expect((await state(page)).shapes[0].height).toBeCloseTo(45, 4);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await dragTo(page, [280, 200], [220, 175]);
 	await expect.poll(async () => (await state(page)).shapes[1]?.width).toBeCloseTo(60, 4);
 	expect((await state(page)).shapes[1].height).toBeCloseTo(25, 4);
@@ -421,10 +422,10 @@ test("draws a live two-corner rectangle and retains its dimensions when moved", 
 
 test("clicks and cancelled drafts create nothing, and drawing extends beyond the paper", async ({ page }) => {
 	await createShape(page, "Circle", 210, 150);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await clickAt(page, 100, 100);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
-	await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toHaveAttribute("aria-pressed", "true");
+	await expect((await toolbarButton(page, "Rectangle"))).toHaveAttribute("aria-pressed", "true");
 	const start = await screen(page, 100, 100);
 	const end = await screen(page, 160, 140);
 	await page.mouse.move(start.x, start.y);
@@ -435,7 +436,7 @@ test("clicks and cancelled drafts create nothing, and drawing extends beyond the
 	await page.mouse.up();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
 	await expect.poll(() => selectedNames(page)).toEqual(["circle 1"]);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await dragTo(page, [100, 100], [160, 100]);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
 	await dragTo(page, [100, 100], [-30, -30]);
@@ -446,7 +447,7 @@ test("clicks and cancelled drafts create nothing, and drawing extends beyond the
 	expect(drawn.y).toBeCloseTo(35, 4);
 	expect(drawn.width).toBeCloseTo(130, 4);
 	expect(drawn.height).toBeCloseTo(130, 4);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await dragTo(page, [-40, 160], [-10, 190]);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
 	await expect.poll(async () => (await state(page)).shapes[2].x).toBeCloseTo(-25, 4);
@@ -456,9 +457,9 @@ test("clicks and cancelled drafts create nothing, and drawing extends beyond the
 });
 
 test("wire clicks commit orthogonal segments and pointer release keeps the preview", async ({ page }) => {
-	const lineTool = page.getByRole("button", { name: "Wire", exact: true });
+
 	await placePin(page, 100, 100);
-	await lineTool.click();
+	await (await toolbarButton(page, "Wire")).click();
 	await dragTo(page, [100, 100], [160, 120]);
 	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(60, 4);
 	let view = await nonPinState(page);
@@ -468,7 +469,7 @@ test("wire clicks commit orthogonal segments and pointer release keeps the previ
 	expect(view.preview?.rotation).toBeCloseTo(0, 4);
 	await clickAt(page, 160, 120);
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(1);
-	await expect(lineTool).toHaveAttribute("aria-pressed", "true");
+	await expect(await toolbarButton(page, "Wire")).toHaveAttribute("aria-pressed", "true");
 	await moveAt(page, 172, 165);
 	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(65, 4);
 	view = await nonPinState(page);
@@ -507,7 +508,7 @@ test("wire clicks commit orthogonal segments and pointer release keeps the previ
 for (const finishKey of ["Escape", "Enter"]) {
 	test(`${finishKey} finishes a line chain and discards only the unfinished segment`, async ({ page }) => {
 		await placePin(page, 100, 100);
-		await page.getByRole("button", { name: "Wire", exact: true }).click();
+		await (await toolbarButton(page, "Wire")).click();
 		await clickAt(page, 100, 100);
 		await clickAt(page, 160, 120);
 		await clickAt(page, 170, 165);
@@ -526,13 +527,13 @@ for (const finishKey of ["Escape", "Enter"]) {
 
 test("switching tools clears an uncommitted line and starts the next chain independently", async ({ page }) => {
 	await placePin(page, 100, 100);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 100, 100);
 	await clickAt(page, 100, 100);
 	await moveAt(page, 160, 120);
 	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(60, 4);
 	expect((await nonPinState(page)).shapes).toEqual([]);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await expect.poll(async () => (await nonPinState(page)).preview).toBeNull();
 	expect((await nonPinState(page)).shapes).toEqual([]);
 	await createShape(page, "Wire", 240, 140);
@@ -546,7 +547,7 @@ test("switching tools clears an uncommitted line and starts the next chain indep
 test("snapped line chains keep consecutive corners on the grid", async ({ page }) => {
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await placePin(page, 93, 103);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 90, 100);
 	await clickAt(page, 153, 122);
 	await moveAt(page, 163, 167);
@@ -570,7 +571,7 @@ test("snapped line chains keep consecutive corners on the grid", async ({ page }
 
 test("wire chains keep placed corners when grid snapping and zoom change", async ({ page }) => {
 	await placePin(page, 93, 103);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 93, 103);
 	await clickAt(page, 153, 122);
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(1);
@@ -579,9 +580,9 @@ test("wire chains keep placed corners when grid snapping and zoom change", async
 	await clickAt(page, 163, 167);
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(2);
 	for (let index = 0; index < 4; index++) {
-		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await (await toolbarButton(page, "Zoom in")).click();
 	}
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("244%");
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("244%");
 	await expect.poll(() => visibleGridStep(page)).toBe(2);
 	await clickAt(page, 201.2, 181);
 	await page.keyboard.press("Enter");
@@ -755,13 +756,13 @@ test("keyboard folding merges overlap while preserving separate parallel and gap
 
 test("drawing duplicate and overlapping wires merges their extent from valid anchors", async ({ page }) => {
  await createWireChain(page, [[100, 100], [160, 100]]);
- await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 100, 100);
  await clickAt(page, 160, 100);
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
  await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
  // Extend the now-open endpoint, then double back to overlap the existing wire.
- await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 160, 100);
  await clickAt(page, 190, 100);
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 190, 100]]);
@@ -789,7 +790,7 @@ test("resizing a snapped segment to zero removes it and clears its selection", a
 
 test("draws circles, triangles and orthogonal lines with accurate hit selection", async ({ page }) => {
 	await placePin(page, 100, 100);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 100, 100);
 	await clickAt(page, 130, 140);
 	await page.keyboard.press("Enter");
@@ -804,12 +805,12 @@ test("draws circles, triangles and orthogonal lines with accurate hit selection"
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 2"]);
 	await dragTo(page, [100, 120], [120, 140]);
 	await expect.poll(async () => (await nonPinState(page)).shapes[0].x).toBeCloseTo(120, 4);
-	await page.getByRole("button", { name: "Circle", exact: true }).click();
+	await (await toolbarButton(page, "Circle")).click();
 	await dragTo(page, [250, 100], [290, 100]);
 	await expect.poll(async () => (await nonPinState(page)).shapes[1]?.width).toBeCloseTo(80, 4);
 	expect((await nonPinState(page)).shapes[1].height).toBeCloseTo(80, 4);
 	await expect(page.getByRole("spinbutton", { name: "Radius", exact: true })).toHaveValue("40");
-	await page.getByRole("button", { name: "Triangle", exact: true }).click();
+	await (await toolbarButton(page, "Triangle")).click();
 	await dragTo(page, [100, 200], [160, 240]);
 	await expect.poll(async () => (await nonPinState(page)).shapes[2]?.width).toBeCloseTo(60, 4);
 	expect((await nonPinState(page)).shapes[2].height).toBeCloseTo(40, 4);
@@ -858,7 +859,7 @@ test("circle radius and orthogonal line endpoints resize independently", async (
 	expect(circle.x).toBeCloseTo(150, 1);
 	expect(circle.y).toBeCloseTo(150, 1);
 	await placePin(page, 220, 100);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 220, 100);
 	await clickAt(page, 250, 140);
 	await page.keyboard.press("Enter");
@@ -882,8 +883,8 @@ test("handles track zoom and viewport changes and cancelled resizing restores di
 	await createShape(page, "Rectangle", 150, 150);
 	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(50, 4);
 	const original = (await state(page)).shapes[0];
-	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
+	await (await toolbarButton(page, "Zoom in")).click();
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("125%");
 	await page.setViewportSize({ width: 1000, height: 800 });
 	await expect.poll(async () => (await page.locator("canvas").boundingBox())?.width).toBe(1000);
 	const handle = page.locator('[data-testid="resize-handle"][data-handle="1,1"]');
@@ -949,7 +950,7 @@ test("snap mode aligns drawing, resizing and keyboard placement to the visible g
 	expect(await visibleGridStep(page)).toBe(10);
 	await snap.click();
 	await expect(snap).toHaveAttribute("aria-pressed", "true");
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await dragTo(page, [-83, -37], [-23, 32]);
 	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(60, 4);
 	let shape = (await state(page)).shapes[0];
@@ -967,7 +968,7 @@ test("snap mode aligns drawing, resizing and keyboard placement to the visible g
 	await page.keyboard.press("Shift+ArrowUp");
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(110);
 	await snap.click();
-	await page.getByRole("button", { name: "Triangle", exact: true }).click();
+	await (await toolbarButton(page, "Triangle")).click();
 	await dragTo(page, [-83, -37], [-23, 32]);
 	await expect.poll(async () => (await state(page)).shapes[1]?.height).toBeCloseTo(69, 4);
 	expect((await state(page)).shapes[1].x).toBeCloseTo(-53, 4);
@@ -1007,16 +1008,16 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	await fitCenteredEditor(page);
 	const initialStep = await visibleGridStep(page);
 	for (let index = 0; index < 10; index++) {
-		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await (await toolbarButton(page, "Zoom in")).click();
 	}
-	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("800%");
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("800%");
 	await expect.poll(() => visibleGridStep(page)).not.toBe(initialStep);
 	const step = await visibleGridStep(page);
 	expect(step).toBe(1);
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await expect(snap).toHaveAttribute("title", `Snap to grid (${step} mm)`);
 	await snap.click();
-	await page.getByRole("button", { name: "Circle", exact: true }).click();
+	await (await toolbarButton(page, "Circle")).click();
 	await dragTo(page, [-8.2, -5.2], [-4, -1]);
 	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.width).toBe(12);
 	let circle = (await nonPinState(page)).shapes[0];
@@ -1027,7 +1028,7 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	circle = (await nonPinState(page)).shapes[0];
 	expect(circle.height).toBe(22);
 	await placePin(page, -18.8, 9.2);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, -19, 9);
 	await clickAt(page, -12.8, 12);
 	await page.keyboard.press("Enter");
@@ -1044,7 +1045,7 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 
 async function openHistory(page: Page) {
 	const panel = page.getByRole("region", { name: "Drawing history", exact: true });
-	if (!await panel.isVisible()) await page.getByRole("button", { name: "History", exact: true }).click();
+	if (!await panel.isVisible()) await (await toolbarButton(page, "History")).click();
 	await expect(panel).toBeVisible();
 	return panel;
 }
@@ -1056,11 +1057,11 @@ async function expectHistoryCount(page: Page, count: number) {
 
 test("history records each completed drawing gesture once and undo and redo restore every edit", async ({ page }) => {
 	await openHistory(page);
-	const undo = page.getByRole("button", { name: "Undo", exact: true });
-	const redo = page.getByRole("button", { name: "Redo", exact: true });
+
+
 	await expectHistoryCount(page, 1);
-	await expect(undo).toBeDisabled();
-	await expect(redo).toBeDisabled();
+	await expect(await toolbarButton(page, "Undo")).toBeDisabled();
+	await expect(await toolbarButton(page, "Redo")).toBeDisabled();
 	await createShape(page, "Rectangle", 150, 100);
 	await expectHistoryCount(page, 2);
 	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(150, 4);
@@ -1082,7 +1083,7 @@ test("history records each completed drawing gesture once and undo and redo rest
 	await page.keyboard.press("Delete");
 	await expectHistoryCount(page, 6);
 	await expect.poll(() => drawing(page)).toEqual([]);
-	await undo.click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual(nudged);
 	await page.locator("canvas").focus();
 	await page.keyboard.press("Control+z");
@@ -1093,18 +1094,18 @@ test("history records each completed drawing gesture once and undo and redo rest
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await page.keyboard.press("Control+z");
 	await expect.poll(() => drawing(page)).toEqual([]);
-	await expect(undo).toBeDisabled();
+	await expect(await toolbarButton(page, "Undo")).toBeDisabled();
 	await page.keyboard.press("Control+Shift+z");
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await page.keyboard.press("Control+y");
 	await expect.poll(() => drawing(page)).toEqual(moved);
-	await redo.click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => drawing(page)).toEqual(resized);
-	await redo.click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => drawing(page)).toEqual(nudged);
-	await redo.click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => drawing(page)).toEqual([]);
-	await expect(redo).toBeDisabled();
+	await expect(await toolbarButton(page, "Redo")).toBeDisabled();
 	await expectHistoryCount(page, 6);
 });
 
@@ -1119,7 +1120,7 @@ test("history ignores selection, view settings, cancelled gestures and moves tha
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
 	await snap.click();
 	await snap.click();
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await clickAt(page, 100, 100);
 	await moveAt(page, 100, 100);
 	await page.mouse.down();
@@ -1138,11 +1139,11 @@ test("history ignores selection, view settings, cancelled gestures and moves tha
 	await page.getByRole("button", { name: "Pan", exact: true }).click();
 	await dragTo(page, [210, 150], [230, 160]);
 	await page.getByRole("button", { name: "Select", exact: true }).click();
-	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await (await toolbarButton(page, "Zoom in")).click();
 	await snap.click();
 	await expectHistoryCount(page, 2);
 	const view = await state(page);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual([]);
 	expect((await state(page)).origin).toEqual(view.origin);
 	expect((await state(page)).corner).toEqual(view.corner);
@@ -1163,9 +1164,9 @@ test("history records line corners separately and connected collapse and merge a
 	await expectHistoryCount(page, 7);
 	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 160]]);
 	const merged = await drawing(page);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual(loop);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => drawing(page)).toEqual(merged);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	await expectHistoryCount(page, 7);
@@ -1173,8 +1174,8 @@ test("history records line corners separately and connected collapse and merge a
 
 test("history keeps old futures after a new edit and restores either branch", async ({ page }) => {
 	const history = await openHistory(page);
-	const undo = page.getByRole("button", { name: "Undo", exact: true });
-	const redo = page.getByRole("button", { name: "Redo", exact: true });
+
+
 	await createShape(page, "Rectangle", 150, 100);
 	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.x).toBeCloseTo(150, 4);
 	const created = await drawing(page);
@@ -1182,7 +1183,7 @@ test("history keeps old futures after a new edit and restores either branch", as
 	await expectHistoryCount(page, 3);
 	await expect.poll(async () => (await nonPinState(page)).shapes[0]?.x).toBeCloseTo(180, 4);
 	const oldFuture = await drawing(page);
-	await undo.click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await dragHandle(page, "1,1", [200, 130]);
 	await expectHistoryCount(page, 4);
@@ -1195,9 +1196,9 @@ test("history keeps old futures after a new edit and restores either branch", as
 	await moveNode.click();
 	await expect.poll(() => drawing(page)).toEqual(oldFuture);
 	await expect(moveNode).toHaveAttribute("aria-current", "step");
-	await undo.click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual(created);
-	await redo.click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => drawing(page)).toEqual(oldFuture);
 	await openHistory(page);
 	await resizeNode.click();
@@ -1205,7 +1206,7 @@ test("history keeps old futures after a new edit and restores either branch", as
 	await expect(resizeNode).toHaveAttribute("aria-current", "step");
 	await history.screenshot({ path: test.info().outputPath("drawing-history-branches.png") });
 	await placePin(page, 100, 160);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 100, 160);
 	await moveAt(page, 180, 170);
 	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(80, 4);
@@ -1219,7 +1220,7 @@ test("history keeps old futures after a new edit and restores either branch", as
 	await expectHistoryCount(page, 5);
 	await createShape(page, "Circle", 250, 100);
 	await expect.poll(async () => (await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "circle 3"]);
-	await undo.click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await createShape(page, "Triangle", 250, 100);
 	await expect.poll(async () => (await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["rectangle 1", "triangle 4"]);
@@ -1236,7 +1237,7 @@ test("undo and redo clear unfinished previews and active drags without adding hi
 	await expectHistoryCount(page, 2);
 	await expect.poll(async () => (await state(page)).shapes[0]?.x).toBeCloseTo(150, 4);
 	const created = await drawing(page);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 150, 100);
 	await moveAt(page, 230, 110);
 	await expect.poll(async () => (await state(page)).preview?.width).toBeCloseTo(80, 4);
@@ -1267,9 +1268,9 @@ test("wire width edits apply to shapes and groups and support undo and redo", as
 	await expect(width).toBeFocused();
 	await expect(width).toHaveValue("2.5");
 	await width.blur();
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(width).toHaveValue("0.2");
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect(width).toHaveValue("2.5");
 	await createShape(page, "Wire", 180, 150);
 	await width.fill("4");
@@ -1281,7 +1282,7 @@ test("wire width edits apply to shapes and groups and support undo and redo", as
 	await expect(width).toBeFocused();
 	await width.blur();
 	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(4.5);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(width).toHaveValue("4");
 	await width.fill("0");
 	await width.blur();
@@ -1298,7 +1299,7 @@ test("wire width edits apply to shapes and groups and support undo and redo", as
 	await expect(width).toHaveValue("3");
 	await width.blur();
 	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(3);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	// Undo restores the selection saved with the preceding edit.
 	await expect(width).toHaveValue("4");
 	await expect.poll(async () => (await nonPinState(page)).shapes[1].height).toBe(4);
@@ -1319,9 +1320,9 @@ test("typing an attribute records only the final value on blur or Enter", async 
 	await width.press("Tab");
 	await expect.poll(async () => (await document()).shapes[0].width).toBe(40);
 	expect((await document()).historySize).toBe(original.historySize + 1);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(width).toHaveValue(String(original.shapes[0].width));
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect(width).toHaveValue("40");
 	const saved = await document();
 	await width.fill("4");
@@ -1349,9 +1350,9 @@ test("typing pin and symbol names records one change per completed edit", async 
 	await name.press("Enter");
 	await expect.poll(async () => (await document()).shapes[0].name).toBe("VCC");
 	expect((await document()).historySize).toBe(original.historySize + 1);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(name).toHaveValue("");
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect(name).toHaveValue("VCC");
 	await insertSymbol(page, "Resistor", 200, 150);
 	const placed = await document();
@@ -1361,7 +1362,7 @@ test("typing pin and symbol names records one change per completed edit", async 
 	await name.blur();
 	await expect.poll(async () => (await document()).shapes[1].attributes.name).toBe("Input resistor");
 	expect((await document()).historySize).toBe(placed.historySize + 1);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(name).toHaveValue("Resistor");
 });
 
@@ -1388,9 +1389,9 @@ test("dimension and center fields commit on blur", async ({ page }) => {
 	await field("Center Y").fill("-20.5");
 	await field("Center Y").blur();
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBe(-20.5);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(field("Center Y")).toHaveValue("150");
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect(field("Center Y")).toHaveValue("-20.5");
 	await field("Width").fill("0");
 	await field("Width").blur();
@@ -1426,7 +1427,7 @@ test("circle dimension fields keep width, height and radius in sync", async ({ p
 	await expect.poll(async () => (await state(page)).shapes[0].height).toBe(50);
 	await expect(field("Center X")).toHaveValue("150");
 	await expect(field("Center Y")).toHaveValue("100");
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(field("Height")).toHaveValue("60");
 	await expect(field("Radius")).toHaveValue("30");
 });
@@ -1450,7 +1451,7 @@ test("wire center edits move connected endpoints and length and angle fields pre
 	await field("Angle").blur();
 	await field("Angle").press("Tab");
 	await expect(field("Angle")).toHaveValue("90");
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(field("Angle")).toHaveValue("0");
 	await expect(field("Length")).toHaveValue("40");
 });
@@ -1485,10 +1486,10 @@ test("symbols select through any child, move and delete as one, and restore with
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("22 kΩ");
 	await expect(page.getByLabel("Angle", { exact: true })).toHaveValue("90");
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
 });
 
@@ -1497,7 +1498,7 @@ test("symbols select and drag anywhere inside their compact outline, including a
 	const symbol = (await state(page)).shapes[0];
 	await expect.poll(async () => (await state(page)).outlines).toEqual([{ width: symbol.width + 0.5, height: symbol.height + 0.5 }]);
 	for (let index = 0; index < 4; index++)
-		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await (await toolbarButton(page, "Zoom in")).click();
 	await clickAt(page, 200 + symbol.width / 2 + 0.4, 150);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
 	await clickAt(page, 200, 150);
@@ -1510,15 +1511,15 @@ test("symbols select and drag anywhere inside their compact outline, including a
 	await dragTo(page, [218.3, 163.3], [208.3, 168.3]);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(210, 4);
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(165, 4);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(220, 4);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(210, 4);
 });
 
 test("symbol movement keeps attached wires orthogonal through drag, history, keyboard and attributes", async ({ page }) => {
 	await insertSymbol(page, "Resistor", 100, 150);
-	await page.getByRole("button", { name: "Wire", exact: true }).click();
+	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 103, 150);
 	await clickAt(page, 180, 150);
 	await clickAt(page, 180, 210);
@@ -1528,10 +1529,10 @@ test("symbol movement keeps attached wires orthogonal through drag, history, key
 	await dragTo(page, [100, 150], [120, 170]);
 	await expect.poll(() => wireEndpoints(page)).toEqual([[123, 170, 180, 170], [180, 170, 180, 210]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => wireEndpoints(page)).toEqual(original);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(100, 4);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => wireEndpoints(page)).toEqual([[123, 170, 180, 170], [180, 170, 180, 210]]);
 	await clickAt(page, 120, 170);
 	await page.keyboard.press("ArrowRight");
@@ -1581,7 +1582,7 @@ test("symbol picker cancels placement and attributes belong to each instance", a
 	await page.keyboard.press("Escape");
 	await clickAt(page, 100, 150);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
-	await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+	await expect((await toolbarButton(page, "Undo"))).toBeDisabled();
 	await insertSymbol(page, "Resistor", 100, 150);
 	await page.getByLabel("Reference", { exact: true }).fill("R_INPUT");
 	await page.getByLabel("Reference", { exact: true }).blur();
@@ -1615,7 +1616,7 @@ test("symbol labels follow attribute edits and remain instance specific", async 
 	await page.getByLabel("Angle", { exact: true }).fill("90");
 	await page.getByLabel("Angle", { exact: true }).blur();
 	await expect.poll(async () => (await state(page)).symbolTexts[0].x).not.toBeCloseTo(edited[0].x, 4);
-	for (let index = 0; index < 7; index++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	for (let index = 0; index < 7; index++) await (await toolbarButton(page, "Zoom in")).click();
 	await page.screenshot({ path: test.info().outputPath("symbol-text.png") });
 });
 
@@ -1626,9 +1627,9 @@ test("symbol placement snaps and selection-only clicks do not add history", asyn
 	await clickAt(page, 97, 150);
 	await clickAt(page, 103, 150);
 	await expectHistoryCount(page, 2);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
 });
 
@@ -1638,33 +1639,33 @@ test("pin names can be edited in Attributes and restored with undo and redo", as
  await expect(name).toHaveValue("");
  await name.fill("VCC");
  await name.blur();
- await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await (await toolbarButton(page, "Undo")).click();
  await expect(name).toHaveValue("");
- await page.getByRole("button", { name: "Redo", exact: true }).click();
+ await (await toolbarButton(page, "Redo")).click();
  await expect(name).toHaveValue("VCC");
  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
  await clickAt(page, 100, 100);
  await expect(name).toHaveValue("VCC");
  await name.fill("");
  await name.blur();
- await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await (await toolbarButton(page, "Undo")).click();
  await expect(name).toHaveValue("VCC");
 });
 
 test("pins restrict wire starts and open ends accept both starts and finishes", async ({ page }) => {
- const wireTool = page.getByRole("button", { name: "Wire", exact: true });
- await expect(page.getByRole("button", { name: "Line", exact: true })).toBeEnabled();
- await wireTool.click();
+
+ await expect((await toolbarButton(page, "Line"))).toBeEnabled();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 100, 100);
  await moveAt(page, 160, 100);
  await clickAt(page, 160, 100);
  expect((await state(page)).shapes).toEqual([]);
  expect((await state(page)).preview).toBeNull();
- await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+ await expect((await toolbarButton(page, "Undo"))).toBeDisabled();
  await placePin(page, 100, 100);
  await expect.poll(async () => (await state(page)).shapes.map(s => s.name)).toEqual(["pin 1"]);
  await expect(page.getByTestId("resize-handle")).toHaveCount(0);
- await wireTool.click();
+ await (await toolbarButton(page, "Wire")).click();
  await moveAt(page, 101, 101);
  await expect(page.getByTestId("wire-connection")).toBeVisible();
  await clickAt(page, 101, 101);
@@ -1673,7 +1674,7 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
  await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y, width, height }) => [Math.round(x), Math.round(y), width, height])).toEqual([[160, 100, 0.508, 0.508]]);
  // Neither the midpoint of a segment nor an arbitrary shape is a valid start.
- await wireTool.click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 130, 100);
  await moveAt(page, 130, 150);
  expect((await state(page)).preview).toBeNull();
@@ -1683,17 +1684,17 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await page.keyboard.press("Escape");
  await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y }) => [Math.round(x), Math.round(y)])).toEqual([[160, 160]]);
  await placePin(page, 240, 160);
- await wireTool.click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 240, 160);
  await clickAt(page, 161, 160);
- await expect(wireTool).toHaveAttribute("aria-pressed", "false");
+ await expect(await toolbarButton(page, "Wire")).toHaveAttribute("aria-pressed", "false");
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100], [160, 100, 160, 160], [240, 160, 160, 160]]);
  await expect.poll(async () => (await state(page)).preview).toBeNull();
  await expect.poll(async () => (await state(page)).wireTerminals).toEqual([]);
- await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await (await toolbarButton(page, "Undo")).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
  await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y }) => [Math.round(x), Math.round(y)])).toEqual([[160, 160]]);
- await page.getByRole("button", { name: "Redo", exact: true }).click();
+ await (await toolbarButton(page, "Redo")).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
  await expect.poll(async () => (await state(page)).wireTerminals).toEqual([]);
  await page.screenshot({ path: test.info().outputPath("pins-and-wires.png") });
@@ -1703,7 +1704,7 @@ test("wires finish exactly at off-grid pins and rotated symbol terminals", async
  await placePin(page, 101, 103);
  await placePin(page, 181, 103);
  await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
- await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 102, 103);
  await clickAt(page, 180, 103);
  await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103]]);
@@ -1712,13 +1713,13 @@ test("wires finish exactly at off-grid pins and rotated symbol terminals", async
  await page.getByLabel("Angle", { exact: true }).fill("90");
  await page.getByLabel("Angle", { exact: true }).blur();
  await placePin(page, 300, 173.81);
- await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 300, 170);
  await clickAt(page, 250, 153);
  await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [300, 170, 250, 170], [250, 170, 250, 153]]);
  await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
  // The other symbol terminal can start a wire too.
- await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 250, 147);
  await clickAt(page, 300, 147);
  await page.keyboard.press("Enter");
@@ -1730,16 +1731,16 @@ test("offset off-grid pins connect with a right-angle bend and undo together", a
  await placePin(page, 101, 103);
  await placePin(page, 181, 153);
  await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
- await page.getByRole("button", { name: "Wire", exact: true }).click();
+ await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 101, 103);
  await moveAt(page, 182, 152);
  await expect(page.getByTestId("wire-connection")).toBeVisible();
  await clickAt(page, 182, 152);
  await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [181, 103, 181, 153]]);
  await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
- await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await (await toolbarButton(page, "Undo")).click();
  await expect.poll(() => wireEndpoints(page)).toEqual([]);
- await page.getByRole("button", { name: "Redo", exact: true }).click();
+ await (await toolbarButton(page, "Redo")).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
 });
 
@@ -1759,7 +1760,7 @@ test("compact symbols have a 6 mm pin span and the grid has ten cells per major 
   expect(majors[1] - majors[0]).toBe(10);
   const step = ticks[1].value - ticks[0].value;
   await expect(page.getByRole("button", { name: "Snap to grid", exact: true })).toHaveAttribute("title", `Snap to grid (${step} mm)`);
-  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await (await toolbarButton(page, "Zoom in")).click();
  }
  await page.screenshot({ path: test.info().outputPath("compact-symbols-dense-grid.png") });
 });
@@ -1768,7 +1769,7 @@ test("text tool places editable multiline text and preserves glyphs through hist
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	const baselineTextures = (await state(page)).textures;
-	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await (await toolbarButton(page, "Text")).click();
 	await clickAt(page, 150, 150);
 	const content = page.getByRole("textbox", { name: "Text content" });
 	await expect(content).toBeFocused();
@@ -1789,9 +1790,9 @@ test("text tool places editable multiline text and preserves glyphs through hist
 	await content.blur();
 	await expect.poll(async () => (await state(page)).shapes[0].texture).not.toBe(original.texture);
 	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures + 1);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(content).toHaveValue("Board label\nÁrvíz 12Ω");
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect(content).toHaveValue("Another label\nÁrvíz 12Ω");
 	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
 	await page.screenshot({ path: test.info().outputPath("text-label.png") });
@@ -1799,14 +1800,14 @@ test("text tool places editable multiline text and preserves glyphs through hist
 	await page.getByRole("button", { name: "Delete", exact: true }).click();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
 	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures);
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(content).toHaveValue("Another label\nÁrvíz 12Ω");
 	await expect.poll(async () => (await state(page)).textures).toBe(baselineTextures + 1);
 	expect(errors).toEqual([]);
 });
 
 test("text supports dragging, proportional handles, rotation and double-click editing", async ({ page }) => {
-	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await (await toolbarButton(page, "Text")).click();
 	await clickAt(page, 140, 130);
 	const content = page.getByRole("textbox", { name: "Text content" });
 	await content.fill("Hello editor");
@@ -1844,7 +1845,7 @@ test("text supports dragging, proportional handles, rotation and double-click ed
 
 test("text placement snaps to the grid and equal-width content changes remain undoable", async ({ page }) => {
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	await page.getByRole("button", { name: "Text", exact: true }).click();
+	await (await toolbarButton(page, "Text")).click();
 	await clickAt(page, 153, 148);
 	const content = page.getByRole("textbox", { name: "Text content" });
 	await expect(content).toBeFocused();
@@ -1858,10 +1859,10 @@ test("text placement snaps to the grid and equal-width content changes remain un
 	const originalWidth = (await state(page)).shapes[0].width;
 	await content.fill("333");
 	await content.blur();
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
 	await expect(content).toHaveValue("222");
 	expect((await state(page)).shapes[0].width).toBe(originalWidth);
-	await page.getByRole("button", { name: "Redo", exact: true }).click();
+	await (await toolbarButton(page, "Redo")).click();
 	await expect(content).toHaveValue("333");
 	expect((await state(page)).shapes[0].width).toBe(originalWidth);
 });

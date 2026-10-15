@@ -3,17 +3,18 @@ import {
 	Cable,
 	Circle,
 	Hand,
+	History as HistoryIcon,
 	Magnet,
 	MapPin,
 	Minus,
 	MousePointer2,
+	Shapes,
 	Square,
 	Trash2,
 	Triangle,
 	Type,
 } from "lucide-react";
 import {
-	Fragment,
 	type PointerEvent as ReactPointerEvent,
 	useEffect,
 	useEffectEvent,
@@ -37,6 +38,7 @@ import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import { symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
 import {
 	constrainWireEndpoint,
 	drawShape,
@@ -507,6 +509,24 @@ export function Editor2D({
 		return store.subscribe(reconcileExternalEdit);
 	}, [store]);
 
+	const renderTool = ({ kind, label, icon: Icon }: (typeof tools)[number]) => (
+		<button
+			key={kind}
+			type="button"
+			className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
+			disabled={!ready}
+			aria-label={label}
+			title={label}
+			aria-pressed={tool === kind}
+			onClick={() => {
+				finishWire();
+				setTool(kind);
+			}}
+		>
+			<Icon size={18} aria-hidden="true" />
+		</button>
+	);
+
 	return (
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
@@ -539,7 +559,7 @@ export function Editor2D({
 			}}
 		>
 			<h1 className="sr-only">
-				2D editor · {sheet.name ? `${sheet.name} · ` : ""}
+				Schematic editor · {sheet.name ? `${sheet.name} · ` : ""}
 				{sheet.width} × {sheet.height} mm
 			</h1>
 			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
@@ -871,6 +891,7 @@ export function Editor2D({
 						<OrthographicViewer2D
 							scene={scene}
 							fitZoom={1.1}
+							groupedControls
 							gridBounds={{
 								minX: -sheet.width / 2,
 								maxX: sheet.width / 2,
@@ -896,37 +917,56 @@ export function Editor2D({
 							}}
 							extraControls={
 								<fieldset aria-label="Drawing tools" className="contents">
-									<HistoryControls
-										history={history}
+									<ToolbarGroup
+										label="History tools"
+										icon={HistoryIcon}
 										disabled={!ready}
-										onUndo={undo}
-										onRedo={redo}
-										onRestore={(id) => restoreHistory(jumpHistoryEffect(id))}
-									/>
-									{tools.map(({ kind, label, icon: Icon }) => (
-										<Fragment key={kind}>
-											{(kind === "select" || kind === "rectangle") && (
-												<span
-													aria-hidden="true"
-													className="mx-1 h-6 w-px self-center bg-white/20"
-												/>
-											)}
-											<button
-												type="button"
-												className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
-												disabled={!ready}
-												aria-label={label}
-												title={label}
-												aria-pressed={tool === kind}
-												onClick={() => {
-													finishWire();
-													setTool(kind);
-												}}
-											>
-												<Icon size={18} aria-hidden="true" />
-											</button>
-										</Fragment>
-									))}
+									>
+										<HistoryControls
+											history={history}
+											disabled={!ready}
+											onUndo={undo}
+											onRedo={redo}
+											onRestore={(id) => restoreHistory(jumpHistoryEffect(id))}
+										/>
+									</ToolbarGroup>
+									{tools
+										.filter(({ kind }) => kind === "select" || kind === "pan")
+										.map(renderTool)}
+									<ToolbarGroup
+										label="Shapes"
+										icon={Shapes}
+										disabled={!ready}
+										active={[
+											"rectangle",
+											"circle",
+											"triangle",
+											"line",
+											"text",
+										].includes(tool)}
+									>
+										{tools
+											.filter(({ kind }) =>
+												[
+													"rectangle",
+													"circle",
+													"triangle",
+													"line",
+													"text",
+												].includes(kind),
+											)
+											.map(renderTool)}
+									</ToolbarGroup>
+									<ToolbarGroup
+										label="Connections"
+										icon={Cable}
+										disabled={!ready}
+										active={tool === "wire" || tool === "pin"}
+									>
+										{tools
+											.filter(({ kind }) => kind === "wire" || kind === "pin")
+											.map(renderTool)}
+									</ToolbarGroup>
 									<SymbolPicker
 										library={symbolLibrary}
 										disabled={!ready}
@@ -961,8 +1001,8 @@ export function Editor2D({
 									</button>
 								</fieldset>
 							}
-							ariaLabel="2D shape editor"
-							interactionHint="Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
+							ariaLabel="Schematic editor"
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for zoom, fit and PNG export. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
 						/>
 					)}
 					{view && (

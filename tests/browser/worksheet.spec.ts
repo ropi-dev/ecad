@@ -1,3 +1,4 @@
+import { toolbarButton } from "./toolbar";
 import { expect, test } from "@playwright/test";
 import type { BufferGeometry, Material, Mesh, MeshBasicMaterial, Texture } from "three";
 import type { EditorShape } from "#/drawing/shapes.ts";
@@ -7,7 +8,7 @@ test("changing sheet dimensions keeps drawn shapes and updates the worksheet", a
 	await page.goto("/tests/browser/editor.html");
 	const scene = async () => JSON.parse((await page.locator("#editor-scene").textContent()) || '{"shapes":[]}');
 	await expect.poll(async () => (await scene()).worksheet).toBe("A3, 420 × 297 mm");
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	const canvas = page.locator("canvas");
 	const bounds = (await canvas.boundingBox())!;
 	await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -33,7 +34,7 @@ test("changing sheet dimensions keeps drawn shapes and updates the worksheet", a
 		}, size);
 		await expect(page.getByRole("heading", { level: 1 })).toContainText(`${size.width} × ${size.height} mm`);
 		await expect.poll(async () => (await scene()).worksheet).toBe(`${size.name}, ${size.width} × ${size.height} mm`);
-		await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toBeEnabled();
+		await expect((await toolbarButton(page, "Rectangle"))).toBeEnabled();
 		await canvas.focus();
 		await page.keyboard.press("F6");
 		await expect.poll(shapes).toEqual(original);

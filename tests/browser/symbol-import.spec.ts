@@ -1,3 +1,4 @@
+import { toolbarButton } from "./toolbar";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,9 +33,9 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
  await expect(page.getByRole("textbox", { name: "Reference", exact: true })).toHaveValue("TP1");
  await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue("Test");
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes.length).toBe(1);
- await page.getByRole("button", { name: "Undo", exact: true }).click();
+ await (await toolbarButton(page, "Undo")).click();
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes.length).toBe(0);
- await page.getByRole("button", { name: "Redo", exact: true }).click();
+ await (await toolbarButton(page, "Redo")).click();
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes.length).toBe(1);
  await page.reload();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();

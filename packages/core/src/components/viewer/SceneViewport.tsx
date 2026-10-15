@@ -49,6 +49,7 @@ export interface SceneViewportProps {
 	onError?: (message: string) => void;
 	ariaLabel?: string;
 	extraControls?: ReactNode;
+	groupedControls?: boolean;
 }
 
 export function SceneViewport({
@@ -67,6 +68,7 @@ export function SceneViewport({
 	onError,
 	ariaLabel = "3D model",
 	extraControls,
+	groupedControls = false,
 }: SceneViewportProps) {
 	const [selectionInfo, setSelectionInfo] = useState<SceneSelection | null>(
 		null,
@@ -236,6 +238,7 @@ export function SceneViewport({
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D
+					grouped={groupedControls}
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
 					exportPng={exportPng}

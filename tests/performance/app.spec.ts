@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
 import type { AppPerformance } from "#/performance/browser.ts";
 import { pthGerber } from "../fixtures/pth-gerber";
+import { toolbarButton } from "../browser/toolbar";
 import { budgets, type Scenario } from "./budgets.ts";
 
 type Report = ReturnType<AppPerformance["snapshot"]>;
@@ -234,14 +235,14 @@ test("editor-imports", async ({ page }, testInfo) => {
 	await expect(
 		page.getByRole("heading", { name: "Performance board", exact: true }),
 	).toBeVisible();
-	await page.getByRole("link", { name: "2D editor", exact: true }).click();
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await expect(page.locator("canvas")).toBeVisible();
 	await expect
 		.poll(
 			async () => (await report(page)).metrics["renderer.frame"]?.count ?? 0,
 		)
 		.toBeGreaterThan(0);
-	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
 	await page.mouse.move(600, 300);
 	await page.mouse.down();
 	await page.mouse.move(710, 400);
@@ -311,7 +312,7 @@ test("symbol-libraries", async ({ page }, testInfo) => {
   await user.getByRole("checkbox", { name: "user 0", exact: true }).uncheck();
   await expect(user.getByRole("checkbox", { name: "user 0", exact: true })).toBeEnabled();
  });
- await page.getByRole("link", { name: "2D editor", exact: true }).click();
+ await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await interaction(page, "library.picker", async () => {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(383);
@@ -322,4 +323,41 @@ test("symbol-libraries", async ({ page }, testInfo) => {
   libraryResolveMs: metric(value, "symbol-library.resolve")!,
   interactionP95Ms: metric(value, "scenario.interaction")!,
  });
+});
+
+test("editor-toolbar", async ({ page }, testInfo) => {
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await expect(
+		page.getByRole("button", { name: "Shapes", exact: true }),
+	).toBeEnabled();
+	for (let repeat = 0; repeat < 3; repeat++) {
+		for (const label of [
+			"Shapes",
+			"Connections",
+			"History tools",
+			"View tools",
+		]) {
+			await interaction(page, "toolbar.open", async () => {
+				await page.getByRole("button", { name: label, exact: true }).click();
+				await expect(
+					page.getByRole("toolbar", { name: `${label} toolbar`, exact: true }),
+				).toBeVisible();
+			});
+		}
+		await interaction(page, "toolbar.choose", async () => {
+			await (await toolbarButton(page, "Rectangle")).click();
+			await expect(page.locator('[data-tool="rectangle"]')).toBeAttached();
+		});
+		await page.keyboard.press("Escape");
+		await page.getByRole("button", { name: "Select", exact: true }).click();
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-toolbar", {
+		interactionP95Ms: percentile(
+			value.events
+				.filter((event) => event.name === "scenario.interaction")
+				.map((event) => event.duration),
+		),
+	});
 });
