@@ -100,6 +100,30 @@ test("drawing dismisses the group and history actions still undo the edit", asyn
 for (const width of [320, 390, 1440]) {
 	test(`toolbars stay within a ${width}px viewport`, async ({ page }) => {
 		await page.setViewportSize({ width, height: 900 });
+		const main = page.getByRole("toolbar", {
+			name: "View controls",
+			exact: true,
+		});
+		const row = main.locator(":scope > div").first();
+		const buttons = await row.getByRole("button").all();
+		const top = (await buttons[0].boundingBox())!.y;
+		for (const button of buttons)
+			expect((await button.boundingBox())!.y).toBe(top);
+		const overflow = await row.evaluate(
+			(element) => element.scrollWidth > element.clientWidth,
+		);
+		expect(overflow).toBe(width < 400);
+		if (overflow) {
+			await row.evaluate((element) => {
+				element.scrollLeft = element.scrollWidth;
+			});
+			const lastBox = (await buttons.at(-1)!.boundingBox())!;
+			const rowBox = (await row.boundingBox())!;
+			expect(lastBox.x).toBeGreaterThanOrEqual(rowBox.x);
+			expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(
+				rowBox.x + rowBox.width,
+			);
+		}
 		for (const label of [
 			"Shapes",
 			"Connections",
@@ -113,6 +137,21 @@ for (const width of [320, 390, 1440]) {
 			const secondaryBox = (await page
 				.getByRole("toolbar", { name: `${label} toolbar` })
 				.boundingBox())!;
+			// The secondary toolbar must remain clickable outside the scrolling row.
+			await page
+				.getByRole("toolbar", { name: `${label} toolbar` })
+				.getByRole("button", {
+					name:
+						label === "Shapes"
+							? "Circle"
+							: label === "Connections"
+								? "Wire"
+								: label === "History tools"
+									? "History"
+									: "Zoom in",
+					exact: true,
+				})
+				.click();
 			for (const box of [mainBox, secondaryBox]) {
 				expect(box.x).toBeGreaterThanOrEqual(0);
 				expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -123,5 +162,61 @@ for (const width of [320, 390, 1440]) {
 		await page.screenshot({
 			path: test.info().outputPath("grouped-toolbar.png"),
 		});
+		await page.screenshot({
+			path: test.info().outputPath("toolbar-detail.png"),
+			clip: { x: 0, y: 720, width, height: 180 },
+		});
 	});
 }
+
+test.describe("mobile touch scrolling", () => {
+	test.use({
+		hasTouch: true,
+		isMobile: true,
+		viewport: { width: 320, height: 844 },
+	});
+	test("swiping the main row reveals the last button without moving the drawing", async ({
+		page,
+	}) => {
+		const main = page.getByRole("toolbar", {
+			name: "View controls",
+			exact: true,
+		});
+		const row = main.locator(":scope > div").first();
+		const camera = await page.locator("#editor-scene").textContent();
+		const box = (await row.boundingBox())!;
+		const session = await page.context().newCDPSession(page);
+		const startX = box.x + box.width * 0.8;
+		const y = box.y + box.height / 2;
+		await session.send("Input.dispatchTouchEvent", {
+			type: "touchStart",
+			touchPoints: [{ x: startX, y }],
+		});
+		for (let step = 1; step <= 10; step++) {
+			await session.send("Input.dispatchTouchEvent", {
+				type: "touchMove",
+				touchPoints: [{ x: startX - step * 18, y }],
+			});
+			await page.waitForTimeout(16);
+		}
+		await session.send("Input.dispatchTouchEvent", {
+			type: "touchEnd",
+			touchPoints: [],
+		});
+
+		await expect
+			.poll(() => row.evaluate((element) => element.scrollLeft))
+			.toBeGreaterThan(0);
+		expect(await page.locator("#editor-scene").textContent()).toBe(camera);
+		const view = page.getByRole("button", { name: "View tools", exact: true });
+		await view.focus();
+		await expect
+			.poll(() => row.evaluate((element) => element.scrollLeft))
+			.toBe(0);
+		await page.keyboard.press("ArrowUp");
+		await expect(
+			page.getByRole("button", { name: "Zoom out", exact: true }),
+		).toBeFocused();
+		await session.detach();
+	});
+});

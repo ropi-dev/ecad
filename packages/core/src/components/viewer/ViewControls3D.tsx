@@ -1,5 +1,5 @@
 import { Box, Download, Scan, Square } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation.ts";
 import { ToolbarGroup, ToolbarGroups } from "./ToolbarGroup";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
@@ -34,6 +34,7 @@ export function ViewControls3D({
 	exportPng?: () => void;
 	exporting?: boolean;
 }) {
+	const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
 	const button = viewControlButtonClassName;
 	const viewControls = (
 		<>
@@ -116,20 +117,25 @@ export function ViewControls3D({
 		</>
 	);
 	return (
-		<ToolbarGroups>
+		<ToolbarGroups panelHost={panelHost}>
 			<div
+				ref={setPanelHost}
 				role="toolbar"
 				aria-label={view ? "3D view controls" : "View controls"}
-				className="absolute bottom-4 left-1/2 z-10 flex w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap justify-center gap-0.5 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg sm:gap-1"
+				className="absolute bottom-4 left-1/2 z-10 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg"
 			>
-				{grouped ? (
-					<ToolbarGroup label="View tools" icon={Scan} disabled={!enabled}>
-						{viewControls}
-					</ToolbarGroup>
-				) : (
-					viewControls
-				)}
-				{children}
+				<div
+					className={`flex gap-0.5 sm:gap-1 ${grouped ? "touch-pan-x flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:thin] [&_button]:shrink-0" : "flex-wrap justify-center"}`}
+				>
+					{grouped ? (
+						<ToolbarGroup label="View tools" icon={Scan} disabled={!enabled}>
+							{viewControls}
+						</ToolbarGroup>
+					) : (
+						viewControls
+					)}
+					{children}
+				</div>
 			</div>
 		</ToolbarGroups>
 	);

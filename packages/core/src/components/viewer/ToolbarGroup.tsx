@@ -8,16 +8,28 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { viewControlButtonClassName } from "./viewControlStyles";
 
 const GroupContext = createContext<{
 	openId: string | null;
 	setOpenId: (id: string | null) => void;
+	panelHost: HTMLElement | null;
 } | null>(null);
 
-export function ToolbarGroups({ children }: { children: ReactNode }) {
+export function ToolbarGroups({
+	children,
+	panelHost,
+}: {
+	children: ReactNode;
+	panelHost: HTMLElement | null;
+}) {
 	const [openId, setOpenId] = useState<string | null>(null);
-	return <GroupContext value={{ openId, setOpenId }}>{children}</GroupContext>;
+	return (
+		<GroupContext value={{ openId, setOpenId, panelHost }}>
+			{children}
+		</GroupContext>
+	);
 }
 
 export function ToolbarGroup({
@@ -35,7 +47,7 @@ export function ToolbarGroup({
 }) {
 	const groups = useContext(GroupContext);
 	if (!groups) throw new Error("ToolbarGroup requires ToolbarGroups.");
-	const { openId, setOpenId } = groups;
+	const { openId, setOpenId, panelHost } = groups;
 	const id = useId();
 	const open = openId === id;
 	const root = useRef<HTMLDivElement>(null);
@@ -48,7 +60,11 @@ export function ToolbarGroup({
 			?.querySelector<HTMLButtonElement>("button:not(:disabled)")
 			?.focus();
 		const closeOutside = (event: PointerEvent) => {
-			if (event.target instanceof Node && !root.current?.contains(event.target))
+			if (
+				event.target instanceof Node &&
+				!root.current?.contains(event.target) &&
+				!panel.current?.contains(event.target)
+			)
 				setOpenId(null);
 		};
 		const closeOnEscape = (event: KeyboardEvent) => {
@@ -96,42 +112,47 @@ export function ToolbarGroup({
 					className="absolute right-0.5 bottom-0.5"
 				/>
 			</button>
-			{open && (
-				<div
-					ref={panel}
-					id={id}
-					role="toolbar"
-					aria-label={`${label} toolbar`}
-					className="absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 flex w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-[#414955] bg-slate-900/95 p-1.5 shadow-lg"
-					onKeyDown={(event) => {
-						if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
-							return;
-						const buttons = [
-							...(panel.current?.querySelectorAll<HTMLButtonElement>(
-								"button:not(:disabled)",
-							) ?? []),
-						];
-						const index = buttons.indexOf(
-							document.activeElement as HTMLButtonElement,
-						);
-						if (index < 0) return;
-						event.preventDefault();
-						const next =
-							event.key === "Home"
-								? 0
-								: event.key === "End"
-									? buttons.length - 1
-									: (index +
-											(event.key === "ArrowRight" ? 1 : -1) +
-											buttons.length) %
-										buttons.length;
-						buttons[next]?.focus();
-					}}
-				>
-					<span className="px-2 text-xs text-slate-400">{label}</span>
-					{children}
-				</div>
-			)}
+			{open &&
+				panelHost &&
+				createPortal(
+					<div
+						ref={panel}
+						id={id}
+						role="toolbar"
+						aria-label={`${label} toolbar`}
+						className="absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 flex w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-[#414955] bg-slate-900/95 p-1.5 shadow-lg"
+						onKeyDown={(event) => {
+							if (
+								!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+							)
+								return;
+							const buttons = [
+								...(panel.current?.querySelectorAll<HTMLButtonElement>(
+									"button:not(:disabled)",
+								) ?? []),
+							];
+							const index = buttons.indexOf(
+								document.activeElement as HTMLButtonElement,
+							);
+							if (index < 0) return;
+							event.preventDefault();
+							const next =
+								event.key === "Home"
+									? 0
+									: event.key === "End"
+										? buttons.length - 1
+										: (index +
+												(event.key === "ArrowRight" ? 1 : -1) +
+												buttons.length) %
+											buttons.length;
+							buttons[next]?.focus();
+						}}
+					>
+						<span className="px-2 text-xs text-slate-400">{label}</span>
+						{children}
+					</div>,
+					panelHost,
+				)}
 		</div>
 	);
 }
