@@ -32,6 +32,8 @@ export const budgets = {
 	"projects-large": {
 		startupMs: 5000,
 		interactionP95Ms: 750,
+		searchMs: 750,
+		filterMs: 750,
 		blockingMs: 2000,
 		domNodes: 1000,
 		eventLoopP95Ms: 500,

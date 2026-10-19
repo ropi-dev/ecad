@@ -214,12 +214,25 @@ test("projects-large", async ({ page }, testInfo) => {
 		);
 	});
 	const value = await report(page);
+	await interaction(page, "files.search", async () => {
+		await page.getByLabel("Search project files").fill("file-9999.gbr");
+		await expect(page.getByText("file-9999.gbr", { exact: true })).toBeVisible();
+		await expect(page.getByRole("row")).toHaveCount(2);
+	});
+	await page.getByRole("button", { name: "Clear file search" }).click();
+	await interaction(page, "files.filter", async () => {
+		await page.getByRole("group", { name: "File types" }).getByRole("button", { name: /^Gerber/ }).click();
+		await expect(page.getByText("1–50 of 10000 files", { exact: true })).toBeVisible();
+	});
+	const fileInteractions = await report(page);
 	await finish(page, testInfo, "projects-large", {
 		interactionP95Ms: percentile(
 			value.events
 				.filter((event) => event.name === "scenario.interaction")
 				.map((event) => event.duration),
 		),
+		searchMs: fileInteractions.events.find((event) => event.data?.name === "files.search" && event.name === "scenario.interaction")!.duration,
+		filterMs: fileInteractions.events.find((event) => event.data?.name === "files.filter" && event.name === "scenario.interaction")!.duration,
 	});
 });
 
