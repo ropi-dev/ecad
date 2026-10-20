@@ -31,7 +31,7 @@ function applyTransform(
 }
 
 /** Converts display data to Three objects and owns their shared GPU resources. */
-export function createDrawingRenderer(worksheet: WorksheetDisplay) {
+export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 	const lifetime = createLifecycle();
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
@@ -97,8 +97,14 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay) {
 			for (const child of display.children ?? []) mesh.add(meshFor(child));
 			return mesh;
 		};
-		const { paper } = own(() => createWorksheetFromDisplay(worksheet));
-		const scene: ViewerScene = [{ type: "spatial", object: paper }];
+		const scene: ViewerScene = worksheet
+			? [
+					{
+						type: "spatial",
+						object: own(() => createWorksheetFromDisplay(worksheet)).paper,
+					},
+				]
+			: [];
 		const drawing = new Group();
 		drawing.name = "editor-shapes";
 		const previews: Object3D[] = [];
@@ -116,10 +122,15 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay) {
 				...display.terminals,
 				...display.previews,
 			];
-			const allMeshes = meshes.flatMap((mesh) => [mesh, ...(mesh.children ?? [])]);
+			const allMeshes = meshes.flatMap((mesh) => [
+				mesh,
+				...(mesh.children ?? []),
+			]);
 			const activeKeys = new Set(allMeshes.map(({ key }) => key));
 			const textKeys = new Set(
-				allMeshes.filter(({ text }) => text !== undefined).map(({ key }) => key),
+				allMeshes
+					.filter(({ text }) => text !== undefined)
+					.map(({ key }) => key),
 			);
 			for (const [key, { geometry }] of geometries) {
 				if (activeKeys.has(key)) continue;

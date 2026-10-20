@@ -60,7 +60,7 @@ test("invalid and repeated uploads preserve the library and allow retrying the s
  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBe(saved);
  const mixed = JSON.parse(example.toString());
  mixed.id = "new-symbol";
- const bad = { ...mixed, id: "invalid-symbol", shapes: [] };
+ const bad = { ...mixed, id: "invalid-symbol", shapes: [{ kind: "circle", x: 0, y: 0, radius: -1 }] };
  await input.setInputFiles([{ ...upload, buffer: Buffer.from(JSON.stringify(mixed)) }, { ...bufferUpload, buffer: Buffer.from(JSON.stringify(bad)) }]);
  await expect(page.getByRole("alert")).toContainText("Invalid symbol file");
  await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(5);

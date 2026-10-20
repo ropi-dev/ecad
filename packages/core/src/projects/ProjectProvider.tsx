@@ -11,11 +11,20 @@ import {
 	useState,
 } from "react";
 import { createDrawingStore } from "#/commands/drawing-store.ts";
-import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
+import type {
+	SymbolFile,
+	SymbolLibrary,
+} from "#/components/editor/symbolFormat.ts";
+import type { EditorShape } from "#/drawing/shapes.ts";
+import {
+	libraryDefinitions,
+	symbolFileWithShapes,
+} from "#/drawing/symbol-file.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
 import {
 	getAppPerformance,
 	measurePerformance,
+	measurePerformanceAsync,
 } from "#/performance/runtime.ts";
 import type {
 	AssetKind,
@@ -38,17 +47,26 @@ interface ProjectContextValue {
 	LinkComponent?: ComponentType<ProjectLinkProps>;
 	selectAsset(asset: ProjectAsset | null): void;
 	store: ReturnType<typeof createDrawingStore>;
+	editorSymbol: SymbolDocument | null;
+	selectEditorFile(path?: string): void;
 	mode: ProjectStorage["mode"];
 	busy: boolean;
 	dirty: boolean;
 	error: string;
 	create(name: string): Promise<void>;
+	createSymbol(name: string): Promise<string>;
 	open(name?: string): Promise<void>;
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
 	save(): Promise<void>;
 	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
 	readAssets(kind: AssetKind): Promise<File[]>;
+}
+interface SymbolDocument {
+	file: SymbolFile;
+	store: ReturnType<typeof createDrawingStore>;
+	savedShapes: EditorShape[];
+	unsubscribe(): void;
 }
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 export const useProject = () => useContext(ProjectContext);
@@ -73,6 +91,8 @@ export function ProjectProvider({
 	const active = useRef<ProjectSnapshot | null>(null);
 	const [store, setStore] = useState(() => createDrawingStore());
 	const currentStore = useRef(store);
+	const symbolDocuments = useRef(new Map<string, SymbolDocument>());
+	const [editorSymbol, setEditorSymbol] = useState<SymbolDocument | null>(null);
 	const symbols = useRef<SymbolLibrary>([]);
 	const libraries = useRef<readonly ConfiguredSymbolLibrary[]>([]);
 	const [epoch, setEpoch] = useState(0);
@@ -101,6 +121,10 @@ export function ProjectProvider({
 	const adopt = useCallback(
 		(snapshot: ProjectSnapshot) => {
 			clearTimeout(timer.current);
+			for (const document of symbolDocuments.current.values())
+				document.unsubscribe();
+			symbolDocuments.current.clear();
+			setEditorSymbol(null);
 			update(snapshot);
 			setSelectedAsset(null);
 			symbols.current = snapshot.symbols;
@@ -142,6 +166,8 @@ export function ProjectProvider({
 			cancelled = true;
 			mounted.current = false;
 			clearTimeout(timer.current);
+			for (const document of symbolDocuments.current.values())
+				document.unsubscribe();
 		};
 	}, [storage, enqueue, adopt]);
 
@@ -174,28 +200,59 @@ export function ProjectProvider({
 		) => {
 			const previous = active.current;
 			if (!previous) return;
+			const edits = [...symbolDocuments.current.values()].filter(
+				(document) =>
+					document.store.getSnapshot().shapes !== document.savedShapes,
+			);
+			const pending = new Map(
+				edits.map((document) => [
+					document.file.id,
+					document.store.getSnapshot().shapes,
+				]),
+			);
+			let savedSymbols = nextSymbols ?? symbols.current;
+			if (pending.size) {
+				const { parseSymbolFile } = await import(
+					"#/components/editor/symbolFormat.ts"
+				);
+				savedSymbols = savedSymbols.map((symbol) => {
+					const shapes = pending.get(symbol.id);
+					return shapes
+						? parseSymbolFile(
+								JSON.stringify(symbolFileWithShapes(symbol, shapes)),
+							)
+						: symbol;
+				});
+			}
 			const document = {
 				shapes: currentStore.current.getSnapshot().shapes,
-				symbols: nextSymbols ?? symbols.current,
+				symbols: savedSymbols,
 				symbolLibraries: (nextLibraries ?? libraries.current).map((library) =>
 					library.id === "project-symbols" && library.source.kind === "embedded"
 						? {
 								...library,
 								source: {
 									...library.source,
-									symbols: nextSymbols ?? symbols.current,
+									symbols: savedSymbols,
 								},
 							}
 						: library,
 				),
 			};
 			const next = await storage.save(previous.directory, document);
+			for (const edit of edits) {
+				const shapes = pending.get(edit.file.id);
+				if (shapes) edit.savedShapes = shapes;
+			}
 			symbols.current = document.symbols;
 			libraries.current = document.symbolLibraries;
 			update(next);
 			if (mounted.current) {
 				needsSave.current =
-					currentStore.current.getSnapshot().shapes !== document.shapes;
+					currentStore.current.getSnapshot().shapes !== document.shapes ||
+					[...symbolDocuments.current.values()].some(
+						(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
+					);
 				setDirty(needsSave.current);
 				setError("");
 			}
@@ -222,6 +279,40 @@ export function ProjectProvider({
 			throw cause;
 		}
 	}, [enqueue, persist, transferAssets]);
+	const selectEditorFile = (path?: string) => {
+		const snapshot = active.current;
+		if (!snapshot || !path || path === snapshot.manifest.drawing) {
+			setEditorSymbol(null);
+			return;
+		}
+		const index = snapshot.manifest.symbols.indexOf(path);
+		const file = snapshot.symbols[index];
+		if (!file) return;
+		let document = symbolDocuments.current.get(file.id);
+		if (!document) {
+			const symbolStore = measurePerformance(
+				"editor.open-symbol",
+				() => createDrawingStore(libraryDefinitions([file])[0].children),
+				{ shapes: file.shapes.length },
+			);
+			document = {
+				file,
+				store: symbolStore,
+				savedShapes: symbolStore.getSnapshot().shapes,
+				unsubscribe: symbolStore.subscribe(() => {
+					needsSave.current = true;
+					setDirty(true);
+					clearTimeout(timer.current);
+					timer.current = setTimeout(
+						() => void save().catch(() => undefined),
+						400,
+					);
+				}),
+			};
+			symbolDocuments.current.set(file.id, document);
+		}
+		setEditorSymbol(document);
+	};
 	useEffect(
 		() =>
 			store.subscribe(() => {
@@ -410,11 +501,32 @@ export function ProjectProvider({
 		LinkComponent,
 		selectAsset: setSelectedAsset,
 		store,
+		editorSymbol,
+		selectEditorFile,
 		mode: storage.mode,
 		busy,
 		dirty,
 		error,
 		create: (name) => switchProject(name, true),
+		createSymbol: (name) =>
+			enqueue(async () => {
+				if (!active.current || generation.current !== epoch)
+					throw new Error("Open a project before creating a symbol.");
+				return measurePerformanceAsync("project.create-symbol", async () => {
+					const { createEmptySymbolFile } = await import(
+						"#/components/editor/symbolFormat.ts"
+					);
+					const symbol = createEmptySymbolFile(name, symbols.current);
+					await persist([...symbols.current, symbol]);
+					const snapshot = active.current;
+					const index =
+						snapshot?.symbols.findIndex((entry) => entry.id === symbol.id) ??
+						-1;
+					const path = snapshot?.manifest.symbols[index];
+					if (!path) throw new Error("Unable to open the new symbol file.");
+					return path;
+				});
+			}),
 		open: (name) => switchProject(name, false),
 		list,
 		reload: async () => {

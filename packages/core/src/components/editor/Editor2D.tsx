@@ -120,11 +120,26 @@ export interface Editor2DProps {
 	enableMcp?: boolean;
 }
 
-export function Editor2D({
+export function Editor2D(props: Editor2DProps = {}) {
+	const project = useProject();
+	const symbol = props.store ? null : project?.editorSymbol;
+	return (
+		<EditorCanvas
+			key={symbol ? `symbol:${symbol.file.id}` : "schematic"}
+			{...props}
+			store={symbol?.store ?? props.store}
+			symbolName={symbol?.file.name}
+		/>
+	);
+}
+
+function EditorCanvas({
 	sheet = defaultSheet,
 	store: suppliedStore,
 	enableMcp = true,
-}: Editor2DProps = {}) {
+	symbolName,
+}: Editor2DProps & { symbolName?: string }) {
+	const isSymbol = symbolName !== undefined;
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProject();
 	const store = suppliedStore ?? project?.store ?? ownedStore;
@@ -174,7 +189,7 @@ export function Editor2D({
 		shapes,
 		selectedIds,
 		wirePreview ?? (symbolPreview ? [symbolPreview] : []),
-		sheet,
+		isSymbol ? null : sheet,
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
@@ -559,8 +574,9 @@ export function Editor2D({
 			}}
 		>
 			<h1 className="sr-only">
-				Schematic editor · {sheet.name ? `${sheet.name} · ` : ""}
-				{sheet.width} × {sheet.height} mm
+				{isSymbol
+					? `Symbol editor · ${symbolName}`
+					: `Schematic editor · ${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
 			</h1>
 			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
 				<ProjectLink
@@ -892,12 +908,16 @@ export function Editor2D({
 							scene={scene}
 							fitZoom={1.1}
 							groupedControls
-							gridBounds={{
-								minX: -sheet.width / 2,
-								maxX: sheet.width / 2,
-								minY: -sheet.height / 2,
-								maxY: sheet.height / 2,
-							}}
+							gridBounds={
+								isSymbol
+									? undefined
+									: {
+											minX: -sheet.width / 2,
+											maxX: sheet.width / 2,
+											minY: -sheet.height / 2,
+											maxY: sheet.height / 2,
+										}
+							}
 							updateScene={updateScene}
 							selectionEnabled={false}
 							onReady={setReady}
@@ -946,6 +966,7 @@ export function Editor2D({
 										].includes(tool)}
 									>
 										{tools
+											.filter(({ kind }) => !isSymbol || kind !== "text")
 											.filter(({ kind }) =>
 												[
 													"rectangle",
@@ -969,7 +990,7 @@ export function Editor2D({
 									</ToolbarGroup>
 									<SymbolPicker
 										library={symbolLibrary}
-										disabled={!ready}
+										disabled={!ready || isSymbol}
 										active={tool === "symbol"}
 										onChoose={(definition) => {
 											finishDrag();
@@ -1001,8 +1022,8 @@ export function Editor2D({
 									</button>
 								</fieldset>
 							}
-							ariaLabel="Schematic editor"
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for zoom, fit and PNG export. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the sheet."
+							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for zoom, fit and PNG export. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (
@@ -1074,18 +1095,18 @@ export function Editor2D({
 							Click to place {symbolDefinition.name}. Escape cancels.
 						</output>
 					)}
-					{error && (
+					{(error || project?.error) && (
 						<p
 							className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] text-[#edc49a]"
 							role="alert"
 						>
-							{error}
+							{error || project?.error}
 						</p>
 					)}
 				</div>
 				<SelectionAttributes
 					shapes={selected}
-					onCreateSymbol={() => setCreatingSymbol(true)}
+					onCreateSymbol={isSymbol ? undefined : () => setCreatingSymbol(true)}
 					onPinNameChange={(name) => {
 						if (selected.length === 1 && selected[0].kind === "pin")
 							commitReplacements([{ ...selected[0], name }], "Change pin name");

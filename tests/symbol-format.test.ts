@@ -6,7 +6,7 @@ import { createSymbol } from "#/components/editor/symbols.ts";
 import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
 import { hitShape, symbolShapes } from "#/components/editor/shapes.ts";
 import { runEffect } from "#/lib/effect.ts";
-import { symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
+import { createEmptySymbolFile, symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
 
 const example = readFileSync(new URL("../packages/web/public/examples/symbols/test-point.ecadsym", import.meta.url), "utf8");
 const source = () => JSON.parse(example);
@@ -54,7 +54,6 @@ test("converts every primitive, degrees, and diagonal wires without axis constra
 for (const [name, mutate] of [
  ["version", (data: any) => { data.version = 2; }],
  ["units", (data: any) => { data.units = "in"; }],
- ["empty shapes", (data: any) => { data.shapes = []; }],
  ["unsupported primitive", (data: any) => { data.shapes[0].kind = "svg"; }],
  ["negative radius", (data: any) => { data.shapes[0].radius = -1; }],
  ["coordinate overflow", (data: any) => { data.shapes[0].x = 1001; }],
@@ -161,4 +160,21 @@ test("pin names survive symbol file and library round trips, with unnamed legacy
  assert.equal(libraryDefinitions([parseSymbolFile(JSON.stringify(saved))])[0].children.find(child => child.kind === "pin")?.name, "VCC");
  pin.name = 42;
  assert.throws(() => parseSymbolFile(JSON.stringify(data)), /name/);
+});
+
+
+test("new symbol files keep names, start empty, and avoid existing and built-in IDs", () => {
+ const first = createEmptySymbolFile("  Power stage  ", []);
+ assert.equal(first.name, "Power stage");
+ assert.equal(first.id, "power-stage");
+ assert.deepEqual(first.shapes, []);
+ assert.deepEqual(parseSymbolFile(JSON.stringify(first)), first);
+ assert.deepEqual(parseSavedSymbolLibrary(JSON.stringify([first])), [first]);
+ assert.deepEqual(libraryDefinitions([first])[0].children, []);
+ const second = createEmptySymbolFile("Power stage", [first]);
+ assert.equal(second.id, "power-stage-2");
+ assert.equal(createEmptySymbolFile("Resistor", []).id, "resistor-2");
+ assert.equal(createEmptySymbolFile("電源", []).id, "symbol");
+ assert.throws(() => createEmptySymbolFile("   ", []));
+ assert.throws(() => createEmptySymbolFile("x".repeat(101), []));
 });

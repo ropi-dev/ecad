@@ -374,3 +374,65 @@ test("editor-toolbar", async ({ page }, testInfo) => {
 		),
 	});
 });
+
+test("editor-symbol-file", async ({ page }, testInfo) => {
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	await page.getByLabel("Project name", { exact: true }).fill("Symbol editing");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await expect(page.getByRole("heading", { name: "Symbol editing", exact: true })).toBeVisible();
+	const symbol = {
+		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
+		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
+	};
+	await expect(page.getByLabel("Add symbol files")).toBeEnabled();
+	await page.getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "editor.open-symbol", async () => {
+			await page.getByRole("link", { name: "Open editable-package.ecadsym", exact: true }).click();
+			await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
+			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
+		});
+		await page.getByRole("link", { name: "Projects", exact: true }).click();
+		await interaction(page, "editor.open-schematic", async () => {
+			await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
+		});
+		if (repeat < 2) await page.getByRole("link", { name: "Projects", exact: true }).click();
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-symbol-file", {
+		interactionP95Ms: percentile(value.events.filter((event) => event.name === "scenario.interaction").map((event) => event.duration)),
+	});
+});
+
+test("project-new-symbol", async ({ page }, testInfo) => {
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	await page.getByLabel("Project name", { exact: true }).fill("New symbol workflow");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await expect(page.getByRole("heading", { name: "New symbol workflow", exact: true })).toBeVisible();
+	await interaction(page, "symbol.create", async () => {
+		await page.getByRole("button", { name: "New symbol", exact: true }).click();
+		await page.getByLabel("Symbol name", { exact: true }).fill("New part");
+		await page.getByRole("button", { name: "Create symbol", exact: true }).click();
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · New part");
+		await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	});
+	await (await toolbarButton(page, "Rectangle")).click();
+	await page.mouse.move(600, 300);
+	await page.mouse.down();
+	await page.mouse.move(710, 400);
+	await page.mouse.up();
+	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(2);
+	await page.getByRole("link", { name: "Projects", exact: true }).click();
+	await page.getByRole("link", { name: "Open new-part.ecadsym", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
+	const value = await report(page);
+	await finish(page, testInfo, "project-new-symbol", {
+		createMs: value.events.find((event) => event.name === "scenario.interaction" && event.data?.name === "symbol.create")!.duration,
+	});
+});

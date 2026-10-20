@@ -14,7 +14,9 @@ Manage libraries under **Projects → Symbol libraries**. Choose **User librarie
 
 Each library has an enable checkbox. Custom named libraries also have a remove button. Built-in symbols are an enabled user library by default and can be disabled. Choose a symbol, then click the drawing to place it. Disabling or removing a library affects the picker. Placed symbols keep their geometry and attributes.
 
-To create a symbol, select two or more drawing shapes, choose **Create symbol** in Attributes, and enter a name. The selection becomes one symbol and its definition appears in **Symbols**. The app saves it to the project's default symbol library when a project is open, or to the user library otherwise. Undo restores the original shapes while keeping the reusable definition.
+To start an empty symbol, choose **New symbol** beside the project file list and enter a name. The app saves a new `.ecadsym` file and opens it in the borderless symbol editor. Repeated names create separate files. Empty symbols stay unavailable for placement until you add shapes.
+
+To create a symbol from an existing drawing, select two or more drawing shapes, choose **Create symbol** in Attributes, and enter a name. The selection becomes one symbol and its definition appears in **Symbols**. The app saves it to the project's default symbol library when a project is open, or to the user library otherwise. Undo restores the original shapes while keeping the reusable definition.
 
 ## User and project configuration
 
@@ -81,7 +83,7 @@ All fields above are required. `description` and `value` may be empty strings. U
 | `description` | Text shown in the picker, up to 500 characters. |
 | `prefix` | Reference prefix, 1–16 characters: ASCII letter first, then letters, digits, or `_`. Instances receive references such as `J1`. |
 | `value` | Default editable value, up to 100 characters. |
-| `shapes` | Between 1 and 256 primitives, described below. |
+| `shapes` | Up to 256 primitives, described below. An empty array represents a symbol with no shapes yet. |
 
 ## Drawing primitives
 

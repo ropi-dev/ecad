@@ -13,7 +13,7 @@ import {
 	Search,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
 	type AssetKind,
@@ -23,6 +23,12 @@ import {
 import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { SymbolLibraryControls } from "#/symbol-library/LibraryControls.tsx";
+
+const CreateSymbolDialog = lazy(() =>
+	import("#/components/editor/CreateSymbolDialog.tsx").then((module) => ({
+		default: module.CreateSymbolDialog,
+	})),
+);
 
 const focus =
 	"focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#c7e991]";
@@ -81,6 +87,8 @@ export function ProjectPage() {
 	const [librariesOpen, setLibrariesOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<FileFilter>("All files");
+	const [newSymbolOpen, setNewSymbolOpen] = useState(false);
+	const symbolEditorLink = useRef<HTMLAnchorElement>(null);
 	const list = project?.list;
 	const mode = project?.mode;
 	const directory = project?.project?.directory;
@@ -172,6 +180,29 @@ export function ProjectPage() {
 	}
 	return (
 		<main className="min-h-dvh bg-[#131518] text-[13px] leading-normal text-[#e8e9ec]">
+			<ProjectLink href="/editor" ref={symbolEditorLink} hidden tabIndex={-1}>
+				Open new symbol
+			</ProjectLink>
+			{newSymbolOpen && (
+				<Suspense fallback={null}>
+					<CreateSymbolDialog
+						description="Create an empty symbol file in this project and open it for editing."
+						onClose={() => setNewSymbolOpen(false)}
+						onCreate={async (symbolName) => {
+							try {
+								const path = await project.createSymbol(symbolName);
+								project.selectEditorFile(path);
+								setNewSymbolOpen(false);
+								symbolEditorLink.current?.click();
+							} catch (cause) {
+								return cause instanceof Error
+									? cause.message
+									: "Unable to create the symbol.";
+							}
+						}}
+					/>
+				</Suspense>
+			)}
 			<header className="flex min-h-16 items-center justify-between gap-6 border-b border-[#2b2e34] bg-[#17191c] px-7 max-[760px]:flex-wrap max-[760px]:gap-3 max-[760px]:px-[18px] max-[760px]:py-3.5">
 				<div className="flex items-center gap-3 text-[15px] font-semibold tracking-[.035em]">
 					<CircuitBoard
@@ -190,6 +221,7 @@ export function ProjectPage() {
 				>
 					<ProjectLink
 						href="/editor"
+						onClick={() => project.selectEditorFile()}
 						className={`flex items-center gap-2 rounded-[5px] px-3 py-[9px] text-[#a9aeb8] no-underline transition-colors motion-reduce:transition-none hover:bg-[#25282d] hover:text-white max-[760px]:px-2 max-[760px]:py-1.5 max-[760px]:text-[11px] ${focus}`}
 					>
 						<CircuitBoard
@@ -452,6 +484,15 @@ export function ProjectPage() {
 										</span>
 									</div>
 									<div className="flex items-center gap-1.5 max-[760px]:flex-wrap">
+										<button
+											type="button"
+											disabled={busy}
+											className={`${primaryButton} min-h-8 text-[11px]`}
+											onClick={() => setNewSymbolOpen(true)}
+										>
+											<Plus className="size-3.5" aria-hidden="true" />
+											New symbol
+										</button>
 										<span className="mr-[5px] flex items-center gap-1.5 text-[11px] text-[#7d8590] max-[760px]:hidden">
 											<ArrowDownToLine
 												className="size-4 shrink-0 stroke-[1.65]"
@@ -654,6 +695,8 @@ export function ProjectPage() {
 																aria-label={`Open ${file.name}`}
 																className="focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#c7e991] flex items-center justify-end gap-2 py-1.5 text-[11px] text-[#8e97a4] no-underline transition-colors motion-reduce:transition-none after:ml-0.5 after:size-1.5 after:rotate-45 after:border-t after:border-r after:border-current after:content-[''] hover:text-[#c7e991]"
 																onClick={() => {
+																	if (file.href === "/editor")
+																		project.selectEditorFile(file.path);
 																	if (file.asset)
 																		project.selectAsset(file.asset);
 																}}

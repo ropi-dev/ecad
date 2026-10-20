@@ -4,9 +4,11 @@ import { useId, useState } from "react";
 export function CreateSymbolDialog({
 	onClose,
 	onCreate,
+	description = "Name this symbol to add it to your Symbols list.",
 }: {
 	onClose: () => void;
 	onCreate: (name: string) => Promise<string | undefined>;
+	description?: string;
 }) {
 	const inputId = useId();
 	const [name, setName] = useState("");
@@ -26,7 +28,7 @@ export function CreateSymbolDialog({
 						Create symbol
 					</Dialog.Title>
 					<Dialog.Description className="mt-2 text-sm text-[#9ba7b8]">
-						Name this symbol to add it to your Symbols list.
+						{description}
 					</Dialog.Description>
 					<form
 						onSubmit={async (event) => {

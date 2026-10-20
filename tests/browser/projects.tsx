@@ -1,5 +1,6 @@
 import { StrictMode, useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
+import { Scene } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "#/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "#/components/step/StepWorkspace.tsx";
@@ -9,11 +10,17 @@ import { createWebProjectStorage } from "#web/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import "#/styles.css";
 
+Scene.prototype.onAfterRender = function () {
+	document.documentElement.dataset.worksheet = this.getObjectByName("Worksheet frame")?.parent?.name ?? "none";
+};
+
 function ProjectDocument() {
 	const project = useProject();
 	if (!project) throw new Error("Project provider is missing.");
 	const drawing = useSyncExternalStore(project.store.subscribe, project.store.getSnapshot);
-	return <output id="project-document" hidden>{JSON.stringify({ shapes: drawing.shapes, nextShapeId: drawing.nextShapeId, name: project.project?.manifest.name, assets: project.project?.manifest.assets, dirty: project.dirty })}</output>;
+	const editorStore = project.editorSymbol?.store ?? project.store;
+	const editor = useSyncExternalStore(editorStore.subscribe, editorStore.getSnapshot);
+	return <output id="project-document" hidden>{JSON.stringify({ shapes: drawing.shapes, nextShapeId: drawing.nextShapeId, name: project.project?.manifest.name, assets: project.project?.manifest.assets, dirty: project.dirty, symbols: project.project?.symbols, editorShapes: editor.shapes })}</output>;
 }
 
 const storage = createWebProjectStorage();

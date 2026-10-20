@@ -78,7 +78,7 @@ export function SelectionAttributes({
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
-	onCreateSymbol: () => void;
+	onCreateSymbol?: () => void;
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
@@ -243,7 +243,7 @@ export function SelectionAttributes({
 							: `${single.kind} ${single.id}`
 						: `${shapes.length} shapes selected`}
 				</p>
-				{!single && (
+				{!single && onCreateSymbol && (
 					<>
 						<button
 							type="button"

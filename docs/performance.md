@@ -14,6 +14,10 @@ The scenarios cover startup without a project, restoring 10,000 project assets a
 
 The large-project scenario also searches for the last of 10,000 files and filters the list by file type. Both interactions must finish within 750 ms. Search and filter results keep pagination, so the page renders at most 50 file rows.
 
+The `editor-symbol-file` scenario opens a 128-pin symbol file and the project schematic three times each. Symbol editing uses a borderless grid, and schematic editing restores the worksheet. Under the same 4× CPU throttle, opening a file has an interaction p95 budget of 1.2 seconds, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
+
+The `project-new-symbol` scenario creates an empty symbol through the project page, draws and saves its first shape, then reopens the symbol file. Creation through a ready symbol editor must finish within 2 seconds, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.
+
 The `editor-toolbar` scenario opens and switches each tool group, selects Rectangle, closes the group, and returns to Select three times. Under the same 4× CPU throttle, its interaction p95 budget is 750 ms, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts.
 
 The `desktop-storage` scenario measures native Node filesystem operations without CPU throttling. It saves 2,000 drawing shapes and 50 symbols in the legacy layout, migrates them to visible files, edits and saves the drawing, copies a 10 MiB source file, and reopens the project. It checks that migration removes empty `.ecad` folders and that saved data survives reopening. Its budgets allow 2 seconds each for saving and loading, and 3 seconds each for migration and source copying. The source bytes measure storage I/O, not STEP parsing. It also measures saving and loading the home-directory symbol config and reading a 50-file configured directory, with a 1-second budget for each operation. Each report records the Node version and workload sizes.

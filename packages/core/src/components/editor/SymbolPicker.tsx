@@ -58,7 +58,13 @@ export function SymbolPicker({
 								key={definition.id}
 								type="button"
 								aria-label={`Insert ${definition.name}`}
-								className="flex cursor-pointer items-center gap-3 rounded-md p-2 text-left hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+								disabled={definition.children.length === 0}
+								title={
+									definition.children.length === 0
+										? "Add shapes in the symbol editor before placing this symbol."
+										: undefined
+								}
+								className="flex cursor-pointer items-center gap-3 rounded-md p-2 text-left hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
 								onClick={() => {
 									onChoose(definition);
 									setOpen(false);
@@ -83,6 +89,15 @@ export function SymbolPicker({
 }
 
 function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
+	if (!definition.children.length)
+		return (
+			<span
+				className="grid h-10 w-16 shrink-0 place-items-center text-xs text-[#9ba7b8]"
+				aria-hidden="true"
+			>
+				Empty
+			</span>
+		);
 	const { width, height } = createSymbol(0, definition, { x: 0, y: 0 });
 	const padding = Math.max(0.5, Math.max(width, height) * 0.1);
 	return (

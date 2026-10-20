@@ -2,12 +2,9 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
-import {
-	type EditorSymbol,
-	PIN_RADIUS,
-	type PrimitiveShape,
-} from "#/drawing/shapes.ts";
-import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
+import type { EditorSymbol } from "#/drawing/shapes.ts";
+import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
+import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { readFile } from "#/formats/import-effects.ts";
 
 export const SYMBOL_FILE_LIMIT = 1024 * 1024;
@@ -67,10 +64,7 @@ const symbolFileSchema = Schema.Struct({
 	description: Schema.String.pipe(Schema.maxLength(500)),
 	prefix: Schema.String.pipe(Schema.pattern(/^[A-Za-z][A-Za-z0-9_]{0,15}$/)),
 	value: Schema.String.pipe(Schema.maxLength(100)),
-	shapes: Schema.Array(shapeSchema).pipe(
-		Schema.minItems(1),
-		Schema.maxItems(256),
-	),
+	shapes: Schema.Array(shapeSchema).pipe(Schema.maxItems(256)),
 });
 export type SymbolFile = typeof symbolFileSchema.Type;
 export type SymbolLibrary = readonly SymbolFile[];
@@ -133,46 +127,60 @@ export function parseSymbolFile(text: string): SymbolFile {
 	return symbol;
 }
 
-/** Save a reusable definition using the same format as imported libraries. */
-export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
+/** New files start empty; shape insertion uses the normal symbol editor commands. */
+export function createEmptySymbolFile(
+	name: string,
+	existing: SymbolLibrary,
+): SymbolFile {
+	name = name.trim();
+	const base =
+		name
+			.normalize("NFKD")
+			.toLowerCase()
+			.replace(/[\u0300-\u036f]/g, "")
+			.replace(/[^a-z0-9._-]+/g, "-")
+			.replace(/^[^a-z]+/, "")
+			.slice(0, 56)
+			.replace(/[-.]+$/, "") || "symbol";
+	const ids = new Set(
+		[...symbolDefinitions, ...existing].map((symbol) => symbol.id),
+	);
+	let id = base;
+	for (let suffix = 2; ids.has(id); suffix++) id = `${base}-${suffix}`;
 	return parseSymbolFile(
 		JSON.stringify({
 			format: "ecad-symbol",
 			version: 1,
 			units: "mm",
-			id: symbol.definitionId,
-			name: symbol.attributes.name,
+			id,
+			name,
 			description: "",
 			prefix: "U",
-			value: symbol.attributes.value,
-			shapes: symbol.children.map((shape) => {
-				const base = { kind: shape.kind, lineWidth: shape.lineWidth };
-				if (shape.kind === "line" || shape.kind === "wire") {
-					const dx = (Math.cos(shape.rotation) * shape.width) / 2;
-					const dy = (Math.sin(shape.rotation) * shape.width) / 2;
-					return {
-						...base,
-						x1: shape.x - dx,
-						y1: shape.y - dy,
-						x2: shape.x + dx,
-						y2: shape.y + dy,
-					};
-				}
-				const position = { x: shape.x, y: shape.y };
-				if (shape.kind === "pin")
-					return { ...base, ...position, name: shape.name };
-				if (shape.kind === "circle")
-					return { ...base, ...position, radius: shape.width / 2 };
-				const degrees = (shape.rotation * 180) / Math.PI;
-				return {
-					...base,
-					...position,
-					width: shape.width,
-					height: shape.height,
-					rotation: (((degrees % 360) + 540) % 360) - 180,
-				};
-			}),
+			value: "",
+			shapes: [],
 		}),
+	);
+}
+
+/** Save a reusable definition using the same format as imported libraries. */
+export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
+	return parseSymbolFile(
+		JSON.stringify(
+			symbolFileWithShapes(
+				{
+					format: "ecad-symbol",
+					version: 1,
+					units: "mm",
+					id: symbol.definitionId,
+					name: symbol.attributes.name,
+					description: "",
+					prefix: "U",
+					value: symbol.attributes.value,
+					shapes: [],
+				},
+				symbol.children,
+			),
+		),
 	);
 }
 
@@ -308,59 +316,4 @@ export function importSymbolFiles(files: readonly File[], directory = false) {
 	});
 }
 
-export function libraryDefinitions(library: SymbolLibrary): SymbolDefinition[] {
-	return library.map(
-		({
-			shapes,
-			format: _format,
-			version: _version,
-			units: _units,
-			...definition
-		}) => ({
-			...definition,
-			texts: [],
-			children: shapes.map((shape, index): PrimitiveShape => {
-				const base = {
-					id: index + 1,
-					lineWidth: shape.lineWidth ?? 0.254,
-					rotation: 0,
-				};
-				if ("x1" in shape) {
-					const dx = shape.x2 - shape.x1;
-					const dy = shape.y2 - shape.y1;
-					return {
-						...base,
-						kind: shape.kind,
-						x: (shape.x1 + shape.x2) / 2,
-						y: (shape.y1 + shape.y2) / 2,
-						width: Math.hypot(dx, dy),
-						height: 0.254,
-						rotation: Math.atan2(dy, dx),
-					};
-				}
-				if ("radius" in shape)
-					return {
-						...base,
-						kind: shape.kind,
-						x: shape.x,
-						y: shape.y,
-						width: shape.radius * 2,
-						height: shape.radius * 2,
-					};
-				if (shape.kind === "pin")
-					return {
-						...base,
-						...shape,
-						name: shape.name ?? "",
-						width: 2 * PIN_RADIUS,
-						height: 2 * PIN_RADIUS,
-					};
-				return {
-					...base,
-					...shape,
-					rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
-				};
-			}),
-		}),
-	);
-}
+export { libraryDefinitions } from "#/drawing/symbol-file.ts";

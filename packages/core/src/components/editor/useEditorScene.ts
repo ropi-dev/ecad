@@ -15,20 +15,21 @@ export function useEditorScene(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
 	previews: EditorShape[] = [],
-	sheet: SheetSize = defaultSheet,
+	sheet: SheetSize | null = defaultSheet,
 ) {
 	const [renderer, setRenderer] = useState<DrawingRenderer>();
+	const width = sheet?.width;
+	const height = sheet?.height;
+	const name = sheet?.name;
 	useEffect(() => {
 		const next = createDrawingRenderer(
-			buildWorksheetDisplay({
-				width: sheet.width,
-				height: sheet.height,
-				name: sheet.name,
-			}),
+			width !== undefined && height !== undefined
+				? buildWorksheetDisplay({ width, height, name })
+				: null,
 		);
 		setRenderer(next);
 		return () => next.dispose();
-	}, [sheet.width, sheet.height, sheet.name]);
+	}, [width, height, name]);
 	const display = useMemo(
 		() => buildDrawingDisplay(shapes, selectedIds, previews),
 		[shapes, selectedIds, previews],

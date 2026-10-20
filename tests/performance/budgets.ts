@@ -1,4 +1,16 @@
 export const budgets = {
+	"project-new-symbol": {
+		createMs: 2000,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
+	"editor-symbol-file": {
+		interactionP95Ms: 1200,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-toolbar": {
 		interactionP95Ms: 750,
 		domNodes: 1500,
