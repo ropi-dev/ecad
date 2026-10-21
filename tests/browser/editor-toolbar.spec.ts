@@ -196,6 +196,13 @@ test.describe("mobile touch scrolling", () => {
 		const session = await page.context().newCDPSession(page);
 		const startX = box.x + box.width * 0.8;
 		const y = box.y + box.height / 2;
+		await row.evaluate((element) => {
+			element.addEventListener(
+				"scrollend",
+				() => element.setAttribute("data-scroll-ended", "true"),
+				{ once: true },
+			);
+		});
 		await session.send("Input.dispatchTouchEvent", {
 			type: "touchStart",
 			touchPoints: [{ x: startX, y }],
@@ -216,6 +223,8 @@ test.describe("mobile touch scrolling", () => {
 			.poll(() => row.evaluate((element) => element.scrollLeft))
 			.toBeGreaterThan(0);
 		expect(await page.locator("#editor-scene").textContent()).toBe(camera);
+		// Focus scrolling must start after touch momentum has finished.
+		await expect(row).toHaveAttribute("data-scroll-ended", "true");
 		await main.getByRole("button", { name: "Zoom out", exact: true }).focus();
 		await expect
 			.poll(() => row.evaluate((element) => element.scrollLeft))
