@@ -409,14 +409,15 @@ test("normalization cleans pointer precision remnants and preserves attached bra
 	const continuation = segment(5, 220.000012636, 100.000004768, 240, 100.000004768);
 	const branch = segment(6, 100, 130, 80, 130);
 	const result = normalizeWireSegments([collapsed, first, nearDuplicate, nearTouching, continuation, branch], new Set([nearDuplicate.id]));
-	assert.deepEqual(result.shapes.map(({ id }) => id), [3, 4, 6]);
-	assertSegment(result.shapes, 3, 100.000012636, 160.000004768, 100.000012636, 100);
+	assert.deepEqual(result.shapes.map(({ id }) => id), [3, 2, 4, 6]);
+	assertSegment(result.shapes, 3, 100.000012636, 160.000004768, 100.000012636, 130);
+	assertSegment(result.shapes, 2, 100.000012636, 130, 100.000012636, 100);
 	assertSegment(result.shapes, 4, 200, 100, 240, 100);
 	assert.equal(result.idMap.has(collapsed.id), false);
-	assert.equal(result.idMap.get(first.id), nearDuplicate.id);
+	assert.equal(result.idMap.get(first.id), first.id);
 	const host = result.shapes.find(({ id }) => id === nearDuplicate.id)!;
 	const moved = moveShapes([host], { x: 20, y: 10 }, 0, host, result.shapes);
-	assert.deepEqual(moved.map(({ id }) => id), [3, 6]);
+	assert.deepEqual(moved.map(({ id }) => id), [3, 2, 6]);
 	assertSegment(moved, 6, 120, 140, 80, 140);
 	const distant = segment(7, 220.001, 100, 240, 100);
 	const independent = moveShapes([nearTouching], { x: 0, y: 10 }, 0, nearTouching, [nearTouching, distant]);
@@ -471,4 +472,67 @@ test("text resizing preserves aspect ratio, font size and the opposite corner", 
 	close(moved.x, 10);
 	close(moved.y, 30);
 	assert.equal(moved.kind === "text" && moved.text, "Label");
+});
+
+for (const vertical of [false, true]) test(`normalization splits ${vertical ? "vertical" : "horizontal"} trunks at each branch and retains IDs on repeat`, () => {
+	const point = (along: number, across: number) => vertical ? { x: across, y: along } : { x: along, y: across };
+	const trunk = { ...drawShape(1, "wire", point(100, 0), point(0, 0)), lineWidth: 0.8 };
+	const branches = [25, 75].map((along, index) => drawShape(index + 2, "wire", point(along, -20), point(along, 0)));
+	const original = [trunk, ...branches];
+	const copy = structuredClone(original);
+	const result = normalizeWireSegments(original);
+	assert.equal(result.shapes.length, 5);
+	assert.equal(result.nextShapeId, 6);
+	assert.equal(new Set(result.shapes.map(({ id }) => id)).size, 5);
+	const pieces = result.shapes.filter(({ lineWidth }) => lineWidth === 0.8);
+	assert.deepEqual(pieces.map(({ width }) => width), [25, 50, 25]);
+	assert.equal(pieces[0].id, 1);
+	for (const along of [25, 75]) {
+		const at = point(along, 0);
+		assert.equal(result.shapes.flatMap(resizeHandles).filter((end) => Math.hypot(end.x - at.x, end.y - at.y) < 1e-6).length, 3);
+	}
+	const again = normalizeWireSegments(result.shapes, new Set(), result.nextShapeId);
+	assert.deepEqual(again.shapes, result.shapes);
+	assert.equal(again.nextShapeId, result.nextShapeId);
+	assert.deepEqual(original, copy);
+});
+
+test("opposite branches form four segments and removing them rejoins the trunk", () => {
+	const trunk = segment(1, 0, 0, 100, 0);
+	const up = segment(2, 50, 0, 50, 20);
+	const down = segment(3, 50, -20, 50, 0);
+	const result = normalizeWireSegments([trunk, up, down]);
+	assert.equal(result.shapes.length, 4);
+	assert.equal(result.shapes.flatMap(resizeHandles).filter(({ x, y }) => Math.abs(x - 50) < 1e-6 && Math.abs(y) < 1e-6).length, 4);
+	assert.deepEqual(normalizeWireSegments(result.shapes).shapes, result.shapes);
+	const rejoined = normalizeWireSegments(result.shapes.filter(({ rotation }) => rotation === 0));
+	assert.equal(rejoined.shapes.length, 1);
+	assert.equal(rejoined.shapes[0].width, 100);
+});
+
+for (const vertical of [false, true]) for (const reversed of [false, true]) test(`pin terminals split ${vertical ? "vertical" : "horizontal"} wires with reversed=${reversed}`, () => {
+	const point = (along: number, across = 0) => vertical ? { x: across, y: along } : { x: along, y: across };
+	const trunk = { ...drawShape(1, "wire", point(reversed ? 100 : 0), point(reversed ? 0 : 100)), lineWidth: 0.8 };
+	const pins = [point(0), point(25), point(25), point(75), point(100), point(50, 0.001)].map((at, index) => drawShape(index + 2, "pin", at, at));
+	const original = [trunk, ...pins];
+	const copy = structuredClone(original);
+	const result = normalizeWireSegments(original);
+	const pieces = result.shapes.filter((shape) => shape.kind === "wire");
+	assert.deepEqual(pieces.map(({ width }) => width), [25, 50, 25]);
+	assert.ok(pieces.every(({ lineWidth }) => lineWidth === 0.8));
+	assert.deepEqual(result.idsBySource.get(1), pieces.map(({ id }) => id));
+	assert.deepEqual(result.shapes.filter((shape) => shape.kind === "pin"), pins);
+	const repeated = normalizeWireSegments(result.shapes, new Set(), result.nextShapeId);
+	assert.deepEqual(repeated.shapes, result.shapes);
+	assert.equal(repeated.nextShapeId, result.nextShapeId);
+	assert.equal(normalizeWireSegments(pieces).shapes.length, 1);
+	assert.deepEqual(original, copy);
+});
+
+test("a pin at a crossing splits both wires into four ends", () => {
+	const at = { x: 50, y: 0 };
+	const result = normalizeWireSegments([segment(1, 0, 0, 100, 0), segment(2, 50, -20, 50, 20), drawShape(3, "pin", at, at)]);
+	const wires = result.shapes.filter((shape) => shape.kind === "wire");
+	assert.equal(wires.length, 4);
+	assert.equal(wires.flatMap(resizeHandles).filter(({ x, y }) => Math.hypot(x - at.x, y - at.y) < 1e-6).length, 4);
 });

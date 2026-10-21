@@ -1,4 +1,18 @@
 export const budgets = {
+	"editor-pin-junction": {
+		interactionP95Ms: 750,
+		normalizationP95Ms: 100,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
+	"editor-wire-junction": {
+		interactionP95Ms: 750,
+		normalizationP95Ms: 100,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-symbol-duplicate": {
 		interactionP95Ms: 750,
 		domNodes: 1500,

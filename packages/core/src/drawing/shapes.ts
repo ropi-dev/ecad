@@ -631,18 +631,46 @@ export function findWireConnection(
 ): Point | undefined {
 	let nearest: Point | undefined;
 	let distance = tolerance;
-	for (const candidate of wireConnectionPoints(shapes)) {
+	const wires = shapes
+		.filter(
+			(shape) => shape.kind === "wire" && shape.width > connectionTolerance,
+		)
+		.map((shape) => ({
+			shape,
+			start: localToWorld(shape, -shape.width / 2, 0),
+			end: localToWorld(shape, shape.width / 2, 0),
+		}));
+	const consider = (candidate: Point) => {
 		if (
 			start &&
 			Math.hypot(candidate.x - start.x, candidate.y - start.y) <=
 				connectionTolerance
 		)
-			continue;
+			return;
 		const next = Math.hypot(candidate.x - point.x, candidate.y - point.y);
 		if (next <= distance) {
 			nearest = candidate;
 			distance = next;
 		}
+	};
+	// Prefer exact terminals and existing junctions before projecting onto a segment.
+	for (const candidate of [
+		...shapes.flatMap(pinTerminals),
+		...wires.flatMap(({ start, end }) => [start, end]),
+	])
+		consider(candidate);
+	if (nearest) return nearest;
+	for (const wire of wires) {
+		const vertical =
+			Math.abs(wire.end.x - wire.start.x) < Math.abs(wire.end.y - wire.start.y);
+		const along = vertical ? "y" : "x";
+		const across = vertical ? "x" : "y";
+		const candidate = { ...point, [across]: wire.shape[across] };
+		candidate[along] = Math.max(
+			Math.min(wire.start[along], wire.end[along]),
+			Math.min(candidate[along], Math.max(wire.start[along], wire.end[along])),
+		);
+		consider(candidate);
 	}
 	return nearest;
 }
@@ -672,7 +700,16 @@ export function routeWire(
 export function normalizeWireSegments(
 	shapes: EditorShape[],
 	preferredIds: ReadonlySet<number> = new Set(),
-): { shapes: EditorShape[]; idMap: Map<number, number> } {
+	nextShapeId = shapes.reduce(
+		(maximum, shape) => Math.max(maximum, shape.id),
+		0,
+	) + 1,
+): {
+	shapes: EditorShape[];
+	idMap: Map<number, number>;
+	idsBySource: Map<number, number[]>;
+	nextShapeId: number;
+} {
 	const wires = shapes.flatMap((shape, index) => {
 		if (shape.kind !== "wire" || shape.width <= normalizationTolerance)
 			return [];
@@ -692,6 +729,7 @@ export function normalizeWireSegments(
 		];
 	});
 	const parents = wires.map((_, index) => index);
+	const junctions: Point[] = shapes.flatMap(pinTerminals);
 	const root = (index: number): number => {
 		while (parents[index] !== index) {
 			parents[index] = parents[parents[index]];
@@ -703,6 +741,23 @@ export function normalizeWireSegments(
 		for (let second = first + 1; second < wires.length; second++) {
 			const a = wires[first];
 			const b = wires[second];
+			if (a.vertical !== b.vertical) {
+				const horizontal = a.vertical ? b : a;
+				const vertical = a.vertical ? a : b;
+				const x = vertical.coordinate;
+				const y = horizontal.coordinate;
+				if (
+					x >= horizontal.min - normalizationTolerance &&
+					x <= horizontal.max + normalizationTolerance &&
+					y >= vertical.min - normalizationTolerance &&
+					y <= vertical.max + normalizationTolerance &&
+					(Math.abs(x - horizontal.min) <= normalizationTolerance ||
+						Math.abs(x - horizontal.max) <= normalizationTolerance ||
+						Math.abs(y - vertical.min) <= normalizationTolerance ||
+						Math.abs(y - vertical.max) <= normalizationTolerance)
+				)
+					junctions.push({ x, y });
+			}
 			if (
 				a.vertical === b.vertical &&
 				a.shape.lineWidth === b.shape.lineWidth &&
@@ -720,39 +775,87 @@ export function normalizeWireSegments(
 		cluster.push(wire);
 		clusters.set(key, cluster);
 	}
-	const replacements = new Map<number, EditorShape>();
+	const replacements = new Map<number, EditorShape[]>();
 	const idMap = new Map<number, number>();
+	const idsBySource = new Map<number, number[]>();
 	for (const cluster of clusters.values()) {
 		const survivor =
 			cluster.find(({ shape }) => preferredIds.has(shape.id)) ?? cluster[0];
-		for (const { shape } of cluster) idMap.set(shape.id, survivor.shape.id);
-		if (cluster.length === 1) {
-			replacements.set(cluster[0].index, survivor.shape);
-			continue;
-		}
 		const min = Math.min(...cluster.map((wire) => wire.min));
 		const max = Math.max(...cluster.map((wire) => wire.max));
-		const start = survivor.forward ? min : max;
-		const end = survivor.forward ? max : min;
+		// Pin terminals and wire endpoints create junctions. Bare crossings stay separate.
+		const cuts = junctions
+			.flatMap((point) => {
+				const along = survivor.vertical ? point.y : point.x;
+				const across = survivor.vertical ? point.x : point.y;
+				return Math.abs(across - survivor.coordinate) <=
+					normalizationTolerance &&
+					along > min + normalizationTolerance &&
+					along < max - normalizationTolerance
+					? [along]
+					: [];
+			})
+			.sort((a, b) => a - b)
+			.filter(
+				(value, index, values) =>
+					index === 0 || value - values[index - 1] > normalizationTolerance,
+			);
+		if (cluster.length === 1 && cuts.length === 0) {
+			idMap.set(survivor.shape.id, survivor.shape.id);
+			idsBySource.set(survivor.shape.id, [survivor.shape.id]);
+			replacements.set(cluster[0].index, [survivor.shape]);
+			continue;
+		}
 		const point = (value: number): Point =>
 			survivor.vertical
 				? { x: survivor.coordinate, y: value }
 				: { x: value, y: survivor.coordinate };
-		replacements.set(cluster[0].index, {
-			...drawShape(survivor.shape.id, "wire", point(start), point(end)),
-			lineWidth: survivor.shape.lineWidth,
+		const boundaries = [min, ...cuts, max];
+		if (!survivor.forward) boundaries.reverse();
+		const usedIds = new Set<number>();
+		const segments = boundaries.slice(1).map((end, index) => {
+			const start = boundaries[index];
+			const sources = cluster.filter(
+				(wire) =>
+					Math.min(wire.max, Math.max(start, end)) -
+						Math.max(wire.min, Math.min(start, end)) >
+					normalizationTolerance,
+			);
+			const available = sources.filter(({ shape }) => !usedIds.has(shape.id));
+			const source =
+				available.find(({ shape }) => preferredIds.has(shape.id)) ??
+				available[0];
+			const id = source?.shape.id ?? nextShapeId++;
+			usedIds.add(id);
+			for (const { shape } of sources) {
+				if (!idMap.has(shape.id)) idMap.set(shape.id, id);
+				const ids = idsBySource.get(shape.id) ?? [];
+				ids.push(id);
+				idsBySource.set(shape.id, ids);
+			}
+			return {
+				...drawShape(id, "wire", point(start), point(end)),
+				lineWidth: survivor.shape.lineWidth,
+			};
 		});
+		// Keep retained source IDs mapped to themselves, even if they span several pieces.
+		for (const { id } of segments)
+			if (cluster.some(({ shape }) => shape.id === id)) idMap.set(id, id);
+		replacements.set(cluster[0].index, segments);
 	}
 	return {
 		shapes: shapes.flatMap((shape, index) => {
 			if (shape.kind !== "wire") {
 				idMap.set(shape.id, shape.id);
+				idsBySource.set(shape.id, [shape.id]);
 				return [shape];
 			}
 			const replacement = replacements.get(index);
-			return replacement ? [replacement] : [];
+			return replacement ?? [];
 		}),
 		idMap,
+		idsBySource,
+		nextShapeId,
 	};
 }
 

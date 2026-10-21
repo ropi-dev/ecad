@@ -352,16 +352,18 @@ function EditorCanvas({
 	const acceptEdit = (
 		result: CommandResult,
 		previousHistoryId: number,
-		ids = currentSelection.current,
+		ids = new Set(
+			[...currentSelection.current].flatMap(
+				(id) => result.idsBySource.get(id) ?? [],
+			),
+		),
 	) => {
 		setPreviewShapes(null);
 		const committed = store.getSnapshot();
 		const existingIds = new Set(committed.shapes.map((shape) => shape.id));
 		const selection = new Set<number>();
 		for (const id of ids) {
-			const survivor = result.idMap.get(id);
-			if (survivor !== undefined && existingIds.has(survivor))
-				selection.add(survivor);
+			if (existingIds.has(id)) selection.add(id);
 		}
 		applySelection(selection);
 		const historyId = committed.history.currentId;
@@ -369,10 +371,23 @@ function EditorCanvas({
 			historySelection.current.set(historyId, [...selection]);
 	};
 	const placeShapes = (next: EditorShape[], label: string) => {
-		const previousHistoryId = store.getSnapshot().history.currentId;
+		const previous = store.getSnapshot();
 		const result = execute(placeShapesEffect(next, label));
-		if (result) acceptEdit(result, previousHistoryId, new Set(result.ids));
-		else setPreviewShapes(null);
+		if (result) {
+			// A route's last leg can overlap the trunk. Its split pieces still belong
+			// to the existing wire, even when normalization gives one the new leg's ID.
+			const splitExistingWires = new Set(
+				previous.shapes.flatMap((shape) => {
+					const pieces = result.idsBySource.get(shape.id) ?? [];
+					return shape.kind === "wire" && pieces.length > 1 ? pieces : [];
+				}),
+			);
+			acceptEdit(
+				result,
+				previous.history.currentId,
+				new Set(result.ids.filter((id) => !splitExistingWires.has(id))),
+			);
+		} else setPreviewShapes(null);
 	};
 	const commitReplacements = (replacements: EditorShape[], label: string) => {
 		const previousHistoryId = store.getSnapshot().history.currentId;
