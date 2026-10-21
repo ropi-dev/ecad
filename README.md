@@ -86,7 +86,13 @@ npm test
 npm run test:browser
 ```
 
-Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`.
+Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
+
+GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web and desktop builds as separate checks. The browser workflow installs Chromium with its system dependencies and runs the browser suite with the existing software rendering settings. Download `chromium-results` from the workflow run for the HTML report and failure traces. Reports expire after seven days.
+
+Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `npm ci`, and cache npm downloads. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
+
+Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `npm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `npm run lint`. Formatting and import organization are available through `npm run check`.
 
 Capture performance before feature work with `npm run perf:baseline`, then run `npm run perf` after changes to check startup, large projects, drawing, and imports against budgets and the local baseline. `npm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
 
