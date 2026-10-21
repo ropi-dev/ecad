@@ -55,6 +55,7 @@ import {
 	hitShape,
 	intersectsSelection,
 	moveShapes,
+	openPins,
 	type ResizeHandle,
 	resizeHandles,
 	resizeShape,
@@ -117,6 +118,7 @@ interface Drag {
 	created: boolean;
 	valid: boolean;
 	additive: boolean;
+	wireStart?: Point;
 }
 interface Marquee {
 	start: Point;
@@ -228,10 +230,14 @@ function EditorCanvas({
 			return store.getSnapshot().nextShapeId;
 		},
 	};
+	const previews = useMemo(
+		() => wirePreview ?? (symbolPreview ? [symbolPreview] : []),
+		[wirePreview, symbolPreview],
+	);
 	const { scene, updateScene } = useEditorScene(
 		shapes,
 		selectedIds,
-		wirePreview ?? (symbolPreview ? [symbolPreview] : []),
+		previews,
 		isSymbol ? null : sheet,
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
@@ -317,6 +323,11 @@ function EditorCanvas({
 		setDraftShapes(next);
 	};
 	const applySelection = (ids: Set<number>) => {
+		if (
+			ids.size === currentSelection.current.size &&
+			[...ids].every((id) => currentSelection.current.has(id))
+		)
+			return;
 		currentSelection.current = ids;
 		setSelectedIds(ids);
 	};
@@ -403,6 +414,10 @@ function EditorCanvas({
 		setConnectionHover(null);
 		setSymbolPreview(null);
 	};
+	const startWire = (connection: Point, pointerId: number) => {
+		wireChain.current = { start: connection, pointerId };
+		previewWire(connection);
+	};
 	const updateDrag = (event: ReactPointerEvent) => {
 		const active = drag.current;
 		if (!active || active.pointerId !== event.pointerId) return;
@@ -414,6 +429,7 @@ function EditorCanvas({
 		active.moved ||=
 			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) >=
 			3;
+		if (active.wireStart && !active.moved) return;
 		// Selecting an off-grid shape must not move or resize it.
 		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
 			return;
@@ -497,6 +513,11 @@ function EditorCanvas({
 		if (cancel || (active.created && !active.valid)) {
 			setPreviewShapes(null);
 			applySelection(active.previousSelection);
+		} else if (active.wireStart && !active.moved) {
+			setPreviewShapes(null);
+			applySelection(new Set());
+			setTool("wire");
+			startWire(active.wireStart, active.pointerId);
 		} else if (active.created) {
 			const createdIds = new Set(active.originals.map((shape) => shape.id));
 			placeShapes(
@@ -755,6 +776,35 @@ function EditorCanvas({
 								? rulerSpacing(snapshot.current.camera.scale).minor
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
+						let wireStart: Point | undefined;
+						if (tool === "select" && !event.shiftKey && !resize) {
+							let connection: ReturnType<typeof openPins>[number] | undefined;
+							let distance = 8 / (snapshot.current?.camera.scale ?? 1);
+							const candidates = measurePerformance(
+								"editor.pin-hit-test",
+								() =>
+									openPins(currentShapes.current, {
+										point,
+										tolerance: distance,
+									}),
+								{ shapes: currentShapes.current.length },
+							);
+							for (const candidate of candidates) {
+								const terminal = candidate.point;
+								const next = Math.hypot(
+									terminal.x - point.x,
+									terminal.y - point.y,
+								);
+								if (next <= distance) {
+									connection = candidate;
+									distance = next;
+								}
+							}
+							if (connection) {
+								wireStart = connection.point;
+								shape = connection.shape;
+							}
+						}
 						if (tool === "text") {
 							const text = createTextShape(nextId.current, start);
 							placeShapes([text], "Draw text");
@@ -789,11 +839,7 @@ function EditorCanvas({
 									8 / (snapshot.current?.camera.scale ?? 1),
 								);
 								if (!connection) return;
-								wireChain.current = {
-									start: connection,
-									pointerId: event.pointerId,
-								};
-								previewWire(connection);
+								startWire(connection, event.pointerId);
 								return;
 							}
 							const next = previewWire(point);
@@ -819,7 +865,7 @@ function EditorCanvas({
 							shape = drawShape(nextId.current, tool, start, start);
 							setPreviewShapes([...currentShapes.current, shape]);
 						} else if (resize) shape = resize.shape;
-						else
+						else if (!shape)
 							shape = [...shapes]
 								.reverse()
 								.find((candidate) =>
@@ -873,6 +919,7 @@ function EditorCanvas({
 							created,
 							valid: false,
 							additive: event.shiftKey,
+							wireStart,
 						};
 						canvas.setPointerCapture(event.pointerId);
 					}}
@@ -1126,7 +1173,7 @@ function EditorCanvas({
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. For wires, start at a pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (
