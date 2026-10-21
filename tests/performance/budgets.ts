@@ -5,6 +5,12 @@ export const budgets = {
 		scriptBytes: 3_000_000,
 		frameP95Ms: 500,
 	},
+	"editor-symbol-text": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-pin-heavy": {
 		interactionP95Ms: 750,
 		domNodes: 1500,

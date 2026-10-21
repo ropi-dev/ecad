@@ -7,6 +7,7 @@ import {
 	type ShapeKind,
 	selectionSize,
 	symbolShapes,
+	symbolTextPosition,
 	symbolTextShapes,
 } from "./shapes";
 
@@ -106,9 +107,9 @@ function displayShape(
 		renderOrder,
 	};
 	if (shape.kind === "symbol") {
-		const labels = shape.texts.filter(
-			(label) => shape.attributes[label.attribute],
-		);
+		const labels = shape.texts
+			.filter((label) => shape.attributes[label.attribute])
+			.map((label) => ({ ...label, ...symbolTextPosition(shape, label) }));
 		display.children = symbolTextShapes(shape).map((text, index) => ({
 			...displayShape(
 				text,

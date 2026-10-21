@@ -73,6 +73,9 @@ export function createSymbol(
 		lineWidth: children[0].lineWidth,
 		children,
 		texts: definition.texts.map((label) => ({ ...label })),
+		textPositions: Object.fromEntries(
+			definition.texts.map(({ attribute, x, y }) => [attribute, { x, y }]),
+		),
 		attributes: { name: definition.name, reference, value: definition.value },
 	};
 }

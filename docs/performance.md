@@ -30,6 +30,8 @@ The timed user-symbol and new-symbol interactions check readiness each animation
 
 The symbol timing limits were set about 30% above the repeated-run medians recorded in [the October 21 CI run](https://github.com/rolaca11/ecad/actions/runs/39650112518). Node 24.14.0 recorded 2,267.6 ms for creation and 1,526.2 ms for user-symbol interaction p95. The creation measurement includes loading the dialog and editor, entering the name, and saving the file. The user-symbol measurement includes choosing a tool, drawing, and the 400 ms autosave debounce. The previous 2-second and 1.5-second limits failed on these existing workflows. These allowances came from hosted-runner measurements. Local baseline comparisons retain their existing regression limits. DOM, script-size, and frame budgets are unchanged.
 
+The `editor-symbol-text` scenario places a resistor and edits its reference and value label positions three times each, checking that the symbol center stays fixed. Under the same 4× CPU throttle, its interaction p95 budget is 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
+
 The `editor-toolbar` scenario opens and switches each tool group, selects Rectangle, closes the group, and returns to Select three times. Under the same 4× CPU throttle, its interaction p95 budget is 750 ms, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts.
 
 The `editor-pin-wire` scenario clicks an unconnected pin in Select mode to start a wire, places a segment, ends the chain, and undoes the segment three times. Starting the wire has an interaction p95 budget of 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.
