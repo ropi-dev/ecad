@@ -17,7 +17,8 @@ for (const kind of ["line", "wire"] as const) {
 					rotation,
 				};
 				const shape = grouped ? createSymbolFromShapes(2, [line]) : line;
-				const display = buildDrawingDisplay([shape], new Set()).shapes[0];
+				const drawing = buildDrawingDisplay([shape], new Set());
+				const display = grouped && kind === "wire" ? drawing.connections[0] : drawing.shapes[0];
 				const geometry = createShapeGeometry(display.geometry);
 				const material = new MeshBasicMaterial();
 				const mesh = new Mesh(geometry, material);

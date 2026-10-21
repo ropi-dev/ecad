@@ -1,9 +1,12 @@
 import {
 	drawShape,
 	type EditorShape,
+	openPins,
 	openWireEnds,
+	PIN_RADIUS,
 	type ShapeKind,
 	selectionSize,
+	symbolShapes,
 	symbolTextShapes,
 } from "./shapes";
 
@@ -24,13 +27,14 @@ export interface DrawingTransform {
 /** Geometry contains only the dimensions needed to draw an object. */
 export type DrawingGeometry =
 	| (GeometrySize & { kind: ShapeKind })
+	| (GeometrySize & { kind: "pin-halo" })
 	| (GeometrySize & {
 			kind: "symbol";
 			children: (GeometrySize &
 				DrawingTransform & { kind: Exclude<ShapeKind, "text"> })[];
 	  });
 
-export type DrawingAppearance = "stroke" | "selected";
+export type DrawingAppearance = "stroke" | "pin" | "wire" | "selected";
 
 export interface DisplayShape extends DrawingTransform {
 	key: string;
@@ -51,6 +55,8 @@ export interface DrawingDisplay {
 	shapes: DisplayShape[];
 	selections: DisplaySelection[];
 	terminals: DisplayShape[];
+	connections: DisplayShape[];
+	halos: DisplayShape[];
 	previews: DisplayShape[];
 }
 
@@ -62,8 +68,9 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 		width,
 		height,
 		lineWidth,
-		children: shape.children.map(
-			({ kind, x, y, width, height, lineWidth, rotation }) => ({
+		children: shape.children
+			.filter(({ kind }) => kind !== "pin" && kind !== "wire")
+			.map(({ kind, x, y, width, height, lineWidth, rotation }) => ({
 				kind,
 				x,
 				y,
@@ -71,8 +78,7 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 				height,
 				lineWidth,
 				rotation,
-			}),
-		),
+			})),
 	};
 }
 
@@ -95,7 +101,10 @@ function displayShape(
 				? shape.lineWidth
 				: shape.height,
 		rotation: shape.rotation,
-		appearance,
+		appearance:
+			appearance === "stroke" && (shape.kind === "pin" || shape.kind === "wire")
+				? shape.kind
+				: appearance,
 		...(shape.kind === "text" ? { text: shape.text } : {}),
 		renderOrder,
 	};
@@ -153,10 +162,44 @@ export function buildDrawingDisplay(
 				{ ...terminal, ...point },
 				"wire-terminal",
 				"",
-				selectedIds.has(shape.id) ? "selected" : "stroke",
+				selectedIds.has(shape.id) ? "selected" : "wire",
 				shapes.length + 1,
 			),
 		),
+		connections: shapes.flatMap((shape, index) =>
+			shape.kind === "symbol"
+				? symbolShapes(shape).flatMap((child) =>
+						child.kind === "pin" || child.kind === "wire"
+							? [
+									displayShape(
+										child,
+										`shape:${shape.id}:connection:${child.id}`,
+										`${child.kind} ${shape.id}:${child.id}`,
+										selectedIds.has(shape.id) ? "selected" : "stroke",
+										index + 1,
+									),
+								]
+							: [],
+					)
+				: [],
+		),
+		halos: openPins(shapes).map(({ shape, point }, index) => ({
+			...displayShape(
+				{ ...terminal, ...point },
+				`pin-halo:${shape.id}:${index}`,
+				"editor-pin-halo",
+				selectedIds.has(shape.id) ? "selected" : "pin",
+				shapes.length + 1,
+			),
+			width: PIN_RADIUS * 4,
+			height: PIN_RADIUS * 4,
+			geometry: {
+				kind: "pin-halo",
+				width: PIN_RADIUS * 4,
+				height: PIN_RADIUS * 4,
+				lineWidth: 0.1,
+			},
+		})),
 		previews: previews.flatMap((preview, index) => {
 			if (preview.width <= 0) return [];
 			const name =
@@ -175,6 +218,21 @@ export function buildDrawingDisplay(
 					"selected",
 					shapes.length + 2,
 				),
+				...(preview.kind === "symbol"
+					? symbolShapes(preview).flatMap((child) =>
+							child.kind === "pin" || child.kind === "wire"
+								? [
+										displayShape(
+											child,
+											`preview:${preview.id}:connection:${child.id}`,
+											"editor-connection-preview",
+											"selected",
+											shapes.length + 2,
+										),
+									]
+								: [],
+						)
+					: []),
 			];
 		}),
 	};

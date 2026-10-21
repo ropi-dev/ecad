@@ -569,6 +569,9 @@ test("symbol-references", async ({ page }, testInfo) => {
   await page.locator("canvas").click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
   await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Reference parent");
  });
+ await expect.poll(async () => (await report(page)).events.some(
+  event => event.name === "project.save" && event.status === "ok" && event.data?.shapes === 1,
+ )).toBe(true);
  await expect.poll(async () => page.evaluate(async () => {
   const root = await navigator.storage.getDirectory();
   const directory = await root.getDirectoryHandle("Symbol references");

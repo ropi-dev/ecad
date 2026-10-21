@@ -3,6 +3,7 @@ import {
 	CircleGeometry,
 	Path,
 	PlaneGeometry,
+	RingGeometry,
 	Shape,
 	ShapeGeometry,
 	Vector2,
@@ -53,6 +54,7 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	}
 	if (shape.kind === "text") return new PlaneGeometry(1, 1);
 	if (shape.kind === "pin") return new CircleGeometry(0.5, 32);
+	if (shape.kind === "pin-halo") return new RingGeometry(0.4, 0.5, 32);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();
 	const halfStroke = lineWidth / 2;

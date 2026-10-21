@@ -551,6 +551,31 @@ export function pinTerminals(shape: EditorShape): Point[] {
 		: [];
 }
 
+/** Free pins include symbol terminals and exclude connections along wire interiors. */
+export function openPins(shapes: EditorShape[]) {
+	const pins = shapes.flatMap((shape) =>
+		pinTerminals(shape).map((point) => ({ shape, point })),
+	);
+	const wires = shapes
+		.filter((shape) => shape.kind === "wire")
+		.map((shape) => ({
+			start: localToWorld(shape, -shape.width / 2, 0),
+			end: localToWorld(shape, shape.width / 2, 0),
+		}));
+	return pins.filter(
+		(pin) =>
+			!wires.some(({ start, end }) => pointOnWire(pin.point, start, end)) &&
+			!pins.some(
+				(other) =>
+					other !== pin &&
+					Math.hypot(
+						other.point.x - pin.point.x,
+						other.point.y - pin.point.y,
+					) <= connectionTolerance,
+			),
+	);
+}
+
 export function openWireEnds(shapes: EditorShape[]) {
 	const pins = shapes.flatMap(pinTerminals);
 	const wires = shapes

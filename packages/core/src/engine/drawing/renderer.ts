@@ -68,6 +68,9 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const stroke = own(
 			() => new MeshBasicMaterial({ color: "#76c4c0", depthTest: false }),
 		);
+		const connection = own(
+			() => new MeshBasicMaterial({ color: "#ef8f9c", depthTest: false }),
+		);
 		const selected = own(
 			() => new MeshBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
@@ -75,7 +78,9 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			() => new LineBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
 		const materialFor = (display: DisplayShape) => {
-			const color = display.appearance === "selected" ? selected : stroke;
+			const color = { stroke, pin: connection, wire: connection, selected }[
+				display.appearance
+			];
 			if (display.text === undefined) return color;
 			let cached = texts.get(display.key);
 			if (!cached || cached.text !== display.text) {
@@ -120,6 +125,8 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			const meshes = [
 				...display.shapes,
 				...display.terminals,
+				...display.connections,
+				...display.halos,
 				...display.previews,
 			];
 			const allMeshes = meshes.flatMap((mesh) => [
@@ -160,6 +167,15 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			for (const terminal of display.terminals)
 				terminals.add(meshFor(terminal));
 			drawing.add(terminals);
+			for (const [name, displays] of [
+				["editor-symbol-connections", display.connections],
+				["editor-pin-halos", display.halos],
+			] as const) {
+				const group = new Group();
+				group.name = name;
+				for (const display of displays) group.add(meshFor(display));
+				drawing.add(group);
+			}
 			if (drawing.parent !== root) root.add(drawing);
 			clearPreviews();
 			for (const preview of display.previews) {
