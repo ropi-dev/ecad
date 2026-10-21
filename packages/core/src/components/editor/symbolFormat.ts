@@ -26,6 +26,11 @@ const shapeSchema = Schema.Union(
 		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
 		lineWidth,
 		attributes: Schema.optional(Schema.Struct({ name: Schema.String, reference: Schema.String, value: Schema.String })),
+		textPositions: Schema.optional(Schema.Struct({
+			name: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
+			reference: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
+			value: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
+		})),
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("wire", "line"),

@@ -52,6 +52,16 @@ const symbolInputSchema = z.strictObject({
 		.strictObject({ scope: z.enum(["user", "project"]), id: z.string().min(1) })
 		.optional(),
 	strokeOverride: z.number().positive().optional(),
+	textPositions: z
+		.strictObject({
+			name: z.strictObject({ x: z.number(), y: z.number() }).optional(),
+			reference: z.strictObject({ x: z.number(), y: z.number() }).optional(),
+			value: z.strictObject({ x: z.number(), y: z.number() }).optional(),
+		})
+		.optional()
+		.describe(
+			"Instance label centers in millimetres relative to the symbol center, before rotation.",
+		),
 	children: z
 		.array(z.discriminatedUnion("kind", [primitiveShapeSchema, pinShapeSchema]))
 		.describe(

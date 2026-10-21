@@ -22,7 +22,7 @@ function legacyStrokeOverride(
 		: undefined;
 }
 
-/** Geometry and label positions belong to the library, never the saved instance. */
+/** Save instance attributes and label positions without copying library geometry. */
 export function persistDrawingShapes(
 	shapes: readonly EditorShape[],
 	definitions: readonly SymbolDefinition[] = symbolDefinitions,

@@ -536,3 +536,15 @@ test("a pin at a crossing splits both wires into four ends", () => {
 	assert.equal(wires.length, 4);
 	assert.equal(wires.flatMap(resizeHandles).filter(({ x, y }) => Math.hypot(x - at.x, y - at.y) < 1e-6).length, 4);
 });
+
+test("normalization preserves pointer-rounded split wires during unrelated edits", () => {
+	const first: EditorShape = { ...segment(2, 97, 150, 103, 150), x: 99.99999999999997, width: 6.000000000000014 };
+	const second = segment(3, 103, 150, 180, 150);
+	const pins = [97, 103].map((x, index) => drawShape(index + 4, "pin", { x, y: 150 }, { x, y: 150 }));
+	const unrelated = drawShape(6, "rectangle", { x: 200, y: 200 }, { x: 220, y: 220 });
+	const shapes = [first, second, ...pins, unrelated];
+	const result = normalizeWireSegments(shapes, new Set([unrelated.id]));
+	assert.strictEqual(result.shapes[0], first);
+	assert.strictEqual(result.shapes[1], second);
+	assert.deepEqual(normalizeWireSegments(result.shapes).shapes, shapes);
+});

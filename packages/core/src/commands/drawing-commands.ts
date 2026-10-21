@@ -146,6 +146,21 @@ function validateShape(shape: EditorShape) {
 				"Symbol texts require valid attributes, positions and font sizes.",
 			);
 		validateIds(shape.children.map((child) => child.id));
+		if (
+			shape.textPositions !== undefined &&
+			(!shape.textPositions ||
+				typeof shape.textPositions !== "object" ||
+				Array.isArray(shape.textPositions) ||
+				Object.entries(shape.textPositions).some(
+					([attribute, position]) =>
+						!["name", "reference", "value"].includes(attribute) ||
+						!position ||
+						![position.x, position.y].every(Number.isFinite),
+				))
+		)
+			invalid(
+				"Symbol text positions require valid attributes and finite coordinates.",
+			);
 		for (const child of shape.children) {
 			if (
 				!["rectangle", "circle", "triangle", "line", "wire", "pin"].includes(
@@ -175,6 +190,8 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 						shape.strokeOverride === other.strokeOverride &&
 						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
 						JSON.stringify(shape.texts) === JSON.stringify(other.texts) &&
+						JSON.stringify(shape.textPositions) ===
+							JSON.stringify(other.textPositions) &&
 						shape.attributes.name === other.attributes.name &&
 						shape.attributes.reference === other.attributes.reference &&
 						shape.attributes.value === other.attributes.value)) &&

@@ -38,12 +38,50 @@ export interface EditorSymbol extends ShapeGeometry {
 	/** Children use coordinates relative to the symbol's center. */
 	children: PrimitiveShape[];
 	texts: SymbolText[];
+	/** Instance label centers in millimetres along the symbol's local axes. */
+	textPositions?: Partial<Record<SymbolText["attribute"], Point>>;
 	attributes: { name: string; reference: string; value: string };
 }
 
 export interface SymbolText extends Point {
 	attribute: keyof EditorSymbol["attributes"];
 	fontSize: number;
+}
+
+export function symbolTextPosition(
+	symbol: EditorSymbol,
+	label: SymbolText,
+): Point {
+	return symbol.textPositions?.[label.attribute] ?? label;
+}
+
+/** Move one label without moving its symbol, pins, or connected wires. */
+export function moveSymbolText(
+	symbol: EditorSymbol,
+	index: number,
+	delta: Point,
+	gridStep = 0,
+): EditorSymbol {
+	const label = symbol.texts[index];
+	if (!label) return symbol;
+	const position = symbolTextPosition(symbol, label);
+	const world = localToWorld(symbol, position.x, position.y);
+	const target = snapPoint(
+		{ x: world.x + delta.x, y: world.y + delta.y },
+		gridStep,
+	);
+	const dx = target.x - symbol.x;
+	const dy = target.y - symbol.y;
+	return {
+		...symbol,
+		textPositions: {
+			...symbol.textPositions,
+			[label.attribute]: {
+				x: dx * Math.cos(symbol.rotation) + dy * Math.sin(symbol.rotation),
+				y: -dx * Math.sin(symbol.rotation) + dy * Math.cos(symbol.rotation),
+			},
+		},
+	};
 }
 
 export interface TextShape extends ShapeGeometry {
@@ -67,6 +105,7 @@ export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
 	return symbol.texts.flatMap((label, index) => {
 		const text = symbol.attributes[label.attribute];
 		if (!text) return [];
+		const position = symbolTextPosition(symbol, label);
 		const width = Math.max(
 			label.fontSize / 2,
 			text.length * label.fontSize * 0.6,
@@ -75,7 +114,7 @@ export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
 			{
 				id: index,
 				kind: "text",
-				...localToWorld(symbol, label.x, label.y),
+				...localToWorld(symbol, position.x, position.y),
 				width,
 				height: label.fontSize * 1.5,
 				rotation: symbol.rotation,
@@ -833,6 +872,15 @@ export function normalizeWireSegments(
 				ids.push(id);
 				idsBySource.set(shape.id, ids);
 			}
+			// Repeated commits must not rewrite untouched pieces through endpoint rounding.
+			if (
+				source &&
+				source.forward === survivor.forward &&
+				Math.abs(source.coordinate - survivor.coordinate) <= 1e-9 &&
+				Math.abs(source.min - Math.min(start, end)) <= 1e-9 &&
+				Math.abs(source.max - Math.max(start, end)) <= 1e-9
+			)
+				return source.shape;
 			return {
 				...drawShape(id, "wire", point(start), point(end)),
 				lineWidth: survivor.shape.lineWidth,
