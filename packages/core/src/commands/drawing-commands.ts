@@ -102,9 +102,24 @@ function validateShape(shape: EditorShape) {
 	}
 	if (shape.kind === "symbol") {
 		if (
+			shape.library !== undefined &&
+			(!shape.library ||
+				!["user", "project"].includes(shape.library.scope) ||
+				typeof shape.library.id !== "string" ||
+				!shape.library.id.length)
+		)
+			invalid(
+				"Symbol references require a library ID and a user or project scope.",
+			);
+		if (
+			shape.strokeOverride !== undefined &&
+			(!Number.isFinite(shape.strokeOverride) || shape.strokeOverride <= 0)
+		)
+			invalid("Symbol stroke overrides must be positive and finite.");
+		if (
 			typeof shape.definitionId !== "string" ||
 			!Array.isArray(shape.children) ||
-			shape.children.length === 0 ||
+			(shape.children.length === 0 && !shape.library) ||
 			!shape.attributes ||
 			![
 				shape.attributes.name,
@@ -124,7 +139,9 @@ function validateShape(shape: EditorShape) {
 					text.fontSize <= 0,
 			)
 		)
-			invalid("Symbol texts require valid attributes, positions and font sizes.");
+			invalid(
+				"Symbol texts require valid attributes, positions and font sizes.",
+			);
 		validateIds(shape.children.map((child) => child.id));
 		for (const child of shape.children) {
 			if (
@@ -151,6 +168,8 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 				(shape.kind !== "symbol" ||
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&
+						JSON.stringify(shape.library) === JSON.stringify(other.library) &&
+						shape.strokeOverride === other.strokeOverride &&
 						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
 						JSON.stringify(shape.texts) === JSON.stringify(other.texts) &&
 						shape.attributes.name === other.attributes.name &&
@@ -322,7 +341,7 @@ export function removeShapesEffect(
 
 export function createSymbolFromSelectionEffect(
 	ids: readonly number[],
-	options: { name?: string; definitionId?: string } = {},
+	options: Parameters<typeof createSymbolFromShapes>[2] = {},
 ) {
 	return capture(
 		{ ids, options },

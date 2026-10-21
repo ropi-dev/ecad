@@ -48,12 +48,16 @@ const symbolInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("symbol"),
 	definitionId: z.string(),
+	library: z
+		.strictObject({ scope: z.enum(["user", "project"]), id: z.string().min(1) })
+		.optional(),
+	strokeOverride: z.number().positive().optional(),
 	children: z
 		.array(z.discriminatedUnion("kind", [primitiveShapeSchema, pinShapeSchema]))
-		.min(1)
 		.describe(
 			"Primitive shapes in coordinates relative to the symbol center, with IDs local to this symbol.",
-		),
+		)
+		.default([]),
 	texts: z
 		.array(
 			z.strictObject({
@@ -65,7 +69,8 @@ const symbolInputSchema = z.strictObject({
 		)
 		.describe(
 			"Attribute labels in coordinates relative to the symbol center, in millimetres.",
-		),
+		)
+		.default([]),
 	attributes: z.strictObject({
 		name: z.string(),
 		reference: z.string(),
@@ -73,15 +78,31 @@ const symbolInputSchema = z.strictObject({
 	}),
 });
 
-export const shapeInputSchema = z.discriminatedUnion("kind", [
-	primitiveInputSchema,
-	pinInputSchema,
-	textInputSchema,
-	symbolInputSchema,
-]);
-export const drawingShapeSchema = z.discriminatedUnion("kind", [
-	primitiveShapeSchema,
-	pinShapeSchema,
-	textInputSchema.extend({ id: shapeId }),
-	symbolInputSchema.extend({ id: shapeId }),
-]);
+export const shapeInputSchema = z
+	.discriminatedUnion("kind", [
+		primitiveInputSchema,
+		pinInputSchema,
+		textInputSchema,
+		symbolInputSchema,
+	])
+	.refine(
+		(shape) =>
+			shape.kind !== "symbol" ||
+			shape.library !== undefined ||
+			shape.children.length > 0,
+		"Symbols require a library reference or legacy inline geometry.",
+	);
+export const drawingShapeSchema = z
+	.discriminatedUnion("kind", [
+		primitiveShapeSchema,
+		pinShapeSchema,
+		textInputSchema.extend({ id: shapeId }),
+		symbolInputSchema.extend({ id: shapeId }),
+	])
+	.refine(
+		(shape) =>
+			shape.kind !== "symbol" ||
+			shape.library !== undefined ||
+			shape.children.length > 0,
+		"Symbols require a library reference or legacy inline geometry.",
+	);

@@ -10,11 +10,13 @@ import {
 	shapeBounds,
 } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
+import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import type { Point } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface SymbolDefinition {
 	id: string;
+	library?: SymbolLibraryReference;
 	category?: SymbolCategory;
 	name: string;
 	description: string;
@@ -32,6 +34,7 @@ export const symbolDefinitions: SymbolDefinition[] = libraryDefinitions(
 	generatedSymbols.map(({ file }) => file),
 ).map((definition, index) => ({
 	...definition,
+	library: { scope: "user", id: "builtin" },
 	category: generatedSymbols[index].category,
 	texts: generatedSymbols[index].texts,
 }));
@@ -53,6 +56,7 @@ export function createSymbol(
 		id,
 		kind: "symbol",
 		definitionId: definition.id,
+		...(definition.library ? { library: definition.library } : {}),
 		...position,
 		width:
 			2 *
@@ -76,7 +80,11 @@ export function createSymbol(
 export function createSymbolFromShapes(
 	id: number,
 	shapes: readonly PrimitiveShape[],
-	options: { name?: string; definitionId?: string } = {},
+	options: {
+		name?: string;
+		definitionId?: string;
+		library?: SymbolLibraryReference;
+	} = {},
 ): EditorSymbol {
 	const bounds = shapes.map(shapeBounds);
 	const minX = Math.min(...bounds.map((box) => box.minX));
@@ -89,6 +97,7 @@ export function createSymbolFromShapes(
 		id,
 		kind: "symbol",
 		definitionId: options.definitionId ?? `custom-${id}`,
+		...(options.library ? { library: options.library } : {}),
 		x,
 		y,
 		width: maxX - minX,

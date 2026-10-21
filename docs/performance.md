@@ -20,6 +20,8 @@ The `editor-symbol-file` scenario opens a 128-pin symbol file and the project sc
 
 The `editor-symbol-attributes` scenario places a 128-pin project symbol and opens its reusable definition through the Attributes popup three times. Opening the definition has an interaction p95 budget of 1.2 seconds, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.
 
+The `symbol-references` scenario imports a 16-pin child and a parent with four child references, places the parent, checks that the saved schematic contains no copied geometry, reloads, and opens the nested definition three times. Under the same test conditions, interaction p95 must stay below 1.5 seconds and symbol resolution p95 below 250 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
+
 The `editor-user-symbol` scenario opens a 128-pin user-library definition without an open project, adds a shape, waits for autosave, and returns to the schematic three times. Opening and saving have an interaction p95 budget of 1.5 seconds, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.
 
 The `project-new-symbol` scenario creates an empty symbol through the project page, draws and saves its first shape, then reopens the symbol file. Creation through a ready symbol editor must finish within 2 seconds, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.

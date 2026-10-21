@@ -166,3 +166,30 @@ test("a validation error can be corrected and saved in the same editor", async (
  await page.getByRole("button", { name: "Back to schematic", exact: true }).click();
  await expect(page.getByRole("heading", { level: 1 })).toContainText("Schematic editor");
 });
+
+test("nested symbol editing saves only library references and reopens them", async ({ page }) => {
+ const errors: string[] = [];
+ page.on("pageerror", error => errors.push(error.message));
+ await page.goto("/tests/browser/projects.html");
+ await page.getByLabel("Project name", { exact: true }).fill("Nested references");
+ await page.getByRole("button", { name: "Create project", exact: true }).click();
+ await page.getByRole("button", { name: "New symbol", exact: true }).click();
+ await page.getByLabel("Symbol name", { exact: true }).fill("Composite part");
+ await page.getByRole("button", { name: "Create symbol", exact: true }).click();
+ await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Composite part");
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+ await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+ await expect.poll(async () => (await documentState(page)).symbols[0].shapes.length).toBe(1);
+ const saved = (await documentState(page)).symbols[0].shapes[0];
+ expect(saved).toMatchObject({ kind: "symbol", library: { scope: "user", id: "builtin" }, definitionId: "resistor" });
+ expect(saved).not.toHaveProperty("children");
+ expect(saved).not.toHaveProperty("texts");
+ await page.reload();
+ await page.getByRole("link", { name: "Open composite-part.ecadsym", exact: true }).click();
+ await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Composite part");
+ await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+ await expect(page.getByRole("alert")).toHaveCount(0);
+ expect((await documentState(page)).editorShapes[0]).toMatchObject({ kind: "symbol", library: { scope: "user", id: "builtin" }, definitionId: "resistor" });
+ expect(errors).toEqual([]);
+});

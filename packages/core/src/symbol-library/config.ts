@@ -5,6 +5,10 @@ import {
 	type SymbolLibrary,
 	savedLibrarySchema,
 } from "#/components/editor/symbolFormat.ts";
+import {
+	type SymbolLibraryReference,
+	symbolReferenceKey,
+} from "#/drawing/symbol-reference.ts";
 import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
 
 export const USER_SYMBOL_CONFIG_KEY = "ecad.user-config.v1";
@@ -113,11 +117,23 @@ export async function resolveSymbolLibraries(
 ): Promise<{
 	definitions: SymbolDefinition[];
 	sources: Map<string, SymbolSource>;
+	byReference: Map<string, SymbolDefinition>;
+	referenceSources: Map<string, SymbolSource>;
 	errors: string[];
 }> {
 	const definitions = new Map<string, SymbolDefinition>();
 	const sources = new Map<string, SymbolSource>();
 	const errors: string[] = [];
+	const entries = new Map<
+		string,
+		{
+			definition: SymbolDefinition;
+			file?: SymbolLibrary[number];
+			library: SymbolLibraryReference;
+		}
+	>();
+	const winners = new Map<string, string>();
+	const referenceSources = new Map<string, SymbolSource>();
 	for (const [scope, libraries] of [
 		["user", user],
 		["project", project],
@@ -141,8 +157,15 @@ export async function resolveSymbolLibraries(
 					loaded = libraryDefinitions(files);
 				}
 				for (const [index, definition] of loaded.entries()) {
-					definitions.set(definition.id, definition);
-					sources.set(definition.id, { scope, library, file: files[index] });
+					const reference = { scope, id: library.id };
+					const key = symbolReferenceKey(reference, definition.id);
+					entries.set(key, {
+						definition,
+						file: files[index],
+						library: reference,
+					});
+					winners.set(definition.id, key);
+					referenceSources.set(key, { scope, library, file: files[index] });
 				}
 			} catch (cause) {
 				errors.push(
@@ -151,5 +174,78 @@ export async function resolveSymbolLibraries(
 			}
 		}
 	}
-	return { definitions: [...definitions.values()], sources, errors };
+	const byReference = new Map<string, SymbolDefinition>();
+	const depths = new Map<string, number>();
+	const resolving = new Set<string>();
+	function resolve(
+		library: SymbolLibraryReference | undefined,
+		id: string,
+	): SymbolDefinition {
+		const key = library ? symbolReferenceKey(library, id) : winners.get(id);
+		const entry = key ? entries.get(key) : undefined;
+		if (!key || !entry)
+			throw new Error(
+				`Symbol "${id}" is unavailable in library "${library?.id ?? "unknown"}".`,
+			);
+		const cached = byReference.get(key);
+		if (cached) return cached;
+		if (resolving.has(key))
+			throw new Error(
+				`Circular symbol reference at "${id}" in library "${entry.library.id}".`,
+			);
+		if (resolving.size >= 32)
+			throw new Error("Symbol references may be nested at most 32 levels.");
+		resolving.add(key);
+		try {
+			let depth = 1;
+			const definition = {
+				...(entry.file
+					? libraryDefinitions([entry.file], (library, id) => {
+							const child = resolve(library, id);
+							depth = Math.max(
+								depth,
+								1 + (depths.get(symbolReferenceKey(library, id)) ?? 1),
+							);
+							return child;
+						})[0]
+					: entry.definition),
+				library: entry.library,
+			};
+			if (depth > 32)
+				throw new Error("Symbol references may be nested at most 32 levels.");
+			if (definition.children.length > 65_536)
+				throw new Error("Resolved symbols may contain at most 65536 shapes.");
+			byReference.set(key, definition);
+			depths.set(key, depth);
+			return definition;
+		} finally {
+			resolving.delete(key);
+		}
+	}
+	for (const entry of entries.values()) {
+		try {
+			resolve(entry.library, entry.definition.id);
+		} catch (cause) {
+			errors.push(
+				cause instanceof Error
+					? cause.message
+					: "Unable to resolve symbol references.",
+			);
+		}
+	}
+	for (const [id, key] of winners) {
+		const definition = byReference.get(key);
+		const source = referenceSources.get(key);
+		if (definition && source) {
+			definitions.set(id, definition);
+			sources.set(id, source);
+		}
+	}
+	return {
+		definitions: [...definitions.values()],
+		sources,
+		byReference,
+		referenceSources,
+		errors: [...new Set(errors)],
+	};
 }

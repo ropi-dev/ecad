@@ -5,7 +5,11 @@ import {
 	type SymbolFile,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import { symbolDefinitions } from "#/drawing/symbols.ts";
+import {
+	type SymbolLibraryReference,
+	symbolReferenceKey,
+} from "#/drawing/symbol-reference.ts";
+import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
 import { runEffect } from "#/lib/effect.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import {
@@ -65,6 +69,12 @@ export function useSymbolLibrary() {
 	const currentUser = useRef(userConfig);
 	const currentProject = useRef(projectConfig);
 	const [definitions, setDefinitions] = useState(symbolDefinitions);
+	const [byReference, setByReference] = useState(
+		new Map<string, SymbolDefinition>(),
+	);
+	const [referenceSources, setReferenceSources] = useState(
+		new Map<string, SymbolSource>(),
+	);
 	const [sources, setSources] = useState(new Map<string, SymbolSource>());
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
@@ -105,6 +115,8 @@ export function useSymbolLibrary() {
 		setProjectConfig(project);
 		setDefinitions(resolved.definitions);
 		setSources(resolved.sources);
+		setByReference(resolved.byReference);
+		setReferenceSources(resolved.referenceSources);
 		setLibraryErrors(resolved.errors);
 	}
 	const acceptRef = useRef(accept);
@@ -282,6 +294,13 @@ export function useSymbolLibrary() {
 		const scope = defaultScope;
 		const current = config(scope);
 		const next = addition([symbol], scope, "");
+		const added = next.symbolLibraries.find(
+			(entry) =>
+				entry.source.kind === "embedded" &&
+				entry.source.symbols.some((file) => file.id === symbol.id),
+		);
+		if (!added)
+			throw new Error("The symbol library destination is unavailable.");
 		return () =>
 			perform(async (signal) => {
 				if (current !== config(scope))
@@ -290,6 +309,7 @@ export function useSymbolLibrary() {
 					);
 				const persistence = await save(next, scope, [symbol], signal);
 				setMessage(`Added 1 symbol. ${persistence}`);
+				return { scope, id: added.id };
 			});
 	}
 
@@ -391,9 +411,12 @@ export function useSymbolLibrary() {
 
 	return {
 		definitions,
+		byReference,
 		sources,
-		async prepareEdit(id: string) {
-			const source = sources.get(id);
+		async prepareEdit(id: string, library?: SymbolLibraryReference) {
+			const source = library
+				? referenceSources.get(symbolReferenceKey(library, id))
+				: sources.get(id);
 			if (!source) return null;
 			const target = await measurePerformanceAsync(
 				"symbol-library.prepare-edit",

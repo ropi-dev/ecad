@@ -1,3 +1,4 @@
+import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 
 export const A3 = { width: 420, height: 297 } as const;
@@ -31,6 +32,9 @@ export interface PinShape extends ShapeGeometry {
 export interface EditorSymbol extends ShapeGeometry {
 	kind: "symbol";
 	definitionId: string;
+	library?: SymbolLibraryReference;
+	/** An instance stroke override. Definition strokes otherwise remain unchanged. */
+	strokeOverride?: number;
 	/** Children use coordinates relative to the symbol's center. */
 	children: PrimitiveShape[];
 	texts: SymbolText[];
@@ -119,6 +123,7 @@ export function editShapeAttribute(
 			? {
 					...shape,
 					lineWidth: value,
+					strokeOverride: value,
 					children: shape.children.map((child) => ({
 						...child,
 						lineWidth: value,

@@ -106,7 +106,30 @@ Coordinates are relative to the symbol's placement origin `(0, 0)`. Positive X p
 
 Every pin has a fixed radius of 0.254 mm (diameter 0.508 mm), including standalone pins and pins inside symbols. Pin size stays fixed when a symbol is fitted or its line width changes. Pin files specify their position and optional name; `radius`, `width`, and `height` are not accepted for pins. Select a standalone pin to edit its Name in Attributes. Pin names are preserved when creating and saving a symbol. Older files without pin names remain supported.
 
-Add a `pin` wherever an external wire should connect. A `line` or decorative `wire` primitive alone does not define a terminal. Text, nested symbols, SVG, and images are not part of version 1.
+Add a `pin` wherever an external wire should connect. A `line` or decorative `wire` primitive alone does not define a terminal. Text, SVG, and images are not supported.
+
+## Symbol references
+
+Schematics and symbol files refer to library definitions by the library's scope and ID and the symbol's stable ID, stored as `definitionId`. Display names can change without breaking references. For example, a symbol file can include this placement in its `shapes` array:
+
+```json
+{
+  "kind": "symbol",
+  "library": { "scope": "user", "id": "builtin" },
+  "definitionId": "resistor",
+  "x": 0,
+  "y": 0,
+  "rotation": 90
+}
+```
+
+`scope` is `user` or `project`. `id` identifies an entry in that scope's symbol library configuration. The default built-in library uses `user` and `builtin`; project symbol files use `project` and `project-symbols`. Rotation in symbol files uses degrees, while schematic drawing geometry uses radians.
+
+Placements do not save the referenced definition's shapes or label positions. The editor resolves those from the library, so definition edits appear in existing placements. Schematics retain instance positions, rotations, attribute values, and explicit stroke overrides. Nested placements accept optional `attributes` with `name`, `reference`, and `value`, and an optional `lineWidth` override.
+
+Library precedence chooses the definition for a new placement. Existing references keep their original library even when another library defines the same symbol ID. Missing or disabled libraries produce an error and retain the reference for later recovery. Circular references are rejected during resolution. Symbols can nest at most 32 levels and resolve to at most 65,536 primitive shapes.
+
+Older schematics with inline symbol geometry remain readable. Saving migrates known built-in and embedded project definitions to references. Legacy symbols whose library cannot be identified retain their inline geometry.
 
 Coordinates must be between -1000 and 1000 mm. Widths, heights, and radii must be between 0.01 and 1000 mm. Lines and wires must be at least 0.01 mm long. Rotation must be between -360 and 360 degrees. Every number must be finite.
 

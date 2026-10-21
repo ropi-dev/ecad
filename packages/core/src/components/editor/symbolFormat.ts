@@ -18,6 +18,16 @@ const lineWidth = Schema.optional(
 );
 const shapeSchema = Schema.Union(
 	Schema.Struct({
+		kind: Schema.Literal("symbol"),
+		library: Schema.Struct({ scope: Schema.Literal("user", "project"), id: label }),
+		definitionId: Schema.String.pipe(Schema.pattern(/^[a-z][a-z0-9._-]{0,63}$/)),
+		x: coordinate,
+		y: coordinate,
+		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
+		lineWidth,
+		attributes: Schema.optional(Schema.Struct({ name: Schema.String, reference: Schema.String, value: Schema.String })),
+	}),
+	Schema.Struct({
 		kind: Schema.Literal("wire", "line"),
 		lineWidth,
 		x1: coordinate,

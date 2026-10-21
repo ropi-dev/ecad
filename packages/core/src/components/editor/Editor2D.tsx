@@ -20,6 +20,7 @@ import {
 	useCallback,
 	useEffect,
 	useEffectEvent,
+	useMemo,
 	useRef,
 	useState,
 	useSyncExternalStore,
@@ -62,9 +63,10 @@ import {
 	snapPoint,
 } from "#/drawing/shapes.ts";
 import {
-	libraryDefinitions,
+	symbolFileShapes,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
+import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import {
 	createSymbol,
 	createSymbolFromShapes,
@@ -167,10 +169,29 @@ function EditorCanvas({
 	// A gesture changes only this preview. Commands receive the completed geometry.
 	const [draftShapes, setDraftShapes] = useState<EditorShape[] | null>(null);
 	const currentDraft = useRef<EditorShape[] | null>(null);
-	const shapes = draftShapes ?? drawing.shapes;
+	const symbolLibrary = useSymbolLibrary();
+	const resolved = useMemo(
+		() =>
+			resolveDrawingSymbols(
+				drawing.shapes,
+				symbolLibrary.definitions,
+				symbolLibrary.byReference,
+			),
+		[drawing.shapes, symbolLibrary.definitions, symbolLibrary.byReference],
+	);
+	const shapes = draftShapes ?? resolved.shapes;
 	const currentShapes = {
 		get current() {
-			return currentDraft.current ?? store.getSnapshot().shapes;
+			return (
+				currentDraft.current ??
+				(store.getSnapshot().shapes === drawing.shapes
+					? resolved.shapes
+					: resolveDrawingSymbols(
+							store.getSnapshot().shapes,
+							symbolLibrary.definitions,
+							symbolLibrary.byReference,
+						).shapes)
+			);
 		},
 	};
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -184,13 +205,18 @@ function EditorCanvas({
 	const [symbolPreview, setSymbolPreview] = useState<EditorShape | null>(null);
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
-	const symbolLibrary = useSymbolLibrary();
 	const [editTarget, setEditTarget] = useState<SymbolEditTarget | null>(null);
 	const [editingDefinition, setEditingDefinition] =
 		useState<SymbolEditTarget | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
-	const [error, setError] = useState("");
+	const [commandError, setError] = useState("");
+	const error = [
+		commandError,
+		...(symbolLibrary.loading ? [] : resolved.errors),
+	]
+		.filter(Boolean)
+		.join("\n");
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
 	const [view, setView] = useState<Viewer2DSnapshot | null>(null);
 	const drag = useRef<Drag | null>(null);
@@ -213,22 +239,27 @@ function EditorCanvas({
 		selected.length === 1 && selected[0].kind === "symbol"
 			? selected[0]
 			: undefined;
-	const symbolIndex = selectedSymbol
-		? project?.project?.symbols.findIndex(
-				(symbol) => symbol.id === selectedSymbol.definitionId,
-			)
-		: undefined;
+	const symbolIndex =
+		selectedSymbol &&
+		(!selectedSymbol.library ||
+			(selectedSymbol.library.scope === "project" &&
+				selectedSymbol.library.id === "project-symbols"))
+			? project?.project?.symbols.findIndex(
+					(symbol) => symbol.id === selectedSymbol.definitionId,
+				)
+			: undefined;
 	const symbolPath =
 		symbolIndex !== undefined && symbolIndex >= 0
 			? project?.project?.manifest.symbols[symbolIndex]
 			: undefined;
-	const definitionId = isSymbol ? undefined : selectedSymbol?.definitionId;
+	const definitionId = selectedSymbol?.definitionId;
+	const definitionLibrary = selectedSymbol?.library;
 	const prepareEdit = useEffectEvent(symbolLibrary.prepareEdit);
 	useEffect(() => {
 		let active = true;
 		setEditTarget(null);
-		if (definitionId && symbolLibrary.sources.has(definitionId)) {
-			void prepareEdit(definitionId).then(
+		if (definitionId && !symbolLibrary.loading) {
+			void prepareEdit(definitionId, definitionLibrary).then(
 				(target) => {
 					if (active) setEditTarget(target);
 				},
@@ -245,7 +276,7 @@ function EditorCanvas({
 		return () => {
 			active = false;
 		};
-	}, [definitionId, symbolLibrary.sources]);
+	}, [definitionId, definitionLibrary, symbolLibrary.loading]);
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
 	const handles =
 		tool === "select"
@@ -534,12 +565,16 @@ function EditorCanvas({
 		if (primitives.length !== ids.length || ids.length < 2)
 			return "Select at least two drawing shapes to create a symbol.";
 		try {
-			const options = { name, definitionId: `custom.${crypto.randomUUID()}` };
+			const options: Parameters<typeof createSymbolFromShapes>[2] = {
+				name,
+				definitionId: `custom.${crypto.randomUUID()}`,
+			};
 			const draft = createSymbolFromShapes(nextId.current, primitives, options);
 			const saveSymbol = symbolLibrary.prepareAddition(
 				symbolFileFromSymbol(draft),
 			);
-			await saveSymbol();
+			const library = await saveSymbol();
+			options.library = library;
 			if (store.getSnapshot() !== originalDrawing)
 				return "The drawing changed while saving. The symbol is in your library; select the shapes and try again.";
 			const result = execute(createSymbolFromSelectionEffect(ids, options));
@@ -1058,7 +1093,7 @@ function EditorCanvas({
 									</ToolbarGroup>
 									<SymbolPicker
 										library={symbolLibrary}
-										disabled={!ready || isSymbol}
+										disabled={!ready}
 										active={tool === "symbol"}
 										onChoose={(definition) => {
 											finishDrag();
@@ -1262,7 +1297,7 @@ function LibrarySymbolEditor({
 	const [store] = useState(() =>
 		measurePerformance(
 			"editor.open-library-symbol",
-			() => createDrawingStore(libraryDefinitions([target.file])[0].children),
+			() => createDrawingStore(symbolFileShapes(target.file)),
 			{ shapes: target.file.shapes.length },
 		),
 	);

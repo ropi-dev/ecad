@@ -17,7 +17,7 @@ import type {
 } from "#/components/editor/symbolFormat.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import {
-	libraryDefinitions,
+	symbolFileShapes,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
@@ -292,7 +292,7 @@ export function ProjectProvider({
 		if (!document) {
 			const symbolStore = measurePerformance(
 				"editor.open-symbol",
-				() => createDrawingStore(libraryDefinitions([file])[0].children),
+				() => createDrawingStore(symbolFileShapes(file)),
 				{ shapes: file.shapes.length },
 			);
 			document = {

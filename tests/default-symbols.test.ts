@@ -11,7 +11,7 @@ test("every generated default is valid portable geometry and has a reserved buil
 		const custom = { ...file, id: `custom.${file.id}` };
 		assert.deepEqual(parseSymbolFile(JSON.stringify(custom)), custom);
 		const definition = libraryDefinitions([file])[0];
-		assert.deepEqual(symbolDefinitions.find(({ id }) => id === file.id), { ...definition, texts, category });
+		assert.deepEqual(symbolDefinitions.find(({ id }) => id === file.id), { ...definition, texts, category, library: { scope: "user", id: "builtin" } });
 		assert.equal(definition.children.filter((shape) => shape.kind === "pin").length,
 			file.shapes.filter((shape) => shape.kind === "pin").length);
 	}

@@ -5,68 +5,143 @@ import type {
 import {
 	type EditorShape,
 	PIN_RADIUS,
-	type PrimitiveShape,
+	symbolShapes,
 } from "#/drawing/shapes.ts";
-import type { SymbolDefinition } from "#/drawing/symbols.ts";
+import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
+import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 
-export function libraryDefinitions(library: SymbolLibrary): SymbolDefinition[] {
-	return library.map(
-		({
-			shapes,
-			format: _format,
-			version: _version,
-			units: _units,
-			...definition
-		}) => ({
-			...definition,
-			texts: [],
-			children: shapes.map((shape, index): PrimitiveShape => {
-				const base = {
-					id: index + 1,
-					lineWidth: shape.lineWidth ?? 0.254,
-					rotation: 0,
-				};
-				if ("x1" in shape) {
-					const dx = shape.x2 - shape.x1;
-					const dy = shape.y2 - shape.y1;
-					return {
-						...base,
-						kind: shape.kind,
-						x: (shape.x1 + shape.x2) / 2,
-						y: (shape.y1 + shape.y2) / 2,
-						width: Math.hypot(dx, dy),
-						height: 0.254,
-						rotation: Math.atan2(dy, dx),
-					};
-				}
-				if ("radius" in shape)
-					return {
-						...base,
-						kind: shape.kind,
-						x: shape.x,
-						y: shape.y,
-						width: shape.radius * 2,
-						height: shape.radius * 2,
-					};
-				if (shape.kind === "pin")
-					return {
+export type SymbolResolver = (
+	library: SymbolLibraryReference,
+	id: string,
+) => SymbolDefinition | undefined;
+
+/** Keep nested placements intact when opening a definition for editing. */
+export function symbolFileShapes(
+	file: SymbolFile,
+	resolve?: SymbolResolver,
+): EditorShape[] {
+	let resolvedShapes = 0;
+	return file.shapes.map((shape, index): EditorShape => {
+		const base = {
+			id: index + 1,
+			lineWidth: shape.lineWidth ?? 0.254,
+			rotation: 0,
+		};
+		if (shape.kind === "symbol") {
+			const definition = resolve?.(shape.library, shape.definitionId);
+			resolvedShapes += definition?.children.length ?? 0;
+			if (resolvedShapes > 65_536)
+				throw new Error("Resolved symbols may contain at most 65536 shapes.");
+			const instance = definition?.children.length
+				? createSymbol(
+						base.id,
+						definition,
+						shape,
+						shape.attributes?.reference ?? "",
+					)
+				: {
 						...base,
 						...shape,
-						name: shape.name ?? "",
-						width: 2 * PIN_RADIUS,
-						height: 2 * PIN_RADIUS,
+						width: 1,
+						height: 1,
+						children: [],
+						texts: [],
+						attributes: shape.attributes ?? {
+							name: shape.definitionId,
+							reference: "",
+							value: "",
+						},
 					};
-				return {
-					...base,
-					...shape,
-					rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
-				};
-			}),
+			return {
+				...instance,
+				library: shape.library,
+				definitionId: shape.definitionId,
+				rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
+				...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
+				...(shape.lineWidth === undefined
+					? {}
+					: {
+							lineWidth: shape.lineWidth,
+							strokeOverride: shape.lineWidth,
+							children: instance.children.map((child) => ({
+								...child,
+								lineWidth: shape.lineWidth ?? child.lineWidth,
+							})),
+						}),
+			};
+		}
+		resolvedShapes += 1;
+		if (resolvedShapes > 65_536)
+			throw new Error("Resolved symbols may contain at most 65536 shapes.");
+		if ("x1" in shape) {
+			const dx = shape.x2 - shape.x1,
+				dy = shape.y2 - shape.y1;
+			return {
+				...base,
+				kind: shape.kind,
+				x: (shape.x1 + shape.x2) / 2,
+				y: (shape.y1 + shape.y2) / 2,
+				width: Math.hypot(dx, dy),
+				height: 0.254,
+				rotation: Math.atan2(dy, dx),
+			};
+		}
+		if ("radius" in shape)
+			return {
+				...base,
+				kind: shape.kind,
+				x: shape.x,
+				y: shape.y,
+				width: shape.radius * 2,
+				height: shape.radius * 2,
+			};
+		if (shape.kind === "pin")
+			return {
+				...base,
+				...shape,
+				name: shape.name ?? "",
+				width: 2 * PIN_RADIUS,
+				height: 2 * PIN_RADIUS,
+			};
+		return {
+			...base,
+			...shape,
+			rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
+		};
+	});
+}
+
+export function libraryDefinitions(
+	library: SymbolLibrary,
+	resolve?: SymbolResolver,
+): SymbolDefinition[] {
+	return library.map(
+		(
+			{
+				shapes: _shapes,
+				format: _format,
+				version: _version,
+				units: _units,
+				...definition
+			},
+			index,
+		) => ({
+			...definition,
+			texts: [],
+			children: symbolFileShapes(library[index], resolve)
+				.flatMap((shape) =>
+					shape.kind === "symbol"
+						? symbolShapes(shape)
+						: shape.kind === "text"
+							? []
+							: [shape],
+				)
+				.map((shape, index) => ({ ...shape, id: index + 1 })),
 		}),
 	);
 }
 
-/** Keep file metadata and the symbol origin while editing its primitive shapes. */
+/** Keep metadata and the origin while saving primitive shapes and library references. */
 export function symbolFileWithShapes(
 	file: SymbolFile,
 	shapes: EditorShape[],
@@ -74,8 +149,27 @@ export function symbolFileWithShapes(
 	return {
 		...file,
 		shapes: shapes.map((shape): SymbolFile["shapes"][number] => {
-			if (shape.kind === "text" || shape.kind === "symbol")
-				throw new Error("Symbol files support primitive shapes only.");
+			if (shape.kind === "text")
+				throw new Error("Symbol files do not support text shapes.");
+			if (shape.kind === "symbol") {
+				if (!shape.library)
+					throw new Error(
+						"Choose a library symbol before saving a nested symbol.",
+					);
+				return {
+					kind: "symbol",
+					library: shape.library,
+					definitionId: shape.definitionId,
+					x: shape.x,
+					y: shape.y,
+					rotation:
+						(((((shape.rotation * 180) / Math.PI) % 360) + 540) % 360) - 180,
+					attributes: { ...shape.attributes },
+					...(shape.strokeOverride === undefined
+						? {}
+						: { lineWidth: shape.strokeOverride }),
+				};
+			}
 			const base = { lineWidth: shape.lineWidth };
 			if (shape.kind === "line" || shape.kind === "wire") {
 				const dx = (Math.cos(shape.rotation) * shape.width) / 2;

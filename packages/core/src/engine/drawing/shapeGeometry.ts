@@ -13,6 +13,7 @@ import type { DrawingGeometry } from "#/drawing/display.ts";
 /** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
+		if (!shape.children.length) return new BufferGeometry();
 		const children = shape.children.map((child) =>
 			createShapeGeometry(child)
 				.scale(

@@ -1,4 +1,5 @@
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import {
 	type AssetKind,
 	assetSchema,
@@ -153,7 +154,7 @@ export class ProjectRepository {
 				drawing,
 				encoder.encode(
 					JSON.stringify({
-						shapes: document.shapes,
+						shapes: persistProjectDrawingShapes(document),
 						...(document.symbolLibraries === undefined
 							? {}
 							: { symbolLibraries: document.symbolLibraries }),
@@ -235,7 +236,7 @@ export class ProjectRepository {
 				drawing,
 				encoder.encode(
 					JSON.stringify({
-						shapes: snapshot.shapes,
+						shapes: persistProjectDrawingShapes(snapshot),
 						...(snapshot.symbolLibraries === undefined
 							? {}
 							: { symbolLibraries: snapshot.symbolLibraries }),
