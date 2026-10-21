@@ -86,7 +86,15 @@ npm test
 npm run test:browser
 ```
 
-Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`.
+Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
+
+GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web and desktop builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
+
+Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `npm ci`, and cache npm downloads. Browser jobs install the Mesa Vulkan libraries. Interaction tests use headless Chromium. The renderer spec runs in a separate Playwright project under Xvfb to support its software WebGPU swap chain on CI. Both projects use SwiftShader's Vulkan backend for WebGL and WebGPU. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
+
+The 2D hover and selection tests check hover counts, selection attributes, and clearing behavior. They omit full-canvas image comparisons because software-renderer captures vary on hosted runners.
+
+Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `npm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `npm run lint`. Formatting and import organization are available through `npm run check`.
 
 Capture performance before feature work with `npm run perf:baseline`, then run `npm run perf` after changes to check startup, large projects, drawing, and imports against budgets and the local baseline. `npm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
 

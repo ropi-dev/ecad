@@ -58,11 +58,10 @@ const fuzzySort: SortingFn<any> = (rowA, rowB, columnId) => {
   let dir = 0
 
   // Only sort by rank if the column has ranking information
-  if (rowA.columnFiltersMeta[columnId]) {
-    dir = compareItems(
-      rowA.columnFiltersMeta[columnId]?.itemRank!,
-      rowB.columnFiltersMeta[columnId]?.itemRank!,
-    )
+  const rankA = rowA.columnFiltersMeta[columnId]?.itemRank
+  const rankB = rowB.columnFiltersMeta[columnId]?.itemRank
+  if (rankA && rankB) {
+    dir = compareItems(rankA, rankB)
   }
 
   // Provide an alphanumeric fallback for when the item ranks are equal
@@ -134,13 +133,14 @@ function TableDemo() {
   })
 
   //apply the fuzzy sort if the fullName column is being filtered
+  const filteredColumnId = table.getState().columnFilters[0]?.id
   React.useEffect(() => {
-    if (table.getState().columnFilters[0]?.id === 'fullName') {
+    if (filteredColumnId === 'fullName') {
       if (table.getState().sorting[0]?.id !== 'fullName') {
         table.setSorting([{ id: 'fullName', desc: false }])
       }
     }
-  }, [table.getState().columnFilters[0]?.id])
+  }, [filteredColumnId, table])
 
   return (
     <main className="demo-page demo-page-wide">
@@ -222,6 +222,7 @@ function TableDemo() {
       <div className="h-4" />
       <div className="demo-muted flex flex-wrap items-center gap-2">
         <button
+          type="button"
           className="demo-button demo-button-secondary"
           onClick={() => table.setPageIndex(0)}
           disabled={!table.getCanPreviousPage()}
@@ -229,6 +230,7 @@ function TableDemo() {
           {'<<'}
         </button>
         <button
+          type="button"
           className="demo-button demo-button-secondary"
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
@@ -236,6 +238,7 @@ function TableDemo() {
           {'<'}
         </button>
         <button
+          type="button"
           className="demo-button demo-button-secondary"
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
@@ -243,6 +246,7 @@ function TableDemo() {
           {'>'}
         </button>
         <button
+          type="button"
           className="demo-button demo-button-secondary"
           onClick={() => table.setPageIndex(table.getPageCount() - 1)}
           disabled={!table.getCanNextPage()}
@@ -286,10 +290,10 @@ function TableDemo() {
         {table.getPrePaginationRowModel().rows.length} Rows
       </div>
       <div className="mt-4 flex gap-2">
-        <button onClick={() => rerender()} className="demo-button">
+        <button type="button" onClick={() => rerender()} className="demo-button">
           Force Rerender
         </button>
-        <button onClick={() => refreshData()} className="demo-button">
+        <button type="button" onClick={() => refreshData()} className="demo-button">
           Refresh Data
         </button>
       </div>
@@ -333,6 +337,7 @@ function DebouncedInput({
   debounce?: number
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
   const [value, setValue] = React.useState(initialValue)
+  const notifyChange = React.useEffectEvent(onChange)
 
   React.useEffect(() => {
     setValue(initialValue)
@@ -340,11 +345,11 @@ function DebouncedInput({
 
   React.useEffect(() => {
     const timeout = setTimeout(() => {
-      onChange(value)
+      notifyChange(value)
     }, debounce)
 
     return () => clearTimeout(timeout)
-  }, [value])
+  }, [value, debounce])
 
   return (
     <input

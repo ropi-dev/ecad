@@ -55,6 +55,7 @@ function TRPCTodos() {
             className="demo-input"
           />
           <button
+            type="button"
             disabled={todo.trim().length === 0}
             onClick={submitTodo}
             className="demo-button"
