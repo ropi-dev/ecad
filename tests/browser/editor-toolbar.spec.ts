@@ -14,7 +14,15 @@ test("groups replace each other above the main toolbar without changing the acti
 		name: "View controls",
 		exact: true,
 	});
-	await expect(main.getByRole("button")).toHaveCount(9);
+	await expect(main.getByRole("button")).toHaveCount(12);
+	const fit = main.getByRole("button", { name: "Fit drawing", exact: true });
+	await main.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect(fit).toHaveText("125%");
+	await main.getByRole("button", { name: "Zoom out", exact: true }).click();
+	await expect(fit).toHaveText("100%");
+	await main.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await fit.click();
+	await expect(fit).toHaveText("100%");
 	await expect(
 		page.getByRole("button", { name: "Rectangle", exact: true }),
 	).toHaveCount(0);
@@ -148,7 +156,7 @@ for (const width of [320, 390, 1440]) {
 								? "Wire"
 								: label === "History tools"
 									? "History"
-									: "Zoom in",
+									: "Export PNG",
 					exact: true,
 				})
 				.click();
@@ -208,14 +216,13 @@ test.describe("mobile touch scrolling", () => {
 			.poll(() => row.evaluate((element) => element.scrollLeft))
 			.toBeGreaterThan(0);
 		expect(await page.locator("#editor-scene").textContent()).toBe(camera);
-		const view = page.getByRole("button", { name: "View tools", exact: true });
-		await view.focus();
+		await main.getByRole("button", { name: "Zoom out", exact: true }).focus();
 		await expect
 			.poll(() => row.evaluate((element) => element.scrollLeft))
 			.toBe(0);
-		await page.keyboard.press("ArrowUp");
+		await page.keyboard.press("Tab");
 		await expect(
-			page.getByRole("button", { name: "Zoom out", exact: true }),
+			main.getByRole("button", { name: "Zoom in", exact: true }),
 		).toBeFocused();
 		await session.detach();
 	});
