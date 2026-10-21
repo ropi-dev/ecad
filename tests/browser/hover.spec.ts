@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
-import { stableScreenshot } from "./stable-screenshot";
+import {
+	canvasScreenshot,
+	sceneScreenshotStyle,
+	stableScreenshot,
+} from "./stable-screenshot";
 
 const snapshot = async (page: Page): Promise<Viewer2DSnapshot> =>
 	JSON.parse((await page.locator("#snapshot").textContent()) || "{}");
@@ -29,7 +33,7 @@ test("2D hover highlights only the untagged shape under the pointer in either pr
 			await page.getByRole("button", { name: "Orthographic camera" }).click();
 		await page.mouse.move(0, 0);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(0);
-		const before = imageHash(await stableScreenshot(() => canvas.screenshot()));
+		const before = imageHash(await canvasScreenshot(canvas));
 		const otherHalf = {
 			x: bounds.x + bounds.width / 2,
 			y: bounds.y,
@@ -37,23 +41,23 @@ test("2D hover highlights only the untagged shape under the pointer in either pr
 			height: bounds.height - 100,
 		};
 		const otherBefore = imageHash(
-			await stableScreenshot(() => page.screenshot({ clip: otherHalf })),
+			await stableScreenshot(() =>
+				page.screenshot({ clip: otherHalf, style: sceneScreenshotStyle }),
+			),
 		);
 		await moveTo(-12);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(1);
-		expect(
-			imageHash(await stableScreenshot(() => canvas.screenshot())),
-		).not.toBe(before);
+		expect(imageHash(await canvasScreenshot(canvas))).not.toBe(before);
 		expect(
 			imageHash(
-				await stableScreenshot(() => page.screenshot({ clip: otherHalf })),
+				await stableScreenshot(() =>
+					page.screenshot({ clip: otherHalf, style: sceneScreenshotStyle }),
+				),
 			),
 		).toBe(otherBefore);
 		await moveTo(0);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(0);
-		expect(
-			imageHash(await stableScreenshot(() => canvas.screenshot())),
-		).toBe(before);
+		expect(imageHash(await canvasScreenshot(canvas))).toBe(before);
 		await moveTo(12);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(1);
 		await page.mouse.down();
@@ -73,18 +77,18 @@ test("3D model hover brightens a part and clears on leave without modifying the 
 		page.getByRole("button", { name: "Zoom", exact: true }),
 	).toBeEnabled();
 	await page.mouse.move(0, 0);
-	const before = imageHash(await canvas.screenshot());
+	const before = imageHash(await canvasScreenshot(canvas));
 	const bounds = (await canvas.boundingBox())!;
 	await page.mouse.move(
 		bounds.x + bounds.width / 2,
 		bounds.y + bounds.height / 2,
 	);
 	await expect
-		.poll(async () => imageHash(await canvas.screenshot()))
+		.poll(async () => imageHash(await canvasScreenshot(canvas)))
 		.not.toBe(before);
 	await page.mouse.move(0, 0);
 	await expect
-		.poll(async () => imageHash(await canvas.screenshot()))
+		.poll(async () => imageHash(await canvasScreenshot(canvas)))
 		.toBe(before);
 	await page.getByRole("button", { name: "Mount", exact: true }).click();
 	await expect(canvas).toHaveCount(0);
@@ -93,7 +97,7 @@ test("3D model hover brightens a part and clears on leave without modifying the 
 		page.getByRole("button", { name: "Zoom", exact: true }),
 	).toBeEnabled();
 	await page.mouse.move(0, 0);
-	expect(imageHash(await canvas.screenshot())).toBe(before);
+	expect(imageHash(await canvasScreenshot(canvas))).toBe(before);
 	await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
@@ -120,18 +124,18 @@ test("imported Gerber geometry highlights without component or net attributes", 
 	).toBeEnabled();
 	const canvas = page.locator("canvas");
 	await page.mouse.move(0, 0);
-	const before = imageHash(await canvas.screenshot());
+	const before = imageHash(await canvasScreenshot(canvas));
 	const bounds = (await canvas.boundingBox())!;
 	await page.mouse.move(
 		bounds.x + bounds.width / 2,
 		bounds.y + bounds.height / 2,
 	);
 	await expect
-		.poll(async () => imageHash(await canvas.screenshot()))
+		.poll(async () => imageHash(await canvasScreenshot(canvas)))
 		.not.toBe(before);
 	await page.mouse.move(0, 0);
 	await expect
-		.poll(async () => imageHash(await canvas.screenshot()))
+		.poll(async () => imageHash(await canvasScreenshot(canvas)))
 		.toBe(before);
 	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 });

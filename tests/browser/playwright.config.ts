@@ -5,6 +5,18 @@ export default defineConfig({
 	testDir: ".",
 	testMatch: "*.spec.ts",
 	workers: 1,
+	projects: [
+		{
+			name: "chromium",
+			testIgnore: "renderer.spec.ts",
+		},
+		{
+			name: "renderer",
+			testMatch: "renderer.spec.ts",
+			// Use a display for the software WebGPU swap chain on Linux CI.
+			use: { headless: !process.env.CI },
+		},
+	],
 	use: {
 		baseURL: "http://127.0.0.1:4174",
 		launchOptions: {

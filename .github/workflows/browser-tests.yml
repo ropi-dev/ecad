@@ -46,7 +46,6 @@ jobs:
         run: >-
           xvfb-run -a -s '-screen 0 2560x1440x24'
           npm run test:browser --
-          --headed
           --forbid-only
           --fully-parallel
           --workers=1

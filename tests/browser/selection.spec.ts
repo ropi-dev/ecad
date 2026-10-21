@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { canvasScreenshot } from "./stable-screenshot";
 
 for (const projection of ["perspective", "orthographic"]) {
 	test(`click selects a shape in ${projection} and keeps its attributes after leaving`, async ({ page }) => {
@@ -11,7 +12,7 @@ for (const projection of ["perspective", "orthographic"]) {
 		const x = bounds.x + bounds.width / 2 + (-12 - state.camera.x) * state.camera.scale;
 		const y = bounds.y + bounds.height / 2 + state.camera.y * state.camera.scale;
 		await page.mouse.move(0, 0);
-		const before = await canvas.screenshot();
+		const before = await canvasScreenshot(canvas);
 		await page.mouse.click(x, y);
 		const attributes = page.getByRole("complementary", { name: "Selection attributes" });
 		await expect(attributes).toContainText("Shapes");
@@ -21,11 +22,11 @@ for (const projection of ["perspective", "orthographic"]) {
 		expect(panel.y).toBeCloseTo(bounds.y + 40, 4);
 		await page.mouse.move(0, 0);
 		await expect(attributes).toBeVisible();
-		expect(await canvas.screenshot()).not.toEqual(before);
+		expect(await canvasScreenshot(canvas)).not.toEqual(before);
 		await canvas.press("Escape");
 		await expect(attributes).toHaveCount(0);
 		await canvas.evaluate(element => (element as HTMLCanvasElement).blur());
-		await expect.poll(async () => (await canvas.screenshot()).equals(before)).toBe(true);
+		await expect.poll(async () => (await canvasScreenshot(canvas)).equals(before)).toBe(true);
 		await page.mouse.click(x, y);
 		await expect(attributes).toBeVisible();
 		await page.mouse.click(bounds.x + bounds.width / 2, y);
