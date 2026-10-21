@@ -13,6 +13,7 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 
 ## Performance
 
+- Keep performance validation local. Compare before and after on the same machine; do not use hosted-runner timing budgets as CI gates.
 - Before developing a new feature or changing startup, project storage, imports, or rendering, run `npm run perf:baseline` to capture the current checkout on this machine. If a comparable baseline already exists, use `npm run perf` without overwriting it.
 - After the change, run `npm run perf` and inspect `perf-artifacts/latest.json`. Include measured before/after results and the test environment in the completion report. Do not claim a performance fix is verified without measurements.
 - Add a realistic scenario and explicit budgets in `tests/performance` when a feature adds a new user flow or materially larger workload. Keep startup scenarios free of editor and renderer dependencies.
