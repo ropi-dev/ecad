@@ -392,6 +392,34 @@ test("default-symbols", async ({ page }, testInfo) => {
 	});
 });
 
+test("editor-pin-wire", async ({ page }, testInfo) => {
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await (await toolbarButton(page, "Pin")).click();
+	const canvas = page.locator("canvas");
+	const bounds = (await canvas.boundingBox())!;
+	const pin = { x: bounds.width * 0.4, y: bounds.height / 2 };
+	await canvas.click({ position: pin });
+	await expect(page.locator('[data-tool="select"]')).toBeAttached();
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "pin.start-wire", async () => {
+			await canvas.click({ position: pin });
+			await page.waitForFunction(() => document.querySelector('[data-tool="wire"]'));
+		});
+		await canvas.click({ position: { x: pin.x + 80, y: pin.y } });
+		await page.keyboard.press("Enter");
+		await expect(page.locator('[data-tool="select"]')).toBeAttached();
+		await expect(page.getByRole("spinbutton", { name: "Length", exact: true })).toBeVisible();
+		await (await toolbarButton(page, "Undo")).click();
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-pin-wire", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
+});
+
 test("editor-toolbar", async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);

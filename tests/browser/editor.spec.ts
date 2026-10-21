@@ -1247,17 +1247,19 @@ test("undo and redo clear unfinished previews and active drags without adding hi
 	await page.keyboard.press("Control+Shift+z");
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await expect.poll(async () => (await state(page)).preview).toBeNull();
+	await createShape(page, "Rectangle", 250, 200);
+	const withRectangle = await drawing(page);
 	await page.getByRole("button", { name: "Select", exact: true }).click();
-	await moveAt(page, 150, 100);
+	await moveAt(page, 250, 200);
 	await page.mouse.down();
-	await moveAt(page, 180, 120);
-	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(180, 4);
+	await moveAt(page, 280, 220);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(280, 4);
 	await page.keyboard.press("Control+z");
 	await page.mouse.up();
-	await expect.poll(() => drawing(page)).toEqual([]);
-	await page.keyboard.press("Control+y");
 	await expect.poll(() => drawing(page)).toEqual(created);
-	await expectHistoryCount(page, 2);
+	await page.keyboard.press("Control+y");
+	await expect.poll(() => drawing(page)).toEqual(withRectangle);
+	await expectHistoryCount(page, 3);
 });
 
 test("wire width edits apply to shapes and groups and support undo and redo", async ({ page }) => {
@@ -1462,7 +1464,7 @@ async function insertSymbol(page: Page, name: string, x: number, y: number) {
 	await clickAt(page, x, y);
 }
 
-test("symbols select through any child, move and delete as one, and restore with history", async ({ page }) => {
+test("symbols select through their body, move and delete as one, and restore with history", async ({ page }) => {
 	await insertSymbol(page, "Resistor", 100, 150);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	await expect(page.getByLabel("Reference", { exact: true })).toHaveValue("R1");
@@ -1472,8 +1474,7 @@ test("symbols select through any child, move and delete as one, and restore with
 	await insertSymbol(page, "Capacitor", 200, 150);
 	await insertSymbol(page, "Ground", 290, 150);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
-	// Grab only the resistor's left lead.
-	await dragTo(page, [97, 150], [117, 170]);
+	await dragTo(page, [100, 150], [120, 170]);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(120, 4);
 	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("22 kΩ");
 	await page.keyboard.press("ArrowRight");
@@ -1482,7 +1483,7 @@ test("symbols select through any child, move and delete as one, and restore with
 	await page.getByLabel("Center Y", { exact: true }).blur();
 	await page.getByLabel("Angle", { exact: true }).fill("90");
 	await page.getByLabel("Angle", { exact: true }).blur();
-	await clickAt(page, 121, 177);
+	await clickAt(page, 121, 180);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
@@ -1499,7 +1500,7 @@ test("symbols select and drag anywhere inside their compact outline, including a
 	await expect.poll(async () => (await state(page)).outlines).toEqual([{ width: symbol.width + 0.5, height: symbol.height + 0.5 }]);
 	for (let index = 0; index < 4; index++)
 		await (await toolbarButton(page, "Zoom in")).click();
-	await clickAt(page, 200 + symbol.width / 2 + 0.4, 150);
+	await clickAt(page, 200 + symbol.width / 2 + 0.4, 150 + symbol.height / 2 + 0.4);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
 	await clickAt(page, 200, 150);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
@@ -1592,7 +1593,7 @@ test("marquee and shift selection keep symbols intact alongside ordinary shapes"
 	await clickAt(page, 290, 150);
 	await page.keyboard.up("Shift");
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1", "symbol 2", "rectangle 3"]);
-	await dragTo(page, [97, 150], [107, 160]);
+	await dragTo(page, [100, 150], [110, 160]);
 	await expect.poll(async () => (await state(page)).shapes.map(({ x }) => Math.round(x))).toEqual([110, 210, 300]);
 	await page.keyboard.down("Shift");
 	await clickAt(page, 207, 160);
@@ -1655,8 +1656,8 @@ test("symbol placement snaps and selection-only clicks do not add history", asyn
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await insertSymbol(page, "Resistor", 101, 151);
 	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[100, 150]]);
-	await clickAt(page, 97, 150);
-	await clickAt(page, 103, 150);
+	await clickAt(page, 100, 150);
+	await clickAt(page, 100, 150);
 	await expectHistoryCount(page, 2);
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
@@ -1675,12 +1676,68 @@ test("pin names can be edited in Attributes and restored with undo and redo", as
  await (await toolbarButton(page, "Redo")).click();
  await expect(name).toHaveValue("VCC");
  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+ await page.keyboard.down("Shift");
  await clickAt(page, 100, 100);
+ await page.keyboard.up("Shift");
  await expect(name).toHaveValue("VCC");
  await name.fill("");
  await name.blur();
  await (await toolbarButton(page, "Undo")).click();
  await expect(name).toHaveValue("VCC");
+});
+
+test("clicking a free pin starts a wire without selecting the Wire tool", async ({ page }) => {
+ await placePin(page, 101, 103);
+ await placePin(page, 181, 153);
+ await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+ const document = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
+ const before = await document();
+ await clickAt(page, 102, 103);
+ await expect(page.locator('[data-tool="wire"]')).toBeAttached();
+ await moveAt(page, 141, 103);
+ await expect.poll(async () => (await state(page)).preview?.width).toBeGreaterThan(0);
+ expect(await document()).toEqual(before);
+ await page.keyboard.press("Escape");
+ await expect(page.locator('[data-tool="select"]')).toBeAttached();
+ expect(await document()).toEqual(before);
+ await clickAt(page, 102, 103);
+ await clickAt(page, 182, 152);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[101, 103, 181, 103], [181, 103, 181, 153]]);
+ await expect(page.locator('[data-tool="select"]')).toBeAttached();
+ await clickAt(page, 101, 103);
+ await expect(page.locator('[data-tool="select"]')).toBeAttached();
+ await moveAt(page, 130, 130);
+ expect((await state(page)).preview).toBeNull();
+ await (await toolbarButton(page, "Undo")).click();
+ await expect.poll(() => wireEndpoints(page)).toEqual([]);
+ await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+ await page.keyboard.down("Shift");
+ await clickAt(page, 101, 103);
+ await page.keyboard.up("Shift");
+ await expect(page.locator('[data-tool="select"]')).toBeAttached();
+ await expect.poll(() => selectedNames(page)).toEqual(["pin 1"]);
+ await (await toolbarButton(page, "Redo")).click();
+ await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
+});
+
+test("clicking a rotated symbol's free pin starts an exact wire and Enter keeps its corner", async ({ page }) => {
+ await insertSymbol(page, "Resistor", 201, 153);
+ await page.getByLabel("Angle", { exact: true }).fill("90");
+ await page.getByLabel("Angle", { exact: true }).blur();
+ for (let index = 0; index < 6; index++) await (await toolbarButton(page, "Zoom in")).click();
+ await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+ await clickAt(page, 201, 156);
+ await expect(page.locator('[data-tool="wire"]')).toBeAttached();
+ await clickAt(page, 260, 156);
+ await page.keyboard.press("Enter");
+ await expect.poll(() => wireEndpoints(page)).toEqual([[201, 156, 260, 156]]);
+ await expect(page.locator('[data-tool="select"]')).toBeAttached();
+ await clickAt(page, 201, 150);
+ await moveAt(page, 160, 150);
+ await expect.poll(async () => (await state(page)).preview?.width).toBeGreaterThan(0);
+ await page.screenshot({ path: test.info().outputPath("pin-click-wire-preview.png") });
+ await page.keyboard.press("Escape");
+ await expect.poll(async () => (await wireEndpoints(page)).length).toBe(1);
 });
 
 test("pins restrict wire starts and open ends accept both starts and finishes", async ({ page }) => {

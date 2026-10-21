@@ -32,6 +32,8 @@ The symbol timing limits were set about 30% above the repeated-run medians recor
 
 The `editor-toolbar` scenario opens and switches each tool group, selects Rectangle, closes the group, and returns to Select three times. Under the same 4× CPU throttle, its interaction p95 budget is 750 ms, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts.
 
+The `editor-pin-wire` scenario clicks an unconnected pin in Select mode to start a wire, places a segment, ends the chain, and undoes the segment three times. Starting the wire has an interaction p95 budget of 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.
+
 The `desktop-storage` scenario measures native Node filesystem operations without CPU throttling. It saves 2,000 drawing shapes and 50 symbols in the legacy layout, migrates them to visible files, edits and saves the drawing, copies a 10 MiB source file, and reopens the project. It checks that migration removes empty `.ecad` folders and that saved data survives reopening. Its budgets allow 2 seconds each for saving and loading, and 3 seconds each for migration and source copying. The source bytes measure storage I/O, not STEP parsing. It also measures saving and loading the home-directory symbol config and reading a 50-file configured directory, with a 1-second budget for each operation. Each report records the Node version and workload sizes.
 
 The absolute timing budgets were calibrated with 4× CPU throttling and software rendering, including measurements from [the first CI run](https://github.com/rolaca11/ecad/actions/runs/37324627616) and [the next CI run](https://github.com/rolaca11/ecad/actions/runs/37325490010):

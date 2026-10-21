@@ -1,4 +1,10 @@
 export const budgets = {
+	"editor-pin-wire": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"symbol-references": {
 		interactionP95Ms: 1500,
 		resolveP95Ms: 250,
