@@ -2,12 +2,12 @@ import type { DefaultSymbol, SymbolPrimitive } from "./types.ts";
 
 /** Preserve the first three built-ins' IDs, order, geometry, values, and labels. */
 export function legacySymbols(): DefaultSymbol[] {
-	const wire = (
+	const line = (
 		x1: number,
 		y1: number,
 		x2: number,
 		y2: number,
-	): SymbolPrimitive => ({ kind: "wire", x1, y1, x2, y2 });
+	): SymbolPrimitive => ({ kind: "line", x1, y1, x2, y2 });
 	const pin = (x: number, y: number): SymbolPrimitive => ({
 		kind: "pin",
 		name: "",
@@ -24,9 +24,9 @@ export function legacySymbols(): DefaultSymbol[] {
 			extent: 3.81,
 			label: 2.5,
 			shapes: [
-				wire(-3.81, 0, -2.54, 0),
+				line(-3.81, 0, -2.54, 0),
 				{ kind: "rectangle", x: 0, y: 0, width: 5.08, height: 2.032 },
-				wire(2.54, 0, 3.81, 0),
+				line(2.54, 0, 3.81, 0),
 				pin(-3.81, 0),
 				pin(3.81, 0),
 			],
@@ -40,10 +40,10 @@ export function legacySymbols(): DefaultSymbol[] {
 			extent: 3.81,
 			label: 3.5,
 			shapes: [
-				wire(-3.81, 0, -0.762, 0),
-				wire(-0.762, -2.032, -0.762, 2.032),
-				wire(0.762, -2.032, 0.762, 2.032),
-				wire(0.762, 0, 3.81, 0),
+				line(-3.81, 0, -0.762, 0),
+				line(-0.762, -2.032, -0.762, 2.032),
+				line(0.762, -2.032, 0.762, 2.032),
+				line(0.762, 0, 3.81, 0),
 				pin(-3.81, 0),
 				pin(3.81, 0),
 			],
@@ -57,10 +57,10 @@ export function legacySymbols(): DefaultSymbol[] {
 			extent: 1.27,
 			label: 0,
 			shapes: [
-				wire(0, 1.27, 0, 0),
-				wire(-1.27, 0, 1.27, 0),
-				wire(-0.635, -0.635, 0.635, -0.635),
-				wire(-0.127, -1.27, 0.127, -1.27),
+				line(0, 1.27, 0, 0),
+				line(-1.27, 0, 1.27, 0),
+				line(-0.635, -0.635, 0.635, -0.635),
+				line(-0.127, -1.27, 0.127, -1.27),
 				pin(0, 1.27),
 			],
 		},

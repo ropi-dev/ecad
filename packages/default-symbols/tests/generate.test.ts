@@ -16,6 +16,7 @@ test("default generation is deterministic and returns independent geometry and l
 	for (const [index, symbol] of first.entries()) {
 		assert.ok(symbol.file.shapes.length > 0 && symbol.file.shapes.length <= 256);
 		assert.ok(symbol.file.shapes.some((shape) => shape.kind === "pin"));
+		assert.ok(!symbol.file.shapes.some((shape) => shape.kind === "wire"), `${symbol.file.id} must draw leads and bodies with lines`);
 		assert.notEqual(symbol.file.shapes, second[index].file.shapes);
 		assert.notEqual(symbol.texts[0], second[index].texts[0]);
 		for (const shape of symbol.file.shapes) {

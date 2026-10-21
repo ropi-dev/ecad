@@ -90,13 +90,13 @@ test("pin halos follow wire connections, disconnections, and coincident pins", (
 	assert.equal(buildDrawingDisplay([pin], new Set([pin.id])).halos[0].appearance, "selected");
 });
 
-test("rotated symbol connections retain pin and wire colors in documents and previews", () => {
+test("rotated symbol leads use the body color while external wires keep their distinct color", () => {
 	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
 	const innerWire = drawShape(2, "wire", { x: 0, y: 0 }, { x: 10, y: 0 });
 	const symbol = { ...createSymbolFromShapes(3, [pin, innerWire]), rotation: Math.PI / 2 };
 	const [terminal] = pinTerminals(symbol);
 	const display = buildDrawingDisplay([symbol], new Set(), [symbol]);
-	assert.deepEqual(display.connections.map(({ appearance }) => appearance), ["pin", "wire"]);
+	assert.deepEqual(display.connections.map(({ appearance }) => appearance), ["pin", "stroke"]);
 	assert.equal(display.halos[0].x, terminal.x);
 	assert.equal(display.halos[0].y, terminal.y);
 	assert.equal(display.connections[1].rotation, Math.PI / 2);
@@ -106,6 +106,17 @@ test("rotated symbol connections retain pin and wire colors in documents and pre
 	const external = drawShape(4, "wire", terminal, { x: terminal.x + 10, y: terminal.y });
 	assert.equal(buildDrawingDisplay([symbol, external], new Set()).halos.length, 0);
 	assert.ok(buildDrawingDisplay([symbol], new Set([symbol.id])).connections.every(({ appearance }) => appearance === "selected"));
+	const renderer = createDrawingRenderer(null);
+	const root = new Group();
+	try {
+		renderer.update(root, buildDrawingDisplay([symbol, external], new Set()));
+		const color = (name: string) => (root.getObjectByName(name) as Mesh<never, MeshBasicMaterial>).material.color.getHexString();
+		assert.equal(color("wire 3:2"), color("symbol 3"));
+		assert.equal(color("wire 3:2"), "76c4c0");
+		assert.equal(color("wire 4"), "ef8f9c");
+	} finally {
+		renderer.dispose();
+	}
 });
 
 test("renderer uses shape colors for pins and hollow halos while wires keep their distinct color", () => {
