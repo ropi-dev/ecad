@@ -20,8 +20,9 @@ export default defineConfig({
 	webServer: {
 		cwd: fileURLToPath(new URL("../../", import.meta.url)),
 		command:
-			"npx vite --config tests/browser/vite.config.ts --port 4174 --strictPort",
+			"npx vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port 4174 --strictPort",
 		url: "http://127.0.0.1:4174/tests/browser/renderer.html",
+		stdout: "pipe",
 		reuseExistingServer: !process.env.CI,
 	},
 });

@@ -88,7 +88,7 @@ npm run test:browser
 
 Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
 
-GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web and desktop builds as separate checks. The browser workflow installs Chromium with its system dependencies and runs the browser suite with the existing software rendering settings. Download `chromium-results` from the workflow run for the HTML report and failure traces. Reports expire after seven days.
+GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web and desktop builds as separate checks. The browser workflow installs Chromium with its system dependencies and runs the browser suite with the existing software rendering settings. Download `chromium-results` from the workflow run for the HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
 Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `npm ci`, and cache npm downloads. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
 
