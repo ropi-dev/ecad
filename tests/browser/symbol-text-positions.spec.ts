@@ -64,7 +64,11 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  await expect.poll(async () => (await labelScreen(page, 1)).x).toBeCloseTo(rotated.x - 45, 2);
  await expect.poll(async () => (await labelScreen(page, 1)).y).toBeCloseTo(rotated.y + 35, 2);
  const xInput = page.getByRole("spinbutton", { name: "Reference text X", exact: true });
- await xInput.fill("12"); await xInput.press("Tab");
+ const committedX = await xInput.getAttribute("data-committed-value");
+ await xInput.fill("12");
+ await expect(xInput).toHaveAttribute("data-committed-value", committedX!);
+ await xInput.press("Tab");
+ await expect(xInput).toHaveAttribute("data-committed-value", "12");
  expect((await state(page)).shapes[0].textPositions!.reference!.x).toBe(12);
  await expect(page.getByRole("alert")).toHaveCount(0);
  // Arrange a close view of the edited and untouched instances for visual review.
@@ -117,5 +121,55 @@ test("saved symbol label positions survive a project reload without copying the 
  await expect.poll(async () => (await projectState()).shapes[0]?.textPositions?.reference?.x).toBe(18);
  await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await expect(page.locator("canvas")).toBeVisible();
+ await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("Alt-dragging a moved label duplicates the symbol and keeps label edits independent", async ({ page }) => {
+ await page.goto("/tests/browser/editor.html");
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+ const box = (await page.locator("canvas").boundingBox())!;
+ await page.locator("canvas").click({ position: { x: box.width * 0.45, y: box.height * 0.5 } });
+ await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+ for (const [axis, value] of [["X", "-8"], ["Y", "8"]]) {
+  const input = page.getByRole("spinbutton", { name: `Reference text ${axis}`, exact: true });
+  await input.fill(value); await input.press("Tab");
+ }
+ const before = await state(page);
+ await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).symbolTexts[0]?.x).toBeCloseTo(before.shapes[0].x - 8);
+ const start = await labelScreen(page, 1);
+ await page.keyboard.down("Alt");
+ await page.mouse.move(start.x, start.y);
+ await page.mouse.down();
+ await page.mouse.move(start.x + 140, start.y + 45, { steps: 8 });
+ expect(await state(page)).toEqual(before);
+ await page.mouse.up();
+ await page.keyboard.up("Alt");
+ const duplicated = await state(page);
+ expect(duplicated.shapes).toHaveLength(2);
+ expect(duplicated.historySize).toBe(before.historySize + 1);
+ expect(duplicated.shapes[0]).toEqual(before.shapes[0]);
+ expect(duplicated.shapes[1].textPositions).toEqual(before.shapes[0].textPositions);
+ expect(duplicated.shapes[1].attributes.reference).toBe("R2");
+ expect(duplicated.shapes[1].x).not.toBe(duplicated.shapes[0].x);
+ await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).symbolTexts.length).toBe(4);
+ const copyLabel = await labelScreen(page, 2);
+ expect(copyLabel.x).toBeCloseTo(start.x + 140, 2);
+ expect(copyLabel.y).toBeCloseTo(start.y + 45, 2);
+ await page.mouse.move(copyLabel.x, copyLabel.y);
+ await page.mouse.down();
+ await page.mouse.move(copyLabel.x + 35, copyLabel.y - 30, { steps: 5 });
+ await page.mouse.up();
+ const edited = await state(page);
+ expect(edited.shapes[0]).toEqual(before.shapes[0]);
+ expect(edited.shapes[1].textPositions).not.toEqual(duplicated.shapes[1].textPositions);
+ expect(edited.shapes[1].x).toBe(duplicated.shapes[1].x);
+ expect(edited.shapes[1].y).toBe(duplicated.shapes[1].y);
+ await (await toolbarButton(page, "Undo")).click();
+ expect((await state(page)).shapes).toEqual(duplicated.shapes);
+ await (await toolbarButton(page, "Undo")).click();
+ expect((await state(page)).shapes).toEqual(before.shapes);
+ await (await toolbarButton(page, "Redo")).click();
+ expect((await state(page)).shapes).toEqual(duplicated.shapes);
  await expect(page.getByRole("alert")).toHaveCount(0);
 });

@@ -3,6 +3,7 @@ import {
 	type SymbolCategory,
 } from "@ecad/default-symbols";
 import {
+	type EditorShape,
 	type EditorSymbol,
 	PIN_RADIUS,
 	type PrimitiveShape,
@@ -76,6 +77,26 @@ export function createSymbol(
 			definition.texts.map(({ attribute, x, y }) => [attribute, { x, y }]),
 		),
 		attributes: { name: definition.name, reference, value: definition.value },
+	};
+}
+
+export function duplicateSymbol(
+	symbol: EditorSymbol,
+	id: number,
+	shapes: readonly EditorShape[],
+): EditorSymbol {
+	const prefix = symbol.attributes.reference.replace(/\d+$/, "");
+	const references = new Set(
+		shapes.flatMap((shape) =>
+			shape.kind === "symbol" ? [shape.attributes.reference] : [],
+		),
+	);
+	let suffix = id;
+	while (references.has(`${prefix}${suffix}`)) suffix++;
+	return {
+		...structuredClone(symbol),
+		id,
+		attributes: { ...symbol.attributes, reference: `${prefix}${suffix}` },
 	};
 }
 

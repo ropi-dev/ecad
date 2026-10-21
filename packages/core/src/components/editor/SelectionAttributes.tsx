@@ -44,6 +44,7 @@ function AttributeInput({
 				title={step === "90" ? "Angle in 90° increments" : undefined}
 				placeholder="Mixed"
 				defaultValue={displayValue}
+				data-committed-value={value}
 				className="w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-right text-[#f0f3f8] tabular-nums focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 				onBlur={(event) => {
 					const next = event.currentTarget.valueAsNumber;

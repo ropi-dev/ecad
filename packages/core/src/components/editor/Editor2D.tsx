@@ -73,6 +73,7 @@ import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import {
 	createSymbol,
 	createSymbolFromShapes,
+	duplicateSymbol,
 	type SymbolDefinition,
 } from "#/drawing/symbols.ts";
 import type { Point } from "#/drawing/types.ts";
@@ -110,7 +111,7 @@ interface Drag {
 	start: Point;
 	startScreen: Point;
 	previousSelection: Set<number>;
-	mode: "move" | "marquee" | "draw" | "resize" | "symbol-text";
+	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-text";
 	textIndex?: number;
 	handle?: ResizeHandle;
 	anchorShape?: EditorShape;
@@ -433,6 +434,10 @@ function EditorCanvas({
 			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) >=
 			3;
 		if (active.wireStart && !active.moved) return;
+		if (active.mode === "duplicate") {
+			if (!active.moved) return;
+			active.valid = true;
+		}
 		// Selecting an off-grid shape must not move or resize it.
 		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
 			return;
@@ -493,7 +498,7 @@ function EditorCanvas({
 			previewReplacements([draft]);
 			return;
 		}
-		if (active.mode === "move") {
+		if (active.mode === "move" || active.mode === "duplicate") {
 			previewReplacements(
 				moveShapes(
 					active.originals,
@@ -503,7 +508,7 @@ function EditorCanvas({
 					},
 					active.gridStep,
 					active.anchorShape,
-					active.initialShapes,
+					active.mode === "duplicate" ? active.originals : active.initialShapes,
 				),
 			);
 			return;
@@ -546,7 +551,9 @@ function EditorCanvas({
 			const createdIds = new Set(active.originals.map((shape) => shape.id));
 			placeShapes(
 				currentShapes.current.filter((shape) => createdIds.has(shape.id)),
-				`Draw ${active.originals[0].kind}`,
+				active.mode === "duplicate"
+					? "Duplicate symbol"
+					: `Draw ${active.originals[0].kind}`,
 			);
 			setTool("select");
 		} else if (
@@ -789,15 +796,29 @@ function EditorCanvas({
 							event.button !== 0 ||
 							event.ctrlKey ||
 							event.metaKey ||
-							event.altKey ||
 							tool === "pan"
 						)
 							return;
 						const point = pointAt(event, canvas);
 						if (!point) return;
+						const duplicate =
+							event.altKey && tool === "select"
+								? [...shapes]
+										.reverse()
+										.find(
+											(candidate) =>
+												candidate.kind === "symbol" &&
+												hitShape(
+													candidate,
+													point,
+													6 / (snapshot.current?.camera.scale ?? 1),
+												),
+										)
+								: undefined;
+						if (event.altKey && duplicate?.kind !== "symbol") return;
 						stop(event);
 						canvas.focus({ preventScroll: true });
-						const resize = handleAt(point);
+						const resize = duplicate ? undefined : handleAt(point);
 						canvas.style.cursor = resize?.handle.cursor ?? "";
 						let shape: EditorShape | undefined;
 						const created = tool !== "select";
@@ -807,7 +828,7 @@ function EditorCanvas({
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
 						let wireStart: Point | undefined;
-						if (tool === "select" && !event.shiftKey && !resize) {
+						if (tool === "select" && !event.shiftKey && !resize && !duplicate) {
 							let connection: ReturnType<typeof openPins>[number] | undefined;
 							let distance = 8 / (snapshot.current?.camera.scale ?? 1);
 							const candidates = measurePerformance(
@@ -891,7 +912,10 @@ function EditorCanvas({
 							setWirePreview(null);
 							return;
 						}
-						if (created) {
+						if (duplicate?.kind === "symbol") {
+							shape = duplicateSymbol(duplicate, nextId.current, shapes);
+							setPreviewShapes([...currentShapes.current, shape]);
+						} else if (created) {
 							shape = drawShape(nextId.current, tool, start, start);
 							setPreviewShapes([...currentShapes.current, shape]);
 						} else if (resize) shape = resize.shape;
@@ -905,12 +929,16 @@ function EditorCanvas({
 										6 / (snapshot.current?.camera.scale ?? 1),
 									),
 								);
-						if (shape && event.shiftKey && !created && !resize) {
+						if (shape && event.shiftKey && !created && !resize && !duplicate) {
 							selectShape(shape.id, true);
 							return;
 						}
 						const textIndex =
-							!created && !resize && !wireStart && shape?.kind === "symbol"
+							!created &&
+							!resize &&
+							!wireStart &&
+							!duplicate &&
+							shape?.kind === "symbol"
 								? symbolTextShapes(shape).find((text) =>
 										hitShape(text, point, 0),
 									)?.id
@@ -919,6 +947,7 @@ function EditorCanvas({
 							? textIndex === undefined &&
 								!created &&
 								!resize &&
+								!duplicate &&
 								selectedIds.has(shape.id)
 								? selected
 								: [shape]
@@ -943,8 +972,9 @@ function EditorCanvas({
 							},
 							previousSelection: selectedIds,
 							textIndex,
-							mode:
-								textIndex !== undefined
+							mode: duplicate
+								? "duplicate"
+								: textIndex !== undefined
 									? "symbol-text"
 									: created
 										? "draw"
@@ -959,7 +989,7 @@ function EditorCanvas({
 							moved: false,
 							originals,
 							initialShapes: currentShapes.current,
-							created,
+							created: created || !!duplicate,
 							valid: false,
 							additive: event.shiftKey,
 							wireStart,
@@ -1216,7 +1246,7 @@ function EditorCanvas({
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Delete removes the whole selected symbol. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (

@@ -392,6 +392,39 @@ test("default-symbols", async ({ page }, testInfo) => {
 	});
 });
 
+test("editor-symbol-duplicate", async ({ page }, testInfo) => {
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+	const canvas = page.locator("canvas");
+	const bounds = (await canvas.boundingBox())!;
+	const source = { x: bounds.x + bounds.width * 0.35, y: bounds.y + bounds.height * 0.5 };
+	await page.mouse.click(source.x, source.y);
+	await expect(page.getByRole("textbox", { name: "Reference", exact: true })).toHaveValue("R1");
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "symbol.duplicate", async () => {
+			await page.keyboard.down("Alt");
+			await page.mouse.move(source.x, source.y);
+			await page.mouse.down();
+			await page.mouse.move(source.x + 80 + repeat * 40, source.y + 60, { steps: 4 });
+			await page.mouse.up();
+			await page.keyboard.up("Alt");
+			await page.waitForFunction(
+				(reference) => document.querySelector<HTMLInputElement>('input[aria-label="Reference"]')?.value === reference,
+				`R${repeat + 2}`,
+				{ polling: "raf" },
+			);
+		});
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-symbol-duplicate", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
+});
+
 test("editor-pin-heavy", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
@@ -710,8 +743,9 @@ test("editor-symbol-text", async ({ page }, testInfo) => {
     const input = page.getByRole("spinbutton", { name: `${attribute} text X`, exact: true });
     await input.fill(String(10 + repeat * 5));
     await input.press("Tab");
-    await page.waitForFunction(({ attribute, expected }) => document.querySelector<HTMLInputElement>(`input[aria-label="${attribute} text X"]`)?.valueAsNumber === expected,
+    await page.waitForFunction(({ attribute, expected }) => document.querySelector<HTMLInputElement>(`input[aria-label="${attribute} text X"]`)?.getAttribute("data-committed-value") === String(expected),
      { attribute, expected: 10 + repeat * 5 }, { polling: "raf" });
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await expect(center).toHaveValue(initialCenter);
    });
   }
