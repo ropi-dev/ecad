@@ -5,7 +5,9 @@ import {
 	type EditorSymbol,
 	type ShapeAttribute,
 	shapeBounds,
+	symbolTextPosition,
 } from "#/drawing/shapes.ts";
+import type { Point } from "#/drawing/types.ts";
 import { FloatingPanel } from "../viewer/FloatingPanel";
 
 function AttributeInput({
@@ -69,6 +71,7 @@ export function SelectionAttributes({
 	onClear,
 	onAttributeChange,
 	onSymbolAttributeChange,
+	onSymbolTextPositionChange,
 	onPinNameChange,
 	onCreateSymbol,
 	onEditSymbol,
@@ -85,6 +88,10 @@ export function SelectionAttributes({
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
 		value: string,
+	) => void;
+	onSymbolTextPositionChange: (
+		attribute: keyof EditorSymbol["attributes"],
+		position: Point,
 	) => void;
 	onTextChange: (text: string) => void;
 	onPinNameChange: (name: string) => void;
@@ -316,6 +323,39 @@ export function SelectionAttributes({
 						</div>
 					))}
 				</dl>
+				{symbol && symbol.texts.length > 0 && (
+					<fieldset className="mb-4 border-0 p-0 text-[12px]">
+						<legend className="mb-2 text-[#9ba7b8]">
+							Text positions relative to symbol
+						</legend>
+						{symbol.texts.map((text) => {
+							const position = symbolTextPosition(symbol, text);
+							const label =
+								text.attribute[0].toUpperCase() + text.attribute.slice(1);
+							return (["x", "y"] as const).map((axis) => (
+								<div
+									key={`${text.attribute}:${axis}`}
+									className="flex items-center justify-between gap-3 py-1"
+								>
+									<span className="text-[#9ba7b8]">
+										{label} {axis.toUpperCase()}
+									</span>
+									<AttributeInput
+										key={`${symbol.id}:${text.attribute}:${axis}`}
+										label={`${label} text ${axis.toUpperCase()}`}
+										value={position[axis]}
+										onChange={(value) =>
+											onSymbolTextPositionChange(text.attribute, {
+												...position,
+												[axis]: value,
+											})
+										}
+									/>
+								</div>
+							));
+						})}
+					</fieldset>
+				)}
 				{outlinedShapes.length > 0 && (
 					<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
 						<span>Line width</span>
@@ -330,7 +370,7 @@ export function SelectionAttributes({
 				)}
 				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
 					{symbol
-						? "Select any part to move or delete the whole symbol."
+						? "Drag text to move its label. Drag the body to move the whole symbol. Text positions are saved for this instance."
 						: single?.kind === "pin"
 							? "Drag to move the connection point."
 							: "Drag to move; drag handles to resize."}{" "}

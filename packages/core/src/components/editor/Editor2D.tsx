@@ -55,6 +55,7 @@ import {
 	hitShape,
 	intersectsSelection,
 	moveShapes,
+	moveSymbolText,
 	openPins,
 	type ResizeHandle,
 	resizeHandles,
@@ -62,6 +63,7 @@ import {
 	routeWire,
 	type ShapeKind,
 	snapPoint,
+	symbolTextShapes,
 } from "#/drawing/shapes.ts";
 import {
 	symbolFileShapes,
@@ -108,7 +110,8 @@ interface Drag {
 	start: Point;
 	startScreen: Point;
 	previousSelection: Set<number>;
-	mode: "move" | "marquee" | "draw" | "resize";
+	mode: "move" | "marquee" | "draw" | "resize" | "symbol-text";
+	textIndex?: number;
 	handle?: ResizeHandle;
 	anchorShape?: EditorShape;
 	gridStep: number;
@@ -433,6 +436,27 @@ function EditorCanvas({
 		// Selecting an off-grid shape must not move or resize it.
 		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
 			return;
+		if (active.mode === "symbol-text") {
+			const original = active.originals[0];
+			if (
+				!active.moved ||
+				original.kind !== "symbol" ||
+				active.textIndex === undefined
+			)
+				return;
+			previewReplacements([
+				moveSymbolText(
+					original,
+					active.textIndex,
+					{
+						x: point.x - active.start.x,
+						y: point.y - active.start.y,
+					},
+					active.gridStep,
+				),
+			]);
+			return;
+		}
 		if (active.mode === "resize" && active.handle) {
 			previewReplacements([
 				resizeShape(
@@ -525,7 +549,11 @@ function EditorCanvas({
 				`Draw ${active.originals[0].kind}`,
 			);
 			setTool("select");
-		} else if (active.mode === "move" || active.mode === "resize") {
+		} else if (
+			active.mode === "move" ||
+			active.mode === "resize" ||
+			active.mode === "symbol-text"
+		) {
 			const initial = new Map(
 				active.initialShapes.map((shape) => [shape.id, shape]),
 			);
@@ -533,9 +561,11 @@ function EditorCanvas({
 				currentShapes.current.filter(
 					(shape) => shape !== initial.get(shape.id),
 				),
-				active.mode === "move"
-					? "Move selection"
-					: `Resize ${active.originals[0].kind}`,
+				active.mode === "symbol-text"
+					? "Move symbol text"
+					: active.mode === "move"
+						? "Move selection"
+						: `Resize ${active.originals[0].kind}`,
 			);
 		}
 		if (active.canvas.hasPointerCapture(active.pointerId))
@@ -879,8 +909,17 @@ function EditorCanvas({
 							selectShape(shape.id, true);
 							return;
 						}
+						const textIndex =
+							!created && !resize && !wireStart && shape?.kind === "symbol"
+								? symbolTextShapes(shape).find((text) =>
+										hitShape(text, point, 0),
+									)?.id
+								: undefined;
 						const originals = shape
-							? !created && !resize && selectedIds.has(shape.id)
+							? textIndex === undefined &&
+								!created &&
+								!resize &&
+								selectedIds.has(shape.id)
 								? selected
 								: [shape]
 							: [];
@@ -903,13 +942,17 @@ function EditorCanvas({
 								y: event.clientY - rect.top,
 							},
 							previousSelection: selectedIds,
-							mode: created
-								? "draw"
-								: resize
-									? "resize"
-									: shape
-										? "move"
-										: "marquee",
+							textIndex,
+							mode:
+								textIndex !== undefined
+									? "symbol-text"
+									: created
+										? "draw"
+										: resize
+											? "resize"
+											: shape
+												? "move"
+												: "marquee",
 							handle: resize?.handle,
 							anchorShape: shape,
 							gridStep: snapStep,
@@ -1173,7 +1216,7 @@ function EditorCanvas({
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Select any part of a symbol to move or delete it as one object; edit its name, reference and value in Attributes. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Delete removes the whole selected symbol. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (
@@ -1290,6 +1333,21 @@ function EditorCanvas({
 									: shape,
 							),
 							`Change symbol ${attribute}`,
+						);
+					}}
+					onSymbolTextPositionChange={(attribute, position) => {
+						if (!selectedSymbol) return;
+						commitReplacements(
+							[
+								{
+									...selectedSymbol,
+									textPositions: {
+										...selectedSymbol.textPositions,
+										[attribute]: position,
+									},
+								},
+							],
+							`Move symbol ${attribute} text`,
 						);
 					}}
 					snapStep={snapEnabled ? gridStep : 0}

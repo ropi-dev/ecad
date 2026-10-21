@@ -58,6 +58,9 @@ export function symbolFileShapes(
 				definitionId: shape.definitionId,
 				rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
 				...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
+				...(shape.textPositions
+					? { textPositions: structuredClone(shape.textPositions) }
+					: {}),
 				...(shape.lineWidth === undefined
 					? {}
 					: {
@@ -165,6 +168,9 @@ export function symbolFileWithShapes(
 					rotation:
 						(((((shape.rotation * 180) / Math.PI) % 360) + 540) % 360) - 180,
 					attributes: { ...shape.attributes },
+					...(shape.textPositions
+						? { textPositions: structuredClone(shape.textPositions) }
+						: {}),
 					...(shape.strokeOverride === undefined
 						? {}
 						: { lineWidth: shape.strokeOverride }),
