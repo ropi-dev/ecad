@@ -417,7 +417,7 @@ export function shapeBounds(shape: EditorShape): Bounds {
 }
 
 export function selectionSize(shape: EditorShape) {
-	const padding = shape.kind === "symbol" ? 0.5 : 4;
+	const padding = shape.kind === "symbol" || shape.kind === "wire" ? 0.5 : 4;
 	return {
 		width: shape.width + padding,
 		height:
