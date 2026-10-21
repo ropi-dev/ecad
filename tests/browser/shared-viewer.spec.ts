@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { demoFiles } from "../fixtures/demo-gerbers";
+import { stableScreenshot } from "./stable-screenshot";
 
 for (const format of ["step", "gerber"] as const) {
 	test(`${format} shares zoom shortcuts and preserves its view through resize and reopening`, async ({
@@ -44,9 +45,11 @@ for (const format of ["step", "gerber"] as const) {
 		const capture = async () => {
 			await page.mouse.move(0, 0);
 			return (
-				await canvas.screenshot({
-					style: "canvas { outline: none !important; }",
-				})
+				await stableScreenshot(() =>
+					canvas.screenshot({
+						style: "canvas { outline: none !important; }",
+					}),
+				)
 			).toString("base64");
 		};
 		const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });

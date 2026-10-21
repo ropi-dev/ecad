@@ -11,9 +11,11 @@ export default defineConfig({
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 			args: [
 				"--enable-unsafe-webgpu",
+				// ANGLE and WebGPU must share the same software Vulkan driver.
 				"--use-webgpu-adapter=swiftshader",
-				"--use-angle=swiftshader",
-				"--enable-features=Vulkan",
+				"--use-angle=vulkan",
+				"--use-vulkan=swiftshader",
+				"--enable-features=Vulkan,VulkanFromANGLE",
 				"--disable-vulkan-surface",
 			],
 		},

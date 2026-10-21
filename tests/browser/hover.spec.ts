@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
+import { stableScreenshot } from "./stable-screenshot";
 
 const snapshot = async (page: Page): Promise<Viewer2DSnapshot> =>
 	JSON.parse((await page.locator("#snapshot").textContent()) || "{}");
@@ -28,23 +29,31 @@ test("2D hover highlights only the untagged shape under the pointer in either pr
 			await page.getByRole("button", { name: "Orthographic camera" }).click();
 		await page.mouse.move(0, 0);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(0);
-		const before = imageHash(await canvas.screenshot());
+		const before = imageHash(await stableScreenshot(() => canvas.screenshot()));
 		const otherHalf = {
 			x: bounds.x + bounds.width / 2,
 			y: bounds.y,
 			width: bounds.width / 2,
 			height: bounds.height - 100,
 		};
-		const otherBefore = imageHash(await page.screenshot({ clip: otherHalf }));
+		const otherBefore = imageHash(
+			await stableScreenshot(() => page.screenshot({ clip: otherHalf })),
+		);
 		await moveTo(-12);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(1);
-		expect(imageHash(await canvas.screenshot())).not.toBe(before);
-		expect(imageHash(await page.screenshot({ clip: otherHalf }))).toBe(
-			otherBefore,
-		);
+		expect(
+			imageHash(await stableScreenshot(() => canvas.screenshot())),
+		).not.toBe(before);
+		expect(
+			imageHash(
+				await stableScreenshot(() => page.screenshot({ clip: otherHalf })),
+			),
+		).toBe(otherBefore);
 		await moveTo(0);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(0);
-		expect(imageHash(await canvas.screenshot())).toBe(before);
+		expect(
+			imageHash(await stableScreenshot(() => canvas.screenshot())),
+		).toBe(before);
 		await moveTo(12);
 		await expect.poll(async () => (await snapshot(page)).highlighted).toBe(1);
 		await page.mouse.down();
