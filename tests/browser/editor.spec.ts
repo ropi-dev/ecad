@@ -1247,19 +1247,17 @@ test("undo and redo clear unfinished previews and active drags without adding hi
 	await page.keyboard.press("Control+Shift+z");
 	await expect.poll(() => drawing(page)).toEqual(created);
 	await expect.poll(async () => (await state(page)).preview).toBeNull();
-	await createShape(page, "Rectangle", 250, 200);
-	const withRectangle = await drawing(page);
 	await page.getByRole("button", { name: "Select", exact: true }).click();
-	await moveAt(page, 250, 200);
+	await moveAt(page, 150, 100);
 	await page.mouse.down();
-	await moveAt(page, 280, 220);
-	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(280, 4);
+	await moveAt(page, 180, 120);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(180, 4);
 	await page.keyboard.press("Control+z");
 	await page.mouse.up();
-	await expect.poll(() => drawing(page)).toEqual(created);
+	await expect.poll(() => drawing(page)).toEqual([]);
 	await page.keyboard.press("Control+y");
-	await expect.poll(() => drawing(page)).toEqual(withRectangle);
-	await expectHistoryCount(page, 3);
+	await expect.poll(() => drawing(page)).toEqual(created);
+	await expectHistoryCount(page, 2);
 });
 
 test("wire width edits apply to shapes and groups and support undo and redo", async ({ page }) => {
@@ -1464,7 +1462,7 @@ async function insertSymbol(page: Page, name: string, x: number, y: number) {
 	await clickAt(page, x, y);
 }
 
-test("symbols select through their body, move and delete as one, and restore with history", async ({ page }) => {
+test("symbols select through any child, move and delete as one, and restore with history", async ({ page }) => {
 	await insertSymbol(page, "Resistor", 100, 150);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	await expect(page.getByLabel("Reference", { exact: true })).toHaveValue("R1");
@@ -1474,7 +1472,7 @@ test("symbols select through their body, move and delete as one, and restore wit
 	await insertSymbol(page, "Capacitor", 200, 150);
 	await insertSymbol(page, "Ground", 290, 150);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(3);
-	await dragTo(page, [100, 150], [120, 170]);
+	await dragTo(page, [97, 150], [117, 170]);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(120, 4);
 	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("22 kΩ");
 	await page.keyboard.press("ArrowRight");
@@ -1593,7 +1591,7 @@ test("marquee and shift selection keep symbols intact alongside ordinary shapes"
 	await clickAt(page, 290, 150);
 	await page.keyboard.up("Shift");
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1", "symbol 2", "rectangle 3"]);
-	await dragTo(page, [100, 150], [110, 160]);
+	await dragTo(page, [97, 150], [107, 160]);
 	await expect.poll(async () => (await state(page)).shapes.map(({ x }) => Math.round(x))).toEqual([110, 210, 300]);
 	await page.keyboard.down("Shift");
 	await clickAt(page, 207, 160);
@@ -1686,6 +1684,31 @@ test("pin names can be edited in Attributes and restored with undo and redo", as
  await expect(name).toHaveValue("VCC");
 });
 
+for (const snap of [false, true]) {
+ test(`free pins still drag and restore through history with snapping ${snap}`, async ({ page }) => {
+  await placePin(page, 101, 103);
+  if (snap) await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+  const original = await drawing(page);
+  const from = await screen(page, 101, 103);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await expect(page.locator('[data-tool="select"]')).toBeAttached();
+  await page.mouse.move(from.x + 1, from.y + 1);
+  expect(await drawing(page)).toEqual(original);
+  await moveAt(page, 131, 133);
+  await page.mouse.up();
+  await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [Math.round(x), Math.round(y)]))
+   .toEqual([[snap ? 130 : 131, snap ? 130 : 133]]);
+  await expect(page.locator('[data-tool="select"]')).toBeAttached();
+  expect((await state(page)).preview).toBeNull();
+  const moved = await drawing(page);
+  await (await toolbarButton(page, "Undo")).click();
+  await expect.poll(() => drawing(page)).toEqual(original);
+  await (await toolbarButton(page, "Redo")).click();
+  await expect.poll(() => drawing(page)).toEqual(moved);
+ });
+}
+
 test("clicking a free pin starts a wire without selecting the Wire tool", async ({ page }) => {
  await placePin(page, 101, 103);
  await placePin(page, 181, 153);
@@ -1719,6 +1742,22 @@ test("clicking a free pin starts a wire without selecting the Wire tool", async 
  await (await toolbarButton(page, "Redo")).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
 });
+
+for (const cancelWith of ["Escape", "pointercancel", "lostpointercapture"]) {
+ test(`${cancelWith} cancels a pending pin click without starting a wire`, async ({ page }) => {
+  await placePin(page, 101, 103);
+  const original = await drawing(page);
+  await moveAt(page, 101, 103);
+  await page.mouse.down();
+  if (cancelWith === "Escape") await page.keyboard.press("Escape");
+  else await page.locator("canvas").dispatchEvent(cancelWith, { pointerId: 1 });
+  await page.mouse.up();
+  await moveAt(page, 141, 103);
+  await expect(page.locator('[data-tool="select"]')).toBeAttached();
+  expect((await state(page)).preview).toBeNull();
+  expect(await drawing(page)).toEqual(original);
+ });
+}
 
 test("clicking a rotated symbol's free pin starts an exact wire and Enter keeps its corner", async ({ page }) => {
  await insertSymbol(page, "Resistor", 201, 153);

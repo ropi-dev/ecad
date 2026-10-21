@@ -118,6 +118,7 @@ interface Drag {
 	created: boolean;
 	valid: boolean;
 	additive: boolean;
+	wireStart?: Point;
 }
 interface Marquee {
 	start: Point;
@@ -229,10 +230,14 @@ function EditorCanvas({
 			return store.getSnapshot().nextShapeId;
 		},
 	};
+	const previews = useMemo(
+		() => wirePreview ?? (symbolPreview ? [symbolPreview] : []),
+		[wirePreview, symbolPreview],
+	);
 	const { scene, updateScene } = useEditorScene(
 		shapes,
 		selectedIds,
-		wirePreview ?? (symbolPreview ? [symbolPreview] : []),
+		previews,
 		isSymbol ? null : sheet,
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
@@ -318,6 +323,11 @@ function EditorCanvas({
 		setDraftShapes(next);
 	};
 	const applySelection = (ids: Set<number>) => {
+		if (
+			ids.size === currentSelection.current.size &&
+			[...ids].every((id) => currentSelection.current.has(id))
+		)
+			return;
 		currentSelection.current = ids;
 		setSelectedIds(ids);
 	};
@@ -419,6 +429,7 @@ function EditorCanvas({
 		active.moved ||=
 			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) >=
 			3;
+		if (active.wireStart && !active.moved) return;
 		// Selecting an off-grid shape must not move or resize it.
 		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
 			return;
@@ -502,6 +513,11 @@ function EditorCanvas({
 		if (cancel || (active.created && !active.valid)) {
 			setPreviewShapes(null);
 			applySelection(active.previousSelection);
+		} else if (active.wireStart && !active.moved) {
+			setPreviewShapes(null);
+			applySelection(new Set());
+			setTool("wire");
+			startWire(active.wireStart, active.pointerId);
 		} else if (active.created) {
 			const createdIds = new Set(active.originals.map((shape) => shape.id));
 			placeShapes(
@@ -760,26 +776,33 @@ function EditorCanvas({
 								? rulerSpacing(snapshot.current.camera.scale).minor
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
+						let wireStart: Point | undefined;
 						if (tool === "select" && !event.shiftKey && !resize) {
-							let connection: Point | undefined;
+							let connection: ReturnType<typeof openPins>[number] | undefined;
 							let distance = 8 / (snapshot.current?.camera.scale ?? 1);
-							for (const { point: terminal } of openPins(
-								currentShapes.current,
-							)) {
+							const candidates = measurePerformance(
+								"editor.pin-hit-test",
+								() =>
+									openPins(currentShapes.current, {
+										point,
+										tolerance: distance,
+									}),
+								{ shapes: currentShapes.current.length },
+							);
+							for (const candidate of candidates) {
+								const terminal = candidate.point;
 								const next = Math.hypot(
 									terminal.x - point.x,
 									terminal.y - point.y,
 								);
 								if (next <= distance) {
-									connection = terminal;
+									connection = candidate;
 									distance = next;
 								}
 							}
 							if (connection) {
-								applySelection(new Set());
-								setTool("wire");
-								startWire(connection, event.pointerId);
-								return;
+								wireStart = connection.point;
+								shape = connection.shape;
 							}
 						}
 						if (tool === "text") {
@@ -842,7 +865,7 @@ function EditorCanvas({
 							shape = drawShape(nextId.current, tool, start, start);
 							setPreviewShapes([...currentShapes.current, shape]);
 						} else if (resize) shape = resize.shape;
-						else
+						else if (!shape)
 							shape = [...shapes]
 								.reverse()
 								.find((candidate) =>
@@ -896,6 +919,7 @@ function EditorCanvas({
 							created,
 							valid: false,
 							additive: event.shiftKey,
+							wireStart,
 						};
 						canvas.setPointerCapture(event.pointerId);
 					}}

@@ -7,6 +7,7 @@ import {
 	hitShape,
 	intersectsSelection,
 	moveShapes,
+	openPins,
 	pinTerminals,
 	resizeHandles,
 	routeWire,
@@ -91,6 +92,20 @@ test("empty space and ordinary shapes are not wire anchors", () => {
 	const rectangle = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 20, y: 20 });
 	assert.equal(findWireConnection([], { x: 10, y: 10 }, 2), undefined);
 	assert.deepEqual(wireConnectionPoints([rectangle]), []);
+});
+
+test("nearby pin queries preserve connectivity checks against the whole drawing", () => {
+	const symbol = { ...createSymbol(6, symbolDefinitions[0], { x: 60, y: 10 }), rotation: Math.PI / 2 };
+	const shapes = [pin(1, 10, 10), wire(2, 0, 10, 20, 10), pin(3, 30, 10),
+		pin(4, 40, 10), pin(5, 40, 10), symbol];
+	for (const point of [{ x: 10, y: 10 }, { x: 30.1, y: 10 }, { x: 40, y: 10 },
+		{ x: 60, y: 13 }, { x: 100, y: 100 }]) {
+		assert.deepEqual(openPins(shapes, { point, tolerance: 1 }),
+			openPins(shapes).filter(({ point: pin }) => Math.hypot(pin.x - point.x, pin.y - point.y) <= 1));
+	}
+	assert.equal(openPins(shapes, { point: { x: 30.1, y: 10 }, tolerance: 1 })[0].shape, shapes[2]);
+	assert.deepEqual(openPins(shapes, { point: { x: 10, y: 10 }, tolerance: 1 }), []);
+	assert.deepEqual(openPins(shapes, { point: { x: 40, y: 10 }, tolerance: 1 }), []);
 });
 
 test("only open wire ends and pins are connection points, not corners or segment interiors", () => {

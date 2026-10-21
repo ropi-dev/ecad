@@ -552,17 +552,29 @@ export function pinTerminals(shape: EditorShape): Point[] {
 }
 
 /** Free pins include symbol terminals and exclude connections along wire interiors. */
-export function openPins(shapes: EditorShape[]) {
+export function openPins(
+	shapes: EditorShape[],
+	near?: { point: Point; tolerance: number },
+) {
 	const pins = shapes.flatMap((shape) =>
 		pinTerminals(shape).map((point) => ({ shape, point })),
 	);
+	// Check connectivity only for pins within the pointer's hit area.
+	const candidates = near
+		? pins.filter(
+				({ point }) =>
+					Math.hypot(point.x - near.point.x, point.y - near.point.y) <=
+					near.tolerance,
+			)
+		: pins;
+	if (candidates.length === 0) return [];
 	const wires = shapes
 		.filter((shape) => shape.kind === "wire")
 		.map((shape) => ({
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
-	return pins.filter(
+	return candidates.filter(
 		(pin) =>
 			!wires.some(({ start, end }) => pointOnWire(pin.point, start, end)) &&
 			!pins.some(

@@ -1,4 +1,9 @@
 export const budgets = {
+	"editor-pin-heavy": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+	},
 	"editor-pin-wire": {
 		interactionP95Ms: 750,
 		domNodes: 1500,
