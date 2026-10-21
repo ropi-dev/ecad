@@ -16,4 +16,5 @@ export interface ProjectStorage {
 		assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
 	): Promise<ProjectSnapshot>;
 	readAsset(directory: string, path: string): Promise<Uint8Array>;
+	canWriteFile?(directory: string, path: string): Promise<boolean>;
 }

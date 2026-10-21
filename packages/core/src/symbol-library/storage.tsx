@@ -1,5 +1,8 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
-import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
+import type {
+	SymbolFile,
+	SymbolLibrary,
+} from "#/components/editor/symbolFormat.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	defaultSymbolConfig,
@@ -14,6 +17,19 @@ export interface SymbolLibrarySnapshot {
 	directory?: string;
 }
 
+export interface DirectorySymbolRequest {
+	path: string;
+	scope: LibraryScope;
+	projectDirectory?: string;
+	id: string;
+}
+
+export interface SymbolEditTarget {
+	key: string;
+	file: SymbolFile;
+	save(file: SymbolFile): Promise<void>;
+}
+
 /** Hosts own persistence and file access; the editor owns symbol validation. */
 export interface SymbolLibraryStorage {
 	mode: "web" | "desktop" | "memory";
@@ -21,7 +37,10 @@ export interface SymbolLibraryStorage {
 	save(symbols: SymbolLibrary, additions: SymbolLibrary): Promise<string>;
 	openDirectory?(): Promise<SymbolLibrarySnapshot | null>;
 	loadConfiguration?(): Promise<SymbolLibraryConfig>;
-	saveConfiguration?(config: SymbolLibraryConfig): Promise<string>;
+	saveConfiguration?(
+		config: SymbolLibraryConfig,
+		options?: { requirePersistence?: boolean },
+	): Promise<string>;
 	openLibraryDirectory?(name: string): Promise<ConfiguredSymbolLibrary | null>;
 	loadDirectory?(
 		path: string,
@@ -29,6 +48,17 @@ export interface SymbolLibraryStorage {
 		projectDirectory?: string,
 	): Promise<SymbolLibrary>;
 	subscribe?(listener: () => void): () => void;
+	canWriteConfiguration?(): Promise<boolean>;
+	canEditSymbol?(id: string): Promise<boolean>;
+	inspectDirectorySymbol?(request: DirectorySymbolRequest): Promise<{
+		file: SymbolFile;
+		writable: boolean;
+	}>;
+	saveDirectorySymbol?(
+		request: DirectorySymbolRequest,
+		original: SymbolFile,
+		next: SymbolFile,
+	): Promise<void>;
 }
 
 const StorageContext = createContext<SymbolLibraryStorage | null>(null);

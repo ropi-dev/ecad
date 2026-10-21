@@ -35,8 +35,22 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 			for (const child of children) child.dispose();
 		}
 	}
-	if (shape.kind === "wire" || shape.kind === "line" || shape.kind === "text")
-		return new PlaneGeometry(1, 1);
+	if (shape.kind === "wire" || shape.kind === "line") {
+		const { width, lineWidth } = shape;
+		if (width <= 0 || lineWidth <= 0) return new BufferGeometry();
+		const radius = lineWidth / 2;
+		const halfLength = width / 2;
+		const outline = new Shape();
+		outline.moveTo(-halfLength, -radius);
+		outline.lineTo(halfLength, -radius);
+		outline.absarc(halfLength, 0, radius, -Math.PI / 2, Math.PI / 2, false);
+		outline.lineTo(-halfLength, radius);
+		outline.absarc(-halfLength, 0, radius, Math.PI / 2, Math.PI * 1.5, false);
+		outline.closePath();
+		// Build caps in millimeters before normalizing to avoid stretching them.
+		return new ShapeGeometry(outline).scale(1 / width, 1 / lineWidth, 1);
+	}
+	if (shape.kind === "text") return new PlaneGeometry(1, 1);
 	if (shape.kind === "pin") return new CircleGeometry(0.5, 32);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();

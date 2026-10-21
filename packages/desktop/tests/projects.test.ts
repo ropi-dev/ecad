@@ -258,3 +258,26 @@ test("desktop project directory libraries resolve within their project and survi
  assert.deepEqual((await reopened.load())?.symbolLibraries, symbolLibraries);
  assert.deepEqual(await reopened.readSymbolLibrary(project.directory, "libraries"), [symbol]);
 });
+
+test("edits writable relative project directory symbols and checks project file permissions", async () => temporary(async (parent) => {
+ const { chmod } = await import("node:fs/promises");
+ const projects = new DesktopProjects();
+ const project = await projects.create("Editing", parent);
+ await projects.save(project.directory, { shapes: [], symbols: [symbol], symbolLibraries: [{ id: "outside", name: "Outside", enabled: true, source: { kind: "directory", path: "../parts" } }] });
+ const path = join(parent, "parts");
+ await mkdir(path);
+ await writeFile(join(path, "other-name.json"), JSON.stringify(symbol));
+ assert.deepEqual(await projects.inspectLibrarySymbol(project.directory, "../parts", symbol.id), { file: symbol, writable: true });
+ const next = { ...symbol, shapes: [] };
+ await projects.saveLibrarySymbol(project.directory, "../parts", symbol, next);
+ assert.deepEqual(await projects.readSymbolLibrary(project.directory, "../parts"), [next]);
+ await assert.rejects(projects.saveLibrarySymbol(project.directory, "..", symbol, next), /not configured/);
+ const snapshot = (await projects.load())!;
+ const symbolPath = snapshot.manifest.symbols[0];
+ assert.equal(await projects.canWriteFile(project.directory, symbolPath), true);
+ await chmod(join(project.directory, symbolPath), 0o444);
+ assert.equal(await projects.canWriteFile(project.directory, symbolPath), false);
+ assert.equal(await projects.canWriteFile(project.directory, snapshot.manifest.drawing), true);
+ await chmod(join(project.directory, symbolPath), 0o644);
+ await assert.rejects(projects.canWriteFile(parent, symbolPath), /no longer open/);
+}));

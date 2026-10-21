@@ -36,7 +36,11 @@ for (const definition of symbolDefinitions) {
 	test(`${definition.name} selects through each child and renders all its strokes`, () => {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
 		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), [`${definition.prefix}1`, definition.value]);
-		assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
+		if (["resistor", "capacitor", "ground"].includes(definition.id)) {
+			assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
+		}
+		assert.ok(Number.isFinite(symbol.width) && symbol.width > 0);
+		assert.ok(Number.isFinite(symbol.height) && symbol.height > 0);
 		for (const terminal of pinTerminals(symbol)) {
 			assert.equal(terminal.x, Math.round(terminal.x));
 			assert.equal(terminal.y, Math.round(terminal.y));
@@ -69,7 +73,8 @@ for (const definition of symbolDefinitions) {
 		mesh.updateMatrixWorld();
 		try {
 			for (const child of symbolShapes(symbol)) {
-				const point = { x: child.x, y: child.y - (child.kind === "rectangle" ? child.height / 2 - 0.01 : 0) };
+				const offset = child.kind === "rectangle" ? child.height / 2 - 0.01 : child.kind === "circle" ? child.width / 2 : 0;
+				const point = { x: child.x + offset * Math.sin(child.rotation), y: child.y - offset * Math.cos(child.rotation) };
 				assert.equal(hitShape(symbol, point, 0.1), true);
 				assert.equal(intersectsSelection(symbol, { minX: point.x - 0.1, maxX: point.x + 0.1, minY: point.y - 0.1, maxY: point.y + 0.1 }), true);
 				assert.ok(new Raycaster(new Vector3(point.x, point.y, 10), new Vector3(0, 0, -1)).intersectObject(mesh).length > 0);

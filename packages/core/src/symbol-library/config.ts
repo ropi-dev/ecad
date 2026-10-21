@@ -42,6 +42,11 @@ const configSchema = Schema.Struct({
 export type ConfiguredSymbolLibrary = typeof librarySchema.Type;
 export type SymbolLibraryConfig = typeof configSchema.Type;
 export type LibraryScope = "user" | "project";
+export interface SymbolSource {
+	scope: LibraryScope;
+	library: ConfiguredSymbolLibrary;
+	file?: SymbolLibrary[number];
+}
 
 export function defaultSymbolConfig(): SymbolLibraryConfig {
 	return {
@@ -105,8 +110,13 @@ export async function resolveSymbolLibraries(
 	user: readonly ConfiguredSymbolLibrary[],
 	project: readonly ConfiguredSymbolLibrary[],
 	loadDirectory?: (path: string, scope: LibraryScope) => Promise<SymbolLibrary>,
-): Promise<{ definitions: SymbolDefinition[]; errors: string[] }> {
+): Promise<{
+	definitions: SymbolDefinition[];
+	sources: Map<string, SymbolSource>;
+	errors: string[];
+}> {
 	const definitions = new Map<string, SymbolDefinition>();
+	const sources = new Map<string, SymbolSource>();
 	const errors: string[] = [];
 	for (const [scope, libraries] of [
 		["user", user],
@@ -116,21 +126,24 @@ export async function resolveSymbolLibraries(
 			if (!library.enabled) continue;
 			try {
 				let loaded: SymbolDefinition[];
+				let files: SymbolLibrary = [];
 				if (library.source.kind === "builtin") loaded = symbolDefinitions;
-				else if (library.source.kind === "embedded")
-					loaded = libraryDefinitions(library.source.symbols);
-				else {
+				else if (library.source.kind === "embedded") {
+					files = library.source.symbols;
+					loaded = libraryDefinitions(files);
+				} else {
 					if (!loadDirectory)
 						throw new Error(
 							"Directory paths require the desktop app. Upload the library files in this browser.",
 						);
 					const symbols = await loadDirectory(library.source.path, scope);
-					loaded = libraryDefinitions(
-						parseSavedSymbolLibrary(JSON.stringify(symbols)),
-					);
+					files = parseSavedSymbolLibrary(JSON.stringify(symbols));
+					loaded = libraryDefinitions(files);
 				}
-				for (const definition of loaded)
+				for (const [index, definition] of loaded.entries()) {
 					definitions.set(definition.id, definition);
+					sources.set(definition.id, { scope, library, file: files[index] });
+				}
 			} catch (cause) {
 				errors.push(
 					`${library.name}: ${cause instanceof Error ? cause.message : "Unable to load library."}`,
@@ -138,5 +151,5 @@ export async function resolveSymbolLibraries(
 			}
 		}
 	}
-	return { definitions: [...definitions.values()], errors };
+	return { definitions: [...definitions.values()], sources, errors };
 }

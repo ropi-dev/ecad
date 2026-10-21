@@ -191,3 +191,81 @@ test("configured relative user directories resolve against the home directory", 
   }
  });
 });
+
+test("edits the original nested filename in a configured writable library", async () => {
+ await withDirectory(async (home) => {
+  const { stat } = await import("node:fs/promises");
+  const directory = join(home, "parts");
+  await mkdir(join(directory, "nested"), { recursive: true });
+  const original = { ...symbol("editable"), description: "Preserve metadata", prefix: "TP", value: "Signal" };
+  const filename = join(directory, "nested", "unrelated-filename.JSON");
+  await writeFile(filename, JSON.stringify(original), { mode: 0o640 });
+  const library = new DesktopSymbolLibrary(undefined, home);
+  const entry = await library.openLibraryDirectory(directory);
+  await library.saveConfiguration({ version: 1, symbolLibraries: [entry] });
+  assert.deepEqual(await library.inspectConfiguredSymbol(directory, original.id), { file: original, writable: true });
+  const next = { ...original, shapes: [...original.shapes, { kind: "pin" as const, name: "New pin", x: 3, y: 4 }] };
+  await library.saveConfiguredSymbol(directory, original, next);
+  assert.deepEqual(parseSymbolFile(await readFile(filename, "utf8")), next);
+  assert.equal((await stat(filename)).mode & 0o777, 0o640);
+  assert.deepEqual(await readdir(directory), ["nested"]);
+  assert.deepEqual(await readdir(join(directory, "nested")), ["unrelated-filename.JSON"]);
+  assert.deepEqual(await new DesktopSymbolLibrary(undefined, home).loadConfiguredDirectory(directory), [next]);
+  await assert.rejects(library.saveConfiguredSymbol(home, original, next), /not configured/);
+ });
+});
+
+test("definition permissions disable editing and prevent replacing read-only files", async () => {
+ await withDirectory(async (home) => {
+  const { chmod } = await import("node:fs/promises");
+  const directory = join(home, "parts");
+  await mkdir(directory);
+  const original = symbol("editable");
+  const filename = join(directory, "part.ecadsym");
+  await writeFile(filename, JSON.stringify(original));
+  const library = new DesktopSymbolLibrary(undefined, home);
+  const entry = await library.openLibraryDirectory(directory);
+  await library.saveConfiguration({ version: 1, symbolLibraries: [entry] });
+  assert.equal(await library.canWriteConfiguration(), true);
+  await chmod(library.configurationPath, 0o444);
+  assert.equal(await library.canWriteConfiguration(), false);
+  // Directory-file editing does not require a writable user configuration.
+  assert.equal((await library.inspectConfiguredSymbol(directory, original.id)).writable, true);
+  await chmod(filename, 0o444);
+  assert.equal((await library.inspectConfiguredSymbol(directory, original.id)).writable, false);
+  await assert.rejects(library.saveConfiguredSymbol(directory, original, { ...original, shapes: [] }), /read-only/);
+  assert.deepEqual(parseSymbolFile(await readFile(filename, "utf8")), original);
+  await chmod(filename, 0o644);
+  await chmod(directory, 0o555);
+  try {
+   assert.equal((await library.inspectConfiguredSymbol(directory, original.id)).writable, false);
+   await assert.rejects(library.saveConfiguredSymbol(directory, original, { ...original, shapes: [] }), /read-only/);
+  } finally {
+   await chmod(directory, 0o755);
+   await chmod(library.configurationPath, 0o644);
+  }
+ });
+});
+
+test("external edits, removed definitions, and ID changes never overwrite a directory symbol", async () => {
+ await withDirectory(async (home) => {
+  const directory = join(home, "parts");
+  await mkdir(directory);
+  const original = symbol("editable");
+  const filename = join(directory, "part.ecadsym");
+  await writeFile(filename, JSON.stringify(original));
+  const library = new DesktopSymbolLibrary(undefined, home);
+  const entry = await library.openLibraryDirectory(directory);
+  await library.saveConfiguration({ version: 1, symbolLibraries: [entry] });
+  await library.inspectConfiguredSymbol(directory, original.id);
+  const external = { ...original, name: "Changed externally" };
+  await writeFile(filename, JSON.stringify(external));
+  await assert.rejects(library.saveConfiguredSymbol(directory, original, { ...original, shapes: [] }), /definition changed/);
+  await assert.rejects(library.saveConfiguredSymbol(directory, external, { ...external, id: "new-id" }), /cannot change/);
+  assert.deepEqual(parseSymbolFile(await readFile(filename, "utf8")), external);
+  assert.deepEqual(await readdir(directory), ["part.ecadsym"]);
+  await rm(filename);
+  await assert.rejects(library.inspectConfiguredSymbol(directory, original.id), /no longer exists/);
+  await assert.rejects(library.saveConfiguredSymbol(directory, original, original), /definition changed/);
+ });
+});

@@ -6,6 +6,7 @@ export function instrumentProjectStorage(
 ): ProjectStorage {
 	return {
 		mode: storage.mode,
+		canWriteFile: storage.canWriteFile?.bind(storage),
 		load: () => measurePerformanceAsync("project.load", () => storage.load()),
 		list: () => measurePerformanceAsync("project.list", () => storage.list()),
 		create: (name) =>

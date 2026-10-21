@@ -13,5 +13,8 @@ export function createDesktopSymbolLibraryStorage(
 		saveConfiguration: bridge.saveConfiguration?.bind(bridge),
 		openLibraryDirectory: bridge.openLibraryDirectory?.bind(bridge),
 		loadDirectory: bridge.loadDirectory?.bind(bridge),
+		canWriteConfiguration: bridge.canWriteConfiguration?.bind(bridge),
+		inspectDirectorySymbol: bridge.inspectDirectorySymbol?.bind(bridge),
+		saveDirectorySymbol: bridge.saveDirectorySymbol?.bind(bridge),
 	};
 }

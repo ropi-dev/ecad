@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import {
+	access,
 	link,
 	lstat,
 	mkdir,
@@ -17,6 +19,7 @@ import {
 	parseSavedSymbolLibrary,
 	parseSymbolFile,
 	SYMBOL_FILE_LIMIT,
+	type SymbolFile,
 	type SymbolLibrary,
 } from "@ecad/core/components/editor/symbolFormat.ts";
 import {
@@ -33,9 +36,12 @@ import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.ts
 const symbolExtension = /\.(ecadsym|json)$/i;
 
 /** Resolve a directory once. Nested symlinks are never followed. */
-async function readDirectoryData(
-	selectedDirectory: string,
-): Promise<{ directory: string; symbols: SymbolLibrary; totalBytes: number }> {
+async function readDirectoryData(selectedDirectory: string): Promise<{
+	directory: string;
+	symbols: SymbolLibrary;
+	totalBytes: number;
+	files: Map<string, { path: string; bytes: number }>;
+}> {
 	const directory = await realpath(resolve(selectedDirectory));
 	if (!(await lstat(directory)).isDirectory()) {
 		throw new Error("Choose a directory containing symbol files.");
@@ -60,6 +66,7 @@ async function readDirectoryData(
 	await visit(directory);
 	let totalBytes = 0;
 	const symbols = [];
+	const symbolFiles = new Map<string, { path: string; bytes: number }>();
 	for (const path of files) {
 		try {
 			const metadata = await lstat(path);
@@ -77,7 +84,9 @@ async function readDirectoryData(
 					"Symbol files in a directory must total 1 MB or smaller.",
 				);
 			}
-			symbols.push(parseSymbolFile(content.toString("utf8")));
+			const symbol = parseSymbolFile(content.toString("utf8"));
+			symbols.push(symbol);
+			symbolFiles.set(symbol.id, { path, bytes: content.byteLength });
 		} catch (error) {
 			throw new Error(
 				`${relative(directory, path)}: ${error instanceof Error ? error.message : "Unable to read this symbol file."}`,
@@ -85,7 +94,103 @@ async function readDirectoryData(
 			);
 		}
 	}
-	return { directory, symbols: mergeSymbolLibraries([], symbols), totalBytes };
+	return {
+		directory,
+		symbols: mergeSymbolLibraries([], symbols),
+		totalBytes,
+		files: symbolFiles,
+	};
+}
+
+/** Check file permissions as well as the parent needed for atomic replacement. */
+export async function canWriteSymbolPath(
+	path: string,
+	create = false,
+): Promise<boolean> {
+	try {
+		const stat = await lstat(path);
+		if ((!stat.isFile() && !stat.isDirectory()) || !(stat.mode & 0o222))
+			return false;
+		await access(
+			path,
+			constants.W_OK | (stat.isDirectory() ? constants.X_OK : 0),
+		);
+		if (stat.isFile()) {
+			const parent = await lstat(dirname(path));
+			if (!parent.isDirectory() || !(parent.mode & 0o222)) return false;
+			await access(dirname(path), constants.W_OK | constants.X_OK);
+		}
+		return true;
+	} catch (cause) {
+		if (
+			create &&
+			(cause as NodeJS.ErrnoException).code === "ENOENT" &&
+			dirname(path) !== path
+		)
+			return canWriteSymbolPath(dirname(path), true);
+		return false;
+	}
+}
+
+export async function inspectDirectorySymbol(directory: string, id: string) {
+	const current = await readDirectoryData(directory);
+	const file = current.symbols.find((symbol) => symbol.id === id);
+	const entry = current.files.get(id);
+	if (!file || !entry)
+		throw new Error("The symbol definition no longer exists in this library.");
+	return { file, writable: await canWriteSymbolPath(entry.path) };
+}
+
+/** Find the source by ID, preserving nested paths and filenames unrelated to IDs. */
+export async function saveDirectorySymbol(
+	directory: string,
+	original: SymbolFile,
+	next: SymbolFile,
+) {
+	original = parseSymbolFile(JSON.stringify(original));
+	next = parseSymbolFile(JSON.stringify(next));
+	if (next.id !== original.id)
+		throw new Error("Editing cannot change a symbol's ID.");
+	const current = await readDirectoryData(directory);
+	const entry = current.files.get(original.id);
+	const file = current.symbols.find((symbol) => symbol.id === original.id);
+	if (!entry || JSON.stringify(file) !== JSON.stringify(original))
+		throw new Error("The symbol definition changed. Reopen it before saving.");
+	if (!(await canWriteSymbolPath(entry.path)))
+		throw new Error("The symbol definition file is read-only.");
+	const contents = `${JSON.stringify(next)}\n`;
+	if (
+		current.totalBytes - entry.bytes + Buffer.byteLength(contents) >
+		SYMBOL_FILE_LIMIT
+	)
+		throw new Error("Symbol files in a directory must total 1 MB or smaller.");
+	const previous = await lstat(entry.path);
+	const before = await readFile(entry.path);
+	if (
+		JSON.stringify(parseSymbolFile(before.toString("utf8"))) !==
+		JSON.stringify(original)
+	)
+		throw new Error("The symbol definition changed. Reopen it before saving.");
+	const temporary = join(dirname(entry.path), `.ecad-${randomUUID()}.tmp`);
+	try {
+		await writeFile(temporary, contents, {
+			flag: "wx",
+			mode: previous.mode & 0o777,
+		});
+		const latest = await lstat(entry.path);
+		if (
+			!latest.isFile() ||
+			latest.ino !== previous.ino ||
+			latest.dev !== previous.dev ||
+			!(await readFile(entry.path)).equals(before)
+		)
+			throw new Error(
+				"The symbol definition changed. Reopen it before saving.",
+			);
+		await rename(temporary, entry.path);
+	} finally {
+		await rm(temporary, { force: true });
+	}
 }
 
 export async function readSymbolDirectory(
@@ -132,10 +237,17 @@ export class DesktopSymbolLibrary {
 	loadConfiguration() {
 		return this.sequential(() => this.readConfiguration());
 	}
+	canWriteConfiguration() {
+		return this.sequential(() =>
+			canWriteSymbolPath(this.configurationPath, true),
+		);
+	}
 
 	saveConfiguration(config: SymbolLibraryConfig): Promise<string> {
 		return this.sequential(async () => {
 			const contents = serializeSymbolConfig(config);
+			if (!(await canWriteSymbolPath(this.configurationPath, true)))
+				throw new Error("The symbol library configuration file is read-only.");
 			await mkdir(dirname(this.configurationPath), { recursive: true });
 			const temporary = `${this.configurationPath}.${randomUUID()}.tmp`;
 			try {
@@ -166,24 +278,38 @@ export class DesktopSymbolLibrary {
 		});
 	}
 
-	loadConfiguredDirectory(path: string): Promise<SymbolLibrary> {
-		return this.sequential(async () => {
-			const config = await this.readConfiguration();
-			if (
-				!this.approvedDirectories.has(path) &&
-				!config.symbolLibraries.some(
-					(library) =>
-						library.source.kind === "directory" && library.source.path === path,
-				)
+	private async configuredDirectory(path: string) {
+		const config = await this.readConfiguration();
+		if (
+			!this.approvedDirectories.has(path) &&
+			!config.symbolLibraries.some(
+				(library) =>
+					library.source.kind === "directory" && library.source.path === path,
 			)
-				throw new Error(
-					"This directory is not configured as a user symbol library.",
-				);
-			const directory = path.startsWith("~/")
-				? resolve(this.homeDirectory, path.slice(2))
-				: resolve(this.homeDirectory, path);
-			return (await readSymbolDirectory(directory)).symbols;
-		});
+		)
+			throw new Error(
+				"This directory is not configured as a user symbol library.",
+			);
+		return path.startsWith("~/")
+			? resolve(this.homeDirectory, path.slice(2))
+			: resolve(this.homeDirectory, path);
+	}
+	loadConfiguredDirectory(path: string): Promise<SymbolLibrary> {
+		return this.sequential(
+			async () =>
+				(await readSymbolDirectory(await this.configuredDirectory(path)))
+					.symbols,
+		);
+	}
+	inspectConfiguredSymbol(path: string, id: string) {
+		return this.sequential(async () =>
+			inspectDirectorySymbol(await this.configuredDirectory(path), id),
+		);
+	}
+	saveConfiguredSymbol(path: string, original: SymbolFile, next: SymbolFile) {
+		return this.sequential(async () =>
+			saveDirectorySymbol(await this.configuredDirectory(path), original, next),
+		);
 	}
 
 	private sequential<T>(run: () => Promise<T>): Promise<T> {

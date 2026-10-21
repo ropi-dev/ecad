@@ -10,15 +10,30 @@ import {
 } from "@ecad/core/symbol-library/config.ts";
 import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.tsx";
 
-type BrowserStorage = Pick<Storage, "getItem" | "setItem">;
+type BrowserStorage = Pick<Storage, "getItem" | "setItem"> &
+	Partial<Pick<Storage, "removeItem">>;
 
 export function createWebSymbolLibraryStorage(
 	storage?: BrowserStorage,
 ): SymbolLibraryStorage {
+	// Keep failed config writes available when switching from Projects to the editor.
+	let temporaryConfiguration: string | undefined;
 	const browserStorage = () => storage ?? globalThis.localStorage;
 	const changeEvent = "ecad-user-symbol-config-changed";
 	return {
 		mode: "web",
+		async canWriteConfiguration() {
+			try {
+				const target = browserStorage();
+				if (!target.removeItem) return true;
+				const key = `ecad-storage-check-${crypto.randomUUID()}`;
+				target.setItem(key, "");
+				target.removeItem(key);
+				return true;
+			} catch {
+				return false;
+			}
+		},
 		async load() {
 			try {
 				const saved = browserStorage().getItem(SYMBOL_STORAGE_KEY);
@@ -39,6 +54,8 @@ export function createWebSymbolLibraryStorage(
 		},
 		async loadConfiguration() {
 			try {
+				if (temporaryConfiguration !== undefined)
+					return parseSymbolConfig(temporaryConfiguration);
 				const saved = browserStorage().getItem(USER_SYMBOL_CONFIG_KEY);
 				if (saved !== null) return parseSymbolConfig(saved);
 				const config = defaultSymbolConfig();
@@ -65,14 +82,23 @@ export function createWebSymbolLibraryStorage(
 				);
 			}
 		},
-		async saveConfiguration(config) {
+		async saveConfiguration(config, options) {
 			const contents = serializeSymbolConfig(config);
 			try {
 				browserStorage().setItem(USER_SYMBOL_CONFIG_KEY, contents);
+				temporaryConfiguration = undefined;
 				if (!storage && typeof window !== "undefined")
 					window.dispatchEvent(new Event(changeEvent));
 				return "Saved in this browser.";
-			} catch {
+			} catch (cause) {
+				if (options?.requirePersistence)
+					throw new Error(
+						"Unable to save the symbol definition in browser storage.",
+						{ cause },
+					);
+				temporaryConfiguration = contents;
+				if (!storage && typeof window !== "undefined")
+					window.dispatchEvent(new Event(changeEvent));
 				return "Browser storage is unavailable; these symbols will be lost when you leave or reload the editor.";
 			}
 		},

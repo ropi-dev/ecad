@@ -1,7 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { SymbolLibrary } from "@ecad/core/components/editor/symbolFormat.ts";
+import type {
+	SymbolFile,
+	SymbolLibrary,
+} from "@ecad/core/components/editor/symbolFormat.ts";
 import type {
 	AssetKind,
 	ProjectDocument,
@@ -11,6 +14,7 @@ import type {
 	LibraryScope,
 	SymbolLibraryConfig,
 } from "@ecad/core/symbol-library/config.ts";
+import type { DirectorySymbolRequest } from "@ecad/core/symbol-library/storage.tsx";
 import {
 	app,
 	BrowserWindow,
@@ -69,6 +73,52 @@ function assertSender(event: IpcMainInvokeEvent) {
 }
 
 function registerLibraryHandlers() {
+	ipcMain.handle(libraryChannels.canWriteConfiguration, (event) => {
+		assertSender(event);
+		return library.canWriteConfiguration();
+	});
+	ipcMain.handle(
+		libraryChannels.inspectDirectorySymbol,
+		(event, request: DirectorySymbolRequest) => {
+			assertSender(event);
+			if (request.scope === "user")
+				return library.inspectConfiguredSymbol(request.path, request.id);
+			if (request.scope !== "project" || !request.projectDirectory)
+				throw new Error(
+					"Open a project before editing project directory symbols.",
+				);
+			return projects.inspectLibrarySymbol(
+				request.projectDirectory,
+				request.path,
+				request.id,
+			);
+		},
+	);
+	ipcMain.handle(
+		libraryChannels.saveDirectorySymbol,
+		(
+			event,
+			request: DirectorySymbolRequest,
+			original: SymbolFile,
+			next: SymbolFile,
+		) => {
+			assertSender(event);
+			if (request.id !== original.id)
+				throw new Error("The symbol ID does not match its source.");
+			if (request.scope === "user")
+				return library.saveConfiguredSymbol(request.path, original, next);
+			if (request.scope !== "project" || !request.projectDirectory)
+				throw new Error(
+					"Open a project before editing project directory symbols.",
+				);
+			return projects.saveLibrarySymbol(
+				request.projectDirectory,
+				request.path,
+				original,
+				next,
+			);
+		},
+	);
 	ipcMain.handle(libraryChannels.loadConfiguration, (event) => {
 		assertSender(event);
 		return library.loadConfiguration();
@@ -128,6 +178,13 @@ function registerLibraryHandlers() {
 }
 
 function registerProjectHandlers() {
+	ipcMain.handle(
+		projectChannels.canWriteFile,
+		(event, directory: string, path: string) => {
+			assertSender(event);
+			return projects.canWriteFile(directory, path);
+		},
+	);
 	const selectionFile = join(app.getPath("userData"), "project-directory.json");
 	async function remember(snapshot: ProjectSnapshot | null) {
 		if (snapshot)

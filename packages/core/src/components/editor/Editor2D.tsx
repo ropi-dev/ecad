@@ -15,7 +15,9 @@ import {
 	Type,
 } from "lucide-react";
 import {
+	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
+	useCallback,
 	useEffect,
 	useEffectEvent,
 	useRef,
@@ -36,11 +38,15 @@ import {
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { McpControls } from "#/components/editor/McpControls.tsx";
-import { symbolFileFromSymbol } from "#/components/editor/symbolFormat.ts";
+import {
+	parseSymbolFile,
+	symbolFileFromSymbol,
+} from "#/components/editor/symbolFormat.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
 import {
 	constrainWireEndpoint,
+	containsSelection,
 	drawShape,
 	type EditorShape,
 	editShapeAttribute,
@@ -56,6 +62,10 @@ import {
 	snapPoint,
 } from "#/drawing/shapes.ts";
 import {
+	libraryDefinitions,
+	symbolFileWithShapes,
+} from "#/drawing/symbol-file.ts";
+import {
 	createSymbol,
 	createSymbolFromShapes,
 	type SymbolDefinition,
@@ -65,8 +75,10 @@ import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { screenToWorld, worldToScreen } from "#/engine/camera.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
+import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { HistoryControls } from "./HistoryControls";
@@ -107,6 +119,7 @@ interface Drag {
 interface Marquee {
 	start: Point;
 	end: Point;
+	mode: "window" | "crossing";
 }
 interface WireChain {
 	start: Point;
@@ -138,7 +151,8 @@ function EditorCanvas({
 	store: suppliedStore,
 	enableMcp = true,
 	symbolName,
-}: Editor2DProps & { symbolName?: string }) {
+	headerControls,
+}: Editor2DProps & { symbolName?: string; headerControls?: ReactNode }) {
 	const isSymbol = symbolName !== undefined;
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProject();
@@ -171,6 +185,9 @@ function EditorCanvas({
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
 	const symbolLibrary = useSymbolLibrary();
+	const [editTarget, setEditTarget] = useState<SymbolEditTarget | null>(null);
+	const [editingDefinition, setEditingDefinition] =
+		useState<SymbolEditTarget | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
@@ -192,6 +209,43 @@ function EditorCanvas({
 		isSymbol ? null : sheet,
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
+	const selectedSymbol =
+		selected.length === 1 && selected[0].kind === "symbol"
+			? selected[0]
+			: undefined;
+	const symbolIndex = selectedSymbol
+		? project?.project?.symbols.findIndex(
+				(symbol) => symbol.id === selectedSymbol.definitionId,
+			)
+		: undefined;
+	const symbolPath =
+		symbolIndex !== undefined && symbolIndex >= 0
+			? project?.project?.manifest.symbols[symbolIndex]
+			: undefined;
+	const definitionId = isSymbol ? undefined : selectedSymbol?.definitionId;
+	const prepareEdit = useEffectEvent(symbolLibrary.prepareEdit);
+	useEffect(() => {
+		let active = true;
+		setEditTarget(null);
+		if (definitionId && symbolLibrary.sources.has(definitionId)) {
+			void prepareEdit(definitionId).then(
+				(target) => {
+					if (active) setEditTarget(target);
+				},
+				(cause) => {
+					if (active)
+						setError(
+							cause instanceof Error
+								? cause.message
+								: "Unable to open the symbol definition.",
+						);
+				},
+			);
+		}
+		return () => {
+			active = false;
+		};
+	}, [definitionId, symbolLibrary.sources]);
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
 	const handles =
 		tool === "select"
@@ -390,7 +444,8 @@ function EditorCanvas({
 			applySelection(active.additive ? active.previousSelection : new Set());
 			return;
 		}
-		setMarquee({ start: active.startScreen, end });
+		const mode = end.x < active.startScreen.x ? "crossing" : "window";
+		setMarquee({ start: active.startScreen, end, mode });
 		const bounds = {
 			minX: Math.min(active.start.x, point.x),
 			maxX: Math.max(active.start.x, point.x),
@@ -398,8 +453,8 @@ function EditorCanvas({
 			maxY: Math.max(active.start.y, point.y),
 		};
 		const ids = new Set(active.additive ? active.previousSelection : []);
-		for (const shape of shapes)
-			if (intersectsSelection(shape, bounds)) ids.add(shape.id);
+		const matches = mode === "window" ? containsSelection : intersectsSelection;
+		for (const shape of shapes) if (matches(shape, bounds)) ids.add(shape.id);
 		applySelection(ids);
 	};
 	const finishDrag = (cancel = false) => {
@@ -542,6 +597,15 @@ function EditorCanvas({
 		</button>
 	);
 
+	if (editingDefinition) {
+		return (
+			<LibrarySymbolEditor
+				target={editingDefinition}
+				onClose={() => setEditingDefinition(null)}
+			/>
+		);
+	}
+
 	return (
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
@@ -579,25 +643,29 @@ function EditorCanvas({
 					: `Schematic editor · ${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
 			</h1>
 			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
-				<ProjectLink
-					href="/"
-					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
-				>
-					Gerber viewer
-				</ProjectLink>
-				<ProjectLink
-					href="/step"
-					className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
-				>
-					STEP viewer
-				</ProjectLink>
-				<ProjectLink
-					href="/projects"
-					className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
-				>
-					Projects
-				</ProjectLink>
-				{enableMcp && <McpControls store={store} />}
+				{headerControls ?? (
+					<>
+						<ProjectLink
+							href="/"
+							className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
+						>
+							Gerber viewer
+						</ProjectLink>
+						<ProjectLink
+							href="/step"
+							className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
+						>
+							STEP viewer
+						</ProjectLink>
+						<ProjectLink
+							href="/projects"
+							className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
+						>
+							Projects
+						</ProjectLink>
+						{enableMcp && <McpControls store={store} />}
+					</>
+				)}
 			</header>
 			<div className="relative flex min-h-0 flex-1">
 				<div
@@ -1070,8 +1138,13 @@ function EditorCanvas({
 					)}
 					{marquee && (
 						<div
-							className="pointer-events-none absolute z-2 border border-[#e8b77e] bg-[#e8b77e25]"
+							className={`pointer-events-none absolute z-2 border ${
+								marquee.mode === "window"
+									? "border-[#60a5fa] bg-[#60a5fa25]"
+									: "border-dashed border-[#4ade80] bg-[#4ade8025]"
+							}`}
 							data-testid="selection-rectangle"
+							data-selection-mode={marquee.mode}
 							aria-hidden="true"
 							style={{
 								left: Math.min(marquee.start.x, marquee.end.x),
@@ -1106,6 +1179,19 @@ function EditorCanvas({
 				</div>
 				<SelectionAttributes
 					shapes={selected}
+					onEditSymbol={
+						editTarget
+							? () => {
+									if (
+										symbolPath &&
+										!suppliedStore &&
+										editTarget.key === `project:project-symbols:${definitionId}`
+									)
+										project?.selectEditorFile(symbolPath);
+									else setEditingDefinition(editTarget);
+								}
+							: undefined
+					}
 					onCreateSymbol={isSymbol ? undefined : () => setCreatingSymbol(true)}
 					onPinNameChange={(name) => {
 						if (selected.length === 1 && selected[0].kind === "pin")
@@ -1163,5 +1249,121 @@ function EditorCanvas({
 				/>
 			)}
 		</main>
+	);
+}
+
+function LibrarySymbolEditor({
+	target,
+	onClose,
+}: {
+	target: SymbolEditTarget;
+	onClose: () => void;
+}) {
+	const [store] = useState(() =>
+		measurePerformance(
+			"editor.open-library-symbol",
+			() => createDrawingStore(libraryDefinitions([target.file])[0].children),
+			{ shapes: target.file.shapes.length },
+		),
+	);
+	const drawing = useSyncExternalStore(
+		store.subscribe,
+		store.getSnapshot,
+		store.getSnapshot,
+	);
+	const saved = useRef(drawing.shapes);
+	const [savedShapes, setSavedShapes] = useState(drawing.shapes);
+	const pending = useRef<Promise<void> | null>(null);
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState("");
+	const dirty = drawing.shapes !== savedShapes;
+	const save = useCallback(
+		async function persist(): Promise<void> {
+			while (pending.current) await pending.current;
+			const shapes = store.getSnapshot().shapes;
+			if (shapes === saved.current) return;
+			setSaving(true);
+			const work = Promise.resolve().then(async () => {
+				try {
+					await target.save(
+						parseSymbolFile(
+							JSON.stringify(symbolFileWithShapes(target.file, shapes)),
+						),
+					);
+					saved.current = shapes;
+					setSavedShapes(shapes);
+					setError("");
+				} catch (cause) {
+					setError(
+						cause instanceof Error
+							? cause.message
+							: "Unable to save the symbol definition.",
+					);
+					throw cause;
+				} finally {
+					pending.current = null;
+					setSaving(false);
+				}
+			});
+			pending.current = work;
+			await work;
+			if (store.getSnapshot().shapes !== saved.current) await persist();
+		},
+		[store, target],
+	);
+	useEffect(() => {
+		if (drawing.shapes === saved.current) return;
+		const timer = setTimeout(() => void save().catch(() => undefined), 400);
+		return () => clearTimeout(timer);
+	}, [drawing.shapes, save]);
+	useEffect(() => {
+		if (!dirty) return;
+		const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+		window.addEventListener("beforeunload", warn);
+		return () => window.removeEventListener("beforeunload", warn);
+	}, [dirty]);
+	const buttonClass =
+		"cursor-pointer rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white disabled:cursor-default disabled:opacity-50";
+	return (
+		<EditorCanvas
+			store={store}
+			symbolName={target.file.name}
+			enableMcp={false}
+			headerControls={
+				<>
+					<button
+						type="button"
+						className={buttonClass}
+						disabled={saving}
+						onClick={() =>
+							void save()
+								.then(onClose)
+								.catch(() => undefined)
+						}
+					>
+						Back to schematic
+					</button>
+					<button
+						type="button"
+						className={buttonClass}
+						disabled={saving || !dirty}
+						onClick={() => void save().catch(() => undefined)}
+					>
+						Save symbol
+					</button>
+					<output className="text-xs text-[#9ba7b8]">
+						{saving ? "Saving..." : dirty ? "Unsaved changes" : "Saved"}
+					</output>
+					{error && (
+						<p
+							role="alert"
+							className="max-w-md rounded bg-slate-900 p-2 text-sm text-[#edc49a]"
+						>
+							{error}
+						</p>
+					)}
+				</>
+			}
+		/>
 	);
 }

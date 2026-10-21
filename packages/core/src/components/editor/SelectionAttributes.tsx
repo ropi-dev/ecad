@@ -71,6 +71,7 @@ export function SelectionAttributes({
 	onSymbolAttributeChange,
 	onPinNameChange,
 	onCreateSymbol,
+	onEditSymbol,
 	onTextChange,
 	textFocusId,
 	onTextFocus,
@@ -79,6 +80,7 @@ export function SelectionAttributes({
 	snapStep?: number;
 	onClear: () => void;
 	onCreateSymbol?: () => void;
+	onEditSymbol?: () => void;
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
@@ -243,6 +245,21 @@ export function SelectionAttributes({
 							: `${single.kind} ${single.id}`
 						: `${shapes.length} shapes selected`}
 				</p>
+				{symbol && (
+					<button
+						type="button"
+						onClick={onEditSymbol}
+						disabled={!onEditSymbol}
+						title={
+							onEditSymbol
+								? "Open the library definition"
+								: "This symbol's definition is read-only or unavailable."
+						}
+						className="mt-3 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
+					>
+						Edit symbol
+					</button>
+				)}
 				{!single && onCreateSymbol && (
 					<>
 						<button

@@ -367,7 +367,7 @@ test("selection works after zoom, supports Shift additions and cancels with Esca
 	await page.keyboard.up("Shift");
 	await expect.poll(() => selectedNames(page)).toEqual(["circle 2"]);
 	// A narrow crossing rectangle must include the line, even without its center.
-	await dragTo(page, [307, 90], [310, 110]);
+	await dragTo(page, [310, 90], [307, 110]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 5"]);
 	await clickAt(page, 60, 60);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
@@ -801,7 +801,7 @@ test("draws circles, triangles and orthogonal lines with accurate hit selection"
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 2"]);
 	await dragTo(page, [109, 135], [113, 139]);
 	await expect.poll(() => selectedNames(page)).toEqual([]);
-	await dragTo(page, [95, 115], [105, 130]);
+	await dragTo(page, [105, 115], [95, 130]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 2"]);
 	await dragTo(page, [100, 120], [120, 140]);
 	await expect.poll(async () => (await nonPinState(page)).shapes[0].x).toBeCloseTo(120, 4);
@@ -1549,12 +1549,43 @@ test("symbol movement keeps attached wires orthogonal through drag, history, key
 	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 180, 180, 180], [180, 180, 180, 210]]);
 });
 
+for (const [startY, endY] of [[140, 160], [160, 140]]) {
+	test(`marquee direction controls symbol containment and color from y=${startY}`, async ({ page }) => {
+		await insertSymbol(page, "Capacitor", 100, 150);
+		const rectangle = page.getByTestId("selection-rectangle");
+		await moveAt(page, 91, startY);
+		await page.mouse.down();
+		await moveAt(page, 98, endY);
+		await expect(rectangle).toHaveAttribute("data-selection-mode", "window");
+		await expect(rectangle).toHaveCSS("border-color", "rgb(96, 165, 250)");
+		await expect(rectangle).toHaveCSS("border-style", "solid");
+		await expect.poll(() => selectedNames(page)).toEqual([]);
+		await page.mouse.up();
+
+		await moveAt(page, 98, startY);
+		await page.mouse.down();
+		await moveAt(page, 91, endY);
+		await expect(rectangle).toHaveAttribute("data-selection-mode", "crossing");
+		await expect(rectangle).toHaveCSS("border-color", "rgb(74, 222, 128)");
+		await expect(rectangle).toHaveCSS("border-style", "dashed");
+		await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+		// Moving back across the starting X changes the mode during the same drag.
+		await moveAt(page, 109, endY);
+		await expect(rectangle).toHaveAttribute("data-selection-mode", "window");
+		await expect(rectangle).toHaveCSS("border-color", "rgb(96, 165, 250)");
+		await expect.poll(() => selectedNames(page)).toEqual([]);
+		await page.mouse.up();
+		await dragTo(page, [90, 135], [110, 165]);
+		await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	});
+}
+
 test("marquee and shift selection keep symbols intact alongside ordinary shapes", async ({ page }) => {
 	await insertSymbol(page, "Capacitor", 100, 150);
 	await insertSymbol(page, "Capacitor", 200, 150);
 	await createShape(page, "Rectangle", 290, 150);
 	// Touch just the first symbol's left lead with a marquee.
-	await dragTo(page, [91, 156], [98, 148]);
+	await dragTo(page, [98, 140], [91, 151]);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	await page.keyboard.down("Shift");
 	await clickAt(page, 197, 150);

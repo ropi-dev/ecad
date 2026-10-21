@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
 import { type ConfiguredSymbolLibrary, defaultSymbolConfig, parseSymbolConfig, resolveSymbolLibraries, serializeSymbolConfig } from "#/symbol-library/config.ts";
@@ -36,7 +37,7 @@ test("enabled libraries resolve in order and project definitions take precedence
   { id: "broken", name: "Broken", enabled: true, source: { kind: "directory", path: "missing" } },
   library("working"),
  ], []);
- assert.equal(broken.definitions.length, 4);
+ assert.equal(broken.definitions.length, symbolDefinitions.length + 1);
  assert.match(broken.errors[0], /Broken:.*desktop/);
 });
 
@@ -66,7 +67,7 @@ test("memory configuration keeps symbols seeded through the existing storage API
  const storage = createMemorySymbolLibraryStorage();
  await storage.save([symbol], [symbol]);
  const config = await storage.loadConfiguration!();
- assert.equal((await resolveSymbolLibraries(config.symbolLibraries, [])).definitions.length, 4);
+ assert.equal((await resolveSymbolLibraries(config.symbolLibraries, [])).definitions.length, symbolDefinitions.length + 1);
  await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
  assert.deepEqual((await storage.load()).symbols, []);
 });

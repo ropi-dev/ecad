@@ -1,3 +1,4 @@
+import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
 import type { AppPerformance } from "#/performance/browser.ts";
@@ -328,7 +329,15 @@ test("symbol-libraries", async ({ page }, testInfo) => {
  await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await interaction(page, "library.picker", async () => {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
-  await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(383);
+  await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(380 + generateDefaultSymbols().length);
+ });
+ await interaction(page, "library.search", async () => {
+  const search = page.getByRole("searchbox", { name: "Search symbols" });
+  await expect(search).toBeFocused();
+  await search.fill("project point 9-19");
+  await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(1);
+  await search.fill("");
+  await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(380 + generateDefaultSymbols().length);
  });
  const value = await report(page);
  await finish(page, testInfo, "symbol-libraries", {
@@ -336,6 +345,38 @@ test("symbol-libraries", async ({ page }, testInfo) => {
   libraryResolveMs: metric(value, "symbol-library.resolve")!,
   interactionP95Ms: metric(value, "scenario.interaction")!,
  });
+});
+
+test("default-symbols", async ({ page }, testInfo) => {
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	const canvas = page.locator("canvas");
+	await expect(canvas).toBeVisible();
+	for (const [index, name] of ["Inductor", "LED", "NPN transistor", "P-channel MOSFET", "Transformer", "8-pin connector"].entries()) {
+		await interaction(page, "symbol.picker", async () => {
+			await page.getByRole("button", { name: "Symbols", exact: true }).click();
+			await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(generateDefaultSymbols().length);
+			await expect(page.getByRole("region", { name: "Diodes", exact: true }).getByRole("button", { name: "Insert LED", exact: true })).toBeVisible();
+			await expect(page.getByRole("region", { name: "Transistors", exact: true }).getByRole("button", { name: "Insert NPN transistor", exact: true })).toBeVisible();
+		});
+		await interaction(page, "symbol.search", async () => {
+			const search = page.getByRole("searchbox", { name: "Search symbols" });
+			await expect(search).toBeFocused();
+			await search.fill(name);
+			await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(1);
+		});
+		await interaction(page, "symbol.place", async () => {
+			await page.getByRole("button", { name: `Insert ${name}`, exact: true }).click();
+			const bounds = (await canvas.boundingBox())!;
+			await canvas.click({ position: { x: bounds.width * (0.25 + (index % 3) * 0.2), y: bounds.height * (0.35 + Math.floor(index / 3) * 0.25) } });
+			await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue(name);
+		});
+	}
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	const value = await report(page);
+	await finish(page, testInfo, "default-symbols", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
 });
 
 test("editor-toolbar", async ({ page }, testInfo) => {
@@ -372,6 +413,74 @@ test("editor-toolbar", async ({ page }, testInfo) => {
 				.filter((event) => event.name === "scenario.interaction")
 				.map((event) => event.duration),
 		),
+	});
+});
+
+test("editor-user-symbol", async ({ page }, testInfo) => {
+	const symbol = {
+		format: "ecad-symbol", version: 1, units: "mm", id: "user-package", name: "User package", description: "", prefix: "U", value: "",
+		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
+	};
+	await page.addInitScript((symbol) => {
+		localStorage.setItem("ecad.user-config.v1", JSON.stringify({ version: 1, symbolLibraries: [{ id: "user", name: "User", enabled: true, source: { kind: "embedded", symbols: [symbol] } }] }));
+	}, symbol);
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: "Insert User package", exact: true }).click();
+	const bounds = (await page.locator("canvas").boundingBox())!;
+	await page.locator("canvas").click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "symbol.open-user-definition", async () => {
+			await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
+			await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · User package");
+			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+		});
+		await interaction(page, "symbol.save-user-definition", async () => {
+			await (await toolbarButton(page, "Rectangle")).click();
+			await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.3);
+			await page.mouse.down();
+			await page.mouse.move(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.4);
+			await page.mouse.up();
+			await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("ecad.user-config.v1")!).symbolLibraries[0].source.symbols[0].shapes.length)).toBe(129 + repeat);
+			await expect(page.getByRole("status")).toHaveText("Saved");
+		});
+		await page.getByRole("button", { name: "Back to schematic", exact: true }).click();
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-user-symbol", {
+		interactionP95Ms: percentile(value.events.filter((event) => event.name === "scenario.interaction").map((event) => event.duration)),
+	});
+});
+
+test("editor-symbol-attributes", async ({ page }, testInfo) => {
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	await page.getByLabel("Project name", { exact: true }).fill("Symbol attributes");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await expect(page.getByLabel("Add symbol files")).toBeEnabled();
+	const symbol = {
+		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
+		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
+	};
+	await page.getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+		await page.getByRole("button", { name: "Symbols", exact: true }).click();
+		await page.getByRole("button", { name: "Insert Editable package", exact: true }).click();
+		const bounds = (await page.locator("canvas").boundingBox())!;
+		await page.locator("canvas").click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
+		await interaction(page, "symbol.open-definition", async () => {
+			await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
+			await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
+			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
+		});
+		if (repeat < 2) await page.getByRole("link", { name: "Projects", exact: true }).click();
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-symbol-attributes", {
+		interactionP95Ms: percentile(value.events.filter((event) => event.name === "scenario.interaction").map((event) => event.duration)),
 	});
 });
 

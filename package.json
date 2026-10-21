@@ -76,6 +76,7 @@
     "db:studio": "npm run db:studio --workspace @ecad/web",
     "perf": "tsx scripts/performance/run.ts",
     "perf:dev": "tsx scripts/performance/run.ts --development",
-    "perf:baseline": "tsx scripts/performance/run.ts --baseline"
+    "perf:baseline": "tsx scripts/performance/run.ts --baseline",
+    "symbols:generate": "npm run generate --workspace @ecad/default-symbols --"
   }
 }

@@ -460,6 +460,26 @@ export function hitShape(
 	);
 }
 
+/** Window selection includes a symbol only when its body and labels fit. */
+export function containsSelection(shape: EditorShape, bounds: Bounds): boolean {
+	if (
+		shape.kind === "symbol" &&
+		!symbolTextShapes(shape).every((text) => containsSelection(text, bounds))
+	)
+		return false;
+	const own = shapeBounds(
+		shape.kind === "circle" || shape.kind === "pin"
+			? { ...shape, rotation: 0 }
+			: shape,
+	);
+	return (
+		own.minX >= bounds.minX &&
+		own.maxX <= bounds.maxX &&
+		own.minY >= bounds.minY &&
+		own.maxY <= bounds.maxY
+	);
+}
+
 /** Select any shape touched by the rectangle, including partially covered shapes. */
 export function intersectsSelection(
 	shape: EditorShape,

@@ -15,8 +15,10 @@ import {
 	parseSymbolConfig,
 	resolveSymbolLibraries,
 	type SymbolLibraryConfig,
+	type SymbolSource,
 	serializeSymbolConfig,
 } from "#/symbol-library/config.ts";
+import { prepareSymbolEdit } from "#/symbol-library/editing.ts";
 import {
 	type SymbolLibraryStorage,
 	useProjectSymbolLibraryStorage,
@@ -63,6 +65,7 @@ export function useSymbolLibrary() {
 	const currentUser = useRef(userConfig);
 	const currentProject = useRef(projectConfig);
 	const [definitions, setDefinitions] = useState(symbolDefinitions);
+	const [sources, setSources] = useState(new Map<string, SymbolSource>());
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
@@ -101,6 +104,7 @@ export function useSymbolLibrary() {
 		setUserConfig(user);
 		setProjectConfig(project);
 		setDefinitions(resolved.definitions);
+		setSources(resolved.sources);
 		setLibraryErrors(resolved.errors);
 	}
 	const acceptRef = useRef(accept);
@@ -387,6 +391,28 @@ export function useSymbolLibrary() {
 
 	return {
 		definitions,
+		sources,
+		async prepareEdit(id: string) {
+			const source = sources.get(id);
+			if (!source) return null;
+			const target = await measurePerformanceAsync(
+				"symbol-library.prepare-edit",
+				() => prepareSymbolEdit(source, storage, projectStorage),
+			);
+			return target
+				? {
+						...target,
+						async save(file: SymbolFile) {
+							await measurePerformanceAsync(
+								"symbol-library.update",
+								() => target.save(file),
+								{ shapes: file.shapes.length },
+							);
+							await refresh();
+						},
+					}
+				: null;
+		},
 		loading,
 		message,
 		error: [error, ...libraryErrors].filter(Boolean).join("\n"),

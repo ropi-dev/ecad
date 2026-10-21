@@ -19,6 +19,17 @@ const bridge: DesktopSymbolLibraryBridge = {
 		ipcRenderer.invoke(libraryChannels.openLibraryDirectory, name),
 	loadDirectory: (path, scope, directory) =>
 		ipcRenderer.invoke(libraryChannels.loadDirectory, path, scope, directory),
+	canWriteConfiguration: () =>
+		ipcRenderer.invoke(libraryChannels.canWriteConfiguration),
+	inspectDirectorySymbol: (request) =>
+		ipcRenderer.invoke(libraryChannels.inspectDirectorySymbol, request),
+	saveDirectorySymbol: (request, original, next) =>
+		ipcRenderer.invoke(
+			libraryChannels.saveDirectorySymbol,
+			request,
+			original,
+			next,
+		),
 };
 
 contextBridge.exposeInMainWorld("ecadSymbolLibrary", bridge);
@@ -35,5 +46,7 @@ const projects: ProjectStorage = {
 		ipcRenderer.invoke(projectChannels.importAssets, directory, assets),
 	readAsset: (directory, path) =>
 		ipcRenderer.invoke(projectChannels.readAsset, directory, path),
+	canWriteFile: (directory, path) =>
+		ipcRenderer.invoke(projectChannels.canWriteFile, directory, path),
 };
 contextBridge.exposeInMainWorld("ecadProjects", projects);

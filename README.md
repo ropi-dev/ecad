@@ -3,6 +3,7 @@ ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron 
 | Package | Contents |
 | --- | --- |
 | [`@ecad/core`](packages/core) | Shared editor and viewers, drawing commands, symbol validation, parsers, workers, and rendering. |
+| [`@ecad/default-symbols`](packages/default-symbols) | Offline generators for 45 KiCad-derived schematic symbols and portable library exports. |
 | [`@ecad/web`](packages/web) | TanStack Start app, browser project directories, symbol storage, routes, and HTTP services. |
 | [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
 
@@ -21,6 +22,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000/editor` for the drawing editor. Manage symbol libraries under **Projects → Symbol libraries**, where you can upload files or directories into user or project libraries. User libraries live in project-independent localStorage. Project libraries save with the project. Uploading a directory copies its current symbols; it does not keep access to that directory.
+
+The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `npm run symbols:generate -- /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API.
 
 ## Run the desktop app
 

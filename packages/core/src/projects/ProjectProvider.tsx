@@ -397,6 +397,27 @@ export function ProjectProvider({
 			hasProject
 				? {
 						mode: storage.mode,
+						async canWriteConfiguration() {
+							const snapshot = active.current;
+							if (!snapshot || generation.current !== epoch) return false;
+							return storage.canWriteFile
+								? storage.canWriteFile(
+										snapshot.directory,
+										snapshot.manifest.drawing,
+									)
+								: true;
+						},
+						async canEditSymbol(id) {
+							const snapshot = active.current;
+							if (!snapshot || generation.current !== epoch) return false;
+							const index = snapshot.symbols.findIndex(
+								(file) => file.id === id,
+							);
+							const path = snapshot.manifest.symbols[index];
+							return path && storage.canWriteFile
+								? storage.canWriteFile(snapshot.directory, path)
+								: true;
+						},
 						async load() {
 							return enqueue(async () => ({
 								symbols: symbols.current,
@@ -452,7 +473,7 @@ export function ProjectProvider({
 						},
 					}
 				: undefined,
-		[hasProject, storage.mode, enqueue, persist, epoch],
+		[hasProject, storage.mode, storage.canWriteFile, enqueue, persist, epoch],
 	);
 	const importAssets = useCallback(
 		(files: readonly File[], kind: AssetKind) => {

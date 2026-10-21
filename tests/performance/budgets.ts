@@ -1,4 +1,22 @@
 export const budgets = {
+	"editor-user-symbol": {
+		interactionP95Ms: 1500,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
+	"editor-symbol-attributes": {
+		interactionP95Ms: 1200,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
+	"default-symbols": {
+		interactionP95Ms: 1500,
+		domNodes: 2500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"project-new-symbol": {
 		createMs: 2000,
 		domNodes: 1500,

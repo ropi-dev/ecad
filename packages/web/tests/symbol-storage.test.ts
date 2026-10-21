@@ -201,3 +201,31 @@ test("user library configuration migrates the old cache and saves enabled librar
  await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
  assert.deepEqual((await storage.loadConfiguration!()).symbolLibraries, []);
 });
+
+test("temporary user configuration survives navigation and clears after a successful retry", async () => {
+	const browser = memoryStorage();
+	let writable = false;
+	const storage = createWebSymbolLibraryStorage({
+		getItem: browser.getItem,
+		setItem(key, value) {
+			if (!writable) throw new DOMException("Quota exceeded", "QuotaExceededError");
+			browser.setItem(key, value);
+		},
+	});
+	const original = await storage.loadConfiguration!();
+	const next = {
+		...original,
+		symbolLibraries: [...original.symbolLibraries, {
+			id: "imported", name: "Imported symbols", enabled: true,
+			source: { kind: "embedded" as const, symbols: [symbol()] },
+		}],
+	};
+	assert.equal(await storage.saveConfiguration!(next), saveFailure);
+	assert.deepEqual(await storage.loadConfiguration!(), next);
+	assert.deepEqual(await createWebSymbolLibraryStorage(browser).loadConfiguration!(), original);
+	writable = true;
+	assert.equal(await storage.saveConfiguration!(next), "Saved in this browser.");
+	assert.deepEqual(await createWebSymbolLibraryStorage(browser).loadConfiguration!(), next);
+	await createWebSymbolLibraryStorage(browser).saveConfiguration!(original);
+	assert.deepEqual(await storage.loadConfiguration!(), original);
+});

@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import type { SymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import {
 	type AssetKind,
 	PROJECT_FILE,
@@ -22,7 +23,12 @@ import {
 	type ProjectDirectory,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
-import { readSymbolDirectory } from "#/main/symbol-library.ts";
+import {
+	canWriteSymbolPath,
+	inspectDirectorySymbol,
+	readSymbolDirectory,
+	saveDirectorySymbol,
+} from "#/main/symbol-library.ts";
 
 export async function createDesktopProjectDirectory(
 	selected: string,
@@ -187,25 +193,59 @@ export class DesktopProjects {
 	readAsset(directory: string, path: string) {
 		return this.sequential(() => this.current(directory).readAsset(path));
 	}
+	private symbolLibraryPath(directory: string, path: string) {
+		const repository = this.current(directory);
+		if (
+			!repository
+				.getSymbolLibraries()
+				.some(
+					(library) =>
+						library.source.kind === "directory" && library.source.path === path,
+				)
+		)
+			throw new Error(
+				"This directory is not configured as a project symbol library.",
+			);
+		return path.startsWith("~/")
+			? resolve(homedir(), path.slice(2))
+			: resolve(directory, path);
+	}
 	readSymbolLibrary(directory: string, path: string) {
+		return this.sequential(
+			async () =>
+				(await readSymbolDirectory(this.symbolLibraryPath(directory, path)))
+					.symbols,
+		);
+	}
+	inspectLibrarySymbol(directory: string, path: string, id: string) {
+		return this.sequential(() =>
+			inspectDirectorySymbol(this.symbolLibraryPath(directory, path), id),
+		);
+	}
+	saveLibrarySymbol(
+		directory: string,
+		path: string,
+		original: SymbolFile,
+		next: SymbolFile,
+	) {
+		return this.sequential(() =>
+			saveDirectorySymbol(
+				this.symbolLibraryPath(directory, path),
+				original,
+				next,
+			),
+		);
+	}
+	canWriteFile(directory: string, path: string) {
 		return this.sequential(async () => {
-			const repository = this.current(directory);
-			if (
-				!repository
-					.getSymbolLibraries()
-					.some(
-						(library) =>
-							library.source.kind === "directory" &&
-							library.source.path === path,
-					)
-			)
-				throw new Error(
-					"This directory is not configured as a project symbol library.",
-				);
-			const selected = path.startsWith("~/")
-				? resolve(homedir(), path.slice(2))
-				: resolve(directory, path);
-			return (await readSymbolDirectory(selected)).symbols;
+			this.current(directory);
+			const parts = projectPathSchema.parse(path).split("/");
+			let current = directory;
+			for (const part of parts.slice(0, -1)) {
+				current = join(current, part);
+				if (!(await lstat(current)).isDirectory()) return false;
+			}
+			return canWriteSymbolPath(join(current, parts[parts.length - 1]));
 		});
 	}
 }

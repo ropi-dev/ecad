@@ -5,9 +5,16 @@ import type {
 	LibraryScope,
 	SymbolLibraryConfig,
 } from "@ecad/core/symbol-library/config.ts";
-import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.tsx";
+import type {
+	SymbolLibrarySnapshot,
+	SymbolLibraryStorage,
+} from "@ecad/core/symbol-library/storage.tsx";
 
-export interface DesktopSymbolLibraryBridge {
+export interface DesktopSymbolLibraryBridge
+	extends Pick<
+		SymbolLibraryStorage,
+		"canWriteConfiguration" | "inspectDirectorySymbol" | "saveDirectorySymbol"
+	> {
 	load(): Promise<SymbolLibrarySnapshot>;
 	save(symbols: SymbolLibrary, additions: SymbolLibrary): Promise<string>;
 	openDirectory(): Promise<SymbolLibrarySnapshot | null>;
@@ -29,6 +36,9 @@ export const libraryChannels = {
 	saveConfiguration: "symbol-library:save-configuration",
 	openLibraryDirectory: "symbol-library:open-library-directory",
 	loadDirectory: "symbol-library:load-directory",
+	canWriteConfiguration: "symbol-library:can-write-configuration",
+	inspectDirectorySymbol: "symbol-library:inspect-symbol",
+	saveDirectorySymbol: "symbol-library:save-symbol",
 } as const;
 
 export const projectChannels = {
@@ -38,6 +48,7 @@ export const projectChannels = {
 	save: "projects:save",
 	importAssets: "projects:import-assets",
 	readAsset: "projects:read-asset",
+	canWriteFile: "projects:can-write-file",
 } as const;
 
 declare global {
