@@ -11,9 +11,6 @@ const groups: Record<string, string> = {
 	Undo: "History tools",
 	Redo: "History tools",
 	History: "History tools",
-	"Zoom in": "View tools",
-	"Zoom out": "View tools",
-	"Fit drawing": "View tools",
 	"Export PNG": "View tools",
 };
 

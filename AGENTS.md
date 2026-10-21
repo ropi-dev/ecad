@@ -11,6 +11,10 @@ Before editing files for a substantial task:
 
 Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/components/editor/worksheet` wherever possible
 
+## UI changes
+
+- Whenever a UI change is made, capture screenshots of the updated interface and include them in the completion response.
+
 ## Performance
 
 - Keep performance validation local. Compare before and after on the same machine; do not use hosted-runner timing budgets as CI gates.

@@ -36,21 +36,23 @@ export function ViewControls3D({
 }) {
 	const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
 	const button = viewControlButtonClassName;
+	const zoomControls = (
+		<ZoomControls
+			zoom={zoom}
+			fit={fit}
+			enabled={enabled}
+			canZoomIn={zoomLevel < MAX_ZOOM}
+			canZoomOut={zoomLevel > MIN_ZOOM}
+			buttonClassName={button}
+			fitClassName={`${button} min-w-14 tabular-nums`}
+			fitLabel={fitLabel}
+			fitTitle={`${fitLabel} (F6 or double-click the mouse wheel)`}
+		>
+			{Math.round(zoomLevel * 100)}%
+		</ZoomControls>
+	);
 	const viewControls = (
 		<>
-			<ZoomControls
-				zoom={zoom}
-				fit={fit}
-				enabled={enabled}
-				canZoomIn={zoomLevel < MAX_ZOOM}
-				canZoomOut={zoomLevel > MIN_ZOOM}
-				buttonClassName={button}
-				fitClassName={`${button} min-w-14 tabular-nums`}
-				fitLabel={fitLabel}
-				fitTitle={`${fitLabel} (F6 or double-click the mouse wheel)`}
-			>
-				{Math.round(zoomLevel * 100)}%
-			</ZoomControls>
 			{toggleProjection && (
 				<button
 					type="button"
@@ -127,6 +129,7 @@ export function ViewControls3D({
 				<div
 					className={`flex gap-0.5 sm:gap-1 ${grouped ? "touch-pan-x flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:thin] [&_button]:shrink-0" : "flex-wrap justify-center"}`}
 				>
+					{zoomControls}
 					{grouped ? (
 						<ToolbarGroup label="View tools" icon={Scan} disabled={!enabled}>
 							{viewControls}
