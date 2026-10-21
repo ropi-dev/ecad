@@ -39,10 +39,14 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install Chromium and system dependencies
         run: npx playwright install --with-deps chromium
+      - name: Install software graphics dependencies
+        run: sudo apt-get install --no-install-recommends -y libvulkan1 mesa-vulkan-drivers xauth xvfb
       - name: Run browser tests
         # Import timing budgets belong to local performance validation.
         run: >-
+          xvfb-run -a -s '-screen 0 2560x1440x24'
           npm run test:browser --
+          --headed
           --forbid-only
           --fully-parallel
           --workers=1
