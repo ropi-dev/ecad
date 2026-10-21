@@ -1508,17 +1508,34 @@ test("Alt-drag duplicates only the hit symbol, preserving its attributes and att
 	await page.screenshot({ path: testInfo.outputPath("alt-drag-symbol.png") });
 });
 
-test("Alt-drag from a symbol pin duplicates with grid snapping instead of starting a wire", async ({ page }) => {
-	await insertSymbol(page, "Resistor", 100, 150);
-	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	await page.keyboard.down("Alt");
-	await dragTo(page, [97, 150], [115, 167]);
-	await page.keyboard.up("Alt");
-	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
-	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(120, 4);
-	await expect.poll(async () => (await state(page)).shapes[1].y).toBeCloseTo(170, 4);
-	await expect(page.locator('[data-tool="select"]')).toBeAttached();
-});
+for (const target of ["unconnected pin", "connected pin", "body under a wire"] as const) {
+	test(`Alt-drag from a symbol ${target} duplicates with grid snapping`, async ({ page }, testInfo) => {
+		await insertSymbol(page, "Resistor", 100, 150);
+		if (target !== "unconnected pin") {
+			await (await toolbarButton(page, "Wire")).click();
+			await clickAt(page, target === "connected pin" ? 103 : 97, 150);
+			await clickAt(page, 180, 150);
+			await page.keyboard.press("Enter");
+		}
+		const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
+		const before = await committed();
+		const wires = await wireEndpoints(page);
+		await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+		const x = target === "unconnected pin" ? 97 : target === "connected pin" ? 103 : 100;
+		await page.keyboard.down("Alt");
+		await dragTo(page, [x, 150], [x + 18, 167]);
+		await page.keyboard.up("Alt");
+		await expect.poll(async () => (await state(page)).shapes.length).toBe(before.shapes.length + 1);
+		const after = await committed();
+		expect(after.shapes.slice(0, -1)).toEqual(before.shapes);
+		expect(after.historySize).toBe(before.historySize + 1);
+		expect(after.shapes.at(-1)).toMatchObject({ kind: "symbol", x: expect.closeTo(120, 4), y: expect.closeTo(170, 4) });
+		expect(await wireEndpoints(page)).toEqual(wires);
+		await expect(page.locator('[data-tool="select"]')).toBeAttached();
+		if (target === "connected pin")
+			await page.screenshot({ path: testInfo.outputPath("alt-drag-connected-pin.png") });
+	});
+}
 
 test("Alt-click and canceled duplicate gestures leave the document and selection unchanged", async ({ page }) => {
 	await insertSymbol(page, "Resistor", 100, 150);

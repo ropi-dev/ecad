@@ -775,12 +775,14 @@ function EditorCanvas({
 							event.altKey && tool === "select"
 								? [...shapes]
 										.reverse()
-										.find((candidate) =>
-											hitShape(
-												candidate,
-												point,
-												6 / (snapshot.current?.camera.scale ?? 1),
-											),
+										.find(
+											(candidate) =>
+												candidate.kind === "symbol" &&
+												hitShape(
+													candidate,
+													point,
+													6 / (snapshot.current?.camera.scale ?? 1),
+												),
 										)
 								: undefined;
 						if (event.altKey && duplicate?.kind !== "symbol") return;
