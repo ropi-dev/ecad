@@ -108,14 +108,14 @@ test("nearby pin queries preserve connectivity checks against the whole drawing"
 	assert.deepEqual(openPins(shapes, { point: { x: 40, y: 10 }, tolerance: 1 }), []);
 });
 
-test("only open wire ends and pins are connection points, not corners or segment interiors", () => {
+test("open-end markers exclude corners and interiors, while routing can connect to both", () => {
 	const shapes = [pin(1, 0, 0), wire(2, 0, 0, 20, 0), wire(3, 20, 0, 20, 20)];
 	assert.deepEqual(wireConnectionPoints(shapes), [
 		{ x: 0, y: 0 },
 		{ x: 20, y: 20 },
 	]);
-	assert.equal(findWireConnection(shapes, { x: 10, y: 0 }, 2), undefined);
-	assert.equal(findWireConnection(shapes, { x: 20, y: 0 }, 2), undefined);
+	assert.deepEqual(findWireConnection(shapes, { x: 10, y: 0.5 }, 2), { x: 10, y: 0 });
+	assert.deepEqual(findWireConnection(shapes, { x: 20, y: 0 }, 2), { x: 20, y: 0 });
 	assert.deepEqual(findWireConnection(shapes, { x: 21, y: 20 }, 2), {
 		x: 20,
 		y: 20,
@@ -182,4 +182,12 @@ test("routing to an offset terminal inserts an exact orthogonal bend", () => {
 		{ x: 54, y: 38 },
 	]);
 	assert.equal(routeWire(1, { x: 13, y: 17 }, { x: 54, y: 17 }).length, 1);
+});
+
+test("wire snapping projects onto horizontal and reversed vertical interiors", () => {
+	assert.deepEqual(findWireConnection([wire(1, 100, 40, 0, 40)], { x: 35, y: 41 }, 2), { x: 35, y: 40 });
+	assert.deepEqual(findWireConnection([wire(1, 20, 100, 20, 0)], { x: 21, y: 35 }, 2), { x: 20, y: 35 });
+	assert.equal(findWireConnection([wire(1, 0, 0, 100, 0)], { x: 50, y: 3 }, 2), undefined);
+	assert.equal(findWireConnection([wire(1, 0, 0, 100, 0)], { x: 50, y: 0 }, 2, { x: 50, y: 0 }), undefined);
+	assert.deepEqual(findWireConnection([wire(1, 0, 0, 100, 0), pin(2, 50, 1)], { x: 50, y: 0.1 }, 2), { x: 50, y: 1 });
 });

@@ -355,3 +355,109 @@ if (false) {
 	// @ts-expect-error Text placement requires its already measured dimensions.
 	placeShapesEffect([{ kind: "text", text: "Pending", fontSize: 5 }], "Place text");
 }
+
+test("branch placement splits a trunk in one transaction with stable IDs and atomic undo", () => {
+	const { store, run } = session();
+	const trunk = drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 });
+	run(placeShapesEffect([trunk], "Trunk"));
+	const before = store.getSnapshot();
+	let publications = 0;
+	store.subscribe(() => publications++);
+	run(placeShapesEffect([drawShape(2, "wire", { x: 50, y: 20 }, { x: 50, y: 0 })], "Branch"));
+	const tee = store.getSnapshot();
+	assert.equal(publications, 1);
+	assert.equal(tee.shapes.length, 3);
+	assert.equal(tee.nextShapeId, 4);
+	assert.equal(tee.history.currentId, before.history.currentId + 1);
+	run(replaceShapesEffect(tee.shapes, "Unchanged"));
+	assert.strictEqual(store.getSnapshot(), tee);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, tee.shapes);
+	run(placeShapesEffect([drawShape(4, "wire", { x: 50, y: -20 }, { x: 50, y: 0 })], "Fourth leg"));
+	const cross = store.getSnapshot();
+	assert.equal(cross.shapes.length, 4);
+	assert.equal(cross.nextShapeId, 5);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, tee.shapes);
+	run(undoEffect);
+	const branch = run(placeShapesEffect([drawShape(2, "wire", { x: 30, y: 20 }, { x: 30, y: 0 })], "Alternate branch"));
+	assert.deepEqual(branch.ids, [5]);
+	assert.deepEqual(store.getSnapshot().shapes.map(({ id }) => id), [1, 6, 5]);
+	assert.equal(store.getSnapshot().nextShapeId, 7);
+});
+
+for (const reversed of [false, true]) test(`drawing a wire through existing branches returns every new piece with reversed=${reversed}`, () => {
+	const { store, run } = session();
+	const branch = (x: number) => drawShape(1, "wire", { x, y: 30 }, { x, y: 0 });
+	run(placeShapesEffect([branch(25), branch(75)], "Existing branches"));
+	const before = store.getSnapshot();
+	const result = run(placeShapesEffect([drawShape(3, "wire", { x: reversed ? 100 : 0, y: 0 }, { x: reversed ? 0 : 100, y: 0 })], "Wire through junctions"));
+	const after = store.getSnapshot();
+	assert.deepEqual(result.ids, [3, 4, 5]);
+	assert.deepEqual(result.idsBySource.get(3), [3, 4, 5]);
+	assert.deepEqual(result.idsBySource.get(1), [1]);
+	assert.deepEqual(result.idsBySource.get(2), [2]);
+	assert.ok(result.ids.every((id) => after.shapes.some((shape) => shape.id === id && shape.rotation % Math.PI === 0)));
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, after.shapes);
+});
+
+test("placing a branch selects its own pieces and excludes the split preexisting trunk", () => {
+	const { store, run } = session();
+	run(placeShapesEffect([drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })], "Trunk"));
+	const result = run(placeShapesEffect([drawShape(2, "wire", { x: 50, y: 30 }, { x: 50, y: 0 })], "Branch"));
+	assert.deepEqual(result.ids, [2]);
+	assert.deepEqual(result.idsBySource.get(1), [1, 3]);
+	assert.deepEqual(result.idsBySource.get(2), [2]);
+	const edit = run(replaceShapesEffect([{ ...store.getSnapshot().shapes[0], lineWidth: 0.5 }], "Stroke"));
+	assert.deepEqual(edit.idsBySource.get(1), [1]);
+});
+
+test("placing a pin splits an existing wire without selecting its pieces and undoes atomically", () => {
+	const { store, run } = session();
+	run(placeShapesEffect([drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })], "Trunk"));
+	const before = store.getSnapshot();
+	const result = run(placeShapesEffect([drawShape(2, "pin", { x: 50, y: 0 }, { x: 50, y: 0 })], "Pin on wire"));
+	const after = store.getSnapshot();
+	assert.deepEqual(result.ids, [2]);
+	assert.deepEqual(result.idsBySource.get(1), [1, 3]);
+	assert.equal(after.shapes.length, 3);
+	assert.equal(after.nextShapeId, 4);
+	assert.equal(after.history.currentId, before.history.currentId + 1);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, after.shapes);
+	run(removeShapesEffect([2]));
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});
+
+test("drawing through an existing pin returns every piece and moving the pin away rejoins them", () => {
+	const { store, run } = session();
+	run(placeShapesEffect([drawShape(1, "pin", { x: 50, y: 0 }, { x: 50, y: 0 })], "Pin"));
+	const result = run(placeShapesEffect([drawShape(2, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })], "Wire through pin"));
+	assert.deepEqual(result.ids, [2, 3]);
+	assert.deepEqual(result.idsBySource.get(2), [2, 3]);
+	const before = store.getSnapshot();
+	run(replaceShapesEffect([{ ...before.shapes[0], y: 10 }], "Move pin away"));
+	assert.equal(store.getSnapshot().shapes.filter((shape) => shape.kind === "wire").length, 1);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});
+
+for (const rotation of [0, Math.PI / 2]) test(`symbol pin terminals split a wire with rotation=${rotation}`, () => {
+	const { store, run } = session();
+	const symbol = { ...createSymbol(1, symbolDefinitions[0], { x: 50, y: 0 }), rotation };
+	const [first, second] = pinTerminals(symbol);
+	const vertical = rotation !== 0;
+	run(placeShapesEffect([symbol], "Component"));
+	const result = run(placeShapesEffect([drawShape(2, "wire", vertical ? { x: 50, y: -20 } : { x: 30, y: 0 }, vertical ? { x: 50, y: 20 } : { x: 70, y: 0 })], "Wire through component pins"));
+	assert.deepEqual(result.ids, [2, 3, 4]);
+	const wires = store.getSnapshot().shapes.filter((shape) => shape.kind === "wire");
+	assert.equal(wires.length, 3);
+	for (const pin of [first, second]) assert.equal(wires.filter((wire) => Math.abs(Math.hypot(wire.x - pin.x, wire.y - pin.y) - wire.width / 2) < 1e-6).length, 2);
+});

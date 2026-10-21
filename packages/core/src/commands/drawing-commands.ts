@@ -14,6 +14,7 @@ import {
 } from "#/drawing/history.ts";
 import { type EditorShape, normalizeWireSegments } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 /** Complete geometry, already resolved by the caller. Commands allocate IDs. */
@@ -32,6 +33,8 @@ export interface CommandResult {
 	readonly ids: number[];
 	/** Includes unchanged shapes so callers can remap their own selection. */
 	readonly idMap: ReadonlyMap<number, number>;
+	/** All committed pieces of each source shape, including unchanged shapes. */
+	readonly idsBySource: ReadonlyMap<number, readonly number[]>;
 }
 
 export class InvalidDrawingCommand extends Data.TaggedError(
@@ -215,13 +218,17 @@ function commit(
 	nextShapeId = current.nextShapeId,
 	preferredIds: readonly number[] = changedIds,
 ): readonly [CommandResult, DrawingSnapshot] {
-	const normalized = normalizeWireSegments(shapes, new Set(preferredIds));
+	const normalized = measurePerformance(
+		"editor.wire-normalize",
+		() => normalizeWireSegments(shapes, new Set(preferredIds), nextShapeId),
+		{ shapes: shapes.length },
+	);
+	nextShapeId = normalized.nextShapeId;
+	if (!Number.isSafeInteger(nextShapeId))
+		invalid("No more shape IDs are available.");
 	const ids = [
 		...new Set(
-			changedIds.flatMap((id) => {
-				const survivor = normalized.idMap.get(id);
-				return survivor === undefined ? [] : [survivor];
-			}),
+			changedIds.flatMap((id) => normalized.idsBySource.get(id) ?? []),
 		),
 	];
 	const history = commitHistory(
@@ -231,7 +238,7 @@ function commit(
 		sameDrawing,
 	);
 	return [
-		{ ids, idMap: normalized.idMap },
+		{ ids, idMap: normalized.idMap, idsBySource: normalized.idsBySource },
 		history === current.history && nextShapeId === current.nextShapeId
 			? current
 			: { shapes: normalized.shapes, history, nextShapeId },
@@ -406,8 +413,12 @@ export function createSymbolFromSelectionEffect(
 					current.nextShapeId + 1,
 				);
 				const idMap = new Map(result.idMap);
-				for (const id of captured) idMap.set(id, symbol.id);
-				return [{ ...result, idMap }, next];
+				const idsBySource = new Map(result.idsBySource);
+				for (const id of captured) {
+					idMap.set(id, symbol.id);
+					idsBySource.set(id, [symbol.id]);
+				}
+				return [{ ...result, idMap, idsBySource }, next];
 			}),
 	);
 }

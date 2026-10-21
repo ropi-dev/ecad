@@ -617,14 +617,14 @@ test("moving one segment keeps connected endpoints together while resize and del
 	expect(moved[3]).toEqual(originals[3]);
 	await page.screenshot({ path: test.info().outputPath("moving-connected-endpoints.png") });
 	await dragHandle(page, "1,0", [220, 210]);
-	await expect.poll(async () => (await nonPinState(page)).shapes[1].width).toBeCloseTo(100, 1);
+	await expect.poll(async () => (await wireEndpoints(page)).map((ends) => ends.map((value) => Number(value.toFixed(2))))).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 190, 210], [190, 175, 105, 175]]);
 	const shapes = (await nonPinState(page)).shapes;
 	expect(shapes[1].x).toBeCloseTo(190, 1);
-	expect(shapes[1].y).toBeCloseTo(160, 1);
+	expect(shapes[1].y).toBeCloseTo(142.5, 1);
 	expect(shapes[1].rotation).toBeCloseTo(Math.PI / 2, 4);
 	expect(shapes[0]).toEqual(moved[0]);
-	expect(shapes[2]).toEqual(moved[2]);
-	expect(shapes[3]).toEqual(originals[3]);
+	expect(shapes[3]).toEqual(moved[2]);
+	expect(shapes[4]).toEqual(originals[3]);
 	await page.keyboard.press("Delete");
 	await expect.poll(async () => (await nonPinState(page)).shapes).toEqual([moved[0], moved[2], originals[3]]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(0);
@@ -770,10 +770,14 @@ test("drawing duplicate and overlapping wires merges their extent from valid anc
  await clickAt(page, 140, 100);
  await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 100, 100]]);
  await expect.poll(() => selectedNames(page)).toEqual(["wire 5"]);
- await clickAt(page, 150, 160);
+ // Finishing on the trunk ends the chain. Start a new branch at that point.
+ await expect(page.locator('[data-tool="select"]')).toBeAttached();
+ await (await toolbarButton(page, "Wire")).click();
+ await clickAt(page, 140, 100);
+ await clickAt(page, 140, 160);
  await page.keyboard.press("Enter");
- await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 100, 100], [140, 100, 140, 160]]);
- expect((await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["wire 5", "wire 6"]);
+ await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 140, 100], [140, 100, 100, 100], [140, 100, 140, 160]]);
+ expect((await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["wire 5", "wire 7", "wire 6"]);
  await expect.poll(() => selectedNames(page)).toEqual(["wire 6"]);
 });
 
@@ -1897,11 +1901,13 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await page.keyboard.press("Enter");
  await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
  await expect.poll(async () => (await state(page)).wireTerminals.map(({ x, y, width, height }) => [Math.round(x), Math.round(y), width, height])).toEqual([[160, 100, 0.508, 0.508]]);
- // Neither the midpoint of a segment nor an arbitrary shape is a valid start.
+ // A midpoint can start a branch without changing the document until commit.
  await (await toolbarButton(page, "Wire")).click();
  await clickAt(page, 130, 100);
  await moveAt(page, 130, 150);
- expect((await state(page)).preview).toBeNull();
+ await expect.poll(async () => (await state(page)).preview).not.toBeNull();
+ await page.keyboard.press("Escape");
+ await (await toolbarButton(page, "Wire")).click();
  // Continue from the unconnected end with snapping disabled.
  await clickAt(page, 161, 101);
  await clickAt(page, 160, 160);
@@ -2089,4 +2095,128 @@ test("text placement snaps to the grid and equal-width content changes remain un
 	await (await toolbarButton(page, "Redo")).click();
 	await expect(content).toHaveValue("333");
 	expect((await state(page)).shapes[0].width).toBe(originalWidth);
+});
+
+test("wire endpoints split a trunk into three-way and four-way junctions with atomic undo", async ({ page }) => {
+	const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!) as { shapes: import("#/drawing/shapes.ts").EditorShape[]; historySize: number };
+	await createWireChain(page, [[100, 150], [260, 150]]);
+	await placePin(page, 180, 230);
+	await clickAt(page, 180, 230);
+	await moveAt(page, 180, 151);
+	await expect(page.getByTestId("wire-connection")).toBeVisible();
+	const before = await committed();
+	await clickAt(page, 180, 151);
+	await expect(page.locator('[data-tool="select"]')).toBeAttached();
+	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
+	const tee = await committed();
+	expect(tee.historySize).toBe(before.historySize + 1);
+	const junctionEnds = (shapes: typeof tee.shapes) => shapes
+		.filter((shape) => shape.kind === "wire")
+		.flatMap((shape) => [-1, 1].map((sign) => ({
+			x: shape.x + sign * Math.cos(shape.rotation) * shape.width / 2,
+			y: shape.y + sign * Math.sin(shape.rotation) * shape.width / 2,
+		})))
+		.filter((point) => Math.abs(point.x - 180) < 0.001 && Math.abs(point.y - 150) < 0.001);
+	expect(junctionEnds(tee.shapes)).toHaveLength(3);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
+	await page.screenshot({ path: test.info().outputPath("branch-only-selected.png") });
+	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+	await clickAt(page, 140, 150);
+	await expect(page.getByRole("spinbutton", { name: "Length", exact: true })).toHaveValue("80");
+	await page.screenshot({ path: test.info().outputPath("wire-three-way-junction.png") });
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await committed()).shapes).toEqual(before.shapes);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(async () => (await committed()).shapes).toEqual(tee.shapes);
+	// Start the fourth leg at the existing junction itself.
+	await (await toolbarButton(page, "Wire")).click();
+	await clickAt(page, 180, 150);
+	await clickAt(page, 180, 70);
+	await page.keyboard.press("Enter");
+	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(4);
+	const cross = await committed();
+	expect(junctionEnds(cross.shapes)).toHaveLength(4);
+	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+	await clickAt(page, 140, 150);
+	await expect(page.getByRole("spinbutton", { name: "Length", exact: true })).toHaveValue("80");
+	await page.screenshot({ path: test.info().outputPath("wire-four-way-junction.png") });
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await committed()).shapes).toEqual(tee.shapes);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(async () => (await committed()).shapes).toEqual(cross.shapes);
+});
+
+test("drawing between components selects all new segments across a middle connection", async ({ page }) => {
+	await createWireChain(page, [[180, 230], [180, 150]]);
+	await insertSymbol(page, "Resistor", 100, 150);
+	await insertSymbol(page, "Resistor", 260, 150);
+	await (await toolbarButton(page, "Wire")).click();
+	await clickAt(page, 103, 150);
+	await clickAt(page, 257, 150);
+	await expect(page.locator('[data-tool="select"]')).toBeAttached();
+	await expect.poll(() => wireEndpoints(page)).toEqual([[180, 230, 180, 150], [103, 150, 180, 150], [180, 150, 257, 150]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 5", "wire 6"]);
+	await expect(page.getByTestId("resize-handle")).toHaveCount(4);
+	await page.screenshot({ path: test.info().outputPath("all-new-wire-segments-selected.png") });
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(() => wireEndpoints(page)).toEqual([[180, 230, 180, 150]]);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 5", "wire 6"]);
+});
+
+test("placing a pin on a wire splits it and selects only the pin through undo and redo", async ({ page }) => {
+	await createWireChain(page, [[100, 150], [260, 150]]);
+	await placePin(page, 180, 150);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 150, 180, 150], [180, 150, 260, 150]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["pin 3"]);
+	await page.screenshot({ path: test.info().outputPath("pin-splits-existing-wire.png") });
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 150, 260, 150]]);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(() => selectedNames(page)).toEqual(["pin 3"]);
+	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
+});
+
+test("drawing through an existing pin selects every new wire segment", async ({ page }) => {
+	await placePin(page, 180, 150);
+	await insertSymbol(page, "Resistor", 100, 150);
+	await insertSymbol(page, "Resistor", 260, 150);
+	await (await toolbarButton(page, "Wire")).click();
+	await clickAt(page, 103, 150);
+	await clickAt(page, 257, 150);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[103, 150, 180, 150], [180, 150, 257, 150]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 4", "wire 5"]);
+	await page.screenshot({ path: test.info().outputPath("wire-split-at-existing-pin.png") });
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(() => wireEndpoints(page)).toEqual([]);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 4", "wire 5"]);
+});
+
+test("placing a rotated component splits a wire at its pin terminal", async ({ page }) => {
+	await createWireChain(page, [[100, 150], [260, 150]]);
+	await insertSymbol(page, "Resistor", 180, 153);
+	await page.getByLabel("Angle", { exact: true }).fill("90");
+	await page.getByLabel("Angle", { exact: true }).blur();
+	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 150, 180, 150], [180, 150, 260, 150]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 3"]);
+});
+
+for (const vertical of [false, true]) test(`a bent branch leaves every split ${vertical ? "vertical" : "horizontal"} trunk segment unselected`, async ({ page }) => {
+	const point = (along: number, across: number): [number, number] => vertical ? [across, along] : [along, across];
+	await createWireChain(page, [point(100, 150), point(260, 150)]);
+	await placePin(page, ...point(160, 230));
+	await clickAt(page, ...point(160, 230));
+	await clickAt(page, ...point(200, 150));
+	await expect(page.locator('[data-tool="select"]')).toBeAttached();
+	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
+	const selectedWires = (await state(page)).shapes.filter((shape) => shape.name.startsWith("wire ") && shape.selected);
+	expect(selectedWires).toHaveLength(1);
+	expect(selectedWires[0].width).toBeCloseTo(80, 3);
+	await page.screenshot({ path: test.info().outputPath(`bent-branch-${vertical ? "vertical" : "horizontal"}.png`) });
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(1);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
 });
