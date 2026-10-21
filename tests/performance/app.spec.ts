@@ -569,21 +569,19 @@ test("symbol-references", async ({ page }, testInfo) => {
   await page.locator("canvas").click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
   await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Reference parent");
  });
+ await expect.poll(async () => (await report(page)).events.some(
+  event => event.name === "project.save" && event.status === "ok" && event.data?.shapes === 1,
+ )).toBe(true);
  await expect.poll(async () => page.evaluate(async () => {
-  try {
-   const root = await navigator.storage.getDirectory();
-   const directory = await root.getDirectoryHandle("Symbol references");
-   const manifest = await (await directory.getFileHandle(".ecadprj")).getFile();
-   const path = (await manifest.text()).match(/drawing = "([^"]+)"/)![1].split("/");
-   const name = path.pop()!;
-   let folder = directory;
-   for (const part of path) folder = await folder.getDirectoryHandle(part);
-   const drawing = JSON.parse(await (await (await folder.getFileHandle(name)).getFile()).text());
-   return drawing.shapes.length === 1 && drawing.shapes[0].library.id === "project-symbols" && !("children" in drawing.shapes[0]) && !("texts" in drawing.shapes[0]);
-  } catch (error) {
-   if (error instanceof DOMException && error.name === "NotFoundError") return false;
-   throw error;
-  }
+  const root = await navigator.storage.getDirectory();
+  const directory = await root.getDirectoryHandle("Symbol references");
+  const manifest = await (await directory.getFileHandle(".ecadprj")).getFile();
+  const path = (await manifest.text()).match(/drawing = "([^"]+)"/)![1].split("/");
+  const name = path.pop()!;
+  let folder = directory;
+  for (const part of path) folder = await folder.getDirectoryHandle(part);
+  const drawing = JSON.parse(await (await (await folder.getFileHandle(name)).getFile()).text());
+  return drawing.shapes.length === 1 && drawing.shapes[0].library.id === "project-symbols" && !("children" in drawing.shapes[0]) && !("texts" in drawing.shapes[0]);
  })).toBe(true);
  await page.goto("/editor?perf=1");
  await ready(page);
