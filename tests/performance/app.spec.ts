@@ -570,15 +570,20 @@ test("symbol-references", async ({ page }, testInfo) => {
   await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Reference parent");
  });
  await expect.poll(async () => page.evaluate(async () => {
-  const root = await navigator.storage.getDirectory();
-  const directory = await root.getDirectoryHandle("Symbol references");
-  const manifest = await (await directory.getFileHandle(".ecadprj")).getFile();
-  const path = (await manifest.text()).match(/drawing = "([^"]+)"/)![1].split("/");
-  const name = path.pop()!;
-  let folder = directory;
-  for (const part of path) folder = await folder.getDirectoryHandle(part);
-  const drawing = JSON.parse(await (await (await folder.getFileHandle(name)).getFile()).text());
-  return drawing.shapes.length === 1 && drawing.shapes[0].library.id === "project-symbols" && !("children" in drawing.shapes[0]) && !("texts" in drawing.shapes[0]);
+  try {
+   const root = await navigator.storage.getDirectory();
+   const directory = await root.getDirectoryHandle("Symbol references");
+   const manifest = await (await directory.getFileHandle(".ecadprj")).getFile();
+   const path = (await manifest.text()).match(/drawing = "([^"]+)"/)![1].split("/");
+   const name = path.pop()!;
+   let folder = directory;
+   for (const part of path) folder = await folder.getDirectoryHandle(part);
+   const drawing = JSON.parse(await (await (await folder.getFileHandle(name)).getFile()).text());
+   return drawing.shapes.length === 1 && drawing.shapes[0].library.id === "project-symbols" && !("children" in drawing.shapes[0]) && !("texts" in drawing.shapes[0]);
+  } catch (error) {
+   if (error instanceof DOMException && error.name === "NotFoundError") return false;
+   throw error;
+  }
  })).toBe(true);
  await page.goto("/editor?perf=1");
  await ready(page);
