@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, LineLoop, type Mesh } from "three";
+import { Group, LineLoop, type Mesh, type MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawShape } from "#/drawing/shapes.ts";
+import { drawShape, pinTerminals } from "#/drawing/shapes.ts";
+import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
 
@@ -74,6 +75,67 @@ test("preview display uses separate resources from document shapes and skips emp
 	assert.equal(display.previews[0].renderOrder, 3);
 	assert.equal(display.shapes[0].x, 10);
 	assert.equal(display.previews[0].x, 30);
+});
+
+test("pin halos follow wire connections, disconnections, and coincident pins", () => {
+	const pin = drawShape(1, "pin", { x: 10, y: 0 }, { x: 10, y: 0 });
+	const wire = drawShape(2, "wire", { x: 0, y: 0 }, { x: 20, y: 0 });
+	const halo = () => buildDrawingDisplay([pin], new Set()).halos[0];
+	assert.equal(halo().appearance, "pin");
+	assert.ok(halo().width > pin.width);
+	assert.equal(buildDrawingDisplay([pin, wire], new Set()).halos.length, 0);
+	assert.equal(buildDrawingDisplay([pin, { ...wire, y: 0.00001 }], new Set()).halos.length, 0);
+	assert.equal(buildDrawingDisplay([pin, { ...wire, y: 1 }], new Set()).halos.length, 1);
+	assert.equal(buildDrawingDisplay([pin, { ...pin, id: 3 }], new Set()).halos.length, 0);
+	assert.equal(buildDrawingDisplay([pin], new Set([pin.id])).halos[0].appearance, "selected");
+});
+
+test("rotated symbol connections retain pin and wire colors in documents and previews", () => {
+	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+	const innerWire = drawShape(2, "wire", { x: 0, y: 0 }, { x: 10, y: 0 });
+	const symbol = { ...createSymbolFromShapes(3, [pin, innerWire]), rotation: Math.PI / 2 };
+	const [terminal] = pinTerminals(symbol);
+	const display = buildDrawingDisplay([symbol], new Set(), [symbol]);
+	assert.deepEqual(display.connections.map(({ appearance }) => appearance), ["pin", "wire"]);
+	assert.equal(display.halos[0].x, terminal.x);
+	assert.equal(display.halos[0].y, terminal.y);
+	assert.equal(display.connections[1].rotation, Math.PI / 2);
+	assert.equal(display.previews.length, 3);
+	assert.ok(display.previews.every(({ appearance }) => appearance === "selected"));
+	assert.equal(new Set(display.previews.map(({ key }) => key)).size, 3);
+	const external = drawShape(4, "wire", terminal, { x: terminal.x + 10, y: terminal.y });
+	assert.equal(buildDrawingDisplay([symbol, external], new Set()).halos.length, 0);
+	assert.ok(buildDrawingDisplay([symbol], new Set([symbol.id])).connections.every(({ appearance }) => appearance === "selected"));
+});
+
+test("renderer shares pin and wire colors and draws hollow halos that disappear on connection", () => {
+	const renderer = createDrawingRenderer(null);
+	const root = new Group();
+	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+	const wire = drawShape(2, "wire", { x: 10, y: 0 }, { x: 20, y: 0 });
+	const line = drawShape(3, "line", { x: 0, y: 10 }, { x: 20, y: 10 });
+	try {
+		renderer.update(root, buildDrawingDisplay([pin, wire, line], new Set()));
+		const color = (name: string) => (root.getObjectByName(name) as Mesh<never, MeshBasicMaterial>).material.color.getHexString();
+		assert.equal(color("pin 1"), "ef8f9c");
+		assert.equal(color("wire 2"), "ef8f9c");
+		assert.equal(color("line 3"), "76c4c0");
+		const halo = root.getObjectByName("editor-pin-halo") as Mesh;
+		root.updateMatrixWorld(true);
+		const hit = (x: number) => new Raycaster(new Vector3(x, 0, 10), new Vector3(0, 0, -1)).intersectObject(halo).length > 0;
+		assert.equal(hit(0), false);
+		assert.equal(hit(0.46), true);
+		let disposals = 0;
+		halo.geometry.addEventListener("dispose", () => disposals++);
+		renderer.update(root, buildDrawingDisplay([pin, { ...wire, x: 5 }], new Set()));
+		assert.equal(root.getObjectByName("editor-pin-halo"), undefined);
+		assert.equal(disposals, 1);
+		renderer.update(root, buildDrawingDisplay([pin, wire], new Set([pin.id, wire.id])));
+		assert.equal(color("pin 1"), "e8b77e");
+		assert.equal(color("wire 2"), "e8b77e");
+	} finally {
+		renderer.dispose();
+	}
 });
 
 test("worksheet layout produces page edges and labels without canvas or Three objects", () => {
