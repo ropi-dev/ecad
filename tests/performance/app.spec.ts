@@ -20,6 +20,19 @@ const ready = async (page: Page) =>
 			window.__ecadPerformance?.snapshot().metrics["app.ready"]?.count === 1,
 	);
 
+// Check timed endpoints each frame so assertion retry delays do not inflate them.
+async function editorReady(page: Page, title: string) {
+	await page.waitForFunction(
+		(title) =>
+			document.querySelector("h1")?.textContent === title &&
+			document.querySelector<HTMLButtonElement>(
+				'button[aria-label="Select"]',
+			)?.disabled === false,
+		title,
+		{ polling: "raf", timeout: 30_000 },
+	);
+}
+
 async function interaction(
 	page: Page,
 	name: string,
@@ -433,8 +446,7 @@ test("editor-user-symbol", async ({ page }, testInfo) => {
 	for (let repeat = 0; repeat < 3; repeat++) {
 		await interaction(page, "symbol.open-user-definition", async () => {
 			await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
-			await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · User package");
-			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+			await editorReady(page, "Symbol editor · User package");
 		});
 		await interaction(page, "symbol.save-user-definition", async () => {
 			await (await toolbarButton(page, "Rectangle")).click();
@@ -442,8 +454,14 @@ test("editor-user-symbol", async ({ page }, testInfo) => {
 			await page.mouse.down();
 			await page.mouse.move(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.4);
 			await page.mouse.up();
-			await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("ecad.user-config.v1")!).symbolLibraries[0].source.symbols[0].shapes.length)).toBe(129 + repeat);
-			await expect(page.getByRole("status")).toHaveText("Saved");
+			await page.waitForFunction(
+				(count) =>
+					JSON.parse(localStorage.getItem("ecad.user-config.v1")!)
+						.symbolLibraries[0].source.symbols[0].shapes.length === count &&
+					document.querySelector("header output")?.textContent === "Saved",
+				129 + repeat,
+				{ polling: "raf", timeout: 30_000 },
+			);
 		});
 		await page.getByRole("button", { name: "Back to schematic", exact: true }).click();
 	}
@@ -525,10 +543,14 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 	await expect(page.getByRole("heading", { name: "New symbol workflow", exact: true })).toBeVisible();
 	await interaction(page, "symbol.create", async () => {
 		await page.getByRole("button", { name: "New symbol", exact: true }).click();
+		await page.waitForFunction(
+			() => document.querySelector('[role="dialog"] input') !== null,
+			undefined,
+			{ polling: "raf", timeout: 30_000 },
+		);
 		await page.getByLabel("Symbol name", { exact: true }).fill("New part");
 		await page.getByRole("button", { name: "Create symbol", exact: true }).click();
-		await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · New part");
-		await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+		await editorReady(page, "Symbol editor · New part");
 	});
 	await (await toolbarButton(page, "Rectangle")).click();
 	await page.mouse.move(600, 300);

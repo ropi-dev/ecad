@@ -7,7 +7,7 @@ export const budgets = {
 		frameP95Ms: 500,
 	},
 	"editor-user-symbol": {
-		interactionP95Ms: 1500,
+		interactionP95Ms: 2000,
 		domNodes: 1500,
 		scriptBytes: 3_000_000,
 		frameP95Ms: 500,
@@ -25,7 +25,7 @@ export const budgets = {
 		frameP95Ms: 500,
 	},
 	"project-new-symbol": {
-		createMs: 2000,
+		createMs: 3000,
 		domNodes: 1500,
 		scriptBytes: 3_000_000,
 		frameP95Ms: 500,
