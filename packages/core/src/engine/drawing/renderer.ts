@@ -68,7 +68,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const stroke = own(
 			() => new MeshBasicMaterial({ color: "#76c4c0", depthTest: false }),
 		);
-		const connection = own(
+		const wire = own(
 			() => new MeshBasicMaterial({ color: "#ef8f9c", depthTest: false }),
 		);
 		const selected = own(
@@ -78,7 +78,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			() => new LineBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
 		const materialFor = (display: DisplayShape) => {
-			const color = { stroke, pin: connection, wire: connection, selected }[
+			const color = { stroke, pin: stroke, wire, selected }[
 				display.appearance
 			];
 			if (display.text === undefined) return color;

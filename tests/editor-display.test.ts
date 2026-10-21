@@ -108,7 +108,7 @@ test("rotated symbol connections retain pin and wire colors in documents and pre
 	assert.ok(buildDrawingDisplay([symbol], new Set([symbol.id])).connections.every(({ appearance }) => appearance === "selected"));
 });
 
-test("renderer shares pin and wire colors and draws hollow halos that disappear on connection", () => {
+test("renderer uses shape colors for pins and hollow halos while wires keep their distinct color", () => {
 	const renderer = createDrawingRenderer(null);
 	const root = new Group();
 	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
@@ -117,9 +117,10 @@ test("renderer shares pin and wire colors and draws hollow halos that disappear 
 	try {
 		renderer.update(root, buildDrawingDisplay([pin, wire, line], new Set()));
 		const color = (name: string) => (root.getObjectByName(name) as Mesh<never, MeshBasicMaterial>).material.color.getHexString();
-		assert.equal(color("pin 1"), "ef8f9c");
+		assert.equal(color("pin 1"), "76c4c0");
 		assert.equal(color("wire 2"), "ef8f9c");
 		assert.equal(color("line 3"), "76c4c0");
+		assert.equal(color("editor-pin-halo"), color("line 3"));
 		const halo = root.getObjectByName("editor-pin-halo") as Mesh;
 		root.updateMatrixWorld(true);
 		const hit = (x: number) => new Raycaster(new Vector3(x, 0, 10), new Vector3(0, 0, -1)).intersectObject(halo).length > 0;
