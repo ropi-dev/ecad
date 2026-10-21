@@ -1462,6 +1462,86 @@ async function insertSymbol(page: Page, name: string, x: number, y: number) {
 	await clickAt(page, x, y);
 }
 
+test("Alt-drag duplicates only the hit symbol, preserving its attributes and attached wires through history", async ({ page }, testInfo) => {
+	await insertSymbol(page, "Resistor", 100, 150);
+	await page.getByLabel("Value", { exact: true }).fill("22 kΩ");
+	await page.getByLabel("Value", { exact: true }).blur();
+	await page.getByLabel("Reference", { exact: true }).fill("R4");
+	await page.getByLabel("Reference", { exact: true }).blur();
+	await page.getByLabel("Angle", { exact: true }).fill("90");
+	await page.getByLabel("Angle", { exact: true }).blur();
+	await (await toolbarButton(page, "Wire")).click();
+	await clickAt(page, 100, 153);
+	await clickAt(page, 180, 153);
+	await page.keyboard.press("Enter");
+	await insertSymbol(page, "Capacitor", 200, 150);
+	await page.keyboard.down("Shift");
+	await clickAt(page, 100, 150);
+	await page.keyboard.up("Shift");
+	const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
+	const before = await committed();
+	const wires = await wireEndpoints(page);
+	await page.keyboard.down("Alt");
+	await moveAt(page, 100, 150);
+	await page.mouse.down();
+	await moveAt(page, 120, 160);
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(4);
+	expect(await committed()).toEqual(before);
+	// Releasing Alt during the gesture must keep moving the same copy.
+	await page.keyboard.up("Alt");
+	await moveAt(page, 140, 180);
+	await page.mouse.up();
+	const after = await committed();
+	expect(after.historySize).toBe(before.historySize + 1);
+	expect(after.shapes.slice(0, 3)).toEqual(before.shapes);
+	expect(after.shapes[3]).toEqual({
+		...before.shapes[0], id: 4, x: expect.closeTo(140, 4), y: expect.closeTo(180, 4),
+		attributes: { ...before.shapes[0].attributes, reference: "R5" },
+	});
+	expect(await wireEndpoints(page)).toEqual(wires);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 4"]);
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await committed()).shapes).toEqual(before.shapes);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(async () => (await committed()).shapes).toEqual(after.shapes);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 4"]);
+	await page.screenshot({ path: testInfo.outputPath("alt-drag-symbol.png") });
+});
+
+test("Alt-drag from a symbol pin duplicates with grid snapping instead of starting a wire", async ({ page }) => {
+	await insertSymbol(page, "Resistor", 100, 150);
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.keyboard.down("Alt");
+	await dragTo(page, [97, 150], [115, 167]);
+	await page.keyboard.up("Alt");
+	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+	await expect.poll(async () => (await state(page)).shapes[1].x).toBeCloseTo(120, 4);
+	await expect.poll(async () => (await state(page)).shapes[1].y).toBeCloseTo(170, 4);
+	await expect(page.locator('[data-tool="select"]')).toBeAttached();
+});
+
+test("Alt-click and canceled duplicate gestures leave the document and selection unchanged", async ({ page }) => {
+	await insertSymbol(page, "Resistor", 100, 150);
+	const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
+	const before = await committed();
+	await page.keyboard.down("Alt");
+	await clickAt(page, 100, 150);
+	expect(await committed()).toEqual(before);
+	for (const cancel of ["Escape", "pointercancel", "lostpointercapture"]) {
+		await moveAt(page, 100, 150);
+		await page.mouse.down();
+		await moveAt(page, 140, 180);
+		await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+		if (cancel === "Escape") await page.keyboard.press("Escape");
+		else await page.locator("canvas").dispatchEvent(cancel, { pointerId: 1 });
+		await page.mouse.up();
+		expect(await committed()).toEqual(before);
+		await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+		await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
+	}
+	await page.keyboard.up("Alt");
+});
+
 test("symbols select through any child, move and delete as one, and restore with history", async ({ page }) => {
 	await insertSymbol(page, "Resistor", 100, 150);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
