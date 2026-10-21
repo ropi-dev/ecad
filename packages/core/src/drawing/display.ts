@@ -101,10 +101,7 @@ function displayShape(
 				? shape.lineWidth
 				: shape.height,
 		rotation: shape.rotation,
-		appearance:
-			appearance === "stroke" && (shape.kind === "pin" || shape.kind === "wire")
-				? shape.kind
-				: appearance,
+		appearance,
 		...(shape.kind === "text" ? { text: shape.text } : {}),
 		renderOrder,
 	};
@@ -143,7 +140,11 @@ export function buildDrawingDisplay(
 				shape,
 				`shape:${shape.id}`,
 				`${shape.kind} ${shape.id}`,
-				selectedIds.has(shape.id) ? "selected" : "stroke",
+				selectedIds.has(shape.id)
+					? "selected"
+					: shape.kind === "pin" || shape.kind === "wire"
+						? shape.kind
+						: "stroke",
 				index + 1,
 			),
 		),
@@ -175,7 +176,11 @@ export function buildDrawingDisplay(
 										child,
 										`shape:${shape.id}:connection:${child.id}`,
 										`${child.kind} ${shape.id}:${child.id}`,
-										selectedIds.has(shape.id) ? "selected" : "stroke",
+										selectedIds.has(shape.id)
+											? "selected"
+											: child.kind === "pin"
+												? "pin"
+												: "stroke",
 										index + 1,
 									),
 								]
