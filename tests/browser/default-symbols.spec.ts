@@ -45,6 +45,8 @@ test("selector focuses search on every opening and filters symbols without libra
 });
 
 test("every default symbol previews and places with its geometry, pins, and editable attributes", async ({ page }) => {
+	// This test places the entire catalog using software graphics in CI.
+	test.setTimeout(120_000);
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/editor.html");

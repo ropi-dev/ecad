@@ -11,6 +11,7 @@ export default defineConfig({
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 			args: [
 				"--enable-unsafe-webgpu",
+				"--use-webgpu-adapter=swiftshader",
 				"--use-angle=swiftshader",
 				"--enable-features=Vulkan",
 				"--disable-vulkan-surface",
