@@ -153,6 +153,8 @@ test("Alt-dragging a moved label duplicates the symbol and keeps label edits ind
  expect(duplicated.shapes[1].attributes.reference).toBe("R2");
  expect(duplicated.shapes[1].x).not.toBe(duplicated.shapes[0].x);
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).symbolTexts.length).toBe(4);
+ await expect.poll(async () => (await labelScreen(page, 2)).x).toBeCloseTo(start.x + 140, 2);
+ await expect.poll(async () => (await labelScreen(page, 2)).y).toBeCloseTo(start.y + 45, 2);
  const copyLabel = await labelScreen(page, 2);
  expect(copyLabel.x).toBeCloseTo(start.x + 140, 2);
  expect(copyLabel.y).toBeCloseTo(start.y + 45, 2);

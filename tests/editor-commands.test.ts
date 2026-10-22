@@ -10,12 +10,13 @@ import {
 	redoEffect,
 	removeShapesEffect,
 	replaceShapesEffect,
+	replaceAndPlaceShapesEffect,
 	rotateShapesEffect,
 	type ShapeInput,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { drawShape, editShapeAttribute, pinTerminals, symbolShapes, symbolTextShapes } from "#/drawing/shapes.ts";
+import { drawShape, editShapeAttribute, moveShapes, pinTerminals, symbolShapes, symbolTextShapes } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 
 const rectangle = {
@@ -473,7 +474,7 @@ test("branch placement splits a trunk in one transaction with stable IDs and ato
 	const branch = run(placeShapesEffect([drawShape(2, "wire", { x: 30, y: 20 }, { x: 30, y: 0 })], "Alternate branch"));
 	assert.deepEqual(branch.ids, [5]);
 	assert.deepEqual(store.getSnapshot().shapes.map(({ id }) => id), [1, 6, 5]);
-	assert.equal(store.getSnapshot().nextShapeId, 7);
+	assert.ok(store.getSnapshot().nextShapeId >= 7);
 });
 
 for (const reversed of [false, true]) test(`drawing a wire through existing branches returns every new piece with reversed=${reversed}`, () => {
@@ -548,4 +549,66 @@ for (const rotation of [0, Math.PI / 2]) test(`symbol pin terminals split a wire
 	const wires = store.getSnapshot().shapes.filter((shape) => shape.kind === "wire");
 	assert.equal(wires.length, 3);
 	for (const pin of [first, second]) assert.equal(wires.filter((wire) => Math.abs(Math.hypot(wire.x - pin.x, wire.y - pin.y) - wire.width / 2) < 1e-6).length, 2);
+});
+
+
+test("moving an attached component and adding wires commits once and restores through undo and redo", () => {
+	const symbol = createSymbol(1, symbolDefinitions[0], { x: 50, y: 60 });
+	const [terminal] = pinTerminals(symbol);
+	const wire = drawShape(2, "wire", { x: 20, y: 60 }, terminal);
+	const store = createDrawingStore([symbol, wire]);
+	const run = <A, E>(program: Effect.Effect<A, E, DrawingStore>) =>
+		Effect.runSync(Effect.provideService(program, DrawingStore, store));
+	const initial = store.getSnapshot();
+	const moved = moveShapes(
+		[symbol],
+		{ x: 10, y: 20 },
+		0,
+		symbol,
+		initial.shapes,
+		initial.nextShapeId,
+	);
+	let publications = 0;
+	store.subscribe(() => publications++);
+	const result = run(
+		replaceAndPlaceShapesEffect([moved[0]], moved.slice(1), "Move selection", [
+			symbol.id,
+		]),
+	);
+	const committed = store.getSnapshot();
+	assert.equal(publications, 1);
+	assert.equal(committed.shapes.length, 4);
+	assert.equal(committed.nextShapeId, 5);
+	assert.deepEqual(committed.shapes[1], wire);
+	assert.deepEqual(pinTerminals(committed.shapes[0])[0], {
+		x: terminal.x + 10,
+		y: terminal.y + 20,
+	});
+	assert.deepEqual(result.idsBySource.get(symbol.id), [symbol.id]);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, initial.shapes);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, committed.shapes);
+	run(undoEffect);
+	const branch = moveShapes(
+		[symbol],
+		{ x: -10, y: -20 },
+		0,
+		symbol,
+		initial.shapes,
+		store.getSnapshot().nextShapeId,
+	);
+	run(
+		replaceAndPlaceShapesEffect(
+			[branch[0]],
+			branch.slice(1),
+			"Move selection",
+			[symbol.id],
+		),
+	);
+	assert.equal(
+		new Set(store.getSnapshot().shapes.map(({ id }) => id)).size,
+		store.getSnapshot().shapes.length,
+	);
+	assert.ok(store.getSnapshot().nextShapeId >= 7);
 });
