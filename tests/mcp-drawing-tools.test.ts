@@ -125,14 +125,14 @@ test("MCP places every shape kind including complete symbols and measured text i
 	assert.deepEqual(replaced.reply.drawing.shapes[5], movedSymbol);
 });
 
-test("MCP preserves pin names through placement, replacement, reads and history", async (context) => {
+test("MCP preserves pin names and numbers through placement, replacement, reads and history", async (context) => {
 	const { call } = await session(context);
 	const { id: _id, ...pin } = drawShape(1, "pin", { x: 10, y: 20 }, { x: 10, y: 20 });
-	const placed = await call("placeShapes", { shapes: [{ ...pin, name: "VCC" }] });
+	const placed = await call("placeShapes", { shapes: [{ ...pin, name: "VCC", number: "01" }] });
 	assert.ok(placed.reply.ok);
-	const named = { ...pin, id: 1, name: "VCC" };
+	const named = { ...pin, id: 1, name: "VCC", number: "01" };
 	assert.deepEqual(placed.reply.drawing.shapes, [named]);
-	const renamed = { ...named, name: "GND" };
+	const renamed = { ...named, name: "GND", number: "A1" };
 	const replaced = await call("replaceShapes", { shapes: [renamed] });
 	assert.ok(replaced.reply.ok);
 	assert.deepEqual(replaced.reply.drawing.shapes, [renamed]);

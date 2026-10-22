@@ -90,6 +90,27 @@ test("pin halos follow wire connections, disconnections, and coincident pins", (
 	assert.equal(buildDrawingDisplay([pin], new Set([pin.id])).halos[0].appearance, "selected");
 });
 
+test("pin labels show names and numbers upright on standalone pins, rotated symbols and previews", () => {
+	const pin = { ...drawShape(1, "pin", { x: 10, y: 0 }, { x: 10, y: 0 }), kind: "pin" as const, name: "VCC", number: "01" };
+	const symbol = { ...createSymbolFromShapes(2, [pin]), rotation: Math.PI / 2 };
+	const display = buildDrawingDisplay([pin, symbol], new Set([pin.id, symbol.id]), [symbol]);
+	for (const parent of [display.shapes[0], display.connections[0], display.previews[1]]) {
+		assert.deepEqual(parent.children?.map(label => label.text), ["VCC", "01"]);
+		for (const label of parent.children!) {
+			assert.equal(label.appearance, "selected");
+			assert.equal(parent.rotation + label.rotation, 0);
+			const x = label.x * parent.width;
+			const y = label.y * parent.height;
+			const dx = x * Math.cos(parent.rotation) - y * Math.sin(parent.rotation);
+			const dy = x * Math.sin(parent.rotation) + y * Math.cos(parent.rotation);
+			assert.ok(dx > label.width * parent.width / 2);
+			assert.equal(dy > 0, label.text === "VCC");
+		}
+	}
+	assert.deepEqual(buildDrawingDisplay([{ ...pin, name: "", number: "" }], new Set()).shapes[0].children, []);
+	assert.deepEqual(buildDrawingDisplay([{ ...pin, name: "" }], new Set()).shapes[0].children?.map(label => label.text), ["01"]);
+});
+
 test("rotated symbol leads use the body color while external wires keep their distinct color", () => {
 	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
 	const innerWire = drawShape(2, "wire", { x: 0, y: 0 }, { x: 10, y: 0 });

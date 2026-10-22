@@ -499,6 +499,39 @@ test("editor-pin-heavy", async ({ page }, testInfo) => {
 	});
 });
 
+test("editor-pin-labels", async ({ page }, testInfo) => {
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	await page.getByLabel("Project name", { exact: true }).fill("Pin labels");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	const symbol = {
+		format: "ecad-symbol", version: 1, units: "mm", id: "labeled-package", name: "Labeled package", description: "", prefix: "U", value: "",
+		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Signal ${index + 1}`, number: String(index + 1).padStart(3, "0"), x: index < 64 ? -20 : 20, y: (index % 64) * 4 - 128 })),
+	};
+	await expect(page.getByLabel("Add symbol files")).toBeEnabled();
+	await page.getByLabel("Add symbol files").setInputFiles({ name: "labeled.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	await page.getByRole("link", { name: "Open labeled-package.ecadsym", exact: true }).click();
+	await editorReady(page, "Symbol editor · Labeled package");
+	await (await toolbarButton(page, "Pin")).click();
+	const canvas = page.locator("canvas");
+	const bounds = (await canvas.boundingBox())!;
+	await canvas.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "pin.edit-labels", async () => {
+			const before = (await report(page)).metrics["renderer.frame"]?.count ?? 0;
+			for (const [label, value] of [["Name", `VCC${repeat}`], ["Number", `A${repeat + 1}`]]) {
+				await page.getByRole("textbox", { name: label, exact: true }).fill(value);
+				await page.getByRole("textbox", { name: label, exact: true }).press("Enter");
+			}
+			await page.waitForFunction((before) => (window.__ecadPerformance!.snapshot().metrics["renderer.frame"]?.count ?? 0) > before, before);
+		});
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-pin-labels", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
+});
+
 test("editor-pin-wire", async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);

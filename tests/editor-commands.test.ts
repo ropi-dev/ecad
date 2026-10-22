@@ -158,14 +158,14 @@ test("creating a symbol preserves geometry, pins and strokes in one undoable tra
 	assert.deepEqual(store.getSnapshot().shapes, converted.shapes);
 });
 
-test("pin name changes commit without geometry changes and support undo and redo", () => {
+for (const attribute of ["name", "number"] as const) test(`pin ${attribute} changes commit without geometry changes and support undo and redo`, () => {
 	const { store, run } = session();
 	const pin = drawShape(1, "pin", { x: 10, y: 20 }, { x: 10, y: 20 });
 	assert.equal(pin.kind, "pin");
 	if (pin.kind !== "pin") return;
-	assert.equal(pin.name, "");
+	assert.equal(pin[attribute], "");
 	run(placeShapesEffect([pin], "Place pin"));
-	const named = { ...pin, name: "VCC" };
+	const named = { ...pin, [attribute]: attribute === "name" ? "VCC" : "01" };
 	run(replaceShapesEffect([named], "Change pin name"));
 	assert.deepEqual(store.getSnapshot().shapes, [named]);
 	const unchanged = store.getSnapshot();

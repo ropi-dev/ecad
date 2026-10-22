@@ -75,7 +75,7 @@ If browser storage is unavailable, imports remain usable in the open editor and 
   "shapes": [
     { "kind": "rectangle", "x": 0, "y": 0, "width": 2, "height": 2 },
     { "kind": "wire", "x1": -2, "y1": 0, "x2": -1, "y2": 0 },
-    { "kind": "pin", "name": "IN", "x": -2, "y": 0 }
+    { "kind": "pin", "name": "IN", "number": "1", "x": -2, "y": 0 }
   ]
 }
 ```
@@ -102,9 +102,9 @@ Coordinates are relative to the symbol's placement origin `(0, 0)`. Positive X p
 | `rectangle` | `x`, `y`: centre; `width`, `height` | `rotation`: degrees counterclockwise, default 0 |
 | `triangle` | `x`, `y`: bounding-box centre; `width`, `height`. The unrotated triangle points up. | `rotation`: degrees counterclockwise, default 0 |
 | `circle` | `x`, `y`: centre; `radius` | None |
-| `pin` | `x`, `y`: centre of a filled connection marker | `name`: string, defaults to empty |
+| `pin` | `x`, `y`: centre of a filled connection marker | `name`, `number`: strings, default to empty |
 
-Every pin has a fixed radius of 0.254 mm (diameter 0.508 mm), including standalone pins and pins inside symbols. Pin size stays fixed when a symbol is fitted or its line width changes. Pin files specify their position and optional name; `radius`, `width`, and `height` are not accepted for pins. Select a standalone pin to edit its Name in Attributes. Pin names are preserved when creating and saving a symbol. Older files without pin names remain supported.
+Every pin has a fixed radius of 0.254 mm (diameter 0.508 mm), including standalone pins and pins inside symbols. Pin size stays fixed when a symbol is fitted or its line width changes. Pin files specify their position, optional name and optional number; `radius`, `width`, and `height` are not accepted for pins. Select a pin to edit its Name and Number in Attributes. Shift-click a pin to select it without starting a wire. Both labels appear beside the pin on the canvas and stay upright when a symbol rotates. Numbers are text, so values such as "01" and "A1" keep their spelling. Names and numbers survive undo, saving drawings, and creating or saving symbols. Older files without these fields remain supported.
 
 Add a `pin` wherever an external wire should connect. A `line` or decorative `wire` primitive alone does not define a terminal. Text, SVG, and images are not supported.
 
