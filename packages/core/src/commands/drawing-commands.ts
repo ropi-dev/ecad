@@ -315,7 +315,16 @@ export function replaceShapesEffect(
 	label: string,
 	targetIds?: readonly number[],
 ) {
-	return capture({ replacements, targetIds }, (captured) =>
+	return replaceAndPlaceShapesEffect(replacements, [], label, targetIds);
+}
+
+export function replaceAndPlaceShapesEffect(
+	replacements: readonly EditorShape[],
+	inputs: readonly ShapeInput[],
+	label: string,
+	targetIds?: readonly number[],
+) {
+	return capture({ replacements, inputs, targetIds }, (captured) =>
 		command((current) => {
 			const ids = captured.replacements.map((shape) => shape.id);
 			validateIds(ids);
@@ -334,12 +343,22 @@ export function replaceShapesEffect(
 			const byId = new Map(
 				captured.replacements.map((shape) => [shape.id, shape]),
 			);
+			if (!Number.isSafeInteger(current.nextShapeId + captured.inputs.length))
+				invalid("No more shape IDs are available.");
+			const additions = captured.inputs.map(
+				(shape, index) =>
+					({ ...shape, id: current.nextShapeId + index }) as EditorShape,
+			);
+			for (const shape of additions) validateShape(shape);
 			return commit(
 				current,
-				current.shapes.map((shape) => byId.get(shape.id) ?? shape),
-				ids,
+				[
+					...current.shapes.map((shape) => byId.get(shape.id) ?? shape),
+					...additions,
+				],
+				[...ids, ...additions.map((shape) => shape.id)],
 				label,
-				current.nextShapeId,
+				current.nextShapeId + additions.length,
 				preferredIds,
 			);
 		}),

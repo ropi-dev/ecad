@@ -38,6 +38,8 @@ The `editor-pin-wire` scenario clicks an unconnected pin in Select mode to start
 
 The `editor-symbol-duplicate` scenario places a resistor and Alt-drags three copies. Each gesture includes the duplicate preview and release through the updated reference in Attributes. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
 
+The `editor-component-move` scenario moves a two-pin resistor attached to a wire and another pin in a drawing with 200 background wire segments. It repeats the diagonal drag three times with undo between moves and checks that storage contains the new orthogonal connections. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms and wire normalization p95 below 100 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
+
 The `editor-wire-junction` scenario opens a schematic with 200 wire segments, draws a trunk and a branch, joins the branch to the trunk midpoint three times with undo between joins, and checks that storage contains the split trunk. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms and wire normalization p95 below 100 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms. The `editor.wire-normalize` metric covers merging and splitting in the shared drawing commands.
 
 The `editor-pin-junction` scenario uses the same 200-segment fixture and budgets as `editor-wire-junction`. It places a pin on the trunk midpoint three times with undo between placements, then checks that storage contains both halves of the trunk.

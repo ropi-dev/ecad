@@ -1524,6 +1524,7 @@ for (const target of ["unconnected pin", "connected pin", "body under a wire"] a
 		}
 		const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
 		const before = await committed();
+		await expect.poll(async () => (await wireEndpoints(page)).length).toBe(before.shapes.filter((shape: { kind: string }) => shape.kind === "wire").length);
 		const wires = await wireEndpoints(page);
 		await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 		const x = target === "unconnected pin" ? 97 : target === "connected pin" ? 103 : 100;
@@ -1618,37 +1619,111 @@ test("symbols select and drag anywhere inside their compact outline, including a
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(210, 4);
 });
 
-test("symbol movement keeps attached wires orthogonal through drag, history, keyboard and attributes", async ({ page }) => {
+test("symbol movement extends connections through drag, history, keyboard and attributes", async ({ page }, testInfo) => {
 	await insertSymbol(page, "Resistor", 100, 150);
 	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 103, 150);
 	await clickAt(page, 180, 150);
 	await clickAt(page, 180, 210);
 	await page.keyboard.press("Enter");
-	await expect.poll(() => wireEndpoints(page)).toEqual([[103, 150, 180, 150], [180, 150, 180, 210]]);
 	const original = await wireEndpoints(page);
 	await dragTo(page, [100, 150], [120, 170]);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[123, 170, 180, 170], [180, 170, 180, 210]]);
+	const extended = [[103, 150, 123, 150], [123, 150, 180, 150], [180, 150, 180, 210], [123, 150, 123, 170]];
+	await expect.poll(() => wireEndpoints(page)).toEqual(extended);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	await page.screenshot({ path: testInfo.outputPath("moved-component-connections.png") });
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => wireEndpoints(page)).toEqual(original);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(100, 4);
 	await (await toolbarButton(page, "Redo")).click();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[123, 170, 180, 170], [180, 170, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual(extended);
 	await clickAt(page, 120, 170);
 	await page.keyboard.press("ArrowRight");
-	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 170, 180, 170], [180, 170, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([...extended, [123, 170, 124, 170]]);
 	await page.getByLabel("Center Y", { exact: true }).fill("180");
 	await page.getByLabel("Center Y", { exact: true }).blur();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 180, 180, 180], [180, 180, 180, 210]]);
+	const beforeCancel = [...extended, [123, 170, 124, 170], [124, 170, 124, 180]];
+	await expect.poll(() => wireEndpoints(page)).toEqual(beforeCancel);
 	await moveAt(page, 121, 180);
 	await page.mouse.down();
 	await moveAt(page, 141, 190);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[144, 190, 180, 190], [180, 190, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([...beforeCancel, [124, 180, 144, 180], [144, 180, 144, 190]]);
 	await page.keyboard.press("Escape");
 	await page.mouse.up();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[124, 180, 180, 180], [180, 180, 180, 210]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual(beforeCancel);
 });
+
+test("a free component does not acquire wire extensions while dragging across a wire", async ({ page }, testInfo) => {
+	await insertSymbol(page, "Resistor", 170, 150);
+	await createWireChain(page, [[200, 170], [240, 170]]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[200, 170, 240, 170]]);
+	await moveAt(page, 170, 150);
+	await page.mouse.down();
+	await moveAt(page, 203, 170);
+	await expect.poll(async () => (await state(page)).shapes.find(({ name }) => name === "symbol 1")?.x).toBeCloseTo(203, 4);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[200, 170, 240, 170]]);
+	await moveAt(page, 210, 190);
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).shapes.find(({ name }) => name === "symbol 1")?.x).toBeCloseTo(210, 4);
+	await expect.poll(() => wireEndpoints(page)).toEqual([[200, 170, 240, 170]]);
+	for (let repeat = 0; repeat < 4; repeat++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await page.screenshot({ path: testInfo.outputPath("free-component-without-wire-extensions.png") });
+});
+
+test("moving a component attached to two pins keeps the connections separate", async ({ page }, testInfo) => {
+	await insertSymbol(page, "Resistor", 170, 150);
+	await placePin(page, 167, 150);
+	await placePin(page, 173, 150);
+	await dragTo(page, [170, 150], [200, 170]);
+	await expect.poll(() => wireEndpoints(page)).toEqual([
+		[167, 150, 167, 170], [167, 170, 197, 170],
+		[173, 150, 203, 150], [203, 150, 203, 170],
+	]);
+	await expect.poll(async () => (await state(page)).shapes.filter(({ name }) => name.startsWith("pin ")).map(({ x, y }) => [Number(x.toFixed(4)), Number(y.toFixed(4))])).toEqual([[167, 150], [173, 150]]);
+	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+	for (let repeat = 0; repeat < 4; repeat++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await page.screenshot({ path: testInfo.outputPath("component-connected-to-two-pins.png") });
+});
+
+for (const attachment of ["wire", "pin"] as const) {
+	test(`moving from an attached ${attachment} replaces preview bends on reversal and cancels cleanly`, async ({ page }, testInfo) => {
+		await insertSymbol(page, "Resistor", 100, 150);
+		if (attachment === "pin") await placePin(page, 103, 150);
+		else {
+			await (await toolbarButton(page, "Wire")).click();
+			await clickAt(page, 103, 150);
+			await clickAt(page, 180, 150);
+			await page.keyboard.press("Enter");
+		}
+		await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
+		const before = JSON.parse((await page.locator("#editor-document").textContent())!);
+		await moveAt(page, 100, 150);
+		await page.mouse.down();
+		await moveAt(page, 80, 180);
+		await expect.poll(() => wireEndpoints(page)).toEqual([
+			...(attachment === "wire" ? [[103, 150, 180, 150]] : []),
+			[103, 150, 103, 180], [103, 180, 83, 180],
+		]);
+		await moveAt(page, 120, 130);
+		await expect.poll(() => wireEndpoints(page)).toEqual([
+			...(attachment === "wire" ? [[103, 150, 180, 150]] : []),
+			[103, 150, 123, 150], [123, 150, 123, 130],
+		]);
+		await moveAt(page, 100, 150);
+		await expect.poll(() => wireEndpoints(page)).toEqual(attachment === "wire" ? [[103, 150, 180, 150]] : []);
+		await page.mouse.up();
+		await expect.poll(async () => JSON.parse((await page.locator("#editor-document").textContent())!)).toEqual(before);
+		await dragTo(page, [100, 150], [80, 180]);
+		await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
+		await expect.poll(() => wireEndpoints(page)).toEqual([
+			...(attachment === "wire" ? [[103, 150, 180, 150]] : []),
+			[103, 150, 103, 180], [103, 180, 83, 180],
+		]);
+		await page.screenshot({ path: testInfo.outputPath(`component-moved-from-${attachment}.png`) });
+		await (await toolbarButton(page, "Undo")).click();
+		await expect.poll(async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes).toEqual(before.shapes);
+	});
+}
 
 for (const [startY, endY] of [[140, 160], [160, 140]]) {
 	test(`marquee direction controls symbol containment and color from y=${startY}`, async ({ page }) => {
