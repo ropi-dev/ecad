@@ -44,6 +44,23 @@ test("the global project preserves drawings and undo history across page navigat
 	await expect.poll(async () => (await documentState(page)).shapes).toEqual(original);
 });
 
+test("pin names and numbers autosave and reload with the project", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await createProject(page, "Pin labels");
+	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
+	await (await toolbarButton(page, "Pin")).click();
+	await page.locator("canvas").click({ position: { x: 500, y: 350 } });
+	for (const [label, value] of [["Name", "VCC"], ["Number", "01"]]) {
+		await page.getByRole("textbox", { name: label, exact: true }).fill(value);
+		await page.getByRole("textbox", { name: label, exact: true }).press("Enter");
+	}
+	await expect.poll(async () => (await documentState(page)).shapes[0]).toMatchObject({ name: "VCC", number: "01" });
+	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
+	const saved = (await documentState(page)).shapes;
+	await page.reload();
+	await expect.poll(async () => (await documentState(page)).shapes).toEqual(saved);
+});
+
 test("projects manage symbols on a separate page and isolate switched projects", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "First");

@@ -144,20 +144,29 @@ test("pin files keep a fixed size and cached pin radii migrate", () => {
  assert.equal("radius" in restored[0].shapes[2], false);
 });
 
-test("pin names survive symbol file and library round trips, with unnamed legacy pins", () => {
+test("pin names and numbers survive symbol file and library round trips, with legacy pins", () => {
  const data = source();
  const pin = data.shapes.find((shape: { kind: string }) => shape.kind === "pin");
  delete pin.name;
+ delete pin.number;
  const legacy = libraryDefinitions([parseSymbolFile(JSON.stringify(data))])[0];
  assert.equal(legacy.children.find(child => child.kind === "pin")?.name, "");
+ assert.equal(legacy.children.find(child => child.kind === "pin")?.number, "");
  pin.name = "VCC";
+ pin.number = "01";
  const file = parseSymbolFile(JSON.stringify(data));
  const library = parseSavedSymbolLibrary(JSON.stringify([file]));
  const symbol = createSymbol(1, libraryDefinitions(library)[0], { x: 10, y: 20 });
  assert.equal(symbol.children.find(child => child.kind === "pin")?.name, "VCC");
+ assert.equal(symbol.children.find(child => child.kind === "pin")?.number, "01");
  const saved = symbolFileFromSymbol(symbol);
  assert.equal(saved.shapes.find(shape => shape.kind === "pin")?.name, "VCC");
+ assert.equal(saved.shapes.find(shape => shape.kind === "pin")?.number, "01");
  assert.equal(libraryDefinitions([parseSymbolFile(JSON.stringify(saved))])[0].children.find(child => child.kind === "pin")?.name, "VCC");
+ assert.equal(libraryDefinitions([parseSymbolFile(JSON.stringify(saved))])[0].children.find(child => child.kind === "pin")?.number, "01");
+ pin.number = 1;
+ assert.throws(() => parseSymbolFile(JSON.stringify(data)), /number/);
+ pin.number = "A1";
  pin.name = 42;
  assert.throws(() => parseSymbolFile(JSON.stringify(data)), /name/);
 });

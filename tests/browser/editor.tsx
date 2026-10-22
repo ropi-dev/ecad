@@ -15,7 +15,13 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	const preview = this.getObjectByName("editor-wire-preview");
 	const origin = new Vector3(0, 0, 0).project(camera);
 	const corner = new Vector3(420, 297, 0).project(camera);
+	const pinTexts: { name: string; texture?: string; rotation: number }[] = [];
+	shapes?.traverse((child) => {
+		if (child instanceof Mesh && /^pin (name|number) /.test(child.name))
+			pinTexts.push({ name: child.name, texture: child.material instanceof MeshBasicMaterial ? child.material.map?.uuid : undefined, rotation: child.rotation.z + (child.parent?.rotation.z ?? 0) });
+	});
 	document.querySelector("#editor-scene")!.textContent = JSON.stringify({
+		pinTexts,
 		worksheet: this.getObjectByName("Worksheet frame")?.parent?.name,
 		camera: camera.type,
 		textures: renderer.info.memory.textures,

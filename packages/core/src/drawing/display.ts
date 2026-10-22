@@ -43,6 +43,7 @@ export interface DisplayShape extends DrawingTransform {
 	geometry: DrawingGeometry;
 	appearance: DrawingAppearance;
 	text?: string;
+	pinLabel?: true;
 	renderOrder: number;
 	children?: DisplayShape[];
 }
@@ -124,6 +125,35 @@ function displayShape(
 			height: text.height / shape.height,
 			rotation: 0,
 		}));
+	}
+	if (shape.kind === "pin") {
+		const fontSize = 1.27;
+		const cosine = Math.cos(shape.rotation);
+		const sine = Math.sin(shape.rotation);
+		display.children = (["name", "number"] as const).flatMap((attribute) => {
+			const text = shape[attribute];
+			if (!text) return [];
+			const width = Math.max(fontSize / 2, text.length * fontSize * 0.6);
+			const height = fontSize * 1.5;
+			const x = PIN_RADIUS + 0.5 + width / 2;
+			const y = attribute === "name" ? height / 2 : -height / 2;
+			return [
+				{
+					key: `${key}:${attribute}`,
+					name: `pin ${attribute} ${shape.id}`,
+					geometry: { kind: "text" as const, width, height, lineWidth: 0 },
+					x: (x * cosine + y * sine) / shape.width,
+					y: (-x * sine + y * cosine) / shape.height,
+					width: width / shape.width,
+					height: height / shape.height,
+					rotation: -shape.rotation,
+					appearance,
+					text,
+					pinLabel: true,
+					renderOrder: renderOrder + 1,
+				},
+			];
+		});
 	}
 	return display;
 }

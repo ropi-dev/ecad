@@ -27,6 +27,7 @@ export type PrimitiveShape =
 export interface PinShape extends ShapeGeometry {
 	kind: "pin";
 	name: string;
+	number: string;
 }
 
 export interface EditorSymbol extends ShapeGeometry {
@@ -399,6 +400,7 @@ export function drawShape(
 			id,
 			kind,
 			name: "",
+			number: "",
 			...first,
 			width: 2 * PIN_RADIUS,
 			height: 2 * PIN_RADIUS,

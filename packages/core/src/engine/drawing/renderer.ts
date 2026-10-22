@@ -1,5 +1,6 @@
 import {
 	BufferGeometry,
+	type CanvasTexture,
 	Group,
 	LineBasicMaterial,
 	LineLoop,
@@ -10,14 +11,16 @@ import {
 } from "three";
 import type {
 	DisplayShape,
+	DrawingAppearance,
 	DrawingDisplay,
 	DrawingTransform,
 } from "#/drawing/display.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 import type { ViewerScene } from "../scene";
 import { createShapeGeometry } from "./shapeGeometry";
-import { createTextMaterial } from "./text";
+import { createTextAtlas, createTextMaterial } from "./text";
 import { createWorksheetFromDisplay } from "./worksheet";
 
 function applyTransform(
@@ -44,6 +47,19 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			string,
 			ReturnType<typeof createTextMaterial> & { text: string }
 		>();
+		let pinAtlas: ReturnType<typeof createTextAtlas> | undefined;
+		let pinAtlasKey = "";
+		const pinMaterials = new Map<
+			CanvasTexture,
+			Map<DrawingAppearance, MeshBasicMaterial>
+		>();
+		const clearPinAtlas = () => {
+			for (const materials of pinMaterials.values())
+				for (const material of materials.values()) material.dispose();
+			pinMaterials.clear();
+			pinAtlas?.dispose();
+		};
+		lifetime.addFinalizer(clearPinAtlas);
 		lifetime.addFinalizer(() => {
 			for (const { geometry } of geometries.values()) geometry.dispose();
 			geometries.clear();
@@ -51,10 +67,24 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			texts.clear();
 		});
 		const geometryFor = (display: DisplayShape) => {
-			const key = JSON.stringify(display.geometry);
+			const entry =
+				display.pinLabel && display.text !== undefined
+					? pinAtlas?.entries.get(display.text)
+					: undefined;
+			const key = JSON.stringify([display.geometry, entry?.uv]);
 			const cached = geometries.get(display.key);
 			if (cached?.key === key) return cached.geometry;
 			const geometry = createShapeGeometry(display.geometry);
+			if (entry) {
+				const uv = geometry.getAttribute("uv");
+				const [left, bottom, right, top] = entry.uv;
+				for (let index = 0; index < uv.count; index++)
+					uv.setXY(
+						index,
+						left + uv.getX(index) * (right - left),
+						bottom + uv.getY(index) * (top - bottom),
+					);
+			}
 			cached?.geometry.dispose();
 			geometries.set(display.key, { key, geometry });
 			return geometry;
@@ -78,10 +108,30 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			() => new LineBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
 		const materialFor = (display: DisplayShape) => {
-			const color = { stroke, pin: stroke, wire, selected }[
-				display.appearance
-			];
+			const color = { stroke, pin: stroke, wire, selected }[display.appearance];
 			if (display.text === undefined) return color;
+			if (display.pinLabel) {
+				const entry = pinAtlas?.entries.get(display.text);
+				if (!entry)
+					throw new Error("Pin label is missing from the text atlas.");
+				let materials = pinMaterials.get(entry.texture);
+				if (!materials) {
+					materials = new Map();
+					pinMaterials.set(entry.texture, materials);
+				}
+				let material = materials.get(display.appearance);
+				if (!material) {
+					material = new MeshBasicMaterial({
+						map: entry.texture,
+						color: color.color,
+						transparent: true,
+						depthTest: false,
+						depthWrite: false,
+					});
+					materials.set(display.appearance, material);
+				}
+				return material;
+			}
 			let cached = texts.get(display.key);
 			if (!cached || cached.text !== display.text) {
 				const next = {
@@ -133,6 +183,24 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				mesh,
 				...(mesh.children ?? []),
 			]);
+			const pinTexts = [
+				...new Set(
+					allMeshes.flatMap((mesh) =>
+						mesh.pinLabel && mesh.text !== undefined ? [mesh.text] : [],
+					),
+				),
+			].sort();
+			const nextPinAtlasKey = JSON.stringify(pinTexts);
+			if (nextPinAtlasKey !== pinAtlasKey) {
+				const next = measurePerformance(
+					"editor.pin-label-atlas",
+					() => createTextAtlas(pinTexts),
+					{ labels: pinTexts.length },
+				);
+				clearPinAtlas();
+				pinAtlas = next;
+				pinAtlasKey = nextPinAtlasKey;
+			}
 			const activeKeys = new Set(allMeshes.map(({ key }) => key));
 			const textKeys = new Set(
 				allMeshes
