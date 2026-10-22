@@ -73,7 +73,7 @@ export function SelectionAttributes({
 	onAttributeChange,
 	onSymbolAttributeChange,
 	onSymbolTextPositionChange,
-	onPinNameChange,
+	onPinAttributeChange,
 	onCreateSymbol,
 	onEditSymbol,
 	onTextChange,
@@ -95,7 +95,7 @@ export function SelectionAttributes({
 		position: Point,
 	) => void;
 	onTextChange: (text: string) => void;
-	onPinNameChange: (name: string) => void;
+	onPinAttributeChange: (attribute: "name" | "number", value: string) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
 }) {
@@ -151,18 +151,20 @@ export function SelectionAttributes({
 				["Type", single.kind],
 				["ID", String(single.id)],
 				...(single.kind === "pin"
-					? [
-							[
-								"Name",
+					? (["name", "number"] as const).map(
+							(attribute): [string, ReactNode] => [
+								attribute === "name" ? "Name" : "Number",
 								<input
-									key={`${single.id}:name:${single.name}`}
-									aria-label="Name"
-									defaultValue={single.name}
+									key={`${single.id}:${attribute}:${single[attribute]}`}
+									aria-label={attribute === "name" ? "Name" : "Number"}
+									defaultValue={single[attribute]}
 									className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-									onBlur={(event) => onPinNameChange(event.currentTarget.value)}
+									onBlur={(event) =>
+										onPinAttributeChange(attribute, event.currentTarget.value)
+									}
 								/>,
-							] as [string, ReactNode],
-						]
+							],
+						)
 					: []),
 				...(symbol
 					? [

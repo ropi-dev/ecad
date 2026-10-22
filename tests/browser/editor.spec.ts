@@ -5,6 +5,7 @@ import { expect, type Page, test } from "@playwright/test";
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface State {
+	pinTexts: { name: string; texture?: string; rotation: number }[];
 	symbolTexts: { symbol: string; name: string; texture?: string; x: number; y: number }[];
 	outlines: { width: number; height: number }[];
 	wireTerminals: { x: number; y: number; width: number; height: number }[];
@@ -1839,25 +1840,74 @@ test("symbol placement snaps and selection-only clicks do not add history", asyn
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
 });
 
-test("pin names can be edited in Attributes and restored with undo and redo", async ({ page }) => {
- await placePin(page, 100, 100);
+test("pin names and numbers appear on canvas and restore with undo and redo", async ({ page }) => {
+ const textures = (await state(page)).textures;
+ await placePin(page, 210, 148.5);
  const name = page.getByRole("textbox", { name: "Name", exact: true });
+ const number = page.getByRole("textbox", { name: "Number", exact: true });
  await expect(name).toHaveValue("");
+ await expect(number).toHaveValue("");
  await name.fill("VCC");
- await name.blur();
+ await name.press("Enter");
+ await number.fill("01");
+ await number.press("Enter");
+ await expect.poll(async () => (await state(page)).pinTexts.map(label => label.name)).toEqual(["pin name 1", "pin number 1"]);
+ const labels = (await state(page)).pinTexts;
+ expect(labels.every(label => label.texture)).toBe(true);
+ expect(new Set(labels.map(label => label.texture)).size).toBe(1);
+ expect((await state(page)).textures).toBe(textures + 1);
+ await (await toolbarButton(page, "Undo")).click();
+ await expect(number).toHaveValue("");
+ await expect(name).toHaveValue("VCC");
+ await (await toolbarButton(page, "Redo")).click();
+ await expect(number).toHaveValue("01");
+ await (await toolbarButton(page, "Undo")).click();
  await (await toolbarButton(page, "Undo")).click();
  await expect(name).toHaveValue("");
+ await expect.poll(async () => (await state(page)).pinTexts).toEqual([]);
+ expect((await state(page)).textures).toBe(textures);
  await (await toolbarButton(page, "Redo")).click();
  await expect(name).toHaveValue("VCC");
+ await (await toolbarButton(page, "Redo")).click();
+ await expect(number).toHaveValue("01");
  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
  await page.keyboard.down("Shift");
- await clickAt(page, 100, 100);
+ await clickAt(page, 210, 148.5);
  await page.keyboard.up("Shift");
  await expect(name).toHaveValue("VCC");
+ await expect(number).toHaveValue("01");
  await name.fill("");
  await name.blur();
  await (await toolbarButton(page, "Undo")).click();
  await expect(name).toHaveValue("VCC");
+ await number.fill("A1");
+ await number.blur();
+ await expect.poll(async () => (await state(page)).pinTexts[1]?.texture).not.toBe(labels[1].texture);
+ for (let index = 0; index < 8; index++) await (await toolbarButton(page, "Zoom in")).click();
+ await page.screenshot({ path: test.info().outputPath("pin-name-number.png") });
+});
+
+test("pin labels stay upright on rotated library symbols", async ({ page }) => {
+ await page.evaluate(() => localStorage.setItem("ecad.user-config.v1", JSON.stringify({
+  version: 1, symbolLibraries: [{ id: "pins", name: "Pins", enabled: true, source: { kind: "embedded", symbols: [{
+   format: "ecad-symbol", version: 1, units: "mm", id: "numbered-part", name: "Numbered part", description: "", prefix: "U", value: "",
+   shapes: [{ kind: "rectangle", x: 0, y: 0, width: 10, height: 6 }, { kind: "pin", name: "VCC", number: "01", x: -7, y: 0 }],
+  }] } }],
+ })));
+ await page.reload();
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await page.getByRole("button", { name: "Insert Numbered part", exact: true }).click();
+ const box = (await page.locator("canvas").boundingBox())!;
+ await page.locator("canvas").click({ position: { x: box.width / 2, y: box.height / 2 } });
+ await expect.poll(async () => (await state(page)).pinTexts.length).toBe(2);
+ const labels = (await state(page)).pinTexts;
+ await page.getByRole("spinbutton", { name: "Angle", exact: true }).fill("90");
+ await page.getByRole("spinbutton", { name: "Angle", exact: true }).press("Enter");
+ await expect.poll(async () => (await state(page)).shapes[0].rotation).toBeCloseTo(Math.PI / 2);
+ expect((await state(page)).pinTexts.map(label => label.rotation)).toEqual([0, 0]);
+ expect((await state(page)).pinTexts.map(label => label.texture)).toEqual(labels.map(label => label.texture));
+ for (let index = 0; index < 5; index++) await (await toolbarButton(page, "Zoom in")).click();
+ await page.screenshot({ path: test.info().outputPath("rotated-pin-labels.png") });
 });
 
 for (const snap of [false, true]) {

@@ -103,6 +103,7 @@ export function symbolFileShapes(
 				...base,
 				...shape,
 				name: shape.name ?? "",
+				number: shape.number ?? "",
 				width: 2 * PIN_RADIUS,
 				height: 2 * PIN_RADIUS,
 			};
@@ -191,7 +192,13 @@ export function symbolFileWithShapes(
 			}
 			const position = { x: shape.x, y: shape.y };
 			if (shape.kind === "pin")
-				return { ...base, kind: shape.kind, ...position, name: shape.name };
+				return {
+					...base,
+					kind: shape.kind,
+					...position,
+					name: shape.name,
+					number: shape.number,
+				};
 			if (shape.kind === "circle")
 				return {
 					...base,
