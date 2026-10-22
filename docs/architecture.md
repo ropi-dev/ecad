@@ -55,6 +55,8 @@ console.log(result.ids, store.getSnapshot().shapes);
 
 `placeShapesEffect` accepts complete shapes without IDs, including symbols and text with measured dimensions. `replaceShapesEffect` accepts explicit IDs and their finished replacement geometry. `removeShapesEffect` accepts explicit IDs. `undoEffect`, `redoEffect`, and `jumpHistoryEffect` navigate document history. None reads the current tool, selection, viewport, pointer, or React state.
 
+`rotateShapesEffect(ids, angle)` rotates explicit IDs around each shape's center using the current committed geometry. Its relative angle is in radians, positive counterclockwise, and defaults to `Math.PI / 2`. Rotation keeps component pins and labels together and leaves unselected wires in place. Wire rotations must keep segments horizontal or vertical.
+
 Commands capture their input when constructed. They run only when executed with Effect, and can be composed in `Effect.gen`. Each command publishes one complete transaction; a sequence of separate commands produces separate undo steps. Invalid inputs fail with `InvalidDrawingCommand` and leave the document unchanged. Callers can handle that error with Effect combinators before running the program.
 
 The current commands are synchronous, so the React event boundary uses `Effect.runSync` and handles the error channel there. Commands themselves never call `runSync`, `runPromise`, or a React hook. Asynchronous callers can provide the same service and use `runEffect` from `packages/core/src/lib/effect.ts`. See [Effect 3 execution boundaries](https://effect.website/docs/v3/getting-started/running-effects/).

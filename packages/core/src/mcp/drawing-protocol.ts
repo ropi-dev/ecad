@@ -9,6 +9,7 @@ import {
 	redoEffect,
 	removeShapesEffect,
 	replaceShapesEffect,
+	rotateShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { DrawingStore } from "#/commands/drawing-store.ts";
@@ -54,6 +55,19 @@ export const removeShapesInputSchema = z.strictObject({
 	ids: z.array(shapeId).describe("Explicit existing shape IDs to remove."),
 	label: z.string().optional(),
 });
+export const rotateShapesInputSchema = z.strictObject({
+	ids: z
+		.array(shapeId)
+		.describe(
+			"Explicit existing shape IDs to rotate around their own centers.",
+		),
+	angle: z
+		.number()
+		.optional()
+		.describe(
+			"Relative rotation in radians, positive counterclockwise. Defaults to pi/2. Wires require multiples of pi/2.",
+		),
+});
 export const jumpHistoryInputSchema = z.strictObject({ id: historyId });
 
 /** Only resolved document operations cross the bridge. No tool or pointer state. */
@@ -66,6 +80,7 @@ export const drawingOperationSchema = z.discriminatedUnion("type", [
 	placeShapesInputSchema.extend({ type: z.literal("placeShapes") }),
 	replaceShapesInputSchema.extend({ type: z.literal("replaceShapes") }),
 	removeShapesInputSchema.extend({ type: z.literal("removeShapes") }),
+	rotateShapesInputSchema.extend({ type: z.literal("rotateShapes") }),
 	z.strictObject({ type: z.literal("undo") }),
 	z.strictObject({ type: z.literal("redo") }),
 	jumpHistoryInputSchema.extend({ type: z.literal("jumpHistory") }),
@@ -139,6 +154,8 @@ function operationEffect(
 				operation.label ?? "Replace shapes",
 				operation.targetIds,
 			);
+		case "rotateShapes":
+			return rotateShapesEffect(operation.ids, operation.angle);
 		case "removeShapes":
 			return removeShapesEffect(
 				operation.ids,

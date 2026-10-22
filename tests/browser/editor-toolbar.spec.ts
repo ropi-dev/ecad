@@ -14,7 +14,7 @@ test("groups replace each other above the main toolbar without changing the acti
 		name: "View controls",
 		exact: true,
 	});
-	await expect(main.getByRole("button")).toHaveCount(12);
+	await expect(main.getByRole("button")).toHaveCount(14);
 	const fit = main.getByRole("button", { name: "Fit drawing", exact: true });
 	await main.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await expect(fit).toHaveText("125%");

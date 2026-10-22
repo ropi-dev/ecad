@@ -39,9 +39,8 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  expect(afterBody).toEqual(beforeBody);
  expect(afterPositions!.reference).not.toEqual(beforePositions!.reference);
  expect(afterPositions!.value).toEqual(beforePositions!.value);
- const end = await labelScreen(page, 1);
- expect(end.x).toBeCloseTo(start.x + 70, 2);
- expect(end.y).toBeCloseTo(start.y - 55, 2);
+ await expect.poll(async () => (await labelScreen(page, 1)).x).toBeCloseTo(start.x + 70, 2);
+ await expect.poll(async () => (await labelScreen(page, 1)).y).toBeCloseTo(start.y - 55, 2);
  await (await toolbarButton(page, "Undo")).click();
  expect((await state(page)).shapes).toEqual(before.shapes);
  await (await toolbarButton(page, "Redo")).click();
@@ -137,6 +136,7 @@ test("Alt-dragging a moved label duplicates the symbol and keeps label edits ind
  }
  const before = await state(page);
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).symbolTexts[0]?.x).toBeCloseTo(before.shapes[0].x - 8);
+ await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).symbolTexts[0]?.y).toBeCloseTo(before.shapes[0].y + 8);
  const start = await labelScreen(page, 1);
  await page.keyboard.down("Alt");
  await page.mouse.move(start.x, start.y);

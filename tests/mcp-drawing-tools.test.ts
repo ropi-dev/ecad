@@ -45,7 +45,7 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 	const { client, call, store } = await session(context);
 	const { tools } = await client.listTools();
 	assert.deepEqual(tools.map((tool) => tool.name).sort(), [
-		"getDrawing", "jumpHistory", "placeRectangle", "placeShapes", "redo", "removeShapes", "replaceShapes", "undo",
+		"getDrawing", "jumpHistory", "placeRectangle", "placeShapes", "redo", "removeShapes", "replaceShapes", "rotateShapes", "undo",
 	]);
 	const place = tools.find((tool) => tool.name === "placeRectangle")!;
 	assert.deepEqual(new Set(place.inputSchema.required), new Set(Object.keys(rectangle)));
@@ -145,6 +145,34 @@ test("MCP preserves pin names and numbers through placement, replacement, reads 
 	const redone = await call("redo");
 	assert.ok(redone.reply.ok);
 	assert.deepEqual(redone.reply.drawing.shapes, [renamed]);
+});
+
+test("MCP rotation uses explicit IDs and supports reverse rotation and history", async (context) => {
+	const { call, store, client } = await session(context);
+	const { id: _id, ...symbol } = createSymbol(1, symbolDefinitions[0], { x: 50, y: 30 });
+	await call("placeShapes", { shapes: [symbol, { ...rectangle, kind: "rectangle" }] });
+	const before = store.getSnapshot();
+	const { reply } = await call("rotateShapes", { ids: [1] });
+	assert.ok(reply.ok);
+	assert.deepEqual(reply.drawing.shapes, [{ ...symbol, id: 1, rotation: Math.PI / 2 }, before.shapes[1]]);
+	assert.deepEqual(reply.result, { ids: [1], idMap: { "1": 1, "2": 2 } });
+	const reversed = await call("rotateShapes", { ids: [1], angle: -Math.PI / 2 });
+	assert.ok(reversed.reply.ok);
+	assert.deepEqual(reversed.reply.drawing.shapes, before.shapes);
+	const undone = await call("undo");
+	assert.ok(undone.reply.ok);
+	assert.deepEqual(undone.reply.drawing.shapes, reply.drawing.shapes);
+	const redone = await call("redo");
+	assert.ok(redone.reply.ok);
+	assert.deepEqual(redone.reply.drawing.shapes, before.shapes);
+	const snapshot = store.getSnapshot();
+	const missing = await call("rotateShapes", { ids: [1, 999] });
+	assert.equal(missing.result.isError, true);
+	assert.equal(missing.reply.ok, false);
+	assert.strictEqual(store.getSnapshot(), snapshot);
+	const invalid = await client.callTool({ name: "rotateShapes", arguments: { ids: [1], angle: "90" } });
+	assert.equal(invalid.isError, true);
+	assert.strictEqual(store.getSnapshot(), snapshot);
 });
 
 test("MCP replacement, deletion and history navigation use explicit IDs", async (context) => {

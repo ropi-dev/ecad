@@ -11,11 +11,12 @@ import {
 	removeShapesEffect,
 	replaceShapesEffect,
 	replaceAndPlaceShapesEffect,
+	rotateShapesEffect,
 	type ShapeInput,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { drawShape, editShapeAttribute, moveShapes, pinTerminals, symbolShapes } from "#/drawing/shapes.ts";
+import { drawShape, editShapeAttribute, moveShapes, pinTerminals, symbolShapes, symbolTextShapes } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 
 const rectangle = {
@@ -35,6 +36,93 @@ function session() {
 			Effect.runSync(Effect.provideService(program, DrawingStore, store)),
 	};
 }
+
+test("rotation preserves component centers, definitions and labels in one undoable transaction", () => {
+	const { store, run } = session();
+	const first = createSymbol(1, symbolDefinitions[0], { x: 50, y: 30 });
+	first.textPositions = { reference: { x: 8, y: 4 } };
+	const second = createSymbol(2, symbolDefinitions[0], { x: -40, y: 20 });
+	run(placeShapesEffect([first, second, { ...rectangle, kind: "rectangle" }], "Components"));
+	const before = store.getSnapshot();
+	let publications = 0;
+	store.subscribe(() => publications++);
+	const result = run(rotateShapesEffect([2, 1]));
+	const rotated = store.getSnapshot();
+	assert.equal(publications, 1);
+	assert.equal(rotated.history.currentId, before.history.currentId + 1);
+	assert.equal(rotated.nextShapeId, before.nextShapeId);
+	assert.deepEqual(new Set(result.ids), new Set([1, 2]));
+	assert.equal(result.idMap.get(1), 1);
+	assert.deepEqual(result.idsBySource.get(2), [2]);
+	assert.deepEqual(rotated.shapes, before.shapes.map((shape) => shape.id === 3 ? shape : { ...shape, rotation: Math.PI / 2 }));
+	const symbol = rotated.shapes[0];
+	assert.equal(symbol.kind, "symbol");
+	if (symbol.kind !== "symbol") return;
+	const pin = pinTerminals(first)[0];
+	const rotatedPin = pinTerminals(symbol)[0];
+	assert.ok(Math.abs(rotatedPin.x - (first.x - (pin.y - first.y))) < 1e-9);
+	assert.ok(Math.abs(rotatedPin.y - (first.y + (pin.x - first.x))) < 1e-9);
+	const label = symbolTextShapes(symbol).find((text) => text.text === first.attributes.reference)!;
+	assert.equal(label.x, first.x - 4);
+	assert.equal(label.y, first.y + 8);
+	run(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+	run(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, rotated.shapes);
+});
+
+test("rotation captures IDs and rotates current geometry on each execution with angle wrapping", () => {
+	const { store, run } = session();
+	const symbol = { ...createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 }), library: { scope: "project" as const, id: "parts" }, children: [] };
+	run(placeShapesEffect([symbol], "Reference"));
+	const ids = [1];
+	const rotate = rotateShapesEffect(ids);
+	ids[0] = 99;
+	const moved = { ...store.getSnapshot().shapes[0], x: 100 };
+	run(replaceShapesEffect([moved], "Move"));
+	for (const angle of [Math.PI / 2, Math.PI, 3 * Math.PI / 2, 0]) {
+		run(rotate);
+		assert.deepEqual(store.getSnapshot().shapes[0], { ...moved, rotation: angle });
+	}
+	run(rotateShapesEffect([1], -Math.PI / 2));
+	assert.equal(store.getSnapshot().shapes[0].rotation, 3 * Math.PI / 2);
+	const before = store.getSnapshot();
+	run(rotateShapesEffect([1], 2 * Math.PI));
+	assert.strictEqual(store.getSnapshot(), before);
+	run(rotateShapesEffect([]));
+	assert.strictEqual(store.getSnapshot(), before);
+	run(replaceShapesEffect([{ ...store.getSnapshot().shapes[0], rotation: -Math.PI }], "Negative angle"));
+	const negative = store.getSnapshot();
+	for (const angle of [0, 2 * Math.PI]) {
+		run(rotateShapesEffect([1], angle));
+		assert.strictEqual(store.getSnapshot(), negative);
+	}
+});
+
+test("rotation rejects invalid inputs atomically and preserves orthogonal wires", () => {
+	const { store, run } = session();
+	const wire = drawShape(1, "wire", { x: 0, y: 0 }, { x: 20, y: 0 });
+	const symbol = createSymbol(2, symbolDefinitions[0], { x: 60, y: 0 });
+	run(placeShapesEffect([wire, symbol], "Wire and component"));
+	const before = store.getSnapshot();
+	for (const [ids, angle] of [
+		[[1, 2], Number.NaN], [[1], Number.POSITIVE_INFINITY],
+		[[2, 99], Math.PI / 2], [[2, 2], Math.PI / 2], [[0], Math.PI / 2],
+		[[2, 1], Math.PI / 4],
+	] as const) {
+		const result = run(Effect.either(rotateShapesEffect(ids, angle)));
+		assert.ok(Either.isLeft(result));
+		assert.ok(result.left instanceof InvalidDrawingCommand);
+		assert.strictEqual(store.getSnapshot(), before);
+	}
+	run(rotateShapesEffect([1], -Math.PI / 2));
+	const rotated = store.getSnapshot().shapes[0];
+	assert.equal(rotated.kind, "wire");
+	assert.equal(rotated.x, wire.x);
+	assert.equal(rotated.y, wire.y);
+	assert.ok(Math.abs(Math.cos(rotated.rotation)) < 1e-9);
+	assert.deepEqual(store.getSnapshot().shapes[1], before.shapes[1]);
+});
 
 test("creating a symbol preserves geometry, pins and strokes in one undoable transaction", () => {
 	const { store, run } = session();

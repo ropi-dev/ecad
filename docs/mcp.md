@@ -38,6 +38,7 @@ Coordinates and dimensions are millimetres. `x` and `y` specify the shape center
 | `placeRectangle` | `x`, `y`, `width`, `height`, `rotation`, `lineWidth` | Place one rectangle and allocate its ID. |
 | `placeShapes` | `shapes`, optional `label` | Place complete shapes without top-level IDs in one history transaction. |
 | `replaceShapes` | `shapes`, optional `label`, optional `targetIds` | Replace complete geometry for explicit existing IDs. `targetIds` prefer IDs to retain when wires merge. |
+| `rotateShapes` | `ids`, optional `angle` | Rotate each explicit ID around its own center in one undo step. Relative radians, positive counterclockwise, default `Math.PI / 2`. Wires require multiples of `Math.PI / 2`. Unselected wires stay in place. |
 | `removeShapes` | `ids`, optional `label` | Remove explicit existing IDs. |
 | `undo` | `{}` | Restore the previous history entry. |
 | `redo` | `{}` | Restore the preferred next history entry. |

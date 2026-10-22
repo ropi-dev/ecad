@@ -14,6 +14,7 @@ import {
 	rectangleInputSchema,
 	removeShapesInputSchema,
 	replaceShapesInputSchema,
+	rotateShapesInputSchema,
 } from "#/mcp/drawing-protocol.ts";
 
 // MCP requires an object output schema. Clients validate structured errors too,
@@ -128,6 +129,18 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			annotations: edit,
 		},
 		(input, { signal }) => call({ type: "replaceShapes", ...input }, signal),
+	);
+	server.registerTool(
+		"rotateShapes",
+		{
+			title: "Rotate shapes",
+			description:
+				"Rotate explicit existing shape IDs around their own centers in one undo step. The angle is relative radians, positive counterclockwise, and defaults to pi/2. Wires require multiples of pi/2. Symbol geometry, pins and labels rotate together. Unselected wires stay in place. Read getDrawing to obtain IDs; editor selection is not consulted.",
+			inputSchema: rotateShapesInputSchema,
+			outputSchema: drawingToolReplySchema,
+			annotations: edit,
+		},
+		(input, { signal }) => call({ type: "rotateShapes", ...input }, signal),
 	);
 	server.registerTool(
 		"removeShapes",
