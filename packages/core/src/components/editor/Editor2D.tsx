@@ -8,6 +8,8 @@ import {
 	MapPin,
 	Minus,
 	MousePointer2,
+	RotateCcw,
+	RotateCw,
 	Shapes,
 	Square,
 	Trash2,
@@ -34,6 +36,7 @@ import {
 	redoEffect,
 	removeShapesEffect,
 	replaceShapesEffect,
+	rotateShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
@@ -613,6 +616,17 @@ function EditorCanvas({
 	};
 	const undo = () => restoreHistory(undoEffect);
 	const redo = () => restoreHistory(redoEffect);
+	const rotateSelected = (angle: number) => {
+		if (!ready || !currentSelection.current.size) return;
+		finishDrag(true);
+		finishWire();
+		setTool("select");
+		const previousHistoryId = store.getSnapshot().history.currentId;
+		const result = execute(
+			rotateShapesEffect([...currentSelection.current], angle),
+		);
+		if (result) acceptEdit(result, previousHistoryId);
+	};
 	const removeSelected = () => {
 		finishDrag();
 		if (wireChain.current) {
@@ -728,7 +742,6 @@ function EditorCanvas({
 					return;
 				}
 				if (
-					!(event.ctrlKey || event.metaKey) ||
 					event.altKey ||
 					(target instanceof HTMLElement &&
 						(target.isContentEditable ||
@@ -736,6 +749,13 @@ function EditorCanvas({
 				)
 					return;
 				const key = event.key.toLowerCase();
+				if (!(event.ctrlKey || event.metaKey)) {
+					if (key !== "r" || !ready || !currentSelection.current.size) return;
+					rotateSelected(((event.shiftKey ? -1 : 1) * Math.PI) / 2);
+					event.preventDefault();
+					event.stopPropagation();
+					return;
+				}
 				if (key === "z") {
 					if (event.shiftKey) redo();
 					else undo();
@@ -1248,6 +1268,33 @@ function EditorCanvas({
 									>
 										<Magnet size={18} aria-hidden="true" />
 									</button>
+									{[
+										{
+											label: "Rotate counterclockwise",
+											shortcut: "R",
+											angle: Math.PI / 2,
+											icon: RotateCcw,
+										},
+										{
+											label: "Rotate clockwise",
+											shortcut: "Shift+R",
+											angle: -Math.PI / 2,
+											icon: RotateCw,
+										},
+									].map(({ label, shortcut, angle, icon: Icon }) => (
+										<button
+											key={label}
+											type="button"
+											className={viewControlButtonClassName}
+											disabled={!ready || !selected.length}
+											aria-label={label}
+											aria-keyshortcuts={shortcut}
+											title={`${label} 90° (${shortcut})`}
+											onClick={() => rotateSelected(angle)}
+										>
+											<Icon size={18} aria-hidden="true" />
+										</button>
+									))}
 									<button
 										type="button"
 										className={viewControlButtonClassName}
@@ -1261,7 +1308,7 @@ function EditorCanvas({
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Press R to rotate selected components 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (

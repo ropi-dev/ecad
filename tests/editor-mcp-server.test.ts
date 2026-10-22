@@ -323,7 +323,7 @@ test("the official Streamable HTTP client initializes, discovers tools, and rece
 	);
 	try {
 		await client.connect(transport);
-		assert.equal((await client.listTools()).tools.length, 8);
+		assert.equal((await client.listTools()).tools.length, 9);
 		const result = await client.callTool({
 			name: "placeRectangle",
 			arguments: rectangle.input,

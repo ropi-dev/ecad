@@ -36,6 +36,8 @@ The `editor-toolbar` scenario opens and switches each tool group, selects Rectan
 
 The `editor-pin-wire` scenario clicks an unconnected pin in Select mode to start a wire, places a segment, ends the chain, and undoes the segment three times. Starting the wire has an interaction p95 budget of 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms under the same test conditions.
 
+The `editor-symbol-rotate` scenario places a resistor and rotates it counterclockwise and clockwise three times with R and Shift + R, checking the committed angle and waiting for rendering while its center stays fixed. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
+
 The `editor-symbol-duplicate` scenario places a resistor and Alt-drags three copies. Each gesture includes the duplicate preview and release through the updated reference in Attributes. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
 
 The `editor-wire-junction` scenario opens a schematic with 200 wire segments, draws a trunk and a branch, joins the branch to the trunk midpoint three times with undo between joins, and checks that storage contains the split trunk. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms and wire normalization p95 below 100 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms. The `editor.wire-normalize` metric covers merging and splitting in the shared drawing commands.

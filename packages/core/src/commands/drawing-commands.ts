@@ -342,6 +342,35 @@ export function replaceShapesEffect(
 	);
 }
 
+export function rotateShapesEffect(
+	ids: readonly number[],
+	angle = Math.PI / 2,
+) {
+	return capture({ ids, angle }, (captured) =>
+		command((current) => {
+			validateIds(captured.ids);
+			if (!Number.isFinite(captured.angle))
+				invalid("Rotation angle must be finite radians.");
+			const selectedIds = new Set(captured.ids);
+			const existing = new Set(current.shapes.map((shape) => shape.id));
+			for (const id of captured.ids)
+				if (!existing.has(id)) invalid(`Shape ${id} does not exist.`);
+			const turn = 2 * Math.PI;
+			const angle = captured.angle % turn;
+			const shapes = current.shapes.map((shape) => {
+				if (!selectedIds.has(shape.id) || angle === 0) return shape;
+				const rotated = {
+					...shape,
+					rotation: (((shape.rotation + angle) % turn) + turn) % turn,
+				};
+				validateShape(rotated);
+				return rotated;
+			});
+			return commit(current, shapes, captured.ids, "Rotate selection");
+		}),
+	);
+}
+
 export function removeShapesEffect(
 	ids: readonly number[],
 	label = "Delete selection",

@@ -1,4 +1,10 @@
 export const budgets = {
+	"editor-symbol-rotate": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-pin-junction": {
 		interactionP95Ms: 750,
 		normalizationP95Ms: 100,

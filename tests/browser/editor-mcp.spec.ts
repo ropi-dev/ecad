@@ -97,7 +97,7 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 		expect(sessionRequests).toHaveLength(1);
 		const listed = await client.listTools();
 		expect(listed.tools.map(({ name }) => name)).toEqual(expect.arrayContaining([
-			"getDrawing", "placeRectangle", "placeShapes", "replaceShapes", "removeShapes", "undo", "redo", "jumpHistory",
+			"getDrawing", "placeRectangle", "placeShapes", "replaceShapes", "removeShapes", "rotateShapes", "undo", "redo", "jumpHistory",
 		]));
 		expect((await call(client, "getDrawing")).drawing.shapes).toEqual([]);
 		const placed = await call(client, "placeRectangle", { ...rectangle });
@@ -112,6 +112,12 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 		expect((await call(client, "getDrawing")).drawing.shapes).toEqual([]);
 		await (await toolbarButton(page, "Redo")).click();
 		expect((await call(client, "getDrawing")).drawing.shapes).toEqual(placed.drawing.shapes);
+		const rotated = await call(client, "rotateShapes", { ids: [1] });
+		expect(rotated.drawing.shapes[0]).toEqual({ ...placed.drawing.shapes[0], rotation: Math.PI / 2 });
+		await expect.poll(async () => (await committed(page)).shapes).toEqual(rotated.drawing.shapes);
+		await expect.poll(async () => (await scene(page)).shapes[0]?.rotation).toBeCloseTo(Math.PI / 2);
+		await expect((await toolbarButton(page, "Circle"))).toHaveAttribute("aria-pressed", "true");
+		await call(client, "undo");
 		await call(client, "removeShapes", { ids: [1] });
 		await expect.poll(async () => (await scene(page)).shapes).toEqual([]);
 		const restored = await call(client, "undo");
