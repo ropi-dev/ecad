@@ -1,5 +1,8 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
+import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
+import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import {
 	type EditorShape,
 	type EditorSymbol,
@@ -8,7 +11,6 @@ import {
 	symbolTextPosition,
 } from "#/drawing/shapes.ts";
 import type { Point } from "#/drawing/types.ts";
-import { FloatingPanel } from "../viewer/FloatingPanel";
 
 function AttributeInput({
 	label,
@@ -66,20 +68,7 @@ function AttributeInput({
 	);
 }
 
-export function SelectionAttributes({
-	shapes,
-	snapStep = 0,
-	onClear,
-	onAttributeChange,
-	onSymbolAttributeChange,
-	onSymbolTextPositionChange,
-	onPinAttributeChange,
-	onCreateSymbol,
-	onEditSymbol,
-	onTextChange,
-	textFocusId,
-	onTextFocus,
-}: {
+interface SelectionAttributesProps {
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
@@ -98,7 +87,33 @@ export function SelectionAttributes({
 	onPinAttributeChange: (attribute: "name" | "number", value: string) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
-}) {
+}
+
+export function SelectionAttributes(props: SelectionAttributesProps) {
+	const symbol = props.shapes.length === 1 ? props.shapes[0] : undefined;
+	if (symbol?.kind === "symbol")
+		return (
+			<SymbolInstanceAttributeForm key={symbol.id} symbol={symbol}>
+				<SelectionAttributesPanel {...props} />
+			</SymbolInstanceAttributeForm>
+		);
+	return <SelectionAttributesPanel {...props} />;
+}
+
+function SelectionAttributesPanel({
+	shapes,
+	snapStep = 0,
+	onClear,
+	onAttributeChange,
+	onSymbolAttributeChange,
+	onSymbolTextPositionChange,
+	onPinAttributeChange,
+	onCreateSymbol,
+	onEditSymbol,
+	onTextChange,
+	textFocusId,
+	onTextFocus,
+}: SelectionAttributesProps) {
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
 			? shape.children
@@ -131,20 +146,35 @@ export function SelectionAttributes({
 		value: number,
 	): [string, ReactNode] => [
 		label,
-		<AttributeInput
-			key={`${single?.id}:${attribute}`}
-			label={label}
-			value={value}
-			positive={attribute !== "x" && attribute !== "y" && attribute !== "angle"}
-			unit={attribute === "angle" ? "°" : "mm"}
-			step={
-				attribute === "angle" &&
-				(single?.kind === "wire" || single?.kind === "symbol")
-					? "90"
-					: "any"
-			}
-			onChange={(next) => onAttributeChange(attribute, next)}
-		/>,
+		symbol &&
+		(attribute === "x" || attribute === "y" || attribute === "angle") ? (
+			<SymbolInstanceAttributeInput
+				key={attribute}
+				name={attribute}
+				label={label}
+				value={value}
+				unit={attribute === "angle" ? "°" : "mm"}
+				step={attribute === "angle" ? "90" : "any"}
+				onCommit={(next) => onAttributeChange(attribute, next)}
+			/>
+		) : (
+			<AttributeInput
+				key={`${single?.id}:${attribute}`}
+				label={label}
+				value={value}
+				positive={
+					attribute !== "x" && attribute !== "y" && attribute !== "angle"
+				}
+				unit={attribute === "angle" ? "°" : "mm"}
+				step={
+					attribute === "angle" &&
+					(single?.kind === "wire" || single?.kind === "symbol")
+						? "90"
+						: "any"
+				}
+				onChange={(next) => onAttributeChange(attribute, next)}
+			/>
+		),
 	];
 	const attributes: [string, ReactNode][] = single
 		? [
@@ -173,14 +203,12 @@ export function SelectionAttributes({
 								const label = attribute[0].toUpperCase() + attribute.slice(1);
 								return [
 									label,
-									<input
-										key={`${symbol.id}:${key}:${symbol.attributes[key]}`}
-										aria-label={label}
-										defaultValue={symbol.attributes[key]}
-										className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-										onBlur={(event) =>
-											onSymbolAttributeChange(key, event.currentTarget.value)
-										}
+									<SymbolInstanceAttributeInput
+										key={key}
+										name={`attributes.${key}`}
+										label={label}
+										value={symbol.attributes[key]}
+										onCommit={(next) => onSymbolAttributeChange(key, next)}
 									/>,
 								] as [string, ReactNode];
 							}),
@@ -343,11 +371,12 @@ export function SelectionAttributes({
 									<span className="text-[#9ba7b8]">
 										{label} {axis.toUpperCase()}
 									</span>
-									<AttributeInput
-										key={`${symbol.id}:${text.attribute}:${axis}`}
+									<SymbolInstanceAttributeInput
+										name={`textPositions.${text.attribute}.${axis}`}
 										label={`${label} text ${axis.toUpperCase()}`}
 										value={position[axis]}
-										onChange={(value) =>
+										unit="mm"
+										onCommit={(value) =>
 											onSymbolTextPositionChange(text.attribute, {
 												...position,
 												[axis]: value,
@@ -362,13 +391,26 @@ export function SelectionAttributes({
 				{outlinedShapes.length > 0 && (
 					<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
 						<span>Line width</span>
-						<AttributeInput
-							key={shapes.map((shape) => shape.id).join(",")}
-							label="Line width"
-							value={lineWidth}
-							positive
-							onChange={(value) => onAttributeChange("lineWidth", value)}
-						/>
+						{symbol ? (
+							<SymbolInstanceAttributeInput
+								name="lineWidth"
+								label="Line width"
+								value={lineWidth}
+								unit="mm"
+								positive
+								onCommit={(value) => {
+									if (value !== null) onAttributeChange("lineWidth", value);
+								}}
+							/>
+						) : (
+							<AttributeInput
+								key={shapes.map((shape) => shape.id).join(",")}
+								label="Line width"
+								value={lineWidth}
+								positive
+								onChange={(value) => onAttributeChange("lineWidth", value)}
+							/>
+						)}
 					</div>
 				)}
 				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
