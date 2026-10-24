@@ -140,7 +140,7 @@ function displayShape(
 		const sine = Math.sin(shape.rotation);
 		display.children = (["name", "number"] as const).flatMap((attribute) => {
 			const text = shape[attribute];
-			if (!text) return [];
+			if (shape.showLabels === false || !text) return [];
 			const width = Math.max(fontSize / 2, text.length * fontSize * 0.6);
 			const height = fontSize * 1.5;
 			const x = PIN_RADIUS + 0.5 + width / 2;

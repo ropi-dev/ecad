@@ -198,6 +198,9 @@ export function symbolFileWithShapes(
 					...position,
 					name: shape.name,
 					number: shape.number,
+					...(shape.showLabels === undefined
+						? {}
+						: { showLabels: shape.showLabels }),
 				};
 			if (shape.kind === "circle")
 				return {

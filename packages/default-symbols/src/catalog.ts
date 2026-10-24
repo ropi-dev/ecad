@@ -698,6 +698,7 @@ export const catalog: readonly SourceSymbol[] = [
 		prefix: "GND",
 		value: "0 V",
 		source: "power:GND",
+		showPinLabels: false,
 		rotation: 0,
 		drawing: [
 			[
@@ -720,6 +721,7 @@ export const catalog: readonly SourceSymbol[] = [
 		prefix: "PWR",
 		value: "VCC",
 		source: "power:VCC",
+		showPinLabels: false,
 		rotation: 0,
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
@@ -736,6 +738,7 @@ export const catalog: readonly SourceSymbol[] = [
 		prefix: "PWR",
 		value: "VDD",
 		source: "power:VDD",
+		showPinLabels: false,
 		rotation: 0,
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
@@ -752,6 +755,7 @@ export const catalog: readonly SourceSymbol[] = [
 		prefix: "PWR",
 		value: "3.3 V",
 		source: "power:+3V3",
+		showPinLabels: false,
 		rotation: 0,
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
@@ -768,6 +772,7 @@ export const catalog: readonly SourceSymbol[] = [
 		prefix: "PWR",
 		value: "5 V",
 		source: "power:+5V",
+		showPinLabels: false,
 		rotation: 0,
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],

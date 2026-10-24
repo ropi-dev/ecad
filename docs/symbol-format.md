@@ -102,9 +102,11 @@ Coordinates are relative to the symbol's placement origin `(0, 0)`. Positive X p
 | `rectangle` | `x`, `y`: centre; `width`, `height` | `rotation`: degrees counterclockwise, default 0 |
 | `triangle` | `x`, `y`: bounding-box centre; `width`, `height`. The unrotated triangle points up. | `rotation`: degrees counterclockwise, default 0 |
 | `circle` | `x`, `y`: centre; `radius` | None |
-| `pin` | `x`, `y`: centre of a filled connection marker | `name`, `number`: strings, default to empty |
+| `pin` | `x`, `y`: centre of a filled connection marker | `name`, `number`: strings, default to empty. `showLabels`: boolean, default to true |
 
 Every pin has a fixed radius of 0.254 mm (diameter 0.508 mm), including standalone pins and pins inside symbols. Pin size stays fixed when a symbol is fitted or its line width changes. Pin files specify their position, optional name and optional number; `radius`, `width`, and `height` are not accepted for pins. Select a pin to edit its Name and Number in Attributes. Shift-click a pin to select it without starting a wire. Both labels appear beside the pin on the canvas and stay upright when a symbol rotates. Numbers are text, so values such as "01" and "A1" keep their spelling. Names and numbers survive undo, saving drawings, and creating or saving symbols. Older files without these fields remain supported.
+
+Set a pin's `showLabels` to `false` to hide its name and number on the canvas. The pin keeps both values and remains available for wire connections. Built-in signal ground and supply symbols hide their pin labels. Battery terminal labels remain visible.
 
 Add a `pin` wherever an external wire should connect. A `line` or decorative `wire` primitive alone does not define a terminal. Text, SVG, and images are not supported.
 

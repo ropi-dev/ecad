@@ -28,6 +28,7 @@ export interface PinShape extends ShapeGeometry {
 	kind: "pin";
 	name: string;
 	number: string;
+	showLabels?: boolean;
 }
 
 export interface EditorSymbol extends ShapeGeometry {

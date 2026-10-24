@@ -66,6 +66,7 @@ const shapeSchema = Schema.Union(
 		kind: Schema.Literal("pin"),
 		name: Schema.optional(Schema.String),
 		number: Schema.optional(Schema.String),
+		showLabels: Schema.optional(Schema.Boolean),
 		lineWidth,
 		x: coordinate,
 		y: coordinate,
