@@ -663,6 +663,81 @@ export function wireConnectionPoints(shapes: EditorShape[]): Point[] {
 	];
 }
 
+export function wireJunctions(shapes: EditorShape[]) {
+	const wires = shapes.flatMap((shape) => {
+		if (shape.kind !== "wire" || shape.width <= connectionTolerance) return [];
+		const start = localToWorld(shape, -shape.width / 2, 0);
+		const end = localToWorld(shape, shape.width / 2, 0);
+		return [{ shape, start, end }];
+	});
+	const axes = [
+		new Map<number, typeof wires>(),
+		new Map<number, typeof wires>(),
+	];
+	const bucket = (value: number) => Math.floor(value / connectionTolerance);
+	for (const wire of wires) {
+		const vertical =
+			Math.abs(wire.end.x - wire.start.x) < Math.abs(wire.end.y - wire.start.y);
+		const index = axes[vertical ? 0 : 1];
+		const key = bucket(vertical ? wire.start.x : wire.start.y);
+		const entries = index.get(key) ?? [];
+		entries.push(wire);
+		index.set(key, entries);
+	}
+	const candidates = new Map<string, { point: Point; pins: EditorShape[] }[]>();
+	const atPoint = (point: Point) => {
+		const x = bucket(point.x);
+		const y = bucket(point.y);
+		for (let dx = -1; dx <= 1; dx++) {
+			for (let dy = -1; dy <= 1; dy++) {
+				const existing = candidates
+					.get(`${x + dx}:${y + dy}`)
+					?.find(
+						(candidate) =>
+							Math.hypot(
+								candidate.point.x - point.x,
+								candidate.point.y - point.y,
+							) <= connectionTolerance,
+					);
+				if (existing) return existing;
+			}
+		}
+		const candidate = { point, pins: [] as EditorShape[] };
+		const key = `${x}:${y}`;
+		const entries = candidates.get(key) ?? [];
+		entries.push(candidate);
+		candidates.set(key, entries);
+		return candidate;
+	};
+	for (const shape of shapes) {
+		for (const point of pinTerminals(shape)) atPoint(point).pins.push(shape);
+	}
+	for (const { start, end } of wires) {
+		atPoint(start);
+		atPoint(end);
+	}
+	return [...candidates.values()].flat().flatMap(({ point, pins }) => {
+		let branches = pins.length;
+		const connected = [...pins];
+		for (const [axis, coordinate] of [point.x, point.y].entries()) {
+			const key = bucket(coordinate);
+			for (let offset = -1; offset <= 1; offset++) {
+				for (const wire of axes[axis].get(key + offset) ?? []) {
+					if (!pointOnWire(point, wire.start, wire.end)) continue;
+					const atEnd = [wire.start, wire.end].some(
+						(end) =>
+							Math.hypot(end.x - point.x, end.y - point.y) <=
+							connectionTolerance,
+					);
+					branches += atEnd ? 1 : 2;
+					connected.push(wire.shape);
+				}
+			}
+		}
+		return branches >= 3 ? [{ point, shapes: connected }] : [];
+	});
+}
+
 /** Resolve against the pointer before grid snapping so off-grid pins stay exact. */
 export function findWireConnection(
 	shapes: EditorShape[],

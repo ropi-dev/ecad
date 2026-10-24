@@ -1,4 +1,11 @@
 export const budgets = {
+	"editor-wire-crossings": {
+		interactionP95Ms: 750,
+		crossingsP95Ms: 100,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-symbol-rotate": {
 		interactionP95Ms: 750,
 		domNodes: 1500,

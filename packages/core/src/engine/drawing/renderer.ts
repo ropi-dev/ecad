@@ -175,6 +175,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			const meshes = [
 				...display.shapes,
 				...display.terminals,
+				...display.junctions,
 				...display.connections,
 				...display.halos,
 				...display.previews,
@@ -236,6 +237,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				terminals.add(meshFor(terminal));
 			drawing.add(terminals);
 			for (const [name, displays] of [
+				["editor-wire-junctions", display.junctions],
 				["editor-symbol-connections", display.connections],
 				["editor-pin-halos", display.halos],
 			] as const) {

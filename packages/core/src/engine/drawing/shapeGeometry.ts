@@ -40,6 +40,61 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "wire" || shape.kind === "line") {
 		const { width, lineWidth } = shape;
 		if (width <= 0 || lineWidth <= 0) return new BufferGeometry();
+		if (
+			shape.kind === "wire" &&
+			(shape.bridges?.length || shape.gaps?.length)
+		) {
+			const pieces: BufferGeometry[] = [];
+			const halfLength = width / 2;
+			const intervals = [
+				...(shape.bridges ?? []).map((bridge) => ({
+					start: bridge.offset - bridge.radius,
+					end: bridge.offset + bridge.radius,
+					bridge,
+				})),
+				...(shape.gaps ?? []).map((gap) => ({ ...gap, bridge: undefined })),
+			].sort((a, b) => a.start - b.start);
+			const segment = (start: number, end: number) => {
+				if (end <= start) return;
+				pieces.push(
+					createShapeGeometry({
+						kind: "wire",
+						width: end - start,
+						height: lineWidth,
+						lineWidth,
+					})
+						.scale(end - start, lineWidth, 1)
+						.translate((start + end) / 2, 0, 0),
+				);
+			};
+			let position = -halfLength;
+			for (const { start, end, bridge } of intervals) {
+				segment(position, Math.min(halfLength, start));
+				if (bridge)
+					pieces.push(
+						new RingGeometry(
+							Math.max(0, bridge.radius - lineWidth / 2),
+							bridge.radius + lineWidth / 2,
+							32,
+							1,
+							bridge.side > 0 ? 0 : Math.PI,
+							Math.PI,
+						).translate(bridge.offset, 0, 0),
+					);
+				position = Math.max(position, Math.min(halfLength, end));
+			}
+			segment(position, halfLength);
+			if (!pieces.length) return new BufferGeometry();
+			try {
+				return (mergeGeometries(pieces) ?? new BufferGeometry()).scale(
+					1 / width,
+					1 / lineWidth,
+					1,
+				);
+			} finally {
+				for (const piece of pieces) piece.dispose();
+			}
+		}
 		const radius = lineWidth / 2;
 		const halfLength = width / 2;
 		const outline = new Shape();
