@@ -2222,6 +2222,36 @@ test("text placement snaps to the grid and equal-width content changes remain un
 	expect((await state(page)).shapes[0].width).toBe(originalWidth);
 });
 
+test("text movement snaps at one-tenth of the grid spacing for dragging and arrow keys", async ({ page }) => {
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await (await toolbarButton(page, "Text")).click();
+	await clickAt(page, 140, 130);
+	await page.getByRole("textbox", { name: "Text content" }).blur();
+	await dragTo(page, [140, 130], [143.4, 127.4]);
+	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[143, 127]]);
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[140, 130]]);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[143, 127]]);
+	await page.locator("canvas").focus();
+	await page.keyboard.press("ArrowRight");
+	await page.keyboard.press("Shift+ArrowDown");
+	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[144, 117]]);
+	await expect(page.getByText("Arrow keys move 1 mm; Shift + arrows move 10 mm when the drawing is focused.", { exact: false })).toBeVisible();
+	for (let zoom = 0; zoom < 4; zoom++) await (await toolbarButton(page, "Zoom in")).click();
+	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
+	const step = Number((await snap.getAttribute("title"))!.match(/[\d.]+/)![0]) / 10;
+	expect(step).toBeLessThan(1);
+	await page.locator("canvas").focus();
+	await page.keyboard.press("ArrowLeft");
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(144 - step, 8);
+	const before = (await state(page)).shapes[0];
+	await dragTo(page, [before.x, before.y], [before.x + 3.4 * step, before.y - 2.6 * step]);
+	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(Math.round((before.x + 3.4 * step) / step) * step, 8);
+	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(Math.round((before.y - 2.6 * step) / step) * step, 8);
+	await page.screenshot({ path: test.info().outputPath("text-fine-snapping.png") });
+});
+
 test("wire endpoints split a trunk into three-way and four-way junctions with atomic undo", async ({ page }) => {
 	const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!) as { shapes: import("#/drawing/shapes.ts").EditorShape[]; historySize: number };
 	await createWireChain(page, [[100, 150], [260, 150]]);

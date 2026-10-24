@@ -123,6 +123,49 @@ test("saved symbol label positions survive a project reload without copying the 
  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("symbol labels snap at one-tenth of the grid spacing in world coordinates", async ({ page }) => {
+ await page.goto("/tests/browser/editor.html");
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+ const box = (await page.locator("canvas").boundingBox())!;
+ await page.locator("canvas").click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
+ for (const [attribute, y] of [["Reference", "12"], ["Value", "-12"]]) {
+  const input = page.getByRole("spinbutton", { name: `${attribute} text Y`, exact: true });
+  await input.fill(y);
+  await input.press("Tab");
+ }
+ const step = Number((await page.getByRole("button", { name: "Snap to grid", exact: true }).getAttribute("title"))!.match(/[\d.]+/)![0]) / 10;
+ for (const angle of [0, 90]) {
+  const input = page.getByRole("spinbutton", { name: "Angle", exact: true });
+  await input.fill(String(angle));
+  await input.press("Tab");
+  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes[0].rotation).toBeCloseTo(angle * Math.PI / 180);
+  for (const attribute of ["reference", "value"]) {
+   const before = await state(page);
+   const scene = JSON.parse((await page.locator("#editor-scene").textContent())!);
+   const label = scene.symbolTexts.find((text: { name: string }) => text.name === `${attribute} 1`);
+   const scale = (scene.corner[0] - scene.origin[0]) / 420 * box.width / 2;
+   const start = await labelScreen(page, 1, attribute);
+   await page.mouse.move(start.x, start.y);
+   await page.mouse.down();
+   await page.mouse.move(start.x + 3.4 * step * scale, start.y - 2.6 * step * scale, { steps: 4 });
+   expect(await state(page)).toEqual(before);
+   await page.mouse.up();
+   const moved = await state(page);
+   expect(moved.historySize).toBe(before.historySize + 1);
+   const { textPositions: _beforePositions, ...beforeBody } = before.shapes[0];
+   const { textPositions: _afterPositions, ...afterBody } = moved.shapes[0];
+   expect(afterBody).toEqual(beforeBody);
+   await expect.poll(async () => {
+    const updated = JSON.parse((await page.locator("#editor-scene").textContent())!).symbolTexts.find((text: { name: string }) => text.name === `${attribute} 1`);
+    return [Number(updated.x.toFixed(6)), Number(updated.y.toFixed(6))];
+   }).toEqual([Number((Math.round((label.x + 3.4 * step) / step) * step).toFixed(6)), Number((Math.round((label.y + 2.6 * step) / step) * step).toFixed(6))]);
+  }
+ }
+ for (let zoom = 0; zoom < 8; zoom++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+ await page.screenshot({ path: test.info().outputPath("symbol-text-fine-snapping.png") });
+});
+
 test("Alt-dragging a moved label duplicates the symbol and keeps label edits independent", async ({ page }) => {
  await page.goto("/tests/browser/editor.html");
  await page.getByRole("button", { name: "Symbols", exact: true }).click();

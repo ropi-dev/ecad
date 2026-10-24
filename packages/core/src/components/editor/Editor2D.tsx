@@ -291,6 +291,11 @@ function EditorCanvas({
 		};
 	}, [definitionId, definitionLibrary, symbolLibrary.loading]);
 	const gridStep = view ? rulerSpacing(view.camera.scale).minor : 0;
+	const selectionSnapStep = snapEnabled
+		? selected.length > 0 && selected.every((shape) => shape.kind === "text")
+			? gridStep / 10
+			: gridStep
+		: 0;
 	const handles =
 		tool === "select"
 			? selected.flatMap((shape) =>
@@ -1034,7 +1039,14 @@ function EditorCanvas({
 												: "marquee",
 							handle: resize?.handle,
 							anchorShape: shape,
-							gridStep: snapStep,
+							gridStep:
+								textIndex !== undefined ||
+								(!created &&
+									!resize &&
+									originals.length > 0 &&
+									originals.every((item) => item.kind === "text"))
+									? snapStep / 10
+									: snapStep,
 							moved: false,
 							originals,
 							initialShapes: currentShapes.current,
@@ -1145,7 +1157,7 @@ function EditorCanvas({
 								finishWire();
 								setTool("select");
 							}
-							const snapStep = snapEnabled ? gridStep : 0;
+							const snapStep = selectionSnapStep;
 							const step = (snapStep || 1) * (event.shiftKey ? 10 : 1);
 							commitReplacements(
 								moveShapes(
@@ -1323,7 +1335,7 @@ function EditorCanvas({
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Press R to rotate selected components 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Edit its name and number in Attributes; both labels appear beside the pin. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; arrow keys then move by one grid step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Press R to rotate selected components 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Edit its name and number in Attributes; both labels appear beside the pin. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; text moves at one-tenth of the visible grid spacing. Arrow keys move by one snapping step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (
@@ -1460,7 +1472,7 @@ function EditorCanvas({
 							`Move symbol ${attribute} text`,
 						);
 					}}
-					snapStep={snapEnabled ? gridStep : 0}
+					snapStep={selectionSnapStep}
 					onClear={() => applySelection(new Set())}
 					textFocusId={textFocusId}
 					onTextFocus={() => setTextFocusId(null)}
