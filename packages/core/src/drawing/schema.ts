@@ -32,6 +32,7 @@ const pinInputSchema = z.strictObject({
 	kind: z.literal("pin"),
 	name: z.string().default("").describe("Pin name, such as VCC or GND."),
 	number: z.string().default("").describe("Pin number, such as 1, 01 or A1."),
+	showLabels: z.boolean().optional(),
 });
 const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({

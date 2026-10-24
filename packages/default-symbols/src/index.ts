@@ -78,7 +78,14 @@ function generate(source: SourceSymbol): DefaultSymbol {
 				const dx = direction === "R" ? length : direction === "L" ? -length : 0;
 				const dy = direction === "U" ? length : direction === "D" ? -length : 0;
 				line(x, y, x + dx, y + dy);
-				shapes.push({ kind: "pin", name, ...point(x, y) });
+				shapes.push({
+					kind: "pin",
+					name,
+					...point(x, y),
+					...(source.showPinLabels === undefined
+						? {}
+						: { showLabels: source.showPinLabels }),
+				});
 				break;
 			}
 		}

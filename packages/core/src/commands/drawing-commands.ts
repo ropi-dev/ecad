@@ -97,6 +97,12 @@ function validateShape(shape: EditorShape) {
 		invalid("Pins require a name string.");
 	if (shape.kind === "pin" && typeof shape.number !== "string")
 		invalid("Pins require a number string.");
+	if (
+		shape.kind === "pin" &&
+		shape.showLabels !== undefined &&
+		typeof shape.showLabels !== "boolean"
+	)
+		invalid("Pin label visibility must be a boolean.");
 	if (shape.kind === "text") {
 		if (
 			typeof shape.text !== "string" ||

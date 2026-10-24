@@ -10,7 +10,7 @@ export type SymbolPrimitive =
 			rotation?: number;
 	  }
 	| { kind: "circle"; x: number; y: number; radius: number }
-	| { kind: "pin"; x: number; y: number; name: string };
+	| { kind: "pin"; x: number; y: number; name: string; showLabels?: boolean };
 
 export interface DefaultSymbolFile {
 	format: "ecad-symbol";
@@ -79,5 +79,6 @@ export interface SourceSymbol {
 	value: string;
 	source: string;
 	rotation: number;
+	showPinLabels?: boolean;
 	drawing: readonly SourceShape[];
 }
