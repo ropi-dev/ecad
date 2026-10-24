@@ -1,4 +1,9 @@
 import {
+	buildWireCrossings,
+	type WireCrossings,
+} from "#/drawing/wire-crossings.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
+import {
 	drawShape,
 	type EditorShape,
 	openPins,
@@ -9,6 +14,7 @@ import {
 	symbolShapes,
 	symbolTextPosition,
 	symbolTextShapes,
+	wireJunctions,
 } from "./shapes";
 
 interface GeometrySize {
@@ -27,7 +33,8 @@ export interface DrawingTransform {
 
 /** Geometry contains only the dimensions needed to draw an object. */
 export type DrawingGeometry =
-	| (GeometrySize & { kind: ShapeKind })
+	| (GeometrySize & { kind: Exclude<ShapeKind, "wire"> })
+	| (GeometrySize & { kind: "wire" } & Partial<WireCrossings>)
 	| (GeometrySize & { kind: "pin-halo" })
 	| (GeometrySize & {
 			kind: "symbol";
@@ -57,6 +64,7 @@ export interface DrawingDisplay {
 	shapes: DisplayShape[];
 	selections: DisplaySelection[];
 	terminals: DisplayShape[];
+	junctions: DisplayShape[];
 	connections: DisplayShape[];
 	halos: DisplayShape[];
 	previews: DisplayShape[];
@@ -165,9 +173,19 @@ export function buildDrawingDisplay(
 	previews: EditorShape[] = [],
 ): DrawingDisplay {
 	const terminal = drawShape(0, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+	const junctions = wireJunctions(shapes);
+	const crossings = measurePerformance(
+		"editor.wire-crossings",
+		() =>
+			buildWireCrossings(
+				shapes,
+				junctions.map(({ point }) => point),
+			),
+		{ shapes: shapes.length },
+	);
 	return {
-		shapes: shapes.map((shape, index) =>
-			displayShape(
+		shapes: shapes.map((shape, index) => {
+			const display = displayShape(
 				shape,
 				`shape:${shape.id}`,
 				`${shape.kind} ${shape.id}`,
@@ -177,8 +195,12 @@ export function buildDrawingDisplay(
 						? shape.kind
 						: "stroke",
 				index + 1,
-			),
-		),
+			);
+			const crossing = crossings.get(shape.id);
+			if (display.geometry.kind === "wire" && crossing)
+				display.geometry = { ...display.geometry, ...crossing };
+			return display;
+		}),
 		selections: shapes
 			.filter((shape) => selectedIds.has(shape.id))
 			.map((shape) => ({
@@ -195,6 +217,19 @@ export function buildDrawingDisplay(
 				"wire-terminal",
 				"",
 				selectedIds.has(shape.id) ? "selected" : "wire",
+				shapes.length + 1,
+			),
+		),
+		junctions: junctions.map(({ point, shapes: connected }, index) =>
+			displayShape(
+				{ ...terminal, ...point },
+				`wire-junction:${index}`,
+				"editor-wire-junction",
+				connected.some((shape) => selectedIds.has(shape.id))
+					? "selected"
+					: connected.some((shape) => shape.kind !== "wire")
+						? "pin"
+						: "wire",
 				shapes.length + 1,
 			),
 		),

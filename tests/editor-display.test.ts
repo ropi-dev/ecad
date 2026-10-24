@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, LineLoop, type Mesh, type MeshBasicMaterial, Raycaster, Vector3 } from "three";
+import { type BufferGeometry, Group, LineLoop, type Mesh, type MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawShape, pinTerminals } from "#/drawing/shapes.ts";
+import { drawShape, PIN_RADIUS, pinTerminals } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
@@ -75,6 +75,122 @@ test("preview display uses separate resources from document shapes and skips emp
 	assert.equal(display.previews[0].renderOrder, 3);
 	assert.equal(display.shapes[0].x, 10);
 	assert.equal(display.previews[0].x, 30);
+});
+
+test("junction dots count wire branches and ignore bends, lines, and bare crossings", () => {
+	const wire = (id: number, x: number, y: number, endX: number, endY: number) =>
+		drawShape(id, "wire", { x, y }, { x: endX, y: endY });
+	const trunk = wire(1, -10, 0, 10, 0);
+	const branch = wire(2, 0, 0, 0, 10);
+	const display = buildDrawingDisplay([trunk, branch], new Set());
+	assert.equal(display.junctions.length, 1);
+	assert.ok(Math.abs(display.junctions[0].x) < 1e-10);
+	assert.ok(Math.abs(display.junctions[0].y) < 1e-10);
+	assert.deepEqual(
+		display.junctions.map(({ width, height, appearance }) => ({ width, height, appearance })),
+		[{ width: PIN_RADIUS * 2, height: PIN_RADIUS * 2, appearance: "wire" }],
+	);
+	assert.equal(buildDrawingDisplay([trunk, branch], new Set([trunk.id])).junctions[0].appearance, "selected");
+	assert.equal(buildDrawingDisplay([trunk, { ...branch, y: 0.00001 + branch.y }], new Set()).junctions.length, 1);
+	assert.equal(buildDrawingDisplay([trunk, { ...branch, x: 11 }], new Set()).junctions.length, 0);
+	assert.equal(buildDrawingDisplay([trunk, { ...branch, kind: "line" }], new Set()).junctions.length, 0);
+	assert.equal(buildDrawingDisplay([trunk, wire(2, 0, -10, 0, 10)], new Set()).junctions.length, 0);
+	assert.equal(buildDrawingDisplay([wire(1, -10, 0, 0, 0), branch], new Set()).junctions.length, 0);
+	assert.equal(buildDrawingDisplay([wire(1, -10, 0, 0, 0), wire(2, 0, 0, 10, 0)], new Set()).junctions.length, 0);
+	const fourWay = [wire(1, -10, 0, 0, 0), wire(2, 0, 0, 10, 0), branch, wire(4, 0, 0, 0, -10)];
+	assert.equal(buildDrawingDisplay(fourWay, new Set()).junctions.length, 1);
+	assert.equal(buildDrawingDisplay([wire(1, 0, 10, 0, -10), wire(2, -10, 0, 0, 0)], new Set()).junctions.length, 1);
+	assert.equal(buildDrawingDisplay([trunk, wire(2, 0, 0, 0, 0)], new Set()).junctions.length, 0);
+});
+
+test("junction dots include coincident standalone and rotated symbol pins", () => {
+	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+	const other = { ...pin, id: 2 };
+	const wire = drawShape(3, "wire", { x: -10, y: 0 }, { x: 0, y: 0 });
+	assert.equal(buildDrawingDisplay([pin, wire], new Set()).junctions.length, 0);
+	assert.equal(buildDrawingDisplay([pin, other], new Set()).junctions.length, 0);
+	assert.equal(buildDrawingDisplay([pin, other, { ...pin, id: 4 }], new Set()).junctions.length, 1);
+	assert.equal(buildDrawingDisplay([pin, other, wire], new Set()).junctions[0].appearance, "pin");
+	assert.equal(buildDrawingDisplay([pin, { ...wire, x: 0 }], new Set()).junctions.length, 1);
+	const symbol = { ...createSymbolFromShapes(5, [pin, drawShape(2, "line", { x: 0, y: 0 }, { x: 10, y: 0 })]), rotation: Math.PI / 2 };
+	const [terminal] = pinTerminals(symbol);
+	const trunk = drawShape(6, "wire", { x: terminal.x - 10, y: terminal.y }, { x: terminal.x + 10, y: terminal.y });
+	const display = buildDrawingDisplay([symbol, trunk], new Set([symbol.id]));
+	assert.equal(display.junctions.length, 1);
+	assert.equal(display.junctions[0].x, terminal.x);
+	assert.equal(display.junctions[0].y, terminal.y);
+	assert.equal(display.junctions[0].appearance, "selected");
+});
+
+test("unconnected crossings render an arch and gap without changing the document", () => {
+	for (const reversed of [false, true]) {
+		const horizontal = drawShape(1, "wire", { x: reversed ? 10 : -10, y: 0 }, { x: reversed ? -10 : 10, y: 0 });
+		const vertical = drawShape(2, "wire", { x: 0, y: reversed ? 10 : -10 }, { x: 0, y: reversed ? -10 : 10 });
+		const shapes = [vertical, horizontal];
+		const before = structuredClone(shapes);
+		const display = buildDrawingDisplay(shapes, new Set([horizontal.id]));
+		assert.deepEqual(shapes, before);
+		assert.equal(display.junctions.length, 0);
+		assert.equal(display.shapes[1].appearance, "selected");
+		const renderer = createDrawingRenderer(null);
+		const root = new Group();
+		try {
+			renderer.update(root, display);
+			root.updateMatrixWorld(true);
+			const horizontalMesh = root.getObjectByName("wire 1") as Mesh;
+			const verticalMesh = root.getObjectByName("wire 2") as Mesh;
+			const hit = (mesh: Mesh, x: number, y: number) => new Raycaster(new Vector3(x, y, 10), new Vector3(0, 0, -1)).intersectObject(mesh).length > 0;
+			assert.equal(hit(horizontalMesh, 0, 0), false);
+			assert.equal(hit(horizontalMesh, 0, PIN_RADIUS * 3), true);
+			assert.equal(hit(verticalMesh, 0, 0), true);
+			assert.equal(hit(verticalMesh, 0, PIN_RADIUS * 3), false);
+			assert.equal(hit(verticalMesh, 0, 2), true);
+			let disposals = 0;
+			horizontalMesh.geometry.addEventListener("dispose", () => disposals++);
+			const pin = drawShape(3, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+			const connected = buildDrawingDisplay([...shapes, pin], new Set());
+			assert.equal(connected.junctions.length, 1);
+			renderer.update(root, connected);
+			root.updateMatrixWorld(true);
+			assert.equal(disposals, 1);
+			assert.equal(hit(root.getObjectByName("wire 1") as Mesh, 0, 0), true);
+		} finally {
+			renderer.dispose();
+		}
+	}
+});
+
+test("nearby crossings share an arch and connected junctions keep straight strokes", () => {
+	const wire = (id: number, x: number, y: number, endX: number, endY: number) => drawShape(id, "wire", { x, y }, { x: endX, y: endY });
+	const trunk = wire(1, -10, 0, 10, 0);
+	const display = buildDrawingDisplay([trunk, wire(2, -0.5, -10, -0.5, 10), wire(3, 0.5, -10, 0.5, 10), wire(4, 6, -10, 6, 10)], new Set());
+	assert.equal(display.shapes[0].geometry.kind, "wire");
+	if (display.shapes[0].geometry.kind === "wire") assert.equal(display.shapes[0].geometry.bridges?.length, 2);
+	const connected = buildDrawingDisplay([trunk, wire(2, 0, 0, 0, 10)], new Set());
+	if (connected.shapes[0].geometry.kind === "wire") assert.equal(connected.shapes[0].geometry.bridges, undefined);
+	assert.equal(connected.junctions.length, 1);
+});
+
+test("renderer draws a filled junction dot and removes it when the branch disconnects", () => {
+	const trunk = drawShape(1, "wire", { x: -10, y: 0 }, { x: 10, y: 0 });
+	const branch = drawShape(2, "wire", { x: 0, y: 0 }, { x: 0, y: 10 });
+	const renderer = createDrawingRenderer(null);
+	const root = new Group();
+	try {
+		renderer.update(root, buildDrawingDisplay([trunk, branch], new Set()));
+		const dot = root.getObjectByName("editor-wire-junction") as Mesh<BufferGeometry, MeshBasicMaterial>;
+		assert.equal(dot.material.color.getHexString(), "ef8f9c");
+		root.updateMatrixWorld(true);
+		const hits = new Raycaster(new Vector3(0, 0, 10), new Vector3(0, 0, -1)).intersectObject(dot);
+		assert.ok(hits.length > 0);
+		let disposals = 0;
+		dot.geometry.addEventListener("dispose", () => disposals++);
+		renderer.update(root, buildDrawingDisplay([trunk], new Set()));
+		assert.equal(root.getObjectByName("editor-wire-junction"), undefined);
+		assert.equal(disposals, 1);
+	} finally {
+		renderer.dispose();
+	}
 });
 
 test("pin halos follow wire connections, disconnections, and coincident pins", () => {

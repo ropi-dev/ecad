@@ -27,6 +27,12 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 		textures: renderer.info.memory.textures,
 		outlines: shapes?.children.filter((shape) => shape instanceof LineLoop).map((shape) => ({ width: shape.scale.x, height: shape.scale.y })),
 		wireTerminals: this.getObjectByName("editor-wire-terminals")?.children.map((terminal) => ({ x: terminal.position.x, y: terminal.position.y, width: terminal.scale.x, height: terminal.scale.y })),
+		wireJunctions: this.getObjectByName("editor-wire-junctions")?.children.map((junction) => ({ x: junction.position.x, y: junction.position.y, width: junction.scale.x, height: junction.scale.y })),
+		wireBridges: shapes?.children.filter((shape) => {
+			if (!(shape instanceof Mesh) || !shape.name.startsWith("wire ")) return false;
+			shape.geometry.computeBoundingBox();
+			return (shape.geometry.boundingBox?.max.y ?? 0) > 0.51 || (shape.geometry.boundingBox?.min.y ?? 0) < -0.51;
+		}).map((shape) => shape.name),
 		direction: camera.getWorldDirection(new Vector3()).toArray(),
 		origin: origin.toArray(), corner: corner.toArray(),
 		preview: preview instanceof Mesh ? { width: preview.scale.x, height: preview.scale.y, rotation: preview.rotation.z, x: preview.position.x, y: preview.position.y } : null,

@@ -46,6 +46,8 @@ The `editor-wire-junction` scenario opens a schematic with 200 wire segments, dr
 
 The `editor-pin-junction` scenario uses the same 200-segment fixture and budgets as `editor-wire-junction`. It places a pin on the trunk midpoint three times with undo between placements, then checks that storage contains both halves of the trunk.
 
+The `editor-wire-crossings` scenario opens 40 wires with 400 unconnected crossings and selects all wires three times. Each crossing has a bridge arch and a gap in the wire beneath it. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, crossing detection p95 below 100 ms, and frame p95 below 500 ms, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts. The `editor.wire-crossings` metric covers crossing detection and bridge layout.
+
 The `editor-pin-labels` scenario opens a symbol with 128 named and numbered pins, adds a pin, and edits its name and number three times through Attributes. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
 
 The `editor-pin-heavy` scenario restores 2,000 pins and 1,000 wires, then clicks empty canvas five times. Its interaction p95 budget is 750 ms, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts. Pin lookup checks connectivity only for terminals within the pointer's hit area, and unchanged selections skip rendering. The `editor.pin-hit-test` metric measures that lookup without including selection or rendering.

@@ -9,6 +9,8 @@ interface State {
 	symbolTexts: { symbol: string; name: string; texture?: string; x: number; y: number }[];
 	outlines: { width: number; height: number }[];
 	wireTerminals: { x: number; y: number; width: number; height: number }[];
+	wireJunctions: { x: number; y: number; width: number; height: number }[];
+	wireBridges: string[];
 	textures: number;
 	camera: string;
 	direction: number[];
@@ -2252,6 +2254,33 @@ test("text movement snaps at one-tenth of the grid spacing for dragging and arro
 	await page.screenshot({ path: test.info().outputPath("text-fine-snapping.png") });
 });
 
+test("junction dots and arches distinguish connected branches from crossings", async ({ page }) => {
+	await page.evaluate(async () => {
+		const editorPath = "/tests/browser/editor.tsx";
+		const shapesPath = "/packages/core/src/drawing/shapes.ts";
+		const storePath = "/packages/core/src/commands/drawing-store.ts";
+		const { drawingStore } = await import(editorPath);
+		const { createDrawingStore } = await import(storePath);
+		const { drawShape } = await import(shapesPath);
+		let id = 1;
+		const wire = (x: number, y: number, endX: number, endY: number) =>
+			drawShape(id++, "wire", { x, y }, { x: endX, y: endY });
+		const fixture = createDrawingStore([
+			wire(181, 150, 193, 150), wire(187, 150, 187, 157),
+			wire(198, 150, 204, 150), wire(204, 150, 210, 150),
+			wire(204, 143, 204, 150), wire(204, 150, 204, 157),
+			wire(215, 150, 227, 150), wire(221, 143, 221, 157),
+			wire(232, 150, 244, 150), drawShape(id++, "pin", { x: 238, y: 150 }, { x: 238, y: 150 }),
+		]);
+		drawingStore.transact(() => [undefined, fixture.getSnapshot()]);
+	});
+	await expect.poll(async () => (await state(page)).wireJunctions.length).toBe(3);
+	await expect.poll(async () => (await state(page)).wireBridges).toEqual(["wire 7"]);
+	for (let index = 0; index < 8; index++) await (await toolbarButton(page, "Zoom in")).click();
+	await moveAt(page, 210, 165);
+	await page.screenshot({ path: test.info().outputPath("junction-dots-and-arches.png") });
+});
+
 test("wire endpoints split a trunk into three-way and four-way junctions with atomic undo", async ({ page }) => {
 	const committed = async () => JSON.parse((await page.locator("#editor-document").textContent())!) as { shapes: import("#/drawing/shapes.ts").EditorShape[]; historySize: number };
 	await createWireChain(page, [[100, 150], [260, 150]]);
@@ -2273,6 +2302,7 @@ test("wire endpoints split a trunk into three-way and four-way junctions with at
 		})))
 		.filter((point) => Math.abs(point.x - 180) < 0.001 && Math.abs(point.y - 150) < 0.001);
 	expect(junctionEnds(tee.shapes)).toHaveLength(3);
+	await expect.poll(async () => (await state(page)).wireJunctions).toEqual([{ x: expect.closeTo(180, 6), y: expect.closeTo(150, 6), width: 0.508, height: 0.508 }]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
 	await page.screenshot({ path: test.info().outputPath("branch-only-selected.png") });
 	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
@@ -2281,6 +2311,7 @@ test("wire endpoints split a trunk into three-way and four-way junctions with at
 	await page.screenshot({ path: test.info().outputPath("wire-three-way-junction.png") });
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await committed()).shapes).toEqual(before.shapes);
+	await expect.poll(async () => (await state(page)).wireJunctions).toEqual([]);
 	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await committed()).shapes).toEqual(tee.shapes);
 	// Start the fourth leg at the existing junction itself.
@@ -2291,6 +2322,7 @@ test("wire endpoints split a trunk into three-way and four-way junctions with at
 	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(4);
 	const cross = await committed();
 	expect(junctionEnds(cross.shapes)).toHaveLength(4);
+	await expect.poll(async () => (await state(page)).wireJunctions).toEqual([{ x: expect.closeTo(180, 6), y: expect.closeTo(150, 6), width: 0.508, height: 0.508 }]);
 	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
 	await clickAt(page, 140, 150);
 	await expect(page.getByRole("spinbutton", { name: "Length", exact: true })).toHaveValue("80");
