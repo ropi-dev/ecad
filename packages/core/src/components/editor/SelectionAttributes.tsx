@@ -170,7 +170,10 @@ function SelectionAttributesPanel({
 					attribute === "angle" &&
 					(single?.kind === "wire" || single?.kind === "symbol")
 						? "90"
-						: "any"
+						: single?.kind === "text" &&
+								(attribute === "x" || attribute === "y")
+							? "0.1"
+							: "any"
 				}
 				onChange={(next) => onAttributeChange(attribute, next)}
 			/>
@@ -376,6 +379,7 @@ function SelectionAttributesPanel({
 										label={`${label} text ${axis.toUpperCase()}`}
 										value={position[axis]}
 										unit="mm"
+										step="0.1"
 										onCommit={(value) =>
 											onSymbolTextPositionChange(text.attribute, {
 												...position,
