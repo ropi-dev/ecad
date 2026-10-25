@@ -102,6 +102,13 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 	};
 }
 
+function uprightTextRotation(rotation: number): number {
+	const angle = rotation % Math.PI;
+	if (angle > Math.PI / 2) return angle - Math.PI;
+	if (angle <= -Math.PI / 2) return angle + Math.PI;
+	return angle;
+}
+
 function displayShape(
 	shape: EditorShape,
 	key: string,
@@ -119,7 +126,10 @@ function displayShape(
 			shape.kind === "wire" || shape.kind === "line"
 				? shape.lineWidth
 				: shape.height,
-		rotation: shape.rotation,
+		rotation:
+			shape.kind === "text"
+				? uprightTextRotation(shape.rotation)
+				: shape.rotation,
 		appearance,
 		...(shape.kind === "text"
 			? {
@@ -158,7 +168,7 @@ function displayShape(
 				}).y / shape.height,
 			width: text.width / shape.width,
 			height: text.height / shape.height,
-			rotation: text.rotation - shape.rotation,
+			rotation: uprightTextRotation(text.rotation) - shape.rotation,
 		}));
 	}
 	if (shape.kind === "pin") {
