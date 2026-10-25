@@ -45,6 +45,8 @@ export function createTextShape(
 			lineWidth: 0.2,
 			text: "Text",
 			fontSize: 5,
+			horizontalAlign: "center",
+			verticalAlign: "middle",
 		},
 		"Text",
 		measureText,

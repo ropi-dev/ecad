@@ -6,7 +6,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	PIN_RADIUS,
-	type PrimitiveShape,
+	type SymbolShape,
 	type SymbolText,
 	shapeBounds,
 } from "#/drawing/shapes.ts";
@@ -23,7 +23,7 @@ export interface SymbolDefinition {
 	description: string;
 	prefix: string;
 	value: string;
-	children: PrimitiveShape[];
+	children: SymbolShape[];
 	texts: SymbolText[];
 }
 
@@ -103,7 +103,7 @@ export function duplicateSymbol(
 /** Group existing geometry without fitting, snapping, or changing its stroke. */
 export function createSymbolFromShapes(
 	id: number,
-	shapes: readonly PrimitiveShape[],
+	shapes: readonly SymbolShape[],
 	options: {
 		name?: string;
 		definitionId?: string;

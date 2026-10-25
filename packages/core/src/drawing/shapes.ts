@@ -1,5 +1,6 @@
 import type { LineStyle } from "#/drawing/line-style.ts";
 import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
+import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 
 export const A3 = { width: 420, height: 297 } as const;
@@ -45,14 +46,14 @@ export interface EditorSymbol extends ShapeGeometry {
 	/** An instance stroke override. Definition strokes otherwise remain unchanged. */
 	strokeOverride?: number;
 	/** Children use coordinates relative to the symbol's center. */
-	children: PrimitiveShape[];
+	children: SymbolShape[];
 	texts: SymbolText[];
-	/** Instance label centers in millimetres along the symbol's local axes. */
+	textAlignments?: Partial<Record<SymbolText["attribute"], TextAlignment>>;
 	textPositions?: Partial<Record<SymbolText["attribute"], Point>>;
 	attributes: { name: string; reference: string; value: string };
 }
 
-export interface SymbolText extends Point {
+export interface SymbolText extends Point, TextAlignment {
 	attribute: keyof EditorSymbol["attributes"];
 	fontSize: number;
 }
@@ -93,13 +94,14 @@ export function moveSymbolText(
 	};
 }
 
-export interface TextShape extends ShapeGeometry {
+export interface TextShape extends ShapeGeometry, TextAlignment {
 	kind: "text";
 	text: string;
 	fontSize: number;
 }
 
-export type EditorShape = PrimitiveShape | EditorSymbol | TextShape;
+export type SymbolShape = PrimitiveShape | TextShape;
+export type EditorShape = SymbolShape | EditorSymbol;
 
 export function isBasicShape(shape: EditorShape): shape is BasicShape {
 	return (
@@ -111,7 +113,7 @@ export function isBasicShape(shape: EditorShape): shape is BasicShape {
 }
 
 /** Resolve children only for geometry; editing always acts on their parent. */
-export function symbolShapes(symbol: EditorSymbol): PrimitiveShape[] {
+export function symbolShapes(symbol: EditorSymbol): SymbolShape[] {
 	return symbol.children.map((child) => ({
 		...child,
 		...localToWorld(symbol, child.x, child.y),
@@ -124,9 +126,13 @@ export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
 		const text = symbol.attributes[label.attribute];
 		if (!text) return [];
 		const position = symbolTextPosition(symbol, label);
+		const lines = text
+			.replace(/\r\n?/g, "\n")
+			.replace(/\t/g, "    ")
+			.split("\n");
 		const width = Math.max(
 			label.fontSize / 2,
-			text.length * label.fontSize * 0.6,
+			...lines.map((line) => line.length * label.fontSize * 0.6),
 		);
 		return [
 			{
@@ -134,10 +140,16 @@ export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
 				kind: "text",
 				...localToWorld(symbol, position.x, position.y),
 				width,
-				height: label.fontSize * 1.5,
+				height: lines.length * label.fontSize * 1.5,
 				rotation: symbol.rotation,
 				lineWidth: 0,
 				fontSize: label.fontSize,
+				horizontalAlign:
+					symbol.textAlignments?.[label.attribute]?.horizontalAlign ??
+					label.horizontalAlign,
+				verticalAlign:
+					symbol.textAlignments?.[label.attribute]?.verticalAlign ??
+					label.verticalAlign,
 				text,
 			},
 		];
@@ -183,7 +195,7 @@ export function editShapeAttribute(
 					strokeOverride: value,
 					children: shape.children.map((child) => ({
 						...child,
-						lineWidth: value,
+						lineWidth: child.kind === "text" ? child.lineWidth : value,
 					})),
 				}
 			: shape;
@@ -259,6 +271,7 @@ function localToWorld(shape: EditorShape, x: number, y: number): Point {
 
 /** Handle positions use the same local axes as the rendered shape. */
 export function resizeHandles(shape: EditorShape): ResizeHandle[] {
+	const center = shape.kind === "text" ? textCenter(shape) : shape;
 	if (shape.kind === "symbol" || shape.kind === "pin") return [];
 	const directions =
 		shape.kind === "text"
@@ -297,7 +310,7 @@ export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 		];
 		return {
 			...localToWorld(
-				shape,
+				{ ...shape, x: center.x, y: center.y },
 				(xDirection * shape.width) / 2,
 				(yDirection * shape.height) / 2,
 			),
@@ -369,10 +382,12 @@ export function resizeShape(
 		);
 		const width = shape.width * scale;
 		const height = shape.height * scale;
+		const center = textCenter(shape);
+		const offset = textCenter({ ...shape, x: 0, y: 0, width, height });
 		return {
 			...shape,
 			...localToWorld(
-				shape,
+				{ ...shape, x: center.x - offset.x, y: center.y - offset.y },
 				(handle.xDirection * (width - shape.width)) / 2,
 				(handle.yDirection * (height - shape.height)) / 2,
 			),
@@ -458,6 +473,7 @@ export function drawShape(
 }
 
 export function shapeBounds(shape: EditorShape): Bounds {
+	const center = shape.kind === "text" ? textCenter(shape) : shape;
 	const height =
 		shape.kind === "wire" || shape.kind === "line"
 			? shape.lineWidth
@@ -467,10 +483,10 @@ export function shapeBounds(shape: EditorShape): Bounds {
 	const halfWidth = (shape.width * cos + height * sin) / 2;
 	const halfHeight = (shape.width * sin + height * cos) / 2;
 	return {
-		minX: shape.x - halfWidth,
-		maxX: shape.x + halfWidth,
-		minY: shape.y - halfHeight,
-		maxY: shape.y + halfHeight,
+		minX: center.x - halfWidth,
+		maxX: center.x + halfWidth,
+		minY: center.y - halfHeight,
+		maxY: center.y + halfHeight,
 	};
 }
 
@@ -492,13 +508,17 @@ export function hitShape(
 ): boolean {
 	if (
 		shape.kind === "symbol" &&
-		symbolTextShapes(shape).some((text) => hitShape(text, point, tolerance))
+		[
+			...symbolTextShapes(shape),
+			...symbolShapes(shape).filter((child) => child.kind === "text"),
+		].some((text) => hitShape(text, point, tolerance))
 	)
 		return true;
 	const { width, height } =
 		shape.kind === "symbol" ? selectionSize(shape) : shape;
-	const dx = point.x - shape.x;
-	const dy = point.y - shape.y;
+	const center = shape.kind === "text" ? textCenter(shape) : shape;
+	const dx = point.x - center.x;
+	const dy = point.y - center.y;
 	if (shape.kind === "pin")
 		return Math.hypot(dx, dy) <= Math.max(width / 2, tolerance);
 	const x = Math.abs(

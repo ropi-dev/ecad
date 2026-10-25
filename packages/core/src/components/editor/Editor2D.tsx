@@ -67,6 +67,7 @@ import {
 	routeWire,
 	type ShapeKind,
 	snapPoint,
+	symbolShapes,
 	symbolTextShapes,
 } from "#/drawing/shapes.ts";
 import {
@@ -249,6 +250,25 @@ function EditorCanvas({
 		isSymbol ? null : sheet,
 	);
 	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
+	const textAnchors = selected.flatMap((shape) => {
+		if (shape.kind === "text")
+			return [{ key: `${shape.id}`, x: shape.x, y: shape.y }];
+		if (shape.kind !== "symbol") return [];
+		return [
+			...symbolTextShapes(shape).map((text) => ({
+				key: `${shape.id}:label:${text.id}`,
+				x: text.x,
+				y: text.y,
+			})),
+			...symbolShapes(shape)
+				.filter((child) => child.kind === "text")
+				.map((text) => ({
+					key: `${shape.id}:text:${text.id}`,
+					x: text.x,
+					y: text.y,
+				})),
+		];
+	});
 	const selectedSymbol =
 		selected.length === 1 && selected[0].kind === "symbol"
 			? selected[0]
@@ -668,7 +688,7 @@ function EditorCanvas({
 		const primitives = store
 			.getSnapshot()
 			.shapes.filter((shape) => currentSelection.current.has(shape.id))
-			.filter((shape) => shape.kind !== "text" && shape.kind !== "symbol");
+			.filter((shape) => shape.kind !== "symbol");
 		if (primitives.length !== ids.length || ids.length < 2)
 			return "Select at least two drawing shapes to create a symbol.";
 		try {
@@ -1252,7 +1272,6 @@ function EditorCanvas({
 										].includes(tool)}
 									>
 										{tools
-											.filter(({ kind }) => !isSymbol || kind !== "text")
 											.filter(({ kind }) =>
 												[
 													"rectangle",
@@ -1361,6 +1380,23 @@ function EditorCanvas({
 										/>
 									);
 								})()}
+							{textAnchors.map((anchor) => {
+								const point = worldToScreen(
+									anchor,
+									view.camera,
+									view.viewport.width,
+									view.viewport.height,
+								);
+								return (
+									<span
+										key={anchor.key}
+										data-testid="text-anchor"
+										data-anchor-id={anchor.key}
+										className="absolute z-1 size-[9px] -translate-x-1/2 -translate-y-1/2 text-[#e8b77e] drop-shadow-[0_0_1px_#19212e] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
+										style={{ left: point.x, top: point.y }}
+									/>
+								);
+							})}
 							{handles.map(({ shape, handle }) => {
 								const point = worldToScreen(
 									handle,
@@ -1477,6 +1513,32 @@ function EditorCanvas({
 					onClear={() => applySelection(new Set())}
 					textFocusId={textFocusId}
 					onTextFocus={() => setTextFocusId(null)}
+					onTextAlignmentChange={(alignment, attribute) => {
+						if (attribute && selectedSymbol) {
+							commitReplacements(
+								[
+									{
+										...selectedSymbol,
+										textAlignments: {
+											...selectedSymbol.textAlignments,
+											[attribute]: {
+												...selectedSymbol.textAlignments?.[attribute],
+												...alignment,
+											},
+										},
+									},
+								],
+								`Align symbol ${attribute} text`,
+							);
+						} else {
+							commitReplacements(
+								selected
+									.filter((shape) => shape.kind === "text")
+									.map((shape) => ({ ...shape, ...alignment })),
+								"Align text",
+							);
+						}
+					}}
 					onTextChange={(text) => {
 						if (selected.length === 1 && selected[0].kind === "text")
 							commitReplacements([updateText(selected[0], text)], "Edit text");

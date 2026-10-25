@@ -1,4 +1,14 @@
 import { z } from "zod";
+import {
+	horizontalAlignments,
+	verticalAlignments,
+} from "#/drawing/text-alignment.ts";
+
+const textAlignmentFields = {
+	horizontalAlign: z.enum(horizontalAlignments).optional(),
+	verticalAlign: z.enum(verticalAlignments).optional(),
+};
+
 import { lineStyles } from "#/drawing/line-style.ts";
 
 export const shapeId = z.number().int().positive().safe();
@@ -41,6 +51,7 @@ const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("text"),
+	...textAlignmentFields,
 	text: z.string(),
 	fontSize: z
 		.number()
@@ -57,6 +68,13 @@ const symbolInputSchema = z.strictObject({
 		.strictObject({ scope: z.enum(["user", "project"]), id: z.string().min(1) })
 		.optional(),
 	strokeOverride: z.number().positive().optional(),
+	textAlignments: z
+		.strictObject({
+			name: z.strictObject(textAlignmentFields).optional(),
+			reference: z.strictObject(textAlignmentFields).optional(),
+			value: z.strictObject(textAlignmentFields).optional(),
+		})
+		.optional(),
 	textPositions: z
 		.strictObject({
 			name: z.strictObject({ x: z.number(), y: z.number() }).optional(),
@@ -65,10 +83,16 @@ const symbolInputSchema = z.strictObject({
 		})
 		.optional()
 		.describe(
-			"Instance label centers in millimetres relative to the symbol center, before rotation.",
+			"Instance label anchors in millimetres relative to the symbol center, before rotation.",
 		),
 	children: z
-		.array(z.discriminatedUnion("kind", [primitiveShapeSchema, pinShapeSchema]))
+		.array(
+			z.discriminatedUnion("kind", [
+				primitiveShapeSchema,
+				pinShapeSchema,
+				textInputSchema.extend({ id: shapeId }),
+			]),
+		)
 		.describe(
 			"Primitive shapes in coordinates relative to the symbol center, with IDs local to this symbol.",
 		)
@@ -77,6 +101,7 @@ const symbolInputSchema = z.strictObject({
 		.array(
 			z.strictObject({
 				attribute: z.enum(["name", "reference", "value"]),
+				...textAlignmentFields,
 				x: z.number(),
 				y: z.number(),
 				fontSize: z.number().positive(),

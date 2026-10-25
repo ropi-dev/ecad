@@ -185,7 +185,7 @@ test("invalid symbol selections leave the drawing and history unchanged", () => 
 		createSymbol(3, symbolDefinitions[0], { x: 80, y: 90 }),
 	], "Shapes"));
 	const before = store.getSnapshot();
-	for (const ids of [[], [1], [1, 1], [1, 99], [1, 2], [1, 3]]) {
+	for (const ids of [[], [1], [1, 1], [1, 99], [1, 3]]) {
 		assert.ok(Either.isLeft(run(Effect.either(createSymbolFromSelectionEffect(ids)))));
 		assert.strictEqual(store.getSnapshot(), before);
 	}

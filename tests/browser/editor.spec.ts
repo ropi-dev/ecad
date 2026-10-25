@@ -149,7 +149,7 @@ test("symbol creation explains unsupported selections containing existing symbol
 	await clickAt(page, 160, 150);
 	await page.keyboard.up("Shift");
 	await expect(page.getByRole("button", { name: "Create symbol", exact: true })).toBeDisabled();
-	await expect(page.getByRole("complementary", { name: "Selection attributes" })).toContainText("Select shapes without text or existing symbols");
+	await expect(page.getByRole("complementary", { name: "Selection attributes" })).toContainText("Select shapes without existing symbols");
 });
 
 test("canceling symbol naming preserves the drawing and does not save a definition", async ({ page }) => {
@@ -2206,8 +2206,8 @@ test("text placement snaps to the grid and equal-width content changes remain un
 	await clickAt(page, 153, 148);
 	const content = page.getByRole("textbox", { name: "Text content" });
 	await expect(content).toBeFocused();
-	await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue("150");
-	await expect(page.getByRole("spinbutton", { name: "Center Y", exact: true })).toHaveValue("150");
+	await expect(page.getByRole("spinbutton", { name: "Anchor X", exact: true })).toHaveValue("150");
+	await expect(page.getByRole("spinbutton", { name: "Anchor Y", exact: true })).toHaveValue("150");
 	await content.fill("222");
 	await content.blur();
 	await page.getByRole("spinbutton", { name: "Font size", exact: true }).fill("10");

@@ -19,6 +19,7 @@ import {
 	normalizeWireSegments,
 } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
+import { validTextAlignment } from "#/drawing/text-alignment.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
@@ -116,6 +117,7 @@ function validateShape(shape: EditorShape) {
 	)
 		invalid("Pin label visibility must be a boolean.");
 	if (shape.kind === "text") {
+		if (!validTextAlignment(shape)) invalid("Invalid text alignment.");
 		if (
 			typeof shape.text !== "string" ||
 			!Number.isFinite(shape.fontSize) ||
@@ -159,12 +161,28 @@ function validateShape(shape: EditorShape) {
 					typeof text !== "object" ||
 					!["name", "reference", "value"].includes(text.attribute) ||
 					![text.x, text.y, text.fontSize].every(Number.isFinite) ||
-					text.fontSize <= 0,
+					text.fontSize <= 0 ||
+					!validTextAlignment(text),
 			)
 		)
 			invalid(
 				"Symbol texts require valid attributes, positions and font sizes.",
 			);
+		if (
+			shape.textAlignments !== undefined &&
+			(!shape.textAlignments ||
+				typeof shape.textAlignments !== "object" ||
+				Array.isArray(shape.textAlignments) ||
+				Object.entries(shape.textAlignments).some(
+					([attribute, alignment]) =>
+						!["name", "reference", "value"].includes(attribute) ||
+						!alignment ||
+						typeof alignment !== "object" ||
+						Array.isArray(alignment) ||
+						!validTextAlignment(alignment),
+				))
+		)
+			invalid("Invalid symbol text alignment.");
 		validateIds(shape.children.map((child) => child.id));
 		if (
 			shape.textPositions !== undefined &&
@@ -183,9 +201,15 @@ function validateShape(shape: EditorShape) {
 			);
 		for (const child of shape.children) {
 			if (
-				!["rectangle", "circle", "triangle", "line", "wire", "pin"].includes(
-					child.kind,
-				)
+				![
+					"rectangle",
+					"circle",
+					"triangle",
+					"line",
+					"wire",
+					"pin",
+					"text",
+				].includes(child.kind)
 			)
 				invalid("Symbol children must be primitive shapes.");
 			validateShape(child);
@@ -213,6 +237,8 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 						shape.definitionId === other.definitionId &&
 						JSON.stringify(shape.library) === JSON.stringify(other.library) &&
 						shape.strokeOverride === other.strokeOverride &&
+						JSON.stringify(shape.textAlignments) ===
+							JSON.stringify(other.textAlignments) &&
 						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
 						JSON.stringify(shape.texts) === JSON.stringify(other.texts) &&
 						JSON.stringify(shape.textPositions) ===
@@ -223,7 +249,9 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 				(shape.kind !== "text" ||
 					(other.kind === "text" &&
 						shape.text === other.text &&
-						shape.fontSize === other.fontSize)) &&
+						shape.fontSize === other.fontSize &&
+						shape.horizontalAlign === other.horizontalAlign &&
+						shape.verticalAlign === other.verticalAlign)) &&
 				Math.abs(shape.x - other.x) < 1e-9 &&
 				Math.abs(shape.y - other.y) < 1e-9 &&
 				Math.abs(shape.width - other.width) < 1e-9 &&
@@ -456,12 +484,10 @@ export function createSymbolFromSelectionEffect(
 				);
 				if (selected.length !== captured.length)
 					invalid("A selected shape no longer exists.");
-				const primitives = selected.filter(
-					(shape) => shape.kind !== "text" && shape.kind !== "symbol",
-				);
+				const primitives = selected.filter((shape) => shape.kind !== "symbol");
 				if (primitives.length !== selected.length)
 					invalid(
-						"Select rectangles, circles, triangles, lines, wires or pins to create a symbol.",
+						"Select drawing shapes without existing symbols to create a symbol.",
 					);
 				if (!Number.isSafeInteger(current.nextShapeId + 1))
 					invalid("No more shape IDs are available.");

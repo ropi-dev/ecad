@@ -1,4 +1,5 @@
 export const budgets = {
+ "editor-text-alignment": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
 	"editor-line-styles": {
 		interactionP95Ms: 1500,
 		styleGeometryP95Ms: 50,
