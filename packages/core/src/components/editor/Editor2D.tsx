@@ -57,6 +57,7 @@ import {
 	findWireConnection,
 	hitShape,
 	intersectsSelection,
+	isBasicShape,
 	moveShapes,
 	moveSymbolText,
 	openPins,
@@ -1479,6 +1480,14 @@ function EditorCanvas({
 					onTextChange={(text) => {
 						if (selected.length === 1 && selected[0].kind === "text")
 							commitReplacements([updateText(selected[0], text)], "Edit text");
+					}}
+					onLineStyleChange={(lineStyle) => {
+						commitReplacements(
+							selected
+								.filter(isBasicShape)
+								.map((shape) => ({ ...shape, lineStyle })),
+							"Change line style",
+						);
 					}}
 					onAttributeChange={(attribute, value) => {
 						if (!Number.isFinite(value)) return;

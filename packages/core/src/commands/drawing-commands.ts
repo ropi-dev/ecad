@@ -12,7 +12,12 @@ import {
 	redoHistory,
 	undoHistory,
 } from "#/drawing/history.ts";
-import { type EditorShape, normalizeWireSegments } from "#/drawing/shapes.ts";
+import { type LineStyle, lineStyles } from "#/drawing/line-style.ts";
+import {
+	type EditorShape,
+	isBasicShape,
+	normalizeWireSegments,
+} from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -27,6 +32,7 @@ export interface RectangleInput {
 	height: number;
 	rotation: number;
 	lineWidth: number;
+	lineStyle?: LineStyle;
 }
 
 export interface CommandResult {
@@ -91,6 +97,12 @@ function validateShape(shape: EditorShape) {
 		invalid("Shape dimensions and line width must be positive.");
 	if (shape.kind === "circle" && Math.abs(shape.width - shape.height) > 1e-9)
 		invalid("A circle must have equal width and height.");
+	if (
+		isBasicShape(shape) &&
+		shape.lineStyle !== undefined &&
+		!lineStyles.includes(shape.lineStyle)
+	)
+		invalid("A supported line style is required.");
 	if (shape.kind === "wire" && Math.abs(Math.sin(2 * shape.rotation)) > 1e-9)
 		invalid("Wire segments must be horizontal or vertical.");
 	if (shape.kind === "pin" && typeof shape.name !== "string")
@@ -189,6 +201,9 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 			return (
 				shape.id === other.id &&
 				shape.kind === other.kind &&
+				(!isBasicShape(shape) ||
+					(isBasicShape(other) &&
+						(shape.lineStyle ?? "solid") === (other.lineStyle ?? "solid"))) &&
 				(shape.kind !== "pin" ||
 					(other.kind === "pin" &&
 						shape.name === other.name &&

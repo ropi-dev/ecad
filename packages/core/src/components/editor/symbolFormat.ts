@@ -2,6 +2,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
+import { lineStyles } from "#/drawing/line-style.ts";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
@@ -16,6 +17,7 @@ const label = Schema.String.pipe(Schema.minLength(1), Schema.maxLength(100));
 const lineWidth = Schema.optional(
 	Schema.Number.pipe(Schema.greaterThan(0), Schema.lessThanOrEqualTo(1000)),
 );
+const lineStyle = Schema.optional(Schema.Literal(...lineStyles));
 const shapeSchema = Schema.Union(
 	Schema.Struct({
 		kind: Schema.Literal("symbol"),
@@ -35,6 +37,7 @@ const shapeSchema = Schema.Union(
 	Schema.Struct({
 		kind: Schema.Literal("wire", "line"),
 		lineWidth,
+		lineStyle,
 		x1: coordinate,
 		y1: coordinate,
 		x2: coordinate,
@@ -49,6 +52,7 @@ const shapeSchema = Schema.Union(
 	Schema.Struct({
 		kind: Schema.Literal("rectangle", "triangle"),
 		lineWidth,
+		lineStyle,
 		x: coordinate,
 		y: coordinate,
 		width: dimension,
@@ -58,6 +62,7 @@ const shapeSchema = Schema.Union(
 	Schema.Struct({
 		kind: Schema.Literal("circle"),
 		lineWidth,
+		lineStyle,
 		x: coordinate,
 		y: coordinate,
 		radius: dimension,

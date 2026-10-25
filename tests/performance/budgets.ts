@@ -1,4 +1,11 @@
 export const budgets = {
+	"editor-line-styles": {
+		interactionP95Ms: 1500,
+		styleGeometryP95Ms: 50,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-wire-crossings": {
 		interactionP95Ms: 750,
 		crossingsP95Ms: 100,

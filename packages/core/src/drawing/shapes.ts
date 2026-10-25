@@ -1,3 +1,4 @@
+import type { LineStyle } from "#/drawing/line-style.ts";
 import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 
@@ -20,8 +21,14 @@ interface ShapeGeometry extends Point {
 	rotation: number;
 }
 
+export type BasicShape = ShapeGeometry & {
+	kind: Exclude<ShapeKind, "text" | "pin" | "wire">;
+	lineStyle?: LineStyle;
+};
+
 export type PrimitiveShape =
-	| (ShapeGeometry & { kind: Exclude<ShapeKind, "text" | "pin"> })
+	| BasicShape
+	| (ShapeGeometry & { kind: "wire" })
 	| PinShape;
 
 export interface PinShape extends ShapeGeometry {
@@ -93,6 +100,15 @@ export interface TextShape extends ShapeGeometry {
 }
 
 export type EditorShape = PrimitiveShape | EditorSymbol | TextShape;
+
+export function isBasicShape(shape: EditorShape): shape is BasicShape {
+	return (
+		shape.kind === "rectangle" ||
+		shape.kind === "circle" ||
+		shape.kind === "triangle" ||
+		shape.kind === "line"
+	);
+}
 
 /** Resolve children only for geometry; editing always acts on their parent. */
 export function symbolShapes(symbol: EditorSymbol): PrimitiveShape[] {
@@ -334,7 +350,7 @@ export function resizeShape(
 			handle.xDirection === 1
 				? drawShape(shape.id, shape.kind, fixed, point)
 				: drawShape(shape.id, shape.kind, point, fixed);
-		return { ...resized, lineWidth: shape.lineWidth };
+		return { ...shape, ...resized, lineWidth: shape.lineWidth };
 	}
 	const point = snapPoint(target, gridStep);
 	const deltaX = point.x - handle.x;

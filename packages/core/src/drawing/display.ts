@@ -1,3 +1,4 @@
+import type { LineStyle } from "#/drawing/line-style.ts";
 import {
 	buildWireCrossings,
 	type WireCrossings,
@@ -6,6 +7,7 @@ import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	drawShape,
 	type EditorShape,
+	isBasicShape,
 	openPins,
 	openWireEnds,
 	PIN_RADIUS,
@@ -21,6 +23,7 @@ interface GeometrySize {
 	width: number;
 	height: number;
 	lineWidth: number;
+	lineStyle?: LineStyle;
 }
 
 export interface DrawingTransform {
@@ -72,7 +75,16 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
-	if (kind !== "symbol") return { kind, width, height, lineWidth };
+	if (kind !== "symbol")
+		return {
+			kind,
+			width,
+			height,
+			lineWidth,
+			...(isBasicShape(shape) && shape.lineStyle
+				? { lineStyle: shape.lineStyle }
+				: {}),
+		};
 	return {
 		kind,
 		width,
@@ -80,14 +92,12 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 		lineWidth,
 		children: shape.children
 			.filter(({ kind }) => kind !== "pin" && kind !== "wire")
-			.map(({ kind, x, y, width, height, lineWidth, rotation }) => ({
-				kind,
-				x,
-				y,
-				width,
-				height,
-				lineWidth,
-				rotation,
+			.map((child) => ({
+				...geometryFor(child),
+				kind: child.kind,
+				x: child.x,
+				y: child.y,
+				rotation: child.rotation,
 			})),
 	};
 }
