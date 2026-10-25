@@ -1,4 +1,5 @@
 import type { LineStyle } from "#/drawing/line-style.ts";
+import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
 import {
 	buildWireCrossings,
 	type WireCrossings,
@@ -41,13 +42,12 @@ export type DrawingGeometry =
 	| (GeometrySize & { kind: "pin-halo" })
 	| (GeometrySize & {
 			kind: "symbol";
-			children: (GeometrySize &
-				DrawingTransform & { kind: Exclude<ShapeKind, "text"> })[];
+			children: (GeometrySize & DrawingTransform & { kind: ShapeKind })[];
 	  });
 
 export type DrawingAppearance = "stroke" | "pin" | "wire" | "selected";
 
-export interface DisplayShape extends DrawingTransform {
+export interface DisplayShape extends DrawingTransform, TextAlignment {
 	key: string;
 	name: string;
 	geometry: DrawingGeometry;
@@ -90,15 +90,13 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 		width,
 		height,
 		lineWidth,
-		children: shape.children
-			.filter(({ kind }) => kind !== "pin" && kind !== "wire")
-			.map((child) => ({
-				...geometryFor(child),
-				kind: child.kind,
-				x: child.x,
-				y: child.y,
-				rotation: child.rotation,
-			})),
+		children: shape.children.filter(isBasicShape).map((child) => ({
+			...geometryFor(child),
+			kind: child.kind,
+			x: child.x,
+			y: child.y,
+			rotation: child.rotation,
+		})),
 	};
 }
 
@@ -113,8 +111,7 @@ function displayShape(
 		key,
 		name,
 		geometry: geometryFor(shape),
-		x: shape.x,
-		y: shape.y,
+		...(shape.kind === "text" ? textCenter(shape) : { x: shape.x, y: shape.y }),
 		width: shape.width,
 		height:
 			shape.kind === "wire" || shape.kind === "line"
@@ -122,7 +119,13 @@ function displayShape(
 				: shape.height,
 		rotation: shape.rotation,
 		appearance,
-		...(shape.kind === "text" ? { text: shape.text } : {}),
+		...(shape.kind === "text"
+			? {
+					text: shape.text,
+					horizontalAlign: shape.horizontalAlign,
+					verticalAlign: shape.verticalAlign,
+				}
+			: {}),
 		renderOrder,
 	};
 	if (shape.kind === "symbol") {
@@ -137,8 +140,20 @@ function displayShape(
 				appearance,
 				renderOrder + 1,
 			),
-			x: labels[index].x / shape.width,
-			y: labels[index].y / shape.height,
+			x:
+				textCenter({
+					...text,
+					x: labels[index].x,
+					y: labels[index].y,
+					rotation: 0,
+				}).x / shape.width,
+			y:
+				textCenter({
+					...text,
+					x: labels[index].x,
+					y: labels[index].y,
+					rotation: 0,
+				}).y / shape.height,
 			width: text.width / shape.width,
 			height: text.height / shape.height,
 			rotation: 0,
@@ -215,8 +230,9 @@ export function buildDrawingDisplay(
 			.filter((shape) => selectedIds.has(shape.id))
 			.map((shape) => ({
 				shapeKey: `shape:${shape.id}`,
-				x: shape.x,
-				y: shape.y,
+				...(shape.kind === "text"
+					? textCenter(shape)
+					: { x: shape.x, y: shape.y }),
 				...selectionSize(shape),
 				rotation: shape.rotation,
 				renderOrder: shapes.length + 1,
@@ -246,7 +262,9 @@ export function buildDrawingDisplay(
 		connections: shapes.flatMap((shape, index) =>
 			shape.kind === "symbol"
 				? symbolShapes(shape).flatMap((child) =>
-						child.kind === "pin" || child.kind === "wire"
+						child.kind === "pin" ||
+						child.kind === "wire" ||
+						child.kind === "text"
 							? [
 									displayShape(
 										child,
@@ -301,7 +319,9 @@ export function buildDrawingDisplay(
 				),
 				...(preview.kind === "symbol"
 					? symbolShapes(preview).flatMap((child) =>
-							child.kind === "pin" || child.kind === "wire"
+							child.kind === "pin" ||
+							child.kind === "wire" ||
+							child.kind === "text"
 								? [
 										displayShape(
 											child,

@@ -45,7 +45,10 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		>();
 		const texts = new Map<
 			string,
-			ReturnType<typeof createTextMaterial> & { text: string }
+			ReturnType<typeof createTextMaterial> & {
+				text: string;
+				horizontalAlign?: DisplayShape["horizontalAlign"];
+			}
 		>();
 		let pinAtlas: ReturnType<typeof createTextAtlas> | undefined;
 		let pinAtlasKey = "";
@@ -133,9 +136,14 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				return material;
 			}
 			let cached = texts.get(display.key);
-			if (!cached || cached.text !== display.text) {
+			if (
+				!cached ||
+				cached.text !== display.text ||
+				cached.horizontalAlign !== display.horizontalAlign
+			) {
 				const next = {
-					...createTextMaterial(display.text),
+					...createTextMaterial(display.text, display.horizontalAlign),
+					horizontalAlign: display.horizontalAlign,
 					text: display.text,
 				};
 				cached?.dispose();

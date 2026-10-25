@@ -16,6 +16,11 @@ import {
 	shapeBounds,
 	symbolTextPosition,
 } from "#/drawing/shapes.ts";
+import {
+	horizontalAlignments,
+	type TextAlignment,
+	verticalAlignments,
+} from "#/drawing/text-alignment.ts";
 import type { Point } from "#/drawing/types.ts";
 
 function AttributeInput({
@@ -91,6 +96,10 @@ interface SelectionAttributesProps {
 		position: Point,
 	) => void;
 	onTextChange: (text: string) => void;
+	onTextAlignmentChange: (
+		alignment: TextAlignment,
+		attribute?: keyof EditorSymbol["attributes"],
+	) => void;
 	onPinAttributeChange: (attribute: "name" | "number", value: string) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
@@ -119,10 +128,12 @@ function SelectionAttributesPanel({
 	onCreateSymbol,
 	onEditSymbol,
 	onTextChange,
+	onTextAlignmentChange,
 	textFocusId,
 	onTextFocus,
 }: SelectionAttributesProps) {
 	const basicShapes = shapes.filter(isBasicShape);
+	const textShapes = shapes.filter((shape) => shape.kind === "text");
 	const lineStyle =
 		basicShapes.length &&
 		basicShapes.every(
@@ -133,7 +144,7 @@ function SelectionAttributesPanel({
 			: "";
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
-			? shape.children
+			? shape.children.filter((child) => child.kind !== "text")
 			: shape.kind === "text"
 				? []
 				: [shape],
@@ -147,9 +158,7 @@ function SelectionAttributesPanel({
 			: "";
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
-	const canCreateSymbol = shapes.every(
-		(shape) => shape.kind !== "text" && shape.kind !== "symbol",
-	);
+	const canCreateSymbol = shapes.every((shape) => shape.kind !== "symbol");
 	const symbol = single?.kind === "symbol" ? single : undefined;
 	const bounds = shapes.map(shapeBounds);
 	const left = Math.min(...bounds.map((box) => box.minX));
@@ -235,8 +244,16 @@ function SelectionAttributesPanel({
 							["Shapes", String(symbol.children.length)] as [string, ReactNode],
 						]
 					: []),
-				editable("Center X", "x", single.x),
-				editable("Center Y", "y", single.y),
+				editable(
+					single.kind === "text" ? "Anchor X" : "Center X",
+					"x",
+					single.x,
+				),
+				editable(
+					single.kind === "text" ? "Anchor Y" : "Center Y",
+					"y",
+					single.y,
+				),
 				...(single.kind === "pin"
 					? []
 					: symbol
@@ -330,8 +347,7 @@ function SelectionAttributesPanel({
 						</button>
 						{!canCreateSymbol && (
 							<p className="mt-2 text-[12px] text-[#9ba7b8]">
-								Select shapes without text or existing symbols to create a
-								symbol.
+								Select shapes without existing symbols to create a symbol.
 							</p>
 						)}
 						<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
@@ -374,38 +390,82 @@ function SelectionAttributesPanel({
 						</div>
 					))}
 				</dl>
+				{textShapes.length > 0 && (
+					<TextAlignmentInputs
+						horizontalAlign={
+							textShapes.every(
+								(shape) =>
+									(shape.horizontalAlign ?? "center") ===
+									(textShapes[0].horizontalAlign ?? "center"),
+							)
+								? (textShapes[0].horizontalAlign ?? "center")
+								: ""
+						}
+						verticalAlign={
+							textShapes.every(
+								(shape) =>
+									(shape.verticalAlign ?? "middle") ===
+									(textShapes[0].verticalAlign ?? "middle"),
+							)
+								? (textShapes[0].verticalAlign ?? "middle")
+								: ""
+						}
+						onChange={onTextAlignmentChange}
+					/>
+				)}
 				{symbol && symbol.texts.length > 0 && (
 					<fieldset className="mb-4 border-0 p-0 text-[12px]">
 						<legend className="mb-2 text-[#9ba7b8]">
-							Text positions relative to symbol
+							Text relative to symbol
 						</legend>
 						{symbol.texts.map((text) => {
 							const position = symbolTextPosition(symbol, text);
 							const label =
 								text.attribute[0].toUpperCase() + text.attribute.slice(1);
-							return (["x", "y"] as const).map((axis) => (
-								<div
-									key={`${text.attribute}:${axis}`}
-									className="flex items-center justify-between gap-3 py-1"
-								>
-									<span className="text-[#9ba7b8]">
-										{label} {axis.toUpperCase()}
-									</span>
-									<SymbolInstanceAttributeInput
-										name={`textPositions.${text.attribute}.${axis}`}
-										label={`${label} text ${axis.toUpperCase()}`}
-										value={position[axis]}
-										unit="mm"
-										step="0.1"
-										onCommit={(value) =>
-											onSymbolTextPositionChange(text.attribute, {
-												...position,
-												[axis]: value,
-											})
+							return (
+								<div key={text.attribute} className="mb-3">
+									{(["x", "y"] as const).map((axis) => (
+										<div
+											key={`${text.attribute}:${axis}`}
+											className="flex items-center justify-between gap-3 py-1"
+										>
+											<span className="text-[#9ba7b8]">
+												{label} {axis.toUpperCase()}
+											</span>
+											<SymbolInstanceAttributeInput
+												name={`textPositions.${text.attribute}.${axis}`}
+												label={`${label} text ${axis.toUpperCase()}`}
+												value={position[axis]}
+												unit="mm"
+												step="0.1"
+												onCommit={(value) =>
+													onSymbolTextPositionChange(text.attribute, {
+														...position,
+														[axis]: value,
+													})
+												}
+											/>
+										</div>
+									))}
+									<TextAlignmentInputs
+										label={`${label} text`}
+										horizontalAlign={
+											symbol.textAlignments?.[text.attribute]
+												?.horizontalAlign ??
+											text.horizontalAlign ??
+											"center"
+										}
+										verticalAlign={
+											symbol.textAlignments?.[text.attribute]?.verticalAlign ??
+											text.verticalAlign ??
+											"middle"
+										}
+										onChange={(alignment) =>
+											onTextAlignmentChange(alignment, text.attribute)
 										}
 									/>
 								</div>
-							));
+							);
 						})}
 					</fieldset>
 				)}
@@ -476,5 +536,53 @@ function SelectionAttributesPanel({
 				</p>
 			</div>
 		</FloatingPanel>
+	);
+}
+
+function TextAlignmentInputs({
+	label = "Text",
+	horizontalAlign,
+	verticalAlign,
+	onChange,
+}: {
+	label?: string;
+	horizontalAlign: NonNullable<TextAlignment["horizontalAlign"]> | "";
+	verticalAlign: NonNullable<TextAlignment["verticalAlign"]> | "";
+	onChange: (alignment: TextAlignment) => void;
+}) {
+	return (
+		<div className="mb-3 space-y-2 text-[12px] text-[#9ba7b8]">
+			{(["horizontalAlign", "verticalAlign"] as const).map((axis) => {
+				const horizontal = axis === "horizontalAlign";
+				const title = `${label} ${horizontal ? "horizontal" : "vertical"} alignment`;
+				const value = horizontal ? horizontalAlign : verticalAlign;
+				return (
+					<label key={axis} className="flex items-center justify-between gap-3">
+						<span>{horizontal ? "Horizontal align" : "Vertical align"}</span>
+						<select
+							aria-label={title}
+							value={value}
+							className="mr-7 w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+							onChange={(event) =>
+								onChange({ [axis]: event.currentTarget.value })
+							}
+						>
+							{value === "" && (
+								<option value="" disabled>
+									Mixed
+								</option>
+							)}
+							{(horizontal ? horizontalAlignments : verticalAlignments).map(
+								(value) => (
+									<option key={value} value={value}>
+										{value[0].toUpperCase() + value.slice(1)}
+									</option>
+								),
+							)}
+						</select>
+					</label>
+				);
+			})}
+		</div>
 	);
 }

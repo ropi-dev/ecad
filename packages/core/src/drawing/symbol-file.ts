@@ -62,6 +62,9 @@ export function symbolFileShapes(
 				definitionId: shape.definitionId,
 				rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
 				...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
+				...(shape.textAlignments
+					? { textAlignments: structuredClone(shape.textAlignments) }
+					: {}),
 				...(shape.textPositions
 					? { textPositions: structuredClone(shape.textPositions) }
 					: {}),
@@ -72,7 +75,10 @@ export function symbolFileShapes(
 							strokeOverride: shape.lineWidth,
 							children: instance.children.map((child) => ({
 								...child,
-								lineWidth: shape.lineWidth ?? child.lineWidth,
+								lineWidth:
+									child.kind === "text"
+										? child.lineWidth
+										: (shape.lineWidth ?? child.lineWidth),
 							})),
 						}),
 			};
@@ -138,11 +144,7 @@ export function libraryDefinitions(
 			texts: [],
 			children: symbolFileShapes(library[index], resolve)
 				.flatMap((shape) =>
-					shape.kind === "symbol"
-						? symbolShapes(shape)
-						: shape.kind === "text"
-							? []
-							: [shape],
+					shape.kind === "symbol" ? symbolShapes(shape) : [shape],
 				)
 				.map((shape, index) => ({ ...shape, id: index + 1 })),
 		}),
@@ -157,8 +159,14 @@ export function symbolFileWithShapes(
 	return {
 		...file,
 		shapes: shapes.map((shape): SymbolFile["shapes"][number] => {
-			if (shape.kind === "text")
-				throw new Error("Symbol files do not support text shapes.");
+			if (shape.kind === "text") {
+				const { id: _id, ...text } = shape;
+				return {
+					...text,
+					rotation:
+						(((((shape.rotation * 180) / Math.PI) % 360) + 540) % 360) - 180,
+				};
+			}
 			if (shape.kind === "symbol") {
 				if (!shape.library)
 					throw new Error(
@@ -173,6 +181,9 @@ export function symbolFileWithShapes(
 					rotation:
 						(((((shape.rotation * 180) / Math.PI) % 360) + 540) % 360) - 180,
 					attributes: { ...shape.attributes },
+					...(shape.textAlignments
+						? { textAlignments: structuredClone(shape.textAlignments) }
+						: {}),
 					...(shape.textPositions
 						? { textPositions: structuredClone(shape.textPositions) }
 						: {}),

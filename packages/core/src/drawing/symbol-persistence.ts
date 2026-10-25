@@ -113,7 +113,8 @@ export function resolveDrawingSymbols(
 								? resolved.children
 								: resolved.children.map((child) => ({
 										...child,
-										lineWidth: strokeOverride,
+										lineWidth:
+											child.kind === "text" ? child.lineWidth : strokeOverride,
 									})),
 						texts: resolved.texts,
 					} satisfies EditorSymbol;

@@ -5,6 +5,7 @@ import {
 	SRGBColorSpace,
 } from "three";
 import { font, lineHeight, padding, textLayout } from "#/drawing/text.ts";
+import type { TextAlignment } from "#/drawing/text-alignment.ts";
 
 let measureContext: CanvasRenderingContext2D | null = null;
 
@@ -16,8 +17,48 @@ export function measureText(text: string): number {
 	return measureContext.measureText(text).width;
 }
 
+function paintText(
+	context: CanvasRenderingContext2D,
+	layout: ReturnType<typeof textLayout>,
+	horizontalAlign?: TextAlignment["horizontalAlign"],
+) {
+	context.font = font;
+	context.textBaseline = "alphabetic";
+	context.textAlign = horizontalAlign ?? "left";
+	context.fillStyle = "white";
+	let top = Infinity;
+	let bottom = -Infinity;
+	for (const [index, line] of layout.lines.entries()) {
+		const metrics = context.measureText(line);
+		if (
+			metrics.actualBoundingBoxAscent === 0 &&
+			metrics.actualBoundingBoxDescent === 0
+		)
+			continue;
+		top = Math.min(top, index * lineHeight - metrics.actualBoundingBoxAscent);
+		bottom = Math.max(
+			bottom,
+			index * lineHeight + metrics.actualBoundingBoxDescent,
+		);
+	}
+	const baseline = Number.isFinite(top)
+		? (layout.height - top - bottom) / 2
+		: layout.height / 2;
+	const x =
+		horizontalAlign === "center"
+			? layout.width / 2
+			: horizontalAlign === "right"
+				? layout.width - padding
+				: padding;
+	for (const [index, line] of layout.lines.entries())
+		context.fillText(line, x, baseline + index * lineHeight);
+}
+
 /** One transparent glyph texture per text object, reused through moves and resizing. */
-export function createTextMaterial(text: string) {
+export function createTextMaterial(
+	text: string,
+	horizontalAlign?: TextAlignment["horizontalAlign"],
+) {
 	const layout = textLayout(text, measureText);
 	const scale = Math.min(1, 4096 / layout.width, 4096 / layout.height);
 	const canvas = document.createElement("canvas");
@@ -26,11 +67,7 @@ export function createTextMaterial(text: string) {
 	const context = canvas.getContext("2d");
 	if (!context) throw new Error("Text drawing is unavailable.");
 	context.scale(canvas.width / layout.width, canvas.height / layout.height);
-	context.font = font;
-	context.textBaseline = "top";
-	context.fillStyle = "white";
-	for (const [index, line] of layout.lines.entries())
-		context.fillText(line, padding, padding + index * lineHeight);
+	paintText(context, layout, horizontalAlign);
 	const texture = new CanvasTexture(canvas);
 	texture.colorSpace = SRGBColorSpace;
 	const material = new MeshBasicMaterial({
@@ -102,11 +139,7 @@ export function createTextAtlas(values: readonly string[]) {
 				context.save();
 				context.translate(entry.x, entry.y);
 				context.scale(entry.width / layout.width, entry.height / layout.height);
-				context.font = font;
-				context.textBaseline = "top";
-				context.fillStyle = "white";
-				for (const [index, line] of layout.lines.entries())
-					context.fillText(line, padding, padding + index * lineHeight);
+				paintText(context, layout);
 				context.restore();
 				entries.set(entry.text, {
 					texture,

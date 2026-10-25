@@ -41,6 +41,7 @@ export function SymbolInstanceAttributeForm({
 	children: ReactNode;
 }) {
 	const values = useMemo((): SymbolInstanceAttributeValues => {
+		const outlined = symbol.children.filter((child) => child.kind !== "text");
 		const textPositions = {
 			name: { x: 0, y: 0 },
 			reference: { x: 0, y: 0 },
@@ -59,11 +60,9 @@ export function SymbolInstanceAttributeForm({
 			y: displayNumber(symbol.y),
 			angle: displayNumber((symbol.rotation * 180) / Math.PI),
 			lineWidth:
-				symbol.children.length &&
-				symbol.children.every(
-					(child) => child.lineWidth === symbol.children[0].lineWidth,
-				)
-					? displayNumber(symbol.children[0].lineWidth)
+				outlined.length &&
+				outlined.every((child) => child.lineWidth === outlined[0].lineWidth)
+					? displayNumber(outlined[0].lineWidth)
 					: null,
 			textPositions,
 		};

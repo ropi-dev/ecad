@@ -17,18 +17,21 @@ import { measurePerformance } from "#/performance/runtime.ts";
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
 		if (!shape.children.length) return new BufferGeometry();
-		const children = shape.children.map((child) =>
-			createShapeGeometry(child)
-				.scale(
-					child.width,
-					child.kind === "wire" || child.kind === "line"
-						? child.lineWidth
-						: child.height,
-					1,
-				)
-				.rotateZ(child.rotation)
-				.translate(child.x, child.y, 0),
-		);
+		const children = shape.children
+			.filter((child) => child.kind !== "text")
+			.map((child) =>
+				createShapeGeometry(child)
+					.scale(
+						child.width,
+						child.kind === "wire" || child.kind === "line"
+							? child.lineWidth
+							: child.height,
+						1,
+					)
+					.rotateZ(child.rotation)
+					.translate(child.x, child.y, 0),
+			);
+		if (!children.length) return new BufferGeometry();
 		try {
 			return (mergeGeometries(children) ?? new BufferGeometry()).scale(
 				1 / shape.width,

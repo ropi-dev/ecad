@@ -18,21 +18,60 @@ const lineWidth = Schema.optional(
 	Schema.Number.pipe(Schema.greaterThan(0), Schema.lessThanOrEqualTo(1000)),
 );
 const lineStyle = Schema.optional(Schema.Literal(...lineStyles));
+const textAlignmentFields = {
+	horizontalAlign: Schema.optional(Schema.Literal("left", "center", "right")),
+	verticalAlign: Schema.optional(Schema.Literal("top", "middle", "bottom")),
+};
+const textAlignment = Schema.Struct(textAlignmentFields);
 const shapeSchema = Schema.Union(
 	Schema.Struct({
+		kind: Schema.Literal("text"),
+		x: coordinate,
+		y: coordinate,
+		width: dimension,
+		height: dimension,
+		fontSize: dimension,
+		text: Schema.String.pipe(Schema.maxLength(2000)),
+		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
+		lineWidth,
+		...textAlignmentFields,
+	}),
+	Schema.Struct({
 		kind: Schema.Literal("symbol"),
-		library: Schema.Struct({ scope: Schema.Literal("user", "project"), id: label }),
-		definitionId: Schema.String.pipe(Schema.pattern(/^[a-z][a-z0-9._-]{0,63}$/)),
+		library: Schema.Struct({
+			scope: Schema.Literal("user", "project"),
+			id: label,
+		}),
+		definitionId: Schema.String.pipe(
+			Schema.pattern(/^[a-z][a-z0-9._-]{0,63}$/),
+		),
 		x: coordinate,
 		y: coordinate,
 		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
 		lineWidth,
-		attributes: Schema.optional(Schema.Struct({ name: Schema.String, reference: Schema.String, value: Schema.String })),
-		textPositions: Schema.optional(Schema.Struct({
-			name: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
-			reference: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
-			value: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
-		})),
+		attributes: Schema.optional(
+			Schema.Struct({
+				name: Schema.String,
+				reference: Schema.String,
+				value: Schema.String,
+			}),
+		),
+		textAlignments: Schema.optional(
+			Schema.Struct({
+				name: Schema.optional(textAlignment),
+				reference: Schema.optional(textAlignment),
+				value: Schema.optional(textAlignment),
+			}),
+		),
+		textPositions: Schema.optional(
+			Schema.Struct({
+				name: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
+				reference: Schema.optional(
+					Schema.Struct({ x: coordinate, y: coordinate }),
+				),
+				value: Schema.optional(Schema.Struct({ x: coordinate, y: coordinate })),
+			}),
+		),
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("wire", "line"),

@@ -4,6 +4,7 @@ import { Popover } from "radix-ui";
 import { useMemo, useRef, useState } from "react";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
+import { textCenter } from "#/drawing/text-alignment.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 
 export function SymbolPicker({
@@ -188,12 +189,52 @@ function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
 				.map((child) => (
 					<g
 						key={child.id}
-						transform={`translate(${child.x} ${-child.y}) rotate(${(-child.rotation * 180) / Math.PI})`}
+						transform={`translate(${child.kind === "text" ? textCenter(child).x : child.x} ${-(child.kind === "text" ? textCenter(child).y : child.y)}) rotate(${(-child.rotation * 180) / Math.PI})`}
 						fill="none"
 						stroke="currentColor"
 						strokeWidth="0.254"
 					>
-						{child.kind === "pin" || child.kind === "circle" ? (
+						{child.kind === "text" ? (
+							<text
+								fill="currentColor"
+								stroke="none"
+								fontFamily="Arial, sans-serif"
+								fontSize={child.fontSize}
+								textAnchor={
+									child.horizontalAlign === "right"
+										? "end"
+										: child.horizontalAlign === "center"
+											? "middle"
+											: "start"
+								}
+							>
+								{child.text
+									.replace(/\r\n?/g, "\n")
+									.split("\n")
+									.map((line, index) => (
+										<tspan
+											key={child.text
+												.split("\n")
+												.slice(0, index + 1)
+												.join("\n")}
+											x={
+												child.horizontalAlign === "right"
+													? child.width / 2
+													: child.horizontalAlign === "center"
+														? 0
+														: -child.width / 2
+											}
+											y={
+												-child.height / 2 +
+												child.fontSize +
+												index * child.fontSize * 1.25
+											}
+										>
+											{line}
+										</tspan>
+									))}
+							</text>
+						) : child.kind === "pin" || child.kind === "circle" ? (
 							<circle
 								r={child.width / 2}
 								fill={child.kind === "pin" ? "currentColor" : "none"}
