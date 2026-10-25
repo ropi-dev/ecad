@@ -1,4 +1,8 @@
-import type { EditorShape, EditorSymbol } from "#/drawing/shapes.ts";
+import {
+	type EditorShape,
+	type EditorSymbol,
+	fitBoxToBorder,
+} from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import {
@@ -101,23 +105,28 @@ export function resolveDrawingSymbols(
 						shape.attributes.reference,
 					);
 					const strokeOverride = legacyStrokeOverride(shape, definition);
-					return {
-						...shape,
-						library: definition.library,
-						width: resolved.width,
-						height: resolved.height,
-						lineWidth: strokeOverride ?? resolved.lineWidth,
-						...(strokeOverride === undefined ? {} : { strokeOverride }),
-						children:
-							strokeOverride === undefined
-								? resolved.children
-								: resolved.children.map((child) => ({
-										...child,
-										lineWidth:
-											child.kind === "text" ? child.lineWidth : strokeOverride,
-									})),
-						texts: resolved.texts,
-					} satisfies EditorSymbol;
+					return fitBoxToBorder(
+						{
+							...shape,
+							library: definition.library,
+							width: resolved.width,
+							height: resolved.height,
+							lineWidth: strokeOverride ?? resolved.lineWidth,
+							...(strokeOverride === undefined ? {} : { strokeOverride }),
+							children:
+								strokeOverride === undefined
+									? resolved.children
+									: resolved.children.map((child) => ({
+											...child,
+											lineWidth:
+												child.kind === "text"
+													? child.lineWidth
+													: strokeOverride,
+										})),
+							texts: resolved.texts,
+						} satisfies EditorSymbol,
+						{ preserveChildWorldPositions: true },
+					);
 				}),
 				errors: [...errors],
 			};

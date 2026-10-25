@@ -325,7 +325,7 @@ export function ItemHierarchy({
 										data-shape-id={item.shapeId}
 										data-child-key={item.childKey}
 										data-active={item.key === focusKey}
-										title={`${item.label}${item.locked ? " · Locked" : item.disabled ? " · Symbol is locked" : ""}`}
+										title={`${item.label}${item.locked ? " · Locked" : item.disabled ? " · Not selectable" : ""}`}
 										className="absolute inset-x-0 flex cursor-pointer items-center gap-2 pr-3 text-xs hover:bg-white/5 aria-selected:bg-[#e8b77e1c] aria-selected:text-[#e8b77e] aria-disabled:cursor-default aria-disabled:text-[#67717f] [[role=tree]:focus-visible_&]:data-[active=true]:outline [[role=tree]:focus-visible_&]:data-[active=true]:outline-1 [[role=tree]:focus-visible_&]:data-[active=true]:-outline-offset-1 [[role=tree]:focus-visible_&]:data-[active=true]:outline-[#e8b77e80]"
 										style={{
 											top: (start + index) * rowHeight,

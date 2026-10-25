@@ -8,6 +8,18 @@ export type SymbolPrimitive =
 			width: number;
 			height: number;
 			rotation?: number;
+			locked?: boolean;
+	  }
+	| {
+			kind: "text";
+			text: string;
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+			fontSize: number;
+			horizontalAlign?: "left" | "center" | "right";
+			verticalAlign?: "top" | "middle" | "bottom";
 	  }
 	| { kind: "circle"; x: number; y: number; radius: number }
 	| { kind: "pin"; x: number; y: number; name: string; showLabels?: boolean };
@@ -33,6 +45,7 @@ export const symbolCategories = [
 	"Connectors",
 	"Amplifiers",
 	"Other components",
+	"Annotations",
 ] as const;
 
 export type SymbolCategory = (typeof symbolCategories)[number];

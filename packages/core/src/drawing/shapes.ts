@@ -77,6 +77,75 @@ export interface SymbolChild {
 	shape: SymbolShape;
 }
 
+export function isBoxSymbol(
+	shape: EditorShape,
+): shape is EditorSymbol & { definitionId: "box" } {
+	return (
+		shape.kind === "symbol" &&
+		shape.definitionId === "box" &&
+		(!shape.library ||
+			(shape.library.scope === "user" && shape.library.id === "builtin"))
+	);
+}
+
+export function boxBorder(
+	symbol: EditorSymbol,
+): { key: string; shape: BasicShape } | undefined {
+	if (!isBoxSymbol(symbol)) return;
+	const original = symbol.children.find((child) => child.kind === "rectangle");
+	if (!original || original.kind !== "rectangle") return;
+	const key = `shape:${original.id}`;
+	return { key, shape: { ...original, ...symbol.childOverrides?.[key] } };
+}
+
+export function fitBoxToBorder(
+	symbol: EditorSymbol,
+	{
+		preserveChildWorldPositions = false,
+	}: { preserveChildWorldPositions?: boolean } = {},
+): EditorSymbol {
+	const border = boxBorder(symbol);
+	if (!border) return symbol;
+	const { width, height } = border.shape;
+	const dx = border.shape.x - width / 2;
+	const dy = border.shape.y + height / 2;
+	if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9 && border.shape.rotation === 0)
+		return symbol.width === width && symbol.height === height
+			? symbol
+			: { ...symbol, width, height };
+	const childOverrides = { ...symbol.childOverrides };
+	for (const child of symbolChildren(symbol)) {
+		if (child.key === border.key) {
+			childOverrides[child.key] = {
+				...childOverrides[child.key],
+				x: width / 2,
+				y: -height / 2,
+				rotation: 0,
+			};
+		} else if (preserveChildWorldPositions && child.key.startsWith("shape:")) {
+			childOverrides[child.key] = {
+				...childOverrides[child.key],
+				x: child.shape.x - dx,
+				y: child.shape.y - dy,
+			};
+		}
+	}
+	return {
+		...symbol,
+		...localToWorld(symbol, dx, dy),
+		width,
+		height,
+		childOverrides,
+	};
+}
+
+export function shapeCenter(shape: EditorShape): Point {
+	if (shape.kind === "text") return textCenter(shape);
+	if (isBoxSymbol(shape))
+		return localToWorld(shape, shape.width / 2, -shape.height / 2);
+	return { x: shape.x, y: shape.y };
+}
+
 export function canSelectShape(
 	shape: EditorShape,
 	allowLocked = false,
@@ -89,6 +158,7 @@ export function canSelectSymbolChild(
 	child: SymbolChild,
 	allowLocked = false,
 ): boolean {
+	if (boxBorder(symbol)?.key === child.key) return false;
 	return (
 		canSelectShape(symbol, allowLocked) &&
 		!(child.shape.locked ?? child.shape.kind !== "text")
@@ -137,6 +207,18 @@ export function replaceSymbolChild(
 		(item) => item.key === key,
 	)?.shape;
 	if (!original || child.kind !== original.kind) return symbol;
+	if (
+		boxBorder(symbol)?.key === key &&
+		child.width === original.width &&
+		child.height === original.height
+	) {
+		const dx = child.x - original.x;
+		const dy = child.y - original.y;
+		if (dx || dy) {
+			symbol = { ...symbol, ...localToWorld(symbol, dx, dy) };
+			child = { ...child, x: original.x, y: original.y };
+		}
+	}
 	const { id: _id, kind: _kind, ...values } = child;
 	if (
 		key.startsWith("attribute:") &&
@@ -182,13 +264,13 @@ export function replaceSymbolChild(
 			([field, value]) => value !== original[field as keyof SymbolShape],
 		),
 	);
-	return {
+	return fitBoxToBorder({
 		...symbol,
 		childOverrides: {
 			...symbol.childOverrides,
 			[key]: { ...symbol.childOverrides?.[key], ...changes },
 		},
-	};
+	});
 }
 
 export function moveSymbolChild(
@@ -201,6 +283,7 @@ export function moveSymbolChild(
 	const child = symbolChildren(symbol).find((item) => item.key === key)?.shape;
 	if (!child || !canSelectShape(symbol, allowLocked) || child.locked)
 		return symbol;
+	if (boxBorder(symbol)?.key === key) return symbol;
 	const world = symbolChildWorld(symbol, child);
 	const target = snapPoint(
 		{ x: world.x + delta.x, y: world.y + delta.y },
@@ -212,6 +295,44 @@ export function moveSymbolChild(
 		...child,
 		x: dx * Math.cos(symbol.rotation) + dy * Math.sin(symbol.rotation),
 		y: -dx * Math.sin(symbol.rotation) + dy * Math.cos(symbol.rotation),
+	});
+}
+
+export function resizeSymbolChild(
+	symbol: EditorSymbol,
+	key: string,
+	handle: ResizeHandle,
+	delta: Point,
+	gridStep = 0,
+	allowLocked = false,
+): EditorSymbol {
+	const child = symbolChildren(symbol).find((item) => item.key === key);
+	if (!child || !canSelectSymbolChild(symbol, child, allowLocked))
+		return symbol;
+	return resizeSymbolGeometry(symbol, child, handle, delta, gridStep);
+}
+
+function resizeSymbolGeometry(
+	symbol: EditorSymbol,
+	child: SymbolChild,
+	handle: ResizeHandle,
+	delta: Point,
+	gridStep: number,
+): EditorSymbol {
+	const resized = resizeShape(
+		symbolChildWorld(symbol, child.shape),
+		handle,
+		delta,
+		gridStep,
+	);
+	if (resized.kind === "symbol") return symbol;
+	const dx = resized.x - symbol.x;
+	const dy = resized.y - symbol.y;
+	return replaceSymbolChild(symbol, child.key, {
+		...resized,
+		x: dx * Math.cos(symbol.rotation) + dy * Math.sin(symbol.rotation),
+		y: -dx * Math.sin(symbol.rotation) + dy * Math.cos(symbol.rotation),
+		rotation: resized.rotation - symbol.rotation,
 	});
 }
 
@@ -345,6 +466,24 @@ export function editShapeAttribute(
 	}
 	if (value <= 0) return shape;
 	if (shape.kind === "symbol") {
+		const border = boxBorder(shape);
+		if (border && attribute === "lineWidth")
+			return {
+				...replaceSymbolChild(shape, border.key, {
+					...border.shape,
+					lineWidth: value,
+				}),
+				lineWidth: value,
+				strokeOverride: value,
+			};
+		if (border && (attribute === "width" || attribute === "height")) {
+			const resized = { ...border.shape, [attribute]: value };
+			return replaceSymbolChild(shape, border.key, {
+				...resized,
+				x: resized.width / 2,
+				y: -resized.height / 2,
+			});
+		}
 		return attribute === "lineWidth"
 			? {
 					...shape,
@@ -428,6 +567,10 @@ function localToWorld(shape: EditorShape, x: number, y: number): Point {
 
 /** Handle positions use the same local axes as the rendered shape. */
 export function resizeHandles(shape: EditorShape): ResizeHandle[] {
+	if (isBoxSymbol(shape)) {
+		const border = boxBorder(shape);
+		return border ? resizeHandles(symbolChildWorld(shape, border.shape)) : [];
+	}
 	const center = shape.kind === "text" ? textCenter(shape) : shape;
 	if (shape.kind === "symbol" || shape.kind === "pin") return [];
 	const directions =
@@ -487,6 +630,12 @@ export function resizeShape(
 	delta: Point,
 	gridStep = 0,
 ): EditorShape {
+	if (isBoxSymbol(shape)) {
+		const border = boxBorder(shape);
+		return border
+			? resizeSymbolGeometry(shape, border, handle, delta, gridStep)
+			: shape;
+	}
 	if (shape.kind === "symbol" || shape.kind === "pin") return shape;
 	const target = { x: handle.x + delta.x, y: handle.y + delta.y };
 	if (shape.kind === "circle") {
@@ -630,7 +779,7 @@ export function drawShape(
 }
 
 export function shapeBounds(shape: EditorShape): Bounds {
-	const center = shape.kind === "text" ? textCenter(shape) : shape;
+	const center = shapeCenter(shape);
 	const height =
 		shape.kind === "wire" || shape.kind === "line"
 			? shape.lineWidth
@@ -648,7 +797,11 @@ export function shapeBounds(shape: EditorShape): Bounds {
 }
 
 export function selectionSize(shape: EditorShape) {
-	const padding = shape.kind === "symbol" || shape.kind === "wire" ? 0.5 : 4;
+	const padding = isBoxSymbol(shape)
+		? 0
+		: shape.kind === "symbol" || shape.kind === "wire"
+			? 0.5
+			: 4;
 	return {
 		width: shape.width + padding,
 		height:
@@ -672,7 +825,7 @@ export function hitShape(
 		return true;
 	const { width, height } =
 		shape.kind === "symbol" ? selectionSize(shape) : shape;
-	const center = shape.kind === "text" ? textCenter(shape) : shape;
+	const center = shapeCenter(shape);
 	const dx = point.x - center.x;
 	const dy = point.y - center.y;
 	if (shape.kind === "pin")
@@ -732,7 +885,12 @@ export function intersectsSelection(
 				intersectsSelection(child, bounds),
 			) ||
 			intersectsSelection(
-				{ ...shape, kind: "rectangle", ...selectionSize(shape) },
+				{
+					...shape,
+					kind: "rectangle",
+					...selectionSize(shape),
+					...shapeCenter(shape),
+				},
 				bounds,
 			)
 		);

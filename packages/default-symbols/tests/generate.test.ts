@@ -9,16 +9,16 @@ import { generateDefaultSymbols, symbolCategories } from "../src/index.ts";
 test("default generation is deterministic and returns independent geometry and labels", () => {
 	const first = generateDefaultSymbols();
 	const second = generateDefaultSymbols();
-	assert.equal(first.length, 45);
+	assert.equal(first.length, 46);
 	assert.deepEqual(first, second);
 	assert.equal(new Set(first.map(({ file }) => file.id)).size, first.length);
 	assert.deepEqual(new Set(first.map(({ category }) => category)), new Set(symbolCategories));
 	for (const [index, symbol] of first.entries()) {
 		assert.ok(symbol.file.shapes.length > 0 && symbol.file.shapes.length <= 256);
-		assert.ok(symbol.file.shapes.some((shape) => shape.kind === "pin"));
+		assert.equal(symbol.file.shapes.some((shape) => shape.kind === "pin"), symbol.category !== "Annotations");
 		assert.ok(!symbol.file.shapes.some((shape) => shape.kind === "wire"), `${symbol.file.id} must draw leads and bodies with lines`);
 		assert.notEqual(symbol.file.shapes, second[index].file.shapes);
-		assert.notEqual(symbol.texts[0], second[index].texts[0]);
+		for (const [labelIndex, label] of symbol.texts.entries()) assert.notEqual(label, second[index].texts[labelIndex]);
 		for (const shape of symbol.file.shapes) {
 			if (shape.kind === "pin") {
 				assert.equal(shape.x, Math.round(shape.x));
@@ -68,7 +68,7 @@ test("CLI writes one portable file per symbol with attribution and refuses overw
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
 		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 45);
+		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 46);
 		for (const { file } of generateDefaultSymbols()) {
 			assert.deepEqual(JSON.parse(await readFile(join(output, `${file.id}.ecadsym`), "utf8")), file);
 		}

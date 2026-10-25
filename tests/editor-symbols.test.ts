@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
-import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, symbolShapes, symbolTextShapes } from "#/components/editor/shapes.ts";
+import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, shapeCenter, isBoxSymbol, symbolShapes, symbolTextShapes } from "#/components/editor/shapes.ts";
 import { createSymbol, createSymbolFromShapes, symbolDefinitions } from "#/drawing/symbols.ts";
 
 test("converted symbols render each original shape with its own stroke width", () => {
@@ -35,7 +35,7 @@ test("converted symbols render each original shape with its own stroke width", (
 for (const definition of symbolDefinitions) {
 	test(`${definition.name} selects through each child and renders all its strokes`, () => {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
-		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), [`${definition.prefix}1`, definition.value]);
+		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), definition.texts.map(({ attribute }) => symbol.attributes[attribute]));
 		if (["resistor", "capacitor", "ground"].includes(definition.id)) {
 			assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
 		}
@@ -46,19 +46,20 @@ for (const definition of symbolDefinitions) {
 			assert.equal(terminal.y, Math.round(terminal.y));
 		}
 		const selection = selectionSize(symbol);
-		assert.equal(selection.width, symbol.width + 0.5);
-		assert.equal(selection.height, symbol.height + 0.5);
+		assert.equal(selection.width, symbol.width + (isBoxSymbol(symbol) ? 0 : 0.5));
+		assert.equal(selection.height, symbol.height + (isBoxSymbol(symbol) ? 0 : 0.5));
 		for (const angle of [0, 90, 180, 270]) {
 			const rotated = editShapeAttribute(symbol, "angle", angle);
 			for (const [x, y, expected] of [
 				[0, 0, true],
 				[selection.width / 2 - 0.01, selection.height / 2 - 0.01, true],
-				[20, 0, false],
-				[0, 20, false],
+				[Math.max(20, selection.width + 1), 0, false],
+				[0, Math.max(20, selection.height + 1), false],
 			] as const) {
+				const center = shapeCenter(rotated);
 				const point = {
-					x: rotated.x + x * Math.cos(rotated.rotation) - y * Math.sin(rotated.rotation),
-					y: rotated.y + x * Math.sin(rotated.rotation) + y * Math.cos(rotated.rotation),
+					x: center.x + x * Math.cos(rotated.rotation) - y * Math.sin(rotated.rotation),
+					y: center.y + x * Math.sin(rotated.rotation) + y * Math.cos(rotated.rotation),
 				};
 				assert.equal(hitShape(rotated, point, 0), expected);
 				assert.equal(intersectsSelection(rotated, { minX: point.x, maxX: point.x, minY: point.y, maxY: point.y }), expected);
@@ -72,7 +73,7 @@ for (const definition of symbolDefinitions) {
 		mesh.position.set(symbol.x, symbol.y, 0);
 		mesh.updateMatrixWorld();
 		try {
-			for (const child of symbolShapes(symbol)) {
+			for (const child of symbolShapes(symbol).filter((child) => child.kind !== "text")) {
 				const offset = child.kind === "rectangle" ? child.height / 2 - 0.01 : child.kind === "circle" ? child.width / 2 : 0;
 				const point = { x: child.x + offset * Math.sin(child.rotation), y: child.y - offset * Math.cos(child.rotation) };
 				assert.equal(hitShape(symbol, point, 0.1), true);
@@ -80,7 +81,7 @@ for (const definition of symbolDefinitions) {
 				assert.ok(new Raycaster(new Vector3(point.x, point.y, 10), new Vector3(0, 0, -1)).intersectObject(mesh).length > 0);
 			}
 			assert.equal(hitShape(symbol, { x: 500, y: 500 }, 0.1), false);
-			assert.deepEqual(resizeHandles(symbol), []);
+			assert.equal(resizeHandles(symbol).length, isBoxSymbol(symbol) ? 8 : 0);
 		} finally {
 			geometry.dispose();
 			material.dispose();

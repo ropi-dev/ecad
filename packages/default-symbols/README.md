@@ -1,6 +1,6 @@
 # Default schematic symbols
 
-`@ecad/default-symbols` generates the schematic editor's 45 built-in symbols. It has no runtime dependencies and works offline in web, desktop, and Node builds.
+`@ecad/default-symbols` generates the schematic editor's 46 built-in symbols. It has no runtime dependencies and works offline in web, desktop, and Node builds.
 
 ```ts
 import { generateDefaultSymbols } from "@ecad/default-symbols";
@@ -9,11 +9,17 @@ const symbols = generateDefaultSymbols();
 // Each entry has a `category`, portable .ecadsym `file`, and instance `texts`.
 ```
 
-The picker groups symbols into Passives, Diodes, Transistors, Switches, Power, Connectors, Amplifiers, and Other components. Imported and project symbols appear under Custom symbols. Empty groups stay hidden. Opening the picker focuses its search field, which filters names, descriptions, values, reference prefixes, IDs, and categories. Library upload and configuration controls stay on Projects. Categories are editor metadata and do not change the portable file format.
+The picker groups symbols into Passives, Diodes, Transistors, Switches, Power, Connectors, Amplifiers, Other components, and Annotations. Imported and project symbols appear under Custom symbols. Empty groups stay hidden. Opening the picker focuses its search field, which filters names, descriptions, values, reference prefixes, IDs, and categories. Library upload and configuration controls stay on Projects. Categories are editor metadata and do not change the portable file format.
 
 Every call returns new arrays and objects. The editor converts the portable files to its drawing shapes and uses the reference and value labels for placement. Existing drawings keep their embedded geometry.
 
 The library includes IEC and US resistors, variable resistors, potentiometers, thermistors, photoresistors, capacitors, polarized and variable capacitors, inductors, ferrite beads, transformers, crystals, fuses, rectifier and Schottky diodes, Zener and TVS diodes, LEDs, photodiodes, NPN and PNP transistors, N-channel and P-channel MOSFETs and JFETs, SPST and SPDT switches, push buttons, batteries, ground and supply symbols, connectors with 2, 3, 4 or 8 pins, an operational amplifier, a speaker, a buzzer, and an antenna.
+
+Box is an annotation with a rectangle border and editable text. Its origin is the rectangle's top-left corner. The rectangle defines the symbol's dimensions and stays unselectable, including when Select locked items is on.
+
+Select Box to change its dimensions, line style, or line width. Dragging the border moves the whole Box. Resize handles keep the text's local offset and font size. Moving the top or left edge carries the text with that corner; moving the bottom-right handle leaves the corner and text fixed.
+
+Text starts 1 mm inside the top-left corner, at local X = 1 and Y = -1, with left and top alignment. Select the text block to edit its content, position, size, or alignment. Box has no pins or visible reference and value labels. Each placement saves its own edits.
 
 ## Export files
 

@@ -1,3 +1,4 @@
+import { annotationSymbols } from "./annotations.ts";
 import { catalog } from "./catalog.ts";
 import { legacySymbols } from "./legacy.ts";
 import type { DefaultSymbol, SourceSymbol, SymbolPrimitive } from "./types.ts";
@@ -123,5 +124,5 @@ function generate(source: SourceSymbol): DefaultSymbol {
 
 /** Generate fresh, deterministic definitions. Existing instances may safely edit their copies. */
 export function generateDefaultSymbols(): DefaultSymbol[] {
-	return [...legacySymbols(), ...catalog.map(generate)];
+	return [...legacySymbols(), ...catalog.map(generate), ...annotationSymbols()];
 }

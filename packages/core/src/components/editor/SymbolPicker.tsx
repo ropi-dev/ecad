@@ -3,6 +3,7 @@ import { Shapes } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMemo, useRef, useState } from "react";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { shapeBounds } from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { textCenter } from "#/drawing/text-alignment.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
@@ -157,7 +158,9 @@ function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
 				Empty
 			</span>
 		);
-	const { width, height } = createSymbol(0, definition, { x: 0, y: 0 });
+	const symbol = createSymbol(0, definition, { x: 0, y: 0 });
+	const { width, height } = symbol;
+	const bounds = shapeBounds(symbol);
 	const padding = Math.max(0.5, Math.max(width, height) * 0.1);
 	// Coil arcs contain many short lines. One SVG path keeps their previews small.
 	const lines = definition.children
@@ -170,7 +173,7 @@ function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
 		.join(" ");
 	return (
 		<svg
-			viewBox={`${-width / 2 - padding} ${-height / 2 - padding} ${width + 2 * padding} ${height + 2 * padding}`}
+			viewBox={`${bounds.minX - padding} ${-bounds.maxY - padding} ${width + 2 * padding} ${height + 2 * padding}`}
 			className="h-10 w-16 shrink-0 text-[#76c4c0]"
 			aria-hidden="true"
 		>
