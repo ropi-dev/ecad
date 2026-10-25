@@ -4,6 +4,7 @@ import type {
 } from "#/components/editor/symbolFormat.ts";
 import {
 	type EditorShape,
+	isBasicShape,
 	PIN_RADIUS,
 	symbolShapes,
 } from "#/drawing/shapes.ts";
@@ -25,6 +26,9 @@ export function symbolFileShapes(
 		const base = {
 			id: index + 1,
 			lineWidth: shape.lineWidth ?? 0.254,
+			...("lineStyle" in shape && shape.lineStyle
+				? { lineStyle: shape.lineStyle }
+				: {}),
 			rotation: 0,
 		};
 		if (shape.kind === "symbol") {
@@ -177,7 +181,12 @@ export function symbolFileWithShapes(
 						: { lineWidth: shape.strokeOverride }),
 				};
 			}
-			const base = { lineWidth: shape.lineWidth };
+			const base = {
+				lineWidth: shape.lineWidth,
+				...(isBasicShape(shape) && shape.lineStyle
+					? { lineStyle: shape.lineStyle }
+					: {}),
+			};
 			if (shape.kind === "line" || shape.kind === "wire") {
 				const dx = (Math.cos(shape.rotation) * shape.width) / 2;
 				const dy = (Math.sin(shape.rotation) * shape.width) / 2;

@@ -1,11 +1,17 @@
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import {
+	type LineStyle,
+	lineStyleLabels,
+	lineStyles,
+} from "#/drawing/line-style.ts";
+import {
 	type EditorShape,
 	type EditorSymbol,
+	isBasicShape,
 	type ShapeAttribute,
 	shapeBounds,
 	symbolTextPosition,
@@ -75,6 +81,7 @@ interface SelectionAttributesProps {
 	onCreateSymbol?: () => void;
 	onEditSymbol?: () => void;
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
+	onLineStyleChange: (style: LineStyle) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
 		value: string,
@@ -105,6 +112,7 @@ function SelectionAttributesPanel({
 	snapStep = 0,
 	onClear,
 	onAttributeChange,
+	onLineStyleChange,
 	onSymbolAttributeChange,
 	onSymbolTextPositionChange,
 	onPinAttributeChange,
@@ -114,6 +122,15 @@ function SelectionAttributesPanel({
 	textFocusId,
 	onTextFocus,
 }: SelectionAttributesProps) {
+	const basicShapes = shapes.filter(isBasicShape);
+	const lineStyle =
+		basicShapes.length &&
+		basicShapes.every(
+			(shape) =>
+				(shape.lineStyle ?? "solid") === (basicShapes[0].lineStyle ?? "solid"),
+		)
+			? (basicShapes[0].lineStyle ?? "solid")
+			: "";
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
 			? shape.children
@@ -391,6 +408,37 @@ function SelectionAttributesPanel({
 							));
 						})}
 					</fieldset>
+				)}
+				{basicShapes.length > 0 && (
+					<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
+						Line style
+						<span className="relative mr-7 w-24 shrink-0">
+							<select
+								aria-label="Line style"
+								value={lineStyle}
+								className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+								onChange={(event) =>
+									onLineStyleChange(event.currentTarget.value as LineStyle)
+								}
+							>
+								{lineStyle === "" && (
+									<option value="" disabled>
+										Mixed
+									</option>
+								)}
+								{lineStyles.map((style) => (
+									<option key={style} value={style}>
+										{lineStyleLabels[style]}
+									</option>
+								))}
+							</select>
+							<ChevronDown
+								aria-hidden="true"
+								size={12}
+								className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-[#f0f3f8]"
+							/>
+						</span>
+					</label>
 				)}
 				{outlinedShapes.length > 0 && (
 					<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">

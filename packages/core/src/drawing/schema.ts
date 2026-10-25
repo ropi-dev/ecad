@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { lineStyles } from "#/drawing/line-style.ts";
 
 export const shapeId = z.number().int().positive().safe();
 const geometryFields = {
@@ -19,11 +20,13 @@ const geometryFields = {
 
 export const rectangleInputSchema = z.strictObject({
 	...geometryFields,
+	lineStyle: z.enum(lineStyles).optional(),
 	width: geometryFields.width.positive(),
 });
 
 const primitiveInputSchema = z.strictObject({
 	...geometryFields,
+	lineStyle: z.enum(lineStyles).optional(),
 	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire"]),
 });
 const primitiveShapeSchema = primitiveInputSchema.extend({ id: shapeId });

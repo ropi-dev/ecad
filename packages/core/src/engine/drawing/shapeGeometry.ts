@@ -10,6 +10,8 @@ import {
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { DrawingGeometry } from "#/drawing/display.ts";
+import { createLineStyleGeometry } from "#/engine/drawing/lineStyleGeometry.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 /** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
@@ -36,6 +38,53 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		} finally {
 			for (const child of children) child.dispose();
 		}
+	}
+	if (
+		shape.lineStyle &&
+		shape.lineStyle !== "solid" &&
+		(shape.kind === "rectangle" ||
+			shape.kind === "circle" ||
+			shape.kind === "triangle" ||
+			shape.kind === "line")
+	) {
+		const { width, height, lineWidth, lineStyle, kind } = shape;
+		if (width <= 0 || height <= 0 || lineWidth <= 0)
+			return new BufferGeometry();
+		return measurePerformance(
+			"editor.line-style-geometry",
+			() => {
+				let points: Vector2[];
+				if (kind === "line")
+					points = [new Vector2(-width / 2, 0), new Vector2(width / 2, 0)];
+				else if (kind === "circle")
+					points = Array.from({ length: 97 }, (_, index) => {
+						const angle = (index * Math.PI * 2) / 96;
+						return new Vector2(
+							(Math.cos(angle) * width) / 2,
+							(Math.sin(angle) * width) / 2,
+						);
+					});
+				else {
+					points = [
+						new Vector2(-width / 2, -height / 2),
+						new Vector2(width / 2, -height / 2),
+					];
+					if (kind === "rectangle")
+						points.push(
+							new Vector2(width / 2, height / 2),
+							new Vector2(-width / 2, height / 2),
+						);
+					else points.push(new Vector2(0, height / 2));
+					points.push(points[0]);
+				}
+				return createLineStyleGeometry(points, lineWidth, lineStyle).scale(
+					1 / width,
+					1 / (kind === "line" ? lineWidth : height),
+					1,
+				);
+			},
+			{ kind, style: lineStyle },
+		);
 	}
 	if (shape.kind === "wire" || shape.kind === "line") {
 		const { width, lineWidth } = shape;
