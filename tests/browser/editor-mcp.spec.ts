@@ -184,6 +184,7 @@ test("MCP settings stay within desktop and mobile viewports and collapse without
 			await expect(page.getByRole("button", { name: "Disable MCP", exact: true })).toBeVisible();
 		}
 		expect(sessionRequests).toHaveLength(1);
+		await page.screenshot({ path: test.info().outputPath("mcp-above-item-hierarchy.png"), mask: [panel.locator("input, textarea")] });
 		await page.getByRole("button", { name: "Disable MCP", exact: true }).click();
 		await expect(page.getByRole("button", { name: "Enable MCP", exact: true })).toBeVisible();
 		await failedCall(client, "getDrawing");

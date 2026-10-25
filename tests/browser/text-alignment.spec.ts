@@ -108,6 +108,7 @@ test("symbol labels keep alignment per instance through rotation, dragging and u
  await input.fill(value); await input.press("Tab");
  }
  for (let i = 0; i < 8; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("596%");
  await selectSymbolItem(page, "attribute:reference");
  await vertical.scrollIntoViewIfNeeded();
  await page.screenshot({ path: test.info().outputPath("symbol-label-alignment.png") });

@@ -95,6 +95,7 @@ test("every default symbol previews and places with its geometry, pins, and edit
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/editor.html");
+	await page.getByRole("button", { name: "Hide item hierarchy", exact: true }).click();
 	const defaults = generateDefaultSymbols();
 	for (const [index, { file, category }] of defaults.entries()) {
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();

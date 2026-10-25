@@ -893,7 +893,7 @@ function EditorCanvas({
 					? `Symbol editor · ${symbolName}`
 					: `Schematic editor · ${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
 			</h1>
-			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
+			<header className="absolute top-10 left-10 z-4 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
 				{headerControls ?? (
 					<>
 						<ProjectLink
