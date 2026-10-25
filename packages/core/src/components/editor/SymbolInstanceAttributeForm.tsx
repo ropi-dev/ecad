@@ -2,10 +2,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type ReactNode, useMemo } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { z } from "zod";
-import { type EditorSymbol, symbolTextPosition } from "#/drawing/shapes.ts";
+import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
 
 const number = z.number({ error: "Enter a finite number." });
-const position = z.object({ x: number, y: number });
 const schema = z.object({
 	attributes: z.object({
 		name: z.string(),
@@ -20,11 +19,6 @@ const schema = z.object({
 	lineWidth: number
 		.positive("Line width must be greater than zero.")
 		.nullable(),
-	textPositions: z.object({
-		name: position,
-		reference: position,
-		value: position,
-	}),
 });
 
 export type SymbolInstanceAttributeValues = z.infer<typeof schema>;
@@ -41,19 +35,9 @@ export function SymbolInstanceAttributeForm({
 	children: ReactNode;
 }) {
 	const values = useMemo((): SymbolInstanceAttributeValues => {
-		const outlined = symbol.children.filter((child) => child.kind !== "text");
-		const textPositions = {
-			name: { x: 0, y: 0 },
-			reference: { x: 0, y: 0 },
-			value: { x: 0, y: 0 },
-		};
-		for (const text of symbol.texts) {
-			const position = symbolTextPosition(symbol, text);
-			textPositions[text.attribute] = {
-				x: displayNumber(position.x),
-				y: displayNumber(position.y),
-			};
-		}
+		const outlined = symbolShapes(symbol).filter(
+			(child) => child.kind !== "text",
+		);
 		return {
 			attributes: { ...symbol.attributes },
 			x: displayNumber(symbol.x),
@@ -64,7 +48,6 @@ export function SymbolInstanceAttributeForm({
 				outlined.every((child) => child.lineWidth === outlined[0].lineWidth)
 					? displayNumber(outlined[0].lineWidth)
 					: null,
-			textPositions,
 		};
 	}, [symbol]);
 	const form = useForm({

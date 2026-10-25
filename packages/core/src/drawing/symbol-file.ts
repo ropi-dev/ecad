@@ -25,6 +25,7 @@ export function symbolFileShapes(
 	return file.shapes.map((shape, index): EditorShape => {
 		const base = {
 			id: index + 1,
+			...(shape.locked === undefined ? {} : { locked: shape.locked }),
 			lineWidth: shape.lineWidth ?? 0.254,
 			...("lineStyle" in shape && shape.lineStyle
 				? { lineStyle: shape.lineStyle }
@@ -58,6 +59,10 @@ export function symbolFileShapes(
 					};
 			return {
 				...instance,
+				...(shape.locked === undefined ? {} : { locked: shape.locked }),
+				...(shape.childOverrides
+					? { childOverrides: structuredClone(shape.childOverrides) }
+					: {}),
 				library: shape.library,
 				definitionId: shape.definitionId,
 				rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
@@ -174,6 +179,10 @@ export function symbolFileWithShapes(
 					);
 				return {
 					kind: "symbol",
+					...(shape.locked === undefined ? {} : { locked: shape.locked }),
+					...(shape.childOverrides
+						? { childOverrides: structuredClone(shape.childOverrides) }
+						: {}),
 					library: shape.library,
 					definitionId: shape.definitionId,
 					x: shape.x,
@@ -193,6 +202,7 @@ export function symbolFileWithShapes(
 				};
 			}
 			const base = {
+				...(shape.locked === undefined ? {} : { locked: shape.locked }),
 				lineWidth: shape.lineWidth,
 				...(isBasicShape(shape) && shape.lineStyle
 					? { lineStyle: shape.lineStyle }

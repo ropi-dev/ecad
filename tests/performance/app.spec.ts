@@ -3,6 +3,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
 import type { AppPerformance } from "#/performance/browser.ts";
 import { pthGerber } from "../fixtures/pth-gerber";
+import { drawingPoint, selectSymbolAttribute, selectSymbolParent } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
 import { budgets, type Scenario } from "./budgets.ts";
 
@@ -973,15 +974,18 @@ test("editor-symbol-text", async ({ page }, testInfo) => {
  const initialCenter = await center.inputValue();
  for (let repeat = 0; repeat < 3; repeat++) {
   for (const attribute of ["Reference", "Value"]) {
+   await selectSymbolAttribute(page, attribute.toLowerCase());
    await interaction(page, "symbol.text-position", async () => {
-    const input = page.getByRole("spinbutton", { name: `${attribute} text X`, exact: true });
+    const input = page.getByRole("spinbutton", { name: "Anchor X", exact: true });
     await input.fill(String(10 + repeat * 5));
     await input.press("Tab");
-    await page.waitForFunction(({ attribute, expected }) => document.querySelector<HTMLInputElement>(`input[aria-label="${attribute} text X"]`)?.getAttribute("data-committed-value") === String(expected),
+    await page.waitForFunction(({ expected }) => document.querySelector<HTMLInputElement>('input[aria-label="Anchor X"]')?.getAttribute("data-committed-value") === String(expected),
      { attribute, expected: 10 + repeat * 5 }, { polling: "raf" });
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    await expect(center).toHaveValue(initialCenter);
+
    });
+   await selectSymbolParent(page);
+   await expect(center).toHaveValue(initialCenter);
   }
  }
  const value = await report(page);
@@ -1114,14 +1118,16 @@ test("editor-text-alignment", async ({ page }, testInfo) => {
  await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
  await canvas.click({ position: { x: box.width * 0.4, y: box.height * 0.5 } });
  const center = await page.getByRole("spinbutton", { name: "Center X", exact: true }).inputValue();
+ await selectSymbolAttribute(page, "reference");
  for (const [horizontal, vertical] of [["left", "top"], ["center", "middle"], ["right", "bottom"]]) {
   await interaction(page, "symbol.text-alignment", async () => {
-   await page.getByRole("combobox", { name: "Reference text horizontal alignment", exact: true }).selectOption(horizontal);
-   await page.getByRole("combobox", { name: "Reference text vertical alignment", exact: true }).selectOption(vertical);
+   await page.getByRole("combobox", { name: "Text horizontal alignment", exact: true }).selectOption(horizontal);
+   await page.getByRole("combobox", { name: "Text vertical alignment", exact: true }).selectOption(vertical);
    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-   await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue(center);
   });
  }
+ await selectSymbolParent(page);
+ await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue(center);
  await (await toolbarButton(page, "Text")).click();
  await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.5 } });
  const content = page.getByRole("textbox", { name: "Text content", exact: true });
@@ -1136,4 +1142,140 @@ test("editor-text-alignment", async ({ page }, testInfo) => {
  }
  const value = await report(page);
  await finish(page, testInfo, "editor-text-alignment", { interactionP95Ms: metric(value, "scenario.interaction")! });
+});
+
+test("editor-symbol-children", async ({ page }, testInfo) => {
+ await page.addInitScript(() => {
+  const file = { format: "ecad-symbol", version: 1, units: "mm", id: "hierarchy-part", name: "Hierarchy part", description: "", prefix: "U", value: "", shapes: [
+   { kind: "rectangle", x: 0, y: 0, width: 40, height: 160, locked: false },
+   { kind: "text", text: "Controller", x: 0, y: 0, width: 15, height: 3, fontSize: 2 },
+   ...Array.from({ length: 128 }, (_, index) => ({ kind: "pin", x: index < 64 ? -20 : 20, y: (index % 64 - 32) * 2.54, name: `Signal ${index + 1}`, number: String(index + 1), locked: false })),
+  ] };
+  localStorage.setItem("ecad.user-config.v1", JSON.stringify({ version: 1, symbolLibraries: [{ id: "hierarchy", name: "Hierarchy", enabled: true, source: { kind: "embedded", symbols: [file] } }] }));
+ });
+ await page.goto("/editor?perf=1");
+ await ready(page);
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await page.getByRole("button", { name: "Insert Hierarchy part", exact: true }).click();
+ const canvas = page.locator("canvas");
+ const box = (await canvas.boundingBox())!;
+ await canvas.click({ position: { x: box.width * 0.45, y: box.height * 0.5 } });
+ const center = await page.getByRole("spinbutton", { name: "Center X", exact: true }).inputValue();
+ const parent = { x: Number(center), y: Number(await page.getByRole("spinbutton", { name: "Center Y", exact: true }).inputValue()) };
+ const children = [{ kind: "rectangle", x: 0, y: 0, label: "Center X" }, { kind: "text", x: 0, y: 0, label: "Anchor X" }, { kind: "pin", x: -20, y: 0, label: "Center X" }];
+ for (let repeat = 0; repeat < 3; repeat++) {
+  for (const child of children) {
+   await interaction(page, "symbol.child-edit", async () => {
+    const point = await drawingPoint(page, { x: parent.x + child.x + (child.kind === "rectangle" ? 10 : 0), y: parent.y + child.y + (child.kind === "rectangle" ? 30 : 0) });
+    await page.mouse.move(point.x, point.y); await page.mouse.down();
+    if (child.kind === "pin") {
+     await page.mouse.move(point.x + 4, point.y); await page.mouse.move(point.x, point.y);
+    }
+    await page.mouse.up();
+    await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+    const { label } = child;
+    const input = page.getByRole("spinbutton", { name: label, exact: true });
+    const value = child.kind === "pin" ? -20 + repeat : 5 + repeat;
+    await input.fill(String(value)); await input.press("Tab");
+    child.x = value;
+    await page.waitForFunction(({ label, value }) => document.querySelector(`input[aria-label="${label}"]`)?.getAttribute("data-committed-value") === String(value), { label, value }, { polling: "raf" });
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+   });
+   await selectSymbolParent(page);
+   await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue(center);
+  }
+ }
+ const value = await report(page);
+ await finish(page, testInfo, "editor-symbol-children", { interactionP95Ms: metric(value, "scenario.interaction")! });
+});
+
+test("editor-item-locks", async ({ page }, testInfo) => {
+ await page.addInitScript(() => {
+  const file = { format: "ecad-symbol", version: 1, units: "mm", id: "lock-part", name: "Lock part", description: "", prefix: "U", value: "", shapes: [
+   { kind: "rectangle", x: 0, y: 0, width: 40, height: 160 },
+   { kind: "text", text: "Controller", x: 0, y: 0, width: 15, height: 3, fontSize: 2 },
+   ...Array.from({ length: 128 }, (_, index) => ({ kind: "pin", x: index < 64 ? -20 : 20, y: (index % 64 - 32) * 2.54, name: `Signal ${index + 1}`, number: String(index + 1), locked: index === 0 })),
+  ] };
+  localStorage.setItem("ecad.user-config.v1", JSON.stringify({ version: 1, symbolLibraries: [{ id: "locks", name: "Locks", enabled: true, source: { kind: "embedded", symbols: [file] } }] }));
+ });
+ await page.goto("/editor?perf=1");
+ await ready(page);
+ await page.getByRole("button", { name: "Symbols", exact: true }).click();
+ await page.getByRole("button", { name: "Insert Lock part", exact: true }).click();
+ const canvas = page.locator("canvas");
+ const box = (await canvas.boundingBox())!;
+ const position = { x: box.width * 0.45, y: box.height * 0.5 };
+ await canvas.click({ position });
+ await expect(page.getByRole("treeitem", { name: "Rectangle 1", exact: true })).toHaveAttribute("aria-disabled", "true");
+ await expect(page.getByRole("treeitem", { name: "Controller", exact: true })).toHaveAttribute("aria-disabled", "false");
+ for (let repeat = 0; repeat < 3; repeat++) {
+  await interaction(page, "symbol.lock", async () => {
+   if (repeat === 1) await page.getByRole("checkbox", { name: "Locked", exact: true }).click();
+   else await page.getByRole("button", { name: "Lock selection", exact: true }).click();
+   await page.waitForFunction(() => !document.querySelector('[aria-label="Selection attributes"]'), undefined, { polling: "raf" });
+  });
+  await interaction(page, "symbol.select-locked", async () => {
+   await page.getByRole("button", { name: "Select locked items", exact: true }).click();
+   await canvas.click({ position });
+   await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[aria-label="Unlock selection"]')?.disabled === false, undefined, { polling: "raf" });
+  });
+  await interaction(page, "symbol.unlock", async () => {
+   if (repeat === 1) await page.getByRole("checkbox", { name: "Locked", exact: true }).uncheck();
+   else await page.getByRole("button", { name: "Unlock selection", exact: true }).click();
+   await page.getByRole("button", { name: "Select locked items", exact: true }).click();
+   await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[aria-label="Lock selection"]')?.disabled === false, undefined, { polling: "raf" });
+  });
+ }
+ const value = await report(page);
+ await finish(page, testInfo, "editor-item-locks", { interactionP95Ms: metric(value, "scenario.interaction")! });
+});
+
+test("editor-item-hierarchy", async ({ page }, testInfo) => {
+ const { drawShape } = await import("#/drawing/shapes.ts");
+ const { createSymbol } = await import("#/drawing/symbols.ts");
+ const children = Array.from({ length: 128 }, (_, index) => ({
+  ...drawShape(index + 2, "pin", { x: index < 64 ? -20 : 20, y: (index % 64 - 32) * 2.54 }, { x: 0, y: 0 }),
+  name: `Signal ${index + 1}`, number: String(index + 1),
+ }));
+ const symbol = createSymbol(2001, {
+  id: "hierarchy-fixture", name: "Controller", description: "", prefix: "U", value: "MCU", children: [drawShape(1, "rectangle", { x: -20, y: -82 }, { x: 20, y: 82 }), ...children],
+  texts: [{ attribute: "reference", x: 0, y: 86, fontSize: 2 }, { attribute: "value", x: 0, y: -86, fontSize: 2 }],
+ }, { x: 0, y: 0 });
+ const shapes = [...Array.from({ length: 2000 }, (_, index) => drawShape(index + 1, "rectangle", { x: (index % 50) * 5 - 125, y: Math.floor(index / 50) * 5 + 100 }, { x: (index % 50) * 5 - 123, y: Math.floor(index / 50) * 5 + 102 })), symbol];
+ await page.goto("/projects?perf=1");
+ await ready(page);
+ await page.evaluate(async (shapes) => {
+  const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle("Hierarchy fixture", { create: true });
+  for (const [name, content] of [
+   [".ecadprj", 'format = "ecad-project"\nversion = 1\nname = "Hierarchy fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n'],
+   ["drawing.ecaddraw", JSON.stringify({ shapes })],
+  ]) {
+   const writer = await (await directory.getFileHandle(name, { create: true })).createWritable();
+   await writer.write(content); await writer.close();
+  }
+  localStorage.setItem("ecad.active-project", "Hierarchy fixture");
+ }, shapes);
+ await page.goto("/editor?perf=1");
+ await ready(page);
+ const tree = page.getByRole("tree", { name: "Drawing items", exact: true });
+ await expect(tree).toBeVisible();
+ for (let repeat = 0; repeat < 3; repeat++) {
+  await tree.focus();
+  await interaction(page, "hierarchy.select-last-child", async () => {
+   await page.keyboard.press("End"); await page.keyboard.press("Enter");
+   await page.waitForFunction(() => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("data-child-key") === "attribute:value", undefined, { polling: "raf" });
+  });
+  const parent = tree.getByRole("treeitem", { name: "U2001 · Controller", exact: true });
+  await tree.press("ArrowLeft"); await tree.press("Enter");
+  await expect(parent).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Collapse U2001 · Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Expand U2001 · Controller", exact: true }).click();
+  await interaction(page, "hierarchy.select-first", async () => {
+   await tree.press("Home"); await tree.press("Enter");
+   await page.waitForFunction(() => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("data-shape-id") === "1", undefined, { polling: "raf" });
+  });
+  expect(await tree.getByRole("treeitem").count()).toBeLessThan(50);
+ }
+ const value = await report(page);
+ await finish(page, testInfo, "editor-item-hierarchy", { interactionP95Ms: metric(value, "scenario.interaction")!, hierarchyP95Ms: metric(value, "editor.item-hierarchy")! });
 });

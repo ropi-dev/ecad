@@ -13,6 +13,7 @@ import { lineStyles } from "#/drawing/line-style.ts";
 
 export const shapeId = z.number().int().positive().safe();
 const geometryFields = {
+	locked: z.boolean().optional(),
 	x: z.number().describe("Shape center X in millimetres."),
 	y: z
 		.number()
@@ -60,6 +61,25 @@ const textInputSchema = z.strictObject({
 			"Font size in millimetres; width and height must already be measured.",
 		),
 });
+export const symbolChildOverridesSchema = z.record(
+	z.string().regex(/^(shape:[1-9]\d*|attribute:(name|reference|value))$/),
+	z.strictObject({
+		x: z.number().optional(),
+		y: z.number().optional(),
+		width: z.number().nonnegative().optional(),
+		height: z.number().positive().optional(),
+		rotation: z.number().optional(),
+		lineWidth: z.number().nonnegative().optional(),
+		fontSize: z.number().positive().optional(),
+		text: z.string().optional(),
+		name: z.string().optional(),
+		number: z.string().optional(),
+		showLabels: z.boolean().optional(),
+		locked: z.boolean().optional(),
+		lineStyle: z.enum(lineStyles).optional(),
+		...textAlignmentFields,
+	}),
+);
 const symbolInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("symbol"),
@@ -68,6 +88,7 @@ const symbolInputSchema = z.strictObject({
 		.strictObject({ scope: z.enum(["user", "project"]), id: z.string().min(1) })
 		.optional(),
 	strokeOverride: z.number().positive().optional(),
+	childOverrides: symbolChildOverridesSchema.optional(),
 	textAlignments: z
 		.strictObject({
 			name: z.strictObject(textAlignmentFields).optional(),
@@ -101,6 +122,7 @@ const symbolInputSchema = z.strictObject({
 		.array(
 			z.strictObject({
 				attribute: z.enum(["name", "reference", "value"]),
+				locked: z.boolean().optional(),
 				...textAlignmentFields,
 				x: z.number(),
 				y: z.number(),

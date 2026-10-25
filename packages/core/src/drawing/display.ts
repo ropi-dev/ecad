@@ -90,13 +90,15 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 		width,
 		height,
 		lineWidth,
-		children: shape.children.filter(isBasicShape).map((child) => ({
-			...geometryFor(child),
-			kind: child.kind,
-			x: child.x,
-			y: child.y,
-			rotation: child.rotation,
-		})),
+		children: symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
+			.filter(isBasicShape)
+			.map((child) => ({
+				...geometryFor(child),
+				kind: child.kind,
+				x: child.x,
+				y: child.y,
+				rotation: child.rotation,
+			})),
 	};
 }
 
@@ -145,18 +147,18 @@ function displayShape(
 					...text,
 					x: labels[index].x,
 					y: labels[index].y,
-					rotation: 0,
+					rotation: text.rotation - shape.rotation,
 				}).x / shape.width,
 			y:
 				textCenter({
 					...text,
 					x: labels[index].x,
 					y: labels[index].y,
-					rotation: 0,
+					rotation: text.rotation - shape.rotation,
 				}).y / shape.height,
 			width: text.width / shape.width,
 			height: text.height / shape.height,
-			rotation: 0,
+			rotation: text.rotation - shape.rotation,
 		}));
 	}
 	if (shape.kind === "pin") {

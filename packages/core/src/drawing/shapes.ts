@@ -15,6 +15,7 @@ export type ShapeKind =
 	| "pin"
 	| "text";
 interface ShapeGeometry extends Point {
+	locked?: boolean;
 	id: number;
 	width: number;
 	height: number;
@@ -48,12 +49,174 @@ export interface EditorSymbol extends ShapeGeometry {
 	/** Children use coordinates relative to the symbol's center. */
 	children: SymbolShape[];
 	texts: SymbolText[];
+	childOverrides?: Record<string, SymbolChildOverride>;
 	textAlignments?: Partial<Record<SymbolText["attribute"], TextAlignment>>;
 	textPositions?: Partial<Record<SymbolText["attribute"], Point>>;
 	attributes: { name: string; reference: string; value: string };
 }
 
+export type SymbolChildOverride = Partial<
+	Point &
+		TextAlignment & {
+			width: number;
+			height: number;
+			rotation: number;
+			lineWidth: number;
+			lineStyle: LineStyle;
+			fontSize: number;
+			text: string;
+			name: string;
+			number: string;
+			showLabels: boolean;
+			locked: boolean;
+		}
+>;
+
+export interface SymbolChild {
+	key: string;
+	shape: SymbolShape;
+}
+
+export function canSelectShape(
+	shape: EditorShape,
+	allowLocked = false,
+): boolean {
+	return allowLocked || !shape.locked;
+}
+
+export function canSelectSymbolChild(
+	symbol: EditorSymbol,
+	child: SymbolChild,
+	allowLocked = false,
+): boolean {
+	return (
+		canSelectShape(symbol, allowLocked) &&
+		!(child.shape.locked ?? child.shape.kind !== "text")
+	);
+}
+
+export function symbolChildren(symbol: EditorSymbol): SymbolChild[] {
+	return [
+		...symbol.children.map((shape) => ({
+			key: `shape:${shape.id}`,
+			shape: {
+				...shape,
+				...symbol.childOverrides?.[`shape:${shape.id}`],
+				locked:
+					symbol.childOverrides?.[`shape:${shape.id}`]?.locked ??
+					shape.locked ??
+					shape.kind !== "text",
+			} as SymbolShape,
+		})),
+		...symbolTextShapes({ ...symbol, x: 0, y: 0, rotation: 0 }).map(
+			(shape) => ({
+				key: `attribute:${symbol.texts[shape.id].attribute}`,
+				shape,
+			}),
+		),
+	];
+}
+
+export function symbolChildWorld(
+	symbol: EditorSymbol,
+	child: SymbolShape,
+): SymbolShape {
+	return {
+		...child,
+		...localToWorld(symbol, child.x, child.y),
+		rotation: child.rotation + symbol.rotation,
+	};
+}
+
+export function replaceSymbolChild(
+	symbol: EditorSymbol,
+	key: string,
+	child: SymbolShape,
+): EditorSymbol {
+	const original = symbolChildren(symbol).find(
+		(item) => item.key === key,
+	)?.shape;
+	if (!original || child.kind !== original.kind) return symbol;
+	const { id: _id, kind: _kind, ...values } = child;
+	if (
+		key.startsWith("attribute:") &&
+		child.kind === "text" &&
+		original.kind === "text"
+	) {
+		const attribute = key.slice(10) as SymbolText["attribute"];
+		const { x, y, text, horizontalAlign, verticalAlign, ...appearance } =
+			values as Omit<TextShape, "id" | "kind">;
+		const changes = Object.fromEntries(
+			Object.entries(appearance).filter(
+				([field, value]) => value !== original[field as keyof TextShape],
+			),
+		);
+		return {
+			...symbol,
+			...(text === original.text
+				? {}
+				: { attributes: { ...symbol.attributes, [attribute]: text } }),
+			textPositions: { ...symbol.textPositions, [attribute]: { x, y } },
+			...(horizontalAlign === original.horizontalAlign &&
+			verticalAlign === original.verticalAlign
+				? {}
+				: {
+						textAlignments: {
+							...symbol.textAlignments,
+							[attribute]: { horizontalAlign, verticalAlign },
+						},
+					}),
+			...(Object.keys(changes).length
+				? {
+						childOverrides: {
+							...symbol.childOverrides,
+							[key]: { ...symbol.childOverrides?.[key], ...changes },
+						},
+					}
+				: {}),
+		};
+	}
+
+	const changes = Object.fromEntries(
+		Object.entries(values).filter(
+			([field, value]) => value !== original[field as keyof SymbolShape],
+		),
+	);
+	return {
+		...symbol,
+		childOverrides: {
+			...symbol.childOverrides,
+			[key]: { ...symbol.childOverrides?.[key], ...changes },
+		},
+	};
+}
+
+export function moveSymbolChild(
+	symbol: EditorSymbol,
+	key: string,
+	delta: Point,
+	gridStep = 0,
+	allowLocked = false,
+): EditorSymbol {
+	const child = symbolChildren(symbol).find((item) => item.key === key)?.shape;
+	if (!child || !canSelectShape(symbol, allowLocked) || child.locked)
+		return symbol;
+	const world = symbolChildWorld(symbol, child);
+	const target = snapPoint(
+		{ x: world.x + delta.x, y: world.y + delta.y },
+		gridStep,
+	);
+	const dx = target.x - symbol.x;
+	const dy = target.y - symbol.y;
+	return replaceSymbolChild(symbol, key, {
+		...child,
+		x: dx * Math.cos(symbol.rotation) + dy * Math.sin(symbol.rotation),
+		y: -dx * Math.sin(symbol.rotation) + dy * Math.cos(symbol.rotation),
+	});
+}
+
 export interface SymbolText extends Point, TextAlignment {
+	locked?: boolean;
 	attribute: keyof EditorSymbol["attributes"];
 	fontSize: number;
 }
@@ -65,7 +228,6 @@ export function symbolTextPosition(
 	return symbol.textPositions?.[label.attribute] ?? label;
 }
 
-/** Move one label without moving its symbol, pins, or connected wires. */
 export function moveSymbolText(
 	symbol: EditorSymbol,
 	index: number,
@@ -73,25 +235,9 @@ export function moveSymbolText(
 	gridStep = 0,
 ): EditorSymbol {
 	const label = symbol.texts[index];
-	if (!label) return symbol;
-	const position = symbolTextPosition(symbol, label);
-	const world = localToWorld(symbol, position.x, position.y);
-	const target = snapPoint(
-		{ x: world.x + delta.x, y: world.y + delta.y },
-		gridStep,
-	);
-	const dx = target.x - symbol.x;
-	const dy = target.y - symbol.y;
-	return {
-		...symbol,
-		textPositions: {
-			...symbol.textPositions,
-			[label.attribute]: {
-				x: dx * Math.cos(symbol.rotation) + dy * Math.sin(symbol.rotation),
-				y: -dx * Math.sin(symbol.rotation) + dy * Math.cos(symbol.rotation),
-			},
-		},
-	};
+	return label
+		? moveSymbolChild(symbol, `attribute:${label.attribute}`, delta, gridStep)
+		: symbol;
 }
 
 export interface TextShape extends ShapeGeometry, TextAlignment {
@@ -112,17 +258,25 @@ export function isBasicShape(shape: EditorShape): shape is BasicShape {
 	);
 }
 
-/** Resolve children only for geometry; editing always acts on their parent. */
 export function symbolShapes(symbol: EditorSymbol): SymbolShape[] {
-	return symbol.children.map((child) => ({
-		...child,
-		...localToWorld(symbol, child.x, child.y),
-		rotation: child.rotation + symbol.rotation,
-	}));
+	return symbol.children.map((original) => {
+		const child = {
+			...original,
+			...symbol.childOverrides?.[`shape:${original.id}`],
+		} as SymbolShape;
+		return {
+			...child,
+			...(symbol.locked ? { locked: true } : {}),
+			...localToWorld(symbol, child.x, child.y),
+			rotation: child.rotation + symbol.rotation,
+		};
+	});
 }
 
 export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
 	return symbol.texts.flatMap((label, index) => {
+		const override = symbol.childOverrides?.[`attribute:${label.attribute}`];
+		const fontSize = override?.fontSize ?? label.fontSize;
 		const text = symbol.attributes[label.attribute];
 		if (!text) return [];
 		const position = symbolTextPosition(symbol, label);
@@ -131,19 +285,22 @@ export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
 			.replace(/\t/g, "    ")
 			.split("\n");
 		const width = Math.max(
-			label.fontSize / 2,
-			...lines.map((line) => line.length * label.fontSize * 0.6),
+			fontSize / 2,
+			...lines.map((line) => line.length * fontSize * 0.6),
 		);
 		return [
 			{
 				id: index,
 				kind: "text",
+				...((override?.locked ?? label.locked) === undefined
+					? {}
+					: { locked: override?.locked ?? label.locked }),
 				...localToWorld(symbol, position.x, position.y),
 				width,
-				height: lines.length * label.fontSize * 1.5,
-				rotation: symbol.rotation,
+				height: lines.length * fontSize * 1.5,
+				rotation: symbol.rotation + (override?.rotation ?? 0),
 				lineWidth: 0,
-				fontSize: label.fontSize,
+				fontSize: fontSize,
 				horizontalAlign:
 					symbol.textAlignments?.[label.attribute]?.horizontalAlign ??
 					label.horizontalAlign,
@@ -508,10 +665,9 @@ export function hitShape(
 ): boolean {
 	if (
 		shape.kind === "symbol" &&
-		[
-			...symbolTextShapes(shape),
-			...symbolShapes(shape).filter((child) => child.kind === "text"),
-		].some((text) => hitShape(text, point, tolerance))
+		[...symbolTextShapes(shape), ...symbolShapes(shape)].some((text) =>
+			hitShape(text, point, tolerance),
+		)
 	)
 		return true;
 	const { width, height } =
@@ -547,7 +703,9 @@ export function hitShape(
 export function containsSelection(shape: EditorShape, bounds: Bounds): boolean {
 	if (
 		shape.kind === "symbol" &&
-		!symbolTextShapes(shape).every((text) => containsSelection(text, bounds))
+		![...symbolTextShapes(shape), ...symbolShapes(shape)].every((child) =>
+			containsSelection(child, bounds),
+		)
 	)
 		return false;
 	const own = shapeBounds(
@@ -570,8 +728,8 @@ export function intersectsSelection(
 ): boolean {
 	if (shape.kind === "symbol")
 		return (
-			symbolTextShapes(shape).some((text) =>
-				intersectsSelection(text, bounds),
+			[...symbolTextShapes(shape), ...symbolShapes(shape)].some((child) =>
+				intersectsSelection(child, bounds),
 			) ||
 			intersectsSelection(
 				{ ...shape, kind: "rectangle", ...selectionSize(shape) },
@@ -914,6 +1072,7 @@ export function normalizeWireSegments(
 			if (
 				a.vertical === b.vertical &&
 				a.shape.lineWidth === b.shape.lineWidth &&
+				(a.shape.locked ?? false) === (b.shape.locked ?? false) &&
 				Math.abs(a.coordinate - b.coordinate) <= normalizationTolerance &&
 				a.min <= b.max + normalizationTolerance &&
 				b.min <= a.max + normalizationTolerance
@@ -997,6 +1156,9 @@ export function normalizeWireSegments(
 				return source.shape;
 			return {
 				...drawShape(id, "wire", point(start), point(end)),
+				...(survivor.shape.locked === undefined
+					? {}
+					: { locked: survivor.shape.locked }),
 				lineWidth: survivor.shape.lineWidth,
 			};
 		});
@@ -1168,7 +1330,9 @@ export function moveShapes(
 		(maximum, shape) => Math.max(maximum, shape.id),
 		0,
 	) + 1,
+	allowLocked = false,
 ): EditorShape[] {
+	if (!allowLocked && shapes.some((shape) => shape.locked)) return shapes;
 	if (gridStep > 0 && anchorShape) {
 		// Keep corners on the grid even when the center lies halfway between grid lines.
 		const anchor =
@@ -1197,6 +1361,24 @@ export function moveShapes(
 				x: shape.x + delta.x,
 				y: shape.y + delta.y,
 			}));
+	if (!allowLocked && allShapes.some((shape) => shape.locked)) {
+		const originals = new Map(allShapes.map((shape) => [shape.id, shape]));
+		if (
+			moved.some((shape) => {
+				const original = originals.get(shape.id);
+				return (
+					original?.locked &&
+					["x", "y", "width", "height", "rotation"].some(
+						(key) =>
+							original[key as keyof EditorShape] !==
+							shape[key as keyof EditorShape],
+					)
+				);
+			})
+		)
+			return moved.map((shape) => originals.get(shape.id) ?? shape);
+	}
+
 	if (delta.x === 0 && delta.y === 0) return moved;
 	const terminals = shapes.flatMap((shape) =>
 		pinTerminals(shape).map((point) => ({ shape, point })),

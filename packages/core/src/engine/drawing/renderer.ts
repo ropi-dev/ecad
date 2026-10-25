@@ -4,6 +4,7 @@ import {
 	Group,
 	LineBasicMaterial,
 	LineLoop,
+	Matrix4,
 	Mesh,
 	MeshBasicMaterial,
 	type Object3D,
@@ -157,7 +158,26 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			const mesh = new Mesh(geometryFor(display), materialFor(display));
 			mesh.name = display.name;
 			applyTransform(mesh, display);
-			for (const child of display.children ?? []) mesh.add(meshFor(child));
+			for (const child of display.children ?? []) {
+				const childMesh = meshFor(child);
+				if (display.geometry.kind === "symbol" && child.rotation !== 0) {
+					childMesh.matrixAutoUpdate = false;
+					childMesh.matrix
+						.makeTranslation(child.x, child.y, 0)
+						.multiply(
+							new Matrix4().makeScale(1 / display.width, 1 / display.height, 1),
+						)
+						.multiply(new Matrix4().makeRotationZ(child.rotation))
+						.multiply(
+							new Matrix4().makeScale(
+								child.width * display.width,
+								child.height * display.height,
+								1,
+							),
+						);
+				}
+				mesh.add(childMesh);
+			}
 			return mesh;
 		};
 		const scene: ViewerScene = worksheet

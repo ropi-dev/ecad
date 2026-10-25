@@ -4,6 +4,8 @@ import {
 	Circle,
 	Hand,
 	History as HistoryIcon,
+	Lock,
+	LockKeyhole,
 	Magnet,
 	MapPin,
 	Minus,
@@ -15,6 +17,7 @@ import {
 	Trash2,
 	Triangle,
 	Type,
+	Unlock,
 } from "lucide-react";
 import {
 	type ReactNode,
@@ -41,6 +44,7 @@ import {
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
+import { ItemHierarchy } from "#/components/editor/ItemHierarchy.tsx";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import {
 	parseSymbolFile,
@@ -48,7 +52,10 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
+import type { LineStyle } from "#/drawing/line-style.ts";
 import {
+	canSelectShape,
+	canSelectSymbolChild,
 	constrainWireEndpoint,
 	containsSelection,
 	drawShape,
@@ -59,14 +66,19 @@ import {
 	intersectsSelection,
 	isBasicShape,
 	moveShapes,
-	moveSymbolText,
+	moveSymbolChild,
 	openPins,
 	type ResizeHandle,
+	replaceSymbolChild,
 	resizeHandles,
 	resizeShape,
 	routeWire,
+	type ShapeAttribute,
 	type ShapeKind,
+	shapeBounds,
 	snapPoint,
+	symbolChildren,
+	symbolChildWorld,
 	symbolShapes,
 	symbolTextShapes,
 } from "#/drawing/shapes.ts";
@@ -81,6 +93,7 @@ import {
 	duplicateSymbol,
 	type SymbolDefinition,
 } from "#/drawing/symbols.ts";
+import type { TextAlignment } from "#/drawing/text-alignment.ts";
 import type { Point } from "#/drawing/types.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { screenToWorld, worldToScreen } from "#/engine/camera.ts";
@@ -116,8 +129,9 @@ interface Drag {
 	start: Point;
 	startScreen: Point;
 	previousSelection: Set<number>;
-	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-text";
-	textIndex?: number;
+	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-child";
+	childKey?: string;
+	previousChild: string | null;
 	handle?: ResizeHandle;
 	anchorShape?: EditorShape;
 	gridStep: number;
@@ -207,6 +221,7 @@ function EditorCanvas({
 	};
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 	const currentSelection = useRef(selectedIds);
+	const [selectedChildKey, setSelectedChildKey] = useState<string | null>(null);
 	// Selection restoration is an editor preference, separate from document history.
 	const historySelection = useRef(new Map<number, number[]>([[0, []]]));
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
@@ -220,6 +235,7 @@ function EditorCanvas({
 	const [editingDefinition, setEditingDefinition] =
 		useState<SymbolEditTarget | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
+	const [allowLocked, setAllowLocked] = useState(false);
 	const [ready, setReady] = useState(false);
 	const [commandError, setError] = useState("");
 	const error = [
@@ -249,7 +265,9 @@ function EditorCanvas({
 		previews,
 		isSymbol ? null : sheet,
 	);
-	const selected = shapes.filter((shape) => selectedIds.has(shape.id));
+	const selected = shapes.filter(
+		(shape) => selectedIds.has(shape.id) && canSelectShape(shape, allowLocked),
+	);
 	const textAnchors = selected.flatMap((shape) => {
 		if (shape.kind === "text")
 			return [{ key: `${shape.id}`, x: shape.x, y: shape.y }];
@@ -273,6 +291,19 @@ function EditorCanvas({
 		selected.length === 1 && selected[0].kind === "symbol"
 			? selected[0]
 			: undefined;
+	const selectedChild =
+		selectedSymbol && selectedChildKey
+			? symbolChildren(selectedSymbol).find(
+					(child) =>
+						child.key === selectedChildKey &&
+						canSelectSymbolChild(selectedSymbol, child, allowLocked),
+				)
+			: undefined;
+
+	const selectionLocked = selectedChild
+		? selectedChild.shape.locked === true
+		: selected.length > 0 && selected.every((shape) => shape.locked === true);
+
 	const symbolIndex =
 		selectedSymbol &&
 		(!selectedSymbol.library ||
@@ -356,6 +387,13 @@ function EditorCanvas({
 		setDraftShapes(next);
 	};
 	const applySelection = (ids: Set<number>) => {
+		ids = new Set(
+			currentShapes.current
+				.filter(
+					(shape) => ids.has(shape.id) && canSelectShape(shape, allowLocked),
+				)
+				.map((shape) => shape.id),
+		);
 		if (
 			ids.size === currentSelection.current.size &&
 			[...ids].every((id) => currentSelection.current.has(id))
@@ -363,6 +401,7 @@ function EditorCanvas({
 			return;
 		currentSelection.current = ids;
 		setSelectedIds(ids);
+		setSelectedChildKey(null);
 	};
 	const execute = <A,>(
 		program: Effect.Effect<A, InvalidDrawingCommand, DrawingStore>,
@@ -436,6 +475,24 @@ function EditorCanvas({
 		if (result) acceptEdit(result, previousHistoryId);
 		else setPreviewShapes(null);
 	};
+	const editChild = (child: EditorShape) => {
+		if (!selectedSymbol || !selectedChild || child.kind === "symbol") return;
+		commitReplacements(
+			[replaceSymbolChild(selectedSymbol, selectedChild.key, child)],
+			"Edit symbol child",
+		);
+	};
+	const changeSelectionLock = (locked: boolean) => {
+		if (selectedChild) {
+			editChild({ ...selectedChild.shape, locked });
+			setSelectedChildKey(null);
+		} else
+			commitReplacements(
+				selected.map((shape) => ({ ...shape, locked })),
+				locked ? "Lock selection" : "Unlock selection",
+			);
+	};
+
 	const previewReplacements = (
 		replacements: EditorShape[],
 		base = currentShapes.current,
@@ -497,23 +554,24 @@ function EditorCanvas({
 		// Selecting an off-grid shape must not move or resize it.
 		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
 			return;
-		if (active.mode === "symbol-text") {
+		if (active.mode === "symbol-child") {
 			const original = active.originals[0];
 			if (
 				!active.moved ||
 				original.kind !== "symbol" ||
-				active.textIndex === undefined
+				active.childKey === undefined
 			)
 				return;
 			previewReplacements([
-				moveSymbolText(
+				moveSymbolChild(
 					original,
-					active.textIndex,
+					active.childKey,
 					{
 						x: point.x - active.start.x,
 						y: point.y - active.start.y,
 					},
 					active.gridStep,
+					allowLocked,
 				),
 			]);
 			return;
@@ -566,6 +624,7 @@ function EditorCanvas({
 					active.anchorShape,
 					active.mode === "duplicate" ? active.originals : active.initialShapes,
 					nextId.current,
+					allowLocked,
 				),
 				active.initialShapes,
 			);
@@ -600,6 +659,7 @@ function EditorCanvas({
 		if (cancel || (active.created && !active.valid)) {
 			setPreviewShapes(null);
 			applySelection(active.previousSelection);
+			setSelectedChildKey(active.previousChild);
 		} else if (active.wireStart && !active.moved) {
 			setPreviewShapes(null);
 			applySelection(new Set());
@@ -617,7 +677,7 @@ function EditorCanvas({
 		} else if (
 			active.mode === "move" ||
 			active.mode === "resize" ||
-			active.mode === "symbol-text"
+			active.mode === "symbol-child"
 		) {
 			const initial = new Map(
 				active.initialShapes.map((shape) => [shape.id, shape]),
@@ -626,8 +686,8 @@ function EditorCanvas({
 				currentShapes.current.filter(
 					(shape) => shape !== initial.get(shape.id),
 				),
-				active.mode === "symbol-text"
-					? "Move symbol text"
+				active.mode === "symbol-child"
+					? "Move symbol child"
 					: active.mode === "move"
 						? "Move selection"
 						: `Resize ${active.originals[0].kind}`,
@@ -658,9 +718,32 @@ function EditorCanvas({
 	const redo = () => restoreHistory(redoEffect);
 	const rotateSelected = (angle: number) => {
 		if (!ready || !currentSelection.current.size) return;
+		const childKey = drag.current
+			? drag.current.previousChild
+			: selectedChildKey;
 		finishDrag(true);
 		finishWire();
 		setTool("select");
+		const parent = currentShapes.current.find((shape) =>
+			currentSelection.current.has(shape.id),
+		);
+		if (childKey && parent?.kind === "symbol") {
+			const child = symbolChildren(parent).find(
+				(item) => item.key === childKey,
+			);
+			if (child)
+				commitReplacements(
+					[
+						replaceSymbolChild(parent, childKey, {
+							...child.shape,
+							rotation: child.shape.rotation + angle,
+						}),
+					],
+					"Rotate symbol child",
+				);
+			return;
+		}
+
 		const previousHistoryId = store.getSnapshot().history.currentId;
 		const result = execute(
 			rotateShapesEffect([...currentSelection.current], angle),
@@ -810,7 +893,7 @@ function EditorCanvas({
 					? `Symbol editor · ${symbolName}`
 					: `Schematic editor · ${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
 			</h1>
-			<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
+			<header className="absolute top-10 left-10 z-4 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
 				{headerControls ?? (
 					<>
 						<ProjectLink
@@ -836,6 +919,32 @@ function EditorCanvas({
 				)}
 			</header>
 			<div className="relative flex min-h-0 flex-1">
+				<ItemHierarchy
+					shapes={shapes}
+					selectedIds={new Set(selected.map((shape) => shape.id))}
+					selectedChildKey={selectedChild?.key ?? null}
+					allowLocked={allowLocked}
+					disabled={!ready}
+					onSelect={(id, childKey, additive) => {
+						finishDrag(true);
+						finishWire();
+						const shape = currentShapes.current.find(
+							(shape) => shape.id === id,
+						);
+						if (!shape || !canSelectShape(shape, allowLocked)) return;
+						if (childKey) {
+							if (shape.kind !== "symbol") return;
+							const child = symbolChildren(shape).find(
+								(child) => child.key === childKey,
+							);
+							if (!child || !canSelectSymbolChild(shape, child, allowLocked))
+								return;
+							applySelection(new Set([id]));
+						} else selectShape(id, additive);
+						setSelectedChildKey(childKey ?? null);
+						setTool("select");
+					}}
+				/>
 				<div
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					data-tool={tool}
@@ -852,7 +961,13 @@ function EditorCanvas({
 						const point = pointAt(event, event.target);
 						const shape =
 							point &&
-							[...shapes].reverse().find((shape) => hitShape(shape, point, 0));
+							[...shapes]
+								.reverse()
+								.find(
+									(shape) =>
+										canSelectShape(shape, allowLocked) &&
+										hitShape(shape, point, 0),
+								);
 						if (shape?.kind !== "text") return;
 						event.preventDefault();
 						event.stopPropagation();
@@ -876,6 +991,20 @@ function EditorCanvas({
 							return;
 						const point = pointAt(event, canvas);
 						if (!point) return;
+						const hit =
+							tool === "select"
+								? [...shapes]
+										.reverse()
+										.find(
+											(candidate) =>
+												canSelectShape(candidate, allowLocked) &&
+												hitShape(
+													candidate,
+													point,
+													6 / (snapshot.current?.camera.scale ?? 1),
+												),
+										)
+								: undefined;
 						const duplicate =
 							event.altKey && tool === "select"
 								? [...shapes]
@@ -883,6 +1012,7 @@ function EditorCanvas({
 										.find(
 											(candidate) =>
 												candidate.kind === "symbol" &&
+												canSelectShape(candidate, allowLocked) &&
 												hitShape(
 													candidate,
 													point,
@@ -903,7 +1033,37 @@ function EditorCanvas({
 								: 0;
 						const start = created ? snapPoint(point, snapStep) : point;
 						let wireStart: Point | undefined;
-						if (tool === "select" && !event.shiftKey && !resize && !duplicate) {
+						const childHit =
+							!created &&
+							!duplicate &&
+							!event.shiftKey &&
+							selectedSymbol &&
+							hit?.id === selectedSymbol.id
+								? [...symbolChildren(selectedSymbol)]
+										.reverse()
+										.find((child) =>
+											hitShape(
+												symbolChildWorld(selectedSymbol, child.shape),
+												point,
+												0,
+											),
+										)
+								: undefined;
+						if (childHit) shape = selectedSymbol;
+						const editableChild =
+							childHit &&
+							selectedSymbol &&
+							canSelectSymbolChild(selectedSymbol, childHit, allowLocked)
+								? childHit
+								: undefined;
+
+						if (
+							tool === "select" &&
+							!event.shiftKey &&
+							!resize &&
+							!duplicate &&
+							(!childHit || childHit.shape.kind === "pin")
+						) {
 							let connection: ReturnType<typeof openPins>[number] | undefined;
 							let distance = 8 / (snapshot.current?.camera.scale ?? 1);
 							const candidates = measurePerformance(
@@ -921,7 +1081,10 @@ function EditorCanvas({
 									terminal.x - point.x,
 									terminal.y - point.y,
 								);
-								if (next <= distance) {
+								if (
+									next <= distance &&
+									canSelectShape(candidate.shape, allowLocked)
+								) {
 									connection = candidate;
 									distance = next;
 								}
@@ -994,32 +1157,15 @@ function EditorCanvas({
 							shape = drawShape(nextId.current, tool, start, start);
 							setPreviewShapes([...currentShapes.current, shape]);
 						} else if (resize) shape = resize.shape;
-						else if (!shape)
-							shape = [...shapes]
-								.reverse()
-								.find((candidate) =>
-									hitShape(
-										candidate,
-										point,
-										6 / (snapshot.current?.camera.scale ?? 1),
-									),
-								);
+						else if (!shape) shape = hit;
 						if (shape && event.shiftKey && !created && !resize && !duplicate) {
 							selectShape(shape.id, true);
 							return;
 						}
-						const textIndex =
-							!created &&
-							!resize &&
-							!wireStart &&
-							!duplicate &&
-							shape?.kind === "symbol"
-								? symbolTextShapes(shape).find((text) =>
-										hitShape(text, point, 0),
-									)?.id
-								: undefined;
+						const childKey = editableChild?.key;
+
 						const originals = shape
-							? textIndex === undefined &&
+							? childKey === undefined &&
 								!created &&
 								!resize &&
 								!duplicate &&
@@ -1036,6 +1182,7 @@ function EditorCanvas({
 										? selectedIds
 										: new Set(),
 						);
+						setSelectedChildKey(childKey ?? null);
 						const rect = canvas.getBoundingClientRect();
 						drag.current = {
 							pointerId: event.pointerId,
@@ -1046,11 +1193,12 @@ function EditorCanvas({
 								y: event.clientY - rect.top,
 							},
 							previousSelection: selectedIds,
-							textIndex,
+							childKey,
+							previousChild: selectedChildKey,
 							mode: duplicate
 								? "duplicate"
-								: textIndex !== undefined
-									? "symbol-text"
+								: childKey !== undefined
+									? "symbol-child"
 									: created
 										? "draw"
 										: resize
@@ -1061,7 +1209,7 @@ function EditorCanvas({
 							handle: resize?.handle,
 							anchorShape: shape,
 							gridStep:
-								textIndex !== undefined ||
+								editableChild?.shape.kind === "text" ||
 								(!created &&
 									!resize &&
 									originals.length > 0 &&
@@ -1161,6 +1309,7 @@ function EditorCanvas({
 						}
 						if (event.key === "Escape") {
 							if (drag.current) finishDrag(true);
+							else if (selectedChild) setSelectedChildKey(null);
 							else applySelection(new Set());
 						} else if (
 							selected.length > 0 &&
@@ -1168,6 +1317,41 @@ function EditorCanvas({
 						) {
 							finishDrag();
 							removeSelected();
+						} else if (
+							selectedChild &&
+							selectedSymbol &&
+							event.key.startsWith("Arrow") &&
+							!drag.current
+						) {
+							const step =
+								(snapEnabled
+									? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
+									: 1) * (event.shiftKey ? 10 : 1);
+							commitReplacements(
+								[
+									moveSymbolChild(
+										selectedSymbol,
+										selectedChild.key,
+										{
+											x:
+												event.key === "ArrowRight"
+													? step
+													: event.key === "ArrowLeft"
+														? -step
+														: 0,
+											y:
+												event.key === "ArrowUp"
+													? step
+													: event.key === "ArrowDown"
+														? -step
+														: 0,
+										},
+										0,
+										allowLocked,
+									),
+								],
+								"Move symbol child",
+							);
 						} else if (selected.length > 0 && event.key.startsWith("Arrow")) {
 							if (drag.current) {
 								event.preventDefault();
@@ -1201,6 +1385,7 @@ function EditorCanvas({
 									selected[0],
 									currentShapes.current,
 									nextId.current,
+									allowLocked,
 								),
 								"Move selection",
 							);
@@ -1315,6 +1500,34 @@ function EditorCanvas({
 									>
 										<Magnet size={18} aria-hidden="true" />
 									</button>
+									<button
+										type="button"
+										aria-label="Select locked items"
+										aria-pressed={allowLocked}
+										title="Allow selecting and moving locked symbols and standalone items. Locked symbol children stay unselectable."
+										disabled={!ready}
+										className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
+										onClick={() => {
+											finishDrag(true);
+											const next = !allowLocked;
+											const ids = new Set(
+												currentShapes.current
+													.filter(
+														(shape) =>
+															currentSelection.current.has(shape.id) &&
+															canSelectShape(shape, next),
+													)
+													.map((shape) => shape.id),
+											);
+											currentSelection.current = ids;
+											setSelectedIds(ids);
+											setSelectedChildKey(null);
+											setAllowLocked(next);
+										}}
+									>
+										<LockKeyhole size={18} aria-hidden="true" />
+									</button>
+
 									{[
 										{
 											label: "Rotate counterclockwise",
@@ -1345,6 +1558,25 @@ function EditorCanvas({
 									<button
 										type="button"
 										className={viewControlButtonClassName}
+										disabled={!ready || !selected.length}
+										aria-label={
+											selectionLocked ? "Unlock selection" : "Lock selection"
+										}
+										title={
+											selectionLocked ? "Unlock selection" : "Lock selection"
+										}
+										onClick={() => changeSelectionLock(!selectionLocked)}
+									>
+										{selectionLocked ? (
+											<Unlock size={18} aria-hidden="true" />
+										) : (
+											<Lock size={18} aria-hidden="true" />
+										)}
+									</button>
+
+									<button
+										type="button"
+										className={viewControlButtonClassName}
 										disabled={!selected.length}
 										aria-label="Delete"
 										title="Delete selected shapes"
@@ -1355,7 +1587,7 @@ function EditorCanvas({
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag a symbol body to move it. Drag its text to move that label independently. Edit its name, reference, value and relative text positions in Attributes. Press R to rotate selected components 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Edit its name and number in Attributes; both labels appear beside the pin. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; text moves at one-tenth of the visible grid spacing. Arrow keys move by one snapping step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires and pins, History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag any item on an unselected symbol to move the whole symbol. Select a symbol first, then drag a child to customize it. Select a child on the canvas to edit its position, size or content in Attributes relative to the symbol center. Locked items cannot be selected or moved. Select locked items allows selecting and moving locked symbols and standalone items while keeping locked symbol children unselectable. Press R to rotate selected components 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol to duplicate it, including from a label. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a single connection point. Edit its name and number in Attributes; both labels appear beside the pin. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; text moves at one-tenth of the visible grid spacing. Arrow keys move by one snapping step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 1 mm, Shift + arrows by 10 mm. Delete removes the selection. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the drawing."
 						/>
 					)}
 					{view && (
@@ -1377,6 +1609,38 @@ function EditorCanvas({
 											data-testid="wire-connection"
 											className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#e8b77e]"
 											style={{ left: point.x, top: point.y }}
+										/>
+									);
+								})()}
+
+							{selectedSymbol &&
+								selectedChild &&
+								(() => {
+									const bounds = shapeBounds(
+										symbolChildWorld(selectedSymbol, selectedChild.shape),
+									);
+									const topLeft = worldToScreen(
+										{ x: bounds.minX, y: bounds.maxY },
+										view.camera,
+										view.viewport.width,
+										view.viewport.height,
+									);
+									const bottomRight = worldToScreen(
+										{ x: bounds.maxX, y: bounds.minY },
+										view.camera,
+										view.viewport.width,
+										view.viewport.height,
+									);
+									return (
+										<span
+											data-testid="symbol-child-selection"
+											className="absolute border border-dashed border-[#e8b77e]"
+											style={{
+												left: topLeft.x - 3,
+												top: topLeft.y - 3,
+												width: bottomRight.x - topLeft.x + 6,
+												height: bottomRight.y - topLeft.y + 6,
+											}}
 										/>
 									);
 								})()}
@@ -1460,6 +1724,7 @@ function EditorCanvas({
 				</div>
 				<SelectionAttributes
 					shapes={selected}
+					onLockChange={changeSelectionLock}
 					onEditSymbol={
 						editTarget
 							? () => {
@@ -1494,50 +1759,17 @@ function EditorCanvas({
 							`Change symbol ${attribute}`,
 						);
 					}}
-					onSymbolTextPositionChange={(attribute, position) => {
-						if (!selectedSymbol) return;
-						commitReplacements(
-							[
-								{
-									...selectedSymbol,
-									textPositions: {
-										...selectedSymbol.textPositions,
-										[attribute]: position,
-									},
-								},
-							],
-							`Move symbol ${attribute} text`,
-						);
-					}}
 					snapStep={selectionSnapStep}
 					onClear={() => applySelection(new Set())}
 					textFocusId={textFocusId}
 					onTextFocus={() => setTextFocusId(null)}
-					onTextAlignmentChange={(alignment, attribute) => {
-						if (attribute && selectedSymbol) {
-							commitReplacements(
-								[
-									{
-										...selectedSymbol,
-										textAlignments: {
-											...selectedSymbol.textAlignments,
-											[attribute]: {
-												...selectedSymbol.textAlignments?.[attribute],
-												...alignment,
-											},
-										},
-									},
-								],
-								`Align symbol ${attribute} text`,
-							);
-						} else {
-							commitReplacements(
-								selected
-									.filter((shape) => shape.kind === "text")
-									.map((shape) => ({ ...shape, ...alignment })),
-								"Align text",
-							);
-						}
+					onTextAlignmentChange={(alignment) => {
+						commitReplacements(
+							selected
+								.filter((shape) => shape.kind === "text")
+								.map((shape) => ({ ...shape, ...alignment })),
+							"Align text",
+						);
 					}}
 					onTextChange={(text) => {
 						if (selected.length === 1 && selected[0].kind === "text")
@@ -1565,6 +1797,7 @@ function EditorCanvas({
 										selected[0],
 										currentShapes.current,
 										nextId.current,
+										allowLocked,
 									)
 								: selected.map((shape) =>
 										editShapeAttribute(shape, attribute, value),
@@ -1574,6 +1807,39 @@ function EditorCanvas({
 							`Change ${attribute === "lineWidth" ? "line width" : attribute === "fontSize" ? "font size" : attribute}`,
 						);
 					}}
+					{...(selectedChild && selectedSymbol
+						? {
+								shapes: [selectedChild.shape],
+								isSymbolChild: true,
+								snapStep: snapEnabled
+									? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
+									: 0,
+								onClear: () => applySelection(new Set()),
+								onAttributeChange: (attribute: ShapeAttribute, value: number) =>
+									editChild(
+										editShapeAttribute(selectedChild.shape, attribute, value),
+									),
+								onLineStyleChange: (lineStyle: LineStyle) => {
+									if (isBasicShape(selectedChild.shape))
+										editChild({ ...selectedChild.shape, lineStyle });
+								},
+								onTextChange: (text: string) => {
+									if (selectedChild.shape.kind === "text")
+										editChild(updateText(selectedChild.shape, text));
+								},
+								onTextAlignmentChange: (alignment: TextAlignment) => {
+									if (selectedChild.shape.kind === "text")
+										editChild({ ...selectedChild.shape, ...alignment });
+								},
+								onPinAttributeChange: (
+									attribute: "name" | "number",
+									value: string,
+								) => {
+									if (selectedChild.shape.kind === "pin")
+										editChild({ ...selectedChild.shape, [attribute]: value });
+								},
+							}
+						: {})}
 				/>
 			</div>
 			{creatingSymbol && (

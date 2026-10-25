@@ -13,6 +13,7 @@ import {
 	undoHistory,
 } from "#/drawing/history.ts";
 import { type LineStyle, lineStyles } from "#/drawing/line-style.ts";
+import { symbolChildOverridesSchema } from "#/drawing/schema.ts";
 import {
 	type EditorShape,
 	isBasicShape,
@@ -63,6 +64,8 @@ function validateIds(ids: readonly number[]) {
 }
 
 function validateShape(shape: EditorShape) {
+	if (shape && shape.locked !== undefined && typeof shape.locked !== "boolean")
+		invalid("Shape locks must be booleans.");
 	if (
 		!shape ||
 		![
@@ -162,6 +165,7 @@ function validateShape(shape: EditorShape) {
 					!["name", "reference", "value"].includes(text.attribute) ||
 					![text.x, text.y, text.fontSize].every(Number.isFinite) ||
 					text.fontSize <= 0 ||
+					(text.locked !== undefined && typeof text.locked !== "boolean") ||
 					!validTextAlignment(text),
 			)
 		)
@@ -183,6 +187,11 @@ function validateShape(shape: EditorShape) {
 				))
 		)
 			invalid("Invalid symbol text alignment.");
+		if (
+			shape.childOverrides !== undefined &&
+			!symbolChildOverridesSchema.safeParse(shape.childOverrides).success
+		)
+			invalid("Invalid symbol child overrides.");
 		validateIds(shape.children.map((child) => child.id));
 		if (
 			shape.textPositions !== undefined &&
@@ -212,7 +221,10 @@ function validateShape(shape: EditorShape) {
 				].includes(child.kind)
 			)
 				invalid("Symbol children must be primitive shapes.");
-			validateShape(child);
+			validateShape({
+				...child,
+				...shape.childOverrides?.[`shape:${child.id}`],
+			});
 		}
 	}
 }
@@ -225,6 +237,7 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 			return (
 				shape.id === other.id &&
 				shape.kind === other.kind &&
+				(shape.locked ?? false) === (other.locked ?? false) &&
 				(!isBasicShape(shape) ||
 					(isBasicShape(other) &&
 						(shape.lineStyle ?? "solid") === (other.lineStyle ?? "solid"))) &&
@@ -239,6 +252,8 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 						shape.strokeOverride === other.strokeOverride &&
 						JSON.stringify(shape.textAlignments) ===
 							JSON.stringify(other.textAlignments) &&
+						JSON.stringify(shape.childOverrides) ===
+							JSON.stringify(other.childOverrides) &&
 						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
 						JSON.stringify(shape.texts) === JSON.stringify(other.texts) &&
 						JSON.stringify(shape.textPositions) ===
