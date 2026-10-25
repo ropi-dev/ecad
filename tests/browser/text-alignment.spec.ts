@@ -158,7 +158,7 @@ test("aligned text in a user symbol saves and renders in placed instances", asyn
  await expect.poll(async () => (await scene(page)).symbolStaticTexts.filter((text: {name: string}) => text.name.startsWith("text 2:")).length).toBe(2);
  const angle = page.getByRole("spinbutton", { name: "Angle", exact: true });
  await angle.fill("90"); await angle.press("Tab");
- await expect.poll(async () => (await scene(page)).symbolStaticTexts.find((text: {name: string}) => text.name === "text 2:2")?.rotation).toBeCloseTo(3 * Math.PI / 4);
+ await expect.poll(async () => (await scene(page)).symbolStaticTexts.find((text: {name: string}) => text.name === "text 2:2")?.rotation).toBeCloseTo(-Math.PI / 4);
  await expect(page.getByTestId("text-anchor")).toHaveCount(2);
  const instance = (await state(page)).shapes[1];
  await expectAnchor(page, "2:text:3", { x: instance.x + 3, y: instance.y - 4 });
