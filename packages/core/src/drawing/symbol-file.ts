@@ -4,6 +4,7 @@ import type {
 } from "#/components/editor/symbolFormat.ts";
 import {
 	type EditorShape,
+	fitBoxToBorder,
 	isBasicShape,
 	PIN_RADIUS,
 	symbolShapes,
@@ -57,36 +58,39 @@ export function symbolFileShapes(
 							value: "",
 						},
 					};
-			return {
-				...instance,
-				...(shape.locked === undefined ? {} : { locked: shape.locked }),
-				...(shape.childOverrides
-					? { childOverrides: structuredClone(shape.childOverrides) }
-					: {}),
-				library: shape.library,
-				definitionId: shape.definitionId,
-				rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
-				...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
-				...(shape.textAlignments
-					? { textAlignments: structuredClone(shape.textAlignments) }
-					: {}),
-				...(shape.textPositions
-					? { textPositions: structuredClone(shape.textPositions) }
-					: {}),
-				...(shape.lineWidth === undefined
-					? {}
-					: {
-							lineWidth: shape.lineWidth,
-							strokeOverride: shape.lineWidth,
-							children: instance.children.map((child) => ({
-								...child,
-								lineWidth:
-									child.kind === "text"
-										? child.lineWidth
-										: (shape.lineWidth ?? child.lineWidth),
-							})),
-						}),
-			};
+			return fitBoxToBorder(
+				{
+					...instance,
+					...(shape.locked === undefined ? {} : { locked: shape.locked }),
+					...(shape.childOverrides
+						? { childOverrides: structuredClone(shape.childOverrides) }
+						: {}),
+					library: shape.library,
+					definitionId: shape.definitionId,
+					rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
+					...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
+					...(shape.textAlignments
+						? { textAlignments: structuredClone(shape.textAlignments) }
+						: {}),
+					...(shape.textPositions
+						? { textPositions: structuredClone(shape.textPositions) }
+						: {}),
+					...(shape.lineWidth === undefined
+						? {}
+						: {
+								lineWidth: shape.lineWidth,
+								strokeOverride: shape.lineWidth,
+								children: instance.children.map((child) => ({
+									...child,
+									lineWidth:
+										child.kind === "text"
+											? child.lineWidth
+											: (shape.lineWidth ?? child.lineWidth),
+								})),
+							}),
+				},
+				{ preserveChildWorldPositions: true },
+			);
 		}
 		resolvedShapes += 1;
 		if (resolvedShapes > 65_536)

@@ -9,6 +9,7 @@ import {
 	lineStyles,
 } from "#/drawing/line-style.ts";
 import {
+	boxBorder,
 	type EditorShape,
 	type EditorSymbol,
 	isBasicShape,
@@ -127,7 +128,15 @@ function SelectionAttributesPanel({
 	textFocusId,
 	onTextFocus,
 }: SelectionAttributesProps) {
-	const basicShapes = shapes.filter(isBasicShape);
+	const basicShapes = shapes.flatMap((shape) => {
+		const border =
+			shape.kind === "symbol" ? boxBorder(shape)?.shape : undefined;
+		return isBasicShape(shape)
+			? [shape]
+			: border && isBasicShape(border)
+				? [border]
+				: [];
+	});
 	const textShapes = shapes.filter((shape) => shape.kind === "text");
 	const lineStyle =
 		basicShapes.length &&
@@ -269,7 +278,15 @@ function SelectionAttributesPanel({
 				...(single.kind === "pin"
 					? []
 					: symbol
-						? [editable("Angle", "angle", (symbol.rotation * 180) / Math.PI)]
+						? [
+								...(boxBorder(symbol)
+									? [
+											editable("Width", "width", symbol.width),
+											editable("Height", "height", symbol.height),
+										]
+									: []),
+								editable("Angle", "angle", (symbol.rotation * 180) / Math.PI),
+							]
 						: single.kind === "wire" || single.kind === "line"
 							? [
 									editable("Length", "width", single.width),

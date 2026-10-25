@@ -69,7 +69,7 @@ test("selector focuses search on every opening and filters symbols without libra
 	await trigger.click();
 	await expect(search).toBeFocused();
 	await expect(search).toHaveValue("");
-	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(45);
+	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(46);
 	await search.fill("transistors");
 	await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Transistors"]);
 	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(6);
@@ -119,9 +119,9 @@ test("every default symbol previews and places with its geometry, pins, and edit
 			defaults[index].file.shapes.filter((child) => child.kind === "pin").map(({ name }) => name),
 		);
 	}
-	await page.getByRole("textbox", { name: "Value", exact: true }).fill("Edited antenna");
+	await page.getByRole("textbox", { name: "Value", exact: true }).fill("Edited value");
 	await page.getByRole("textbox", { name: "Value", exact: true }).press("Tab");
 	await (await toolbarButton(page, "Undo")).click();
-	await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue("Antenna");
+	await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue(defaults.at(-1)!.file.value);
 	expect(errors).toEqual([]);
 });

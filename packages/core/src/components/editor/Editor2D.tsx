@@ -54,6 +54,7 @@ import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
 import type { LineStyle } from "#/drawing/line-style.ts";
 import {
+	boxBorder,
 	canSelectShape,
 	canSelectSymbolChild,
 	constrainWireEndpoint,
@@ -72,6 +73,7 @@ import {
 	replaceSymbolChild,
 	resizeHandles,
 	resizeShape,
+	resizeSymbolChild,
 	routeWire,
 	type ShapeAttribute,
 	type ShapeKind,
@@ -350,9 +352,21 @@ function EditorCanvas({
 		: 0;
 	const handles =
 		tool === "select"
-			? selected.flatMap((shape) =>
-					resizeHandles(shape).map((handle) => ({ shape, handle })),
-				)
+			? selectedSymbol && selectedChild
+				? resizeHandles(
+						symbolChildWorld(selectedSymbol, selectedChild.shape),
+					).map((handle) => ({
+						shape: selectedSymbol,
+						handle,
+						childKey: selectedChild.key,
+					}))
+				: selected.flatMap((shape) =>
+						resizeHandles(shape).map((handle) => ({
+							shape,
+							handle,
+							childKey: undefined,
+						})),
+					)
 			: [];
 	const handleAt = (point: Point) => {
 		const tolerance = 7 / (snapshot.current?.camera.scale ?? 1);
@@ -562,17 +576,27 @@ function EditorCanvas({
 				active.childKey === undefined
 			)
 				return;
+			const delta = {
+				x: point.x - active.start.x,
+				y: point.y - active.start.y,
+			};
 			previewReplacements([
-				moveSymbolChild(
-					original,
-					active.childKey,
-					{
-						x: point.x - active.start.x,
-						y: point.y - active.start.y,
-					},
-					active.gridStep,
-					allowLocked,
-				),
+				active.handle
+					? resizeSymbolChild(
+							original,
+							active.childKey,
+							active.handle,
+							delta,
+							active.gridStep,
+							allowLocked,
+						)
+					: moveSymbolChild(
+							original,
+							active.childKey,
+							delta,
+							active.gridStep,
+							allowLocked,
+						),
 			]);
 			return;
 		}
@@ -687,7 +711,9 @@ function EditorCanvas({
 					(shape) => shape !== initial.get(shape.id),
 				),
 				active.mode === "symbol-child"
-					? "Move symbol child"
+					? active.handle
+						? "Resize symbol child"
+						: "Move symbol child"
 					: active.mode === "move"
 						? "Move selection"
 						: `Resize ${active.originals[0].kind}`,
@@ -1035,6 +1061,7 @@ function EditorCanvas({
 						let wireStart: Point | undefined;
 						const childHit =
 							!created &&
+							!resize &&
 							!duplicate &&
 							!event.shiftKey &&
 							selectedSymbol &&
@@ -1162,7 +1189,7 @@ function EditorCanvas({
 							selectShape(shape.id, true);
 							return;
 						}
-						const childKey = editableChild?.key;
+						const childKey = resize?.childKey ?? editableChild?.key;
 
 						const originals = shape
 							? childKey === undefined &&
@@ -1777,9 +1804,19 @@ function EditorCanvas({
 					}}
 					onLineStyleChange={(lineStyle) => {
 						commitReplacements(
-							selected
-								.filter(isBasicShape)
-								.map((shape) => ({ ...shape, lineStyle })),
+							selected.flatMap<EditorShape>((shape) => {
+								if (isBasicShape(shape)) return [{ ...shape, lineStyle }];
+								const border =
+									shape.kind === "symbol" ? boxBorder(shape) : undefined;
+								return border && shape.kind === "symbol"
+									? [
+											replaceSymbolChild(shape, border.key, {
+												...border.shape,
+												lineStyle,
+											}),
+										]
+									: [];
+							}),
 							"Change line style",
 						);
 					}}

@@ -5,6 +5,7 @@ import {
 import {
 	type EditorShape,
 	type EditorSymbol,
+	fitBoxToBorder,
 	PIN_RADIUS,
 	type SymbolShape,
 	type SymbolText,
@@ -53,7 +54,7 @@ export function createSymbol(
 			: {}),
 	}));
 	const bounds = children.map(shapeBounds);
-	return {
+	return fitBoxToBorder({
 		id,
 		kind: "symbol",
 		definitionId: definition.id,
@@ -77,7 +78,7 @@ export function createSymbol(
 			definition.texts.map(({ attribute, x, y }) => [attribute, { x, y }]),
 		),
 		attributes: { name: definition.name, reference, value: definition.value },
-	};
+	});
 }
 
 export function duplicateSymbol(

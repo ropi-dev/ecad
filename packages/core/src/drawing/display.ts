@@ -14,6 +14,7 @@ import {
 	PIN_RADIUS,
 	type ShapeKind,
 	selectionSize,
+	shapeCenter,
 	symbolShapes,
 	symbolTextPosition,
 	symbolTextShapes,
@@ -232,9 +233,7 @@ export function buildDrawingDisplay(
 			.filter((shape) => selectedIds.has(shape.id))
 			.map((shape) => ({
 				shapeKey: `shape:${shape.id}`,
-				...(shape.kind === "text"
-					? textCenter(shape)
-					: { x: shape.x, y: shape.y }),
+				...shapeCenter(shape),
 				...selectionSize(shape),
 				rotation: shape.rotation,
 				renderOrder: shapes.length + 1,
