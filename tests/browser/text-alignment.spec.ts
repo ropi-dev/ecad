@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { selectSymbolItem } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -69,13 +70,15 @@ test("symbol labels keep alignment per instance through rotation, dragging and u
   await page.locator("canvas").click({ position: { x, y: 450 } });
  }
  const initial = await state(page);
- const horizontal = page.getByRole("combobox", { name: "Reference text horizontal alignment", exact: true });
- const vertical = page.getByRole("combobox", { name: "Reference text vertical alignment", exact: true });
+ await selectSymbolItem(page, "attribute:reference");
+ const horizontal = page.getByRole("combobox", { name: "Text horizontal alignment", exact: true });
+ const vertical = page.getByRole("combobox", { name: "Text vertical alignment", exact: true });
  await horizontal.selectOption("right");
  await vertical.selectOption("bottom");
  let shapes = (await state(page)).shapes;
  expect(shapes[0]).toEqual(initial.shapes[0]);
  expect(shapes[1]).toMatchObject({ x: initial.shapes[1].x, y: initial.shapes[1].y, textAlignments: { reference: { horizontalAlign: "right", verticalAlign: "bottom" } } });
+ await selectSymbolItem(page, "");
  const angle = page.getByRole("spinbutton", { name: "Angle", exact: true });
  await angle.fill("90"); await angle.press("Tab");
  await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
@@ -98,12 +101,14 @@ test("symbol labels keep alignment per instance through rotation, dragging and u
  expect(shapes[1].x).toBe(initial.shapes[1].x);
  await (await toolbarButton(page, "Undo")).click();
  expect((await state(page)).shapes[1].textPositions).toEqual(initial.shapes[1].textPositions);
+ await selectSymbolItem(page, "");
  await angle.fill("0"); await angle.press("Tab");
  for (const [axis, value] of [["X", "-8"], ["Y", "0"]]) {
  const input = page.getByRole("spinbutton", { name: `Center ${axis}`, exact: true });
  await input.fill(value); await input.press("Tab");
  }
  for (let i = 0; i < 8; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+ await selectSymbolItem(page, "attribute:reference");
  await vertical.scrollIntoViewIfNeeded();
  await page.screenshot({ path: test.info().outputPath("symbol-label-alignment.png") });
  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
@@ -185,12 +190,17 @@ test("text glyphs are vertically centered around the middle alignment anchor", a
  await page.locator("canvas").click({ position: { x: 600, y: 450 } });
  const reference = page.getByRole("textbox", { name: "Reference", exact: true });
  await reference.fill("R7"); await reference.press("Tab");
- for (const [name, value] of [["Value text Y", "0"], ["Center X", "-5"], ["Center Y", "0"]]) {
+ await selectSymbolItem(page, "attribute:value");
+ const valueY = page.getByRole("spinbutton", { name: "Anchor Y", exact: true });
+ await valueY.fill("0"); await valueY.press("Tab");
+ await selectSymbolItem(page, "");
+ for (const [name, value] of [["Center X", "-5"], ["Center Y", "0"]]) {
   const input = page.getByRole("spinbutton", { name, exact: true });
   await input.fill(value); await input.press("Tab");
  }
  for (let i = 0; i < 10; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await expectAnchor(page, "1:label:1", { x: -5, y: 0 });
- await page.getByRole("combobox", { name: "Value text vertical alignment", exact: true }).scrollIntoViewIfNeeded();
+ await selectSymbolItem(page, "attribute:value");
+ await page.getByRole("combobox", { name: "Text vertical alignment", exact: true }).scrollIntoViewIfNeeded();
  await page.screenshot({ path: test.info().outputPath("text-middle-alignment.png") });
 });

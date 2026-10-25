@@ -48,7 +48,6 @@ test("symbol fields validate on blur and commit only valid changes", async ({ pa
 
 	for (const [label, invalid, message, valid] of [
 		["Center X", "", "Enter a finite number.", "12.125"],
-		["Reference text X", "", "Enter a finite number.", "-3.25"],
 		["Line width", "0", "Line width must be greater than zero.", "0.5"],
 		["Line width", "-1", "Line width must be greater than zero.", "0.75"],
 	]) {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
+import { selectSymbolItem } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -24,6 +25,8 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  }
  await (await toolbarButton(page, "Snap to grid")).click();
  const before = await state(page);
+ const first = await labelScreen(page, 1);
+ await page.mouse.click(first.x, first.y);
  const start = await labelScreen(page, 1);
  await page.mouse.move(start.x, start.y);
  await page.mouse.down();
@@ -52,6 +55,7 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  await page.keyboard.press("Escape");
  await page.mouse.up();
  expect(await state(page)).toEqual(moved);
+ await selectSymbolItem(page, "");
  const angle = page.getByRole("spinbutton", { name: "Angle", exact: true });
  await angle.fill("90"); await angle.press("Tab");
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes.find((shape: { name: string }) => shape.name === "symbol 1")?.rotation).toBeCloseTo(Math.PI / 2);
@@ -62,7 +66,7 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  await page.mouse.up();
  await expect.poll(async () => (await labelScreen(page, 1)).x).toBeCloseTo(rotated.x - 45, 2);
  await expect.poll(async () => (await labelScreen(page, 1)).y).toBeCloseTo(rotated.y + 35, 2);
- const xInput = page.getByRole("spinbutton", { name: "Reference text X", exact: true });
+ const xInput = page.getByRole("spinbutton", { name: "Anchor X", exact: true });
  const committedX = await xInput.getAttribute("data-committed-value");
  await xInput.fill("12");
  await expect(xInput).toHaveAttribute("data-committed-value", committedX!);
@@ -71,7 +75,12 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  expect((await state(page)).shapes[0].textPositions!.reference!.x).toBe(12);
  await expect(page.getByRole("alert")).toHaveCount(0);
  // Arrange a close view of the edited and untouched instances for visual review.
- for (const [name, value] of [["Angle", "0"], ["Reference text X", "-3"], ["Reference text Y", "5"], ["Center X", "-6"], ["Center Y", "0"]]) {
+ for (const [name, value] of [["Anchor X", "-3"], ["Anchor Y", "5"]]) {
+  const input = page.getByRole("spinbutton", { name, exact: true });
+  await input.fill(value); await input.press("Tab");
+ }
+ await selectSymbolItem(page, "");
+ for (const [name, value] of [["Angle", "0"], ["Center X", "-6"], ["Center Y", "0"]]) {
   const input = page.getByRole("spinbutton", { name, exact: true });
   await input.fill(value); await input.press("Tab");
  }
@@ -82,6 +91,7 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes.find((shape: { name: string }) => shape.name === "symbol 1")?.x).toBe(-6);
  const reviewLabel = await labelScreen(page, 1);
  await page.mouse.click(reviewLabel.x, reviewLabel.y);
+ await selectSymbolItem(page, "attribute:reference");
  await expect(xInput).toHaveValue("-3");
  for (let repeat = 0; repeat < 10; repeat++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await page.screenshot({ path: test.info().outputPath("symbol-text-positions.png") });
@@ -97,8 +107,11 @@ test("saved symbol label positions survive a project reload without copying the 
  await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
  const box = (await page.locator("canvas").boundingBox())!;
  await page.locator("canvas").click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
- const input = page.getByRole("spinbutton", { name: "Reference text X", exact: true });
+ await selectSymbolItem(page, "attribute:reference");
+ const input = page.getByRole("spinbutton", { name: "Anchor X", exact: true });
  await input.fill("18"); await input.press("Tab");
+ await selectSymbolItem(page, "");
+ await page.getByRole("checkbox", { name: "Locked", exact: true }).click();
  const projectState = async () => JSON.parse((await page.locator("#project-document").textContent())!);
  await expect.poll(async () => (await projectState()).dirty).toBe(false);
  const saved = await page.evaluate(async () => {
@@ -114,12 +127,17 @@ test("saved symbol label positions survive a project reload without copying the 
   return JSON.parse(await (await (await parent.getFileHandle(file)).getFile()).text());
  });
  expect(saved.shapes[0].textPositions.reference.x).toBe(18);
+ expect(saved.shapes[0].locked).toBe(true);
  expect(saved.shapes[0]).not.toHaveProperty("texts");
  expect(saved.shapes[0]).not.toHaveProperty("children");
  await page.reload();
  await expect.poll(async () => (await projectState()).shapes[0]?.textPositions?.reference?.x).toBe(18);
+ await expect.poll(async () => (await projectState()).shapes[0]?.locked).toBe(true);
  await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
  await expect(page.locator("canvas")).toBeVisible();
+ await page.getByRole("button", { name: "Select locked items", exact: true }).click();
+ await expect(page.getByRole("treeitem", { name: "R1 · Resistor", exact: true })).toHaveAttribute("aria-disabled", "false");
+ await expect(page.getByRole("treeitem", { name: "Rectangle 2", exact: true })).toHaveAttribute("aria-disabled", "true");
  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
@@ -130,12 +148,14 @@ test("symbol labels snap at one-tenth of the grid spacing in world coordinates",
  const box = (await page.locator("canvas").boundingBox())!;
  await page.locator("canvas").click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
  for (const [attribute, y] of [["Reference", "12"], ["Value", "-12"]]) {
-  const input = page.getByRole("spinbutton", { name: `${attribute} text Y`, exact: true });
+  await selectSymbolItem(page, `attribute:${attribute.toLowerCase()}`);
+  const input = page.getByRole("spinbutton", { name: "Anchor Y", exact: true });
   await input.fill(y);
   await input.press("Tab");
  }
  const step = Number((await page.getByRole("button", { name: "Snap to grid", exact: true }).getAttribute("title"))!.match(/[\d.]+/)![0]) / 10;
  for (const angle of [0, 90]) {
+  await selectSymbolItem(page, "");
   const input = page.getByRole("spinbutton", { name: "Angle", exact: true });
   await input.fill(String(angle));
   await input.press("Tab");
@@ -174,7 +194,8 @@ test("Alt-dragging a moved label duplicates the symbol and keeps label edits ind
  await page.locator("canvas").click({ position: { x: box.width * 0.45, y: box.height * 0.5 } });
  await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
  for (const [axis, value] of [["X", "-8"], ["Y", "8"]]) {
-  const input = page.getByRole("spinbutton", { name: `Reference text ${axis}`, exact: true });
+  await selectSymbolItem(page, "attribute:reference");
+  const input = page.getByRole("spinbutton", { name: `Anchor ${axis}`, exact: true });
   await input.fill(value); await input.press("Tab");
  }
  const before = await state(page);

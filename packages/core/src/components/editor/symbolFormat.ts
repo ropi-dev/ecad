@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
 import { lineStyles } from "#/drawing/line-style.ts";
-import type { EditorSymbol } from "#/drawing/shapes.ts";
+import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { readFile } from "#/formats/import-effects.ts";
@@ -23,9 +23,34 @@ const textAlignmentFields = {
 	verticalAlign: Schema.optional(Schema.Literal("top", "middle", "bottom")),
 };
 const textAlignment = Schema.Struct(textAlignmentFields);
+const locked = Schema.optional(Schema.Boolean);
+const childOverrides = Schema.optional(
+	Schema.Record({
+		key: Schema.String.pipe(
+			Schema.pattern(/^(shape:[1-9]\d*|attribute:(name|reference|value))$/),
+		),
+		value: Schema.Struct({
+			x: Schema.optional(coordinate),
+			y: Schema.optional(coordinate),
+			width: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
+			height: Schema.optional(dimension),
+			rotation: Schema.optional(Schema.Finite),
+			lineWidth: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
+			fontSize: Schema.optional(dimension),
+			text: Schema.optional(Schema.String),
+			name: Schema.optional(Schema.String),
+			number: Schema.optional(Schema.String),
+			showLabels: Schema.optional(Schema.Boolean),
+			locked,
+			lineStyle,
+			...textAlignmentFields,
+		}),
+	}),
+);
 const shapeSchema = Schema.Union(
 	Schema.Struct({
 		kind: Schema.Literal("text"),
+		locked,
 		x: coordinate,
 		y: coordinate,
 		width: dimension,
@@ -38,6 +63,8 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("symbol"),
+		locked,
+		childOverrides,
 		library: Schema.Struct({
 			scope: Schema.Literal("user", "project"),
 			id: label,
@@ -75,6 +102,7 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("wire", "line"),
+		locked,
 		lineWidth,
 		lineStyle,
 		x1: coordinate,
@@ -90,6 +118,7 @@ const shapeSchema = Schema.Union(
 	),
 	Schema.Struct({
 		kind: Schema.Literal("rectangle", "triangle"),
+		locked,
 		lineWidth,
 		lineStyle,
 		x: coordinate,
@@ -100,6 +129,7 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("circle"),
+		locked,
 		lineWidth,
 		lineStyle,
 		x: coordinate,
@@ -108,6 +138,7 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("pin"),
+		locked,
 		name: Schema.optional(Schema.String),
 		number: Schema.optional(Schema.String),
 		showLabels: Schema.optional(Schema.Boolean),
@@ -239,7 +270,7 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 					value: symbol.attributes.value,
 					shapes: [],
 				},
-				symbol.children,
+				symbolShapes({ ...symbol, x: 0, y: 0, rotation: 0 }),
 			),
 		),
 	);

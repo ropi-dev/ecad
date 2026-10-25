@@ -14,14 +14,13 @@ import {
 	isBasicShape,
 	type ShapeAttribute,
 	shapeBounds,
-	symbolTextPosition,
+	symbolShapes,
 } from "#/drawing/shapes.ts";
 import {
 	horizontalAlignments,
 	type TextAlignment,
 	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
-import type { Point } from "#/drawing/types.ts";
 
 function AttributeInput({
 	label,
@@ -80,6 +79,7 @@ function AttributeInput({
 }
 
 interface SelectionAttributesProps {
+	isSymbolChild?: boolean;
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
@@ -87,19 +87,13 @@ interface SelectionAttributesProps {
 	onEditSymbol?: () => void;
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
 	onLineStyleChange: (style: LineStyle) => void;
+	onLockChange: (locked: boolean) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
 		value: string,
 	) => void;
-	onSymbolTextPositionChange: (
-		attribute: keyof EditorSymbol["attributes"],
-		position: Point,
-	) => void;
 	onTextChange: (text: string) => void;
-	onTextAlignmentChange: (
-		alignment: TextAlignment,
-		attribute?: keyof EditorSymbol["attributes"],
-	) => void;
+	onTextAlignmentChange: (alignment: TextAlignment) => void;
 	onPinAttributeChange: (attribute: "name" | "number", value: string) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
@@ -117,13 +111,14 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 }
 
 function SelectionAttributesPanel({
+	isSymbolChild = false,
 	shapes,
 	snapStep = 0,
 	onClear,
 	onAttributeChange,
 	onLineStyleChange,
+	onLockChange,
 	onSymbolAttributeChange,
-	onSymbolTextPositionChange,
 	onPinAttributeChange,
 	onCreateSymbol,
 	onEditSymbol,
@@ -144,7 +139,7 @@ function SelectionAttributesPanel({
 			: "";
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
-			? shape.children.filter((child) => child.kind !== "text")
+			? symbolShapes(shape).filter((child) => child.kind !== "text")
 			: shape.kind === "text"
 				? []
 				: [shape],
@@ -160,6 +155,22 @@ function SelectionAttributesPanel({
 	const single = shapes.length === 1 ? shapes[0] : undefined;
 	const canCreateSymbol = shapes.every((shape) => shape.kind !== "symbol");
 	const symbol = single?.kind === "symbol" ? single : undefined;
+	const locked = shapes.every((shape) => shape.locked === true);
+	const lockAttribute: [string, ReactNode] = [
+		"Locked",
+		<input
+			key="locked"
+			type="checkbox"
+			aria-label="Locked"
+			checked={locked}
+			ref={(input) => {
+				if (input)
+					input.indeterminate = !locked && shapes.some((shape) => shape.locked);
+			}}
+			onChange={(event) => onLockChange(event.currentTarget.checked)}
+			className="size-4 cursor-pointer accent-[#e8b77e] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+		/>,
+	];
 	const bounds = shapes.map(shapeBounds);
 	const left = Math.min(...bounds.map((box) => box.minX));
 	const right = Math.max(...bounds.map((box) => box.maxX));
@@ -209,6 +220,7 @@ function SelectionAttributesPanel({
 		? [
 				["Type", single.kind],
 				["ID", String(single.id)],
+				lockAttribute,
 				...(single.kind === "pin"
 					? (["name", "number"] as const).map(
 							(attribute): [string, ReactNode] => [
@@ -279,6 +291,7 @@ function SelectionAttributesPanel({
 			]
 		: [
 				["Shapes", String(shapes.length)],
+				lockAttribute,
 				["Left X", mm(left)],
 				["Bottom Y", mm(bottom)],
 				["Width", mm(right - left)],
@@ -413,62 +426,6 @@ function SelectionAttributesPanel({
 						onChange={onTextAlignmentChange}
 					/>
 				)}
-				{symbol && symbol.texts.length > 0 && (
-					<fieldset className="mb-4 border-0 p-0 text-[12px]">
-						<legend className="mb-2 text-[#9ba7b8]">
-							Text relative to symbol
-						</legend>
-						{symbol.texts.map((text) => {
-							const position = symbolTextPosition(symbol, text);
-							const label =
-								text.attribute[0].toUpperCase() + text.attribute.slice(1);
-							return (
-								<div key={text.attribute} className="mb-3">
-									{(["x", "y"] as const).map((axis) => (
-										<div
-											key={`${text.attribute}:${axis}`}
-											className="flex items-center justify-between gap-3 py-1"
-										>
-											<span className="text-[#9ba7b8]">
-												{label} {axis.toUpperCase()}
-											</span>
-											<SymbolInstanceAttributeInput
-												name={`textPositions.${text.attribute}.${axis}`}
-												label={`${label} text ${axis.toUpperCase()}`}
-												value={position[axis]}
-												unit="mm"
-												step="0.1"
-												onCommit={(value) =>
-													onSymbolTextPositionChange(text.attribute, {
-														...position,
-														[axis]: value,
-													})
-												}
-											/>
-										</div>
-									))}
-									<TextAlignmentInputs
-										label={`${label} text`}
-										horizontalAlign={
-											symbol.textAlignments?.[text.attribute]
-												?.horizontalAlign ??
-											text.horizontalAlign ??
-											"center"
-										}
-										verticalAlign={
-											symbol.textAlignments?.[text.attribute]?.verticalAlign ??
-											text.verticalAlign ??
-											"middle"
-										}
-										onChange={(alignment) =>
-											onTextAlignmentChange(alignment, text.attribute)
-										}
-									/>
-								</div>
-							);
-						})}
-					</fieldset>
-				)}
 				{basicShapes.length > 0 && (
 					<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
 						Line style
@@ -527,10 +484,12 @@ function SelectionAttributesPanel({
 				)}
 				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
 					{symbol
-						? "Drag text to move its label. Drag the body to move the whole symbol. Text positions are saved for this instance."
-						: single?.kind === "pin"
-							? "Drag to move the connection point."
-							: "Drag to move; drag handles to resize."}{" "}
+						? "Position edits move the whole symbol. Child positions are relative to the symbol center."
+						: isSymbolChild
+							? "Drag to move this item. Size and appearance edits apply to this instance."
+							: single?.kind === "pin"
+								? "Drag to move the connection point."
+								: "Drag to move; drag handles to resize."}{" "}
 					Arrow keys move {snapStep || 1} mm; Shift + arrows move{" "}
 					{(snapStep || 1) * 10} mm when the drawing is focused.
 				</p>
