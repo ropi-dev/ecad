@@ -1,4 +1,12 @@
 export const budgets = {
+	"cli-drawing": {
+		startupMs: 500,
+		placeMs: 3000,
+		readMs: 3000,
+		undoMs: 3000,
+		stdioStartupMs: 3000,
+		stdioPlaceMs: 3000,
+	},
  "project-new-drawing": { createMs: 3000, interactionP95Ms: 1200, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "project-file-sidebar": { hoverRevealMs: 750, menuOpenMs: 750, interactionP95Ms: 1200, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-box": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },

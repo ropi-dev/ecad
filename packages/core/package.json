@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ecad/drawing-core": "*",
     "@ecad/default-symbols": "*",
     "@hookform/resolvers": "^5.9.2",
     "@modelcontextprotocol/sdk": "^1.27.1",

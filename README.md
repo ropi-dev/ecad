@@ -2,10 +2,12 @@ ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron 
 
 | Package | Contents |
 | --- | --- |
-| [`@ecad/core`](packages/core) | Shared editor and viewers, drawing commands, symbol validation, parsers, workers, and rendering. |
+| [`@ecad/core`](packages/core) | Shared React editor and viewers, symbol validation, parsers, workers, and rendering. |
+| [`@ecad/drawing-core`](packages/drawing-core) | Headless drawing model, store, Effect commands, schemas, and MCP tools. |
 | [`@ecad/default-symbols`](packages/default-symbols) | Offline generators for 45 KiCad-derived schematic symbols and portable library exports. |
 | [`@ecad/web`](packages/web) | TanStack Start app, browser project directories, symbol storage, routes, and HTTP services. |
 | [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
+| [`@ecad/cli`](packages/cli) | Standalone drawing commands, local file persistence, and an MCP stdio server. |
 
 Use Node.js 24.14.0 or newer in the Node 24 line, or Node.js 25.4.0 or newer. Run `nvm use` to select Node 24 if you use nvm. npm rejects unsupported Node versions.
 
@@ -75,8 +77,9 @@ Web projects keep revision folders in browser storage and publish each revision 
 ```bash
 npm run build:web
 npm run build:desktop
-# Build both apps:
+# Build all packages:
 npm run build
+npm run build:cli
 
 # Launch the built desktop app:
 npm run start:desktop -- /absolute/project-directory
@@ -114,7 +117,7 @@ Google Cloud DNS zone `ropi-dev` in project `calcium-doodad-366020` has a CNAME 
 
 Run `npm run build:web` again to publish changes from this checkout. nginx reads the rebuilt files directly and needs no reload when only the build changes. Each build replaces the client output, so requests during a build and tabs running an older build may need a refresh. The live site has no worktree routing.
 
-GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web and desktop builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
+GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web, desktop, and CLI builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
 Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `npm ci`, and cache npm downloads. Browser jobs install the Mesa Vulkan libraries. Interaction tests use headless Chromium. The renderer spec runs in a separate Playwright project under Xvfb to support its software WebGPU swap chain on CI. Both projects use SwiftShader's Vulkan backend for WebGL and WebGPU. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
 
@@ -126,6 +129,8 @@ Capture performance before feature work with `npm run perf:baseline`, then run `
 
 ## Working in the packages
 
+The headless drawing model, commands, store, schemas, and MCP tool registration live in `@ecad/drawing-core`. The CLI depends on that package. Existing drawing and command imports through `@ecad/core` remain available as re-exports.
+
 Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within the package. App packages import shared modules through `@ecad/core`, for example `@ecad/core/components/editor/Editor2D.tsx`.
 
 Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `npm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
@@ -133,3 +138,22 @@ Web routes live in `packages/web/src/routes`, with the root document in `__root.
 Tailwind styles live in `packages/core/src/styles.css`. The shared Shadcn configuration is `packages/core/components.json`. Web environment validation lives in `packages/web/src/env.ts`. Database commands such as `npm run db:migrate` run in the web workspace and use `DATABASE_URL`.
 
 See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
+
+## Run the CLI
+
+The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing commands and MCP tools with the web and desktop apps through `@ecad/drawing-core`.
+
+```bash
+export ECAD_DRAWING="$PWD/drawing.ecaddraw"
+npm run --silent cli -- tools
+npm run --silent cli -- getDrawing
+npm run --silent cli -- placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
+npm run --silent cli -- undo
+npm run --silent cli -- mcp
+```
+
+`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. A missing file starts empty and saves after the first edit. All nine drawing MCP tools are available, including batch placement, replacement, rotation, removal, and history navigation. Arguments accept JSON or `-` for stdin. Results use the MCP JSON format, including `structuredContent` and `isError`; failures return exit code 1.
+
+The drawing stays compatible with app project files. An adjacent `.history.json` file preserves undo branches between CLI calls and MCP restarts. CLI and MCP operations coordinate through a file lock and reread the drawing on each call.
+
+Build with `npm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the standalone stdio server. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.

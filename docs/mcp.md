@@ -1,6 +1,8 @@
-# MCP access to an open drawing
+# MCP access to drawings
 
-MCP clients can read and edit the drawing open in the web app's `/editor`. MCP starts disabled. Each enabled editor has its own endpoint and bearer token, and commands run against that editor's existing `DrawingStore`. The desktop app uses the same editor with MCP controls hidden; it does not host these HTTP endpoints.
+The standalone CLI and stdio MCP server read and edit local `.ecaddraw` files under Node. See [CLI and stdio access](#cli-and-stdio-access) below.
+
+MCP clients can also read and edit the drawing open in the web app's `/editor`. Web editor MCP starts disabled. Each enabled editor has its own endpoint and bearer token, and commands run against that editor's existing `DrawingStore`. The desktop app uses the same editor with MCP controls hidden; it does not host these HTTP endpoints.
 
 ## Connect a client
 
@@ -27,6 +29,60 @@ The panel provides a configuration in this form. Use the actual URL and token co
 Client configuration formats vary; the endpoint uses HTTP and requires the `Authorization: Bearer ...` header. The token grants read and edit access to this drawing. The client must be able to reach the app at the copied URL.
 
 The existing `/mcp` endpoint remains the todo demo, with its `addTodo` tool. Drawing clients use the session-specific `/mcp/editor/<session-id>` endpoint.
+
+## CLI and stdio access
+
+The `@ecad/cli` workspace runs independently under Node. It uses `@ecad/drawing-core` for the drawing model, Effect commands, schemas, and MCP tool registration. The web editor uses the same implementation.
+
+```bash
+export ECAD_DRAWING="$PWD/drawing.ecaddraw"
+npm run --silent cli -- tools
+npm run --silent cli -- getDrawing
+npm run --silent cli -- placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
+npm run --silent cli -- rotateShapes '{"ids":[1],"angle":1.5707963267948966}'
+printf '%s' '{"ids":[1]}' | npm run --silent cli -- removeShapes -
+npm run --silent cli -- undo
+```
+
+`--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. Its parent directory must exist. A missing drawing starts empty, and the first successful edit creates it. Reading an empty drawing or listing tools creates no drawing file.
+
+All nine drawing tools are available by their MCP names. Arguments default to `{}`. `call <tool> [json|-]` handles tool names that conflict with CLI commands. `--timeout` sets the file lock wait in milliseconds, with a default of 30000. `--help` and `--version` run without loading drawing commands.
+
+Successful tool calls print one MCP result as JSON on stdout. The drawing reply is in `structuredContent` and in the text content. Tool failures preserve the MCP error result and return exit code 1. Argument errors use stderr and return exit code 1.
+
+Build the executable once:
+
+```bash
+npm run build:cli
+node packages/cli/bin/ecad.mjs --drawing drawing.ecaddraw getDrawing
+node packages/cli/bin/ecad.mjs --drawing drawing.ecaddraw mcp
+```
+
+For an MCP client that launches stdio servers, use the absolute paths to the executable and drawing:
+
+```json
+{
+  "mcpServers": {
+    "ecad": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/ecad/packages/cli/bin/ecad.mjs",
+        "--drawing",
+        "/absolute/path/to/drawing.ecaddraw",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+`ecad mcp` starts a local MCP server with the same tool schemas, annotations, and results as the web MCP server. Stdout contains only MCP messages. Closing stdin or sending SIGINT or SIGTERM closes the server.
+
+Drawings use the app's JSON object format with a `shapes` array. Edits preserve other fields, including drawing IDs, names, and symbol library configuration. The adjacent `<drawing>.history.json` file stores undo branches and shape ID allocation across CLI calls and MCP restarts. Keep it with the drawing to retain history. An external change to the drawing starts a new history at that state.
+
+Each operation locks `<drawing>.lock`, reads the latest file, and publishes edits through temporary files and renames. Concurrent CLI and MCP processes share the same drawing and history. Programs that do not use this lock can still change files during an operation; the command checks for external changes before publishing. After a forced process kill or power loss, remove a leftover lock only after checking that its recorded process is no longer using the drawing. An interruption between publishing history and drawing data can reset history on the next read; the drawing itself always uses an atomic replacement.
+
+The package exports `runCli`, `createLocalDrawing`, `createLocalDrawingMcpServer`, and `serveStdioMcp` for other workspace modules. `createLocalDrawing` exposes an Effect executor. `createLocalDrawingMcpServer` returns the standalone MCP server for a chosen file.
 
 ## Tools and coordinates
 
@@ -60,21 +116,21 @@ For example, send this tool call to place a 40 × 15 mm rectangle centered at `(
 }
 ```
 
-All six fields are required. The command commits immediately as one undo step and appears in the open editor. It leaves the selected tool unchanged.
+All six fields are required. The command commits immediately as one undo step. The standalone server saves it to the drawing file. With a web MCP connection, the edit appears in the open editor and leaves the selected tool unchanged.
 
 `placeShapes` supports rectangles, circles, triangles, orthogonal wires, pins, text, and symbols. Pins have a string `name`, which defaults to empty when omitted, including pins inside symbols. Text includes its content, font size, and already measured width and height. Symbol children use coordinates relative to the symbol center and IDs local to the symbol. Read `getDrawing` before replacing or removing shapes, and include every connected neighbor that a replacement needs to move. The commands validate geometry and normalize overlapping wires; they do not infer an editor gesture.
 
 Successful results include the current drawing in `structuredContent` and as JSON text. Mutations also return affected IDs and an ID mapping where applicable. `getDrawing` includes history entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state. Invalid input produces an MCP error and leaves drawing data and history unchanged. The tool schemas returned by `tools/list` describe the complete input and output formats.
 
-UI edits and MCP edits share the same history. An external mutation cancels an unfinished gesture before its preview can overwrite the command.
+Web editor UI edits and HTTP MCP edits share the same history. An external mutation cancels an unfinished gesture before its preview can overwrite the command.
 
-## Session lifetime
+## Web session lifetime
 
 Disabling MCP, closing the tab, leaving the editor, or losing its command stream revokes the session credentials. Enabling MCP again creates a new endpoint and token. Update the client's configuration after reconnecting. Separate editor tabs have separate sessions and drawings.
 
 The browser does not automatically reconnect or replay commands. A timeout, caller cancellation, or failed acknowledgement can occur after a command has reached the browser. Cancellation does not retract a delivered command or roll back its mutation. Inspect the drawing before retrying; after enabling a fresh connection, use `getDrawing` to check the committed state. Disabling MCP does not undo completed edits.
 
-## Implementation and hosting
+## Web implementation and hosting
 
 The MCP server validates tool arguments and forwards a complete operation to the connected browser. The browser executes its Effect command with the same `DrawingStore` used by `Editor2D`, then acknowledges the result. React subscriptions update the display and Three.js renderer.
 
@@ -94,8 +150,8 @@ sequenceDiagram
 
 | Location | Responsibility |
 | --- | --- |
-| `packages/core/src/mcp/drawing-protocol.ts` | Shared operation schemas, reply schemas, and Effect command execution. |
-| `packages/core/src/mcp/drawing-server.ts` | MCP tool registration and protocol results. |
+| `packages/drawing-core/src/mcp/drawing-protocol.ts` | Shared operation schemas, reply schemas, and Effect command execution. |
+| `packages/drawing-core/src/mcp/drawing-server.ts` | MCP tool registration and protocol results. |
 | `packages/core/src/mcp/editor-connection.ts` | Browser command stream, validation, execution, and acknowledgement. |
 | `packages/core/src/services/server/editor-sessions.ts` | Session credentials, connected browsers, pending requests, and timeouts. |
 | `packages/core/src/services/server/editor-mcp.ts` | HTTP handlers for session creation, browser connections, and MCP requests. |
