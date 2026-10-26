@@ -2,7 +2,7 @@
 
 The editor gathers input, commands change the document, the display model decides what appears, and the engine renders it.
 
-The shared implementation lives in `packages/core`. `packages/web` hosts it in TanStack Start; `packages/desktop` hosts it in an Electron renderer. Both apps use the same drawing commands and editor components.
+`packages/drawing-core` owns the headless drawing model, store, commands, schemas, and MCP tool registration. It depends on Effect, Zod, and the MCP SDK. `packages/core` adds the React editor, display model, and rendering. `packages/web` hosts the editor in TanStack Start, and `packages/desktop` hosts it in Electron. `packages/cli` uses the headless package to edit local drawing files and run a standalone stdio MCP server.
 
 ```mermaid
 flowchart LR
@@ -17,14 +17,15 @@ flowchart LR
 
 | Layer | Location | Responsibility |
 | --- | --- | --- |
-| Drawing model | `packages/core/src/drawing/` | Shape data, geometry calculations, symbols, text layout, worksheet layout, history, and display descriptions. No React, Three.js, or DOM dependency. Text layout accepts a measurement function. |
-| Commands | `packages/core/src/commands/` | Validate complete inputs, allocate IDs, normalize wires, and atomically publish document and history changes through Effect. |
+| Drawing model | `packages/drawing-core/src/drawing/` | Shape data, geometry calculations, text alignment, symbol grouping, and history. No React, Three.js, or DOM dependency. |
+| Commands | `packages/drawing-core/src/commands/` | Validate complete inputs, allocate IDs, normalize wires, and atomically publish document and history changes through Effect. |
+| CLI and stdio | `packages/cli/src/` | Read and write local drawings, preserve undo history, coordinate file access, and expose the shared commands through the CLI and MCP. |
 | Display | `packages/core/src/drawing/display.ts` | Describe shape geometry, transforms, appearance, selection outlines, open wire terminals, and previews as plain data. |
 | Three.js engine | `packages/core/src/engine/drawing/`, `packages/core/src/engine/scene-viewport.ts` | Build meshes and textures, cache and dispose resources, operate cameras, render frames, and report viewport events. |
 | React adapters | `packages/core/src/components/editor/useEditorScene.ts`, `packages/core/src/components/viewer/SceneViewport.tsx` | Bind rendering resource lifetimes and engine events to React. |
 | Editor | `packages/core/src/components/editor/Editor2D.tsx` | Choose tools, collect pointer input, resolve snapping and text measurements, maintain selection and temporary geometry, and execute completed commands. |
 
-The former editor model and rendering helper paths re-export their new implementations for existing consumers.
+The former core drawing, command, and MCP paths re-export their headless implementations for existing consumers. App-specific symbol catalogs, file conversion, text measurement, worksheet layout, and display descriptions remain in `packages/core/src/drawing/`.
 
 ## Running a command without an editor
 
@@ -32,8 +33,8 @@ Create a store and provide it to an Effect. Position is the shape center in mill
 
 ```ts
 import { Effect } from "effect";
-import { placeRectangleEffect } from "#/commands/drawing-commands";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store";
+import { placeRectangleEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { createDrawingStore, DrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 
 const store = createDrawingStore();
 const placement = placeRectangleEffect({
@@ -59,7 +60,7 @@ console.log(result.ids, store.getSnapshot().shapes);
 
 Commands capture their input when constructed. They run only when executed with Effect, and can be composed in `Effect.gen`. Each command publishes one complete transaction; a sequence of separate commands produces separate undo steps. Invalid inputs fail with `InvalidDrawingCommand` and leave the document unchanged. Callers can handle that error with Effect combinators before running the program.
 
-The current commands are synchronous, so the React event boundary uses `Effect.runSync` and handles the error channel there. Commands themselves never call `runSync`, `runPromise`, or a React hook. Asynchronous callers can provide the same service and use `runEffect` from `packages/core/src/lib/effect.ts`. See [Effect 3 execution boundaries](https://effect.website/docs/v3/getting-started/running-effects/).
+The current commands are synchronous, so the React event boundary uses `Effect.runSync` and handles the error channel there. Commands themselves never call `runSync`, `runPromise`, or a React hook. Asynchronous callers can provide the same service and use `runEffect` from `@ecad/drawing-core/lib/effect.ts`. See [Effect 3 execution boundaries](https://effect.website/docs/v3/getting-started/running-effects/).
 
 ## Previews and history
 
@@ -68,6 +69,8 @@ A rectangle drag starts with temporary editor geometry. Pointer movement updates
 The store exposes stable, immutable snapshots and a subscription for React's `useSyncExternalStore`. Pass it to `<Editor2D store={store} />` to display and edit the same document used by external commands. Without this prop, each editor creates its own store.
 
 In the web app, the editor's **Enable MCP** control connects this same store to a session-specific MCP endpoint. The server forwards complete operations to the browser, where Effect executes them. The desktop renderer sets `enableMcp={false}` because these endpoints belong to the web app. See [MCP access to an open drawing](mcp.md) for client setup, tool inputs, and session lifetime.
+
+The standalone CLI and stdio server create a store from a local drawing for each operation. They reuse the same MCP tool definitions and commands, save successful edits, and preserve history in an adjacent file. The stdio server reloads the drawing on each call so it sees edits from other CLI processes. See [CLI and stdio access](mcp.md#cli-and-stdio-access).
 
 An external document change cancels any active gesture and removes deleted IDs from the editor's selection. A stale preview cannot overwrite the external command when the pointer is released.
 

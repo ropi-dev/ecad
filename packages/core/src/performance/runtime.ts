@@ -2,7 +2,11 @@ import {
 	type AppPerformance,
 	createBrowserPerformance,
 } from "#/performance/browser.ts";
-import type { PerformanceData } from "#/performance/recorder.ts";
+
+export {
+	measurePerformance,
+	measurePerformanceAsync,
+} from "@ecad/drawing-core/performance/runtime.ts";
 
 declare global {
 	interface Window {
@@ -30,19 +34,3 @@ export function initializePerformance() {
 
 export const getAppPerformance = () =>
 	typeof window === "undefined" ? undefined : window.__ecadPerformance;
-export function measurePerformance<T>(
-	name: string,
-	work: () => T,
-	data?: PerformanceData,
-): T {
-	const recorder = getAppPerformance();
-	return recorder ? recorder.measure(name, work, data) : work();
-}
-export function measurePerformanceAsync<T>(
-	name: string,
-	work: () => Promise<T>,
-	data?: PerformanceData,
-): Promise<T> {
-	const recorder = getAppPerformance();
-	return recorder ? recorder.measureAsync(name, work, data) : work();
-}

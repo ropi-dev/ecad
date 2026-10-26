@@ -17,18 +17,19 @@ const env = {
 			: "perf-artifacts/baseline.json"),
 };
 mkdirSync("perf-artifacts", { recursive: true });
-if (!development) {
+for (const target of development ? ["build:cli"] : ["build:web", "build:cli"]) {
 	console.log(
-		"[perf] Building the app. Build output goes to perf-artifacts/build.log.",
+		`[perf] Running ${target}. Build output goes to perf-artifacts/build.log.`,
 	);
 	const build = spawnSync(
 		process.platform === "win32" ? "npm.cmd" : "npm",
-		["run", "build:web"],
+		["run", target],
 		{ encoding: "utf8", env },
 	);
 	writeFileSync(
 		"perf-artifacts/build.log",
 		(build.stdout ?? "") + (build.stderr ?? ""),
+		{ flag: target === (development ? "build:cli" : "build:web") ? "w" : "a" },
 	);
 	if (build.status !== 0) {
 		console.error(build.error ?? "Build failed. See perf-artifacts/build.log.");
