@@ -88,6 +88,32 @@ npm run test:browser
 
 Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
 
+### Serve the web build with nginx
+
+`npm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
+
+The editor, viewers, and browser project storage work without a Node server. MCP and server-backed demos require a running app server and are unavailable in this static deployment. Development and `npm run preview` still support those server features.
+
+From `/home/ropi/ecad`, install the site on this Ubuntu host:
+
+```bash
+npm ci
+npm run build:web
+sudo apt-get install acl
+sudo setfacl -m u:www-data:--x /home/ropi
+sudo install -m 644 deploy/nginx/ecad.conf /etc/nginx/sites-available/ecad.ropi.dev
+sudo ln -s /etc/nginx/sites-available/ecad.ropi.dev /etc/nginx/sites-enabled/ecad.ropi.dev
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot --nginx -d ecad.ropi.dev --redirect
+```
+
+The ACL lets nginx traverse the home directory to reach the build. Keep the build files readable by `www-data`. Adjust the config's absolute root if the checkout moves. Certbot adds the HTTPS configuration to the installed site file. HTTPS is required for browser project storage on this domain.
+
+Google Cloud DNS zone `ropi-dev` in project `calcium-doodad-366020` has a CNAME from `ecad.ropi.dev.` to `mini.ropi.dev.` with a 300-second TTL, matching `auth.ropi.dev`.
+
+Run `npm run build:web` again to publish changes from this checkout. nginx reads the rebuilt files directly and needs no reload when only the build changes. Each build replaces the client output, so requests during a build and tabs running an older build may need a refresh. The live site has no worktree routing.
+
 GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web and desktop builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
 Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `npm ci`, and cache npm downloads. Browser jobs install the Mesa Vulkan libraries. Interaction tests use headless Chromium. The renderer spec runs in a separate Playwright project under Xvfb to support its software WebGPU swap chain on CI. Both projects use SwiftShader's Vulkan backend for WebGL and WebGPU. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.

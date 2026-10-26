@@ -1,5 +1,6 @@
 export const budgets = {
- "project-file-sidebar": { hoverRevealMs: 750, interactionP95Ms: 1200, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
+ "project-new-drawing": { createMs: 3000, interactionP95Ms: 1200, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
+ "project-file-sidebar": { hoverRevealMs: 750, menuOpenMs: 750, interactionP95Ms: 1200, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-box": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-item-locks": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-symbol-children": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },

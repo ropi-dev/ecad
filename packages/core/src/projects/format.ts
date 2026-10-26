@@ -49,14 +49,28 @@ export const manifestSchema = z.strictObject({
 	version: z.literal(1),
 	name: projectNameSchema,
 	drawing: projectPathSchema,
+	drawings: z.array(projectPathSchema).optional(),
 	symbols: z.array(projectPathSchema),
 	assets: z.array(assetSchema).default([]),
 });
 export type ProjectManifest = z.infer<typeof manifestSchema>;
 export type ProjectAsset = z.infer<typeof assetSchema>;
 export type AssetKind = ProjectAsset["kind"];
+export const drawingFileSchema = z
+	.strictObject({
+		id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
+		name: projectNameSchema,
+		shapes: z.array(drawingShapeSchema),
+	})
+	.refine(
+		(file) =>
+			new Set(file.shapes.map((shape) => shape.id)).size === file.shapes.length,
+		"The drawing contains duplicate shape IDs.",
+	);
+export type ProjectDrawing = z.infer<typeof drawingFileSchema>;
 export interface ProjectDocument {
 	shapes: EditorShape[];
+	drawings?: ProjectDrawing[];
 	symbols: SymbolLibrary;
 	symbolLibraries?: readonly ConfiguredSymbolLibrary[];
 }
@@ -80,6 +94,18 @@ export function validateProjectDocument(
 	}
 	return {
 		shapes,
+		...(document.drawings === undefined
+			? {}
+			: {
+					drawings: z
+						.array(drawingFileSchema)
+						.refine(
+							(files) =>
+								new Set(files.map((file) => file.id)).size === files.length,
+							"The project contains duplicate drawing IDs.",
+						)
+						.parse(document.drawings),
+				}),
 		symbols: parseSavedSymbolLibrary(JSON.stringify(document.symbols)),
 		...(document.symbolLibraries === undefined
 			? {}

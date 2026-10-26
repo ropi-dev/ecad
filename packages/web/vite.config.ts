@@ -13,7 +13,12 @@ const config = defineConfig({
 			? "../../node_modules/.vite-performance"
 			: undefined,
 	resolve: { tsconfigPaths: true },
-	plugins: [devtools(), tailwindcss(), tanstackStart(), viteReact()],
+	plugins: [
+		devtools(),
+		tailwindcss(),
+		tanstackStart({ spa: { enabled: true, maskPath: "/projects" } }),
+		viteReact(),
+	],
 });
 
 export default config;

@@ -7,7 +7,7 @@ export async function openProjectFiles(page: Page) {
 		await page.mouse.move(20, 300);
 		await page.mouse.move(1, 300);
 		await expect(sidebar).toBeVisible();
-		await expect(sidebar).toHaveCSS("translate", /^0px(?: 0px)?$/);
+		await expect(sidebar.locator("..")).toHaveCSS("translate", /^0px(?: 0px)?$/);
 		await page.mouse.move(100, 300);
 	}
 	return sidebar;

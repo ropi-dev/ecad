@@ -1,12 +1,21 @@
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "./project-files";
 
-test("the sidebar starts hidden, slides in from the edge, and closes after leaving", async ({ page }) => {
+test("the sidebar leaves a visible edge, opens from it, and closes after leaving", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	const sidebar = page.getByRole("complementary", { name: "Project files", exact: true });
 	const panel = page.locator('aside[aria-label="Project files"]');
+	const frame = panel.locator("..");
 	await expect(sidebar).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Show project files", exact: true })).toHaveAttribute("aria-expanded", "false");
+	const closedBounds = (await frame.boundingBox())!;
+	expect(closedBounds.x).toBeLessThan(0);
+	expect(closedBounds.x + closedBounds.width).toBeCloseTo(12);
+	expect(closedBounds.y).toBe(12);
+	expect(closedBounds.y + closedBounds.height).toBe(page.viewportSize()!.height - 12);
+	await expect(frame).toHaveCSS("opacity", "1");
+	await page.mouse.move(1, 6);
+	await expect(sidebar).toHaveCount(0);
 	await page.mouse.move(900, 50);
 	await page.getByLabel("Project name", { exact: true }).fill("Hover navigation");
 	await page.getByRole("button", { name: "Create project", exact: true }).click();
@@ -14,7 +23,11 @@ test("the sidebar starts hidden, slides in from the edge, and closes after leavi
 	await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
 	await page.mouse.move(1, 300);
 	await page.mouse.move(100, 300);
-	await expect(sidebar).toHaveCSS("translate", /^0px(?: 0px)?$/);
+	await expect(frame).toHaveCSS("translate", /^0px(?: 0px)?$/);
+	const bounds = (await frame.boundingBox())!;
+	expect(bounds.x).toBe(12);
+	expect(bounds.y).toBe(12);
+	expect(bounds.y + bounds.height).toBe(page.viewportSize()!.height - 12);
 	await page.mouse.move(20, 300);
 	await expect(sidebar).toBeVisible();
 	await page.mouse.move(100, 300);
@@ -23,7 +36,11 @@ test("the sidebar starts hidden, slides in from the edge, and closes after leavi
 	await page.mouse.move(900, 400);
 	await expect(panel).toHaveCSS("opacity", "0");
 	await expect(sidebar).toHaveCount(0);
-	await page.screenshot({ path: "perf-artifacts/hover-sidebar-hidden-v1.png" });
+	await expect.poll(async () => {
+		const bounds = (await frame.boundingBox())!;
+		return bounds.x + bounds.width;
+	}).toBeCloseTo(12);
+	await page.screenshot({ path: "perf-artifacts/sidebar-peek-desktop.png" });
 	await openProjectFiles(page);
 	await page.screenshot({ path: "perf-artifacts/hover-sidebar-open-v1.png" });
 	await sidebar.getByLabel("Search project files").fill("drawing");
@@ -35,9 +52,48 @@ test("the sidebar starts hidden, slides in from the edge, and closes after leavi
 	await trigger.focus();
 	await trigger.press("Enter");
 	await expect(sidebar).toBeVisible();
+	await expect(sidebar.getByRole("button", { name: "Hide project files", exact: true })).toBeFocused();
 	await sidebar.getByRole("button", { name: "Hide project files", exact: true }).press("Enter");
 	await expect(trigger).toBeFocused();
 	await expect(sidebar).toHaveCount(0);
+});
+
+test("the add file menu supports keyboard navigation and stays open outside the sidebar", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await page.getByLabel("Project name", { exact: true }).fill("File menu");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await expect(page.getByRole("heading", { name: "File menu", exact: true })).toBeVisible();
+	const sidebar = await openProjectFiles(page);
+	const addFile = sidebar.getByRole("button", { name: "Add file", exact: true });
+	await addFile.focus();
+	await addFile.press("ArrowDown");
+	const menu = page.getByRole("menu", { name: "Add file", exact: true });
+	await expect(menu.getByRole("menuitem")).toHaveText([
+		"New drawing",
+		"New symbol",
+	]);
+	await expect(menu.getByRole("menuitem", { name: "New drawing", exact: true })).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await expect(menu.getByRole("menuitem", { name: "New symbol", exact: true })).toBeFocused();
+	await page.mouse.move(350, 150);
+	await expect(menu).toBeVisible();
+	await expect(sidebar).toBeVisible();
+	await page.screenshot({ path: "perf-artifacts/sidebar-create-file-desktop.png" });
+	await page.keyboard.press("Escape");
+	await expect(menu).toBeHidden();
+	await expect(addFile).toBeFocused();
+	await addFile.click();
+	await page.mouse.click(900, 400);
+	await expect(menu).toBeHidden();
+	await openProjectFiles(page);
+	await addFile.click();
+	await menu.getByRole("menuitem", { name: "New drawing", exact: true }).click();
+	await expect(page.getByLabel("Drawing name", { exact: true })).toBeFocused();
+	await page.getByLabel("Drawing name", { exact: true }).fill("Menu drawing");
+	await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+	await expect(menu).toBeHidden();
+	await expect(page.getByRole("heading", { level: 1 })).toContainText("Schematic editor · Menu drawing");
+	await expect((await openProjectFiles(page)).getByRole("link", { name: "Open menu-drawing.ecaddraw", exact: true })).toBeVisible();
 });
 
 test.describe("touch sidebar", () => {
@@ -45,12 +101,40 @@ test.describe("touch sidebar", () => {
 	test("the sidebar opens and closes with the touch controls", async ({ page }) => {
 		await page.goto("/tests/browser/projects.html");
 		const sidebar = page.getByRole("complementary", { name: "Project files", exact: true });
+		const frame = page.locator('aside[aria-label="Project files"]').locator("..");
 		await expect(sidebar).toHaveCount(0);
+		const closedBounds = (await frame.boundingBox())!;
+		expect(closedBounds.x + closedBounds.width).toBeCloseTo(12);
+		expect(closedBounds.y).toBeCloseTo(12);
+		expect(closedBounds.y + closedBounds.height).toBeCloseTo(832);
+		await page.screenshot({ path: "perf-artifacts/sidebar-peek-mobile.png" });
 		await page.getByRole("button", { name: "Show project files", exact: true }).tap();
 		await expect(sidebar).toBeVisible();
-		await expect(sidebar).toHaveCSS("translate", /^0px(?: 0px)?$/);
+		await expect(frame).toHaveCSS("translate", /^0px(?: 0px)?$/);
+		const bounds = (await frame.boundingBox())!;
+		expect(bounds.x).toBeCloseTo(12);
+		expect(bounds.y).toBeCloseTo(12);
+		expect(bounds.y + bounds.height).toBeCloseTo(832);
 		await page.screenshot({ path: "perf-artifacts/hover-sidebar-touch-v1.png" });
 		await sidebar.getByRole("button", { name: "Hide project files", exact: true }).tap();
 		await expect(sidebar).toHaveCount(0);
+	});
+	test("the add file menu fits the touch viewport and creates a symbol", async ({ page }) => {
+		await page.goto("/tests/browser/projects.html");
+		await page.getByLabel("Project name", { exact: true }).fill("Touch file menu");
+		await page.getByRole("button", { name: "Create project", exact: true }).tap();
+		await expect(page.getByRole("heading", { name: "Touch file menu", exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "Show project files", exact: true }).tap();
+		await page.getByRole("button", { name: "Add file", exact: true }).tap();
+		const menu = page.getByRole("menu", { name: "Add file", exact: true });
+		const bounds = (await menu.boundingBox())!;
+		expect(bounds.x).toBeGreaterThanOrEqual(12);
+		expect(bounds.x + bounds.width).toBeLessThanOrEqual(378);
+		expect(bounds.y + bounds.height).toBeLessThanOrEqual(832);
+		await page.screenshot({ path: "perf-artifacts/sidebar-create-file-mobile.png" });
+		await menu.getByRole("menuitem", { name: "New symbol", exact: true }).tap();
+		await page.getByLabel("Symbol name", { exact: true }).fill("Touch part");
+		await page.getByRole("button", { name: "Create symbol", exact: true }).tap();
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Touch part");
 	});
 });

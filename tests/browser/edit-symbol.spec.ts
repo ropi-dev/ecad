@@ -174,7 +174,8 @@ test("nested symbol editing saves only library references and reopens them", asy
  await page.goto("/tests/browser/projects.html");
  await page.getByLabel("Project name", { exact: true }).fill("Nested references");
  await page.getByRole("button", { name: "Create project", exact: true }).click();
- await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+ await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
  await page.getByLabel("Symbol name", { exact: true }).fill("Composite part");
  await page.getByRole("button", { name: "Create symbol", exact: true }).click();
  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Composite part");

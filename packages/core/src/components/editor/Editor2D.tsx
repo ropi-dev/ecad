@@ -166,12 +166,20 @@ export interface Editor2DProps {
 export function Editor2D(props: Editor2DProps = {}) {
 	const project = useProject();
 	const symbol = props.store ? null : project?.editorSymbol;
+	const drawing = props.store ? null : project?.editorDrawing;
 	return (
 		<EditorCanvas
-			key={symbol ? `symbol:${symbol.file.id}` : "schematic"}
+			key={
+				symbol
+					? `symbol:${symbol.file.id}`
+					: drawing
+						? `drawing:${drawing.file.id}`
+						: "schematic"
+			}
 			{...props}
-			store={symbol?.store ?? props.store}
+			store={symbol?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}
+			drawingName={drawing?.file.name}
 		/>
 	);
 }
@@ -181,8 +189,13 @@ function EditorCanvas({
 	store: suppliedStore,
 	enableMcp = true,
 	symbolName,
+	drawingName,
 	headerControls,
-}: Editor2DProps & { symbolName?: string; headerControls?: ReactNode }) {
+}: Editor2DProps & {
+	symbolName?: string;
+	drawingName?: string;
+	headerControls?: ReactNode;
+}) {
 	const isSymbol = symbolName !== undefined;
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProject();
@@ -923,7 +936,7 @@ function EditorCanvas({
 			<h1 className="sr-only">
 				{isSymbol
 					? `Symbol editor · ${symbolName}`
-					: `Schematic editor · ${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
+					: `Schematic editor · ${drawingName ? `${drawingName} · ` : ""}${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
 			</h1>
 			{(headerControls || !registerEditor) && (
 				<header className="absolute top-10 left-10 z-4 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">

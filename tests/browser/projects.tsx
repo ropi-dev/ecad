@@ -19,9 +19,9 @@ function ProjectDocument() {
 	const project = useProject();
 	if (!project) throw new Error("Project provider is missing.");
 	const drawing = useSyncExternalStore(project.store.subscribe, project.store.getSnapshot);
-	const editorStore = project.editorSymbol?.store ?? project.store;
+	const editorStore = project.editorSymbol?.store ?? project.editorDrawing?.store ?? project.store;
 	const editor = useSyncExternalStore(editorStore.subscribe, editorStore.getSnapshot);
-	return <output id="project-document" hidden>{JSON.stringify({ shapes: drawing.shapes, nextShapeId: drawing.nextShapeId, name: project.project?.manifest.name, assets: project.project?.manifest.assets, dirty: project.dirty, symbols: project.project?.symbols, editorShapes: editor.shapes })}</output>;
+	return <output id="project-document" hidden>{JSON.stringify({ shapes: drawing.shapes, nextShapeId: drawing.nextShapeId, name: project.project?.manifest.name, assets: project.project?.manifest.assets, dirty: project.dirty, symbols: project.project?.symbols, drawings: project.project?.drawings, editorDrawing: project.editorDrawing?.file.id, editorShapes: editor.shapes })}</output>;
 }
 
 const storage = createWebProjectStorage();

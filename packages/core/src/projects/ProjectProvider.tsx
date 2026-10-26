@@ -26,10 +26,12 @@ import {
 	measurePerformance,
 	measurePerformanceAsync,
 } from "#/performance/runtime.ts";
-import type {
-	AssetKind,
-	ProjectAsset,
-	ProjectSnapshot,
+import {
+	type AssetKind,
+	type ProjectAsset,
+	type ProjectDrawing,
+	type ProjectSnapshot,
+	projectNameSchema,
 } from "#/projects/format.ts";
 import type { ProjectLinkProps } from "#/projects/ProjectLink.tsx";
 import type { ProjectStorage } from "#/projects/storage.ts";
@@ -50,6 +52,7 @@ interface ProjectContextValue {
 	selectAsset(asset: ProjectAsset | null): void;
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
+	editorDrawing: DrawingDocument | null;
 	selectEditorFile(path?: string): void;
 	mode: ProjectStorage["mode"];
 	busy: boolean;
@@ -57,6 +60,7 @@ interface ProjectContextValue {
 	error: string;
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
+	createDrawing(name: string): Promise<string>;
 	open(name?: string): Promise<void>;
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
@@ -66,6 +70,12 @@ interface ProjectContextValue {
 }
 interface SymbolDocument {
 	file: SymbolFile;
+	store: ReturnType<typeof createDrawingStore>;
+	savedShapes: EditorShape[];
+	unsubscribe(): void;
+}
+interface DrawingDocument {
+	file: ProjectDrawing;
 	store: ReturnType<typeof createDrawingStore>;
 	savedShapes: EditorShape[];
 	unsubscribe(): void;
@@ -96,7 +106,11 @@ export function ProjectProvider({
 	const [store, setStore] = useState(() => createDrawingStore());
 	const currentStore = useRef(store);
 	const symbolDocuments = useRef(new Map<string, SymbolDocument>());
+	const drawingDocuments = useRef(new Map<string, DrawingDocument>());
 	const [editorSymbol, setEditorSymbol] = useState<SymbolDocument | null>(null);
+	const [editorDrawing, setEditorDrawing] = useState<DrawingDocument | null>(
+		null,
+	);
 	const symbols = useRef<SymbolLibrary>([]);
 	const libraries = useRef<readonly ConfiguredSymbolLibrary[]>([]);
 	const [epoch, setEpoch] = useState(0);
@@ -128,7 +142,11 @@ export function ProjectProvider({
 			for (const document of symbolDocuments.current.values())
 				document.unsubscribe();
 			symbolDocuments.current.clear();
+			for (const document of drawingDocuments.current.values())
+				document.unsubscribe();
+			drawingDocuments.current.clear();
 			setEditorSymbol(null);
+			setEditorDrawing(null);
 			update(snapshot);
 			setSelectedAsset(null);
 			symbols.current = snapshot.symbols;
@@ -172,6 +190,8 @@ export function ProjectProvider({
 			clearTimeout(timer.current);
 			for (const document of symbolDocuments.current.values())
 				document.unsubscribe();
+			for (const document of drawingDocuments.current.values())
+				document.unsubscribe();
 		};
 	}, [storage, enqueue, adopt]);
 
@@ -201,6 +221,7 @@ export function ProjectProvider({
 		async (
 			nextSymbols?: SymbolLibrary,
 			nextLibraries?: readonly ConfiguredSymbolLibrary[],
+			nextDrawings?: ProjectDrawing[],
 		) => {
 			const previous = active.current;
 			if (!previous) return;
@@ -228,8 +249,23 @@ export function ProjectProvider({
 						: symbol;
 				});
 			}
+			const drawings = nextDrawings ?? previous.drawings;
+			const drawingEdits = new Map(
+				[...drawingDocuments.current.values()].map((entry) => [
+					entry.file.id,
+					entry.store.getSnapshot().shapes,
+				]),
+			);
 			const document = {
 				shapes: currentStore.current.getSnapshot().shapes,
+				...(drawings === undefined
+					? {}
+					: {
+							drawings: drawings.map((file) => ({
+								...file,
+								shapes: drawingEdits.get(file.id) ?? file.shapes,
+							})),
+						}),
 				symbols: savedSymbols,
 				symbolLibraries: (nextLibraries ?? libraries.current).map((library) =>
 					library.id === "project-symbols" && library.source.kind === "embedded"
@@ -248,6 +284,10 @@ export function ProjectProvider({
 				const shapes = pending.get(edit.file.id);
 				if (shapes) edit.savedShapes = shapes;
 			}
+			for (const file of document.drawings ?? []) {
+				const edit = drawingDocuments.current.get(file.id);
+				if (edit) edit.savedShapes = file.shapes;
+			}
 			symbols.current = document.symbols;
 			libraries.current = document.symbolLibraries;
 			update(next);
@@ -255,6 +295,9 @@ export function ProjectProvider({
 				needsSave.current =
 					currentStore.current.getSnapshot().shapes !== document.shapes ||
 					[...symbolDocuments.current.values()].some(
+						(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
+					) ||
+					[...drawingDocuments.current.values()].some(
 						(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
 					);
 				setDirty(needsSave.current);
@@ -287,6 +330,37 @@ export function ProjectProvider({
 		const snapshot = active.current;
 		if (!snapshot || !path || path === snapshot.manifest.drawing) {
 			setEditorSymbol(null);
+			setEditorDrawing(null);
+			return;
+		}
+		const drawingIndex = snapshot.manifest.drawings?.indexOf(path) ?? -1;
+		const drawing = snapshot.drawings?.[drawingIndex];
+		if (drawing) {
+			let document = drawingDocuments.current.get(drawing.id);
+			if (!document) {
+				const drawingStore = measurePerformance(
+					"editor.open-drawing",
+					() => createDrawingStore(drawing.shapes),
+					{ shapes: drawing.shapes.length },
+				);
+				document = {
+					file: drawing,
+					store: drawingStore,
+					savedShapes: drawingStore.getSnapshot().shapes,
+					unsubscribe: drawingStore.subscribe(() => {
+						needsSave.current = true;
+						setDirty(true);
+						clearTimeout(timer.current);
+						timer.current = setTimeout(
+							() => void save().catch(() => undefined),
+							400,
+						);
+					}),
+				};
+				drawingDocuments.current.set(drawing.id, document);
+			}
+			setEditorSymbol(null);
+			setEditorDrawing(document);
 			return;
 		}
 		const index = snapshot.manifest.symbols.indexOf(path);
@@ -315,6 +389,7 @@ export function ProjectProvider({
 			};
 			symbolDocuments.current.set(file.id, document);
 		}
+		setEditorDrawing(null);
 		setEditorSymbol(document);
 	};
 	useEffect(
@@ -349,6 +424,9 @@ export function ProjectProvider({
 					if (needsSave.current) await persist();
 					const document = {
 						shapes: currentStore.current.getSnapshot().shapes,
+						...(active.current?.drawings === undefined
+							? {}
+							: { drawings: active.current.drawings }),
 						symbols: symbols.current,
 						symbolLibraries: libraries.current,
 					};
@@ -528,12 +606,53 @@ export function ProjectProvider({
 		selectAsset: setSelectedAsset,
 		store,
 		editorSymbol,
+		editorDrawing,
 		selectEditorFile,
 		mode: storage.mode,
 		busy,
 		dirty,
 		error,
 		create: (name) => switchProject(name, true),
+		createDrawing: (name) =>
+			enqueue(async () => {
+				if (!active.current || generation.current !== epoch)
+					throw new Error("Open a project before creating a drawing.");
+				return measurePerformanceAsync("project.create-drawing", async () => {
+					const parsedName = projectNameSchema.safeParse(name);
+					if (!parsedName.success)
+						throw new Error(
+							"Use a valid drawing name without slashes or reserved filename characters.",
+						);
+					name = parsedName.data;
+					const drawings = active.current?.drawings ?? [];
+					const stem =
+						name
+							.normalize("NFKD")
+							.toLowerCase()
+							.replace(/[^a-z0-9]+/g, "-")
+							.replace(/^-|-$/g, "") || "drawing";
+					const base = projectNameSchema.safeParse(stem).success
+						? stem
+						: `drawing-${stem}`;
+					let id = base;
+					for (
+						let suffix = 2;
+						drawings.some((drawing) => drawing.id === id);
+						suffix++
+					)
+						id = `${base}-${suffix}`;
+					await persist(undefined, undefined, [
+						...drawings,
+						{ id, name, shapes: [] },
+					]);
+					const snapshot = active.current;
+					const index =
+						snapshot?.drawings?.findIndex((drawing) => drawing.id === id) ?? -1;
+					const path = snapshot?.manifest.drawings?.[index];
+					if (!path) throw new Error("Unable to open the new drawing file.");
+					return path;
+				});
+			}),
 		createSymbol: (name) =>
 			enqueue(async () => {
 				if (!active.current || generation.current !== epoch)

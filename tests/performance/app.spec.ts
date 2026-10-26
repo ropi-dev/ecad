@@ -865,6 +865,15 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 	await sidebar.getByRole("button", { name: "Hide project files" }).click();
 	await page.mouse.move(900, 400);
 	const hoverRevealMs = await interaction(page, "sidebar.reveal", async () => { await openProjectFiles(page); });
+	const menuOpenTimes: number[] = [];
+	for (let repeat = 0; repeat < 3; repeat++) {
+		menuOpenTimes.push(await interaction(page, "sidebar.add-file-menu", async () => {
+			await sidebar.getByRole("button", { name: "Add file", exact: true }).click();
+			await page.waitForFunction(() => document.querySelectorAll('[role="menu"] [role="menuitem"]').length === 2, undefined, { polling: "raf" });
+		}));
+		await page.keyboard.press("Escape");
+		await expect(sidebar.getByRole("button", { name: "Add file", exact: true })).toBeFocused();
+	}
 	await page.screenshot({ path: "perf-artifacts/hover-sidebar-performance-v1.png" });
 	await page.setViewportSize({ width: 390, height: 844 });
 	await sidebar.getByRole("button", { name: "Hide project files" }).click();
@@ -875,7 +884,41 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.getByRole("button", { name: "Show project files" }).click();
 	const value = await report(page);
-	await finish(page, testInfo, "project-file-sidebar", { hoverRevealMs, interactionP95Ms: metric(value, "scenario.interaction")! });
+	await finish(page, testInfo, "project-file-sidebar", { hoverRevealMs, menuOpenMs: percentile(menuOpenTimes), interactionP95Ms: metric(value, "scenario.interaction")! });
+});
+
+test("project-new-drawing", async ({ page }, testInfo) => {
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	await page.getByLabel("Project name", { exact: true }).fill("New drawing workflow");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await expect(page.getByRole("heading", { name: "New drawing workflow", exact: true })).toBeVisible();
+	const createMs = await interaction(page, "drawing.create", async () => {
+		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+		await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
+		await page.getByLabel("Drawing name", { exact: true }).fill("Power stage");
+		await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+		await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor · Power stage") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf", timeout: 30_000 });
+	});
+	await (await toolbarButton(page, "Rectangle")).click();
+	await page.mouse.move(600, 300);
+	await page.mouse.down();
+	await page.mouse.move(710, 400);
+	await page.mouse.up();
+	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(2);
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	const switchTimes: number[] = [];
+	for (let repeat = 0; repeat < 3; repeat++) {
+		const sidebar = await openProjectFiles(page);
+		switchTimes.push(await interaction(page, "drawing.reopen", async () => {
+			await sidebar.getByRole("link", { name: "Open power-stage.ecaddraw", exact: true }).click();
+			await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor · Power stage") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
+		}));
+		await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
+		await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor · A3") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
+	}
+	await finish(page, testInfo, "project-new-drawing", { createMs, interactionP95Ms: percentile(switchTimes) });
 });
 
 test("project-new-symbol", async ({ page }, testInfo) => {
@@ -885,7 +928,8 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 	await page.getByRole("button", { name: "Create project", exact: true }).click();
 	await expect(page.getByRole("heading", { name: "New symbol workflow", exact: true })).toBeVisible();
 	await interaction(page, "symbol.create", async () => {
-		await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+		await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
 		await page.waitForFunction(
 			() => document.querySelector('[role="dialog"] input') !== null,
 			undefined,

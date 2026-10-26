@@ -48,6 +48,24 @@ function browserFilesystem() {
 }
 const shape: EditorShape = { id: 3, kind: "circle", x: 1, y: 2, width: 5, height: 5, rotation: 0, lineWidth: 0.2 };
 
+test("browser projects keep additional drawings through revisions, imports and failed saves", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	await storage.create("Drawings");
+	const drawings = [{ id: "power", name: "Power", shapes: [shape] }, { id: "control", name: "Control", shapes: [] }];
+	const saved = await storage.save("Drawings", { shapes: [], symbols: [], drawings });
+	assert.equal(saved.manifest.drawings?.length, 2);
+	assert.deepEqual((await createWebProjectStorage(browser.root, browser.selection).load())?.drawings, drawings);
+	browser.fail();
+	await assert.rejects(storage.save("Drawings", { shapes: [shape], symbols: [], drawings: [{ ...drawings[0], shapes: [] }] }), /Quota exceeded/);
+	browser.fail(false);
+	assert.deepEqual((await createWebProjectStorage(browser.root, browser.selection).load())?.drawings, drawings);
+	await storage.importAssets("Drawings", [{ name: "board.gbr", kind: "gerber", bytes: new Uint8Array([1]) }]);
+	const next = await storage.save("Drawings", { shapes: [shape], symbols: [] });
+	assert.deepEqual(next.drawings, drawings);
+	assert.deepEqual((await createWebProjectStorage(browser.root, browser.selection).load())?.drawings, drawings);
+});
+
 test("browser projects use named local directories, restore the active project and isolate source files", async () => {
 	const browser = browserFilesystem();
 	const storage = createWebProjectStorage(browser.root, browser.selection);

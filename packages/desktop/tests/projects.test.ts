@@ -13,6 +13,26 @@ import { createDesktopProjectDirectory, DesktopProjects } from "#/main/projects.
 const shape: EditorShape = { id: 7, kind: "rectangle", x: 0, y: 0, width: 5, height: 8, rotation: 0, lineWidth: 0.2 };
 const symbol = parseSymbolFile(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "test-point", name: "Test point", description: "", prefix: "TP", value: "", shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }] }));
 
+test("additional drawing files preserve paths, reject external edits and roll back failed saves", async () => temporary(async (parent) => {
+	const directory = await createDesktopProjectDirectory(parent);
+	let fail = false;
+	const repository = new ProjectRepository({ ...directory, write: async (path, bytes) => { if (fail && path === PROJECT_FILE) throw new Error("Disk full"); await directory.write(path, bytes); } }, { layout: "files" });
+	await repository.create("Drawings");
+	const drawings = [{ id: "power", name: "Power", shapes: [shape] }];
+	const saved = await repository.save({ shapes: [], symbols: [], drawings });
+	assert.deepEqual(saved.manifest.drawings, ["drawings/power.ecaddraw"]);
+	assert.deepEqual((await new ProjectRepository(directory).load()).drawings, drawings);
+	fail = true;
+	await assert.rejects(repository.save({ shapes: [shape], symbols: [], drawings: [{ ...drawings[0], shapes: [] }, { id: "control", name: "Control", shapes: [] }] }), /Disk full/);
+	assert.deepEqual((await new ProjectRepository(directory).load()).drawings, drawings);
+	assert.deepEqual(await readdir(join(parent, "drawings")), ["power.ecaddraw"]);
+	fail = false;
+	const next = await repository.save({ shapes: [shape], symbols: [] });
+	assert.deepEqual(next.manifest.drawings, saved.manifest.drawings);
+	await writeFile(join(parent, "drawings/power.ecaddraw"), JSON.stringify({ ...drawings[0], shapes: [] }));
+	await assert.rejects(repository.save({ shapes: [], symbols: [] }), /changed on disk/);
+}));
+
 async function temporary(run: (directory: string) => Promise<void>) {
 	const directory = await mkdtemp(join(tmpdir(), "ecad-project-"));
 	try { await run(directory); } finally { await rm(directory, { recursive: true, force: true }); }

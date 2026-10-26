@@ -3,6 +3,7 @@ import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import {
 	type AssetKind,
 	assetSchema,
+	drawingFileSchema,
 	PROJECT_FILE,
 	type ProjectDocument,
 	type ProjectSnapshot,
@@ -80,6 +81,15 @@ export class ProjectRepository {
 			);
 			const document = validateProjectDocument({
 				shapes: drawing.shapes,
+				...(manifest.drawings === undefined
+					? {}
+					: {
+							drawings: await Promise.all(
+								manifest.drawings.map(async (path) =>
+									drawingFileSchema.parse(JSON.parse(await read(path))),
+								),
+							),
+						}),
 				symbols,
 				symbolLibraries: drawing.symbolLibraries,
 			});
@@ -149,6 +159,7 @@ export class ProjectRepository {
 		const revision = `.ecad/${globalThis.crypto.randomUUID()}`;
 		const drawing = `${revision}/drawing.ecaddraw`;
 		const symbols: string[] = [];
+		const drawings: string[] = [];
 		try {
 			await this.directory.write(
 				drawing,
@@ -170,7 +181,29 @@ export class ProjectRepository {
 				);
 				symbols.push(path);
 			}
-			const manifest = { ...snapshot.manifest, drawing, symbols };
+			for (const file of document.drawings ?? []) {
+				const path = `${revision}/drawings/${file.id}.ecaddraw`;
+				projectPathSchema.parse(path);
+				await this.directory.write(
+					path,
+					encoder.encode(
+						JSON.stringify({
+							...file,
+							shapes: persistProjectDrawingShapes({
+								...document,
+								shapes: file.shapes,
+							}),
+						}),
+					),
+				);
+				drawings.push(path);
+			}
+			const manifest = {
+				...snapshot.manifest,
+				drawing,
+				symbols,
+				...(document.drawings === undefined ? {} : { drawings }),
+			};
 			const content = serializeProjectManifest(manifest);
 			await this.directory.write(PROJECT_FILE, encoder.encode(content));
 			const previous = this.snapshot;
@@ -250,6 +283,34 @@ export class ProjectRepository {
 				previous.manifest.symbols[index],
 			]),
 		);
+		const previousDrawings = new Map(
+			previous?.drawings?.map((file, index) => [
+				file.id,
+				previous.manifest.drawings?.[index],
+			]),
+		);
+		const drawings: string[] = [];
+		for (const file of snapshot.drawings ?? []) {
+			const existing = previousDrawings.get(file.id);
+			const path =
+				existing && visible(existing) && !reserved.has(existing)
+					? existing
+					: await this.unusedPath(`drawings/${file.id}.ecaddraw`, reserved);
+			reserved.add(path);
+			drawings.push(path);
+			files.set(
+				path,
+				encoder.encode(
+					JSON.stringify({
+						...file,
+						shapes: persistProjectDrawingShapes({
+							...snapshot,
+							shapes: file.shapes,
+						}),
+					}),
+				),
+			);
+		}
 		const symbols: string[] = [];
 		for (const symbol of snapshot.symbols) {
 			const existing = previousSymbols.get(symbol.id);
@@ -261,7 +322,12 @@ export class ProjectRepository {
 			symbols.push(path);
 			files.set(path, encoder.encode(JSON.stringify(symbol)));
 		}
-		const manifest = { ...snapshot.manifest, drawing, symbols };
+		const manifest = {
+			...snapshot.manifest,
+			drawing,
+			symbols,
+			...(snapshot.drawings === undefined ? {} : { drawings }),
+		};
 		const content = serializeProjectManifest(manifest);
 		files.set(PROJECT_FILE, encoder.encode(content));
 		const changes: { path: string; before: Uint8Array | null }[] = [];
@@ -304,6 +370,7 @@ export class ProjectRepository {
 		if (previous) {
 			const obsolete = [
 				previous.manifest.drawing,
+				...(previous.manifest.drawings ?? []),
 				...previous.manifest.symbols,
 			].filter((path) => !reserved.has(path));
 			for (const path of obsolete) {
@@ -336,6 +403,7 @@ export class ProjectRepository {
 			const reserved = new Set([
 				PROJECT_FILE,
 				current.manifest.drawing,
+				...(current.manifest.drawings ?? []),
 				...current.manifest.symbols,
 				...current.manifest.assets.map((asset) => asset.path),
 			]);

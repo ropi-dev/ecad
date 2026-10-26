@@ -276,15 +276,100 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	expect((await documentState(page)).shapes).toEqual([]);
 });
 
+test("new drawings keep separate edits and undo histories, survive reloads and use distinct names", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await createProject(page, "Multiple drawings");
+	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
+	await drawRectangle(page);
+	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(1);
+	const primary = (await documentState(page)).shapes;
+	const createDrawing = async () => {
+		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+		await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
+		await expect(page.getByLabel("Drawing name", { exact: true })).toBeFocused();
+		await page.getByLabel("Drawing name", { exact: true }).fill("Power stage");
+		await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+		await expect(page.getByRole("heading", { level: 1 })).toContainText("Schematic editor · Power stage");
+		await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	};
+	await createDrawing();
+	expect((await documentState(page)).editorShapes).toEqual([]);
+	expect((await documentState(page)).shapes).toEqual(primary);
+	await drawRectangle(page);
+	await expect.poll(async () => (await documentState(page)).drawings[0].shapes.length).toBe(1);
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(0);
+	await (await toolbarButton(page, "Redo")).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open power-stage.ecaddraw", exact: true }).click();
+	await (await toolbarButton(page, "Undo")).click();
+	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(0);
+	expect((await documentState(page)).shapes).toEqual(primary);
+	await (await toolbarButton(page, "Redo")).click();
+	await expect.poll(async () => (await documentState(page)).drawings[0].shapes.length).toBe(1);
+	await createDrawing();
+	expect((await documentState(page)).drawings.map((file: { id: string }) => file.id)).toEqual(["power-stage", "power-stage-2"]);
+	expect((await documentState(page)).editorShapes).toEqual([]);
+	await page.reload();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open power-stage.ecaddraw", exact: true }).click();
+	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(1);
+	expect((await documentState(page)).shapes).toEqual(primary);
+	await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+	await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
+	await page.getByLabel("Symbol name", { exact: true }).fill("Drawing companion");
+	await page.getByRole("button", { name: "Create symbol", exact: true }).click();
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Drawing companion");
+	expect((await documentState(page)).editorShapes).toEqual([]);
+	expect((await documentState(page)).drawings[0].shapes).toHaveLength(1);
+	await createProject(page, "Copied drawings");
+	await page.reload();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open power-stage.ecaddraw", exact: true }).click();
+	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(1);
+});
+
+test("drawing creation validates names, cancels cleanly and allows retry after a save failure", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await createProject(page, "Drawing retry");
+	const openDialog = async () => {
+		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+		await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
+	};
+	await openDialog();
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+	expect((await documentState(page)).drawings).toBeUndefined();
+	await openDialog();
+	await page.getByLabel("Drawing name", { exact: true }).fill("invalid/name");
+	await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+	await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+	await page.evaluate(() => {
+		const original = FileSystemFileHandle.prototype.createWritable;
+		FileSystemFileHandle.prototype.createWritable = function(...args) {
+			if (this.name === ".ecadprj") throw new DOMException("Quota exceeded", "QuotaExceededError");
+			return original.apply(this, args);
+		};
+		window.addEventListener("restore-writes", () => { FileSystemFileHandle.prototype.createWritable = original; }, { once: true });
+	});
+	await page.getByLabel("Drawing name", { exact: true }).fill("Retry drawing");
+	await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+	await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Quota exceeded");
+	expect((await documentState(page)).drawings).toBeUndefined();
+	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
+	await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+	await expect(page.getByRole("heading", { level: 1 })).toContainText("Schematic editor · Retry drawing");
+	expect((await documentState(page)).drawings).toHaveLength(1);
+});
+
 test("new symbols start empty, persist edits, and use distinct files for repeated names", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
-	await expect((await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true })).toHaveCount(0);
+	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toHaveCount(0);
 	await createProject(page, "New symbols");
-	await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+	await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
 	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 	expect((await documentState(page)).symbols).toEqual([]);
 	const create = async () => {
-		await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+		await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
 		await expect(page.getByLabel("Symbol name", { exact: true })).toBeFocused();
 		await page.getByLabel("Symbol name", { exact: true }).fill("New chip");
 		await page.getByRole("button", { name: "Create symbol", exact: true }).click();
@@ -331,7 +416,8 @@ test("new symbol creation keeps the dialog open on save failure and allows retry
 		};
 		window.addEventListener("restore-writes", () => { FileSystemFileHandle.prototype.createWritable = original; }, { once: true });
 	});
-	await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+	await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
 	await page.getByLabel("Symbol name", { exact: true }).fill("Retry part");
 	await page.getByRole("button", { name: "Create symbol", exact: true }).click();
 	await expect(page.getByRole("dialog")).toBeVisible();
@@ -367,11 +453,12 @@ test("the floating sidebar owns the workspace tiles and connects MCP to the acti
 	await expect(workspaces.getByRole("link")).toHaveCount(3);
 	await expect(workspaces.getByRole("button", { name: "Enable MCP", exact: true })).toBeEnabled();
 	await expect(page.locator("main").getByRole("link", { name: "Gerber viewer", exact: true })).toHaveCount(0);
-	const panelBounds = (await sidebar.boundingBox())!;
+	const panelBounds = (await sidebar.locator("..").boundingBox())!;
 	const canvasBounds = (await page.locator("canvas").boundingBox())!;
 	expect(canvasBounds.x).toBe(0);
-	expect(panelBounds.x).toBe(40);
-	expect(panelBounds.y).toBe(104);
+	expect(panelBounds.x).toBe(12);
+	expect(panelBounds.y).toBe(12);
+	expect(panelBounds.y + panelBounds.height).toBe(page.viewportSize()!.height - 12);
 	await workspaces.getByRole("button", { name: "Enable MCP", exact: true }).click();
 	await expect(sidebar.getByText("Connected to this drawing", { exact: true })).toBeVisible();
 	await sidebar.getByRole("button", { name: "Disable MCP", exact: true }).click();
