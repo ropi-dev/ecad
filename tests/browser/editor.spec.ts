@@ -1628,6 +1628,7 @@ test("symbol movement extends connections through drag, history, keyboard and at
 	await clickAt(page, 180, 150);
 	await clickAt(page, 180, 210);
 	await page.keyboard.press("Enter");
+	await expect.poll(() => wireEndpoints(page)).toEqual([[103, 150, 180, 150], [180, 150, 180, 210]]);
 	const original = await wireEndpoints(page);
 	await dragTo(page, [100, 150], [120, 170]);
 	const extended = [[103, 150, 123, 150], [123, 150, 180, 150], [180, 150, 180, 210], [123, 150, 123, 170]];
