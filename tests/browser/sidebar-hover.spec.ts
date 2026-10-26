@@ -33,6 +33,9 @@ test("the sidebar leaves a visible edge, opens from it, and closes after leaving
 	await page.mouse.move(100, 300);
 	await sidebar.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	const mcp = sidebar.getByRole("button", { name: "Enable MCP", exact: true });
+	await expect(mcp).toBeEnabled();
+	await mcp.hover();
 	await page.mouse.move(900, 400);
 	await expect(panel).toHaveCSS("opacity", "0");
 	await expect(sidebar).toHaveCount(0);
