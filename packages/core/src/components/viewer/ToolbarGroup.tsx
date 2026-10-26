@@ -1,4 +1,5 @@
 import { ChevronUp, type LucideIcon } from "lucide-react";
+import { Tooltip } from "radix-ui";
 import {
 	createContext,
 	type ReactNode,
@@ -9,6 +10,7 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "./viewControlStyles";
 
 const GroupContext = createContext<{
@@ -26,9 +28,11 @@ export function ToolbarGroups({
 }) {
 	const [openId, setOpenId] = useState<string | null>(null);
 	return (
-		<GroupContext value={{ openId, setOpenId, panelHost }}>
-			{children}
-		</GroupContext>
+		<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
+			<GroupContext value={{ openId, setOpenId, panelHost }}>
+				{children}
+			</GroupContext>
+		</Tooltip.Provider>
 	);
 }
 
@@ -84,7 +88,7 @@ export function ToolbarGroup({
 
 	return (
 		<div ref={root} className="contents">
-			<button
+			<TooltipButton
 				ref={trigger}
 				type="button"
 				aria-label={label}
@@ -92,7 +96,7 @@ export function ToolbarGroup({
 				aria-controls={id}
 				data-active={active || open}
 				disabled={disabled}
-				title={label}
+				tooltip={label}
 				className={`${viewControlButtonClassName} relative data-[active=true]:border-[#b88f61] data-[active=true]:bg-[#e8b77e12] data-[active=true]:text-[#e8b77e]`}
 				onClick={() => setOpenId(open ? null : id)}
 				onKeyDown={(event) => {
@@ -111,7 +115,7 @@ export function ToolbarGroup({
 					aria-hidden="true"
 					className="absolute right-0.5 bottom-0.5"
 				/>
-			</button>
+			</TooltipButton>
 			{open &&
 				panelHost &&
 				createPortal(

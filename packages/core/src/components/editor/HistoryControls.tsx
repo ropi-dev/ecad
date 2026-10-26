@@ -1,5 +1,6 @@
 import { History as HistoryIcon, Redo2, Undo2, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import type { History } from "#/drawing/history.ts";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 
@@ -76,27 +77,29 @@ export function HistoryControls({
 	};
 	return (
 		<>
-			<button
+			<TooltipButton
 				type="button"
 				className={viewControlButtonClassName}
 				disabled={disabled || current.parentId === null}
 				aria-label="Undo"
-				title={`Undo${current.parentId === null ? "" : ` ${current.label}`} (Ctrl/Cmd + Z)`}
+				tooltip="Undo"
+				shortcut="Ctrl/Cmd + Z"
 				onClick={onUndo}
 			>
 				<Undo2 size={17} aria-hidden="true" />
-			</button>
-			<button
+			</TooltipButton>
+			<TooltipButton
 				type="button"
 				className={viewControlButtonClassName}
 				disabled={disabled || !redo}
 				aria-label="Redo"
-				title={`Redo${redo ? ` ${redo.label}` : ""} (Ctrl/Cmd + Shift + Z)`}
+				tooltip="Redo"
+				shortcut="Ctrl/Cmd + Shift + Z"
 				onClick={onRedo}
 			>
 				<Redo2 size={17} aria-hidden="true" />
-			</button>
-			<button
+			</TooltipButton>
+			<TooltipButton
 				ref={toggle}
 				type="button"
 				className={viewControlButtonClassName}
@@ -104,11 +107,11 @@ export function HistoryControls({
 				aria-label="History"
 				aria-expanded={open}
 				aria-controls={panelId}
-				title="Drawing history"
+				tooltip="Drawing history"
 				onClick={() => setOpen((value) => !value)}
 			>
 				<HistoryIcon size={17} aria-hidden="true" />
-			</button>
+			</TooltipButton>
 			{open && (
 				<section
 					ref={panel}

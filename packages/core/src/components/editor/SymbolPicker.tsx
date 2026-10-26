@@ -3,6 +3,7 @@ import { Shapes } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMemo, useRef, useState } from "react";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { shapeBounds } from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { textCenter } from "#/drawing/text-alignment.ts";
@@ -51,16 +52,16 @@ export function SymbolPicker({
 			}}
 		>
 			<Popover.Trigger asChild>
-				<button
+				<TooltipButton
 					type="button"
 					disabled={disabled}
 					aria-label="Symbols"
-					title="Insert a symbol"
+					tooltip="Insert a symbol"
 					aria-pressed={active}
 					className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:text-[#e8b77e]`}
 				>
 					<Shapes size={18} aria-hidden="true" />
-				</button>
+				</TooltipButton>
 			</Popover.Trigger>
 			<Popover.Portal>
 				<Popover.Content
