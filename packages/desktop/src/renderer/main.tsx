@@ -5,6 +5,7 @@ import { StepWorkspace } from "@ecad/core/components/step/StepWorkspace.tsx";
 import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.tsx";
 import { ProjectPage } from "@ecad/core/projects/ProjectPage.tsx";
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
+import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createDesktopSymbolLibraryStorage } from "#/renderer/storage.ts";
@@ -38,20 +39,22 @@ function App() {
 	}, []);
 	return (
 		<ProjectProvider storage={window.ecadProjects} symbolStorage={storage}>
-			<PerformanceBoundary
-				name={workspace}
-				path={workspace === "gerber" ? "/" : `/${workspace}`}
-			>
-				{workspace === "projects" ? (
-					<ProjectPage />
-				) : workspace === "editor" ? (
-					<Editor2D enableMcp={false} />
-				) : workspace === "gerber" ? (
-					<GerberWorkspace />
-				) : (
-					<StepWorkspace />
-				)}
-			</PerformanceBoundary>
+			<ProjectShell>
+				<PerformanceBoundary
+					name={workspace}
+					path={workspace === "gerber" ? "/" : `/${workspace}`}
+				>
+					{workspace === "projects" ? (
+						<ProjectPage />
+					) : workspace === "editor" ? (
+						<Editor2D enableMcp={false} />
+					) : workspace === "gerber" ? (
+						<GerberWorkspace />
+					) : (
+						<StepWorkspace />
+					)}
+				</PerformanceBoundary>
+			</ProjectShell>
 		</ProjectProvider>
 	);
 }

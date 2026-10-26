@@ -44,7 +44,6 @@ import {
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
-import { ItemHierarchy } from "#/components/editor/ItemHierarchy.tsx";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import {
 	parseSymbolFile,
@@ -104,6 +103,7 @@ import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
 import { OrthographicViewer2D } from "../viewer/OrthographicViewer2D";
 import { viewControlButtonClassName } from "../viewer/ViewControls3D";
@@ -186,6 +186,11 @@ function EditorCanvas({
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProject();
 	const store = suppliedStore ?? project?.store ?? ownedStore;
+	const registerEditor = useEditorControlsRegistration();
+	useEffect(
+		() => registerEditor?.(store, enableMcp),
+		[registerEditor, store, enableMcp],
+	);
 	const drawing = useSyncExternalStore(
 		store.subscribe,
 		store.getSnapshot,
@@ -919,58 +924,34 @@ function EditorCanvas({
 					? `Symbol editor · ${symbolName}`
 					: `Schematic editor · ${sheet.name ? `${sheet.name} · ` : ""}${sheet.width} × ${sheet.height} mm`}
 			</h1>
-			<header className="absolute top-10 left-10 z-4 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
-				{headerControls ?? (
-					<>
-						<ProjectLink
-							href="/"
-							className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
-						>
-							Gerber viewer
-						</ProjectLink>
-						<ProjectLink
-							href="/step"
-							className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
-						>
-							STEP viewer
-						</ProjectLink>
-						<ProjectLink
-							href="/projects"
-							className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
-						>
-							Projects
-						</ProjectLink>
-						{enableMcp && <McpControls store={store} />}
-					</>
-				)}
-			</header>
+			{(headerControls || !registerEditor) && (
+				<header className="absolute top-10 left-10 z-4 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9 max-[600px]:max-w-[calc(100%-4.5rem)]">
+					{headerControls ?? (
+						<>
+							<ProjectLink
+								href="/"
+								className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
+							>
+								Gerber viewer
+							</ProjectLink>
+							<ProjectLink
+								href="/step"
+								className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] no-underline shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] focus-visible:outline-2 focus-visible:outline-amber-200"
+							>
+								STEP viewer
+							</ProjectLink>
+							<ProjectLink
+								href="/projects"
+								className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
+							>
+								Projects
+							</ProjectLink>
+							{enableMcp && <McpControls store={store} />}
+						</>
+					)}
+				</header>
+			)}
 			<div className="relative flex min-h-0 flex-1">
-				<ItemHierarchy
-					shapes={shapes}
-					selectedIds={new Set(selected.map((shape) => shape.id))}
-					selectedChildKey={selectedChild?.key ?? null}
-					allowLocked={allowLocked}
-					disabled={!ready}
-					onSelect={(id, childKey, additive) => {
-						finishDrag(true);
-						finishWire();
-						const shape = currentShapes.current.find(
-							(shape) => shape.id === id,
-						);
-						if (!shape || !canSelectShape(shape, allowLocked)) return;
-						if (childKey) {
-							if (shape.kind !== "symbol") return;
-							const child = symbolChildren(shape).find(
-								(child) => child.key === childKey,
-							);
-							if (!child || !canSelectSymbolChild(shape, child, allowLocked))
-								return;
-							applySelection(new Set([id]));
-						} else selectShape(id, additive);
-						setSelectedChildKey(childKey ?? null);
-						setTool("select");
-					}}
-				/>
 				<div
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					data-tool={tool}

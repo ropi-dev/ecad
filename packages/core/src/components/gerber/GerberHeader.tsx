@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
 
 export function GerberHeader({
 	loading,
@@ -10,6 +11,8 @@ export function GerberHeader({
 	onOpenFile: (files: File[]) => void;
 }) {
 	const project = useProject();
+	const workspaceControls = useWorkspaceControls();
+	if (workspaceControls) return null;
 	return (
 		<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
 			<ProjectLink

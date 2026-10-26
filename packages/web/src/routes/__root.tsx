@@ -1,3 +1,4 @@
+import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import appCss from "@ecad/core/styles.css?url";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -7,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import type { TRPCRouter } from "#/integrations/trpc/router.ts";
-import { AppProjects } from "#/projects/AppProjects.tsx";
+import { AppWorkspace } from "#/projects/AppProjects.tsx";
 
 interface MyRouterContext {
 	queryClient: QueryClient;
@@ -28,7 +29,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 		links: [{ rel: "stylesheet", href: appCss }],
 	}),
 	shellComponent: RootDocument,
-	component: AppProjects,
+	component: AppWorkspace,
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
@@ -38,7 +39,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body>
-				{children}
+				<ProjectShell
+					sidebar={<div id="project-sidebar" className="contents" />}
+				>
+					{children}
+				</ProjectShell>
 				<Scripts />
 			</body>
 		</html>

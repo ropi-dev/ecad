@@ -1,14 +1,18 @@
+import { PlugZap } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { createDrawingStore } from "#/commands/drawing-store.ts";
 import {
 	connectEditorMcp,
 	type EditorMcpState,
 } from "#/mcp/editor-connection.ts";
+import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
 
 export function McpControls({
 	store,
+	compact = false,
 }: {
 	store: ReturnType<typeof createDrawingStore>;
+	compact?: boolean;
 }) {
 	const fieldId = useId();
 	const [enabled, setEnabled] = useState(false);
@@ -57,14 +61,25 @@ export function McpControls({
 			: "";
 	const fieldClassName =
 		"w-full rounded border border-[#414955] bg-[#111318] px-2 py-1.5 font-mono text-[11px] text-[#e8edf5]";
+	const label = enabled
+		? connection?.status === "connected"
+			? "MCP connected"
+			: "MCP connecting..."
+		: "Enable MCP";
 	return (
 		<div className="contents">
 			<button
 				type="button"
+				aria-label={label}
+				title={label}
 				aria-pressed={enabled}
 				aria-expanded={panelOpen}
 				aria-controls={`${fieldId}-panel`}
-				className="inline-flex cursor-pointer items-center rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] aria-pressed:border-[#b88f61] aria-pressed:text-[#e8b77e]"
+				className={
+					compact
+						? `${workspaceActionClassName} text-[#c3abd8] aria-pressed:bg-[#e8b77e1c] aria-pressed:text-[#e8b77e]`
+						: "inline-flex cursor-pointer items-center rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] aria-pressed:border-[#b88f61] aria-pressed:text-[#e8b77e]"
+				}
 				onClick={() => {
 					if (enabled) {
 						setPanelOpen((value) => !value);
@@ -76,17 +91,17 @@ export function McpControls({
 					setEnabled(true);
 				}}
 			>
-				{enabled
-					? connection?.status === "connected"
-						? "MCP connected"
-						: "MCP connecting..."
-					: "Enable MCP"}
+				{compact ? <PlugZap size={20} aria-hidden="true" /> : label}
 			</button>
 			{panelOpen && connection && connection.status !== "disconnected" && (
 				<section
 					id={`${fieldId}-panel`}
 					aria-label="MCP connection"
-					className="absolute top-full left-0 z-30 mt-2 grid max-h-[calc(100dvh-10rem)] w-[min(360px,calc(100vw-5rem))] gap-3 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-3 text-[12px] text-[#e8edf5] shadow-xl"
+					className={
+						compact
+							? "absolute top-28 right-3 left-3 z-30 grid max-h-[calc(100%-8rem)] gap-3 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-3 text-[12px] text-[#e8edf5] shadow-xl"
+							: "absolute top-full left-0 z-30 mt-2 grid max-h-[calc(100dvh-10rem)] w-[min(360px,calc(100vw-5rem))] gap-3 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-3 text-[12px] text-[#e8edf5] shadow-xl"
+					}
 				>
 					{enabled && (
 						<button
