@@ -1,3 +1,4 @@
+import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
 import { toolbarButton } from "./toolbar";
@@ -151,7 +152,7 @@ test("rotated components survive project reload", async ({ page }) => {
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
 	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
-	await page
+	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Schematic editor", exact: true })
 		.click();
 	await placeResistor(page);
@@ -166,7 +167,7 @@ test("rotated components survive project reload", async ({ page }) => {
 	await expect
 		.poll(async () => (await projectState()).shapes[0]?.rotation)
 		.toBe(Math.PI / 2);
-	await page
+	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Schematic editor", exact: true })
 		.click();
 	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();

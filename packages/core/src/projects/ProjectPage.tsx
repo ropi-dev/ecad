@@ -1,34 +1,15 @@
 import {
-	ArrowDownToLine,
-	Box,
 	Check,
-	ChevronLeft,
-	ChevronRight,
 	CircuitBoard,
 	Folder,
 	FolderOpen,
-	Layers,
 	Plus,
 	Save,
-	Search,
-	X,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
-import {
-	type AssetKind,
-	PROJECT_FILE,
-	type ProjectAsset,
-} from "#/projects/format.ts";
-import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { SymbolLibraryControls } from "#/symbol-library/LibraryControls.tsx";
-
-const CreateSymbolDialog = lazy(() =>
-	import("#/components/editor/CreateSymbolDialog.tsx").then((module) => ({
-		default: module.CreateSymbolDialog,
-	})),
-);
 
 const focus =
 	"focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#c7e991]";
@@ -37,58 +18,13 @@ const button = `${buttonBase} border-[#393d45] bg-[#212429] font-medium text-[#d
 const primaryButton = `${buttonBase} border-[#c7e991] bg-[#c7e991] font-semibold text-[#202a15] hover:border-[#d9f2b2] hover:bg-[#d9f2b2]`;
 const sectionLabel =
 	"mb-3.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.12em] text-[#9297a1]";
-const importButton = `relative inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded border border-[#353940] px-[9px] py-1.5 text-[11px] text-[#bfc4cd] transition-colors motion-reduce:transition-none hover:border-[#505761] hover:bg-[#282c32] focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-[#c7e991] has-[:disabled]:cursor-default has-[:disabled]:opacity-40`;
-const tableHeading =
-	"sticky top-0 z-10 border-y border-[#2b2e34] bg-[#202328] px-5 py-2.5 text-[10px] font-medium text-[#7f8793] max-[760px]:px-3";
-const tableCell =
-	"border-b border-[#282c31] py-2.5 align-middle group-last:border-b-0";
-const fileColors: Record<string, string> = {
-	Project: "border-[#3c4149] bg-[#24282e] text-[#9ba4b0]",
-	Drawing: "border-[#46573a] bg-[#2b3424] text-[#c6e4a0]",
-	Gerber: "border-[#35534c] bg-[#223430] text-[#90c8bc]",
-	STEP: "border-[#3b4b69] bg-[#263044] text-[#a2b9e4]",
-	Symbol: "border-[#50415f] bg-[#31273c] text-[#c3abd8]",
-};
-
-const filters = ["All files", "Drawing", "Gerber", "STEP", "Symbol"] as const;
-type FileFilter = (typeof filters)[number];
-const fileLabels: Record<string, string> = {
-	Project: "PR",
-	Drawing: "2D",
-	Symbol: "SY",
-	Gerber: "GB",
-	STEP: "3D",
-};
-const fileDescriptions: Record<string, string> = {
-	Project: "Project manifest",
-	Drawing: "Project drawing",
-	Symbol: "Symbol library",
-	Gerber: "Source file",
-	STEP: "Source file",
-};
-const pageSize = 50;
-
-interface ProjectFile {
-	path: string;
-	name: string;
-	type: string;
-	href?: ProjectPath;
-	asset?: ProjectAsset;
-}
-
 export function ProjectPage() {
 	const project = useProject();
 	const library = useSymbolLibrary();
 	const [name, setName] = useState("");
 	const [projects, setProjects] = useState<string[]>([]);
 	const [pageError, setPageError] = useState("");
-	const [importing, setImporting] = useState(false);
-	const [filePage, setFilePage] = useState(0);
 	const [librariesOpen, setLibrariesOpen] = useState(false);
-	const [query, setQuery] = useState("");
-	const [filter, setFilter] = useState<FileFilter>("All files");
-	const [newSymbolOpen, setNewSymbolOpen] = useState(false);
-	const symbolEditorLink = useRef<HTMLAnchorElement>(null);
 	const list = project?.list;
 	const mode = project?.mode;
 	const directory = project?.project?.directory;
@@ -115,94 +51,10 @@ export function ProjectPage() {
 		};
 	}, [list, mode, directory]);
 	const snapshot = project?.project;
-	const files = useMemo<ProjectFile[]>(
-		() =>
-			snapshot
-				? [
-						{ path: PROJECT_FILE, name: PROJECT_FILE, type: "Project" },
-						{
-							path: snapshot.manifest.drawing,
-							name: "Drawing",
-							type: "Drawing",
-							href: "/editor",
-						},
-						...snapshot.manifest.symbols.map((path) => ({
-							path,
-							name: path.split("/").at(-1) ?? path,
-							type: "Symbol",
-							href: "/editor" as const,
-						})),
-						...snapshot.manifest.assets.map((asset) => ({
-							path: asset.path,
-							name: asset.name,
-							type: asset.kind === "step" ? "STEP" : "Gerber",
-							href: asset.kind === "step" ? ("/step" as const) : ("/" as const),
-							asset,
-						})),
-					]
-				: [],
-		[snapshot],
-	);
-	const counts = useMemo(() => {
-		const counts: Record<string, number> = { "All files": files.length };
-		for (const file of files) counts[file.type] = (counts[file.type] ?? 0) + 1;
-		return counts;
-	}, [files]);
-	const filteredFiles = useMemo(() => {
-		const search = query.trim().toLowerCase();
-		return files.filter(
-			(file) =>
-				(filter === "All files" || file.type === filter) &&
-				(!search ||
-					file.name.toLowerCase().includes(search) ||
-					file.path.toLowerCase().includes(search)),
-		);
-	}, [files, filter, query]);
-	const lastPage = Math.max(0, Math.ceil(filteredFiles.length / pageSize) - 1);
-	const currentPage = Math.min(filePage, lastPage);
-	const firstFile = currentPage * pageSize;
-	const visibleFiles = filteredFiles.slice(firstFile, firstFile + pageSize);
 	if (!project) return null;
-	const busy = project.busy || importing;
-	async function upload(files: File[], kind: AssetKind) {
-		if (!project || !files.length) return;
-		setImporting(true);
-		setPageError("");
-		try {
-			await project.importAssets(files, kind);
-		} catch (cause) {
-			setPageError(
-				cause instanceof Error ? cause.message : "Unable to add project files.",
-			);
-		} finally {
-			setImporting(false);
-		}
-	}
+	const busy = project.busy;
 	return (
 		<main className="min-h-dvh bg-[#131518] text-[13px] leading-normal text-[#e8e9ec]">
-			<ProjectLink href="/editor" ref={symbolEditorLink} hidden tabIndex={-1}>
-				Open new symbol
-			</ProjectLink>
-			{newSymbolOpen && (
-				<Suspense fallback={null}>
-					<CreateSymbolDialog
-						description="Create an empty symbol file in this project and open it for editing."
-						onClose={() => setNewSymbolOpen(false)}
-						onCreate={async (symbolName) => {
-							try {
-								const path = await project.createSymbol(symbolName);
-								project.selectEditorFile(path);
-								setNewSymbolOpen(false);
-								symbolEditorLink.current?.click();
-							} catch (cause) {
-								return cause instanceof Error
-									? cause.message
-									: "Unable to create the symbol.";
-							}
-						}}
-					/>
-				</Suspense>
-			)}
 			<header className="flex min-h-16 items-center justify-between gap-6 border-b border-[#2b2e34] bg-[#17191c] px-7 max-[760px]:flex-wrap max-[760px]:gap-3 max-[760px]:px-[18px] max-[760px]:py-3.5">
 				<div className="flex items-center gap-3 text-[15px] font-semibold tracking-[.035em]">
 					<CircuitBoard
@@ -215,40 +67,6 @@ export function ProjectPage() {
 						Projects
 					</h1>
 				</div>
-				<nav
-					aria-label="Workspaces"
-					className="flex gap-2 max-[760px]:w-full max-[760px]:justify-between max-[760px]:gap-0.5"
-				>
-					<ProjectLink
-						href="/editor"
-						onClick={() => project.selectEditorFile()}
-						className={`flex items-center gap-2 rounded-[5px] px-3 py-[9px] text-[#a9aeb8] no-underline transition-colors motion-reduce:transition-none hover:bg-[#25282d] hover:text-white max-[760px]:px-2 max-[760px]:py-1.5 max-[760px]:text-[11px] ${focus}`}
-					>
-						<CircuitBoard
-							className="size-4 shrink-0 stroke-[1.65]"
-							aria-hidden="true"
-						/>
-						Schematic editor
-					</ProjectLink>
-					<ProjectLink
-						href="/"
-						className={`flex items-center gap-2 rounded-[5px] px-3 py-[9px] text-[#a9aeb8] no-underline transition-colors motion-reduce:transition-none hover:bg-[#25282d] hover:text-white max-[760px]:px-2 max-[760px]:py-1.5 max-[760px]:text-[11px] ${focus}`}
-						onClick={() => project.selectAsset(null)}
-					>
-						<Layers
-							className="size-4 shrink-0 stroke-[1.65]"
-							aria-hidden="true"
-						/>
-						Gerber viewer
-					</ProjectLink>
-					<ProjectLink
-						href="/step"
-						className={`flex items-center gap-2 rounded-[5px] px-3 py-[9px] text-[#a9aeb8] no-underline transition-colors motion-reduce:transition-none hover:bg-[#25282d] hover:text-white max-[760px]:px-2 max-[760px]:py-1.5 max-[760px]:text-[11px] ${focus}`}
-					>
-						<Box className="size-4 shrink-0 stroke-[1.65]" aria-hidden="true" />
-						STEP viewer
-					</ProjectLink>
-				</nav>
 			</header>
 			<div className="grid min-h-[calc(100dvh-64px)] grid-cols-[252px_minmax(0,1fr)] max-[1100px]:grid-cols-[220px_minmax(0,1fr)] max-[760px]:grid-cols-1">
 				<aside
@@ -422,362 +240,50 @@ export function ProjectPage() {
 						</output>
 					)}
 					{snapshot ? (
-						<>
-							<header className="mb-7 flex items-start justify-between gap-6 max-[760px]:mb-[26px] max-[760px]:flex-col max-[760px]:gap-4">
-								<div className="min-w-0">
-									<p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[.12em] text-[#9297a1]">
-										Active project
-									</p>
-									<h2 className="m-0 text-[29px] leading-tight font-semibold tracking-[-.04em] wrap-anywhere max-[760px]:text-[26px]">
-										{snapshot.manifest.name}
-									</h2>
-									<p
-										className="mt-3 flex items-center gap-[7px] text-[11px] text-[#7d8590]"
-										title={snapshot.directory}
-									>
-										<FolderOpen
-											className="size-4 shrink-0 stroke-[1.65]"
-											aria-hidden="true"
-										/>
-										<span className="truncate">{snapshot.directory}</span>
-									</p>
-								</div>
-								<div className="flex shrink-0 items-center gap-[18px] pt-7 max-[760px]:flex-row-reverse max-[760px]:gap-3.5 max-[760px]:pt-0">
-									<output
-										aria-label="Project save status"
-										className={`flex items-center gap-1.5 text-[11px] ${project.dirty ? "text-[#e2bd76]" : "text-[#b3c69b]"}`}
-									>
-										<Check
-											className="size-4 shrink-0 stroke-[1.65]"
-											aria-hidden="true"
-										/>
-										{project.dirty ? "Unsaved" : "Saved"}
-									</output>
-									<button
-										type="button"
-										disabled={busy}
-										className={button}
-										onClick={() => void project.save().catch(() => undefined)}
-									>
-										<Save
-											className="size-4 shrink-0 stroke-[1.65]"
-											aria-hidden="true"
-										/>
-										Save project
-									</button>
-								</div>
-							</header>
-							<section
-								className="overflow-hidden rounded-[7px] border border-[#2b2e34] bg-[#191b1f]"
-								aria-labelledby="project-files-heading"
-							>
-								<div className="flex flex-wrap items-center justify-between gap-3.5 px-5 py-4 max-[760px]:px-3">
-									<div className="flex items-center gap-[9px]">
-										<h3
-											id="project-files-heading"
-											className="m-0 text-sm font-medium"
-										>
-											Project files
-										</h3>
-										<span className="rounded border border-[#383c42] px-1.5 py-px text-[10px] text-[#9299a3] tabular-nums">
-											{files.length}
-										</span>
-									</div>
-									<div className="flex items-center gap-1.5 max-[760px]:flex-wrap">
-										<button
-											type="button"
-											disabled={busy}
-											className={`${primaryButton} min-h-8 text-[11px]`}
-											onClick={() => setNewSymbolOpen(true)}
-										>
-											<Plus className="size-3.5" aria-hidden="true" />
-											New symbol
-										</button>
-										<span className="mr-[5px] flex items-center gap-1.5 text-[11px] text-[#7d8590] max-[760px]:hidden">
-											<ArrowDownToLine
-												className="size-4 shrink-0 stroke-[1.65]"
-												aria-hidden="true"
-											/>
-											Add files
-										</span>
-										<label className={importButton}>
-											<Layers
-												className="size-4 shrink-0 stroke-[1.65]"
-												aria-hidden="true"
-											/>
-											Gerber
-											<input
-												type="file"
-												className="absolute inset-0 size-full cursor-pointer opacity-0"
-												multiple
-												aria-label="Add Gerber files"
-												disabled={busy}
-												onChange={(event) => {
-													void upload(
-														Array.from(event.target.files ?? []),
-														"gerber",
-													);
-													event.target.value = "";
-												}}
-											/>
-										</label>
-										<label className={importButton}>
-											<Box
-												className="size-4 shrink-0 stroke-[1.65]"
-												aria-hidden="true"
-											/>
-											STEP
-											<input
-												type="file"
-												className="absolute inset-0 size-full cursor-pointer opacity-0"
-												multiple
-												accept=".step,.stp"
-												aria-label="Add STEP files"
-												disabled={busy}
-												onChange={(event) => {
-													void upload(
-														Array.from(event.target.files ?? []),
-														"step",
-													);
-													event.target.value = "";
-												}}
-											/>
-										</label>
-										<label className={importButton}>
-											<CircuitBoard
-												className="size-4 shrink-0 stroke-[1.65]"
-												aria-hidden="true"
-											/>
-											Symbols
-											<input
-												type="file"
-												className="absolute inset-0 size-full cursor-pointer opacity-0"
-												multiple
-												accept=".ecadsym,.json"
-												aria-label="Add symbol files"
-												disabled={busy || library.loading}
-												onChange={(event) => {
-													void library.upload(
-														Array.from(event.target.files ?? []),
-													);
-													event.target.value = "";
-												}}
-											/>
-										</label>
-									</div>
-								</div>
-								{importing && (
-									<output
-										className="block px-5 pb-3.5 text-xs text-[#c7e991]"
-										aria-live="polite"
-									>
-										Adding project files...
-									</output>
-								)}
-								<div className="flex items-center justify-between gap-3 px-5 pb-3 max-[1100px]:flex-wrap max-[760px]:px-3 max-[760px]:pb-3.5">
-									<fieldset
-										className="m-0 flex min-w-0 flex-wrap gap-[3px] border-0 p-0 max-[760px]:gap-px"
-										aria-label="File types"
-									>
-										{filters.map((type) => (
-											<button
-												className={`rounded border border-transparent bg-transparent px-2 py-[5px] text-[11px] whitespace-nowrap text-[#939aa5] transition-colors motion-reduce:transition-none hover:bg-[#25292f] hover:text-[#d3d7dd] aria-pressed:border-[#414c35] aria-pressed:bg-[#293023] aria-pressed:text-[#c7e991] max-[760px]:px-1.5 ${focus}`}
-												key={type}
-												type="button"
-												aria-pressed={filter === type}
-												onClick={() => {
-													setFilter(type);
-													setFilePage(0);
-												}}
-											>
-												{type === "Symbol" ? "Symbols" : type}
-												<span className="ml-1.5 text-[9px] text-[#6e7580] tabular-nums">
-													{counts[type] ?? 0}
-												</span>
-											</button>
-										))}
-									</fieldset>
-									<div className="flex w-[180px] min-w-[130px] items-center gap-[7px] rounded border border-[#343940] bg-[#15171b] px-[9px] focus-within:border-[#c7e991] focus-within:ring-1 focus-within:ring-[#c7e991] max-[1100px]:w-full">
-										<Search
-											className="size-4 shrink-0 stroke-[1.65]"
-											aria-hidden="true"
-										/>
-										<input
-											type="search"
-											className="h-8 w-full min-w-0 border-0 bg-transparent text-[11px] text-[#d7dbe2] outline-none placeholder:text-[#767d87] [&::-webkit-search-cancel-button]:hidden"
-											aria-label="Search project files"
-											placeholder="Find a file..."
-											value={query}
-											onChange={(event) => {
-												setQuery(event.target.value);
-												setFilePage(0);
-											}}
-										/>
-										{query && (
-											<button
-												type="button"
-												aria-label="Clear file search"
-												className={`flex border-0 bg-transparent p-0 text-[#939aa5] ${focus}`}
-												onClick={() => {
-													setQuery("");
-													setFilePage(0);
-												}}
-											>
-												<X
-													className="size-4 shrink-0 stroke-[1.65]"
-													aria-hidden="true"
-												/>
-											</button>
-										)}
-									</div>
-								</div>
-								<div className="max-h-[max(260px,calc(100dvh-400px))] overflow-auto max-[1100px]:max-h-[max(260px,calc(100dvh-450px))] max-[760px]:max-h-none">
-									<table className="w-full table-fixed border-collapse text-left">
-										<caption className="sr-only">
-											Files in the current project
-										</caption>
-										<thead>
-											<tr>
-												<th scope="col" className={`${tableHeading} w-[65%]`}>
-													Name
-												</th>
-												<th
-													scope="col"
-													className={`${tableHeading} w-[15%] max-[760px]:hidden`}
-												>
-													Type
-												</th>
-												<th
-													scope="col"
-													className={`${tableHeading} w-1/5 max-[760px]:w-[35%]`}
-												>
-													<span className="sr-only">Action</span>
-												</th>
-											</tr>
-										</thead>
-										<tbody>
-											{visibleFiles.map((file) => (
-												<tr
-													key={file.path}
-													className="group hover:bg-[#202329]"
-												>
-													<td
-														className={`${tableCell} relative pr-5 pl-[62px] max-[760px]:pr-3 max-[760px]:pl-[50px]`}
-													>
-														<span
-															className={`absolute top-1/2 left-5 grid h-[34px] w-[30px] -translate-y-1/2 place-items-center rounded border font-mono text-[9px] font-semibold max-[760px]:left-3 ${fileColors[file.type]}`}
-															data-kind={file.type}
-															aria-hidden="true"
-														>
-															{fileLabels[file.type]}
-														</span>
-														<p className="m-0 truncate text-xs font-normal text-[#d9dce2]">
-															{file.name}
-														</p>
-														<p
-															className="mt-[3px] truncate font-mono text-[10px] leading-[normal] text-[#707986]"
-															title={mode === "desktop" ? file.path : undefined}
-														>
-															{mode === "desktop"
-																? file.path
-																: fileDescriptions[file.type]}
-														</p>
-													</td>
-													<td
-														className={`${tableCell} px-5 font-mono text-[10px] text-[#8f98a5] max-[760px]:hidden`}
-													>
-														{file.type}
-													</td>
-													<td className={`${tableCell} px-5 max-[760px]:px-3`}>
-														{file.href && (
-															<ProjectLink
-																href={file.href}
-																aria-label={`Open ${file.name}`}
-																className="focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#c7e991] flex items-center justify-end gap-2 py-1.5 text-[11px] text-[#8e97a4] no-underline transition-colors motion-reduce:transition-none after:ml-0.5 after:size-1.5 after:rotate-45 after:border-t after:border-r after:border-current after:content-[''] hover:text-[#c7e991]"
-																onClick={() => {
-																	if (file.href === "/editor")
-																		project.selectEditorFile(file.path);
-																	if (file.asset)
-																		project.selectAsset(file.asset);
-																}}
-															>
-																Open
-															</ProjectLink>
-														)}
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-								{filteredFiles.length === 0 && (
-									<div className="flex flex-col items-center px-5 py-[42px] text-center text-[#858f9b]">
-										<Search
-											className="mb-3 size-6 shrink-0 stroke-[1.65]"
-											aria-hidden="true"
-										/>
-										<h4 className="m-0 text-sm text-[#d2d7df]">
-											No matching files
-										</h4>
-										<p className="mt-1.5 mb-[18px] text-xs">
-											Try another filename or file type.
-										</p>
-										<button
-											type="button"
-											className={button}
-											onClick={() => {
-												setQuery("");
-												setFilter("All files");
-												setFilePage(0);
-											}}
-										>
-											Clear filters
-										</button>
-									</div>
-								)}
-								<footer className="flex min-h-12 items-center justify-between border-t border-[#2b2e34] px-5 py-2.5 text-[11px] text-[#7e8793] max-[760px]:px-3">
-									<span aria-live="polite" className="tabular-nums">
-										{filteredFiles.length
-											? `${firstFile + 1}–${Math.min(firstFile + pageSize, filteredFiles.length)} of ${filteredFiles.length} files`
-											: "0 files"}
-									</span>
-									{filteredFiles.length > pageSize && (
-										<nav
-											aria-label="Project file pages"
-											className="flex items-center gap-3"
-										>
-											<button
-												type="button"
-												className="focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#c7e991] flex size-7 items-center justify-center rounded border border-[#3a414b] bg-transparent text-[#abb4c0] transition-colors motion-reduce:transition-none hover:enabled:bg-[#2b3037] disabled:opacity-40"
-												aria-label="Previous files"
-												disabled={currentPage === 0}
-												onClick={() => setFilePage(currentPage - 1)}
-											>
-												<ChevronLeft
-													className="size-4 shrink-0 stroke-[1.65]"
-													aria-hidden="true"
-												/>
-											</button>
-											<span>
-												{currentPage + 1} / {lastPage + 1}
-											</span>
-											<button
-												type="button"
-												className="focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#c7e991] flex size-7 items-center justify-center rounded border border-[#3a414b] bg-transparent text-[#abb4c0] transition-colors motion-reduce:transition-none hover:enabled:bg-[#2b3037] disabled:opacity-40"
-												aria-label="Next files"
-												disabled={currentPage === lastPage}
-												onClick={() => setFilePage(currentPage + 1)}
-											>
-												<ChevronRight
-													className="size-4 shrink-0 stroke-[1.65]"
-													aria-hidden="true"
-												/>
-											</button>
-										</nav>
-									)}
-								</footer>
-							</section>
-						</>
+						<header className="mb-7 flex items-start justify-between gap-6 max-[760px]:mb-[26px] max-[760px]:flex-col max-[760px]:gap-4">
+							<div className="min-w-0">
+								<p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[.12em] text-[#9297a1]">
+									Active project
+								</p>
+								<h2 className="m-0 text-[29px] leading-tight font-semibold tracking-[-.04em] wrap-anywhere max-[760px]:text-[26px]">
+									{snapshot.manifest.name}
+								</h2>
+								<p
+									className="mt-3 flex items-center gap-[7px] text-[11px] text-[#7d8590]"
+									title={snapshot.directory}
+								>
+									<FolderOpen
+										className="size-4 shrink-0 stroke-[1.65]"
+										aria-hidden="true"
+									/>
+									<span className="truncate">{snapshot.directory}</span>
+								</p>
+							</div>
+							<div className="flex shrink-0 items-center gap-[18px] pt-7 max-[760px]:flex-row-reverse max-[760px]:gap-3.5 max-[760px]:pt-0">
+								<output
+									aria-label="Project save status"
+									className={`flex items-center gap-1.5 text-[11px] ${project.dirty ? "text-[#e2bd76]" : "text-[#b3c69b]"}`}
+								>
+									<Check
+										className="size-4 shrink-0 stroke-[1.65]"
+										aria-hidden="true"
+									/>
+									{project.dirty ? "Unsaved" : "Saved"}
+								</output>
+								<button
+									type="button"
+									disabled={busy}
+									className={button}
+									onClick={() => void project.save().catch(() => undefined)}
+								>
+									<Save
+										className="size-4 shrink-0 stroke-[1.65]"
+										aria-hidden="true"
+									/>
+									Save project
+								</button>
+							</div>
+						</header>
 					) : (
 						<div className="flex min-h-[calc(100dvh-180px)] flex-col items-center justify-center px-3 py-10 text-center max-[760px]:min-h-[460px] max-[760px]:pt-[22px]">
 							<div

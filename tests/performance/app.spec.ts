@@ -1,3 +1,4 @@
+import { openProjectFiles } from "../browser/project-files";
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
@@ -15,11 +16,13 @@ const percentile = (values: number[], percent = 0.95) =>
 		Math.max(0, Math.ceil(values.length * percent) - 1)
 	] ?? 0;
 const metric = (value: Report, name: string) => value.metrics[name]?.p95;
-const ready = async (page: Page) =>
-	page.waitForFunction(
+const ready = async (page: Page) => {
+	await page.mouse.move(900, 50);
+	await page.waitForFunction(
 		() =>
 			window.__ecadPerformance?.snapshot().metrics["app.ready"]?.count === 1,
 	);
+};
 
 // Check timed endpoints each frame so assertion retry delays do not inflate them.
 async function editorReady(page: Page, title: string) {
@@ -44,14 +47,17 @@ async function interaction(
 	}, name);
 	const start = await page.evaluate(() => performance.now());
 	await action();
-	await page.evaluate(
-		({ start, name }) =>
+	return page.evaluate(
+		({ start, name }) => {
+			const duration = performance.now() - start;
 			window.__ecadPerformance!.record(
 				"scenario.interaction",
-				performance.now() - start,
+				duration,
 				{ name },
 				start,
-			),
+			);
+			return duration;
+		},
 		{ start, name },
 	);
 }
@@ -129,28 +135,28 @@ test.beforeAll(async ({ browser }) => {
 		await expect(
 			page.getByRole("heading", { name: "Warmup", exact: true }),
 		).toBeVisible();
-		await page
+		await (await openProjectFiles(page))
 			.getByLabel("Add Gerber files")
 			.setInputFiles({
 				name: "PTH.gbr",
 				mimeType: "text/plain",
 				buffer: Buffer.from(pthGerber(1, false)),
 			});
-		await page.getByRole("link", { name: "Open PTH.gbr", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("link", { name: "Open PTH.gbr", exact: true }).click();
 		await expect
 			.poll(
 				async () => (await report(page)).metrics["import.gerber"]?.count ?? 0,
 			)
 			.toBeGreaterThan(0);
-		await page.getByRole("link", { name: "Projects", exact: true }).click();
-		await page
+		await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		await (await openProjectFiles(page))
 			.getByLabel("Add STEP files")
 			.setInputFiles(
 				resolve(
 					"node_modules/occt-import-js/test/testfiles/simple-basic-cube/cube.stp",
 				),
 			);
-		await page
+		await (await openProjectFiles(page))
 			.getByRole("link", { name: "Open cube.stp", exact: true })
 			.click();
 		await expect(
@@ -209,6 +215,7 @@ test("projects-large", async ({ page }, testInfo) => {
 	});
 	await page.reload();
 	await ready(page);
+	await openProjectFiles(page);
 	await expect(page.getByRole("row")).toHaveCount(51);
 	for (let i = 0; i < 3; i++) {
 		await interaction(page, "files.next", async () => {
@@ -263,7 +270,7 @@ test("editor-imports", async ({ page }, testInfo) => {
 	await expect(
 		page.getByRole("heading", { name: "Performance board", exact: true }),
 	).toBeVisible();
-	await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await expect(page.locator("canvas")).toBeVisible();
 	await expect
 		.poll(
@@ -278,26 +285,26 @@ test("editor-imports", async ({ page }, testInfo) => {
 	await expect
 		.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0)
 		.toBeGreaterThan(1);
-	await page.getByRole("link", { name: "Projects", exact: true }).click();
-	await page.getByLabel("Add Gerber files").setInputFiles({
+	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	await (await openProjectFiles(page)).getByLabel("Add Gerber files").setInputFiles({
 		name: "PTH.gbr",
 		mimeType: "text/plain",
 		buffer: Buffer.from(pthGerber(2000, false)),
 	});
-	await page.getByRole("link", { name: "Open PTH.gbr", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open PTH.gbr", exact: true }).click();
 	await expect
 		.poll(async () => (await report(page)).metrics["import.gerber"]?.count ?? 0)
 		.toBeGreaterThan(0);
 	await expect(page.getByTestId("viewer-message")).toHaveCount(0);
-	await page.getByRole("link", { name: "Projects", exact: true }).click();
-	await page
+	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files")
 		.setInputFiles(
 			resolve(
 				"node_modules/occt-import-js/test/testfiles/simple-basic-cube/cube.stp",
 			),
 		);
-	await page.getByRole("link", { name: "Open cube.stp", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open cube.stp", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Fit model", exact: true }),
 	).toBeEnabled();
@@ -340,7 +347,7 @@ test("symbol-libraries", async ({ page }, testInfo) => {
   await user.getByRole("checkbox", { name: "user 0", exact: true }).uncheck();
   await expect(user.getByRole("checkbox", { name: "user 0", exact: true })).toBeEnabled();
  });
- await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
  await interaction(page, "library.picker", async () => {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(380 + generateDefaultSymbols().length);
@@ -552,9 +559,9 @@ test("editor-pin-labels", async ({ page }, testInfo) => {
 		format: "ecad-symbol", version: 1, units: "mm", id: "labeled-package", name: "Labeled package", description: "", prefix: "U", value: "",
 		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Signal ${index + 1}`, number: String(index + 1).padStart(3, "0"), x: index < 64 ? -20 : 20, y: (index % 64) * 4 - 128 })),
 	};
-	await expect(page.getByLabel("Add symbol files")).toBeEnabled();
-	await page.getByLabel("Add symbol files").setInputFiles({ name: "labeled.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
-	await page.getByRole("link", { name: "Open labeled-package.ecadsym", exact: true }).click();
+	await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
+	await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles({ name: "labeled.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open labeled-package.ecadsym", exact: true }).click();
 	await editorReady(page, "Symbol editor · Labeled package");
 	await (await toolbarButton(page, "Pin")).click();
 	const canvas = page.locator("canvas");
@@ -749,14 +756,14 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 	await ready(page);
 	await page.getByLabel("Project name", { exact: true }).fill("Symbol attributes");
 	await page.getByRole("button", { name: "Create project", exact: true }).click();
-	await expect(page.getByLabel("Add symbol files")).toBeEnabled();
+	await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
 	const symbol = {
 		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
 		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
 	};
-	await page.getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
 	for (let repeat = 0; repeat < 3; repeat++) {
-		await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();
 		await page.getByRole("button", { name: "Insert Editable package", exact: true }).click();
 		const bounds = (await page.locator("canvas").boundingBox())!;
@@ -767,7 +774,7 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 		});
-		if (repeat < 2) await page.getByRole("link", { name: "Projects", exact: true }).click();
+		if (repeat < 2) await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-attributes", {
@@ -785,27 +792,90 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
 		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
 	};
-	await expect(page.getByLabel("Add symbol files")).toBeEnabled();
-	await page.getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
+	await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
+	const coldOpenMs = await interaction(page, "editor.open-symbol-cold", async () => {
+		await (await openProjectFiles(page)).getByRole("link", { name: "Open editable-package.ecadsym", exact: true }).click();
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
+		await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+		await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
+	});
+	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	const timings: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
-		await interaction(page, "editor.open-symbol", async () => {
-			await page.getByRole("link", { name: "Open editable-package.ecadsym", exact: true }).click();
+		timings.push(await interaction(page, "editor.open-symbol", async () => {
+			await (await openProjectFiles(page)).getByRole("link", { name: "Open editable-package.ecadsym", exact: true }).click();
 			await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
-		});
-		await page.getByRole("link", { name: "Projects", exact: true }).click();
-		await interaction(page, "editor.open-schematic", async () => {
-			await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+		}));
+		await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		timings.push(await interaction(page, "editor.open-schematic", async () => {
+			await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
-		});
-		if (repeat < 2) await page.getByRole("link", { name: "Projects", exact: true }).click();
+		}));
+		if (repeat < 2) await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
 	}
-	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-file", {
-		interactionP95Ms: percentile(value.events.filter((event) => event.name === "scenario.interaction").map((event) => event.duration)),
+		coldOpenMs,
+		interactionP95Ms: percentile(timings),
 	});
+});
+
+test("project-file-sidebar", async ({ page }, testInfo) => {
+	await page.goto("/projects?perf=1");
+	await ready(page);
+	await page.getByLabel("Project name", { exact: true }).fill("Sidebar navigation");
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await page.evaluate(async () => {
+		const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle("Sidebar navigation");
+		const handle = await directory.getFileHandle(".ecadprj");
+		const manifest = (await (await handle.getFile()).text()).replace(/^assets\s*=\s*\[\s*\]\s*$/m, "");
+		const writer = await handle.createWritable();
+		await writer.write(manifest + Array.from({ length: 10000 }, (_, index) => `\n[[assets]]\npath = "assets/file-${index}.gbr"\nname = "file-${index}.gbr"\nkind = "gerber"\n`).join(""));
+		await writer.close();
+	});
+	await page.reload();
+	await ready(page);
+	expect(await page.getByRole("alert").count()).toBe(0);
+	const sidebar = await openProjectFiles(page);
+	await expect(sidebar.getByLabel("Add symbol files")).toBeEnabled();
+	await sidebar.getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({
+		format: "ecad-symbol", version: 1, units: "mm", id: "sidebar-package", name: "Sidebar package", description: "", prefix: "U", value: "",
+		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
+	})) });
+	await sidebar.evaluate(element => { element.setAttribute("data-test-identity", "persistent"); });
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await sidebar.getByLabel("Search project files").fill("sidebar-package");
+		await interaction(page, "sidebar.open-symbol", async () => {
+			await sidebar.getByRole("link", { name: "Open sidebar-package.ecadsym", exact: true }).click();
+			await editorReady(page, "Symbol editor · Sidebar package");
+		});
+		await expect(sidebar).toHaveAttribute("data-test-identity", "persistent");
+		await expect(sidebar.getByLabel("Search project files")).toHaveValue("sidebar-package");
+		await sidebar.getByRole("button", { name: "Clear file search" }).click();
+		await interaction(page, "sidebar.open-drawing", async () => {
+			await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
+			await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
+		});
+		await expect(page.getByRole("tree", { name: "Drawing items" })).toHaveCount(0);
+	}
+	await sidebar.getByRole("button", { name: "Hide project files" }).click();
+	await page.mouse.move(900, 400);
+	const hoverRevealMs = await interaction(page, "sidebar.reveal", async () => { await openProjectFiles(page); });
+	await page.screenshot({ path: "perf-artifacts/hover-sidebar-performance-v1.png" });
+	await page.setViewportSize({ width: 390, height: 844 });
+	await sidebar.getByRole("button", { name: "Hide project files" }).click();
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	await page.getByRole("button", { name: "Show project files" }).click();
+	await page.screenshot({ path: "perf-artifacts/floating-file-sidebar-essentials-mobile-v1.png" });
+	await sidebar.getByRole("button", { name: "Hide project files" }).click();
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.getByRole("button", { name: "Show project files" }).click();
+	const value = await report(page);
+	await finish(page, testInfo, "project-file-sidebar", { hoverRevealMs, interactionP95Ms: metric(value, "scenario.interaction")! });
 });
 
 test("project-new-symbol", async ({ page }, testInfo) => {
@@ -815,7 +885,7 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 	await page.getByRole("button", { name: "Create project", exact: true }).click();
 	await expect(page.getByRole("heading", { name: "New symbol workflow", exact: true })).toBeVisible();
 	await interaction(page, "symbol.create", async () => {
-		await page.getByRole("button", { name: "New symbol", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
 		await page.waitForFunction(
 			() => document.querySelector('[role="dialog"] input') !== null,
 			undefined,
@@ -831,8 +901,8 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 	await page.mouse.move(710, 400);
 	await page.mouse.up();
 	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(2);
-	await page.getByRole("link", { name: "Projects", exact: true }).click();
-	await page.getByRole("link", { name: "Open new-part.ecadsym", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open new-part.ecadsym", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 	const value = await report(page);
@@ -854,9 +924,9 @@ test("symbol-references", async ({ page }, testInfo) => {
   ...child, id: "reference-parent", name: "Reference parent",
   shapes: Array.from({ length: 4 }, (_, index) => ({ kind: "symbol", library: { scope: "project", id: "project-symbols" }, definitionId: child.id, x: index * 15 - 22.5, y: 0 })),
  };
- await expect(page.getByLabel("Add symbol files")).toBeEnabled();
- await page.getByLabel("Add symbol files").setInputFiles([child, parent].map(file => ({ name: `${file.id}.ecadsym`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(file)) })));
- await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+ await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
+ await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles([child, parent].map(file => ({ name: `${file.id}.ecadsym`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(file)) })));
+ await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
  await interaction(page, "reference.place", async () => {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
   await page.getByRole("button", { name: "Insert Reference parent", exact: true }).click();
@@ -881,9 +951,9 @@ test("symbol-references", async ({ page }, testInfo) => {
  await page.goto("/editor?perf=1");
  await ready(page);
  for (let repeat = 0; repeat < 3; repeat++) {
-  await page.getByRole("link", { name: "Projects", exact: true }).click();
+  await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
   await interaction(page, "reference.open-nested", async () => {
-   await page.getByRole("link", { name: "Open reference-parent.ecadsym", exact: true }).click();
+   await (await openProjectFiles(page)).getByRole("link", { name: "Open reference-parent.ecadsym", exact: true }).click();
    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Reference parent");
    await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
    await expect(page.getByRole("alert")).toHaveCount(0);
@@ -1206,8 +1276,7 @@ test("editor-item-locks", async ({ page }, testInfo) => {
  const box = (await canvas.boundingBox())!;
  const position = { x: box.width * 0.45, y: box.height * 0.5 };
  await canvas.click({ position });
- await expect(page.getByRole("treeitem", { name: "Rectangle 1", exact: true })).toHaveAttribute("aria-disabled", "true");
- await expect(page.getByRole("treeitem", { name: "Controller", exact: true })).toHaveAttribute("aria-disabled", "false");
+ await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
  for (let repeat = 0; repeat < 3; repeat++) {
   await interaction(page, "symbol.lock", async () => {
    if (repeat === 1) await page.getByRole("checkbox", { name: "Locked", exact: true }).click();
@@ -1230,56 +1299,6 @@ test("editor-item-locks", async ({ page }, testInfo) => {
  await finish(page, testInfo, "editor-item-locks", { interactionP95Ms: metric(value, "scenario.interaction")! });
 });
 
-test("editor-item-hierarchy", async ({ page }, testInfo) => {
- const { drawShape } = await import("#/drawing/shapes.ts");
- const { createSymbol } = await import("#/drawing/symbols.ts");
- const children = Array.from({ length: 128 }, (_, index) => ({
-  ...drawShape(index + 2, "pin", { x: index < 64 ? -20 : 20, y: (index % 64 - 32) * 2.54 }, { x: 0, y: 0 }),
-  name: `Signal ${index + 1}`, number: String(index + 1),
- }));
- const symbol = createSymbol(2001, {
-  id: "hierarchy-fixture", name: "Controller", description: "", prefix: "U", value: "MCU", children: [drawShape(1, "rectangle", { x: -20, y: -82 }, { x: 20, y: 82 }), ...children],
-  texts: [{ attribute: "reference", x: 0, y: 86, fontSize: 2 }, { attribute: "value", x: 0, y: -86, fontSize: 2 }],
- }, { x: 0, y: 0 });
- const shapes = [...Array.from({ length: 2000 }, (_, index) => drawShape(index + 1, "rectangle", { x: (index % 50) * 5 - 125, y: Math.floor(index / 50) * 5 + 100 }, { x: (index % 50) * 5 - 123, y: Math.floor(index / 50) * 5 + 102 })), symbol];
- await page.goto("/projects?perf=1");
- await ready(page);
- await page.evaluate(async (shapes) => {
-  const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle("Hierarchy fixture", { create: true });
-  for (const [name, content] of [
-   [".ecadprj", 'format = "ecad-project"\nversion = 1\nname = "Hierarchy fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n'],
-   ["drawing.ecaddraw", JSON.stringify({ shapes })],
-  ]) {
-   const writer = await (await directory.getFileHandle(name, { create: true })).createWritable();
-   await writer.write(content); await writer.close();
-  }
-  localStorage.setItem("ecad.active-project", "Hierarchy fixture");
- }, shapes);
- await page.goto("/editor?perf=1");
- await ready(page);
- const tree = page.getByRole("tree", { name: "Drawing items", exact: true });
- await expect(tree).toBeVisible();
- for (let repeat = 0; repeat < 3; repeat++) {
-  await tree.focus();
-  await interaction(page, "hierarchy.select-last-child", async () => {
-   await page.keyboard.press("End"); await page.keyboard.press("Enter");
-   await page.waitForFunction(() => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("data-child-key") === "attribute:value", undefined, { polling: "raf" });
-  });
-  const parent = tree.getByRole("treeitem", { name: "U2001 · Controller", exact: true });
-  await tree.press("ArrowLeft"); await tree.press("Enter");
-  await expect(parent).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("button", { name: "Collapse U2001 · Controller", exact: true }).click();
-  await page.getByRole("button", { name: "Expand U2001 · Controller", exact: true }).click();
-  await interaction(page, "hierarchy.select-first", async () => {
-   await tree.press("Home"); await tree.press("Enter");
-   await page.waitForFunction(() => document.querySelector('[role="treeitem"][aria-selected="true"]')?.getAttribute("data-shape-id") === "1", undefined, { polling: "raf" });
-  });
-  expect(await tree.getByRole("treeitem").count()).toBeLessThan(50);
- }
- const value = await report(page);
- await finish(page, testInfo, "editor-item-hierarchy", { interactionP95Ms: metric(value, "scenario.interaction")!, hierarchyP95Ms: metric(value, "editor.item-hierarchy")! });
-});
-
 test("editor-box", async ({ page }, testInfo) => {
  await page.goto("/editor?perf=1");
  await ready(page);
@@ -1288,10 +1307,9 @@ test("editor-box", async ({ page }, testInfo) => {
  const canvas = page.locator("canvas");
  const bounds = (await canvas.boundingBox())!;
  await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
- const parent = page.getByRole("treeitem", { name: "BOX1 · Box", exact: true });
- const text = page.locator('[role="treeitem"][data-shape-id="1"][data-child-key="shape:2"]');
+ const selectParent = () => selectSymbolParent(page);
  for (let repeat = 0; repeat < 3; repeat++) {
-  await parent.click();
+  await selectParent();
   await interaction(page, "box.dimensions", async () => {
    for (const [name, value] of [["Width", 32 + repeat * 4], ["Height", 20 + repeat * 2]] as const) {
     const input = page.getByRole("spinbutton", { name, exact: true });
@@ -1299,7 +1317,7 @@ test("editor-box", async ({ page }, testInfo) => {
     await page.waitForFunction(({ name, value }) => document.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`)?.getAttribute("data-committed-value") === String(value), { name, value }, { polling: "raf" });
    }
   });
-  await parent.click();
+  await selectParent();
   await expect(page.getByTestId("resize-handle")).toHaveCount(8);
   const handle = (await page.locator('[data-testid="resize-handle"][data-handle="1,1"]').boundingBox())!;
   const before = Number(await page.getByRole("spinbutton", { name: "Width", exact: true }).inputValue());
@@ -1316,7 +1334,9 @@ test("editor-box", async ({ page }, testInfo) => {
    await input.fill(String(0.4 + repeat * 0.1)); await input.press("Tab");
    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   });
-  await text.click();
+  const textAnchor = (await page.locator('[data-anchor-id="1:text:2"]').boundingBox())!;
+  await page.mouse.click(textAnchor.x + textAnchor.width / 2 + 5, textAnchor.y + textAnchor.height / 2 + 5);
+  await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
   await interaction(page, "box.text", async () => {
    const content = page.getByRole("textbox", { name: "Text content", exact: true });
    await content.fill(`Power supply ${repeat + 1}\n3.3 V`); await content.press("Tab");

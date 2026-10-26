@@ -4,6 +4,7 @@ import { Scene } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "#/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "#/components/step/StepWorkspace.tsx";
+import { ProjectShell } from "#/projects/ProjectShell.tsx";
 import { ProjectPage } from "#/projects/ProjectPage.tsx";
 import { ProjectProvider, useProject } from "#/projects/ProjectProvider.tsx";
 import { createWebProjectStorage } from "#web/projects/storage.ts";
@@ -42,7 +43,7 @@ function App() {
 	}, []);
 	return <ProjectProvider storage={storage} symbolStorage={symbolStorage}>
 		<ProjectDocument />
-		{workspace === "/projects" ? <ProjectPage /> : workspace === "/editor" ? <Editor2D enableMcp={false} /> : workspace === "/" ? <GerberWorkspace /> : <StepWorkspace />}
+		<ProjectShell>{workspace === "/projects" ? <ProjectPage /> : workspace === "/editor" ? <Editor2D /> : workspace === "/" ? <GerberWorkspace /> : <StepWorkspace />}</ProjectShell>
 	</ProjectProvider>;
 }
 

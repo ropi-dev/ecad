@@ -2,6 +2,7 @@ import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
 import { StepControls } from "./StepControls";
 import { StepParts } from "./StepParts";
 import { StepViewer } from "./StepViewer";
@@ -9,6 +10,7 @@ import { useStepFile } from "./useStepFile";
 
 export function StepWorkspace() {
 	const project = useProject();
+	const workspaceControls = useWorkspaceControls();
 	const { model, loading, message, openFile, cancel, clear } = useStepFile();
 	const [hidden, setHidden] = useState<Set<number>>(new Set());
 	const [wireframe, setWireframe] = useState(false);
@@ -51,36 +53,38 @@ export function StepWorkspace() {
 				if (file) void load(file);
 			}}
 		>
-			<header className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
-				<ProjectLink href="/projects" className={button}>
-					Projects
-				</ProjectLink>
-				{!project && (
-					<label
-						className={`${button} relative cursor-pointer focus-within:outline-2 focus-within:outline-white`}
-					>
-						<Upload size={16} />
-						{loading ? "Reading STEP..." : "Open STEP"}
-						<input
-							type="file"
-							accept=".step,.stp"
-							aria-label="Open STEP file"
-							className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-							onChange={(event) => {
-								const file = event.target.files?.[0];
-								if (file) void load(file);
-								event.target.value = "";
-							}}
-						/>
-					</label>
-				)}
-				<ProjectLink href="/" className={button}>
-					Gerber viewer
-				</ProjectLink>
-				<ProjectLink href="/editor" className={button}>
-					Schematic editor
-				</ProjectLink>
-			</header>
+			{!workspaceControls && (
+				<header className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
+					<ProjectLink href="/projects" className={button}>
+						Projects
+					</ProjectLink>
+					{!project && (
+						<label
+							className={`${button} relative cursor-pointer focus-within:outline-2 focus-within:outline-white`}
+						>
+							<Upload size={16} />
+							{loading ? "Reading STEP..." : "Open STEP"}
+							<input
+								type="file"
+								accept=".step,.stp"
+								aria-label="Open STEP file"
+								className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+								onChange={(event) => {
+									const file = event.target.files?.[0];
+									if (file) void load(file);
+									event.target.value = "";
+								}}
+							/>
+						</label>
+					)}
+					<ProjectLink href="/" className={button}>
+						Gerber viewer
+					</ProjectLink>
+					<ProjectLink href="/editor" className={button}>
+						Schematic editor
+					</ProjectLink>
+				</header>
+			)}
 			{(message || rendererError) && (
 				<div
 					role="alert"

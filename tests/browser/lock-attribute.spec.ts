@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { selectDrawingShape, selectSymbolItem, symbolItemPoint } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -22,7 +23,7 @@ test("symbols expose their lock state as an editable attribute with undo and red
 	expect((await state(page)).shapes[0].locked).toBe(true);
 	await expect(locked).toHaveCount(0);
 	await page.getByRole("button", { name: "Select locked items", exact: true }).click();
-	await page.getByRole("treeitem", { name: "R1 · Resistor", exact: true }).click();
+	await selectDrawingShape(page, 1);
 	await expect(locked).toBeChecked();
 	await locked.uncheck();
 	expect((await state(page)).shapes[0].locked).toBe(false);
@@ -39,19 +40,22 @@ test("symbols expose their lock state as an editable attribute with undo and red
 test("the Locked attribute on symbol children changes only the selected child", async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	await resistor(page);
-	const reference = page.getByRole("treeitem", { name: "reference · R1", exact: true });
-	await reference.click();
+	await selectSymbolItem(page, "attribute:reference");
 	await page.getByRole("checkbox", { name: "Locked", exact: true }).click();
 	const symbol = (await state(page)).shapes[0];
 	expect(symbol.locked).not.toBe(true);
 	expect(symbol.childOverrides["attribute:reference"].locked).toBe(true);
-	await expect(reference).toHaveAttribute("aria-disabled", "true");
+	const lockedPoint = await symbolItemPoint(page, "attribute:reference");
+	await page.mouse.click(lockedPoint.x, lockedPoint.y);
+	await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
 	await expect(page.getByRole("checkbox", { name: "Locked", exact: true })).not.toBeChecked();
 	await page.getByRole("button", { name: "Select locked items", exact: true }).click();
-	await expect(reference).toHaveAttribute("aria-disabled", "true");
+	await page.mouse.click(lockedPoint.x, lockedPoint.y);
+	await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
 	await (await toolbarButton(page, "Undo")).click();
-	await expect(reference).toHaveAttribute("aria-disabled", "false");
-	await expect(page.getByRole("treeitem", { name: "Rectangle 2", exact: true })).toHaveAttribute("aria-disabled", "true");
+	await selectSymbolItem(page, "attribute:reference");
+	await expect(page.getByRole("checkbox", { name: "Locked", exact: true })).not.toBeChecked();
+	await selectDrawingShape(page, 1);
 });
 
 test("standalone items can be locked and unlocked through Attributes", async ({ page }) => {
@@ -62,7 +66,7 @@ test("standalone items can be locked and unlocked through Attributes", async ({ 
 	await page.getByRole("checkbox", { name: "Locked", exact: true }).click();
 	expect((await state(page)).shapes[0].locked).toBe(true);
 	await page.getByRole("button", { name: "Select locked items", exact: true }).click();
-	await page.getByRole("treeitem", { name: "Rectangle 1", exact: true }).click();
+	await selectDrawingShape(page, 1);
 	const locked = page.getByRole("checkbox", { name: "Locked", exact: true });
 	await expect(locked).toBeChecked();
 	await locked.uncheck();
@@ -75,7 +79,7 @@ test("mixed lock attributes apply to every selected symbol", async ({ page }) =>
 	await page.getByRole("button", { name: "Select locked items", exact: true }).click();
 	await page.getByRole("checkbox", { name: "Locked", exact: true }).click();
 	await resistor(page, 850);
-	await page.getByRole("treeitem", { name: "R1 · Resistor", exact: true }).click({ modifiers: ["Control"] });
+	await selectDrawingShape(page, 1, ["Shift"]);
 	const locked = page.getByRole("checkbox", { name: "Locked", exact: true });
 	await expect(locked).toHaveJSProperty("indeterminate", true);
 	await locked.click();

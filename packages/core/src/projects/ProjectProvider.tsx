@@ -33,6 +33,7 @@ import type {
 } from "#/projects/format.ts";
 import type { ProjectLinkProps } from "#/projects/ProjectLink.tsx";
 import type { ProjectStorage } from "#/projects/storage.ts";
+import { WorkspaceControlsProvider } from "#/projects/WorkspaceControls.tsx";
 import type {
 	ConfiguredSymbolLibrary,
 	SymbolLibraryConfig,
@@ -43,6 +44,7 @@ import {
 } from "#/symbol-library/storage.tsx";
 
 interface ProjectContextValue {
+	session: number;
 	project: ProjectSnapshot | null;
 	LinkComponent?: ComponentType<ProjectLinkProps>;
 	selectAsset(asset: ProjectAsset | null): void;
@@ -75,11 +77,13 @@ export function ProjectProvider({
 	storage: rawStorage,
 	symbolStorage,
 	LinkComponent,
+	wrapChildren = true,
 	children,
 }: {
 	storage: ProjectStorage;
 	symbolStorage: SymbolLibraryStorage;
 	LinkComponent?: ComponentType<ProjectLinkProps>;
+	wrapChildren?: boolean;
 	children: ReactNode;
 }) {
 	const storage = useMemo(
@@ -518,6 +522,7 @@ export function ProjectProvider({
 	);
 	const list = useCallback(() => storage.list(), [storage]);
 	const value: ProjectContextValue = {
+		session: epoch,
 		project,
 		LinkComponent,
 		selectAsset: setSelectedAsset,
@@ -579,14 +584,20 @@ export function ProjectProvider({
 				storage={symbolStorage}
 				projectStorage={projectSymbols}
 			>
-				<div
-					key={epoch}
-					aria-busy={busy}
-					inert={busy}
-					className={busy ? "pointer-events-none" : undefined}
-				>
-					{children}
-				</div>
+				<WorkspaceControlsProvider>
+					{wrapChildren ? (
+						<div
+							key={epoch}
+							aria-busy={busy}
+							inert={busy}
+							className={busy ? "pointer-events-none" : undefined}
+						>
+							{children}
+						</div>
+					) : (
+						children
+					)}
+				</WorkspaceControlsProvider>
 			</SymbolLibraryProvider>
 		</ProjectContext.Provider>
 	);

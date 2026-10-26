@@ -1,3 +1,4 @@
+import { openProjectFiles } from "./project-files";
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { toolbarButton } from "./toolbar";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -95,7 +96,7 @@ test("storage failures keep imports usable and report their temporary lifetime",
  });
  await libraries.getByLabel("Upload symbol files").setInputFiles([upload, bufferUpload]);
  await expect(libraries.getByRole("status")).toContainText("Browser storage is unavailable");
- await libraries.getByRole("link", { name: "Schematic editor", exact: true }).click();
+ await (await openProjectFiles(libraries)).getByRole("link", { name: "Schematic editor", exact: true }).click();
  await libraries.getByRole("button", { name: "Symbols", exact: true }).click();
  await expect(libraries.getByRole("button", { name: "Insert Test point" })).toBeVisible();
 });

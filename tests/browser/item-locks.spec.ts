@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { selectSymbolItem, symbolItemPoint } from "./symbol-items";
+import { selectDrawingShape, selectSymbolItem, symbolItemPoint } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -38,22 +38,29 @@ test("symbol geometry defaults to locked while static text remains editable", as
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await page.getByRole("button", { name: "Insert Default locks", exact: true }).click();
  await page.locator("canvas").click({ position: { x: 620, y: 450 } });
- const geometry = page.getByRole("treeitem").filter({ hasNotText: /Default locks|Label/ });
- await expect(geometry).toHaveCount(5);
- for (const row of await geometry.all()) await expect(row).toHaveAttribute("aria-disabled", "true");
- const label = page.getByRole("treeitem", { name: "Label", exact: true });
- await expect(label).toHaveAttribute("aria-disabled", "false");
  await page.getByRole("button", { name: "Select locked items", exact: true }).click();
- for (const row of await geometry.all()) await expect(row).toHaveAttribute("aria-disabled", "true");
+ for (const key of ["shape:1", "shape:2", "shape:3", "shape:4", "shape:5"]) {
+  const point = await symbolItemPoint(page, key);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  if (point.kind === "pin") {
+   await page.mouse.move(point.x + 4, point.y);
+   await page.mouse.move(point.x, point.y);
+  }
+  await page.mouse.up();
+  await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
+  await selectDrawingShape(page, 1);
+ }
  for (const [name, value] of [["Center X", "-8"], ["Center Y", "0"]]) {
   const input = page.getByRole("spinbutton", { name, exact: true });
   await input.fill(value); await input.press("Tab");
  }
- await label.click();
+ await selectSymbolItem(page, "shape:6");
  await expect(page.getByRole("checkbox", { name: "Locked", exact: true })).not.toBeChecked();
  const content = page.getByRole("textbox", { name: "Text content", exact: true });
  await content.fill("Editable text"); await content.press("Tab");
- await expect(page.getByRole("treeitem", { name: "Editable text", exact: true })).toHaveAttribute("aria-selected", "true");
+ await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+ await expect(content).toHaveValue("Editable text");
  for (let zoom = 0; zoom < 4; zoom++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
  await page.screenshot({ path: test.info().outputPath("default-symbol-child-locks.png") });

@@ -47,7 +47,6 @@ test("rotated schematic text renders upright while stored rotations stay unchang
 	expect(saved.rotation).toBeCloseTo(Math.PI);
 	expect(saved.horizontalAlign).toBe("left");
 	expect(saved.verticalAlign).toBe("top");
-	await page.getByRole("button", { name: "Hide item hierarchy", exact: true }).click();
 	for (let index = 0; index < 5; index++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await page.screenshot({ path: "perf-artifacts/upright-schematic-text.png" });
 	await expect(page.getByRole("alert")).toHaveCount(0);

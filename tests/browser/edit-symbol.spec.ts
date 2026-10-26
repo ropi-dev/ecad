@@ -1,3 +1,4 @@
+import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import { toolbarButton } from "./toolbar";
 
@@ -17,11 +18,11 @@ test("attributes open and save the reusable project symbol definition", async ({
   name: "Editable part", description: "Preserve library metadata", prefix: "TP", value: "Signal",
   shapes: [{ kind: "rectangle", x: 0, y: 0, width: 10, height: 6 }, { kind: "pin", name: "Signal", x: -6, y: 0 }],
  };
- await expect(page.getByLabel("Add symbol files")).toBeEnabled();
- await page.getByLabel("Add symbol files").setInputFiles({
+ await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
+ await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles({
   name: "part.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)),
  });
- await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
  await expect(page.getByRole("button", { name: "Edit symbol", exact: true })).toHaveCount(0);
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await page.getByRole("button", { name: "Insert Editable part", exact: true }).click();
@@ -47,8 +48,8 @@ test("attributes open and save the reusable project symbol definition", async ({
  expect(saved).toMatchObject({ ...symbol, shapes: expect.any(Array) });
  expect(saved.shapes.slice(0, 2)).toMatchObject(symbol.shapes);
  expect((await documentState(page)).shapes).toEqual(schematic);
- await page.getByRole("link", { name: "Projects", exact: true }).click();
- await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await page.getByRole("button", { name: "Insert Editable part", exact: true }).click();
  await page.locator("canvas").click({ position: { x: 450, y: 550 } });
@@ -173,7 +174,7 @@ test("nested symbol editing saves only library references and reopens them", asy
  await page.goto("/tests/browser/projects.html");
  await page.getByLabel("Project name", { exact: true }).fill("Nested references");
  await page.getByRole("button", { name: "Create project", exact: true }).click();
- await page.getByRole("button", { name: "New symbol", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("button", { name: "New symbol", exact: true }).click();
  await page.getByLabel("Symbol name", { exact: true }).fill("Composite part");
  await page.getByRole("button", { name: "Create symbol", exact: true }).click();
  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Composite part");
@@ -186,7 +187,7 @@ test("nested symbol editing saves only library references and reopens them", asy
  expect(saved).not.toHaveProperty("children");
  expect(saved).not.toHaveProperty("texts");
  await page.reload();
- await page.getByRole("link", { name: "Open composite-part.ecadsym", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Open composite-part.ecadsym", exact: true }).click();
  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Composite part");
  await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
  await expect(page.getByRole("alert")).toHaveCount(0);

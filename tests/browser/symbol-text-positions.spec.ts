@@ -1,6 +1,7 @@
+import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
-import { selectSymbolItem } from "./symbol-items";
+import { drawingPoint, selectSymbolItem } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -102,7 +103,7 @@ test("saved symbol label positions survive a project reload without copying the 
  await page.getByLabel("Project name", { exact: true }).fill("Text positions");
  await page.getByRole("button", { name: "Create project", exact: true }).click();
  await expect(page.getByLabel("Project save status")).toHaveText("Saved");
- await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
  const box = (await page.locator("canvas").boundingBox())!;
@@ -133,11 +134,14 @@ test("saved symbol label positions survive a project reload without copying the 
  await page.reload();
  await expect.poll(async () => (await projectState()).shapes[0]?.textPositions?.reference?.x).toBe(18);
  await expect.poll(async () => (await projectState()).shapes[0]?.locked).toBe(true);
- await page.getByRole("link", { name: "Schematic editor", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
  await expect(page.locator("canvas")).toBeVisible();
  await page.getByRole("button", { name: "Select locked items", exact: true }).click();
- await expect(page.getByRole("treeitem", { name: "R1 · Resistor", exact: true })).toHaveAttribute("aria-disabled", "false");
- await expect(page.getByRole("treeitem", { name: "Rectangle 2", exact: true })).toHaveAttribute("aria-disabled", "true");
+ const restored = (await projectState()).shapes[0];
+ const center = await drawingPoint(page, { x: restored.x, y: restored.y });
+ await page.mouse.click(center.x, center.y);
+ await expect(page.getByRole("textbox", { name: "Reference", exact: true })).toHaveValue("R1");
+ await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 

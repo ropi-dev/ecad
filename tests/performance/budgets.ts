@@ -1,6 +1,6 @@
 export const budgets = {
+ "project-file-sidebar": { hoverRevealMs: 750, interactionP95Ms: 1200, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-box": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
- "editor-item-hierarchy": { interactionP95Ms: 750, hierarchyP95Ms: 100, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-item-locks": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-symbol-children": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-text-alignment": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
@@ -106,6 +106,7 @@ export const budgets = {
 		frameP95Ms: 500,
 	},
 	"editor-symbol-file": {
+		coldOpenMs: 1200,
 		interactionP95Ms: 1200,
 		domNodes: 1500,
 		scriptBytes: 3_000_000,

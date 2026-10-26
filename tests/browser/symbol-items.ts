@@ -1,5 +1,20 @@
 import { expect, type Page } from "@playwright/test";
-import { type EditorSymbol, shapeBounds, symbolChildren, symbolChildWorld } from "#/drawing/shapes.ts";
+import { type EditorSymbol, isBoxSymbol, shapeBounds, symbolChildren, symbolChildWorld } from "#/drawing/shapes.ts";
+import { closeProjectFiles } from "./project-files";
+
+export async function selectDrawingShape(page: Page, id: number, modifiers?: ("Control" | "Meta" | "Shift" | "Alt")[]) {
+	await closeProjectFiles(page);
+	await selectSymbolParent(page);
+	const document = JSON.parse((await page.locator("#editor-document, #project-document").textContent())!);
+	const shape = document.shapes.find((shape: { id: number }) => shape.id === id);
+	const point = await drawingPoint(page, isBoxSymbol(shape) ? { x: shape.x + 1, y: shape.y - 1 } : { x: shape.x, y: shape.y });
+	const canvas = page.locator("canvas");
+	const bounds = (await canvas.boundingBox())!;
+	await canvas.click({ position: { x: point.x - bounds.x, y: point.y - bounds.y }, modifiers });
+	await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
+	if (shape.kind === "symbol" && !modifiers?.length)
+		await expect(page.getByRole("textbox", { name: "Reference", exact: true })).toHaveValue(shape.attributes.reference);
+}
 
 export async function drawingPoint(page: Page, point: { x: number; y: number }) {
 	return page.getByRole("img", { name: "Drawing rulers in millimetres" }).evaluate((rulers, point) => {
