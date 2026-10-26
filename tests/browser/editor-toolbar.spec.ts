@@ -7,6 +7,85 @@ test.beforeEach(async ({ page }) => {
 	).toBeEnabled();
 });
 
+test("tooltips show shortcuts on hover and dismiss on Escape or click", async ({
+	page,
+}) => {
+	const zoom = page.getByRole("button", { name: "Zoom in", exact: true });
+	await expect(zoom).not.toHaveAttribute("title");
+	await zoom.hover();
+	await expect(page.getByRole("tooltip")).toHaveText("Zoom in+");
+	await expect(zoom).toHaveAttribute("aria-describedby");
+	await page.keyboard.press("Escape");
+	await expect(page.getByRole("tooltip")).toHaveCount(0);
+	await page.getByRole("button", { name: "Shapes", exact: true }).hover();
+	await expect(page.getByRole("tooltip")).toHaveText("Shapes");
+	await page.getByRole("button", { name: "Shapes", exact: true }).click();
+	await page.mouse.move(0, 0);
+	const rectangle = page.getByRole("button", {
+		name: "Rectangle",
+		exact: true,
+	});
+	await rectangle.hover();
+	await expect(page.getByRole("tooltip")).toHaveText("Rectangle");
+	await rectangle.click();
+	await expect(page.getByRole("tooltip")).toHaveCount(0);
+	await expect(rectangle).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByRole("toolbar").locator("button[title]")).toHaveCount(
+		0,
+	);
+});
+
+test("keyboard focus opens tooltips without changing focus or activating a tool", async ({
+	page,
+}) => {
+	const zoom = page.getByRole("button", { name: "Zoom in", exact: true });
+	await zoom.focus();
+	await expect(page.getByRole("tooltip")).toHaveText("Zoom in+");
+	await expect(zoom).toBeFocused();
+	await page.keyboard.press("Tab");
+	const fit = page.getByRole("button", { name: "Fit drawing", exact: true });
+	await expect(fit).toBeFocused();
+	await expect(page.getByRole("tooltip")).toContainText("F6");
+	await expect(fit).toHaveText("100%");
+	await page.keyboard.press("Escape");
+	await expect(page.getByRole("tooltip")).toHaveCount(0);
+	await expect(fit).toBeFocused();
+});
+
+for (const width of [320, 1280]) {
+	test(`tooltips stay visible above the scrolling toolbar at ${width}px`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width, height: 800 });
+		await page
+			.getByRole("button", { name: "Select locked items", exact: true })
+			.hover();
+		await expect(page.getByRole("tooltip")).toHaveText("Select locked items");
+		const tooltip = page.locator('[data-slot="toolbar-tooltip"]');
+		const box = (await tooltip.boundingBox())!;
+		const toolbar = (await page
+			.getByRole("toolbar", { name: "View controls", exact: true })
+			.boundingBox())!;
+		expect(box.x).toBeGreaterThanOrEqual(0);
+		expect(box.x + box.width).toBeLessThanOrEqual(width);
+		expect(box.y + box.height).toBeLessThan(toolbar.y);
+		await page.screenshot({
+			path: test.info().outputPath("toolbar-tooltip.png"),
+		});
+		await page.mouse.move(0, 0, { steps: 10 });
+		await expect(page.getByRole("tooltip")).toHaveCount(0);
+		await page
+			.getByRole("button", { name: "Zoom in", exact: true })
+			.scrollIntoViewIfNeeded();
+		await page.getByRole("button", { name: "Zoom in", exact: true }).hover();
+		await expect(page.getByRole("tooltip")).toHaveText("Zoom in+");
+		await page.screenshot({
+			path: test.info().outputPath("toolbar-shortcut.png"),
+			clip: { x: 0, y: 600, width, height: 200 },
+		});
+	});
+}
+
 test("groups replace each other above the main toolbar without changing the active tool", async ({
 	page,
 }) => {

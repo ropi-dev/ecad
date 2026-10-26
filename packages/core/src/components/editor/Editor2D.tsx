@@ -51,6 +51,7 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import type { LineStyle } from "#/drawing/line-style.ts";
 import {
 	boxBorder,
@@ -856,13 +857,13 @@ function EditorCanvas({
 	}, [store]);
 
 	const renderTool = ({ kind, label, icon: Icon }: (typeof tools)[number]) => (
-		<button
+		<TooltipButton
 			key={kind}
 			type="button"
 			className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
 			disabled={!ready}
 			aria-label={label}
-			title={label}
+			tooltip={label}
 			aria-pressed={tool === kind}
 			onClick={() => {
 				finishWire();
@@ -870,7 +871,7 @@ function EditorCanvas({
 			}}
 		>
 			<Icon size={18} aria-hidden="true" />
-		</button>
+		</TooltipButton>
 	);
 
 	if (editingDefinition) {
@@ -1497,22 +1498,22 @@ function EditorCanvas({
 											setTool("symbol");
 										}}
 									/>
-									<button
+									<TooltipButton
 										type="button"
 										className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
 										disabled={!ready}
 										aria-label="Snap to grid"
 										aria-pressed={snapEnabled}
-										title={`Snap to grid (${gridStep} mm)`}
+										tooltip={`Snap to grid, ${gridStep} mm`}
 										onClick={() => setSnapEnabled((enabled) => !enabled)}
 									>
 										<Magnet size={18} aria-hidden="true" />
-									</button>
-									<button
+									</TooltipButton>
+									<TooltipButton
 										type="button"
 										aria-label="Select locked items"
 										aria-pressed={allowLocked}
-										title="Allow selecting and moving locked symbols and standalone items. Locked symbol children stay unselectable."
+										tooltip="Select locked items"
 										disabled={!ready}
 										className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
 										onClick={() => {
@@ -1534,7 +1535,7 @@ function EditorCanvas({
 										}}
 									>
 										<LockKeyhole size={18} aria-hidden="true" />
-									</button>
+									</TooltipButton>
 
 									{[
 										{
@@ -1550,27 +1551,28 @@ function EditorCanvas({
 											icon: RotateCw,
 										},
 									].map(({ label, shortcut, angle, icon: Icon }) => (
-										<button
+										<TooltipButton
 											key={label}
 											type="button"
 											className={viewControlButtonClassName}
 											disabled={!ready || !selected.length}
 											aria-label={label}
 											aria-keyshortcuts={shortcut}
-											title={`${label} 90° (${shortcut})`}
+											tooltip={`${label} 90°`}
+											shortcut={shortcut}
 											onClick={() => rotateSelected(angle)}
 										>
 											<Icon size={18} aria-hidden="true" />
-										</button>
+										</TooltipButton>
 									))}
-									<button
+									<TooltipButton
 										type="button"
 										className={viewControlButtonClassName}
 										disabled={!ready || !selected.length}
 										aria-label={
 											selectionLocked ? "Unlock selection" : "Lock selection"
 										}
-										title={
+										tooltip={
 											selectionLocked ? "Unlock selection" : "Lock selection"
 										}
 										onClick={() => changeSelectionLock(!selectionLocked)}
@@ -1580,18 +1582,19 @@ function EditorCanvas({
 										) : (
 											<Lock size={18} aria-hidden="true" />
 										)}
-									</button>
+									</TooltipButton>
 
-									<button
+									<TooltipButton
 										type="button"
 										className={viewControlButtonClassName}
 										disabled={!selected.length}
 										aria-label="Delete"
-										title="Delete selected shapes"
+										tooltip="Delete selected shapes"
+										shortcut="Delete"
 										onClick={removeSelected}
 									>
 										<Trash2 size={18} aria-hidden="true" />
-									</button>
+									</TooltipButton>
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}

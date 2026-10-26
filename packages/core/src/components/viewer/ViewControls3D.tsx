@@ -1,5 +1,6 @@
 import { Box, Download, Scan, Square } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation.ts";
 import { ToolbarGroup, ToolbarGroups } from "./ToolbarGroup";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
@@ -46,7 +47,7 @@ export function ViewControls3D({
 			buttonClassName={button}
 			fitClassName={`${button} min-w-14 tabular-nums`}
 			fitLabel={fitLabel}
-			fitTitle={`${fitLabel} (F6 or double-click the mouse wheel)`}
+			fitTitle={fitLabel}
 		>
 			{Math.round(zoomLevel * 100)}%
 		</ZoomControls>
@@ -54,13 +55,13 @@ export function ViewControls3D({
 	const viewControls = (
 		<>
 			{toggleProjection && (
-				<button
+				<TooltipButton
 					type="button"
 					className={button}
 					disabled={!enabled}
 					aria-label="Orthographic camera"
 					aria-pressed={projection === "orthographic"}
-					title={
+					tooltip={
 						projection === "orthographic"
 							? "Switch to perspective camera"
 							: "Switch to orthographic camera"
@@ -72,49 +73,52 @@ export function ViewControls3D({
 					) : (
 						<Box size={18} aria-hidden="true" />
 					)}
-				</button>
+				</TooltipButton>
 			)}
 			{view && (
 				<>
-					<button
+					<TooltipButton
 						type="button"
 						className={button}
 						disabled={!enabled}
+						tooltip="Isometric view"
 						onClick={() => view("iso")}
 					>
 						Iso
-					</button>
-					<button
+					</TooltipButton>
+					<TooltipButton
 						type="button"
 						className={button}
 						disabled={!enabled}
+						tooltip="Top view"
 						onClick={() => view("top")}
 					>
 						Top
-					</button>
-					<button
+					</TooltipButton>
+					<TooltipButton
 						type="button"
 						className={button}
 						disabled={!enabled}
+						tooltip="Front view"
 						onClick={() => view("front")}
 					>
 						Front
-					</button>
+					</TooltipButton>
 				</>
 			)}
 			{exportPng && (
-				<button
+				<TooltipButton
 					type="button"
 					className={`${button} gap-1.5`}
 					disabled={!enabled || exporting}
 					aria-label="Export PNG"
 					aria-busy={exporting}
-					title="Download the current scene as a PNG image"
+					tooltip="Export PNG"
 					onClick={exportPng}
 				>
 					<Download size={18} aria-hidden="true" />
 					{exporting ? "Exporting…" : "PNG"}
-				</button>
+				</TooltipButton>
 			)}
 		</>
 	);

@@ -1,5 +1,6 @@
 import { Minus, Plus } from "lucide-react";
 import type { ReactNode } from "react";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { ZOOM_FACTOR } from "#/engine/navigation.ts";
 
 export function ZoomControls({
@@ -27,36 +28,39 @@ export function ZoomControls({
 }) {
 	return (
 		<>
-			<button
+			<TooltipButton
 				type="button"
 				className={buttonClassName}
 				disabled={!enabled || !canZoomOut}
-				title="Zoom out (-)"
+				tooltip="Zoom out"
+				shortcut="−"
 				aria-label="Zoom out"
 				onClick={() => zoom(1 / ZOOM_FACTOR)}
 			>
 				<Minus size={16} />
-			</button>
-			<button
+			</TooltipButton>
+			<TooltipButton
 				type="button"
 				className={buttonClassName}
 				disabled={!enabled || !canZoomIn}
-				title="Zoom in (+)"
+				tooltip="Zoom in"
+				shortcut="+"
 				aria-label="Zoom in"
 				onClick={() => zoom(ZOOM_FACTOR)}
 			>
 				<Plus size={16} />
-			</button>
-			<button
+			</TooltipButton>
+			<TooltipButton
 				type="button"
 				className={fitClassName ?? buttonClassName}
 				disabled={!enabled}
-				title={fitTitle}
+				tooltip={fitTitle}
+				shortcut="F6"
 				aria-label={fitLabel}
 				onClick={fit}
 			>
 				{children}
-			</button>
+			</TooltipButton>
 		</>
 	);
 }
