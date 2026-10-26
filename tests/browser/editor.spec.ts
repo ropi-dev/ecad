@@ -1,4 +1,4 @@
-import { toolbarButton } from "./toolbar";
+import { toolbarButton, toolbarTooltip } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
 
 // Coordinate fixtures use a desktop viewport with a 10 mm grid at the fitted view.
@@ -1022,7 +1022,7 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	const step = await visibleGridStep(page);
 	expect(step).toBe(1);
 	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
-	await expect(snap).toHaveAttribute("title", `Snap to grid (${step} mm)`);
+	await expect(await toolbarTooltip(page, "Snap to grid")).toHaveText(`Snap to grid, ${step} mm`);
 	await snap.click();
 	await (await toolbarButton(page, "Circle")).click();
 	await dragTo(page, [-8.2, -5.2], [-4, -1]);
@@ -2116,7 +2116,7 @@ test("compact symbols have a 6 mm pin span and the grid has ten cells per major 
   expect(majors.length).toBeGreaterThan(1);
   expect(majors[1] - majors[0]).toBe(10);
   const step = ticks[1].value - ticks[0].value;
-  await expect(page.getByRole("button", { name: "Snap to grid", exact: true })).toHaveAttribute("title", `Snap to grid (${step} mm)`);
+  await expect(await toolbarTooltip(page, "Snap to grid")).toHaveText(`Snap to grid, ${step} mm`);
   await (await toolbarButton(page, "Zoom in")).click();
  }
  await page.screenshot({ path: test.info().outputPath("compact-symbols-dense-grid.png") });
@@ -2241,8 +2241,8 @@ test("text movement snaps at one-tenth of the grid spacing for dragging and arro
 	await expect.poll(async () => (await state(page)).shapes.map(({ x, y }) => [x, y])).toEqual([[144, 117]]);
 	await expect(page.getByText("Arrow keys move 1 mm; Shift + arrows move 10 mm when the drawing is focused.", { exact: false })).toBeVisible();
 	for (let zoom = 0; zoom < 4; zoom++) await (await toolbarButton(page, "Zoom in")).click();
-	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
-	const step = Number((await snap.getAttribute("title"))!.match(/[\d.]+/)![0]) / 10;
+	const tooltip = await toolbarTooltip(page, "Snap to grid");
+	const step = Number((await tooltip.innerText()).match(/[\d.]+/)![0]) / 10;
 	expect(step).toBeLessThan(1);
 	await page.locator("canvas").focus();
 	await page.keyboard.press("ArrowLeft");

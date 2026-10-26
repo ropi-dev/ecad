@@ -2,7 +2,7 @@ import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
 import { drawingPoint, selectSymbolItem } from "./symbol-items";
-import { toolbarButton } from "./toolbar";
+import { toolbarButton, toolbarTooltip } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 const state = async (page: Page) => JSON.parse((await page.locator("#editor-document").textContent())!) as { shapes: EditorSymbol[]; historySize: number };
@@ -157,7 +157,8 @@ test("symbol labels snap at one-tenth of the grid spacing in world coordinates",
   await input.fill(y);
   await input.press("Tab");
  }
- const step = Number((await page.getByRole("button", { name: "Snap to grid", exact: true }).getAttribute("title"))!.match(/[\d.]+/)![0]) / 10;
+ const tooltip = await toolbarTooltip(page, "Snap to grid");
+ const step = Number((await tooltip.innerText()).match(/[\d.]+/)![0]) / 10;
  for (const angle of [0, 90]) {
   await selectSymbolItem(page, "");
   const input = page.getByRole("spinbutton", { name: "Angle", exact: true });
