@@ -33,6 +33,8 @@ test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
 	const xZero = rulers.locator('[data-axis="x"][data-value="0"] line');
 	const yZero = rulers.locator('[data-axis="y"][data-value="0"] line');
 	await expect(xZero).toHaveAttribute("x1", "400");
+	await expect(yZero).toHaveAttribute("x1", "776");
+	await expect(yZero).toHaveAttribute("x2", "785");
 	await expect
 		.poll(async () => Number(await yZero.getAttribute("y1")))
 		.toBeCloseTo(300);
@@ -52,8 +54,13 @@ test("rulers follow pan, zoom and both 2D projections", async ({ page }) => {
 					const grid = [
 						...document.querySelectorAll<SVGLineElement>('[data-testid="viewport-grid"] line'),
 					];
+					const columns = grid
+						.filter((line) => line.getAttribute("x1") === line.getAttribute("x2"))
+						.map((line) => Number(line.getAttribute("x1")))
+						.sort((first, second) => first - second);
 					return (
 						grid.length > 0 &&
+						columns[0] <= columns[1] - columns[0] + 0.01 &&
 						grid.length >= ticks.length &&
 						ticks.every((tick) => {
 							const horizontal = tick.dataset.axis === "x";
@@ -128,6 +135,7 @@ test("rulers fit desktop and mobile Gerber viewports without covering controls",
 		await page.setViewportSize({ width, height });
 		await expect(rulers).toHaveAttribute("width", String(width));
 		await expect(rulers).toHaveAttribute("height", String(height));
+		await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(width - 24));
 		await expect(page.getByTestId("viewport-grid")).toHaveAttribute(
 			"width",
 			String(width),
@@ -142,7 +150,7 @@ test("rulers fit desktop and mobile Gerber viewports without covering controls",
 			expect(box.y).toBeGreaterThan(24);
 		}
 		await page.screenshot({
-			path: test.info().outputPath(`rulers-${width}.png`),
+			path: `perf-artifacts/rulers-right-gerber-${width}.png`,
 		});
 	}
 });

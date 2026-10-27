@@ -1,4 +1,5 @@
 import {
+	AlertCircle,
 	Box,
 	ChevronLeft,
 	ChevronRight,
@@ -8,7 +9,9 @@ import {
 	FolderOpen,
 	Layers,
 	ListTree,
+	LoaderCircle,
 	PanelLeftClose,
+	PanelLeftOpen,
 	PlugZap,
 	Plus,
 	Search,
@@ -66,8 +69,6 @@ export function ProjectFilesSidebar() {
 	const library = useSymbolLibrary();
 	const [collapsed, setCollapsed] = useState(true);
 	const panelId = useId();
-	const toggle = useRef<HTMLButtonElement>(null);
-	const hideToggle = useRef<HTMLButtonElement>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<(typeof filters)[number]>("All files");
 	const [page, setPage] = useState(0);
@@ -146,453 +147,443 @@ export function ProjectFilesSidebar() {
 	return (
 		<fieldset
 			aria-label="File sidebar"
-			className="pointer-events-none absolute inset-y-0 left-0 z-10 m-0 w-67 min-w-0 max-w-full border-0 p-0"
-			onPointerLeave={(event) => {
-				if (event.pointerType === "touch") return;
-				const active = document.activeElement;
-				if (
-					creatingFile ||
-					addMenuOpen ||
-					(active instanceof HTMLElement &&
-						active.closest(`#${CSS.escape(panelId)}`) &&
-						active.matches(
-							"input:not([type=file]), textarea, select, [contenteditable=true], :focus-visible",
-						))
-				)
-					return;
-				setCollapsed(true);
-			}}
-			onBlur={(event) => {
-				if (
-					!event.currentTarget.contains(event.relatedTarget) &&
-					!event.currentTarget.matches(":hover") &&
-					!creatingFile &&
-					!addMenuOpen
-				)
-					setCollapsed(true);
-			}}
+			className={`relative m-0 h-full min-w-0 shrink-0 border-0 border-r border-[#343b46] bg-[#191c22] p-0 text-[#c7d0dc] transition-[width] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "w-12" : "w-64 max-w-[calc(100vw-4rem)]"}`}
 		>
-			{!collapsed && (
-				<div
-					aria-hidden="true"
-					className="pointer-events-auto absolute inset-y-3 left-0 w-full"
-				/>
-			)}
-			<div
+			<aside
+				id={panelId}
+				aria-label="Project files"
 				data-open={!collapsed}
-				onPointerMove={(event) => {
-					if (event.pointerType === "mouse" && collapsed) setCollapsed(false);
-				}}
-				className={`pointer-events-auto absolute inset-y-3 left-3 z-10 w-64 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-[#414955] bg-[#191c22f5] text-[#c7d0dc] shadow-[0_8px_32px_#0003] transition-transform duration-200 ease-out motion-reduce:transition-none ${collapsed ? "-translate-x-full" : "translate-x-0"}`}
+				className="flex h-full min-h-0 flex-col overflow-hidden"
 			>
-				<button
-					ref={toggle}
-					type="button"
-					hidden={!collapsed}
-					aria-label="Show project files"
-					aria-expanded={false}
-					aria-controls={panelId}
-					title="Show project files"
-					onClick={(event) => {
-						setCollapsed(false);
-						if (event.detail === 0)
-							requestAnimationFrame(() => hideToggle.current?.focus());
-					}}
-					className={`absolute inset-y-0 right-0 z-10 flex w-3 cursor-pointer items-center justify-center rounded-r-xl hover:bg-white/10 focus-visible:bg-white/10 ${focus}`}
+				<header
+					className={`flex shrink-0 items-center gap-2 border-b border-white/10 ${collapsed ? "flex-col px-1.5 py-3" : "h-12 px-3"}`}
 				>
-					<span
+					<ListTree
+						size={17}
 						aria-hidden="true"
-						className="h-8 w-0.5 rounded-full bg-[#98a4b6]"
+						className="shrink-0 text-[#98a4b6]"
 					/>
-				</button>
-				<aside
-					id={panelId}
-					aria-label="Project files"
-					aria-hidden={collapsed}
-					inert={collapsed}
-					data-open={!collapsed}
-					className={`flex h-full min-h-0 flex-col transition-opacity duration-200 motion-reduce:transition-none ${collapsed ? "opacity-0" : "opacity-100"}`}
-				>
-					<header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-3">
-						<ListTree
-							size={17}
-							aria-hidden="true"
-							className="shrink-0 text-[#98a4b6]"
-						/>
-						<h2 className="m-0 text-[13px] font-semibold">Files</h2>
-						<span className="text-[11px] text-[#98a4b6]">{files.length}</span>
-						{snapshot && (
-							<DropdownMenu.Root
-								open={addMenuOpen}
-								onOpenChange={setAddMenuOpen}
-								modal={false}
-							>
-								<DropdownMenu.Trigger asChild>
-									<button
-										type="button"
-										aria-label="Add file"
-										title="Add file"
-										disabled={busy}
-										className={`${button} ml-auto w-7 data-[state=open]:bg-white/10 data-[state=open]:text-white`}
-									>
-										<Plus size={16} aria-hidden="true" />
-									</button>
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Portal>
-									<DropdownMenu.Content
-										aria-label="Add file"
-										align="end"
-										sideOffset={6}
-										collisionPadding={12}
-										onCloseAutoFocus={(event) => {
-											if (creatingFile) event.preventDefault();
-										}}
-										className="pointer-events-auto z-50 min-w-48 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-lg border border-[#414955] bg-[#191c22] p-1 text-[#c7d0dc] shadow-[0_8px_32px_#0008]"
-									>
-										{(["drawing", "symbol"] as const).map((kind) => (
-											<DropdownMenu.Item
-												key={kind}
-												className={menuItem}
-												disabled={busy}
-												onSelect={() => setCreatingFile(kind)}
-											>
-												{kind === "drawing" ? (
-													<File size={14} aria-hidden="true" />
-												) : (
-													<CircuitBoard size={14} aria-hidden="true" />
-												)}
-												New {kind}
-											</DropdownMenu.Item>
-										))}
-									</DropdownMenu.Content>
-								</DropdownMenu.Portal>
-							</DropdownMenu.Root>
-						)}
-						<button
-							ref={hideToggle}
-							type="button"
-							aria-label="Hide project files"
-							title="Hide project files"
-							aria-expanded={true}
-							aria-controls={panelId}
-							className={`${button} ${snapshot ? "" : "ml-auto"} w-7 shrink-0`}
-							onClick={() => {
-								setAddMenuOpen(false);
-								setCollapsed(true);
-								requestAnimationFrame(() => toggle.current?.focus());
-							}}
-						>
-							<PanelLeftClose size={16} aria-hidden="true" />
-						</button>
-					</header>
-					<nav
-						aria-label="Workspaces"
-						className="grid shrink-0 grid-cols-4 gap-2 border-b border-white/10 p-3"
+					<h2
+						className={collapsed ? "sr-only" : "m-0 text-[13px] font-semibold"}
 					>
-						<ProjectLink
-							href="/"
-							aria-label="Gerber viewer"
-							title="Gerber viewer"
-							className={`${workspaceActionClassName} text-[#90c8bc]`}
+						Files
+					</h2>
+					{!collapsed && (
+						<span className="text-[11px] text-[#98a4b6]">{files.length}</span>
+					)}
+					{snapshot && (
+						<DropdownMenu.Root
+							open={addMenuOpen}
+							onOpenChange={setAddMenuOpen}
+							modal={false}
 						>
-							<Layers size={20} aria-hidden="true" />
-						</ProjectLink>
-						<ProjectLink
-							href="/step"
-							aria-label="STEP viewer"
-							title="STEP viewer"
-							className={`${workspaceActionClassName} text-[#a2b9e4]`}
-						>
-							<Box size={20} aria-hidden="true" />
-						</ProjectLink>
-						<ProjectLink
-							href="/projects"
-							aria-label="Projects"
-							title="Projects"
-							className={`${workspaceActionClassName} text-[#e8b77e]`}
-						>
-							<Folder size={20} aria-hidden="true" />
-						</ProjectLink>
-						{workspaceControls?.editor ? (
-							workspaceControls.editor.enableMcp ? (
-								<Suspense
-									fallback={
-										<button
-											type="button"
-											aria-label="Enable MCP"
-											disabled
-											className={workspaceActionClassName}
-										>
-											<PlugZap size={20} aria-hidden="true" />
-										</button>
-									}
-								>
-									<SidebarMcpControls
-										store={workspaceControls.editor.store}
-										compact
-									/>
-								</Suspense>
-							) : (
+							<DropdownMenu.Trigger asChild>
 								<button
 									type="button"
-									aria-label="MCP unavailable"
-									title="MCP is unavailable in this editor"
-									disabled
-									className={workspaceActionClassName}
+									aria-label="Add file"
+									title="Add file"
+									disabled={busy}
+									className={`${button} ${collapsed ? "w-full" : "ml-auto w-7"} data-[state=open]:bg-white/10 data-[state=open]:text-white`}
 								>
-									<PlugZap size={20} aria-hidden="true" />
+									<Plus size={16} aria-hidden="true" />
 								</button>
-							)
-						) : (
-							<ProjectLink
-								href="/editor"
-								aria-label="Schematic editor"
-								title="Schematic editor"
-								onClick={() => project.selectEditorFile()}
-								className={`${workspaceActionClassName} text-[#c3abd8]`}
-							>
-								<CircuitBoard size={20} aria-hidden="true" />
-							</ProjectLink>
-						)}
-					</nav>
-					<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-						{snapshot ? (
-							<>
-								<div className="shrink-0 border-b border-white/10 pb-1">
-									<div className="flex h-9 items-center gap-0.5 px-2">
-										<ProjectLink
-											href="/projects"
-											aria-label="Project settings"
-											title={snapshot.manifest.name}
-											className={`flex min-w-0 flex-1 items-center gap-2 rounded py-1 text-xs hover:text-white ${focus}`}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Portal>
+								<DropdownMenu.Content
+									aria-label="Add file"
+									align="end"
+									sideOffset={6}
+									collisionPadding={12}
+									onCloseAutoFocus={(event) => {
+										if (creatingFile) event.preventDefault();
+									}}
+									className="pointer-events-auto z-50 min-w-48 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-lg border border-[#414955] bg-[#191c22] p-1 text-[#c7d0dc] shadow-[0_8px_32px_#0008]"
+								>
+									{(["drawing", "symbol"] as const).map((kind) => (
+										<DropdownMenu.Item
+											key={kind}
+											className={menuItem}
+											disabled={busy}
+											onSelect={() => setCreatingFile(kind)}
 										>
-											<FolderOpen
-												size={14}
-												className="shrink-0 text-[#98a4b6]"
-												aria-hidden="true"
-											/>
-											<span className="truncate">{snapshot.manifest.name}</span>
-										</ProjectLink>
-										{importTypes.map(([kind, label, Icon, accept]) => (
-											<label
-												key={kind}
-												title={`Add ${label} files`}
-												className={`${button} relative w-6 shrink-0 cursor-pointer px-0 focus-within:outline-2 focus-within:outline-[#e8b77e] has-[:disabled]:opacity-40`}
-											>
-												<Icon
-													className="size-3.5 shrink-0"
-													aria-hidden="true"
-												/>
-												<input
-													type="file"
-													multiple
-													aria-label={`Add ${label} files`}
-													accept={accept}
-													disabled={
-														busy || (kind === "symbol" && library.loading)
-													}
-													className="absolute inset-0 size-full cursor-pointer opacity-0"
-													onChange={(event) => {
-														const files = Array.from(event.target.files ?? []);
-														if (kind === "symbol") void library.upload(files);
-														else void upload(files, kind);
-														event.target.value = "";
-													}}
-												/>
-											</label>
-										))}
-									</div>
-									<div className="mx-2 flex items-center gap-2 rounded border border-white/10 bg-[#111318] px-2 focus-within:border-[#e8b77e80]">
-										<Search
-											className="size-3.5 shrink-0 text-[#98a4b6]"
+											{kind === "drawing" ? (
+												<File size={14} aria-hidden="true" />
+											) : (
+												<CircuitBoard size={14} aria-hidden="true" />
+											)}
+											New {kind}
+										</DropdownMenu.Item>
+									))}
+								</DropdownMenu.Content>
+							</DropdownMenu.Portal>
+						</DropdownMenu.Root>
+					)}
+				</header>
+				<nav
+					aria-label="Workspaces"
+					className={`grid shrink-0 gap-1 border-b border-white/10 ${collapsed ? "grid-cols-1 p-1.5 [&>a]:h-9 [&>a]:rounded-md [&>button]:h-9 [&>button]:rounded-md" : "grid-cols-4 gap-2 p-3"}`}
+				>
+					<ProjectLink
+						href="/"
+						aria-label="Gerber viewer"
+						title="Gerber viewer"
+						className={`${workspaceActionClassName} text-[#90c8bc]`}
+					>
+						<Layers size={20} aria-hidden="true" />
+					</ProjectLink>
+					<ProjectLink
+						href="/step"
+						aria-label="STEP viewer"
+						title="STEP viewer"
+						className={`${workspaceActionClassName} text-[#a2b9e4]`}
+					>
+						<Box size={20} aria-hidden="true" />
+					</ProjectLink>
+					<ProjectLink
+						href="/projects"
+						aria-label="Projects"
+						title="Projects"
+						className={`${workspaceActionClassName} text-[#e8b77e]`}
+					>
+						<Folder size={20} aria-hidden="true" />
+					</ProjectLink>
+					{workspaceControls?.editor ? (
+						workspaceControls.editor.enableMcp ? (
+							<Suspense
+								fallback={
+									<button
+										type="button"
+										aria-label="Enable MCP"
+										disabled
+										className={workspaceActionClassName}
+									>
+										<PlugZap size={20} aria-hidden="true" />
+									</button>
+								}
+							>
+								<SidebarMcpControls
+									store={workspaceControls.editor.store}
+									compact
+								/>
+							</Suspense>
+						) : (
+							<button
+								type="button"
+								aria-label="MCP unavailable"
+								title="MCP is unavailable in this editor"
+								disabled
+								className={workspaceActionClassName}
+							>
+								<PlugZap size={20} aria-hidden="true" />
+							</button>
+						)
+					) : (
+						<ProjectLink
+							href="/editor"
+							aria-label="Schematic editor"
+							title="Schematic editor"
+							onClick={() => project.selectEditorFile()}
+							className={`${workspaceActionClassName} text-[#c3abd8]`}
+						>
+							<CircuitBoard size={20} aria-hidden="true" />
+						</ProjectLink>
+					)}
+				</nav>
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+					{snapshot ? (
+						<>
+							<div className="shrink-0 border-b border-white/10 pb-1">
+								<div
+									className={`flex items-center ${collapsed ? "flex-col gap-1 p-1.5" : "h-9 gap-0.5 px-2"}`}
+								>
+									<ProjectLink
+										href="/projects"
+										aria-label="Project settings"
+										title={snapshot.manifest.name}
+										className={`flex min-w-0 items-center rounded text-xs hover:bg-white/10 hover:text-white ${collapsed ? "h-8 w-full justify-center" : "flex-1 gap-2 py-1"} ${focus}`}
+									>
+										<FolderOpen
+											size={14}
+											className="shrink-0 text-[#98a4b6]"
 											aria-hidden="true"
 										/>
-										<input
-											type="search"
-											aria-label="Search project files"
-											placeholder="Find a file..."
-											value={query}
-											onChange={(event) => {
-												setQuery(event.target.value);
+										{!collapsed && (
+											<span className="truncate">{snapshot.manifest.name}</span>
+										)}
+									</ProjectLink>
+									{importTypes.map(([kind, label, Icon, accept]) => (
+										<label
+											key={kind}
+											title={`Add ${label} files`}
+											className={`${button} relative ${collapsed ? "h-8 w-full" : "w-6"} shrink-0 cursor-pointer px-0 focus-within:outline-2 focus-within:outline-[#e8b77e] has-[:disabled]:opacity-40`}
+										>
+											<Icon className="size-3.5 shrink-0" aria-hidden="true" />
+											<input
+												type="file"
+												multiple
+												aria-label={`Add ${label} files`}
+												accept={accept}
+												disabled={
+													busy || (kind === "symbol" && library.loading)
+												}
+												className="absolute inset-0 size-full cursor-pointer opacity-0"
+												onChange={(event) => {
+													const files = Array.from(event.target.files ?? []);
+													if (kind === "symbol") void library.upload(files);
+													else void upload(files, kind);
+													event.target.value = "";
+												}}
+											/>
+										</label>
+									))}
+								</div>
+								<div
+									hidden={collapsed}
+									className="mx-2 flex items-center gap-2 rounded border border-white/10 bg-[#111318] px-2 focus-within:border-[#e8b77e80]"
+								>
+									<Search
+										className="size-3.5 shrink-0 text-[#98a4b6]"
+										aria-hidden="true"
+									/>
+									<input
+										type="search"
+										aria-label="Search project files"
+										placeholder="Find a file..."
+										value={query}
+										onChange={(event) => {
+											setQuery(event.target.value);
+											setPage(0);
+										}}
+										className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none [&::-webkit-search-cancel-button]:hidden"
+									/>
+									{query && (
+										<button
+											type="button"
+											aria-label="Clear file search"
+											className={`rounded p-1 ${focus}`}
+											onClick={() => {
+												setQuery("");
 												setPage(0);
 											}}
-											className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none [&::-webkit-search-cancel-button]:hidden"
+										>
+											<X className="size-3.5" />
+										</button>
+									)}
+								</div>
+								<fieldset
+									aria-label="File types"
+									hidden={collapsed}
+									className="mt-1 flex flex-wrap gap-0.5 px-2"
+								>
+									{filters.map((type) => (
+										<button
+											key={type}
+											type="button"
+											aria-label={
+												type === "Symbol" ? "Symbol files" : undefined
+											}
+											aria-pressed={filter === type}
+											className={`rounded px-1 py-1 text-[10px] text-[#98a4b6] hover:bg-white/5 aria-pressed:bg-[#e8b77e1c] aria-pressed:text-[#e8b77e] ${focus}`}
+											onClick={() => {
+												setFilter(type);
+												setPage(0);
+											}}
+										>
+											{type === "Symbol" ? "Symbols" : type}
+										</button>
+									))}
+								</fieldset>
+							</div>
+							{importing && (
+								<output
+									className={
+										collapsed
+											? "flex justify-center py-2 text-[#98a4b6]"
+											: "px-3 py-1 text-[11px] text-[#98a4b6]"
+									}
+									aria-live="polite"
+								>
+									{collapsed && (
+										<LoaderCircle
+											size={16}
+											className="animate-spin"
+											aria-hidden="true"
 										/>
-										{query && (
-											<button
-												type="button"
-												aria-label="Clear file search"
-												className={`rounded p-1 ${focus}`}
-												onClick={() => {
-													setQuery("");
-													setPage(0);
-												}}
-											>
-												<X className="size-3.5" />
-											</button>
-										)}
-									</div>
-									<fieldset
-										aria-label="File types"
-										className="mt-1 flex flex-wrap gap-0.5 px-2"
-									>
-										{filters.map((type) => (
-											<button
-												key={type}
-												type="button"
-												aria-label={
-													type === "Symbol" ? "Symbol files" : undefined
-												}
-												aria-pressed={filter === type}
-												className={`rounded px-1 py-1 text-[10px] text-[#98a4b6] hover:bg-white/5 aria-pressed:bg-[#e8b77e1c] aria-pressed:text-[#e8b77e] ${focus}`}
-												onClick={() => {
-													setFilter(type);
-													setPage(0);
-												}}
-											>
-												{type === "Symbol" ? "Symbols" : type}
-											</button>
-										))}
-									</fieldset>
-								</div>
-								{importing && (
-									<output
-										className="px-3 py-1 text-[11px] text-[#98a4b6]"
-										aria-live="polite"
-									>
+									)}
+									<span className={collapsed ? "sr-only" : undefined}>
 										Adding project files...
-									</output>
-								)}
-								{(error || library.error) && (
-									<p
-										role="alert"
-										className="px-3 py-1 text-[11px] text-[#edc49a]"
-									>
-										{error || library.error}
-									</p>
-								)}
-								{library.message && (
-									<output className="sr-only" aria-live="polite">
-										{library.message}
-									</output>
-								)}
-								<div className="min-h-0 flex-1 overflow-auto overscroll-contain py-1">
-									<table className="w-full table-fixed border-collapse text-left">
-										<caption className="sr-only">
-											Files in the current project
-										</caption>
-										<thead className="sr-only">
-											<tr>
-												<th scope="col">Name</th>
-											</tr>
-										</thead>
-										<tbody>
-											{filtered.slice(first, first + pageSize).map((file) => {
-												const Icon =
-													file.type === "Drawing" || file.type === "Symbol"
-														? CircuitBoard
-														: file.type === "Gerber"
-															? Layers
-															: file.type === "STEP"
-																? Box
-																: File;
-												const content = (
-													<>
-														<span className="w-5 shrink-0" aria-hidden="true" />
-														<Icon
-															size={14}
-															className="shrink-0 opacity-70"
-															aria-hidden="true"
-														/>
-														<span className="truncate">{file.name}</span>
-													</>
-												);
-												return (
-													<tr key={file.path}>
-														<td>
-															{file.href ? (
-																<ProjectLink
-																	href={file.href}
-																	aria-label={`Open ${file.name}`}
-																	title={file.path}
-																	className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
-																	onClick={() => {
-																		if (file.href === "/editor")
-																			project.selectEditorFile(file.path);
-																		if (file.asset)
-																			project.selectAsset(file.asset);
-																	}}
-																>
-																	{content}
-																</ProjectLink>
-															) : (
-																<div
-																	title={file.path}
-																	className="flex h-8 items-center gap-2 pr-3 pl-2 text-xs text-[#98a4b6]"
-																>
-																	{content}
-																</div>
-															)}
-														</td>
-													</tr>
-												);
-											})}
-										</tbody>
-									</table>
-									{!filtered.length && (
-										<div className="px-4 py-3 text-xs text-[#98a4b6]">
-											<p>No matching files</p>
-											<button
-												type="button"
-												className={`${button} mt-1 px-2`}
-												onClick={() => {
-													setQuery("");
-													setFilter("All files");
-													setPage(0);
-												}}
-											>
-												Clear filters
-											</button>
-										</div>
-									)}
-								</div>
-								<footer className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-white/10 px-3 text-[10px] text-[#98a4b6]">
-									<span aria-live="polite">
-										{filtered.length
-											? `${first + 1}–${Math.min(first + pageSize, filtered.length)} of ${filtered.length} files`
-											: "0 files"}
 									</span>
-									{lastPage > 0 && (
-										<nav aria-label="Project file pages" className="flex gap-1">
-											<button
-												type="button"
-												aria-label="Previous files"
-												disabled={!currentPage}
-												className={`${button} w-7`}
-												onClick={() => setPage(currentPage - 1)}
-											>
-												<ChevronLeft className="size-3.5" />
-											</button>
-											<button
-												type="button"
-												aria-label="Next files"
-												disabled={currentPage === lastPage}
-												className={`${button} w-7`}
-												onClick={() => setPage(currentPage + 1)}
-											>
-												<ChevronRight className="size-3.5" />
-											</button>
-										</nav>
-									)}
-								</footer>
+								</output>
+							)}
+							{(error || library.error) && (
+								<p
+									role="alert"
+									title={error || library.error || undefined}
+									className={
+										collapsed
+											? "flex justify-center py-2 text-[#edc49a]"
+											: "px-3 py-1 text-[11px] text-[#edc49a]"
+									}
+								>
+									{collapsed && <AlertCircle size={16} aria-hidden="true" />}
+									<span className={collapsed ? "sr-only" : undefined}>
+										{error || library.error}
+									</span>
+								</p>
+							)}
+							{library.message && (
+								<output className="sr-only" aria-live="polite">
+									{library.message}
+								</output>
+							)}
+							<div className="min-h-0 flex-1 overflow-auto overscroll-contain py-1">
+								<table className="w-full table-fixed border-collapse text-left">
+									<caption className="sr-only">
+										Files in the current project
+									</caption>
+									<thead className="sr-only">
+										<tr>
+											<th scope="col">Name</th>
+										</tr>
+									</thead>
+									<tbody>
+										{filtered.slice(first, first + pageSize).map((file) => {
+											const Icon =
+												file.type === "Drawing" || file.type === "Symbol"
+													? CircuitBoard
+													: file.type === "Gerber"
+														? Layers
+														: file.type === "STEP"
+															? Box
+															: File;
+											const content = (
+												<>
+													{!collapsed && (
+														<span className="w-5 shrink-0" aria-hidden="true" />
+													)}
+													<Icon
+														size={14}
+														className="shrink-0 opacity-70"
+														aria-hidden="true"
+													/>
+													{!collapsed && (
+														<span className="truncate">{file.name}</span>
+													)}
+												</>
+											);
+											return (
+												<tr key={file.path}>
+													<td>
+														{file.href ? (
+															<ProjectLink
+																href={file.href}
+																aria-label={`Open ${file.name}`}
+																title={`${file.name} · ${file.type}`}
+																className={`flex h-8 min-w-0 items-center ${collapsed ? "justify-center" : "gap-2 pr-3 pl-2"} text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
+																onClick={() => {
+																	if (file.href === "/editor")
+																		project.selectEditorFile(file.path);
+																	if (file.asset)
+																		project.selectAsset(file.asset);
+																}}
+															>
+																{content}
+															</ProjectLink>
+														) : (
+															<div
+																title={`${file.name} · ${file.type}`}
+																className={`flex h-8 items-center text-xs text-[#98a4b6] ${collapsed ? "justify-center" : "gap-2 pr-3 pl-2"}`}
+															>
+																{content}
+															</div>
+														)}
+													</td>
+												</tr>
+											);
+										})}
+									</tbody>
+								</table>
+								{!filtered.length && !collapsed && (
+									<div className="px-4 py-3 text-xs text-[#98a4b6]">
+										<p>No matching files</p>
+										<button
+											type="button"
+											className={`${button} mt-1 px-2`}
+											onClick={() => {
+												setQuery("");
+												setFilter("All files");
+												setPage(0);
+											}}
+										>
+											Clear filters
+										</button>
+									</div>
+								)}
+							</div>
+							<footer
+								className={`flex shrink-0 items-center justify-between gap-2 border-t border-white/10 text-[10px] text-[#98a4b6] ${collapsed ? "flex-col p-1" : "h-8 px-3"}`}
+							>
+								<span
+									aria-live="polite"
+									className={collapsed ? "sr-only" : undefined}
+								>
+									{filtered.length
+										? `${first + 1}–${Math.min(first + pageSize, filtered.length)} of ${filtered.length} files`
+										: "0 files"}
+								</span>
+								{lastPage > 0 && (
+									<nav
+										aria-label="Project file pages"
+										className={`flex gap-1 ${collapsed ? "flex-col" : ""}`}
+									>
+										<button
+											type="button"
+											aria-label="Previous files"
+											disabled={!currentPage}
+											className={`${button} w-7`}
+											onClick={() => setPage(currentPage - 1)}
+										>
+											<ChevronLeft className="size-3.5" />
+										</button>
+										<button
+											type="button"
+											aria-label="Next files"
+											disabled={currentPage === lastPage}
+											className={`${button} w-7`}
+											onClick={() => setPage(currentPage + 1)}
+										>
+											<ChevronRight className="size-3.5" />
+										</button>
+									</nav>
+								)}
+							</footer>
+						</>
+					) : null}
+				</div>
+				<ProjectLink href="/editor" ref={editorLink} hidden tabIndex={-1}>
+					Open new file
+				</ProjectLink>
+				<footer className="shrink-0 border-t border-white/10 p-1.5">
+					<button
+						type="button"
+						aria-label={collapsed ? "Show project files" : "Hide project files"}
+						title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+						aria-expanded={!collapsed}
+						aria-controls={panelId}
+						className={`${button} h-9 w-full ${collapsed ? "" : "justify-start px-2"}`}
+						onClick={() => setCollapsed(!collapsed)}
+					>
+						{collapsed ? (
+							<PanelLeftOpen size={18} aria-hidden="true" />
+						) : (
+							<>
+								<PanelLeftClose size={18} aria-hidden="true" />
+								<span>Collapse sidebar</span>
 							</>
-						) : null}
-					</div>
-					<ProjectLink href="/editor" ref={editorLink} hidden tabIndex={-1}>
-						Open new file
-					</ProjectLink>
-				</aside>
-			</div>
+						)}
+					</button>
+				</footer>
+			</aside>
 			{creatingFile && (
 				<div className="pointer-events-auto">
 					<Suspense fallback={null}>

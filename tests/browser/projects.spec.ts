@@ -214,7 +214,9 @@ test("opening a symbol file removes the worksheet and edits only that symbol", a
 	await expect(page.locator("html")).toHaveAttribute("data-worksheet", "none");
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(2);
-	await page.screenshot({ path: test.info().outputPath("symbol-file.png") });
+	const rulers = page.getByRole("img", { name: "Drawing rulers in millimetres" });
+	await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(Number(await rulers.getAttribute("width")) - 24));
+	await page.screenshot({ path: "perf-artifacts/rulers-right-symbol.png" });
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(3);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
@@ -228,7 +230,8 @@ test("opening a symbol file removes the worksheet and edits only that symbol", a
 	await expect(page.getByRole("heading", { level: 1 })).toContainText("Schematic editor · A3");
 	await expect(page.locator("html")).toHaveAttribute("data-worksheet", "A3, 420 × 297 mm");
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
-	await page.screenshot({ path: test.info().outputPath("schematic-file.png") });
+	await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(Number(await rulers.getAttribute("width")) - 24));
+	await page.screenshot({ path: "perf-artifacts/rulers-right-schematic.png" });
 	expect((await documentState(page)).shapes).toEqual(schematic);
 	await projectsPage(page);
 	await (await openProjectFiles(page)).getByRole("link", { name: "Open editable-symbol.ecadsym", exact: true }).click();
@@ -444,7 +447,7 @@ test("the file sidebar reports failed symbol imports while the editor is open", 
 	await expect(page.getByRole("tree", { name: "Drawing items", exact: true })).toHaveCount(0);
 });
 
-test("the floating sidebar owns the workspace tiles and connects MCP to the active drawing", async ({ page }) => {
+test("the layout sidebar owns the workspace tiles and connects MCP to the active drawing", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "Sidebar essentials");
 	const sidebar = await openProjectFiles(page);
@@ -455,24 +458,31 @@ test("the floating sidebar owns the workspace tiles and connects MCP to the acti
 	await expect(page.locator("main").getByRole("link", { name: "Gerber viewer", exact: true })).toHaveCount(0);
 	const panelBounds = (await sidebar.locator("..").boundingBox())!;
 	const canvasBounds = (await page.locator("canvas").boundingBox())!;
-	expect(canvasBounds.x).toBe(0);
-	expect(panelBounds.x).toBe(12);
-	expect(panelBounds.y).toBe(12);
-	expect(panelBounds.y + panelBounds.height).toBe(page.viewportSize()!.height - 12);
+	expect(canvasBounds.x).toBe(panelBounds.width);
+	expect(panelBounds.x).toBe(0);
+	expect(panelBounds.y).toBe(0);
+	expect(panelBounds.height).toBe(page.viewportSize()!.height);
 	await workspaces.getByRole("button", { name: "Enable MCP", exact: true }).click();
-	await expect(sidebar.getByText("Connected to this drawing", { exact: true })).toBeVisible();
-	await sidebar.getByRole("button", { name: "Disable MCP", exact: true }).click();
+	await expect(page.getByText("Connected to this drawing", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Disable MCP", exact: true }).click();
 	await workspaces.getByRole("link", { name: "STEP viewer", exact: true }).click();
 	await expect(workspaces.getByRole("link", { name: "Schematic editor", exact: true })).toBeVisible();
 	await expect(page.locator("main").getByRole("link", { name: "Projects", exact: true })).toHaveCount(0);
+	await sidebar.getByRole("button", { name: "Hide project files", exact: true }).click();
 	await page.setViewportSize({ width: 390, height: 844 });
 	await workspaces.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await workspaces.getByRole("button", { name: "Enable MCP", exact: true }).click();
-	await expect(sidebar.getByText("Connected to this drawing", { exact: true })).toBeVisible();
-	const settings = (await sidebar.getByRole("region", { name: "MCP connection", exact: true }).boundingBox())!;
+	await expect(page.getByText("Connected to this drawing", { exact: true })).toBeVisible();
+	const settingsPanel = page.getByRole("region", { name: "MCP connection", exact: true });
+	await expect.poll(async () => {
+		const bounds = (await settingsPanel.boundingBox())!;
+		return bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= 390 && bounds.y + bounds.height <= 844;
+	}).toBe(true);
+	const settings = (await settingsPanel.boundingBox())!;
 	expect(settings.x).toBeGreaterThanOrEqual(0);
 	expect(settings.x + settings.width).toBeLessThanOrEqual(390);
 	expect(settings.y + settings.height).toBeLessThanOrEqual(844);
-	await sidebar.getByRole("button", { name: "Hide project files", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Show project files", exact: true })).toBeFocused();
+	await page.keyboard.press("Escape");
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await expect(workspaces.getByRole("button", { name: "MCP connected", exact: true })).toBeFocused();
 });

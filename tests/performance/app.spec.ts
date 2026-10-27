@@ -864,6 +864,16 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 	}
 	await sidebar.getByRole("button", { name: "Hide project files" }).click();
 	await page.mouse.move(900, 400);
+	const railNavigationTimes: number[] = [];
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await sidebar.getByRole("link", { name: "STEP viewer", exact: true }).click();
+		railNavigationTimes.push(await interaction(page, "sidebar.rail-navigation", async () => {
+			await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
+			await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
+		}));
+		await expect(sidebar).toHaveAttribute("data-open", "false");
+		expect((await page.locator("canvas").boundingBox())!.x).toBe(48);
+	}
 	const hoverRevealMs = await interaction(page, "sidebar.reveal", async () => { await openProjectFiles(page); });
 	const menuOpenTimes: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
@@ -874,17 +884,17 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		await page.keyboard.press("Escape");
 		await expect(sidebar.getByRole("button", { name: "Add file", exact: true })).toBeFocused();
 	}
-	await page.screenshot({ path: "perf-artifacts/hover-sidebar-performance-v1.png" });
+	await page.screenshot({ path: "perf-artifacts/sidebar-layout-performance.png" });
 	await page.setViewportSize({ width: 390, height: 844 });
 	await sidebar.getByRole("button", { name: "Hide project files" }).click();
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 	await page.getByRole("button", { name: "Show project files" }).click();
-	await page.screenshot({ path: "perf-artifacts/floating-file-sidebar-essentials-mobile-v1.png" });
+	await page.screenshot({ path: "perf-artifacts/sidebar-layout-performance-mobile.png" });
 	await sidebar.getByRole("button", { name: "Hide project files" }).click();
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.getByRole("button", { name: "Show project files" }).click();
 	const value = await report(page);
-	await finish(page, testInfo, "project-file-sidebar", { hoverRevealMs, menuOpenMs: percentile(menuOpenTimes), interactionP95Ms: metric(value, "scenario.interaction")! });
+	await finish(page, testInfo, "project-file-sidebar", { hoverRevealMs, railNavigationMs: percentile(railNavigationTimes), menuOpenMs: percentile(menuOpenTimes), interactionP95Ms: metric(value, "scenario.interaction")! });
 });
 
 test("project-new-drawing", async ({ page }, testInfo) => {

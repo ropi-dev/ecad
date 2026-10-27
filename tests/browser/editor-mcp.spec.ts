@@ -168,6 +168,10 @@ test("MCP settings stay within desktop and mobile viewports and collapse without
 			await page.setViewportSize(viewport);
 			await expect(panel).toBeVisible();
 			await expect(toggle).toHaveAttribute("aria-expanded", "true");
+			await expect.poll(async () => {
+				const bounds = (await panel.boundingBox())!;
+				return bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height;
+			}).toBe(true);
 			const panelBounds = (await panel.boundingBox())!;
 			const toggleBounds = (await toggle.boundingBox())!;
 			expect(panelBounds.x).toBeGreaterThanOrEqual(0);
