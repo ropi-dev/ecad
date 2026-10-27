@@ -13,6 +13,10 @@ test("the sidebar leaves a visible edge, opens from it, and closes after leaving
 	expect(closedBounds.x + closedBounds.width).toBeCloseTo(12);
 	expect(closedBounds.y).toBe(12);
 	expect(closedBounds.y + closedBounds.height).toBe(page.viewportSize()!.height - 12);
+	const content = page.locator('fieldset[aria-label="File sidebar"] + div');
+	const contentBounds = (await content.boundingBox())!;
+	expect(contentBounds.x).toBeCloseTo(closedBounds.x + closedBounds.width);
+	expect(contentBounds.x + contentBounds.width).toBe(page.viewportSize()!.width);
 	await expect(frame).toHaveCSS("opacity", "1");
 	await page.mouse.move(1, 6);
 	await expect(sidebar).toHaveCount(0);
@@ -28,6 +32,7 @@ test("the sidebar leaves a visible edge, opens from it, and closes after leaving
 	expect(bounds.x).toBe(12);
 	expect(bounds.y).toBe(12);
 	expect(bounds.y + bounds.height).toBe(page.viewportSize()!.height - 12);
+	expect(await content.boundingBox()).toEqual(contentBounds);
 	await page.mouse.move(20, 300);
 	await expect(sidebar).toBeVisible();
 	await page.mouse.move(100, 300);
@@ -110,6 +115,10 @@ test.describe("touch sidebar", () => {
 		expect(closedBounds.x + closedBounds.width).toBeCloseTo(12);
 		expect(closedBounds.y).toBeCloseTo(12);
 		expect(closedBounds.y + closedBounds.height).toBeCloseTo(832);
+		const content = page.locator('fieldset[aria-label="File sidebar"] + div');
+		const contentBounds = (await content.boundingBox())!;
+		expect(contentBounds.x).toBeCloseTo(closedBounds.x + closedBounds.width);
+		expect(contentBounds.x + contentBounds.width).toBeCloseTo(390);
 		await page.screenshot({ path: "perf-artifacts/sidebar-peek-mobile.png" });
 		await page.getByRole("button", { name: "Show project files", exact: true }).tap();
 		await expect(sidebar).toBeVisible();
@@ -118,6 +127,7 @@ test.describe("touch sidebar", () => {
 		expect(bounds.x).toBeCloseTo(12);
 		expect(bounds.y).toBeCloseTo(12);
 		expect(bounds.y + bounds.height).toBeCloseTo(832);
+		expect(await content.boundingBox()).toEqual(contentBounds);
 		await page.screenshot({ path: "perf-artifacts/hover-sidebar-touch-v1.png" });
 		await sidebar.getByRole("button", { name: "Hide project files", exact: true }).tap();
 		await expect(sidebar).toHaveCount(0);
