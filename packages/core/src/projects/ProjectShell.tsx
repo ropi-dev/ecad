@@ -14,7 +14,7 @@ export function ProjectShell({
 		<div
 			aria-busy={project?.busy}
 			inert={project?.busy}
-			className="relative flex h-dvh overflow-hidden bg-[#131518] pl-3 text-[#e8e9ec]"
+			className="relative flex h-dvh overflow-hidden bg-[#131518] text-[#e8e9ec]"
 		>
 			{sidebar}
 			<div key={project?.session} className="min-w-0 flex-1 overflow-auto">
