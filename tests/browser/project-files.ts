@@ -14,6 +14,7 @@ export async function openProjectFiles(page: Page) {
 
 export async function closeProjectFiles(page: Page) {
 	const sidebar = page.getByRole("complementary", { name: "Project files", exact: true });
+	if (!(await sidebar.count())) return;
 	const collapse = sidebar.getByRole("button", { name: "Hide project files", exact: true });
 	if (await collapse.isVisible()) await collapse.click();
 	await expect(sidebar).toHaveAttribute("data-open", "false");

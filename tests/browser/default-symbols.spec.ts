@@ -106,7 +106,11 @@ test("every default symbol previews and places with its geometry, pins, and edit
 		await button.click();
 		const canvas = page.locator("canvas");
 		const bounds = (await canvas.boundingBox())!;
-		await canvas.click({ position: { x: bounds.width * (0.15 + (index % 9) * 0.075), y: bounds.height * (0.2 + Math.floor(index / 9) * 0.12) } });
+		const panel = page.getByRole("complementary", { name: "Selection attributes", exact: true });
+		const attributes = await panel.count() ? await panel.boundingBox() : null;
+		const left = bounds.width * 0.15;
+		const right = attributes ? attributes.x - bounds.x - 24 : bounds.width * 0.75;
+		await canvas.click({ position: { x: left + (right - left) * (index % 9) / 8, y: bounds.height * (0.2 + Math.floor(index / 9) * 0.12) } });
 		await expect(page.getByRole("textbox", { name: "Reference", exact: true })).toHaveValue(`${file.prefix}${index + 1}`);
 		await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue(file.value);
 	}
