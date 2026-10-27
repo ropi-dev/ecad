@@ -214,7 +214,9 @@ test("opening a symbol file removes the worksheet and edits only that symbol", a
 	await expect(page.locator("html")).toHaveAttribute("data-worksheet", "none");
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(2);
-	await page.screenshot({ path: test.info().outputPath("symbol-file.png") });
+	const rulers = page.getByRole("img", { name: "Drawing rulers in millimetres" });
+	await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(Number(await rulers.getAttribute("width")) - 24));
+	await page.screenshot({ path: "perf-artifacts/rulers-right-symbol.png" });
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(3);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
@@ -228,7 +230,8 @@ test("opening a symbol file removes the worksheet and edits only that symbol", a
 	await expect(page.getByRole("heading", { level: 1 })).toContainText("Schematic editor · A3");
 	await expect(page.locator("html")).toHaveAttribute("data-worksheet", "A3, 420 × 297 mm");
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
-	await page.screenshot({ path: test.info().outputPath("schematic-file.png") });
+	await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(Number(await rulers.getAttribute("width")) - 24));
+	await page.screenshot({ path: "perf-artifacts/rulers-right-schematic.png" });
 	expect((await documentState(page)).shapes).toEqual(schematic);
 	await projectsPage(page);
 	await (await openProjectFiles(page)).getByRole("link", { name: "Open editable-symbol.ecadsym", exact: true }).click();

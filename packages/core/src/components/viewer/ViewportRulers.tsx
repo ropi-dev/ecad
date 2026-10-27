@@ -47,8 +47,12 @@ export function ViewportRulers({
 		camera,
 		viewport: { width, height },
 	} = view;
-	const horizontal = rulerTicks(camera.x, camera.scale, width);
-	const vertical = rulerTicks(camera.y, camera.scale, height, true);
+	const horizontal = rulerTicks(camera.x, camera.scale, width).filter(
+		(tick) => tick.position < width - 24,
+	);
+	const vertical = rulerTicks(camera.y, camera.scale, height, true).filter(
+		(tick) => tick.position >= 24,
+	);
 	const horizontalGrid = gridTicks(camera.x, camera.scale, width);
 	const verticalGrid = gridTicks(camera.y, camera.scale, height, true);
 	return (
@@ -127,11 +131,11 @@ export function ViewportRulers({
 				</title>
 				<path
 					className="fill-[#191c22]"
-					d={`M0 0H${width}V24H24V${height}H0Z`}
+					d={`M0 0H${width}V${height}H${width - 24}V24H0Z`}
 				/>
 				<path
 					className="fill-none stroke-[#414955]"
-					d={`M24 ${height}V24H${width}`}
+					d={`M0 24H${width - 24}V${height}`}
 				/>
 				{horizontal.map((tick) => (
 					<g key={tick.value} data-axis="x" data-value={tick.value}>
@@ -153,20 +157,23 @@ export function ViewportRulers({
 						<line
 							y1={tick.position}
 							y2={tick.position}
-							x1={tick.label === undefined ? 19 : 15}
-							x2="24"
+							x1={width - 24}
+							x2={width - (tick.label === undefined ? 19 : 15)}
 						/>
 						{tick.label !== undefined && (
 							<text
-								transform={`translate(11 ${tick.position - 3}) rotate(-90)`}
+								transform={`translate(${width - 11} ${tick.position + 3}) rotate(90)`}
 							>
 								{tick.label}
 							</text>
 						)}
 					</g>
 				))}
-				<path className="fill-[#191c22]" d="M0 0H24V24H0Z" />
-				<text x="12" y="15" textAnchor="middle">
+				<path
+					className="fill-[#191c22]"
+					d={`M${width - 24} 0H${width}V24H${width - 24}Z`}
+				/>
+				<text x={width - 12} y="15" textAnchor="middle">
 					mm
 				</text>
 			</svg>

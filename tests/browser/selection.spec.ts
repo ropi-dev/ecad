@@ -16,7 +16,7 @@ for (const projection of ["perspective", "orthographic"]) {
 		await expect(attributes).toContainText("Shapes");
 		await expect(attributes).toContainText("10.00 × 10.00 mm");
 		const panel = (await attributes.boundingBox())!;
-		expect(panel.x + panel.width).toBeCloseTo(bounds.x + bounds.width - 16, 4);
+		expect(panel.x + panel.width).toBeCloseTo(bounds.x + bounds.width - 40, 4);
 		expect(panel.y).toBeCloseTo(bounds.y + 40, 4);
 		await page.mouse.move(0, 0);
 		await expect(attributes).toBeVisible();

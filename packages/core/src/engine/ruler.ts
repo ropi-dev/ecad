@@ -52,7 +52,6 @@ function ticksForSpacing(
 		const value = index === 0 ? 0 : index * minor;
 		const position =
 			length / 2 + (value - center) * scale * (reversed ? -1 : 1);
-		if (position < 24) continue;
 		ticks.push({
 			position,
 			value,

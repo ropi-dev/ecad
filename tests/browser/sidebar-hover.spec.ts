@@ -32,19 +32,33 @@ test("the sidebar stays in the layout and keeps its rail controls usable", async
 	await expect(sidebar.getByRole("link", { name: "Open Drawing", exact: true })).toHaveAttribute("title", "Drawing · Drawing");
 	await page.screenshot({ path: "perf-artifacts/sidebar-rail-desktop.png" });
 	await toggle.focus();
+	await frame.evaluate(element => {
+		element.addEventListener("transitionrun", () => {
+			for (const animation of element.getAnimations()) {
+				animation.pause();
+				animation.currentTime = 100;
+			}
+		}, { once: true });
+	});
 	await toggle.press("Enter");
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await expect(sidebar.getByRole("button", { name: "Hide project files", exact: true })).toBeFocused();
-	expect((await content.boundingBox())!.x).toBe(256);
-	expect((await page.locator("canvas").boundingBox())!.x).toBe(256);
+	const duringOpening = (await frame.boundingBox())!;
+	expect(duringOpening.width).toBeGreaterThan(48);
+	expect(duringOpening.width).toBeLessThan(256);
+	expect((await content.boundingBox())!.x).toBe(duringOpening.width);
+	await page.screenshot({ path: "perf-artifacts/sidebar-transition-desktop.png" });
+	await frame.evaluate(element => element.getAnimations().forEach(animation => animation.play()));
+	await expect.poll(async () => (await content.boundingBox())!.x).toBe(256);
+	await expect.poll(async () => (await page.locator("canvas").boundingBox())!.x).toBe(256);
 	await sidebar.getByLabel("Search project files").fill("drawing");
 	await page.getByRole("button", { name: "Select", exact: true }).click();
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await page.screenshot({ path: "perf-artifacts/sidebar-expanded-desktop.png" });
 	await sidebar.getByRole("button", { name: "Hide project files", exact: true }).press("Enter");
 	await expect(toggle).toBeFocused();
-	expect((await content.boundingBox())!.x).toBe(48);
-	expect((await page.locator("canvas").boundingBox())!.x).toBe(48);
+	await expect.poll(async () => (await content.boundingBox())!.x).toBe(48);
+	await expect.poll(async () => (await page.locator("canvas").boundingBox())!.x).toBe(48);
 	await openProjectFiles(page);
 	await expect(sidebar.getByLabel("Search project files")).toHaveValue("drawing");
 });
@@ -100,13 +114,20 @@ test.describe("touch sidebar", () => {
 		await page.screenshot({ path: "perf-artifacts/sidebar-rail-mobile.png" });
 		await sidebar.getByRole("button", { name: "Show project files", exact: true }).tap();
 		await expect(sidebar).toHaveAttribute("data-open", "true");
+		await expect(frame).toHaveCSS("width", "256px");
 		expect((await frame.boundingBox())!).toEqual({ x: 0, y: 0, width: 256, height: 844 });
 		expect((await content.boundingBox())!).toEqual({ x: 256, y: 0, width: 134, height: 844 });
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 		await page.screenshot({ path: "perf-artifacts/sidebar-expanded-mobile.png" });
 		await sidebar.getByRole("button", { name: "Hide project files", exact: true }).tap();
 		await expect(sidebar).toHaveAttribute("data-open", "false");
+		await expect(frame).toHaveCSS("width", "48px");
 		expect((await content.boundingBox())!.width).toBe(342);
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await sidebar.getByRole("button", { name: "Show project files", exact: true }).tap();
+		await expect(frame).toHaveCSS("transition-property", "none");
+		expect((await frame.boundingBox())!.width).toBe(256);
+		expect(await frame.evaluate(element => element.getAnimations().length)).toBe(0);
 	});
 	test("the add file menu fits the touch viewport and creates a symbol", async ({ page }) => {
 		await page.goto("/tests/browser/projects.html");

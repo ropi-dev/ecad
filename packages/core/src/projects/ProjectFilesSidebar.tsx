@@ -147,13 +147,13 @@ export function ProjectFilesSidebar() {
 	return (
 		<fieldset
 			aria-label="File sidebar"
-			className={`relative m-0 h-full min-w-0 shrink-0 border-0 border-r border-[#343b46] bg-[#191c22] p-0 text-[#c7d0dc] ${collapsed ? "w-12" : "w-64 max-w-[calc(100vw-4rem)]"}`}
+			className={`relative m-0 h-full min-w-0 shrink-0 border-0 border-r border-[#343b46] bg-[#191c22] p-0 text-[#c7d0dc] transition-[width] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "w-12" : "w-64 max-w-[calc(100vw-4rem)]"}`}
 		>
 			<aside
 				id={panelId}
 				aria-label="Project files"
 				data-open={!collapsed}
-				className="flex h-full min-h-0 flex-col"
+				className="flex h-full min-h-0 flex-col overflow-hidden"
 			>
 				<header
 					className={`flex shrink-0 items-center gap-2 border-b border-white/10 ${collapsed ? "flex-col px-1.5 py-3" : "h-12 px-3"}`}

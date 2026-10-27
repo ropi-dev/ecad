@@ -7,6 +7,8 @@ test("rulers place signed coordinates and reverse the vertical axis", () => {
 	assert.equal(horizontal.find((tick) => tick.value === 0)?.position, 150);
 	assert.equal(horizontal.find((tick) => tick.value === 20)?.position, 250);
 	assert.equal(horizontal.find((tick) => tick.value === -20)?.position, 50);
+	assert.equal(horizontal.find((tick) => tick.value === -30)?.position, 0);
+	assert.equal(gridTicks(10, 5, 400).find((tick) => tick.value === -30)?.position, 0);
 	const vertical = rulerTicks(10, 5, 400, true);
 	assert.equal(vertical.find((tick) => tick.value === 0)?.position, 250);
 	assert.equal(vertical.find((tick) => tick.value === 20)?.position, 150);
