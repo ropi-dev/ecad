@@ -157,3 +157,11 @@ npm run --silent cli -- mcp
 The drawing stays compatible with app project files. An adjacent `.history.json` file preserves undo branches between CLI calls and MCP restarts. CLI and MCP operations coordinate through a file lock and reread the drawing on each call.
 
 Build with `npm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the standalone stdio server. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.
+
+## Schematic export
+
+Choose **Export drawing** in the editor toolbar to download a PNG or SVG without capturing the browser. The default is a 9600 × 6400 PNG on white. Set width and height explicitly, then choose white, dark, or transparent background. Export fits the content into those dimensions without stretching.
+
+**Full sheet and drawing** includes the worksheet and expands to include objects outside the page. **Drawing only** fits the drawing with a 3 mm margin and omits the worksheet. Both modes omit the grid, selection, previews, and editor controls. The existing **View tools > Export PNG** command still captures the current viewport.
+
+SVG uses the shared drawing geometry and editable text, with no embedded screenshot. Its text uses Arial with a sans-serif fallback. Font appearance can vary on systems without Arial. Geometry uses the editor's curve tessellation. PNG draws the SVG at the selected resolution rather than enlarging the viewport capture. Output is limited to 16,384 pixels per side and 100 megapixels. PDF export is not included.

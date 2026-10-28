@@ -166,3 +166,5 @@ const result = await measurePerformanceAsync(
 ```
 
 The helpers preserve return values, thrown errors, and cancellation. Collection is guarded for server rendering and disabled production sessions. For React workspaces, use `PerformanceBoundary`; for a new benchmark, record its result in the app scenario, attach the JSON report, and add a budget with a meaningful limit. Run the production comparison before reporting the feature complete. `AGENTS.md` makes this part of the development workflow.
+
+The `schematic-export` scenario restores the RP2350A reference fixture and downloads full-sheet SVG and 9600 × 6400 PNG output. Under the standard 4× CPU throttle it budgets 5 seconds for SVG generation and 15 seconds for the complete PNG export, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts. `drawing.export-svg` measures shared geometry and text serialization. `drawing.export` also includes PNG decoding, rasterization, encoding and download initiation. The new flow has no pre-feature measurement. Use `editor-box` to compare the existing editor against its pre-feature baseline.

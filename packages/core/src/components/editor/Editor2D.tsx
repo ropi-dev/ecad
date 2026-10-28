@@ -1,3 +1,4 @@
+import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
 import { Effect, Either } from "effect";
 import {
 	Cable,
@@ -1464,6 +1465,12 @@ function EditorCanvas({
 							}}
 							extraControls={
 								<fieldset aria-label="Drawing tools" className="contents">
+									<DrawingExport
+										shapes={shapes}
+										sheet={sheet}
+										label={drawingName || "Schematic drawing"}
+										disabled={!ready}
+									/>
 									<ToolbarGroup
 										label="History tools"
 										icon={HistoryIcon}
