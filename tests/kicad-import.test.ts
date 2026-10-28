@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { importKiCadSchematic } from '#/formats/kicad/import.ts';
 import { parseSExpr, nodes, node } from '#/formats/kicad/sexpr.ts';
+import { symbolTextShapes } from '#/drawing/shapes.ts';
 import { validateProjectDocument } from '#/projects/format.ts';
 
 const source = readFileSync(new URL('./fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch',import.meta.url),'utf8');
@@ -48,4 +49,19 @@ test('unsupported constructs produce reports and broken documents fail without p
  assert.ok(importKiCadSchematic(fixture('(sheet (uuid "child"))')).report.warnings.some(w=>w.includes('sheet')));
  for(const s of ['(kicad_sch','(kicad_sch))','(other)','(kicad_sch) trailing',fixture('').replace('(lib_id "Test")','(lib_id "Missing")')]) assert.throws(()=>importKiCadSchematic(s));
  assert.equal(parseSExpr('(text "hello\\n\\\"world\\\"")')[1],'hello\n"world"');
+});
+
+
+test('rotated reference and value labels stay bound after edits and serialization', () => {
+ const input = fixture('').replace('(property "Reference" "X1" (at 10 20 0) (effects hide))', '(property "Reference" "U1" (at 12 18 90)) (property "Value" "Original" (at 14 18 90))');
+ const symbol = importKiCadSchematic(input).shapes[0];
+ assert.equal(symbol.kind,'symbol'); if(symbol.kind!=='symbol') return;
+ assert.equal(symbol.children.filter(child=>child.kind==='text'&&['U1','Original'].includes(child.text)).length,0);
+ const updated = {...symbol,attributes:{...symbol.attributes,reference:'U2',value:'Changed'}};
+ const saved = validateProjectDocument(JSON.parse(JSON.stringify({shapes:[updated],symbols:[]}))).shapes[0];
+ assert.equal(saved.kind,'symbol'); if(saved.kind!=='symbol') return;
+ const labels = symbolTextShapes(saved);
+ assert.deepEqual(labels.map(label=>label.text),['U2','Changed']);
+ assert.deepEqual(labels.map(label=>label.rotation),[Math.PI/2,Math.PI/2]);
+ assert.deepEqual(labels.map(label=>({x:label.x,y:label.y})),[{x:12-148.5,y:105-18},{x:14-148.5,y:105-18}]);
 });

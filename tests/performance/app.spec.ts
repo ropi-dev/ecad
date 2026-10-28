@@ -1460,5 +1460,6 @@ test("kicad-import", async ({ page }, testInfo) => {
     const value = await report(page);
     await finish(page,testInfo,"kicad-import",{importMs:metric(value,"import.kicad")!,interactionP95Ms:elapsed});
     await page.reload();
-    await expect((await openProjectFiles(page)).getByRole("link", {name:"Open kicad-import.ecaddraw",exact:true})).toBeVisible();
+    await (await openProjectFiles(page)).getByRole("link", {name:"Open kicad-import.ecaddraw",exact:true}).click();
+    await expect(page.getByRole("heading", {name:/Schematic editor .* RPI-RP2350A-MINIMAL_R4-S1/})).toBeVisible();
 });

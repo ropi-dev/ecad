@@ -392,23 +392,23 @@ function convert(source: string): KiCadImportResult {
 			}
 		}
 		const texts: EditorSymbol["texts"] = [];
+		const childOverrides: EditorSymbol["childOverrides"] = {};
 		for (const prop of nodes(instance, "property")) {
 			if (hidden(prop) || !prop[2]) continue;
 			const at = world(numbers(prop, "at")),
 				label = text(prop, [at[0] - sx, at[1] - sy], String(prop[2]));
-			if (
-				["Reference", "Value"].includes(String(prop[1])) &&
-				label.rotation === 0
-			)
+			if (["Reference", "Value"].includes(String(prop[1]))) {
+				const attribute = prop[1] === "Reference" ? "reference" : "value";
+				childOverrides[`attribute:${attribute}`] = { rotation: label.rotation };
 				texts.push({
-					attribute: prop[1] === "Reference" ? "reference" : "value",
+					attribute,
 					x: label.x,
 					y: label.y,
 					fontSize: label.fontSize,
 					horizontalAlign: label.horizontalAlign,
 					verticalAlign: label.verticalAlign,
 				});
-			else children.push(label);
+			} else children.push(label);
 		}
 		if (!children.length)
 			throw new Error(
@@ -428,6 +428,7 @@ function convert(source: string): KiCadImportResult {
 			definitionId: `kicad.${value(instance, "uuid") || shapes.length}`,
 			children,
 			texts,
+			childOverrides,
 			attributes: {
 				name: "",
 				reference: props.Reference ?? "",
