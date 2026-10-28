@@ -32,9 +32,12 @@ test("signal ground hides its pin name while keeping the terminal available for 
 	await expect.poll(async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes.map((shape: { kind: string }) => shape.kind)).toEqual(["symbol", "wire"]);
 	await expect.poll(async () => (await scene()).pinTexts).toEqual([]);
 	await page.keyboard.press("F6");
+	const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
 	for (let repeat = 0; repeat < 10; repeat++) {
-		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await canvas.press("+");
 	}
+	await expect(zoomIn).toBeDisabled();
+	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("800%");
 	await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 	await expect.poll(async () => (await scene()).symbolTexts.length).toBe(2);
 	const zoomed = await scene();

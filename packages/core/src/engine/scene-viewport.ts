@@ -27,6 +27,7 @@ import {
 } from "./navigation";
 import { createSceneDisplay, type ViewerScene } from "./scene";
 import { createSceneHover, type SceneTarget } from "./scene-hover";
+import type { Bounds } from "./types";
 import type { Viewer2DSnapshot, Viewer3DHandle } from "./viewport-types";
 
 export interface SceneSelection {
@@ -41,6 +42,7 @@ export interface SceneViewportOptions {
 	projection: "perspective" | "orthographic";
 	lockProjection?: boolean;
 	fitZoom?: number;
+	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	ariaLabel?: string;
 	canvasClassName?: string;
@@ -71,6 +73,7 @@ export function createSceneViewport(
 		projection,
 		lockProjection = false,
 		fitZoom = 1,
+		getFitBounds,
 		selectionEnabled = true,
 		ariaLabel = "3D model",
 		canvasClassName = "",
@@ -189,7 +192,7 @@ export function createSceneViewport(
 		}
 		camera.near = radius / 1000;
 		camera.far = radius * 1000;
-		let fittedDistance = 1;
+		let zoomReferenceDistance = 0;
 		let ready = false;
 		let pointer: Vector2 | null = null;
 		const raycaster = new Raycaster();
@@ -226,7 +229,7 @@ export function createSceneViewport(
 				output.render(scene, camera);
 				onOrientation?.(camera.quaternion);
 				const currentZoom =
-					fittedDistance / (visibleHeight() / (2 * halfFovTangent));
+					zoomReferenceDistance / (visibleHeight() / (2 * halfFovTangent));
 				onZoom?.(
 					Math.round(
 						Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom)) * 1e6,
@@ -283,7 +286,39 @@ export function createSceneViewport(
 				);
 			}
 		};
+		const selectionBounds = (target: SceneTarget) => {
+			const box = new Box3();
+			const planar = target.entry.planar;
+			if (planar && target.region !== undefined) {
+				for (const region of planar.regions.filter(
+					(region) => region.component === target.region,
+				)) {
+					box.expandByPoint(
+						new Vector3(region.bounds.minX, region.bounds.minY, 0),
+					);
+					box.expandByPoint(
+						new Vector3(region.bounds.maxX, region.bounds.maxY, 0),
+					);
+				}
+				box.applyMatrix4(target.entry.object.matrixWorld);
+			} else box.setFromObject(target.mesh);
+			return box;
+		};
 		const fit = () => {
+			const customBounds = getFitBounds?.();
+			const selectedBounds = customBounds
+				? new Box3(
+						new Vector3(customBounds.minX, customBounds.minY, 0),
+						new Vector3(customBounds.maxX, customBounds.maxY, 0),
+					)
+				: selected
+					? selectionBounds(selected)
+					: null;
+			const fitBounds =
+				selectedBounds && !selectedBounds.isEmpty() ? selectedBounds : bounds;
+			const selectionDistanceScale = fitBounds === selectedBounds ? 2 : 1;
+			const fitSphere = fitBounds.getBoundingSphere(new Sphere());
+			const fitRadius = Math.max(fitSphere.radius, 0.001);
 			const halfFov = Math.atan(
 				halfFovTangent *
 					Math.min(
@@ -298,32 +333,35 @@ export function createSceneViewport(
 				.normalize();
 			if (topView) direction.set(0, 0, 1);
 			else if (!direction.lengthSq()) direction.set(1, -1, 0.8).normalize();
-			controls.target.copy(sphere.center);
+			controls.target.copy(fitSphere.center);
 			// A flat editor sheet fits its rectangle, with room for rulers and controls.
 			const viewportWidth = Math.max(element.clientWidth, 1);
 			const viewportHeight = Math.max(element.clientHeight, 1);
-			const sheetSize = bounds.getSize(new Vector3());
+			const sheetSize = fitBounds.getSize(new Vector3());
 			const fitDistance =
 				topView && lockProjection
 					? Math.max(
-							(sheetSize.y * viewportHeight) /
+							(Math.max(sheetSize.y, 0.001) * viewportHeight) /
 								Math.max(viewportHeight - 144, 1),
-							(sheetSize.x * viewportHeight) / Math.max(viewportWidth - 144, 1),
+							(Math.max(sheetSize.x, 0.001) * viewportHeight) /
+								Math.max(viewportWidth - 144, 1),
 						) /
 						(2 * halfFovTangent)
-					: (radius / Math.sin(halfFov)) * 1.3;
+					: (fitRadius / Math.sin(halfFov)) * 1.3;
 			camera.position
-				.copy(sphere.center)
+				.copy(fitSphere.center)
 				.addScaledVector(
 					direction,
-					fitDistance / (Number.isFinite(fitZoom) && fitZoom > 0 ? fitZoom : 1),
+					(fitDistance * selectionDistanceScale) /
+						(Number.isFinite(fitZoom) && fitZoom > 0 ? fitZoom : 1),
 				);
-			fittedDistance = camera.position.distanceTo(controls.target);
-			controls.minDistance = fittedDistance / MAX_ZOOM;
-			controls.maxDistance = fittedDistance / MIN_ZOOM;
+			const distance = camera.position.distanceTo(controls.target);
+			if (zoomReferenceDistance === 0) zoomReferenceDistance = distance;
+			controls.minDistance = zoomReferenceDistance / MAX_ZOOM;
+			controls.maxDistance = zoomReferenceDistance / MIN_ZOOM;
 			if (camera instanceof OrthographicCamera) {
 				camera.zoom = 1;
-				setOrthographicBounds(camera, 2 * fittedDistance * halfFovTangent);
+				setOrthographicBounds(camera, 2 * distance * halfFovTangent);
 			}
 			controls.update();
 			schedule();
@@ -481,21 +519,8 @@ export function createSceneViewport(
 			);
 			selected = hover?.getTarget() ?? null;
 			if (selected) {
-				const box = new Box3();
+				const box = selectionBounds(selected);
 				const planar = selected.entry.planar;
-				if (planar && selected.region !== undefined) {
-					for (const region of planar.regions.filter(
-						(region) => region.component === selected?.region,
-					)) {
-						box.expandByPoint(
-							new Vector3(region.bounds.minX, region.bounds.minY, 0),
-						);
-						box.expandByPoint(
-							new Vector3(region.bounds.maxX, region.bounds.maxY, 0),
-						);
-					}
-					box.applyMatrix4(selected.entry.object.matrixWorld);
-				} else box.setFromObject(selected.mesh);
 				const dimensions = box.getSize(new Vector3());
 				onSelection?.({
 					name: selected.mesh.name || selected.entry.object.name,

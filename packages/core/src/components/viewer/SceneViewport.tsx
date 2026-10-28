@@ -37,6 +37,7 @@ export interface SceneViewportProps {
 	lockProjection?: boolean;
 	/** Magnification applied to the fitted view that defines 100% zoom. */
 	fitZoom?: number;
+	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	interactionHint?: string;
 	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
@@ -58,6 +59,7 @@ export function SceneViewport({
 	projection = "perspective",
 	lockProjection = false,
 	fitZoom = 1,
+	getFitBounds,
 	selectionEnabled = true,
 	interactionHint,
 	gridBounds,
@@ -87,6 +89,7 @@ export function SceneViewport({
 		rulers.current?.update(snapshot);
 		onChange?.(snapshot);
 	});
+	const readFitBounds = useEffectEvent(() => getFitBounds?.() ?? null);
 	const reportReady = useEffectEvent((ready: boolean) => {
 		setControlsReady(ready);
 		onReady?.(ready);
@@ -129,6 +132,7 @@ export function SceneViewport({
 						projection: currentProjection.current,
 						lockProjection,
 						fitZoom,
+						getFitBounds: readFitBounds,
 						selectionEnabled,
 						ariaLabel: interactionHint
 							? `${ariaLabel}. ${interactionHint}`
