@@ -215,7 +215,11 @@ function displayShape(
 		const sine = Math.sin(shape.rotation);
 		display.children = (["name", "number"] as const).flatMap((attribute) => {
 			const text = shape[attribute];
-			if (shape.showLabels === false || !text) return [];
+			const visible =
+				(attribute === "name" ? shape.showName : shape.showNumber) ??
+				shape.showLabels ??
+				true;
+			if (!visible || !text) return [];
 			const leadNumber =
 				(shape.length !== undefined || shape.labelOffset !== undefined) &&
 				attribute === "number";

@@ -33,5 +33,15 @@
     "benchmark_after": "named-nets-5000-after.json",
     "performance_scope": "Focused Node 5000-wire benchmark only. No full browser/performance suite rerun; slot required.",
     "browser_followup": "CI Connections toolbar expectation updated from two to four tools, with explicit name assertions. All four Box tests passed locally; 10 other toolbar cases passed before the assertion fix, and the corrected toolbar case passed in a focused rerun. Old Box CI failure timed out during screenshot, no timeout increase."
+  },
+  "main_integration": {
+    "base": "2e6f82ca2852fcfe519189d037c87541701b7edd",
+    "includes": [
+      "pin visibility #32",
+      "schematic SVG/PNG export #31"
+    ],
+    "conflicts": "Retained both appended performance scenarios, budgets and documentation. Code APIs merged cleanly; organized Editor2D imports.",
+    "checks": "49 focused named-net, CLI/MCP, pin visibility and export unit tests passed; 24 browser cases passed; repository typecheck passed. Includes Box, toolbar17+Connections4, native standalone/child pin SVG/PNG export, named label editing and pin persistence.",
+    "benchmarks": "No full benchmark rerun, per coordinator clearance."
   }
 }

@@ -44,6 +44,7 @@ import {
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
+import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import {
 	parseSymbolFile,
@@ -1493,6 +1494,12 @@ function EditorCanvas({
 							}}
 							extraControls={
 								<fieldset aria-label="Drawing tools" className="contents">
+									<DrawingExport
+										shapes={shapes}
+										sheet={sheet}
+										label={drawingName || "Schematic drawing"}
+										disabled={!ready}
+									/>
 									<ToolbarGroup
 										label="History tools"
 										icon={HistoryIcon}
@@ -1812,6 +1819,13 @@ function EditorCanvas({
 							: undefined
 					}
 					onCreateSymbol={isSymbol ? undefined : () => setCreatingSymbol(true)}
+					onPinVisibilityChange={(attribute, value) => {
+						if (selected.length === 1 && selected[0].kind === "pin")
+							commitReplacements(
+								[{ ...selected[0], [attribute]: value }],
+								`Change pin ${attribute}`,
+							);
+					}}
 					onPinAttributeChange={(attribute, value) => {
 						if (selected.length === 1 && selected[0].kind === "pin")
 							commitReplacements(
@@ -1924,6 +1938,13 @@ function EditorCanvas({
 								onTextAlignmentChange: (alignment: TextAlignment) => {
 									if (selectedChild.shape.kind === "text")
 										editChild({ ...selectedChild.shape, ...alignment });
+								},
+								onPinVisibilityChange: (
+									attribute: "showName" | "showNumber",
+									value: boolean,
+								) => {
+									if (selectedChild.shape.kind === "pin")
+										editChild({ ...selectedChild.shape, [attribute]: value });
 								},
 								onPinAttributeChange: (
 									attribute: "name" | "number",

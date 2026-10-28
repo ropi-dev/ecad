@@ -99,6 +99,10 @@ interface SelectionAttributesProps {
 	onTextChange: (text: string) => void;
 	onElectricalChange?: (role: "net" | "supply" | undefined) => void;
 	onTextAlignmentChange: (alignment: TextAlignment) => void;
+	onPinVisibilityChange: (
+		attribute: "showName" | "showNumber",
+		value: boolean,
+	) => void;
 	onPinAttributeChange: (attribute: "name" | "number", value: string) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
@@ -125,6 +129,7 @@ function SelectionAttributesPanel({
 	onLockChange,
 	onSymbolAttributeChange,
 	onPinAttributeChange,
+	onPinVisibilityChange,
 	onCreateSymbol,
 	onEditSymbol,
 	onTextChange,
@@ -263,6 +268,29 @@ function SelectionAttributesPanel({
 									}
 								/>,
 							],
+						)
+					: []),
+				...(single.kind === "pin"
+					? (["showName", "showNumber"] as const).map(
+							(attribute): [string, ReactNode] => {
+								const label =
+									attribute === "showName" ? "Show name" : "Show number";
+								return [
+									label,
+									<input
+										key={attribute}
+										type="checkbox"
+										aria-label={label}
+										checked={single[attribute] ?? single.showLabels ?? true}
+										onChange={(event) =>
+											onPinVisibilityChange(
+												attribute,
+												event.currentTarget.checked,
+											)
+										}
+									/>,
+								];
+							},
 						)
 					: []),
 				...(symbol

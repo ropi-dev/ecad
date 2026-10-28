@@ -115,8 +115,10 @@ function validateShape(shape: EditorShape) {
 		invalid("Pins require a number string.");
 	if (
 		shape.kind === "pin" &&
-		shape.showLabels !== undefined &&
-		typeof shape.showLabels !== "boolean"
+		(["showLabels", "showName", "showNumber"] as const).some(
+			(field) =>
+				shape[field] !== undefined && typeof shape[field] !== "boolean",
+		)
 	)
 		invalid("Pin label visibility must be a boolean.");
 	if (
@@ -275,7 +277,9 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 						shape.number === other.number &&
 						shape.length === other.length &&
 						shape.labelOffset === other.labelOffset &&
-						shape.showLabels === other.showLabels)) &&
+						shape.showLabels === other.showLabels &&
+						shape.showName === other.showName &&
+						shape.showNumber === other.showNumber)) &&
 				(shape.kind !== "symbol" ||
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&

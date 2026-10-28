@@ -1,6 +1,13 @@
 export const budgets = {
 	"named-net-connectivity": { connectivityP95Ms: 150 },
 	"editor-named-nets": { interactionP95Ms: 750, domNodes: 1800, scriptBytes: 3_000_000, frameP95Ms: 500 },
+
+	"schematic-export": {
+		exportSvgMs: 5000,
+		exportPngMs: 15000,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+	},
 	"cli-drawing": {
 		startupMs: 500,
 		placeMs: 3000,
@@ -37,6 +44,12 @@ export const budgets = {
 	},
 	"editor-pin-leads": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
 	"editor-pin-labels": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
+	"editor-pin-visibility": {
 		interactionP95Ms: 750,
 		domNodes: 1500,
 		scriptBytes: 3_000_000,

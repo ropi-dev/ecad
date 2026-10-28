@@ -41,6 +41,8 @@ export interface PinShape extends ShapeGeometry {
 	length?: number;
 	labelOffset?: number;
 	showLabels?: boolean;
+	showName?: boolean;
+	showNumber?: boolean;
 }
 
 export interface EditorSymbol extends ShapeGeometry {
@@ -71,6 +73,8 @@ export type SymbolChildOverride = Partial<
 			name: string;
 			number: string;
 			showLabels: boolean;
+			showName: boolean;
+			showNumber: boolean;
 			length: number;
 			locked: boolean;
 		}
