@@ -1,4 +1,10 @@
 export const budgets = {
+	"schematic-export": {
+		exportSvgMs: 5000,
+		exportPngMs: 15000,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+	},
 	"cli-drawing": {
 		startupMs: 500,
 		placeMs: 3000,
