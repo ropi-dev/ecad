@@ -28,6 +28,7 @@ function AttributeInput({
 	value,
 	unit = "mm",
 	positive = false,
+	nonNegative = false,
 	step = "any",
 	onChange,
 }: {
@@ -35,6 +36,7 @@ function AttributeInput({
 	value: number | "";
 	unit?: string;
 	positive?: boolean;
+	nonNegative?: boolean;
 	step?: string;
 	onChange: (value: number) => void;
 }) {
@@ -52,7 +54,7 @@ function AttributeInput({
 				ref={inputRef}
 				type="number"
 				aria-label={label}
-				min={positive ? 0 : undefined}
+				min={positive || nonNegative ? 0 : undefined}
 				step={step}
 				title={step === "90" ? "Angle in 90° increments" : undefined}
 				placeholder="Mixed"
@@ -64,6 +66,7 @@ function AttributeInput({
 					if (
 						Number.isFinite(next) &&
 						(!positive || next > 0) &&
+						(!nonNegative || next >= 0) &&
 						(step !== "90" || next % 90 === 0)
 					) {
 						if (next !== value && next !== displayValue) onChange(next);
@@ -208,13 +211,19 @@ function SelectionAttributesPanel({
 				key={`${single?.id}:${attribute}`}
 				label={label}
 				value={value}
+				nonNegative={attribute === "length"}
 				positive={
-					attribute !== "x" && attribute !== "y" && attribute !== "angle"
+					attribute !== "x" &&
+					attribute !== "y" &&
+					attribute !== "angle" &&
+					attribute !== "length"
 				}
 				unit={attribute === "angle" ? "°" : "mm"}
 				step={
 					attribute === "angle" &&
-					(single?.kind === "wire" || single?.kind === "symbol")
+					(single?.kind === "wire" ||
+						single?.kind === "symbol" ||
+						single?.kind === "pin")
 						? "90"
 						: single?.kind === "text" &&
 								(attribute === "x" || attribute === "y")
@@ -276,7 +285,10 @@ function SelectionAttributesPanel({
 					single.y,
 				),
 				...(single.kind === "pin"
-					? []
+					? [
+							editable("Lead length", "length", single.length ?? 0),
+							editable("Angle", "angle", (single.rotation * 180) / Math.PI),
+						]
 					: symbol
 						? [
 								...(boxBorder(symbol)
@@ -505,7 +517,7 @@ function SelectionAttributesPanel({
 						: isSymbolChild
 							? "Drag to move this item. Size and appearance edits apply to this instance."
 							: single?.kind === "pin"
-								? "Drag to move the connection point."
+								? "Drag the pin or lead to move it."
 								: "Drag to move; drag handles to resize."}{" "}
 					Arrow keys move {snapStep || 1} mm; Shift + arrows move{" "}
 					{(snapStep || 1) * 10} mm when the drawing is focused.

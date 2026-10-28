@@ -121,7 +121,7 @@ test("pin label visibility survives symbol and project round trips and rejects n
 	}
 });
 
-test("built-in ground and supply symbols hide pin labels while batteries and other parts keep theirs", () => {
+test("built-in ground and supply symbols hide pin labels while other parts use native pin labels", () => {
 	const supplies = new Set([
 		"signal-ground",
 		"vcc",
@@ -140,11 +140,39 @@ test("built-in ground and supply symbols hide pin labels while batteries and oth
 			assert.ok(pins[0].name);
 			assert.equal(pins[0].showLabels, false);
 			assert.deepEqual(labels, []);
+
 		} else {
 			assert.deepEqual(
 				labels.map((label) => label.text),
 				pins.flatMap((pin) => [pin.name, pin.number].filter(Boolean)),
 			);
 		}
+	}
+});
+
+test("native pin names align with leads while numbers stay above them and survive saves", () => {
+	for (const labelOffset of [-2.5, 2.5]) {
+		const pin = { ...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }), kind: "pin" as const, name: "SWCLK", number: "24", length: undefined, labelOffset };
+		delete pin.length;
+		const symbol = createSymbolFromShapes(2, [pin]);
+		const file = parseSymbolFile(JSON.stringify(symbolFileFromSymbol(symbol)));
+		const restored = libraryDefinitions([file])[0].children[0];
+		assert.equal(restored.kind, "pin");
+		if (restored.kind !== "pin") throw new Error("Expected a pin");
+		assert.equal(restored.labelOffset, labelOffset);
+		assert.deepEqual(pinTerminals(restored), pinTerminals({ ...restored, labelOffset: undefined }));
+		const [display] = buildDrawingDisplay([pin], new Set()).shapes;
+		const [name, number] = display.children!;
+		const edge = name.x * display.width + (labelOffset < 0 ? name.width * display.width / 2 : -name.width * display.width / 2);
+		assert.ok(Math.abs(edge - labelOffset) < 1e-9);
+		assert.equal(name.y, 0);
+		assert.equal(Math.sign(number.x), Math.sign(labelOffset));
+		assert.ok(Math.abs(number.x * display.width) + number.width * display.width / 2 < Math.abs(labelOffset) - 0.5);
+		assert.ok((number.y - number.height / 2) * display.height > 0);
+		assert.ok((number.y + number.height / 2) * display.height < 2);
+		assert.equal(drawingShapeSchema.safeParse(restored).success, true);
+		assert.equal(drawingShapeSchema.safeParse({ ...restored, labelOffset: Infinity }).success, false);
+		assert.equal(drawingShapeSchema.safeParse({ ...restored, labelOffset: 1001 }).success, false);
+		assert.deepEqual(validateProjectDocument(JSON.parse(JSON.stringify({ shapes: [symbol], symbols: [file] }))), { shapes: [symbol], symbols: [file] });
 	}
 });

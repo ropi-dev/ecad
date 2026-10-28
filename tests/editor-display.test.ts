@@ -206,8 +206,9 @@ test("pin halos follow wire connections, disconnections, and coincident pins", (
 	assert.equal(buildDrawingDisplay([pin], new Set([pin.id])).halos[0].appearance, "selected");
 });
 
-test("pin labels show names and numbers upright on standalone pins, rotated symbols and previews", () => {
-	const pin = { ...drawShape(1, "pin", { x: 10, y: 0 }, { x: 10, y: 0 }), kind: "pin" as const, name: "VCC", number: "01" };
+test("legacy pin labels show names and numbers upright on standalone pins, rotated symbols and previews", () => {
+	const pin = { ...drawShape(1, "pin", { x: 10, y: 0 }, { x: 10, y: 0 }), kind: "pin" as const, name: "VCC", number: "01", length: undefined };
+	delete pin.length;
 	const symbol = { ...createSymbolFromShapes(2, [pin]), rotation: Math.PI / 2 };
 	const display = buildDrawingDisplay([pin, symbol], new Set([pin.id, symbol.id]), [symbol]);
 	for (const parent of [display.shapes[0], display.connections[0], display.previews[1]]) {

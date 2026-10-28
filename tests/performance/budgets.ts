@@ -33,6 +33,7 @@ export const budgets = {
 		scriptBytes: 3_000_000,
 		frameP95Ms: 500,
 	},
+	"editor-pin-leads": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
 	"editor-pin-labels": {
 		interactionP95Ms: 750,
 		domNodes: 1500,
@@ -102,7 +103,15 @@ export const budgets = {
 		scriptBytes: 3_000_000,
 		frameP95Ms: 500,
 	},
+	"microcontroller-symbols": {
+		thumbnailP95Ms: 100,
+		interactionP95Ms: 1500,
+		domNodes: 2500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"default-symbols": {
+		thumbnailP95Ms: 100,
 		interactionP95Ms: 1500,
 		domNodes: 2500,
 		scriptBytes: 3_000_000,

@@ -14,6 +14,7 @@ import {
 	PIN_RADIUS,
 	type ShapeKind,
 	selectionSize,
+	shapeBounds,
 	shapeCenter,
 	symbolShapes,
 	symbolTextPosition,
@@ -26,6 +27,8 @@ interface GeometrySize {
 	height: number;
 	lineWidth: number;
 	lineStyle?: LineStyle;
+	filled?: boolean;
+	length?: number;
 }
 
 export interface DrawingTransform {
@@ -46,7 +49,7 @@ export type DrawingGeometry =
 			children: (GeometrySize & DrawingTransform & { kind: ShapeKind })[];
 	  });
 
-export type DrawingAppearance = "stroke" | "pin" | "wire" | "selected";
+export type DrawingAppearance = "stroke" | "pin" | "wire" | "selected" | "fill";
 
 export interface DisplayShape extends DrawingTransform, TextAlignment {
 	key: string;
@@ -82,6 +85,9 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 			width,
 			height,
 			lineWidth,
+			...(shape.kind === "pin" && shape.length !== undefined
+				? { length: shape.length }
+				: {}),
 			...(isBasicShape(shape) && shape.lineStyle
 				? { lineStyle: shape.lineStyle }
 				: {}),
@@ -141,58 +147,119 @@ function displayShape(
 			: {}),
 		renderOrder,
 	};
+	const fillChildren =
+		shape.kind === "symbol" &&
+		shape.children.some((child) => isBasicShape(child) && child.filled)
+			? symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
+			: isBasicShape(shape) && shape.filled
+				? [shape]
+				: [];
+	const fills = fillChildren
+		.filter(
+			(child) => isBasicShape(child) && child.filled && child.kind !== "line",
+		)
+		.map((child) => ({
+			key: `${key}:fill:${child.id}`,
+			name: `fill ${shape.id}:${child.id}`,
+			geometry: {
+				...geometryFor(child),
+				filled: true,
+				lineWidth: 0,
+				lineStyle: undefined,
+			},
+			x: shape.kind === "symbol" ? child.x / shape.width : 0,
+			y: shape.kind === "symbol" ? child.y / shape.height : 0,
+			width: child.width / shape.width,
+			height: child.height / shape.height,
+			rotation: shape.kind === "symbol" ? child.rotation : 0,
+			appearance: "fill" as const,
+			renderOrder: renderOrder - 0.5,
+		}));
+	if (fills.length) display.children = fills;
 	if (shape.kind === "symbol") {
 		const labels = shape.texts
 			.filter((label) => shape.attributes[label.attribute])
 			.map((label) => ({ ...label, ...symbolTextPosition(shape, label) }));
-		display.children = symbolTextShapes(shape).map((text, index) => ({
-			...displayShape(
-				text,
-				`${key}:${labels[index].attribute}`,
-				`${labels[index].attribute} ${shape.id}`,
-				appearance,
-				renderOrder + 1,
-			),
-			x:
-				textCenter({
-					...text,
-					x: labels[index].x,
-					y: labels[index].y,
-					rotation: text.rotation - shape.rotation,
-				}).x / shape.width,
-			y:
-				textCenter({
-					...text,
-					x: labels[index].x,
-					y: labels[index].y,
-					rotation: text.rotation - shape.rotation,
-				}).y / shape.height,
-			width: text.width / shape.width,
-			height: text.height / shape.height,
-			rotation: uprightTextRotation(text.rotation) - shape.rotation,
-		}));
+		display.children = [
+			...fills,
+			...symbolTextShapes(shape).map((text, index) => ({
+				...displayShape(
+					text,
+					`${key}:${labels[index].attribute}`,
+					`${labels[index].attribute} ${shape.id}`,
+					appearance,
+					renderOrder + 1,
+				),
+				x:
+					textCenter({
+						...text,
+						x: labels[index].x,
+						y: labels[index].y,
+						rotation: text.rotation - shape.rotation,
+					}).x / shape.width,
+				y:
+					textCenter({
+						...text,
+						x: labels[index].x,
+						y: labels[index].y,
+						rotation: text.rotation - shape.rotation,
+					}).y / shape.height,
+				width: text.width / shape.width,
+				height: text.height / shape.height,
+				rotation: uprightTextRotation(text.rotation) - shape.rotation,
+			})),
+		];
 	}
 	if (shape.kind === "pin") {
-		const fontSize = 1.27;
 		const cosine = Math.cos(shape.rotation);
 		const sine = Math.sin(shape.rotation);
 		display.children = (["name", "number"] as const).flatMap((attribute) => {
 			const text = shape[attribute];
 			if (shape.showLabels === false || !text) return [];
+			const leadNumber =
+				(shape.length !== undefined || shape.labelOffset !== undefined) &&
+				attribute === "number";
+			const fontSize = leadNumber ? 1 : 1.27;
 			const width = Math.max(fontSize / 2, text.length * fontSize * 0.6);
 			const height = fontSize * 1.5;
-			const x = PIN_RADIUS + 0.5 + width / 2;
-			const y = attribute === "name" ? height / 2 : -height / 2;
+			const offset = shape.labelOffset ?? PIN_RADIUS + 0.5;
+			const x =
+				shape.length !== undefined
+					? leadNumber
+						? shape.length / 2
+						: shape.length + 0.5 + width / 2
+					: leadNumber
+						? (Math.sign(offset) * Math.max(0, Math.abs(offset) - 0.5)) / 2
+						: offset + (offset < 0 ? -width / 2 : width / 2);
+			const y =
+				shape.length !== undefined || shape.labelOffset !== undefined
+					? leadNumber
+						? height / 2 + 0.15
+						: 0
+					: attribute === "name"
+						? height / 2
+						: -height / 2;
+			const labelRotation =
+				uprightTextRotation(shape.rotation) - shape.rotation;
+			const localY =
+				shape.length !== undefined && Math.cos(labelRotation) < 0 ? -y : y;
 			return [
 				{
 					key: `${key}:${attribute}`,
 					name: `pin ${attribute} ${shape.id}`,
 					geometry: { kind: "text" as const, width, height, lineWidth: 0 },
-					x: (x * cosine + y * sine) / shape.width,
-					y: (-x * sine + y * cosine) / shape.height,
+					x:
+						shape.length !== undefined
+							? x / shape.width
+							: (x * cosine + y * sine) / shape.width,
+					y:
+						shape.length !== undefined
+							? localY / shape.height || 0
+							: (-x * sine + y * cosine) / shape.height,
 					width: width / shape.width,
 					height: height / shape.height,
-					rotation: -shape.rotation,
+					rotation:
+						shape.length !== undefined ? labelRotation : -shape.rotation,
 					appearance,
 					text,
 					pinLabel: true,
@@ -210,7 +277,10 @@ export function buildDrawingDisplay(
 	selectedIds: ReadonlySet<number>,
 	previews: EditorShape[] = [],
 ): DrawingDisplay {
-	const terminal = drawShape(0, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
+	const terminal = {
+		...drawShape(0, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }),
+		length: 0,
+	};
 	const junctions = wireJunctions(shapes);
 	const crossings = measurePerformance(
 		"editor.wire-crossings",
@@ -246,6 +316,16 @@ export function buildDrawingDisplay(
 				...shapeCenter(shape),
 				...selectionSize(shape),
 				rotation: shape.rotation,
+				...(shape.kind === "pin" && (shape.length ?? 0) > 0
+					? (() => {
+							const bounds = shapeBounds(shape);
+							return {
+								x: (bounds.minX + bounds.maxX) / 2,
+								y: (bounds.minY + bounds.maxY) / 2,
+								rotation: 0,
+							};
+						})()
+					: {}),
 				renderOrder: shapes.length + 1,
 			})),
 		terminals: openWireEnds(shapes).map(({ shape, point }) =>

@@ -9,7 +9,7 @@ import { generateDefaultSymbols, symbolCategories } from "../src/index.ts";
 test("default generation is deterministic and returns independent geometry and labels", () => {
 	const first = generateDefaultSymbols();
 	const second = generateDefaultSymbols();
-	assert.equal(first.length, 46);
+	assert.equal(first.length, 49);
 	assert.deepEqual(first, second);
 	assert.equal(new Set(first.map(({ file }) => file.id)).size, first.length);
 	assert.deepEqual(new Set(first.map(({ category }) => category)), new Set(symbolCategories));
@@ -68,7 +68,7 @@ test("CLI writes one portable file per symbol with attribution and refuses overw
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
 		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 46);
+		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 49);
 		for (const { file } of generateDefaultSymbols()) {
 			assert.deepEqual(JSON.parse(await readFile(join(output, `${file.id}.ecadsym`), "utf8")), file);
 		}
@@ -79,5 +79,33 @@ test("CLI writes one portable file per symbol with attribution and refuses overw
 		assert.deepEqual(JSON.parse(await readFile(join(output, "resistor.ecadsym"), "utf8")), generateDefaultSymbols()[0].file);
 	} finally {
 		await rm(output, { recursive: true, force: true });
+	}
+});
+
+test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pads", () => {
+	for (const [id, count, gpioCount, expected] of [
+		["rp2040", 57, 30, { 1: "IOVDD", 19: "TESTEN", 24: "SWCLK", 25: "SWDIO", 26: "RUN", 43: "ADC_AVDD", 45: "VREG_VOUT", 46: "USB_DM", 47: "USB_DP", 56: "QSPI_SS_N" }],
+		["rp2350a", 61, 30, { 6: "DVDD", 24: "SWCLK", 25: "SWDIO", 26: "RUN", 44: "ADC_AVDD", 47: "VREG_PGND", 48: "VREG_LX", 50: "VREG_FB", 51: "USB_DM", 52: "USB_DP", 60: "QSPI_SS_N" }],
+		["rp2350b", 81, 48, { 1: "GPIO4", 33: "SWCLK", 34: "SWDIO", 35: "RUN", 58: "GPIO47/ADC7", 59: "ADC_AVDD", 62: "VREG_PGND", 63: "VREG_LX", 65: "VREG_FB", 66: "USB_DM", 67: "USB_DP", 75: "QSPI_SS_N", 77: "GPIO0" }],
+	] as const) {
+		const { file, category } = generateDefaultSymbols().find(({ file }) => file.id === id)!;
+		assert.equal(category, "Microcontrollers");
+		assert.equal(file.prefix, "U");
+		const pins = file.shapes.filter(shape => shape.kind === "pin");
+		assert.equal(pins.length, count);
+		assert.equal(file.shapes.length, count + 1);
+		assert.ok(pins.every(pin => pin.length === 2));
+		assert.equal(new Set(pins.map(pin => `${pin.x},${pin.y}`)).size, count);
+		for (const side of [-1, 1]) {
+			const ys = pins.filter(pin => Math.sign(pin.x) === side).map(pin => pin.y).sort((a, b) => a - b);
+			assert.ok(ys.slice(1).every((y, index) => y - ys[index] === 2));
+		}
+		assert.equal(file.shapes.filter(shape => shape.kind === "text").length, 0);
+		const names = new Map(pins.map(pin => [pin.number, pin.name]));
+		assert.deepEqual([...names.keys()].map(Number).sort((a, b) => a - b), Array.from({ length: count }, (_, i) => i + 1));
+		for (const [number, name] of Object.entries(expected)) assert.equal(names.get(number), name, `${id} pin ${number}`);
+		assert.equal(names.get(String(count)), "GND");
+		const gpios = pins.filter(pin => pin.name.startsWith("GPIO")).map(pin => Number(pin.name.match(/^GPIO(\d+)/)![1])).sort((a, b) => a - b);
+		assert.deepEqual(gpios, Array.from({ length: gpioCount }, (_, i) => i));
 	}
 });

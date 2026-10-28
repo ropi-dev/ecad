@@ -60,3 +60,11 @@ The additional source definitions are:
 - `Device:Speaker`
 - `Device:Buzzer`
 - `Device:Antenna`
+
+The microcontroller definitions adapt `MCU_RaspberryPi:RP2040`,
+`MCU_RaspberryPi:RP2350A`, and `MCU_RaspberryPi:RP2350B` from the KiCad
+library contributors at commit `c2457f8bcea241d7b85c34ab025fe52315febd2f`:
+https://gitlab.com/kicad/libraries/kicad-symbols/-/tree/c2457f8bcea241d7b85c34ab025fe52315febd2f/MCU_RaspberryPi.kicad_symdir
+These definitions preserve package pin numbers and exposed ground pads. ECAD
+separates stacked supply pins, arranges GPIO and other pins in two columns,
+and preserves native pin names and numbers. QSPI_SS_N denotes active-low QSPI_SS.
