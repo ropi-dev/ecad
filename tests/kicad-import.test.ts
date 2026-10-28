@@ -30,7 +30,7 @@ test('RP2350A imports all instances, terminal positions, values, wires and visib
  assert.equal(result.shapes.filter(s=>s.kind==='circle').length,83);
  assert.ok(result.report.warnings.some(w=>w.includes('embedded_files')));
  assert.ok(result.report.metadata.some(n=>n[0]==='lib_symbols'));
- assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,622);
+ assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,663);
 });
 
 const fixture = (extra: string, at='10 20 0', mirror='') => `(kicad_sch (version 20250114) (paper "A4") (lib_symbols (symbol "Test" (symbol "Test_1_1" (pin input line (at 2 3 0) (length 2) (name "IN") (number "01"))))) (symbol (lib_id "Test") (at ${at}) ${mirror} (unit 1) (uuid "test") (property "Reference" "X1" (at 10 20 0) (effects hide))) ${extra})`;
@@ -84,5 +84,52 @@ test('imported pin labels use native independent fields and preserve all visibil
  const hidden = pinVisibilitySource.replaceAll('(pin input line (at -8 0 0)', '(pin input line hide (at -8 0 0)');
  for(const hiddenSymbol of importKiCadSchematic(hidden).shapes) {
   assert.equal(hiddenSymbol.kind,'symbol');if(hiddenSymbol.kind==='symbol') assert.deepEqual(hiddenSymbol.children.map(p=>p.kind==='pin'&&[p.showName,p.showNumber]),[[false,false]]);
+ }
+});
+
+test('native net and supply anchors reproduce all independently derived RP2350A source pin groups', async () => {
+ const {referenceNetGroups,sortNetGroups} = await import('./fixtures/kicad/reference-nets.ts');
+ const result=importKiCadSchematic(source);
+ const oracle=JSON.parse(readFileSync(new URL('./fixtures/kicad/source-nets.json',import.meta.url),'utf8'));
+ const actual=referenceNetGroups(result.shapes);
+ assert.deepEqual(actual,sortNetGroups(oracle));
+ assert.equal(actual.filter(group=>group.names.length).length,51);
+ assert.equal(actual.filter(group=>!group.names.length).length,5);
+ assert.equal(actual.flatMap(group=>group.pins).length,231);
+ const labels=result.shapes.filter(shape=>shape.kind==='text').filter(shape=>shape.electrical==='net');
+ assert.deepEqual(labels.map(shape=>({text:shape.text,x:shape.x,y:shape.y})),nodes(parseSExpr(source),'label').map(label=>{const at=node(label,'at');return {text:String(label[1]),x:Number(at[1])-210,y:148.5-Number(at[2])};}));
+ assert.equal(labels.length,94);
+ const supplies=result.shapes.filter(shape=>shape.kind==='text'&&shape.electrical==='supply');
+ assert.equal(supplies.length,41);
+ for(const supply of result.report.supplies) {
+  const symbol=result.shapes.find(shape=>shape.kind==='symbol'&&shape.attributes.reference===supply.reference);
+  assert.ok(symbol&&symbol.kind==='symbol');
+  const pin=symbol.children.find(child=>child.kind==='pin');assert.ok(pin);
+  assert.equal(supply.x,symbol.x+pin.x);assert.equal(supply.y,symbol.y+pin.y);
+ }
+ const reopened=validateProjectDocument(JSON.parse(JSON.stringify({shapes:result.shapes,symbols:[]})));
+ assert.deepEqual(referenceNetGroups(reopened.shapes),actual);
+});
+
+test('imported drawing exports native pin visibility, electrical labels and rotated bound attributes', async () => {
+ const {exportDrawingSvg} = await import('#/drawing/export.ts');
+ const {pinVisibilitySource,visibilityCases} = await import('./fixtures/kicad/pin-visibility.ts');
+ const options={width:2400,height:1600,area:'sheet' as const,background:'white' as const,sheet:{width:420,height:297}};
+ const shapes=importKiCadSchematic(source).shapes;
+ const saved=JSON.stringify(shapes);
+ const svg=exportDrawingSvg(shapes,options);
+ for(const shape of shapes) assert.ok(svg.includes(`data-name="${shape.kind} ${shape.id}"`));
+ assert.doesNotMatch(svg,/NaN|Infinity/);
+ assert.equal(JSON.stringify(shapes),saved);
+ const rotated=importKiCadSchematic(fixture('').replace('(property "Reference" "X1" (at 10 20 0) (effects hide))','(property "Reference" "U1" (at 12 18 90)) (property "Value" "Original" (at 14 18 90))')).shapes[0];
+ assert.equal(rotated.kind,'symbol');if(rotated.kind==='symbol') {
+  const edited=exportDrawingSvg([{...rotated,attributes:{...rotated.attributes,reference:'U2',value:'Changed'}}],options);
+  assert.match(edited,/>U2<\/text>/);assert.match(edited,/>Changed<\/text>/);assert.doesNotMatch(edited,/>Original<\/text>/);
+ }
+ const pins=importKiCadSchematic(pinVisibilitySource).shapes;
+ for(const [index,visibility] of visibilityCases.entries()) {
+  const single=exportDrawingSvg([pins[index]],options);
+  assert.equal(single.includes(`data-name="pin name 1"`),visibility.showName);
+  assert.equal(single.includes(`data-name="pin number 1"`),visibility.showNumber);
  }
 });

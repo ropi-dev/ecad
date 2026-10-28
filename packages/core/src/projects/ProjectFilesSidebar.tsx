@@ -173,7 +173,7 @@ export function ProjectFilesSidebar() {
 			{importReport && (
 				<output className="fixed bottom-4 right-4 z-50 max-w-sm rounded border border-white/20 bg-[#191c22] p-3 text-xs shadow-lg">
 					<span className="block">
-						Imported KiCad drawing. Net labels are visual only. Review
+						Imported KiCad drawing with electrical net and supply names. Review
 						conversion limits and source metadata in the report.
 					</span>
 					<button

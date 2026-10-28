@@ -29,6 +29,7 @@ export interface KiCadImportReport {
 		properties: Record<string, string>;
 	}[];
 	labels: { kind: string; text: string; x: number; y: number }[];
+	supplies: { reference: string; text: string; x: number; y: number }[];
 	warnings: string[];
 	counts: Record<string, number>;
 }
@@ -131,7 +132,7 @@ function convert(source: string): KiCadImportResult {
 		return [a[0] - sheet[0] / 2, sheet[1] / 2 - a[1]];
 	};
 	const warnings = new Set<string>([
-		"Net labels and power names are visible text only. Matching names do not connect separate wires.",
+		"Net names apply throughout this drawing. KiCad hierarchical and local power scopes are not represented.",
 		"Pin electrical types, footprints, simulation settings, and other source metadata are retained in the import report, not applied to electrical analysis.",
 		"Pin names and numbers use native visibility fields. KiCad label placement, font styling and overbars are approximated.",
 		"No-connect markers are graphics only. Wire and pin connectivity uses ECAD geometry. Hierarchical sheets and buses are not imported.",
@@ -144,6 +145,7 @@ function convert(source: string): KiCadImportResult {
 		metadata: [],
 		components: [],
 		labels: [],
+		supplies: [],
 		warnings: [],
 		counts: {},
 	};
@@ -184,6 +186,7 @@ function convert(source: string): KiCadImportResult {
 		nodes(node(root, "lib_symbols"), "symbol").map((n) => [String(n[1]), n]),
 	);
 	const shapes: EditorShape[] = [];
+	const supplies: TextShape[] = [];
 	const add = (s: EditorShape) => shapes.push({ ...s, id: shapes.length + 1 });
 	for (const instance of nodes(root, "symbol")) {
 		const libraryId = value(instance, "lib_id");
@@ -403,7 +406,36 @@ function convert(source: string): KiCadImportResult {
 				value: props.Value ?? "",
 			},
 		});
+		if (nodes(definition, "power").length && props.Value) {
+			if (libraryId.split(":").at(-1) === "PWR_FLAG") {
+				warnings.add(
+					"Power flags retain their geometry but do not declare a named supply.",
+				);
+			} else {
+				const terminals = children.filter((child) => child.kind === "pin");
+				if (terminals.length !== 1)
+					throw new Error(
+						`Power symbol ${libraryId} must have exactly one terminal.`,
+					);
+				const pin = terminals[0];
+				const at: XY = [sx + pin.x, sy + pin.y];
+				const property = nodes(instance, "property").find(
+					(prop) => prop[1] === "Value",
+				) ?? ["text", props.Value];
+				supplies.push({
+					...text(property, at, props.Value),
+					electrical: "supply",
+				});
+				report.supplies.push({
+					reference: props.Reference ?? "",
+					text: props.Value,
+					x: at[0],
+					y: at[1],
+				});
+			}
+		}
 	}
+	for (const supply of supplies) add(supply);
 	for (const wire of nodes(root, "wire")) {
 		const pts = nodes(node(wire, "pts"), "xy").map((p) =>
 			world(p.slice(1).map(Number)),
@@ -428,7 +460,10 @@ function convert(source: string): KiCadImportResult {
 	for (const kind of ["label", "global_label", "hierarchical_label", "text"])
 		for (const label of nodes(root, kind)) {
 			const at = world(numbers(label, "at"));
-			add(text(label, at, String(label[1])));
+			add({
+				...text(label, at, String(label[1])),
+				...(kind === "text" ? {} : { electrical: "net" as const }),
+			});
 			if (kind !== "text")
 				report.labels.push({
 					kind,
