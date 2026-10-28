@@ -49,6 +49,7 @@ const button = `inline-flex h-7 items-center justify-center gap-1.5 rounded text
 const menuItem =
 	"flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-xs outline-none data-[highlighted]:bg-white/10 data-[highlighted]:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-40";
 const importTypes = [
+	["kicad", "KiCad schematic", CircuitBoard, ".kicad_sch"],
 	["symbol", "symbol", CircuitBoard, ".ecadsym,.json"],
 	["gerber", "Gerber", Layers, undefined],
 	["step", "STEP", Box, ".step,.stp"],
@@ -74,6 +75,7 @@ export function ProjectFilesSidebar() {
 	const [page, setPage] = useState(0);
 	const [importing, setImporting] = useState(false);
 	const [error, setError] = useState("");
+	const [importReport, setImportReport] = useState("");
 	const [creatingFile, setCreatingFile] = useState<"drawing" | "symbol" | null>(
 		null,
 	);
@@ -144,11 +146,63 @@ export function ProjectFilesSidebar() {
 			setImporting(false);
 		}
 	}
+	async function uploadSchematic(file: File) {
+		if (!project) return;
+		setImporting(true);
+		setError("");
+		setImportReport("");
+		try {
+			const { path, report } = await project.importSchematic(file);
+			setImportReport(JSON.stringify(report, null, 2));
+			project.selectEditorFile(path);
+			editorLink.current?.click();
+		} catch (cause) {
+			setError(
+				cause instanceof Error ? cause.message : "Unable to import schematic.",
+			);
+		} finally {
+			setImporting(false);
+		}
+	}
+
 	return (
 		<fieldset
 			aria-label="File sidebar"
 			className={`relative m-0 h-full min-w-0 shrink-0 border-0 border-r border-[#343b46] bg-[#191c22] p-0 text-[#c7d0dc] transition-[width] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "w-12" : "w-64 max-w-[calc(100vw-4rem)]"}`}
 		>
+			{importReport && (
+				<output className="fixed bottom-4 right-4 z-50 max-w-sm rounded border border-white/20 bg-[#191c22] p-3 text-xs shadow-lg">
+					<span className="block">
+						Imported KiCad drawing. Net labels are visual only. Review
+						conversion limits and source metadata in the report.
+					</span>
+					<button
+						type="button"
+						className={button}
+						onClick={() => {
+							const url = URL.createObjectURL(
+								new Blob([importReport], { type: "application/json" }),
+							);
+							const link = document.createElement("a");
+							link.href = url;
+							link.download = "kicad-import-report.json";
+							link.click();
+							setTimeout(() => URL.revokeObjectURL(url), 1000);
+						}}
+					>
+						Download import report
+					</button>
+					<button
+						type="button"
+						aria-label="Dismiss import report"
+						className={button}
+						onClick={() => setImportReport("")}
+					>
+						Dismiss
+					</button>
+				</output>
+			)}
+
 			<aside
 				id={panelId}
 				aria-label="Project files"
@@ -320,7 +374,7 @@ export function ProjectFilesSidebar() {
 											<Icon className="size-3.5 shrink-0" aria-hidden="true" />
 											<input
 												type="file"
-												multiple
+												multiple={kind !== "kicad"}
 												aria-label={`Add ${label} files`}
 												accept={accept}
 												disabled={
@@ -329,7 +383,10 @@ export function ProjectFilesSidebar() {
 												className="absolute inset-0 size-full cursor-pointer opacity-0"
 												onChange={(event) => {
 													const files = Array.from(event.target.files ?? []);
-													if (kind === "symbol") void library.upload(files);
+													if (kind === "kicad") {
+														if (files[0]) void uploadSchematic(files[0]);
+													} else if (kind === "symbol")
+														void library.upload(files);
 													else void upload(files, kind);
 													event.target.value = "";
 												}}

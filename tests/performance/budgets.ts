@@ -1,4 +1,5 @@
 export const budgets = {
+ "kicad-import": { importMs: 1500, interactionP95Ms: 5000, domNodes: 2000, scriptBytes: 3_000_000, frameP95Ms: 500 },
 	"cli-drawing": {
 		startupMs: 500,
 		placeMs: 3000,
