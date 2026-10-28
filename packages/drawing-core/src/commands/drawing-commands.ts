@@ -119,6 +119,26 @@ function validateShape(shape: EditorShape) {
 		typeof shape.showLabels !== "boolean"
 	)
 		invalid("Pin label visibility must be a boolean.");
+	if (
+		shape.kind === "pin" &&
+		shape.labelOffset !== undefined &&
+		(!Number.isFinite(shape.labelOffset) || Math.abs(shape.labelOffset) > 1000)
+	)
+		invalid(
+			"Pin label offsets must be finite and between -1000 and 1000 millimetres.",
+		);
+	if (
+		isBasicShape(shape) &&
+		shape.filled !== undefined &&
+		(typeof shape.filled !== "boolean" || shape.kind === "line")
+	)
+		invalid("Only area shapes accept a boolean fill.");
+	if (
+		shape.kind === "pin" &&
+		shape.length !== undefined &&
+		(!Number.isFinite(shape.length) || shape.length < 0 || shape.length > 1000)
+	)
+		invalid("Pin lead lengths must be between 0 and 1000 millimetres.");
 	if (shape.kind === "text") {
 		if (!validTextAlignment(shape)) invalid("Invalid text alignment.");
 		if (
@@ -240,11 +260,15 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 				(shape.locked ?? false) === (other.locked ?? false) &&
 				(!isBasicShape(shape) ||
 					(isBasicShape(other) &&
-						(shape.lineStyle ?? "solid") === (other.lineStyle ?? "solid"))) &&
+						(shape.lineStyle ?? "solid") === (other.lineStyle ?? "solid") &&
+						(shape.filled ?? false) === (other.filled ?? false))) &&
 				(shape.kind !== "pin" ||
 					(other.kind === "pin" &&
 						shape.name === other.name &&
-						shape.number === other.number)) &&
+						shape.number === other.number &&
+						shape.length === other.length &&
+						shape.labelOffset === other.labelOffset &&
+						shape.showLabels === other.showLabels)) &&
 				(shape.kind !== "symbol" ||
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&

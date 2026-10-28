@@ -26,6 +26,7 @@ interface ShapeGeometry extends Point {
 export type BasicShape = ShapeGeometry & {
 	kind: Exclude<ShapeKind, "text" | "pin" | "wire">;
 	lineStyle?: LineStyle;
+	filled?: boolean;
 };
 
 export type PrimitiveShape =
@@ -37,6 +38,8 @@ export interface PinShape extends ShapeGeometry {
 	kind: "pin";
 	name: string;
 	number: string;
+	length?: number;
+	labelOffset?: number;
 	showLabels?: boolean;
 }
 
@@ -68,6 +71,7 @@ export type SymbolChildOverride = Partial<
 			name: string;
 			number: string;
 			showLabels: boolean;
+			length: number;
 			locked: boolean;
 		}
 >;
@@ -442,7 +446,8 @@ export type ShapeAttribute =
 	| "radius"
 	| "angle"
 	| "fontSize"
-	| "lineWidth";
+	| "lineWidth"
+	| "length";
 
 /** Dimension edits keep the center fixed; circles always retain equal diameters. */
 export function editShapeAttribute(
@@ -453,7 +458,15 @@ export function editShapeAttribute(
 	if (!Number.isFinite(value)) return shape;
 	if (attribute === "x" || attribute === "y")
 		return { ...shape, [attribute]: value };
-	if (shape.kind === "pin" && attribute !== "lineWidth") return shape;
+	if (shape.kind === "pin") {
+		if (attribute === "length")
+			return value >= 0 && value <= 1000 ? { ...shape, length: value } : shape;
+		if (attribute === "angle")
+			return value % 90 === 0
+				? { ...shape, rotation: (value * Math.PI) / 180 }
+				: shape;
+		if (attribute !== "lineWidth") return shape;
+	}
 	if (attribute === "angle") {
 		// Wire drawing and junction movement require horizontal or vertical segments.
 		if (
@@ -739,6 +752,7 @@ export function drawShape(
 			kind,
 			name: "",
 			number: "",
+			length: 2,
 			...first,
 			width: 2 * PIN_RADIUS,
 			height: 2 * PIN_RADIUS,
@@ -778,7 +792,31 @@ export function drawShape(
 	};
 }
 
+export function pinLeadShape(pin: PinShape): BasicShape {
+	const length = pin.length ?? 0;
+	return {
+		...pin,
+		kind: "line",
+		x: pin.x + (Math.cos(pin.rotation) * length) / 2,
+		y: pin.y + (Math.sin(pin.rotation) * length) / 2,
+		width: length,
+		height: pin.lineWidth,
+	};
+}
+
 export function shapeBounds(shape: EditorShape): Bounds {
+	if (shape.kind === "pin" && (shape.length ?? 0) > 0) {
+		const length = shape.length ?? 0;
+		const endX = shape.x + Math.cos(shape.rotation) * length;
+		const endY = shape.y + Math.sin(shape.rotation) * length;
+		const radius = shape.lineWidth / 2;
+		return {
+			minX: Math.min(shape.x - PIN_RADIUS, endX - radius),
+			maxX: Math.max(shape.x + PIN_RADIUS, endX + radius),
+			minY: Math.min(shape.y - PIN_RADIUS, endY - radius),
+			maxY: Math.max(shape.y + PIN_RADIUS, endY + radius),
+		};
+	}
 	const center = shapeCenter(shape);
 	const height =
 		shape.kind === "wire" || shape.kind === "line"
@@ -797,6 +835,13 @@ export function shapeBounds(shape: EditorShape): Bounds {
 }
 
 export function selectionSize(shape: EditorShape) {
+	if (shape.kind === "pin" && (shape.length ?? 0) > 0) {
+		const bounds = shapeBounds(shape);
+		return {
+			width: bounds.maxX - bounds.minX + 4,
+			height: bounds.maxY - bounds.minY + 4,
+		};
+	}
 	const padding = isBoxSymbol(shape)
 		? 0
 		: shape.kind === "symbol" || shape.kind === "wire"
@@ -829,7 +874,11 @@ export function hitShape(
 	const dx = point.x - center.x;
 	const dy = point.y - center.y;
 	if (shape.kind === "pin")
-		return Math.hypot(dx, dy) <= Math.max(width / 2, tolerance);
+		return (
+			Math.hypot(dx, dy) <= Math.max(width / 2, tolerance) ||
+			((shape.length ?? 0) > 0 &&
+				hitShape(pinLeadShape(shape), point, tolerance))
+		);
 	const x = Math.abs(
 		dx * Math.cos(shape.rotation) + dy * Math.sin(shape.rotation),
 	);
@@ -862,7 +911,7 @@ export function containsSelection(shape: EditorShape, bounds: Bounds): boolean {
 	)
 		return false;
 	const own = shapeBounds(
-		shape.kind === "circle" || shape.kind === "pin"
+		shape.kind === "circle" || (shape.kind === "pin" && !shape.length)
 			? { ...shape, rotation: 0 }
 			: shape,
 	);
@@ -895,6 +944,11 @@ export function intersectsSelection(
 			)
 		);
 	const { width, height } = shape;
+	if (shape.kind === "pin" && (shape.length ?? 0) > 0)
+		return (
+			intersectsSelection(pinLeadShape(shape), bounds) ||
+			intersectsSelection({ ...shape, length: 0 }, bounds)
+		);
 	if (shape.kind === "circle" || shape.kind === "pin") {
 		const x = Math.max(bounds.minX, Math.min(bounds.maxX, shape.x));
 		const y = Math.max(bounds.minY, Math.min(bounds.maxY, shape.y));

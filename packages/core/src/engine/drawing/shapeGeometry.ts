@@ -160,7 +160,25 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		return new ShapeGeometry(outline).scale(1 / width, 1 / lineWidth, 1);
 	}
 	if (shape.kind === "text") return new PlaneGeometry(1, 1);
-	if (shape.kind === "pin") return new CircleGeometry(0.5, 32);
+	if (shape.kind === "pin") {
+		const dot = new CircleGeometry(0.5, 32);
+		if (!shape.length) return dot;
+		const lead = createShapeGeometry({
+			kind: "line",
+			width: shape.length,
+			height: shape.lineWidth,
+			lineWidth: shape.lineWidth,
+		})
+			.scale(shape.length, shape.lineWidth, 1)
+			.translate(shape.length / 2, 0, 0)
+			.scale(1 / shape.width, 1 / shape.height, 1);
+		try {
+			return mergeGeometries([dot, lead]) ?? new BufferGeometry();
+		} finally {
+			dot.dispose();
+			lead.dispose();
+		}
+	}
 	if (shape.kind === "pin-halo") return new RingGeometry(0.4, 0.5, 32);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();
@@ -201,7 +219,7 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		};
 	}
 	const outline = new Shape(contour(halfStroke));
-	if (halfStroke < inradius)
+	if (!shape.filled && halfStroke < inradius)
 		outline.holes.push(new Path(contour(-halfStroke).reverse()));
 	// Object scale continues to describe dimensions; only the stroke mesh changes.
 	return new ShapeGeometry(outline).scale(1 / width, 1 / height, 1);

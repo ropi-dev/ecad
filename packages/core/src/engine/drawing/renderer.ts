@@ -102,6 +102,9 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const stroke = own(
 			() => new MeshBasicMaterial({ color: "#76c4c0", depthTest: false }),
 		);
+		const fill = own(
+			() => new MeshBasicMaterial({ color: "#18282b", depthTest: false }),
+		);
 		const wire = own(
 			() => new MeshBasicMaterial({ color: "#ef8f9c", depthTest: false }),
 		);
@@ -112,7 +115,9 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			() => new LineBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
 		const materialFor = (display: DisplayShape) => {
-			const color = { stroke, pin: stroke, wire, selected }[display.appearance];
+			const color = { stroke, pin: stroke, wire, selected, fill }[
+				display.appearance
+			];
 			if (display.text === undefined) return color;
 			if (display.pinLabel) {
 				const entry = pinAtlas?.entries.get(display.text);

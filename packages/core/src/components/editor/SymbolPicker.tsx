@@ -2,12 +2,11 @@ import { symbolCategories } from "@ecad/default-symbols";
 import { Shapes } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMemo, useRef, useState } from "react";
+import { SymbolThumbnail } from "#/components/editor/SymbolThumbnail.tsx";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
-import { shapeBounds } from "#/drawing/shapes.ts";
-import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
-import { textCenter } from "#/drawing/text-alignment.ts";
-import { viewControlButtonClassName } from "../viewer/ViewControls3D";
+import { viewControlButtonClassName } from "#/components/viewer/ViewControls3D.tsx";
+import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
 export function SymbolPicker({
 	disabled,
@@ -65,6 +64,7 @@ export function SymbolPicker({
 			</Popover.Trigger>
 			<Popover.Portal>
 				<Popover.Content
+					data-symbol-picker=""
 					side="top"
 					sideOffset={8}
 					collisionPadding={12}
@@ -128,7 +128,7 @@ export function SymbolPicker({
 												setOpen(false);
 											}}
 										>
-											<SymbolPreview definition={definition} />
+											<SymbolThumbnail definition={definition} />
 											<span className="min-w-0">
 												<span className="block break-words text-sm">
 													{definition.name}
@@ -146,118 +146,5 @@ export function SymbolPicker({
 				</Popover.Content>
 			</Popover.Portal>
 		</Popover.Root>
-	);
-}
-
-function SymbolPreview({ definition }: { definition: SymbolDefinition }) {
-	if (!definition.children.length)
-		return (
-			<span
-				className="grid h-10 w-16 shrink-0 place-items-center text-xs text-[#9ba7b8]"
-				aria-hidden="true"
-			>
-				Empty
-			</span>
-		);
-	const symbol = createSymbol(0, definition, { x: 0, y: 0 });
-	const { width, height } = symbol;
-	const bounds = shapeBounds(symbol);
-	const padding = Math.max(0.5, Math.max(width, height) * 0.1);
-	// Coil arcs contain many short lines. One SVG path keeps their previews small.
-	const lines = definition.children
-		.filter((child) => child.kind === "wire" || child.kind === "line")
-		.map((child) => {
-			const dx = (Math.cos(child.rotation) * child.width) / 2;
-			const dy = (Math.sin(child.rotation) * child.width) / 2;
-			return `M ${child.x - dx} ${-child.y + dy} L ${child.x + dx} ${-child.y - dy}`;
-		})
-		.join(" ");
-	return (
-		<svg
-			viewBox={`${bounds.minX - padding} ${-bounds.maxY - padding} ${width + 2 * padding} ${height + 2 * padding}`}
-			className="h-10 w-16 shrink-0 text-[#76c4c0]"
-			aria-hidden="true"
-		>
-			{lines && (
-				<path
-					d={lines}
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="0.254"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				/>
-			)}
-			{definition.children
-				.filter((child) => child.kind !== "wire" && child.kind !== "line")
-				.map((child) => (
-					<g
-						key={child.id}
-						transform={`translate(${child.kind === "text" ? textCenter(child).x : child.x} ${-(child.kind === "text" ? textCenter(child).y : child.y)}) rotate(${(-child.rotation * 180) / Math.PI})`}
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="0.254"
-					>
-						{child.kind === "text" ? (
-							<text
-								fill="currentColor"
-								stroke="none"
-								fontFamily="Arial, sans-serif"
-								fontSize={child.fontSize}
-								textAnchor={
-									child.horizontalAlign === "right"
-										? "end"
-										: child.horizontalAlign === "center"
-											? "middle"
-											: "start"
-								}
-							>
-								{child.text
-									.replace(/\r\n?/g, "\n")
-									.split("\n")
-									.map((line, index) => (
-										<tspan
-											key={child.text
-												.split("\n")
-												.slice(0, index + 1)
-												.join("\n")}
-											x={
-												child.horizontalAlign === "right"
-													? child.width / 2
-													: child.horizontalAlign === "center"
-														? 0
-														: -child.width / 2
-											}
-											y={
-												-child.height / 2 +
-												child.fontSize +
-												index * child.fontSize * 1.25
-											}
-										>
-											{line}
-										</tspan>
-									))}
-							</text>
-						) : child.kind === "pin" || child.kind === "circle" ? (
-							<circle
-								r={child.width / 2}
-								fill={child.kind === "pin" ? "currentColor" : "none"}
-								stroke={child.kind === "pin" ? "none" : "currentColor"}
-							/>
-						) : child.kind === "triangle" ? (
-							<polygon
-								points={`${-child.width / 2},${child.height / 2} ${child.width / 2},${child.height / 2} 0,${-child.height / 2}`}
-							/>
-						) : (
-							<rect
-								x={-child.width / 2}
-								y={-child.height / 2}
-								width={child.width}
-								height={child.height}
-							/>
-						)}
-					</g>
-				))}
-		</svg>
 	);
 }

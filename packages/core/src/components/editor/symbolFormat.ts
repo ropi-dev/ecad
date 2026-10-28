@@ -41,6 +41,7 @@ const childOverrides = Schema.optional(
 			name: Schema.optional(Schema.String),
 			number: Schema.optional(Schema.String),
 			showLabels: Schema.optional(Schema.Boolean),
+			length: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
 			locked,
 			lineStyle,
 			...textAlignmentFields,
@@ -118,6 +119,7 @@ const shapeSchema = Schema.Union(
 	),
 	Schema.Struct({
 		kind: Schema.Literal("rectangle", "triangle"),
+		filled: Schema.optional(Schema.Boolean),
 		locked,
 		lineWidth,
 		lineStyle,
@@ -129,6 +131,7 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("circle"),
+		filled: Schema.optional(Schema.Boolean),
 		locked,
 		lineWidth,
 		lineStyle,
@@ -142,6 +145,9 @@ const shapeSchema = Schema.Union(
 		name: Schema.optional(Schema.String),
 		number: Schema.optional(Schema.String),
 		showLabels: Schema.optional(Schema.Boolean),
+		labelOffset: Schema.optional(coordinate),
+		length: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
+		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
 		lineWidth,
 		x: coordinate,
 		y: coordinate,

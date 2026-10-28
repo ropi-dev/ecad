@@ -9,6 +9,7 @@ export type SymbolPrimitive =
 			height: number;
 			rotation?: number;
 			locked?: boolean;
+			filled?: boolean;
 	  }
 	| {
 			kind: "text";
@@ -22,7 +23,17 @@ export type SymbolPrimitive =
 			verticalAlign?: "top" | "middle" | "bottom";
 	  }
 	| { kind: "circle"; x: number; y: number; radius: number }
-	| { kind: "pin"; x: number; y: number; name: string; showLabels?: boolean };
+	| {
+			kind: "pin";
+			x: number;
+			y: number;
+			name: string;
+			number?: string;
+			length?: number;
+			rotation?: number;
+			labelOffset?: number;
+			showLabels?: boolean;
+	  };
 
 export interface DefaultSymbolFile {
 	format: "ecad-symbol";
@@ -44,6 +55,7 @@ export const symbolCategories = [
 	"Power",
 	"Connectors",
 	"Amplifiers",
+	"Microcontrollers",
 	"Other components",
 	"Annotations",
 ] as const;
@@ -81,6 +93,7 @@ export type SourceShape =
 			y: number,
 			length: number,
 			direction: "U" | "D" | "L" | "R",
+			number?: string,
 	  ];
 
 export interface SourceSymbol {
@@ -92,6 +105,7 @@ export interface SourceSymbol {
 	value: string;
 	source: string;
 	rotation: number;
+	filled?: boolean;
 	showPinLabels?: boolean;
 	drawing: readonly SourceShape[];
 }

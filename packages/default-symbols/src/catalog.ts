@@ -1,9 +1,11 @@
 // Adapted from the KiCad symbol libraries, commit 4e17d7595f9691d45d97aea8ad64572652fb5bed.
 // Copyright KiCad library contributors. See ../LICENSE.md and ../NOTICE.md.
 // Coordinates and radii are in mils. Arcs use degrees, counterclockwise.
+import { microcontrollers } from "./microcontrollers.ts";
 import type { SourceSymbol } from "./types.ts";
 
 export const catalog: readonly SourceSymbol[] = [
+	...microcontrollers,
 	{
 		id: "resistor-us",
 		category: "Passives",

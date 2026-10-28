@@ -30,12 +30,14 @@ const geometryFields = {
 };
 
 export const rectangleInputSchema = z.strictObject({
+	filled: z.boolean().optional(),
 	...geometryFields,
 	lineStyle: z.enum(lineStyles).optional(),
 	width: geometryFields.width.positive(),
 });
 
 const primitiveInputSchema = z.strictObject({
+	filled: z.boolean().optional(),
 	...geometryFields,
 	lineStyle: z.enum(lineStyles).optional(),
 	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire"]),
@@ -46,6 +48,8 @@ const pinInputSchema = z.strictObject({
 	kind: z.literal("pin"),
 	name: z.string().default("").describe("Pin name, such as VCC or GND."),
 	number: z.string().default("").describe("Pin number, such as 1, 01 or A1."),
+	length: z.number().min(0).max(1000).optional(),
+	labelOffset: z.number().min(-1000).max(1000).optional(),
 	showLabels: z.boolean().optional(),
 });
 const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
@@ -75,6 +79,7 @@ export const symbolChildOverridesSchema = z.record(
 		name: z.string().optional(),
 		number: z.string().optional(),
 		showLabels: z.boolean().optional(),
+		length: z.number().min(0).max(1000).optional(),
 		locked: z.boolean().optional(),
 		lineStyle: z.enum(lineStyles).optional(),
 		...textAlignmentFields,

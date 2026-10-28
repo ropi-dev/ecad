@@ -49,6 +49,7 @@ function generate(source: SourceSymbol): DefaultSymbol {
 					width: Math.abs(x2 - x1) * MIL_TO_GRID,
 					height: Math.abs(y2 - y1) * MIL_TO_GRID,
 					rotation: source.rotation,
+					...(source.filled === undefined ? {} : { filled: source.filled }),
 				});
 				break;
 			}
@@ -75,13 +76,21 @@ function generate(source: SourceSymbol): DefaultSymbol {
 				break;
 			}
 			case "pin": {
-				const [, name, x, y, length, direction] = shape;
+				const [, name, x, y, length, direction, number] = shape;
 				const dx = direction === "R" ? length : direction === "L" ? -length : 0;
 				const dy = direction === "U" ? length : direction === "D" ? -length : 0;
-				line(x, y, x + dx, y + dy);
+				if (number === undefined) line(x, y, x + dx, y + dy);
 				shapes.push({
 					kind: "pin",
 					name,
+					...(number === undefined
+						? {}
+						: {
+								number,
+								length: length * MIL_TO_GRID,
+								rotation:
+									source.rotation + { R: 0, U: 90, L: 180, D: -90 }[direction],
+							}),
 					...point(x, y),
 					...(source.showPinLabels === undefined
 						? {}

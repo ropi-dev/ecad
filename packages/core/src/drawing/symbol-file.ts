@@ -116,6 +116,7 @@ export function symbolFileShapes(
 				y: shape.y,
 				width: shape.radius * 2,
 				height: shape.radius * 2,
+				...(shape.filled === undefined ? {} : { filled: shape.filled }),
 			};
 		if (shape.kind === "pin")
 			return {
@@ -123,6 +124,7 @@ export function symbolFileShapes(
 				...shape,
 				name: shape.name ?? "",
 				number: shape.number ?? "",
+				rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
 				width: 2 * PIN_RADIUS,
 				height: 2 * PIN_RADIUS,
 			};
@@ -208,6 +210,9 @@ export function symbolFileWithShapes(
 			const base = {
 				...(shape.locked === undefined ? {} : { locked: shape.locked }),
 				lineWidth: shape.lineWidth,
+				...(isBasicShape(shape) && shape.filled !== undefined
+					? { filled: shape.filled }
+					: {}),
 				...(isBasicShape(shape) && shape.lineStyle
 					? { lineStyle: shape.lineStyle }
 					: {}),
@@ -232,6 +237,17 @@ export function symbolFileWithShapes(
 					...position,
 					name: shape.name,
 					number: shape.number,
+					...(shape.length === undefined ? {} : { length: shape.length }),
+					...(shape.rotation === 0
+						? {}
+						: {
+								rotation:
+									(((((shape.rotation * 180) / Math.PI) % 360) + 540) % 360) -
+									180,
+							}),
+					...(shape.labelOffset === undefined
+						? {}
+						: { labelOffset: shape.labelOffset }),
 					...(shape.showLabels === undefined
 						? {}
 						: { showLabels: shape.showLabels }),
