@@ -140,6 +140,11 @@ function validateShape(shape: EditorShape) {
 	)
 		invalid("Pin lead lengths must be between 0 and 1000 millimetres.");
 	if (shape.kind === "text") {
+		if (
+			shape.electrical !== undefined &&
+			!["net", "supply"].includes(shape.electrical)
+		)
+			invalid("Invalid electrical label role.");
 		if (!validTextAlignment(shape)) invalid("Invalid text alignment.");
 		if (
 			typeof shape.text !== "string" ||
@@ -288,6 +293,7 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 				(shape.kind !== "text" ||
 					(other.kind === "text" &&
 						shape.text === other.text &&
+						shape.electrical === other.electrical &&
 						shape.fontSize === other.fontSize &&
 						shape.horizontalAlign === other.horizontalAlign &&
 						shape.verticalAlign === other.verticalAlign)) &&
@@ -523,6 +529,8 @@ export function createSymbolFromSelectionEffect(
 				);
 				if (selected.length !== captured.length)
 					invalid("A selected shape no longer exists.");
+				if (selected.some((shape) => shape.kind === "text" && shape.electrical))
+					invalid("Electrical labels must remain standalone drawing items.");
 				const primitives = selected.filter((shape) => shape.kind !== "symbol");
 				if (primitives.length !== selected.length)
 					invalid(

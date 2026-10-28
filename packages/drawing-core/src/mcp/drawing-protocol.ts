@@ -13,6 +13,7 @@ import {
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { DrawingStore } from "#/commands/drawing-store.ts";
+import { electricalNets } from "#/drawing/named-nets.ts";
 import {
 	drawingShapeSchema,
 	rectangleInputSchema,
@@ -96,6 +97,16 @@ export type DrawingEnvelope = z.infer<typeof drawingEnvelopeSchema>;
 
 const drawingStateSchema = z.strictObject({
 	shapes: z.array(drawingShapeSchema),
+	nets: z
+		.array(
+			z.strictObject({
+				names: z.array(z.string()),
+				wires: z.array(shapeId),
+				labels: z.array(shapeId),
+				pins: z.array(z.strictObject({ shapeId, pinId: shapeId })),
+			}),
+		)
+		.optional(),
 	nextShapeId: shapeId,
 	history: z.strictObject({
 		currentId: historyId,
@@ -189,6 +200,9 @@ export function executeDrawingOperation(
 			ok: true,
 			drawing: {
 				shapes: snapshot.shapes,
+				...(operation.type === "getDrawing"
+					? { nets: electricalNets(snapshot.shapes) }
+					: {}),
 				nextShapeId: snapshot.nextShapeId,
 				history: {
 					currentId: snapshot.history.currentId,

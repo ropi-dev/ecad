@@ -67,3 +67,27 @@ test("cli-drawing", async ({}, testInfo) => {
 		await drawing.close();
 	}
 });
+
+test("named-net-connectivity", async ({}, testInfo) => {
+	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { drawShape } = await import("#/drawing/shapes.ts");
+	const shapes = [
+		...Array.from({ length: 346 }, (_, index) => drawShape(index + 1, "wire", { x: index * 20, y: 0 }, { x: index * 20 + 10, y: 0 })),
+		...Array.from({ length: 94 }, (_, index) => ({ id: 347 + index, kind: "text" as const, electrical: "net" as const, text: `BUS${index % 10}`, x: index * 20, y: 0, width: 8, height: 2, fontSize: 1.5, rotation: 0, lineWidth: 0.2 })),
+		...Array.from({ length: 272 }, (_, index) => drawShape(441 + index, "pin", { x: index * 20 + 10, y: 0 }, { x: index * 20 + 10, y: 0 })),
+	];
+	const times: number[] = [];
+	for (let repeat = 0; repeat < 10; repeat++) {
+		const start = performance.now();
+		const nets = electricalNets(shapes);
+		times.push(performance.now() - start);
+		expect(nets.filter(net => net.names.length)).toHaveLength(10);
+		expect(nets.find(net => net.names.includes("BUS0"))?.wires).toHaveLength(10);
+	}
+	times.sort((a, b) => a - b);
+	await testInfo.attach("performance", {
+		body: JSON.stringify({ scenario: "named-net-connectivity", metrics: { connectivityP95Ms: times[9] }, report: {
+			mode: process.env.ECAD_PERF_MODE ?? "production", environment: { userAgent: `Node/${process.versions.node}`, platform: process.platform, arch: process.arch, cpuThrottle: 1 }, workload: { wires: 346, labels: 94, pins: 272 },
+		} }), contentType: "application/json",
+	});
+});

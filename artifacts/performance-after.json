@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "profile": {
+    "mode": "production",
+    "cpu": 4,
+    "platform": "linux",
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
+  },
+  "scenarios": {
+    "editor-pin-labels": {
+      "startupMs": {
+        "median": 732.4000000953674,
+        "p95": 760.1000000238419,
+        "samples": 3
+      },
+      "scriptBytes": {
+        "median": 1792950,
+        "p95": 1792950,
+        "samples": 3
+      },
+      "domNodes": {
+        "median": 520,
+        "p95": 520,
+        "samples": 3
+      },
+      "heapBytes": {
+        "median": 10000000,
+        "p95": 10000000,
+        "samples": 3
+      },
+      "blockingMs": {
+        "median": 807,
+        "p95": 850,
+        "samples": 3
+      },
+      "eventLoopP95Ms": {
+        "median": 543,
+        "p95": 547.7000000476837,
+        "samples": 3
+      },
+      "navigationP95Ms": {
+        "median": 424.2999999523163,
+        "p95": 439.1999999284744,
+        "samples": 3
+      },
+      "frameP95Ms": {
+        "median": 120.29999995231628,
+        "p95": 122.19999992847443,
+        "samples": 3
+      },
+      "interactionP95Ms": {
+        "median": 695.7999999523163,
+        "p95": 699.3999999761581,
+        "samples": 3
+      }
+    },
+    "editor-pin-wire": {
+      "startupMs": {
+        "median": 995,
+        "p95": 1014,
+        "samples": 3
+      },
+      "scriptBytes": {
+        "median": 1776577,
+        "p95": 1776577,
+        "samples": 3
+      },
+      "domNodes": {
+        "median": 517,
+        "p95": 517,
+        "samples": 3
+      },
+      "heapBytes": {
+        "median": 10600000,
+        "p95": 10600000,
+        "samples": 3
+      },
+      "blockingMs": {
+        "median": 379,
+        "p95": 390,
+        "samples": 3
+      },
+      "eventLoopP95Ms": {
+        "median": 183.39999997615814,
+        "p95": 494.3000000715256,
+        "samples": 3
+      },
+      "frameP95Ms": {
+        "median": 63.200000047683716,
+        "p95": 71.10000002384186,
+        "samples": 3
+      },
+      "interactionP95Ms": {
+        "median": 142.39999997615814,
+        "p95": 146.39999997615814,
+        "samples": 3
+      }
+    },
+    "editor-named-nets": {
+      "startupMs": {
+        "median": 935.6000000238419,
+        "p95": 1035.6999999284744,
+        "samples": 3
+      },
+      "scriptBytes": {
+        "median": 1776577,
+        "p95": 1776577,
+        "samples": 3
+      },
+      "domNodes": {
+        "median": 684,
+        "p95": 684,
+        "samples": 3
+      },
+      "heapBytes": {
+        "median": 10000000,
+        "p95": 10000000,
+        "samples": 3
+      },
+      "blockingMs": {
+        "median": 924,
+        "p95": 950,
+        "samples": 3
+      },
+      "eventLoopP95Ms": {
+        "median": 696.7000000476837,
+        "p95": 1016.3999999761581,
+        "samples": 3
+      },
+      "frameP95Ms": {
+        "median": 121.89999997615814,
+        "p95": 124.70000004768372,
+        "samples": 3
+      },
+      "interactionP95Ms": {
+        "median": 414.7999999523163,
+        "p95": 419.2999999523163,
+        "samples": 3
+      }
+    },
+    "cli-drawing": {
+      "startupMs": {
+        "median": 36.875889999999345,
+        "p95": 43.298109999999724,
+        "samples": 3
+      },
+      "placeMs": {
+        "median": 730.4791360000017,
+        "p95": 752.7177250000022,
+        "samples": 3
+      },
+      "readMs": {
+        "median": 739.7608010000004,
+        "p95": 740.4321799999998,
+        "samples": 3
+      },
+      "undoMs": {
+        "median": 721.8764929999998,
+        "p95": 740.8681639999995,
+        "samples": 3
+      },
+      "stdioStartupMs": {
+        "median": 645.4464500000031,
+        "p95": 650.3680529999983,
+        "samples": 3
+      },
+      "stdioPlaceMs": {
+        "median": 95.65103900000031,
+        "p95": 97.62592199999926,
+        "samples": 3
+      }
+    },
+    "named-net-connectivity": {
+      "connectivityP95Ms": {
+        "median": 26.411728999999468,
+        "p95": 27.267415999998775,
+        "samples": 3
+      }
+    }
+  },
+  "timestamp": "2026-10-28T18:12:45.381Z",
+  "revision": "fe108f97fa713a6408e617fdfc6a17493e884b18",
+  "status": "passed",
+  "failures": []
+}

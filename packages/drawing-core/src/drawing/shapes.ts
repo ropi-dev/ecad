@@ -366,6 +366,7 @@ export function moveSymbolText(
 }
 
 export interface TextShape extends ShapeGeometry, TextAlignment {
+	electrical?: "net" | "supply";
 	kind: "text";
 	text: string;
 	fontSize: number;
@@ -1036,8 +1037,16 @@ export function openPins(
 	);
 }
 
+export function netLabelAnchors(shapes: EditorShape[]): Point[] {
+	return shapes
+		.filter(
+			(shape) => shape.kind === "text" && shape.electrical && shape.text.trim(),
+		)
+		.map((shape) => ({ x: shape.x, y: shape.y }));
+}
+
 export function openWireEnds(shapes: EditorShape[]) {
-	const pins = shapes.flatMap(pinTerminals);
+	const pins = [...shapes.flatMap(pinTerminals), ...netLabelAnchors(shapes)];
 	const wires = shapes
 		.filter((shape) => shape.kind === "wire")
 		.map((shape) => ({
@@ -1066,6 +1075,7 @@ export function openWireEnds(shapes: EditorShape[]) {
 export function wireConnectionPoints(shapes: EditorShape[]): Point[] {
 	return [
 		...shapes.flatMap(pinTerminals),
+		...netLabelAnchors(shapes),
 		...openWireEnds(shapes).map(({ point }) => point),
 	];
 }
@@ -1179,6 +1189,7 @@ export function findWireConnection(
 	// Prefer exact terminals and existing junctions before projecting onto a segment.
 	for (const candidate of [
 		...shapes.flatMap(pinTerminals),
+		...netLabelAnchors(shapes),
 		...wires.flatMap(({ start, end }) => [start, end]),
 	])
 		consider(candidate);

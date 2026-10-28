@@ -164,3 +164,7 @@ const result = await measurePerformanceAsync(
 ```
 
 The helpers preserve return values, thrown errors, and cancellation. Collection is guarded for server rendering and disabled production sessions. For React workspaces, use `PerformanceBoundary`; for a new benchmark, record its result in the app scenario, attach the JSON report, and add a budget with a meaningful limit. Run the production comparison before reporting the feature complete. `AGENTS.md` makes this part of the development workflow.
+
+The `editor-named-nets` scenario opens 346 wires and 94 electrical labels, places a supply label, and renames it three times. Under the same 4× CPU throttle, interaction p95 must remain below 750 ms, with fewer than 1,800 DOM nodes, at most 3 MB of scripts, and frame p95 below 500 ms. `named-net-connectivity` measures ten net graph builds for 346 wires, 94 labels, and 272 pins in Node, with a 150 ms p95 budget. It checks ten disconnected named buses electrically joining their wire sections.
+
+Parallel worktrees can select separate test ports with `ECAD_PERF_PORT` and `ECAD_BROWSER_PORT`. Run production performance comparisons without competing benchmark runs on the same machine.

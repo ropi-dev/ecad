@@ -54,6 +54,12 @@ const pinInputSchema = z.strictObject({
 });
 const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({
+	electrical: z
+		.enum(["net", "supply"])
+		.optional()
+		.describe(
+			"Electrical label role. text is the drawing-wide, case-sensitive net name; x and y are the connection anchor. Omit for ordinary text.",
+		),
 	...geometryFields,
 	kind: z.literal("text"),
 	...textAlignmentFields,

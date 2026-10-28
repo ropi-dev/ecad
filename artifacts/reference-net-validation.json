@@ -1,0 +1,418 @@
+{
+  "labels": 94,
+  "supplies": 41,
+  "wires": 346,
+  "namedNets": 51,
+  "multiSectionNamedNets": 50,
+  "connectivityMs": 37.04738400000001,
+  "names": [
+    {
+      "names": [
+        "FLASH_SS"
+      ],
+      "wires": 6,
+      "pins": 4,
+      "labels": 1
+    },
+    {
+      "names": [
+        "QSPI_SD1"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "QSPI_SD2"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GND"
+      ],
+      "wires": 148,
+      "pins": 97,
+      "labels": 21
+    },
+    {
+      "names": [
+        "QSPI_SD0"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "QSPI_SCLK"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "QSPI_SD3"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "+3V3"
+      ],
+      "wires": 52,
+      "pins": 41,
+      "labels": 14
+    },
+    {
+      "names": [
+        "VBUS"
+      ],
+      "wires": 5,
+      "pins": 4,
+      "labels": 1
+    },
+    {
+      "names": [
+        "USB_D-"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "USB_D+"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO29_ADC3"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO28_ADC2"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO27_ADC1"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO26_ADC0"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO25"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO24"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO23"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO22"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO21"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO20"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO19"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO18"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO17"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO16"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "RUN"
+      ],
+      "wires": 6,
+      "pins": 4,
+      "labels": 3
+    },
+    {
+      "names": [
+        "SWD"
+      ],
+      "wires": 3,
+      "pins": 3,
+      "labels": 3
+    },
+    {
+      "names": [
+        "SWCLK"
+      ],
+      "wires": 3,
+      "pins": 3,
+      "labels": 3
+    },
+    {
+      "names": [
+        "GPIO0"
+      ],
+      "wires": 3,
+      "pins": 3,
+      "labels": 3
+    },
+    {
+      "names": [
+        "GPIO1"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO2"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO3"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO4"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO5"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO6"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO7"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO8"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO9"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO10"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO11"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO12"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO13"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO14"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "GPIO15"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "+1V1"
+      ],
+      "wires": 18,
+      "pins": 14,
+      "labels": 5
+    },
+    {
+      "names": [
+        "XIN"
+      ],
+      "wires": 4,
+      "pins": 3,
+      "labels": 2
+    },
+    {
+      "names": [
+        "XOUT"
+      ],
+      "wires": 2,
+      "pins": 2,
+      "labels": 2
+    },
+    {
+      "names": [
+        "VREG_AVDD"
+      ],
+      "wires": 4,
+      "pins": 3,
+      "labels": 1
+    },
+    {
+      "names": [
+        "VREG_LX"
+      ],
+      "wires": 1,
+      "pins": 2,
+      "labels": 1
+    },
+    {
+      "names": [
+        "QSPI_SS"
+      ],
+      "wires": 4,
+      "pins": 3,
+      "labels": 2
+    },
+    {
+      "names": [
+        "~{USB_BOOT}"
+      ],
+      "wires": 4,
+      "pins": 3,
+      "labels": 1
+    }
+  ]
+}
