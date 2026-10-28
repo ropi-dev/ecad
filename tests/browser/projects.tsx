@@ -12,6 +12,11 @@ import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import "#/styles.css";
 
 Scene.prototype.onAfterRender = function () {
+	const pinLabels: string[] = [];
+	this.getObjectByName("editor-shapes")?.traverse((child) => {
+		if (/^pin (name|number) /.test(child.name)) pinLabels.push(child.name);
+	});
+	document.documentElement.dataset.pinLabels = JSON.stringify(pinLabels);
 	document.documentElement.dataset.worksheet = this.getObjectByName("Worksheet frame")?.parent?.name ?? "none";
 };
 
