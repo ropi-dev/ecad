@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+const port = Number(process.env.ECAD_PERF_PORT ?? 4175);
 const development = process.env.ECAD_PERF_MODE === "development";
 export default defineConfig({
 	testDir: ".",
@@ -17,7 +18,7 @@ export default defineConfig({
 		["html", { outputFolder: "perf-artifacts/html", open: "never" }],
 	],
 	use: {
-		baseURL: "http://127.0.0.1:4175",
+		baseURL: `http://127.0.0.1:${port}`,
 		viewport: { width: 1280, height: 800 },
 		trace: "retain-on-failure",
 		launchOptions: {
@@ -33,9 +34,9 @@ export default defineConfig({
 	webServer: {
 		cwd: fileURLToPath(new URL("../../", import.meta.url)),
 		command: development
-			? "npm run dev:web -- --host 127.0.0.1 --port 4175 --strictPort"
-			: "npm run preview -- --host 127.0.0.1 --port 4175 --strictPort",
-		url: "http://127.0.0.1:4175/projects",
+			? `npm run dev:web -- --host 127.0.0.1 --port ${port} --strictPort`
+			: `npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
+		url: `http://127.0.0.1:${port}/projects`,
 		reuseExistingServer: false,
 		timeout: 60_000,
 	},

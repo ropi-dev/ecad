@@ -1,4 +1,7 @@
 export const budgets = {
+	"named-net-connectivity": { connectivityP95Ms: 150 },
+	"editor-named-nets": { interactionP95Ms: 750, domNodes: 1800, scriptBytes: 3_000_000, frameP95Ms: 500 },
+
 	"schematic-export": {
 		exportSvgMs: 5000,
 		exportPngMs: 15000,

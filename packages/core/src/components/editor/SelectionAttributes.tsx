@@ -97,6 +97,7 @@ interface SelectionAttributesProps {
 		value: string,
 	) => void;
 	onTextChange: (text: string) => void;
+	onElectricalChange?: (role: "net" | "supply" | undefined) => void;
 	onTextAlignmentChange: (alignment: TextAlignment) => void;
 	onPinVisibilityChange: (
 		attribute: "showName" | "showNumber",
@@ -132,6 +133,7 @@ function SelectionAttributesPanel({
 	onCreateSymbol,
 	onEditSymbol,
 	onTextChange,
+	onElectricalChange,
 	onTextAlignmentChange,
 	textFocusId,
 	onTextFocus,
@@ -170,7 +172,10 @@ function SelectionAttributesPanel({
 			: "";
 	if (!shapes.length) return null;
 	const single = shapes.length === 1 ? shapes[0] : undefined;
-	const canCreateSymbol = shapes.every((shape) => shape.kind !== "symbol");
+	const canCreateSymbol = shapes.every(
+		(shape) =>
+			shape.kind !== "symbol" && !(shape.kind === "text" && shape.electrical),
+	);
 	const symbol = single?.kind === "symbol" ? single : undefined;
 	const locked = shapes.every((shape) => shape.locked === true);
 	const lockAttribute: [string, ReactNode] = [
@@ -241,7 +246,12 @@ function SelectionAttributesPanel({
 	];
 	const attributes: [string, ReactNode][] = single
 		? [
-				["Type", single.kind],
+				[
+					"Type",
+					single.kind === "text" && single.electrical
+						? `${single.electrical} label`
+						: single.kind,
+				],
 				["ID", String(single.id)],
 				lockAttribute,
 				...(single.kind === "pin"
@@ -387,7 +397,7 @@ function SelectionAttributesPanel({
 					{single
 						? symbol
 							? `${symbol.attributes.name} · ${symbol.attributes.reference}`
-							: `${single.kind} ${single.id}`
+							: `${single.kind === "text" && single.electrical ? `${single.electrical} label` : single.kind} ${single.id}`
 						: `${shapes.length} shapes selected`}
 				</p>
 				{symbol && (
@@ -417,7 +427,8 @@ function SelectionAttributesPanel({
 						</button>
 						{!canCreateSymbol && (
 							<p className="mt-2 text-[12px] text-[#9ba7b8]">
-								Select shapes without existing symbols to create a symbol.
+								Select shapes without existing symbols or electrical labels to
+								create a symbol.
 							</p>
 						)}
 						<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
@@ -425,9 +436,30 @@ function SelectionAttributesPanel({
 						</p>
 					</>
 				)}
+				{single?.kind === "text" && onElectricalChange && !isSymbolChild && (
+					<label className="mt-3 block text-xs text-[#9ba7b8]">
+						Label role
+						<select
+							aria-label="Label role"
+							className="mt-2 block w-full rounded bg-[#19212e] p-2 text-[#f0f3f8]"
+							value={single.electrical ?? "text"}
+							onChange={(event) =>
+								onElectricalChange(
+									event.target.value === "text"
+										? undefined
+										: (event.target.value as "net" | "supply"),
+								)
+							}
+						>
+							<option value="text">Ordinary text</option>
+							<option value="net">Net label</option>
+							<option value="supply">Supply label</option>
+						</select>
+					</label>
+				)}
 				{single?.kind === "text" && (
 					<label className="mt-3 block text-[12px] text-[#9ba7b8]">
-						Text
+						{single.electrical ? "Net name" : "Text"}
 						<textarea
 							key={`${single.id}:${single.text}`}
 							ref={(input) => {
@@ -437,7 +469,7 @@ function SelectionAttributesPanel({
 									onTextFocus();
 								}
 							}}
-							aria-label="Text content"
+							aria-label={single.electrical ? "Net name" : "Text content"}
 							defaultValue={single.text}
 							rows={3}
 							maxLength={2000}
