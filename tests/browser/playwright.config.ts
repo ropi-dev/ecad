@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 
+const port = Number(process.env.ECAD_BROWSER_PORT ?? 4174);
 export default defineConfig({
 	testDir: ".",
 	testMatch: "*.spec.ts",
@@ -18,7 +19,7 @@ export default defineConfig({
 		},
 	],
 	use: {
-		baseURL: "http://127.0.0.1:4174",
+		baseURL: `http://127.0.0.1:${port}`,
 		launchOptions: {
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 			args: [
@@ -35,8 +36,8 @@ export default defineConfig({
 	webServer: {
 		cwd: fileURLToPath(new URL("../../", import.meta.url)),
 		command:
-			"npx vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port 4174 --strictPort",
-		url: "http://127.0.0.1:4174/tests/browser/renderer.html",
+			`npx vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port ${port} --strictPort`,
+		url: `http://127.0.0.1:${port}/tests/browser/renderer.html`,
 		stdout: "pipe",
 		reuseExistingServer: !process.env.CI,
 	},

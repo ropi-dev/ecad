@@ -12,7 +12,11 @@ import {
 	rotateShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
-import { DrawingStore } from "#/commands/drawing-store.ts";
+import {
+	type DrawingSnapshot,
+	DrawingStore,
+} from "#/commands/drawing-store.ts";
+import { electricalNets } from "#/drawing/named-nets.ts";
 import {
 	drawingShapeSchema,
 	rectangleInputSchema,
@@ -96,6 +100,16 @@ export type DrawingEnvelope = z.infer<typeof drawingEnvelopeSchema>;
 
 const drawingStateSchema = z.strictObject({
 	shapes: z.array(drawingShapeSchema),
+	nets: z
+		.array(
+			z.strictObject({
+				names: z.array(z.string()),
+				wires: z.array(shapeId),
+				labels: z.array(shapeId),
+				pins: z.array(z.strictObject({ shapeId, pinId: shapeId })),
+			}),
+		)
+		.optional(),
 	nextShapeId: shapeId,
 	history: z.strictObject({
 		currentId: historyId,
@@ -170,6 +184,28 @@ function operationEffect(
 	}
 }
 
+const netsBySnapshot = new WeakMap<
+	DrawingSnapshot,
+	ReturnType<typeof electricalNets>
+>();
+
+function snapshotNets(snapshot: DrawingSnapshot) {
+	const cached = netsBySnapshot.get(snapshot);
+	if (cached) return cached;
+	const nets = electricalNets(snapshot.shapes);
+	for (const net of nets) {
+		Object.freeze(net.names);
+		Object.freeze(net.wires);
+		Object.freeze(net.labels);
+		for (const pin of net.pins) Object.freeze(pin);
+		Object.freeze(net.pins);
+		Object.freeze(net);
+	}
+	Object.freeze(nets);
+	netsBySnapshot.set(snapshot, nets);
+	return nets;
+}
+
 /** The browser and headless callers provide their store at the execution boundary. */
 export function executeDrawingOperation(
 	operation: DrawingOperation,
@@ -189,6 +225,9 @@ export function executeDrawingOperation(
 			ok: true,
 			drawing: {
 				shapes: snapshot.shapes,
+				...(operation.type === "getDrawing"
+					? { nets: snapshotNets(snapshot) }
+					: {}),
 				nextShapeId: snapshot.nextShapeId,
 				history: {
 					currentId: snapshot.history.currentId,

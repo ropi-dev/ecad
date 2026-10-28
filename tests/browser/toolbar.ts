@@ -7,6 +7,8 @@ const groups: Record<string, string> = {
 	Line: "Shapes",
 	Text: "Shapes",
 	Wire: "Connections",
+	"Net label": "Connections",
+	"Supply label": "Connections",
 	Pin: "Connections",
 	Undo: "History tools",
 	Redo: "History tools",

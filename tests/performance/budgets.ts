@@ -1,5 +1,15 @@
 export const budgets = {
  "kicad-import": { importMs: 1500, interactionP95Ms: 5000, domNodes: 2000, scriptBytes: 3_000_000, frameP95Ms: 500 },
+
+	"named-net-connectivity": { connectivityP95Ms: 150 },
+	"editor-named-nets": { interactionP95Ms: 750, domNodes: 1800, scriptBytes: 3_000_000, frameP95Ms: 500 },
+
+	"schematic-export": {
+		exportSvgMs: 5000,
+		exportPngMs: 15000,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+	},
 	"cli-drawing": {
 		startupMs: 500,
 		placeMs: 3000,

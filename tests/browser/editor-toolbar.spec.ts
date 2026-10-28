@@ -93,7 +93,8 @@ test("groups replace each other above the main toolbar without changing the acti
 		name: "View controls",
 		exact: true,
 	});
-	await expect(main.getByRole("button")).toHaveCount(16);
+	await expect(main.getByRole("button")).toHaveCount(17);
+	await expect(main.getByRole("button", { name: "Export drawing", exact: true })).toBeVisible();
 	const fit = main.getByRole("button", { name: "Fit drawing", exact: true });
 	await main.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await expect(fit).toHaveText("125%");
@@ -120,7 +121,9 @@ test("groups replace each other above the main toolbar without changing the acti
 		page
 			.getByRole("toolbar", { name: "Connections toolbar" })
 			.getByRole("button"),
-	).toHaveCount(2);
+	).toHaveCount(4);
+	for (const name of ["Wire", "Pin", "Net label", "Supply label"])
+		await expect(page.getByRole("toolbar", { name: "Connections toolbar" }).getByRole("button", { name, exact: true })).toBeVisible();
 	await expect(page.locator('[data-tool="circle"]')).toBeAttached();
 	await shapes.click();
 	await expect(

@@ -174,6 +174,14 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 		throw new Error("The drawing path must not be empty.");
 	const filePath = resolve(options.path ?? "drawing.ecaddraw");
 	const timeout = options.lockTimeout ?? 30_000;
+	let cachedRead:
+		| {
+				path: string;
+				content: string | undefined;
+				historyContent: string | undefined;
+				store: ReturnType<typeof createDrawingStore>;
+		  }
+		| undefined;
 	if (!Number.isSafeInteger(timeout) || timeout <= 0)
 		throw new Error("The timeout must be a positive integer in milliseconds.");
 	return {
@@ -207,10 +215,17 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 									message: "The saved history does not match the drawing.",
 								});
 							}
+							if (operation.type !== "getDrawing") cachedRead = undefined;
 							const store =
-								saved?.drawingHash === hash(content)
-									? restoreDrawingStore(saved.snapshot)
-									: createDrawingStore(file.shapes);
+								cachedRead?.path === path &&
+								cachedRead.content === content &&
+								cachedRead.historyContent === historyContent
+									? cachedRead.store
+									: saved?.drawingHash === hash(content)
+										? restoreDrawingStore(saved.snapshot)
+										: createDrawingStore(file.shapes);
+							if (operation.type === "getDrawing")
+								cachedRead = { path, content, historyContent, store };
 							const before = store.getSnapshot();
 							signal.throwIfAborted();
 							const reply = Effect.runSync(

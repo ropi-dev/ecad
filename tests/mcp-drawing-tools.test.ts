@@ -56,7 +56,7 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 	assert.notEqual(result.isError, true);
 	assert.ok(reply.ok);
 	assert.deepEqual(reply.drawing, {
-		shapes: [], nextShapeId: 1,
+		shapes: [], nets: [], nextShapeId: 1,
 		history: { currentId: 0, nodes: [{ id: 0, parentId: null, childIds: [], preferredChildId: null, label: "Empty drawing" }] },
 	});
 	assert.strictEqual(store.getSnapshot(), before);
@@ -75,7 +75,7 @@ test("MCP placement commits exact complete geometry and returns JSON-safe IDs an
 	assert.deepEqual(JSON.parse(JSON.stringify(reply)), reply);
 	const latest = await call("getDrawing");
 	assert.ok(latest.reply.ok);
-	assert.deepEqual(latest.reply.drawing, reply.drawing);
+	assert.deepEqual(latest.reply.drawing, { ...reply.drawing, nets: [] });
 });
 
 test("MCP input schemas reject partial geometry and editor state before executing a command", async (context) => {
