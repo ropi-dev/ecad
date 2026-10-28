@@ -61,6 +61,10 @@ interface ProjectContextValue {
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
 	createDrawing(name: string): Promise<string>;
+	importSchematic(file: File): Promise<{
+		path: string;
+		report: import("#/formats/kicad/import.ts").KiCadImportReport;
+	}>;
 	open(name?: string): Promise<void>;
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
@@ -653,6 +657,35 @@ export function ProjectProvider({
 					return path;
 				});
 			}),
+		importSchematic: (file) =>
+			enqueue(async () => {
+				if (!active.current || generation.current !== epoch)
+					throw new Error("Open a project before importing a schematic.");
+				const { importKiCadSchematic } = await import(
+					"#/formats/kicad/import.ts"
+				);
+				const result = importKiCadSchematic(await file.text());
+				const drawings = active.current.drawings ?? [];
+				let id = "kicad-import";
+				for (
+					let suffix = 2;
+					drawings.some((drawing) => drawing.id === id);
+					suffix++
+				)
+					id = `kicad-import-${suffix}`;
+				const name = file.name.replace(/\.kicad_sch$/i, "");
+				await persist(undefined, undefined, [
+					...drawings,
+					{ id, name: projectNameSchema.parse(name), shapes: result.shapes },
+				]);
+				const index =
+					active.current?.drawings?.findIndex((drawing) => drawing.id === id) ??
+					-1;
+				const path = active.current?.manifest.drawings?.[index];
+				if (!path) throw new Error("Unable to open imported drawing.");
+				return { path, report: result.report };
+			}),
+
 		createSymbol: (name) =>
 			enqueue(async () => {
 				if (!active.current || generation.current !== epoch)
