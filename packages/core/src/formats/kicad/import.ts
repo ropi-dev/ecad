@@ -362,10 +362,15 @@ function convert(source: string): KiCadImportResult {
 					);
 			}
 		}
+		const namedSupply =
+			nodes(definition, "power").length > 0 &&
+			Boolean(props.Value) &&
+			libraryId.split(":").at(-1) !== "PWR_FLAG";
 		const texts: EditorSymbol["texts"] = [];
 		const childOverrides: EditorSymbol["childOverrides"] = {};
 		for (const prop of nodes(instance, "property")) {
-			if (hidden(prop) || !prop[2]) continue;
+			if (hidden(prop) || !prop[2] || (namedSupply && prop[1] === "Value"))
+				continue;
 			const at = world(numbers(prop, "at")),
 				label = text(prop, [at[0] - sx, at[1] - sy], String(prop[2]));
 			if (["Reference", "Value"].includes(String(prop[1]))) {

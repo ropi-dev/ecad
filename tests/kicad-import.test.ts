@@ -133,3 +133,26 @@ test('imported drawing exports native pin visibility, electrical labels and rota
   assert.equal(single.includes(`data-name="pin number 1"`),visibility.showNumber);
  }
 });
+
+test('named supplies show one name while power flags keep their normal visible Value', async () => {
+ const {exportDrawingSvg} = await import('#/drawing/export.ts');
+ const result=importKiCadSchematic(source);
+ for(const supply of result.report.supplies) {
+  const symbol=result.shapes.find(shape=>shape.kind==='symbol'&&shape.attributes.reference===supply.reference);
+  assert.ok(symbol?.kind==='symbol');
+  assert.equal(symbol.attributes.value,supply.text);
+  assert.ok(!symbol.texts.some(label=>label.attribute==='value'));
+  assert.ok(!symbol.children.some(child=>child.kind==='text'&&child.text===supply.text));
+  assert.equal(result.shapes.filter(shape=>shape.kind==='text'&&shape.electrical==='supply'&&shape.x===supply.x&&shape.y===supply.y&&shape.text===supply.text).length,1);
+  assert.equal(result.report.components.find(component=>component.properties.Reference===supply.reference)?.properties.Value,supply.text);
+ }
+ const input=fixture('').replaceAll('"Test"','"power:PWR_FLAG"').replace('(symbol "power:PWR_FLAG" (symbol','(symbol "power:PWR_FLAG" (power global) (symbol').replace('(property "Reference" "X1" (at 10 20 0) (effects hide))','(property "Reference" "#FLG01" (at 10 20 0) (effects hide)) (property "Value" "PWR_FLAG" (at 12 18 90))');
+ const flag=importKiCadSchematic(input);
+ assert.equal(flag.report.supplies.length,0);
+ const symbol=flag.shapes[0];assert.equal(symbol.kind,'symbol');if(symbol.kind!=='symbol') return;
+ assert.equal(symbol.attributes.value,'PWR_FLAG');
+ assert.deepEqual(symbolTextShapes(symbol).map(label=>label.text),['PWR_FLAG']);
+ const svg=exportDrawingSvg(flag.shapes,{width:2400,height:1600,area:'sheet',background:'white',sheet:{width:420,height:297}});
+ assert.match(svg,/>PWR_FLAG<\/text>/);
+ assert.ok(!flag.shapes.some(shape=>shape.kind==='text'&&shape.electrical));
+});
