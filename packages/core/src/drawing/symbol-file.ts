@@ -248,6 +248,10 @@ export function symbolFileWithShapes(
 					...(shape.labelOffset === undefined
 						? {}
 						: { labelOffset: shape.labelOffset }),
+					...(shape.showName === undefined ? {} : { showName: shape.showName }),
+					...(shape.showNumber === undefined
+						? {}
+						: { showNumber: shape.showNumber }),
 					...(shape.showLabels === undefined
 						? {}
 						: { showLabels: shape.showLabels }),
