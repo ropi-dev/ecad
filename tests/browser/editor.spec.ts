@@ -265,6 +265,8 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 test("stays orthographic through navigation and edits after zoom and resize", async ({ page }) => {
 	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("100%");
 	await expect(page.getByRole("button", { name: "Orthographic camera" })).toHaveCount(0);
+	const initial = await state(page);
+	const initialScale = initial.corner[1] - initial.origin[1];
 	const checkCamera = async () => {
 		const view = await state(page);
 		expect(view.camera).toBe("OrthographicCamera");
@@ -287,7 +289,14 @@ test("stays orthographic through navigation and edits after zoom and resize", as
 	await dragTo(page, [210, 150], [230, 180]);
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(180, 1);
 	await page.keyboard.press("F6");
-	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText("100%");
+	await expect.poll(async () => {
+		const fitted = await state(page);
+		return (fitted.corner[1] - fitted.origin[1]) / initialScale;
+	}).toBeGreaterThan(1.25);
+	const fitted = await state(page);
+	const fittedZoom = Math.round((fitted.corner[1] - fitted.origin[1]) / initialScale * 100);
+	expect(fittedZoom).toBeGreaterThan(125);
+	await expect((await toolbarButton(page, "Fit drawing"))).toHaveText(`${fittedZoom}%`);
 	await expect(checkCamera).toPass();
 });
 
