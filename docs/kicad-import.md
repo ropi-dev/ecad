@@ -9,7 +9,7 @@ The built-in converter lives in `packages/core/src/formats/kicad`. It reads embe
 Current limits:
 
 - Matching net labels and power names do not connect disconnected wires. Labels remain text, independent of work on native electrical labels.
-- Pin names and numbers use separate text children, independent of work on native pin visibility controls. Terminal names and numbers remain on the pins.
+- Pin names and numbers use native `showName` and `showNumber` fields. Each field records the source visibility independently. ECAD places these labels with its native pin-label layout rather than detached text children.
 - No-connect marks do not suppress electrical checks. Pin electrical types, footprint associations, DNP flags and simulation metadata are available in the report only.
 - Nested sheets, buses, bus entries, images and other unsupported sheet constructs produce warnings. The report retains their source expressions. Missing embedded definitions, inherited definitions, malformed coordinates and malformed expressions reject the import.
 - Arcs use line segments at intervals of at most ten degrees. Filled polylines use outlines. Font metrics, overbars, text mirroring, colors, line patterns, label outlines and pin decoration shapes are approximations. Rectangle and circle fills use ECAD's fill rendering.

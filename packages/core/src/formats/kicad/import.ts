@@ -133,7 +133,7 @@ function convert(source: string): KiCadImportResult {
 	const warnings = new Set<string>([
 		"Net labels and power names are visible text only. Matching names do not connect separate wires.",
 		"Pin electrical types, footprints, simulation settings, and other source metadata are retained in the import report, not applied to electrical analysis.",
-		"Pin names and numbers use separate text children. KiCad font styling and overbars are approximated.",
+		"Pin names and numbers use native visibility fields. KiCad label placement, font styling and overbars are approximated.",
 		"No-connect markers are graphics only. Wire and pin connectivity uses ECAD geometry. Hierarchical sheets and buses are not imported.",
 		"KiCad colors, line patterns, font styling, text mirroring, label outlines and pin decoration shapes are approximated. Download the import report to retain source metadata, which is not saved in the drawing.",
 		"Symbol arcs use line segments. Filled polygons use outlines. No ERC or PCB validation is performed.",
@@ -330,47 +330,15 @@ function convert(source: string): KiCadImportResult {
 						name,
 						number,
 						length,
-						showLabels: false,
+						showName:
+							!hidden(g) &&
+							!hidden(node(definition, "pin_names")) &&
+							name !== "~",
+						showNumber: !hidden(g) && !hidden(node(definition, "pin_numbers")),
 					});
 					if (g.includes("hide") || value(g, "hide") === "yes")
 						warnings.add(
 							"Hidden KiCad pins retain their terminals and leads in ECAD.",
-						);
-					const [dx, dy] = direction;
-					const pinText = (
-						content: string,
-						at: XY,
-						size: number,
-						align: "left" | "right" | "center",
-					) => ({
-						...text(g, at, content),
-						rotation: Math.abs(dy) > 0.5 ? Math.PI / 2 : 0,
-						fontSize: size,
-						horizontalAlign: align,
-					});
-					if (!hidden(node(definition, "pin_names")) && name && name !== "~")
-						children.push(
-							pinText(
-								name.replace(/~\{([^}]+)\}/g, "$1"),
-								[p[0] + dx * (length + 0.7), p[1] + dy * (length + 0.7)],
-								numbers(
-									node(node(node(g, "name"), "effects"), "font"),
-									"size",
-								)[0] ?? 1,
-								dx > 0.5 || dy > 0.5 ? "left" : "right",
-							),
-						);
-					if (!hidden(node(definition, "pin_numbers")) && length)
-						children.push(
-							pinText(
-								number,
-								[
-									p[0] + (dx * length) / 2 - (Math.abs(dy) > 0.5 ? 0.65 : 0),
-									p[1] + (dy * length) / 2 + (Math.abs(dx) > 0.5 ? 0.65 : 0),
-								],
-								0.85,
-								"center",
-							),
 						);
 				} else if (kind === "text") {
 					const at = numbers(g, "at");

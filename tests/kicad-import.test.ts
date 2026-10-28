@@ -65,3 +65,24 @@ test('rotated reference and value labels stay bound after edits and serializatio
  assert.deepEqual(labels.map(label=>label.rotation),[Math.PI/2,Math.PI/2]);
  assert.deepEqual(labels.map(label=>({x:label.x,y:label.y})),[{x:12-148.5,y:105-18},{x:14-148.5,y:105-18}]);
 });
+
+test('imported pin labels use native independent fields and preserve all visibility combinations', async () => {
+ const {pinVisibilitySource,visibilityCases} = await import('./fixtures/kicad/pin-visibility.ts');
+ const {buildDrawingDisplay} = await import('#/drawing/display.ts');
+ const original = importKiCadSchematic(pinVisibilitySource).shapes;
+ const saved = validateProjectDocument(JSON.parse(JSON.stringify({shapes:original,symbols:[]}))).shapes;
+ for(const [index,symbol] of saved.entries()) {
+  assert.equal(symbol.kind,'symbol');if(symbol.kind!=='symbol') continue;
+  assert.equal(symbol.children.length,1);
+  const pin=symbol.children[0];assert.equal(pin.kind,'pin');if(pin.kind!=='pin') continue;
+  assert.equal(pin.showName,visibilityCases[index].showName);
+  assert.equal(pin.showNumber,visibilityCases[index].showNumber);
+  assert.equal(pin.showLabels,undefined);
+  const rendered=buildDrawingDisplay([pin],new Set()).shapes[0].children?.map(label=>label.text)??[];
+  assert.deepEqual(rendered,[...(pin.showName?[`Signal${index}`]:[]),...(pin.showNumber?[String(index+1)]:[])]);
+ }
+ const hidden = pinVisibilitySource.replaceAll('(pin input line (at -8 0 0)', '(pin input line hide (at -8 0 0)');
+ for(const hiddenSymbol of importKiCadSchematic(hidden).shapes) {
+  assert.equal(hiddenSymbol.kind,'symbol');if(hiddenSymbol.kind==='symbol') assert.deepEqual(hiddenSymbol.children.map(p=>p.kind==='pin'&&[p.showName,p.showNumber]),[[false,false]]);
+ }
+});
