@@ -51,6 +51,8 @@ const pinInputSchema = z.strictObject({
 	length: z.number().min(0).max(1000).optional(),
 	labelOffset: z.number().min(-1000).max(1000).optional(),
 	showLabels: z.boolean().optional(),
+	showName: z.boolean().optional(),
+	showNumber: z.boolean().optional(),
 });
 const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({
@@ -79,6 +81,8 @@ export const symbolChildOverridesSchema = z.record(
 		name: z.string().optional(),
 		number: z.string().optional(),
 		showLabels: z.boolean().optional(),
+		showName: z.boolean().optional(),
+		showNumber: z.boolean().optional(),
 		length: z.number().min(0).max(1000).optional(),
 		locked: z.boolean().optional(),
 		lineStyle: z.enum(lineStyles).optional(),

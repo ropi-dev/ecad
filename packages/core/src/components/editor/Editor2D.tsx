@@ -1777,6 +1777,13 @@ function EditorCanvas({
 							: undefined
 					}
 					onCreateSymbol={isSymbol ? undefined : () => setCreatingSymbol(true)}
+					onPinVisibilityChange={(attribute, value) => {
+						if (selected.length === 1 && selected[0].kind === "pin")
+							commitReplacements(
+								[{ ...selected[0], [attribute]: value }],
+								`Change pin ${attribute}`,
+							);
+					}}
 					onPinAttributeChange={(attribute, value) => {
 						if (selected.length === 1 && selected[0].kind === "pin")
 							commitReplacements(
@@ -1878,6 +1885,13 @@ function EditorCanvas({
 								onTextAlignmentChange: (alignment: TextAlignment) => {
 									if (selectedChild.shape.kind === "text")
 										editChild({ ...selectedChild.shape, ...alignment });
+								},
+								onPinVisibilityChange: (
+									attribute: "showName" | "showNumber",
+									value: boolean,
+								) => {
+									if (selectedChild.shape.kind === "pin")
+										editChild({ ...selectedChild.shape, [attribute]: value });
 								},
 								onPinAttributeChange: (
 									attribute: "name" | "number",
