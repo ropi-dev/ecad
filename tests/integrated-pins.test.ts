@@ -82,3 +82,20 @@ test("lead-only edits commit and participate in undo and redo", () => {
 	run(redoEffect);
 	assert.equal(read().length, 4);
 });
+
+test("visibility-only pin edits commit, undo, and redo independently", () => {
+	const pin = { ...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }), kind: "pin" as const, name: "RUN", number: "01", showLabels: false };
+	const store = createDrawingStore([pin]);
+	const run = <A, E>(effect: Effect.Effect<A, E, DrawingStore>) => Effect.runSync(effect.pipe(Effect.provideService(DrawingStore, store)));
+	const read = () => store.getSnapshot().shapes[0] as PinShape;
+	for (const field of ["showName", "showNumber"] as const) {
+		const before = read();
+		run(replaceShapesEffect([{ ...before, [field]: true }], "Change visibility"));
+		assert.equal(read()[field], true);
+		run(undoEffect);
+		assert.deepEqual(read(), before);
+		run(redoEffect);
+		assert.equal(read()[field], true);
+	}
+	assert.equal(read().showLabels, false);
+});

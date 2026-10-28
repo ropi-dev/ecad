@@ -33,6 +33,8 @@ export type SymbolPrimitive =
 			rotation?: number;
 			labelOffset?: number;
 			showLabels?: boolean;
+			showName?: boolean;
+			showNumber?: boolean;
 	  };
 
 export interface DefaultSymbolFile {
