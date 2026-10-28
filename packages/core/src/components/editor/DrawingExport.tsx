@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
-import { exportDrawingSvg } from "#/drawing/export.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { captureSvgPng } from "#/engine/capture-png.ts";
@@ -69,6 +68,9 @@ export function DrawingExport({
 									await measurePerformanceAsync(
 										"drawing.export",
 										async () => {
+											const { exportDrawingSvg } = await import(
+												"#/drawing/export.ts"
+											);
 											const svg = exportDrawingSvg(shapes, {
 												width,
 												height,

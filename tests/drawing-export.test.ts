@@ -1,3 +1,4 @@
+import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -63,4 +64,48 @@ test("export validates allocation sizes and handles empty drawings and XML text"
 		exportDrawingSvg([], { ...options, area: "drawing" }),
 		/NaN|Infinity/,
 	);
+});
+
+test("pin-only symbols keep their connections and labels when their container has no vertices", () => {
+	const pin: EditorShape = {
+		id: 1,
+		kind: "pin",
+		x: 0,
+		y: 0,
+		width: 0.508,
+		height: 0.508,
+		lineWidth: 0.18,
+		rotation: 0,
+		length: 2,
+		name: "Clock signal",
+		number: "17",
+	};
+	const symbol = createSymbolFromShapes(2, [pin]);
+	symbol.texts = [{ attribute: "reference", x: 0, y: 3, fontSize: 2 }];
+	const svg = exportDrawingSvg([symbol], options);
+	assert.match(svg, /data-name="symbol 2"/);
+	assert.match(svg, /data-name="pin 2:1"><path[^>]*d="M/);
+	assert.match(svg, />Clock signal<\/text>/);
+	assert.match(svg, />17<\/text>/);
+	assert.match(svg, />U2<\/text>/);
+	assert.doesNotMatch(svg, /NaN|Infinity/);
+});
+
+test("zero-width geometry does not prevent later drawing objects from exporting", () => {
+	const line: EditorShape = {
+		id: 1,
+		kind: "line",
+		x: 0,
+		y: 0,
+		width: 10,
+		height: 0,
+		lineWidth: 0,
+		rotation: 0,
+	};
+	const svg = exportDrawingSvg(
+		[line, { ...line, id: 2, height: 0.2, lineWidth: 0.2 }],
+		options,
+	);
+	assert.match(svg, /data-name="line 1"><\/g>/);
+	assert.match(svg, /data-name="line 2"><path[^>]*d="M/);
 });

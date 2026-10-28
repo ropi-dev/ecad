@@ -133,7 +133,7 @@ export function exportDrawingSvg(
 					try {
 						const position = geometry.getAttribute("position"),
 							index = geometry.getIndex();
-						const count = index?.count ?? position.count;
+						const count = position ? (index?.count ?? position.count) : 0;
 						const paths: string[] = [];
 						for (let i = 0; i < count; i += 3) {
 							const points = [0, 1, 2].map((j) => {
@@ -148,7 +148,8 @@ export function exportDrawingSvg(
 							});
 							paths.push(`M${points[0]}L${points[1]}L${points[2]}Z`);
 						}
-						svg = `<path fill="${color}" d="${paths.join("")}"/>`;
+						if (paths.length)
+							svg = `<path fill="${color}" d="${paths.join("")}"/>`;
 					} finally {
 						geometry.dispose();
 					}
