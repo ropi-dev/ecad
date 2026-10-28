@@ -24,5 +24,13 @@
     "Labels must remain standalone, and grouping rejects them",
     "Importer must opt labels in and preserve source anchors",
     "Original drawing is not automatically migrated from ordinary text"
-  ]
+  ],
+  "independent_review_fixes": {
+    "child_labels": "Direct placement/replacement schemas and runtime commands reject electrical symbol children; drawing and symbol imports reject them too. Regressions cover rotated-symbol CLI/MCP payloads and unchanged persisted state.",
+    "connectivity": "Spatial tree of segment and terminal bounds replaces pairwise search. Immutable graph records cache by drawing snapshot; long-lived local drawing services reuse read stores only for identical drawing/history content.",
+    "checks": "47 focused named-net, MCP and CLI tests passed; separate 67-test run including symbol import/reference tests passed before local-store cache addition.",
+    "benchmark_before": "named-nets-5000-before.json",
+    "benchmark_after": "named-nets-5000-after.json",
+    "performance_scope": "Focused Node 5000-wire benchmark only. No full browser/performance suite rerun; slot required."
+  }
 }

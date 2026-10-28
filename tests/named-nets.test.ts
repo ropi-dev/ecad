@@ -144,3 +144,83 @@ test("grouping cannot hide electrical labels inside symbol definitions", async (
 	assert.throws(() => Effect.runSync(createSymbolFromSelectionEffect([1, 2]).pipe(Effect.provideService(DrawingStore, store))), /Electrical labels must remain standalone/);
 	assert.equal(store.getSnapshot(), before);
 });
+
+const symbolWithElectricalChild = (): Extract<EditorShape, { kind: "symbol" }> => ({
+	id: 1, kind: "symbol", definitionId: "nested-label", x: 40, y: 30,
+	width: 10, height: 10, rotation: Math.PI / 2, lineWidth: 0.2,
+	children: [drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }), label(2, "GND", 0, 0, "supply")],
+	texts: [], attributes: { name: "Nested label", reference: "U1", value: "" },
+});
+
+test("direct symbol payloads reject electrical children in schemas, commands and drawing import", async () => {
+	const { shapeInputSchema } = await import("#/drawing/schema.ts");
+	const { drawingOperationSchema } = await import("#/mcp/drawing-protocol.ts");
+	const symbol = symbolWithElectricalChild();
+	const { id: _id, ...input } = symbol;
+	assert.equal(shapeInputSchema.safeParse(input).success, false);
+	assert.equal(drawingShapeSchema.safeParse(symbol).success, false);
+	assert.equal(drawingOperationSchema.safeParse({ type: "placeShapes", shapes: [input] }).success, false);
+	assert.equal(drawingOperationSchema.safeParse({ type: "replaceShapes", shapes: [symbol] }).success, false);
+	assert.throws(() => validateProjectDocument({ shapes: [symbol, label(2, "GND", 100, 0)], symbols: [] }));
+	const store = createDrawingStore();
+	const before = store.getSnapshot();
+	assert.throws(() => Effect.runSync(placeShapesEffect([input], "Place nested label").pipe(Effect.provideService(DrawingStore, store))), /Electrical labels must remain standalone/);
+	assert.equal(store.getSnapshot(), before);
+	const plain = { ...symbol, children: symbol.kind === "symbol" ? symbol.children.filter(child => child.kind !== "text") : [] };
+	Effect.runSync(placeShapesEffect([plain], "Place symbol").pipe(Effect.provideService(DrawingStore, store)));
+	const existing = store.getSnapshot();
+	assert.throws(() => Effect.runSync(replaceShapesEffect([symbol], "Replace symbol").pipe(Effect.provideService(DrawingStore, store))), /Electrical labels must remain standalone/);
+	assert.equal(store.getSnapshot(), existing);
+});
+
+test("symbol file import rejects electrical text instead of discarding its role", async () => {
+	const { parseSymbolFile } = await import("#/components/editor/symbolFormat.ts");
+	const { id: _id, ...electricalText } = label(1, "GND", 0, 0, "supply");
+	const file = { format: "ecad-symbol", version: 1, units: "mm", id: "nested-label", name: "Nested label", description: "", prefix: "U", value: "", shapes: [electricalText] };
+	assert.throws(() => parseSymbolFile(JSON.stringify(file)));
+	const text = { ...file.shapes[0] };
+	delete text.electrical;
+	assert.equal(parseSymbolFile(JSON.stringify({ ...file, shapes: [text] })).shapes.length, 1);
+});
+
+test("spatial connectivity keeps long diagonal anchors, tolerance and unconnected crossings", () => {
+	const shapes = [{ ...wire(1, -1e6, 0, 1e6), x: 0, y: 0, width: Math.hypot(2e6, 2e6), rotation: Math.PI / 4 }, { ...wire(2, -20, 0, 20), x: 0, y: 0, width: Math.hypot(40, 40), rotation: -Math.PI / 4 },
+		label(3, "DIAGONAL", 100, 100), label(4, "DIAGONAL", 2000000, 0), wire(5, 2000000, 0, 2000010),
+		label(6, "NEAR", 10, 10 + 0.00005), label(7, "FAR", 10, 10 + 0.001)];
+	const net = netForWire(shapes, 1);
+	assert.deepEqual(net.wires, [1, 5]);
+	assert.deepEqual(net.names, ["DIAGONAL", "NEAR"]);
+	assert.deepEqual(netForWire(shapes, 2).wires, [2]);
+	assert.ok(electricalNets(shapes).some(net => net.names.includes("FAR") && net.wires.length === 0));
+});
+
+test("5000 disconnected wires remain separate in the spatial index", () => {
+	const shapes = Array.from({ length: 5000 }, (_, index) => wire(index + 1, index % 100 * 20, Math.floor(index / 100) * 20, index % 100 * 20 + 10));
+	const nets = electricalNets(shapes);
+	assert.equal(nets.length, 5000);
+	assert.ok(nets.every(net => net.wires.length === 1 && !net.names.length));
+});
+
+test("getDrawing caches immutable nets by snapshot and invalidates after editing and undo", async () => {
+	const { executeDrawingOperation } = await import("#/mcp/drawing-protocol.ts");
+	const store = createDrawingStore([wire(1, 0, 0, 10), wire(2, 30, 0, 40), label(3, "GND", 0, 0), label(4, "GND", 30, 0)]);
+	const read = (target = store) => {
+		const reply = Effect.runSync(executeDrawingOperation({ type: "getDrawing" }).pipe(Effect.provideService(DrawingStore, target)));
+		assert.ok(reply.ok);
+		return reply.drawing.nets!;
+	};
+	const first = read();
+	assert.equal(first, read());
+	assert.ok(Object.isFrozen(first) && Object.isFrozen(first[0]) && Object.isFrozen(first[0].names));
+	assert.throws(() => first[0].wires.push(999));
+	Effect.runSync(replaceShapesEffect([label(4, "VCC", 30, 0)], "Rename net").pipe(Effect.provideService(DrawingStore, store)));
+	const renamed = read();
+	assert.notEqual(renamed, first);
+	assert.equal(renamed.length, 2);
+	assert.equal(renamed, read());
+	Effect.runSync(undoEffect.pipe(Effect.provideService(DrawingStore, store)));
+	assert.deepEqual(read(), first);
+	const otherStore = createDrawingStore([wire(1, 100, 100, 110)]);
+	assert.notEqual(read(otherStore), first);
+	assert.deepEqual(read(otherStore)[0].wires, [1]);
+});

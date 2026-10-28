@@ -3,7 +3,7 @@ import {
 	symbolShapes,
 	type TextShape,
 } from "#/drawing/shapes.ts";
-import type { Point } from "#/drawing/types.ts";
+import type { Bounds, Point } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface ElectricalNet {
@@ -40,20 +40,88 @@ function onSegment(point: Point, start: Point, end: Point) {
 	return samePoint(point, { x: start.x + t * dx, y: start.y + t * dy });
 }
 
+interface ElectricalNode {
+	point: Point;
+	end?: Point;
+	wire?: number;
+	label?: number;
+	name?: string;
+	pin?: ElectricalNet["pins"][number];
+}
+interface SpatialEntry extends Bounds {
+	index: number;
+}
+interface SpatialTree extends Bounds {
+	entries?: SpatialEntry[];
+	left?: SpatialTree;
+	right?: SpatialTree;
+}
+
+function spatialTree(entries: SpatialEntry[]): SpatialTree | undefined {
+	if (!entries.length) return;
+	const bounds = entries.reduce(
+		(bounds, entry) => ({
+			minX: Math.min(bounds.minX, entry.minX),
+			maxX: Math.max(bounds.maxX, entry.maxX),
+			minY: Math.min(bounds.minY, entry.minY),
+			maxY: Math.max(bounds.maxY, entry.maxY),
+		}),
+		{ minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity },
+	);
+	if (entries.length <= 8) return { ...bounds, entries };
+	const axis =
+		bounds.maxX - bounds.minX >= bounds.maxY - bounds.minY ? "X" : "Y";
+	entries.sort(
+		(a, b) =>
+			a[`min${axis}`] / 2 +
+			a[`max${axis}`] / 2 -
+			b[`min${axis}`] / 2 -
+			b[`max${axis}`] / 2,
+	);
+	const middle = Math.floor(entries.length / 2);
+	return {
+		...bounds,
+		left: spatialTree(entries.slice(0, middle)),
+		right: spatialTree(entries.slice(middle)),
+	};
+}
+
+function queryPoint(
+	tree: SpatialTree | undefined,
+	point: Point,
+	visit: (index: number) => void,
+): void {
+	if (
+		!tree ||
+		point.x < tree.minX - tolerance ||
+		point.x > tree.maxX + tolerance ||
+		point.y < tree.minY - tolerance ||
+		point.y > tree.maxY + tolerance
+	)
+		return;
+	if (tree.entries) {
+		for (const entry of tree.entries) {
+			if (
+				point.x >= entry.minX - tolerance &&
+				point.x <= entry.maxX + tolerance &&
+				point.y >= entry.minY - tolerance &&
+				point.y <= entry.maxY + tolerance
+			)
+				visit(entry.index);
+		}
+	} else {
+		queryPoint(tree.left, point, visit);
+		queryPoint(tree.right, point, visit);
+	}
+}
+
 export function electricalNets(
 	shapes: readonly EditorShape[],
 ): ElectricalNet[] {
 	return measurePerformance(
 		"drawing.electrical-nets",
 		() => {
-			const nodes: {
-				point: Point;
-				end?: Point;
-				wire?: number;
-				label?: number;
-				name?: string;
-				pin?: ElectricalNet["pins"][number];
-			}[] = [];
+			const nodes: ElectricalNode[] = [];
 			for (const shape of shapes) {
 				if (shape.kind === "wire")
 					nodes.push({
@@ -106,18 +174,28 @@ export function electricalNets(
 					if (previous !== undefined) join(index, previous);
 					names.set(node.name, index);
 				}
-				for (let otherIndex = 0; otherIndex < index; otherIndex++) {
-					const other = nodes[otherIndex];
-					if (
-						samePoint(node.point, other.point) ||
-						(node.end && onSegment(other.point, node.point, node.end)) ||
-						(other.end && onSegment(node.point, other.point, other.end)) ||
-						(node.end &&
-							other.end &&
-							(onSegment(node.end, other.point, other.end) ||
-								onSegment(other.end, node.point, node.end)))
-					)
-						join(index, otherIndex);
+			}
+			const tree = spatialTree(
+				nodes.map((node, index) => ({
+					index,
+					minX: Math.min(node.point.x, node.end?.x ?? node.point.x),
+					maxX: Math.max(node.point.x, node.end?.x ?? node.point.x),
+					minY: Math.min(node.point.y, node.end?.y ?? node.point.y),
+					maxY: Math.max(node.point.y, node.end?.y ?? node.point.y),
+				})),
+			);
+			for (const [index, node] of nodes.entries()) {
+				for (const point of node.end ? [node.point, node.end] : [node.point]) {
+					queryPoint(tree, point, (otherIndex) => {
+						if (otherIndex === index) return;
+						const other = nodes[otherIndex];
+						if (
+							other.end
+								? onSegment(point, other.point, other.end)
+								: samePoint(point, other.point)
+						)
+							join(index, otherIndex);
+					});
 				}
 			}
 			const groups = new Map<number, ElectricalNet>();

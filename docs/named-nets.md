@@ -39,3 +39,9 @@ The editor's Connections group places Net label and Supply label items. Placemen
 For the RP2350A reference conversion, restore the source label anchor before setting `electrical`. Its current `build.py` adds 0.5 mm to horizontal label Y coordinates for display. Supply symbols must emit an explicit supply label at their terminal, using the source net name. Neither ordinary text nor a symbol's displayed value creates a net automatically. Names currently apply to the whole drawing; hierarchical sheet scopes and ERC are outside this representation.
 
 Electrical labels are standalone drawing items. The symbol editor does not offer electrical label tools, and grouping rejects electrical labels to preserve their drawing-wide meaning.
+
+Shape schemas, drawing import, symbol-file import and direct drawing commands reject electrical labels inside symbol children. This also applies to CLI and MCP payloads. A symbol's text remains ordinary text.
+
+Connectivity uses a spatial tree of terminal and segment bounds to find endpoint and label contacts. `getDrawing` caches immutable net records by the frozen drawing snapshot. Edits and history navigation create a new snapshot, so the next read rebuilds connectivity. The cache uses weak keys so it does not retain drawings after their snapshots are released.
+
+Long-lived local CLI/MCP drawing services also reuse the read-only store when both drawing and history file contents are unchanged. They validate files under the existing lock, discard cached reads before mutations, and rebuild after an external file change. Separate CLI processes each build their own cache.

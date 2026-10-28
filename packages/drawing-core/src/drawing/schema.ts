@@ -122,7 +122,7 @@ const symbolInputSchema = z.strictObject({
 			z.discriminatedUnion("kind", [
 				primitiveShapeSchema,
 				pinShapeSchema,
-				textInputSchema.extend({ id: shapeId }),
+				textInputSchema.omit({ electrical: true }).extend({ id: shapeId }),
 			]),
 		)
 		.describe(

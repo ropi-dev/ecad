@@ -234,6 +234,8 @@ function validateShape(shape: EditorShape) {
 				"Symbol text positions require valid attributes and finite coordinates.",
 			);
 		for (const child of shape.children) {
+			if (child.kind === "text" && child.electrical !== undefined)
+				invalid("Electrical labels must remain standalone drawing items.");
 			if (
 				![
 					"rectangle",
