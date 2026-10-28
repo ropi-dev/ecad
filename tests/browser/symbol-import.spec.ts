@@ -48,7 +48,9 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
  await search.fill("");
  const testPoint = page.getByRole("button", { name: "Insert Test point", exact: true });
  await expect(testPoint.locator("svg circle")).toHaveCount(2);
- await expect(page.getByRole("button", { name: "Insert Buffer" }).locator("svg polygon")).toHaveCount(1);
+ const buffer = page.getByRole("button", { name: "Insert Buffer", exact: true });
+ await buffer.scrollIntoViewIfNeeded();
+ await expect(buffer.locator("svg polygon")).toHaveCount(1);
  await testPoint.click();
  const canvas = page.locator("canvas");
  const box = (await canvas.boundingBox())!;
