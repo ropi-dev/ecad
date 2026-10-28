@@ -31,6 +31,7 @@
     "checks": "47 focused named-net, MCP and CLI tests passed; separate 67-test run including symbol import/reference tests passed before local-store cache addition.",
     "benchmark_before": "named-nets-5000-before.json",
     "benchmark_after": "named-nets-5000-after.json",
-    "performance_scope": "Focused Node 5000-wire benchmark only. No full browser/performance suite rerun; slot required."
+    "performance_scope": "Focused Node 5000-wire benchmark only. No full browser/performance suite rerun; slot required.",
+    "browser_followup": "CI Connections toolbar expectation updated from two to four tools, with explicit name assertions. All four Box tests passed locally; 10 other toolbar cases passed before the assertion fix, and the corrected toolbar case passed in a focused rerun. Old Box CI failure timed out during screenshot, no timeout increase."
   }
 }

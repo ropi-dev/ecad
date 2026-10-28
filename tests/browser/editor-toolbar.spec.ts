@@ -120,7 +120,9 @@ test("groups replace each other above the main toolbar without changing the acti
 		page
 			.getByRole("toolbar", { name: "Connections toolbar" })
 			.getByRole("button"),
-	).toHaveCount(2);
+	).toHaveCount(4);
+	for (const name of ["Wire", "Pin", "Net label", "Supply label"])
+		await expect(page.getByRole("toolbar", { name: "Connections toolbar" }).getByRole("button", { name, exact: true })).toBeVisible();
 	await expect(page.locator('[data-tool="circle"]')).toBeAttached();
 	await shapes.click();
 	await expect(
