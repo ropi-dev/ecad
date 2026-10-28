@@ -109,3 +109,36 @@ test("zero-width geometry does not prevent later drawing objects from exporting"
 	assert.match(svg, /data-name="line 1"><\/g>/);
 	assert.match(svg, /data-name="line 2"><path[^>]*d="M/);
 });
+
+test("native pin name and number visibility survive standalone and symbol override export", () => {
+	for (const showName of [true, false])
+		for (const showNumber of [true, false]) {
+			const pin: import("#/drawing/shapes.ts").PinShape = {
+				id: 1,
+				kind: "pin",
+				x: 0,
+				y: 0,
+				width: 0.508,
+				height: 0.508,
+				lineWidth: 0.18,
+				rotation: Math.PI / 2,
+				length: 2,
+				name: "EXPORT_PIN",
+				number: "97",
+				showLabels: false,
+				showName,
+				showNumber,
+			};
+			const symbol = createSymbolFromShapes(2, [
+				{ ...pin, showName: !showName, showNumber: !showNumber },
+			]);
+			symbol.childOverrides = { "shape:1": { showName, showNumber } };
+			for (const shape of [pin, symbol]) {
+				const svg = exportDrawingSvg([shape], options);
+				assert.equal(svg.includes(">EXPORT_PIN</text>"), showName);
+				assert.equal(svg.includes(">97</text>"), showNumber);
+				assert.match(svg, /<path[^>]*d="M/);
+				assert.doesNotMatch(svg, /NaN|Infinity/);
+			}
+		}
+});

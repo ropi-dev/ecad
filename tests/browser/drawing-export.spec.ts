@@ -362,3 +362,85 @@ test("rotated multiline text keeps orientation, anchors and every glyph inside t
 		expect(result.fits).toBe(true);
 	}
 });
+
+test("native independent pin labels reach SVG and PNG through standalone pins and child overrides", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/editor.html");
+	const results = await page.evaluate(async () => {
+		const exportUrl = "/packages/core/src/drawing/export.ts";
+		const captureUrl = "/packages/core/src/engine/capture-png.ts";
+		const symbolsUrl = "/packages/core/src/drawing/symbols.ts";
+		const { exportDrawingSvg } = (await import(
+			exportUrl
+		)) as typeof import("#/drawing/export.ts");
+		const { captureSvgPng } = (await import(
+			captureUrl
+		)) as typeof import("#/engine/capture-png.ts");
+		const { createSymbolFromShapes } = (await import(
+			symbolsUrl
+		)) as typeof import("#/drawing/symbols.ts");
+		const results = [];
+		for (const grouped of [false, true])
+			for (const showName of [false, true])
+				for (const showNumber of [false, true]) {
+					const pin: import("#/drawing/shapes.ts").PinShape = {
+						id: 1,
+						kind: "pin",
+						x: 0,
+						y: 0,
+						width: 0.508,
+						height: 0.508,
+						lineWidth: 0.18,
+						rotation: Math.PI / 2,
+						length: 2,
+						name: "EXPORT_PIN",
+						number: "97",
+						showLabels: false,
+						showName,
+						showNumber,
+					};
+					const symbol = createSymbolFromShapes(2, [
+						{ ...pin, showName: !showName, showNumber: !showNumber },
+					]);
+					symbol.childOverrides = { "shape:1": { showName, showNumber } };
+					const svg = exportDrawingSvg([grouped ? symbol : pin], {
+						width: 800,
+						height: 400,
+						area: "drawing",
+						background: "white",
+						sheet: { width: 420, height: 297 },
+					});
+					const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+					const texts = [...doc.querySelectorAll("text")].map(
+						(node) => node.textContent,
+					);
+					const png = await captureSvgPng(svg, 800, 400, "white");
+					const bytes = new Uint8Array(
+						await crypto.subtle.digest("SHA-256", await png.arrayBuffer()),
+					);
+					results.push({
+						grouped,
+						showName,
+						showNumber,
+						texts,
+						hash: [...bytes]
+							.map((b) => b.toString(16).padStart(2, "0"))
+							.join(""),
+					});
+				}
+		return results;
+	});
+	for (const result of results) {
+		expect(result.texts.includes("EXPORT_PIN")).toBe(result.showName);
+		expect(result.texts.includes("97")).toBe(result.showNumber);
+		expect(result.texts).toHaveLength(
+			Number(result.showName) + Number(result.showNumber),
+		);
+	}
+	for (const grouped of [false, true])
+		expect(
+			new Set(results.filter((r) => r.grouped === grouped).map((r) => r.hash))
+				.size,
+		).toBe(4);
+});
