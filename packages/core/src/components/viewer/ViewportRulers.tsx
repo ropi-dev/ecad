@@ -1,6 +1,6 @@
 import { type Ref, useId, useImperativeHandle, useState } from "react";
 import type { Camera } from "#/engine/index.ts";
-import { type GridTick, gridTicks, rulerTicks } from "#/engine/ruler.ts";
+import { gridLayers, rulerTicks } from "#/engine/ruler.ts";
 import type { Bounds } from "#/engine/types.ts";
 
 interface RulerView {
@@ -12,11 +12,6 @@ export interface ViewportRulersHandle {
 	update: (view: RulerView) => void;
 }
 
-function gridStroke(tick: GridTick) {
-	const major = tick.majorOpacity / tick.opacity;
-	return `rgb(${51 + 49 * major}, ${65 + 51 * major}, ${85 + 54 * major})`;
-}
-
 export function ViewportRulers({
 	ref,
 	gridBounds,
@@ -25,6 +20,7 @@ export function ViewportRulers({
 	gridBounds?: Bounds;
 }) {
 	const gridMaskId = useId();
+	const gridPatternId = useId();
 	const [view, setView] = useState<RulerView>();
 	useImperativeHandle(
 		ref,
@@ -53,8 +49,7 @@ export function ViewportRulers({
 	const vertical = rulerTicks(camera.y, camera.scale, height, true).filter(
 		(tick) => tick.position >= 24,
 	);
-	const horizontalGrid = gridTicks(camera.x, camera.scale, width);
-	const verticalGrid = gridTicks(camera.y, camera.scale, height, true);
+	const layers = gridLayers(camera.scale);
 	return (
 		<>
 			<svg
@@ -64,6 +59,24 @@ export function ViewportRulers({
 				height={height}
 				aria-hidden="true"
 			>
+				<defs>
+					{layers.map(({ spacing }, index) => {
+						const pixels = spacing.minor * camera.scale;
+						return (
+							<pattern
+								key={spacing.minor}
+								id={`${gridPatternId}-${index}`}
+								patternUnits="userSpaceOnUse"
+								x={width / 2 - camera.x * camera.scale - pixels / 2}
+								y={height / 2 + camera.y * camera.scale - pixels / 2}
+								width={pixels}
+								height={pixels}
+							>
+								<circle cx={pixels / 2} cy={pixels / 2} r={1} fill="#303a49" />
+							</pattern>
+						);
+					})}
+				</defs>
 				{gridBounds && (
 					<defs>
 						<mask
@@ -86,34 +99,14 @@ export function ViewportRulers({
 						</mask>
 					</defs>
 				)}
-				<g
-					mask={gridBounds ? `url(#${gridMaskId})` : undefined}
-					opacity={gridBounds ? 0.6 : 1}
-				>
-					{horizontalGrid.map((tick) => (
-						<line
-							key={tick.value}
-							x1={tick.position}
-							x2={tick.position}
-							y1="0"
-							y2={height}
-							stroke={gridStroke(tick)}
-							strokeWidth={1}
-							opacity={0.35 * tick.opacity}
-							data-major={tick.majorOpacity === tick.opacity}
-						/>
-					))}
-					{verticalGrid.map((tick) => (
-						<line
-							key={tick.value}
-							x1="0"
-							x2={width}
-							y1={tick.position}
-							y2={tick.position}
-							stroke={gridStroke(tick)}
-							strokeWidth={1}
-							opacity={0.35 * tick.opacity}
-							data-major={tick.majorOpacity === tick.opacity}
+				<g mask={gridBounds ? `url(#${gridMaskId})` : undefined}>
+					{layers.map(({ spacing, opacity }, index) => (
+						<rect
+							key={spacing.minor}
+							width={width}
+							height={height}
+							fill={`url(#${gridPatternId}-${index})`}
+							opacity={opacity}
 						/>
 					))}
 				</g>
