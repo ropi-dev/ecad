@@ -185,8 +185,17 @@ test("projects-empty", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await expect(
-		page.getByRole("heading", { name: "No project open" }),
+		page.getByRole("heading", { name: "Ready when you are" }),
 	).toBeVisible();
+	await expect(page.getByRole("link", { name: "Workspace home", exact: true })).toHaveAttribute("title", "Untitled");
+	await expect(page.getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
+	const names = await page.evaluate(async () => {
+		const root = await navigator.storage.getDirectory();
+		const result = [];
+		for await (const name of root.keys()) if (name.startsWith("Untitled-")) result.push(name);
+		return result;
+	});
+	expect(names).toHaveLength(1);
 	await finish(page, testInfo, "projects-empty");
 });
 

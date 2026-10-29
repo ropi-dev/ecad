@@ -11,6 +11,7 @@ export interface ProjectStorage {
 	create(name: string): Promise<ProjectSnapshot | null>;
 	open(name?: string): Promise<ProjectSnapshot | null>;
 	save(directory: string, document: ProjectDocument): Promise<ProjectSnapshot>;
+	saveProject?(directory: string): Promise<ProjectSnapshot | null>;
 	importAssets(
 		directory: string,
 		assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],

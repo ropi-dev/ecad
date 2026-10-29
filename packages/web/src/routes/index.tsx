@@ -1,4 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GerberWorkspace } from "@ecad/core/components/gerber/GerberWorkspace.tsx";
+import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 
-export const Route = createFileRoute("/")({ component: GerberWorkspace });
+export const Route = createFileRoute("/")({ component: WorkspaceStart });

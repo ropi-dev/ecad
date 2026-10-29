@@ -132,7 +132,7 @@ export function SymbolPicker({
 									: "No symbols match your search."
 								: components
 									? "No components available."
-									: "No symbols available. Enable a library on the Projects page."}
+									: "No symbols available. Open Project actions, then Symbol libraries to enable a library."}
 						</output>
 					)}
 					<div className="space-y-3">

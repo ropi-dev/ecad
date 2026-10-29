@@ -197,7 +197,9 @@ export function ProjectProvider({
 		let cancelled = false;
 		void enqueue(async () => {
 			try {
-				const snapshot = await storage.load();
+				const loaded = await storage.load();
+				if (cancelled) return;
+				const snapshot = loaded ?? (await storage.create("Untitled"));
 				if (snapshot && !cancelled) adopt(snapshot);
 			} catch (cause) {
 				if (!cancelled)
@@ -356,7 +358,7 @@ export function ProjectProvider({
 		},
 		[storage, update],
 	);
-	const save = useCallback(async () => {
+	const autosave = useCallback(async () => {
 		clearTimeout(timer.current);
 		try {
 			await enqueue(async () => {
@@ -376,6 +378,31 @@ export function ProjectProvider({
 			throw cause;
 		}
 	}, [enqueue, persist, transferAssets]);
+	const save = useCallback(async () => {
+		if (!storage.saveProject) return autosave();
+		clearTimeout(timer.current);
+		setBusy(true);
+		try {
+			await enqueue(async () => {
+				await persist();
+				await transferAssets([]);
+				const snapshot = active.current;
+				if (!snapshot) return;
+				const saved = await measurePerformanceAsync(
+					"project.save-to-disk",
+					() => storage.saveProject!(snapshot.directory),
+				);
+				if (saved) update(saved);
+			});
+		} catch (cause) {
+			setError(
+				cause instanceof Error ? cause.message : "Unable to save the project.",
+			);
+			throw cause;
+		} finally {
+			setBusy(false);
+		}
+	}, [storage, autosave, enqueue, persist, transferAssets, update]);
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++editorSelection.current;
 		const snapshot = active.current;
@@ -423,7 +450,7 @@ export function ProjectProvider({
 					setDirty(true);
 					clearTimeout(timer.current);
 					timer.current = setTimeout(
-						() => void save().catch(() => undefined),
+						() => void autosave().catch(() => undefined),
 						400,
 					);
 				}),
@@ -462,7 +489,7 @@ export function ProjectProvider({
 						setDirty(true);
 						clearTimeout(timer.current);
 						timer.current = setTimeout(
-							() => void save().catch(() => undefined),
+							() => void autosave().catch(() => undefined),
 							400,
 						);
 					}),
@@ -492,7 +519,7 @@ export function ProjectProvider({
 					setDirty(true);
 					clearTimeout(timer.current);
 					timer.current = setTimeout(
-						() => void save().catch(() => undefined),
+						() => void autosave().catch(() => undefined),
 						400,
 					);
 				}),
@@ -510,10 +537,10 @@ export function ProjectProvider({
 				setDirty(true);
 				clearTimeout(timer.current);
 				timer.current = setTimeout(() => {
-					void save().catch(() => undefined);
+					void autosave().catch(() => undefined);
 				}, 400);
 			}),
-		[store, save],
+		[store, autosave],
 	);
 	useEffect(() => {
 		const warn = (event: BeforeUnloadEvent) => {
@@ -871,7 +898,8 @@ export function ProjectProvider({
 			clearTimeout(timer.current);
 			try {
 				await enqueue(async () => {
-					const snapshot = await storage.load();
+					const snapshot =
+						(await storage.load()) ?? (await storage.create("Untitled"));
 					if (snapshot) adopt(snapshot);
 					setError("");
 				});

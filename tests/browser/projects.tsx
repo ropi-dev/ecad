@@ -5,7 +5,7 @@ import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "#/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "#/components/step/StepWorkspace.tsx";
 import { ProjectShell } from "#/projects/ProjectShell.tsx";
-import { ProjectPage } from "#/projects/ProjectPage.tsx";
+import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
 import { ProjectProvider, useProject } from "#/projects/ProjectProvider.tsx";
 import { createWebProjectStorage } from "#web/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
@@ -67,7 +67,7 @@ const storage = createWebProjectStorage();
 const symbolStorage = createWebSymbolLibraryStorage();
 
 function App() {
-	const [workspace, setWorkspace] = useState("/projects");
+	const [workspace, setWorkspace] = useState("/");
 	useEffect(() => {
 		const navigate = (event: MouseEvent) => {
 			const target = event.target;
@@ -77,7 +77,7 @@ function App() {
 				href !== "/" &&
 				href !== "/step" &&
 				href !== "/editor" &&
-				href !== "/projects"
+				href !== "/gerber"
 			)
 				return;
 			event.preventDefault();
@@ -91,11 +91,11 @@ function App() {
 			<ProjectDocument />
 			<CircuitDocumentState />
 			<ProjectShell>
-				{workspace === "/projects" ? (
-					<ProjectPage />
+				{workspace === "/" ? (
+					<WorkspaceStart />
 				) : workspace === "/editor" ? (
 					<Editor2D />
-				) : workspace === "/" ? (
+				) : workspace === "/gerber" ? (
 					<GerberWorkspace />
 				) : (
 					<StepWorkspace />

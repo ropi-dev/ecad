@@ -46,6 +46,7 @@ export const projectChannels = {
 	create: "projects:create",
 	open: "projects:open",
 	save: "projects:save",
+	saveProject: "projects:save-project",
 	importAssets: "projects:import-assets",
 	readAsset: "projects:read-asset",
 	canWriteFile: "projects:can-write-file",

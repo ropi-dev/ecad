@@ -88,6 +88,7 @@ export interface ProjectDocument {
 	symbolLibraries?: readonly ConfiguredSymbolLibrary[];
 }
 export interface ProjectSnapshot extends ProjectDocument {
+	inMemory?: boolean;
 	directory: string;
 	manifest: ProjectManifest;
 }
