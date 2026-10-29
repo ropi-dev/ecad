@@ -1,7 +1,7 @@
 import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import { expectKeyboardNavigation } from "./keyboard-navigation";
-import { openProjectFiles } from "./project-files";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 
 test("the sidebar slides over the workspace from an invisible edge handle", async ({
 	page,
@@ -55,6 +55,7 @@ test("pinning the sidebar keeps it beside the canvas through navigation", async 
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
 	await page.getByLabel("Project name", { exact: true }).fill("Pinned sidebar");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
@@ -109,6 +110,7 @@ test("the add file menu supports keyboard navigation and stays open outside the 
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
 	await page.getByLabel("Project name", { exact: true }).fill("File menu");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
@@ -200,11 +202,24 @@ test.describe("touch sidebar", () => {
 			await page.screenshot({
 				path: "perf-artifacts/sidebar-expanded-mobile.png",
 			});
+		await page.touchscreen.tap(350, 400);
+		await expect(sidebar).toHaveAttribute("data-open", "false");
+		await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(-256);
+		if (captureArtifacts)
+			await page.screenshot({
+				path: "perf-artifacts/sidebar-dismissed-mobile.png",
+			});
+		await page
+			.getByRole("button", { name: "Show project files", exact: true })
+			.tap();
+		await expect(sidebar).toHaveAttribute("data-open", "true");
 		await sidebar
 			.getByRole("button", { name: "Pin sidebar", exact: true })
 			.tap();
 		await expect.poll(async () => (await content.boundingBox())!.x).toBe(256);
 		expect((await content.boundingBox())!.width).toBe(134);
+		await page.touchscreen.tap(350, 400);
+		await expect(sidebar).toHaveAttribute("data-open", "true");
 		if (captureArtifacts)
 			await page.screenshot({
 				path: "perf-artifacts/sidebar-pinned-mobile.png",
@@ -226,6 +241,7 @@ test.describe("touch sidebar", () => {
 		page,
 	}) => {
 		await page.goto("/tests/browser/projects.html");
+		await closeProjectFiles(page);
 		await page
 			.getByLabel("Project name", { exact: true })
 			.fill("Touch file menu");

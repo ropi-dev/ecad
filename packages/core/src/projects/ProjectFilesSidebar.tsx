@@ -16,7 +16,15 @@ import {
 	X,
 } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
-import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
 	type AssetKind,
@@ -76,6 +84,7 @@ export function ProjectFilesSidebar() {
 	const [hovered, setHovered] = useState(false);
 	const [focused, setFocused] = useState(false);
 	const [touchOpen, setTouchOpen] = useState(false);
+	const sidebarRef = useRef<HTMLFieldSetElement>(null);
 	const panelId = useId();
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<(typeof filters)[number]>("All files");
@@ -94,6 +103,26 @@ export function ProjectFilesSidebar() {
 		touchOpen ||
 		addMenuOpen ||
 		creatingFile !== null;
+	useEffect(() => {
+		if (!touchOpen || pinned || addMenuOpen || creatingFile) return;
+		const dismiss = (event: PointerEvent) => {
+			if (
+				!(event.target instanceof Node) ||
+				sidebarRef.current?.contains(event.target)
+			)
+				return;
+			if (
+				document.activeElement instanceof HTMLElement &&
+				sidebarRef.current?.contains(document.activeElement)
+			)
+				document.activeElement.blur();
+			setTouchOpen(false);
+			setFocused(false);
+			setHovered(false);
+		};
+		document.addEventListener("pointerdown", dismiss, true);
+		return () => document.removeEventListener("pointerdown", dismiss, true);
+	}, [touchOpen, pinned, addMenuOpen, creatingFile]);
 	const editorLink = useRef<HTMLAnchorElement>(null);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
@@ -187,6 +216,7 @@ export function ProjectFilesSidebar() {
 
 	return (
 		<fieldset
+			ref={sidebarRef}
 			aria-label="File sidebar"
 			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-[#c7d0dc] ${pinned ? "w-64 max-w-[calc(100vw-4rem)]" : "w-0"}`}
 			onPointerEnter={(event) => {
