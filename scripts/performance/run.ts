@@ -22,7 +22,7 @@ for (const target of development ? ["build:cli"] : ["build:web", "build:cli"]) {
 		`[perf] Running ${target}. Build output goes to perf-artifacts/build.log.`,
 	);
 	const build = spawnSync(
-		process.platform === "win32" ? "npm.cmd" : "npm",
+		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
 		["run", target],
 		{ encoding: "utf8", env },
 	);
@@ -37,9 +37,9 @@ for (const target of development ? ["build:cli"] : ["build:web", "build:cli"]) {
 	}
 }
 const run = spawnSync(
-	process.platform === "win32" ? "npx.cmd" : "npx",
+	process.platform === "win32" ? "pnpm.cmd" : "pnpm",
 	[
-		"--no-install",
+		"exec",
 		"playwright",
 		"test",
 		"--config",

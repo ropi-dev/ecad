@@ -26,7 +26,7 @@ Text starts 1 mm inside the top-left corner, at local X = 1 and Y = -1, with lef
 From the repository root:
 
 ```bash
-npm run symbols:generate -- /absolute/path/to/output
+pnpm run symbols:generate /absolute/path/to/output
 ```
 
 Without a directory argument, the command writes to `packages/default-symbols/generated`. It writes one JSON `.ecadsym` file per symbol and copies the license and attribution documents. It refuses to overwrite existing files. Use a new directory when regenerating a collection.
@@ -41,6 +41,6 @@ The generator converts 50 mils to 1 mm so terminals land on the editor's 1 mm gr
 
 The editor's version 1 format has no arcs, filled polygons, or electrical pin types. The generator approximates arcs with line segments spanning at most 15 degrees, draws polygons as outlines, and stores each terminal's KiCad pin name. Unnamed terminals use the source pin number as their name. Microcontrollers preserve package pin numbers, including the exposed ground pad. Chip bodies have an opaque dark blue-grey fill behind their teal outlines and labels. Each chip pin owns its exposed terminal, 2 mm lead, name, and package number. The chips contain one body rectangle and one pin item per package pin, with 2 mm between rows. The editor centers each 1.27 mm name label on its pin inside the body and places the 1 mm package number above the lead outside the body. The operational amplifier uses the LM321 pin layout and adds drawn input polarity marks beside its pin labels.
 
-To extend the collection, add a source entry with a stable ID and grid-aligned terminals to `src/catalog.ts`. Keep its KiCad source in the entry's `source` field and update the attribution. Run `npm test --workspace @ecad/default-symbols`, the repository tests, and the `default-symbols` performance scenario.
+To extend the collection, add a source entry with a stable ID and grid-aligned terminals to `src/catalog.ts`. Keep its KiCad source in the entry's `source` field and update the attribution. Run `pnpm --filter @ecad/default-symbols test`, the repository tests, and the `default-symbols` performance scenario.
 
 The symbol collection uses the KiCad library license, CC BY-SA 4.0 with its electronic-design exception. See [LICENSE.md](LICENSE.md) and [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt).

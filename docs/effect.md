@@ -58,12 +58,12 @@ Keep Zod where the existing framework integration already uses it. Effect Schema
 ## Verification
 
 ```sh
-npm run typecheck
-npm test
-npm run test:browser
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run test:browser
+pnpm run build
 ```
 
 Tests cover cancellation, worker failures and timeouts, import rollback and ownership, partial success, HTTP decoding and cancellation, subscription cleanup, server persistence, and viewer finalizers. Browser tests cover the existing rendering and editor behavior.
 
-Use npm for this repository so `package-lock.json` remains the dependency lockfile. TanStack Table is constrained to major version 8 to match the existing demo's API.
+Use pnpm for this repository and commit changes to `pnpm-lock.yaml`. TanStack Table is constrained to major version 8 to match the existing demo's API.

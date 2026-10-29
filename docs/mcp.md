@@ -6,7 +6,7 @@ MCP clients can also read and edit the drawing open in the web app's `/editor`. 
 
 ## Connect a client
 
-1. Start the app with `npm run dev` and open `http://localhost:3000/editor`.
+1. Start the app with `pnpm run dev` and open `http://localhost:3000/editor`.
 2. Click **Enable MCP** and wait for **Connected to this drawing**.
 3. Click **Copy configuration**. Add the copied endpoint and authorization header to an MCP client that supports Streamable HTTP and custom headers.
 4. Keep the drawing tab open while using the client. Click **MCP connected** to hide or show settings without disconnecting. Click **Disable MCP** in the settings panel to revoke access.
@@ -36,12 +36,12 @@ The `@ecad/cli` workspace runs independently under Node. It uses `@ecad/drawing-
 
 ```bash
 export ECAD_DRAWING="$PWD/drawing.ecaddraw"
-npm run --silent cli -- tools
-npm run --silent cli -- getDrawing
-npm run --silent cli -- placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
-npm run --silent cli -- rotateShapes '{"ids":[1],"angle":1.5707963267948966}'
-printf '%s' '{"ids":[1]}' | npm run --silent cli -- removeShapes -
-npm run --silent cli -- undo
+pnpm --silent cli tools
+pnpm --silent cli getDrawing
+pnpm --silent cli placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
+pnpm --silent cli rotateShapes '{"ids":[1],"angle":1.5707963267948966}'
+printf '%s' '{"ids":[1]}' | pnpm --silent cli removeShapes -
+pnpm --silent cli undo
 ```
 
 `--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. Its parent directory must exist. A missing drawing starts empty, and the first successful edit creates it. Reading an empty drawing or listing tools creates no drawing file.
@@ -53,7 +53,7 @@ Successful tool calls print one MCP result as JSON on stdout. The drawing reply 
 Build the executable once:
 
 ```bash
-npm run build:cli
+pnpm run build:cli
 node packages/cli/bin/ecad.mjs --drawing drawing.ecaddraw getDrawing
 node packages/cli/bin/ecad.mjs --drawing drawing.ecaddraw mcp
 ```

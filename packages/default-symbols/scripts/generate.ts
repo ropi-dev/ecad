@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { generateDefaultSymbols } from "../src/index.ts";
 
 const args = process.argv.slice(2);
-if (args.length > 1) throw new Error("Usage: npm run generate -- [output-directory]");
+if (args.length > 1) throw new Error("Usage: pnpm run generate [output-directory]");
 const output = resolve(args[0] ?? "generated");
 await mkdir(output, { recursive: true });
 const symbols = generateDefaultSymbols();

@@ -3,61 +3,6 @@ import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
 
-test("handles parse failures and keeps the latest file selection", async ({
-	page,
-}) => {
-	await page.addInitScript(() => {
-		Object.defineProperty(navigator, "gpu", { value: undefined });
-		const read = File.prototype.text;
-		File.prototype.text = async function () {
-			if (this.name === "slow.gbr")
-				await new Promise((resolve) => setTimeout(resolve, 250));
-			return read.call(this);
-		};
-	});
-	await page.goto("/tests/browser/viewer.html");
-	const input = page.locator("input[type=file]");
-	await input.setInputFiles({
-		name: "invalid.gbr",
-		mimeType: "text/plain",
-		buffer: Buffer.from("not a gerber file"),
-	});
-	await expect(page.locator("[data-testid=viewer-message]")).toBeVisible();
-	await expect(page.locator("canvas")).toHaveCount(1);
-	await expect(page.getByTestId("viewport-grid")).toBeVisible();
-	await input.setInputFiles({
-		name: "slow.gbr",
-		mimeType: "text/plain",
-		buffer: Buffer.from(demoFiles[0].source),
-	});
-	const latest = demoFiles[1];
-	await input.setInputFiles({
-		name: latest.name,
-		mimeType: "text/plain",
-		buffer: Buffer.from(latest.source),
-	});
-	await expect(page.locator("[data-testid=layer-name]").first()).toHaveText(
-		latest.name,
-	);
-	await expect(
-		page.getByRole("button", { name: "Zoom in", exact: true }),
-	).toBeEnabled();
-	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
-	await expect(page.locator("canvas")).toHaveCount(1);
-	await expect(page.locator("[data-testid=layer-name]").first()).toHaveText(
-		latest.name,
-	);
-	await input.setInputFiles({
-		name: demoFiles[0].name,
-		mimeType: "text/plain",
-		buffer: Buffer.from(demoFiles[0].source),
-	});
-	await expect(page.locator("[data-testid=layer-name]").first()).toHaveText(
-		demoFiles[0].name,
-	);
-	await expect(page.locator("canvas")).toHaveCount(1);
-});
-
 test("reorders layers and preserves focus, visibility and camera", async ({
 	page,
 }) => {

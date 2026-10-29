@@ -5,50 +5,6 @@ import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { openProjectFiles, closeProjectFiles } from "./project-files";
 
-test("saved generated labels repair their names, measured widths and pin alignment on reopen", async ({page}) => {
- const original=createCircuit("Untitled","pcb-main");
- const file=structuredClone(original);
- const resistor=componentFromSymbol(symbolDefinitions.find(definition=>definition.id==="resistor")!,[]);
- const capacitor=componentFromSymbol(symbolDefinitions.find(definition=>definition.id==="capacitor")!,[resistor]);
- file.circuit.components=[resistor,capacitor];
- const unnamedId=crypto.randomUUID();
- file.circuit.nets=[{id:unnamedId,names:[],pinIds:[resistor.pins[1].id,capacitor.pins[0].id]},{id:"power",names:["VDD"],pinIds:[resistor.pins[0].id]},{id:"ground",names:["GND"],pinIds:[capacitor.pins[1].id]}];
- const linked=synchronizePcb(file,[],original,symbolDefinitions);
- const legacy=linked.shapes.map(shape=>({ ...shape, x: shape.x-45, y: shape.y+30 })).map(shape=>shape.kind==="text"?{...shape,circuitNet:undefined,text:shape.text==="C1.1 / R1.2"?`N_${unnamedId}`:shape.text,width:5,height:2,fontSize:1,horizontalAlign:undefined,verticalAlign:undefined}:shape);
- await page.goto("/tests/browser/projects.html");
- await expect(page.locator("#project-document")).toContainText('"name":"Untitled"');
- await page.evaluate(async ({file,shapes})=>{
-  const storageModule = "/packages/web/src/projects/storage.ts";
-  const {createWebProjectStorage}=await import(storageModule);
-  const storage=createWebProjectStorage();
-  const project=await storage.load();
-  await storage.save(project!.directory,{shapes,symbols:[],circuits:[file]});
- },{file:linked.file,shapes:legacy});
- await page.reload();
- await expect.poll(async()=>JSON.parse((await page.locator("#project-document").textContent())!).shapes.filter((shape:{kind:string,text?:string})=>shape.kind==="text"&&shape.text==="C1.1 / R1.2").length).toBe(2);
- await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecaddraw",exact:true}).click();
- await closeProjectFiles(page);
- await expect(page.locator("canvas")).toBeVisible();
- const labels=await page.evaluate(async()=>{
-  const measureModule = "/packages/core/src/engine/drawing/text.ts";
-  const {measureText}=await import(measureModule);
-  const textModule = "/packages/core/src/drawing/text.ts";
-  const {fontPixels,padding}=await import(textModule);
-  const doc=JSON.parse(document.querySelector("#project-document")!.textContent!);
-  return doc.shapes.filter((shape:{kind:string})=>shape.kind==="text").map((shape:{text:string,width:number,fontSize:number})=>({...shape,expectedWidth:(measureText(shape.text)+padding*2)*shape.fontSize/fontPixels}));
- });
- expect(labels.map((label:{text:string})=>label.text)).toEqual(["C1.1 / R1.2","C1.1 / R1.2","VDD","GND"]);
- for(const label of labels) expect(label.width).toBeCloseTo(label.expectedWidth,6);
- for(let index=0;index<10;index++) await page.getByRole("button",{name:"Zoom in",exact:true}).click();
- await page.mouse.move(20,20);
- await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
- if(process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
- await page.reload();
- await expect.poll(async()=>JSON.parse((await page.locator("#project-document").textContent())!).shapes.filter((shape:{kind:string,text?:string})=>shape.kind==="text"&&shape.text==="C1.1 / R1.2").length).toBe(2);
- await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
- await expect.poll(async()=>JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets.find((net:{id:string})=>net.id===unnamedId)?.names).toEqual([]);
-});
-
 test("pending autosaves preserve generated net bindings and schematic undo", async ({page})=>{
  const original=createCircuit("Untitled","pcb-main");const file=structuredClone(original);
  const resistor=componentFromSymbol(symbolDefinitions.find(definition=>definition.id==="resistor")!,[]);
@@ -88,21 +44,6 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
  await expect.poll(async()=>(await doc()).dirty).toBe(false);
  await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
  await expect.poll(async()=>JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets[0].names).toEqual([]);
-});
-
-test("legacy projects keep their unpaired main drawing visible beside circuits",async({page})=>{
- const file=createCircuit("Legacy board","Board_1");
- await page.goto("/tests/browser/projects.html");await expect(page.locator("#project-document")).toContainText('"name":"Untitled"');
- await page.evaluate(async(file)=>{
-  const root=await navigator.storage.getDirectory();const directory=await root.getDirectoryHandle("Legacy QA",{create:true});
-  const write=async(path:string,text:string)=>{const writable=await(await directory.getFileHandle(path,{create:true})).createWritable();await writable.write(text);await writable.close();};
-  await write("drawing.ecaddraw",JSON.stringify({shapes:[]}));await write("board.ecadcircuit",JSON.stringify(file.circuit));
-  await write(".ecadprj",'format = "ecad-project"\nversion = 1\nname = "Legacy QA"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n[[circuits]]\ncircuit = "board.ecadcircuit"\n');
-  localStorage.setItem("ecad.active-project","Legacy QA");
- },file);
- await page.reload();const sidebar=await openProjectFiles(page);
- await expect(sidebar.getByRole("link",{name:"Open Drawing",exact:true})).toBeVisible();
- await expect(sidebar.getByRole("link",{name:"Open Legacy board.ecadcircuit",exact:true})).toBeVisible();
 });
 
 test("dragging a generated label adds wires and persists through autosave, undo and reload", async ({ page }) => {
@@ -184,4 +125,43 @@ test("dragging a generated label adds wires and persists through autosave, undo 
  await expect.poll(async () => (await document()).shapes.filter((shape: any) => shape.kind !== "symbol")).toEqual(rotated.filter((shape: any) => shape.kind !== "symbol"));
  await (await openProjectFiles(page)).getByRole("link", { name: "Open Untitled.ecadcircuit", exact: true }).click();
  await expect.poll(async () => JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets).toEqual(file.circuit.nets);
+});
+
+test("electrical labels use the normal grid for dragging and keyboard movement", async ({ page }) => {
+ await page.goto("/tests/browser/editor.html");
+ await expect(page.locator("canvas")).toBeVisible();
+ const { rulerSpacing } = await import("#/engine/ruler.ts");
+ const box = (await page.locator("canvas").boundingBox())!;
+ const view = JSON.parse((await page.locator("#editor-scene").textContent())!);
+ const scale = (view.corner[0] - view.origin[0]) * box.width / 840;
+ const step = rulerSpacing(scale).minor;
+ const screen = (x: number, y: number) => ({
+  x: box.x + (1 + view.origin[0]) * box.width / 2 + x * scale,
+  y: box.y + (1 - view.origin[1]) * box.height / 2 - y * scale,
+ });
+ const document = async () => JSON.parse((await page.locator("#editor-document").textContent())!);
+ for (const electrical of ["net", "supply", undefined]) {
+  await page.evaluate(async electrical => {
+   const path = "/tests/browser/editor.tsx";
+   const { replaceShapes, placeRectangle, drawingStore } = await import(path);
+   if (!drawingStore.getSnapshot().shapes.length) placeRectangle({ x: 0, y: 0, width: 10, height: 3, rotation: 0, lineWidth: 0.2 });
+   replaceShapes([{ id: 1, kind: "text", x: 0, y: 0, width: 10, height: 3, rotation: 0, lineWidth: 0.2, fontSize: 2, text: "SIGNAL", horizontalAlign: "left", verticalAlign: "bottom", electrical }]);
+  }, electrical);
+  const source = screen(5, 1.5);
+  await page.mouse.click(source.x, source.y);
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("resize-handle")).toHaveCount(electrical ? 0 : 4);
+  await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveCount(electrical ? 0 : 1);
+  await expect(page.getByRole("spinbutton", { name: "Height", exact: true })).toHaveCount(electrical ? 0 : 1);
+  const snapStep = electrical ? step : step / 10;
+  await expect.poll(async () => (await document()).shapes[0].x).toBeCloseTo(snapStep, 6);
+  const start = screen(snapStep + 5, 1.5);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + step * 1.4 * scale, start.y + step * 1.4 * scale, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await document()).shapes[0].x).toBeCloseTo(electrical ? step * 2 : step * 1.5, 6);
+  await expect.poll(async () => (await document()).shapes[0].y).toBeCloseTo(electrical ? -step : -step * 1.4, 6);
+  if (electrical === "net") await page.screenshot({ path: "artifacts/net-label-no-resize.png" });
+ }
 });

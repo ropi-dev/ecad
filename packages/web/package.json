@@ -45,7 +45,8 @@
     "react": "^19.2.0",
     "superjson": "^2.2.2",
     "zod": "^4.6.7",
-    "@ecad/core": "*"
+    "@ecad/core": "workspace:*",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@tanstack/devtools-vite": "latest",

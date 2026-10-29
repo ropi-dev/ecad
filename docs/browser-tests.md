@@ -1,6 +1,6 @@
 # Browser tests
 
-`npm run test:browser` runs the same 50 scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each. Renderer backend tests run one at a time.
+`pnpm run test:browser` runs the same 50 scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each. Renderer backend tests run one at a time.
 
 | Browser coverage | Scenarios | Detailed lower-level coverage |
 | --- | ---: | --- |
@@ -17,15 +17,15 @@ The browser suite samples user workflows. Node tests cover geometry, normalizati
 Run a feature or scenario directly:
 
 ```sh
-npm run test:browser -- tests/browser/item-locks.spec.ts
-npm run test:browser -- --grep 'circuit'
-npm test
+pnpm run test:browser tests/browser/item-locks.spec.ts
+pnpm run test:browser --grep 'circuit'
+pnpm test
 ```
 
 Screenshots used by pixel assertions always run. Tests also capture a screenshot automatically on failure. To save review images and attachments:
 
 ```sh
-ECAD_BROWSER_ARTIFACTS=1 npm run test:browser -- tests/browser/projects-design.spec.ts
+ECAD_BROWSER_ARTIFACTS=1 pnpm run test:browser tests/browser/projects-design.spec.ts
 ```
 
-Keep workload timing and allocation budgets in the separate local performance suite described in [performance.md](performance.md). `npm run perf` retains its single-worker configuration.
+Keep workload timing and allocation budgets in the separate local performance suite described in [performance.md](performance.md). `pnpm run perf` retains its single-worker configuration.

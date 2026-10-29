@@ -38,7 +38,7 @@ export default defineConfig({
 	},
 	webServer: {
 		cwd: fileURLToPath(new URL("../../", import.meta.url)),
-		command: `npx vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port ${port} --strictPort`,
+		command: `pnpm exec vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port ${port} --strictPort`,
 		url: `http://127.0.0.1:${port}/tests/browser/renderer.html`,
 		stdout: "pipe",
 		reuseExistingServer: !process.env.CI,
