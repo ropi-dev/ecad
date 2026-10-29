@@ -12,7 +12,17 @@ export function pairPcbDocuments(
 	if (!circuits.some((file) => file.circuit.id === primaryPcbId))
 		circuits.push(createCircuit(name, primaryPcbId));
 	for (const drawing of drawings) {
-		drawing.circuitId ??= `pcb-${drawing.id}`;
+		if (!drawing.circuitId || drawing.circuitId === primaryPcbId) {
+			const base = `pcb-${drawing.id}`;
+			let id = base;
+			for (
+				let suffix = 2;
+				circuits.some((file) => file.circuit.id === id);
+				suffix++
+			)
+				id = `${base}-${suffix}`;
+			drawing.circuitId = id;
+		}
 		if (!circuits.some((file) => file.circuit.id === drawing.circuitId))
 			circuits.push(createCircuit(drawing.name, drawing.circuitId));
 	}

@@ -50,6 +50,7 @@ export function synchronizePcb(
 			previous ??= file;
 			const previousLabels = circuitNetLabels(previous.circuit);
 			const labels = circuitNetLabels(file.circuit);
+			const terminals = boundTerminals(file, shapes);
 			shapes = shapes.map((shape) => {
 				if (
 					shape.kind === "text" &&
@@ -91,6 +92,18 @@ export function synchronizePcb(
 						? { fontSize: 1.3, ...labelAlignment(shape, shapes) }
 						: {}),
 				};
+				const terminal = bound.circuitNet.pinId
+					? terminals.get(bound.circuitNet.pinId)
+					: undefined;
+				if (
+					terminal &&
+					(bound.x !== terminal.point.x || bound.y !== terminal.point.y)
+				)
+					Object.assign(
+						bound,
+						terminal.point,
+						alignmentAtPin(terminal.point, terminal.symbol),
+					);
 				return text === shape.text && !legacySize
 					? bound
 					: updateText(bound, text, measureLabelText);
@@ -118,32 +131,28 @@ export function synchronizePcb(
 				let nextId =
 					shapes.reduce((max, shape) => Math.max(max, shape.id), 0) + 1;
 				const oldIds = new Set(
-					previous.circuit.components.flatMap((component) =>
-						component.schematicShapeId === undefined
-							? []
-							: [component.schematicShapeId],
-					),
+					previous.circuit.components.flatMap(componentShapeIds),
 				);
-				const retained = new Set(
-					circuit.components.map((component) => component.schematicShapeId),
-				);
+				const retained = new Set(circuit.components.flatMap(componentShapeIds));
 				shapes = shapes.filter(
 					(shape) => !oldIds.has(shape.id) || retained.has(shape.id),
 				);
 				for (const component of circuit.components) {
+					const unitIds = componentShapeIds(component);
 					const existing = shapes.find(
 						(shape): shape is EditorSymbol =>
-							shape.kind === "symbol" &&
-							shape.id === component.schematicShapeId,
+							shape.kind === "symbol" && unitIds.includes(shape.id),
 					);
 					if (existing) {
-						linkPins(component, existing);
+						for (const shape of shapes)
+							if (shape.kind === "symbol" && unitIds.includes(shape.id))
+								linkPins(component, shape);
 						shapes = shapes.map((shape) =>
-							shape === existing
+							shape.kind === "symbol" && unitIds.includes(shape.id)
 								? {
-										...existing,
+										...shape,
 										attributes: {
-											...existing.attributes,
+											...shape.attributes,
 											reference: component.reference,
 											value: component.value,
 										},
@@ -153,13 +162,16 @@ export function synchronizePcb(
 						continue;
 					}
 					const definition =
-						definitions.find(
-							(definition) =>
-								definition.id === component.part.id &&
-								(!component.part.library ||
-									same(definition.library, component.part.library)),
-						) ?? fallbackDefinition(component);
+						[...definitions]
+							.reverse()
+							.find(
+								(definition) =>
+									definition.id === component.part.id &&
+									(!component.part.library ||
+										same(definition.library, component.part.library)),
+							) ?? fallbackDefinition(component);
 					component.schematicShapeId = nextId++;
+					delete component.schematicShapeIds;
 					const symbol = createSymbol(
 						component.schematicShapeId,
 						definition,
@@ -177,6 +189,22 @@ export function synchronizePcb(
 						},
 						component.reference,
 					);
+					if (
+						!definitions.some(
+							(definition) =>
+								definition.id === component.part.id &&
+								(!component.part.library ||
+									same(definition.library, component.part.library)),
+						)
+					) {
+						const pins = symbol.children.filter(
+							(child) => child.kind === "pin",
+						);
+						component.pins.forEach((pin, index) => {
+							delete pin.schematicShapeId;
+							pin.sourcePinId = String(pins[index].id);
+						});
+					}
 					linkPins(component, symbol);
 					shapes = [
 						...shapes,
@@ -200,13 +228,11 @@ export function synchronizePcb(
 					for (const net of electricalNets(originalShapes)) {
 						const pinIds = net.pins.flatMap(
 							(pin) =>
-								previous!.circuit.components
-									.find(
-										(component) => component.schematicShapeId === pin.shapeId,
-									)
-									?.pins.find(
-										(candidate) => candidate.sourcePinId === String(pin.pinId),
-									)?.id ?? [],
+								schematicPinId(
+									previous!.circuit.components,
+									pin.shapeId,
+									pin.pinId,
+								) ?? [],
 						);
 						if (
 							previous!.circuit.nets.some(
@@ -236,15 +262,16 @@ export function synchronizePcb(
 								}),
 							);
 						for (const component of circuit.components) {
-							const symbol = shapes.find(
-								(shape): shape is EditorSymbol =>
-									shape.kind === "symbol" &&
-									shape.id === component.schematicShapeId,
-							);
-							if (!symbol) continue;
 							for (const pin of component.pins.filter((pin) =>
 								net.pinIds.includes(pin.id),
 							)) {
+								const symbol = shapes.find(
+									(shape): shape is EditorSymbol =>
+										shape.kind === "symbol" &&
+										shape.id ===
+											(pin.schematicShapeId ?? component.schematicShapeId),
+								);
+								if (!symbol) continue;
 								const terminal = symbolShapes(symbol).find(
 									(child) =>
 										child.kind === "pin" &&
@@ -273,8 +300,8 @@ export function synchronizePcb(
 						(shape) =>
 							shape.kind === "symbol" &&
 							!shape.children.length &&
-							circuit.components.some(
-								(component) => component.schematicShapeId === shape.id,
+							circuit.components.some((component) =>
+								componentShapeIds(component).includes(shape.id),
 							),
 					)
 				)
@@ -287,8 +314,15 @@ export function synchronizePcb(
 						!shape.children.some((child) => child.kind === "pin")
 					)
 						continue;
-					const old = circuit.components.find(
-						(component) => component.schematicShapeId === shape.id,
+					const old = circuit.components.find((component) =>
+						componentShapeIds(component).includes(shape.id),
+					);
+					const group = components.find(
+						(component) =>
+							(old && component.id === old.id) ||
+							(shape.definitionId.startsWith("kicad.") &&
+								component.part.id.startsWith("kicad.") &&
+								component.reference === shape.attributes.reference),
 					);
 					const component = componentFromSymbol(
 						{
@@ -311,18 +345,28 @@ export function synchronizePcb(
 						},
 						components,
 					);
-					component.id = old?.id ?? `${circuit.id}:s${shape.id}`;
+					component.id = group?.id ?? old?.id ?? `${circuit.id}:s${shape.id}`;
 					if (old?.part.id === component.part.id)
 						component.part = structuredClone(old.part);
 					component.pins = component.pins.map((pin) => {
 						const existing = old?.pins.find(
-							(candidate) => candidate.sourcePinId === pin.sourcePinId,
+							(candidate) =>
+								candidate.sourcePinId === pin.sourcePinId &&
+								(candidate.schematicShapeId ?? old.schematicShapeId) ===
+									shape.id,
 						);
 						const overrides =
 							shape.childOverrides?.[`shape:${pin.sourcePinId}`];
 						return {
 							...pin,
-							id: existing?.id ?? `${component.id}:p${pin.sourcePinId}`,
+							id:
+								existing?.id ??
+								(group
+									? `${component.id}:s${shape.id}:p${pin.sourcePinId}`
+									: `${component.id}:p${pin.sourcePinId}`),
+							...(group || existing?.schematicShapeId
+								? { schematicShapeId: shape.id }
+								: {}),
 							name: overrides?.name ?? existing?.name ?? pin.name,
 							number: overrides?.number ?? existing?.number ?? pin.number,
 							electricalType: existing?.electricalType ?? pin.electricalType,
@@ -340,13 +384,41 @@ export function synchronizePcb(
 					component.reference =
 						shape.attributes.reference || component.reference;
 					component.value = shape.attributes.value;
-					components.push(component);
+					if (group) {
+						group.schematicShapeIds = [...componentShapeIds(group), shape.id];
+						group.pins.push(...component.pins);
+						if (old && shape.attributes.reference !== old.reference)
+							group.reference = shape.attributes.reference;
+						if (old && shape.attributes.value !== old.value)
+							group.value = shape.attributes.value;
+					} else components.push(component);
 				}
 				circuit.components = components;
+				const units = new Map(
+					components.flatMap((component) =>
+						(component.schematicShapeIds?.length ?? 0) > 1
+							? componentShapeIds(component).map(
+									(id) => [id, component] as const,
+								)
+							: [],
+					),
+				);
+				shapes = shapes.map((shape) => {
+					if (shape.kind !== "symbol") return shape;
+					const component = units.get(shape.id);
+					return component
+						? {
+								...shape,
+								attributes: {
+									...shape.attributes,
+									reference: component.reference,
+									value: component.value,
+								},
+							}
+						: shape;
+				});
 				const pinId = (shapeId: number, sourceId: number) =>
-					components
-						.find((component) => component.schematicShapeId === shapeId)
-						?.pins.find((pin) => pin.sourcePinId === String(sourceId))?.id;
+					schematicPinId(components, shapeId, sourceId);
 				const shapeById = new Map(shapes.map((shape) => [shape.id, shape]));
 				const bindingUpdates = new Map<number, string>();
 				const claimed = new Set<string>();
@@ -502,7 +574,7 @@ function fallbackDefinition(component: CircuitComponent): SymbolDefinition {
 		description: "",
 		texts: [{ attribute: "reference", x: 0, y: 3, fontSize: 1.5 }],
 		children: component.pins.map((pin, index) => ({
-			id: Number(pin.sourcePinId) || index + 1,
+			id: index + 1,
 			kind: "pin",
 			name: pin.name,
 			number: pin.number,
@@ -520,7 +592,11 @@ function fallbackDefinition(component: CircuitComponent): SymbolDefinition {
 function linkPins(component: CircuitComponent, symbol: EditorSymbol) {
 	const pins = symbol.children.filter((child) => child.kind === "pin");
 	component.pins.forEach((pin, index) => {
-		if (pin.sourcePinId) return;
+		if (
+			pin.sourcePinId ||
+			(pin.schematicShapeId ?? component.schematicShapeId) !== symbol.id
+		)
+			return;
 		const source =
 			pins.find(
 				(child) =>
@@ -617,8 +693,8 @@ function labelPinId(
 	if (!pinIds.length) return;
 	for (const shape of shapes) {
 		if (shape.kind !== "symbol") continue;
-		const component = components.find(
-			(component) => component.schematicShapeId === shape.id,
+		const component = components.find((component) =>
+			componentShapeIds(component).includes(shape.id),
 		);
 		if (!component) continue;
 		for (const child of symbolShapes(shape)) {
@@ -629,9 +705,73 @@ function labelPinId(
 				continue;
 			const pin = component.pins.find(
 				(pin) =>
-					pin.sourcePinId === String(child.id) && pinIds.includes(pin.id),
+					pin.sourcePinId === String(child.id) &&
+					(pin.schematicShapeId ?? component.schematicShapeId) === shape.id &&
+					pinIds.includes(pin.id),
 			);
 			if (pin) return pin.id;
 		}
 	}
+}
+
+function componentShapeIds(component: CircuitComponent): number[] {
+	return (
+		component.schematicShapeIds ??
+		(component.schematicShapeId === undefined
+			? []
+			: [component.schematicShapeId])
+	);
+}
+
+function schematicPinId(
+	components: readonly CircuitComponent[],
+	shapeId: number,
+	sourceId: number,
+): string | undefined {
+	const component = components.find((component) =>
+		componentShapeIds(component).includes(shapeId),
+	);
+	return component?.pins.find(
+		(pin) =>
+			pin.sourcePinId === String(sourceId) &&
+			(pin.schematicShapeId ?? component.schematicShapeId) === shapeId,
+	)?.id;
+}
+
+function boundTerminals(file: CircuitFile, shapes: readonly EditorShape[]) {
+	const terminals = new Map<string, { point: Point; symbol: EditorSymbol }>();
+	const boundPins = new Set(
+		shapes.flatMap((shape) =>
+			shape.kind === "text" && shape.circuitNet?.pinId
+				? [shape.circuitNet.pinId]
+				: [],
+		),
+	);
+	if (!boundPins.size) return terminals;
+	const byShape = new Map(shapes.map((shape) => [shape.id, shape]));
+	for (const component of file.circuit.components) {
+		const pins = new Map(
+			component.pins
+				.filter((pin) => boundPins.has(pin.id))
+				.map((pin) => [
+					`${pin.schematicShapeId ?? component.schematicShapeId}:${pin.sourcePinId}`,
+					pin.id,
+				]),
+		);
+		if (!pins.size) continue;
+		for (const id of componentShapeIds(component)) {
+			const shape = byShape.get(id);
+			if (shape?.kind !== "symbol") continue;
+			for (const child of symbolShapes(shape)) {
+				const pinId =
+					child.kind === "pin" ? pins.get(`${id}:${child.id}`) : undefined;
+				if (pinId)
+					terminals.set(pinId, {
+						point: { x: child.x, y: child.y },
+						symbol: shape,
+					});
+			}
+		}
+	}
+	return terminals;
 }

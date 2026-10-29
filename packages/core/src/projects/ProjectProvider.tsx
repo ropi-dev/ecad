@@ -371,7 +371,10 @@ export function ProjectProvider({
 							symbolStorage.loadDirectory!(path, scope, previous.directory)
 					: undefined,
 			);
-			definitions.push(...resolvedLibraries.definitions);
+			definitions.push(
+				...resolvedLibraries.byReference.values(),
+				...resolvedLibraries.definitions,
+			);
 			const byReference = new Map(
 				definitions
 					.filter((definition) => definition.library)

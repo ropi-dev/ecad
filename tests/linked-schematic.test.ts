@@ -242,3 +242,72 @@ test("repeated PCB names allocate distinct file names without changing existing 
  assert.equal(uniquePcbName("Untitled",document,"Untitled"),"Untitled 2");
  assert.deepEqual(document.circuits.map(file=>file.circuit.name),["Untitled","Power stage","Power stage 2"]);
 });
+
+
+test("generated net labels follow translated and rotated symbols without changing connectivity",async()=>{
+ const {symbolShapes}=await import("#/drawing/shapes.ts");
+ const original=createCircuit("Move");const file=structuredClone(original);
+ const a=componentFromSymbol(resistor,[]),b=componentFromSymbol(resistor,[a]);
+ file.circuit.components=[a,b];file.circuit.nets=[{id:"signal",names:[],pinIds:[a.pins[1].id,b.pins[0].id]}];
+ const first=synchronizePcb(file,[],original,symbolDefinitions);
+ for(const rotation of [0,Math.PI/2,Math.PI]){
+  const moved=first.shapes.map(shape=>shape.kind==="symbol"&&shape.id===first.file.circuit.components[0].schematicShapeId?{...shape,x:shape.x+20,y:shape.y-40,rotation}:shape);
+  const next=synchronizePcb(first.file,moved,first.file,symbolDefinitions);
+  assert.deepEqual(next.file.circuit.nets,first.file.circuit.nets);
+  const label=next.shapes.find(shape=>shape.kind==="text"&&shape.circuitNet?.pinId===a.pins[1].id)!;
+  const symbol=next.shapes.find(shape=>shape.kind==="symbol"&&shape.id===first.file.circuit.components[0].schematicShapeId)!;
+  assert.ok(symbol.kind==="symbol");if(symbol.kind!=="symbol")return;
+  const terminal=symbolShapes(symbol).find(child=>child.kind==="pin"&&String(child.id)===first.file.circuit.components[0].pins[1].sourcePinId)!;
+  assert.deepEqual({x:label.x,y:label.y},{x:terminal.x,y:terminal.y});
+  assert.deepEqual(synchronizePcb(next.file,next.shapes,next.file,symbolDefinitions).file.circuit,next.file.circuit);
+ }
+});
+
+test("new drawing circuit IDs avoid the primary PCB and existing unpaired circuits",()=>{
+ const existing=createCircuit("Existing","pcb-board");
+ const document={shapes:[],symbols:[],circuits:[existing],drawings:[{id:"main",name:"Main",shapes:[]},{id:"board",name:"Board",shapes:[]}]};
+ const paired=pairPcbDocuments(document,"Root");
+ assert.deepEqual(paired.drawings?.slice(0,2).map(drawing=>drawing.circuitId),["pcb-main-2","pcb-board-2"]);
+ assert.equal(new Set(paired.circuits?.map(file=>file.circuit.id)).size,4);
+ assert.deepEqual(paired.circuits?.find(file=>file.circuit.id===existing.circuit.id),existing);
+ assert.deepEqual(pairPcbDocuments(paired,"Root"),paired);
+});
+
+test("KiCad units share a component while retaining unit-qualified pin identity",async()=>{
+ const {importKiCadSchematic}=await import("#/formats/kicad/import.ts");
+ const source=`(kicad_sch (version 20250114) (paper "A4")
+ (lib_symbols (symbol "Dual"
+ (symbol "Dual_1_1" (pin input line (at -3 0 0) (length 2) (name "A") (number "1")) (pin output line (at 3 0 180) (length 2) (name "B") (number "2")))
+ (symbol "Dual_2_1" (pin input line (at -3 0 0) (length 2) (name "C") (number "3")) (pin output line (at 3 0 180) (length 2) (name "D") (number "4")))))
+ (symbol (lib_id "Dual") (at 10 20 0) (unit 1) (uuid "unit-a") (property "Reference" "U1" (at 10 20 0)) (property "Value" "DUAL" (at 10 21 0)))
+ (symbol (lib_id "Dual") (at 30 20 0) (unit 2) (uuid "unit-b") (property "Reference" "U1" (at 30 20 0)) (property "Value" "DUAL" (at 30 21 0)))
+ (wire (pts (xy 13 20) (xy 27 20))))`;
+ const imported=importKiCadSchematic(source);
+ const original=createCircuit("Multi-unit");
+ const first=synchronizePcb(original,imported.shapes,original,symbolDefinitions);
+ assert.equal(first.file.circuit.components.length,1);
+ const component=first.file.circuit.components[0];
+ assert.equal(component.reference,"U1");assert.equal(component.pins.length,4);
+ assert.equal(component.schematicShapeIds?.length,2);
+ assert.equal(new Set(component.pins.map(pin=>pin.id)).size,4);
+ assert.deepEqual(first.file.circuit.nets[0].pinIds.map(id=>component.pins.find(pin=>pin.id===id)!.number).sort(),["2","3"]);
+ const roundtrip=synchronizePcb(first.file,first.shapes,first.file,symbolDefinitions);
+ assert.deepEqual(roundtrip.file.circuit,first.file.circuit);
+ const renamed=applyCircuitCommand(first.file,{type:"update-component",id:component.id,reference:"U9",value:"Dual updated"});
+ const projected=synchronizePcb(renamed,first.shapes,first.file,symbolDefinitions);
+ assert.ok(projected.shapes.filter(shape=>shape.kind==="symbol").every(shape=>shape.attributes.reference==="U9"&&shape.attributes.value==="Dual updated"));
+ const extra=applyCircuitCommand(projected.file,{type:"connect",pinIds:[component.pins[0].id,component.pins[3].id]});
+ const linked=synchronizePcb(extra,projected.shapes,projected.file,symbolDefinitions);
+ assert.equal(linked.shapes.filter(shape=>shape.kind==="text"&&shape.circuitNet).length,2);
+ assert.deepEqual(synchronizePcb(linked.file,linked.shapes,linked.file,symbolDefinitions).file.circuit,linked.file.circuit);
+ const edited=linked.shapes.map(shape=>shape.kind==="symbol"&&shape.id===component.schematicShapeIds![1]?{...shape,attributes:{...shape.attributes,reference:"U10"}}:shape);
+ const shared=synchronizePcb(linked.file,edited,linked.file,symbolDefinitions);
+ assert.equal(shared.file.circuit.components[0].reference,"U10");
+ assert.ok(shared.shapes.filter(shape=>shape.kind==="symbol").every(shape=>shape.attributes.reference==="U10"));
+ const remaining=synchronizePcb(shared.file,shared.shapes.filter(shape=>shape.id!==component.schematicShapeId),shared.file,symbolDefinitions);
+ assert.equal(remaining.file.circuit.components[0].id,component.id);
+ assert.deepEqual(remaining.file.circuit.components[0].pins.map(pin=>pin.id),component.pins.slice(2).map(pin=>pin.id));
+ const deleted=applyCircuitCommand(shared.file,{type:"remove-component",id:component.id});
+ assert.equal(synchronizePcb(deleted,shared.shapes,shared.file,symbolDefinitions).shapes.filter(shape=>shape.kind==="symbol").length,0);
+ circuitFileSchema.parse(shared.file);
+});
