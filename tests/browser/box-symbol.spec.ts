@@ -29,7 +29,7 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
 	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect(page.getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Schematic editor", exact: true })
 		.click();

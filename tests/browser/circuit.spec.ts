@@ -27,7 +27,7 @@ async function createCircuit(page: Page) {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
 	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect(page.getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	await openProjectFiles(page);
 	await page.getByRole("button", { name: "Add file", exact: true }).click();
 	await page

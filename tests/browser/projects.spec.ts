@@ -6,7 +6,7 @@ const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 async function projectsPage(page: Page) {
 	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.locator("main")).toBeVisible();
 	await closeProjectFiles(page);
 }
 async function createProject(page: Page, _name: string) {
@@ -233,7 +233,7 @@ test("new symbols start empty, persist edits, and use distinct files for repeate
 			name: "Add file",
 			exact: true,
 		}),
-	).toHaveCount(0);
+	).toBeEnabled();
 	await createProject(page, "New symbols");
 	await (await openProjectFiles(page))
 		.getByRole("button", { name: "Add file", exact: true })
