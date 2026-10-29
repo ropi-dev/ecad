@@ -34,7 +34,6 @@ export function SymbolLibraryControls({
 		refresh,
 		message,
 		error,
-		mode,
 	} = library;
 	return (
 		<div className="space-y-3 text-[#e8edf5]">
@@ -146,14 +145,7 @@ export function SymbolLibraryControls({
 				Reload libraries
 			</button>
 			<p className="m-0 text-xs text-[#9ba7b8]">
-				One symbol per .ecadsym or .json file.{" "}
-				{scope === "project"
-					? "Project libraries are saved with this project."
-					: mode === "web"
-						? "User libraries are saved in this browser for all projects."
-						: mode === "desktop"
-							? "User libraries are saved in your home directory for all projects."
-							: "Symbols last for this session."}
+				One symbol per .ecadsym or .json file.
 			</p>
 			<a
 				href={exampleSymbolUrl}

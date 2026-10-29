@@ -83,7 +83,7 @@ export function CreateFileDialog({
 								disabled={!name.trim() || saving}
 								className="cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-sm text-[#e8b77e] hover:bg-[#e8b77e25] disabled:cursor-default disabled:opacity-50"
 							>
-								{saving ? "Saving..." : `Create ${kind}`}
+								{saving ? "Creating..." : `Create ${kind}`}
 							</button>
 						</div>
 					</form>

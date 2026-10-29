@@ -152,7 +152,6 @@ export function ToolbarGroup({
 							buttons[next]?.focus();
 						}}
 					>
-						<span className="px-2 text-xs text-slate-400">{label}</span>
 						{children}
 					</div>,
 					panelHost,

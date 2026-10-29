@@ -5,7 +5,7 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	await page.mouse.move(900, 400);
 	const sidebar = page.getByRole("complementary", {
 		name: "Project files",
@@ -50,6 +50,30 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	await expect(sidebar).toHaveAttribute("data-open", "false");
 });
 
+test("Ctrl+Alt+S toggles pinned and Compact states, including from file search", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
+	await page.mouse.move(900, 400);
+	const sidebar = page.getByRole("complementary", { name: "Project files", exact: true, includeHidden: true });
+	const content = sidebar.locator("..").locator("+ div");
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await page.keyboard.press("Control+Alt+s");
+	await expect(sidebar).toHaveAttribute("data-pinned", "true");
+	await expect.poll(async () => (await content.boundingBox())!.x).toBe(256);
+	const compact = sidebar.getByRole("button", { name: "Compact sidebar", exact: true });
+	await expect(compact).toContainText("Pinned");
+	await expect(compact).toHaveAttribute("aria-keyshortcuts", "Control+Alt+S");
+	await page.locator("body").dispatchEvent("keydown", { code: "KeyS", key: "s", ctrlKey: true, altKey: true, repeat: true });
+	await expect(sidebar).toHaveAttribute("data-pinned", "true");
+	await sidebar.getByLabel("Search project files").focus();
+	await page.keyboard.press("Control+Alt+s");
+	await expect(sidebar).toHaveAttribute("data-pinned", "false");
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await expect.poll(async () => (await content.boundingBox())!.x).toBe(0);
+	await page.getByRole("button", { name: "Show project files", exact: true }).hover();
+	await expect(sidebar.getByRole("button", { name: "Pin sidebar", exact: true })).toContainText("Compact");
+});
+
 test.describe("touch sidebar", () => {
 	test.use({
 		viewport: { width: 390, height: 844 },
@@ -60,7 +84,7 @@ test.describe("touch sidebar", () => {
 		page,
 	}) => {
 		await page.goto("/tests/browser/projects.html");
-		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+		await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 		const sidebar = page.getByRole("complementary", {
 			name: "Project files",
 			exact: true,
@@ -102,7 +126,7 @@ test.describe("touch sidebar", () => {
 				path: "perf-artifacts/sidebar-pinned-mobile.png",
 			});
 		await sidebar
-			.getByRole("button", { name: "Unpin sidebar", exact: true })
+			.getByRole("button", { name: "Compact sidebar", exact: true })
 			.tap();
 		await expect(sidebar).toHaveAttribute("data-open", "false");
 		await page.emulateMedia({ reducedMotion: "reduce" });

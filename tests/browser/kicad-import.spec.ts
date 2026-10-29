@@ -33,7 +33,7 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 	test.setTimeout(120000);
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	await (await openProjectFiles(page))
 		.getByLabel("Add KiCad schematic files")
 		.setInputFiles(fixture);

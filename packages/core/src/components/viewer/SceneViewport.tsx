@@ -202,8 +202,7 @@ export function SceneViewport({
 			{selectionInfo && (
 				<FloatingPanel label="Selection attributes" position="top-right">
 					<div className="min-h-0 overflow-y-auto overscroll-contain p-2.5">
-						<h2 className="text-[13px] font-semibold">Attributes</h2>
-						<p className="mt-3 break-words text-[14px] leading-[1.7] text-[#e8b77e]">
+						<p className="break-words text-[14px] leading-[1.7] text-[#e8b77e]">
 							{selectionInfo.name || "Unnamed component"}
 						</p>
 						<dl className="my-4 text-[12px]">
@@ -230,9 +229,6 @@ export function SceneViewport({
 								</div>
 							))}
 						</dl>
-						<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
-							Click empty space or press Escape to clear
-						</p>
 					</div>
 				</FloatingPanel>
 			)}

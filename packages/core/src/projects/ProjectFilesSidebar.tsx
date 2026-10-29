@@ -19,6 +19,7 @@ import {
 	Fragment,
 	lazy,
 	Suspense,
+	useCallback,
 	useEffect,
 	useId,
 	useMemo,
@@ -106,6 +107,35 @@ export function ProjectFilesSidebar() {
 		touchOpen ||
 		addMenuOpen ||
 		creatingFile !== null;
+	const togglePin = useCallback(() => {
+		if (
+			document.activeElement instanceof HTMLElement &&
+			sidebarRef.current?.contains(document.activeElement)
+		)
+			document.activeElement.blur();
+		setFocused(false);
+		setHovered(false);
+		setTouchOpen(false);
+		setPinned((current) => !current);
+	}, []);
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (
+				!event.ctrlKey ||
+				!event.altKey ||
+				event.metaKey ||
+				event.shiftKey ||
+				event.code !== "KeyS" ||
+				event.isComposing
+			)
+				return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (!event.repeat) togglePin();
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, [togglePin]);
 	useEffect(() => {
 		if (!touchOpen || pinned || addMenuOpen || creatingFile) return;
 		const dismiss = (event: PointerEvent) => {
@@ -360,7 +390,6 @@ export function ProjectFilesSidebar() {
 						className="shrink-0 text-[#98a4b6]"
 					/>
 					<h2 className="m-0 text-[13px] font-semibold">Files</h2>
-					<span className="text-[11px] text-[#98a4b6]">{files.length}</span>
 					{snapshot && (
 						<DropdownMenu.Root
 							open={addMenuOpen}
@@ -730,13 +759,8 @@ export function ProjectFilesSidebar() {
 									</div>
 								)}
 							</div>
-							<footer className="flex shrink-0 items-center justify-between gap-2 border-t border-white/10 text-[10px] text-[#98a4b6] h-8 px-3">
-								<span aria-live="polite">
-									{filtered.length
-										? `${first + 1}–${Math.min(first + pageSize, filtered.length)} of ${filtered.length} files`
-										: "0 files"}
-								</span>
-								{lastPage > 0 && (
+							{lastPage > 0 && (
+								<footer className="flex shrink-0 items-center justify-end gap-2 border-t border-white/10 text-[10px] text-[#98a4b6] h-8 px-3">
 									<nav aria-label="Project file pages" className="flex gap-1">
 										<button
 											type="button"
@@ -757,8 +781,8 @@ export function ProjectFilesSidebar() {
 											<ChevronRight className="size-3.5" />
 										</button>
 									</nav>
-								)}
-							</footer>
+								</footer>
+							)}
 						</>
 					) : null}
 				</div>
@@ -768,25 +792,21 @@ export function ProjectFilesSidebar() {
 				<footer className="shrink-0 border-t border-white/10 p-1.5">
 					<button
 						type="button"
-						aria-label={pinned ? "Unpin sidebar" : "Pin sidebar"}
+						aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
 						aria-pressed={pinned}
+						aria-keyshortcuts="Control+Alt+S"
+						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · Ctrl+Alt+S`}
 						aria-controls={panelId}
 						className={`${button} h-9 w-full justify-start px-2`}
-						onClick={(event) => {
-							if (event.detail > 0) {
-								event.currentTarget.blur();
-							}
-							setFocused(false);
-							setPinned(!pinned);
-							setTouchOpen(false);
-						}}
+						onClick={togglePin}
 					>
 						{pinned ? (
 							<PinOff size={18} aria-hidden="true" />
 						) : (
 							<Pin size={18} aria-hidden="true" />
 						)}
-						<span>{pinned ? "Unpin sidebar" : "Pin sidebar"}</span>
+						<span>{pinned ? "Pinned" : "Compact"}</span>
+						<kbd className="ml-auto text-[10px] text-[#98a4b6]">Ctrl+Alt+S</kbd>
 					</button>
 				</footer>
 			</aside>

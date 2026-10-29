@@ -236,7 +236,7 @@ export function useSymbolLibrary() {
 		const target = scope === "project" ? projectStorage : storage;
 		if (!target)
 			throw new Error("Open a project before adding project libraries.");
-		const persistence = await measurePerformanceAsync(
+		await measurePerformanceAsync(
 			"symbol-library.save",
 			() =>
 				target.saveConfiguration
@@ -257,8 +257,6 @@ export function useSymbolLibrary() {
 			scope === "project" ? next : currentProject.current,
 			signal,
 		);
-		setMessage(persistence);
-		return persistence;
 	}
 
 	function addition(
@@ -317,8 +315,8 @@ export function useSymbolLibrary() {
 					throw new Error(
 						"The symbol library changed. Try creating the symbol again.",
 					);
-				const persistence = await save(next, scope, [symbol], signal);
-				setMessage(`Added 1 symbol. ${persistence}`);
+				await save(next, scope, [symbol], signal);
+				setMessage("Symbol added.");
 				return { scope, id: added.id };
 			});
 	}
@@ -340,10 +338,8 @@ export function useSymbolLibrary() {
 					? files[0]?.webkitRelativePath?.split("/")[0]
 					: "";
 				const next = addition(incoming, scope, name || directoryName || "");
-				const persistence = await save(next, scope, incoming, signal);
-				setMessage(
-					`Added ${incoming.length} symbol${incoming.length === 1 ? "" : "s"}. ${persistence}`,
-				);
+				await save(next, scope, incoming, signal);
+				setMessage("Symbols added.");
 			});
 		} catch {
 			/* perform reports failures. */

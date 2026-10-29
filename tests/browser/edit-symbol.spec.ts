@@ -14,7 +14,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/projects.html");
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	const symbol = {
 		format: "ecad-symbol",
 		version: 1,

@@ -2088,17 +2088,6 @@ function LibrarySymbolEditor({
 					>
 						Back to schematic
 					</button>
-					<button
-						type="button"
-						className={buttonClass}
-						disabled={saving || !dirty}
-						onClick={() => void save().catch(() => undefined)}
-					>
-						Save symbol
-					</button>
-					<output className="text-xs text-[#9ba7b8]">
-						{saving ? "Saving..." : dirty ? "Unsaved changes" : "Saved"}
-					</output>
 					{error && (
 						<p
 							role="alert"
