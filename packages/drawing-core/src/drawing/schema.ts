@@ -106,6 +106,12 @@ const symbolInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("symbol"),
 	definitionId: z.string(),
+	kicad: z
+		.strictObject({
+			libraryId: z.string().min(1),
+			unit: z.number().int().nonnegative(),
+		})
+		.optional(),
 	library: z
 		.strictObject({ scope: z.enum(["user", "project"]), id: z.string().min(1) })
 		.optional(),

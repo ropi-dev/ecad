@@ -105,6 +105,11 @@ test("editing a reusable symbol adds its new pin to linked connectivity before r
  await expect.poll(async()=>(await documentState(page)).symbols[0].shapes.length).toBe(3);
  await expect.poll(async()=>(await documentState(page)).dirty).toBe(false);
  expect((await documentState(page)).shapes[0].children).toHaveLength(2);
+ await page.getByRole("textbox",{name:"Name",exact:true}).fill("NEW");
+ await page.getByRole("textbox",{name:"Name",exact:true}).press("Tab");
+ await page.getByRole("textbox",{name:"Number",exact:true}).fill("42");
+ await page.getByRole("textbox",{name:"Number",exact:true}).press("Tab");
+ await expect.poll(async()=>(await documentState(page)).dirty).toBe(false);
  await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
  const circuit=()=>page.locator("#circuit-document").textContent().then(text=>JSON.parse(text!).circuit);
  await expect.poll(async()=>(await circuit()).components.find((component:{reference:string})=>component.reference==="U1").pins.length).toBe(2);
@@ -122,6 +127,9 @@ test("editing a reusable symbol adds its new pin to linked connectivity before r
  const next=await circuit();const component=next.components.find((component:{reference:string})=>component.reference==="U1");
  expect(next.nets[0].pinIds).toContain(component.pins[1].id);
  expect(next.nets[0].pinIds).not.toContain(oldPin);
+ expect(component.pins[1]).toMatchObject({name:"NEW",number:"42"});
+ await closeProjectFiles(page);
+ if(process.env.ECAD_SCREENSHOT_PATH)await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
 });
 
 test("an imported custom-library fallback stays visible and saveable across reloads",async({page})=>{

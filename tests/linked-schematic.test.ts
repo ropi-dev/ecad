@@ -184,7 +184,7 @@ test("legacy LED pins keep their anode and cathode meaning through both projecti
  const next=synchronizePcb(first.file,first.shapes,first.file,symbolDefinitions);
  for(const old of original.circuit.components){
   const component=next.file.circuit.components.find(component=>component.id===old.id)!;
-  assert.deepEqual(component.pins.map(({sourcePinId:_source,...pin})=>pin),old.pins);
+  assert.deepEqual(component.pins.map(({sourcePinId:_source,sourcePin:_metadata,...pin})=>pin),old.pins);
  }
  const led=first.file.circuit.components.find(component=>component.part.id==="led")!;
  const symbol=first.shapes.find(shape=>shape.id===led.schematicShapeId)!;
@@ -389,4 +389,64 @@ test("unavailable-library fallbacks retain inline pins and original part identit
    assert.deepEqual(current.file.circuit.nets,file.circuit.nets);
   }
  }
+});
+
+test("unannotated KiCad parts stay independent and receive unused references",async()=>{
+ const {importKiCadSchematic}=await import("#/formats/kicad/import.ts");
+ const source=`(kicad_sch (version 20250114) (paper "A4")
+ (lib_symbols (symbol "Part" (symbol "Part_1_1" (pin passive line (at -3 0 0) (length 2) (name "P") (number "1")))))
+ (symbol (lib_id "Part") (at 10 20 0) (unit 1) (uuid "a") (property "Reference" "R?" (at 10 20 0)) (property "Value" "10k" (at 10 21 0)))
+ (symbol (lib_id "Part") (at 30 20 0) (unit 1) (uuid "b") (property "Reference" "R?" (at 30 20 0)) (property "Value" "22k" (at 30 21 0)))
+ (symbol (lib_id "Part") (at 50 20 0) (unit 1) (uuid "c") (property "Reference" "R1" (at 50 20 0)) (property "Value" "47k" (at 50 21 0))))`;
+ const imported=importKiCadSchematic(source);const original=createCircuit("Unannotated");
+ const first=synchronizePcb(original,imported.shapes,original,symbolDefinitions);
+ assert.equal(first.file.circuit.components.length,3);
+ assert.deepEqual(first.file.circuit.components.map(component=>component.value),["10k","22k","47k"]);
+ assert.deepEqual(first.file.circuit.components.map(component=>component.reference),["R2","R3","R1"]);
+ assert.equal(new Set(first.file.circuit.components.map(component=>component.id)).size,3);
+ const next=synchronizePcb(first.file,first.shapes,first.file,symbolDefinitions);
+ assert.deepEqual(next.file.circuit,first.file.circuit);
+ assert.deepEqual(next.shapes.filter(shape=>shape.kind==="symbol").map(shape=>shape.attributes.reference),["R2","R3","R1"]);
+ const duplicate=source.replace('"R?"','"R1"').replace('"R?"','"R1"');
+ assert.throws(()=>synchronizePcb(original,importKiCadSchematic(duplicate).shapes,original,symbolDefinitions),/Duplicate component reference/);
+});
+
+test("reusable definition pin edits and cleared overrides update metadata and generated captions",()=>{
+ const definition={...resistor,library:{scope:"project" as const,id:"project-symbols"}};
+ const original=createCircuit("Pin metadata");const symbol=createSymbol(1,definition,{x:0,y:0},"R1");
+ const initial=synchronizePcb(original,[symbol],original,[definition]);
+ const file=structuredClone(initial.file);const pinId=file.circuit.components[0].pins[0].id;file.circuit.nets=[{id:"signal",names:[],pinIds:[pinId]}];
+ const first=synchronizePcb(file,initial.shapes,initial.file,[definition]);
+ const sourceId=first.file.circuit.components[0].pins[0].sourcePinId!;
+ const updated={...definition,children:definition.children.map(child=>child.kind==="pin"&&String(child.id)===sourceId?{...child,name:"RENAMED",number:"42"}:child)};
+ const shapes=first.shapes.map(shape=>shape.kind==="symbol"?{...shape,children:updated.children}:shape);
+ const next=synchronizePcb(first.file,shapes,first.file,[updated]);
+ assert.equal(next.file.circuit.components[0].pins[0].id,pinId);
+ assert.equal(next.file.circuit.components[0].pins[0].name,"RENAMED");
+ assert.equal(next.file.circuit.components[0].pins[0].number,"42");
+ assert.ok(next.shapes.some(shape=>shape.kind==="text"&&shape.text==="RENAMED"));
+ assert.deepEqual(next.file.circuit.nets,file.circuit.nets);
+ const overridden=next.shapes.map(shape=>shape.kind==="symbol"?{...shape,childOverrides:{[`shape:${sourceId}`]:{name:"INSTANCE",number:"99"}}}:shape);
+ const withOverride=synchronizePcb(next.file,overridden,next.file,[updated]);
+ assert.equal(withOverride.file.circuit.components[0].pins[0].number,"99");
+ const cleared=withOverride.shapes.map(shape=>shape.kind==="symbol"?{...shape,childOverrides:undefined}:shape);
+ const restored=synchronizePcb(withOverride.file,cleared,withOverride.file,[updated]);
+ assert.equal(restored.file.circuit.components[0].pins[0].name,"RENAMED");
+ assert.equal(restored.file.circuit.components[0].pins[0].number,"42");
+ assert.ok(restored.shapes.some(shape=>shape.kind==="text"&&shape.text==="RENAMED"));
+ const unnamed=restored.shapes.map(shape=>shape.kind==="symbol"?{...shape,children:shape.children.map(child=>child.kind==="pin"&&String(child.id)===sourceId?{...child,name:""}:child)}:shape);
+ const numbered=synchronizePcb(restored.file,unnamed,restored.file,[updated]);
+ assert.ok(numbered.shapes.some(shape=>shape.kind==="text"&&shape.text==="R1.42"));
+});
+
+test("legacy shared pin names bind exact numbers to distinct symbol terminals",()=>{
+ const child=resistor.children.find(child=>child.kind==="pin")!;
+ const definition={...resistor,id:"shared-ground",children:[{...child,id:1,name:"GND",number:"1",x:-3,y:0},{...child,id:2,name:"GND",number:"2",x:3,y:0}]};
+ const file=createCircuit("Ground pins");const component=componentFromSymbol(definition,[]);component.pins=component.pins.map(({sourcePinId:_source,...pin})=>pin);file.circuit.components=[component];
+ file.circuit.nets=component.pins.map((pin,index)=>({id:`ground-${index}`,names:[`GND_${index}`],pinIds:[pin.id]}));
+ const first=synchronizePcb(file,[],undefined,[definition]);
+ assert.deepEqual(first.file.circuit.components[0].pins.map(pin=>pin.sourcePinId),["1","2"]);
+ const labels=first.shapes.filter(shape=>shape.kind==="text");
+ assert.equal(new Set(labels.map(shape=>`${shape.x},${shape.y}`)).size,2);
+ assert.deepEqual(synchronizePcb(first.file,first.shapes,first.file,[definition]).file.circuit.nets,file.circuit.nets);
 });

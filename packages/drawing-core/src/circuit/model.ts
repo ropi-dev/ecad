@@ -5,6 +5,9 @@ const name = z.string().trim().min(1).max(200);
 export const circuitPinSchema = z.strictObject({
 	id,
 	sourcePinId: id.optional(),
+	sourcePin: z
+		.strictObject({ name: z.string().max(200), number: name })
+		.optional(),
 	schematicShapeId: z.number().int().positive().optional(),
 	name: z.string().max(200),
 	number: name,
