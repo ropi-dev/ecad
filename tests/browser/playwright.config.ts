@@ -5,7 +5,8 @@ const port = Number(process.env.ECAD_BROWSER_PORT ?? 4174);
 export default defineConfig({
 	testDir: ".",
 	testMatch: "*.spec.ts",
-	workers: 1,
+	workers: 2,
+	fullyParallel: true,
 	projects: [
 		{
 			name: "chromium",
@@ -13,6 +14,7 @@ export default defineConfig({
 		},
 		{
 			name: "renderer",
+			workers: 1,
 			testMatch: "renderer.spec.ts",
 			// Use a display for the software WebGPU swap chain on Linux CI.
 			use: { headless: !process.env.CI },
@@ -20,6 +22,7 @@ export default defineConfig({
 	],
 	use: {
 		baseURL: `http://127.0.0.1:${port}`,
+		screenshot: "only-on-failure",
 		launchOptions: {
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 			args: [
@@ -35,8 +38,7 @@ export default defineConfig({
 	},
 	webServer: {
 		cwd: fileURLToPath(new URL("../../", import.meta.url)),
-		command:
-			`npx vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port ${port} --strictPort`,
+		command: `npx vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port ${port} --strictPort`,
 		url: `http://127.0.0.1:${port}/tests/browser/renderer.html`,
 		stdout: "pipe",
 		reuseExistingServer: !process.env.CI,

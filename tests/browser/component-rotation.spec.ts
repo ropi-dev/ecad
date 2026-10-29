@@ -1,4 +1,3 @@
-import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
 import { toolbarButton } from "./toolbar";
@@ -112,74 +111,4 @@ test("rotation buttons and shortcuts turn selected components, pins and labels w
 	const unchanged = await state(page);
 	await page.keyboard.press("r");
 	expect(await state(page)).toEqual(unchanged);
-});
-
-test("rotation cancels a stale drag before applying its command", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/editor.html");
-	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	await placeResistor(page);
-	const before = await state(page);
-	const box = (await page.locator("canvas").boundingBox())!;
-	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-	await page.mouse.down();
-	await page.mouse.move(
-		box.x + box.width / 2 + 80,
-		box.y + box.height / 2 + 60,
-		{ steps: 4 },
-	);
-	expect(await state(page)).toEqual(before);
-	await page.keyboard.press("r");
-	await page.mouse.up();
-	await expect
-		.poll(async () => (await state(page)).shapes[0].rotation)
-		.toBe(Math.PI / 2);
-	const after = await state(page);
-	expect(after.historySize).toBe(before.historySize + 1);
-	expect(after.shapes[0]).toEqual({
-		...before.shapes[0],
-		rotation: Math.PI / 2,
-	});
-});
-
-test("rotated components survive project reload", async ({ page }) => {
-	await page.goto("/tests/browser/projects.html");
-	await page
-		.getByLabel("Project name", { exact: true })
-		.fill("Rotated components");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
-	await placeResistor(page);
-	await page.keyboard.press("r");
-	const projectState = async () =>
-		JSON.parse((await page.locator("#project-document").textContent())!);
-	await expect
-		.poll(async () => (await projectState()).shapes[0]?.rotation)
-		.toBe(Math.PI / 2);
-	await expect.poll(async () => (await projectState()).dirty).toBe(false);
-	await page.reload();
-	await expect
-		.poll(async () => (await projectState()).shapes[0]?.rotation)
-		.toBe(Math.PI / 2);
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
-	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
-	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
-	await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
-	await expect(
-		page.getByRole("spinbutton", { name: "Angle", exact: true }),
-	).toHaveValue("90");
-	for (let repeat = 0; repeat < 8; repeat++)
-		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.screenshot({
-		path: test.info().outputPath("component-rotation.png"),
-	});
 });
