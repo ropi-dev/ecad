@@ -9,7 +9,7 @@ import { toolbarButton } from "./toolbar";
 import { resolve } from "node:path";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
-import { openProjectFiles } from "./project-files";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 
 const fixture = resolve(
 	"tests/fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch",
@@ -32,6 +32,7 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 }) => {
 	test.setTimeout(120000);
 	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
 	await page.getByLabel("Project name", { exact: true }).fill("KiCad reload");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })

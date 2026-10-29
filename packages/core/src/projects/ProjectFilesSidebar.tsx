@@ -1,5 +1,4 @@
 import {
-	AlertCircle,
 	Box,
 	ChevronLeft,
 	ChevronRight,
@@ -9,16 +8,23 @@ import {
 	FolderOpen,
 	Layers,
 	ListTree,
-	LoaderCircle,
-	PanelLeftClose,
-	PanelLeftOpen,
+	Pin,
+	PinOff,
 	PlugZap,
 	Plus,
 	Search,
 	X,
 } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
-import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
 	type AssetKind,
@@ -37,7 +43,6 @@ const SidebarMcpControls = lazy(() =>
 		default: module.McpControls,
 	})),
 );
-
 const CreateFileDialog = lazy(() =>
 	import("#/components/editor/CreateFileDialog.tsx").then((module) => ({
 		default: module.CreateFileDialog,
@@ -75,7 +80,11 @@ export function ProjectFilesSidebar() {
 	const project = useProject();
 	const workspaceControls = useWorkspaceControls();
 	const library = useSymbolLibrary();
-	const [collapsed, setCollapsed] = useState(true);
+	const [pinned, setPinned] = useState(false);
+	const [hovered, setHovered] = useState(false);
+	const [focused, setFocused] = useState(false);
+	const [touchOpen, setTouchOpen] = useState(false);
+	const sidebarRef = useRef<HTMLFieldSetElement>(null);
 	const panelId = useId();
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<(typeof filters)[number]>("All files");
@@ -87,6 +96,33 @@ export function ProjectFilesSidebar() {
 		"drawing" | "symbol" | "circuit" | null
 	>(null);
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
+	const open =
+		pinned ||
+		hovered ||
+		focused ||
+		touchOpen ||
+		addMenuOpen ||
+		creatingFile !== null;
+	useEffect(() => {
+		if (!touchOpen || pinned || addMenuOpen || creatingFile) return;
+		const dismiss = (event: PointerEvent) => {
+			if (
+				!(event.target instanceof Node) ||
+				sidebarRef.current?.contains(event.target)
+			)
+				return;
+			if (
+				document.activeElement instanceof HTMLElement &&
+				sidebarRef.current?.contains(document.activeElement)
+			)
+				document.activeElement.blur();
+			setTouchOpen(false);
+			setFocused(false);
+			setHovered(false);
+		};
+		document.addEventListener("pointerdown", dismiss, true);
+		return () => document.removeEventListener("pointerdown", dismiss, true);
+	}, [touchOpen, pinned, addMenuOpen, creatingFile]);
 	const editorLink = useRef<HTMLAnchorElement>(null);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
@@ -180,9 +216,45 @@ export function ProjectFilesSidebar() {
 
 	return (
 		<fieldset
+			ref={sidebarRef}
 			aria-label="File sidebar"
-			className={`relative m-0 h-full min-w-0 shrink-0 border-0 border-r border-[#343b46] bg-[#191c22] p-0 text-[#c7d0dc] transition-[width] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "w-12" : "w-64 max-w-[calc(100vw-4rem)]"}`}
+			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-[#c7d0dc] ${pinned ? "w-64 max-w-[calc(100vw-4rem)]" : "w-0"}`}
+			onPointerEnter={(event) => {
+				if (
+					event.pointerType === "mouse" &&
+					window.matchMedia("(hover: hover)").matches
+				)
+					setHovered(true);
+			}}
+			onPointerLeave={(event) => {
+				if (event.pointerType === "mouse") setHovered(false);
+			}}
+			onMouseDownCapture={() => setFocused(false)}
+			onFocusCapture={(event) => {
+				if (event.target.matches(":focus-visible")) setFocused(true);
+			}}
+			onBlurCapture={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget))
+					setFocused(false);
+			}}
+			onKeyDown={(event) => {
+				if (event.key === "Escape" && !addMenuOpen && !creatingFile) {
+					(document.activeElement as HTMLElement)?.blur();
+					setFocused(false);
+					setHovered(false);
+					setTouchOpen(false);
+				}
+			}}
 		>
+			<button
+				type="button"
+				aria-label="Show project files"
+				aria-expanded={open}
+				aria-controls={panelId}
+				tabIndex={open ? -1 : 0}
+				className={`absolute inset-y-0 left-0 z-10 w-2 border-0 bg-transparent p-0 ${focus}`}
+				onClick={() => setTouchOpen(true)}
+			/>
 			{importReport && (
 				<output className="fixed bottom-4 right-4 z-50 max-w-sm rounded border border-white/20 bg-[#191c22] p-3 text-xs shadow-lg">
 					<span className="block">
@@ -219,25 +291,20 @@ export function ProjectFilesSidebar() {
 			<aside
 				id={panelId}
 				aria-label="Project files"
-				data-open={!collapsed}
-				className="flex h-full min-h-0 flex-col overflow-hidden"
+				data-open={open}
+				data-pinned={pinned}
+				aria-hidden={!open}
+				inert={!open}
+				className={`absolute inset-y-0 left-0 flex h-full w-64 max-w-[calc(100vw-4rem)] min-h-0 flex-col overflow-hidden border-r border-[#343b46] bg-[#191c22] transition-transform duration-200 ease-in-out motion-reduce:transition-none ${open ? "translate-x-0" : "-translate-x-full"} ${open && !pinned ? "shadow-xl" : ""}`}
 			>
-				<header
-					className={`flex shrink-0 items-center gap-2 border-b border-white/10 ${collapsed ? "flex-col px-1.5 py-3" : "h-12 px-3"}`}
-				>
+				<header className="flex shrink-0 items-center gap-2 border-b border-white/10 h-12 px-3">
 					<ListTree
 						size={17}
 						aria-hidden="true"
 						className="shrink-0 text-[#98a4b6]"
 					/>
-					<h2
-						className={collapsed ? "sr-only" : "m-0 text-[13px] font-semibold"}
-					>
-						Files
-					</h2>
-					{!collapsed && (
-						<span className="text-[11px] text-[#98a4b6]">{files.length}</span>
-					)}
+					<h2 className="m-0 text-[13px] font-semibold">Files</h2>
+					<span className="text-[11px] text-[#98a4b6]">{files.length}</span>
 					{snapshot && (
 						<DropdownMenu.Root
 							open={addMenuOpen}
@@ -250,7 +317,7 @@ export function ProjectFilesSidebar() {
 									aria-label="Add file"
 									title="Add file"
 									disabled={busy}
-									className={`${button} ${collapsed ? "w-full" : "ml-auto w-7"} data-[state=open]:bg-white/10 data-[state=open]:text-white`}
+									className={`${button} ml-auto w-7 data-[state=open]:bg-white/10 data-[state=open]:text-white`}
 								>
 									<Plus size={16} aria-hidden="true" />
 								</button>
@@ -288,7 +355,7 @@ export function ProjectFilesSidebar() {
 				</header>
 				<nav
 					aria-label="Workspaces"
-					className={`grid shrink-0 gap-1 border-b border-white/10 ${collapsed ? "grid-cols-1 p-1.5 [&>a]:h-9 [&>a]:rounded-md [&>button]:h-9 [&>button]:rounded-md" : "grid-cols-4 gap-2 p-3"}`}
+					className="grid shrink-0 grid-cols-4 gap-2 border-b border-white/10 p-3"
 				>
 					<ProjectLink
 						href="/"
@@ -360,29 +427,25 @@ export function ProjectFilesSidebar() {
 					{snapshot ? (
 						<>
 							<div className="shrink-0 border-b border-white/10 pb-1">
-								<div
-									className={`flex items-center ${collapsed ? "flex-col gap-1 p-1.5" : "h-9 gap-0.5 px-2"}`}
-								>
+								<div className="flex items-center h-9 gap-0.5 px-2">
 									<ProjectLink
 										href="/projects"
 										aria-label="Project settings"
 										title={snapshot.manifest.name}
-										className={`flex min-w-0 items-center rounded text-xs hover:bg-white/10 hover:text-white ${collapsed ? "h-8 w-full justify-center" : "flex-1 gap-2 py-1"} ${focus}`}
+										className={`flex min-w-0 items-center rounded text-xs hover:bg-white/10 hover:text-white flex-1 gap-2 py-1 ${focus}`}
 									>
 										<FolderOpen
 											size={14}
 											className="shrink-0 text-[#98a4b6]"
 											aria-hidden="true"
 										/>
-										{!collapsed && (
-											<span className="truncate">{snapshot.manifest.name}</span>
-										)}
+										<span className="truncate">{snapshot.manifest.name}</span>
 									</ProjectLink>
 									{importTypes.map(([kind, label, Icon, accept]) => (
 										<label
 											key={kind}
 											title={`Add ${label} files`}
-											className={`${button} relative ${collapsed ? "h-8 w-full" : "w-6"} shrink-0 cursor-pointer px-0 focus-within:outline-2 focus-within:outline-[#e8b77e] has-[:disabled]:opacity-40`}
+											className={`${button} relative w-6 shrink-0 cursor-pointer px-0 focus-within:outline-2 focus-within:outline-[#e8b77e] has-[:disabled]:opacity-40`}
 										>
 											<Icon className="size-3.5 shrink-0" aria-hidden="true" />
 											<input
@@ -407,10 +470,7 @@ export function ProjectFilesSidebar() {
 										</label>
 									))}
 								</div>
-								<div
-									hidden={collapsed}
-									className="mx-2 flex items-center gap-2 rounded border border-white/10 bg-[#111318] px-2 focus-within:border-[#e8b77e80]"
-								>
+								<div className="mx-2 flex items-center gap-2 rounded border border-white/10 bg-[#111318] px-2 focus-within:border-[#e8b77e80]">
 									<Search
 										className="size-3.5 shrink-0 text-[#98a4b6]"
 										aria-hidden="true"
@@ -442,7 +502,6 @@ export function ProjectFilesSidebar() {
 								</div>
 								<fieldset
 									aria-label="File types"
-									hidden={collapsed}
 									className="mt-1 flex flex-wrap gap-0.5 px-2"
 								>
 									{filters.map((type) => (
@@ -466,39 +525,19 @@ export function ProjectFilesSidebar() {
 							</div>
 							{importing && (
 								<output
-									className={
-										collapsed
-											? "flex justify-center py-2 text-[#98a4b6]"
-											: "px-3 py-1 text-[11px] text-[#98a4b6]"
-									}
+									className="px-3 py-1 text-[11px] text-[#98a4b6]"
 									aria-live="polite"
 								>
-									{collapsed && (
-										<LoaderCircle
-											size={16}
-											className="animate-spin"
-											aria-hidden="true"
-										/>
-									)}
-									<span className={collapsed ? "sr-only" : undefined}>
-										Adding project files...
-									</span>
+									<span>Adding project files...</span>
 								</output>
 							)}
 							{(error || library.error) && (
 								<p
 									role="alert"
 									title={error || library.error || undefined}
-									className={
-										collapsed
-											? "flex justify-center py-2 text-[#edc49a]"
-											: "px-3 py-1 text-[11px] text-[#edc49a]"
-									}
+									className="px-3 py-1 text-[11px] text-[#edc49a]"
 								>
-									{collapsed && <AlertCircle size={16} aria-hidden="true" />}
-									<span className={collapsed ? "sr-only" : undefined}>
-										{error || library.error}
-									</span>
+									<span>{error || library.error}</span>
 								</p>
 							)}
 							{library.message && (
@@ -530,17 +569,13 @@ export function ProjectFilesSidebar() {
 															: File;
 											const content = (
 												<>
-													{!collapsed && (
-														<span className="w-5 shrink-0" aria-hidden="true" />
-													)}
+													<span className="w-5 shrink-0" aria-hidden="true" />
 													<Icon
 														size={14}
 														className="shrink-0 opacity-70"
 														aria-hidden="true"
 													/>
-													{!collapsed && (
-														<span className="truncate">{file.name}</span>
-													)}
+													<span className="truncate">{file.name}</span>
 												</>
 											);
 											return (
@@ -551,7 +586,7 @@ export function ProjectFilesSidebar() {
 																href={file.href}
 																aria-label={`Open ${file.name}`}
 																title={`${file.name} · ${file.type}`}
-																className={`flex h-8 min-w-0 items-center ${collapsed ? "justify-center" : "gap-2 pr-3 pl-2"} text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
+																className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
 																onClick={() => {
 																	if (file.href === "/editor") {
 																		if (file.type === "Circuit")
@@ -575,7 +610,7 @@ export function ProjectFilesSidebar() {
 														) : (
 															<div
 																title={`${file.name} · ${file.type}`}
-																className={`flex h-8 items-center text-xs text-[#98a4b6] ${collapsed ? "justify-center" : "gap-2 pr-3 pl-2"}`}
+																className="flex h-8 items-center text-xs text-[#98a4b6] gap-2 pr-3 pl-2"
 															>
 																{content}
 															</div>
@@ -586,7 +621,7 @@ export function ProjectFilesSidebar() {
 										})}
 									</tbody>
 								</table>
-								{!filtered.length && !collapsed && (
+								{!filtered.length && (
 									<div className="px-4 py-3 text-xs text-[#98a4b6]">
 										<p>No matching files</p>
 										<button
@@ -603,22 +638,14 @@ export function ProjectFilesSidebar() {
 									</div>
 								)}
 							</div>
-							<footer
-								className={`flex shrink-0 items-center justify-between gap-2 border-t border-white/10 text-[10px] text-[#98a4b6] ${collapsed ? "flex-col p-1" : "h-8 px-3"}`}
-							>
-								<span
-									aria-live="polite"
-									className={collapsed ? "sr-only" : undefined}
-								>
+							<footer className="flex shrink-0 items-center justify-between gap-2 border-t border-white/10 text-[10px] text-[#98a4b6] h-8 px-3">
+								<span aria-live="polite">
 									{filtered.length
 										? `${first + 1}–${Math.min(first + pageSize, filtered.length)} of ${filtered.length} files`
 										: "0 files"}
 								</span>
 								{lastPage > 0 && (
-									<nav
-										aria-label="Project file pages"
-										className={`flex gap-1 ${collapsed ? "flex-col" : ""}`}
-									>
+									<nav aria-label="Project file pages" className="flex gap-1">
 										<button
 											type="button"
 											aria-label="Previous files"
@@ -649,21 +676,25 @@ export function ProjectFilesSidebar() {
 				<footer className="shrink-0 border-t border-white/10 p-1.5">
 					<button
 						type="button"
-						aria-label={collapsed ? "Show project files" : "Hide project files"}
-						title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-						aria-expanded={!collapsed}
+						aria-label={pinned ? "Unpin sidebar" : "Pin sidebar"}
+						aria-pressed={pinned}
 						aria-controls={panelId}
-						className={`${button} h-9 w-full ${collapsed ? "" : "justify-start px-2"}`}
-						onClick={() => setCollapsed(!collapsed)}
+						className={`${button} h-9 w-full justify-start px-2`}
+						onClick={(event) => {
+							if (event.detail > 0) {
+								event.currentTarget.blur();
+							}
+							setFocused(false);
+							setPinned(!pinned);
+							setTouchOpen(false);
+						}}
 					>
-						{collapsed ? (
-							<PanelLeftOpen size={18} aria-hidden="true" />
+						{pinned ? (
+							<PinOff size={18} aria-hidden="true" />
 						) : (
-							<>
-								<PanelLeftClose size={18} aria-hidden="true" />
-								<span>Collapse sidebar</span>
-							</>
+							<Pin size={18} aria-hidden="true" />
 						)}
+						<span>{pinned ? "Unpin sidebar" : "Pin sidebar"}</span>
 					</button>
 				</footer>
 			</aside>

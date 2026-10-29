@@ -6,7 +6,7 @@ import {
 	selectDrawingShape,
 	selectSymbolItem,
 } from "./symbol-items";
-import { openProjectFiles } from "./project-files";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -27,6 +27,7 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
 	await page.getByLabel("Project name", { exact: true }).fill("Box drawing");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })

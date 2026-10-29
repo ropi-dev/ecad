@@ -1,7 +1,7 @@
 import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
-import { openProjectFiles } from "./project-files";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { stableScreenshot } from "./stable-screenshot";
 import { drawingPoint, selectDrawingShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
@@ -12,6 +12,7 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
 	await page
 		.getByLabel("Project name", { exact: true })
 		.fill("Child pin visibility");

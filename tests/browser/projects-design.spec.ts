@@ -1,5 +1,5 @@
 import { captureArtifacts } from "./artifacts";
-import { openProjectFiles } from "./project-files";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { mkdir } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
@@ -45,7 +45,7 @@ test("desktop project files fit desktop and mobile layouts and remain usable by 
 			exact: true,
 		}),
 	).toBeVisible();
-	await page.getByRole("button", { name: "Hide project files" }).click();
+	await closeProjectFiles(page);
 	await page.setViewportSize({ width: 375, height: 812 });
 	await expect(
 		page.getByRole("button", { name: "Save project", exact: true }),
