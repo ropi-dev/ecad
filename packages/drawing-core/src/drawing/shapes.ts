@@ -1,3 +1,4 @@
+import { electricalNets } from "#/drawing/named-nets.ts";
 import type { LineStyle } from "#/drawing/line-style.ts";
 import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
@@ -592,7 +593,12 @@ export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 		return border ? resizeHandles(symbolChildWorld(shape, border.shape)) : [];
 	}
 	const center = shape.kind === "text" ? textCenter(shape) : shape;
-	if (shape.kind === "symbol" || shape.kind === "pin") return [];
+	if (
+		shape.kind === "symbol" ||
+		shape.kind === "pin" ||
+		(shape.kind === "text" && shape.electrical)
+	)
+		return [];
 	const directions =
 		shape.kind === "text"
 			? [
@@ -656,7 +662,12 @@ export function resizeShape(
 			? resizeSymbolGeometry(shape, border, handle, delta, gridStep)
 			: shape;
 	}
-	if (shape.kind === "symbol" || shape.kind === "pin") return shape;
+	if (
+		shape.kind === "symbol" ||
+		shape.kind === "pin" ||
+		(shape.kind === "text" && shape.electrical)
+	)
+		return shape;
 	const target = { x: handle.x + delta.x, y: handle.y + delta.y };
 	if (shape.kind === "circle") {
 		const radius = Math.max(
@@ -1549,6 +1560,12 @@ function moveConnectedWires(
 	);
 }
 
+function movementTerminals(shape: EditorShape): Point[] {
+	if (shape.kind === "text" && shape.electrical && shape.text.trim())
+		return [{ x: shape.x, y: shape.y }];
+	return pinTerminals(shape);
+}
+
 export function moveShapes(
 	shapes: EditorShape[],
 	delta: Point,
@@ -1609,19 +1626,45 @@ export function moveShapes(
 	}
 
 	if (delta.x === 0 && delta.y === 0) return moved;
+	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId);
+}
+
+export function connectTransformedTerminals(
+	shapes: EditorShape[],
+	replacements: EditorShape[],
+	allShapes: EditorShape[],
+	nextShapeId: number,
+	rerouteWireEnds = false,
+): EditorShape[] {
+	const moved = [...replacements];
 	const terminals = shapes.flatMap((shape) =>
-		pinTerminals(shape).map((point) => ({ shape, point })),
+		movementTerminals(shape).map((point) => ({ shape, point })),
 	);
 	if (terminals.length === 0) return moved;
 	const selectedIds = new Set(shapes.map((shape) => shape.id));
 	const byId = new Map(moved.map((shape) => [shape.id, shape]));
-	const stationaryPins = allShapes
+	const stationaryTerminals = allShapes
 		.filter((shape) => !selectedIds.has(shape.id))
-		.flatMap(pinTerminals);
+		.flatMap((shape) =>
+			movementTerminals(shape).map((point) => ({ shape, point })),
+		);
+	const stationaryPins = stationaryTerminals.map(({ point }) => point);
 	const wires = allShapes.filter((shape) => shape.kind === "wire");
 	const targets = shapes.flatMap((shape) =>
-		pinTerminals(byId.get(shape.id) ?? shape),
+		movementTerminals(byId.get(shape.id) ?? shape),
 	);
+	const wireJunctions = rerouteWireEnds
+		? wires.flatMap((wire) => [
+				localToWorld(wire, -wire.width / 2, 0),
+				localToWorld(wire, wire.width / 2, 0),
+			])
+		: [];
+	const connections: {
+		shape: EditorShape;
+		terminal: Point;
+		target: Point;
+		anchor: Point;
+	}[] = [];
 	for (const [index, { shape, point: terminal }] of terminals.entries()) {
 		const target = targets[index];
 		if (
@@ -1638,10 +1681,63 @@ export function moveShapes(
 			)
 		)
 			anchors.push(terminal);
-		for (const wire of wires) {
+		for (const original of wires) {
+			const wire = rerouteWireEnds
+				? (byId.get(original.id) ?? original)
+				: original;
+			if (wire.width <= connectionTolerance) continue;
 			const start = localToWorld(wire, -wire.width / 2, 0);
 			const end = localToWorld(wire, wire.width / 2, 0);
 			if (!pointOnWire(terminal, start, end)) continue;
+			if (
+				rerouteWireEnds &&
+				!wire.locked &&
+				!selectedIds.has(wire.id) &&
+				[start, end].some(
+					(point) =>
+						Math.hypot(point.x - terminal.x, point.y - terminal.y) <=
+						connectionTolerance,
+				)
+			) {
+				const endpoint =
+					Math.hypot(start.x - terminal.x, start.y - terminal.y) <=
+					connectionTolerance
+						? end
+						: start;
+				const junction = [
+					...stationaryPins,
+					...terminals.map(({ point }) => point),
+					...wireJunctions,
+				].reduce((nearest, point) => {
+					const distance = Math.hypot(
+						point.x - terminal.x,
+						point.y - terminal.y,
+					);
+					return distance > connectionTolerance &&
+						distance <
+							Math.hypot(nearest.x - terminal.x, nearest.y - terminal.y) &&
+						pointOnWire(point, start, end)
+						? point
+						: nearest;
+				}, endpoint);
+				const other = terminals.findIndex(
+					({ point }) =>
+						Math.hypot(point.x - junction.x, point.y - junction.y) <=
+						connectionTolerance,
+				);
+				const anchor = other < 0 ? junction : targets[other];
+				const retained = {
+					...wire,
+					...drawShape(wire.id, "wire", junction, endpoint),
+					lineWidth: wire.lineWidth,
+				};
+				const index = moved.findIndex((shape) => shape.id === wire.id);
+				if (index < 0) moved.push(retained);
+				else moved[index] = retained;
+				byId.set(wire.id, retained);
+				anchors.push(anchor);
+				continue;
+			}
 			const replacement = byId.get(wire.id) ?? wire;
 			const movedStart = localToWorld(replacement, -replacement.width / 2, 0);
 			const movedEnd = localToWorld(replacement, replacement.width / 2, 0);
@@ -1669,20 +1765,187 @@ export function moveShapes(
 		);
 		for (const anchor of unique) {
 			if (
-				Math.hypot(target.x - anchor.x, target.y - anchor.y) <=
+				Math.hypot(target.x - anchor.x, target.y - anchor.y) >
 				connectionTolerance
 			)
-				continue;
-			const horizontalFirst =
-				shape.kind !== "symbol"
-					? undefined
-					: Math.abs(terminal.x - shape.x) >= Math.abs(terminal.y - shape.y)
-						? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
-						: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
-			const segments = routeWire(nextShapeId, anchor, target, horizontalFirst);
-			moved.push(...segments);
-			nextShapeId += segments.length;
+				connections.push({ shape, terminal, target, anchor });
 		}
 	}
+	const obstacles = wires
+		.map((wire) => byId.get(wire.id) ?? wire)
+		.filter((wire) => wire.width > connectionTolerance);
+	const nets =
+		connections.length &&
+		(rerouteWireEnds ||
+			allShapes.some((shape) => shape.kind === "text" && shape.electrical))
+			? electricalNets(allShapes)
+			: [];
+	const wireNets = new Map(
+		nets.flatMap((net) => net.wires.map((id) => [id, net] as const)),
+	);
+	const labelNets = new Map(
+		nets.flatMap((net) => net.labels.map((id) => [id, net] as const)),
+	);
+	const pinNets = new Map(
+		nets.flatMap((net) =>
+			net.pins.map((pin) => [`${pin.shapeId}:${pin.pinId}`, net] as const),
+		),
+	);
+	const symbolPins = new Map(
+		allShapes.flatMap((shape) =>
+			shape.kind === "symbol"
+				? [
+						[
+							shape.id,
+							symbolShapes(shape).filter((child) => child.kind === "pin"),
+						] as const,
+					]
+				: [],
+		),
+	);
+	const memberships = new Map(
+		[...terminals, ...stationaryTerminals].map(({ shape, point }) => {
+			if (shape.kind === "text")
+				return [point, labelNets.get(shape.id)] as const;
+			const pinId =
+				shape.kind === "pin"
+					? shape.id
+					: symbolPins
+							.get(shape.id)
+							?.find(
+								(pin) =>
+									Math.hypot(pin.x - point.x, pin.y - point.y) <=
+									connectionTolerance,
+							)?.id;
+			return [
+				point,
+				pinId === undefined ? undefined : pinNets.get(`${shape.id}:${pinId}`),
+			] as const;
+		}),
+	);
+	const preserveLabeledNets = connections.some(
+		({ terminal }) => memberships.get(terminal)?.labels.length,
+	);
+	for (const { shape, terminal, target, anchor } of connections) {
+		const net = memberships.get(terminal);
+		const horizontalFirst =
+			shape.kind !== "symbol"
+				? undefined
+				: Math.abs(terminal.x - shape.x) >= Math.abs(terminal.y - shape.y)
+					? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
+					: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
+		const segments =
+			rerouteWireEnds || preserveLabeledNets
+				? routeTransformedConnection(
+						nextShapeId,
+						anchor,
+						target,
+						Math.max(shape.width, shape.height) + 1,
+						horizontalFirst,
+						[
+							...stationaryPins.filter(
+								(point) => !net || memberships.get(point) !== net,
+							),
+							...targets.filter(
+								(_, index) =>
+									!net || memberships.get(terminals[index].point) !== net,
+							),
+						],
+						obstacles.filter((wire) => !net || wireNets.get(wire.id) !== net),
+					)
+				: routeWire(nextShapeId, anchor, target, horizontalFirst);
+		if (!segments) return shapes;
+		obstacles.push(...segments);
+		if (net) for (const segment of segments) wireNets.set(segment.id, net);
+
+		moved.push(...segments);
+		nextShapeId += segments.length;
+	}
 	return moved;
+}
+
+function routeTransformedConnection(
+	id: number,
+	anchor: Point,
+	target: Point,
+	spacing: number,
+	horizontalFirst: boolean | undefined,
+	terminals: Point[],
+	obstacles: EditorShape[],
+): EditorShape[] | undefined {
+	const allowed = (point: Point) =>
+		[anchor, target].some(
+			(end) =>
+				Math.hypot(point.x - end.x, point.y - end.y) <= connectionTolerance,
+		);
+	const endpoints = (wire: EditorShape) => [
+		localToWorld(wire, -wire.width / 2, 0),
+		localToWorld(wire, wire.width / 2, 0),
+	];
+	const edges = obstacles.map(endpoints);
+	const clear = (segments: EditorShape[]) =>
+		segments.every((segment) => {
+			const [start, end] = endpoints(segment);
+			if (
+				terminals.some(
+					(point) => !allowed(point) && pointOnWire(point, start, end),
+				)
+			)
+				return false;
+			return edges.every(([a, b]) => {
+				if (
+					[a, b].some(
+						(point) => !allowed(point) && pointOnWire(point, start, end),
+					)
+				)
+					return false;
+				if (
+					[start, end].some(
+						(point) => !allowed(point) && pointOnWire(point, a, b),
+					)
+				)
+					return false;
+				const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
+				const across = vertical ? "x" : "y",
+					along = vertical ? "y" : "x";
+				return (
+					Math.abs(a[across] - start[across]) > connectionTolerance ||
+					Math.abs(b[across] - start[across]) > connectionTolerance ||
+					Math.min(
+						Math.max(start[along], end[along]),
+						Math.max(a[along], b[along]),
+					) -
+						Math.max(
+							Math.min(start[along], end[along]),
+							Math.min(a[along], b[along]),
+						) <=
+						connectionTolerance
+				);
+			});
+		});
+	for (const horizontal of [horizontalFirst, !horizontalFirst]) {
+		const direct = routeWire(id, anchor, target, horizontal);
+		if (clear(direct)) return direct;
+	}
+	for (let lane = 1; lane <= 32; lane++)
+		for (const sign of [1, -1]) {
+			const y = target.y + sign * spacing * lane;
+			const x = target.x + sign * spacing * lane;
+			for (const points of [
+				[anchor, { x: anchor.x, y }, { x: target.x, y }, target],
+				[anchor, { x, y: anchor.y }, { x, y: target.y }, target],
+			]) {
+				const segments = points
+					.slice(1)
+					.map((point, index) =>
+						drawShape(id + index, "wire", points[index], point),
+					)
+					.filter((wire) => wire.width > connectionTolerance);
+				if (clear(segments))
+					return segments.map((segment, index) => ({
+						...segment,
+						id: id + index,
+					}));
+			}
+		}
 }

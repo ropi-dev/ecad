@@ -612,3 +612,159 @@ test("moving an attached component and adding wires commits once and restores th
 	);
 	assert.ok(store.getSnapshot().nextShapeId >= 7);
 });
+
+test("rotating both ends of a shared wire reconnects the new pin positions", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ const { store, run } = session();
+ const first = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+ const second = createSymbol(2, symbolDefinitions[0], { x: 30, y: 0 });
+ const a = pinTerminals(first)[1], b = pinTerminals(second)[0];
+ run(placeShapesEffect([first, second, drawShape(3, "wire", a, b)], "Connected components"));
+ const before = store.getSnapshot();
+ run(rotateShapesEffect([1, 2]));
+ const nets = electricalNets(store.getSnapshot().shapes);
+ assert.equal(nets.filter(net => net.pins.length === 2).length, 1);
+ run(undoEffect);
+ assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});
+
+test("rotation preserves wire interior junctions for pins, labels and branches", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const kind of ["pin", "label", "branch"] as const) {
+  const { store, run } = session();
+  const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+  const wire = drawShape(2, "wire", pinTerminals(symbol)[0], { x: -40, y: 0 });
+  const junction = kind === "pin" ? drawShape(3, "pin", { x: -25, y: 0 }, { x: -25, y: 0 })
+   : kind === "branch" ? drawShape(3, "wire", { x: -25, y: 0 }, { x: -25, y: 20 })
+   : { id: 3, kind: "text" as const, electrical: "net" as const, text: "TAP", x: -25, y: 0, width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+  run(placeShapesEffect([symbol, wire, junction], "Interior junction"));
+  const before = store.getSnapshot();
+  run(rotateShapesEffect([1]));
+  const net = electricalNets(store.getSnapshot().shapes).find(net => net.pins.some(pin => pin.shapeId === 1));
+  assert.ok(net);
+  if (kind === "label") assert.deepEqual(net.names, ["TAP"]);
+  else if (kind === "pin") assert.ok(net.pins.some(pin => pin.shapeId === 3));
+  else assert.ok(net.wires.includes(3));
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
+
+test("rotating a component extends its connection without rewriting a locked wire", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const angle of [Math.PI / 2, -Math.PI / 2]) {
+  const { store, run } = session();
+  const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+  const wire = { ...drawShape(2, "wire", pinTerminals(symbol)[0], { x: -40, y: 0 }), locked: true };
+  run(placeShapesEffect([symbol, wire], "Locked connection"));
+  const before = store.getSnapshot();
+  run(rotateShapesEffect([1], angle));
+  const shapes = store.getSnapshot().shapes;
+  assert.deepEqual(shapes.find(shape => shape.id === wire.id), before.shapes.find(shape => shape.id === wire.id));
+  assert.ok(shapes.length > before.shapes.length);
+  assert.ok(electricalNets(shapes).some(net => net.wires.includes(wire.id) && net.pins.some(pin => pin.shapeId === symbol.id)));
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
+
+test("rotation keeps the two wired terminals of a component on distinct nets", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const rotation of [0, Math.PI / 2]) for (const angle of [Math.PI / 2, -Math.PI / 2, Math.PI]) {
+  const { store, run } = session();
+  const symbol = { ...createSymbol(1, symbolDefinitions[0], { x: 50, y: 60 }), rotation };
+  const pins = pinTerminals(symbol);
+  const anchors = pins.map(pin => ({ x: symbol.x + (pin.x - symbol.x) * 4, y: symbol.y + (pin.y - symbol.y) * 4 }));
+  const labels = anchors.map((point, index) => ({ ...point, id: 4 + index, kind: "text" as const, electrical: "net" as const, text: index === 0 ? "LEFT" : "RIGHT", width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 }));
+  run(placeShapesEffect([symbol, drawShape(2, "wire", pins[0], anchors[0]), drawShape(3, "wire", pins[1], anchors[1]), ...labels], "Separate nets"));
+  const before = store.getSnapshot();
+  const memberships = (shapes: typeof before.shapes) => electricalNets(shapes).map(net => ({ names: net.names, pins: net.pins })).sort((a, b) => a.names.join().localeCompare(b.names.join()));
+  run(rotateShapesEffect([1], angle));
+  assert.equal(store.getSnapshot().shapes.find(shape => shape.id === symbol.id)?.rotation, ((rotation + angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI));
+  assert.deepEqual(memberships(store.getSnapshot().shapes), memberships(before.shapes));
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
+
+test("rotation reconnects both ends of a wire with an interior label or branch", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const selectLabel of [false, true]) for (const branch of [false, true]) {
+  const { store, run } = session();
+  const first = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+  const second = createSymbol(2, symbolDefinitions[0], { x: 40, y: 0 });
+  const label = { id: 4, kind: "text" as const, electrical: "net" as const, text: "TAP", x: 20, y: 0, width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+  run(placeShapesEffect([first, second, drawShape(3, "wire", pinTerminals(first)[1], pinTerminals(second)[0]), label, ...(branch ? [drawShape(5, "wire", { x: 20, y: 0 }, { x: 20, y: 20 })] : [])], "Shared labeled wire"));
+  const before = store.getSnapshot();
+  run(rotateShapesEffect([1, 2, ...(selectLabel ? [4] : [])]));
+  const rotated = store.getSnapshot().shapes;
+  for (const id of [1, 2]) assert.equal(rotated.find(shape => shape.id === id)?.rotation, Math.PI / 2);
+  const net = electricalNets(rotated).find(net => net.names.includes("TAP"));
+  assert.deepEqual(net?.pins.map(pin => pin.shapeId).sort(), [1, 2]);
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+  run(redoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, rotated);
+ }
+});
+
+test("moving an electrical label preserves unrelated nets along both direct routes", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const electrical of ["net", "supply"] as const) {
+  const { store, run } = session();
+  const point = { x: -10, y: 0 };
+  const pin = drawShape(1, "pin", point, point);
+  const label = { ...point, id: 2, kind: "text" as const, electrical, text: "BUS", width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+  run(placeShapesEffect([pin, label, drawShape(3, "pin", { x: 10, y: 0 }, { x: 10, y: 0 }), drawShape(4, "pin", { x: 10, y: 10 }, { x: 10, y: 10 })], "Label and unrelated pins"));
+  const before = store.getSnapshot();
+  const selected = before.shapes.find(shape => shape.id === label.id)!;
+  const replacements = moveShapes([selected], { x: 30, y: 10 }, 0, selected, before.shapes, before.nextShapeId);
+  run(replaceAndPlaceShapesEffect([replacements[0]], replacements.slice(1), "Move label", [label.id]));
+  const shapes = store.getSnapshot().shapes;
+  assert.equal(shapes.find(shape => shape.id === label.id)?.x, 20);
+  assert.equal(shapes.find(shape => shape.id === label.id)?.y, 10);
+  const membership = (shapes: typeof before.shapes) => electricalNets(shapes).map(net => ({ names: net.names, pins: net.pins })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  assert.deepEqual(membership(shapes), membership(before.shapes));
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
+
+test("electrical labels can leave four-way junctions without joining unrelated pins", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const electrical of ["net", "supply"] as const) for (const delta of [{ x: 10, y: 10 }, { x: 30, y: 0 }]) {
+  const { store, run } = session();
+  const point = { x: 0, y: 0 };
+  const label = { ...point, id: 1, kind: "text" as const, electrical, text: "BUS", width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+  const arms = [{ x: 20, y: 0 }, { x: -20, y: 0 }, { x: 0, y: 20 }, { x: 0, y: -20 }].map((end, index) => drawShape(index + 2, "wire", point, end));
+  run(placeShapesEffect([label, ...arms, drawShape(6, "pin", { x: 25, y: 0 }, { x: 25, y: 0 })], "Four-way junction"));
+  const before = store.getSnapshot();
+  const replacements = moveShapes([before.shapes[0]], delta, 0, before.shapes[0], before.shapes, before.nextShapeId);
+  run(replaceAndPlaceShapesEffect([replacements[0]], replacements.slice(1), "Move junction label", [1]));
+  const shapes = store.getSnapshot().shapes;
+  assert.deepEqual({ x: shapes[0].x, y: shapes[0].y }, delta);
+  const net = electricalNets(shapes).find(net => net.names.includes("BUS"));
+  assert.ok(net && net.wires.length >= 4);
+  assert.equal(net.pins.length, 0);
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
+
+test("moving a component preserves its generated label net without capturing unrelated pins", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ const { store, run } = session();
+ const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+ const point = pinTerminals(symbol)[0];
+ const label = { ...point, id: 2, kind: "text" as const, electrical: "net" as const, circuitNet: { id: "bus", label: "BUS", pinId: "left" }, text: "BUS", width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+ run(placeShapesEffect([symbol, label, drawShape(3, "pin", { x: 10, y: 0 }, { x: 10, y: 0 }), drawShape(4, "pin", { x: 10, y: 10 }, { x: 10, y: 10 })], "Generated label and unrelated pins"));
+ const before = store.getSnapshot();
+ const replacements = moveShapes([before.shapes[0]], { x: 30, y: 10 }, 0, before.shapes[0], before.shapes, before.nextShapeId);
+ run(replaceAndPlaceShapesEffect([replacements[0]], replacements.slice(1), "Move labeled component", [1]));
+ const shapes = store.getSnapshot().shapes;
+ assert.deepEqual({ x: shapes[0].x, y: shapes[0].y }, { x: 30, y: 10 });
+ const membership = (shapes: typeof before.shapes) => electricalNets(shapes).map(net => ({ names: net.names, pins: net.pins })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+ assert.deepEqual(membership(shapes), membership(before.shapes));
+ run(undoEffect);
+ assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});
