@@ -34,8 +34,8 @@ export default defineConfig({
 	webServer: {
 		cwd: fileURLToPath(new URL("../../", import.meta.url)),
 		command: development
-			? `npm run dev:web -- --host 127.0.0.1 --port ${port} --strictPort`
-			: `npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
+			? `pnpm run dev:web --host 127.0.0.1 --port ${port} --strictPort`
+			: `pnpm run preview --host 127.0.0.1 --port ${port} --strictPort`,
 		url: `http://127.0.0.1:${port}/projects`,
 		reuseExistingServer: false,
 		timeout: 60_000,

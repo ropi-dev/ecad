@@ -1,11 +1,11 @@
 # Performance measurements
 
-Run these commands from the repository root after `npm ci` and `npx playwright install chromium`:
+Run these commands from the repository root after `pnpm install --frozen-lockfile` and `pnpm exec playwright install chromium`:
 
 ```bash
-npm run perf:baseline
+pnpm run perf:baseline
 # Make the feature change, then compare against the saved baseline:
-npm run perf
+pnpm run perf
 ```
 
 Both commands build the web app and run Chromium against a fresh preview server on port 4175. Each browser scenario runs three times, with one worker, an empty browser context, HTTP cache disabled, a 1280 × 800 viewport, and 4× CPU throttling. The large-project test seeds browser storage and reloads; this models opening an existing project. GPU tests use Chromium's software renderer. These numbers describe that test environment, rather than a user's GPU performance.
@@ -72,7 +72,7 @@ The `editor-pin-heavy` scenario restores 2,000 pins and 1,000 wires, then clicks
 
 The `desktop-storage` scenario measures native Node filesystem operations without CPU throttling. It saves 2,000 drawing shapes and 50 symbols in the legacy layout, migrates them to visible files, edits and saves the drawing, copies a 10 MiB source file, and reopens the project. It checks that migration removes empty `.ecad` folders and that saved data survives reopening. Its budgets allow 2 seconds each for saving and loading, and 3 seconds each for migration and source copying. The source bytes measure storage I/O, not STEP parsing. It also measures saving and loading the home-directory symbol config and reading a 50-file configured directory, with a 1-second budget for each operation. Each report records the Node version and workload sizes.
 
-The `cli-drawing` scenario runs the built CLI under native Node without CPU throttling. It measures help startup before creating a drawing fixture, then places 2,000 rectangles through stdin, reads the saved drawing in a new process, and undoes the edit. It also initializes the standalone stdio server, lists its tools, and places the same batch through an MCP client. The workload includes local drawing writes and persistent undo history. Budgets allow 500 ms for help startup and 3 seconds each for placement, reading, undo, stdio initialization with tool discovery, and stdio placement. Each report records the Node version and shape count. Run it with `npm run perf -- --grep cli-drawing`. The performance runner builds the CLI before running scenarios.
+The `cli-drawing` scenario runs the built CLI under native Node without CPU throttling. It measures help startup before creating a drawing fixture, then places 2,000 rectangles through stdin, reads the saved drawing in a new process, and undoes the edit. It also initializes the standalone stdio server, lists its tools, and places the same batch through an MCP client. The workload includes local drawing writes and persistent undo history. Budgets allow 500 ms for help startup and 3 seconds each for placement, reading, undo, stdio initialization with tool discovery, and stdio placement. Each report records the Node version and shape count. Run it with `pnpm run perf --grep cli-drawing`. The performance runner builds the CLI before running scenarios.
 
 The absolute timing budgets were calibrated with 4× CPU throttling and software rendering, including measurements from [the first CI run](https://github.com/rolaca11/ecad/actions/runs/37324627616) and [the next CI run](https://github.com/rolaca11/ecad/actions/runs/37325490010):
 
@@ -98,15 +98,15 @@ Development profiling uses a separate Vite dependency cache and warms the server
 
 ```bash
 # React development profiling uses development-baseline.json:
-npm run perf:dev -- --baseline
-npm run perf:dev
+pnpm run perf:dev --baseline
+pnpm run perf:dev
 
 # Change the environment deliberately, using the same values for both runs:
-ECAD_PERF_CPU=4 ECAD_PERF_RUNS=5 npm run perf:baseline
-ECAD_PERF_CPU=4 ECAD_PERF_RUNS=5 npm run perf
+ECAD_PERF_CPU=4 ECAD_PERF_RUNS=5 pnpm run perf:baseline
+ECAD_PERF_CPU=4 ECAD_PERF_RUNS=5 pnpm run perf
 
 # Focus on one scenario during investigation:
-npm run perf -- --grep projects-large
+pnpm run perf --grep projects-large
 ```
 
 Set `ECAD_PERF_BASELINE_PATH` to use another comparison file. Development and production have separate default baselines.
@@ -173,7 +173,7 @@ The `editor-named-nets` scenario opens 346 wires and 94 electrical labels, place
 
 Parallel worktrees can select separate test ports with `ECAD_PERF_PORT` and `ECAD_BROWSER_PORT`. Run production performance comparisons without competing benchmark runs on the same machine.
 
-Run `npx tsx scripts/performance/named-nets.ts` for focused 5,000-wire connectivity validation without a browser or production build. It uses three fresh stores and five repeated reads per store, checks that all disconnected wires remain separate, and records first-read and repeated-read p95 in `artifacts/named-nets-5000-after.json`. Local budgets are 250 ms for first reads and 25 ms for cached reads, excluding serialization. `--baseline` records the same workload before a change without enforcing those budgets.
+Run `pnpm exec tsx scripts/performance/named-nets.ts` for focused 5,000-wire connectivity validation without a browser or production build. It uses three fresh stores and five repeated reads per store, checks that all disconnected wires remain separate, and records first-read and repeated-read p95 in `artifacts/named-nets-5000-after.json`. Local budgets are 250 ms for first reads and 25 ms for cached reads, excluding serialization. `--baseline` records the same workload before a change without enforcing those budgets.
 
 The `schematic-export` scenario restores the RP2350A reference fixture and downloads full-sheet SVG and 9600 × 6400 PNG output. Under the standard 4× CPU throttle it budgets 5 seconds for SVG generation and 15 seconds for the complete PNG export, with fewer than 1,500 DOM nodes and at most 3 MB of decoded scripts. `drawing.export-svg` measures shared geometry and text serialization. `drawing.export` also includes PNG decoding, rasterization, encoding and download initiation. The new flow has no pre-feature measurement. Use `editor-box` to compare the existing editor against its pre-feature baseline.
 
@@ -198,6 +198,6 @@ The `circuit-auto-names` scenario opens 32 components with 64 unconnected pins, 
 
 The `circuit-keyboard-placement` scenario starts with 32 components and 64 unconnected pins. It places three resistors and three standalone nets with keyboard controls, moving previews and undoing each net placement in one step. Its 2.5-second interaction budget includes symbol picker search and both placements, matching the existing symbol placement budget. Graph construction and commands each remain below 100 ms p95, with fewer than 2,200 DOM nodes and at most 3 MB of decoded scripts under 4× CPU throttling.
 
-The `desktop-untitled` scenario creates an in-memory desktop project, saves 2,000 shapes, imports a 10 MiB source file, then exports the project to disk and reopens it. It checks that the project stays in memory before explicit save and that the exported shapes and bytes survive reopening. Native Node runs without CPU throttling. Budgets allow 1 second for creation, 2 seconds for an in-memory save and reopening, and 3 seconds for import and export. Run it with `npm run perf -- --grep desktop-untitled`.
+The `desktop-untitled` scenario creates an in-memory desktop project, saves 2,000 shapes, imports a 10 MiB source file, then exports the project to disk and reopens it. It checks that the project stays in memory before explicit save and that the exported shapes and bytes survive reopening. Native Node runs without CPU throttling. Budgets allow 1 second for creation, 2 seconds for an in-memory save and reopening, and 3 seconds for import and export. Run it with `pnpm run perf --grep desktop-untitled`.
 
 The `pcb-linked-documents` scenario opens a 32-component circuit with 17 nets, places a resistor, waits for both PCB documents to save, then opens its schematic. Circuit edits update affected schematic connections with net labels. Unchanged nets keep their wires. The scenario allows 3 seconds for an interaction including autosave and 150 ms p95 for `pcb.synchronize`, under the standard Chromium configuration with 4× CPU throttling. The existing `circuit-graph` and `editor-box` scenarios provide before and after comparisons on the same machine.
