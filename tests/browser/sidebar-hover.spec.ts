@@ -3,6 +3,108 @@ import { expect, test } from "@playwright/test";
 import { expectKeyboardNavigation } from "./keyboard-navigation";
 import { openProjectFiles } from "./project-files";
 
+test("the sidebar slides over the workspace from an invisible edge handle", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await page.mouse.move(900, 400);
+	const sidebar = page.getByRole("complementary", {
+		name: "Project files",
+		exact: true,
+		includeHidden: true,
+	});
+	const frame = sidebar.locator("..");
+	const content = frame.locator("+ div");
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	expect((await frame.boundingBox())!.width).toBe(0);
+	expect((await content.boundingBox())!.x).toBe(0);
+	await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(-256);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: "perf-artifacts/sidebar-hidden-desktop.png",
+		});
+	await expect(sidebar).toHaveCSS("transition-duration", "0.2s");
+	await expect(sidebar).toHaveCSS("transition-property", /transform/);
+	await page
+		.getByRole("button", { name: "Show project files", exact: true })
+		.hover();
+	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(0);
+	expect((await content.boundingBox())!.x).toBe(0);
+	await sidebar.hover({ position: { x: 100, y: 20 } });
+	if (captureArtifacts)
+		await page.screenshot({
+			path: "perf-artifacts/sidebar-expanded-desktop.png",
+		});
+	await page.mouse.move(900, 400);
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(-256);
+	await page
+		.getByRole("button", { name: "Show project files", exact: true })
+		.focus();
+	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await page.keyboard.press("Tab");
+	await expect(
+		sidebar.getByRole("link", { name: "Gerber viewer", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("Escape");
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+});
+
+test("pinning the sidebar keeps it beside the canvas through navigation", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await page.getByLabel("Project name", { exact: true }).fill("Pinned sidebar");
+	await page
+		.getByRole("button", { name: "Create project", exact: true })
+		.click();
+	const sidebar = await openProjectFiles(page);
+	await sidebar
+		.getByRole("link", { name: "Schematic editor", exact: true })
+		.click();
+	await expect(
+		page.getByRole("button", { name: "Select", exact: true }),
+	).toBeEnabled();
+	const pin = sidebar.getByRole("button", { name: "Pin sidebar", exact: true });
+	await pin.focus();
+	await pin.press("Enter");
+	await expect(
+		sidebar.getByRole("button", { name: "Unpin sidebar", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
+	await expect
+		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
+		.toBe(256);
+	await page.getByRole("button", { name: "Select", exact: true }).click();
+	await page.keyboard.press("Escape");
+	await expect(sidebar).toHaveAttribute("data-open", "true");
+	if (captureArtifacts)
+		await page.screenshot({
+			path: "perf-artifacts/sidebar-pinned-desktop.png",
+		});
+	await sidebar.getByRole("link", { name: "STEP viewer", exact: true }).click();
+	await sidebar
+		.getByRole("link", { name: "Open Drawing", exact: true })
+		.click();
+	await expect
+		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
+		.toBe(256);
+	await sidebar
+		.getByRole("button", { name: "Unpin sidebar", exact: true })
+		.click();
+	await expect(sidebar).toHaveAttribute("data-pinned", "false");
+	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await expect
+		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
+		.toBe(0);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: "perf-artifacts/sidebar-unpinned-desktop.png",
+		});
+	await page.mouse.move(900, 400);
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+});
+
 test("the add file menu supports keyboard navigation and stays open outside the sidebar", async ({
 	page,
 }) => {
@@ -76,6 +178,50 @@ test.describe("touch sidebar", () => {
 		hasTouch: true,
 		isMobile: true,
 	});
+	test("the invisible edge handle opens the sidebar on touch", async ({
+		page,
+	}) => {
+		await page.goto("/tests/browser/projects.html");
+		const sidebar = page.getByRole("complementary", {
+			name: "Project files",
+			exact: true,
+			includeHidden: true,
+		});
+		const content = sidebar.locator("..").locator("+ div");
+		await expect(sidebar).toHaveAttribute("data-open", "false");
+		expect((await content.boundingBox())!.width).toBe(390);
+		await page
+			.getByRole("button", { name: "Show project files", exact: true })
+			.tap();
+		await expect(sidebar).toHaveAttribute("data-open", "true");
+		await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(0);
+		expect((await content.boundingBox())!.width).toBe(390);
+		if (captureArtifacts)
+			await page.screenshot({
+				path: "perf-artifacts/sidebar-expanded-mobile.png",
+			});
+		await sidebar
+			.getByRole("button", { name: "Pin sidebar", exact: true })
+			.tap();
+		await expect.poll(async () => (await content.boundingBox())!.x).toBe(256);
+		expect((await content.boundingBox())!.width).toBe(134);
+		if (captureArtifacts)
+			await page.screenshot({
+				path: "perf-artifacts/sidebar-pinned-mobile.png",
+			});
+		await sidebar
+			.getByRole("button", { name: "Unpin sidebar", exact: true })
+			.tap();
+		await expect(sidebar).toHaveAttribute("data-open", "false");
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await page
+			.getByRole("button", { name: "Show project files", exact: true })
+			.tap();
+		await expect(sidebar).toHaveCSS("transition-property", "none");
+		expect(
+			await sidebar.evaluate((element) => element.getAnimations().length),
+		).toBe(0);
+	});
 	test("the add file menu fits the touch viewport and creates a symbol", async ({
 		page,
 	}) => {
@@ -89,6 +235,9 @@ test.describe("touch sidebar", () => {
 		await expect(
 			page.getByRole("heading", { name: "Touch file menu", exact: true }),
 		).toBeVisible();
+		await page
+			.getByRole("button", { name: "Show project files", exact: true })
+			.tap();
 		await page.getByRole("button", { name: "Add file", exact: true }).tap();
 		const menu = page.getByRole("menu", { name: "Add file", exact: true });
 		const bounds = (await menu.boundingBox())!;

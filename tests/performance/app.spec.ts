@@ -918,39 +918,53 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		});
 		await expect(page.getByRole("tree", { name: "Drawing items" })).toHaveCount(0);
 	}
-	await sidebar.getByRole("button", { name: "Hide project files" }).click();
+	await closeProjectFiles(page);
 	await page.mouse.move(900, 400);
 	const railNavigationTimes: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
+		await openProjectFiles(page);
 		await sidebar.getByRole("link", { name: "STEP viewer", exact: true }).click();
 		railNavigationTimes.push(await interaction(page, "sidebar.rail-navigation", async () => {
 			await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
 			await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
 		}));
+		await page.mouse.move(900, 400);
 		await expect(sidebar).toHaveAttribute("data-open", "false");
-		expect((await page.locator("canvas").boundingBox())!.x).toBe(48);
+		expect((await page.locator("canvas").boundingBox())!.x).toBe(0);
 	}
 	const hoverRevealMs = await interaction(page, "sidebar.reveal", async () => { await openProjectFiles(page); });
 	const menuOpenTimes: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
 		menuOpenTimes.push(await interaction(page, "sidebar.add-file-menu", async () => {
 			await sidebar.getByRole("button", { name: "Add file", exact: true }).click();
-			await page.waitForFunction(() => document.querySelectorAll('[role="menu"] [role="menuitem"]').length === 2, undefined, { polling: "raf" });
+			await page.waitForFunction(() => document.querySelectorAll('[role="menu"] [role="menuitem"]').length >= 3, undefined, { polling: "raf" });
 		}));
 		await page.keyboard.press("Escape");
 		await expect(sidebar.getByRole("button", { name: "Add file", exact: true })).toBeFocused();
 	}
+	const pinTimes: number[] = [];
+	for (let repeat = 0; repeat < 3; repeat++) {
+		pinTimes.push(await interaction(page, "sidebar.pin", async () => {
+			await sidebar.getByRole("button", { name: "Pin sidebar", exact: true }).click();
+			await page.waitForFunction(() => document.querySelector("canvas")?.getBoundingClientRect().x === 256, undefined, { polling: "raf" });
+		}));
+		await page.mouse.move(900, 400);
+		await expect(sidebar).toHaveAttribute("data-open", "true");
+		if (repeat === 2) await page.screenshot({ path: "perf-artifacts/sidebar-pinned-performance.png" });
+		await sidebar.getByRole("button", { name: "Unpin sidebar", exact: true }).click();
+		await page.waitForFunction(() => document.querySelector("canvas")?.getBoundingClientRect().x === 0, undefined, { polling: "raf" });
+	}
 	await page.screenshot({ path: "perf-artifacts/sidebar-layout-performance.png" });
 	await page.setViewportSize({ width: 390, height: 844 });
-	await sidebar.getByRole("button", { name: "Hide project files" }).click();
+	await closeProjectFiles(page);
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 	await page.getByRole("button", { name: "Show project files" }).click();
 	await page.screenshot({ path: "perf-artifacts/sidebar-layout-performance-mobile.png" });
-	await sidebar.getByRole("button", { name: "Hide project files" }).click();
+	await closeProjectFiles(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.getByRole("button", { name: "Show project files" }).click();
 	const value = await report(page);
-	await finish(page, testInfo, "project-file-sidebar", { hoverRevealMs, railNavigationMs: percentile(railNavigationTimes), menuOpenMs: percentile(menuOpenTimes), interactionP95Ms: metric(value, "scenario.interaction")! });
+	await finish(page, testInfo, "project-file-sidebar", { pinMs: percentile(pinTimes), hoverRevealMs, railNavigationMs: percentile(railNavigationTimes), menuOpenMs: percentile(menuOpenTimes), interactionP95Ms: metric(value, "scenario.interaction")! });
 });
 
 test("project-new-drawing", async ({ page }, testInfo) => {
