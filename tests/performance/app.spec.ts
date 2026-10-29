@@ -183,8 +183,8 @@ test("projects-empty", async ({ page }, testInfo) => {
 	await expect(
 		page.getByRole("heading", { name: "Ready when you are" }),
 	).toBeVisible();
-	await expect(page.getByRole("link", { name: "Workspace home", exact: true })).toHaveAttribute("title", "Untitled");
-	await expect(page.getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
+	await expect(page.getByRole("link", { name: "Workspace home", exact: true, includeHidden: true })).toHaveAttribute("title", "Untitled");
+	await expect(page.getByRole("button", { name: "Add file", exact: true, includeHidden: true })).toBeEnabled();
 	const names = await page.evaluate(async () => {
 		const root = await navigator.storage.getDirectory();
 		const result = [];
@@ -336,7 +336,7 @@ test("symbol-libraries", async ({ page }, testInfo) => {
  });
  await page.reload();
  await ready(page);
- await page.getByRole("button", { name: "Project actions", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("button", { name: "Project actions", exact: true }).click();
  await page.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
  const user = page.getByRole("group", { name: "User libraries", exact: true });
  await expect(user.getByRole("checkbox")).toHaveCount(11);
@@ -871,9 +871,9 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 test("project-file-sidebar", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	await page.evaluate(async () => {
-		const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle("Sidebar navigation");
+		const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle(localStorage.getItem("ecad.active-project")!);
 		const handle = await directory.getFileHandle(".ecadprj");
 		const manifest = (await (await handle.getFile()).text()).replace(/^assets\s*=\s*\[\s*\]\s*$/m, "");
 		const writer = await handle.createWritable();
@@ -1045,7 +1045,7 @@ test("symbol-references", async ({ page }, testInfo) => {
  )).toBe(true);
  await expect.poll(async () => page.evaluate(async () => {
   const root = await navigator.storage.getDirectory();
-  const directory = await root.getDirectoryHandle("Symbol references");
+  const directory = await root.getDirectoryHandle(localStorage.getItem("ecad.active-project")!);
   const manifest = await (await directory.getFileHandle(".ecadprj")).getFile();
   const path = (await manifest.text()).match(/drawing = "([^"]+)"/)![1].split("/");
   const name = path.pop()!;

@@ -7,6 +7,7 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	await page.mouse.move(900, 400);
 	const sidebar = page.getByRole("complementary", {
 		name: "Project files",
@@ -45,7 +46,7 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await page.keyboard.press("Tab");
 	await expect(
-		sidebar.getByRole("link", { name: "Gerber viewer", exact: true }),
+		sidebar.getByRole("button", { name: "Add file", exact: true }),
 	).toBeFocused();
 	await page.keyboard.press("Escape");
 	await expect(sidebar).toHaveAttribute("data-open", "false");
@@ -56,10 +57,7 @@ test("pinning the sidebar keeps it beside the canvas through navigation", async 
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await page.getByLabel("Project name", { exact: true }).fill("Pinned sidebar");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
+	await expect(page.getByRole("heading", { name: "Ready when you are" })).toBeVisible();
 	const sidebar = await openProjectFiles(page);
 	await sidebar
 		.getByRole("link", { name: "Schematic editor", exact: true })

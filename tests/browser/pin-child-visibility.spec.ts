@@ -14,7 +14,7 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
 	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
-	await expect(page.getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
+	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	const definition = {
 		format: "ecad-symbol",
 		version: 1,

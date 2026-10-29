@@ -1,4 +1,4 @@
-import { openProjectFiles, closeProjectFiles } from "./project-files";
+import { openProjectActions, openProjectFiles, closeProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -111,7 +111,7 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	expect((await documentState(page)).dirty).toBe(true);
 	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
 	await projectsPage(page);
-	await page.getByRole("button", { name: "Project actions", exact: true }).click();
+	await openProjectActions(page);
 	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).symbols[0].shapes).toHaveLength(2);
@@ -332,7 +332,7 @@ test("library settings refresh the mounted editor after project and user changes
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 	await page.locator("canvas").evaluate((canvas) => canvas.setAttribute("data-original", "true"));
 	const settings = async () => {
-		await page.getByRole("button", { name: "Project actions", exact: true }).click();
+		await openProjectActions(page);
 		await page.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
 		await expect(page.getByLabel("Upload symbol files")).toBeEnabled();
 		return page.getByRole("dialog");
