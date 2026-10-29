@@ -179,6 +179,7 @@ test.describe("touch sidebar", () => {
 		page,
 	}) => {
 		await page.goto("/tests/browser/projects.html");
+		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 		const sidebar = page.getByRole("complementary", {
 			name: "Project files",
 			exact: true,
