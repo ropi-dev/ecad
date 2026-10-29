@@ -79,6 +79,7 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
 		name: "Insert Test point",
 		exact: true,
 	});
+	await testPoint.scrollIntoViewIfNeeded();
 	await expect(testPoint.locator("svg circle")).toHaveCount(2);
 	const buffer = page.getByRole("button", {
 		name: "Insert Buffer",

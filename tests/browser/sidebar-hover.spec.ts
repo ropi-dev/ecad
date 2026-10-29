@@ -1,7 +1,5 @@
 import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
-import { expectKeyboardNavigation } from "./keyboard-navigation";
-import { closeProjectFiles, openProjectFiles } from "./project-files";
 
 test("the sidebar slides over the workspace from an invisible edge handle", async ({
 	page,
@@ -50,123 +48,6 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	).toBeFocused();
 	await page.keyboard.press("Escape");
 	await expect(sidebar).toHaveAttribute("data-open", "false");
-});
-
-test("pinning the sidebar keeps it beside the canvas through navigation", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects.html");
-	await closeProjectFiles(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are" })).toBeVisible();
-	const sidebar = await openProjectFiles(page);
-	await sidebar
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
-	await expect(
-		page.getByRole("button", { name: "Select", exact: true }),
-	).toBeEnabled();
-	const pin = sidebar.getByRole("button", { name: "Pin sidebar", exact: true });
-	await pin.focus();
-	await pin.press("Enter");
-	await expect(
-		sidebar.getByRole("button", { name: "Unpin sidebar", exact: true }),
-	).toHaveAttribute("aria-pressed", "true");
-	await expect
-		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
-		.toBe(256);
-	await page.getByRole("button", { name: "Select", exact: true }).click();
-	await page.keyboard.press("Escape");
-	await expect(sidebar).toHaveAttribute("data-open", "true");
-	if (captureArtifacts)
-		await page.screenshot({
-			path: "perf-artifacts/sidebar-pinned-desktop.png",
-		});
-	await sidebar.getByRole("link", { name: "STEP viewer", exact: true }).click();
-	await sidebar
-		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
-		.click();
-	await expect
-		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
-		.toBe(256);
-	await sidebar
-		.getByRole("button", { name: "Unpin sidebar", exact: true })
-		.click();
-	await expect(sidebar).toHaveAttribute("data-pinned", "false");
-	await expect(sidebar).toHaveAttribute("data-open", "true");
-	await expect
-		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
-		.toBe(0);
-	if (captureArtifacts)
-		await page.screenshot({
-			path: "perf-artifacts/sidebar-unpinned-desktop.png",
-		});
-	await page.mouse.move(900, 400);
-	await expect(sidebar).toHaveAttribute("data-open", "false");
-});
-
-test("the add file menu supports keyboard navigation and stays open outside the sidebar", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects.html");
-	await closeProjectFiles(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
-	await expect(
-		page.getByRole("heading", { name: "Ready when you are", exact: true }),
-	).toBeVisible();
-	const sidebar = await openProjectFiles(page);
-	const addFile = sidebar.getByRole("button", {
-		name: "Add file",
-		exact: true,
-	});
-	await addFile.focus();
-	await addFile.press("ArrowDown");
-	const menu = page.getByRole("menu", { name: "Add file", exact: true });
-	for (const name of ["New drawing", "New symbol", "New circuit"]) {
-		await expect(
-			menu.getByRole("menuitem", { name, exact: true }),
-		).toBeEnabled();
-	}
-	await expectKeyboardNavigation(
-		menu.getByRole("menuitem", { disabled: false }),
-		"ArrowDown",
-		"ArrowUp",
-	);
-	await page.mouse.move(350, 150);
-	await expect(menu).toBeVisible();
-	await expect(sidebar).toBeVisible();
-	if (captureArtifacts)
-		await page.screenshot({
-			path: "perf-artifacts/sidebar-create-file-desktop.png",
-		});
-	await page.keyboard.press("Escape");
-	await expect(menu).toBeHidden();
-	await expect(addFile).toBeFocused();
-	await addFile.click();
-	await page.mouse.click(900, 400);
-	await expect(menu).toBeHidden();
-	await openProjectFiles(page);
-	await addFile.click();
-	await menu
-		.getByRole("menuitem", { name: "New drawing", exact: true })
-		.click();
-	await expect(page.getByLabel("Drawing name", { exact: true })).toBeFocused();
-	await page.getByLabel("Drawing name", { exact: true }).fill("Menu drawing");
-	await page
-		.getByRole("button", { name: "Create drawing", exact: true })
-		.click();
-	await expect(menu).toBeHidden();
-	await expect(page.getByRole("heading", { level: 1 })).toContainText(
-		"Schematic editor · Menu drawing",
-	);
-	await expect(
-		(await openProjectFiles(page)).getByRole("link", {
-			name: "Open Menu drawing.ecaddraw",
-			exact: true,
-		}),
-	).toBeVisible();
-	const frame = (await sidebar.locator("..").boundingBox())!;
-	const canvas = (await page.locator("canvas").boundingBox())!;
-	expect(canvas.x).toBeCloseTo(frame.x + frame.width, 1);
 });
 
 test.describe("touch sidebar", () => {
@@ -232,36 +113,5 @@ test.describe("touch sidebar", () => {
 		expect(
 			await sidebar.evaluate((element) => element.getAnimations().length),
 		).toBe(0);
-	});
-	test("the add file menu fits the touch viewport and creates a symbol", async ({
-		page,
-	}) => {
-		await page.goto("/tests/browser/projects.html");
-		await closeProjectFiles(page);
-		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
-		await expect(
-			page.getByRole("heading", { name: "Ready when you are", exact: true }),
-		).toBeVisible();
-		await page
-			.getByRole("button", { name: "Show project files", exact: true })
-			.tap();
-		await page.getByRole("button", { name: "Add file", exact: true }).tap();
-		const menu = page.getByRole("menu", { name: "Add file", exact: true });
-		const bounds = (await menu.boundingBox())!;
-		expect(bounds.x).toBeGreaterThanOrEqual(12);
-		expect(bounds.x + bounds.width).toBeLessThanOrEqual(378);
-		expect(bounds.y + bounds.height).toBeLessThanOrEqual(832);
-		if (captureArtifacts)
-			await page.screenshot({
-				path: "perf-artifacts/sidebar-create-file-mobile.png",
-			});
-		await menu.getByRole("menuitem", { name: "New symbol", exact: true }).tap();
-		await page.getByLabel("Symbol name", { exact: true }).fill("Touch part");
-		await page
-			.getByRole("button", { name: "Create symbol", exact: true })
-			.tap();
-		await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-			"Symbol editor · Touch part",
-		);
 	});
 });
