@@ -119,10 +119,7 @@ export function HistoryControls({
 					aria-label="Drawing history"
 					className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+0.5rem)] z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] flex-col rounded-lg border border-[#414955] bg-[#191c22] p-2 shadow-[0_8px_32px_#0008]"
 				>
-					<header className="flex items-center justify-between gap-3 px-1 pb-2">
-						<h2 className="m-0 text-[13px] font-semibold text-[#e8edf5]">
-							Drawing history
-						</h2>
+					<header className="flex items-center justify-end gap-3 px-1 pb-2">
 						<button
 							type="button"
 							aria-label="Close drawing history"

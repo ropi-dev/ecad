@@ -172,12 +172,6 @@
 	left: 0;
 	color: #c4ccd8;
 }
-.circuit-save-status {
-	position: absolute;
-	bottom: 0;
-	right: 0;
-	color: #b3c69b;
-}
 .circuit-error {
 	position: absolute;
 	top: 40px;
@@ -199,14 +193,8 @@
 		right: 16px;
 		font-size: 10px;
 	}
-	.circuit-status > span {
-		display: none;
-	}
 	.circuit-connection-status {
 		max-width: 80%;
-	}
-	.circuit-save-status {
-		bottom: 56px;
 	}
 }
 .circuit-editor .circuit-node-button,

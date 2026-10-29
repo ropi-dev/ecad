@@ -133,7 +133,7 @@ test.beforeAll(async ({ browser }) => {
 		await page.goto("http://127.0.0.1:4175/projects?perf=1");
 		await ready(page);
 		await expect(
-			page.getByRole("heading", { name: "Ready when you are", exact: true }),
+			page.getByLabel("Workspace instructions", { exact: true }),
 		).toBeVisible();
 		await (await openProjectFiles(page))
 			.getByLabel("Add Gerber files")
@@ -181,7 +181,7 @@ test("projects-empty", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await expect(
-		page.getByRole("heading", { name: "Ready when you are" }),
+		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
 	await expect(page.getByRole("link", { name: "Workspace home", exact: true, includeHidden: true })).toHaveAttribute("title", "Untitled");
 	await expect(page.getByRole("button", { name: "Add file", exact: true, includeHidden: true })).toBeEnabled();
@@ -230,9 +230,7 @@ test("projects-large", async ({ page }, testInfo) => {
 		await interaction(page, "files.next", async () => {
 			await page.getByRole("button", { name: "Next files" }).click();
 			await expect(
-				page.getByText(`${51 + i * 50}–${100 + i * 50} of 10002 files`, {
-					exact: true,
-				}),
+				page.getByText(`file-${48 + i * 50}.gbr`, { exact: true }),
 			).toBeVisible();
 		});
 	}
@@ -246,7 +244,7 @@ test("projects-large", async ({ page }, testInfo) => {
 	await page.getByRole("button", { name: "Clear file search" }).click();
 	await interaction(page, "files.filter", async () => {
 		await page.getByRole("group", { name: "File types" }).getByRole("button", { name: /^Gerber/ }).click();
-		await expect(page.getByText("1–50 of 10000 files", { exact: true })).toBeVisible();
+		await expect(page.getByText("file-0.gbr", { exact: true })).toBeVisible();
 	});
 	const fileInteractions = await report(page);
 	await finish(page, testInfo, "projects-large", {
@@ -264,7 +262,7 @@ test("editor-imports", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await expect(
-		page.getByRole("heading", { name: "Ready when you are", exact: true }),
+		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
 	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await expect(page.locator("canvas")).toBeVisible();
@@ -502,7 +500,7 @@ test("editor-wire-crossings", async ({ page }, testInfo) => {
 			await page.mouse.down();
 			await page.mouse.move(bounds.x + bounds.width * 0.75, bounds.y + bounds.height * 0.8);
 			await page.mouse.up();
-			await expect(page.getByText("40 shapes selected", { exact: true })).toBeVisible();
+			await expect(page.getByText("Selected shapes", { exact: true })).toBeVisible();
 		});
 		await page.getByRole("button", { name: "Clear selection", exact: true }).click();
 	}
@@ -586,7 +584,7 @@ for (const scenario of ["editor-pin-labels", "editor-pin-visibility"] as const) 
 	test(scenario, async ({ page }, testInfo) => {
 		await page.goto("/projects?perf=1");
 		await ready(page);
-		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+		await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 		const symbol = {
 			format: "ecad-symbol", version: 1, units: "mm", id: "labeled-package", name: "Labeled package", description: "", prefix: "U", value: "",
 			shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Signal ${index + 1}`, number: String(index + 1).padStart(3, "0"), x: index < 64 ? -20 : 20, y: (index % 64) * 4 - 128 })),
@@ -691,7 +689,7 @@ test("editor-line-styles", async ({ page }, testInfo) => {
 	await page.mouse.down();
 	await page.mouse.move(bounds.x + bounds.width * 0.75, bounds.y + bounds.height * 0.8);
 	await page.mouse.up();
-	await expect(page.getByText("100 shapes selected", { exact: true })).toBeVisible();
+	await expect(page.getByText("Selected shapes", { exact: true })).toBeVisible();
 	const select = page.getByRole("combobox", { name: "Line style", exact: true });
 	for (const style of ["dashed", "dotted", "dash-dot-dot"]) {
 		await interaction(page, "line-style.change", async () => {
@@ -786,8 +784,7 @@ test("editor-user-symbol", async ({ page }, testInfo) => {
 			await page.waitForFunction(
 				(count) =>
 					JSON.parse(localStorage.getItem("ecad.user-config.v1")!)
-						.symbolLibraries[0].source.symbols[0].shapes.length === count &&
-					document.querySelector("header output")?.textContent === "Saved",
+						.symbolLibraries[0].source.symbols[0].shapes.length === count,
 				129 + repeat,
 				{ polling: "raf", timeout: 30_000 },
 			);
@@ -832,7 +829,7 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 test("editor-symbol-file", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	const symbol = {
 		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
 		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
@@ -938,7 +935,7 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		await page.mouse.move(900, 400);
 		await expect(sidebar).toHaveAttribute("data-open", "true");
 		if (repeat === 2) await page.screenshot({ path: "perf-artifacts/sidebar-pinned-performance.png" });
-		await sidebar.getByRole("button", { name: "Unpin sidebar", exact: true }).click();
+		await sidebar.getByRole("button", { name: "Compact sidebar", exact: true }).click();
 		await page.waitForFunction(() => document.querySelector("canvas")?.getBoundingClientRect().x === 0, undefined, { polling: "raf" });
 	}
 	await page.screenshot({ path: "perf-artifacts/sidebar-layout-performance.png" });
@@ -957,7 +954,7 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 test("project-new-drawing", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	const createMs = await interaction(page, "drawing.create", async () => {
 		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
 		await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
@@ -989,7 +986,7 @@ test("project-new-drawing", async ({ page }, testInfo) => {
 test("project-new-symbol", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	await interaction(page, "symbol.create", async () => {
 		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
 		await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
@@ -1021,7 +1018,7 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 test("symbol-references", async ({ page }, testInfo) => {
  await page.goto("/projects?perf=1");
  await ready(page);
- await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+ await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
  const child = {
   format: "ecad-symbol", version: 1, units: "mm", id: "reference-child", name: "Reference child", description: "", prefix: "U", value: "",
   shapes: Array.from({ length: 16 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 8 ? -5 : 5, y: (index % 8) - 4 })),
@@ -1457,7 +1454,7 @@ test("editor-box", async ({ page }, testInfo) => {
 test("kicad-import", async ({ page }, testInfo) => {
     await page.goto("/projects?perf=1");
     await ready(page);
-    await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
     const sidebar = await openProjectFiles(page);
     await sidebar.getByLabel("Add KiCad schematic files").setInputFiles({name:"broken.kicad_sch",mimeType:"text/plain",buffer:Buffer.from("(broken")});
     await expect(page.getByRole("alert")).toContainText("Incomplete KiCad");
@@ -1615,7 +1612,7 @@ test("circuit-graph", async ({ page }, testInfo) => {
    await expect(component.locator("xpath=../..")).not.toHaveAttribute("transform",before!);
   }));
  }
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const value = await report(page);
  await finish(page,testInfo,"circuit-graph",{openMs, interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
 });
@@ -1637,7 +1634,7 @@ test("circuit-untangle", async ({page},testInfo)=>{
    },undefined,{polling:"raf"});
   }));
  }
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const value=await report(page);
  await finish(page,testInfo,"circuit-untangle",{interactionP95Ms:percentile(times),untangleP95Ms:metric(value,"circuit.untangle")!,graphP95Ms:metric(value,"circuit.graph")!});
 });
@@ -1662,7 +1659,7 @@ test("circuit-grid-snap", async ({ page }, testInfo) => {
   await page.keyboard.press("Control+z");
   await expect(node).toHaveAttribute("transform",original!);
  }
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const value = await report(page);
  await finish(page,testInfo,"circuit-grid-snap",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
 });
@@ -1683,7 +1680,7 @@ test("circuit-connect", async ({ page }, testInfo) => {
    await page.mouse.up();
    await page.waitForFunction(() => document.querySelectorAll(".circuit-net").length === 16 && !document.querySelector("[data-connection-preview]"), undefined, {polling:"raf"});
   }));
-  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+  await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
   await page.keyboard.press("Control+z");
   await expect(page.locator(".circuit-net")).toHaveCount(17);
  }
@@ -1723,7 +1720,7 @@ test("circuit-net-editing", async ({ page }, testInfo) => {
   }));
  }
  await expect(page.getByRole("button", {name:"Net GND",exact:true})).toBeVisible();
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const value = await report(page);
  await finish(page,testInfo,"circuit-net-editing",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
 });
@@ -1756,7 +1753,7 @@ test("circuit-components", async ({page}, testInfo) => {
    await expect(page.getByRole("button",{name:`Place ${name}`,exact:true}).locator("svg").first()).toBeVisible();
    await page.getByRole("button",{name:`Place ${name}`,exact:true}).click();
    await page.getByLabel("Circuit connections graph",{exact:true}).click({position:{x:250+index*150,y:300}});
-   await page.waitForFunction(count=>document.querySelectorAll('.circuit-component').length===count && document.querySelector('[aria-label="Circuit save status"]')?.textContent==="Saved",index+1,{polling:"raf"});
+   await page.waitForFunction(count=>document.querySelectorAll('.circuit-component').length===count && document.querySelector(".circuit-editor")?.getAttribute("data-pending-changes")==="false",index+1,{polling:"raf"});
   }));
  }
  await page.getByRole("button",{name:"Fit graph",exact:true}).click();
@@ -1785,7 +1782,7 @@ test("circuit-collapse", async ({page}, testInfo) => {
   }));
  }
  await expect(page.locator(".circuit-connection")).toHaveCount(4);
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const value=await report(page);
  await finish(page,testInfo,"circuit-collapse",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
 });
@@ -1804,7 +1801,7 @@ test("circuit-auto-names", async ({page},testInfo)=>{
    await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:6});await page.mouse.up();
    await expect(page.getByRole("button",{name:`Net ${label}`,exact:true})).toBeVisible();
   }));
-  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+  await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
   await page.keyboard.press("Control+z");
   await expect(page.locator(".circuit-net")).toHaveCount(0);
  }
@@ -1836,7 +1833,7 @@ test("circuit-keyboard-placement",async({page},testInfo)=>{
    await expect(page.locator(".circuit-net")).toHaveCount(0);
   }));
  }
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const value=await report(page);
  await finish(page,testInfo,"circuit-keyboard-placement",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
 });
@@ -1850,7 +1847,7 @@ test("pcb-linked-documents", async ({page}, testInfo) => {
   await page.getByRole("searchbox",{name:"Search components",exact:true}).fill("Resistor");
   await page.getByRole("button",{name:"Place Resistor",exact:true}).click();
   await page.getByLabel("Circuit connections graph",{exact:true}).click({position:{x:350,y:250}});
-  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+  await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  }));
  times.push(await interaction(page,"pcb-open-schematic",async()=>{
   await (await openProjectFiles(page)).getByRole("link",{name:"Open Circuit workload.ecaddraw",exact:true}).click();

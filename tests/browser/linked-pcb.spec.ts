@@ -14,7 +14,7 @@ test("PCB folder opens linked circuit and schematic and saves both directions", 
  await page.getByRole("searchbox",{name:"Search components",exact:true}).fill("Resistor");
  await page.getByRole("button",{name:"Place Resistor",exact:true}).click();
  await page.getByLabel("Circuit connections graph",{exact:true}).click({position:{x:350,y:250}});
- await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
  const circuit=JSON.parse((await page.locator("#circuit-document").textContent())!);
  await openProjectFiles(page);
  await page.getByRole("link",{name:"Open Untitled.ecaddraw",exact:true}).click();

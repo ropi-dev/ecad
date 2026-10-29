@@ -160,15 +160,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			: undefined;
 	const pin = selection?.kind === "pin" ? pins.get(selection.id) : undefined;
 	const selectedNetId = net?.id ?? (pin ? pinNets.get(pin.id)?.id : undefined);
-	const disconnected = circuit.components.reduce(
-		(count, component) =>
-			count +
-			component.pins.filter(
-				(pin) =>
-					!pinNets.has(pin.id) && !circuit.noConnectPinIds.includes(pin.id),
-			).length,
-		0,
-	);
 	const connectionStart = connectionDrag?.active
 		? graph.pinNodes.get(connectionDrag.pinId)
 		: undefined;
@@ -641,6 +632,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	return (
 		<section
 			className="circuit-editor"
+			data-pending-changes={project?.dirty ?? false}
 			aria-label="Circuit editor"
 			onPointerDownCapture={(event) => {
 				if (
@@ -1292,9 +1284,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 								<text x={18} y={28}>
 									{placement.name}
 								</text>
-								<text x={18} y={49}>
-									{placementPinCount} pins
-								</text>
 							</g>
 						)}
 						{tool === "net" && placementPoint && (
@@ -1372,25 +1361,15 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				onUndo={() => store.undo()}
 				onRedo={() => store.redo()}
 			/>
-			<footer className="circuit-status">
-				{connecting && (
+			{connecting && (
+				<footer className="circuit-status">
 					<output className="circuit-connection-status">
 						{pendingPin
 							? `Connect ${pins.get(pendingPin)?.component.reference}.${pins.get(pendingPin)?.number}`
 							: "Select pin"}
 					</output>
-				)}
-				<span>
-					{circuit.components.length} components · {circuit.nets.length} nets ·{" "}
-					{disconnected} unconnected pins
-				</span>
-				<output
-					className="circuit-save-status"
-					aria-label="Circuit save status"
-				>
-					{project?.dirty ? "Unsaved" : "Saved"}
-				</output>
-			</footer>
+				</footer>
+			)}
 		</section>
 	);
 }

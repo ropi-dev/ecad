@@ -29,7 +29,7 @@ export async function closeProjectFiles(page: Page) {
 	});
 	if (!(await sidebar.count())) return;
 	const unpin = sidebar.getByRole("button", {
-		name: "Unpin sidebar",
+		name: "Compact sidebar",
 		exact: true,
 	});
 	if (await unpin.isVisible()) await unpin.click();

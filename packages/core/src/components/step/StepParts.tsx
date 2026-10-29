@@ -28,13 +28,6 @@ export function StepParts({
 					Close
 				</button>
 			</div>
-			<p className="mb-2 text-xs text-slate-400">
-				{model.parts.length} {model.parts.length === 1 ? "part" : "parts"} ·{" "}
-				{model.parts
-					.reduce((count, mesh) => count + mesh.triangles, 0)
-					.toLocaleString()}{" "}
-				triangles · mm
-			</p>
 			<ul className="min-h-0 overflow-y-auto">
 				{model.parts.map((part, index) => (
 					<li key={part.id}>

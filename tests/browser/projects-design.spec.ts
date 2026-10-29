@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 test("opening another project protects drafts through save, discard, errors and cancellation", async ({ page }) => {
 	await page.goto("/tests/browser/projects-design.html?empty");
-	await expect(page.getByText("Kept in memory. Choose Save project to keep your work.")).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	const open = async () => {
 		await openProjectActions(page);
 		await page.getByRole("menuitem", { name: "Open project...", exact: true }).click();
@@ -37,7 +37,7 @@ test("opening another project protects drafts through save, discard, errors and 
 	await expect(home).toHaveAttribute("title", "Existing project");
 	expect(await calls()).toEqual({ open: 2, save: 3 });
 	await page.goto("/tests/browser/projects-design.html?empty");
-	await expect(page.getByText("Kept in memory. Choose Save project to keep your work.")).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	await open();
 	await page.getByRole("button", { name: "Discard and open", exact: true }).click();
 	await expect(home).toHaveAttribute("title", "Existing project");

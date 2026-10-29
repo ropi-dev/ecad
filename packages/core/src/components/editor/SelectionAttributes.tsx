@@ -310,7 +310,6 @@ function SelectionAttributesPanel({
 									/>,
 								] as [string, ReactNode];
 							}),
-							["Shapes", String(symbol.children.length)] as [string, ReactNode],
 						]
 					: []),
 				editable(
@@ -346,9 +345,9 @@ function SelectionAttributesPanel({
 							: isNetLabel(single)
 								? []
 								: [
-									editable("Width", "width", single.width),
-									editable("Height", "height", single.height),
-								]),
+										editable("Width", "width", single.width),
+										editable("Height", "height", single.height),
+									]),
 				...(single.kind === "circle"
 					? [editable("Radius", "radius", single.width / 2)]
 					: []),
@@ -360,7 +359,6 @@ function SelectionAttributesPanel({
 					: []),
 			]
 		: [
-				["Shapes", String(shapes.length)],
 				lockAttribute,
 				["Left X", mm(left)],
 				["Bottom Y", mm(bottom)],
@@ -384,8 +382,7 @@ function SelectionAttributesPanel({
 					}
 				}}
 			>
-				<header className="flex items-center justify-between gap-3">
-					<h2 className="m-0 text-[13px] font-semibold">Attributes</h2>
+				<header className="flex items-center justify-end gap-3">
 					<button
 						type="button"
 						className="relative z-1 grid h-[30px] w-7 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-[#98a4b6] hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e]"
@@ -401,7 +398,7 @@ function SelectionAttributesPanel({
 						? symbol
 							? `${symbol.attributes.name} · ${symbol.attributes.reference}`
 							: `${single.kind === "text" && single.electrical ? `${single.electrical} label` : single.kind} ${single.id}`
-						: `${shapes.length} shapes selected`}
+						: "Selected shapes"}
 				</p>
 				{symbol && (
 					<button

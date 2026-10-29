@@ -25,7 +25,7 @@ async function placeComponent(
 async function createCircuit(page: Page) {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
 	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	await openProjectFiles(page);
 	await page.getByRole("button", { name: "Add file", exact: true }).click();
@@ -65,7 +65,7 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	await createCircuit(page);
 	await placeComponent(page, "Resistor", { x: 300, y: 230 });
 	await placeComponent(page, "Resistor", { x: 650, y: 400 });
-	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
 	const initial = await state(page);
 	await dragPins(page, "R1.1", "R2.1");
 	await expect(page.locator("[data-connection-preview]")).toBeVisible();
@@ -111,7 +111,7 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	await dragPins(page, "R1.1", "R2.1");
 	await page.mouse.up();
 	expect(await state(page)).toEqual(merged);
-	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
 	const saved = await state(page);
 	expect(saved.circuit.nets).toEqual(merged.circuit.nets);
 	if (captureArtifacts)
@@ -130,7 +130,7 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	await createCircuit(page);
 	await placeComponent(page, "Resistor", {x:300,y:230});
 	await expect.poll(async () => (await state(page)).circuit.components[0]?.schematicShapeId).toBeGreaterThan(0);
-	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
 	await page.evaluate(() => {
 		const state = window as typeof window & {savePending?: boolean; releaseSave?: () => void};
 		const original = FileSystemFileHandle.prototype.createWritable;
@@ -150,14 +150,14 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	await dragPins(page, "R1.1", "R2.1");
 	await expect(page.locator("[data-connection-preview]")).toBeVisible();
 	await page.evaluate(() => (window as typeof window & {releaseSave: () => void}).releaseSave());
-	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
 	await expect(page.locator("[data-connection-preview]")).toBeVisible();
 	await page.mouse.up();
 	await expect.poll(async () => (await state(page)).circuit.nets.length).toBe(1);
 	await dragPins(page, "R1.2", "R2.2");
 	await page.mouse.up();
 	await expect.poll(async () => (await state(page)).circuit.nets.length).toBe(2);
-	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
 	const saved = (await state(page)).circuit;
 	if (process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
 	await page.reload();

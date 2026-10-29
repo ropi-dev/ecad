@@ -90,22 +90,8 @@ export function SymbolPicker({
 						event.preventDefault();
 						searchInput.current?.focus();
 					}}
-					className="z-50 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-6rem)] overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-3 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
+					className="z-50 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-6rem)] overflow-auto rounded-lg border border-[#414955] bg-[#191c22] px-3 pb-3 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
 				>
-					<h2
-						className={
-							components
-								? "m-0 mb-3 text-sm font-semibold"
-								: "m-0 text-sm font-semibold"
-						}
-					>
-						{label}
-					</h2>
-					{!components && (
-						<p className="mt-1 mb-3 text-xs text-[#9ba7b8]">
-							Choose a symbol, then click the drawing to place it.
-						</p>
-					)}
 					<input
 						ref={searchInput}
 						type="search"
@@ -114,7 +100,7 @@ export function SymbolPicker({
 						autoComplete="off"
 						value={query}
 						onChange={(event) => setQuery(event.currentTarget.value)}
-						className="mb-3 block w-full rounded-md border border-[#414955] bg-[#191c22] px-3 py-2 text-sm text-[#e8edf5] placeholder:text-[#9ba7b8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+						className="mt-3 mb-3 block w-full rounded-md border border-[#414955] bg-[#191c22] px-3 py-2 text-sm text-[#e8edf5] placeholder:text-[#9ba7b8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 					/>
 					{library.error && (
 						<p
@@ -145,7 +131,7 @@ export function SymbolPicker({
 										: category
 								}
 							>
-								<h3 className="sticky top-0 z-10 m-0 mb-1 border-b border-[#414955] bg-[#191c22] py-1 text-xs font-semibold text-[#9ba7b8]">
+								<h3 className="sticky top-0 z-10 -mx-3 mt-0 mb-1 border-b border-[#414955] bg-[#191c22] px-3 py-1 text-xs font-semibold text-[#9ba7b8]">
 									{components && category === "Custom symbols"
 										? "Custom components"
 										: category}

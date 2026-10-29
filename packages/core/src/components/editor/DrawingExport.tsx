@@ -105,7 +105,6 @@ export function DrawingExport({
 								}
 							}}
 						>
-							<h2 className="text-lg font-semibold">Export drawing</h2>
 							<label className="flex flex-col gap-1">
 								Output
 								<select
