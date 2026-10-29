@@ -421,17 +421,25 @@ export function ProjectProvider({
 					definitions,
 					byReference,
 				).shapes;
-				const hydrated = shapes.map((shape, index) =>
-					shape.kind === "symbol" && shape.children.length
-						? shape
-						: resolved[index],
+				const cachedSymbols = new Map(
+					shapes.flatMap((shape) =>
+						shape.kind === "symbol" && shape.children.length
+							? [[shape.id, shape] as const]
+							: [],
+					),
 				);
 				const linked = synchronizePcb(
 					file,
-					hydrated,
+					resolved,
 					previous.circuits?.find((old) => old.circuit.id === file.circuit.id),
 					definitions,
 				);
+				linked.shapes = linked.shapes.map((shape) => {
+					const cached = cachedSymbols.get(shape.id);
+					return shape.kind === "symbol" && cached
+						? { ...cached, attributes: shape.attributes }
+						: shape;
+				});
 				circuitSources.set(file.circuit.id, linked.source);
 				if (linked.source === "circuit")
 					externalDrawings.add(drawing?.id ?? primaryPcbId);

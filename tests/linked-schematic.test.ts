@@ -311,3 +311,55 @@ test("KiCad units share a component while retaining unit-qualified pin identity"
  assert.equal(synchronizePcb(deleted,shared.shapes,shared.file,symbolDefinitions).shapes.filter(shape=>shape.kind==="symbol").length,0);
  circuitFileSchema.parse(shared.file);
 });
+
+test("saved circuits with schematic bindings initialize imported drawings without losing electrical data",()=>{
+ const original=createCircuit("Import");const file=structuredClone(original);
+ const a=componentFromSymbol(resistor,[]),b=componentFromSymbol(resistor,[a]);file.circuit.components=[a,b];file.circuit.nets=[{id:"signal",names:[],pinIds:[a.pins[0].id,b.pins[1].id]}];
+ const saved=synchronizePcb(file,[],original,symbolDefinitions);
+ const imported=synchronizePcb(saved.file,[],undefined,symbolDefinitions);
+ assert.equal(imported.source,"circuit");
+ assert.deepEqual(imported.file.circuit.components.map(component=>[component.id,component.pins.map(pin=>pin.id)]),saved.file.circuit.components.map(component=>[component.id,component.pins.map(pin=>pin.id)]));
+ assert.deepEqual(imported.file.circuit.nets,saved.file.circuit.nets);
+ assert.equal(imported.shapes.filter(shape=>shape.kind==="symbol").length,2);
+ assert.deepEqual(synchronizePcb(imported.file,imported.shapes,imported.file,symbolDefinitions).file.circuit,imported.file.circuit);
+ const schematic=synchronizePcb(original,[createSymbol(1,resistor,{x:0,y:0},"R1")],undefined,symbolDefinitions);
+ assert.equal(schematic.file.circuit.components.length,1);
+});
+
+test("blank and whitespace schematic pin numbers normalize while their display overrides remain",()=>{
+ const original=createCircuit("Blank pins");const symbol=createSymbol(1,resistor,{x:0,y:0},"R1");
+ const pin=symbol.children.find(child=>child.kind==="pin")!;
+ const first=synchronizePcb(original,[{...symbol,childOverrides:{[`shape:${pin.id}`]:{number:"7"}}}],original,symbolDefinitions);
+ for(const number of ["","   "]){
+  const shapes=first.shapes.map(shape=>shape.kind==="symbol"?{...shape,childOverrides:{[`shape:${pin.id}`]:{number}}}:shape);
+  const next=synchronizePcb(first.file,shapes,first.file,symbolDefinitions);
+  assert.equal(next.file.circuit.components[0].pins[0].number,"1");
+  assert.equal(next.file.circuit.components[0].pins[0].id,first.file.circuit.components[0].pins[0].id);
+  const kept=next.shapes.find(shape=>shape.kind==="symbol")!;
+  assert.ok(kept.kind==="symbol");if(kept.kind==="symbol")assert.equal(kept.childOverrides?.[`shape:${pin.id}`]?.number,number);
+ }
+});
+
+test("generated symbols avoid occupied positions after deletion and do not create accidental nets",()=>{
+ const original=createCircuit("Placement");let file=structuredClone(original);
+ for(let index=0;index<3;index++)file.circuit.components.push(componentFromSymbol(resistor,file.circuit.components));
+ const first=synchronizePcb(file,[],original,symbolDefinitions);
+ const deleted=applyCircuitCommand(first.file,{type:"remove-component",id:first.file.circuit.components[1].id});
+ const second=synchronizePcb(deleted,first.shapes,first.file,symbolDefinitions);
+ const added=applyCircuitCommand(second.file,{type:"add-component",component:componentFromSymbol(resistor,second.file.circuit.components)});
+ const next=synchronizePcb(added,second.shapes,second.file,symbolDefinitions);
+ const symbols=next.shapes.filter(shape=>shape.kind==="symbol");
+ assert.equal(new Set(symbols.map(shape=>`${shape.x},${shape.y}`)).size,3);
+ assert.deepEqual(synchronizePcb(next.file,next.shapes,next.file,symbolDefinitions).file.circuit.nets,[]);
+});
+
+test("generated symbols avoid existing wire geometry as well as symbol centers",async()=>{
+ const {drawShape}=await import("#/drawing/shapes.ts");
+ const original=createCircuit("Wire placement");const file=structuredClone(original);file.circuit.components=[componentFromSymbol(resistor,[])];
+ const first=synchronizePcb(file,[],original,symbolDefinitions);
+ const wire=drawShape(10,"wire",{x:57,y:-30},{x:63,y:-30});
+ const added=applyCircuitCommand(first.file,{type:"add-component",component:componentFromSymbol(resistor,first.file.circuit.components)});
+ const next=synchronizePcb(added,[...first.shapes,wire],first.file,symbolDefinitions);
+ assert.ok(next.shapes.some(shape=>shape.kind==="symbol"&&shape.x===90&&shape.y===-30));
+ assert.deepEqual(synchronizePcb(next.file,next.shapes,next.file,symbolDefinitions).file.circuit.nets,[]);
+});

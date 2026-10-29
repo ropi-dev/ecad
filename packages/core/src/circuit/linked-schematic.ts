@@ -11,6 +11,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	type TextShape,
+	shapeBounds,
 	symbolShapes,
 } from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
@@ -47,6 +48,9 @@ export function synchronizePcb(
 	return measurePerformance(
 		"pcb.synchronize",
 		() => {
+			const imported =
+				previous === undefined &&
+				(file.circuit.components.length > 0 || file.circuit.nets.length > 0);
 			previous ??= file;
 			const previousLabels = circuitNetLabels(previous.circuit);
 			const labels = circuitNetLabels(file.circuit);
@@ -109,10 +113,11 @@ export function synchronizePcb(
 					: updateText(bound, text, measureLabelText);
 			});
 			const initializing =
-				file.circuit.components.length > 0 &&
-				file.circuit.components.every(
-					(component) => component.schematicShapeId === undefined,
-				);
+				imported ||
+				(file.circuit.components.length > 0 &&
+					file.circuit.components.every(
+						(component) => component.schematicShapeId === undefined,
+					));
 			const originalShapes = shapes;
 			const originalBindings = new Map(
 				originalShapes.flatMap((shape) =>
@@ -122,6 +127,7 @@ export function synchronizePcb(
 				),
 			);
 			const circuitChanged =
+				imported ||
 				!same(file.circuit, previous.circuit) ||
 				file.circuit.components.some(
 					(component) => component.schematicShapeId === undefined,
@@ -172,22 +178,14 @@ export function synchronizePcb(
 							) ?? fallbackDefinition(component);
 					component.schematicShapeId = nextId++;
 					delete component.schematicShapeIds;
-					const symbol = createSymbol(
-						component.schematicShapeId,
-						definition,
-						{
-							x:
-								30 +
-								(shapes.filter((shape) => shape.kind === "symbol").length % 6) *
-									30,
-							y:
-								-30 -
-								Math.floor(
-									shapes.filter((shape) => shape.kind === "symbol").length / 6,
-								) *
-									30,
-						},
-						component.reference,
+					const symbol = placeGeneratedSymbol(
+						createSymbol(
+							component.schematicShapeId,
+							definition,
+							{ x: 0, y: 0 },
+							component.reference,
+						),
+						shapes,
 					);
 					if (
 						!definitions.some(
@@ -368,7 +366,10 @@ export function synchronizePcb(
 								? { schematicShapeId: shape.id }
 								: {}),
 							name: overrides?.name ?? existing?.name ?? pin.name,
-							number: overrides?.number ?? existing?.number ?? pin.number,
+							number:
+								overrides?.number === undefined
+									? (existing?.number ?? pin.number)
+									: pin.number,
 							electricalType: existing?.electricalType ?? pin.electricalType,
 						};
 					});
@@ -774,4 +775,33 @@ function boundTerminals(file: CircuitFile, shapes: readonly EditorShape[]) {
 		}
 	}
 	return terminals;
+}
+
+function placeGeneratedSymbol(
+	symbol: EditorSymbol,
+	shapes: readonly EditorShape[],
+): EditorSymbol {
+	const occupied = shapes.map(shapeBounds);
+	for (
+		let index = shapes.filter((shape) => shape.kind === "symbol").length;
+		;
+		index++
+	) {
+		const candidate = {
+			...symbol,
+			x: 30 + (index % 6) * 30,
+			y: -30 - Math.floor(index / 6) * 30,
+		};
+		const bounds = shapeBounds(candidate);
+		if (
+			occupied.every(
+				(other) =>
+					other.maxX + 1 < bounds.minX ||
+					other.minX - 1 > bounds.maxX ||
+					other.maxY + 1 < bounds.minY ||
+					other.minY - 1 > bounds.maxY,
+			)
+		)
+			return candidate;
+	}
 }

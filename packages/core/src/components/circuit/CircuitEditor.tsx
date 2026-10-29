@@ -186,9 +186,25 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	const connectionEnd = connectionTarget ?? connectionDrag?.point;
 
 	useEffect(() => {
-		setDrag(null);
-		setConnectionDrag(null);
-		setPan(null);
+		setDrag((current) =>
+			current &&
+			(current.position.kind === "component"
+				? snapshot.circuit.components
+				: snapshot.circuit.nets
+			).some((item) => item.id === current.position.id)
+				? current
+				: null,
+		);
+		setConnectionDrag((current) =>
+			current &&
+			snapshot.circuit.components.some(
+				(component) =>
+					component.pins.some((pin) => pin.id === current.pinId) &&
+					!(snapshot.graph.collapsedComponentIds ?? []).includes(component.id),
+			)
+				? current
+				: null,
+		);
 		setCheckedPins([]);
 		setSelection((current) => {
 			if (!current) return null;

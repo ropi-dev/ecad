@@ -82,3 +82,44 @@ test("moving a symbol keeps generated net connections through autosave and reloa
  await page.reload();await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
  await expect.poll(async()=>JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets).toEqual(file.circuit.nets);
 });
+
+test("editing a reusable symbol adds its new pin to linked connectivity before reload",async({page})=>{
+ const {symbolDefinitions}=await import("#/drawing/symbols.ts");
+ const symbol:SymbolFile={format:"ecad-symbol",version:1,units:"mm",id:"live-pin",name:"Live pin",description:"",prefix:"U",value:"",shapes:[{kind:"rectangle",x:0,y:0,width:6,height:4},{kind:"pin",x:-3,y:0,name:"OLD",number:"1"}]};
+ const definition={...libraryDefinitions([symbol])[0],library:{scope:"project" as const,id:"project-symbols"}};
+ const original=createCircuit("Untitled","pcb-main");
+ const first=synchronizePcb(original,[createSymbol(1,definition,{x:0,y:0},"U1"),createSymbol(2,symbolDefinitions.find(definition=>definition.id==="resistor")!,{x:25,y:0},"R1")],original,[...symbolDefinitions,definition]);
+ await page.goto("/tests/browser/projects.html");await expect(page.locator("#project-document")).toContainText('"name":"Untitled"');
+ await page.evaluate(async({first,symbol})=>{
+  const module="/packages/web/src/projects/storage.ts";const {createWebProjectStorage}=await import(module);const storage=createWebProjectStorage();const project=await storage.load();
+  await storage.save(project.directory,{shapes:first.shapes,symbols:[symbol],circuits:[first.file]});
+ },{first,symbol});
+ await page.reload();await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecaddraw",exact:true}).click();
+ await rectangle(page);
+ await expect.poll(async()=>(await documentState(page)).dirty).toBe(false);
+ await expect.poll(async()=>(await documentState(page)).shapes[0].children.length).toBe(2);
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open live-pin.ecadsym",exact:true}).click();await closeProjectFiles(page);
+ const {drawingPoint}=await import("./symbol-items");
+ await (await toolbarButton(page,"Pin")).click();
+ const terminal=await drawingPoint(page,{x:2,y:0});await page.mouse.click(terminal.x,terminal.y);
+ await expect.poll(async()=>(await documentState(page)).symbols[0].shapes.length).toBe(3);
+ await expect.poll(async()=>(await documentState(page)).dirty).toBe(false);
+ expect((await documentState(page)).shapes[0].children).toHaveLength(2);
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
+ const circuit=()=>page.locator("#circuit-document").textContent().then(text=>JSON.parse(text!).circuit);
+ await expect.poll(async()=>(await circuit()).components.find((component:{reference:string})=>component.reference==="U1").pins.length).toBe(2);
+ const oldPin=first.file.circuit.components[0].pins[0].id;
+ expect((await circuit()).components[0].pins[0].id).toBe(oldPin);
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecaddraw",exact:true}).click();await closeProjectFiles(page);
+ const definitionPin=(await documentState(page)).symbols[0].shapes[2];
+ const from=await drawingPoint(page,{x:definitionPin.x,y:definitionPin.y});const to=await drawingPoint(page,{x:22,y:0});
+ await (await toolbarButton(page,"Wire")).click();
+ await page.mouse.click(from.x,from.y);await page.mouse.click(to.x,to.y);await page.keyboard.press("Enter");
+ await expect.poll(async()=>(await documentState(page)).shapes.filter((shape:{kind:string})=>shape.kind==="wire").length).toBe(1);
+ await expect.poll(async()=>(await documentState(page)).dirty).toBe(false);
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
+ await expect.poll(async()=>(await circuit()).nets[0]?.pinIds.length).toBe(2);
+ const next=await circuit();const component=next.components.find((component:{reference:string})=>component.reference==="U1");
+ expect(next.nets[0].pinIds).toContain(component.pins[1].id);
+ expect(next.nets[0].pinIds).not.toContain(oldPin);
+});

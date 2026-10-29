@@ -224,6 +224,45 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
 
+test("an autosave completing during a pin drag preserves the connection gesture", async ({page}) => {
+	await createCircuit(page);
+	await placeComponent(page, "Resistor", {x:300,y:230});
+	await expect.poll(async () => (await state(page)).circuit.components[0]?.schematicShapeId).toBeGreaterThan(0);
+	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await page.evaluate(() => {
+		const state = window as typeof window & {savePending?: boolean; releaseSave?: () => void};
+		const original = FileSystemFileHandle.prototype.createWritable;
+		let hold = true;
+		FileSystemFileHandle.prototype.createWritable = async function(options) {
+			const writable = await original.call(this, options);
+			if (this.name === ".ecadprj" && hold) {
+				hold = false;
+				state.savePending = true;
+				await new Promise<void>(resolve => {state.releaseSave = () => {FileSystemFileHandle.prototype.createWritable = original; resolve();};});
+			}
+			return writable;
+		};
+	});
+	await placeComponent(page, "Resistor", {x:650,y:400});
+	await page.waitForFunction(() => (window as typeof window & {savePending?: boolean}).savePending);
+	await dragPins(page, "R1.1", "R2.1");
+	await expect(page.locator("[data-connection-preview]")).toBeVisible();
+	await page.evaluate(() => (window as typeof window & {releaseSave: () => void}).releaseSave());
+	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	await expect(page.locator("[data-connection-preview]")).toBeVisible();
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).circuit.nets.length).toBe(1);
+	await dragPins(page, "R1.2", "R2.2");
+	await page.mouse.up();
+	await expect.poll(async () => (await state(page)).circuit.nets.length).toBe(2);
+	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	const saved = (await state(page)).circuit;
+	if (process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
+	await page.reload();
+	await (await openProjectFiles(page)).getByRole("link", {name:"Open LED driver.ecadcircuit",exact:true}).click();
+	expect((await state(page)).circuit).toEqual(saved);
+});
+
 test("pin connection drags cancel on empty space, the source pin, Escape, or pointer cancellation", async ({
 	page,
 }) => {
