@@ -1,3 +1,4 @@
+import { electricalNets } from "#/drawing/named-nets.ts";
 import type { LineStyle } from "#/drawing/line-style.ts";
 import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
@@ -1642,9 +1643,12 @@ export function connectTransformedTerminals(
 	if (terminals.length === 0) return moved;
 	const selectedIds = new Set(shapes.map((shape) => shape.id));
 	const byId = new Map(moved.map((shape) => [shape.id, shape]));
-	const stationaryPins = allShapes
+	const stationaryTerminals = allShapes
 		.filter((shape) => !selectedIds.has(shape.id))
-		.flatMap(movementTerminals);
+		.flatMap((shape) =>
+			movementTerminals(shape).map((point) => ({ shape, point })),
+		);
+	const stationaryPins = stationaryTerminals.map(({ point }) => point);
 	const wires = allShapes.filter((shape) => shape.kind === "wire");
 	const targets = shapes.flatMap((shape) =>
 		movementTerminals(byId.get(shape.id) ?? shape),
@@ -1770,7 +1774,60 @@ export function connectTransformedTerminals(
 	const obstacles = wires
 		.map((wire) => byId.get(wire.id) ?? wire)
 		.filter((wire) => wire.width > connectionTolerance);
+	const nets =
+		connections.length &&
+		(rerouteWireEnds ||
+			allShapes.some((shape) => shape.kind === "text" && shape.electrical))
+			? electricalNets(allShapes)
+			: [];
+	const wireNets = new Map(
+		nets.flatMap((net) => net.wires.map((id) => [id, net] as const)),
+	);
+	const labelNets = new Map(
+		nets.flatMap((net) => net.labels.map((id) => [id, net] as const)),
+	);
+	const pinNets = new Map(
+		nets.flatMap((net) =>
+			net.pins.map((pin) => [`${pin.shapeId}:${pin.pinId}`, net] as const),
+		),
+	);
+	const symbolPins = new Map(
+		allShapes.flatMap((shape) =>
+			shape.kind === "symbol"
+				? [
+						[
+							shape.id,
+							symbolShapes(shape).filter((child) => child.kind === "pin"),
+						] as const,
+					]
+				: [],
+		),
+	);
+	const memberships = new Map(
+		[...terminals, ...stationaryTerminals].map(({ shape, point }) => {
+			if (shape.kind === "text")
+				return [point, labelNets.get(shape.id)] as const;
+			const pinId =
+				shape.kind === "pin"
+					? shape.id
+					: symbolPins
+							.get(shape.id)
+							?.find(
+								(pin) =>
+									Math.hypot(pin.x - point.x, pin.y - point.y) <=
+									connectionTolerance,
+							)?.id;
+			return [
+				point,
+				pinId === undefined ? undefined : pinNets.get(`${shape.id}:${pinId}`),
+			] as const;
+		}),
+	);
+	const preserveLabeledNets = connections.some(
+		({ terminal }) => memberships.get(terminal)?.labels.length,
+	);
 	for (const { shape, terminal, target, anchor } of connections) {
+		const net = memberships.get(terminal);
 		const horizontalFirst =
 			shape.kind !== "symbol"
 				? undefined
@@ -1778,19 +1835,28 @@ export function connectTransformedTerminals(
 					? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
 					: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
 		const segments =
-			rerouteWireEnds || (shape.kind === "text" && shape.electrical)
+			rerouteWireEnds || preserveLabeledNets
 				? routeTransformedConnection(
 						nextShapeId,
 						anchor,
 						target,
 						Math.max(shape.width, shape.height) + 1,
 						horizontalFirst,
-						[...stationaryPins, ...targets],
-						obstacles,
+						[
+							...stationaryPins.filter(
+								(point) => !net || memberships.get(point) !== net,
+							),
+							...targets.filter(
+								(_, index) =>
+									!net || memberships.get(terminals[index].point) !== net,
+							),
+						],
+						obstacles.filter((wire) => !net || wireNets.get(wire.id) !== net),
 					)
 				: routeWire(nextShapeId, anchor, target, horizontalFirst);
 		if (!segments) return shapes;
 		obstacles.push(...segments);
+		if (net) for (const segment of segments) wireNets.set(segment.id, net);
 
 		moved.push(...segments);
 		nextShapeId += segments.length;

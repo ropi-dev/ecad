@@ -729,3 +729,42 @@ test("moving an electrical label preserves unrelated nets along both direct rout
   assert.deepEqual(store.getSnapshot().shapes, before.shapes);
  }
 });
+
+test("electrical labels can leave four-way junctions without joining unrelated pins", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const electrical of ["net", "supply"] as const) for (const delta of [{ x: 10, y: 10 }, { x: 30, y: 0 }]) {
+  const { store, run } = session();
+  const point = { x: 0, y: 0 };
+  const label = { ...point, id: 1, kind: "text" as const, electrical, text: "BUS", width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+  const arms = [{ x: 20, y: 0 }, { x: -20, y: 0 }, { x: 0, y: 20 }, { x: 0, y: -20 }].map((end, index) => drawShape(index + 2, "wire", point, end));
+  run(placeShapesEffect([label, ...arms, drawShape(6, "pin", { x: 25, y: 0 }, { x: 25, y: 0 })], "Four-way junction"));
+  const before = store.getSnapshot();
+  const replacements = moveShapes([before.shapes[0]], delta, 0, before.shapes[0], before.shapes, before.nextShapeId);
+  run(replaceAndPlaceShapesEffect([replacements[0]], replacements.slice(1), "Move junction label", [1]));
+  const shapes = store.getSnapshot().shapes;
+  assert.deepEqual({ x: shapes[0].x, y: shapes[0].y }, delta);
+  const net = electricalNets(shapes).find(net => net.names.includes("BUS"));
+  assert.ok(net && net.wires.length >= 4);
+  assert.equal(net.pins.length, 0);
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
+
+test("moving a component preserves its generated label net without capturing unrelated pins", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ const { store, run } = session();
+ const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+ const point = pinTerminals(symbol)[0];
+ const label = { ...point, id: 2, kind: "text" as const, electrical: "net" as const, circuitNet: { id: "bus", label: "BUS", pinId: "left" }, text: "BUS", width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+ run(placeShapesEffect([symbol, label, drawShape(3, "pin", { x: 10, y: 0 }, { x: 10, y: 0 }), drawShape(4, "pin", { x: 10, y: 10 }, { x: 10, y: 10 })], "Generated label and unrelated pins"));
+ const before = store.getSnapshot();
+ const replacements = moveShapes([before.shapes[0]], { x: 30, y: 10 }, 0, before.shapes[0], before.shapes, before.nextShapeId);
+ run(replaceAndPlaceShapesEffect([replacements[0]], replacements.slice(1), "Move labeled component", [1]));
+ const shapes = store.getSnapshot().shapes;
+ assert.deepEqual({ x: shapes[0].x, y: shapes[0].y }, { x: 30, y: 10 });
+ const membership = (shapes: typeof before.shapes) => electricalNets(shapes).map(net => ({ names: net.names, pins: net.pins })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+ assert.deepEqual(membership(shapes), membership(before.shapes));
+ run(undoEffect);
+ assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});
