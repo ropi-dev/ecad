@@ -1625,6 +1625,17 @@ export function moveShapes(
 	}
 
 	if (delta.x === 0 && delta.y === 0) return moved;
+	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId);
+}
+
+export function connectTransformedTerminals(
+	shapes: EditorShape[],
+	replacements: EditorShape[],
+	allShapes: EditorShape[],
+	nextShapeId: number,
+	rerouteWireEnds = false,
+): EditorShape[] {
+	const moved = [...replacements];
 	const terminals = shapes.flatMap((shape) =>
 		movementTerminals(shape).map((point) => ({ shape, point })),
 	);
@@ -1638,6 +1649,7 @@ export function moveShapes(
 	const targets = shapes.flatMap((shape) =>
 		movementTerminals(byId.get(shape.id) ?? shape),
 	);
+	const reroutedWires = new Set<number>();
 	for (const [index, { shape, point: terminal }] of terminals.entries()) {
 		const target = targets[index];
 		if (
@@ -1658,6 +1670,36 @@ export function moveShapes(
 			const start = localToWorld(wire, -wire.width / 2, 0);
 			const end = localToWorld(wire, wire.width / 2, 0);
 			if (!pointOnWire(terminal, start, end)) continue;
+			if (reroutedWires.has(wire.id)) continue;
+			if (
+				rerouteWireEnds &&
+				!selectedIds.has(wire.id) &&
+				[start, end].some(
+					(point) =>
+						Math.hypot(point.x - terminal.x, point.y - terminal.y) <=
+						connectionTolerance,
+				)
+			) {
+				const endpoint =
+					Math.hypot(start.x - terminal.x, start.y - terminal.y) <=
+					connectionTolerance
+						? end
+						: start;
+				const other = terminals.findIndex(
+					({ point }) =>
+						Math.hypot(point.x - endpoint.x, point.y - endpoint.y) <=
+						connectionTolerance,
+				);
+				const anchor = other < 0 ? endpoint : targets[other];
+				reroutedWires.add(wire.id);
+				const removed = { ...wire, width: 0 };
+				const index = moved.findIndex((shape) => shape.id === wire.id);
+				if (index < 0) moved.push(removed);
+				else moved[index] = removed;
+				byId.set(wire.id, removed);
+				anchors.push(anchor);
+				continue;
+			}
 			const replacement = byId.get(wire.id) ?? wire;
 			const movedStart = localToWorld(replacement, -replacement.width / 2, 0);
 			const movedEnd = localToWorld(replacement, replacement.width / 2, 0);
@@ -1695,7 +1737,38 @@ export function moveShapes(
 					: Math.abs(terminal.x - shape.x) >= Math.abs(terminal.y - shape.y)
 						? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
 						: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
-			const segments = routeWire(nextShapeId, anchor, target, horizontalFirst);
+			let segments = routeWire(nextShapeId, anchor, target, horizontalFirst);
+			if (
+				rerouteWireEnds &&
+				[...stationaryPins, ...targets].some(
+					(point) =>
+						Math.hypot(point.x - target.x, point.y - target.y) >
+							connectionTolerance &&
+						Math.hypot(point.x - anchor.x, point.y - anchor.y) >
+							connectionTolerance &&
+						segments.some((segment) =>
+							pointOnWire(
+								point,
+								localToWorld(segment, -segment.width / 2, 0),
+								localToWorld(segment, segment.width / 2, 0),
+							),
+						),
+				)
+			) {
+				const offset = Math.max(shape.width, shape.height) + 1;
+				const y = target.y + (anchor.y < target.y ? -offset : offset);
+				const x = target.x + (anchor.x < target.x ? -offset : offset);
+				const points =
+					Math.abs(target.y - shape.y) > Math.abs(target.x - shape.x)
+						? [anchor, { x, y: anchor.y }, { x, y: target.y }, target]
+						: [anchor, { x: anchor.x, y }, { x: target.x, y }, target];
+				segments = points
+					.slice(1)
+					.map((point, index) =>
+						drawShape(nextShapeId + index, "wire", points[index], point),
+					);
+			}
+
 			moved.push(...segments);
 			nextShapeId += segments.length;
 		}

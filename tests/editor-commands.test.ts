@@ -612,3 +612,18 @@ test("moving an attached component and adding wires commits once and restores th
 	);
 	assert.ok(store.getSnapshot().nextShapeId >= 7);
 });
+
+test("rotating both ends of a shared wire reconnects the new pin positions", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ const { store, run } = session();
+ const first = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+ const second = createSymbol(2, symbolDefinitions[0], { x: 30, y: 0 });
+ const a = pinTerminals(first)[1], b = pinTerminals(second)[0];
+ run(placeShapesEffect([first, second, drawShape(3, "wire", a, b)], "Connected components"));
+ const before = store.getSnapshot();
+ run(rotateShapesEffect([1, 2]));
+ const nets = electricalNets(store.getSnapshot().shapes);
+ assert.equal(nets.filter(net => net.pins.length === 2).length, 1);
+ run(undoEffect);
+ assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});

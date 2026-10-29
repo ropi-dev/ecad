@@ -453,3 +453,40 @@ test("legacy shared pin names bind exact numbers to distinct symbol terminals",(
  assert.equal(new Set(labels.map(shape=>`${shape.x},${shape.y}`)).size,2);
  assert.deepEqual(synchronizePcb(first.file,first.shapes,first.file,[definition]).file.circuit.nets,file.circuit.nets);
 });
+
+test("rotating generated components preserves attached and independently moved labels", async () => {
+ const { Effect } = await import("effect");
+ const { createDrawingStore, DrawingStore } = await import("#/commands/drawing-store.ts");
+ const { placeShapesEffect, rotateShapesEffect, undoEffect, redoEffect } = await import("#/commands/drawing-commands.ts");
+ const { moveShapes } = await import("#/drawing/shapes.ts");
+ const original = createCircuit("Rotate labels");
+ const file = structuredClone(original);
+ const a = componentFromSymbol(resistor, []), b = componentFromSymbol(resistor, [a]);
+ file.circuit.components = [a, b];
+ file.circuit.nets = [{ id: "signal", names: [], pinIds: [a.pins[1].id, b.pins[0].id] }, { id: "power", names: ["VDD"], pinIds: [a.pins[0].id] }];
+ const first = synchronizePcb(file, [], original, symbolDefinitions);
+ for (const movedLabel of [false, true]) for (const angle of [Math.PI / 2, Math.PI, -Math.PI / 2]) {
+  let shapes = first.shapes;
+  const label = shapes.find(shape => shape.kind === "text" && shape.circuitNet?.pinId === a.pins[1].id)!;
+  if (movedLabel) {
+   const replacements = moveShapes([label], { x: 15, y: -15 }, 0, label, shapes);
+   const byId = new Map(replacements.map(shape => [shape.id, shape]));
+   shapes = [...shapes.map(shape => byId.get(shape.id) ?? shape), ...replacements.filter(shape => !shapes.some(old => old.id === shape.id))];
+  }
+  const linked = synchronizePcb(first.file, shapes, first.file, symbolDefinitions);
+  const store = createDrawingStore();
+  const run = <A, E>(effect: import("effect").Effect.Effect<A, E, import("#/commands/drawing-store.ts").DrawingStore>) => Effect.runSync(effect.pipe(Effect.provideService(DrawingStore, store)));
+  run(placeShapesEffect(linked.shapes, "Generated schematic"));
+  const before = store.getSnapshot().shapes;
+  run(rotateShapesEffect([first.file.circuit.components[0].schematicShapeId!], angle));
+  const rotated = store.getSnapshot().shapes;
+  const next = synchronizePcb(linked.file, rotated, linked.file, symbolDefinitions);
+  assert.deepEqual(next.file.circuit.nets, first.file.circuit.nets);
+  if (movedLabel) assert.deepEqual(next.shapes.find(shape => shape.id === label.id), linked.shapes.find(shape => shape.id === label.id));
+  assert.deepEqual(synchronizePcb(next.file, next.shapes, next.file, symbolDefinitions).file.circuit.nets, first.file.circuit.nets);
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before);
+  run(redoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, rotated);
+ }
+});

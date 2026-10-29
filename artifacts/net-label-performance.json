@@ -90,6 +90,40 @@
         "before": 43.5,
         "after": 43.4
       }
+    },
+    "editor-symbol-rotate": {
+      "startupMs": {
+        "before": 1571.8,
+        "after": 1546.8
+      },
+      "scriptBytes": {
+        "before": 1828744,
+        "after": 1830084
+      },
+      "domNodes": {
+        "before": 558,
+        "after": 558
+      },
+      "heapBytes": {
+        "before": 10600000,
+        "after": 10600000
+      },
+      "blockingMs": {
+        "before": 704,
+        "after": 671
+      },
+      "eventLoopP95Ms": {
+        "before": 207.9,
+        "after": 218.1
+      },
+      "frameP95Ms": {
+        "before": 65.3,
+        "after": 62.3
+      },
+      "interactionP95Ms": {
+        "before": 138.6,
+        "after": 145.2
+      }
     }
   },
   "failures_before": [
@@ -98,5 +132,6 @@
   "failures_after": [
     "editor-component-move.interactionP95Ms: median 867.3 exceeds budget 750."
   ],
-  "functional_checks": "63 focused unit tests, 4 linked-label and 2 named-label browser tests, workspace typecheck passed"
+  "functional_checks": "81 focused unit tests, six linked-label and named-label browser tests, workspace typecheck passed",
+  "rotation_failures_after": []
 }

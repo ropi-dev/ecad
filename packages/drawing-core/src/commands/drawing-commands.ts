@@ -16,8 +16,10 @@ import {
 import { type LineStyle, lineStyles } from "#/drawing/line-style.ts";
 import { symbolChildOverridesSchema } from "#/drawing/schema.ts";
 import {
+	connectTransformedTerminals,
 	type EditorShape,
 	isBasicShape,
+	pinTerminals,
 	normalizeWireSegments,
 } from "#/drawing/shapes.ts";
 import { validTextAlignment } from "#/drawing/text-alignment.ts";
@@ -489,7 +491,55 @@ export function rotateShapesEffect(
 				validateShape(rotated);
 				return rotated;
 			});
-			return commit(current, shapes, captured.ids, "Rotate selection");
+			const transformed = new Map(shapes.map((shape) => [shape.id, shape]));
+			const components = current.shapes.filter(
+				(shape) => selectedIds.has(shape.id) && shape.kind === "symbol",
+			);
+			for (const label of current.shapes) {
+				if (
+					label.kind !== "text" ||
+					!label.circuitNet?.pinId ||
+					label.locked ||
+					selectedIds.has(label.id)
+				)
+					continue;
+				const component = components.find((shape) =>
+					pinTerminals(shape).some(
+						(pin) => Math.hypot(pin.x - label.x, pin.y - label.y) <= 1e-4,
+					),
+				);
+				if (!component) continue;
+				const x = label.x - component.x,
+					y = label.y - component.y;
+				transformed.set(label.id, {
+					...label,
+					x: component.x + x * Math.cos(angle) - y * Math.sin(angle),
+					y: component.y + x * Math.sin(angle) + y * Math.cos(angle),
+				});
+				selectedIds.add(label.id);
+			}
+			const originals = current.shapes.filter((shape) =>
+				selectedIds.has(shape.id),
+			);
+			const connected = connectTransformedTerminals(
+				originals,
+				originals.map((shape) => transformed.get(shape.id) ?? shape),
+				current.shapes,
+				current.nextShapeId,
+				true,
+			);
+			const updates = new Map(connected.map((shape) => [shape.id, shape]));
+			const additions = connected.filter((shape) => !existing.has(shape.id));
+			return commit(
+				current,
+				[
+					...shapes.map((shape) => updates.get(shape.id) ?? shape),
+					...additions,
+				],
+				captured.ids,
+				"Rotate selection",
+				current.nextShapeId + additions.length,
+			);
 		}),
 	);
 }
