@@ -1655,7 +1655,12 @@ export function connectTransformedTerminals(
 				localToWorld(wire, wire.width / 2, 0),
 			])
 		: [];
-	const reroutedWires = new Set<number>();
+	const connections: {
+		shape: EditorShape;
+		terminal: Point;
+		target: Point;
+		anchor: Point;
+	}[] = [];
 	for (const [index, { shape, point: terminal }] of terminals.entries()) {
 		const target = targets[index];
 		if (
@@ -1672,11 +1677,14 @@ export function connectTransformedTerminals(
 			)
 		)
 			anchors.push(terminal);
-		for (const wire of wires) {
+		for (const original of wires) {
+			const wire = rerouteWireEnds
+				? (byId.get(original.id) ?? original)
+				: original;
+			if (wire.width <= connectionTolerance) continue;
 			const start = localToWorld(wire, -wire.width / 2, 0);
 			const end = localToWorld(wire, wire.width / 2, 0);
 			if (!pointOnWire(terminal, start, end)) continue;
-			if (reroutedWires.has(wire.id)) continue;
 			if (
 				rerouteWireEnds &&
 				!wire.locked &&
@@ -1692,28 +1700,28 @@ export function connectTransformedTerminals(
 					connectionTolerance
 						? end
 						: start;
-				const junction = [...stationaryPins, ...wireJunctions].reduce(
-					(nearest, point) => {
-						const distance = Math.hypot(
-							point.x - terminal.x,
-							point.y - terminal.y,
-						);
-						return distance > connectionTolerance &&
-							distance <
-								Math.hypot(nearest.x - terminal.x, nearest.y - terminal.y) &&
-							pointOnWire(point, start, end)
-							? point
-							: nearest;
-					},
-					endpoint,
-				);
+				const junction = [
+					...stationaryPins,
+					...terminals.map(({ point }) => point),
+					...wireJunctions,
+				].reduce((nearest, point) => {
+					const distance = Math.hypot(
+						point.x - terminal.x,
+						point.y - terminal.y,
+					);
+					return distance > connectionTolerance &&
+						distance <
+							Math.hypot(nearest.x - terminal.x, nearest.y - terminal.y) &&
+						pointOnWire(point, start, end)
+						? point
+						: nearest;
+				}, endpoint);
 				const other = terminals.findIndex(
 					({ point }) =>
 						Math.hypot(point.x - junction.x, point.y - junction.y) <=
 						connectionTolerance,
 				);
 				const anchor = other < 0 ? junction : targets[other];
-				reroutedWires.add(wire.id);
 				const retained = {
 					...wire,
 					...drawShape(wire.id, "wire", junction, endpoint),
@@ -1753,51 +1761,125 @@ export function connectTransformedTerminals(
 		);
 		for (const anchor of unique) {
 			if (
-				Math.hypot(target.x - anchor.x, target.y - anchor.y) <=
+				Math.hypot(target.x - anchor.x, target.y - anchor.y) >
 				connectionTolerance
 			)
-				continue;
-			const horizontalFirst =
-				shape.kind !== "symbol"
-					? undefined
-					: Math.abs(terminal.x - shape.x) >= Math.abs(terminal.y - shape.y)
-						? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
-						: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
-			let segments = routeWire(nextShapeId, anchor, target, horizontalFirst);
-			if (
-				rerouteWireEnds &&
-				[...stationaryPins, ...targets].some(
-					(point) =>
-						Math.hypot(point.x - target.x, point.y - target.y) >
-							connectionTolerance &&
-						Math.hypot(point.x - anchor.x, point.y - anchor.y) >
-							connectionTolerance &&
-						segments.some((segment) =>
-							pointOnWire(
-								point,
-								localToWorld(segment, -segment.width / 2, 0),
-								localToWorld(segment, segment.width / 2, 0),
-							),
-						),
-				)
-			) {
-				const offset = Math.max(shape.width, shape.height) + 1;
-				const y = target.y + (anchor.y < target.y ? -offset : offset);
-				const x = target.x + (anchor.x < target.x ? -offset : offset);
-				const points =
-					Math.abs(target.y - shape.y) > Math.abs(target.x - shape.x)
-						? [anchor, { x, y: anchor.y }, { x, y: target.y }, target]
-						: [anchor, { x: anchor.x, y }, { x: target.x, y }, target];
-				segments = points
-					.slice(1)
-					.map((point, index) =>
-						drawShape(nextShapeId + index, "wire", points[index], point),
-					);
-			}
-
-			moved.push(...segments);
-			nextShapeId += segments.length;
+				connections.push({ shape, terminal, target, anchor });
 		}
 	}
+	const obstacles = wires
+		.map((wire) => byId.get(wire.id) ?? wire)
+		.filter((wire) => wire.width > connectionTolerance);
+	for (const { shape, terminal, target, anchor } of connections) {
+		const horizontalFirst =
+			shape.kind !== "symbol"
+				? undefined
+				: Math.abs(terminal.x - shape.x) >= Math.abs(terminal.y - shape.y)
+					? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
+					: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
+		const segments =
+			rerouteWireEnds || (shape.kind === "text" && shape.electrical)
+				? routeTransformedConnection(
+						nextShapeId,
+						anchor,
+						target,
+						Math.max(shape.width, shape.height) + 1,
+						horizontalFirst,
+						[...stationaryPins, ...targets],
+						obstacles,
+					)
+				: routeWire(nextShapeId, anchor, target, horizontalFirst);
+		if (!segments) return shapes;
+		obstacles.push(...segments);
+
+		moved.push(...segments);
+		nextShapeId += segments.length;
+	}
 	return moved;
+}
+
+function routeTransformedConnection(
+	id: number,
+	anchor: Point,
+	target: Point,
+	spacing: number,
+	horizontalFirst: boolean | undefined,
+	terminals: Point[],
+	obstacles: EditorShape[],
+): EditorShape[] | undefined {
+	const allowed = (point: Point) =>
+		[anchor, target].some(
+			(end) =>
+				Math.hypot(point.x - end.x, point.y - end.y) <= connectionTolerance,
+		);
+	const endpoints = (wire: EditorShape) => [
+		localToWorld(wire, -wire.width / 2, 0),
+		localToWorld(wire, wire.width / 2, 0),
+	];
+	const edges = obstacles.map(endpoints);
+	const clear = (segments: EditorShape[]) =>
+		segments.every((segment) => {
+			const [start, end] = endpoints(segment);
+			if (
+				terminals.some(
+					(point) => !allowed(point) && pointOnWire(point, start, end),
+				)
+			)
+				return false;
+			return edges.every(([a, b]) => {
+				if (
+					[a, b].some(
+						(point) => !allowed(point) && pointOnWire(point, start, end),
+					)
+				)
+					return false;
+				if (
+					[start, end].some(
+						(point) => !allowed(point) && pointOnWire(point, a, b),
+					)
+				)
+					return false;
+				const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
+				const across = vertical ? "x" : "y",
+					along = vertical ? "y" : "x";
+				return (
+					Math.abs(a[across] - start[across]) > connectionTolerance ||
+					Math.abs(b[across] - start[across]) > connectionTolerance ||
+					Math.min(
+						Math.max(start[along], end[along]),
+						Math.max(a[along], b[along]),
+					) -
+						Math.max(
+							Math.min(start[along], end[along]),
+							Math.min(a[along], b[along]),
+						) <=
+						connectionTolerance
+				);
+			});
+		});
+	for (const horizontal of [horizontalFirst, !horizontalFirst]) {
+		const direct = routeWire(id, anchor, target, horizontal);
+		if (clear(direct)) return direct;
+	}
+	for (let lane = 1; lane <= 32; lane++)
+		for (const sign of [1, -1]) {
+			const y = target.y + sign * spacing * lane;
+			const x = target.x + sign * spacing * lane;
+			for (const points of [
+				[anchor, { x: anchor.x, y }, { x: target.x, y }, target],
+				[anchor, { x, y: anchor.y }, { x, y: target.y }, target],
+			]) {
+				const segments = points
+					.slice(1)
+					.map((point, index) =>
+						drawShape(id + index, "wire", points[index], point),
+					)
+					.filter((wire) => wire.width > connectionTolerance);
+				if (clear(segments))
+					return segments.map((segment, index) => ({
+						...segment,
+						id: id + index,
+					}));
+			}
+		}
 }

@@ -481,6 +481,7 @@ test("rotating generated components preserves attached and independently moved l
   const ids = [first.file.circuit.components[0].schematicShapeId!, ...(selectLabels ? before.filter(shape => shape.kind === "text").map(shape => shape.id) : [])];
   run(rotateShapesEffect(ids, angle));
   const rotated = store.getSnapshot().shapes;
+  assert.equal(rotated.find(shape => shape.id === first.file.circuit.components[0].schematicShapeId)?.rotation, ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
   const next = synchronizePcb(linked.file, rotated, linked.file, symbolDefinitions);
   assert.deepEqual(next.file.circuit.nets, first.file.circuit.nets);
   if (movedLabel) {
