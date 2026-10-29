@@ -71,23 +71,7 @@ export function gridTicks(
 	length: number,
 	reversed = false,
 ): GridTick[] {
-	if (!Number.isFinite(scale) || scale <= 0) return [];
-	const halfBand = 0.125;
-	const coarse = rulerSpacing(scale / (1 + halfBand));
-	const fine = rulerSpacing(scale / (1 - halfBand));
-	const cutoff = minimumMinorPixels / fine.minor;
-	const progress = Math.max(
-		0,
-		Math.min(1, (scale / cutoff - (1 - halfBand)) / (halfBand * 2)),
-	);
-	const blend = progress * progress * (3 - 2 * progress);
-	const layers =
-		coarse.minor === fine.minor
-			? [{ spacing: fine, opacity: 1 }]
-			: [
-					{ spacing: coarse, opacity: 1 - blend },
-					{ spacing: fine, opacity: blend },
-				];
+	const layers = gridLayers(scale);
 	const ticks = new Map<string, GridTick>();
 	for (const { spacing, opacity } of layers) {
 		if (opacity === 0) continue;
@@ -118,4 +102,23 @@ export function gridTicks(
 	return [...ticks.values()].sort(
 		(first, second) => first.value - second.value,
 	);
+}
+
+export function gridLayers(scale: number) {
+	if (!Number.isFinite(scale) || scale <= 0) return [];
+	const halfBand = 0.125;
+	const coarse = rulerSpacing(scale / (1 + halfBand));
+	const fine = rulerSpacing(scale / (1 - halfBand));
+	const cutoff = minimumMinorPixels / fine.minor;
+	const progress = Math.max(
+		0,
+		Math.min(1, (scale / cutoff - (1 - halfBand)) / (halfBand * 2)),
+	);
+	const blend = progress * progress * (3 - 2 * progress);
+	return coarse.minor === fine.minor
+		? [{ spacing: fine, opacity: 1 }]
+		: [
+				{ spacing: coarse, opacity: 1 - blend },
+				{ spacing: fine, opacity: blend },
+			];
 }

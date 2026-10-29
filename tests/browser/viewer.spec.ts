@@ -87,6 +87,22 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect.poll(() => page.getByTestId("viewport-grid").evaluate((grid) => {
+		const patterns = [...grid.querySelectorAll("pattern")];
+		const ticks = [...document.querySelectorAll<SVGGElement>('[aria-label="Drawing rulers in millimetres"] g')];
+		return patterns.length > 0 && ticks.length > 0 &&
+			patterns.every((pattern) => pattern.querySelector("circle")?.getAttribute("r") === "1") &&
+			ticks.every((tick) => {
+				const horizontal = tick.dataset.axis === "x";
+				const position = Number(tick.querySelector("line")!.getAttribute(horizontal ? "x1" : "y1"));
+				return patterns.some((pattern) => {
+					const spacing = Number(pattern.getAttribute("width"));
+					const origin = Number(pattern.getAttribute(horizontal ? "x" : "y")) + spacing / 2;
+					const offset = (position - origin) / spacing;
+					return Math.abs(offset - Math.round(offset)) < 0.001;
+				});
+			});
+	})).toBe(true);
 	const canvasHandle = await page.locator("canvas").elementHandle();
 	const capture = async () => {
 		await page.mouse.move(0, 0);
