@@ -56,6 +56,13 @@ const pinInputSchema = z.strictObject({
 });
 const pinShapeSchema = pinInputSchema.extend({ id: shapeId });
 const textInputSchema = z.strictObject({
+	circuitNet: z
+		.strictObject({
+			id: z.string().min(1).max(200),
+			label: z.string(),
+			pinId: z.string().min(1).max(200).optional(),
+		})
+		.optional(),
 	electrical: z
 		.enum(["net", "supply"])
 		.optional()
@@ -99,6 +106,12 @@ const symbolInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("symbol"),
 	definitionId: z.string(),
+	kicad: z
+		.strictObject({
+			libraryId: z.string().min(1),
+			unit: z.number().int().nonnegative(),
+		})
+		.optional(),
 	library: z
 		.strictObject({ scope: z.enum(["user", "project"]), id: z.string().min(1) })
 		.optional(),
@@ -126,7 +139,9 @@ const symbolInputSchema = z.strictObject({
 			z.discriminatedUnion("kind", [
 				primitiveShapeSchema,
 				pinShapeSchema,
-				textInputSchema.omit({ electrical: true }).extend({ id: shapeId }),
+				textInputSchema
+					.omit({ electrical: true, circuitNet: true })
+					.extend({ id: shapeId }),
 			]),
 		)
 		.describe(

@@ -83,7 +83,7 @@ test("pinning the sidebar keeps it beside the canvas through navigation", async 
 		});
 	await sidebar.getByRole("link", { name: "STEP viewer", exact: true }).click();
 	await sidebar
-		.getByRole("link", { name: "Open Drawing", exact: true })
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
 	await expect
 		.poll(async () => (await page.locator("canvas").boundingBox())!.x)
@@ -160,7 +160,7 @@ test("the add file menu supports keyboard navigation and stays open outside the 
 	);
 	await expect(
 		(await openProjectFiles(page)).getByRole("link", {
-			name: "Open menu-drawing.ecaddraw",
+			name: "Open Menu drawing.ecaddraw",
 			exact: true,
 		}),
 	).toBeVisible();

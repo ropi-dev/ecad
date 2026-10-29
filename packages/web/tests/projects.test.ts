@@ -52,7 +52,7 @@ test("browser projects keep additional drawings through revisions, imports and f
 	const browser = browserFilesystem();
 	const storage = createWebProjectStorage(browser.root, browser.selection);
 	await storage.create("Drawings");
-	const drawings = [{ id: "power", name: "Power", shapes: [shape] }, { id: "control", name: "Control", shapes: [] }];
+	const drawings = [{ id: "power", circuitId: "pcb-power", name: "Power", shapes: [shape] }, { id: "control", circuitId: "pcb-control", name: "Control", shapes: [] }];
 	const saved = await storage.save("Drawings", { shapes: [], symbols: [], drawings });
 	assert.equal(saved.manifest.drawings?.length, 2);
 	assert.deepEqual((await createWebProjectStorage(browser.root, browser.selection).load())?.drawings, drawings);

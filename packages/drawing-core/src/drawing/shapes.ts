@@ -49,6 +49,7 @@ export interface EditorSymbol extends ShapeGeometry {
 	kind: "symbol";
 	definitionId: string;
 	library?: SymbolLibraryReference;
+	kicad?: { libraryId: string; unit: number };
 	/** An instance stroke override. Definition strokes otherwise remain unchanged. */
 	strokeOverride?: number;
 	/** Children use coordinates relative to the symbol's center. */
@@ -370,6 +371,7 @@ export function moveSymbolText(
 }
 
 export interface TextShape extends ShapeGeometry, TextAlignment {
+	circuitNet?: { id: string; label: string; pinId?: string };
 	electrical?: "net" | "supply";
 	kind: "text";
 	text: string;

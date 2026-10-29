@@ -402,6 +402,7 @@ function convert(source: string): KiCadImportResult {
 			),
 			kind: "symbol",
 			definitionId: `kicad.${value(instance, "uuid") || shapes.length}`,
+			kicad: { libraryId, unit },
 			children,
 			texts,
 			childOverrides,

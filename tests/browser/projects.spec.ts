@@ -167,7 +167,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 		.poll(async () => (await documentState(page)).drawings[0].shapes.length)
 		.toBe(1);
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open Drawing", exact: true })
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
 	await (await toolbarButton(page, "Undo")).click();
 	await expect
@@ -175,7 +175,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 		.toBe(0);
 	await (await toolbarButton(page, "Redo")).click();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open power-stage.ecaddraw", exact: true })
+		.getByRole("link", { name: "Open Power stage.ecaddraw", exact: true })
 		.click();
 	await (await toolbarButton(page, "Undo")).click();
 	await expect
@@ -187,13 +187,14 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 		.poll(async () => (await documentState(page)).drawings[0].shapes.length)
 		.toBe(1);
 	await createDrawing();
+	await expect((await openProjectFiles(page)).getByRole("link", { name: "Open Power stage 2.ecaddraw", exact: true })).toBeVisible();
 	expect(
 		(await documentState(page)).drawings.map((file: { id: string }) => file.id),
 	).toEqual(["power-stage", "power-stage-2"]);
 	expect((await documentState(page)).editorShapes).toEqual([]);
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open power-stage.ecaddraw", exact: true })
+		.getByRole("link", { name: "Open Power stage.ecaddraw", exact: true })
 		.click();
 	await expect
 		.poll(async () => (await documentState(page)).editorShapes.length)
@@ -217,7 +218,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 	await createProject(page, "Copied drawings");
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open power-stage.ecaddraw", exact: true })
+		.getByRole("link", { name: "Open Power stage.ecaddraw", exact: true })
 		.click();
 	await expect
 		.poll(async () => (await documentState(page)).editorShapes.length)

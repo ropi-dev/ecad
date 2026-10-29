@@ -1,4 +1,9 @@
 import {
+	pairPcbDocuments,
+	primaryPcbId,
+	pcbDocumentName,
+} from "#/projects/pcb.ts";
+import {
 	parseCircuit,
 	serializeCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
@@ -182,11 +187,18 @@ export class ProjectRepository {
 	}
 
 	private async publish(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
-		const document = validateProjectDocument(snapshot);
+		const document = validateProjectDocument(
+			pairPcbDocuments(snapshot, snapshot.manifest.name),
+		);
+		snapshot = { ...snapshot, ...document };
 		if (this.options.layout === "files")
 			return this.publishFiles({ ...snapshot, ...document });
 		const revision = `.ecad/${globalThis.crypto.randomUUID()}`;
-		const drawing = `${revision}/drawing.ecaddraw`;
+		const mainName = pcbDocumentName(
+			document.circuits?.find((file) => file.circuit.id === primaryPcbId)
+				?.circuit.name ?? snapshot.manifest.name,
+		);
+		const drawing = `${revision}/${mainName}/${mainName}.ecaddraw`;
 		const symbols: string[] = [];
 		const drawings: string[] = [];
 		try {
@@ -211,7 +223,7 @@ export class ProjectRepository {
 				symbols.push(path);
 			}
 			for (const file of document.drawings ?? []) {
-				const path = `${revision}/drawings/${file.id}.ecaddraw`;
+				const path = `${revision}/pcbs/${file.id}/${file.name}.ecaddraw`;
 				projectPathSchema.parse(path);
 				await this.directory.write(
 					path,
@@ -229,7 +241,14 @@ export class ProjectRepository {
 			}
 			const circuits: { circuit: string }[] = [];
 			for (const file of document.circuits ?? []) {
-				const stem = `${revision}/circuits/${encodeURIComponent(file.circuit.id)}`;
+				const pairedDrawing = document.drawings?.find(
+					(drawing) => drawing.circuitId === file.circuit.id,
+				);
+				const name = pairedDrawing?.name ?? pcbDocumentName(file.circuit.name);
+				const stem =
+					file.circuit.id === primaryPcbId
+						? `${revision}/${mainName}/${mainName}`
+						: `${revision}/pcbs/${pairedDrawing!.id}/${name}`;
 				const paths = {
 					circuit: `${stem}.ecadcircuit`,
 				};
@@ -253,7 +272,7 @@ export class ProjectRepository {
 			this.snapshot = { ...snapshot, ...document, manifest };
 			this.savedManifest = content;
 			const previousRevision = previous?.manifest.drawing.match(
-				/^(\.ecad\/[0-9a-f-]{36})\/drawing\.ecaddraw$/,
+				/^(\.ecad\/[0-9a-f-]{36})\//,
 			)?.[1];
 			if (
 				previousRevision &&
@@ -305,7 +324,10 @@ export class ProjectRepository {
 			visible(previous.manifest.drawing) &&
 			!reserved.has(previous.manifest.drawing)
 				? previous.manifest.drawing
-				: await this.unusedPath("drawing.ecaddraw", reserved);
+				: await this.unusedPath(
+						`${snapshot.manifest.name}/${snapshot.manifest.name}.ecaddraw`,
+						reserved,
+					);
 		reserved.add(drawing);
 		const files = new Map<string, Uint8Array>([
 			[
@@ -338,7 +360,10 @@ export class ProjectRepository {
 			const path =
 				existing && visible(existing) && !reserved.has(existing)
 					? existing
-					: await this.unusedPath(`drawings/${file.id}.ecaddraw`, reserved);
+					: await this.unusedPath(
+							`${file.name}/${file.name}.ecaddraw`,
+							reserved,
+						);
 			reserved.add(path);
 			drawings.push(path);
 			files.set(
@@ -374,7 +399,11 @@ export class ProjectRepository {
 		const circuits: { circuit: string }[] = [];
 		for (const file of snapshot.circuits ?? []) {
 			const existing = previousCircuits.get(file.circuit.id);
-			const stem = `circuits/${encodeURIComponent(file.circuit.id)}`;
+			const name =
+				snapshot.drawings?.find(
+					(drawing) => drawing.circuitId === file.circuit.id,
+				)?.name ?? pcbDocumentName(file.circuit.name);
+			const stem = `${name}/${name}`;
 			const circuit =
 				existing && visible(existing.circuit) && !reserved.has(existing.circuit)
 					? existing.circuit
@@ -455,7 +484,19 @@ export class ProjectRepository {
 	save(document: ProjectDocument): Promise<ProjectSnapshot> {
 		return this.sequential(async () => {
 			const current = await this.assertCurrent();
-			return this.publish({ ...current, ...validateProjectDocument(document) });
+			const validated = validateProjectDocument(document);
+			const drawings =
+				validated.drawings ??
+				(validated.circuits === undefined
+					? current.drawings
+					: current.drawings?.filter(
+							(drawing) =>
+								!drawing.circuitId ||
+								validated.circuits!.some(
+									(file) => file.circuit.id === drawing.circuitId,
+								),
+						));
+			return this.publish({ ...current, ...validated, drawings });
 		});
 	}
 

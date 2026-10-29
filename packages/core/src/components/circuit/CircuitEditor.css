@@ -26,18 +26,6 @@
 	height: 100%;
 	touch-action: none;
 }
-.circuit-empty button {
-	border: 1px solid #414955;
-	border-radius: 5px;
-	background: #ffffff08;
-	color: #e8edf5;
-	padding: 7px 10px;
-	cursor: pointer;
-	font: inherit;
-}
-.circuit-empty button:hover {
-	background: #ffffff10;
-}
 .circuit-editor button:disabled {
 	opacity: 0.4;
 	cursor: default;
@@ -166,18 +154,6 @@
 	stroke: #e8b77e;
 	stroke-width: 4;
 }
-.circuit-empty {
-	position: absolute;
-	left: 50%;
-	top: 45%;
-	transform: translate(-50%, -50%);
-	text-align: center;
-	width: min(90%, 400px);
-}
-.circuit-empty button {
-	color: #d2e8b6;
-	border-color: #788d60;
-}
 
 .circuit-status {
 	position: absolute;
@@ -231,9 +207,6 @@
 	}
 	.circuit-save-status {
 		bottom: 56px;
-	}
-	.circuit-empty {
-		top: 40%;
 	}
 }
 .circuit-editor .circuit-node-button,

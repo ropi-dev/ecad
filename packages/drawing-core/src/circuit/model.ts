@@ -5,6 +5,10 @@ const name = z.string().trim().min(1).max(200);
 export const circuitPinSchema = z.strictObject({
 	id,
 	sourcePinId: id.optional(),
+	sourcePin: z
+		.strictObject({ name: z.string().max(200), number: name })
+		.optional(),
+	schematicShapeId: z.number().int().positive().optional(),
 	name: z.string().max(200),
 	number: name,
 	electricalType: z
@@ -20,6 +24,12 @@ export const circuitPinSchema = z.strictObject({
 });
 export const circuitComponentSchema = z.strictObject({
 	id,
+	schematicShapeId: z.number().int().nonnegative().optional(),
+	schematicShapeIds: z
+		.array(z.number().int().positive())
+		.min(1)
+		.refine((ids) => new Set(ids).size === ids.length)
+		.optional(),
 	reference: name,
 	value: z.string().max(200),
 	part: z.strictObject({
@@ -163,7 +173,7 @@ export type CircuitFile = z.infer<typeof circuitFileSchema>;
 
 export function createCircuit(
 	name: string,
-	circuitId = globalThis.crypto.randomUUID(),
+	circuitId: string = globalThis.crypto.randomUUID(),
 ): CircuitFile {
 	return circuitFileSchema.parse({
 		circuit: {

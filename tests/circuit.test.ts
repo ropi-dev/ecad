@@ -1,15 +1,16 @@
+import { createTestCircuit } from "./fixtures/circuit.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { arrangeCircuitGraph, buildCircuitGraph } from "@ecad/drawing-core/circuit/graph.ts";
 import { circuitFileSchema, createCircuit, parseCircuit, parseGraphLayout, serializeCircuit, serializeGraphLayout } from "@ecad/drawing-core/circuit/model.ts";
-import { createCircuitComponent, createLedCircuit, instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
+import { createCircuitComponent, instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import { createCircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import { createCircuitView, untangleCircuitGraph, circuitLayoutQuality } from "@ecad/drawing-core/circuit/untangle.ts";
 import { parseProjectManifest, serializeProjectManifest } from "#/projects/format.ts";
 import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
 
 test("circuit and graph formats round trip independently and reject broken references", () => {
-	const file = createLedCircuit();
+	const file = createTestCircuit();
 	assert.deepEqual(parseCircuit(serializeCircuit(file.circuit)), file.circuit);
 	assert.deepEqual(parseGraphLayout(serializeGraphLayout(file.graph)), file.graph);
 	assert.ok(!serializeCircuit(file.circuit).includes('"positions"'));
@@ -24,7 +25,7 @@ test("circuit and graph formats round trip independently and reject broken refer
 });
 
 test("moving every graph node preserves the entire circuit, including identities", () => {
-	const file = createLedCircuit();
+	const file = createTestCircuit();
 	const store = createCircuitStore(file);
 	store.execute({ type: "move", positions: file.graph.positions.map((position) => ({ ...position, x: position.x + 42, y: position.y - 30 })) });
 	assert.deepEqual(store.getSnapshot().circuit, file.circuit);
@@ -36,7 +37,7 @@ test("moving every graph node preserves the entire circuit, including identities
 });
 
 test("net merges preserve aliases and survivor identity without retaining edge identity", () => {
-	const file = createLedCircuit();
+	const file = createTestCircuit();
 	const store = createCircuitStore(file);
 	const [first, second] = file.circuit.nets;
 	store.execute({ type: "connect", pinIds: [second.pinIds[0]], netId: first.id });
@@ -51,7 +52,7 @@ test("net merges preserve aliases and survivor identity without retaining edge i
 });
 
 test("splitting keeps selected pins connected while disconnecting leaves them independent", () => {
-	const file = createLedCircuit();
+	const file = createTestCircuit();
 	const store = createCircuitStore(file);
 	const [first, second] = file.circuit.nets;
 	store.execute({ type: "connect", pinIds: [second.pinIds[0]], netId: first.id });
@@ -66,7 +67,7 @@ test("splitting keeps selected pins connected while disconnecting leaves them in
 });
 
 test("invalid commands publish nothing and preserve history", () => {
-	const file = createLedCircuit();
+	const file = createTestCircuit();
 	const store = createCircuitStore(file);
 	const before = store.getSnapshot();
 	let notifications = 0;
@@ -103,7 +104,7 @@ test("standalone nets survive disconnection, component deletion, serialization, 
 });
 
 test("net creation and removal are atomic, undoable, and preserve unrelated memberships", () => {
-	const store = createCircuitStore(createLedCircuit());
+	const store = createCircuitStore(createTestCircuit());
 	const original = store.getSnapshot();
 	assert.throws(() => store.execute({ type: "add-net", net: { id: "bad", names: ["GND"], pinIds: [] } }));
 	assert.throws(() => store.execute({ type: "add-net", net: { id: "bad", names: [], pinIds: [] }, position: { x: NaN, y: 20 } }));
@@ -126,7 +127,7 @@ test("net creation and removal are atomic, undoable, and preserve unrelated memb
 });
 
 test("connecting onto an empty named net preserves its name, identity, and layout", () => {
-	const store = createCircuitStore(createLedCircuit());
+	const store = createCircuitStore(createTestCircuit());
 	store.execute({ type: "add-net", net: { id: "bus", names: ["GROUND"], pinIds: [] }, position: { x: 700, y: 100 } });
 	const before = store.getSnapshot();
 	const source = before.circuit.nets[0];
@@ -140,7 +141,7 @@ test("connecting onto an empty named net preserves its name, identity, and layou
 });
 
 test("no-connect declarations and component deletion clean up memberships and layout", () => {
-	const file = createLedCircuit();
+	const file = createTestCircuit();
 	const store = createCircuitStore(file);
 	const pin = file.circuit.components[0].pins[0];
 	store.execute({ type: "no-connect", pinId: pin.id, enabled: true });
@@ -245,25 +246,26 @@ for (const layout of ["files", "revisions"] as const) {
 		const memory = memoryDirectory();
 		const repository = new ProjectRepository(memory.directory, { layout });
 		await repository.create("Circuit project");
-		const file = createLedCircuit();
+		const file = createTestCircuit();
 		const saved = await repository.save({ shapes: [], symbols: [], circuits: [file] });
 		const paths = saved.manifest.circuits![0];
 		assert.ok(paths.circuit.endsWith(".ecadcircuit"));
 		assert.equal(paths.graph, undefined);
 		assert.ok(![...memory.files.keys()].some(path=>path.endsWith(".ecadgraph")));
 		assert.ok(!new TextDecoder().decode(memory.files.get(paths.circuit)).includes("positions"));
-		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), [file.circuit]);
+		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), saved.circuits!.map(file=>file.circuit));
 		const changed = structuredClone(file);
 		changed.circuit.components[0].value = "New value";
 		changed.graph.positions[0].x += 50;
 		memory.fail(".ecadprj");
 		await assert.rejects(repository.save({ shapes: [], symbols: [], circuits: [changed] }), /Disk full/);
-		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), [file.circuit]);
+		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), saved.circuits!.map(file=>file.circuit));
 		memory.fail("");
 		await repository.save({ shapes: [], symbols: [] });
-		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), [file.circuit]);
+		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), saved.circuits!.map(file=>file.circuit));
 		await repository.save({ shapes: [], symbols: [], circuits: [] });
-		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits, []);
+		assert.equal((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.length, 1);
+		assert.equal((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.[0].circuit.id, "pcb-main");
 		assert.ok(!memory.files.has(paths.circuit));
 	});
 }
@@ -272,7 +274,7 @@ test("desktop circuit saves reject external electrical circuit edits", async () 
  const memory = memoryDirectory();
  const repository = new ProjectRepository(memory.directory, {layout:"files"});
  await repository.create("Circuit project");
- const saved = await repository.save({shapes:[],symbols:[],circuits:[createLedCircuit()]});
+ const saved = await repository.save({shapes:[],symbols:[],circuits:[createTestCircuit()]});
  memory.files.set(saved.manifest.circuits![0].circuit,new TextEncoder().encode("{}"));
  await assert.rejects(repository.save({shapes:[],symbols:[]}),/changed on disk/);
 });
@@ -281,7 +283,7 @@ for (const layout of ["files","revisions"] as const) test(`legacy graph position
  const memory=memoryDirectory();
  const repository=new ProjectRepository(memory.directory,{layout});
  await repository.create("Circuit project");
- const file=createLedCircuit();
+ const file=createTestCircuit();
  await repository.save({shapes:[],symbols:[],circuits:[file]});
  const graphPath="legacy.ecadgraph";
  const legacy={...file.graph,positions:file.graph.positions.map(position=>({...position,x:9999,y:8888})),collapsedComponentIds:[file.circuit.components[0].id]};
@@ -321,9 +323,22 @@ for (const layout of ["files","revisions"] as const) test(`legacy graph position
  assert.equal(circuitLayoutQuality({...pile,graph:{...pile.graph,positions:untangleCircuitGraph(pile)}}).overlaps,0);
  assert.deepEqual(createCircuitView(file.circuit),createCircuitView(file.circuit));
  assert.deepEqual(untangleCircuitGraph(createCircuit("Empty")),[]);
- const leds=createLedCircuit();
+ const leds=createTestCircuit();
  const ledLayout={...leds,graph:{...leds.graph,positions:untangleCircuitGraph(leds)}};
  assert.equal(circuitLayoutQuality(ledLayout).overlaps,0);
  assert.equal(circuitLayoutQuality(ledLayout).obstructions,0);
  assert.equal(circuitLayoutQuality(ledLayout).crossings,0);
+});
+
+for(const layout of ["files","revisions"] as const) test(`legacy PCB identities and names receive valid paired drawing files with ${layout} storage`,async()=>{
+ const memory=memoryDirectory();const repository=new ProjectRepository(memory.directory,{layout});
+ await repository.create("Legacy");
+ const files=[createCircuit("Board","Board_1"),createCircuit("Power / analog","board-1"),createCircuit("CON","board_1")];
+ const saved=await repository.save({shapes:[],symbols:[],circuits:files});
+ assert.deepEqual(saved.circuits!.slice(0,3).map(file=>[file.circuit.id,file.circuit.name]),files.map(file=>[file.circuit.id,file.circuit.name]));
+ const drawings=saved.drawings!;
+ assert.equal(new Set(drawings.map(drawing=>drawing.id)).size,3);
+ assert.ok(drawings.every(drawing=>/^[a-z0-9][a-z0-9_-]*$/.test(drawing.id)));
+ const reopened=await new ProjectRepository(memory.directory,{layout}).load();
+ assert.deepEqual(reopened.circuits!.map(file=>file.circuit),saved.circuits!.map(file=>file.circuit));
 });
