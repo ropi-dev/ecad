@@ -72,6 +72,7 @@ export const drawingFileSchema = z
 	.strictObject({
 		id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
 		name: projectNameSchema,
+		circuitId: z.string().min(1).optional(),
 		shapes: z.array(drawingShapeSchema),
 	})
 	.refine(

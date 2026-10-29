@@ -1,3 +1,4 @@
+import { createTestCircuit } from "../fixtures/circuit.ts";
 import { captureArtifacts } from "./artifacts";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
@@ -49,9 +50,7 @@ test("circuit graph edits connectivity, preserves it through layout moves, and r
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await createCircuit(page);
-	await page
-		.getByRole("button", { name: "Add LED example", exact: true })
-		.click();
+	await loadCircuitFixture(page);
 	await expect(
 		page.getByRole("button", { name: "Net GND", exact: true }),
 	).toBeVisible();
@@ -133,7 +132,7 @@ test("circuit graph edits connectivity, preserves it through layout moves, and r
 		});
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open LED driver", exact: true })
+		.getByRole("link", { name: "Open LED driver.ecadcircuit", exact: true })
 		.click();
 	await expect(
 		page.getByRole("button", { name: "Net GROUND", exact: true }),
@@ -211,6 +210,8 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	await page.mouse.up();
 	expect(await state(page)).toEqual(merged);
 	await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+	const saved = await state(page);
+	expect(saved.circuit.nets).toEqual(merged.circuit.nets);
 	if (captureArtifacts)
 		await page.screenshot({
 			path: resolve("test-results/screenshots/circuit-pin-drag-connected.png"),
@@ -218,18 +219,16 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 		});
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open LED driver", exact: true })
+		.getByRole("link", { name: "Open LED driver.ecadcircuit", exact: true })
 		.click();
-	expect((await state(page)).circuit).toEqual(merged.circuit);
+	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
 
 test("pin connection drags cancel on empty space, the source pin, Escape, or pointer cancellation", async ({
 	page,
 }) => {
 	await createCircuit(page);
-	await page
-		.getByRole("button", { name: "Add LED example", exact: true })
-		.click();
+	await loadCircuitFixture(page);
 	const original = await state(page);
 	const canvas = page.getByLabel("Circuit connections graph", { exact: true });
 	const box = await canvas.boundingBox();
@@ -285,10 +284,10 @@ test("a delayed circuit open cannot override a later drawing or circuit selectio
 		request.url().includes("/circuit/store.ts"),
 	);
 	await page
-		.getByRole("link", { name: "Open LED driver", exact: true })
+		.getByRole("link", { name: "Open LED driver.ecadcircuit", exact: true })
 		.click();
 	const request = await requested;
-	await page.getByRole("link", { name: "Open Drawing", exact: true }).click();
+	await page.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true }).click();
 	release();
 	await request.response();
 	await page.waitForLoadState("networkidle");
@@ -298,12 +297,12 @@ test("a delayed circuit open cannot override a later drawing or circuit selectio
 	await page.evaluate(() => {
 		(
 			document.querySelector(
-				'a[aria-label="Open LED driver"]',
+				'a[aria-label="Open LED driver.ecadcircuit"]',
 			) as HTMLAnchorElement
 		).click();
 		(
 			document.querySelector(
-				'a[aria-label="Open Second circuit"]',
+				'a[aria-label="Open Second circuit.ecadcircuit"]',
 			) as HTMLAnchorElement
 		).click();
 	});
@@ -369,7 +368,23 @@ test("keyboard-only component and net placement supports snapping, cancellation,
 	const saved = await state(page);
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open LED driver", exact: true })
+		.getByRole("link", { name: "Open LED driver.ecadcircuit", exact: true })
 		.click();
 	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
+
+async function loadCircuitFixture(page: Page) {
+ const current=await state(page);
+ const file=createTestCircuit("LED driver");
+ file.circuit.id=current.circuit.id;file.graph.circuitId=current.circuit.id;
+ await page.evaluate(async(file)=>{
+  const modulePath="/packages/web/src/projects/storage.ts";
+  const {createWebProjectStorage}=await import(modulePath);
+  const storage=createWebProjectStorage();const project=await storage.load();
+  await storage.save(project.directory,{...project,circuits:project.circuits.map((entry:{circuit:{id:string}})=>entry.circuit.id===file.circuit.id?file:entry)});
+ },file);
+ await page.reload();
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open LED driver.ecadcircuit",exact:true}).click();
+ await closeProjectFiles(page);
+ await expect(page.getByRole("button",{name:"Select component R1",exact:true})).toBeVisible();
+}

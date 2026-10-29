@@ -62,7 +62,7 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 		.toEqual(canonical(expected.shapes));
 	await page.reload();
 	const link = (await openProjectFiles(page)).getByRole("link", {
-		name: "Open kicad-import.ecaddraw",
+		name: "Open RPI-RP2350A-MINIMAL_R4-S1.ecaddraw",
 		exact: true,
 	});
 	await link.click();

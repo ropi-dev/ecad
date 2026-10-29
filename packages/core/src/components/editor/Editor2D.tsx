@@ -1883,7 +1883,15 @@ function EditorCanvas({
 							: (electrical) => {
 									if (selected.length === 1 && selected[0].kind === "text")
 										commitReplacements(
-											[{ ...selected[0], electrical }],
+											[
+												{
+													...selected[0],
+													electrical,
+													...(electrical === "net"
+														? {}
+														: { circuitNet: undefined }),
+												},
+											],
 											"Change label role",
 										);
 								}

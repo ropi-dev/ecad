@@ -261,6 +261,19 @@ export function createCircuitStore(
 				listeners.delete(listener);
 			};
 		},
+		synchronize(
+			next: CircuitFile,
+			options: { preserveHistory?: boolean } = {},
+		) {
+			if (next.circuit.id !== file.circuit.id)
+				throw new Error("Synchronization must preserve the circuit identity.");
+			file = freeze(circuitFileSchema.parse(next));
+			if (!options.preserveHistory) {
+				past = [];
+				future = [];
+			}
+			publish();
+		},
 		execute(command: CircuitCommand) {
 			const next = measurePerformance(
 				"circuit.edit",

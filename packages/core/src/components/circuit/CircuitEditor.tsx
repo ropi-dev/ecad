@@ -5,7 +5,6 @@ import {
 } from "@ecad/drawing-core/circuit/graph.ts";
 import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { GraphLayout } from "@ecad/drawing-core/circuit/model.ts";
-import { createLedCircuit } from "@ecad/drawing-core/circuit/parts.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { untangleCircuitGraph } from "@ecad/drawing-core/circuit/untangle.ts";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -1305,35 +1304,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 								svg.current?.focus({ preventScroll: true });
 							}}
 						/>
-					)}
-					{!circuit.components.length && !circuit.nets.length && (
-						<div className="circuit-empty">
-							<button
-								type="button"
-								onClick={() => {
-									const example = createLedCircuit(circuit.name);
-									run({
-										type: "replace",
-										file: {
-											circuit: {
-												...example.circuit,
-												id: circuit.id,
-												revision: circuit.revision + 1,
-											},
-											graph: {
-												...example.graph,
-												circuitId: circuit.id,
-												positions: example.graph.positions.map((position) =>
-													snap(position),
-												),
-											},
-										},
-									});
-								}}
-							>
-								Add LED example
-							</button>
-						</div>
 					)}
 				</div>
 			</div>

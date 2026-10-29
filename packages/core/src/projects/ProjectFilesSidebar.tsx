@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import {
+	Fragment,
 	lazy,
 	Suspense,
 	useEffect,
@@ -74,6 +75,7 @@ interface ProjectFile {
 	type: string;
 	href?: ProjectPath;
 	asset?: ProjectAsset;
+	group?: string;
 }
 
 export function ProjectFilesSidebar() {
@@ -87,6 +89,7 @@ export function ProjectFilesSidebar() {
 	const sidebarRef = useRef<HTMLFieldSetElement>(null);
 	const panelId = useId();
 	const [query, setQuery] = useState("");
+	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 	const [filter, setFilter] = useState<(typeof filters)[number]>("All files");
 	const [page, setPage] = useState(0);
 	const [importing, setImporting] = useState(false);
@@ -131,24 +134,74 @@ export function ProjectFilesSidebar() {
 			manifest
 				? [
 						{ path: PROJECT_FILE, name: PROJECT_FILE, type: "Project" },
-						{
-							path: manifest.drawing,
-							name: "Drawing",
-							type: "Drawing",
-							href: "/editor",
-						},
-						...(manifest.circuits ?? []).map((paths, index) => ({
-							path: paths.circuit,
-							name: snapshot?.circuits?.[index]?.circuit.name ?? "Circuit",
-							type: "Circuit",
-							href: "/editor" as const,
-						})),
-						...(manifest.drawings ?? []).map((path) => ({
-							path,
-							name: path.split("/").at(-1) ?? path,
-							type: "Drawing",
-							href: "/editor" as const,
-						})),
+						...((snapshot?.circuits?.length ?? 0)
+							? snapshot!.circuits!.flatMap((file, index) => {
+									const paths = manifest.circuits?.[index];
+									if (!paths) return [];
+									const name = file.circuit.name;
+									const drawingIndex =
+										snapshot!.drawings?.findIndex(
+											(drawing) => drawing.circuitId === file.circuit.id,
+										) ?? -1;
+									const drawingPath =
+										file.circuit.id === "pcb-main"
+											? manifest.drawing
+											: manifest.drawings?.[drawingIndex];
+									return [
+										{
+											path: paths.circuit,
+											name: `${name}.ecadcircuit`,
+											type: "Circuit",
+											href: "/editor" as const,
+											group: name,
+										},
+										...(drawingPath
+											? [
+													{
+														path: drawingPath,
+														name: `${name}.ecaddraw`,
+														type: "Drawing",
+														href: "/editor" as const,
+														group: name,
+													},
+												]
+											: []),
+									];
+								})
+							: [
+									{
+										path: manifest.drawing,
+										name: "Drawing",
+										type: "Drawing",
+										href: "/editor" as const,
+									},
+								]),
+						...(snapshot?.circuits?.length &&
+						!snapshot.circuits.some(
+							(file, index) =>
+								file.circuit.id === "pcb-main" && manifest.circuits?.[index],
+						)
+							? [
+									{
+										path: manifest.drawing,
+										name: "Drawing",
+										type: "Drawing",
+										href: "/editor" as const,
+									},
+								]
+							: []),
+						...(manifest.drawings ?? []).flatMap((path, index) =>
+							snapshot?.drawings?.[index]?.circuitId
+								? []
+								: [
+										{
+											path,
+											name: path.split("/").at(-1) ?? path,
+											type: "Drawing",
+											href: "/editor" as const,
+										},
+									],
+						),
 						...manifest.symbols.map((path) => ({
 							path,
 							name: path.split("/").at(-1) ?? path,
@@ -167,7 +220,7 @@ export function ProjectFilesSidebar() {
 						})),
 					]
 				: [],
-		[manifest, snapshot?.circuits],
+		[manifest, snapshot?.circuits, snapshot?.drawings],
 	);
 	const filtered = useMemo(() => {
 		const search = query.trim().toLowerCase();
@@ -552,69 +605,112 @@ export function ProjectFilesSidebar() {
 										</tr>
 									</thead>
 									<tbody>
-										{filtered.slice(first, first + pageSize).map((file) => {
-											const Icon =
-												file.type === "Drawing" ||
-												file.type === "Symbol" ||
-												file.type === "Circuit"
-													? CircuitBoard
-													: file.type === "Gerber"
-														? Layers
-														: file.type === "STEP"
-															? Box
-															: File;
-											const content = (
-												<>
-													<span className="w-5 shrink-0" aria-hidden="true" />
-													<Icon
-														size={14}
-														className="shrink-0 opacity-70"
-														aria-hidden="true"
-													/>
-													<span className="truncate">{file.name}</span>
-												</>
-											);
-											return (
-												<tr key={file.path}>
-													<td>
-														{file.href ? (
-															<ProjectLink
-																href={file.href}
-																aria-label={`Open ${file.name}`}
-																title={`${file.name} · ${file.type}`}
-																className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
-																onClick={() => {
-																	if (file.href === "/editor") {
-																		if (file.type === "Circuit")
-																			void project
-																				.openCircuit(file.path)
-																				.catch((cause) =>
-																					setError(
-																						cause instanceof Error
-																							? cause.message
-																							: "Unable to open circuit.",
-																					),
-																				);
-																		else project.selectEditorFile(file.path);
-																	}
-																	if (file.asset)
-																		project.selectAsset(file.asset);
-																}}
-															>
-																{content}
-															</ProjectLink>
-														) : (
-															<div
-																title={`${file.name} · ${file.type}`}
-																className="flex h-8 items-center text-xs text-[#98a4b6] gap-2 pr-3 pl-2"
-															>
-																{content}
-															</div>
-														)}
-													</td>
-												</tr>
-											);
-										})}
+										{filtered
+											.slice(first, first + pageSize)
+											.map((file, index) => {
+												const Icon =
+													file.type === "Drawing" ||
+													file.type === "Symbol" ||
+													file.type === "Circuit"
+														? CircuitBoard
+														: file.type === "Gerber"
+															? Layers
+															: file.type === "STEP"
+																? Box
+																: File;
+												const content = (
+													<>
+														<span className="w-5 shrink-0" aria-hidden="true" />
+														<Icon
+															size={14}
+															className="shrink-0 opacity-70"
+															aria-hidden="true"
+														/>
+														<span className="truncate">{file.name}</span>
+													</>
+												);
+												return (
+													<Fragment key={file.path}>
+														{file.group &&
+															(index === 0 ||
+																filtered[first + index - 1]?.group !==
+																	file.group) && (
+																<tr>
+																	<td>
+																		<button
+																			type="button"
+																			aria-expanded={!collapsed.has(file.group)}
+																			className={`flex h-8 w-full items-center gap-2 px-3 text-xs ${focus}`}
+																			onClick={() =>
+																				setCollapsed((current) => {
+																					const next = new Set(current);
+																					if (next.has(file.group!))
+																						next.delete(file.group!);
+																					else next.add(file.group!);
+																					return next;
+																				})
+																			}
+																		>
+																			<ChevronRight
+																				size={12}
+																				className={
+																					collapsed.has(file.group)
+																						? ""
+																						: "rotate-90"
+																				}
+																			/>
+																			<FolderOpen size={14} />
+																			<span className="truncate">
+																				{file.group}
+																			</span>
+																		</button>
+																	</td>
+																</tr>
+															)}
+														<tr
+															hidden={!!file.group && collapsed.has(file.group)}
+														>
+															<td>
+																{file.href ? (
+																	<ProjectLink
+																		href={file.href}
+																		aria-label={`Open ${file.name}`}
+																		title={`${file.name} · ${file.type}`}
+																		className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
+																		onClick={() => {
+																			if (file.href === "/editor") {
+																				if (file.type === "Circuit")
+																					void project
+																						.openCircuit(file.path)
+																						.catch((cause) =>
+																							setError(
+																								cause instanceof Error
+																									? cause.message
+																									: "Unable to open circuit.",
+																							),
+																						);
+																				else
+																					project.selectEditorFile(file.path);
+																			}
+																			if (file.asset)
+																				project.selectAsset(file.asset);
+																		}}
+																	>
+																		{content}
+																	</ProjectLink>
+																) : (
+																	<div
+																		title={`${file.name} · ${file.type}`}
+																		className="flex h-8 items-center text-xs text-[#98a4b6] gap-2 pr-3 pl-2"
+																	>
+																		{content}
+																	</div>
+																)}
+															</td>
+														</tr>
+													</Fragment>
+												);
+											})}
 									</tbody>
 								</table>
 								{!filtered.length && (

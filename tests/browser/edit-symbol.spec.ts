@@ -40,7 +40,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 			buffer: Buffer.from(JSON.stringify(symbol)),
 		});
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open Drawing", exact: true })
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
 	await expect(
 		page.getByRole("button", { name: "Edit symbol", exact: true }),
@@ -86,7 +86,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 		.getByRole("link", { name: "Workspace home", exact: true })
 		.click();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open Drawing", exact: true })
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
 	await page

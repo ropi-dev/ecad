@@ -18,18 +18,18 @@ test("additional drawing files preserve paths, reject external edits and roll ba
 	let fail = false;
 	const repository = new ProjectRepository({ ...directory, write: async (path, bytes) => { if (fail && path === PROJECT_FILE) throw new Error("Disk full"); await directory.write(path, bytes); } }, { layout: "files" });
 	await repository.create("Drawings");
-	const drawings = [{ id: "power", name: "Power", shapes: [shape] }];
+	const drawings = [{ id: "power", circuitId: "pcb-power", name: "Power", shapes: [shape] }];
 	const saved = await repository.save({ shapes: [], symbols: [], drawings });
-	assert.deepEqual(saved.manifest.drawings, ["drawings/power.ecaddraw"]);
+	assert.deepEqual(saved.manifest.drawings, ["Power/Power.ecaddraw"]);
 	assert.deepEqual((await new ProjectRepository(directory).load()).drawings, drawings);
 	fail = true;
 	await assert.rejects(repository.save({ shapes: [shape], symbols: [], drawings: [{ ...drawings[0], shapes: [] }, { id: "control", name: "Control", shapes: [] }] }), /Disk full/);
 	assert.deepEqual((await new ProjectRepository(directory).load()).drawings, drawings);
-	assert.deepEqual(await readdir(join(parent, "drawings")), ["power.ecaddraw"]);
+	assert.deepEqual(await readdir(join(parent, "Power")), ["Power.ecadcircuit", "Power.ecaddraw"]);
 	fail = false;
 	const next = await repository.save({ shapes: [shape], symbols: [] });
 	assert.deepEqual(next.manifest.drawings, saved.manifest.drawings);
-	await writeFile(join(parent, "drawings/power.ecaddraw"), JSON.stringify({ ...drawings[0], shapes: [] }));
+	await writeFile(join(parent, "Power/Power.ecaddraw"), JSON.stringify({ ...drawings[0], shapes: [] }));
 	await assert.rejects(repository.save({ shapes: [], symbols: [] }), /changed on disk/);
 }));
 
@@ -55,11 +55,11 @@ test("desktop projects round trip TOML, drawing IDs, standalone symbols and bina
 	assert.deepEqual(reopened, imported);
 	assert.deepEqual(await projects.readAsset(saved.directory, imported.manifest.assets[0].path), bytes);
 	assert.equal(createDrawingStore(reopened?.shapes).getSnapshot().nextShapeId, 8);
-	assert.equal(created.manifest.drawing, "drawing.ecaddraw");
+	assert.equal(created.manifest.drawing, "Motor controller/Motor controller.ecaddraw");
 	assert.equal(saved.manifest.drawing, created.manifest.drawing);
 	assert.deepEqual(saved.manifest.symbols, ["symbols/test-point.ecadsym"]);
 	assert.equal(imported.manifest.assets[0].path, "assets/board.zip");
-	assert.deepEqual((await readdir(saved.directory)).sort(), [PROJECT_FILE, "assets", "drawing.ecaddraw", "symbols"]);
+	assert.deepEqual((await readdir(saved.directory)).sort(), [PROJECT_FILE, "Motor controller", "assets", "symbols"]);
 }));
 
 test("project directories are isolated and stale renderer requests cannot access a previous project", async () => temporary(async (parent) => {
@@ -92,7 +92,7 @@ test("a failed desktop manifest write restores the previous drawing and symbols"
 	assert.deepEqual(restored.shapes, [shape]);
 	assert.deepEqual(restored.symbols, [symbol]);
 	assert.deepEqual(await readdir(join(parent, "symbols")), ["test-point.ecadsym"]);
-	assert.deepEqual((await readdir(parent)).sort(), [PROJECT_FILE, "drawing.ecaddraw", "symbols"]);
+	assert.deepEqual((await readdir(parent)).sort(), [PROJECT_FILE, "Controller", "symbols"]);
 	await assert.rejects(repository.importAssets([{ name: "model.step", kind: "step", bytes: new Uint8Array([1]) }]), /Disk full/);
 	assert.deepEqual(await readdir(join(parent, "assets")), []);
 	fail = false;
@@ -155,11 +155,11 @@ test("saving a legacy desktop project migrates its referenced files and removes 
 	const opened = await projects.load();
 	assert.deepEqual(opened, imported);
 	const saved = await projects.save(parent, { shapes: opened!.shapes, symbols: opened!.symbols });
-	assert.equal(saved.manifest.drawing, "drawing.ecaddraw");
+	assert.equal(saved.manifest.drawing, "Legacy/Legacy.ecaddraw");
 	assert.deepEqual(saved.manifest.symbols, ["symbols/test-point.ecadsym"]);
 	assert.deepEqual(saved.manifest.assets, imported.manifest.assets);
 	assert.deepEqual(await projects.readAsset(parent, saved.manifest.assets[0].path), bytes);
-	assert.deepEqual((await readdir(parent)).sort(), [PROJECT_FILE, "assets", "drawing.ecaddraw", "symbols"]);
+	assert.deepEqual((await readdir(parent)).sort(), [PROJECT_FILE, "Legacy", "assets", "symbols"]);
 	assert.deepEqual(await new DesktopProjects(parent).load(), saved);
 	const again = await projects.save(parent, { shapes: [], symbols: [symbol] });
 	assert.equal(again.manifest.drawing, saved.manifest.drawing);
@@ -179,7 +179,7 @@ test("legacy migration preserves unrelated files and chooses free visible filena
 	const projects = new DesktopProjects(parent);
 	await projects.load();
 	const saved = await projects.save(parent, { shapes: [shape], symbols: [symbol] });
-	assert.equal(saved.manifest.drawing, "drawing-2.ecaddraw");
+	assert.equal(saved.manifest.drawing, "Legacy/Legacy.ecaddraw");
 	assert.deepEqual(saved.manifest.symbols, ["symbols/test-point-2.ecadsym"]);
 	assert.equal(await readFile(join(parent, "drawing.ecaddraw"), "utf8"), "unrelated drawing");
 	assert.equal(await readFile(join(parent, "symbols", "test-point.ecadsym"), "utf8"), "unrelated symbol");
@@ -205,7 +205,7 @@ test("failed legacy migration leaves the old project readable and allows retryin
 	assert.deepEqual(await readdir(join(parent, "symbols")), []);
 	fail = false;
 	const saved = await repository.save({ shapes: [], symbols: [symbol] });
-	assert.equal(saved.manifest.drawing, "drawing.ecaddraw");
+	assert.equal(saved.manifest.drawing, "Legacy/Legacy.ecaddraw");
 	assert.equal((await readdir(parent)).includes(".ecad"), false);
 }));
 
@@ -323,7 +323,7 @@ test("saving an in-memory project preserves drawings, circuits, libraries and bi
 	const created = await projects.createUntitled();
 	const edited = await projects.save(created.directory, {
 		shapes: [shape], symbols: [symbol],
-		drawings: [{ id: "power", name: "Power", shapes: [shape] }],
+		drawings: [{ id: "power", circuitId: "pcb-power", name: "Power", shapes: [shape] }],
 		circuits: [createCircuit("Power supply")],
 		symbolLibraries: [{ id: "project-symbols", name: "Project symbols", enabled: true, source: { kind: "embedded", symbols: [symbol] } }],
 	});

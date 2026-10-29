@@ -20,6 +20,7 @@ export const circuitPinSchema = z.strictObject({
 });
 export const circuitComponentSchema = z.strictObject({
 	id,
+	schematicShapeId: z.number().int().nonnegative().optional(),
 	reference: name,
 	value: z.string().max(200),
 	part: z.strictObject({
@@ -163,7 +164,7 @@ export type CircuitFile = z.infer<typeof circuitFileSchema>;
 
 export function createCircuit(
 	name: string,
-	circuitId = globalThis.crypto.randomUUID(),
+	circuitId: string = globalThis.crypto.randomUUID(),
 ): CircuitFile {
 	return circuitFileSchema.parse({
 		circuit: {

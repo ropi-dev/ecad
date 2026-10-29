@@ -810,7 +810,7 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 	};
 	await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles({ name: "package.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(symbol)) });
 	for (let repeat = 0; repeat < 3; repeat++) {
-		await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();
 		await page.getByRole("button", { name: "Insert Editable package", exact: true }).click();
 		const bounds = (await page.locator("canvas").boundingBox())!;
@@ -856,7 +856,7 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 		}));
 		await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 		timings.push(await interaction(page, "editor.open-schematic", async () => {
-			await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
+			await (await openProjectFiles(page)).getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
 		}));
@@ -900,7 +900,7 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		await expect(sidebar.getByLabel("Search project files")).toHaveValue("sidebar-package");
 		await sidebar.getByRole("button", { name: "Clear file search" }).click();
 		await interaction(page, "sidebar.open-drawing", async () => {
-			await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
+			await sidebar.getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
 			await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
 		});
 		await expect(page.getByRole("tree", { name: "Drawing items" })).toHaveCount(0);
@@ -912,7 +912,7 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		await openProjectFiles(page);
 		await sidebar.getByRole("link", { name: "STEP viewer", exact: true }).click();
 		railNavigationTimes.push(await interaction(page, "sidebar.rail-navigation", async () => {
-			await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
+			await sidebar.getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
 			await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
 		}));
 		await page.mouse.move(900, 400);
@@ -977,10 +977,10 @@ test("project-new-drawing", async ({ page }, testInfo) => {
 	for (let repeat = 0; repeat < 3; repeat++) {
 		const sidebar = await openProjectFiles(page);
 		switchTimes.push(await interaction(page, "drawing.reopen", async () => {
-			await sidebar.getByRole("link", { name: "Open power-stage.ecaddraw", exact: true }).click();
+			await sidebar.getByRole("link", { name: "Open Power stage.ecaddraw", exact: true }).click();
 			await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor · Power stage") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
 		}));
-		await sidebar.getByRole("link", { name: "Open Drawing", exact: true }).click();
+		await sidebar.getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
 		await page.waitForFunction(() => document.querySelector("h1")?.textContent?.startsWith("Schematic editor · A3") && document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')?.disabled === false, undefined, { polling: "raf" });
 	}
 	await finish(page, testInfo, "project-new-drawing", { createMs, interactionP95Ms: percentile(switchTimes) });
@@ -1032,7 +1032,7 @@ test("symbol-references", async ({ page }, testInfo) => {
  };
  await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
  await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles([child, parent].map(file => ({ name: `${file.id}.ecadsym`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(file)) })));
- await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
  await interaction(page, "reference.place", async () => {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
   await page.getByRole("button", { name: "Insert Reference parent", exact: true }).click();
@@ -1477,7 +1477,7 @@ test("kicad-import", async ({ page }, testInfo) => {
     const value = await report(page);
     await finish(page,testInfo,"kicad-import",{importMs:metric(value,"import.kicad")!,interactionP95Ms:elapsed});
     await page.reload();
-    await (await openProjectFiles(page)).getByRole("link", {name:"Open kicad-import.ecaddraw",exact:true}).click();
+    await (await openProjectFiles(page)).getByRole("link", {name:"Open RPI-RP2350A-MINIMAL_R4-S1.ecaddraw",exact:true}).click();
     await expect(page.getByRole("heading", {name:/Schematic editor .* RPI-RP2350A-MINIMAL_R4-S1/})).toBeVisible();
 });
 
@@ -1598,7 +1598,7 @@ async function openCircuitWorkload(page: Page, connected = true) {
  await page.reload(); await ready(page);
  const sidebar = await openProjectFiles(page);
  const openMs = await interaction(page,"circuit-open",async () => {
-  await sidebar.getByRole("link",{name:"Open Circuit workload",exact:true}).click();
+  await sidebar.getByRole("link",{name:"Open Circuit workload.ecadcircuit",exact:true}).click();
   await page.waitForFunction(() => document.querySelector('[aria-label="Circuit connections graph"]') && document.querySelectorAll('.circuit-component').length === 32, undefined, {polling:"raf"});
  });
  return openMs;
@@ -1839,4 +1839,24 @@ test("circuit-keyboard-placement",async({page},testInfo)=>{
  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
  const value=await report(page);
  await finish(page,testInfo,"circuit-keyboard-placement",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+test("pcb-linked-documents", async ({page}, testInfo) => {
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const times:number[]=[];
+ times.push(await interaction(page,"pcb-add-component",async()=>{
+  await page.getByRole("button",{name:"Components",exact:true}).click();
+  await page.getByRole("searchbox",{name:"Search components",exact:true}).fill("Resistor");
+  await page.getByRole("button",{name:"Place Resistor",exact:true}).click();
+  await page.getByLabel("Circuit connections graph",{exact:true}).click({position:{x:350,y:250}});
+  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ }));
+ times.push(await interaction(page,"pcb-open-schematic",async()=>{
+  await (await openProjectFiles(page)).getByRole("link",{name:"Open Circuit workload.ecaddraw",exact:true}).click();
+  await closeProjectFiles(page);
+  await expect(page.getByRole("button",{name:"Symbols",exact:true})).toBeVisible();
+ }));
+ const value=await report(page);
+ await finish(page,testInfo,"pcb-linked-documents",{interactionP95Ms:percentile(times),syncP95Ms:metric(value,"pcb.synchronize")!});
 });

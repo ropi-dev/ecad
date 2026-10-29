@@ -280,6 +280,13 @@ export function ProjectProvider({
 						: symbol;
 				});
 			}
+			const mainShapes = currentStore.current.getSnapshot().shapes;
+			const circuitInputs = new Map(
+				[...circuitDocuments.current.values()].map((entry) => [
+					entry.file.circuit.id,
+					entry.store.getSnapshot().circuit,
+				]),
+			);
 			const drawings = nextDrawings ?? previous.drawings;
 			const drawingEdits = new Map(
 				[...drawingDocuments.current.values()].map((entry) => [
@@ -296,9 +303,9 @@ export function ProjectProvider({
 					? { circuit: snapshot.circuit, graph: snapshot.graph }
 					: file;
 			});
-			const document = {
+			let document = {
 				...(savedCircuits === undefined ? {} : { circuits: savedCircuits }),
-				shapes: currentStore.current.getSnapshot().shapes,
+				shapes: mainShapes,
 				...(drawings === undefined
 					? {}
 					: {
@@ -320,8 +327,187 @@ export function ProjectProvider({
 						: library,
 				),
 			};
+			const [
+				{ pairPcbDocuments, primaryPcbId },
+				{ synchronizePcb },
+				{ symbolDefinitions },
+				{ libraryDefinitions },
+				{ resolveDrawingSymbols },
+				{ symbolReferenceKey },
+			] = await Promise.all([
+				import("#/projects/pcb.ts"),
+				import("#/circuit/linked-schematic.ts"),
+				import("#/drawing/symbols.ts"),
+				import("#/drawing/symbol-file.ts"),
+				import("#/drawing/symbol-persistence.ts"),
+				import("#/drawing/symbol-reference.ts"),
+			]);
+			const paired = pairPcbDocuments(document, previous.manifest.name);
+			const definitions = [
+				...symbolDefinitions,
+				...libraryDefinitions(savedSymbols).map((definition) => ({
+					...definition,
+					library: { scope: "project" as const, id: "project-symbols" },
+				})),
+			];
+			for (const library of document.symbolLibraries) {
+				if (library.enabled && library.source.kind === "embedded")
+					definitions.push(
+						...libraryDefinitions(library.source.symbols).map((definition) => ({
+							...definition,
+							library: { scope: "project" as const, id: library.id },
+						})),
+					);
+			}
+			const { resolveSymbolLibraries } = await import(
+				"#/symbol-library/config.ts"
+			);
+			const userConfig = await symbolStorage.loadConfiguration?.();
+			const resolvedLibraries = await resolveSymbolLibraries(
+				userConfig?.symbolLibraries ?? [],
+				document.symbolLibraries,
+				symbolStorage.loadDirectory
+					? (path, scope) =>
+							symbolStorage.loadDirectory!(path, scope, previous.directory)
+					: undefined,
+			);
+			definitions.push(...resolvedLibraries.definitions);
+			const byReference = new Map(
+				definitions
+					.filter((definition) => definition.library)
+					.map((definition) => [
+						symbolReferenceKey(definition.library!, definition.id),
+						definition,
+					]),
+			);
+			const circuitSources = new Map<string, "circuit" | "schematic">();
+			const externalDrawings = new Set<string>();
+			for (const file of paired.circuits ?? []) {
+				const drawing = paired.drawings?.find(
+					(drawing) => drawing.circuitId === file.circuit.id,
+				);
+				const shapes =
+					file.circuit.id === primaryPcbId ? paired.shapes : drawing?.shapes;
+				if (!shapes) continue;
+				for (const shape of shapes) {
+					if (
+						shape.kind !== "symbol" ||
+						!shape.children.length ||
+						!shape.library ||
+						byReference.has(
+							symbolReferenceKey(shape.library, shape.definitionId),
+						)
+					)
+						continue;
+					byReference.set(
+						symbolReferenceKey(shape.library, shape.definitionId),
+						{
+							id: shape.definitionId,
+							library: shape.library,
+							name: shape.attributes.name,
+							prefix: "U",
+							value: shape.attributes.value,
+							description: "",
+							children: shape.children,
+							texts: shape.texts,
+						},
+					);
+				}
+				const resolved = resolveDrawingSymbols(
+					shapes,
+					definitions,
+					byReference,
+				).shapes;
+				const hydrated = shapes.map((shape, index) =>
+					shape.kind === "symbol" && shape.children.length
+						? shape
+						: resolved[index],
+				);
+				const linked = synchronizePcb(
+					file,
+					hydrated,
+					previous.circuits?.find((old) => old.circuit.id === file.circuit.id),
+					definitions,
+				);
+				circuitSources.set(file.circuit.id, linked.source);
+				if (linked.source === "circuit")
+					externalDrawings.add(drawing?.id ?? primaryPcbId);
+				paired.circuits = paired.circuits!.map((entry) =>
+					entry === file ? linked.file : entry,
+				);
+				if (drawing) drawing.shapes = linked.shapes;
+				else paired.shapes = linked.shapes;
+			}
+			document = {
+				...document,
+				...paired,
+				symbolLibraries: document.symbolLibraries,
+			};
 			const next = await storage.save(previous.directory, document);
-			for (const file of savedCircuits ?? []) {
+			const refreshDrawing = (
+				target: ReturnType<typeof createDrawingStore>,
+				shapes: EditorShape[],
+				external: boolean,
+			) => {
+				if (
+					JSON.stringify(target.getSnapshot().shapes) === JSON.stringify(shapes)
+				)
+					return;
+				target.transact((current) => [
+					undefined,
+					{
+						...current,
+						shapes,
+						history: external
+							? createDrawingStore(shapes).getSnapshot().history
+							: {
+									...current.history,
+									nodes: {
+										...current.history.nodes,
+										[current.history.currentId]: {
+											...current.history.nodes[current.history.currentId],
+											state: { shapes },
+										},
+									},
+								},
+						nextShapeId:
+							shapes.reduce((max, shape) => Math.max(max, shape.id), 0) + 1,
+					},
+				]);
+			};
+			if (currentStore.current.getSnapshot().shapes === mainShapes)
+				refreshDrawing(
+					currentStore.current,
+					document.shapes,
+					externalDrawings.has(primaryPcbId),
+				);
+			for (const drawing of document.drawings ?? []) {
+				const target = drawingDocuments.current.get(drawing.id);
+				if (
+					target &&
+					target.store.getSnapshot().shapes === drawingEdits.get(drawing.id)
+				)
+					refreshDrawing(
+						target.store,
+						drawing.shapes,
+						externalDrawings.has(drawing.id),
+					);
+			}
+			for (const file of document.circuits ?? []) {
+				const target = circuitDocuments.current.get(file.circuit.id);
+				if (
+					target &&
+					target.store.getSnapshot().circuit ===
+						circuitInputs.get(file.circuit.id) &&
+					JSON.stringify(target.store.getSnapshot().circuit) !==
+						JSON.stringify(file.circuit)
+				)
+					target.store.synchronize(file, {
+						preserveHistory: circuitSources.get(file.circuit.id) === "circuit",
+					});
+			}
+
+			for (const file of document.circuits ?? []) {
 				const edit = circuitDocuments.current.get(file.circuit.id);
 				if (edit) edit.savedFile = file;
 			}
@@ -338,7 +524,8 @@ export function ProjectProvider({
 			update(next);
 			if (mounted.current) {
 				needsSave.current =
-					currentStore.current.getSnapshot().shapes !== document.shapes ||
+					JSON.stringify(currentStore.current.getSnapshot().shapes) !==
+						JSON.stringify(document.shapes) ||
 					[...circuitDocuments.current.values()].some((entry) => {
 						const snapshot = entry.store.getSnapshot();
 						return (
@@ -347,16 +534,20 @@ export function ProjectProvider({
 						);
 					}) ||
 					[...symbolDocuments.current.values()].some(
-						(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
+						(entry) =>
+							JSON.stringify(entry.store.getSnapshot().shapes) !==
+							JSON.stringify(entry.savedShapes),
 					) ||
 					[...drawingDocuments.current.values()].some(
-						(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
+						(entry) =>
+							JSON.stringify(entry.store.getSnapshot().shapes) !==
+							JSON.stringify(entry.savedShapes),
 					);
 				setDirty(needsSave.current);
 				setError("");
 			}
 		},
-		[storage, update],
+		[storage, update, symbolStorage],
 	);
 	const autosave = useCallback(async () => {
 		clearTimeout(timer.current);
@@ -378,6 +569,33 @@ export function ProjectProvider({
 			throw cause;
 		}
 	}, [enqueue, persist, transferAssets]);
+	useEffect(() => {
+		if (
+			!project?.circuits?.some((file) => {
+				const shapes =
+					file.circuit.id === "pcb-main"
+						? project.shapes
+						: (project.drawings?.find(
+								(drawing) => drawing.circuitId === file.circuit.id,
+							)?.shapes ?? []);
+				return shapes.some(
+					(shape) =>
+						shape.kind === "text" &&
+						shape.electrical === "net" &&
+						file.circuit.nets.some(
+							(net) =>
+								(!net.names.length && shape.text === `N_${net.id}`) ||
+								(shape.fontSize === 1 &&
+									shape.width === 5 &&
+									shape.height === 2 &&
+									net.names[0] === shape.text),
+						),
+				);
+			})
+		)
+			return;
+		void autosave().catch(() => undefined);
+	}, [project, autosave]);
 	const save = useCallback(async () => {
 		if (!storage.saveProject) {
 			await autosave();
@@ -409,14 +627,28 @@ export function ProjectProvider({
 	}, [storage, autosave, enqueue, persist, transferAssets, update]);
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++editorSelection.current;
+		const before = active.current;
+		const circuitId =
+			before?.circuits?.[
+				before.manifest.circuits?.findIndex(
+					(paths) => paths.circuit === path || paths.graph === path,
+				) ?? -1
+			]?.circuit.id;
+		const openedGeneration = generation.current;
+		if (needsSave.current) await autosave();
+		if (
+			selectionRequest !== editorSelection.current ||
+			openedGeneration !== generation.current
+		)
+			return;
 		const snapshot = active.current;
 		const index =
 			snapshot?.manifest.circuits?.findIndex(
-				(paths) => paths.circuit === path || paths.graph === path,
+				(_paths, index) =>
+					snapshot?.circuits?.[index]?.circuit.id === circuitId,
 			) ?? -1;
 		const file = snapshot?.circuits?.[index];
 		if (!file) throw new Error("Circuit file no longer exists.");
-		const openedGeneration = generation.current;
 		const [{ createCircuitStore }, { createCircuitView }] = await Promise.all([
 			import("@ecad/drawing-core/circuit/store.ts"),
 			import("@ecad/drawing-core/circuit/untangle.ts"),
@@ -466,6 +698,57 @@ export function ProjectProvider({
 		setEditorCircuit(document);
 	};
 	const selectEditorFile = (path?: string) => {
+		const selectedSnapshot = active.current;
+		const selectedDrawing =
+			selectedSnapshot?.drawings?.[
+				selectedSnapshot.manifest.drawings?.indexOf(path ?? "") ?? -1
+			];
+		const selectedCircuit = selectedSnapshot?.circuits?.find(
+			(file) =>
+				file.circuit.id ===
+				(selectedDrawing?.circuitId ??
+					(!path || path === selectedSnapshot.manifest.drawing
+						? "pcb-main"
+						: "")),
+		);
+		if (
+			needsSave.current ||
+			selectedCircuit?.circuit.components.some(
+				(component) => component.schematicShapeId === undefined,
+			)
+		) {
+			const before = active.current;
+			const drawingId =
+				before?.drawings?.[before.manifest.drawings?.indexOf(path ?? "") ?? -1]
+					?.id;
+			const symbolId =
+				before?.symbols[before.manifest.symbols.indexOf(path ?? "")]?.id;
+			const request = ++editorSelection.current;
+			void autosave()
+				.then(() => {
+					if (request !== editorSelection.current) return;
+					const current = active.current;
+					selectEditorFile(
+						drawingId
+							? current?.manifest.drawings?.[
+									current.drawings?.findIndex(
+										(drawing) => drawing.id === drawingId,
+									) ?? -1
+								]
+							: symbolId
+								? current?.manifest.symbols[
+										current.symbols.findIndex(
+											(symbol) => symbol.id === symbolId,
+										)
+									]
+								: path === before?.manifest.drawing
+									? current?.manifest.drawing
+									: path,
+					);
+				})
+				.catch(() => undefined);
+			return;
+		}
 		editorSelection.current++;
 		setEditorCircuit(null);
 		const snapshot = active.current;
@@ -794,7 +1077,10 @@ export function ProjectProvider({
 				const { createCircuit } = await import(
 					"@ecad/drawing-core/circuit/model.ts"
 				);
-				const file = createCircuit(parsed);
+				const { uniquePcbName } = await import("#/projects/pcb.ts");
+				const file = createCircuit(
+					uniquePcbName(parsed, active.current, active.current.manifest.name),
+				);
 				await persist(undefined, undefined, undefined, [
 					...(active.current.circuits ?? []),
 					file,
@@ -835,6 +1121,11 @@ export function ProjectProvider({
 						suffix++
 					)
 						id = `${base}-${suffix}`;
+					const { uniquePcbName } = await import("#/projects/pcb.ts");
+					const current = active.current;
+					if (!current)
+						throw new Error("Open a project before creating a drawing.");
+					name = uniquePcbName(name, current, current.manifest.name);
 					await persist(undefined, undefined, [
 						...drawings,
 						{ id, name, shapes: [] },

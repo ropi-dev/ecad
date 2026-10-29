@@ -1,4 +1,5 @@
 export const budgets = {
+ "pcb-linked-documents": { interactionP95Ms: 3000, syncP95Ms: 150 },
 	"desktop-untitled": { createMs: 1000, saveMemoryMs: 2000, importMemoryMs: 3000, saveToDiskMs: 3000, reopenMs: 2000 },
 	"circuit-keyboard-placement": { interactionP95Ms: 2500, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
 	"circuit-auto-names": { interactionP95Ms: 1000, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },

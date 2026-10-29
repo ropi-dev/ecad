@@ -370,6 +370,7 @@ export function moveSymbolText(
 }
 
 export interface TextShape extends ShapeGeometry, TextAlignment {
+	circuitNet?: { id: string; label: string; pinId?: string };
 	electrical?: "net" | "supply";
 	kind: "text";
 	text: string;
