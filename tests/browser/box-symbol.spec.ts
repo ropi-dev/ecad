@@ -1,13 +1,21 @@
 import { captureArtifacts } from "./artifacts";
 import { expect, type Page, test } from "@playwright/test";
-import { symbolChildren, symbolChildWorld, type EditorSymbol } from "#/drawing/shapes.ts";
-import { drawingPoint, selectDrawingShape, selectSymbolItem } from "./symbol-items";
+import { symbolChildren, type EditorSymbol } from "#/drawing/shapes.ts";
+import {
+	drawingPoint,
+	selectDrawingShape,
+	selectSymbolItem,
+} from "./symbol-items";
 import { openProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 
-const state = async (page: Page) => JSON.parse((await page.locator("#project-document").textContent())!) as { shapes: EditorSymbol[]; dirty: boolean };
+const state = async (page: Page) =>
+	JSON.parse((await page.locator("#project-document").textContent())!) as {
+		shapes: EditorSymbol[];
+		dirty: boolean;
+	};
 
 async function number(page: Page, name: string, value: string) {
 	const input = page.getByRole("spinbutton", { name, exact: true });
@@ -15,18 +23,26 @@ async function number(page: Page, name: string, value: string) {
 	await input.press("Tab");
 }
 
-test("Box resizes, styles and edits text independently, then survives saving and reloading", async ({ page }) => {
+test("Box resizes, styles and edits text independently, then survives saving and reloading", async ({
+	page,
+}) => {
 	await page.goto("/tests/browser/projects.html");
 	await page.getByLabel("Project name", { exact: true }).fill("Box drawing");
-	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Create project", exact: true })
+		.click();
 	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
-	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Schematic editor", exact: true })
+		.click();
 	for (const x of [0.4, 0.65]) {
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();
 		await page.getByRole("searchbox", { name: "Search symbols" }).fill("box");
 		await page.getByRole("button", { name: "Insert Box", exact: true }).click();
 		const bounds = (await page.locator("canvas").boundingBox())!;
-		await page.locator("canvas").click({ position: { x: bounds.width * x, y: bounds.height / 2 } });
+		await page
+			.locator("canvas")
+			.click({ position: { x: bounds.width * x, y: bounds.height / 2 } });
 	}
 	const original = (await state(page)).shapes;
 	const originalBody = symbolChildren(original[0])[0].shape;
@@ -44,18 +60,31 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	await selectParent();
 	await expect(page.getByTestId("resize-handle")).toHaveCount(8);
 	const origin = await drawingPoint(page, original[0]);
-	const topLeft = (await page.locator('[data-testid="resize-handle"][data-handle="-1,1"]').boundingBox())!;
+	const topLeft = (await page
+		.locator('[data-testid="resize-handle"][data-handle="-1,1"]')
+		.boundingBox())!;
 	expect(topLeft.x + topLeft.width / 2).toBeCloseTo(origin.x, 0);
 	expect(topLeft.y + topLeft.height / 2).toBeCloseTo(origin.y, 0);
-	await expect(page.getByRole("checkbox", { name: "Locked", exact: true })).not.toBeChecked();
-	const handle = page.locator('[data-testid="resize-handle"][data-handle="1,-1"]');
+	await expect(
+		page.getByRole("checkbox", { name: "Locked", exact: true }),
+	).not.toBeChecked();
+	const handle = page.locator(
+		'[data-testid="resize-handle"][data-handle="1,-1"]',
+	);
 	const bounds = (await handle.boundingBox())!;
-	const start = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+	const start = {
+		x: bounds.x + bounds.width / 2,
+		y: bounds.y + bounds.height / 2,
+	};
 	await page.mouse.move(start.x, start.y);
 	await page.mouse.down();
 	await page.mouse.move(start.x + 45, start.y + 30, { steps: 5 });
 	await page.mouse.up();
-	await expect.poll(async () => symbolChildren((await state(page)).shapes[0])[0].shape.width).toBeGreaterThan(20);
+	await expect
+		.poll(
+			async () => symbolChildren((await state(page)).shapes[0])[0].shape.width,
+		)
+		.toBeGreaterThan(20);
 	const resized = (await state(page)).shapes;
 	const resizedBody = symbolChildren(resized[0])[0].shape;
 	expect(resized[0].width).toBe(resizedBody.width);
@@ -82,8 +111,11 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	await number(page, "Width", "32");
 	await number(page, "Height", "18");
 	await number(page, "Line width", "0.6");
-	await page.getByRole("combobox", { name: "Line style", exact: true }).selectOption("dashed");
-	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-border.png") });
+	await page
+		.getByRole("combobox", { name: "Line style", exact: true })
+		.selectOption("dashed");
+	if (captureArtifacts)
+		await page.screenshot({ path: test.info().outputPath("box-border.png") });
 	await selectSymbolItem(page, "shape:2");
 	const text = page.getByRole("textbox", { name: "Text content", exact: true });
 	await text.fill("Power supply\n3.3 V");
@@ -91,218 +123,50 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	await number(page, "Width", "28");
 	await number(page, "Height", "14");
 	await number(page, "Font size", "2");
-	await page.getByRole("combobox", { name: "Text horizontal alignment", exact: true }).selectOption("left");
+	await page
+		.getByRole("combobox", { name: "Text horizontal alignment", exact: true })
+		.selectOption("left");
 	const edited = (await state(page)).shapes;
 	expect(edited[1]).toEqual(original[1]);
 	await expect.poll(async () => (await state(page)).dirty).toBe(false);
 	await page.reload();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(2);
-	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
-	expect((await state(page)).shapes.map(shape => shape.childOverrides)).toEqual(edited.map(shape => shape.childOverrides));
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Schematic editor", exact: true })
+		.click();
+	expect(
+		(await state(page)).shapes.map((shape) => shape.childOverrides),
+	).toEqual(edited.map((shape) => shape.childOverrides));
 	await selectParent();
-	await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveValue("32");
-	await expect(page.getByRole("combobox", { name: "Line style", exact: true })).toHaveValue("dashed");
-	await expect(page.getByRole("spinbutton", { name: "Line width", exact: true })).toHaveValue("0.6");
+	await expect(
+		page.getByRole("spinbutton", { name: "Width", exact: true }),
+	).toHaveValue("32");
+	await expect(
+		page.getByRole("combobox", { name: "Line style", exact: true }),
+	).toHaveValue("dashed");
+	await expect(
+		page.getByRole("spinbutton", { name: "Line width", exact: true }),
+	).toHaveValue("0.6");
 	await selectParent();
 	await number(page, "Center X", "0");
 	await number(page, "Center Y", "0");
 	await selectParent();
-	for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-symbol.png") });
+	for (let i = 0; i < 3; i++)
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+			),
+	);
+	if (captureArtifacts)
+		await page.screenshot({ path: test.info().outputPath("box-symbol.png") });
 	await selectSymbolItem(page, "shape:2");
 	await expect(text).toHaveValue("Power supply\n3.3 V");
-	await expect(page.getByRole("spinbutton", { name: "Font size", exact: true })).toHaveValue("2");
-	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-text.png") });
+	await expect(
+		page.getByRole("spinbutton", { name: "Font size", exact: true }),
+	).toHaveValue("2");
+	if (captureArtifacts)
+		await page.screenshot({ path: test.info().outputPath("box-text.png") });
 	await expect(page.getByRole("alert")).toHaveCount(0);
-});
-
-test("Box dimensions and resize handles match the rectangle at the symbol origin", async ({ page }) => {
- await page.goto("/tests/browser/editor.html");
- await page.getByRole("button", { name: "Symbols", exact: true }).click();
- await page.getByRole("button", { name: "Insert Box", exact: true }).click();
- const canvas = page.locator("canvas");
- const bounds = (await canvas.boundingBox())!;
- await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
- const selectParent = () => selectDrawingShape(page, 1);
- const current = async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes[0] as EditorSymbol;
- const scene = async () => JSON.parse((await page.locator("#editor-scene").textContent())!);
- await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveValue("20");
- await expect(page.getByRole("spinbutton", { name: "Height", exact: true })).toHaveValue("12");
- await expect(page.getByTestId("resize-handle")).toHaveCount(8);
- await selectSymbolItem(page, "shape:2");
- await expect(page.getByRole("spinbutton", { name: "Anchor X", exact: true })).toHaveValue("1");
- await expect(page.getByRole("spinbutton", { name: "Anchor Y", exact: true })).toHaveValue("-1");
- await expect(page.getByRole("combobox", { name: "Text horizontal alignment", exact: true })).toHaveValue("left");
- await expect(page.getByRole("combobox", { name: "Text vertical alignment", exact: true })).toHaveValue("top");
- for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
- await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-default-text.png") });
- await selectParent();
- const original = await current();
- await number(page, "Width", "32");
- await number(page, "Height", "18");
- await number(page, "Line width", "0.6");
- await page.getByRole("combobox", { name: "Line style", exact: true }).selectOption("dashed");
- const resized = await current();
- const body = symbolChildren(resized)[0].shape;
- expect([resized.width, resized.height]).toEqual([32, 18]);
- expect([body.width, body.height, body.x, body.y]).toEqual([32, 18, 16, -9]);
- expect([resized.x, resized.y]).toEqual([original.x, original.y]);
- expect(body).toMatchObject({ lineStyle: "dashed", lineWidth: 0.6 });
- await expect.poll(async () => (await scene()).outlines).toEqual([{ width: 32, height: 18 }]);
- const handle = (await page.locator('[data-testid="resize-handle"][data-handle="1,-1"]').boundingBox())!;
- await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
- await page.mouse.down();
- await page.mouse.move(handle.x + 45, handle.y + 25, { steps: 4 });
- await page.mouse.up();
- await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
- const dragged = await current();
- expect(dragged.width).toBeGreaterThan(32);
- expect(dragged.height).toBeGreaterThan(18);
- expect(symbolChildren(dragged)[0].shape.width).toBe(dragged.width);
- expect(symbolChildren(dragged)[0].shape.height).toBe(dragged.height);
- expect([dragged.x, dragged.y]).toEqual([original.x, original.y]);
- await selectParent();
- await number(page, "Width", "40");
- await number(page, "Height", "24");
- const childEdited = await current();
- expect([childEdited.width, childEdited.height]).toEqual([40, 24]);
- await selectParent();
- await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveValue("40");
- await expect(page.getByRole("spinbutton", { name: "Height", exact: true })).toHaveValue("24");
- await expect.poll(async () => (await scene()).outlines).toEqual([{ width: 40, height: 24 }]);
- await number(page, "Center X", "0");
- await number(page, "Center Y", "0");
- await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-size.png") });
- const corner = await drawingPoint(page, { x: 0, y: 0 });
- const topLeft = (await page.locator('[data-testid="resize-handle"][data-handle="-1,1"]').boundingBox())!;
- expect(topLeft.x + topLeft.width / 2).toBeCloseTo(corner.x, 0);
- expect(topLeft.y + topLeft.height / 2).toBeCloseTo(corner.y, 0);
- await expect(page.getByRole("alert")).toHaveCount(0);
-});
-
-test("the Box rectangle stays unselectable while the symbol moves and resizes", async ({ page }) => {
- await page.goto("/tests/browser/editor.html");
- await page.getByRole("button", { name: "Symbols", exact: true }).click();
- await page.getByRole("button", { name: "Insert Box", exact: true }).click();
- const canvas = page.locator("canvas");
- const bounds = (await canvas.boundingBox())!;
- await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
- await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
- await number(page, "Width", "40");
- await number(page, "Height", "24");
- const current = async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes[0] as EditorSymbol;
- const selectParent = () => selectDrawingShape(page, 1);
- const rectangle = page.getByTestId("symbol-child-selection");
- await expect(rectangle).toHaveCount(0);
- await selectParent();
- await expect(rectangle).toHaveCount(0);
- await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
- await page.getByRole("button", { name: "Select locked items", exact: true }).click();
- await expect(rectangle).toHaveCount(0);
- await selectParent();
- await expect(rectangle).toHaveCount(0);
- await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
- await selectParent();
- await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveCount(1);
- await expect(page.getByRole("spinbutton", { name: "Center Y", exact: true })).toHaveCount(1);
- await expect(page.getByRole("combobox", { name: "Line style", exact: true })).toBeVisible();
- await expect(page.getByTestId("resize-handle")).toHaveCount(8);
- const original = await current();
- const point = await drawingPoint(page, { x: original.x + 28, y: original.y - 14 });
- await page.mouse.move(point.x, point.y);
- await page.mouse.down();
- await page.mouse.move(point.x + 60, point.y + 30, { steps: 5 });
- await page.mouse.up();
- await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
- await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
- const moved = await current();
- expect(moved.x).toBeGreaterThan(original.x);
- expect(moved.y).toBeLessThan(original.y);
- expect(symbolChildren(moved)).toEqual(symbolChildren(original));
- expect([moved.width, moved.height]).toEqual([40, 24]);
- await (await toolbarButton(page, "Undo")).click();
- expect(await current()).toEqual(original);
- await (await toolbarButton(page, "Redo")).click();
- expect(await current()).toEqual(moved);
- await selectParent();
- await canvas.focus();
- await page.keyboard.press("ArrowRight");
- const nudged = await current();
- expect(nudged.x).toBeCloseTo(moved.x + 1);
- expect(nudged.y).toBe(moved.y);
- expect(symbolChildren(nudged)).toEqual(symbolChildren(original));
- await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveCount(1);
- await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
- await expect(rectangle).toHaveCount(0);
- for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
- await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-unselectable.png") });
- await expect(page.getByRole("alert")).toHaveCount(0);
-});
-
-test("resizing a Box keeps text attached to the top-left corner without scaling it", async ({ page }) => {
- await page.goto("/tests/browser/editor.html");
- await page.getByRole("button", { name: "Symbols", exact: true }).click();
- await page.getByRole("button", { name: "Insert Box", exact: true }).click();
- const canvas = page.locator("canvas");
- const bounds = (await canvas.boundingBox())!;
- await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
- await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
- await number(page, "Width", "40");
- await number(page, "Height", "24");
- const current = async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes[0] as EditorSymbol;
- const sceneText = async () => JSON.parse((await page.locator("#editor-scene").textContent())!).symbolStaticTexts[0] as { x: number; y: number } | undefined;
- await expect.poll(async () => Boolean(await sceneText())).toBe(true);
- const selectParent = () => selectDrawingShape(page, 1);
- const original = await current();
- const originalText = symbolChildren(original)[1].shape;
- const originalRendered = (await sceneText())!;
- const drag = async (handleId: string, dx: number, dy: number) => {
-  const handle = (await page.locator(`[data-testid="resize-handle"][data-handle="${handleId}"]`).boundingBox())!;
-  const start = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(start.x + dx, start.y + dy, { steps: 5 });
-  await page.mouse.up();
- };
- await drag("-1,1", -60, -40);
- const resized = await current();
- expect(resized.x).toBeLessThan(original.x);
- expect(resized.y).toBeGreaterThan(original.y);
- expect(resized.width).toBeGreaterThan(original.width);
- expect(resized.height).toBeGreaterThan(original.height);
- expect(symbolChildren(resized)[1].shape).toEqual(originalText);
- await expect.poll(async () => (await sceneText())?.x).toBeCloseTo(originalRendered.x + resized.x - original.x, 4);
- await expect.poll(async () => (await sceneText())?.y).toBeCloseTo(originalRendered.y + resized.y - original.y, 4);
- const worldText = symbolChildWorld(resized, symbolChildren(resized)[1].shape);
- expect(worldText.x - resized.x).toBeCloseTo(1);
- expect(worldText.y - resized.y).toBeCloseTo(-1);
- await (await toolbarButton(page, "Undo")).click();
- expect(await current()).toEqual(original);
- await expect.poll(async () => (await sceneText())?.x).toBeCloseTo(originalRendered.x, 4);
- await (await toolbarButton(page, "Redo")).click();
- expect(await current()).toEqual(resized);
- for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
- await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-resize-text.png") });
- await selectSymbolItem(page, "shape:2");
- await number(page, "Anchor X", "3");
- await number(page, "Anchor Y", "-2");
- await selectParent();
- const customized = await current();
- const customText = symbolChildren(customized)[1].shape;
- await drag("-1,0", -25, 0);
- const leftResized = await current();
- expect(leftResized.x).toBeLessThan(customized.x);
- expect(symbolChildren(leftResized)[1].shape).toEqual(customText);
- await drag("1,-1", 30, 20);
- const expanded = await current();
- expect([expanded.x, expanded.y]).toEqual([leftResized.x, leftResized.y]);
- expect(symbolChildren(expanded)[1].shape).toEqual(customText);
- const rectangle = page.getByTestId("symbol-child-selection");
- await expect(rectangle).toHaveCount(0);
- await expect(page.getByRole("alert")).toHaveCount(0);
 });

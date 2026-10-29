@@ -58,7 +58,8 @@ test("3D toolbar projection switching preserves framing and fits on mobile", asy
 		expect(box.x).toBeGreaterThanOrEqual(bounds.x);
 		expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
 	}
-	if (captureArtifacts) await page.screenshot({
-		path: test.info().outputPath("projection-toolbar-mobile.png"),
-	});
+	if (captureArtifacts)
+		await page.screenshot({
+			path: test.info().outputPath("projection-toolbar-mobile.png"),
+		});
 });

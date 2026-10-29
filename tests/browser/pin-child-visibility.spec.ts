@@ -165,9 +165,10 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 		page.getByRole("textbox", { name: "Number", exact: true }),
 	).toHaveValue("24");
 	await expect.poll(labels).toEqual(["name"]);
-	if (captureArtifacts) await stableScreenshot(() =>
-		page.screenshot({
-			path: test.info().outputPath("placed-pin-name-only-reopened.png"),
-		}),
-	);
+	if (captureArtifacts)
+		await stableScreenshot(() =>
+			page.screenshot({
+				path: test.info().outputPath("placed-pin-name-only-reopened.png"),
+			}),
+		);
 });

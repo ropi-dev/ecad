@@ -84,9 +84,7 @@ for (const mode of ["webgpu", "webgl", "canvas"] as const) {
 			});
 			engine.render(canvas, layers, options);
 			if (mode !== "canvas") await ready;
-			async function capture(
-				next: import("#/engine/types.ts").RenderOptions,
-			) {
+			async function capture(next: import("#/engine/types.ts").RenderOptions) {
 				engine.render(canvas, layers, next);
 				const width = canvas.width,
 					height = canvas.height;

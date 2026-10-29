@@ -60,7 +60,7 @@ Keep Zod where the existing framework integration already uses it. Effect Schema
 ```sh
 npm run typecheck
 npm test
-npm run test:browser:full
+npm run test:browser
 npm run build
 ```
 

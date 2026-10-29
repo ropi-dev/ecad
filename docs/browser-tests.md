@@ -1,28 +1,31 @@
 # Browser tests
 
-`npm run test:browser` runs 16 smoke tests for drawing, wires, undo and redo, project persistence, symbol creation and import, search, keyboard navigation, STEP and Gerber viewing, drawing export, and MCP commands. Use this command for routine local checks.
+`npm run test:browser` runs the same 50 scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each. Renderer backend tests run one at a time.
 
-`npm run test:browser:full` runs every browser regression, including renderer backends. CI runs this suite across four shards with two workers per shard. Renderer backend tests run one at a time. A passing smoke run does not replace the full checks before merge.
+| Browser coverage | Scenarios | Detailed lower-level coverage |
+| --- | ---: | --- |
+| Schematic drawing, previews, symbol creation, text, and undo | 6 | `tests/editor-shapes.test.ts`, `tests/editor-commands.test.ts`, `tests/editor-history.test.ts`, `tests/editor-display.test.ts` |
+| Circuit connectivity, pointer and keyboard input, persistence, and navigation races | 5 | `tests/circuit.test.ts`, `tests/circuit-symbol-components.test.ts`, `tests/circuit-net-labels.test.ts` |
+| Project files, independent drawings and symbols, save recovery, search, mobile layout, and menus | 8 | `packages/web/tests/projects.test.ts`, `packages/web/tests/symbol-storage.test.ts`, `packages/desktop/tests/projects.test.ts`, `packages/desktop/tests/storage.test.ts` |
+| Symbols, labels, attributes, locks, rotation, thumbnails, and reusable definitions | 13 | `tests/default-symbols.test.ts`, `tests/symbol-library-editing.test.ts`, `tests/symbol-children.test.ts`, `tests/item-locks.test.ts`, `tests/text-alignment.test.ts`, `tests/symbol-text-positions.test.ts`, `tests/pin-label-visibility.test.ts` |
+| Toolbar keyboard and touch input, and MCP commands | 3 | `tests/navigation.test.ts`, `tests/editor-mcp-connection.test.ts`, `tests/editor-mcp-server.test.ts`, `tests/mcp-drawing-tools.test.ts` |
+| STEP, Gerber and KiCad import, exports, layers, hover, cameras, and gestures | 12 | `tests/import-effect.test.ts`, `tests/drawing-export.test.ts`, `tests/gerber.test.ts`, `tests/step.test.ts`, `tests/kicad-import.test.ts`, `tests/scene-hover.test.ts` |
+| WebGPU, WebGL, and Canvas compositing | 3 | `packages/core/src/engine/engine.test.ts`, `tests/planar-geometry.test.ts`, `tests/scene.test.ts` |
 
-To test a particular feature without the smoke filter:
+The browser suite samples user workflows. Node tests cover geometry, normalization, serialization, validation, and command combinations. Keep each browser scenario focused on one workflow and use representative inputs rather than repeating the same interaction for every model variant.
 
-```sh
-npm run test:browser:full -- tests/browser/item-locks.spec.ts
-npm run test:browser:full -- --grep 'worksheet'
-```
-
-Mark a test with `{ tag: "@smoke" }` only when it covers a core workflow that the smoke suite does not already exercise. New regressions belong in the full suite by default. Keep tests isolated so each can run on its own.
-
-Check geometry, validation, and command combinations in Node tests. Use browser tests for pointer and keyboard interaction, browser storage, downloads, and rendered output. The default-symbol tests validate every catalog definition and placement in Node; the browser suite places a resistor, transformer, and 81-pin microcontroller to exercise the shared picker and renderer.
-
-Keep timing budgets in the local performance suite described in [performance.md](performance.md). Browser test counts and durations help assess test maintenance; they are not application performance measurements.
-
-Screenshots used by pixel assertions always run. Tests capture a screenshot automatically on failure. To also save screenshots for visual review:
+Run a feature or scenario directly:
 
 ```sh
-ECAD_BROWSER_ARTIFACTS=1 npm run test:browser:full -- tests/browser/editor-toolbar.spec.ts
+npm run test:browser -- tests/browser/item-locks.spec.ts
+npm run test:browser -- --grep 'circuit'
+npm test
 ```
 
-Routine runs omit these review images and their attachment uploads. They do not check a reference image and add GPU readbacks and file writes to passing tests.
+Screenshots used by pixel assertions always run. Tests also capture a screenshot automatically on failure. To save review images and attachments:
 
-Local full runs keep one worker because they also include Gerber timing checks. Focused functional tests can use `--fully-parallel --workers=2`. The performance suite keeps its separate single-worker configuration.
+```sh
+ECAD_BROWSER_ARTIFACTS=1 npm run test:browser -- tests/browser/projects-design.spec.ts
+```
+
+Keep workload timing and allocation budgets in the separate local performance suite described in [performance.md](performance.md). `npm run perf` retains its single-worker configuration.
