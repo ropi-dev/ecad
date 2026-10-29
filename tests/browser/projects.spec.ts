@@ -5,29 +5,13 @@ import { expect, test, type Page } from "@playwright/test";
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 async function projectsPage(page: Page) {
-	await expect(page.locator("#project-document")).toBeAttached();
-	if (
-		!(await page
-			.getByRole("heading", { name: "Projects", exact: true })
-			.isVisible())
-	) {
-		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Projects", exact: true })
-			.click();
-	}
-	await expect(
-		page.getByRole("heading", { name: "Projects", exact: true }),
-	).toBeVisible();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	await closeProjectFiles(page);
 }
-async function createProject(page: Page, name: string) {
+async function createProject(page: Page, _name: string) {
 	await projectsPage(page);
-	await page.getByLabel("Project name", { exact: true }).fill(name);
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect.poll(async () => (await documentState(page)).name).toBe(name);
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
 	await openProjectFiles(page);
 }
 async function drawRectangle(page: Page) {
@@ -127,7 +111,8 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	expect((await documentState(page)).dirty).toBe(true);
 	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
 	await projectsPage(page);
-	await page.getByRole("button", { name: "Save project", exact: true }).click();
+	await page.getByRole("button", { name: "Project actions", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).symbols[0].shapes).toHaveLength(2);
 	await page.reload();

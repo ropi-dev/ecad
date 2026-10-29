@@ -14,12 +14,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/projects.html");
-	await page
-		.getByLabel("Project name", { exact: true })
-		.fill("Definition editing");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	const symbol = {
 		format: "ecad-symbol",
 		version: 1,
@@ -88,7 +83,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 	expect(saved.shapes.slice(0, 2)).toMatchObject(symbol.shapes);
 	expect((await documentState(page)).shapes).toEqual(schematic);
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Projects", exact: true })
+		.getByRole("link", { name: "Workspace home", exact: true })
 		.click();
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Open Drawing", exact: true })

@@ -24,12 +24,13 @@ const bufferUpload = {
 	),
 };
 
-// Library management lives on Projects; the editor only selects symbols.
 const test = base.extend<{ libraries: Page }>({
 	libraries: async ({ context }, use) => {
 		const libraries = await context.newPage();
 		await libraries.goto("/tests/browser/projects.html");
-		await libraries.getByText("Symbol libraries", { exact: true }).click();
+		await libraries.getByRole("button", { name: "Project actions", exact: true }).click();
+		await libraries.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
+		await libraries.getByLabel("Library scope").selectOption("user");
 		await expect(libraries.getByLabel("Upload symbol files")).toBeEnabled();
 		await use(libraries);
 		await libraries.close();

@@ -42,7 +42,7 @@ export function WorkspaceStart() {
 			</div>
 			<div className="m-auto max-w-sm px-8 py-44 text-sm leading-8">
 				{project?.busy ? (
-					<p role="status">Opening your workspace...</p>
+					<output>Opening your workspace...</output>
 				) : project?.error ? (
 					<div role="alert">
 						<p>{project.error}</p>

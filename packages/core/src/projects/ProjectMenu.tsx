@@ -107,7 +107,7 @@ export function ProjectMenu() {
 							Manage user and project symbol libraries.
 						</Dialog.Description>
 						{settingsOpen && (
-							<Suspense fallback={<p role="status">Loading libraries...</p>}>
+							<Suspense fallback={<output>Loading libraries...</output>}>
 								<SymbolLibrarySettings />
 							</Suspense>
 						)}

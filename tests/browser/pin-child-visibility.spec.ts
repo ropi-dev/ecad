@@ -13,12 +13,7 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await page
-		.getByLabel("Project name", { exact: true })
-		.fill("Child pin visibility");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
 	const definition = {
 		format: "ecad-symbol",

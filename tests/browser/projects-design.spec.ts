@@ -11,9 +11,9 @@ test("desktop project files fit desktop and mobile layouts and remain usable by 
 	await page.goto("/tests/browser/projects-design.html");
 	await openProjectFiles(page);
 	await expect(
-		page.getByRole("heading", { name: "Motor controller", exact: true }),
+		page.getByRole("link", { name: "Workspace home", exact: true }),
 	).toBeVisible();
-	await expect(page.getByLabel("Open project directory")).toBeVisible();
+	await expect(page.getByRole("button", { name: "Project actions", exact: true })).toBeVisible();
 	await expect(
 		(await openProjectFiles(page)).getByRole("link", {
 			name: "Open enclosure.step",
@@ -48,7 +48,7 @@ test("desktop project files fit desktop and mobile layouts and remain usable by 
 	await closeProjectFiles(page);
 	await page.setViewportSize({ width: 375, height: 812 });
 	await expect(
-		page.getByRole("button", { name: "Save project", exact: true }),
+		page.getByRole("button", { name: "Project actions", exact: true }),
 	).toBeVisible();
 	expect(
 		await page.evaluate(
