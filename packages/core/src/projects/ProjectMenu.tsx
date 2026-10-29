@@ -2,6 +2,7 @@ import { FolderOpen } from "lucide-react";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { lazy, Suspense, useState } from "react";
 import { createPortal } from "react-dom";
+import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 
 const SymbolLibrarySettings = lazy(() =>
@@ -19,10 +20,12 @@ export function ProjectMenu() {
 	const [error, setError] = useState("");
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [saveError, setSaveError] = useState("");
+	const [confirmOpen, setConfirmOpen] = useState(false);
 	if (!project) return null;
 	return (
 		<>
 			{saveError &&
+				!confirmOpen &&
 				createPortal(
 					<div
 						role="alert"
@@ -99,7 +102,10 @@ export function ProjectMenu() {
 						{project.mode === "desktop" ? (
 							<DropdownMenu.Item
 								className={item}
-								onSelect={() => void project.open()}
+								onSelect={() => {
+									if (project.project?.inMemory) setConfirmOpen(true);
+									else void project.open();
+								}}
 							>
 								Open project...
 							</DropdownMenu.Item>
@@ -129,6 +135,34 @@ export function ProjectMenu() {
 					</DropdownMenu.Content>
 				</DropdownMenu.Portal>
 			</DropdownMenu.Root>
+			<OpenProjectDialog
+				open={confirmOpen}
+				busy={project.busy}
+				error={saveError}
+				onCancel={() => {
+					setConfirmOpen(false);
+					setSaveError("");
+				}}
+				onDiscard={() => {
+					setSaveError("");
+					setConfirmOpen(false);
+					void project.open();
+				}}
+				onSave={() => {
+					setSaveError("");
+					void (async () => {
+						if (!(await project.save())) return;
+						setConfirmOpen(false);
+						await project.open();
+					})().catch((cause: unknown) =>
+						setSaveError(
+							cause instanceof Error
+								? cause.message
+								: "Unable to save the project.",
+						),
+					);
+				}}
+			/>
 			<Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
 				<Dialog.Portal>
 					<Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />

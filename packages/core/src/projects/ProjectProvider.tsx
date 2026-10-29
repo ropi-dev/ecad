@@ -74,7 +74,7 @@ interface ProjectContextValue {
 	open(name?: string): Promise<void>;
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
-	save(): Promise<void>;
+	save(): Promise<boolean>;
 	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
 	readAssets(kind: AssetKind): Promise<File[]>;
 }
@@ -379,20 +379,24 @@ export function ProjectProvider({
 		}
 	}, [enqueue, persist, transferAssets]);
 	const save = useCallback(async () => {
-		if (!storage.saveProject) return autosave();
+		if (!storage.saveProject) {
+			await autosave();
+			return true;
+		}
 		clearTimeout(timer.current);
 		setBusy(true);
 		try {
-			await enqueue(async () => {
+			return await enqueue(async () => {
 				await persist();
 				await transferAssets([]);
 				const snapshot = active.current;
-				if (!snapshot) return;
+				if (!snapshot) return false;
 				const saved = await measurePerformanceAsync(
 					"project.save-to-disk",
 					() => storage.saveProject!(snapshot.directory),
 				);
 				if (saved) update(saved);
+				return saved !== null && saved !== undefined;
 			});
 		} catch (cause) {
 			setError(

@@ -28,11 +28,23 @@ let snapshot: ProjectSnapshot = {
 		],
 	},
 };
+declare global {
+	interface Window {
+		projectSwitchTest: { calls: { open: number; save: number }; cancelOpen: boolean; cancelSave: boolean; failSave: boolean };
+	}
+}
+const switching = { calls: { open: 0, save: 0 }, cancelOpen: false, cancelSave: false, failSave: false };
+window.projectSwitchTest = switching;
 const storage: ProjectStorage = {
 	mode: "desktop",
 	load: async () => parameters.has("empty") ? null : snapshot,
 	list: async () => [],
-	open: async () => snapshot,
+	open: async () => {
+		switching.calls.open++;
+		if (switching.cancelOpen) return null;
+		snapshot = { ...snapshot, inMemory: false, directory: "/Existing", manifest: { ...snapshot.manifest, name: "Existing project" } };
+		return snapshot;
+	},
 	create: async (name) => {
 		snapshot = { ...snapshot, inMemory: parameters.has("empty"), directory: `/home/ropi/ElectronicsProjects/${name}`, manifest: { ...snapshot.manifest, name } };
 		return snapshot;
@@ -42,7 +54,13 @@ const storage: ProjectStorage = {
 		snapshot = { ...snapshot, ...document };
 		return snapshot;
 	},
-	saveProject: async () => { snapshot = { ...snapshot, inMemory: false }; return snapshot; },
+	saveProject: async () => {
+		switching.calls.save++;
+		if (switching.failSave) throw new Error("Disk full");
+		if (switching.cancelSave) return null;
+		snapshot = { ...snapshot, inMemory: false };
+		return snapshot;
+	},
 	importAssets: async () => snapshot,
 	readAsset: async () => new Uint8Array(),
 };
