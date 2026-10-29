@@ -1,3 +1,7 @@
+import {
+	parseCircuit,
+	serializeCircuit,
+} from "@ecad/drawing-core/circuit/model.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import {
@@ -88,6 +92,31 @@ export class ProjectRepository {
 								manifest.drawings.map(async (path) =>
 									drawingFileSchema.parse(JSON.parse(await read(path))),
 								),
+							),
+						}),
+				...(manifest.circuits === undefined
+					? {}
+					: {
+							circuits: await Promise.all(
+								manifest.circuits.map(async (paths) => {
+									if (paths.graph && this.options.layout === "files") {
+										try {
+											await read(paths.graph);
+										} catch (cause) {
+											if (!isMissing(cause)) throw cause;
+										}
+									}
+									const circuit = parseCircuit(await read(paths.circuit));
+									return {
+										circuit,
+										graph: {
+											format: "ecad-circuit-graph" as const,
+											version: 1 as const,
+											circuitId: circuit.id,
+											positions: [],
+										},
+									};
+								}),
 							),
 						}),
 				symbols,
@@ -198,8 +227,22 @@ export class ProjectRepository {
 				);
 				drawings.push(path);
 			}
+			const circuits: { circuit: string }[] = [];
+			for (const file of document.circuits ?? []) {
+				const stem = `${revision}/circuits/${encodeURIComponent(file.circuit.id)}`;
+				const paths = {
+					circuit: `${stem}.ecadcircuit`,
+				};
+				projectPathSchema.parse(paths.circuit);
+				await this.directory.write(
+					paths.circuit,
+					encoder.encode(serializeCircuit(file.circuit)),
+				);
+				circuits.push(paths);
+			}
 			const manifest = {
 				...snapshot.manifest,
+				...(document.circuits === undefined ? {} : { circuits }),
 				drawing,
 				symbols,
 				...(document.drawings === undefined ? {} : { drawings }),
@@ -322,8 +365,27 @@ export class ProjectRepository {
 			symbols.push(path);
 			files.set(path, encoder.encode(JSON.stringify(symbol)));
 		}
+		const previousCircuits = new Map(
+			previous?.circuits?.map((file, index) => [
+				file.circuit.id,
+				previous.manifest.circuits?.[index],
+			]),
+		);
+		const circuits: { circuit: string }[] = [];
+		for (const file of snapshot.circuits ?? []) {
+			const existing = previousCircuits.get(file.circuit.id);
+			const stem = `circuits/${encodeURIComponent(file.circuit.id)}`;
+			const circuit =
+				existing && visible(existing.circuit) && !reserved.has(existing.circuit)
+					? existing.circuit
+					: await this.unusedPath(`${stem}.ecadcircuit`, reserved);
+			reserved.add(circuit);
+			files.set(circuit, encoder.encode(serializeCircuit(file.circuit)));
+			circuits.push({ circuit });
+		}
 		const manifest = {
 			...snapshot.manifest,
+			...(snapshot.circuits === undefined ? {} : { circuits }),
 			drawing,
 			symbols,
 			...(snapshot.drawings === undefined ? {} : { drawings }),
@@ -372,6 +434,9 @@ export class ProjectRepository {
 				previous.manifest.drawing,
 				...(previous.manifest.drawings ?? []),
 				...previous.manifest.symbols,
+				...(previous.manifest.circuits ?? []).flatMap((paths) =>
+					paths.graph ? [paths.circuit, paths.graph] : [paths.circuit],
+				),
 			].filter((path) => !reserved.has(path));
 			for (const path of obsolete) {
 				await this.directory.remove(path).catch(() => undefined);
@@ -405,6 +470,9 @@ export class ProjectRepository {
 				current.manifest.drawing,
 				...(current.manifest.drawings ?? []),
 				...current.manifest.symbols,
+				...(current.manifest.circuits ?? []).flatMap((paths) =>
+					paths.graph ? [paths.circuit, paths.graph] : [paths.circuit],
+				),
 				...current.manifest.assets.map((asset) => asset.path),
 			]);
 			try {

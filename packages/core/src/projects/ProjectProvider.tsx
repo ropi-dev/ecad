@@ -1,3 +1,5 @@
+import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import "#/performance/initialize.ts";
 import {
 	type ComponentType,
@@ -53,7 +55,11 @@ interface ProjectContextValue {
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
 	editorDrawing: DrawingDocument | null;
+	editorCircuit: CircuitDocument | null;
 	selectEditorFile(path?: string): void;
+	openCircuit(path: string): Promise<void>;
+	createCircuit(name: string): Promise<string>;
+	importCircuit(file: CircuitFile): Promise<string>;
 	mode: ProjectStorage["mode"];
 	busy: boolean;
 	dirty: boolean;
@@ -71,6 +77,12 @@ interface ProjectContextValue {
 	save(): Promise<void>;
 	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
 	readAssets(kind: AssetKind): Promise<File[]>;
+}
+export interface CircuitDocument {
+	file: CircuitFile;
+	store: CircuitStore;
+	savedFile: CircuitFile;
+	unsubscribe(): void;
 }
 interface SymbolDocument {
 	file: SymbolFile;
@@ -109,6 +121,10 @@ export function ProjectProvider({
 	const active = useRef<ProjectSnapshot | null>(null);
 	const [store, setStore] = useState(() => createDrawingStore());
 	const currentStore = useRef(store);
+	const circuitDocuments = useRef(new Map<string, CircuitDocument>());
+	const [editorCircuit, setEditorCircuit] = useState<CircuitDocument | null>(
+		null,
+	);
 	const symbolDocuments = useRef(new Map<string, SymbolDocument>());
 	const drawingDocuments = useRef(new Map<string, DrawingDocument>());
 	const [editorSymbol, setEditorSymbol] = useState<SymbolDocument | null>(null);
@@ -119,6 +135,7 @@ export function ProjectProvider({
 	const libraries = useRef<readonly ConfiguredSymbolLibrary[]>([]);
 	const [epoch, setEpoch] = useState(0);
 	const generation = useRef(0);
+	const editorSelection = useRef(0);
 	const [busy, setBusy] = useState(true);
 	useEffect(() => {
 		if (!busy) getAppPerformance()?.appReady();
@@ -142,7 +159,12 @@ export function ProjectProvider({
 	}, []);
 	const adopt = useCallback(
 		(snapshot: ProjectSnapshot) => {
+			editorSelection.current++;
 			clearTimeout(timer.current);
+			for (const document of circuitDocuments.current.values())
+				document.unsubscribe();
+			circuitDocuments.current.clear();
+			setEditorCircuit(null);
 			for (const document of symbolDocuments.current.values())
 				document.unsubscribe();
 			symbolDocuments.current.clear();
@@ -192,6 +214,8 @@ export function ProjectProvider({
 			cancelled = true;
 			mounted.current = false;
 			clearTimeout(timer.current);
+			for (const document of circuitDocuments.current.values())
+				document.unsubscribe();
 			for (const document of symbolDocuments.current.values())
 				document.unsubscribe();
 			for (const document of drawingDocuments.current.values())
@@ -226,6 +250,7 @@ export function ProjectProvider({
 			nextSymbols?: SymbolLibrary,
 			nextLibraries?: readonly ConfiguredSymbolLibrary[],
 			nextDrawings?: ProjectDrawing[],
+			nextCircuits?: CircuitFile[],
 		) => {
 			const previous = active.current;
 			if (!previous) return;
@@ -260,7 +285,17 @@ export function ProjectProvider({
 					entry.store.getSnapshot().shapes,
 				]),
 			);
+			const circuits = nextCircuits ?? previous.circuits;
+			const savedCircuits = circuits?.map((file) => {
+				const snapshot = circuitDocuments.current
+					.get(file.circuit.id)
+					?.store.getSnapshot();
+				return snapshot
+					? { circuit: snapshot.circuit, graph: snapshot.graph }
+					: file;
+			});
 			const document = {
+				...(savedCircuits === undefined ? {} : { circuits: savedCircuits }),
 				shapes: currentStore.current.getSnapshot().shapes,
 				...(drawings === undefined
 					? {}
@@ -284,6 +319,10 @@ export function ProjectProvider({
 				),
 			};
 			const next = await storage.save(previous.directory, document);
+			for (const file of savedCircuits ?? []) {
+				const edit = circuitDocuments.current.get(file.circuit.id);
+				if (edit) edit.savedFile = file;
+			}
 			for (const edit of edits) {
 				const shapes = pending.get(edit.file.id);
 				if (shapes) edit.savedShapes = shapes;
@@ -298,6 +337,13 @@ export function ProjectProvider({
 			if (mounted.current) {
 				needsSave.current =
 					currentStore.current.getSnapshot().shapes !== document.shapes ||
+					[...circuitDocuments.current.values()].some((entry) => {
+						const snapshot = entry.store.getSnapshot();
+						return (
+							JSON.stringify(snapshot.circuit) !==
+							JSON.stringify(entry.savedFile.circuit)
+						);
+					}) ||
 					[...symbolDocuments.current.values()].some(
 						(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
 					) ||
@@ -330,7 +376,67 @@ export function ProjectProvider({
 			throw cause;
 		}
 	}, [enqueue, persist, transferAssets]);
+	const openCircuit = async (path: string) => {
+		const selectionRequest = ++editorSelection.current;
+		const snapshot = active.current;
+		const index =
+			snapshot?.manifest.circuits?.findIndex(
+				(paths) => paths.circuit === path || paths.graph === path,
+			) ?? -1;
+		const file = snapshot?.circuits?.[index];
+		if (!file) throw new Error("Circuit file no longer exists.");
+		const openedGeneration = generation.current;
+		const [{ createCircuitStore }, { createCircuitView }] = await Promise.all([
+			import("@ecad/drawing-core/circuit/store.ts"),
+			import("@ecad/drawing-core/circuit/untangle.ts"),
+		]);
+		if (
+			openedGeneration !== generation.current ||
+			selectionRequest !== editorSelection.current ||
+			!mounted.current
+		)
+			return;
+		let document = circuitDocuments.current.get(file.circuit.id);
+		if (!document) {
+			const circuitStore = measurePerformance(
+				"editor.open-circuit",
+				() =>
+					createCircuitStore(
+						file.graph.positions.length
+							? file
+							: createCircuitView(file.circuit),
+					),
+				{ components: file.circuit.components.length },
+			);
+			let lastCircuit = JSON.stringify(circuitStore.getSnapshot().circuit);
+			document = {
+				file,
+				store: circuitStore,
+				savedFile: circuitStore.getSnapshot(),
+				unsubscribe: circuitStore.subscribe(() => {
+					const nextCircuit = JSON.stringify(
+						circuitStore.getSnapshot().circuit,
+					);
+					if (nextCircuit === lastCircuit) return;
+					lastCircuit = nextCircuit;
+					needsSave.current = true;
+					setDirty(true);
+					clearTimeout(timer.current);
+					timer.current = setTimeout(
+						() => void save().catch(() => undefined),
+						400,
+					);
+				}),
+			};
+			circuitDocuments.current.set(file.circuit.id, document);
+		}
+		setEditorSymbol(null);
+		setEditorDrawing(null);
+		setEditorCircuit(document);
+	};
 	const selectEditorFile = (path?: string) => {
+		editorSelection.current++;
+		setEditorCircuit(null);
 		const snapshot = active.current;
 		if (!snapshot || !path || path === snapshot.manifest.drawing) {
 			setEditorSymbol(null);
@@ -428,6 +534,9 @@ export function ProjectProvider({
 					if (needsSave.current) await persist();
 					const document = {
 						shapes: currentStore.current.getSnapshot().shapes,
+						...(active.current?.circuits === undefined
+							? {}
+							: { circuits: active.current.circuits }),
 						...(active.current?.drawings === undefined
 							? {}
 							: { drawings: active.current.drawings }),
@@ -607,16 +716,66 @@ export function ProjectProvider({
 		session: epoch,
 		project,
 		LinkComponent,
-		selectAsset: setSelectedAsset,
+		selectAsset: (asset) => {
+			editorSelection.current++;
+			setSelectedAsset(asset);
+		},
 		store,
 		editorSymbol,
 		editorDrawing,
+		editorCircuit,
+		openCircuit,
 		selectEditorFile,
 		mode: storage.mode,
 		busy,
 		dirty,
 		error,
 		create: (name) => switchProject(name, true),
+		importCircuit: (file) =>
+			enqueue(async () => {
+				if (!active.current || generation.current !== epoch)
+					throw new Error("Open a project before importing a circuit.");
+				if (
+					active.current.circuits?.some(
+						(entry) => entry.circuit.id === file.circuit.id,
+					)
+				)
+					throw new Error(
+						"This circuit is already in the project. Open its existing file instead.",
+					);
+				await persist(undefined, undefined, undefined, [
+					...(active.current.circuits ?? []),
+					file,
+				]);
+				const index =
+					active.current.circuits?.findIndex(
+						(entry) => entry.circuit.id === file.circuit.id,
+					) ?? -1;
+				const path = active.current.manifest.circuits?.[index]?.circuit;
+				if (!path) throw new Error("Unable to open imported circuit.");
+				return path;
+			}),
+		createCircuit: (name) =>
+			enqueue(async () => {
+				if (!active.current || generation.current !== epoch)
+					throw new Error("Open a project before creating a circuit.");
+				const parsed = projectNameSchema.parse(name);
+				const { createCircuit } = await import(
+					"@ecad/drawing-core/circuit/model.ts"
+				);
+				const file = createCircuit(parsed);
+				await persist(undefined, undefined, undefined, [
+					...(active.current.circuits ?? []),
+					file,
+				]);
+				const index =
+					active.current.circuits?.findIndex(
+						(entry) => entry.circuit.id === file.circuit.id,
+					) ?? -1;
+				const path = active.current.manifest.circuits?.[index]?.circuit;
+				if (!path) throw new Error("Unable to open the new circuit file.");
+				return path;
+			}),
 		createDrawing: (name) =>
 			enqueue(async () => {
 				if (!active.current || generation.current !== epoch)

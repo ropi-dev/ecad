@@ -13,13 +13,21 @@ export function SymbolPicker({
 	active,
 	onChoose,
 	library,
+	mode = "symbol",
+	onOpen,
 }: {
 	disabled: boolean;
 	active: boolean;
 	onChoose: (definition: SymbolDefinition) => void;
 	library: ReturnType<typeof useSymbolLibrary>;
+	mode?: "symbol" | "component";
+	onOpen?: () => void;
 }) {
+	const components = mode === "component";
+	const label = components ? "Components" : "Symbols";
+	const searchLabel = components ? "Search components" : "Search symbols";
 	const [open, setOpen] = useState(false);
+	const chosenComponent = useRef(false);
 	const [query, setQuery] = useState("");
 	const searchInput = useRef<HTMLInputElement>(null);
 	const { definitions } = library;
@@ -47,15 +55,18 @@ export function SymbolPicker({
 			open={open}
 			onOpenChange={(nextOpen) => {
 				setOpen(nextOpen);
-				if (nextOpen) setQuery("");
+				if (nextOpen) {
+					setQuery("");
+					onOpen?.();
+				}
 			}}
 		>
 			<Popover.Trigger asChild>
 				<TooltipButton
 					type="button"
 					disabled={disabled}
-					aria-label="Symbols"
-					tooltip="Insert a symbol"
+					aria-label={label}
+					tooltip={components ? "Components" : "Insert a symbol"}
 					aria-pressed={active}
 					className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:text-[#e8b77e]`}
 				>
@@ -65,25 +76,41 @@ export function SymbolPicker({
 			<Popover.Portal>
 				<Popover.Content
 					data-symbol-picker=""
+					onCloseAutoFocus={(event) => {
+						if (chosenComponent.current) {
+							event.preventDefault();
+							chosenComponent.current = false;
+						}
+					}}
 					side="top"
 					sideOffset={8}
 					collisionPadding={12}
-					aria-label="Symbol library"
+					aria-label={components ? "Component library" : "Symbol library"}
 					onOpenAutoFocus={(event) => {
 						event.preventDefault();
 						searchInput.current?.focus();
 					}}
 					className="z-50 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-6rem)] overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-3 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
 				>
-					<h2 className="m-0 text-sm font-semibold">Symbols</h2>
-					<p className="mt-1 mb-3 text-xs text-[#9ba7b8]">
-						Choose a symbol, then click the drawing to place it.
-					</p>
+					<h2
+						className={
+							components
+								? "m-0 mb-3 text-sm font-semibold"
+								: "m-0 text-sm font-semibold"
+						}
+					>
+						{label}
+					</h2>
+					{!components && (
+						<p className="mt-1 mb-3 text-xs text-[#9ba7b8]">
+							Choose a symbol, then click the drawing to place it.
+						</p>
+					)}
 					<input
 						ref={searchInput}
 						type="search"
-						aria-label="Search symbols"
-						placeholder="Search symbols"
+						aria-label={searchLabel}
+						placeholder={searchLabel}
 						autoComplete="off"
 						value={query}
 						onChange={(event) => setQuery(event.currentTarget.value)}
@@ -100,30 +127,55 @@ export function SymbolPicker({
 					{groups.length === 0 && (
 						<output aria-live="polite" className="block text-xs text-[#9ba7b8]">
 							{query.trim()
-								? "No symbols match your search."
-								: "No symbols available. Enable a library on the Projects page."}
+								? components
+									? "No components found."
+									: "No symbols match your search."
+								: components
+									? "No components available."
+									: "No symbols available. Enable a library on the Projects page."}
 						</output>
 					)}
 					<div className="space-y-3">
 						{groups.map(({ category, symbols }) => (
-							<section key={category} aria-label={category}>
+							<section
+								key={category}
+								aria-label={
+									components && category === "Custom symbols"
+										? "Custom components"
+										: category
+								}
+							>
 								<h3 className="sticky top-0 z-10 m-0 mb-1 border-b border-[#414955] bg-[#191c22] py-1 text-xs font-semibold text-[#9ba7b8]">
-									{category}
+									{components && category === "Custom symbols"
+										? "Custom components"
+										: category}
 								</h3>
 								<div className="flex flex-col gap-1">
 									{symbols.map((definition) => (
 										<button
 											key={definition.id}
 											type="button"
-											aria-label={`Insert ${definition.name}`}
-											disabled={definition.children.length === 0}
+											aria-label={`${components ? "Place" : "Insert"} ${definition.name}`}
+											disabled={
+												components
+													? !definition.children.some(
+															(child) => child.kind === "pin",
+														)
+													: definition.children.length === 0
+											}
 											title={
-												definition.children.length === 0
-													? "Add shapes in the symbol editor before placing this symbol."
-													: undefined
+												components &&
+												!definition.children.some(
+													(child) => child.kind === "pin",
+												)
+													? "No pins"
+													: definition.children.length === 0
+														? "Add shapes in the symbol editor before placing this symbol."
+														: undefined
 											}
 											className="flex cursor-pointer items-center gap-3 rounded-md p-2 text-left hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
 											onClick={() => {
+												if (components) chosenComponent.current = true;
 												onChoose(definition);
 												setOpen(false);
 											}}
@@ -133,9 +185,11 @@ export function SymbolPicker({
 												<span className="block break-words text-sm">
 													{definition.name}
 												</span>
-												<span className="block break-words text-xs text-[#9ba7b8]">
-													{definition.description}
-												</span>
+												{!components && (
+													<span className="block break-words text-xs text-[#9ba7b8]">
+														{definition.description}
+													</span>
+												)}
 											</span>
 										</button>
 									))}

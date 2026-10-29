@@ -54,7 +54,14 @@ const importTypes = [
 	["gerber", "Gerber", Layers, undefined],
 	["step", "STEP", Box, ".step,.stp"],
 ] as const;
-const filters = ["All files", "Drawing", "Gerber", "STEP", "Symbol"] as const;
+const filters = [
+	"All files",
+	"Circuit",
+	"Drawing",
+	"Gerber",
+	"STEP",
+	"Symbol",
+] as const;
 const pageSize = 50;
 interface ProjectFile {
 	path: string;
@@ -76,9 +83,9 @@ export function ProjectFilesSidebar() {
 	const [importing, setImporting] = useState(false);
 	const [error, setError] = useState("");
 	const [importReport, setImportReport] = useState("");
-	const [creatingFile, setCreatingFile] = useState<"drawing" | "symbol" | null>(
-		null,
-	);
+	const [creatingFile, setCreatingFile] = useState<
+		"drawing" | "symbol" | "circuit" | null
+	>(null);
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
 	const editorLink = useRef<HTMLAnchorElement>(null);
 	const snapshot = project?.project;
@@ -94,6 +101,12 @@ export function ProjectFilesSidebar() {
 							type: "Drawing",
 							href: "/editor",
 						},
+						...(manifest.circuits ?? []).map((paths, index) => ({
+							path: paths.circuit,
+							name: snapshot?.circuits?.[index]?.circuit.name ?? "Circuit",
+							type: "Circuit",
+							href: "/editor" as const,
+						})),
 						...(manifest.drawings ?? []).map((path) => ({
 							path,
 							name: path.split("/").at(-1) ?? path,
@@ -115,7 +128,7 @@ export function ProjectFilesSidebar() {
 						})),
 					]
 				: [],
-		[manifest],
+		[manifest, snapshot?.circuits],
 	);
 	const filtered = useMemo(() => {
 		const search = query.trim().toLowerCase();
@@ -253,7 +266,7 @@ export function ProjectFilesSidebar() {
 									}}
 									className="pointer-events-auto z-50 min-w-48 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-lg border border-[#414955] bg-[#191c22] p-1 text-[#c7d0dc] shadow-[0_8px_32px_#0008]"
 								>
-									{(["drawing", "symbol"] as const).map((kind) => (
+									{(["drawing", "symbol", "circuit"] as const).map((kind) => (
 										<DropdownMenu.Item
 											key={kind}
 											className={menuItem}
@@ -506,7 +519,9 @@ export function ProjectFilesSidebar() {
 									<tbody>
 										{filtered.slice(first, first + pageSize).map((file) => {
 											const Icon =
-												file.type === "Drawing" || file.type === "Symbol"
+												file.type === "Drawing" ||
+												file.type === "Symbol" ||
+												file.type === "Circuit"
 													? CircuitBoard
 													: file.type === "Gerber"
 														? Layers
@@ -538,8 +553,19 @@ export function ProjectFilesSidebar() {
 																title={`${file.name} · ${file.type}`}
 																className={`flex h-8 min-w-0 items-center ${collapsed ? "justify-center" : "gap-2 pr-3 pl-2"} text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
 																onClick={() => {
-																	if (file.href === "/editor")
-																		project.selectEditorFile(file.path);
+																	if (file.href === "/editor") {
+																		if (file.type === "Circuit")
+																			void project
+																				.openCircuit(file.path)
+																				.catch((cause) =>
+																					setError(
+																						cause instanceof Error
+																							? cause.message
+																							: "Unable to open circuit.",
+																					),
+																				);
+																		else project.selectEditorFile(file.path);
+																	}
 																	if (file.asset)
 																		project.selectAsset(file.asset);
 																}}
@@ -650,10 +676,14 @@ export function ProjectFilesSidebar() {
 							onClose={() => setCreatingFile(null)}
 							onCreate={async (name) => {
 								try {
-									const path = await (creatingFile === "drawing"
-										? project.createDrawing(name)
-										: project.createSymbol(name));
-									project.selectEditorFile(path);
+									const path = await (creatingFile === "circuit"
+										? project.createCircuit(name)
+										: creatingFile === "drawing"
+											? project.createDrawing(name)
+											: project.createSymbol(name));
+									if (creatingFile === "circuit")
+										await project.openCircuit(path);
+									else project.selectEditorFile(path);
 									setCreatingFile(null);
 									editorLink.current?.click();
 								} catch (cause) {
