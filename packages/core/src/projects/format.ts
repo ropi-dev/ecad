@@ -1,3 +1,7 @@
+import {
+	type CircuitFile,
+	circuitFileSchema,
+} from "@ecad/drawing-core/circuit/model.ts";
 import { parse, stringify } from "smol-toml";
 import { z } from "zod";
 import {
@@ -50,6 +54,14 @@ export const manifestSchema = z.strictObject({
 	name: projectNameSchema,
 	drawing: projectPathSchema,
 	drawings: z.array(projectPathSchema).optional(),
+	circuits: z
+		.array(
+			z.strictObject({
+				circuit: projectPathSchema,
+				graph: projectPathSchema.optional(),
+			}),
+		)
+		.optional(),
 	symbols: z.array(projectPathSchema),
 	assets: z.array(assetSchema).default([]),
 });
@@ -71,6 +83,7 @@ export type ProjectDrawing = z.infer<typeof drawingFileSchema>;
 export interface ProjectDocument {
 	shapes: EditorShape[];
 	drawings?: ProjectDrawing[];
+	circuits?: CircuitFile[];
 	symbols: SymbolLibrary;
 	symbolLibraries?: readonly ConfiguredSymbolLibrary[];
 }
@@ -105,6 +118,23 @@ export function validateProjectDocument(
 							"The project contains duplicate drawing IDs.",
 						)
 						.parse(document.drawings),
+				}),
+		...(document.circuits === undefined
+			? {}
+			: {
+					circuits: z
+						.array(circuitFileSchema)
+						.superRefine((files, ctx) => {
+							if (
+								new Set(files.map((file) => file.circuit.id)).size !==
+								files.length
+							)
+								ctx.addIssue({
+									code: "custom",
+									message: "Duplicate circuit identity.",
+								});
+						})
+						.parse(document.circuits),
 				}),
 		symbols: parseSavedSymbolLibrary(JSON.stringify(document.symbols)),
 		...(document.symbolLibraries === undefined

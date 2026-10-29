@@ -20,8 +20,10 @@ import {
 	Unlock,
 } from "lucide-react";
 import {
+	lazy,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
+	Suspense,
 	useCallback,
 	useEffect,
 	useEffectEvent,
@@ -167,8 +169,25 @@ export interface Editor2DProps {
 	enableMcp?: boolean;
 }
 
+const CircuitEditor = lazy(() =>
+	import("#/components/circuit/CircuitEditor.tsx").then((module) => ({
+		default: module.CircuitEditor,
+	})),
+);
+
 export function Editor2D(props: Editor2DProps = {}) {
 	const project = useProject();
+	if (!props.store && project?.editorCircuit)
+		return (
+			<Suspense
+				fallback={<output className="block p-6">Opening circuit...</output>}
+			>
+				<CircuitEditor
+					key={project.editorCircuit.file.circuit.id}
+					document={project.editorCircuit}
+				/>
+			</Suspense>
+		);
 	const symbol = props.store ? null : project?.editorSymbol;
 	const drawing = props.store ? null : project?.editorDrawing;
 	return (

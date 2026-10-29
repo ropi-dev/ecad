@@ -8,6 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 const config = defineConfig({
 	envDir: "../..",
+	server: { allowedHosts: ["server.tail68bf0c.ts.net"] },
 	cacheDir:
 		process.env.ECAD_PERF_MODE === "development"
 			? "../../node_modules/.vite-performance"

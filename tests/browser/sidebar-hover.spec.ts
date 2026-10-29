@@ -76,9 +76,14 @@ test("the add file menu supports keyboard navigation and stays open outside the 
 	await expect(menu.getByRole("menuitem")).toHaveText([
 		"New drawing",
 		"New symbol",
+		"New circuit",
 	]);
 	await expect(menu.getByRole("menuitem", { name: "New drawing", exact: true })).toBeFocused();
 	await page.keyboard.press("ArrowDown");
+	await expect(menu.getByRole("menuitem", { name: "New symbol", exact: true })).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await expect(menu.getByRole("menuitem", { name: "New circuit", exact: true })).toBeFocused();
+	await page.keyboard.press("ArrowUp");
 	await expect(menu.getByRole("menuitem", { name: "New symbol", exact: true })).toBeFocused();
 	await page.mouse.move(350, 150);
 	await expect(menu).toBeVisible();

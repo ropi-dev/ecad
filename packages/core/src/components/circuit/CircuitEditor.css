@@ -1,0 +1,373 @@
+.circuit-editor {
+	position: relative;
+	height: 100dvh;
+	min-height: 360px;
+	overflow: hidden;
+	color: #e8edf5;
+	font:
+		13px system-ui,
+		sans-serif;
+}
+.circuit-workspace,
+.circuit-canvas {
+	position: absolute;
+	inset: 0;
+	min-width: 0;
+	min-height: 0;
+}
+.circuit-canvas {
+	overflow: hidden;
+	background: #19212e radial-gradient(#303a49 1px, transparent 1px);
+	background-size: 20px 20px;
+}
+.circuit-canvas > svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+	touch-action: none;
+}
+.circuit-empty button {
+	border: 1px solid #414955;
+	border-radius: 5px;
+	background: #ffffff08;
+	color: #e8edf5;
+	padding: 7px 10px;
+	cursor: pointer;
+	font: inherit;
+}
+.circuit-empty button:hover {
+	background: #ffffff10;
+}
+.circuit-editor button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.circuit-editor button:focus-visible,
+.circuit-editor input:focus-visible,
+.circuit-editor select:focus-visible {
+	outline: 2px solid #e8b77e;
+	outline-offset: 2px;
+}
+.circuit-canvas.is-panning,
+.circuit-canvas.is-panning button {
+	cursor: grab;
+}
+.circuit-canvas.is-panning:active,
+.circuit-canvas.is-panning button:active {
+	cursor: grabbing;
+}
+.circuit-edge {
+	fill: none;
+	stroke: #64a99e;
+	stroke-width: 2;
+	opacity: 0.7;
+	pointer-events: none;
+}
+.circuit-edge.is-selected {
+	stroke: #e8b77e;
+	stroke-width: 3;
+	opacity: 1;
+}
+.circuit-component-body {
+	fill: #20292f;
+	stroke: #45535d;
+	stroke-width: 1.5;
+}
+.circuit-component.is-selected .circuit-component-body {
+	stroke: #e8b77e;
+	stroke-width: 2;
+}
+.circuit-canvas text {
+	fill: #dce4e8;
+	font:
+		13px system-ui,
+		sans-serif;
+	pointer-events: none;
+}
+.circuit-canvas .circuit-reference {
+	font-size: 18px;
+	font-weight: 650;
+}
+.circuit-canvas .circuit-value {
+	fill: #95a8b5;
+	font-size: 12px;
+}
+.circuit-canvas .circuit-pin-name {
+	fill: #a4b3bd;
+}
+.circuit-collapse-button {
+	cursor: pointer;
+}
+.circuit-collapse-control {
+	fill: transparent;
+}
+.circuit-collapse-button:hover .circuit-collapse-control {
+	fill: #ffffff10;
+}
+.circuit-node-handle,
+.circuit-net {
+	cursor: grab;
+}
+.circuit-node-handle:active,
+.circuit-net:active {
+	cursor: grabbing;
+}
+.circuit-pin {
+	cursor: crosshair;
+	user-select: none;
+}
+.circuit-connection-preview {
+	fill: none;
+	stroke: #e8b77e;
+	stroke-width: 2;
+	stroke-dasharray: 6 4;
+	vector-effect: non-scaling-stroke;
+	pointer-events: none;
+}
+.circuit-pin circle {
+	fill: #20292f;
+	stroke: #99a9b5;
+	stroke-width: 2;
+}
+.circuit-pin circle.connected {
+	fill: #c1d3d9;
+}
+.circuit-pin.is-selected circle,
+.circuit-pin:hover circle {
+	fill: #e8b77e;
+	stroke: #e8b77e;
+	stroke-width: 3;
+}
+.circuit-no-connect {
+	stroke: #daa879;
+	stroke-width: 2;
+}
+.circuit-net circle {
+	fill: #15231f;
+	stroke: #72c9b4;
+	stroke-width: 3;
+}
+.circuit-net text {
+	fill: #8bd6c5;
+	font-size: 12px;
+	font-weight: 600;
+	paint-order: stroke;
+	stroke: #19212e;
+	stroke-width: 5px;
+	stroke-linejoin: round;
+}
+.circuit-net.is-selected circle,
+.circuit-net:hover circle {
+	stroke: #e8b77e;
+	fill: #30432b;
+}
+.circuit-pin.is-target circle {
+	fill: #e8b77e;
+	stroke: #e8b77e;
+	stroke-width: 4;
+}
+.circuit-empty {
+	position: absolute;
+	left: 50%;
+	top: 45%;
+	transform: translate(-50%, -50%);
+	text-align: center;
+	width: min(90%, 400px);
+}
+.circuit-empty button {
+	color: #d2e8b6;
+	border-color: #788d60;
+}
+
+.circuit-status {
+	position: absolute;
+	bottom: 20px;
+	left: 24px;
+	right: 24px;
+	z-index: 1;
+	display: block;
+	pointer-events: none;
+	color: #9ba7b8;
+	font-size: 11px;
+}
+.circuit-connection-status {
+	position: absolute;
+	bottom: 56px;
+	left: 0;
+	color: #c4ccd8;
+}
+.circuit-save-status {
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	color: #b3c69b;
+}
+.circuit-error {
+	position: absolute;
+	top: 40px;
+	left: 40px;
+	z-index: 4;
+	max-width: min(560px, calc(100% - 80px));
+	max-height: 120px;
+	overflow: auto;
+	border: 1px solid #72543a;
+	border-radius: 8px;
+	padding: 10px 12px;
+	background: #392e25f5;
+	color: #edc49a;
+}
+@media (max-width: 600px) {
+	.circuit-status {
+		bottom: 20px;
+		left: 16px;
+		right: 16px;
+		font-size: 10px;
+	}
+	.circuit-status > span {
+		display: none;
+	}
+	.circuit-connection-status {
+		max-width: 80%;
+	}
+	.circuit-save-status {
+		bottom: 56px;
+	}
+	.circuit-empty {
+		top: 40%;
+	}
+}
+.circuit-editor .circuit-node-button,
+.circuit-editor .circuit-node-button:hover {
+	all: unset;
+	display: block;
+	width: 100%;
+	height: 100%;
+	cursor: inherit;
+}
+.circuit-editor .circuit-node-button:focus-visible {
+	outline: 2px solid #e8b77e;
+	outline-offset: -2px;
+}
+
+.circuit-canvas.is-placing,
+.circuit-canvas.is-placing button {
+	cursor: crosshair;
+}
+.circuit-placement-preview {
+	pointer-events: none;
+	opacity: 0.75;
+}
+.circuit-placement-preview rect {
+	fill: #20292f;
+	stroke: #e8b77e;
+	stroke-width: 2;
+	stroke-dasharray: 6 4;
+}
+
+.circuit-edge-hit {
+	fill: none;
+	stroke: transparent;
+	stroke-width: 14;
+	vector-effect: non-scaling-stroke;
+	pointer-events: stroke;
+	cursor: pointer;
+}
+.circuit-connection:has(button:focus-visible) .circuit-edge {
+	stroke: #e8b77e;
+	opacity: 1;
+}
+.circuit-connection .circuit-node-button:focus-visible {
+	outline: none;
+}
+.circuit-net.is-target circle {
+	fill: #30432b;
+	stroke: #e8b77e;
+	stroke-width: 4;
+}
+.circuit-node-handle,
+.circuit-net {
+	user-select: none;
+}
+.circuit-inline-fields {
+	display: grid;
+	gap: 3px;
+	padding: 3px;
+	border: 1px solid #b88f61;
+	border-radius: 5px;
+	background: #19212e;
+}
+.circuit-inline-fields input {
+	min-width: 0;
+	width: 100%;
+	height: 24px;
+	padding: 2px 5px;
+	border: 1px solid #45535d;
+	border-radius: 3px;
+	background: #11171a;
+	color: #e8edf5;
+	font: inherit;
+}
+.circuit-context-menu {
+	position: absolute;
+	z-index: 12;
+	display: grid;
+	width: 180px;
+	padding: 4px;
+	border: 1px solid #45535d;
+	border-radius: 7px;
+	background: #19212e;
+	box-shadow: 0 8px 24px #0006;
+}
+.circuit-context-menu button {
+	padding: 7px 10px;
+	border: 0;
+	border-radius: 3px;
+	background: transparent;
+	color: inherit;
+	text-align: left;
+	font: inherit;
+	cursor: pointer;
+}
+.circuit-context-menu button:hover,
+.circuit-context-menu button:focus-visible {
+	background: #ffffff10;
+}
+
+.circuit-collapsed-anchor {
+	fill: #c1d3d9;
+	stroke: #99a9b5;
+	stroke-width: 2;
+	pointer-events: none;
+}
+.circuit-connection,
+.circuit-connection svg {
+	overflow: visible;
+}
+.circuit-canvas.is-collapsing .circuit-component-body {
+	transition: height 180ms ease-in-out;
+}
+.circuit-canvas.is-collapsing .circuit-collapse-footer {
+	transition: transform 180ms ease-in-out;
+}
+.circuit-canvas.is-collapsing .circuit-edge,
+.circuit-canvas.is-collapsing .circuit-edge-hit {
+	transition: d 180ms ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	.circuit-canvas.is-collapsing .circuit-component-body,
+	.circuit-canvas.is-collapsing .circuit-collapse-footer,
+	.circuit-canvas.is-collapsing .circuit-edge,
+	.circuit-canvas.is-collapsing .circuit-edge-hit {
+		transition: none;
+	}
+}
+
+.circuit-inline-fields .circuit-add-alias {
+	height: 24px;
+	border: 1px solid #45535d;
+	border-radius: 3px;
+	background: #20292f;
+	color: #dce4e8;
+	font: inherit;
+	cursor: pointer;
+}

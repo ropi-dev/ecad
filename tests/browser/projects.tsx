@@ -21,6 +21,16 @@ Scene.prototype.onAfterRender = function () {
 		this.getObjectByName("Worksheet frame")?.parent?.name ?? "none";
 };
 
+function CircuitDocumentState() {
+ const project = useProject();
+ const store = project?.editorCircuit?.store;
+ if (!store) return null;
+ return <CircuitSnapshot store={store} />;
+}
+function CircuitSnapshot({store}: {store: import("@ecad/drawing-core/circuit/store.ts").CircuitStore}) {
+ const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+ return <output id="circuit-document" hidden>{JSON.stringify({circuit: snapshot.circuit, graph: snapshot.graph})}</output>;
+}
 function ProjectDocument() {
 	const project = useProject();
 	if (!project) throw new Error("Project provider is missing.");
@@ -79,6 +89,7 @@ function App() {
 	return (
 		<ProjectProvider storage={storage} symbolStorage={symbolStorage}>
 			<ProjectDocument />
+			<CircuitDocumentState />
 			<ProjectShell>
 				{workspace === "/projects" ? (
 					<ProjectPage />

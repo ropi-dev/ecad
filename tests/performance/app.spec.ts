@@ -1,5 +1,8 @@
+import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { createCircuitComponent, instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
+import { arrangeCircuitGraph } from "@ecad/drawing-core/circuit/graph.ts";
 import { readFile } from "node:fs/promises";
-import { openProjectFiles } from "../browser/project-files";
+import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
@@ -1574,4 +1577,271 @@ test("schematic-export", async ({ page }, testInfo) => {
 		exportSvgMs: metric(value, "drawing.export-svg")!,
 		exportPngMs: metric(value, "drawing.export")!,
 	});
+});
+
+
+async function openCircuitWorkload(page: Page, connected = true) {
+ const file = createCircuit("Circuit workload");
+ for (let index = 0; index < 32; index++) file.circuit.components.push(createCircuitComponent("resistor", file.circuit.components));
+ file.circuit.nets.push({id:"ground", names:["GND"], pinIds: file.circuit.components.map(component => component.pins[0].id)});
+ for (let index = 0; index < 32; index += 2) file.circuit.nets.push({id:`signal-${index}`, names:[`SIGNAL_${index}`], pinIds:[file.circuit.components[index].pins[1].id, file.circuit.components[index+1].pins[1].id]});
+ if (!connected) file.circuit.nets = [];
+ file.graph.positions = arrangeCircuitGraph(file);
+ await page.goto("/projects?perf=1");
+ await ready(page);
+ await page.evaluate(async (file) => {
+  const root = await navigator.storage.getDirectory();
+  const directory = await root.getDirectoryHandle("Circuit performance", {create:true});
+  const write = async (path: string, value: unknown) => { const writable = await (await directory.getFileHandle(path,{create:true})).createWritable(); await writable.write(JSON.stringify(value)); await writable.close(); };
+  await write("drawing.ecaddraw",{shapes:[]});
+  await write("circuit.ecadcircuit",file.circuit);
+  await write("layout.ecadgraph",file.graph);
+  const writable = await (await directory.getFileHandle(".ecadprj", {create:true})).createWritable();
+  await writable.write('format = "ecad-project"\nversion = 1\nname = "Circuit performance"\ndrawing = "drawing.ecaddraw"\nsymbols = []\nassets = []\n[[circuits]]\ncircuit = "circuit.ecadcircuit"\ngraph = "layout.ecadgraph"\n'); await writable.close();
+  localStorage.setItem("ecad.active-project","Circuit performance");
+ }, file);
+ await page.reload(); await ready(page);
+ const sidebar = await openProjectFiles(page);
+ const openMs = await interaction(page,"circuit-open",async () => {
+  await sidebar.getByRole("link",{name:"Open Circuit workload",exact:true}).click();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Circuit connections graph"]') && document.querySelectorAll('.circuit-component').length === 32, undefined, {polling:"raf"});
+ });
+ return openMs;
+}
+
+test("circuit-graph", async ({ page }, testInfo) => {
+ const openMs = await openCircuitWorkload(page);
+ const times: number[] = [];
+ const component = page.getByRole("button",{name:"Select component R1",exact:true});
+ for (let index=0;index<3;index++) {
+  const before = await component.locator("xpath=../..").getAttribute("transform");
+  times.push(await interaction(page,"circuit-move",async () => {
+   await component.focus(); await component.press("ArrowRight");
+   await expect(component.locator("xpath=../..")).not.toHaveAttribute("transform",before!);
+  }));
+ }
+ await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ const value = await report(page);
+ await finish(page,testInfo,"circuit-graph",{openMs, interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+test("circuit-untangle", async ({page},testInfo)=>{
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const times:number[]=[];
+ for(let index=0;index<3;index++) {
+  const headers=await page.locator(".circuit-node-handle button").evaluateAll(elements=>elements.map(element=>{const box=element.getBoundingClientRect();return {label:element.getAttribute("aria-label")!,x:box.x,y:box.y,width:box.width,height:box.height};}).sort((a,b)=>a.y-b.y||a.x-b.x));
+  const [source,target]=headers;
+  await page.mouse.move(source.x+source.width/2,source.y+source.height/4);await page.mouse.down();
+  await page.mouse.move(target.x+source.width/2,target.y+source.height/4,{steps:6});await page.mouse.up();
+  times.push(await interaction(page,"circuit.untangle-ui",async()=>{
+   await page.getByRole("button",{name:"Untangle",exact:true}).click();
+   await page.waitForFunction(()=>{
+    const boxes=Array.from(document.querySelectorAll(".circuit-component-body"),element=>element.getBoundingClientRect());
+    return boxes.every((box,a)=>boxes.every((other,b)=>a===b||!(box.x<other.right&&box.right>other.x&&box.y<other.bottom&&box.bottom>other.y)));
+   },undefined,{polling:"raf"});
+  }));
+ }
+ await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ const value=await report(page);
+ await finish(page,testInfo,"circuit-untangle",{interactionP95Ms:percentile(times),untangleP95Ms:metric(value,"circuit.untangle")!,graphP95Ms:metric(value,"circuit.graph")!});
+});
+
+test("circuit-grid-snap", async ({ page }, testInfo) => {
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const header = page.getByRole("button",{name:"Select component R1",exact:true});
+ const node = header.locator("xpath=../..");
+ const times: number[] = [];
+ for (let index = 0; index < 3; index++) {
+  const box = await header.boundingBox();
+  if (!box) throw new Error("Missing component header.");
+  const original = await node.getAttribute("transform");
+  times.push(await interaction(page,"circuit.snap-drag",async () => {
+   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 4);
+   await page.mouse.down();
+   await page.mouse.move(box.x + box.width / 2 + 37, box.y + box.height / 4 + 23, {steps:6});
+   await page.mouse.up();
+   await expect(node).not.toHaveAttribute("transform",original!);
+  }));
+  await page.keyboard.press("Control+z");
+  await expect(node).toHaveAttribute("transform",original!);
+ }
+ await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ const value = await report(page);
+ await finish(page,testInfo,"circuit-grid-snap",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+test("circuit-connect", async ({ page }, testInfo) => {
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const times: number[] = [];
+ for (let index = 0; index < 3; index++) {
+  const source = await page.getByRole("button", {name:"Pin R1.2",exact:true}).locator("circle").boundingBox();
+  const target = await page.getByRole("button", {name:"Pin R2.1",exact:true}).locator("circle").boundingBox();
+  if (!source || !target) throw new Error("Missing connection terminals.");
+  times.push(await interaction(page,"circuit.connect-drag",async () => {
+   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+   await page.mouse.down();
+   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, {steps:6});
+   await expect(page.locator("[data-connection-preview]")).toBeVisible();
+   await page.mouse.up();
+   await page.waitForFunction(() => document.querySelectorAll(".circuit-net").length === 16 && !document.querySelector("[data-connection-preview]"), undefined, {polling:"raf"});
+  }));
+  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".circuit-net")).toHaveCount(17);
+ }
+ const value = await report(page);
+ await finish(page,testInfo,"circuit-connect",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+test("circuit-net-editing", async ({ page }, testInfo) => {
+ await openCircuitWorkload(page, false);
+ await closeProjectFiles(page);
+ const canvas = page.getByLabel("Circuit connections graph", {exact:true});
+ const times: number[] = [];
+ times.push(await interaction(page,"circuit.add-net",async () => {
+  await page.getByRole("button", {name:"Add net",exact:true}).click();
+  await canvas.click({position:{x:200,y:350}});
+  await page.getByRole("textbox", {name:"Net name",exact:true}).fill("GND");
+  await page.getByRole("textbox", {name:"Net name",exact:true}).press("Enter");
+  await expect(page.getByRole("button", {name:"Net GND",exact:true})).toBeVisible();
+ }));
+ for (let index = 0; index < 3; index++) {
+  const source = await page.getByRole("button", {name:`Pin R${index + 1}.1`,exact:true}).locator("circle").boundingBox();
+  const target = await page.getByRole("button", {name:"Net GND",exact:true}).locator("circle").boundingBox();
+  if (!source || !target) throw new Error("Missing ground connection targets.");
+  times.push(await interaction(page,"circuit.connect-to-net",async () => {
+   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+   await page.mouse.down();
+   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, {steps:6});
+   await page.mouse.up();
+   await expect(page.locator(".circuit-connection")).toHaveCount(index + 1);
+  }));
+ }
+ for (let index = 0; index < 3; index++) {
+  times.push(await interaction(page,"circuit.delete-membership",async () => {
+   await page.getByRole("button", {name:`Connection R${index + 1}.1`,exact:true}).press("Enter");
+   await page.keyboard.press("Delete");
+   await expect(page.locator(".circuit-connection")).toHaveCount(2 - index);
+  }));
+ }
+ await expect(page.getByRole("button", {name:"Net GND",exact:true})).toBeVisible();
+ await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ const value = await report(page);
+ await finish(page,testInfo,"circuit-net-editing",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+
+async function openComponentWorkload(page: Page, file = createCircuit("Component workload")) {
+ await page.goto("/projects?perf=1");await ready(page);
+ await page.evaluate(async file => {
+  const root = await navigator.storage.getDirectory();
+  const directory = await root.getDirectoryHandle("Component fixture",{create:true});
+  const write = async (path:string,content:string) => {const writer = await (await directory.getFileHandle(path,{create:true})).createWritable();await writer.write(content);await writer.close();};
+  const symbols = Array.from({length:100},(_,index) => ({format:"ecad-symbol",version:1,units:"mm",id:index===0?"device-128":`device-${index}`,name:index===0?"128-pin device":`Device ${index}`,description:"",prefix:"U",value:"",shapes:Array.from({length:index===0?128:2},(_,pin)=>({kind:"pin",number:String(pin+1),name:`P${pin+1}`,x:0,y:pin*1.27,length:2}))}));
+  await write(".ecadprj",'format = "ecad-project"\nversion = 1\nname = "Component fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\nassets = []\n[[circuits]]\ncircuit = "circuit.ecadcircuit"\ngraph = "layout.ecadgraph"\n');
+  await write("drawing.ecaddraw",JSON.stringify({shapes:[],symbolLibraries:[{id:"components",name:"Components",enabled:true,source:{kind:"embedded",symbols}}]}));
+  await write("circuit.ecadcircuit",JSON.stringify(file.circuit));await write("layout.ecadgraph",JSON.stringify(file.graph));
+  localStorage.setItem("ecad.active-project","Component fixture");
+ },file);
+ await page.reload();await ready(page);
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open Component workload",exact:true}).click();
+ await expect(page.getByRole("button",{name:"Components",exact:true})).toBeEnabled();
+}
+
+test("circuit-components", async ({page}, testInfo) => {
+ await openComponentWorkload(page);
+ const times:number[]=[];
+ for (const [index,name] of ["Resistor","Resistor","128-pin device"].entries()) {
+  times.push(await interaction(page,"circuit.place-symbol",async()=>{
+   await page.getByRole("button",{name:"Components",exact:true}).click();
+   await page.getByRole("searchbox",{name:"Search components",exact:true}).fill(name);
+   await expect(page.getByRole("button",{name:`Place ${name}`,exact:true}).locator("svg").first()).toBeVisible();
+   await page.getByRole("button",{name:`Place ${name}`,exact:true}).click();
+   await page.getByLabel("Circuit connections graph",{exact:true}).click({position:{x:250+index*150,y:300}});
+   await page.waitForFunction(count=>document.querySelectorAll('.circuit-component').length===count && document.querySelector('[aria-label="Circuit save status"]')?.textContent==="Saved",index+1,{polling:"raf"});
+  }));
+ }
+ await page.getByRole("button",{name:"Fit graph",exact:true}).click();
+ const value=await report(page);
+ await finish(page,testInfo,"circuit-components",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,componentP95Ms:metric(value,"circuit.component-from-symbol")!,thumbnailP95Ms:metric(value,"symbol.thumbnail")!,libraryResolveMs:metric(value,"symbol-library.resolve")!});
+});
+
+test("circuit-collapse", async ({page}, testInfo) => {
+ const file = createCircuit("Component workload");
+ const device = instantiateCircuitPart({id:"device",name:"128-pin device",prefix:"U",value:"",pins:Array.from({length:128},(_,index)=>({number:String(index+1),name:`P${index+1}`}))},[]);
+ file.circuit.components.push(device);
+ for (let index=0;index<2;index++) file.circuit.components.push(createCircuitComponent("resistor",file.circuit.components));
+ file.circuit.nets.push({id:"signal-a",names:["SIGNAL_A"],pinIds:[device.pins[0].id,file.circuit.components[1].pins[0].id]},{id:"signal-b",names:["SIGNAL_B"],pinIds:[device.pins[99].id,file.circuit.components[2].pins[0].id]});
+ file.graph.positions = [{id:device.id,kind:"component",x:60,y:60},{id:file.circuit.components[1].id,kind:"component",x:500,y:60},{id:file.circuit.components[2].id,kind:"component",x:500,y:260},{id:"signal-a",kind:"net",x:360,y:140},{id:"signal-b",kind:"net",x:360,y:340}];
+ await openComponentWorkload(page,file);
+ await closeProjectFiles(page);
+ const times:number[]=[];
+ for (let index=0;index<3;index++) {
+  times.push(await interaction(page,"circuit.collapse",async()=>{
+   await page.getByRole("button",{name:"Collapse U1",exact:true}).click();
+   await page.waitForFunction(()=>document.querySelectorAll(".circuit-pin").length===4 && document.querySelectorAll(".circuit-collapsed-anchor").length>0,undefined,{polling:"raf"});
+  }));
+  times.push(await interaction(page,"circuit.expand",async()=>{
+   await page.getByRole("button",{name:"Expand U1",exact:true}).click();
+   await page.waitForFunction(()=>document.querySelectorAll(".circuit-pin").length===132,undefined,{polling:"raf"});
+  }));
+ }
+ await expect(page.locator(".circuit-connection")).toHaveCount(4);
+ await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ const value=await report(page);
+ await finish(page,testInfo,"circuit-collapse",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+test("circuit-auto-names", async ({page},testInfo)=>{
+ await openCircuitWorkload(page,false);
+ await closeProjectFiles(page);
+ const times:number[]=[];
+ for(let index=1;index<=5;index+=2) {
+  const label=`R${index}.1 / R${index+1}.1`;
+  const from=await page.getByRole("button",{name:`Pin R${index}.1`,exact:true}).locator("circle").boundingBox();
+  const to=await page.getByRole("button",{name:`Pin R${index+1}.1`,exact:true}).locator("circle").boundingBox();
+  if(!from||!to) throw new Error("Missing terminals.");
+  times.push(await interaction(page,"circuit.auto-name",async()=>{
+   await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();
+   await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:6});await page.mouse.up();
+   await expect(page.getByRole("button",{name:`Net ${label}`,exact:true})).toBeVisible();
+  }));
+  await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".circuit-net")).toHaveCount(0);
+ }
+ const value=await report(page);
+ await finish(page,testInfo,"circuit-auto-names",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
+});
+
+test("circuit-keyboard-placement",async({page},testInfo)=>{
+ await openCircuitWorkload(page,false);
+ await closeProjectFiles(page);
+ const canvas=page.getByLabel("Circuit connections graph",{exact:true});
+ const times:number[]=[];
+ for(let index=1;index<=3;index++) {
+  times.push(await interaction(page,"circuit.keyboard-placement",async()=>{
+   await page.getByRole("button",{name:"Components",exact:true}).press("Enter");
+   await page.getByRole("searchbox",{name:"Search components",exact:true}).fill("Resistor");
+   await page.keyboard.press("Tab");
+   await page.getByRole("button",{name:"Place Resistor",exact:true}).press("Enter");
+   await expect(canvas).toBeFocused();
+   await page.keyboard.press("ArrowRight");await page.keyboard.press("Enter");
+   await expect(page.locator(".circuit-component")).toHaveCount(32+index);
+   await page.getByRole("button",{name:"Add net",exact:true}).press("Enter");
+   await expect(canvas).toBeFocused();
+   await page.keyboard.press("Shift+ArrowLeft");await page.keyboard.press("Enter");
+   await expect(page.getByRole("textbox",{name:"Net name",exact:true})).toBeFocused();
+   await page.keyboard.press("Escape");
+   await expect(page.locator(".circuit-net")).toHaveCount(1);
+   await page.keyboard.press("Control+z");
+   await expect(page.locator(".circuit-net")).toHaveCount(0);
+  }));
+ }
+ await expect(page.getByLabel("Circuit save status")).toHaveText("Saved");
+ const value=await report(page);
+ await finish(page,testInfo,"circuit-keyboard-placement",{interactionP95Ms:percentile(times),graphP95Ms:metric(value,"circuit.graph")!,editP95Ms:metric(value,"circuit.edit")!});
 });

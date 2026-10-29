@@ -9,7 +9,7 @@ export function CreateFileDialog({
 		? "Name this symbol to add it to your Symbols list."
 		: "Name this drawing to add it to your project.",
 }: {
-	kind: "drawing" | "symbol";
+	kind: "drawing" | "symbol" | "circuit";
 	onClose: () => void;
 	onCreate: (name: string) => Promise<string | undefined>;
 	description?: string;
@@ -47,7 +47,12 @@ export function CreateFileDialog({
 						}}
 					>
 						<label htmlFor={inputId} className="mt-4 block text-sm">
-							{kind === "drawing" ? "Drawing" : "Symbol"} name
+							{kind === "drawing"
+								? "Drawing"
+								: kind === "circuit"
+									? "Circuit"
+									: "Symbol"}{" "}
+							name
 						</label>
 						<input
 							id={inputId}

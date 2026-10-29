@@ -1,4 +1,13 @@
 export const budgets = {
+	"circuit-keyboard-placement": { interactionP95Ms: 2500, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
+	"circuit-auto-names": { interactionP95Ms: 1000, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
+	"circuit-untangle": { interactionP95Ms: 1000, untangleP95Ms: 250, graphP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
+	"circuit-collapse": { interactionP95Ms: 750, graphP95Ms: 100, editP95Ms: 100, domNodes: 2500, scriptBytes: 3_000_000 },
+	"circuit-grid-snap": { interactionP95Ms: 1000, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
+	"circuit-net-editing": { interactionP95Ms: 1000, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
+	"circuit-connect": { interactionP95Ms: 750, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
+	"circuit-components": { interactionP95Ms: 2500, graphP95Ms: 100, componentP95Ms: 100, thumbnailP95Ms: 100, libraryResolveMs: 1200, domNodes: 2500, scriptBytes: 3_000_000 },
+	"circuit-graph": { openMs: 1500, interactionP95Ms: 750, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },
  "kicad-import": { importMs: 1500, interactionP95Ms: 5000, domNodes: 2000, scriptBytes: 3_000_000, frameP95Ms: 500 },
 
 	"named-net-connectivity": { connectivityP95Ms: 150 },
