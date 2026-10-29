@@ -8,6 +8,7 @@ import {
 	lineStyleLabels,
 	lineStyles,
 } from "#/drawing/line-style.ts";
+import { isNetLabel } from "#/drawing/named-nets.ts";
 import {
 	boxBorder,
 	type EditorShape,
@@ -342,7 +343,9 @@ function SelectionAttributesPanel({
 									editable("Length", "width", single.width),
 									editable("Angle", "angle", (single.rotation * 180) / Math.PI),
 								]
-							: [
+							: isNetLabel(single)
+								? []
+								: [
 									editable("Width", "width", single.width),
 									editable("Height", "height", single.height),
 								]),
@@ -578,7 +581,9 @@ function SelectionAttributesPanel({
 							? "Drag to move this item. Size and appearance edits apply to this instance."
 							: single?.kind === "pin"
 								? "Drag the pin or lead to move it."
-								: "Drag to move; drag handles to resize."}{" "}
+								: single && isNetLabel(single)
+									? "Drag to move the label."
+									: "Drag to move; drag handles to resize."}{" "}
 					Arrow keys move {snapStep || 1} mm; Shift + arrows move{" "}
 					{(snapStep || 1) * 10} mm when the drawing is focused.
 				</p>

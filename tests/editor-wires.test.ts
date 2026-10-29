@@ -255,3 +255,22 @@ test("wire snapping projects onto horizontal and reversed vertical interiors", (
 	assert.equal(findWireConnection([wire(1, 0, 0, 100, 0)], { x: 50, y: 0 }, 2, { x: 50, y: 0 }), undefined);
 	assert.deepEqual(findWireConnection([wire(1, 0, 0, 100, 0), pin(2, 50, 1)], { x: 50, y: 0.1 }, 2), { x: 50, y: 1 });
 });
+
+for (const electrical of ["net", "supply"] as const) {
+ test(`moving a ${electrical} label preserves pin and wire connections`, () => {
+  const label = { ...drawShape(1, "rectangle", { x: 20, y: 20 }, { x: 20, y: 20 }), kind: "text" as const, text: "VDD", fontSize: 1.3, electrical };
+  for (const neighbor of [pin(2, 20, 20), wire(2, 0, 20, 40, 20)]) {
+   const shapes = [label, neighbor];
+   const moved = moveShapes([label], { x: 10, y: 15 }, 0, label, shapes);
+   assert.equal(moved[0].x, 30);
+   assert.equal(moved[0].y, 35);
+   assert.deepEqual(endpoints(moved[1])[0], [20, 20]);
+   assert.deepEqual(endpoints(moved.at(-1)!)[1], [30, 35]);
+   const movedPin = moveShapes([neighbor], { x: 10, y: 15 }, 0, neighbor, shapes);
+   if (neighbor.kind === "pin") assert.equal(movedPin.length, 3);
+  }
+  assert.equal(moveShapes([label], { x: 10, y: 15 }).length, 1);
+  assert.equal(moveShapes([label, pin(2, 20, 20)], { x: 10, y: 15 }).length, 2);
+  assert.equal(moveShapes([{ ...label, electrical: undefined }], { x: 10, y: 15 }, 0, label, [label, pin(2, 20, 20)]).length, 1);
+ });
+}

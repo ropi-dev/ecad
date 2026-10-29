@@ -56,7 +56,6 @@ export function synchronizePcb(
 			previous ??= file;
 			const previousLabels = circuitNetLabels(previous.circuit);
 			const labels = circuitNetLabels(file.circuit);
-			const terminals = boundTerminals(file, shapes);
 			shapes = shapes.map((shape) => {
 				if (
 					shape.kind === "text" &&
@@ -98,18 +97,6 @@ export function synchronizePcb(
 						? { fontSize: 1.3, ...labelAlignment(shape, shapes) }
 						: {}),
 				};
-				const terminal = bound.circuitNet.pinId
-					? terminals.get(bound.circuitNet.pinId)
-					: undefined;
-				if (
-					terminal &&
-					(bound.x !== terminal.point.x || bound.y !== terminal.point.y)
-				)
-					Object.assign(
-						bound,
-						terminal.point,
-						alignmentAtPin(terminal.point, terminal.symbol),
-					);
 				return text === shape.text && !legacySize
 					? bound
 					: updateText(bound, text, measureLabelText);
@@ -834,44 +821,6 @@ function schematicPinId(
 			pin.sourcePinId === String(sourceId) &&
 			(pin.schematicShapeId ?? component.schematicShapeId) === shapeId,
 	)?.id;
-}
-
-function boundTerminals(file: CircuitFile, shapes: readonly EditorShape[]) {
-	const terminals = new Map<string, { point: Point; symbol: EditorSymbol }>();
-	const boundPins = new Set(
-		shapes.flatMap((shape) =>
-			shape.kind === "text" && shape.circuitNet?.pinId
-				? [shape.circuitNet.pinId]
-				: [],
-		),
-	);
-	if (!boundPins.size) return terminals;
-	const byShape = new Map(shapes.map((shape) => [shape.id, shape]));
-	for (const component of file.circuit.components) {
-		const pins = new Map(
-			component.pins
-				.filter((pin) => boundPins.has(pin.id))
-				.map((pin) => [
-					`${pin.schematicShapeId ?? component.schematicShapeId}:${pin.sourcePinId}`,
-					pin.id,
-				]),
-		);
-		if (!pins.size) continue;
-		for (const id of componentShapeIds(component)) {
-			const shape = byShape.get(id);
-			if (shape?.kind !== "symbol") continue;
-			for (const child of symbolShapes(shape)) {
-				const pinId =
-					child.kind === "pin" ? pins.get(`${id}:${child.id}`) : undefined;
-				if (pinId)
-					terminals.set(pinId, {
-						point: { x: child.x, y: child.y },
-						symbol: shape,
-					});
-			}
-		}
-	}
-	return terminals;
 }
 
 function placeGeneratedSymbol(

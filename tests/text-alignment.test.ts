@@ -106,3 +106,11 @@ test("text can be grouped, saved and resolved as reusable symbol geometry", () =
  assert.equal(display.connections[0].text, aligned.text);
  assert.deepEqual(symbolFileShapes(saved), symbol.children);
 });
+
+for (const electrical of ["net", "supply"] as const) {
+ test(`${electrical} labels have no resize handles and ignore resize gestures`, () => {
+  const label = { ...text, electrical };
+  assert.deepEqual(resizeHandles(label), []);
+  assert.equal(resizeShape(label, resizeHandles(text)[3], { x: 5, y: 3 }), label);
+ });
+}

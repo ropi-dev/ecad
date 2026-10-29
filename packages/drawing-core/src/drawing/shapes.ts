@@ -592,7 +592,12 @@ export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 		return border ? resizeHandles(symbolChildWorld(shape, border.shape)) : [];
 	}
 	const center = shape.kind === "text" ? textCenter(shape) : shape;
-	if (shape.kind === "symbol" || shape.kind === "pin") return [];
+	if (
+		shape.kind === "symbol" ||
+		shape.kind === "pin" ||
+		(shape.kind === "text" && shape.electrical)
+	)
+		return [];
 	const directions =
 		shape.kind === "text"
 			? [
@@ -656,7 +661,12 @@ export function resizeShape(
 			? resizeSymbolGeometry(shape, border, handle, delta, gridStep)
 			: shape;
 	}
-	if (shape.kind === "symbol" || shape.kind === "pin") return shape;
+	if (
+		shape.kind === "symbol" ||
+		shape.kind === "pin" ||
+		(shape.kind === "text" && shape.electrical)
+	)
+		return shape;
 	const target = { x: handle.x + delta.x, y: handle.y + delta.y };
 	if (shape.kind === "circle") {
 		const radius = Math.max(
@@ -1549,6 +1559,12 @@ function moveConnectedWires(
 	);
 }
 
+function movementTerminals(shape: EditorShape): Point[] {
+	if (shape.kind === "text" && shape.electrical && shape.text.trim())
+		return [{ x: shape.x, y: shape.y }];
+	return pinTerminals(shape);
+}
+
 export function moveShapes(
 	shapes: EditorShape[],
 	delta: Point,
@@ -1610,17 +1626,17 @@ export function moveShapes(
 
 	if (delta.x === 0 && delta.y === 0) return moved;
 	const terminals = shapes.flatMap((shape) =>
-		pinTerminals(shape).map((point) => ({ shape, point })),
+		movementTerminals(shape).map((point) => ({ shape, point })),
 	);
 	if (terminals.length === 0) return moved;
 	const selectedIds = new Set(shapes.map((shape) => shape.id));
 	const byId = new Map(moved.map((shape) => [shape.id, shape]));
 	const stationaryPins = allShapes
 		.filter((shape) => !selectedIds.has(shape.id))
-		.flatMap(pinTerminals);
+		.flatMap(movementTerminals);
 	const wires = allShapes.filter((shape) => shape.kind === "wire");
 	const targets = shapes.flatMap((shape) =>
-		pinTerminals(byId.get(shape.id) ?? shape),
+		movementTerminals(byId.get(shape.id) ?? shape),
 	);
 	for (const [index, { shape, point: terminal }] of terminals.entries()) {
 		const target = targets[index];

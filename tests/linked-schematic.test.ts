@@ -244,22 +244,25 @@ test("repeated PCB names allocate distinct file names without changing existing 
 });
 
 
-test("generated net labels follow translated and rotated symbols without changing connectivity",async()=>{
- const {symbolShapes}=await import("#/drawing/shapes.ts");
- const original=createCircuit("Move");const file=structuredClone(original);
- const a=componentFromSymbol(resistor,[]),b=componentFromSymbol(resistor,[a]);
- file.circuit.components=[a,b];file.circuit.nets=[{id:"signal",names:[],pinIds:[a.pins[1].id,b.pins[0].id]}];
- const first=synchronizePcb(file,[],original,symbolDefinitions);
- for(const rotation of [0,Math.PI/2,Math.PI]){
-  const moved=first.shapes.map(shape=>shape.kind==="symbol"&&shape.id===first.file.circuit.components[0].schematicShapeId?{...shape,x:shape.x+20,y:shape.y-40,rotation}:shape);
-  const next=synchronizePcb(first.file,moved,first.file,symbolDefinitions);
-  assert.deepEqual(next.file.circuit.nets,first.file.circuit.nets);
-  const label=next.shapes.find(shape=>shape.kind==="text"&&shape.circuitNet?.pinId===a.pins[1].id)!;
-  const symbol=next.shapes.find(shape=>shape.kind==="symbol"&&shape.id===first.file.circuit.components[0].schematicShapeId)!;
-  assert.ok(symbol.kind==="symbol");if(symbol.kind!=="symbol")return;
-  const terminal=symbolShapes(symbol).find(child=>child.kind==="pin"&&String(child.id)===first.file.circuit.components[0].pins[1].sourcePinId)!;
-  assert.deepEqual({x:label.x,y:label.y},{x:terminal.x,y:terminal.y});
-  assert.deepEqual(synchronizePcb(next.file,next.shapes,next.file,symbolDefinitions).file.circuit,next.file.circuit);
+test("generated labels move independently with wires and survive synchronization and reopen", async () => {
+ const { moveShapes } = await import("#/drawing/shapes.ts");
+ const original = createCircuit("Move");
+ const file = structuredClone(original);
+ const a = componentFromSymbol(resistor, []), b = componentFromSymbol(resistor, [a]);
+ file.circuit.components = [a, b];
+ file.circuit.nets = [{ id: "signal", names: [], pinIds: [a.pins[1].id, b.pins[0].id] }];
+ const first = synchronizePcb(file, [], original, symbolDefinitions);
+ for (const kind of ["text", "symbol"] as const) {
+  const shape = first.shapes.find(shape => shape.kind === kind)!;
+  const delta = { x: 20, y: -40 };
+  const moved = moveShapes([shape], delta, 0, shape, first.shapes);
+  const replacements = new Map(moved.map(shape => [shape.id, shape]));
+  const shapes = [...first.shapes.map(shape => replacements.get(shape.id) ?? shape), ...moved.filter(shape => !first.shapes.some(old => old.id === shape.id))];
+  const next = synchronizePcb(first.file, shapes, first.file, symbolDefinitions);
+  assert.deepEqual(next.file.circuit.nets, first.file.circuit.nets);
+  assert.deepEqual(next.shapes.find(candidate => candidate.id === shape.id), moved[0]);
+  assert.ok(next.shapes.some(shape => shape.kind === "wire"));
+  assert.deepEqual(synchronizePcb(next.file, next.shapes, next.file, symbolDefinitions), next);
  }
 });
 
