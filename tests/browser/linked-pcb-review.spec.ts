@@ -123,3 +123,37 @@ test("editing a reusable symbol adds its new pin to linked connectivity before r
  expect(next.nets[0].pinIds).toContain(component.pins[1].id);
  expect(next.nets[0].pinIds).not.toContain(oldPin);
 });
+
+test("an imported custom-library fallback stays visible and saveable across reloads",async({page})=>{
+ const {symbolDefinitions}=await import("#/drawing/symbols.ts");
+ const {componentFromSymbol}=await import("#/circuit/symbol-components.ts");
+ const custom:SymbolFile={format:"ecad-symbol",version:1,units:"mm",id:"resistor",name:"Imported custom part",description:"",prefix:"U",value:"Custom",shapes:[0,1,2].map(index=>({kind:"pin" as const,name:`Custom ${index}`,number:String(index+7),x:-7,y:-index*3}))};
+ const definition={...libraryDefinitions([custom])[0],library:{scope:"user" as const,id:"missing-library"}};
+ const file=createCircuit("Untitled","pcb-main");const component=componentFromSymbol(definition,[]);
+ file.circuit.components=[{...component,schematicShapeId:91}];file.circuit.nets=[{id:"signal",names:["SIGNAL"],pinIds:[component.pins[0].id,component.pins[1].id]}];
+ const linked=synchronizePcb(file,[],undefined,symbolDefinitions);
+ const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
+ await page.goto("/tests/browser/projects.html");await expect(page.locator("#project-document")).toContainText('"name":"Untitled"');
+ await page.evaluate(async(linked)=>{
+  const module="/packages/web/src/projects/storage.ts";const {createWebProjectStorage}=await import(module);const storage=createWebProjectStorage();const project=await storage.load();
+  await storage.save(project.directory,{shapes:linked.shapes.map((shape:{x:number,y:number})=>({...shape,x:shape.x-30,y:shape.y+30})),symbols:[],circuits:[linked.file]});
+ },linked);
+ for(let pass=0;pass<2;pass++){
+  await page.reload();
+  await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecaddraw",exact:true}).click();
+  await expect.poll(async()=>(await documentState(page)).shapes.find((shape:{kind:string})=>shape.kind==="symbol")?.children.filter((child:{kind:string})=>child.kind==="pin").length).toBe(3);
+  await rectangle(page);await expect.poll(async()=>(await documentState(page)).dirty).toBe(false);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  if(process.env.ECAD_SCREENSHOT_PATH && pass===0){
+   await page.locator("canvas").focus();await page.keyboard.press("Escape");
+   for(let index=0;index<10;index++)await page.getByRole("button",{name:"Zoom in",exact:true}).click();
+   await page.mouse.move(20,20);await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
+  }
+  await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
+  const saved=JSON.parse((await page.locator("#circuit-document").textContent())!).circuit;
+  expect(saved.components[0].part).toEqual(component.part);
+  expect(saved.components[0].pins.map((pin:{id:string})=>pin.id)).toEqual(component.pins.map(pin=>pin.id));
+  expect(saved.nets).toEqual(file.circuit.nets);
+ }
+ expect(errors).toEqual([]);
+});

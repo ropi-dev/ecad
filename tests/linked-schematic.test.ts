@@ -363,3 +363,30 @@ test("generated symbols avoid existing wire geometry as well as symbol centers",
  assert.ok(next.shapes.some(shape=>shape.kind==="symbol"&&shape.x===90&&shape.y===-30));
  assert.deepEqual(synchronizePcb(next.file,next.shapes,next.file,symbolDefinitions).file.circuit.nets,[]);
 });
+
+test("unavailable-library fallbacks retain inline pins and original part identity across saves",async()=>{
+ const {persistProjectDrawingShapes,resolveDrawingSymbols}=await import("#/drawing/symbol-persistence.ts");
+ const {drawingFileSchema}=await import("#/projects/format.ts");
+ const pin=resistor.children.find(child=>child.kind==="pin")!;
+ for(const id of ["unavailable-widget","resistor"]){
+  const definition={...resistor,id,name:"Imported custom part",library:{scope:"user" as const,id:"missing-library"},children:[0,1,2].map(index=>({...pin,id:index+1,name:`Custom ${index}`,number:String(index+7),x:-7,y:-index*3}))};
+  const file=createCircuit("Inline fallback");const component=componentFromSymbol(definition,[]);file.circuit.components=[{...component,schematicShapeId:91}];file.circuit.nets=[{id:"signal",names:["SIGNAL"],pinIds:[component.pins[0].id,component.pins[1].id]}];
+  let current=synchronizePcb(file,[],undefined,symbolDefinitions);
+  const originalPart=structuredClone(component.part);
+  for(let pass=0;pass<2;pass++){
+   const saved=persistProjectDrawingShapes({shapes:current.shapes,symbols:[]});
+   const reopened=drawingFileSchema.parse({id:"inline",name:"Inline",shapes:saved}).shapes;
+   const symbol=reopened.find(shape=>shape.kind==="symbol")!;
+   assert.ok(symbol.kind==="symbol");if(symbol.kind!=="symbol")return;
+   assert.equal(symbol.children.filter(child=>child.kind==="pin").length,3);
+   assert.equal(symbol.library,undefined);
+   const resolved=resolveDrawingSymbols(reopened,symbolDefinitions,new Map());
+   assert.deepEqual(resolved.errors,[]);
+   current=synchronizePcb(current.file,resolved.shapes,current.file,symbolDefinitions);
+   assert.deepEqual(current.file.circuit.components[0].part,originalPart);
+   assert.equal(current.file.circuit.components[0].id,component.id);
+   assert.deepEqual(current.file.circuit.components[0].pins.map(pin=>pin.id),component.pins.map(pin=>pin.id));
+   assert.deepEqual(current.file.circuit.nets,file.circuit.nets);
+  }
+ }
+});

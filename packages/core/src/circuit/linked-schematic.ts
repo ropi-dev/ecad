@@ -19,6 +19,8 @@ import { font, fontPixels, updateText } from "#/drawing/text.ts";
 import type { Point } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
+const fallbackPrefix = "circuit-fallback.";
+
 const same = (a: unknown, b: unknown) =>
 	JSON.stringify(a, (_key, value) =>
 		value && typeof value === "object" && !Array.isArray(value)
@@ -344,7 +346,11 @@ export function synchronizePcb(
 						components,
 					);
 					component.id = group?.id ?? old?.id ?? `${circuit.id}:s${shape.id}`;
-					if (old?.part.id === component.part.id)
+					if (
+						old &&
+						(old.part.id === component.part.id ||
+							(!shape.library && shape.definitionId.startsWith(fallbackPrefix)))
+					)
 						component.part = structuredClone(old.part);
 					component.pins = component.pins.map((pin) => {
 						const existing = old?.pins.find(
@@ -567,9 +573,8 @@ export function synchronizePcb(
 
 function fallbackDefinition(component: CircuitComponent): SymbolDefinition {
 	return {
-		id: component.part.id,
+		id: `${fallbackPrefix}${crypto.randomUUID()}`,
 		name: component.part.name,
-		library: component.part.library,
 		prefix: component.reference.replace(/\d+$/, ""),
 		value: component.value,
 		description: "",
