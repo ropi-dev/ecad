@@ -26,11 +26,8 @@ async function placeComponent(
 async function createCircuit(page: Page) {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await page.getByLabel("Project name", { exact: true }).fill("Graph project");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	await openProjectFiles(page);
 	await page.getByRole("button", { name: "Add file", exact: true }).click();
 	await page

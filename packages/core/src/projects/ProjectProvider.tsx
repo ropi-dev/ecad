@@ -74,7 +74,7 @@ interface ProjectContextValue {
 	open(name?: string): Promise<void>;
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
-	save(): Promise<void>;
+	save(): Promise<boolean>;
 	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
 	readAssets(kind: AssetKind): Promise<File[]>;
 }
@@ -197,7 +197,9 @@ export function ProjectProvider({
 		let cancelled = false;
 		void enqueue(async () => {
 			try {
-				const snapshot = await storage.load();
+				const loaded = await storage.load();
+				if (cancelled) return;
+				const snapshot = loaded ?? (await storage.create("Untitled"));
 				if (snapshot && !cancelled) adopt(snapshot);
 			} catch (cause) {
 				if (!cancelled)
@@ -356,7 +358,7 @@ export function ProjectProvider({
 		},
 		[storage, update],
 	);
-	const save = useCallback(async () => {
+	const autosave = useCallback(async () => {
 		clearTimeout(timer.current);
 		try {
 			await enqueue(async () => {
@@ -376,6 +378,35 @@ export function ProjectProvider({
 			throw cause;
 		}
 	}, [enqueue, persist, transferAssets]);
+	const save = useCallback(async () => {
+		if (!storage.saveProject) {
+			await autosave();
+			return true;
+		}
+		clearTimeout(timer.current);
+		setBusy(true);
+		try {
+			return await enqueue(async () => {
+				await persist();
+				await transferAssets([]);
+				const snapshot = active.current;
+				if (!snapshot) return false;
+				const saved = await measurePerformanceAsync(
+					"project.save-to-disk",
+					() => storage.saveProject!(snapshot.directory),
+				);
+				if (saved) update(saved);
+				return saved !== null && saved !== undefined;
+			});
+		} catch (cause) {
+			setError(
+				cause instanceof Error ? cause.message : "Unable to save the project.",
+			);
+			throw cause;
+		} finally {
+			setBusy(false);
+		}
+	}, [storage, autosave, enqueue, persist, transferAssets, update]);
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++editorSelection.current;
 		const snapshot = active.current;
@@ -423,7 +454,7 @@ export function ProjectProvider({
 					setDirty(true);
 					clearTimeout(timer.current);
 					timer.current = setTimeout(
-						() => void save().catch(() => undefined),
+						() => void autosave().catch(() => undefined),
 						400,
 					);
 				}),
@@ -462,7 +493,7 @@ export function ProjectProvider({
 						setDirty(true);
 						clearTimeout(timer.current);
 						timer.current = setTimeout(
-							() => void save().catch(() => undefined),
+							() => void autosave().catch(() => undefined),
 							400,
 						);
 					}),
@@ -492,7 +523,7 @@ export function ProjectProvider({
 					setDirty(true);
 					clearTimeout(timer.current);
 					timer.current = setTimeout(
-						() => void save().catch(() => undefined),
+						() => void autosave().catch(() => undefined),
 						400,
 					);
 				}),
@@ -510,19 +541,19 @@ export function ProjectProvider({
 				setDirty(true);
 				clearTimeout(timer.current);
 				timer.current = setTimeout(() => {
-					void save().catch(() => undefined);
+					void autosave().catch(() => undefined);
 				}, 400);
 			}),
-		[store, save],
+		[store, autosave],
 	);
 	useEffect(() => {
 		const warn = (event: BeforeUnloadEvent) => {
-			if (!dirty) return;
+			if (!dirty && !project?.inMemory) return;
 			event.preventDefault();
 		};
 		window.addEventListener("beforeunload", warn);
 		return () => window.removeEventListener("beforeunload", warn);
-	}, [dirty]);
+	}, [dirty, project?.inMemory]);
 
 	const switchProject = useCallback(
 		async (name: string | undefined, creating: boolean) => {
@@ -871,7 +902,8 @@ export function ProjectProvider({
 			clearTimeout(timer.current);
 			try {
 				await enqueue(async () => {
-					const snapshot = await storage.load();
+					const snapshot =
+						(await storage.load()) ?? (await storage.create("Untitled"));
 					if (snapshot) adopt(snapshot);
 					setError("");
 				});

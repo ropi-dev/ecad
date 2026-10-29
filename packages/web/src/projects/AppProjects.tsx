@@ -53,7 +53,7 @@ export function AppWorkspace() {
 	});
 	return (
 		<PerformanceBoundary
-			name={path === "/" ? "gerber" : path.slice(1)}
+			name={path === "/" ? "workspace" : path.slice(1)}
 			path={path}
 		>
 			<Outlet />

@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { ProjectShell } from "#/projects/ProjectShell.tsx";
-import { ProjectPage } from "#/projects/ProjectPage.tsx";
+import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
 import { ProjectProvider } from "#/projects/ProjectProvider.tsx";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
@@ -26,4 +26,4 @@ const storage: ProjectStorage = {
 	importAssets: async () => snapshot,
 	readAsset: async () => new Uint8Array(),
 };
-createRoot(document.getElementById("root") as HTMLElement).render(<ProjectProvider storage={storage} symbolStorage={createMemorySymbolLibraryStorage()}><ProjectShell><ProjectPage /></ProjectShell></ProjectProvider>);
+createRoot(document.getElementById("root") as HTMLElement).render(<ProjectProvider storage={storage} symbolStorage={createMemorySymbolLibraryStorage()}><ProjectShell><WorkspaceStart /></ProjectShell></ProjectProvider>);

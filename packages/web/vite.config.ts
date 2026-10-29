@@ -17,7 +17,7 @@ const config = defineConfig({
 	plugins: [
 		devtools(),
 		tailwindcss(),
-		tanstackStart({ spa: { enabled: true, maskPath: "/projects" } }),
+		tanstackStart({ spa: { enabled: true, maskPath: "/" } }),
 		viteReact(),
 	],
 });

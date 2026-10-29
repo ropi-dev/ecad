@@ -27,6 +27,7 @@ import {
 	type SymbolLibraryStorage,
 	useProjectSymbolLibraryStorage,
 	useSymbolLibraryStorage,
+	useSymbolLibraryUpdates,
 } from "#/symbol-library/storage.tsx";
 
 const emptyConfig = (): SymbolLibraryConfig => ({
@@ -62,6 +63,7 @@ async function loadConfig(
 }
 
 export function useSymbolLibrary() {
+	const updates = useSymbolLibraryUpdates();
 	const storage = useSymbolLibraryStorage();
 	const projectStorage = useProjectSymbolLibraryStorage();
 	const [userConfig, setUserConfig] = useState(defaultSymbolConfig);
@@ -176,6 +178,9 @@ export function useSymbolLibrary() {
 			}
 		}
 		void load();
+		const unsubscribeUpdates = updates?.subscribe(() => {
+			if (active) void load();
+		});
 		const unsubscribe = storage.subscribe?.(() => {
 			if (active) void load();
 		});
@@ -184,10 +189,12 @@ export function useSymbolLibrary() {
 			request.current?.abort();
 			request.current = null;
 			unsubscribe?.();
+			unsubscribeUpdates?.();
 		};
-	}, [storage, projectStorage]);
+	}, [storage, projectStorage, updates]);
 
 	async function perform<T>(work: (signal: AbortSignal) => Promise<T>) {
+		let completed = false;
 		if (request.current)
 			throw new Error("Wait for the symbol library to finish loading.");
 		const controller = new AbortController();
@@ -196,7 +203,9 @@ export function useSymbolLibrary() {
 		setError("");
 		setMessage("");
 		try {
-			return await work(controller.signal);
+			const result = await work(controller.signal);
+			completed = true;
+			return result;
 		} catch (cause) {
 			if (!controller.signal.aborted)
 				setError(
@@ -207,6 +216,7 @@ export function useSymbolLibrary() {
 			if (request.current === controller && !controller.signal.aborted) {
 				request.current = null;
 				setLoading(false);
+				if (completed) updates?.notify();
 			}
 		}
 	}

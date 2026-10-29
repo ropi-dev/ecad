@@ -16,10 +16,10 @@ export function GerberHeader({
 	return (
 		<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
 			<ProjectLink
-				href="/projects"
+				href="/"
 				className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
 			>
-				Projects
+				Workspace
 			</ProjectLink>
 			{!project && (
 				<label className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e]">

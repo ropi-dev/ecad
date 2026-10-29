@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
@@ -187,12 +187,14 @@ function registerProjectHandlers() {
 	);
 	const selectionFile = join(app.getPath("userData"), "project-directory.json");
 	async function remember(snapshot: ProjectSnapshot | null) {
-		if (snapshot)
+		if (snapshot && !snapshot.inMemory)
 			await writeFile(selectionFile, JSON.stringify(snapshot.directory));
 		return snapshot;
 	}
 	ipcMain.handle(projectChannels.load, async (event) => {
 		assertSender(event);
+		const current = await projects.load();
+		if (current) return current;
 		if (!directoryArgument) {
 			try {
 				const directory = JSON.parse(await readFile(selectionFile, "utf8"));
@@ -212,6 +214,11 @@ function registerProjectHandlers() {
 	});
 	ipcMain.handle(projectChannels.create, async (event, name: string) => {
 		assertSender(event);
+		if (name === "Untitled") {
+			const snapshot = await projects.createUntitled();
+			await rm(selectionFile, { force: true });
+			return snapshot;
+		}
 		if (!window) throw new Error("The desktop editor is closed.");
 		const selected = await dialog.showOpenDialog(window, {
 			title: "Choose parent directory for the project",
@@ -230,6 +237,22 @@ function registerProjectHandlers() {
 		if (selected.canceled || !selected.filePaths[0]) return null;
 		return remember(await projects.openDirectory(selected.filePaths[0]));
 	});
+	ipcMain.handle(
+		projectChannels.saveProject,
+		async (event, directory: string) => {
+			assertSender(event);
+			if (!projects.isInMemory(directory)) return projects.load();
+			if (!window) throw new Error("The desktop editor is closed.");
+			const selected = await dialog.showOpenDialog(window, {
+				title: "Choose parent folder for the project",
+				properties: ["openDirectory", "createDirectory"],
+			});
+			if (selected.canceled || !selected.filePaths[0]) return null;
+			return remember(
+				await projects.saveToDirectory(directory, selected.filePaths[0]),
+			);
+		},
+	);
 	ipcMain.handle(
 		projectChannels.save,
 		(event, directory: string, document: ProjectDocument) => {
@@ -273,6 +296,18 @@ function createWindow() {
 		},
 	});
 	window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+	window.webContents.on("will-prevent-unload", (event) => {
+		if (!window) return;
+		const choice = dialog.showMessageBoxSync(window, {
+			type: "warning",
+			buttons: ["Keep working", "Discard changes"],
+			defaultId: 0,
+			cancelId: 0,
+			message: "This project has unsaved changes.",
+			detail: "Choose Save project to keep your work before closing.",
+		});
+		if (choice === 1) event.preventDefault();
+	});
 	window.webContents.on("will-navigate", (event, url) => {
 		if (url !== rendererUrl) event.preventDefault();
 	});

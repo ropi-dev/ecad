@@ -1,7 +1,7 @@
-import { ProjectPage } from "@ecad/core/projects/ProjectPage.tsx";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/projects")({
-	component: ProjectPage,
-	head: () => ({ meta: [{ title: "Projects | ECAD" }] }),
+	beforeLoad: ({ location }) => {
+		throw redirect({ href: `/${location.searchStr}`, replace: true });
+	},
 });

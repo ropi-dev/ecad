@@ -13,13 +13,8 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await page
-		.getByLabel("Project name", { exact: true })
-		.fill("Child pin visibility");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
+	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	const definition = {
 		format: "ecad-symbol",
 		version: 1,
@@ -127,7 +122,7 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 	await expect.poll(async () => (await state()).dirty).toBe(false);
 	const saved = await page.evaluate(async () => {
 		const root = await navigator.storage.getDirectory();
-		const directory = await root.getDirectoryHandle("Child pin visibility");
+		const directory = await root.getDirectoryHandle(localStorage.getItem("ecad.active-project")!);
 		const formatPath = "/packages/core/src/projects/format.ts";
 		const { parseProjectManifest } = await import(formatPath);
 		const manifest = parseProjectManifest(

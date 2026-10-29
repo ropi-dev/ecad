@@ -126,18 +126,14 @@ test.beforeAll(async ({ browser }) => {
 	if (process.env.ECAD_PERF_MODE !== "development") return;
 	const page = await browser.newPage();
 	try {
-		for (const path of ["/projects", "/editor", "/", "/step"]) {
+		for (const path of ["/", "/editor", "/gerber", "/step"]) {
 			await page.goto(`http://127.0.0.1:4175${path}?perf=1`);
 			await ready(page);
 		}
 		await page.goto("http://127.0.0.1:4175/projects?perf=1");
 		await ready(page);
-		await page.getByLabel("Project name", { exact: true }).fill("Warmup");
-		await page
-			.getByRole("button", { name: "Create project", exact: true })
-			.click();
 		await expect(
-			page.getByRole("heading", { name: "Warmup", exact: true }),
+			page.getByRole("heading", { name: "Ready when you are", exact: true }),
 		).toBeVisible();
 		await (await openProjectFiles(page))
 			.getByLabel("Add Gerber files")
@@ -152,7 +148,7 @@ test.beforeAll(async ({ browser }) => {
 				async () => (await report(page)).metrics["import.gerber"]?.count ?? 0,
 			)
 			.toBeGreaterThan(0);
-		await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 		await (await openProjectFiles(page))
 			.getByLabel("Add STEP files")
 			.setInputFiles(
@@ -185,8 +181,17 @@ test("projects-empty", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await expect(
-		page.getByRole("heading", { name: "No project open" }),
+		page.getByRole("heading", { name: "Ready when you are" }),
 	).toBeVisible();
+	await expect(page.getByRole("link", { name: "Workspace home", exact: true, includeHidden: true })).toHaveAttribute("title", "Untitled");
+	await expect(page.getByRole("button", { name: "Add file", exact: true, includeHidden: true })).toBeEnabled();
+	const names = await page.evaluate(async () => {
+		const root = await navigator.storage.getDirectory();
+		const result = [];
+		for await (const name of root.keys()) if (name.startsWith("Untitled-")) result.push(name);
+		return result;
+	});
+	expect(names).toHaveLength(1);
 	await finish(page, testInfo, "projects-empty");
 });
 
@@ -231,14 +236,7 @@ test("projects-large", async ({ page }, testInfo) => {
 			).toBeVisible();
 		});
 	}
-	await interaction(page, "project.name", async () => {
-		await page
-			.getByLabel("Project name", { exact: true })
-			.fill("Another project");
-		await expect(page.getByLabel("Project name", { exact: true })).toHaveValue(
-			"Another project",
-		);
-	});
+
 	const value = await report(page);
 	await interaction(page, "files.search", async () => {
 		await page.getByLabel("Search project files").fill("file-9999.gbr");
@@ -265,14 +263,8 @@ test("projects-large", async ({ page }, testInfo) => {
 test("editor-imports", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await page
-		.getByLabel("Project name", { exact: true })
-		.fill("Performance board");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
 	await expect(
-		page.getByRole("heading", { name: "Performance board", exact: true }),
+		page.getByRole("heading", { name: "Ready when you are", exact: true }),
 	).toBeVisible();
 	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
 	await expect(page.locator("canvas")).toBeVisible();
@@ -288,8 +280,8 @@ test("editor-imports", async ({ page }, testInfo) => {
 	await page.mouse.up();
 	await expect
 		.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0)
-		.toBeGreaterThan(1);
-	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		.toBeGreaterThan(0);
+	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 	await (await openProjectFiles(page)).getByLabel("Add Gerber files").setInputFiles({
 		name: "PTH.gbr",
 		mimeType: "text/plain",
@@ -300,7 +292,7 @@ test("editor-imports", async ({ page }, testInfo) => {
 		.poll(async () => (await report(page)).metrics["import.gerber"]?.count ?? 0)
 		.toBeGreaterThan(0);
 	await expect(page.getByTestId("viewer-message")).toHaveCount(0);
-	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files")
 		.setInputFiles(
@@ -344,13 +336,15 @@ test("symbol-libraries", async ({ page }, testInfo) => {
  });
  await page.reload();
  await ready(page);
- await page.getByText("Symbol libraries", { exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("button", { name: "Project actions", exact: true }).click();
+ await page.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
  const user = page.getByRole("group", { name: "User libraries", exact: true });
  await expect(user.getByRole("checkbox")).toHaveCount(11);
  await interaction(page, "library.disable", async () => {
   await user.getByRole("checkbox", { name: "user 0", exact: true }).uncheck();
   await expect(user.getByRole("checkbox", { name: "user 0", exact: true })).toBeEnabled();
  });
+ await page.getByRole("button", { name: "Done", exact: true }).click();
  await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
  await interaction(page, "library.picker", async () => {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
@@ -592,8 +586,7 @@ for (const scenario of ["editor-pin-labels", "editor-pin-visibility"] as const) 
 	test(scenario, async ({ page }, testInfo) => {
 		await page.goto("/projects?perf=1");
 		await ready(page);
-		await page.getByLabel("Project name", { exact: true }).fill("Pin labels");
-		await page.getByRole("button", { name: "Create project", exact: true }).click();
+		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 		const symbol = {
 			format: "ecad-symbol", version: 1, units: "mm", id: "labeled-package", name: "Labeled package", description: "", prefix: "U", value: "",
 			shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Signal ${index + 1}`, number: String(index + 1).padStart(3, "0"), x: index < 64 ? -20 : 20, y: (index % 64) * 4 - 128 })),
@@ -810,8 +803,6 @@ test("editor-user-symbol", async ({ page }, testInfo) => {
 test("editor-symbol-attributes", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await page.getByLabel("Project name", { exact: true }).fill("Symbol attributes");
-	await page.getByRole("button", { name: "Create project", exact: true }).click();
 	await expect((await openProjectFiles(page)).getByLabel("Add symbol files")).toBeEnabled();
 	const symbol = {
 		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
@@ -830,7 +821,7 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 		});
-		if (repeat < 2) await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		if (repeat < 2) await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-attributes", {
@@ -841,9 +832,7 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 test("editor-symbol-file", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await page.getByLabel("Project name", { exact: true }).fill("Symbol editing");
-	await page.getByRole("button", { name: "Create project", exact: true }).click();
-	await expect(page.getByRole("heading", { name: "Symbol editing", exact: true })).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	const symbol = {
 		format: "ecad-symbol", version: 1, units: "mm", id: "editable-package", name: "Editable package", description: "", prefix: "U", value: "",
 		shapes: Array.from({ length: 128 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 64 ? -10 : 10, y: (index % 64) - 32 })),
@@ -856,7 +845,7 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 		await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 		await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 	});
-	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 	const timings: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
 		timings.push(await interaction(page, "editor.open-symbol", async () => {
@@ -865,13 +854,13 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
 		}));
-		await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 		timings.push(await interaction(page, "editor.open-schematic", async () => {
 			await (await openProjectFiles(page)).getByRole("link", { name: "Open Drawing", exact: true }).click();
 			await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 			await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
 		}));
-		if (repeat < 2) await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+		if (repeat < 2) await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 	}
 	await finish(page, testInfo, "editor-symbol-file", {
 		coldOpenMs,
@@ -882,11 +871,9 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 test("project-file-sidebar", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await page.getByLabel("Project name", { exact: true }).fill("Sidebar navigation");
-	await page.getByRole("button", { name: "Create project", exact: true }).click();
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
 	await page.evaluate(async () => {
-		const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle("Sidebar navigation");
+		const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle(localStorage.getItem("ecad.active-project")!);
 		const handle = await directory.getFileHandle(".ecadprj");
 		const manifest = (await (await handle.getFile()).text()).replace(/^assets\s*=\s*\[\s*\]\s*$/m, "");
 		const writer = await handle.createWritable();
@@ -970,9 +957,7 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 test("project-new-drawing", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await page.getByLabel("Project name", { exact: true }).fill("New drawing workflow");
-	await page.getByRole("button", { name: "Create project", exact: true }).click();
-	await expect(page.getByRole("heading", { name: "New drawing workflow", exact: true })).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	const createMs = await interaction(page, "drawing.create", async () => {
 		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
 		await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
@@ -985,7 +970,7 @@ test("project-new-drawing", async ({ page }, testInfo) => {
 	await page.mouse.down();
 	await page.mouse.move(710, 400);
 	await page.mouse.up();
-	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(2);
+	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(1);
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	const switchTimes: number[] = [];
@@ -1004,9 +989,7 @@ test("project-new-drawing", async ({ page }, testInfo) => {
 test("project-new-symbol", async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
-	await page.getByLabel("Project name", { exact: true }).fill("New symbol workflow");
-	await page.getByRole("button", { name: "Create project", exact: true }).click();
-	await expect(page.getByRole("heading", { name: "New symbol workflow", exact: true })).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	await interaction(page, "symbol.create", async () => {
 		await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
 		await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
@@ -1024,8 +1007,8 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 	await page.mouse.down();
 	await page.mouse.move(710, 400);
 	await page.mouse.up();
-	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(2);
-	await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+	await expect.poll(async () => (await report(page)).metrics["project.save"]?.count ?? 0).toBeGreaterThan(1);
+	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
 	await (await openProjectFiles(page)).getByRole("link", { name: "Open new-part.ecadsym", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);
@@ -1038,8 +1021,7 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 test("symbol-references", async ({ page }, testInfo) => {
  await page.goto("/projects?perf=1");
  await ready(page);
- await page.getByLabel("Project name", { exact: true }).fill("Symbol references");
- await page.getByRole("button", { name: "Create project", exact: true }).click();
+ await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
  const child = {
   format: "ecad-symbol", version: 1, units: "mm", id: "reference-child", name: "Reference child", description: "", prefix: "U", value: "",
   shapes: Array.from({ length: 16 }, (_, index) => ({ kind: "pin", name: `Pin ${index + 1}`, x: index < 8 ? -5 : 5, y: (index % 8) - 4 })),
@@ -1063,7 +1045,7 @@ test("symbol-references", async ({ page }, testInfo) => {
  )).toBe(true);
  await expect.poll(async () => page.evaluate(async () => {
   const root = await navigator.storage.getDirectory();
-  const directory = await root.getDirectoryHandle("Symbol references");
+  const directory = await root.getDirectoryHandle(localStorage.getItem("ecad.active-project")!);
   const manifest = await (await directory.getFileHandle(".ecadprj")).getFile();
   const path = (await manifest.text()).match(/drawing = "([^"]+)"/)![1].split("/");
   const name = path.pop()!;
@@ -1075,7 +1057,7 @@ test("symbol-references", async ({ page }, testInfo) => {
  await page.goto("/editor?perf=1");
  await ready(page);
  for (let repeat = 0; repeat < 3; repeat++) {
-  await (await openProjectFiles(page)).getByRole("link", { name: "Projects", exact: true }).click();
+  await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
   await interaction(page, "reference.open-nested", async () => {
    await (await openProjectFiles(page)).getByRole("link", { name: "Open reference-parent.ecadsym", exact: true }).click();
    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Reference parent");
@@ -1475,8 +1457,7 @@ test("editor-box", async ({ page }, testInfo) => {
 test("kicad-import", async ({ page }, testInfo) => {
     await page.goto("/projects?perf=1");
     await ready(page);
-    await page.getByLabel("Project name", {exact:true}).fill("KiCad import");
-    await page.getByRole("button", {name:"Create project",exact:true}).click();
+    await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
     const sidebar = await openProjectFiles(page);
     await sidebar.getByLabel("Add KiCad schematic files").setInputFiles({name:"broken.kicad_sch",mimeType:"text/plain",buffer:Buffer.from("(broken")});
     await expect(page.getByRole("alert")).toContainText("Incomplete KiCad");

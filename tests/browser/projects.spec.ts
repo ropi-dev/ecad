@@ -1,33 +1,17 @@
-import { openProjectFiles, closeProjectFiles } from "./project-files";
+import { openProjectActions, openProjectFiles, closeProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 import { expect, test, type Page } from "@playwright/test";
 
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 async function projectsPage(page: Page) {
-	await expect(page.locator("#project-document")).toBeAttached();
-	if (
-		!(await page
-			.getByRole("heading", { name: "Projects", exact: true })
-			.isVisible())
-	) {
-		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Projects", exact: true })
-			.click();
-	}
-	await expect(
-		page.getByRole("heading", { name: "Projects", exact: true }),
-	).toBeVisible();
+	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
+	await expect(page.locator("main")).toBeVisible();
 	await closeProjectFiles(page);
 }
-async function createProject(page: Page, name: string) {
+async function createProject(page: Page, _name: string) {
 	await projectsPage(page);
-	await page.getByLabel("Project name", { exact: true }).fill(name);
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect.poll(async () => (await documentState(page)).name).toBe(name);
-	await expect(page.getByLabel("Project save status")).toHaveText("Saved");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
 	await openProjectFiles(page);
 }
 async function drawRectangle(page: Page) {
@@ -127,7 +111,8 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	expect((await documentState(page)).dirty).toBe(true);
 	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
 	await projectsPage(page);
-	await page.getByRole("button", { name: "Save project", exact: true }).click();
+	await openProjectActions(page);
+	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).symbols[0].shapes).toHaveLength(2);
 	await page.reload();
@@ -248,7 +233,7 @@ test("new symbols start empty, persist edits, and use distinct files for repeate
 			name: "Add file",
 			exact: true,
 		}),
-	).toHaveCount(0);
+	).toBeEnabled();
 	await createProject(page, "New symbols");
 	await (await openProjectFiles(page))
 		.getByRole("button", { name: "Add file", exact: true })
@@ -337,4 +322,50 @@ test("new symbols start empty, persist edits, and use distinct files for repeate
 			exact: true,
 		}),
 	).toBeVisible();
+});
+
+
+test("library settings refresh the mounted editor after project and user changes", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await createProject(page, "Modal libraries");
+	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	await page.locator("canvas").evaluate((canvas) => canvas.setAttribute("data-original", "true"));
+	const settings = async () => {
+		await openProjectActions(page);
+		await page.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
+		await expect(page.getByLabel("Upload symbol files")).toBeEnabled();
+		return page.getByRole("dialog");
+	};
+	const picker = async (present: boolean) => {
+		await page.getByRole("button", { name: "Done", exact: true }).click();
+		await expect(page.locator('canvas[data-original="true"]')).toBeVisible();
+		await page.getByRole("button", { name: "Symbols", exact: true }).click();
+		const part = page.getByRole("button", { name: "Insert Modal part", exact: true });
+		if (present) await expect(part).toBeVisible();
+		else await expect(part).toHaveCount(0);
+		await page.keyboard.press("Escape");
+	};
+	for (const scope of ["project", "user"]) {
+		let dialog = await settings();
+		await dialog.getByLabel("Library scope").selectOption(scope);
+		const name = `Modal ${scope}`;
+		await dialog.getByLabel("Library name").fill(name);
+		await dialog.getByLabel("Upload symbol files").setInputFiles({ name: "modal.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "modal-part", name: "Modal part", description: "", prefix: "TP", value: "", shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }] })) });
+
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toBeEnabled();
+		await picker(true);
+		dialog = await settings();
+		await dialog.getByRole("checkbox", { name, exact: true }).uncheck();
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toBeEnabled();
+		await picker(false);
+		dialog = await settings();
+		await dialog.getByRole("checkbox", { name, exact: true }).check();
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toBeEnabled();
+		await picker(true);
+		dialog = await settings();
+		await dialog.getByRole("button", { name: `Remove ${name}`, exact: true }).click();
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toHaveCount(0);
+		await picker(false);
+	}
 });

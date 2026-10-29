@@ -3,7 +3,7 @@ import { Editor2D } from "@ecad/core/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "@ecad/core/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "@ecad/core/components/step/StepWorkspace.tsx";
 import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.tsx";
-import { ProjectPage } from "@ecad/core/projects/ProjectPage.tsx";
+import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { useEffect, useState } from "react";
@@ -11,19 +11,19 @@ import { createRoot } from "react-dom/client";
 import { createDesktopSymbolLibraryStorage } from "#/renderer/storage.ts";
 import "@ecad/core/styles.css";
 
-type Workspace = "projects" | "editor" | "gerber" | "step";
+type Workspace = "home" | "editor" | "gerber" | "step";
 const storage = createDesktopSymbolLibraryStorage(window.ecadSymbolLibrary);
 function App() {
-	const [workspace, setWorkspace] = useState<Workspace>("projects");
+	const [workspace, setWorkspace] = useState<Workspace>("home");
 	useEffect(() => {
 		const navigate = (event: MouseEvent) => {
 			const target = event.target;
 			if (!(target instanceof Element)) return;
 			const href = target.closest("a")?.getAttribute("href");
 			const next: Workspace | undefined =
-				href === "/projects"
-					? "projects"
-					: href === "/"
+				href === "/"
+					? "home"
+					: href === "/gerber"
 						? "gerber"
 						: href === "/editor"
 							? "editor"
@@ -42,10 +42,10 @@ function App() {
 			<ProjectShell>
 				<PerformanceBoundary
 					name={workspace}
-					path={workspace === "gerber" ? "/" : `/${workspace}`}
+					path={workspace === "home" ? "/" : `/${workspace}`}
 				>
-					{workspace === "projects" ? (
-						<ProjectPage />
+					{workspace === "home" ? (
+						<WorkspaceStart />
 					) : workspace === "editor" ? (
 						<Editor2D enableMcp={false} />
 					) : workspace === "gerber" ? (

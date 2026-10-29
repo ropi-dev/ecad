@@ -135,6 +135,8 @@ export function createWebProjectStorage(
 			sequential(async () => {
 				name = projectNameSchema.parse(name);
 				const directory = await root();
+				const displayName = name;
+				if (name === "Untitled") name = `Untitled-${crypto.randomUUID()}`;
 				try {
 					await directory.getDirectoryHandle(name);
 				} catch (cause) {
@@ -147,7 +149,7 @@ export function createWebProjectStorage(
 						createBrowserProjectDirectory(name, handle),
 					);
 					try {
-						const snapshot = await repository.create(name);
+						const snapshot = await repository.create(displayName);
 						browserSelection().setItem(selectedProjectKey, name);
 						active = { name, repository };
 						return snapshot;

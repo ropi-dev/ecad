@@ -16,6 +16,7 @@ import {
 	type AssetKind,
 	PROJECT_FILE,
 	type ProjectDocument,
+	type ProjectSnapshot,
 	projectNameSchema,
 	projectPathSchema,
 } from "@ecad/core/projects/format.ts";
@@ -117,8 +118,18 @@ export async function createDesktopProjectDirectory(
 }
 
 export class DesktopProjects {
-	private active: { directory: string; repository: ProjectRepository } | null =
-		null;
+	private active: {
+		directory: string;
+		repository: ProjectRepository;
+		files?: Map<string, Uint8Array>;
+	} | null = null;
+	private snapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
+		return this.active?.files ? { ...snapshot, inMemory: true } : snapshot;
+	}
+	isInMemory(directory: string) {
+		this.current(directory);
+		return !!this.active?.files;
+	}
 	private operation: Promise<unknown> = Promise.resolve();
 	constructor(private initialPath?: string) {}
 	private sequential<T>(run: () => Promise<T>) {
@@ -141,7 +152,8 @@ export class DesktopProjects {
 	}
 	load() {
 		return this.sequential(async () => {
-			if (this.active) return this.active.repository.load();
+			if (this.active)
+				return this.snapshot(await this.active.repository.load());
 			if (!this.initialPath) return null;
 			if (!this.initialPath.endsWith(PROJECT_FILE)) {
 				try {
@@ -161,6 +173,69 @@ export class DesktopProjects {
 	}
 	openDirectory(path: string) {
 		return this.sequential(() => this.openPath(path));
+	}
+	createUntitled() {
+		return this.sequential(async () => {
+			const files = new Map<string, Uint8Array>();
+			const directory: ProjectDirectory = {
+				name: `memory:${randomUUID()}`,
+				exists: async (path) => files.has(projectPathSchema.parse(path)),
+				async read(path) {
+					const bytes = files.get(projectPathSchema.parse(path));
+					if (!bytes)
+						throw Object.assign(new Error("Project file not found."), {
+							code: "ENOENT",
+						});
+					return new Uint8Array(bytes);
+				},
+				async write(path, bytes) {
+					files.set(projectPathSchema.parse(path), new Uint8Array(bytes));
+				},
+				async remove(path) {
+					files.delete(projectPathSchema.parse(path));
+				},
+			};
+			const repository = new ProjectRepository(directory, { layout: "files" });
+			const snapshot = await repository.create("Untitled");
+			this.active = { directory: directory.name, repository, files };
+			return this.snapshot(snapshot);
+		});
+	}
+	saveToDirectory(directory: string, parent: string) {
+		return this.sequential(async () => {
+			const source = this.current(directory);
+			const files = this.active?.files;
+			if (!files) return source.load();
+			const snapshot = await source.load();
+			const base = await realpath(resolve(parent));
+			const name = projectNameSchema.parse(snapshot.manifest.name);
+			let selected = join(base, name);
+			for (let suffix = 2; ; suffix++) {
+				try {
+					await mkdir(selected);
+					break;
+				} catch (cause) {
+					if (
+						!(cause instanceof Error) ||
+						!("code" in cause) ||
+						cause.code !== "EEXIST"
+					)
+						throw cause;
+					selected = join(base, `${name} ${suffix}`);
+				}
+			}
+			try {
+				const disk = await createDesktopProjectDirectory(selected);
+				for (const [path, bytes] of files) await disk.write(path, bytes);
+				const repository = new ProjectRepository(disk, { layout: "files" });
+				const saved = await repository.load();
+				this.active = { directory: disk.name, repository };
+				return saved;
+			} catch (cause) {
+				await rm(selected, { recursive: true, force: true });
+				throw cause;
+			}
+		});
 	}
 	create(name: string, parent: string) {
 		return this.sequential(async () => {
@@ -182,13 +257,17 @@ export class DesktopProjects {
 		});
 	}
 	save(directory: string, document: ProjectDocument) {
-		return this.sequential(() => this.current(directory).save(document));
+		return this.sequential(async () =>
+			this.snapshot(await this.current(directory).save(document)),
+		);
 	}
 	importAssets(
 		directory: string,
 		assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
 	) {
-		return this.sequential(() => this.current(directory).importAssets(assets));
+		return this.sequential(async () =>
+			this.snapshot(await this.current(directory).importAssets(assets)),
+		);
 	}
 	readAsset(directory: string, path: string) {
 		return this.sequential(() => this.current(directory).readAsset(path));
@@ -240,6 +319,7 @@ export class DesktopProjects {
 		return this.sequential(async () => {
 			this.current(directory);
 			const parts = projectPathSchema.parse(path).split("/");
+			if (this.active?.files) return true;
 			let current = directory;
 			for (const part of parts.slice(0, -1)) {
 				current = join(current, part);

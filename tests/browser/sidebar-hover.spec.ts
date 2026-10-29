@@ -7,6 +7,7 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	await page.mouse.move(900, 400);
 	const sidebar = page.getByRole("complementary", {
 		name: "Project files",
@@ -45,7 +46,7 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await page.keyboard.press("Tab");
 	await expect(
-		sidebar.getByRole("link", { name: "Gerber viewer", exact: true }),
+		sidebar.getByRole("button", { name: "Add file", exact: true }),
 	).toBeFocused();
 	await page.keyboard.press("Escape");
 	await expect(sidebar).toHaveAttribute("data-open", "false");
@@ -56,10 +57,7 @@ test("pinning the sidebar keeps it beside the canvas through navigation", async 
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await page.getByLabel("Project name", { exact: true }).fill("Pinned sidebar");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
+	await expect(page.getByRole("heading", { name: "Ready when you are" })).toBeVisible();
 	const sidebar = await openProjectFiles(page);
 	await sidebar
 		.getByRole("link", { name: "Schematic editor", exact: true })
@@ -111,12 +109,9 @@ test("the add file menu supports keyboard navigation and stays open outside the 
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await page.getByLabel("Project name", { exact: true }).fill("File menu");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
+	await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 	await expect(
-		page.getByRole("heading", { name: "File menu", exact: true }),
+		page.getByRole("heading", { name: "Ready when you are", exact: true }),
 	).toBeVisible();
 	const sidebar = await openProjectFiles(page);
 	const addFile = sidebar.getByRole("button", {
@@ -184,6 +179,7 @@ test.describe("touch sidebar", () => {
 		page,
 	}) => {
 		await page.goto("/tests/browser/projects.html");
+		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 		const sidebar = page.getByRole("complementary", {
 			name: "Project files",
 			exact: true,
@@ -242,14 +238,9 @@ test.describe("touch sidebar", () => {
 	}) => {
 		await page.goto("/tests/browser/projects.html");
 		await closeProjectFiles(page);
-		await page
-			.getByLabel("Project name", { exact: true })
-			.fill("Touch file menu");
-		await page
-			.getByRole("button", { name: "Create project", exact: true })
-			.tap();
+		await expect(page.getByRole("heading", { name: "Ready when you are", exact: true })).toBeVisible();
 		await expect(
-			page.getByRole("heading", { name: "Touch file menu", exact: true }),
+			page.getByRole("heading", { name: "Ready when you are", exact: true }),
 		).toBeVisible();
 		await page
 			.getByRole("button", { name: "Show project files", exact: true })

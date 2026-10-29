@@ -42,6 +42,8 @@ const projects: ProjectStorage = {
 	open: () => ipcRenderer.invoke(projectChannels.open),
 	save: (directory, document) =>
 		ipcRenderer.invoke(projectChannels.save, directory, document),
+	saveProject: (directory) =>
+		ipcRenderer.invoke(projectChannels.saveProject, directory),
 	importAssets: (directory, assets) =>
 		ipcRenderer.invoke(projectChannels.importAssets, directory, assets),
 	readAsset: (directory, path) =>

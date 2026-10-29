@@ -301,3 +301,66 @@ test("edits writable relative project directory symbols and checks project file 
  await chmod(join(project.directory, symbolPath), 0o644);
  await assert.rejects(projects.canWriteFile(parent, symbolPath), /no longer open/);
 }));
+
+
+test("untitled desktop projects stay in isolated memory until explicitly saved", async () => {
+	const projects = new DesktopProjects();
+	const first = await projects.createUntitled();
+	const second = await projects.createUntitled();
+	assert.equal(first.manifest.name, "Untitled");
+	assert.equal(second.inMemory, true);
+	assert.match(first.directory, /^memory:/);
+	assert.notEqual(first.directory, second.directory);
+	assert.deepEqual(await projects.load(), second);
+	assert.equal(await projects.canWriteFile(second.directory, second.manifest.drawing), true);
+	assert.equal(await new DesktopProjects().load(), null);
+	await assert.rejects(projects.save(first.directory, { shapes: [], symbols: [] }), /no longer open/);
+});
+
+test("saving an in-memory project preserves drawings, circuits, libraries and binary sources", async () => temporary(async (parent) => {
+	const { createCircuit } = await import("@ecad/drawing-core/circuit/model.ts");
+	const projects = new DesktopProjects();
+	const created = await projects.createUntitled();
+	const edited = await projects.save(created.directory, {
+		shapes: [shape], symbols: [symbol],
+		drawings: [{ id: "power", name: "Power", shapes: [shape] }],
+		circuits: [createCircuit("Power supply")],
+		symbolLibraries: [{ id: "project-symbols", name: "Project symbols", enabled: true, source: { kind: "embedded", symbols: [symbol] } }],
+	});
+	assert.equal(edited.inMemory, true);
+	assert.deepEqual(await readdir(parent), []);
+	const bytes = new Uint8Array([0, 255, 13, 128]);
+	const imported = await projects.importAssets(created.directory, [{ name: "model.step", kind: "step", bytes }]);
+	bytes.fill(42);
+	const asset = imported.manifest.assets[0];
+	assert.deepEqual(await projects.readAsset(created.directory, asset.path), new Uint8Array([0, 255, 13, 128]));
+	const saved = await projects.saveToDirectory(created.directory, parent);
+	assert.equal(saved.inMemory, undefined);
+	assert.equal(saved.directory, join(parent, "Untitled"));
+	const { directory, inMemory, ...expected } = imported;
+	const { directory: savedDirectory, ...actual } = saved;
+	assert.deepEqual(actual, expected);
+	assert.deepEqual(await new DesktopProjects(saved.directory).load(), saved);
+	assert.deepEqual(await projects.readAsset(saved.directory, asset.path), new Uint8Array([0, 255, 13, 128]));
+	await assert.rejects(projects.readAsset(created.directory, asset.path), /no longer open/);
+	const next = await projects.save(saved.directory, { ...saved, shapes: [] });
+	assert.deepEqual((await new DesktopProjects(saved.directory).load())?.shapes, next.shapes);
+}));
+
+test("failed memory export preserves the project and does not overwrite an existing folder", async () => temporary(async (parent) => {
+	const projects = new DesktopProjects();
+	const created = await projects.createUntitled();
+	await projects.save(created.directory, { shapes: [shape], symbols: [symbol] });
+	await mkdir(join(parent, "Untitled"));
+	await writeFile(join(parent, "Untitled", "keep.txt"), "Keep this file");
+	await assert.rejects(projects.saveToDirectory(created.directory, join(parent, "missing")), { code: "ENOENT" });
+	assert.equal(await readFile(join(parent, "Untitled", "keep.txt"), "utf8"), "Keep this file");
+	assert.equal((await projects.load())?.inMemory, true);
+	assert.deepEqual((await projects.load())?.shapes, [shape]);
+	const saved = await projects.saveToDirectory(created.directory, parent);
+	assert.equal(saved.directory, join(parent, "Untitled 2"));
+	assert.equal(saved.inMemory, undefined);
+	assert.equal(await readFile(join(parent, "Untitled", "keep.txt"), "utf8"), "Keep this file");
+	const next = await projects.createUntitled();
+	assert.equal((await projects.saveToDirectory(next.directory, parent)).directory, join(parent, "Untitled 3"));
+}));

@@ -120,3 +120,16 @@ test("failed browser project creation removes the incomplete directory and allow
 	browser.fail(false);
 	assert.equal((await storage.create("Controller"))?.manifest.name, "Controller");
 });
+
+
+test("untitled web projects keep their display name and use separate restorable directories", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	const first = await storage.create("Untitled");
+	const second = await storage.create("Untitled");
+	assert.equal(first?.manifest.name, "Untitled");
+	assert.equal(second?.manifest.name, "Untitled");
+	assert.notEqual(first?.directory, second?.directory);
+	assert.deepEqual(await storage.load(), second);
+	assert.deepEqual(await storage.open(first?.directory), first);
+});

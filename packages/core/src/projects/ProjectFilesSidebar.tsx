@@ -4,7 +4,6 @@ import {
 	ChevronRight,
 	CircuitBoard,
 	File,
-	Folder,
 	FolderOpen,
 	Layers,
 	ListTree,
@@ -32,6 +31,7 @@ import {
 	type ProjectAsset,
 } from "#/projects/format.ts";
 import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
+import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import {
 	useWorkspaceControls,
@@ -159,7 +159,10 @@ export function ProjectFilesSidebar() {
 							path: asset.path,
 							name: asset.name,
 							type: asset.kind === "step" ? "STEP" : "Gerber",
-							href: asset.kind === "step" ? ("/step" as const) : ("/" as const),
+							href:
+								asset.kind === "step"
+									? ("/step" as const)
+									: ("/gerber" as const),
 							asset,
 						})),
 					]
@@ -358,7 +361,7 @@ export function ProjectFilesSidebar() {
 					className="grid shrink-0 grid-cols-4 gap-2 border-b border-white/10 p-3"
 				>
 					<ProjectLink
-						href="/"
+						href="/gerber"
 						aria-label="Gerber viewer"
 						title="Gerber viewer"
 						className={`${workspaceActionClassName} text-[#90c8bc]`}
@@ -373,14 +376,7 @@ export function ProjectFilesSidebar() {
 					>
 						<Box size={20} aria-hidden="true" />
 					</ProjectLink>
-					<ProjectLink
-						href="/projects"
-						aria-label="Projects"
-						title="Projects"
-						className={`${workspaceActionClassName} text-[#e8b77e]`}
-					>
-						<Folder size={20} aria-hidden="true" />
-					</ProjectLink>
+					<ProjectMenu />
 					{workspaceControls?.editor ? (
 						workspaceControls.editor.enableMcp ? (
 							<Suspense
@@ -429,8 +425,8 @@ export function ProjectFilesSidebar() {
 							<div className="shrink-0 border-b border-white/10 pb-1">
 								<div className="flex items-center h-9 gap-0.5 px-2">
 									<ProjectLink
-										href="/projects"
-										aria-label="Project settings"
+										href="/"
+										aria-label="Workspace home"
 										title={snapshot.manifest.name}
 										className={`flex min-w-0 items-center rounded text-xs hover:bg-white/10 hover:text-white flex-1 gap-2 py-1 ${focus}`}
 									>

@@ -55,8 +55,8 @@ export function StepWorkspace() {
 		>
 			{!workspaceControls && (
 				<header className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
-					<ProjectLink href="/projects" className={button}>
-						Projects
+					<ProjectLink href="/" className={button}>
+						Workspace
 					</ProjectLink>
 					{!project && (
 						<label
@@ -77,7 +77,7 @@ export function StepWorkspace() {
 							/>
 						</label>
 					)}
-					<ProjectLink href="/" className={button}>
+					<ProjectLink href="/gerber" className={button}>
 						Gerber viewer
 					</ProjectLink>
 					<ProjectLink href="/editor" className={button}>
@@ -135,7 +135,7 @@ export function StepWorkspace() {
 					<h1 className="text-xl font-medium text-slate-200">STEP viewer</h1>
 					<p className="text-sm text-slate-400">
 						{project
-							? "Add a STEP file on the Projects page to explore it in 3D."
+							? "Add a STEP file in the sidebar to explore it in 3D."
 							: "Open or drop a .step or .stp file to explore it in 3D."}
 					</p>
 					<p className="text-xs text-slate-400">Files stay on your device.</p>

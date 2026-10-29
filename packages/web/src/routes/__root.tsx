@@ -20,10 +20,10 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 		meta: [
 			{ charSet: "utf-8" },
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
-			{ title: "Gerber viewer" },
+			{ title: "ECAD" },
 			{
 				name: "description",
-				content: "Display a Gerber file with WebGPU rendering.",
+				content: "Create drawings, circuits, and symbols.",
 			},
 		],
 		links: [{ rel: "stylesheet", href: appCss }],

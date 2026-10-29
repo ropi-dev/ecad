@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as EditorRouteImport } from './routes/editor'
+import { Route as GerberRouteImport } from './routes/gerber'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as StepRouteImport } from './routes/step'
@@ -42,6 +43,11 @@ const AboutRoute = AboutRouteImport.update({
 const EditorRoute = EditorRouteImport.update({
   id: '/editor',
   path: '/editor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GerberRoute = GerberRouteImport.update({
+  id: '/gerber',
+  path: '/gerber',
   getParentRoute: () => rootRouteImport,
 } as any)
 const McpRoute = McpRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
+  '/gerber': typeof GerberRoute
   '/mcp': typeof McpRouteWithChildren
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
@@ -150,6 +157,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
+  '/gerber': typeof GerberRoute
   '/mcp': typeof McpRouteWithChildren
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
@@ -172,6 +180,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
+  '/gerber': typeof GerberRoute
   '/mcp': typeof McpRouteWithChildren
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/editor'
+    | '/gerber'
     | '/mcp'
     | '/projects'
     | '/step'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/editor'
+    | '/gerber'
     | '/mcp'
     | '/projects'
     | '/step'
@@ -237,6 +248,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/editor'
+    | '/gerber'
     | '/mcp'
     | '/projects'
     | '/step'
@@ -259,6 +271,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   EditorRoute: typeof EditorRoute
+  GerberRoute: typeof GerberRoute
   McpRoute: typeof McpRouteWithChildren
   ProjectsRoute: typeof ProjectsRoute
   StepRoute: typeof StepRoute
@@ -296,6 +309,13 @@ declare module '@tanstack/react-router' {
       path: '/editor'
       fullPath: '/editor'
       preLoaderRoute: typeof EditorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gerber': {
+      id: '/gerber'
+      path: '/gerber'
+      fullPath: '/gerber'
+      preLoaderRoute: typeof GerberRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mcp': {
@@ -439,6 +459,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   EditorRoute: EditorRoute,
+  GerberRoute: GerberRoute,
   McpRoute: McpRouteWithChildren,
   ProjectsRoute: ProjectsRoute,
   StepRoute: StepRoute,
