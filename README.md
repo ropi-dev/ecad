@@ -9,28 +9,29 @@ ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron 
 | [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
 | [`@ecad/cli`](packages/cli) | Standalone drawing commands, local file persistence, and an MCP stdio server. |
 
-Use Node.js 24.14.0 or newer in the Node 24 line, or Node.js 25.4.0 or newer. Run `nvm use` to select Node 24 if you use nvm. npm rejects unsupported Node versions.
+Use Node.js 24.14.0 or newer in the Node 24 line, or Node.js 25.4.0 or newer. Run `nvm use` to select Node 24 if you use nvm. pnpm rejects unsupported Node versions.
 
-Install dependencies from the repository root with npm. The root `package-lock.json` covers all workspaces.
+Install dependencies from the repository root with pnpm. The root `pnpm-lock.yaml` covers all workspaces.
 
 ```bash
-npm install
+corepack enable
+pnpm install
 ```
 
 ## Run the web app
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Open `http://localhost:3000/editor` for the drawing editor. Manage symbol libraries under **Projects → Symbol libraries**, where you can upload files or directories into user or project libraries. User libraries live in project-independent localStorage. Project libraries save with the project. Uploading a directory copies its current symbols; it does not keep access to that directory.
 
-The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `npm run symbols:generate -- /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API.
+The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `pnpm run symbols:generate /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API.
 
 ## Run the desktop app
 
 ```bash
-npm run dev:desktop -- /absolute/project-directory
+pnpm run dev:desktop /absolute/project-directory
 ```
 
 The project directory argument is optional. Manage libraries under **Projects → Symbol libraries**. **Add library directory** adds a directory source, and **Reload libraries** rereads files after external edits. User settings live at `~/.ecad/config.json`. Uploaded and created symbols can be saved without opening a directory first. Built-in symbols are enabled by default.
@@ -40,7 +41,7 @@ The desktop app reads configured directories from disk. The web app's **Upload l
 If Electron exits with a `chrome-sandbox` permissions error on Linux, configure the system sandbox. For local development on that host, the launch command also accepts `--no-sandbox`:
 
 ```bash
-npm run dev:desktop -- --no-sandbox /absolute/project-directory
+pnpm run dev:desktop --no-sandbox /absolute/project-directory
 ```
 
 ## Projects
@@ -75,33 +76,33 @@ Web projects keep revision folders in browser storage and publish each revision 
 ## Build and verify
 
 ```bash
-npm run build:web
-npm run build:desktop
+pnpm run build:web
+pnpm run build:desktop
 # Build all packages:
-npm run build
-npm run build:cli
+pnpm run build
+pnpm run build:cli
 
 # Launch the built desktop app:
-npm run start:desktop -- /absolute/project-directory
+pnpm run start:desktop /absolute/project-directory
 
-npm run typecheck
-npm test
-npm run test:browser
+pnpm run typecheck
+pnpm test
+pnpm run test:browser
 ```
 
-Use `npm run preview` to preview the web build. Biome provides `npm run format`, `npm run lint`, and `npm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
+Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format`, `pnpm run lint`, and `pnpm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
 
 ### Serve the web build with nginx
 
-`npm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
+`pnpm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
 
-The editor, viewers, and browser project storage work without a Node server. MCP and server-backed demos require a running app server and are unavailable in this static deployment. Development and `npm run preview` still support those server features.
+The editor, viewers, and browser project storage work without a Node server. MCP and server-backed demos require a running app server and are unavailable in this static deployment. Development and `pnpm run preview` still support those server features.
 
 From `/home/ropi/ecad`, install the site on this Ubuntu host:
 
 ```bash
-npm ci
-npm run build:web
+pnpm install --frozen-lockfile
+pnpm run build:web
 sudo apt-get install acl
 sudo setfacl -m u:www-data:--x /home/ropi
 sudo install -m 644 deploy/nginx/ecad.conf /etc/nginx/sites-available/ecad.ropi.dev
@@ -115,17 +116,17 @@ The ACL lets nginx traverse the home directory to reach the build. Keep the buil
 
 Google Cloud DNS zone `ropi-dev` in project `calcium-doodad-366020` has a CNAME from `ecad.ropi.dev.` to `mini.ropi.dev.` with a 300-second TTL, matching `auth.ropi.dev`.
 
-Run `npm run build:web` again to publish changes from this checkout. nginx reads the rebuilt files directly and needs no reload when only the build changes. Each build replaces the client output, so requests during a build and tabs running an older build may need a refresh. The live site has no worktree routing.
+Run `pnpm run build:web` again to publish changes from this checkout. nginx reads the rebuilt files directly and needs no reload when only the build changes. Each build replaces the client output, so requests during a build and tabs running an older build may need a refresh. The live site has no worktree routing.
 
 GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web, desktop, and CLI builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
-Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `npm ci`, and cache npm downloads. Browser jobs install the Mesa Vulkan libraries. Interaction tests use headless Chromium. The renderer spec runs in a separate Playwright project under Xvfb to support its software WebGPU swap chain on CI. Both projects use SwiftShader's Vulkan backend for WebGL and WebGPU. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
+Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `pnpm install --frozen-lockfile`, and cache the pnpm store. Browser jobs install the Mesa Vulkan libraries. Interaction tests use headless Chromium. The renderer spec runs in a separate Playwright project under Xvfb to support its software WebGPU swap chain on CI. Both projects use SwiftShader's Vulkan backend for WebGL and WebGPU. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
 
 The 2D hover and selection tests check hover counts, selection attributes, and clearing behavior. They omit full-canvas image comparisons because software-renderer captures vary on hosted runners.
 
-Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `npm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `npm run lint`. Formatting and import organization are available through `npm run check`.
+Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `pnpm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `pnpm run lint`. Formatting and import organization are available through `pnpm run check`.
 
-Capture performance before feature work with `npm run perf:baseline`, then run `npm run perf` after changes to check startup, large projects, drawing, and imports against budgets and the local baseline. `npm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
+Capture performance before feature work with `pnpm run perf:baseline`, then run `pnpm run perf` after changes to check startup, large projects, drawing, and imports against budgets and the local baseline. `pnpm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
 
 ## Working in the packages
 
@@ -133,9 +134,9 @@ The headless drawing model, commands, store, schemas, and MCP tool registration 
 
 Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within the package. App packages import shared modules through `@ecad/core`, for example `@ecad/core/components/editor/Editor2D.tsx`.
 
-Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `npm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
+Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `pnpm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
 
-Tailwind styles live in `packages/core/src/styles.css`. The shared Shadcn configuration is `packages/core/components.json`. Web environment validation lives in `packages/web/src/env.ts`. Database commands such as `npm run db:migrate` run in the web workspace and use `DATABASE_URL`.
+Tailwind styles live in `packages/core/src/styles.css`. The shared Shadcn configuration is `packages/core/components.json`. Web environment validation lives in `packages/web/src/env.ts`. Database commands such as `pnpm run db:migrate` run in the web workspace and use `DATABASE_URL`.
 
 See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
 
@@ -145,18 +146,18 @@ The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing
 
 ```bash
 export ECAD_DRAWING="$PWD/drawing.ecaddraw"
-npm run --silent cli -- tools
-npm run --silent cli -- getDrawing
-npm run --silent cli -- placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
-npm run --silent cli -- undo
-npm run --silent cli -- mcp
+pnpm --silent cli tools
+pnpm --silent cli getDrawing
+pnpm --silent cli placeRectangle '{"x":20,"y":30,"width":40,"height":15,"rotation":0,"lineWidth":0.2}'
+pnpm --silent cli undo
+pnpm --silent cli mcp
 ```
 
 `--drawing <path>` overrides `ECAD_DRAWING`. The default is `drawing.ecaddraw` in the current directory. A missing file starts empty and saves after the first edit. All nine drawing MCP tools are available, including batch placement, replacement, rotation, removal, and history navigation. Arguments accept JSON or `-` for stdin. Results use the MCP JSON format, including `structuredContent` and `isError`; failures return exit code 1.
 
 The drawing stays compatible with app project files. An adjacent `.history.json` file preserves undo branches between CLI calls and MCP restarts. CLI and MCP operations coordinate through a file lock and reread the drawing on each call.
 
-Build with `npm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the standalone stdio server. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.
+Build with `pnpm run build:cli`, then run `node packages/cli/bin/ecad.mjs`. The workspace also registers the `ecad` executable. `ecad mcp` starts the standalone stdio server. See the [MCP guide](docs/mcp.md#cli-and-stdio-access) for client configuration and file behavior.
 
 ## Schematic export
 

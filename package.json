@@ -25,68 +25,59 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.3.5",
-    "esbuild": "^0.28.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "lightningcss",
-      "better-sqlite3"
-    ]
+    "esbuild": "^0.28.0",
+    "@ecad/cli": "workspace:*",
+    "@ecad/default-symbols": "workspace:*",
+    "@ecad/drawing-core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@tailwindcss/vite": "^4.1.18",
+    "better-sqlite3": "^12.6.2",
+    "effect": "^3.22.2",
+    "fflate": "^0.8.3",
+    "occt-import-js": "^0.0.23",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.186.0",
+    "zod": "^4.6.7",
+    "tailwindcss": "^4.1.18"
   },
   "intent": {
     "skills": [
       "*"
     ]
   },
-  "allowScripts": {
-    "esbuild@0.18.20": true,
-    "esbuild@0.25.12": true,
-    "esbuild@0.28.2": true,
-    "better-sqlite3@12.11.1": true
-  },
   "name": "ecad",
-  "workspaces": [
-    "packages/*"
-  ],
   "imports": {
     "#/*": "./packages/core/src/*",
     "#web/*": "./packages/web/src/*"
   },
   "scripts": {
-    "dev": "npm run dev --workspace @ecad/web --",
-    "dev:web": "npm run dev --workspace @ecad/web --",
-    "dev:desktop": "npm run dev --workspace @ecad/desktop --",
-    "generate-routes": "npm run generate-routes --workspace @ecad/web",
-    "build": "npm run build:web && npm run build:desktop && npm run build:cli",
-    "build:web": "npm run build --workspace @ecad/web",
-    "build:desktop": "npm run build --workspace @ecad/desktop",
-    "build:cli": "npm run build --workspace @ecad/cli",
+    "dev": "pnpm --filter @ecad/web run dev",
+    "dev:web": "pnpm --filter @ecad/web run dev",
+    "dev:desktop": "pnpm --filter @ecad/desktop run dev",
+    "generate-routes": "pnpm --filter @ecad/web run generate-routes",
+    "build": "pnpm run build:web && pnpm run build:desktop && pnpm run build:cli",
+    "build:web": "pnpm --filter @ecad/web run build",
+    "build:desktop": "pnpm --filter @ecad/desktop run build",
+    "build:cli": "pnpm --filter @ecad/cli run build",
     "cli": "tsx packages/cli/src/main.ts",
-    "preview": "npm run preview --workspace @ecad/web --",
-    "start:desktop": "npm run start --workspace @ecad/desktop --",
+    "preview": "pnpm --filter @ecad/web run preview",
+    "start:desktop": "pnpm --filter @ecad/desktop run start",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check",
-    "test": "tsx --test tests/*.test.ts packages/core/src/engine/*.test.ts && npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts packages/core/src/engine/*.test.ts && pnpm -r --if-present run test",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
     "test:browser": "playwright test --config tests/browser/playwright.config.ts",
-    "db:generate": "npm run db:generate --workspace @ecad/web",
-    "db:migrate": "npm run db:migrate --workspace @ecad/web",
-    "db:push": "npm run db:push --workspace @ecad/web",
-    "db:pull": "npm run db:pull --workspace @ecad/web",
-    "db:studio": "npm run db:studio --workspace @ecad/web",
+    "db:generate": "pnpm --filter @ecad/web run db:generate",
+    "db:migrate": "pnpm --filter @ecad/web run db:migrate",
+    "db:push": "pnpm --filter @ecad/web run db:push",
+    "db:pull": "pnpm --filter @ecad/web run db:pull",
+    "db:studio": "pnpm --filter @ecad/web run db:studio",
     "perf": "tsx scripts/performance/run.ts",
     "perf:dev": "tsx scripts/performance/run.ts --development",
     "perf:baseline": "tsx scripts/performance/run.ts --baseline",
-    "symbols:generate": "npm run generate --workspace @ecad/default-symbols --"
+    "symbols:generate": "pnpm --filter @ecad/default-symbols run generate"
   },
-  "overrides": {
-    "@tailwindcss/typography": {
-      "postcss-selector-parser": "^6.1.5"
-    },
-    "@esbuild-kit/core-utils": {
-      "esbuild": "$esbuild"
-    }
-  }
+  "packageManager": "pnpm@10.34.9"
 }

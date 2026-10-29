@@ -18,9 +18,10 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@ecad/core": "*",
+    "@ecad/core": "workspace:*",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "@ecad/drawing-core": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
