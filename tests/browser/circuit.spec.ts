@@ -25,6 +25,7 @@ async function placeComponent(
 }
 async function createCircuit(page: Page) {
 	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
 	await page.getByLabel("Project name", { exact: true }).fill("Graph project");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
