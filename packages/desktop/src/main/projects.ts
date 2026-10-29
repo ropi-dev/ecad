@@ -207,11 +207,23 @@ export class DesktopProjects {
 			const files = this.active?.files;
 			if (!files) return source.load();
 			const snapshot = await source.load();
-			const selected = join(
-				await realpath(resolve(parent)),
-				projectNameSchema.parse(snapshot.manifest.name),
-			);
-			await mkdir(selected);
+			const base = await realpath(resolve(parent));
+			const name = projectNameSchema.parse(snapshot.manifest.name);
+			let selected = join(base, name);
+			for (let suffix = 2; ; suffix++) {
+				try {
+					await mkdir(selected);
+					break;
+				} catch (cause) {
+					if (
+						!(cause instanceof Error) ||
+						!("code" in cause) ||
+						cause.code !== "EEXIST"
+					)
+						throw cause;
+					selected = join(base, `${name} ${suffix}`);
+				}
+			}
 			try {
 				const disk = await createDesktopProjectDirectory(selected);
 				for (const [path, bytes] of files) await disk.write(path, bytes);

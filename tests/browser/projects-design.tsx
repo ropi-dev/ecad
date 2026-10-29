@@ -34,7 +34,7 @@ const storage: ProjectStorage = {
 	list: async () => [],
 	open: async () => snapshot,
 	create: async (name) => {
-		snapshot = { ...snapshot, directory: `/home/ropi/ElectronicsProjects/${name}`, manifest: { ...snapshot.manifest, name } };
+		snapshot = { ...snapshot, inMemory: parameters.has("empty"), directory: `/home/ropi/ElectronicsProjects/${name}`, manifest: { ...snapshot.manifest, name } };
 		return snapshot;
 	},
 	save: async (_directory, document) => {
@@ -42,6 +42,7 @@ const storage: ProjectStorage = {
 		snapshot = { ...snapshot, ...document };
 		return snapshot;
 	},
+	saveProject: async () => { snapshot = { ...snapshot, inMemory: false }; return snapshot; },
 	importAssets: async () => snapshot,
 	readAsset: async () => new Uint8Array(),
 };

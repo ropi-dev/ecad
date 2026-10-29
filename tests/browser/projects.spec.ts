@@ -323,3 +323,49 @@ test("new symbols start empty, persist edits, and use distinct files for repeate
 		}),
 	).toBeVisible();
 });
+
+
+test("library settings refresh the mounted editor after project and user changes", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	await createProject(page, "Modal libraries");
+	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toBeEnabled();
+	await page.locator("canvas").evaluate((canvas) => canvas.setAttribute("data-original", "true"));
+	const settings = async () => {
+		await page.getByRole("button", { name: "Project actions", exact: true }).click();
+		await page.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
+		await expect(page.getByLabel("Upload symbol files")).toBeEnabled();
+		return page.getByRole("dialog");
+	};
+	const picker = async (present: boolean) => {
+		await page.getByRole("button", { name: "Done", exact: true }).click();
+		await expect(page.locator('canvas[data-original="true"]')).toBeVisible();
+		await page.getByRole("button", { name: "Symbols", exact: true }).click();
+		const part = page.getByRole("button", { name: "Insert Modal part", exact: true });
+		if (present) await expect(part).toBeVisible();
+		else await expect(part).toHaveCount(0);
+		await page.keyboard.press("Escape");
+	};
+	for (const scope of ["project", "user"]) {
+		let dialog = await settings();
+		await dialog.getByLabel("Library scope").selectOption(scope);
+		const name = `Modal ${scope}`;
+		await dialog.getByLabel("Library name").fill(name);
+		await dialog.getByLabel("Upload symbol files").setInputFiles({ name: "modal.ecadsym", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "modal-part", name: "Modal part", description: "", prefix: "TP", value: "", shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }] })) });
+
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toBeEnabled();
+		await picker(true);
+		dialog = await settings();
+		await dialog.getByRole("checkbox", { name, exact: true }).uncheck();
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toBeEnabled();
+		await picker(false);
+		dialog = await settings();
+		await dialog.getByRole("checkbox", { name, exact: true }).check();
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toBeEnabled();
+		await picker(true);
+		dialog = await settings();
+		await dialog.getByRole("button", { name: `Remove ${name}`, exact: true }).click();
+		await expect(dialog.getByRole("checkbox", { name, exact: true })).toHaveCount(0);
+		await picker(false);
+	}
+});

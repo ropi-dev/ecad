@@ -61,6 +61,12 @@ export interface SymbolLibraryStorage {
 	): Promise<void>;
 }
 
+const UpdatesContext = createContext<{
+	notify(): void;
+	subscribe(listener: () => void): () => void;
+} | null>(null);
+export const useSymbolLibraryUpdates = () => useContext(UpdatesContext);
+
 const StorageContext = createContext<SymbolLibraryStorage | null>(null);
 const ProjectStorageContext = createContext<SymbolLibraryStorage | null>(null);
 
@@ -73,12 +79,28 @@ export function SymbolLibraryProvider({
 	children: ReactNode;
 	projectStorage?: SymbolLibraryStorage;
 }) {
+	const updates = useMemo(() => {
+		const listeners = new Set<() => void>();
+		return {
+			notify() {
+				for (const listener of listeners) listener();
+			},
+			subscribe(listener: () => void) {
+				listeners.add(listener);
+				return () => {
+					listeners.delete(listener);
+				};
+			},
+		};
+	}, []);
 	return (
-		<StorageContext.Provider value={storage}>
-			<ProjectStorageContext.Provider value={projectStorage ?? null}>
-				{children}
-			</ProjectStorageContext.Provider>
-		</StorageContext.Provider>
+		<UpdatesContext.Provider value={updates}>
+			<StorageContext.Provider value={storage}>
+				<ProjectStorageContext.Provider value={projectStorage ?? null}>
+					{children}
+				</ProjectStorageContext.Provider>
+			</StorageContext.Provider>
+		</UpdatesContext.Provider>
 	);
 }
 

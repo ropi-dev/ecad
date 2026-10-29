@@ -296,6 +296,18 @@ function createWindow() {
 		},
 	});
 	window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+	window.webContents.on("will-prevent-unload", (event) => {
+		if (!window) return;
+		const choice = dialog.showMessageBoxSync(window, {
+			type: "warning",
+			buttons: ["Keep working", "Discard changes"],
+			defaultId: 0,
+			cancelId: 0,
+			message: "This project has unsaved changes.",
+			detail: "Choose Save project to keep your work before closing.",
+		});
+		if (choice === 1) event.preventDefault();
+	});
 	window.webContents.on("will-navigate", (event, url) => {
 		if (url !== rendererUrl) event.preventDefault();
 	});

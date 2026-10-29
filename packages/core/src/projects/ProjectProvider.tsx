@@ -544,12 +544,12 @@ export function ProjectProvider({
 	);
 	useEffect(() => {
 		const warn = (event: BeforeUnloadEvent) => {
-			if (!dirty) return;
+			if (!dirty && !project?.inMemory) return;
 			event.preventDefault();
 		};
 		window.addEventListener("beforeunload", warn);
 		return () => window.removeEventListener("beforeunload", warn);
-	}, [dirty]);
+	}, [dirty, project?.inMemory]);
 
 	const switchProject = useCallback(
 		async (name: string | undefined, creating: boolean) => {

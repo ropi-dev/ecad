@@ -75,3 +75,26 @@ test("desktop project files fit desktop and mobile layouts and remain usable by 
 			contentType: "image/png",
 		});
 });
+
+
+test("memory autosave retains unload protection until disk save, and failed saves stay visible", async ({ page }) => {
+	await page.goto("/tests/browser/projects-design.html?empty");
+	await expect(page.getByText("Kept in memory. Choose Save project to keep your work.")).toBeVisible();
+	const unloadBlocked = () => page.evaluate(() => {
+		const event = new Event("beforeunload", { cancelable: true });
+		window.dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+	expect(await unloadBlocked()).toBe(true);
+	await page.getByRole("button", { name: "Project actions", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await expect(page.getByText("Your changes save automatically.")).toBeVisible();
+	expect(await unloadBlocked()).toBe(false);
+	await page.goto("/tests/browser/projects-design.html?save-error");
+	await expect(page.getByRole("heading", { name: "Ready when you are" })).toBeVisible();
+	await page.getByRole("button", { name: "Project actions", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await expect(page.getByRole("alert", { name: "Project save failed", exact: true })).toContainText("changed on disk");
+	await page.getByRole("button", { name: "Dismiss save error", exact: true }).click();
+	await expect(page.getByRole("alert", { name: "Project save failed", exact: true })).toHaveCount(0);
+});

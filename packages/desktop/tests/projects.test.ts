@@ -353,10 +353,14 @@ test("failed memory export preserves the project and does not overwrite an exist
 	await projects.save(created.directory, { shapes: [shape], symbols: [symbol] });
 	await mkdir(join(parent, "Untitled"));
 	await writeFile(join(parent, "Untitled", "keep.txt"), "Keep this file");
-	await assert.rejects(projects.saveToDirectory(created.directory, parent), { code: "EEXIST" });
+	await assert.rejects(projects.saveToDirectory(created.directory, join(parent, "missing")), { code: "ENOENT" });
 	assert.equal(await readFile(join(parent, "Untitled", "keep.txt"), "utf8"), "Keep this file");
 	assert.equal((await projects.load())?.inMemory, true);
 	assert.deepEqual((await projects.load())?.shapes, [shape]);
-	await mkdir(join(parent, "another"));
-	assert.equal((await projects.saveToDirectory(created.directory, join(parent, "another"))).inMemory, undefined);
+	const saved = await projects.saveToDirectory(created.directory, parent);
+	assert.equal(saved.directory, join(parent, "Untitled 2"));
+	assert.equal(saved.inMemory, undefined);
+	assert.equal(await readFile(join(parent, "Untitled", "keep.txt"), "utf8"), "Keep this file");
+	const next = await projects.createUntitled();
+	assert.equal((await projects.saveToDirectory(next.directory, parent)).directory, join(parent, "Untitled 3"));
 }));
