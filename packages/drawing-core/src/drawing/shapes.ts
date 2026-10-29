@@ -1649,6 +1649,12 @@ export function connectTransformedTerminals(
 	const targets = shapes.flatMap((shape) =>
 		movementTerminals(byId.get(shape.id) ?? shape),
 	);
+	const wireJunctions = rerouteWireEnds
+		? wires.flatMap((wire) => [
+				localToWorld(wire, -wire.width / 2, 0),
+				localToWorld(wire, wire.width / 2, 0),
+			])
+		: [];
 	const reroutedWires = new Set<number>();
 	for (const [index, { shape, point: terminal }] of terminals.entries()) {
 		const target = targets[index];
@@ -1685,18 +1691,37 @@ export function connectTransformedTerminals(
 					connectionTolerance
 						? end
 						: start;
+				const junction = [...stationaryPins, ...wireJunctions].reduce(
+					(nearest, point) => {
+						const distance = Math.hypot(
+							point.x - terminal.x,
+							point.y - terminal.y,
+						);
+						return distance > connectionTolerance &&
+							distance <
+								Math.hypot(nearest.x - terminal.x, nearest.y - terminal.y) &&
+							pointOnWire(point, start, end)
+							? point
+							: nearest;
+					},
+					endpoint,
+				);
 				const other = terminals.findIndex(
 					({ point }) =>
-						Math.hypot(point.x - endpoint.x, point.y - endpoint.y) <=
+						Math.hypot(point.x - junction.x, point.y - junction.y) <=
 						connectionTolerance,
 				);
-				const anchor = other < 0 ? endpoint : targets[other];
+				const anchor = other < 0 ? junction : targets[other];
 				reroutedWires.add(wire.id);
-				const removed = { ...wire, width: 0 };
+				const retained = {
+					...wire,
+					...drawShape(wire.id, "wire", junction, endpoint),
+					lineWidth: wire.lineWidth,
+				};
 				const index = moved.findIndex((shape) => shape.id === wire.id);
-				if (index < 0) moved.push(removed);
-				else moved[index] = removed;
-				byId.set(wire.id, removed);
+				if (index < 0) moved.push(retained);
+				else moved[index] = retained;
+				byId.set(wire.id, retained);
 				anchors.push(anchor);
 				continue;
 			}

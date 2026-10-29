@@ -627,3 +627,25 @@ test("rotating both ends of a shared wire reconnects the new pin positions", asy
  run(undoEffect);
  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
 });
+
+test("rotation preserves wire interior junctions for pins, labels and branches", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const kind of ["pin", "label", "branch"] as const) {
+  const { store, run } = session();
+  const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+  const wire = drawShape(2, "wire", pinTerminals(symbol)[0], { x: -40, y: 0 });
+  const junction = kind === "pin" ? drawShape(3, "pin", { x: -25, y: 0 }, { x: -25, y: 0 })
+   : kind === "branch" ? drawShape(3, "wire", { x: -25, y: 0 }, { x: -25, y: 20 })
+   : { id: 3, kind: "text" as const, electrical: "net" as const, text: "TAP", x: -25, y: 0, width: 5, height: 2, fontSize: 1.3, rotation: 0, lineWidth: 0.2 };
+  run(placeShapesEffect([symbol, wire, junction], "Interior junction"));
+  const before = store.getSnapshot();
+  run(rotateShapesEffect([1]));
+  const net = electricalNets(store.getSnapshot().shapes).find(net => net.pins.some(pin => pin.shapeId === 1));
+  assert.ok(net);
+  if (kind === "label") assert.deepEqual(net.names, ["TAP"]);
+  else if (kind === "pin") assert.ok(net.pins.some(pin => pin.shapeId === 3));
+  else assert.ok(net.wires.includes(3));
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
