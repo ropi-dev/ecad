@@ -499,8 +499,7 @@ export function rotateShapesEffect(
 				if (
 					label.kind !== "text" ||
 					!label.circuitNet?.pinId ||
-					label.locked ||
-					selectedIds.has(label.id)
+					(label.locked && !selectedIds.has(label.id))
 				)
 					continue;
 				const component = components.find((shape) =>
@@ -513,6 +512,7 @@ export function rotateShapesEffect(
 					y = label.y - component.y;
 				transformed.set(label.id, {
 					...label,
+					rotation: transformed.get(label.id)?.rotation ?? label.rotation,
 					x: component.x + x * Math.cos(angle) - y * Math.sin(angle),
 					y: component.y + x * Math.sin(angle) + y * Math.cos(angle),
 				});

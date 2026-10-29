@@ -1679,6 +1679,7 @@ export function connectTransformedTerminals(
 			if (reroutedWires.has(wire.id)) continue;
 			if (
 				rerouteWireEnds &&
+				!wire.locked &&
 				!selectedIds.has(wire.id) &&
 				[start, end].some(
 					(point) =>

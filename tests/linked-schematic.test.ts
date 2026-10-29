@@ -465,7 +465,7 @@ test("rotating generated components preserves attached and independently moved l
  file.circuit.components = [a, b];
  file.circuit.nets = [{ id: "signal", names: [], pinIds: [a.pins[1].id, b.pins[0].id] }, { id: "power", names: ["VDD"], pinIds: [a.pins[0].id] }];
  const first = synchronizePcb(file, [], original, symbolDefinitions);
- for (const movedLabel of [false, true]) for (const angle of [Math.PI / 2, Math.PI, -Math.PI / 2]) {
+ for (const selectLabels of [false, true]) for (const movedLabel of [false, true]) for (const angle of [Math.PI / 2, Math.PI, -Math.PI / 2]) {
   let shapes = first.shapes;
   const label = shapes.find(shape => shape.kind === "text" && shape.circuitNet?.pinId === a.pins[1].id)!;
   if (movedLabel) {
@@ -478,11 +478,16 @@ test("rotating generated components preserves attached and independently moved l
   const run = <A, E>(effect: import("effect").Effect.Effect<A, E, import("#/commands/drawing-store.ts").DrawingStore>) => Effect.runSync(effect.pipe(Effect.provideService(DrawingStore, store)));
   run(placeShapesEffect(linked.shapes, "Generated schematic"));
   const before = store.getSnapshot().shapes;
-  run(rotateShapesEffect([first.file.circuit.components[0].schematicShapeId!], angle));
+  const ids = [first.file.circuit.components[0].schematicShapeId!, ...(selectLabels ? before.filter(shape => shape.kind === "text").map(shape => shape.id) : [])];
+  run(rotateShapesEffect(ids, angle));
   const rotated = store.getSnapshot().shapes;
   const next = synchronizePcb(linked.file, rotated, linked.file, symbolDefinitions);
   assert.deepEqual(next.file.circuit.nets, first.file.circuit.nets);
-  if (movedLabel) assert.deepEqual(next.shapes.find(shape => shape.id === label.id), linked.shapes.find(shape => shape.id === label.id));
+  if (movedLabel) {
+   const actual = next.shapes.find(shape => shape.id === label.id)!;
+   const expected = linked.shapes.find(shape => shape.id === label.id)!;
+   assert.deepEqual({ x: actual.x, y: actual.y }, { x: expected.x, y: expected.y });
+  }
   assert.deepEqual(synchronizePcb(next.file, next.shapes, next.file, symbolDefinitions).file.circuit.nets, first.file.circuit.nets);
   run(undoEffect);
   assert.deepEqual(store.getSnapshot().shapes, before);

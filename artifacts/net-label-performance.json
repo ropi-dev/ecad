@@ -94,11 +94,11 @@
     "editor-symbol-rotate": {
       "startupMs": {
         "before": 1571.8,
-        "after": 1543.9
+        "after": 1562.7
       },
       "scriptBytes": {
         "before": 1828744,
-        "after": 1830301
+        "after": 1830356
       },
       "domNodes": {
         "before": 558,
@@ -110,19 +110,19 @@
       },
       "blockingMs": {
         "before": 704,
-        "after": 678
+        "after": 673
       },
       "eventLoopP95Ms": {
         "before": 207.9,
-        "after": 277.3
+        "after": 216.1
       },
       "frameP95Ms": {
         "before": 65.3,
-        "after": 65
+        "after": 66.2
       },
       "interactionP95Ms": {
         "before": 138.6,
-        "after": 136
+        "after": 148.4
       }
     }
   },
@@ -132,6 +132,6 @@
   "failures_after": [
     "editor-component-move.interactionP95Ms: median 867.3 exceeds budget 750."
   ],
-  "functional_checks": "pnpm integration suite passed; latest junction fix passed 82 focused tests, three retained linked-label browser tests, lint and workspace typecheck",
+  "functional_checks": "pnpm integration suite passed; latest selected-label and locked-wire fixes passed 83 focused tests, three retained linked-label browser tests, lint and workspace typecheck",
   "rotation_failures_after": []
 }

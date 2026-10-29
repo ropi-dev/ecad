@@ -649,3 +649,21 @@ test("rotation preserves wire interior junctions for pins, labels and branches",
   assert.deepEqual(store.getSnapshot().shapes, before.shapes);
  }
 });
+
+test("rotating a component extends its connection without rewriting a locked wire", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ for (const angle of [Math.PI / 2, -Math.PI / 2]) {
+  const { store, run } = session();
+  const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+  const wire = { ...drawShape(2, "wire", pinTerminals(symbol)[0], { x: -40, y: 0 }), locked: true };
+  run(placeShapesEffect([symbol, wire], "Locked connection"));
+  const before = store.getSnapshot();
+  run(rotateShapesEffect([1], angle));
+  const shapes = store.getSnapshot().shapes;
+  assert.deepEqual(shapes.find(shape => shape.id === wire.id), before.shapes.find(shape => shape.id === wire.id));
+  assert.ok(shapes.length > before.shapes.length);
+  assert.ok(electricalNets(shapes).some(net => net.wires.includes(wire.id) && net.pins.some(pin => pin.shapeId === symbol.id)));
+  run(undoEffect);
+  assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+ }
+});
