@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import { drawingPoint } from "./symbol-items";
 import { stableScreenshot } from "./stable-screenshot";
@@ -32,7 +33,7 @@ test("a pin's lead, labels, and connection move and rotate as one item", async (
 	await page.mouse.click(midpoint.x, midpoint.y);
 	await expect(lead).toHaveValue("4");
 	await canvas.focus();
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("integrated-pin.png") }));
+	if (captureArtifacts) await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("integrated-pin.png") }));
 	await (await toolbarButton(page, "Wire")).click();
 	const terminal = await drawingPoint(page, { x: 5, y: 0 });
 	const end = await drawingPoint(page, { x: 9, y: 0 });
@@ -67,7 +68,7 @@ test("pin name and number visibility are independent and undoable", async ({ pag
 	await name.uncheck();
 	await expect.poll(labels).toEqual(["pin number 1"]);
 	await expect.poll(async () => (await document()).shapes[0]).toMatchObject({ name: "SWCLK", number: "24", showName: false });
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("pin-number-only.png") }));
+	if (captureArtifacts) await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("pin-number-only.png") }));
 	await number.uncheck();
 	await expect.poll(labels).toEqual([]);
 	await name.check();
@@ -76,7 +77,7 @@ test("pin name and number visibility are independent and undoable", async ({ pag
 	await angle.fill("180");
 	await angle.press("Enter");
 	await expect.poll(labels).toEqual(["pin name 1"]);
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("pin-name-only-rotated.png") }));
+	if (captureArtifacts) await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("pin-name-only-rotated.png") }));
 	await (await toolbarButton(page, "Undo")).click();
 	await (await toolbarButton(page, "Undo")).click();
 	await expect(name).not.toBeChecked();

@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -82,7 +83,7 @@ async function failedCall(client: Client, name: string, args: Record<string, unk
 	else expect(outcome.result?.isError).toBe(true);
 }
 
-test("MCP starts disabled and SDK tools read and edit the active drawing independently of the selected tool", async ({ page }) => {
+test("MCP starts disabled and SDK tools read and edit the active drawing independently of the selected tool", { tag: "@smoke" }, async ({ page }) => {
 	const sessionRequests: string[] = [];
 	page.on("request", (request) => {
 		if (request.method() === "POST" && new URL(request.url()).pathname === "/api/editor-mcp")
@@ -188,7 +189,7 @@ test("MCP settings stay within desktop and mobile viewports and collapse without
 			await expect(page.getByRole("button", { name: "Disable MCP", exact: true })).toBeVisible();
 		}
 		expect(sessionRequests).toHaveLength(1);
-		await page.screenshot({ path: test.info().outputPath("mcp-above-item-hierarchy.png"), mask: [panel.locator("input, textarea")] });
+		if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("mcp-above-item-hierarchy.png"), mask: [panel.locator("input, textarea")] });
 		await page.getByRole("button", { name: "Disable MCP", exact: true }).click();
 		await expect(page.getByRole("button", { name: "Enable MCP", exact: true })).toBeVisible();
 		await failedCall(client, "getDrawing");

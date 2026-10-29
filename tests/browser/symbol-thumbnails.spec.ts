@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import { stableScreenshot } from "./stable-screenshot";
 
@@ -15,13 +16,13 @@ test("thumbnails render near the viewport and load after scrolling or searching"
 	await chip.scrollIntoViewIfNeeded();
 	await expect(chip.locator("svg")).toHaveCount(1);
 	await expect(chip.locator("[data-thumbnail-skeleton]")).toHaveCount(0);
-	await stableScreenshot(() => picker.screenshot({ path: test.info().outputPath("scrolled-thumbnails.png") }));
+	if (captureArtifacts) await stableScreenshot(() => picker.screenshot({ path: test.info().outputPath("scrolled-thumbnails.png") }));
 	await page.keyboard.press("Escape");
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
 	await page.getByRole("searchbox", { name: "Search symbols" }).fill("RP2350B");
 	await expect(chip.locator("svg")).toHaveCount(1);
 	await expect(chip.locator("[data-thumbnail-skeleton]")).toHaveCount(0);
-	await stableScreenshot(() => picker.screenshot({ path: test.info().outputPath("loaded-thumbnail.png") }));
+	if (captureArtifacts) await stableScreenshot(() => picker.screenshot({ path: test.info().outputPath("loaded-thumbnail.png") }));
 });
 
 test("a delayed thumbnail shows a skeleton and still allows placement", async ({ page }) => {
@@ -37,7 +38,7 @@ test("a delayed thumbnail shows a skeleton and still allows placement", async ({
 		const resistor = page.getByRole("button", { name: "Insert Resistor", exact: true });
 		await expect(resistor.locator("[data-thumbnail-skeleton]")).toHaveCount(1);
 		await expect(resistor.locator("svg")).toHaveCount(0);
-		await stableScreenshot(() => page.locator("[data-symbol-picker]").screenshot({ path: test.info().outputPath("thumbnail-skeletons.png") }));
+		if (captureArtifacts) await stableScreenshot(() => page.locator("[data-symbol-picker]").screenshot({ path: test.info().outputPath("thumbnail-skeletons.png") }));
 		await resistor.click();
 		const canvas = page.locator("canvas");
 		const bounds = (await canvas.boundingBox())!;

@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
@@ -48,6 +49,6 @@ test("rotated schematic text renders upright while stored rotations stay unchang
 	expect(saved.horizontalAlign).toBe("left");
 	expect(saved.verticalAlign).toBe("top");
 	for (let index = 0; index < 5; index++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.screenshot({ path: "perf-artifacts/upright-schematic-text.png" });
+	if (captureArtifacts) await page.screenshot({ path: "perf-artifacts/upright-schematic-text.png" });
 	await expect(page.getByRole("alert")).toHaveCount(0);
 });

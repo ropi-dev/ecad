@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import { toolbarButton } from "./toolbar";
@@ -33,7 +34,7 @@ test("attributes open and save the reusable project symbol definition", async ({
  const schematic = (await documentState(page)).shapes;
  const edit = page.getByRole("button", { name: "Edit symbol", exact: true });
  await expect(edit).toBeEnabled();
- await page.screenshot({ path: test.info().outputPath("attributes.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("attributes.png") });
  await edit.click();
  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable part");
  await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(0);

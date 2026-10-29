@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
 import { openProjectFiles } from "./project-files";
@@ -164,7 +165,7 @@ test("placed symbol pin visibility survives child editing, undo, redo, and proje
 		page.getByRole("textbox", { name: "Number", exact: true }),
 	).toHaveValue("24");
 	await expect.poll(labels).toEqual(["name"]);
-	await stableScreenshot(() =>
+	if (captureArtifacts) await stableScreenshot(() =>
 		page.screenshot({
 			path: test.info().outputPath("placed-pin-name-only-reopened.png"),
 		}),

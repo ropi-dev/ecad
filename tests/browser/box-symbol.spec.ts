@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, type Page, test } from "@playwright/test";
 import { symbolChildren, symbolChildWorld, type EditorSymbol } from "#/drawing/shapes.ts";
 import { drawingPoint, selectDrawingShape, selectSymbolItem } from "./symbol-items";
@@ -82,7 +83,7 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	await number(page, "Height", "18");
 	await number(page, "Line width", "0.6");
 	await page.getByRole("combobox", { name: "Line style", exact: true }).selectOption("dashed");
-	await page.screenshot({ path: test.info().outputPath("box-border.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-border.png") });
 	await selectSymbolItem(page, "shape:2");
 	const text = page.getByRole("textbox", { name: "Text content", exact: true });
 	await text.fill("Power supply\n3.3 V");
@@ -108,11 +109,11 @@ test("Box resizes, styles and edits text independently, then survives saving and
 	await selectParent();
 	for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-	await page.screenshot({ path: test.info().outputPath("box-symbol.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-symbol.png") });
 	await selectSymbolItem(page, "shape:2");
 	await expect(text).toHaveValue("Power supply\n3.3 V");
 	await expect(page.getByRole("spinbutton", { name: "Font size", exact: true })).toHaveValue("2");
-	await page.screenshot({ path: test.info().outputPath("box-text.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-text.png") });
 	await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
@@ -136,7 +137,7 @@ test("Box dimensions and resize handles match the rectangle at the symbol origin
  await expect(page.getByRole("combobox", { name: "Text vertical alignment", exact: true })).toHaveValue("top");
  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- await page.screenshot({ path: test.info().outputPath("box-default-text.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-default-text.png") });
  await selectParent();
  const original = await current();
  await number(page, "Width", "32");
@@ -174,7 +175,7 @@ test("Box dimensions and resize handles match the rectangle at the symbol origin
  await number(page, "Center X", "0");
  await number(page, "Center Y", "0");
  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- await page.screenshot({ path: test.info().outputPath("box-size.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-size.png") });
  const corner = await drawingPoint(page, { x: 0, y: 0 });
  const topLeft = (await page.locator('[data-testid="resize-handle"][data-handle="-1,1"]').boundingBox())!;
  expect(topLeft.x + topLeft.width / 2).toBeCloseTo(corner.x, 0);
@@ -238,7 +239,7 @@ test("the Box rectangle stays unselectable while the symbol moves and resizes", 
  await expect(rectangle).toHaveCount(0);
  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- await page.screenshot({ path: test.info().outputPath("box-unselectable.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-unselectable.png") });
  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
@@ -286,7 +287,7 @@ test("resizing a Box keeps text attached to the top-left corner without scaling 
  expect(await current()).toEqual(resized);
  for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- await page.screenshot({ path: test.info().outputPath("box-resize-text.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("box-resize-text.png") });
  await selectSymbolItem(page, "shape:2");
  await number(page, "Anchor X", "3");
  await number(page, "Anchor Y", "-2");

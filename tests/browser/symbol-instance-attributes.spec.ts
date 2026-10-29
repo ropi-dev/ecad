@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, type Page, test } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
 import { toolbarButton } from "./toolbar";
@@ -33,7 +34,7 @@ test("symbol fields validate on blur and commit only valid changes", async ({ pa
 	await expect(angle).toHaveAttribute("aria-invalid", "true");
 	await expect(angle).toHaveAccessibleDescription("Use an angle in 90° increments.");
 	expect(await state(page)).toEqual(before);
-	await page.screenshot({ path: test.info().outputPath("symbol-attribute-validation.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-attribute-validation.png") });
 
 	const reference = page.getByRole("textbox", { name: "Reference", exact: true });
 	await reference.fill("R42");
@@ -75,7 +76,7 @@ test("symbol fields validate on blur and commit only valid changes", async ({ pa
 	await angle.focus();
 	await angle.press("Tab");
 	expect(await state(page)).toEqual(saved);
-	await page.screenshot({ path: test.info().outputPath("symbol-instance-attributes.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-instance-attributes.png") });
 	expect(errors).toEqual([]);
 });
 

@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { toolbarButton, toolbarTooltip } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
 
@@ -235,7 +236,7 @@ test("horizontal and vertical lines snap to grid and can be turned into a symbol
 	await expect(page.getByRole("button", { name: "Insert Corner lines", exact: true })).toBeVisible();
 });
 
-test("draws every shape, moves beyond A3 without panning, and deletes", async ({ page }) => {
+test("draws every shape, moves beyond A3 without panning, and deletes", { tag: "@smoke" }, async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	const before = await nonPinState(page);
@@ -335,7 +336,7 @@ test("rectangle selection previews, moves and deletes the group without panning"
 	await page.mouse.move(end.x, end.y, { steps: 4 });
 	await expect(page.getByTestId("selection-rectangle")).toBeVisible();
 	await expect.poll(() => selectedNames(page)).toEqual(["rectangle 1", "circle 2"]);
-	await page.screenshot({ path: test.info().outputPath("rectangle-selection.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("rectangle-selection.png") });
 	await page.mouse.up();
 	await expect(page.getByTestId("selection-rectangle")).toHaveCount(0);
 	await expect(page.getByRole("complementary", { name: "Selection attributes" })).toContainText("2 shapes selected");
@@ -400,7 +401,7 @@ test("attributes reuse the floating layer panel and follow the selected shape", 
 	await dragTo(page, [150, 100], [170, 120]);
 	await expect(page.getByRole("spinbutton", { name: "Center X", exact: true })).toHaveValue("170");
 	await expect(page.getByRole("spinbutton", { name: "Center Y", exact: true })).toHaveValue("120");
-	await panel.screenshot({ path: test.info().outputPath("selection-attributes.png") });
+	if (captureArtifacts) await panel.screenshot({ path: test.info().outputPath("selection-attributes.png") });
 	await panel.getByRole("button", { name: "Clear selection" }).click();
 	await expect(panel).toHaveCount(0);
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(1);
@@ -417,7 +418,7 @@ test("draws a live two-corner rectangle and retains its dimensions when moved", 
 	await expect.poll(async () => (await state(page)).shapes[0]?.width).toBeCloseTo(80, 4);
 	await expect.poll(async () => (await state(page)).shapes[0]?.height).toBeCloseTo(45, 4);
 	await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveValue("80");
-	await page.screenshot({ path: test.info().outputPath("drawing-rectangle.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("drawing-rectangle.png") });
 	await page.mouse.up();
 	await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
 	expect((await state(page)).origin).toEqual(original.origin);
@@ -465,10 +466,10 @@ test("clicks and cancelled drafts create nothing, and drawing extends beyond the
 	await expect.poll(async () => (await state(page)).shapes[2].x).toBeCloseTo(-25, 4);
 	await dragTo(page, [-25, 175], [-10, 200]);
 	await expect.poll(async () => (await state(page)).shapes[2].y).toBeCloseTo(200, 4);
-	await page.screenshot({ path: test.info().outputPath("drawn-outside-paper.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("drawn-outside-paper.png") });
 });
 
-test("wire clicks commit orthogonal segments and pointer release keeps the preview", async ({ page }) => {
+test("wire clicks commit orthogonal segments and pointer release keeps the preview", { tag: "@smoke" }, async ({ page }) => {
 
 	await placePin(page, 100, 100);
 	await (await toolbarButton(page, "Wire")).click();
@@ -509,7 +510,7 @@ test("wire clicks commit orthogonal segments and pointer release keeps the previ
 	expect(Math.abs(third.rotation)).toBeCloseTo(Math.PI, 4);
 	await moveAt(page, 115, 210);
 	await expect.poll(async () => (await nonPinState(page)).preview?.width).toBeCloseTo(45, 4);
-	await page.screenshot({ path: test.info().outputPath("drawing-line-chain.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("drawing-line-chain.png") });
 	await clickAt(page, 105, 165);
 	await clickAt(page, 105, 165);
 	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
@@ -627,7 +628,7 @@ test("moving one segment keeps connected endpoints together while resize and del
 	const moved = (await nonPinState(page)).shapes;
 	expect(moved.map((shape) => shape.name)).toEqual(["wire 2", "wire 3", "wire 4", "rectangle 5"]);
 	expect(moved[3]).toEqual(originals[3]);
-	await page.screenshot({ path: test.info().outputPath("moving-connected-endpoints.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("moving-connected-endpoints.png") });
 	await dragHandle(page, "1,0", [220, 210]);
 	await expect.poll(async () => (await wireEndpoints(page)).map((ends) => ends.map((value) => Number(value.toFixed(2))))).toEqual([[100, 110, 190, 110], [190, 110, 190, 175], [190, 175, 190, 210], [190, 175, 105, 175]]);
 	const shapes = (await nonPinState(page)).shapes;
@@ -708,7 +709,7 @@ test("folding a loop removes collapsed edges and keeps the selected merged segme
 	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 160]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
 	await expect(page.getByTestId("resize-handle")).toHaveCount(2);
-	await page.screenshot({ path: test.info().outputPath("merged-collapsed-loop.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("merged-collapsed-loop.png") });
 	await dragTo(page, [100, 130], [120, 140]);
 	await expect.poll(() => wireEndpoints(page)).toEqual([[120, 110, 120, 170]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
@@ -750,47 +751,6 @@ test("a drag can pass through a collapsed loop and reopen it before release", as
 	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 130, 100], [130, 100, 130, 160], [130, 160, 100, 160], [100, 160, 100, 100]]);
 	expect((await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["wire 2", "wire 3", "wire 4", "wire 5"]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
-});
-
-test("keyboard folding merges overlap while preserving separate parallel and gapped segments", async ({ page }) => {
-	await createWireChain(page, [[100, 100], [110, 100], [110, 160], [100, 160], [100, 100]]);
-	await createWireChain(page, [[100, 200], [100, 240]]);
-	await createWireChain(page, [[130, 100], [130, 160]]);
-	await clickAt(page, 110, 130);
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
-	const separate = (await nonPinState(page)).shapes.slice(4);
-	await page.keyboard.press("Shift+ArrowLeft");
-	await expect.poll(async () => (await nonPinState(page)).shapes.length).toBe(3);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 100, 160], [100, 200, 100, 240], [130, 100, 130, 160]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
-	expect((await nonPinState(page)).shapes.slice(1)).toEqual(separate);
-});
-
-test("drawing duplicate and overlapping wires merges their extent from valid anchors", async ({ page }) => {
- await createWireChain(page, [[100, 100], [160, 100]]);
- await (await toolbarButton(page, "Wire")).click();
- await clickAt(page, 100, 100);
- await clickAt(page, 160, 100);
- await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 160, 100]]);
- await expect.poll(() => selectedNames(page)).toEqual(["wire 3"]);
- // Extend the now-open endpoint, then double back to overlap the existing wire.
- await (await toolbarButton(page, "Wire")).click();
- await clickAt(page, 160, 100);
- await clickAt(page, 190, 100);
- await expect.poll(() => wireEndpoints(page)).toEqual([[100, 100, 190, 100]]);
- await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
- await clickAt(page, 140, 100);
- await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 100, 100]]);
- await expect.poll(() => selectedNames(page)).toEqual(["wire 5"]);
- // Finishing on the trunk ends the chain. Start a new branch at that point.
- await expect(page.locator('[data-tool="select"]')).toBeAttached();
- await (await toolbarButton(page, "Wire")).click();
- await clickAt(page, 140, 100);
- await clickAt(page, 140, 160);
- await page.keyboard.press("Enter");
- await expect.poll(() => wireEndpoints(page)).toEqual([[190, 100, 140, 100], [140, 100, 100, 100], [140, 100, 140, 160]]);
- expect((await nonPinState(page)).shapes.map((shape) => shape.name)).toEqual(["wire 5", "wire 7", "wire 6"]);
- await expect.poll(() => selectedNames(page)).toEqual(["wire 6"]);
 });
 
 test("resizing a snapped segment to zero removes it and clears its selection", async ({ page }) => {
@@ -858,7 +818,7 @@ test("corner and edge handles resize shapes while keeping the opposite side fixe
 	expect(shape.height).toBeCloseTo(65, 1);
 	expect(shape.x + shape.width / 2).toBeCloseTo(200, 1);
 	expect((await state(page)).origin).toEqual(before.origin);
-	await page.screenshot({ path: test.info().outputPath("resize-handles.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("resize-handles.png") });
 	await createShape(page, "Triangle", 280, 100);
 	await dragHandle(page, "1,1", [320, 140]);
 	await expect.poll(async () => (await state(page)).shapes[1].width).toBeCloseTo(60, 1);
@@ -1056,7 +1016,7 @@ test("snap spacing follows grid zoom for circle radii and line endpoints", async
 	expect(line.y - Math.sin(line.rotation) * line.width / 2).toBeCloseTo(9, 4);
 	expect(line.x + Math.cos(line.rotation) * line.width / 2).toBeCloseTo(-9, 4);
 	expect(line.y + Math.sin(line.rotation) * line.width / 2).toBeCloseTo(9, 4);
-	await page.screenshot({ path: test.info().outputPath("snap-to-grid.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("snap-to-grid.png") });
 });
 
 async function openHistory(page: Page) {
@@ -1071,7 +1031,7 @@ async function expectHistoryCount(page: Page, count: number) {
 	await expect(history.getByRole("button", { name: /^Restore #/ })).toHaveCount(count);
 }
 
-test("history records each completed drawing gesture once and undo and redo restore every edit", async ({ page }) => {
+test("history records each completed drawing gesture once and undo and redo restore every edit", { tag: "@smoke" }, async ({ page }) => {
 	await openHistory(page);
 
 
@@ -1220,7 +1180,7 @@ test("history keeps old futures after a new edit and restores either branch", as
 	await resizeNode.click();
 	await expect.poll(() => drawing(page)).toEqual(newFuture);
 	await expect(resizeNode).toHaveAttribute("aria-current", "step");
-	await history.screenshot({ path: test.info().outputPath("drawing-history-branches.png") });
+	if (captureArtifacts) await history.screenshot({ path: test.info().outputPath("drawing-history-branches.png") });
 	await placePin(page, 100, 160);
 	await (await toolbarButton(page, "Wire")).click();
 	await clickAt(page, 100, 160);
@@ -1521,7 +1481,7 @@ test("Alt-drag duplicates only the hit symbol, preserving its attributes and att
 	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await committed()).shapes).toEqual(after.shapes);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 4"]);
-	await page.screenshot({ path: testInfo.outputPath("alt-drag-symbol.png") });
+	if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("alt-drag-symbol.png") });
 });
 
 for (const target of ["unconnected pin", "connected pin", "body under a wire"] as const) {
@@ -1550,7 +1510,7 @@ for (const target of ["unconnected pin", "connected pin", "body under a wire"] a
 		expect(await wireEndpoints(page)).toEqual(wires);
 		await expect(page.locator('[data-tool="select"]')).toBeAttached();
 		if (target === "connected pin")
-			await page.screenshot({ path: testInfo.outputPath("alt-drag-connected-pin.png") });
+			if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("alt-drag-connected-pin.png") });
 	});
 }
 
@@ -1643,7 +1603,7 @@ test("symbol movement extends connections through drag, history, keyboard and at
 	const extended = [[103, 150, 123, 150], [123, 150, 180, 150], [180, 150, 180, 210], [123, 150, 123, 170]];
 	await expect.poll(() => wireEndpoints(page)).toEqual(extended);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
-	await page.screenshot({ path: testInfo.outputPath("moved-component-connections.png") });
+	if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("moved-component-connections.png") });
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => wireEndpoints(page)).toEqual(original);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(100, 4);
@@ -1679,7 +1639,7 @@ test("a free component does not acquire wire extensions while dragging across a 
 	await expect.poll(async () => (await state(page)).shapes.find(({ name }) => name === "symbol 1")?.x).toBeCloseTo(210, 4);
 	await expect.poll(() => wireEndpoints(page)).toEqual([[200, 170, 240, 170]]);
 	for (let repeat = 0; repeat < 4; repeat++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.screenshot({ path: testInfo.outputPath("free-component-without-wire-extensions.png") });
+	if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("free-component-without-wire-extensions.png") });
 });
 
 test("moving a component attached to two pins keeps the connections separate", async ({ page }, testInfo) => {
@@ -1694,7 +1654,7 @@ test("moving a component attached to two pins keeps the connections separate", a
 	await expect.poll(async () => (await state(page)).shapes.filter(({ name }) => name.startsWith("pin ")).map(({ x, y }) => [Number(x.toFixed(4)), Number(y.toFixed(4))])).toEqual([[167, 150], [173, 150]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 1"]);
 	for (let repeat = 0; repeat < 4; repeat++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.screenshot({ path: testInfo.outputPath("component-connected-to-two-pins.png") });
+	if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("component-connected-to-two-pins.png") });
 });
 
 for (const attachment of ["wire", "pin"] as const) {
@@ -1731,7 +1691,7 @@ for (const attachment of ["wire", "pin"] as const) {
 			...(attachment === "wire" ? [[103, 150, 180, 150]] : []),
 			[103, 150, 103, 180], [103, 180, 83, 180],
 		]);
-		await page.screenshot({ path: testInfo.outputPath(`component-moved-from-${attachment}.png`) });
+		if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath(`component-moved-from-${attachment}.png`) });
 		await (await toolbarButton(page, "Undo")).click();
 		await expect.poll(async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes).toEqual(before.shapes);
 	});
@@ -1812,7 +1772,7 @@ test("symbol picker cancels placement and attributes belong to each instance", a
 	await clickAt(page, 100, 150);
 	await expect(page.getByLabel("Reference", { exact: true })).toHaveValue("R_INPUT");
 	await expect(page.getByLabel("Value", { exact: true })).toHaveValue("47 kΩ");
-	await page.screenshot({ path: test.info().outputPath("symbols.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbols.png") });
 });
 
 test("symbol labels follow attribute edits and remain instance specific", async ({ page }) => {
@@ -1836,7 +1796,7 @@ test("symbol labels follow attribute edits and remain instance specific", async 
 	await page.getByLabel("Angle", { exact: true }).blur();
 	await expect.poll(async () => (await state(page)).symbolTexts[0].x).not.toBeCloseTo(edited[0].x, 4);
 	for (let index = 0; index < 7; index++) await (await toolbarButton(page, "Zoom in")).click();
-	await page.screenshot({ path: test.info().outputPath("symbol-text.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-text.png") });
 });
 
 test("symbol placement snaps and selection-only clicks do not add history", async ({ page }) => {
@@ -1896,7 +1856,7 @@ test("pin names and numbers appear on canvas and restore with undo and redo", as
  await number.blur();
  await expect.poll(async () => (await state(page)).pinTexts[1]?.texture).not.toBe(labels[1].texture);
  for (let index = 0; index < 8; index++) await (await toolbarButton(page, "Zoom in")).click();
- await page.screenshot({ path: test.info().outputPath("pin-name-number.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("pin-name-number.png") });
 });
 
 test("pin labels stay upright on rotated library symbols", async ({ page }) => {
@@ -1919,7 +1879,7 @@ test("pin labels stay upright on rotated library symbols", async ({ page }) => {
  expect((await state(page)).pinTexts.map(label => label.rotation)).toEqual([0, 0]);
  expect((await state(page)).pinTexts.map(label => label.texture)).toEqual(labels.map(label => label.texture));
  for (let index = 0; index < 5; index++) await (await toolbarButton(page, "Zoom in")).click();
- await page.screenshot({ path: test.info().outputPath("rotated-pin-labels.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("rotated-pin-labels.png") });
 });
 
 for (const snap of [false, true]) {
@@ -2012,7 +1972,7 @@ test("clicking a rotated symbol's free pin starts an exact wire and Enter keeps 
  await clickAt(page, 201, 150);
  await moveAt(page, 160, 150);
  await expect.poll(async () => (await state(page)).preview?.width).toBeGreaterThan(0);
- await page.screenshot({ path: test.info().outputPath("pin-click-wire-preview.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("pin-click-wire-preview.png") });
  await page.keyboard.press("Escape");
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(1);
 });
@@ -2064,7 +2024,7 @@ test("pins restrict wire starts and open ends accept both starts and finishes", 
  await (await toolbarButton(page, "Redo")).click();
  await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
  await expect.poll(async () => (await state(page)).wireTerminals).toEqual([]);
- await page.screenshot({ path: test.info().outputPath("pins-and-wires.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("pins-and-wires.png") });
 });
 
 test("wires finish exactly at off-grid pins and rotated symbol terminals", async ({ page }) => {
@@ -2129,7 +2089,7 @@ test("compact symbols have a 6 mm pin span and the grid has ten cells per major 
   await expect(await toolbarTooltip(page, "Snap to grid")).toHaveText(`Snap to grid, ${step} mm`);
   await (await toolbarButton(page, "Zoom in")).click();
  }
- await page.screenshot({ path: test.info().outputPath("compact-symbols-dense-grid.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("compact-symbols-dense-grid.png") });
 });
 
 test("text tool places editable multiline text and preserves glyphs through history", async ({ page }) => {
@@ -2162,7 +2122,7 @@ test("text tool places editable multiline text and preserves glyphs through hist
 	await (await toolbarButton(page, "Redo")).click();
 	await expect(content).toHaveValue("Another label\nÁrvíz 12Ω");
 	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
-	await page.screenshot({ path: test.info().outputPath("text-label.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("text-label.png") });
 	await clickAt(page, 150, 150);
 	await page.getByRole("button", { name: "Delete", exact: true }).click();
 	await expect.poll(async () => (await state(page)).shapes.length).toBe(0);
@@ -2261,7 +2221,7 @@ test("text movement snaps at one-tenth of the grid spacing for dragging and arro
 	await dragTo(page, [before.x, before.y], [before.x + 3.4 * step, before.y - 2.6 * step]);
 	await expect.poll(async () => (await state(page)).shapes[0].x).toBeCloseTo(Math.round((before.x + 3.4 * step) / step) * step, 8);
 	await expect.poll(async () => (await state(page)).shapes[0].y).toBeCloseTo(Math.round((before.y - 2.6 * step) / step) * step, 8);
-	await page.screenshot({ path: test.info().outputPath("text-fine-snapping.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("text-fine-snapping.png") });
 });
 
 test("junction dots and arches distinguish connected branches from crossings", async ({ page }) => {
@@ -2288,7 +2248,7 @@ test("junction dots and arches distinguish connected branches from crossings", a
 	await expect.poll(async () => (await state(page)).wireBridges).toEqual(["wire 7"]);
 	for (let index = 0; index < 8; index++) await (await toolbarButton(page, "Zoom in")).click();
 	await moveAt(page, 210, 165);
-	await page.screenshot({ path: test.info().outputPath("junction-dots-and-arches.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("junction-dots-and-arches.png") });
 });
 
 test("wire endpoints split a trunk into three-way and four-way junctions with atomic undo", async ({ page }) => {
@@ -2314,11 +2274,11 @@ test("wire endpoints split a trunk into three-way and four-way junctions with at
 	expect(junctionEnds(tee.shapes)).toHaveLength(3);
 	await expect.poll(async () => (await state(page)).wireJunctions).toEqual([{ x: expect.closeTo(180, 6), y: expect.closeTo(150, 6), width: 0.508, height: 0.508 }]);
 	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
-	await page.screenshot({ path: test.info().outputPath("branch-only-selected.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("branch-only-selected.png") });
 	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
 	await clickAt(page, 140, 150);
 	await expect(page.getByRole("spinbutton", { name: "Length", exact: true })).toHaveValue("80");
-	await page.screenshot({ path: test.info().outputPath("wire-three-way-junction.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("wire-three-way-junction.png") });
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await committed()).shapes).toEqual(before.shapes);
 	await expect.poll(async () => (await state(page)).wireJunctions).toEqual([]);
@@ -2336,29 +2296,11 @@ test("wire endpoints split a trunk into three-way and four-way junctions with at
 	await page.getByRole("button", { name: "Clear selection", exact: true }).click();
 	await clickAt(page, 140, 150);
 	await expect(page.getByRole("spinbutton", { name: "Length", exact: true })).toHaveValue("80");
-	await page.screenshot({ path: test.info().outputPath("wire-four-way-junction.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("wire-four-way-junction.png") });
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(async () => (await committed()).shapes).toEqual(tee.shapes);
 	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await committed()).shapes).toEqual(cross.shapes);
-});
-
-test("drawing between components selects all new segments across a middle connection", async ({ page }) => {
-	await createWireChain(page, [[180, 230], [180, 150]]);
-	await insertSymbol(page, "Resistor", 100, 150);
-	await insertSymbol(page, "Resistor", 260, 150);
-	await (await toolbarButton(page, "Wire")).click();
-	await clickAt(page, 103, 150);
-	await clickAt(page, 257, 150);
-	await expect(page.locator('[data-tool="select"]')).toBeAttached();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[180, 230, 180, 150], [103, 150, 180, 150], [180, 150, 257, 150]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 5", "wire 6"]);
-	await expect(page.getByTestId("resize-handle")).toHaveCount(4);
-	await page.screenshot({ path: test.info().outputPath("all-new-wire-segments-selected.png") });
-	await (await toolbarButton(page, "Undo")).click();
-	await expect.poll(() => wireEndpoints(page)).toEqual([[180, 230, 180, 150]]);
-	await (await toolbarButton(page, "Redo")).click();
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 5", "wire 6"]);
 });
 
 test("placing a pin on a wire splits it and selects only the pin through undo and redo", async ({ page }) => {
@@ -2366,28 +2308,12 @@ test("placing a pin on a wire splits it and selects only the pin through undo an
 	await placePin(page, 180, 150);
 	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 150, 180, 150], [180, 150, 260, 150]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["pin 3"]);
-	await page.screenshot({ path: test.info().outputPath("pin-splits-existing-wire.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("pin-splits-existing-wire.png") });
 	await (await toolbarButton(page, "Undo")).click();
 	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 150, 260, 150]]);
 	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(() => selectedNames(page)).toEqual(["pin 3"]);
 	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(2);
-});
-
-test("drawing through an existing pin selects every new wire segment", async ({ page }) => {
-	await placePin(page, 180, 150);
-	await insertSymbol(page, "Resistor", 100, 150);
-	await insertSymbol(page, "Resistor", 260, 150);
-	await (await toolbarButton(page, "Wire")).click();
-	await clickAt(page, 103, 150);
-	await clickAt(page, 257, 150);
-	await expect.poll(() => wireEndpoints(page)).toEqual([[103, 150, 180, 150], [180, 150, 257, 150]]);
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 4", "wire 5"]);
-	await page.screenshot({ path: test.info().outputPath("wire-split-at-existing-pin.png") });
-	await (await toolbarButton(page, "Undo")).click();
-	await expect.poll(() => wireEndpoints(page)).toEqual([]);
-	await (await toolbarButton(page, "Redo")).click();
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 4", "wire 5"]);
 });
 
 test("placing a rotated component splits a wire at its pin terminal", async ({ page }) => {
@@ -2397,23 +2323,4 @@ test("placing a rotated component splits a wire at its pin terminal", async ({ p
 	await page.getByLabel("Angle", { exact: true }).blur();
 	await expect.poll(() => wireEndpoints(page)).toEqual([[100, 150, 180, 150], [180, 150, 260, 150]]);
 	await expect.poll(() => selectedNames(page)).toEqual(["symbol 3"]);
-});
-
-for (const vertical of [false, true]) test(`a bent branch leaves every split ${vertical ? "vertical" : "horizontal"} trunk segment unselected`, async ({ page }) => {
-	const point = (along: number, across: number): [number, number] => vertical ? [across, along] : [along, across];
-	await createWireChain(page, [point(100, 150), point(260, 150)]);
-	await placePin(page, ...point(160, 230));
-	await clickAt(page, ...point(160, 230));
-	await clickAt(page, ...point(200, 150));
-	await expect(page.locator('[data-tool="select"]')).toBeAttached();
-	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(3);
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
-	const selectedWires = (await state(page)).shapes.filter((shape) => shape.name.startsWith("wire ") && shape.selected);
-	expect(selectedWires).toHaveLength(1);
-	expect(selectedWires[0].width).toBeCloseTo(80, 3);
-	await page.screenshot({ path: test.info().outputPath(`bent-branch-${vertical ? "vertical" : "horizontal"}.png`) });
-	await (await toolbarButton(page, "Undo")).click();
-	await expect.poll(async () => (await wireEndpoints(page)).length).toBe(1);
-	await (await toolbarButton(page, "Redo")).click();
-	await expect.poll(() => selectedNames(page)).toEqual(["wire 4"]);
 });

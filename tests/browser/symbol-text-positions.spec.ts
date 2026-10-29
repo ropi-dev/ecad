@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
@@ -95,7 +96,7 @@ test("dragging symbol labels edits only that instance, supports cancel and undo,
  await selectSymbolItem(page, "attribute:reference");
  await expect(xInput).toHaveValue("-3");
  for (let repeat = 0; repeat < 10; repeat++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
- await page.screenshot({ path: test.info().outputPath("symbol-text-positions.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-text-positions.png") });
 });
 
 test("saved symbol label positions survive a project reload without copying the definition", async ({ page }) => {
@@ -188,7 +189,7 @@ test("symbol labels snap at one-tenth of the grid spacing in world coordinates",
   }
  }
  for (let zoom = 0; zoom < 8; zoom++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
- await page.screenshot({ path: test.info().outputPath("symbol-text-fine-snapping.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-text-fine-snapping.png") });
 });
 
 test("Alt-dragging a moved label duplicates the symbol and keeps label edits independent", async ({ page }) => {

@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 	}).toBe("A3, 420 × 297 mm");
 });
 
-test("draw and move previews leave the document untouched until pointer release", async ({ page }) => {
+test("draw and move previews leave the document untouched until pointer release", { tag: "@smoke" }, async ({ page }) => {
 	const canvas = page.locator("canvas");
 	const box = (await canvas.boundingBox())!;
 	const x = box.x + box.width / 2;

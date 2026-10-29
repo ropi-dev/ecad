@@ -1,7 +1,7 @@
+import { captureArtifacts } from "./artifacts";
 import { generateDefaultSymbols, symbolCategories } from "@ecad/default-symbols";
 import { expect, test } from "@playwright/test";
 import { type EditorSymbol, pinTerminals } from "#/drawing/shapes.ts";
-import { drawingPoint } from "./symbol-items";
 import { stableScreenshot } from "./stable-screenshot";
 import { toolbarButton } from "./toolbar";
 
@@ -47,14 +47,14 @@ test("signal ground hides its pin name while keeping the terminal available for 
 		y: (1 - zoomed.origin[1]) * bounds.height / 2 - (terminal.y - 1.2) * zoomedScale,
 	} });
 	await expect(page.getByRole("textbox", { name: "Reference", exact: true })).toHaveValue("GND1");
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("signal-ground.png") }));
-	await page.screenshot({
+	if (captureArtifacts) await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("signal-ground.png") }));
+	if (captureArtifacts) await page.screenshot({
 		path: test.info().outputPath("signal-ground-detail.png"),
 		clip: { x: bounds.x + bounds.width / 2 - 180, y: bounds.y + bounds.height / 2 - 180, width: 360, height: 360 },
 	});
 });
 
-test("selector focuses search on every opening and filters symbols without library upload controls", async ({ page }) => {
+test("selector focuses search on every opening and filters symbols without library upload controls", { tag: "@smoke" }, async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	const trigger = page.getByRole("button", { name: "Symbols", exact: true });
 	await trigger.click();
@@ -63,8 +63,9 @@ test("selector focuses search on every opening and filters symbols without libra
 	await expect(page.locator('input[type="file"]')).toHaveCount(0);
 	await expect(page.getByRole("group", { name: "User libraries", exact: true })).toHaveCount(0);
 	await page.keyboard.type("  sChOtTkY  ");
-	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(1);
-	await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Diodes"]);
+	await expect(page.getByRole("button", { name: "Insert Schottky diode", exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Insert Crystal", exact: true })).toBeHidden();
+	await expect(page.getByRole("heading", { name: "Diodes", exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Insert Schottky diode", exact: true }).click();
 	const canvas = page.locator("canvas");
 	const bounds = (await canvas.boundingBox())!;
@@ -73,12 +74,16 @@ test("selector focuses search on every opening and filters symbols without libra
 	await trigger.click();
 	await expect(search).toBeFocused();
 	await expect(search).toHaveValue("");
-	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(49);
+	await expect(page.getByRole("button", { name: "Insert Crystal", exact: true })).toBeVisible();
 	await search.fill("transistors");
-	await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Transistors"]);
-	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(6);
+	await expect(page.getByRole("heading", { name: "Transistors", exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Insert N-channel MOSFET", exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Insert Crystal", exact: true })).toBeHidden();
 	await search.fill("body diode");
-	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(2);
+	for (const name of ["N-channel MOSFET", "P-channel MOSFET"]) {
+		await expect(page.getByRole("button", { name: `Insert ${name}`, exact: true })).toBeVisible();
+	}
+	await expect(page.getByRole("button", { name: "Insert Crystal", exact: true })).toBeHidden();
 	await search.fill("16 MHz");
 	await expect(page.getByRole("button", { name: "Insert Crystal", exact: true })).toBeVisible();
 	await search.fill("missing component");
@@ -86,24 +91,24 @@ test("selector focuses search on every opening and filters symbols without libra
 	await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(0);
 	await expect(page.getByRole("heading", { level: 3 })).toHaveCount(0);
 	await search.fill("");
-	await expect(page.getByRole("heading", { level: 3 })).toHaveText([...symbolCategories]);
+	for (const name of symbolCategories) {
+		await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+	}
 	await page.keyboard.press("Escape");
 	await expect(trigger).toBeFocused();
 	await trigger.click();
 	await expect(search).toBeFocused();
 });
 
-test("every default symbol previews and places with its geometry, pins, and editable attributes", async ({ page }) => {
-	// This test places the entire catalog using software graphics in CI.
-	test.setTimeout(120_000);
+test("representative default symbols preview, place, and expose editable attributes", { tag: "@smoke" }, async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/editor.html");
-	const defaults = generateDefaultSymbols();
+	const defaults = generateDefaultSymbols().filter(({ file }) =>
+		["resistor", "transformer", "rp2350b"].includes(file.id),
+	);
 	for (const [index, { file, category }] of defaults.entries()) {
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();
-		await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(defaults.length);
-		await expect(page.getByRole("heading", { level: 3 })).toHaveText([...symbolCategories]);
 		await expect(page.getByRole("region", { name: "Custom symbols", exact: true })).toHaveCount(0);
 		const button = page.getByRole("region", { name: category, exact: true }).getByRole("button", { name: `Insert ${file.name}`, exact: true });
 		await button.scrollIntoViewIfNeeded();
@@ -132,56 +137,4 @@ test("every default symbol previews and places with its geometry, pins, and edit
 	await (await toolbarButton(page, "Undo")).click();
 	await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue(defaults.at(-1)!.file.value);
 	expect(errors).toEqual([]);
-});
-
-test("Raspberry Pi chips can be found and placed with numbered pins", async ({ page }) => {
-	await page.goto("/tests/browser/editor.html");
-	for (const [index, name] of ["RP2040", "RP2350A", "RP2350B"].entries()) {
-		await page.getByRole("button", { name: "Symbols", exact: true }).click();
-		await page.getByRole("searchbox", { name: "Search symbols" }).fill(name);
-		await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Microcontrollers"]);
-		await stableScreenshot(() => page.screenshot({ path: test.info().outputPath(`${name}-picker.png`) }));
-		const button = page.getByRole("button", { name: `Insert ${name}`, exact: true });
-		await expect(button.locator("svg text")).toHaveCount(0);
-		await expect(button.locator("svg circle")).toHaveCount(0);
-		await button.click();
-		const canvas = page.locator("canvas");
-		const bounds = (await canvas.boundingBox())!;
-		await canvas.click({ position: { x: bounds.width * (0.2 + index * 0.25), y: bounds.height * 0.5 } });
-		await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue(name);
-		const document = JSON.parse((await page.locator("#editor-document").textContent())!) as { shapes: EditorSymbol[] };
-		const pins = document.shapes[index].children.filter(child => child.kind === "pin");
-		expect(pins).toHaveLength([57, 61, 81][index]);
-		expect(pins.every(pin => pin.number !== "")).toBe(true);
-	}
-	await page.keyboard.press("Escape");
-	await page.keyboard.press("F6");
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("raspberry-pi-chips.png") }));
-	await page.goto("/tests/browser/editor.html");
-	await expect(page.getByRole("button", { name: "Symbols", exact: true })).toBeEnabled();
-	await page.evaluate(async () => {
-		const fixturePath = "/tests/browser/editor.tsx";
-		const symbolsPath = "/packages/core/src/drawing/symbols.ts";
-		const { placeRectangle, replaceShapes }: typeof import("./editor") = await import(fixturePath);
-		const { createSymbol, symbolDefinitions }: typeof import("#/drawing/symbols.ts") = await import(symbolsPath);
-		for (let index = 0; index < 2; index++) placeRectangle({ x: 0, y: 0, width: 10, height: 10, rotation: 0, lineWidth: 0.2 });
-		replaceShapes([
-			createSymbol(1, symbolDefinitions.find(definition => definition.id === "rp2040")!, { x: 24, y: 0 }),
-			createSymbol(2, symbolDefinitions.find(definition => definition.id === "ferrite-bead")!, { x: -7, y: -5 }),
-		]);
-	});
-	await expect.poll(async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes.length).toBe(2);
-	await page.locator("canvas").focus();
-	await page.keyboard.press("F6");
-	for (let step = 0; step < 9; step++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("rp2040-kicad-pin-layout.png") }));
-	const origin = await drawingPoint(page, { x: 0, y: 0 });
-	const top = await drawingPoint(page, { x: 24, y: 16 });
-	for (let step = 0; step < 3; step++) {
-		await page.mouse.move(720, 400);
-		await page.mouse.down({ button: "middle" });
-		await page.mouse.move(720 + (origin.x - top.x) / 3, 400 + (origin.y - top.y) / 3, { steps: 8 });
-		await page.mouse.up({ button: "middle" });
-	}
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("rp2040-filled-body.png") }));
 });

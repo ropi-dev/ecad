@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { referenceNetGroups, sortNetGroups } from '../fixtures/kicad/reference-nets';
@@ -38,7 +39,7 @@ test('imported RP2350A drawing reopens with its components, terminals, wires and
   return canonical(document.editorShapes as EditorShape[]);
  }).toEqual(canonical(expected.shapes));
  await page.keyboard.press('F6');
- await page.screenshot({path:resolve('perf-artifacts/kicad-reopened-schematic.png')});
+ if (captureArtifacts) await page.screenshot({path:resolve('perf-artifacts/kicad-reopened-schematic.png')});
  const reopened=JSON.parse(await page.locator('#project-document').textContent()??'{}').editorShapes as EditorShape[];
  expect(referenceNetGroups(reopened)).toEqual(oracle);
  expect(reopened.filter(shape=>shape.kind==='text'&&shape.electrical==='net')).toHaveLength(94);
@@ -103,5 +104,5 @@ test('all native pin-name and pin-number visibility combinations survive import 
  expect((data.editorShapes as EditorSymbol[]).flatMap(symbol=>symbol.children.filter(child=>child.kind==='pin').map(pin=>({showName:pin.showName,showNumber:pin.showNumber})))).toEqual(visibilityCases);
  await page.keyboard.press('F6');
  await expect.poll(labels).toEqual(['name','name','number','number']);
- await page.screenshot({path:resolve('perf-artifacts/kicad-native-pin-visibility.png')});
+ if (captureArtifacts) await page.screenshot({path:resolve('perf-artifacts/kicad-native-pin-visibility.png')});
 });

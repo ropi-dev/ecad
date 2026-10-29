@@ -1,8 +1,9 @@
+import { captureArtifacts } from "./artifacts";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
 
-test("Gerber uses the locked top viewer and supports pan, zoom and fit", async ({
+test("Gerber uses the locked top viewer and supports pan, zoom and fit", { tag: "@smoke" }, async ({
 	page,
 }) => {
 	const errors: string[] = [];
@@ -19,7 +20,7 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("125%");
 	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
-	await page.screenshot({ path: test.info().outputPath("empty-gerber-grid.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("empty-gerber-grid.png") });
 	const file = demoFiles[0];
 	await page.locator("input[type=file]").setInputFiles({
 		name: file.name,
@@ -66,7 +67,7 @@ test("Gerber uses the locked top viewer and supports pan, zoom and fit", async (
 	await expect.poll(capture).not.toBe(top);
 	await expect(page.locator("[data-testid=viewer-message]")).toHaveCount(0);
 	expect(errors).toEqual([]);
-	await page.screenshot({ path: test.info().outputPath("gerber-3d.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("gerber-3d.png") });
 	await page.reload();
 	await expect(canvas).toHaveCount(1);
 	await expect(page.getByTestId("viewport-grid")).toBeVisible();
@@ -312,12 +313,12 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	await page
 		.getByRole("button", { name: `Focus ${focused}`, exact: true })
 		.click();
-	await page.screenshot({ path: test.info().outputPath("layer-focus.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("layer-focus.png") });
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expect(rows.first()).toBeVisible();
 	await expect(page.locator("canvas")).toBeVisible();
 	await checkFloatingPanel(390, 844);
-	await page.screenshot({ path: test.info().outputPath("layers-mobile.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("layers-mobile.png") });
 	await page
 		.getByRole("button", { name: `Remove ${focused}`, exact: true })
 		.click();
@@ -391,7 +392,7 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 		"title",
 		names.at(-1)!,
 	);
-	await page
+	if (captureArtifacts) await page
 		.getByRole("complementary", { name: "Layers" })
 		.screenshot({ path: test.info().outputPath("layer-alignment.png") });
 	await page.setViewportSize({ width: 390, height: 500 });
@@ -405,7 +406,7 @@ test("keeps layer actions aligned with long filenames and a scrolling list", asy
 	await expect(
 		page.getByRole("button", { name: `Remove ${names[0]}`, exact: true }),
 	).toBeVisible();
-	await page
+	if (captureArtifacts) await page
 		.getByRole("complementary", { name: "Layers" })
 		.screenshot({ path: test.info().outputPath("layer-alignment-mobile.png") });
 });
@@ -475,7 +476,7 @@ test("Gerber layers occupy separate Z positions and fit the full stack", async (
 		.poll(heights)
 		.toEqual({ "bottom.gbr": 0, "top.gbr": 0.1, "new.gbr": 0.2 });
 	await page.getByRole("button", { name: "Fit drawing", exact: true }).click();
-	await page.screenshot({
+	if (captureArtifacts) await page.screenshot({
 		path: test.info().outputPath("separated-layers.png"),
 	});
 });
@@ -515,5 +516,5 @@ test("Gerber imports away from the origin fit around world 0,0", async ({ page }
 	await page.getByRole("button", { name: "Show offset-board.gbr", exact: true }).click();
 	await fit.click();
 	await checkCenter();
-	await page.screenshot({ path: test.info().outputPath("origin-centered-gerber.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("origin-centered-gerber.png") });
 });

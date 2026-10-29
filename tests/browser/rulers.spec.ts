@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
 
@@ -149,7 +150,7 @@ test("rulers fit desktop and mobile Gerber viewports without covering controls",
 			expect(box.x).toBeGreaterThan(24);
 			expect(box.y).toBeGreaterThan(24);
 		}
-		await page.screenshot({
+		if (captureArtifacts) await page.screenshot({
 			path: `perf-artifacts/rulers-right-gerber-${width}.png`,
 		});
 	}

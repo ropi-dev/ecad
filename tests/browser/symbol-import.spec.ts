@@ -30,7 +30,7 @@ test.beforeEach(async ({ page, libraries }) => {
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
 });
 
-test("uploads, previews, places, undoes, and restores custom symbols after reload", async ({ page, libraries }) => {
+test("uploads, previews, places, undoes, and restores custom symbols after reload", { tag: "@smoke" }, async ({ page, libraries }) => {
  const errors: string[] = [];
  page.on("pageerror", error => errors.push(error.message));
  const download = libraries.waitForEvent("download");

@@ -45,10 +45,10 @@ jobs:
         # Import timing budgets belong to local performance validation.
         run: >-
           xvfb-run -a -s '-screen 0 2560x1440x24'
-          npm run test:browser --
+          npm run test:browser:full --
           --forbid-only
           --fully-parallel
-          --workers=1
+          --workers=2
           --shard=${{ matrix.shard }}/4
           --grep-invert 'gerber-performance\.spec\.ts'
           --reporter=line,github,html

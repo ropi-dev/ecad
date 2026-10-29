@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test, type Page } from "@playwright/test";
 import { selectSymbolItem } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
@@ -56,7 +57,7 @@ test("text alignment moves rendered bounds, updates multiline textures and suppo
  await h.selectOption("left");
  for (let i = 0; i < 6; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await expectAnchor(page, "1", aligned);
- await page.screenshot({ path: test.info().outputPath("text-alignment.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("text-alignment.png") });
  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
  await expect(page.getByTestId("text-anchor")).toHaveCount(0);
  await expect(page.getByRole("alert")).toHaveCount(0);
@@ -111,7 +112,7 @@ test("symbol labels keep alignment per instance through rotation, dragging and u
  await expect(page.getByRole("button", { name: "Fit drawing", exact: true })).toHaveText("596%");
  await selectSymbolItem(page, "attribute:reference");
  await vertical.scrollIntoViewIfNeeded();
- await page.screenshot({ path: test.info().outputPath("symbol-label-alignment.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-label-alignment.png") });
  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
  await expect(page.getByTestId("text-anchor")).toHaveCount(0);
  await expect(page.getByRole("alert")).toHaveCount(0);
@@ -149,7 +150,7 @@ test("aligned text in a user symbol saves and renders in placed instances", asyn
  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom out", exact: true }).click();
  await expect(page.getByRole("status")).toHaveText("Saved");
  await expectAnchor(page, "3", { x: -4, y: -3 });
- await page.screenshot({ path: test.info().outputPath("symbol-definition-text-alignment.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-definition-text-alignment.png") });
  await page.getByRole("button", { name: "Back to schematic", exact: true }).click();
  await page.getByRole("button", { name: "Symbols", exact: true }).click();
  await page.getByRole("button", { name: "Insert Aligned part", exact: true }).click();
@@ -203,5 +204,5 @@ test("text glyphs are vertically centered around the middle alignment anchor", a
  await expectAnchor(page, "1:label:1", { x: -5, y: 0 });
  await selectSymbolItem(page, "attribute:value");
  await page.getByRole("combobox", { name: "Text vertical alignment", exact: true }).scrollIntoViewIfNeeded();
- await page.screenshot({ path: test.info().outputPath("text-middle-alignment.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("text-middle-alignment.png") });
 });

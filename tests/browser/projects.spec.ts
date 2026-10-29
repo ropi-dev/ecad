@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { openProjectFiles, closeProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 import { resolve } from "node:path";
@@ -28,7 +29,7 @@ async function drawRectangle(page: Page) {
 	await page.mouse.up();
 }
 
-test("the global project preserves drawings and undo history across page navigation", async ({ page }) => {
+test("the global project preserves drawings and undo history across page navigation", { tag: "@smoke" }, async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "History");
 	await (await openProjectFiles(page)).getByRole("link", { name: "Schematic editor", exact: true }).click();
@@ -216,7 +217,7 @@ test("opening a symbol file removes the worksheet and edits only that symbol", a
 	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(2);
 	const rulers = page.getByRole("img", { name: "Drawing rulers in millimetres" });
 	await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(Number(await rulers.getAttribute("width")) - 24));
-	await page.screenshot({ path: "perf-artifacts/rulers-right-symbol.png" });
+	if (captureArtifacts) await page.screenshot({ path: "perf-artifacts/rulers-right-symbol.png" });
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).editorShapes.length).toBe(3);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
@@ -231,7 +232,7 @@ test("opening a symbol file removes the worksheet and edits only that symbol", a
 	await expect(page.locator("html")).toHaveAttribute("data-worksheet", "A3, 420 × 297 mm");
 	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
 	await expect(rulers.locator('[data-axis="y"] line').first()).toHaveAttribute("x1", String(Number(await rulers.getAttribute("width")) - 24));
-	await page.screenshot({ path: "perf-artifacts/rulers-right-schematic.png" });
+	if (captureArtifacts) await page.screenshot({ path: "perf-artifacts/rulers-right-schematic.png" });
 	expect((await documentState(page)).shapes).toEqual(schematic);
 	await projectsPage(page);
 	await (await openProjectFiles(page)).getByRole("link", { name: "Open editable-symbol.ecadsym", exact: true }).click();
@@ -362,7 +363,7 @@ test("drawing creation validates names, cancels cleanly and allows retry after a
 	expect((await documentState(page)).drawings).toHaveLength(1);
 });
 
-test("new symbols start empty, persist edits, and use distinct files for repeated names", async ({ page }) => {
+test("new symbols start empty, persist edits, and use distinct files for repeated names", { tag: "@smoke" }, async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");
 	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toHaveCount(0);
 	await createProject(page, "New symbols");
@@ -453,7 +454,9 @@ test("the layout sidebar owns the workspace tiles and connects MCP to the active
 	const sidebar = await openProjectFiles(page);
 	await sidebar.getByRole("link", { name: "Schematic editor", exact: true }).click();
 	const workspaces = sidebar.getByRole("navigation", { name: "Workspaces", exact: true });
-	await expect(workspaces.getByRole("link")).toHaveCount(3);
+	for (const name of ["Projects", "Gerber viewer", "STEP viewer"]) {
+		await expect(workspaces.getByRole("link", { name, exact: true })).toBeVisible();
+	}
 	await expect(workspaces.getByRole("button", { name: "Enable MCP", exact: true })).toBeEnabled();
 	await expect(page.locator("main").getByRole("link", { name: "Gerber viewer", exact: true })).toHaveCount(0);
 	const panelBounds = (await sidebar.locator("..").boundingBox())!;

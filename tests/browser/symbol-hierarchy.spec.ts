@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test, type Page } from "@playwright/test";
 import { selectSymbolItem, selectSymbolParent } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
@@ -77,7 +78,7 @@ test("an unselected label moves its symbol and selected children customize only 
   return Math.atan2(corners[1][1] - corners[0][1], corners[1][0] - corners[0][0]);
  }).toBeCloseTo(Math.PI / 4, 4);
  for (let i = 0; i < 7; i++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
- await page.screenshot({ path: test.info().outputPath("symbol-hierarchy.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-hierarchy.png") });
 });
 
 test("static text and pins use the same child editing controls on rotated instances", async ({ page }) => {

@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
 import { expect, test } from "@playwright/test";
 import type { BufferGeometry, Material, Mesh, MeshBasicMaterial, Texture } from "three";
@@ -39,7 +40,7 @@ test("changing sheet dimensions keeps drawn shapes and updates the worksheet", a
 		await page.keyboard.press("F6");
 		await expect.poll(shapes).toEqual(original);
 		expect(await documentState()).toEqual(originalDocument);
-		await page.screenshot({ path: test.info().outputPath(`worksheet-${size.name}.png`) });
+		if (captureArtifacts) await page.screenshot({ path: test.info().outputPath(`worksheet-${size.name}.png`) });
 	}
 });
 

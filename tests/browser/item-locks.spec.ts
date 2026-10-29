@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test, type Page } from "@playwright/test";
 import { selectDrawingShape, selectSymbolItem, symbolItemPoint } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
@@ -63,7 +64,7 @@ test("symbol geometry defaults to locked while static text remains editable", as
  await expect(content).toHaveValue("Editable text");
  for (let zoom = 0; zoom < 4; zoom++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- await page.screenshot({ path: test.info().outputPath("default-symbol-child-locks.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("default-symbol-child-locks.png") });
 });
 
 test("locked symbols ignore selection and movement until the toolbar override is on", async ({ page }) => {
@@ -138,7 +139,7 @@ test("locked children stay unselectable with either toolbar flag state", async (
  await expect(page.getByRole("combobox", { name: "Symbol item", exact: true })).toHaveCount(0);
  await expect(page.getByRole("combobox", { name: "Locked symbol item", exact: true })).toHaveCount(0);
  await expect(page.getByRole("button", { name: "Unlock item", exact: true })).toHaveCount(0);
- await page.screenshot({ path: test.info().outputPath("symbol-attributes-clean.png") });
+ if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("symbol-attributes-clean.png") });
 });
 
 test("locked standalone items are excluded from marquee and double-click selection", async ({ page }) => {

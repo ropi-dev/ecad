@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
 import type { EditorSymbol } from "#/drawing/shapes.ts";
@@ -179,7 +180,7 @@ test("rotated components survive project reload", async ({ page }) => {
 	).toHaveValue("90");
 	for (let repeat = 0; repeat < 8; repeat++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.screenshot({
+	if (captureArtifacts) await page.screenshot({
 		path: test.info().outputPath("component-rotation.png"),
 	});
 });

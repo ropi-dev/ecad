@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, type Page, test } from "@playwright/test";
 
 const editorView = async (page: Page) =>
@@ -46,7 +47,7 @@ test("editor Fit centers and enlarges the selection, then restores the sheet aft
 	await canvas.press("F6");
 	await expect.poll(async () => (await editorCenter(page)).x).toBeGreaterThan(60);
 	await page.mouse.move(0, 0);
-	await page.screenshot({ path: "artifacts/fit-selected-item-fixed-zoom-reference.png" });
+	if (captureArtifacts) await page.screenshot({ path: "artifacts/fit-selected-item-fixed-zoom-reference.png" });
 	await canvas.press("Escape");
 	await fit.click();
 	await expect.poll(async () => (await editorCenter(page)).x).toBeCloseTo(0, 2);

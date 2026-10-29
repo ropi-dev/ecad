@@ -20,7 +20,7 @@ test("project startup keeps the file list bounded and excludes editor and render
 	expect(requests.filter((url) => /\/effect\.js\?|\/drawing-commands\.ts|\/drawing-protocol\.ts|\/three(?:_|\/)|\/SceneViewport\.tsx/.test(url))).toEqual([]);
 });
 
-test("file search and type filters reset pagination and can find the last file in a large project", async ({ page }) => {
+test("file search and type filters reset pagination and can find the last file in a large project", { tag: "@smoke" }, async ({ page }) => {
 	await page.goto("/tests/browser/projects-startup.html");
 	await openProjectFiles(page);
 	await expect(page.getByRole("row")).toHaveCount(51);

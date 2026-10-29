@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import { stableScreenshot } from "./stable-screenshot";
 
@@ -27,5 +28,5 @@ test("a loaded circle keeps its fill when saved and rendered", async ({ page }) 
 	await expect.poll(async () => JSON.parse((await page.locator("#editor-scene").textContent())!).shapes.map((shape: { name: string }) => shape.name)).toContain("circle 1");
 	for (let step = 0; step < 6; step++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await page.locator("canvas").focus();
-	await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("loaded-filled-circle.png") }));
+	if (captureArtifacts) await stableScreenshot(() => page.screenshot({ path: test.info().outputPath("loaded-filled-circle.png") }));
 });

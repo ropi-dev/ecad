@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test, type Page } from "@playwright/test";
 import { selectDrawingShape, selectSymbolItem, symbolItemPoint } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
@@ -34,7 +35,7 @@ test("symbols expose their lock state as an editable attribute with undo and red
 	await locked.click();
 	for (let zoom = 0; zoom < 5; zoom++) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-	await page.screenshot({ path: test.info().outputPath("locked-attribute.png") });
+	if (captureArtifacts) await page.screenshot({ path: test.info().outputPath("locked-attribute.png") });
 });
 
 test("the Locked attribute on symbol children changes only the selected child", async ({ page }) => {

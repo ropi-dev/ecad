@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 const cube = resolve("node_modules/occt-import-js/test/testfiles/simple-basic-cube/cube.stp");
 
-test("STEP import renders geometry and supports view controls, visibility and reopening", async ({ page }) => {
+test("STEP import renders geometry and supports view controls, visibility and reopening", { tag: "@smoke" }, async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/step.html");

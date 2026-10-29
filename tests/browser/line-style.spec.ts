@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, type Page, test } from "@playwright/test";
 import { toolbarButton } from "./toolbar";
 
@@ -55,5 +56,5 @@ test("line style edits support every basic shape, mixed selections, undo, and re
 	await expect.poll(async () => (await documentShapes(page)).map((shape: { lineStyle?: string }) => shape.lineStyle)).toEqual(["dashed", "dotted", "dash-dot", "dash-dot-dot", undefined]);
 	await clickShape(page, 30, 0);
 	await expect(select).toHaveValue("dash-dot-dot");
-	await page.screenshot({ path: "perf-artifacts/line-styles.png" });
+	if (captureArtifacts) await page.screenshot({ path: "perf-artifacts/line-styles.png" });
 });

@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 
 test("3D toolbar projection switching preserves framing and fits on mobile", async ({
@@ -57,7 +58,7 @@ test("3D toolbar projection switching preserves framing and fits on mobile", asy
 		expect(box.x).toBeGreaterThanOrEqual(bounds.x);
 		expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
 	}
-	await page.screenshot({
+	if (captureArtifacts) await page.screenshot({
 		path: test.info().outputPath("projection-toolbar-mobile.png"),
 	});
 });

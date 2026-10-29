@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
@@ -38,7 +39,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
 	await expect(dialog).toBeVisible();
 	expect(serializerRequests).toEqual([]);
-	await page.screenshot({ path: `${artifacts}/export-options.png` });
+	if (captureArtifacts) await page.screenshot({ path: `${artifacts}/export-options.png` });
 	await dialog
 		.getByRole("combobox", { name: "Format", exact: true })
 		.selectOption("svg");
@@ -111,10 +112,10 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	expect(pixels.corner).toEqual([255, 255, 255, 255]);
 	expect(pixels.ink).toBeGreaterThan(100000);
 	await dialog.getByRole("button", { name: "Close", exact: true }).click();
-	await page.screenshot({ path: `${artifacts}/rp2350a-editor.png` });
+	if (captureArtifacts) await page.screenshot({ path: `${artifacts}/rp2350a-editor.png` });
 });
 
-test("drawing export supports background, tight fit, invalid size and encoding recovery", async ({
+test("drawing export supports background, tight fit, invalid size and encoding recovery", { tag: "@smoke" }, async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/editor.html");

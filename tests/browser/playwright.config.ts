@@ -13,6 +13,7 @@ export default defineConfig({
 		},
 		{
 			name: "renderer",
+			workers: 1,
 			testMatch: "renderer.spec.ts",
 			// Use a display for the software WebGPU swap chain on Linux CI.
 			use: { headless: !process.env.CI },
@@ -20,6 +21,7 @@ export default defineConfig({
 	],
 	use: {
 		baseURL: `http://127.0.0.1:${port}`,
+		screenshot: "only-on-failure",
 		launchOptions: {
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 			args: [

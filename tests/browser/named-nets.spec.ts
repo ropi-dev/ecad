@@ -1,3 +1,4 @@
+import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "./toolbar";
 
@@ -27,7 +28,7 @@ test("place and edit electrical labels without changing ordinary text", async ({
 	await page.getByRole("textbox", { name: "Net name", exact: true }).fill("+3V3");
 	await page.getByRole("textbox", { name: "Net name", exact: true }).press("Tab");
 	await expect.poll(async () => (await document()).shapes[1]?.text).toBe("+3V3");
-	await page.screenshot({ path: "artifacts/named-nets-editor.png", fullPage: true });
+	if (captureArtifacts) await page.screenshot({ path: "artifacts/named-nets-editor.png", fullPage: true });
 	await page.getByLabel("Label role", { exact: true }).selectOption("text");
 	await expect(page.getByRole("textbox", { name: "Text content", exact: true })).toHaveValue("+3V3");
 	await expect.poll(async () => (await document()).shapes[1]?.electrical).toBeUndefined();
