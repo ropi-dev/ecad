@@ -204,3 +204,24 @@ test("legacy supply instances retain their value labels until explicitly convert
  assert.equal(symbolTextShapes(restored)[1].x, 12);
  assert.equal(symbolTextShapes(restored)[1].y, 34);
 });
+
+test("nested supplies preserve legacy labels and normalize explicitly flagged instances after overrides", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { symbolTextShapes } = await import("#/drawing/shapes.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "power-3v3")!;
+ for (const role of [undefined, false, true]) {
+  const file: SymbolFile = {...pin, id:"nested.supply", shapes:[{kind:"symbol", library:definition.library!, definitionId:definition.id, x:0, y:0, ...(role === undefined ? {} : {netSymbol:role}), attributes:{name:definition.name, reference:"PWR7", value:"+1V8"}, textPositions:{value:{x:12,y:34}}, textAlignments:{value:{horizontalAlign:"right"}}, childOverrides:{"attribute:value":{fontSize:3}}}]};
+  const resolved = symbolFileShapes(file, () => definition)[0] as EditorSymbol;
+  assert.equal(resolved.netSymbol, role);
+  assert.deepEqual(symbolTextShapes(resolved).map(label => label.text), role ? ["+1V8"] : ["PWR7", "+1V8"]);
+  const label = symbolTextShapes(resolved).at(-1)!;
+  assert.equal(label.x, 12);
+  assert.equal(label.y, 34);
+  assert.equal(label.horizontalAlign, "right");
+  assert.equal(label.fontSize, 3);
+  const saved = parseSymbolFile(JSON.stringify(symbolFileWithShapes(file, [resolved])));
+  const restored = symbolFileShapes(saved, () => definition)[0] as EditorSymbol;
+  assert.deepEqual(symbolTextShapes(restored), symbolTextShapes(resolved));
+  assert.deepEqual(restored.attributes, resolved.attributes);
+ }
+});

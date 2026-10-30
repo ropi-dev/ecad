@@ -91,6 +91,9 @@ export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
 	const position = symbol.textPositions?.[source] ?? symbol.textPositions?.name;
 	const alignment =
 		symbol.textAlignments?.[source] ?? symbol.textAlignments?.name;
+	const attributeOverride =
+		symbol.childOverrides?.[`attribute:${source}`] ??
+		symbol.childOverrides?.["attribute:name"];
 	return {
 		...symbol,
 		attributes: { name, reference: "", value: "" },
@@ -98,15 +101,14 @@ export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
 		textPositions: position ? { name: position } : undefined,
 		textAlignments: alignment ? { name: alignment } : undefined,
 		childOverrides: symbol.childOverrides
-			? Object.fromEntries(
-					Object.entries(symbol.childOverrides).flatMap(([key, value]) =>
-						key.startsWith("attribute:")
-							? key === `attribute:${source}`
-								? [["attribute:name", value]]
-								: []
-							: [[key, value]],
+			? {
+					...Object.fromEntries(
+						Object.entries(symbol.childOverrides).filter(
+							([key]) => !key.startsWith("attribute:"),
+						),
 					),
-				)
+					...(attributeOverride ? { "attribute:name": attributeOverride } : {}),
+				}
 			: undefined,
 	};
 }

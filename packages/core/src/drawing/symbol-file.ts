@@ -5,6 +5,7 @@ import type {
 import {
 	type EditorShape,
 	fitBoxToBorder,
+	normalizeNetSymbol,
 	isBasicShape,
 	PIN_RADIUS,
 	symbolShapes,
@@ -41,8 +42,8 @@ export function symbolFileShapes(
 			const instance = definition?.children.length
 				? createSymbol(
 						base.id,
-						definition,
-						shape,
+						{ ...definition, netSymbol: undefined },
+						{ x: shape.x, y: shape.y },
 						shape.attributes?.reference ?? "",
 					)
 				: {
@@ -59,7 +60,7 @@ export function symbolFileShapes(
 						},
 					};
 			return fitBoxToBorder(
-				{
+				normalizeNetSymbol({
 					...instance,
 					...(shape.netSymbol === undefined
 						? {}
@@ -91,7 +92,7 @@ export function symbolFileShapes(
 											: (shape.lineWidth ?? child.lineWidth),
 								})),
 							}),
-				},
+				}),
 				{ preserveChildWorldPositions: true },
 			);
 		}
