@@ -2058,8 +2058,7 @@ function LibrarySymbolEditor({
 	);
 	useEffect(() => {
 		if (drawing.shapes === saved.current) return;
-		const timer = setTimeout(() => void save().catch(() => undefined), 400);
-		return () => clearTimeout(timer);
+		void save().catch(() => undefined);
 	}, [drawing.shapes, save]);
 	useEffect(() => {
 		if (!dirty) return;
