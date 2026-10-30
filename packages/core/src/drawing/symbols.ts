@@ -7,6 +7,7 @@ import {
 	type EditorSymbol,
 	fitBoxToBorder,
 	PIN_RADIUS,
+	normalizeNetSymbol,
 	type SymbolShape,
 	type SymbolText,
 	shapeBounds,
@@ -24,6 +25,7 @@ export interface SymbolDefinition {
 	description: string;
 	prefix: string;
 	value: string;
+	netSymbol?: boolean;
 	children: SymbolShape[];
 	texts: SymbolText[];
 }
@@ -54,31 +56,36 @@ export function createSymbol(
 			: {}),
 	}));
 	const bounds = children.map(shapeBounds);
-	return fitBoxToBorder({
-		id,
-		kind: "symbol",
-		definitionId: definition.id,
-		...(definition.library ? { library: definition.library } : {}),
-		...position,
-		width:
-			2 *
-			Math.max(
-				...bounds.flatMap((box) => [Math.abs(box.minX), Math.abs(box.maxX)]),
+	return fitBoxToBorder(
+		normalizeNetSymbol({
+			id,
+			kind: "symbol",
+			definitionId: definition.id,
+			...(definition.netSymbol === undefined
+				? {}
+				: { netSymbol: definition.netSymbol }),
+			...(definition.library ? { library: definition.library } : {}),
+			...position,
+			width:
+				2 *
+				Math.max(
+					...bounds.flatMap((box) => [Math.abs(box.minX), Math.abs(box.maxX)]),
+				),
+			height:
+				2 *
+				Math.max(
+					...bounds.flatMap((box) => [Math.abs(box.minY), Math.abs(box.maxY)]),
+				),
+			rotation: 0,
+			lineWidth: children[0].lineWidth,
+			children,
+			texts: definition.texts.map((label) => ({ ...label })),
+			textPositions: Object.fromEntries(
+				definition.texts.map(({ attribute, x, y }) => [attribute, { x, y }]),
 			),
-		height:
-			2 *
-			Math.max(
-				...bounds.flatMap((box) => [Math.abs(box.minY), Math.abs(box.maxY)]),
-			),
-		rotation: 0,
-		lineWidth: children[0].lineWidth,
-		children,
-		texts: definition.texts.map((label) => ({ ...label })),
-		textPositions: Object.fromEntries(
-			definition.texts.map(({ attribute, x, y }) => [attribute, { x, y }]),
-		),
-		attributes: { name: definition.name, reference, value: definition.value },
-	});
+			attributes: { name: definition.name, reference, value: definition.value },
+		}),
+	);
 }
 
 export function duplicateSymbol(
@@ -97,7 +104,10 @@ export function duplicateSymbol(
 	return {
 		...structuredClone(symbol),
 		id,
-		attributes: { ...symbol.attributes, reference: `${prefix}${suffix}` },
+		attributes: {
+			...symbol.attributes,
+			reference: symbol.netSymbol ? "" : `${prefix}${suffix}`,
+		},
 	};
 }
 

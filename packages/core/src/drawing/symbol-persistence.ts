@@ -2,6 +2,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	fitBoxToBorder,
+	normalizeNetSymbol,
 } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
@@ -100,13 +101,16 @@ export function resolveDrawingSymbols(
 					}
 					const resolved = createSymbol(
 						shape.id,
-						definition,
+						{
+							...definition,
+							netSymbol: shape.netSymbol,
+						},
 						shape,
 						shape.attributes.reference,
 					);
 					const strokeOverride = legacyStrokeOverride(shape, definition);
 					return fitBoxToBorder(
-						{
+						normalizeNetSymbol({
 							...shape,
 							library: definition.library,
 							width: resolved.width,
@@ -124,7 +128,7 @@ export function resolveDrawingSymbols(
 													: strokeOverride,
 										})),
 							texts: resolved.texts,
-						} satisfies EditorSymbol,
+						} satisfies EditorSymbol),
 						{ preserveChildWorldPositions: true },
 					);
 				}),

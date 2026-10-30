@@ -93,11 +93,22 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 			(shape) => shape.kind === "text" && shape.electrical === "net",
 		),
 	).toHaveLength(94);
+	const supplies = reopened.filter(
+		(shape) => shape.kind === "symbol" && shape.netSymbol,
+	);
+	expect(supplies).toHaveLength(41);
+	for (const supply of supplies) {
+		if (supply.kind !== "symbol") continue;
+		expect(supply.attributes.name).not.toBe("");
+		expect(supply.attributes.reference).toBe("");
+		expect(supply.attributes.value).toBe("");
+		expect(supply.texts.map((label) => label.attribute)).toEqual(["name"]);
+	}
 	expect(
 		reopened.filter(
 			(shape) => shape.kind === "text" && shape.electrical === "supply",
 		),
-	).toHaveLength(41);
+	).toHaveLength(0);
 	const exports = resolve("perf-artifacts/kicad-exports");
 	mkdirSync(exports, { recursive: true });
 	await (await toolbarButton(page, "View tools")).click();

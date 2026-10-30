@@ -153,3 +153,86 @@ test("reference depth stays bounded when child definitions are already cached", 
  assert.match(result.errors.join("\n"), /at most 32 levels/);
  assert.equal(result.byReference.has(symbolReferenceKey(reference, "level-33")), false);
 });
+
+test("legacy net-symbol label edits survive reference-only save, migration, and resolution", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { symbolTextShapes, normalizeNetSymbol } = await import("#/drawing/shapes.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "vdd")!;
+ const legacy = {
+  ...createSymbol(1, { ...definition, netSymbol: false }, { x: 0, y: 0 }),
+  netSymbol: true,
+  textPositions: { value: { x: 12, y: 34 } },
+  textAlignments: { value: { horizontalAlign: "right" as const, verticalAlign: "bottom" as const } },
+  childOverrides: { "attribute:value": { fontSize: 3, rotation: 0.5 } },
+ };
+ for (const value of ["VDD", ""]) {
+  const saved = persistDrawingShapes([{ ...legacy, attributes: { name: "VDD", reference: "PWR1", value } }])[0];
+  assert.ok(!("texts" in saved));
+  const parsed = drawingShapeSchema.parse(JSON.parse(JSON.stringify(saved)));
+  assert.equal(parsed.kind, "symbol");
+  if (parsed.kind !== "symbol") continue;
+  const resolved = resolveDrawingSymbols([parsed], [definition], new Map([[symbolReferenceKey(definition.library!, definition.id), definition]]));
+  assert.deepEqual(resolved.errors, []);
+  const symbol = resolved.shapes[0] as EditorSymbol;
+  const [label] = symbolTextShapes(symbol);
+  assert.equal(label.text, "VDD");
+  assert.equal(label.x, 12);
+  assert.equal(label.y, 34);
+  assert.equal(label.fontSize, 3);
+  assert.equal(label.rotation, 0.5);
+  assert.equal(label.horizontalAlign, "right");
+  assert.equal(label.verticalAlign, "bottom");
+  assert.deepEqual(normalizeNetSymbol(symbol), symbol);
+ }
+});
+
+test("legacy supply instances retain their value labels until explicitly converted", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { symbolTextShapes } = await import("#/drawing/shapes.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "power-3v3")!;
+ const legacy = createSymbol(1, { ...definition, netSymbol: false }, { x: 0, y: 0 });
+ delete legacy.netSymbol;
+ legacy.attributes.value = "+1V8";
+ legacy.textPositions = { value: { x: 12, y: 34 } };
+ const parsed = drawingShapeSchema.parse(JSON.parse(JSON.stringify(persistDrawingShapes([legacy])[0])));
+ const result = resolveDrawingSymbols([parsed], [definition], new Map([[symbolReferenceKey(definition.library!, definition.id), definition]]));
+ assert.deepEqual(result.errors, []);
+ const restored = result.shapes[0] as EditorSymbol;
+ assert.equal(restored.netSymbol, undefined);
+ assert.deepEqual(restored.attributes, legacy.attributes);
+ assert.deepEqual(symbolTextShapes(restored).map(label => label.text), [legacy.attributes.reference, "+1V8"]);
+ assert.equal(symbolTextShapes(restored)[1].x, 12);
+ assert.equal(symbolTextShapes(restored)[1].y, 34);
+});
+
+test("nested legacy supplies preserve their labels and overrides", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { symbolTextShapes } = await import("#/drawing/shapes.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "power-3v3")!;
+ for (const role of [undefined, false]) {
+  const file: SymbolFile = {...pin, id:"nested.supply", shapes:[{kind:"symbol", library:definition.library!, definitionId:definition.id, x:0, y:0, ...(role === undefined ? {} : {netSymbol:role}), attributes:{name:definition.name, reference:"PWR7", value:"+1V8"}, textPositions:{value:{x:12,y:34}}, textAlignments:{value:{horizontalAlign:"right"}}, childOverrides:{"attribute:value":{fontSize:3}}}]};
+  const resolved = symbolFileShapes(file, () => definition)[0] as EditorSymbol;
+  assert.equal(resolved.netSymbol, role);
+  assert.deepEqual(symbolTextShapes(resolved).map(label => label.text), ["PWR7", "+1V8"]);
+  const label = symbolTextShapes(resolved).at(-1)!;
+  assert.equal(label.x, 12);
+  assert.equal(label.y, 34);
+  assert.equal(label.horizontalAlign, "right");
+  assert.equal(label.fontSize, 3);
+  const saved = parseSymbolFile(JSON.stringify(symbolFileWithShapes(file, [resolved])));
+  const restored = symbolFileShapes(saved, () => definition)[0] as EditorSymbol;
+  assert.deepEqual(symbolTextShapes(restored), symbolTextShapes(resolved));
+  assert.deepEqual(restored.attributes, resolved.attributes);
+ }
+});
+
+test("reusable symbol import, resolution and saving reject nested net declarations", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { libraryDefinitions } = await import("#/drawing/symbol-file.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "vdd")!;
+ const file: SymbolFile = {...pin,id:"invalid.nested.net",shapes:[{kind:"symbol",library:definition.library!,definitionId:definition.id,x:0,y:0,netSymbol:true}]};
+ assert.throws(() => parseSymbolFile(JSON.stringify(file)), /Net symbols cannot be nested/i);
+ assert.throws(() => symbolFileShapes(file, () => definition), /Net symbols cannot be nested/i);
+ assert.throws(() => libraryDefinitions([file], () => definition), /Net symbols cannot be nested/i);
+ assert.throws(() => symbolFileWithShapes({...file,shapes:[]},[createSymbol(1,definition,{x:0,y:0})]), /Net symbols cannot be nested/i);
+});

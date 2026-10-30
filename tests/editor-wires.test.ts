@@ -274,3 +274,18 @@ for (const electrical of ["net", "supply"] as const) {
   assert.equal(moveShapes([{ ...label, electrical: undefined }], { x: 10, y: 15 }, 0, label, [label, pin(2, 20, 20)]).length, 1);
  });
 }
+
+test("moving a named net symbol avoids connecting an unrelated pin", async () => {
+ const { electricalNets } = await import("#/drawing/named-nets.ts");
+ const symbol = createSymbol(1, symbolDefinitions.find(definition => definition.id === "vdd")!, { x: -10, y: 0 });
+ const attached = pin(2, -10, 0);
+ const unrelated = pin(3, 10, 0);
+ const shapes = [symbol, attached, unrelated];
+ const moved = moveShapes([symbol], { x: 30, y: 10 }, 0, symbol, shapes);
+ const nets = electricalNets([attached, unrelated, ...moved]);
+ const named = nets.find(net => net.names.includes("VDD"))!;
+ assert.ok(named);
+ assert.ok(named.pins.some(pin => pin.shapeId === 2));
+ assert.ok(!named.pins.some(pin => pin.shapeId === 3));
+ assert.equal(nets.find(net => net.pins.some(pin => pin.shapeId === 3))?.names.length, 0);
+});

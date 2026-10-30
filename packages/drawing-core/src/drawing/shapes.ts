@@ -49,6 +49,7 @@ export interface PinShape extends ShapeGeometry {
 export interface EditorSymbol extends ShapeGeometry {
 	kind: "symbol";
 	definitionId: string;
+	netSymbol?: boolean;
 	library?: SymbolLibraryReference;
 	kicad?: { libraryId: string; unit: number };
 	/** An instance stroke override. Definition strokes otherwise remain unchanged. */
@@ -60,6 +61,56 @@ export interface EditorSymbol extends ShapeGeometry {
 	textAlignments?: Partial<Record<SymbolText["attribute"], TextAlignment>>;
 	textPositions?: Partial<Record<SymbolText["attribute"], Point>>;
 	attributes: { name: string; reference: string; value: string };
+}
+
+export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
+	if (!symbol.netSymbol) return symbol;
+	const hasValueLabel = symbol.texts.some(
+		(label) => label.attribute === "value",
+	);
+	const hasNameLabel = symbol.texts.some((label) => label.attribute === "name");
+	const legacyValue = Boolean(
+		symbol.attributes.value.trim() ||
+			symbol.textPositions?.value ||
+			symbol.textAlignments?.value ||
+			symbol.childOverrides?.["attribute:value"],
+	);
+	const source =
+		hasValueLabel || (!hasNameLabel && legacyValue) ? "value" : "name";
+	const label = symbol.texts.find((label) => label.attribute === source) ?? {
+		attribute: "name" as const,
+		x: 0,
+		y:
+			Math.min(0, ...symbol.children.map((child) => shapeBounds(child).minY)) -
+			1.5,
+		fontSize: 1.3,
+	};
+	const name = symbol.attributes.value.trim()
+		? symbol.attributes.value
+		: symbol.attributes.name;
+	const position = symbol.textPositions?.[source] ?? symbol.textPositions?.name;
+	const alignment =
+		symbol.textAlignments?.[source] ?? symbol.textAlignments?.name;
+	const attributeOverride =
+		symbol.childOverrides?.[`attribute:${source}`] ??
+		symbol.childOverrides?.["attribute:name"];
+	return {
+		...symbol,
+		attributes: { name, reference: "", value: "" },
+		texts: [{ ...label, attribute: "name" }],
+		textPositions: position ? { name: position } : undefined,
+		textAlignments: alignment ? { name: alignment } : undefined,
+		childOverrides: symbol.childOverrides
+			? {
+					...Object.fromEntries(
+						Object.entries(symbol.childOverrides).filter(
+							([key]) => !key.startsWith("attribute:"),
+						),
+					),
+					...(attributeOverride ? { "attribute:name": attributeOverride } : {}),
+				}
+			: undefined,
+	};
 }
 
 export type SymbolChildOverride = Partial<
@@ -1777,7 +1828,11 @@ export function connectTransformedTerminals(
 	const nets =
 		connections.length &&
 		(rerouteWireEnds ||
-			allShapes.some((shape) => shape.kind === "text" && shape.electrical))
+			allShapes.some(
+				(shape) =>
+					(shape.kind === "text" && shape.electrical) ||
+					(shape.kind === "symbol" && shape.netSymbol),
+			))
 			? electricalNets(allShapes)
 			: [];
 	const wireNets = new Map(
@@ -1824,7 +1879,7 @@ export function connectTransformedTerminals(
 		}),
 	);
 	const preserveLabeledNets = connections.some(
-		({ terminal }) => memberships.get(terminal)?.labels.length,
+		({ terminal }) => memberships.get(terminal)?.names.length,
 	);
 	for (const { shape, terminal, target, anchor } of connections) {
 		const net = memberships.get(terminal);

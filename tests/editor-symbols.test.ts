@@ -35,7 +35,7 @@ test("converted symbols render each original shape with its own stroke width", (
 for (const definition of symbolDefinitions) {
 	test(`${definition.name} selects through each child and renders all its strokes`, () => {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
-		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), definition.texts.map(({ attribute }) => symbol.attributes[attribute]));
+		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), symbol.texts.map(({ attribute }) => symbol.attributes[attribute]));
 		if (["resistor", "capacitor", "ground"].includes(definition.id)) {
 			assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
 		}

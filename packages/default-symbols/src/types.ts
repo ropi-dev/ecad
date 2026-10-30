@@ -46,6 +46,7 @@ export interface DefaultSymbolFile {
 	description: string;
 	prefix: string;
 	value: string;
+	netSymbol?: boolean;
 	shapes: SymbolPrimitive[];
 }
 
@@ -105,6 +106,7 @@ export interface SourceSymbol {
 	description: string;
 	prefix: string;
 	value: string;
+	netSymbol?: boolean;
 	source: string;
 	rotation: number;
 	filled?: boolean;

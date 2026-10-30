@@ -1,3 +1,4 @@
+import { normalizeNetSymbol } from "#/drawing/shapes.ts";
 import { z } from "zod";
 import {
 	horizontalAlignments,
@@ -106,6 +107,7 @@ const symbolInputSchema = z.strictObject({
 	...geometryFields,
 	kind: z.literal("symbol"),
 	definitionId: z.string(),
+	netSymbol: z.boolean().optional(),
 	kicad: z
 		.strictObject({
 			libraryId: z.string().min(1),
@@ -197,4 +199,7 @@ export const drawingShapeSchema = z
 			shape.library !== undefined ||
 			shape.children.length > 0,
 		"Symbols require a library reference or legacy inline geometry.",
+	)
+	.overwrite((shape) =>
+		shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
 	);

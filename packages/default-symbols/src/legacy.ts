@@ -53,7 +53,7 @@ export function legacySymbols(): DefaultSymbol[] {
 			name: "Ground",
 			description: "Ground connection with three bars",
 			prefix: "GND",
-			value: "0 V",
+			value: "GND",
 			extent: 1.27,
 			label: 0,
 			shapes: [
@@ -84,6 +84,7 @@ export function legacySymbols(): DefaultSymbol[] {
 					version: 1,
 					units: "mm",
 					...metadata,
+					...(metadata.id === "ground" ? { netSymbol: true } : {}),
 					shapes: shapes.map((shape): SymbolPrimitive => {
 						if ("x1" in shape)
 							return {

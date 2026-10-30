@@ -5,6 +5,7 @@ import type {
 import {
 	type EditorShape,
 	fitBoxToBorder,
+	normalizeNetSymbol,
 	isBasicShape,
 	PIN_RADIUS,
 	symbolShapes,
@@ -34,6 +35,10 @@ export function symbolFileShapes(
 			rotation: 0,
 		};
 		if (shape.kind === "symbol") {
+			if (shape.netSymbol)
+				throw new Error(
+					"Net symbols cannot be nested inside reusable symbols.",
+				);
 			const definition = resolve?.(shape.library, shape.definitionId);
 			resolvedShapes += definition?.children.length ?? 0;
 			if (resolvedShapes > 65_536)
@@ -41,8 +46,8 @@ export function symbolFileShapes(
 			const instance = definition?.children.length
 				? createSymbol(
 						base.id,
-						definition,
-						shape,
+						{ ...definition, netSymbol: undefined },
+						{ x: shape.x, y: shape.y },
 						shape.attributes?.reference ?? "",
 					)
 				: {
@@ -59,8 +64,11 @@ export function symbolFileShapes(
 						},
 					};
 			return fitBoxToBorder(
-				{
+				normalizeNetSymbol({
 					...instance,
+					...(shape.netSymbol === undefined
+						? {}
+						: { netSymbol: shape.netSymbol }),
 					...(shape.locked === undefined ? {} : { locked: shape.locked }),
 					...(shape.childOverrides
 						? { childOverrides: structuredClone(shape.childOverrides) }
@@ -88,7 +96,7 @@ export function symbolFileShapes(
 											: (shape.lineWidth ?? child.lineWidth),
 								})),
 							}),
-				},
+				}),
 				{ preserveChildWorldPositions: true },
 			);
 		}
@@ -179,12 +187,19 @@ export function symbolFileWithShapes(
 				};
 			}
 			if (shape.kind === "symbol") {
+				if (shape.netSymbol)
+					throw new Error(
+						"Net symbols cannot be nested inside reusable symbols.",
+					);
 				if (!shape.library)
 					throw new Error(
 						"Choose a library symbol before saving a nested symbol.",
 					);
 				return {
 					kind: "symbol",
+					...(shape.netSymbol === undefined
+						? {}
+						: { netSymbol: shape.netSymbol }),
 					...(shape.locked === undefined ? {} : { locked: shape.locked }),
 					...(shape.childOverrides
 						? { childOverrides: structuredClone(shape.childOverrides) }

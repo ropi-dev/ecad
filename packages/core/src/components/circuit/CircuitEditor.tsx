@@ -471,7 +471,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			}
 			return;
 		}
-		if (tool !== "component" || !placement) return;
+		if (tool !== "component" || !placement || placement.netSymbol) return;
 		try {
 			const component = componentFromSymbol(placement, circuit.components);
 			if (run({ type: "add-component", component, position: snap(position) })) {

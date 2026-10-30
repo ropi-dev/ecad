@@ -66,6 +66,14 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("symbol"),
+		netSymbol: Schema.optional(
+			Schema.Boolean.pipe(
+				Schema.filter((value) => !value, {
+					message: () =>
+						"Net symbols cannot be nested inside reusable symbols.",
+				}),
+			),
+		),
 		locked,
 		childOverrides,
 		library: Schema.Struct({
@@ -166,6 +174,7 @@ const symbolFileSchema = Schema.Struct({
 	description: Schema.String.pipe(Schema.maxLength(500)),
 	prefix: Schema.String.pipe(Schema.pattern(/^[A-Za-z][A-Za-z0-9_]{0,15}$/)),
 	value: Schema.String.pipe(Schema.maxLength(100)),
+	netSymbol: Schema.optional(Schema.Boolean),
 	shapes: Schema.Array(shapeSchema).pipe(Schema.maxItems(256)),
 });
 export type SymbolFile = typeof symbolFileSchema.Type;

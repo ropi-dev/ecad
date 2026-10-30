@@ -164,3 +164,16 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	await (await openProjectFiles(page)).getByRole("link", {name:"Open LED driver.ecadcircuit",exact:true}).click();
 	expect((await state(page)).circuit).toEqual(saved);
 });
+
+test("component picker excludes net symbols while retaining ordinary components", async ({ page }) => {
+ await createCircuit(page);
+ await page.getByRole("button", { name: "Components", exact: true }).click();
+ const search = page.getByRole("searchbox", { name: "Search components", exact: true });
+ for (const name of ["Ground", "VDD", "VCC"]) {
+  await search.fill(name);
+  await expect(page.getByRole("button", { name: `Place ${name}`, exact: true })).toHaveCount(0);
+  if (captureArtifacts && name === "Ground") await page.screenshot({ path: resolve("/tmp/ecad-browser-artifacts", test.info().testId, "circuit-net-symbol-filter.png") });
+ }
+ await search.fill("Resistor");
+ await expect(page.getByRole("button", { name: "Place Resistor", exact: true })).toBeVisible();
+});

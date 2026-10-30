@@ -1,3 +1,4 @@
+import { normalizeNetSymbol } from "#/drawing/shapes.ts";
 import { Effect, Either } from "effect";
 import {
 	Cable,
@@ -1174,7 +1175,8 @@ function EditorCanvas({
 							return;
 						}
 						if (tool === "symbol") {
-							if (!symbolDefinition) return;
+							if (!symbolDefinition || (isSymbol && symbolDefinition.netSymbol))
+								return;
 							const symbol = createSymbol(
 								nextId.current,
 								symbolDefinition,
@@ -1578,9 +1580,11 @@ function EditorCanvas({
 									</ToolbarGroup>
 									<SymbolPicker
 										library={symbolLibrary}
+										allowNetSymbols={!isSymbol}
 										disabled={!ready}
 										active={tool === "symbol"}
 										onChoose={(definition) => {
+											if (isSymbol && definition.netSymbol) return;
 											finishDrag();
 											finishWire();
 											setSymbolDefinition(definition);
@@ -1868,6 +1872,20 @@ function EditorCanvas({
 							`Change symbol ${attribute}`,
 						);
 					}}
+					onNetSymbolChange={
+						isSymbol
+							? undefined
+							: (netSymbol) => {
+									commitReplacements(
+										selected
+											.filter((shape) => shape.kind === "symbol")
+											.map((shape) =>
+												normalizeNetSymbol({ ...shape, netSymbol }),
+											),
+										"Change net symbol",
+									);
+								}
+					}
 					snapStep={selectionSnapStep}
 					onClear={() => applySelection(new Set())}
 					textFocusId={textFocusId}

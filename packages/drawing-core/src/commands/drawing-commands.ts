@@ -21,6 +21,7 @@ import {
 	isBasicShape,
 	pinTerminals,
 	normalizeWireSegments,
+	normalizeNetSymbol,
 } from "#/drawing/shapes.ts";
 import { validTextAlignment } from "#/drawing/text-alignment.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -175,6 +176,7 @@ function validateShape(shape: EditorShape) {
 			invalid("Symbol stroke overrides must be positive and finite.");
 		if (
 			typeof shape.definitionId !== "string" ||
+			(shape.netSymbol !== undefined && typeof shape.netSymbol !== "boolean") ||
 			!Array.isArray(shape.children) ||
 			(shape.children.length === 0 && !shape.library) ||
 			!shape.attributes ||
@@ -285,6 +287,7 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 				(shape.kind !== "symbol" ||
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&
+						shape.netSymbol === other.netSymbol &&
 						JSON.stringify(shape.library) === JSON.stringify(other.library) &&
 						shape.strokeOverride === other.strokeOverride &&
 						JSON.stringify(shape.textAlignments) ===
@@ -392,11 +395,14 @@ export function placeShapesEffect(
 		command((current) => {
 			if (!Number.isSafeInteger(current.nextShapeId + captured.length))
 				invalid("No more shape IDs are available.");
-			const shapes = captured.map(
-				(shape, index) =>
-					({ ...shape, id: current.nextShapeId + index }) as EditorShape,
-			);
-			for (const shape of shapes) validateShape(shape);
+			const shapes = captured.map((shape, index) => {
+				const placed = {
+					...shape,
+					id: current.nextShapeId + index,
+				} as EditorShape;
+				validateShape(placed);
+				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
+			});
 			return commit(
 				current,
 				[...current.shapes, ...shapes],
@@ -443,15 +449,21 @@ export function replaceAndPlaceShapesEffect(
 					invalid(`Shape ${shape.id} does not exist.`);
 			}
 			const byId = new Map(
-				captured.replacements.map((shape) => [shape.id, shape]),
+				captured.replacements.map((shape) => [
+					shape.id,
+					shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
+				]),
 			);
 			if (!Number.isSafeInteger(current.nextShapeId + captured.inputs.length))
 				invalid("No more shape IDs are available.");
-			const additions = captured.inputs.map(
-				(shape, index) =>
-					({ ...shape, id: current.nextShapeId + index }) as EditorShape,
-			);
-			for (const shape of additions) validateShape(shape);
+			const additions = captured.inputs.map((shape, index) => {
+				const placed = {
+					...shape,
+					id: current.nextShapeId + index,
+				} as EditorShape;
+				validateShape(placed);
+				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
+			});
 			return commit(
 				current,
 				[
