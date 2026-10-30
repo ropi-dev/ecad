@@ -1,6 +1,5 @@
 import type { DefaultSymbol, SymbolPrimitive } from "./types.ts";
 
-/** Preserve the first three built-ins' IDs, order, geometry, values, and labels. */
 export function legacySymbols(): DefaultSymbol[] {
 	const line = (
 		x1: number,
@@ -76,7 +75,7 @@ export function legacySymbols(): DefaultSymbol[] {
 	}[];
 	return definitions.map(
 		({ extent, label, shapes, ...metadata }): DefaultSymbol => {
-			const scale = 3 / extent;
+			const scale = (metadata.id === "ground" ? 2 : 3) / extent;
 			return {
 				category: metadata.id === "ground" ? "Power" : "Passives",
 				file: {
@@ -102,7 +101,11 @@ export function legacySymbols(): DefaultSymbol[] {
 								width: shape.width * scale,
 								height: shape.height * scale,
 							};
-						return { ...shape, x: shape.x * scale, y: shape.y * scale };
+						return {
+							...shape,
+							x: Math.round(shape.x * scale),
+							y: Math.round(shape.y * scale),
+						};
 					}),
 				},
 				texts:
