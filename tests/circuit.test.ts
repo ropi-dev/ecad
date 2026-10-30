@@ -73,7 +73,7 @@ test("invalid commands publish nothing and preserve history", () => {
 	let notifications = 0;
 	store.subscribe(() => notifications++);
 	assert.throws(() => store.execute({ type: "connect", pinIds: ["missing"] }));
-	assert.throws(() => store.execute({ type: "rename-net", id: file.circuit.nets[1].id, names: ["3V3"] }));
+	assert.throws(() => store.execute({ type: "rename-net", id: "missing-net", names: ["3V3"] }));
 	assert.throws(() => store.execute({ type: "split-net", netId: file.circuit.nets[0].id, pinIds: file.circuit.nets[0].pinIds }));
 	assert.throws(() => store.execute({ type: "update-component", id: file.circuit.components[1].id, reference: "J1", value: "" }));
 	assert.throws(() => store.execute({ type: "move", positions: [{ id: "missing", kind: "component", x: 0, y: 0 }] }));
@@ -378,3 +378,21 @@ for (const layout of ["files", "revisions"] as const) {
   if (layout === "files") assert.ok(!memory.files.has("legacy.ecadcircuit"));
  });
 }
+
+test("renaming a net to an existing name merges memberships and aliases in one undo step", () => {
+ const file = createTestCircuit();
+ const [first, second] = file.circuit.nets;
+ const store = createCircuitStore(file);
+ const before = store.getSnapshot();
+ store.execute({type:"rename-net",id:second.id,names:[` ${first.names[0]} `]});
+ const after = store.getSnapshot();
+ const merged = after.circuit.nets.find(net=>net.id===second.id)!;
+ assert.equal(after.circuit.nets.length,before.circuit.nets.length-1);
+ assert.deepEqual(merged.names,first.names);
+ assert.deepEqual(new Set(merged.pinIds),new Set([...first.pinIds,...second.pinIds]));
+ assert.ok(!after.graph.positions.some(position=>position.id===first.id));
+ store.undo();
+ assert.deepEqual(store.getSnapshot().circuit,before.circuit);
+ store.redo();
+ assert.deepEqual(store.getSnapshot().circuit,after.circuit);
+});

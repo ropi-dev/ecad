@@ -559,3 +559,20 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
   assert.equal(retained.attributes.name,"VDD");
  }
 });
+
+test("matching net symbols share a circuit net through renames and repeated synchronization", () => {
+ const original=createCircuit("Rails");
+ const definition=symbolDefinitions.find(definition=>definition.id==="vdd")!;
+ const firstSymbol=createSymbol(1,definition,{x:0,y:0});
+ const secondSymbol=createSymbol(2,definition,{x:40,y:0});
+ const first=synchronizePcb(original,[firstSymbol,secondSymbol],original,symbolDefinitions);
+ assert.equal(first.file.circuit.nets.length,1);
+ const separated=synchronizePcb(first.file,first.shapes.map(shape=>shape.id===2&&shape.kind==="symbol"?{...shape,attributes:{...shape.attributes,name:"OTHER"}}:shape),first.file,symbolDefinitions);
+ assert.equal(separated.file.circuit.nets.length,2);
+ const other=separated.file.circuit.nets.find(net=>net.names.includes("OTHER"))!;
+ const edited=applyCircuitCommand(separated.file,{type:"rename-net",id:other.id,names:["VDD"]});
+ const merged=synchronizePcb(edited,separated.shapes,separated.file,symbolDefinitions);
+ assert.equal(merged.file.circuit.nets.length,1);
+ assert.deepEqual(merged.shapes.filter(shape=>shape.kind==="symbol").map(shape=>shape.attributes.name),["VDD","VDD"]);
+ assert.deepEqual(synchronizePcb(merged.file,merged.shapes,merged.file,symbolDefinitions).file.circuit.nets,merged.file.circuit.nets);
+});

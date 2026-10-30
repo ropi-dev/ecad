@@ -251,9 +251,19 @@ export function synchronizePcb(
 						);
 						if (previousNet) {
 							for (const id of [...net.wires, ...net.labels]) remove.add(id);
-							const next = circuit.nets.find(
-								(candidate) => candidate.id === previousNet.id,
-							);
+							const next =
+								circuit.nets.find(
+									(candidate) => candidate.id === previousNet.id,
+								) ??
+								circuit.nets.find(
+									(candidate) =>
+										candidate.names.some((name) =>
+											previousNet.names.includes(name),
+										) ||
+										candidate.pinIds.some((id) =>
+											previousNet.pinIds.includes(id),
+										),
+								);
 							const disconnected = net.pins.flatMap((pin) => {
 								const id = schematicPinId(
 									previous!.circuit.components,

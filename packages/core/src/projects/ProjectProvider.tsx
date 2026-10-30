@@ -648,7 +648,15 @@ export function ProjectProvider({
 				) ?? -1
 			]?.circuit.id;
 		const openedGeneration = generation.current;
-		if (needsSave.current) await autosave();
+		const schematic =
+			circuitId === "pcb-main"
+				? before?.shapes
+				: before?.drawings?.find((drawing) => drawing.circuitId === circuitId)
+						?.shapes;
+		const hasNetSymbols = schematic?.some(
+			(shape) => shape.kind === "symbol" && shape.netSymbol,
+		);
+		if (needsSave.current || hasNetSymbols) await autosave();
 		if (
 			selectionRequest !== editorSelection.current ||
 			openedGeneration !== generation.current
