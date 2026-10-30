@@ -212,6 +212,14 @@ export function synchronizePcb(
 							.map((net) => net.id),
 					);
 					const remove = new Set<number>();
+					const symbolNames = new Map<number, string>();
+					const netSymbols = new Map(
+						originalShapes.flatMap((shape) =>
+							shape.kind === "symbol" && shape.netSymbol
+								? [[shape.id, shape] as const]
+								: [],
+						),
+					);
 					for (const net of electricalNets(originalShapes)) {
 						const pinIds = net.pins.flatMap(
 							(pin) =>
@@ -221,23 +229,45 @@ export function synchronizePcb(
 									pin.pinId,
 								) ?? [],
 						);
-						if (
-							previous!.circuit.nets.some(
-								(old) =>
-									!unchanged.has(old.id) &&
-									(net.labels.some(
-										(id) => originalBindings.get(id) === old.id,
-									) ||
-										old.pinIds.some((id) => pinIds.includes(id)) ||
-										old.names.some((name) => net.names.includes(name)) ||
-										net.names.includes(`N_${old.id}`) ||
-										net.names.includes(previousLabels.get(old.id)!)),
-							)
-						) {
+						const previousNet = previous!.circuit.nets.find(
+							(old) =>
+								!unchanged.has(old.id) &&
+								(net.labels.some((id) => originalBindings.get(id) === old.id) ||
+									old.pinIds.some((id) => pinIds.includes(id)) ||
+									old.names.some((name) => net.names.includes(name)) ||
+									net.names.includes(`N_${old.id}`) ||
+									net.names.includes(previousLabels.get(old.id)!)),
+						);
+						if (previousNet) {
 							for (const id of [...net.wires, ...net.labels]) remove.add(id);
+							const next = circuit.nets.find(
+								(candidate) => candidate.id === previousNet.id,
+							);
+							for (const pin of net.pins) {
+								const symbol = netSymbols.get(pin.shapeId);
+								if (!symbol) continue;
+								symbolNames.set(
+									symbol.id,
+									next?.names.includes(symbol.attributes.name.trim())
+										? symbol.attributes.name
+										: (next?.names[0] ?? ""),
+								);
+							}
 						}
 					}
-					shapes = shapes.filter((shape) => !remove.has(shape.id));
+					shapes = shapes
+						.filter((shape) => !remove.has(shape.id))
+						.map((shape) =>
+							shape.kind === "symbol" && symbolNames.has(shape.id)
+								? {
+										...shape,
+										attributes: {
+											...shape.attributes,
+											name: symbolNames.get(shape.id)!,
+										},
+									}
+								: shape,
+						);
 					for (const net of circuit.nets.filter(
 						(net) => !unchanged.has(net.id),
 					)) {

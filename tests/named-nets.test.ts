@@ -287,3 +287,25 @@ test("net symbols have one editable name label and no reference on duplication o
 	assert.deepEqual(reloaded.attributes, { name: "+1V8", value: "", reference: "" });
 	assert.deepEqual(symbolTextShapes(reloaded).map((label) => label.text), ["+1V8"]);
 });
+
+test("direct placement canonicalizes conflicting net-symbol attributes before saving", async () => {
+ const { createSymbol, symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { replaceAndPlaceShapesEffect } = await import("#/commands/drawing-commands.ts");
+ const symbol = createSymbol(1, symbolDefinitions.find(definition => definition.id === "vdd")!, {x:0,y:0});
+ const input = {...symbol, attributes: {name:"VDD", value:"+1V8", reference:"PWR1"}};
+ for (const command of [placeShapesEffect([input], "Place raw net symbol"), replaceAndPlaceShapesEffect([], [input], "Add raw net symbol")]) {
+  const store = createDrawingStore();
+  const run = <A, E>(effect: Effect.Effect<A, E, DrawingStore>) => Effect.runSync(Effect.provideService(effect, DrawingStore, store));
+  run(command);
+  const placed = store.getSnapshot().shapes;
+  assert.deepEqual(electricalNets(placed).map(net => net.names), [["+1V8"]]);
+  const instance = placed[0];
+  assert.equal(instance.kind, "symbol");
+  if (instance.kind !== "symbol") continue;
+  assert.deepEqual(instance.attributes, {name:"+1V8",value:"",reference:""});
+  const reopened = drawingShapeSchema.parse(JSON.parse(JSON.stringify(instance)));
+  assert.deepEqual(electricalNets([reopened]), electricalNets(placed));
+  run(replaceShapesEffect([input], "Replace raw net symbol"));
+  assert.deepEqual(electricalNets(store.getSnapshot().shapes), electricalNets(placed));
+ }
+});

@@ -511,3 +511,21 @@ test("net symbols name circuit nets without becoming referenced components", () 
  assert.deepEqual(second.file.circuit.nets, first.file.circuit.nets);
  assert.ok(second.shapes.some(shape => shape.kind === "symbol" && shape.attributes.reference === ""));
 });
+
+test("circuit renames and deletions update net-symbol declarations without resurrection", () => {
+ for (const connected of [false, true]) for (const edit of ["rename", "anonymous", "delete"] as const) {
+  const original = createCircuit("Board");
+  const supply = createSymbol(1, symbolDefinitions.find(definition => definition.id === "vdd")!, {x:0,y:0});
+  const shapes = connected ? [supply, createSymbol(2,resistor,{x:3,y:0}), createSymbol(3,symbolDefinitions.find(definition => definition.id === "vdd")!,{x:30,y:0}), createSymbol(4,resistor,{x:33,y:0})] : [supply];
+  const first = synchronizePcb(original, shapes, original, symbolDefinitions);
+  const net = first.file.circuit.nets.find(net => net.names.includes("VDD"))!;
+  const edited = applyCircuitCommand(first.file, edit === "delete" ? {type:"remove-net",id:net.id} : {type:"rename-net",id:net.id,names:edit === "rename" ? ["RAIL"] : []});
+  const second = synchronizePcb(edited, first.shapes, first.file, symbolDefinitions);
+  const symbol = second.shapes.find(shape => shape.kind === "symbol");
+  assert.ok(symbol?.kind === "symbol");
+  assert.equal(symbol.attributes.name, edit === "rename" ? "RAIL" : "");
+  const third = synchronizePcb(second.file, second.shapes, second.file, symbolDefinitions);
+  assert.deepEqual(third.file.circuit.nets, second.file.circuit.nets);
+  assert.ok(!third.file.circuit.nets.some(net => net.names.includes("VDD")));
+ }
+});

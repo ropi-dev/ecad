@@ -21,6 +21,7 @@ import {
 	isBasicShape,
 	pinTerminals,
 	normalizeWireSegments,
+	normalizeNetSymbol,
 } from "#/drawing/shapes.ts";
 import { validTextAlignment } from "#/drawing/text-alignment.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -394,11 +395,14 @@ export function placeShapesEffect(
 		command((current) => {
 			if (!Number.isSafeInteger(current.nextShapeId + captured.length))
 				invalid("No more shape IDs are available.");
-			const shapes = captured.map(
-				(shape, index) =>
-					({ ...shape, id: current.nextShapeId + index }) as EditorShape,
-			);
-			for (const shape of shapes) validateShape(shape);
+			const shapes = captured.map((shape, index) => {
+				const placed = {
+					...shape,
+					id: current.nextShapeId + index,
+				} as EditorShape;
+				validateShape(placed);
+				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
+			});
 			return commit(
 				current,
 				[...current.shapes, ...shapes],
@@ -445,15 +449,21 @@ export function replaceAndPlaceShapesEffect(
 					invalid(`Shape ${shape.id} does not exist.`);
 			}
 			const byId = new Map(
-				captured.replacements.map((shape) => [shape.id, shape]),
+				captured.replacements.map((shape) => [
+					shape.id,
+					shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
+				]),
 			);
 			if (!Number.isSafeInteger(current.nextShapeId + captured.inputs.length))
 				invalid("No more shape IDs are available.");
-			const additions = captured.inputs.map(
-				(shape, index) =>
-					({ ...shape, id: current.nextShapeId + index }) as EditorShape,
-			);
-			for (const shape of additions) validateShape(shape);
+			const additions = captured.inputs.map((shape, index) => {
+				const placed = {
+					...shape,
+					id: current.nextShapeId + index,
+				} as EditorShape;
+				validateShape(placed);
+				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
+			});
 			return commit(
 				current,
 				[
