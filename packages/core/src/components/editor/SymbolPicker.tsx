@@ -14,6 +14,7 @@ export function SymbolPicker({
 	onChoose,
 	library,
 	mode = "symbol",
+	allowNetSymbols = true,
 	onOpen,
 }: {
 	disabled: boolean;
@@ -21,6 +22,7 @@ export function SymbolPicker({
 	onChoose: (definition: SymbolDefinition) => void;
 	library: ReturnType<typeof useSymbolLibrary>;
 	mode?: "symbol" | "component";
+	allowNetSymbols?: boolean;
 	onOpen?: () => void;
 }) {
 	const components = mode === "component";
@@ -35,7 +37,7 @@ export function SymbolPicker({
 		const search = query.trim().toLowerCase();
 		const matches = definitions.filter(
 			(definition) =>
-				(!components || !definition.netSymbol) &&
+				((!components && allowNetSymbols) || !definition.netSymbol) &&
 				[
 					definition.name,
 					definition.description,
@@ -51,7 +53,7 @@ export function SymbolPicker({
 			);
 			return symbols.length ? [{ category, symbols }] : [];
 		});
-	}, [definitions, query, components]);
+	}, [definitions, query, components, allowNetSymbols]);
 	return (
 		<Popover.Root
 			open={open}

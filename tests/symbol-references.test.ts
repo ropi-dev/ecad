@@ -205,15 +205,15 @@ test("legacy supply instances retain their value labels until explicitly convert
  assert.equal(symbolTextShapes(restored)[1].y, 34);
 });
 
-test("nested supplies preserve legacy labels and normalize explicitly flagged instances after overrides", async () => {
+test("nested legacy supplies preserve their labels and overrides", async () => {
  const { symbolDefinitions } = await import("#/drawing/symbols.ts");
  const { symbolTextShapes } = await import("#/drawing/shapes.ts");
  const definition = symbolDefinitions.find(definition => definition.id === "power-3v3")!;
- for (const role of [undefined, false, true]) {
+ for (const role of [undefined, false]) {
   const file: SymbolFile = {...pin, id:"nested.supply", shapes:[{kind:"symbol", library:definition.library!, definitionId:definition.id, x:0, y:0, ...(role === undefined ? {} : {netSymbol:role}), attributes:{name:definition.name, reference:"PWR7", value:"+1V8"}, textPositions:{value:{x:12,y:34}}, textAlignments:{value:{horizontalAlign:"right"}}, childOverrides:{"attribute:value":{fontSize:3}}}]};
   const resolved = symbolFileShapes(file, () => definition)[0] as EditorSymbol;
   assert.equal(resolved.netSymbol, role);
-  assert.deepEqual(symbolTextShapes(resolved).map(label => label.text), role ? ["+1V8"] : ["PWR7", "+1V8"]);
+  assert.deepEqual(symbolTextShapes(resolved).map(label => label.text), ["PWR7", "+1V8"]);
   const label = symbolTextShapes(resolved).at(-1)!;
   assert.equal(label.x, 12);
   assert.equal(label.y, 34);
@@ -224,4 +224,15 @@ test("nested supplies preserve legacy labels and normalize explicitly flagged in
   assert.deepEqual(symbolTextShapes(restored), symbolTextShapes(resolved));
   assert.deepEqual(restored.attributes, resolved.attributes);
  }
+});
+
+test("reusable symbol import, resolution and saving reject nested net declarations", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { libraryDefinitions } = await import("#/drawing/symbol-file.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "vdd")!;
+ const file: SymbolFile = {...pin,id:"invalid.nested.net",shapes:[{kind:"symbol",library:definition.library!,definitionId:definition.id,x:0,y:0,netSymbol:true}]};
+ assert.throws(() => parseSymbolFile(JSON.stringify(file)), /Net symbols cannot be nested/i);
+ assert.throws(() => symbolFileShapes(file, () => definition), /Net symbols cannot be nested/i);
+ assert.throws(() => libraryDefinitions([file], () => definition), /Net symbols cannot be nested/i);
+ assert.throws(() => symbolFileWithShapes({...file,shapes:[]},[createSymbol(1,definition,{x:0,y:0})]), /Net symbols cannot be nested/i);
 });

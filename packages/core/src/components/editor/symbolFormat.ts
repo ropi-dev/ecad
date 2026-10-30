@@ -66,7 +66,14 @@ const shapeSchema = Schema.Union(
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("symbol"),
-		netSymbol: Schema.optional(Schema.Boolean),
+		netSymbol: Schema.optional(
+			Schema.Boolean.pipe(
+				Schema.filter((value) => !value, {
+					message: () =>
+						"Net symbols cannot be nested inside reusable symbols.",
+				}),
+			),
+		),
 		locked,
 		childOverrides,
 		library: Schema.Struct({

@@ -35,6 +35,10 @@ export function symbolFileShapes(
 			rotation: 0,
 		};
 		if (shape.kind === "symbol") {
+			if (shape.netSymbol)
+				throw new Error(
+					"Net symbols cannot be nested inside reusable symbols.",
+				);
 			const definition = resolve?.(shape.library, shape.definitionId);
 			resolvedShapes += definition?.children.length ?? 0;
 			if (resolvedShapes > 65_536)
@@ -183,6 +187,10 @@ export function symbolFileWithShapes(
 				};
 			}
 			if (shape.kind === "symbol") {
+				if (shape.netSymbol)
+					throw new Error(
+						"Net symbols cannot be nested inside reusable symbols.",
+					);
 				if (!shape.library)
 					throw new Error(
 						"Choose a library symbol before saving a nested symbol.",

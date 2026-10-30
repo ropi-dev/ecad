@@ -42,6 +42,8 @@ The editor's Connections group places Net label and Supply label items. Placemen
 
 For the RP2350A reference conversion, restore the source label anchor before setting `electrical`. Its current `build.py` adds 0.5 mm to horizontal label Y coordinates for display. Supply symbols can set `netSymbol: true` on the symbol instance. The KiCad importer uses this flag for power symbols and binds their label to Name. Power flags do not declare a net name. Names currently apply to the whole drawing; hierarchical sheet scopes and ERC are outside this representation.
 
+Net symbols cannot be nested inside reusable symbol definitions. The symbol editor excludes them from placement and role changes. Portable imports, saving, and library resolution reject nested net declarations rather than discarding their electrical meaning. A net-symbol definition can still declare its own role and use ordinary geometry.
+
 Electrical labels are standalone drawing items. The symbol editor does not offer electrical label tools, and grouping rejects electrical labels to preserve their drawing-wide meaning.
 
 Shape schemas, drawing import, symbol-file import and direct drawing commands reject electrical labels inside symbol children. This also applies to CLI and MCP payloads. A symbol's text remains ordinary text.
