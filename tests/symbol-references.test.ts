@@ -3,10 +3,10 @@ import { test } from "node:test";
 import { parseSymbolFile, type SymbolFile } from "#/components/editor/symbolFormat.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import { editShapeAttribute, type EditorSymbol, pinTerminals } from "#/drawing/shapes.ts";
-import { symbolFileShapes, symbolFileWithShapes } from "#/drawing/symbol-file.ts";
+import { libraryDefinitions, symbolFileShapes, symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import { persistDrawingShapes, persistProjectDrawingShapes, resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
-import { createSymbol } from "#/drawing/symbols.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
 import { type ConfiguredSymbolLibrary, resolveSymbolLibraries } from "#/symbol-library/config.ts";
@@ -235,4 +235,39 @@ test("reusable symbol import, resolution and saving reject nested net declaratio
  assert.throws(() => symbolFileShapes(file, () => definition), /Net symbols cannot be nested/i);
  assert.throws(() => libraryDefinitions([file], () => definition), /Net symbols cannot be nested/i);
  assert.throws(() => symbolFileWithShapes({...file,shapes:[]},[createSymbol(1,definition,{x:0,y:0})]), /Net symbols cannot be nested/i);
+});
+
+
+test("smaller ground geometry preserves saved terminals across rotations and library migration", () => {
+ const ground = symbolDefinitions.find(definition => definition.id === "ground")!;
+ const oldGround = {
+  ...ground,
+  ...libraryDefinitions([{
+   format: "ecad-symbol", version: 1, units: "mm", id: "ground", name: "Ground",
+   description: "", prefix: "GND", value: "GND", netSymbol: true,
+   shapes: [
+    { kind: "line", x1: 0, y1: 3, x2: 0, y2: 0 },
+    { kind: "line", x1: -3, y1: 0, x2: 3, y2: 0 },
+    { kind: "line", x1: -1.5, y1: -1.5, x2: 1.5, y2: -1.5 },
+    { kind: "line", x1: -0.3, y1: -3, x2: 0.3, y2: -3 },
+    { kind: "pin", name: "", x: 0, y: 3 },
+   ],
+  }])[0],
+ };
+ const references = new Map([[symbolReferenceKey(ground.library!, ground.id), ground]]);
+ for (const rotation of [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]) {
+  for (const inline of [false, true]) {
+   const instance = { ...createSymbol(1, oldGround, { x: 10, y: 10 }), rotation };
+   if (inline) delete instance.library;
+   const terminals = pinTerminals(instance);
+   const saved = inline ? instance : persistDrawingShapes([instance])[0];
+   const result = resolveDrawingSymbols([drawingShapeSchema.parse(saved)], [ground], references);
+   assert.deepEqual(result.errors, []);
+   assert.deepEqual(pinTerminals(result.shapes[0]), terminals);
+   const reopened = resolveDrawingSymbols(
+    [drawingShapeSchema.parse(persistDrawingShapes(result.shapes)[0])], [ground], references,
+   );
+   assert.deepEqual(pinTerminals(reopened.shapes[0]), terminals);
+  }
+ }
 });

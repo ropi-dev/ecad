@@ -37,7 +37,7 @@ for (const definition of symbolDefinitions) {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
 		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), symbol.texts.map(({ attribute }) => symbol.attributes[attribute]));
 		if (["resistor", "capacitor", "ground"].includes(definition.id)) {
-			assert.equal(Math.max(symbol.width, symbol.height), (definition.id === "ground" ? 4 : 6) + 2 * PIN_RADIUS);
+			assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
 		}
 		assert.ok(Number.isFinite(symbol.width) && symbol.width > 0);
 		assert.ok(Number.isFinite(symbol.height) && symbol.height > 0);

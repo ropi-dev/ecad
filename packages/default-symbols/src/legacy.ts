@@ -76,6 +76,7 @@ export function legacySymbols(): DefaultSymbol[] {
 	return definitions.map(
 		({ extent, label, shapes, ...metadata }): DefaultSymbol => {
 			const scale = (metadata.id === "ground" ? 2 : 3) / extent;
+			const offsetY = metadata.id === "ground" ? 1 : 0;
 			return {
 				category: metadata.id === "ground" ? "Power" : "Passives",
 				file: {
@@ -89,22 +90,22 @@ export function legacySymbols(): DefaultSymbol[] {
 							return {
 								...shape,
 								x1: shape.x1 * scale,
-								y1: shape.y1 * scale,
+								y1: shape.y1 * scale + offsetY,
 								x2: shape.x2 * scale,
-								y2: shape.y2 * scale,
+								y2: shape.y2 * scale + offsetY,
 							};
 						if (shape.kind === "rectangle")
 							return {
 								...shape,
 								x: shape.x * scale,
-								y: shape.y * scale,
+								y: shape.y * scale + offsetY,
 								width: shape.width * scale,
 								height: shape.height * scale,
 							};
 						return {
 							...shape,
 							x: Math.round(shape.x * scale),
-							y: Math.round(shape.y * scale),
+							y: Math.round(shape.y * scale) + offsetY,
 						};
 					}),
 				},
@@ -114,13 +115,13 @@ export function legacySymbols(): DefaultSymbol[] {
 								{
 									attribute: "reference",
 									x: 2.4 * scale,
-									y: 0.6 * scale,
+									y: 0.6 * scale + offsetY,
 									fontSize: 1.3,
 								},
 								{
 									attribute: "value",
 									x: 2.4 * scale,
-									y: -1.2 * scale,
+									y: -1.2 * scale + offsetY,
 									fontSize: 1.3,
 								},
 							]
