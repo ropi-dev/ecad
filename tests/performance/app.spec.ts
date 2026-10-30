@@ -1595,7 +1595,7 @@ async function openCircuitWorkload(page: Page, connected = true) {
  await page.reload(); await ready(page);
  const sidebar = await openProjectFiles(page);
  const openMs = await interaction(page,"circuit-open",async () => {
-  await sidebar.getByRole("link",{name:"Open Circuit workload.ecadcircuit",exact:true}).click();
+  await sidebar.getByRole("link",{name:"Open Circuit workload.ecaddraw in circuit view",exact:true}).click();
   await page.waitForFunction(() => document.querySelector('[aria-label="Circuit connections graph"]') && document.querySelectorAll('.circuit-component').length === 32, undefined, {polling:"raf"});
  });
  return openMs;
@@ -1887,4 +1887,21 @@ test("editor-net-symbols", async ({ page }, testInfo) => {
 	}
 	await page.screenshot({ path: "/tmp/ecad-net-symbols/interface.png" });
 	await finish(page, testInfo, "editor-net-symbols", { interactionP95Ms: metric(await report(page), "scenario.interaction")! });
+});
+
+test("editor-view-switch", async ({page}, testInfo) => {
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const times: number[] = [];
+ for (let index = 0; index < 3; index++) {
+  times.push(await interaction(page, "switch-to-schematic", async () => {
+   await page.getByRole("button", {name:"Switch to schematic view",exact:true}).click();
+   await expect(page.getByRole("button",{name:"Symbols",exact:true})).toBeEnabled();
+  }));
+  times.push(await interaction(page, "switch-to-circuit", async () => {
+   await page.getByRole("button", {name:"Switch to circuit view",exact:true}).click();
+   await expect(page.locator(".circuit-component")).toHaveCount(32);
+  }));
+ }
+ await finish(page, testInfo, "editor-view-switch", {interactionP95Ms: percentile(times)});
 });

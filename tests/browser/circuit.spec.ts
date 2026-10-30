@@ -73,10 +73,10 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 		page.getByRole("button", { name: "Pin R2.1", exact: true }).locator(".."),
 	).toHaveClass(/is-target/);
 	expect(await state(page)).toEqual(initial);
-	await mkdir(resolve("test-results/screenshots"), { recursive: true });
+	await mkdir(resolve("/tmp/ecad-shared-schematic"), { recursive: true });
 	if (captureArtifacts)
 		await page.screenshot({
-			path: resolve("test-results/screenshots/circuit-pin-drag-preview.png"),
+			path: resolve("/tmp/ecad-shared-schematic/circuit-pin-drag-preview.png"),
 			fullPage: true,
 		});
 	await page.mouse.up();
@@ -116,12 +116,12 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	expect(saved.circuit.nets).toEqual(merged.circuit.nets);
 	if (captureArtifacts)
 		await page.screenshot({
-			path: resolve("test-results/screenshots/circuit-pin-drag-connected.png"),
+			path: resolve("/tmp/ecad-shared-schematic/circuit-pin-drag-connected.png"),
 			fullPage: true,
 		});
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open LED driver.ecadcircuit", exact: true })
+		.getByRole("link", { name: "Open LED driver.ecaddraw in circuit view", exact: true })
 		.click();
 	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
@@ -161,7 +161,7 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	const saved = (await state(page)).circuit;
 	if (process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
 	await page.reload();
-	await (await openProjectFiles(page)).getByRole("link", {name:"Open LED driver.ecadcircuit",exact:true}).click();
+	await (await openProjectFiles(page)).getByRole("link", {name:"Open LED driver.ecaddraw in circuit view",exact:true}).click();
 	expect((await state(page)).circuit).toEqual(saved);
 });
 

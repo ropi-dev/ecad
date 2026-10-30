@@ -3,10 +3,7 @@ import {
 	primaryPcbId,
 	pcbDocumentName,
 } from "#/projects/pcb.ts";
-import {
-	parseCircuit,
-	serializeCircuit,
-} from "@ecad/drawing-core/circuit/model.ts";
+import { circuitSchema } from "@ecad/drawing-core/circuit/model.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import {
@@ -79,7 +76,15 @@ export class ProjectRepository {
 			const content = await this.readManifest();
 			const manifest = parseProjectManifest(content);
 			const savedFiles = new Map<string, Uint8Array>();
-			const read = async (path: string) => {
+			const contents = new Map<string, Promise<string>>();
+			const read = (path: string): Promise<string> => {
+				const existing = contents.get(path);
+				if (existing) return existing;
+				const pending = readFile(path);
+				contents.set(path, pending);
+				return pending;
+			};
+			const readFile = async (path: string) => {
 				const bytes = await this.directory.read(path);
 				if (this.options.layout === "files") savedFiles.set(path, bytes);
 				return decoder.decode(bytes);
@@ -94,9 +99,10 @@ export class ProjectRepository {
 					? {}
 					: {
 							drawings: await Promise.all(
-								manifest.drawings.map(async (path) =>
-									drawingFileSchema.parse(JSON.parse(await read(path))),
-								),
+								manifest.drawings.map(async (path) => {
+									const { circuit, ...drawing } = JSON.parse(await read(path));
+									return drawingFileSchema.parse(drawing);
+								}),
 							),
 						}),
 				...(manifest.circuits === undefined
@@ -111,7 +117,13 @@ export class ProjectRepository {
 											if (!isMissing(cause)) throw cause;
 										}
 									}
-									const circuit = parseCircuit(await read(paths.circuit));
+									const content = await read(paths.circuit);
+									const value = JSON.parse(content);
+									const circuit = circuitSchema.parse(value.circuit ?? value);
+									if (value.circuitId && value.circuitId !== circuit.id)
+										throw new Error(
+											"The schematic circuit identity does not match its circuit data.",
+										);
 									return {
 										circuit,
 										graph: {
@@ -207,6 +219,9 @@ export class ProjectRepository {
 				encoder.encode(
 					JSON.stringify({
 						shapes: persistProjectDrawingShapes(document),
+						circuit: document.circuits?.find(
+							(file) => file.circuit.id === primaryPcbId,
+						)?.circuit,
 						...(document.symbolLibraries === undefined
 							? {}
 							: { symbolLibraries: document.symbolLibraries }),
@@ -230,6 +245,9 @@ export class ProjectRepository {
 					encoder.encode(
 						JSON.stringify({
 							...file,
+							circuit: document.circuits?.find(
+								(entry) => entry.circuit.id === file.circuitId,
+							)?.circuit,
 							shapes: persistProjectDrawingShapes({
 								...document,
 								shapes: file.shapes,
@@ -239,26 +257,16 @@ export class ProjectRepository {
 				);
 				drawings.push(path);
 			}
-			const circuits: { circuit: string }[] = [];
-			for (const file of document.circuits ?? []) {
-				const pairedDrawing = document.drawings?.find(
-					(drawing) => drawing.circuitId === file.circuit.id,
-				);
-				const name = pairedDrawing?.name ?? pcbDocumentName(file.circuit.name);
-				const stem =
+			const circuits = (document.circuits ?? []).map((file) => ({
+				circuit:
 					file.circuit.id === primaryPcbId
-						? `${revision}/${mainName}/${mainName}`
-						: `${revision}/pcbs/${pairedDrawing!.id}/${name}`;
-				const paths = {
-					circuit: `${stem}.ecadcircuit`,
-				};
-				projectPathSchema.parse(paths.circuit);
-				await this.directory.write(
-					paths.circuit,
-					encoder.encode(serializeCircuit(file.circuit)),
-				);
-				circuits.push(paths);
-			}
+						? drawing
+						: drawings[
+								(document.drawings ?? []).findIndex(
+									(entry) => entry.circuitId === file.circuit.id,
+								)
+							],
+			}));
 			const manifest = {
 				...snapshot.manifest,
 				...(document.circuits === undefined ? {} : { circuits }),
@@ -335,6 +343,9 @@ export class ProjectRepository {
 				encoder.encode(
 					JSON.stringify({
 						shapes: persistProjectDrawingShapes(snapshot),
+						circuit: snapshot.circuits?.find(
+							(file) => file.circuit.id === primaryPcbId,
+						)?.circuit,
 						...(snapshot.symbolLibraries === undefined
 							? {}
 							: { symbolLibraries: snapshot.symbolLibraries }),
@@ -371,6 +382,9 @@ export class ProjectRepository {
 				encoder.encode(
 					JSON.stringify({
 						...file,
+						circuit: snapshot.circuits?.find(
+							(entry) => entry.circuit.id === file.circuitId,
+						)?.circuit,
 						shapes: persistProjectDrawingShapes({
 							...snapshot,
 							shapes: file.shapes,
@@ -390,28 +404,16 @@ export class ProjectRepository {
 			symbols.push(path);
 			files.set(path, encoder.encode(JSON.stringify(symbol)));
 		}
-		const previousCircuits = new Map(
-			previous?.circuits?.map((file, index) => [
-				file.circuit.id,
-				previous.manifest.circuits?.[index],
-			]),
-		);
-		const circuits: { circuit: string }[] = [];
-		for (const file of snapshot.circuits ?? []) {
-			const existing = previousCircuits.get(file.circuit.id);
-			const name =
-				snapshot.drawings?.find(
-					(drawing) => drawing.circuitId === file.circuit.id,
-				)?.name ?? pcbDocumentName(file.circuit.name);
-			const stem = `${name}/${name}`;
-			const circuit =
-				existing && visible(existing.circuit) && !reserved.has(existing.circuit)
-					? existing.circuit
-					: await this.unusedPath(`${stem}.ecadcircuit`, reserved);
-			reserved.add(circuit);
-			files.set(circuit, encoder.encode(serializeCircuit(file.circuit)));
-			circuits.push({ circuit });
-		}
+		const circuits = (snapshot.circuits ?? []).map((file) => ({
+			circuit:
+				file.circuit.id === primaryPcbId
+					? drawing
+					: drawings[
+							(snapshot.drawings ?? []).findIndex(
+								(entry) => entry.circuitId === file.circuit.id,
+							)
+						],
+		}));
 		const manifest = {
 			...snapshot.manifest,
 			...(snapshot.circuits === undefined ? {} : { circuits }),

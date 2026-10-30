@@ -22,6 +22,7 @@ import {
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import { ZoomControls } from "#/components/viewer/ZoomControls.tsx";
+import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
 const CircuitComponentPicker = lazy(() =>
@@ -201,6 +202,7 @@ export function CircuitToolbar({
 					>
 						<Trash2 size={18} />
 					</TooltipButton>
+					<EditorViewSwitch view="circuit" />
 				</div>
 			</div>
 		</ToolbarGroups>
