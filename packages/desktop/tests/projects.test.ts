@@ -25,7 +25,7 @@ test("additional drawing files preserve paths, reject external edits and roll ba
 	fail = true;
 	await assert.rejects(repository.save({ shapes: [shape], symbols: [], drawings: [{ ...drawings[0], shapes: [] }, { id: "control", name: "Control", shapes: [] }] }), /Disk full/);
 	assert.deepEqual((await new ProjectRepository(directory).load()).drawings, drawings);
-	assert.deepEqual(await readdir(join(parent, "Power")), ["Power.ecadcircuit", "Power.ecaddraw"]);
+	assert.deepEqual(await readdir(join(parent, "Power")), ["Power.ecaddraw"]);
 	fail = false;
 	const next = await repository.save({ shapes: [shape], symbols: [] });
 	assert.deepEqual(next.manifest.drawings, saved.manifest.drawings);
@@ -233,7 +233,7 @@ test("direct drawing and symbol edits reject stale desktop saves and imports", a
 	const saved = await projects.save(created.directory, { shapes: [shape], symbols: [symbol] });
 	const drawingPath = join(saved.directory, saved.manifest.drawing);
 	const symbolPath = join(saved.directory, saved.manifest.symbols[0]);
-	await writeFile(drawingPath, JSON.stringify({ shapes: [] }));
+	await writeFile(drawingPath, JSON.stringify({ ...JSON.parse(await readFile(drawingPath, "utf8")), shapes: [] }));
 	await assert.rejects(projects.save(saved.directory, { shapes: [shape], symbols: [symbol] }), /changed on disk/);
 	await assert.rejects(projects.importAssets(saved.directory, [{ name: "model.step", kind: "step", bytes: new Uint8Array([1]) }]), /changed on disk/);
 	await projects.openDirectory(saved.directory);

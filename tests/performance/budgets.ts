@@ -1,5 +1,8 @@
 export const budgets = {
+ "net-symbol-reconcile": { openMs: 3000, syncP95Ms: 150, domNodes: 2200, scriptBytes: 3_000_000 },
+ "circuit-merge-names": { interactionP95Ms: 3000, syncP95Ms: 150, domNodes: 2200, scriptBytes: 3_000_000 },
 	"editor-net-symbols": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
+ "editor-view-switch": { interactionP95Ms: 3000, domNodes: 2200, scriptBytes: 3_000_000 },
  "pcb-linked-documents": { interactionP95Ms: 3000, syncP95Ms: 150 },
 	"desktop-untitled": { createMs: 1000, saveMemoryMs: 2000, importMemoryMs: 3000, saveToDiskMs: 3000, reopenMs: 2000 },
 	"circuit-keyboard-placement": { interactionP95Ms: 2500, graphP95Ms: 100, editP95Ms: 100, domNodes: 2200, scriptBytes: 3_000_000 },

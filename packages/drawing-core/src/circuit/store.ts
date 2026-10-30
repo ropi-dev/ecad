@@ -4,6 +4,7 @@ import {
 	type CircuitFile,
 	type CircuitNet,
 	circuitFileSchema,
+	circuitNetSchema,
 	createCircuit,
 	type GraphLayout,
 } from "./model.ts";
@@ -150,6 +151,15 @@ export function applyCircuitCommand(
 					]),
 				],
 				pinIds: memberIds,
+				...(joined.some((net) => net.schematicShapeIds?.length)
+					? {
+							schematicShapeIds: [
+								...new Set(
+									joined.flatMap((net) => net.schematicShapeIds ?? []),
+								),
+							],
+						}
+					: {}),
 			});
 			circuit.noConnectPinIds = circuit.noConnectPinIds.filter(
 				(id) => !memberIds.includes(id),
@@ -180,7 +190,35 @@ export function applyCircuitCommand(
 		case "rename-net": {
 			const net = circuit.nets.find((net) => net.id === command.id);
 			if (!net) throw new Error("Net no longer exists.");
-			net.names = command.names;
+			const names = circuitNetSchema.shape.names.parse(command.names);
+			const joined = circuit.nets.filter(
+				(candidate) =>
+					candidate !== net &&
+					candidate.names.some((name) => names.includes(name)),
+			);
+			net.names = [
+				...new Set([
+					...names,
+					...joined.flatMap((candidate) => candidate.names),
+				]),
+			];
+			net.pinIds = [
+				...new Set([
+					...net.pinIds,
+					...joined.flatMap((candidate) => candidate.pinIds),
+				]),
+			];
+			const schematicShapeIds = [
+				...new Set([
+					...(net.schematicShapeIds ?? []),
+					...joined.flatMap((candidate) => candidate.schematicShapeIds ?? []),
+				]),
+			];
+			if (schematicShapeIds.length) net.schematicShapeIds = schematicShapeIds;
+			const removed = new Set(joined.map((candidate) => candidate.id));
+			circuit.nets = circuit.nets.filter(
+				(candidate) => !removed.has(candidate.id),
+			);
 			break;
 		}
 		case "no-connect": {

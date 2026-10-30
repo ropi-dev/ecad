@@ -1595,7 +1595,7 @@ async function openCircuitWorkload(page: Page, connected = true) {
  await page.reload(); await ready(page);
  const sidebar = await openProjectFiles(page);
  const openMs = await interaction(page,"circuit-open",async () => {
-  await sidebar.getByRole("link",{name:"Open Circuit workload.ecadcircuit",exact:true}).click();
+  await sidebar.getByRole("link",{name:"Open Circuit workload.ecaddraw in circuit view",exact:true}).click();
   await page.waitForFunction(() => document.querySelector('[aria-label="Circuit connections graph"]') && document.querySelectorAll('.circuit-component').length === 32, undefined, {polling:"raf"});
  });
  return openMs;
@@ -1887,4 +1887,84 @@ test("editor-net-symbols", async ({ page }, testInfo) => {
 	}
 	await page.screenshot({ path: "/tmp/ecad-net-symbols/interface.png" });
 	await finish(page, testInfo, "editor-net-symbols", { interactionP95Ms: metric(await report(page), "scenario.interaction")! });
+});
+
+test("editor-view-switch", async ({page}, testInfo) => {
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const times: number[] = [];
+ for (let index = 0; index < 3; index++) {
+  times.push(await interaction(page, "switch-to-schematic", async () => {
+   await page.getByRole("button", {name:"Switch to schematic view",exact:true}).click();
+   await expect(page.getByRole("button",{name:"Symbols",exact:true})).toBeEnabled();
+  }));
+  times.push(await interaction(page, "switch-to-circuit", async () => {
+   await page.getByRole("button", {name:"Switch to circuit view",exact:true}).click();
+   await expect(page.locator(".circuit-component")).toHaveCount(32);
+  }));
+ }
+ await finish(page, testInfo, "editor-view-switch", {interactionP95Ms: percentile(times)});
+});
+
+test("circuit-merge-names", async ({page},testInfo) => {
+ await openCircuitWorkload(page);
+ await closeProjectFiles(page);
+ const times:number[]=[];
+ for(let index=0;index<3;index++){
+  times.push(await interaction(page,"circuit.merge-names",async()=>{
+   await page.getByRole("button",{name:"Net SIGNAL_0",exact:true}).focus();
+   await page.getByRole("button",{name:"Net SIGNAL_0",exact:true}).press("Enter");
+   await page.getByRole("textbox",{name:"Net name",exact:true}).fill("GND");
+   await page.getByRole("textbox",{name:"Net name",exact:true}).press("Enter");
+   await expect(page.locator(".circuit-net")).toHaveCount(16);
+   await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes","false");
+  }));
+  await (await toolbarButton(page,"Undo")).click();
+  await expect(page.locator(".circuit-net")).toHaveCount(17);
+  await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes","false");
+ }
+ const value=await report(page);
+ await finish(page,testInfo,"circuit-merge-names",{interactionP95Ms:percentile(times),syncP95Ms:metric(value,"pcb.synchronize")!});
+});
+
+test("net-symbol-reconcile", async ({page},testInfo) => {
+ const {synchronizePcb}=await import("#/circuit/linked-schematic.ts");
+ const {createSymbol,symbolDefinitions}=await import("#/drawing/symbols.ts");
+ const {normalizeNetSymbol,pinTerminals}=await import("#/drawing/shapes.ts");
+ const original=createCircuit("Reconcile","pcb-main");
+ const resistor=symbolDefinitions.find(definition=>definition.id==="resistor")!;
+ const definition={...resistor,id:"custom-supply",library:undefined};
+ const supplies=Array.from({length:32},(_,index)=>{
+  const symbol=createSymbol(index+1,definition,{x:(index%4)*40,y:Math.floor(index/4)*30},`N${index+1}`);
+  return {...symbol,netSymbol:false,attributes:{...symbol.attributes,name:index%2?"BUS_A":"BUS_B",value:""}};
+ });
+ const parts=supplies.map((symbol,index)=>{
+  const part=createSymbol(index+33,resistor,{x:0,y:0},`R${index+1}`);
+  const target=pinTerminals(symbol)[0],terminal=pinTerminals(part).at(-1)!;
+  return {...part,x:target.x-terminal.x,y:target.y-terminal.y};
+ });
+ const stale=synchronizePcb(original,[...supplies,...parts],original,symbolDefinitions);
+ expect(stale.file.circuit.nets).toHaveLength(32);
+ const shapes=stale.shapes.map(shape=>shape.kind==="symbol"&&shape.id<=32?normalizeNetSymbol({...shape,netSymbol:true}):shape);
+ await page.goto("/projects?perf=1");await ready(page);
+ await page.evaluate(async ({circuit,shapes})=>{
+  const root=await navigator.storage.getDirectory();
+  const directory=await root.getDirectoryHandle("Reconcile",{create:true});
+  const write=async(name:string,value:string)=>{
+   const writable=await(await directory.getFileHandle(name,{create:true})).createWritable();
+   await writable.write(value);await writable.close();
+  };
+  await write("drawing.ecaddraw",JSON.stringify({shapes,circuit}));
+  await write(".ecadprj",'format = "ecad-project"\nversion = 1\nname = "Reconcile"\ndrawing = "drawing.ecaddraw"\nsymbols = []\nassets = []\n[[circuits]]\ncircuit = "drawing.ecaddraw"\n');
+  localStorage.setItem("ecad.active-project","Reconcile");
+ },{circuit:stale.file.circuit,shapes});
+ await page.reload();await ready(page);
+ const sidebar=await openProjectFiles(page);
+ const openMs=await interaction(page,"net-symbol.reconcile",async()=>{
+  await sidebar.getByRole("link",{name:"Open Reconcile.ecaddraw in circuit view",exact:true}).click();
+  await expect(page.locator(".circuit-net")).toHaveCount(2);
+  await expect(page.locator(".circuit-component")).toHaveCount(32);
+ });
+ await closeProjectFiles(page);
+ await finish(page,testInfo,"net-symbol-reconcile",{openMs,syncP95Ms:metric(await report(page),"pcb.synchronize")!});
 });

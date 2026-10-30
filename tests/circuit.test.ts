@@ -73,7 +73,7 @@ test("invalid commands publish nothing and preserve history", () => {
 	let notifications = 0;
 	store.subscribe(() => notifications++);
 	assert.throws(() => store.execute({ type: "connect", pinIds: ["missing"] }));
-	assert.throws(() => store.execute({ type: "rename-net", id: file.circuit.nets[1].id, names: ["3V3"] }));
+	assert.throws(() => store.execute({ type: "rename-net", id: "missing-net", names: ["3V3"] }));
 	assert.throws(() => store.execute({ type: "split-net", netId: file.circuit.nets[0].id, pinIds: file.circuit.nets[0].pinIds }));
 	assert.throws(() => store.execute({ type: "update-component", id: file.circuit.components[1].id, reference: "J1", value: "" }));
 	assert.throws(() => store.execute({ type: "move", positions: [{ id: "missing", kind: "component", x: 0, y: 0 }] }));
@@ -249,7 +249,10 @@ for (const layout of ["files", "revisions"] as const) {
 		const file = createTestCircuit();
 		const saved = await repository.save({ shapes: [], symbols: [], circuits: [file] });
 		const paths = saved.manifest.circuits![0];
-		assert.ok(paths.circuit.endsWith(".ecadcircuit"));
+		assert.ok(paths.circuit.endsWith(".ecaddraw"));
+		assert.equal(paths.circuit, saved.manifest.drawings![saved.drawings!.findIndex(drawing => drawing.circuitId === file.circuit.id)]);
+		assert.ok(![...memory.files.keys()].some(path => path.endsWith(".ecadcircuit")));
+		assert.deepEqual(JSON.parse(new TextDecoder().decode(memory.files.get(paths.circuit))).circuit, file.circuit);
 		assert.equal(paths.graph, undefined);
 		assert.ok(![...memory.files.keys()].some(path=>path.endsWith(".ecadgraph")));
 		assert.ok(!new TextDecoder().decode(memory.files.get(paths.circuit)).includes("positions"));
@@ -341,4 +344,55 @@ for(const layout of ["files","revisions"] as const) test(`legacy PCB identities 
  assert.ok(drawings.every(drawing=>/^[a-z0-9][a-z0-9_-]*$/.test(drawing.id)));
  const reopened=await new ProjectRepository(memory.directory,{layout}).load();
  assert.deepEqual(reopened.circuits!.map(file=>file.circuit),saved.circuits!.map(file=>file.circuit));
+});
+
+for (const layout of ["files", "revisions"] as const) {
+ test(`separate legacy circuits migrate into schematics after a successful ${layout} save`, async () => {
+  const memory = memoryDirectory();
+  const initial = new ProjectRepository(memory.directory, { layout });
+  await initial.create("Legacy");
+  const file = createTestCircuit();
+  const saved = await initial.save({ shapes: [], symbols: [], circuits: [file] });
+  const schematicPath = saved.manifest.circuits![0].circuit;
+  const decoder = new TextDecoder(), encoder = new TextEncoder();
+  const schematic = JSON.parse(decoder.decode(memory.files.get(schematicPath)));
+  delete schematic.circuit;
+  memory.files.set(schematicPath, encoder.encode(JSON.stringify(schematic)));
+  memory.files.set("legacy.ecadcircuit", encoder.encode(JSON.stringify(file.circuit)));
+  const manifest = parseProjectManifest(decoder.decode(memory.files.get(".ecadprj")));
+  manifest.circuits![0].circuit = "legacy.ecadcircuit";
+  memory.files.set(".ecadprj", encoder.encode(serializeProjectManifest(manifest)));
+  const repository = new ProjectRepository(memory.directory, { layout });
+  const reopened = await repository.load();
+  assert.deepEqual(reopened.circuits![0].circuit, file.circuit);
+  memory.fail(".ecadprj");
+  await assert.rejects(repository.save(reopened), /Disk full/);
+  assert.ok(memory.files.has("legacy.ecadcircuit"));
+  assert.equal(JSON.parse(decoder.decode(memory.files.get(schematicPath))).circuit, undefined);
+  memory.fail("");
+  const migrated = await repository.save(reopened);
+  const path = migrated.manifest.circuits![0].circuit;
+  assert.ok(path.endsWith(".ecaddraw"));
+  assert.deepEqual(JSON.parse(decoder.decode(memory.files.get(path))).circuit, file.circuit);
+  assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits![0].circuit, file.circuit);
+  if (layout === "files") assert.ok(!memory.files.has("legacy.ecadcircuit"));
+ });
+}
+
+test("renaming a net to an existing name merges memberships and aliases in one undo step", () => {
+ const file = createTestCircuit();
+ const [first, second] = file.circuit.nets;
+ const store = createCircuitStore(file);
+ const before = store.getSnapshot();
+ store.execute({type:"rename-net",id:second.id,names:[` ${first.names[0]} `]});
+ const after = store.getSnapshot();
+ const merged = after.circuit.nets.find(net=>net.id===second.id)!;
+ assert.equal(after.circuit.nets.length,before.circuit.nets.length-1);
+ assert.deepEqual(merged.names,first.names);
+ assert.deepEqual(new Set(merged.pinIds),new Set([...first.pinIds,...second.pinIds]));
+ assert.ok(!after.graph.positions.some(position=>position.id===first.id));
+ store.undo();
+ assert.deepEqual(store.getSnapshot().circuit,before.circuit);
+ store.redo();
+ assert.deepEqual(store.getSnapshot().circuit,after.circuit);
 });

@@ -58,6 +58,7 @@ interface ProjectContextValue {
 	editorCircuit: CircuitDocument | null;
 	selectEditorFile(path?: string): void;
 	openCircuit(path: string): Promise<void>;
+	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
 	mode: ProjectStorage["mode"];
@@ -647,7 +648,15 @@ export function ProjectProvider({
 				) ?? -1
 			]?.circuit.id;
 		const openedGeneration = generation.current;
-		if (needsSave.current) await autosave();
+		const schematic =
+			circuitId === "pcb-main"
+				? before?.shapes
+				: before?.drawings?.find((drawing) => drawing.circuitId === circuitId)
+						?.shapes;
+		const hasNetSymbols = schematic?.some(
+			(shape) => shape.kind === "symbol" && shape.netSymbol,
+		);
+		if (needsSave.current || hasNetSymbols) await autosave();
 		if (
 			selectionRequest !== editorSelection.current ||
 			openedGeneration !== generation.current
@@ -705,6 +714,68 @@ export function ProjectProvider({
 		setEditorDrawing(null);
 		setEditorCircuit(document);
 	};
+	const switchEditorView = async (view: "circuit" | "schematic") => {
+		const circuitId =
+			editorCircuit?.file.circuit.id ??
+			editorDrawing?.file.circuitId ??
+			"pcb-main";
+		const request = ++editorSelection.current;
+		const openedGeneration = generation.current;
+		try {
+			const snapshot = active.current;
+			if (!snapshot) return;
+			const hasDrawing =
+				circuitId === "pcb-main" ||
+				snapshot.drawings?.some((drawing) => drawing.circuitId === circuitId);
+			const hasCircuit = snapshot.circuits?.some(
+				(file) => file.circuit.id === circuitId,
+			);
+			if (
+				needsSave.current ||
+				!hasDrawing ||
+				!hasCircuit ||
+				(editorDrawing && !editorDrawing.file.circuitId)
+			)
+				await autosave();
+			if (
+				request !== editorSelection.current ||
+				openedGeneration !== generation.current ||
+				!mounted.current
+			)
+				return;
+			const current = active.current;
+			if (!current) return;
+			const selectedCircuitId =
+				current.drawings?.find(
+					(drawing) => drawing.id === editorDrawing?.file.id,
+				)?.circuitId ?? circuitId;
+			if (view === "circuit") {
+				const index =
+					current.circuits?.findIndex(
+						(file) => file.circuit.id === selectedCircuitId,
+					) ?? -1;
+				const path = current.manifest.circuits?.[index]?.circuit;
+				if (path) await openCircuit(path);
+			} else {
+				const index =
+					current.drawings?.findIndex(
+						(drawing) => drawing.circuitId === selectedCircuitId,
+					) ?? -1;
+				const path =
+					selectedCircuitId === "pcb-main"
+						? current.manifest.drawing
+						: current.manifest.drawings?.[index];
+				if (path) selectEditorFile(path);
+			}
+		} catch (cause) {
+			setError(
+				cause instanceof Error
+					? cause.message
+					: "Unable to switch editor views.",
+			);
+		}
+	};
+
 	const selectEditorFile = (path?: string) => {
 		const selectedSnapshot = active.current;
 		const selectedDrawing =
@@ -1035,6 +1106,7 @@ export function ProjectProvider({
 		editorDrawing,
 		editorCircuit,
 		openCircuit,
+		switchEditorView,
 		selectEditorFile,
 		mode: storage.mode,
 		busy,

@@ -42,7 +42,7 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
  await (await toolbarButton(page,"Undo")).click();
  await expect.poll(async()=>(await doc()).shapes.some((shape:{kind:string,attributes?:{reference:string}})=>shape.kind==="symbol"&&shape.attributes?.reference==="R1")).toBe(true);
  await expect.poll(async()=>(await doc()).dirty).toBe(false);
- await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecadcircuit",exact:true}).click();
+ await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecaddraw in circuit view",exact:true}).click();
  await expect.poll(async()=>JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets[0].names).toEqual([]);
 });
 
@@ -123,7 +123,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
  await expect.poll(async () => (await document()).dirty).toBe(false);
  await page.reload();
  await expect.poll(async () => (await document()).shapes.filter((shape: any) => shape.kind !== "symbol")).toEqual(rotated.filter((shape: any) => shape.kind !== "symbol"));
- await (await openProjectFiles(page)).getByRole("link", { name: "Open Untitled.ecadcircuit", exact: true }).click();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Open Untitled.ecaddraw in circuit view", exact: true }).click();
  await expect.poll(async () => JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets).toEqual(file.circuit.nets);
 });
 

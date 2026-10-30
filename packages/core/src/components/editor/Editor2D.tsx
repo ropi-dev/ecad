@@ -108,6 +108,7 @@ import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
+import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
@@ -204,6 +205,11 @@ export function Editor2D(props: Editor2DProps = {}) {
 			store={symbol?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}
 			drawingName={drawing?.file.name}
+			viewSwitch={
+				!props.store && !symbol ? (
+					<EditorViewSwitch view="schematic" />
+				) : undefined
+			}
 		/>
 	);
 }
@@ -215,10 +221,12 @@ function EditorCanvas({
 	symbolName,
 	drawingName,
 	headerControls,
+	viewSwitch,
 }: Editor2DProps & {
 	symbolName?: string;
 	drawingName?: string;
 	headerControls?: ReactNode;
+	viewSwitch?: ReactNode;
 }) {
 	const isSymbol = symbolName !== undefined;
 	const [ownedStore] = useState(() => createDrawingStore());
@@ -1688,6 +1696,7 @@ function EditorCanvas({
 									>
 										<Trash2 size={18} aria-hidden="true" />
 									</TooltipButton>
+									{viewSwitch}
 								</fieldset>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}

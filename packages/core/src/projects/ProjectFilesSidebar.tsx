@@ -77,6 +77,7 @@ interface ProjectFile {
 	href?: ProjectPath;
 	asset?: ProjectAsset;
 	group?: string;
+	circuitPath?: string;
 }
 
 export function ProjectFilesSidebar() {
@@ -177,26 +178,26 @@ export function ProjectFilesSidebar() {
 										file.circuit.id === "pcb-main"
 											? manifest.drawing
 											: manifest.drawings?.[drawingIndex];
-									return [
-										{
-											path: paths.circuit,
-											name: `${name}.ecadcircuit`,
-											type: "Circuit",
-											href: "/editor" as const,
-											group: name,
-										},
-										...(drawingPath
-											? [
-													{
-														path: drawingPath,
-														name: `${name}.ecaddraw`,
-														type: "Drawing",
-														href: "/editor" as const,
-														group: name,
-													},
-												]
-											: []),
-									];
+									return drawingPath
+										? [
+												{
+													path: drawingPath,
+													name: `${name}.ecaddraw`,
+													type: "Drawing",
+													href: "/editor" as const,
+													group: name,
+													circuitPath: paths.circuit,
+												},
+											]
+										: [
+												{
+													path: paths.circuit,
+													name: `${name}.ecaddraw`,
+													type: "Circuit",
+													href: "/editor" as const,
+													group: name,
+												},
+											];
 								})
 							: [
 									{
@@ -256,7 +257,9 @@ export function ProjectFilesSidebar() {
 		const search = query.trim().toLowerCase();
 		return files.filter(
 			(file) =>
-				(filter === "All files" || file.type === filter) &&
+				(filter === "All files" ||
+					file.type === filter ||
+					(filter === "Circuit" && !!file.circuitPath)) &&
 				(!search ||
 					file.name.toLowerCase().includes(search) ||
 					file.path.toLowerCase().includes(search)),
@@ -703,7 +706,7 @@ export function ProjectFilesSidebar() {
 																{file.href ? (
 																	<ProjectLink
 																		href={file.href}
-																		aria-label={`Open ${file.name}`}
+																		aria-label={`Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`}
 																		title={`${file.name} · ${file.type}`}
 																		className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
 																		onClick={() => {
@@ -734,6 +737,28 @@ export function ProjectFilesSidebar() {
 																	>
 																		{content}
 																	</div>
+																)}
+																{file.circuitPath && (
+																	<ProjectLink
+																		href="/editor"
+																		aria-label={`Open ${file.name} in circuit view`}
+																		className={`${button} ml-9 px-2`}
+																		onClick={() => {
+																			void project
+																				.openCircuit(
+																					file.circuitPath ?? file.path,
+																				)
+																				.catch((cause) =>
+																					setError(
+																						cause instanceof Error
+																							? cause.message
+																							: "Unable to open circuit.",
+																					),
+																				);
+																		}}
+																	>
+																		<ListTree size={12} /> Circuit view
+																	</ProjectLink>
 																)}
 															</td>
 														</tr>
