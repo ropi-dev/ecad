@@ -529,3 +529,33 @@ test("circuit renames and deletions update net-symbol declarations without resur
   assert.ok(!third.file.circuit.nets.some(net => net.names.includes("VDD")));
  }
 });
+
+test("circuit membership removals survive direct and rotated net-symbol contacts", async () => {
+ const { pinTerminals, drawShape } = await import("#/drawing/shapes.ts");
+ for (const contact of ["direct", "rotated", "wire", "multi"] as const) for (const operation of ["disconnect", "no-connect", "split-net"] as const) {
+  const original = createCircuit("Board");
+  const definition = symbolDefinitions.find(definition => definition.id === (contact === "rotated" ? "ground" : "vdd"))!;
+  const supply = createSymbol(1, definition, {x:0,y:0});
+  supply.attributes.name = "VDD";
+  if (contact === "rotated") supply.rotation = Math.PI / 2;
+  if (contact === "multi") supply.children.push(drawShape(99,"pin",{x:40,y:0},{x:40,y:0}));
+  const terminal = pinTerminals(supply)[0];
+  const component = createSymbol(2, resistor, contact === "wire" ? {x:terminal.x-10,y:terminal.y} : {x:terminal.x+3,y:terminal.y});
+  const remote = createSymbol(3, symbolDefinitions.find(definition => definition.id === "vdd")!, {x:40,y:0});
+  const shapes = [supply, component, remote, createSymbol(4,resistor,{x:43,y:0}), ...(contact === "wire" ? [drawShape(5,"wire",pinTerminals(component)[1],terminal)] : [])];
+  const first = synchronizePcb(original, shapes, original, symbolDefinitions);
+  const net = first.file.circuit.nets.find(net => net.names.includes("VDD"))!;
+  const owner = first.file.circuit.components.find(component => component.schematicShapeId === 2)!;
+  const pin = owner.pins.find(pin => net.pinIds.includes(pin.id))!;
+  assert.ok(pin);
+  const edited = applyCircuitCommand(first.file, operation === "no-connect" ? {type:"no-connect",pinId:pin.id,enabled:true} : operation === "split-net" ? {type:"split-net",netId:net.id,pinIds:[pin.id]} : {type:"disconnect",pinIds:[pin.id]});
+  const second = synchronizePcb(edited, first.shapes, first.file, symbolDefinitions);
+  const third = synchronizePcb(second.file, second.shapes, second.file, symbolDefinitions);
+  assert.deepEqual(third.file.circuit.nets, second.file.circuit.nets, `${contact}/${operation}`);
+  assert.deepEqual(third.file.circuit.noConnectPinIds, second.file.circuit.noConnectPinIds);
+  assert.ok(!third.file.circuit.nets.find(net => net.names.includes("VDD"))!.pinIds.includes(pin.id));
+  const retained = third.shapes.find(shape => shape.id === 3);
+  assert.ok(retained?.kind === "symbol");
+  assert.equal(retained.attributes.name,"VDD");
+ }
+});

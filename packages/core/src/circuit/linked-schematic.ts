@@ -220,6 +220,17 @@ export function synchronizePcb(
 								: [],
 						),
 					);
+					const terminalPositions = new Map(
+						originalShapes.flatMap((shape) =>
+							shape.kind === "symbol"
+								? symbolShapes(shape).flatMap((child) =>
+										child.kind === "pin"
+											? [[`${shape.id}:${child.id}`, child] as const]
+											: [],
+									)
+								: [],
+						),
+					);
 					for (const net of electricalNets(originalShapes)) {
 						const pinIds = net.pins.flatMap(
 							(pin) =>
@@ -243,14 +254,42 @@ export function synchronizePcb(
 							const next = circuit.nets.find(
 								(candidate) => candidate.id === previousNet.id,
 							);
+							const disconnected = net.pins.flatMap((pin) => {
+								const id = schematicPinId(
+									previous!.circuit.components,
+									pin.shapeId,
+									pin.pinId,
+								);
+								if (
+									!id ||
+									!previousNet.pinIds.includes(id) ||
+									next?.pinIds.includes(id)
+								)
+									return [];
+								const point = terminalPositions.get(
+									`${pin.shapeId}:${pin.pinId}`,
+								);
+								return point ? [point] : [];
+							});
 							for (const pin of net.pins) {
 								const symbol = netSymbols.get(pin.shapeId);
 								if (!symbol) continue;
+								const terminal = terminalPositions.get(
+									`${pin.shapeId}:${pin.pinId}`,
+								);
+								const detached =
+									terminal &&
+									disconnected.some(
+										(point) =>
+											Math.hypot(point.x - terminal.x, point.y - terminal.y) <=
+											1e-4,
+									);
+								const name = next?.names.includes(symbol.attributes.name.trim())
+									? symbol.attributes.name
+									: (next?.names[0] ?? "");
 								symbolNames.set(
 									symbol.id,
-									next?.names.includes(symbol.attributes.name.trim())
-										? symbol.attributes.name
-										: (next?.names[0] ?? ""),
+									detached || symbolNames.get(symbol.id) === "" ? "" : name,
 								);
 							}
 						}
