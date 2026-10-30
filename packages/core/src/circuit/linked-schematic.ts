@@ -2,6 +2,7 @@ import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 import {
 	circuitFileSchema,
 	type CircuitFile,
+	type CircuitNet,
 	type CircuitComponent,
 } from "@ecad/drawing-core/circuit/model.ts";
 
@@ -220,6 +221,11 @@ export function synchronizePcb(
 								: [],
 						),
 					);
+					const symbolNets = new Map(
+						circuit.nets.flatMap((net) =>
+							(net.schematicShapeIds ?? []).map((id) => [id, net] as const),
+						),
+					);
 					const terminalPositions = new Map(
 						originalShapes.flatMap((shape) =>
 							shape.kind === "symbol"
@@ -264,26 +270,38 @@ export function synchronizePcb(
 											previousNet.pinIds.includes(id),
 										),
 								);
-							const disconnected = net.pins.flatMap((pin) => {
-								const id = schematicPinId(
-									previous!.circuit.components,
-									pin.shapeId,
-									pin.pinId,
-								);
-								if (
-									!id ||
-									!previousNet.pinIds.includes(id) ||
-									next?.pinIds.includes(id)
-								)
-									return [];
-								const point = terminalPositions.get(
-									`${pin.shapeId}:${pin.pinId}`,
-								);
-								return point ? [point] : [];
-							});
+							const disconnectedByNet = new Map<
+								CircuitNet | undefined,
+								Point[]
+							>();
+							const disconnectedFrom = (target: CircuitNet | undefined) => {
+								const cached = disconnectedByNet.get(target);
+								if (cached) return cached;
+								const points = net.pins.flatMap((pin) => {
+									const id = schematicPinId(
+										previous!.circuit.components,
+										pin.shapeId,
+										pin.pinId,
+									);
+									if (
+										!id ||
+										!previousNet.pinIds.includes(id) ||
+										target?.pinIds.includes(id)
+									)
+										return [];
+									const point = terminalPositions.get(
+										`${pin.shapeId}:${pin.pinId}`,
+									);
+									return point ? [point] : [];
+								});
+								disconnectedByNet.set(target, points);
+								return points;
+							};
 							for (const pin of net.pins) {
 								const symbol = netSymbols.get(pin.shapeId);
 								if (!symbol) continue;
+								const symbolNext = symbolNets.get(symbol.id) ?? next;
+								const disconnected = disconnectedFrom(symbolNext);
 								const terminal = terminalPositions.get(
 									`${pin.shapeId}:${pin.pinId}`,
 								);
@@ -294,15 +312,44 @@ export function synchronizePcb(
 											Math.hypot(point.x - terminal.x, point.y - terminal.y) <=
 											1e-4,
 									);
-								const name = next?.names.includes(symbol.attributes.name.trim())
+								if (detached && symbolNext?.schematicShapeIds) {
+									symbolNext.schematicShapeIds =
+										symbolNext.schematicShapeIds.filter(
+											(id) => id !== symbol.id,
+										);
+									if (!symbolNext.schematicShapeIds.length)
+										delete symbolNext.schematicShapeIds;
+								}
+								const name = symbolNext?.names.includes(
+									symbol.attributes.name.trim(),
+								)
 									? symbol.attributes.name
-									: (next?.names[0] ?? "");
+									: (symbolNext?.names[0] ?? "");
 								symbolNames.set(
 									symbol.id,
 									detached || symbolNames.get(symbol.id) === "" ? "" : name,
 								);
 							}
 						}
+					}
+					for (const [id, net] of symbolNets) {
+						const symbol = netSymbols.get(id);
+						if (
+							symbol &&
+							!symbolNames.has(id) &&
+							!previous.circuit.nets.some(
+								(old) =>
+									old.id === net.id &&
+									old.schematicShapeIds?.includes(id) &&
+									same(old.names, net.names),
+							)
+						)
+							symbolNames.set(
+								id,
+								net.names.includes(symbol.attributes.name.trim())
+									? symbol.attributes.name
+									: (net.names[0] ?? ""),
+							);
 					}
 					shapes = shapes
 						.filter((shape) => !remove.has(shape.id))
@@ -591,11 +638,32 @@ export function synchronizePcb(
 						old?.names.length && same(names, [old.names[0]])
 							? old.names
 							: names;
+					const schematicShapeIds = [
+						...new Set([
+							...(old?.schematicShapeIds ?? []).filter((id) => {
+								const shape = shapeById.get(id);
+								return (
+									shape?.kind === "symbol" &&
+									shape.netSymbol &&
+									!shape.attributes.name.trim()
+								);
+							}),
+							...net.pins.flatMap((pin) => {
+								const shape = shapeById.get(pin.shapeId);
+								return shape?.kind === "symbol" &&
+									shape.netSymbol &&
+									shape.attributes.name.trim()
+									? [shape.id]
+									: [];
+							}),
+						]),
+					].sort((a, b) => a - b);
 					for (const shape of managed) bindingUpdates.set(shape.id, id);
 					return [
 						{
 							id,
 							names: savedNames,
+							...(schematicShapeIds.length ? { schematicShapeIds } : {}),
 							pinIds: [
 								...(old?.pinIds.filter((id) => pinIds.includes(id)) ?? []),
 								...pinIds.filter((id) => !old?.pinIds.includes(id)),

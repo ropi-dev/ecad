@@ -46,6 +46,11 @@ export const circuitNetSchema = z.strictObject({
 	id,
 	names: z.array(name),
 	pinIds: z.array(id),
+	schematicShapeIds: z
+		.array(z.number().int().nonnegative())
+		.refine((ids) => new Set(ids).size === ids.length)
+		.transform((ids) => ids.sort((a, b) => a - b))
+		.optional(),
 });
 export const circuitSchema = z
 	.strictObject({

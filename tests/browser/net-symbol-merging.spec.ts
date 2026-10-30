@@ -7,7 +7,7 @@ import { pinTerminals } from "#/drawing/shapes.ts";
 import { openProjectFiles, closeProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
-test("matching net symbols become one circuit net and remain named after a circuit merge", async ({page}) => {
+for(const connected of [false,true]) test(`matching ${connected?"connected":"standalone"} net symbols restore their names after merge undo`, async ({page}) => {
  const original=createCircuit("Untitled","pcb-main");
  const definition=symbolDefinitions.find(definition=>definition.id==="ground")!;
  const resistor=symbolDefinitions.find(definition=>definition.id==="resistor")!;
@@ -18,9 +18,9 @@ test("matching net symbols become one circuit net and remain named after a circu
   const target=pinTerminals(symbol)[0], terminal=pinTerminals(part)[0];
   return {...part,x:target.x-terminal.x,y:target.y-terminal.y};
  });
- const first=synchronizePcb(original,[a,b,...parts],original,symbolDefinitions);
+ const first=synchronizePcb(original,[a,b,...(connected?parts:[])],original,symbolDefinitions);
  expect(first.file.circuit.nets).toHaveLength(1);
- expect(first.file.circuit.nets[0].pinIds).toHaveLength(2);
+ expect(first.file.circuit.nets[0].pinIds).toHaveLength(connected?2:0);
  await page.goto("/tests/browser/projects.html");
  await expect(page.locator("#project-document")).toContainText('"name":"Untitled"');
  await page.evaluate(async ({file,shapes})=>{
@@ -33,7 +33,7 @@ test("matching net symbols become one circuit net and remain named after a circu
  await (await openProjectFiles(page)).getByRole("link",{name:"Open Untitled.ecaddraw in circuit view",exact:true}).click();
  await closeProjectFiles(page);
  await expect(page.locator(".circuit-net")).toHaveCount(1);
- await expect(page.locator(".circuit-edge")).toHaveCount(2);
+ await expect(page.locator(".circuit-edge")).toHaveCount(connected?2:0);
  await page.getByRole("button",{name:"Switch to schematic view",exact:true}).click();
  const separated=synchronizePcb(first.file,first.shapes.map(shape=>shape.id===2&&shape.kind==="symbol"?{...shape,attributes:{...shape.attributes,name:"OTHER"}}:shape),first.file,symbolDefinitions);
  await page.evaluate(async ({file,shapes})=>{
@@ -54,6 +54,10 @@ test("matching net symbols become one circuit net and remain named after a circu
  await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes","false");
  await (await toolbarButton(page,"Undo")).click();
  await expect(page.locator(".circuit-net")).toHaveCount(2);
+ await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes","false");
+ await expect.poll(async()=>JSON.parse((await page.locator("#project-document").textContent())!).shapes.filter((shape:{kind:string,netSymbol?:boolean})=>shape.kind==="symbol"&&shape.netSymbol).map((shape:{attributes:{name:string}})=>shape.attributes.name)).toEqual(["GND","OTHER"]);
+ await mkdir("/tmp/ecad-net-merge",{recursive:true});
+ await page.screenshot({path:`/tmp/ecad-net-merge/undo-restored-${connected?"connected":"standalone"}.png`});
  await (await toolbarButton(page,"Redo")).click();
  await expect(page.locator(".circuit-net")).toHaveCount(1);
  await page.getByRole("button",{name:"Switch to schematic view",exact:true}).click();
@@ -64,7 +68,7 @@ test("matching net symbols become one circuit net and remain named after a circu
  await closeProjectFiles(page);
  await expect(page.locator(".circuit-net")).toHaveCount(1);
  await mkdir("/tmp/ecad-net-merge",{recursive:true});
- await page.screenshot({path:"/tmp/ecad-net-merge/circuit.png"});
+ await page.screenshot({path:`/tmp/ecad-net-merge/merge-undo-${connected?"connected":"standalone"}.png`});
 });
 
 test("custom project symbols marked as net symbols share their name across save and reload", async ({page}) => {

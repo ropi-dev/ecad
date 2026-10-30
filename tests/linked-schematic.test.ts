@@ -576,3 +576,37 @@ test("matching net symbols share a circuit net through renames and repeated sync
  assert.deepEqual(merged.shapes.filter(shape=>shape.kind==="symbol").map(shape=>shape.attributes.name),["VDD","VDD"]);
  assert.deepEqual(synchronizePcb(merged.file,merged.shapes,merged.file,symbolDefinitions).file.circuit.nets,merged.file.circuit.nets);
 });
+
+test("undo and redo of a net-name merge restore every symbol declaration and membership", async () => {
+ const {createCircuitStore}=await import("@ecad/drawing-core/circuit/store.ts");
+ const {pinTerminals}=await import("#/drawing/shapes.ts");
+ const {drawingFileSchema}=await import("#/projects/format.ts");
+ for(const connected of [0,1,2]){
+  const original=createCircuit("Undo rails");
+  const definition=symbolDefinitions.find(definition=>definition.id==="vdd")!;
+  const symbols=[createSymbol(1,definition,{x:0,y:0}),createSymbol(2,definition,{x:40,y:0})];
+  symbols[1].attributes.name="OTHER";
+  const parts=symbols.slice(0,connected).map((symbol,index)=>{
+   const part=createSymbol(index+3,resistor,{x:0,y:0},`R${index+1}`);
+   const target=pinTerminals(symbol)[0],terminal=pinTerminals(part).at(-1)!;
+   return {...part,x:target.x-terminal.x,y:target.y-terminal.y};
+  });
+  const first=synchronizePcb(original,[...symbols,...parts],original,symbolDefinitions);
+  const store=createCircuitStore(first.file);
+  const other=first.file.circuit.nets.find(net=>net.names.includes("OTHER"))!;
+  store.execute({type:"rename-net",id:other.id,names:["VDD"]});
+  const merged=synchronizePcb(store.getSnapshot(),first.shapes,first.file,symbolDefinitions);
+  store.synchronize(merged.file,{preserveHistory:true});
+  const saved=drawingFileSchema.parse(JSON.parse(JSON.stringify({id:"undo",name:"Undo",shapes:merged.shapes}))).shapes;
+  store.undo();
+  const restored=synchronizePcb(store.getSnapshot(),saved,merged.file,symbolDefinitions);
+  assert.deepEqual(restored.shapes.flatMap(shape=>shape.kind==="symbol"&&shape.netSymbol?[shape.attributes.name]:[]),["VDD","OTHER"],`connected=${connected}`);
+  assert.deepEqual(restored.file.circuit.nets,first.file.circuit.nets);
+  assert.deepEqual(synchronizePcb(restored.file,restored.shapes,restored.file,symbolDefinitions).file.circuit.nets,restored.file.circuit.nets);
+  store.synchronize(restored.file,{preserveHistory:true});
+  store.redo();
+  const redone=synchronizePcb(store.getSnapshot(),restored.shapes,restored.file,symbolDefinitions);
+  assert.deepEqual(redone.shapes.flatMap(shape=>shape.kind==="symbol"&&shape.netSymbol?[shape.attributes.name]:[]),["VDD","VDD"]);
+  assert.deepEqual(redone.file.circuit.nets,merged.file.circuit.nets);
+ }
+});

@@ -151,6 +151,15 @@ export function applyCircuitCommand(
 					]),
 				],
 				pinIds: memberIds,
+				...(joined.some((net) => net.schematicShapeIds?.length)
+					? {
+							schematicShapeIds: [
+								...new Set(
+									joined.flatMap((net) => net.schematicShapeIds ?? []),
+								),
+							],
+						}
+					: {}),
 			});
 			circuit.noConnectPinIds = circuit.noConnectPinIds.filter(
 				(id) => !memberIds.includes(id),
@@ -199,6 +208,13 @@ export function applyCircuitCommand(
 					...joined.flatMap((candidate) => candidate.pinIds),
 				]),
 			];
+			const schematicShapeIds = [
+				...new Set([
+					...(net.schematicShapeIds ?? []),
+					...joined.flatMap((candidate) => candidate.schematicShapeIds ?? []),
+				]),
+			];
+			if (schematicShapeIds.length) net.schematicShapeIds = schematicShapeIds;
 			const removed = new Set(joined.map((candidate) => candidate.id));
 			circuit.nets = circuit.nets.filter(
 				(candidate) => !removed.has(candidate.id),
