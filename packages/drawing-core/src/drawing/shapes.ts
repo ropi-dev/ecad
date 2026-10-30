@@ -1877,7 +1877,7 @@ export function connectTransformedTerminals(
 		}),
 	);
 	const preserveLabeledNets = connections.some(
-		({ terminal }) => memberships.get(terminal)?.labels.length,
+		({ terminal }) => memberships.get(terminal)?.names.length,
 	);
 	for (const { shape, terminal, target, anchor } of connections) {
 		const net = memberships.get(terminal);

@@ -185,3 +185,22 @@ test("legacy net-symbol label edits survive reference-only save, migration, and 
   assert.deepEqual(normalizeNetSymbol(symbol), symbol);
  }
 });
+
+test("legacy supply instances retain their value labels until explicitly converted", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { symbolTextShapes } = await import("#/drawing/shapes.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "power-3v3")!;
+ const legacy = createSymbol(1, { ...definition, netSymbol: false }, { x: 0, y: 0 });
+ delete legacy.netSymbol;
+ legacy.attributes.value = "+1V8";
+ legacy.textPositions = { value: { x: 12, y: 34 } };
+ const parsed = drawingShapeSchema.parse(JSON.parse(JSON.stringify(persistDrawingShapes([legacy])[0])));
+ const result = resolveDrawingSymbols([parsed], [definition], new Map([[symbolReferenceKey(definition.library!, definition.id), definition]]));
+ assert.deepEqual(result.errors, []);
+ const restored = result.shapes[0] as EditorSymbol;
+ assert.equal(restored.netSymbol, undefined);
+ assert.deepEqual(restored.attributes, legacy.attributes);
+ assert.deepEqual(symbolTextShapes(restored).map(label => label.text), [legacy.attributes.reference, "+1V8"]);
+ assert.equal(symbolTextShapes(restored)[1].x, 12);
+ assert.equal(symbolTextShapes(restored)[1].y, 34);
+});

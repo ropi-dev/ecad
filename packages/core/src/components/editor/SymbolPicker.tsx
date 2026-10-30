@@ -33,15 +33,17 @@ export function SymbolPicker({
 	const { definitions } = library;
 	const groups = useMemo(() => {
 		const search = query.trim().toLowerCase();
-		const matches = definitions.filter((definition) =>
-			[
-				definition.name,
-				definition.description,
-				definition.value,
-				definition.prefix,
-				definition.id,
-				definition.category ?? "Custom symbols",
-			].some((value) => value.toLowerCase().includes(search)),
+		const matches = definitions.filter(
+			(definition) =>
+				(!components || !definition.netSymbol) &&
+				[
+					definition.name,
+					definition.description,
+					definition.value,
+					definition.prefix,
+					definition.id,
+					definition.category ?? "Custom symbols",
+				].some((value) => value.toLowerCase().includes(search)),
 		);
 		return [...symbolCategories, "Custom symbols"].flatMap((category) => {
 			const symbols = matches.filter(
@@ -49,7 +51,7 @@ export function SymbolPicker({
 			);
 			return symbols.length ? [{ category, symbols }] : [];
 		});
-	}, [definitions, query]);
+	}, [definitions, query, components]);
 	return (
 		<Popover.Root
 			open={open}

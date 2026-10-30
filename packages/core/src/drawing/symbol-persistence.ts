@@ -103,7 +103,7 @@ export function resolveDrawingSymbols(
 						shape.id,
 						{
 							...definition,
-							netSymbol: shape.netSymbol ?? definition.netSymbol,
+							netSymbol: shape.netSymbol,
 						},
 						shape,
 						shape.attributes.reference,
