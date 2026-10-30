@@ -1,3 +1,4 @@
+import { normalizeNetSymbol } from "#/drawing/shapes.ts";
 import { Effect, Either } from "effect";
 import {
 	Cable,
@@ -1866,6 +1867,14 @@ function EditorCanvas({
 									: shape,
 							),
 							`Change symbol ${attribute}`,
+						);
+					}}
+					onNetSymbolChange={(netSymbol) => {
+						commitReplacements(
+							selected
+								.filter((shape) => shape.kind === "symbol")
+								.map((shape) => normalizeNetSymbol({ ...shape, netSymbol })),
+							"Change net symbol",
 						);
 					}}
 					snapStep={selectionSnapStep}

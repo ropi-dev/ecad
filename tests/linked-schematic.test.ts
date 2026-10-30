@@ -496,3 +496,18 @@ test("rotating generated components preserves attached and independently moved l
   assert.deepEqual(store.getSnapshot().shapes, rotated);
  }
 });
+
+test("net symbols name circuit nets without becoming referenced components", () => {
+ const file = createCircuit("Board");
+ const supply = createSymbol(1, symbolDefinitions.find(definition => definition.id === "vdd")!, {x:0,y:0});
+ const first = synchronizePcb(file, [supply], file, symbolDefinitions);
+ assert.equal(first.file.circuit.components.length, 0);
+ assert.deepEqual(first.file.circuit.nets.map(net => net.names), [["VDD"]]);
+ const shape = first.shapes.find(shape => shape.kind === "symbol");
+ assert.ok(shape?.kind === "symbol");
+ assert.equal(shape.attributes.reference, "");
+ const second = synchronizePcb(first.file, first.shapes, first.file, symbolDefinitions);
+ assert.equal(second.file.circuit.components.length, 0);
+ assert.deepEqual(second.file.circuit.nets, first.file.circuit.nets);
+ assert.ok(second.shapes.some(shape => shape.kind === "symbol" && shape.attributes.reference === ""));
+});

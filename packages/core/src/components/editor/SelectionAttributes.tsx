@@ -93,6 +93,7 @@ interface SelectionAttributesProps {
 	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
 	onLineStyleChange: (style: LineStyle) => void;
 	onLockChange: (locked: boolean) => void;
+	onNetSymbolChange?: (netSymbol: boolean) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
 		value: string,
@@ -129,6 +130,7 @@ function SelectionAttributesPanel({
 	onLineStyleChange,
 	onLockChange,
 	onSymbolAttributeChange,
+	onNetSymbolChange,
 	onPinAttributeChange,
 	onPinVisibilityChange,
 	onCreateSymbol,
@@ -251,7 +253,9 @@ function SelectionAttributesPanel({
 					"Type",
 					single.kind === "text" && single.electrical
 						? `${single.electrical} label`
-						: single.kind,
+						: single.kind === "symbol" && single.netSymbol
+							? "net symbol"
+							: single.kind,
 				],
 				["ID", String(single.id)],
 				lockAttribute,
@@ -296,7 +300,26 @@ function SelectionAttributesPanel({
 					: []),
 				...(symbol
 					? [
-							...["name", "reference", "value"].map((attribute) => {
+							...(onNetSymbolChange
+								? [
+										[
+											"Net symbol",
+											<input
+												key="netSymbol"
+												type="checkbox"
+												aria-label="Net symbol"
+												checked={symbol.netSymbol ?? false}
+												onChange={(event) =>
+													onNetSymbolChange(event.currentTarget.checked)
+												}
+											/>,
+										] as [string, ReactNode],
+									]
+								: []),
+							...(symbol.netSymbol
+								? ["name"]
+								: ["name", "reference", "value"]
+							).map((attribute) => {
 								const key = attribute as keyof EditorSymbol["attributes"];
 								const label = attribute[0].toUpperCase() + attribute.slice(1);
 								return [
@@ -396,7 +419,9 @@ function SelectionAttributesPanel({
 				<p className="mt-3 text-[14px] leading-[1.7] text-[#e8b77e]">
 					{single
 						? symbol
-							? `${symbol.attributes.name} · ${symbol.attributes.reference}`
+							? symbol.netSymbol
+								? symbol.attributes.name
+								: `${symbol.attributes.name} · ${symbol.attributes.reference}`
 							: `${single.kind === "text" && single.electrical ? `${single.electrical} label` : single.kind} ${single.id}`
 						: "Selected shapes"}
 				</p>

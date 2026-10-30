@@ -186,7 +186,6 @@ function convert(source: string): KiCadImportResult {
 		nodes(node(root, "lib_symbols"), "symbol").map((n) => [String(n[1]), n]),
 	);
 	const shapes: EditorShape[] = [];
-	const supplies: TextShape[] = [];
 	const add = (s: EditorShape) => shapes.push({ ...s, id: shapes.length + 1 });
 	for (const instance of nodes(root, "symbol")) {
 		const libraryId = value(instance, "lib_id");
@@ -369,7 +368,7 @@ function convert(source: string): KiCadImportResult {
 		const texts: EditorSymbol["texts"] = [];
 		const childOverrides: EditorSymbol["childOverrides"] = {};
 		for (const prop of nodes(instance, "property")) {
-			if (hidden(prop) || !prop[2] || (namedSupply && prop[1] === "Value"))
+			if (hidden(prop) || !prop[2])
 				continue;
 			const at = world(numbers(prop, "at")),
 				label = text(prop, [at[0] - sx, at[1] - sy], String(prop[2]));
@@ -401,6 +400,7 @@ function convert(source: string): KiCadImportResult {
 				Math.max(1, ...children.map((c) => 2 * Math.abs(c.y) + c.height)),
 			),
 			kind: "symbol",
+			...(namedSupply ? { netSymbol: true } : {}),
 			definitionId: `kicad.${value(instance, "uuid") || shapes.length}`,
 			kicad: { libraryId, unit },
 			children,
@@ -425,13 +425,6 @@ function convert(source: string): KiCadImportResult {
 					);
 				const pin = terminals[0];
 				const at: XY = [sx + pin.x, sy + pin.y];
-				const property = nodes(instance, "property").find(
-					(prop) => prop[1] === "Value",
-				) ?? ["text", props.Value];
-				supplies.push({
-					...text(property, at, props.Value),
-					electrical: "supply",
-				});
 				report.supplies.push({
 					reference: props.Reference ?? "",
 					text: props.Value,
@@ -441,7 +434,6 @@ function convert(source: string): KiCadImportResult {
 			}
 		}
 	}
-	for (const supply of supplies) add(supply);
 	for (const wire of nodes(root, "wire")) {
 		const pts = nodes(node(wire, "pts"), "xy").map((p) =>
 			world(p.slice(1).map(Number)),

@@ -153,3 +153,35 @@ test("reference depth stays bounded when child definitions are already cached", 
  assert.match(result.errors.join("\n"), /at most 32 levels/);
  assert.equal(result.byReference.has(symbolReferenceKey(reference, "level-33")), false);
 });
+
+test("legacy net-symbol label edits survive reference-only save, migration, and resolution", async () => {
+ const { symbolDefinitions } = await import("#/drawing/symbols.ts");
+ const { symbolTextShapes, normalizeNetSymbol } = await import("#/drawing/shapes.ts");
+ const definition = symbolDefinitions.find(definition => definition.id === "vdd")!;
+ const legacy = {
+  ...createSymbol(1, { ...definition, netSymbol: false }, { x: 0, y: 0 }),
+  netSymbol: true,
+  textPositions: { value: { x: 12, y: 34 } },
+  textAlignments: { value: { horizontalAlign: "right" as const, verticalAlign: "bottom" as const } },
+  childOverrides: { "attribute:value": { fontSize: 3, rotation: 0.5 } },
+ };
+ for (const value of ["VDD", ""]) {
+  const saved = persistDrawingShapes([{ ...legacy, attributes: { name: "VDD", reference: "PWR1", value } }])[0];
+  assert.ok(!("texts" in saved));
+  const parsed = drawingShapeSchema.parse(JSON.parse(JSON.stringify(saved)));
+  assert.equal(parsed.kind, "symbol");
+  if (parsed.kind !== "symbol") continue;
+  const resolved = resolveDrawingSymbols([parsed], [definition], new Map([[symbolReferenceKey(definition.library!, definition.id), definition]]));
+  assert.deepEqual(resolved.errors, []);
+  const symbol = resolved.shapes[0] as EditorSymbol;
+  const [label] = symbolTextShapes(symbol);
+  assert.equal(label.text, "VDD");
+  assert.equal(label.x, 12);
+  assert.equal(label.y, 34);
+  assert.equal(label.fontSize, 3);
+  assert.equal(label.rotation, 0.5);
+  assert.equal(label.horizontalAlign, "right");
+  assert.equal(label.verticalAlign, "bottom");
+  assert.deepEqual(normalizeNetSymbol(symbol), symbol);
+ }
+});

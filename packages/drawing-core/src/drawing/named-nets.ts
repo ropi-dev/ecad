@@ -147,11 +147,15 @@ export function electricalNets(
 						pin: { shapeId: shape.id, pinId: shape.id },
 					});
 				else if (shape.kind === "symbol") {
+					const name = shape.netSymbol
+						? shape.attributes.name.trim()
+						: undefined;
 					for (const child of symbolShapes(shape)) {
 						if (child.kind === "pin")
 							nodes.push({
 								point: child,
 								pin: { shapeId: shape.id, pinId: child.id },
+								...(name ? { name } : {}),
 							});
 					}
 				}

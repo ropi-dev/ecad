@@ -312,6 +312,7 @@ export function synchronizePcb(
 				for (const shape of shapes) {
 					if (
 						shape.kind !== "symbol" ||
+						shape.netSymbol ||
 						!shape.children.some((child) => child.kind === "pin")
 					)
 						continue;

@@ -26,7 +26,11 @@ Matching names join disconnected sections throughout one drawing. Names ignore s
 
 Ordinary text omits `electrical` and has no electrical effect, even if it says `GND` or `+3V3`. Existing drawings retain that behavior. Importers must opt each source label into electrical naming. A pin's displayed name alone does not declare a drawing-wide net.
 
-`electricalNets(shapes)` in `#/drawing/named-nets.ts` returns nets with `names`, `wires`, `labels`, and `pins`. Wire and label entries are drawing shape IDs. Each pin entry contains a `shapeId` and `pinId`. A standalone pin uses its own ID for both values. A symbol terminal uses the symbol instance ID and the child's pin ID. Separate pins on the same component remain separate electrical terminals.
+`electricalNets(shapes)` in `#/drawing/named-nets.ts` returns nets with `names`, `wires`, `labels`, and `pins`. Wire and label entries are drawing shape IDs. Each pin entry contains a `shapeId` and `pinId`. A standalone pin uses its own ID for both values. A symbol terminal uses the symbol instance ID and the child's pin ID. Separate pins on ordinary components remain separate electrical terminals.
+
+Symbols with `netSymbol: true` name the nets at their pin terminals. The instance Name attribute defines the net name, with surrounding whitespace removed. An empty name does not declare a net. Matching symbol and label names connect across the drawing. Symbol position, rotation, and pin overrides determine the terminal coordinates. Net symbols have one name label and no reference ID. Older saved net-symbol values migrate into Name when loaded.
+
+Ground, signal ground, VCC, VDD, and the voltage supply symbols have this flag in their built-in definitions. Ground defaults to `GND`. Portable symbol files preserve the flag, and new instances copy it from the definition. In Attributes, use the Net symbol checkbox to change an instance's role and the Name field to edit its net name. Existing placements can use the same checkbox. Saving, reloading, and undo preserve the role.
 
 `indexElectricalNets(shapes)` returns a map of shape IDs to the IDs sharing their electrical nets. This supports whole-shape selection. A symbol with pins on multiple nets appears in several nets, so its selection entry combines those members. Use `electricalNets` for electrical analysis.
 
@@ -36,7 +40,7 @@ The `getDrawing` reply includes `drawing.nets` with the same net records as `ele
 
 The editor's Connections group places Net label and Supply label items. Placement snaps the anchor to a nearby pin or wire, including wire interiors. Attributes edits the name and label role. Crosses mark electrical anchors even when the label is unselected. The Wire tool can start or finish at a label anchor. Empty names have no electrical effect.
 
-For the RP2350A reference conversion, restore the source label anchor before setting `electrical`. Its current `build.py` adds 0.5 mm to horizontal label Y coordinates for display. Supply symbols must emit an explicit supply label at their terminal, using the source net name. Neither ordinary text nor a symbol's displayed value creates a net automatically. Names currently apply to the whole drawing; hierarchical sheet scopes and ERC are outside this representation.
+For the RP2350A reference conversion, restore the source label anchor before setting `electrical`. Its current `build.py` adds 0.5 mm to horizontal label Y coordinates for display. Supply symbols can set `netSymbol: true` on the symbol instance. The KiCad importer uses this flag for power symbols and binds their label to Name. Power flags do not declare a net name. Names currently apply to the whole drawing; hierarchical sheet scopes and ERC are outside this representation.
 
 Electrical labels are standalone drawing items. The symbol editor does not offer electrical label tools, and grouping rejects electrical labels to preserve their drawing-wide meaning.
 

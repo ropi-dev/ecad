@@ -175,6 +175,7 @@ function validateShape(shape: EditorShape) {
 			invalid("Symbol stroke overrides must be positive and finite.");
 		if (
 			typeof shape.definitionId !== "string" ||
+			(shape.netSymbol !== undefined && typeof shape.netSymbol !== "boolean") ||
 			!Array.isArray(shape.children) ||
 			(shape.children.length === 0 && !shape.library) ||
 			!shape.attributes ||
@@ -285,6 +286,7 @@ function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
 				(shape.kind !== "symbol" ||
 					(other.kind === "symbol" &&
 						shape.definitionId === other.definitionId &&
+						shape.netSymbol === other.netSymbol &&
 						JSON.stringify(shape.library) === JSON.stringify(other.library) &&
 						shape.strokeOverride === other.strokeOverride &&
 						JSON.stringify(shape.textAlignments) ===

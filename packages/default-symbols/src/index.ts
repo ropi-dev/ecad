@@ -122,6 +122,7 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			description: source.description,
 			prefix: source.prefix,
 			value: source.value,
+			...(source.netSymbol ? { netSymbol: true } : {}),
 			shapes,
 		},
 		texts: [

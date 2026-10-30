@@ -695,10 +695,11 @@ export const catalog: readonly SourceSymbol[] = [
 	{
 		id: "signal-ground",
 		category: "Power",
+		netSymbol: true,
 		name: "Signal ground",
 		description: "Triangular signal ground connection",
 		prefix: "GND",
-		value: "0 V",
+		value: "GND",
 		source: "power:GND",
 		showPinLabels: false,
 		rotation: 0,
@@ -718,6 +719,7 @@ export const catalog: readonly SourceSymbol[] = [
 	{
 		id: "vcc",
 		category: "Power",
+		netSymbol: true,
 		name: "VCC",
 		description: "Positive supply connection",
 		prefix: "PWR",
@@ -735,6 +737,7 @@ export const catalog: readonly SourceSymbol[] = [
 	{
 		id: "vdd",
 		category: "Power",
+		netSymbol: true,
 		name: "VDD",
 		description: "Positive supply connection",
 		prefix: "PWR",
@@ -752,6 +755,7 @@ export const catalog: readonly SourceSymbol[] = [
 	{
 		id: "power-3v3",
 		category: "Power",
+		netSymbol: true,
 		name: "3.3 V supply",
 		description: "3.3 V supply connection",
 		prefix: "PWR",
@@ -769,6 +773,7 @@ export const catalog: readonly SourceSymbol[] = [
 	{
 		id: "power-5v",
 		category: "Power",
+		netSymbol: true,
 		name: "5 V supply",
 		description: "5 V supply connection",
 		prefix: "PWR",

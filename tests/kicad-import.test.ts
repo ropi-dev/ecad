@@ -13,12 +13,12 @@ test('RP2350A imports all instances, terminal positions, values, wires and visib
  const symbols = result.shapes.filter(s=>s.kind==='symbol');
  assert.equal(symbols.length,87);
  const expected = JSON.parse(readFileSync(new URL('./fixtures/kicad/pins.json',import.meta.url),'utf8'));
- const actual = symbols.flatMap(s=>s.children.filter(c=>c.kind==='pin').map(p=>({reference:s.attributes.reference,number:p.number,name:p.name,x:Number((s.x+p.x).toFixed(6)),y:Number((s.y+p.y).toFixed(6))})));
+ const actual = symbols.flatMap((s,index)=>s.children.filter(c=>c.kind==='pin').map(p=>({reference:result.report.components[index].properties.Reference,number:p.number,name:p.name,x:Number((s.x+p.x).toFixed(6)),y:Number((s.y+p.y).toFixed(6))})));
  assert.equal(actual.length,272);
  assert.deepEqual(actual,expected);
  assert.equal(new Set(actual.filter(p=>p.reference==='U1').map(p=>p.number)).size,61);
  const root = parseSExpr(source);
- assert.deepEqual(symbols.map(s=>[s.attributes.reference,s.attributes.value]),result.report.components.map(c=>[c.properties.Reference,c.properties.Value]));
+ assert.deepEqual(symbols.map((s,index)=>s.netSymbol?[result.report.components[index].properties.Reference,s.attributes.name]:[s.attributes.reference,s.attributes.value]),result.report.components.map(c=>[c.properties.Reference,c.properties.Value]));
  const wires = result.shapes.filter(s=>s.kind==='wire');
  assert.equal(wires.length,346);
  for(const [i,wire] of nodes(root,'wire').entries()) {
@@ -30,7 +30,7 @@ test('RP2350A imports all instances, terminal positions, values, wires and visib
  assert.equal(result.shapes.filter(s=>s.kind==='circle').length,83);
  assert.ok(result.report.warnings.some(w=>w.includes('embedded_files')));
  assert.ok(result.report.metadata.some(n=>n[0]==='lib_symbols'));
- assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,663);
+ assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,622);
 });
 
 const fixture = (extra: string, at='10 20 0', mirror='') => `(kicad_sch (version 20250114) (paper "A4") (lib_symbols (symbol "Test" (symbol "Test_1_1" (pin input line (at 2 3 0) (length 2) (name "IN") (number "01"))))) (symbol (lib_id "Test") (at ${at}) ${mirror} (unit 1) (uuid "test") (property "Reference" "X1" (at 10 20 0) (effects hide))) ${extra})`;
@@ -99,10 +99,10 @@ test('native net and supply anchors reproduce all independently derived RP2350A 
  const labels=result.shapes.filter(shape=>shape.kind==='text').filter(shape=>shape.electrical==='net');
  assert.deepEqual(labels.map(shape=>({text:shape.text,x:shape.x,y:shape.y})),nodes(parseSExpr(source),'label').map(label=>{const at=node(label,'at');return {text:String(label[1]),x:Number(at[1])-210,y:148.5-Number(at[2])};}));
  assert.equal(labels.length,94);
- const supplies=result.shapes.filter(shape=>shape.kind==='text'&&shape.electrical==='supply');
+ const supplies=result.shapes.filter(shape=>shape.kind==='symbol'&&shape.netSymbol);
  assert.equal(supplies.length,41);
  for(const supply of result.report.supplies) {
-  const symbol=result.shapes.find(shape=>shape.kind==='symbol'&&shape.attributes.reference===supply.reference);
+  const symbol=result.shapes.filter(shape=>shape.kind==='symbol')[result.report.components.findIndex(component=>component.properties.Reference===supply.reference)];
   assert.ok(symbol&&symbol.kind==='symbol');
   const pin=symbol.children.find(child=>child.kind==='pin');assert.ok(pin);
   assert.equal(supply.x,symbol.x+pin.x);assert.equal(supply.y,symbol.y+pin.y);
@@ -138,12 +138,16 @@ test('named supplies show one name while power flags keep their normal visible V
  const {exportDrawingSvg} = await import('#/drawing/export.ts');
  const result=importKiCadSchematic(source);
  for(const supply of result.report.supplies) {
-  const symbol=result.shapes.find(shape=>shape.kind==='symbol'&&shape.attributes.reference===supply.reference);
+  const symbol=result.shapes.filter(shape=>shape.kind==='symbol')[result.report.components.findIndex(component=>component.properties.Reference===supply.reference)];
   assert.ok(symbol?.kind==='symbol');
-  assert.equal(symbol.attributes.value,supply.text);
-  assert.ok(!symbol.texts.some(label=>label.attribute==='value'));
+  assert.equal(symbol.attributes.name,supply.text);
+  assert.equal(symbol.attributes.reference,'');
+  assert.equal(symbol.attributes.value,'');
+  assert.equal(symbol.netSymbol,true);
+  assert.ok(symbol.texts.some(label=>label.attribute==='name'));
+  assert.ok(!symbol.texts.some(label=>label.attribute==='reference'||label.attribute==='value'));
   assert.ok(!symbol.children.some(child=>child.kind==='text'&&child.text===supply.text));
-  assert.equal(result.shapes.filter(shape=>shape.kind==='text'&&shape.electrical==='supply'&&shape.x===supply.x&&shape.y===supply.y&&shape.text===supply.text).length,1);
+  assert.equal(result.shapes.filter(shape=>shape.kind==='text'&&shape.electrical==='supply'&&shape.x===supply.x&&shape.y===supply.y&&shape.text===supply.text).length,0);
   assert.equal(result.report.components.find(component=>component.properties.Reference===supply.reference)?.properties.Value,supply.text);
  }
  const input=fixture('').replaceAll('"Test"','"power:PWR_FLAG"').replace('(symbol "power:PWR_FLAG" (symbol','(symbol "power:PWR_FLAG" (power global) (symbol').replace('(property "Reference" "X1" (at 10 20 0) (effects hide))','(property "Reference" "#FLG01" (at 10 20 0) (effects hide)) (property "Value" "PWR_FLAG" (at 12 18 90))');

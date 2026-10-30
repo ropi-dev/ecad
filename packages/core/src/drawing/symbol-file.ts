@@ -61,6 +61,9 @@ export function symbolFileShapes(
 			return fitBoxToBorder(
 				{
 					...instance,
+					...(shape.netSymbol === undefined
+						? {}
+						: { netSymbol: shape.netSymbol }),
 					...(shape.locked === undefined ? {} : { locked: shape.locked }),
 					...(shape.childOverrides
 						? { childOverrides: structuredClone(shape.childOverrides) }
@@ -185,6 +188,9 @@ export function symbolFileWithShapes(
 					);
 				return {
 					kind: "symbol",
+					...(shape.netSymbol === undefined
+						? {}
+						: { netSymbol: shape.netSymbol }),
 					...(shape.locked === undefined ? {} : { locked: shape.locked }),
 					...(shape.childOverrides
 						? { childOverrides: structuredClone(shape.childOverrides) }
