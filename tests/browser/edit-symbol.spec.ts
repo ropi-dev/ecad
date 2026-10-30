@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
 import { expect, test, type Page } from "@playwright/test";
@@ -116,5 +117,5 @@ test("reusable symbol editing excludes net-symbol placement and role changes", a
  await page.locator("canvas").click({position:{x:600,y:450}});
  await expect(page.getByRole("textbox",{name:"Name",exact:true})).toHaveValue("Resistor");
  await expect(page.getByRole("checkbox",{name:"Net symbol",exact:true})).toHaveCount(0);
- if (captureArtifacts) await page.screenshot({path:test.info().outputPath("symbol-geometry-only.png")});
+ if (captureArtifacts) await page.screenshot({path:resolve("/tmp/ecad-browser-artifacts", test.info().testId, "symbol-geometry-only.png")});
 });

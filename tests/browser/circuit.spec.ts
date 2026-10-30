@@ -172,7 +172,7 @@ test("component picker excludes net symbols while retaining ordinary components"
  for (const name of ["Ground", "VDD", "VCC"]) {
   await search.fill(name);
   await expect(page.getByRole("button", { name: `Place ${name}`, exact: true })).toHaveCount(0);
-  if (captureArtifacts && name === "Ground") await page.screenshot({ path: resolve("perf-artifacts/circuit-net-symbol-filter.png") });
+  if (captureArtifacts && name === "Ground") await page.screenshot({ path: resolve("/tmp/ecad-browser-artifacts", test.info().testId, "circuit-net-symbol-filter.png") });
  }
  await search.fill("Resistor");
  await expect(page.getByRole("button", { name: "Place Resistor", exact: true })).toBeVisible();
