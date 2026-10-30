@@ -145,7 +145,6 @@ export function ProjectProvider({
 	const [error, setError] = useState("");
 	const pendingAssets = useRef<{ file: File; kind: AssetKind }[]>([]);
 	const operation = useRef<Promise<unknown>>(Promise.resolve());
-	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const mounted = useRef(true);
 
 	const enqueue = useCallback(<T,>(run: () => Promise<T>): Promise<T> => {
@@ -160,7 +159,6 @@ export function ProjectProvider({
 	const adopt = useCallback(
 		(snapshot: ProjectSnapshot) => {
 			editorSelection.current++;
-			clearTimeout(timer.current);
 			for (const document of circuitDocuments.current.values())
 				document.unsubscribe();
 			circuitDocuments.current.clear();
@@ -215,7 +213,6 @@ export function ProjectProvider({
 		return () => {
 			cancelled = true;
 			mounted.current = false;
-			clearTimeout(timer.current);
 			for (const document of circuitDocuments.current.values())
 				document.unsubscribe();
 			for (const document of symbolDocuments.current.values())
@@ -481,8 +478,10 @@ export function ProjectProvider({
 										},
 									},
 								},
-						nextShapeId:
+						nextShapeId: Math.max(
+							current.nextShapeId,
 							shapes.reduce((max, shape) => Math.max(max, shape.id), 0) + 1,
+						),
 					},
 				]);
 			};
@@ -560,26 +559,29 @@ export function ProjectProvider({
 		},
 		[storage, update, symbolStorage],
 	);
-	const autosave = useCallback(async () => {
-		clearTimeout(timer.current);
-		try {
-			await enqueue(async () => {
-				await persist();
-				await transferAssets([]);
-			});
-		} catch (cause) {
-			if (mounted.current) {
-				needsSave.current = true;
-				setDirty(true);
-				setError(
-					cause instanceof Error
-						? cause.message
-						: "Unable to save the project.",
-				);
+	const autosave = useCallback(
+		async (onlyIfDirty = false) => {
+			try {
+				await enqueue(async () => {
+					if (onlyIfDirty && !needsSave.current) return;
+					await persist();
+					await transferAssets([]);
+				});
+			} catch (cause) {
+				if (mounted.current) {
+					needsSave.current = true;
+					setDirty(true);
+					setError(
+						cause instanceof Error
+							? cause.message
+							: "Unable to save the project.",
+					);
+				}
+				throw cause;
 			}
-			throw cause;
-		}
-	}, [enqueue, persist, transferAssets]);
+		},
+		[enqueue, persist, transferAssets],
+	);
 	useEffect(() => {
 		if (
 			!project?.circuits?.some((file) => {
@@ -612,7 +614,6 @@ export function ProjectProvider({
 			await autosave();
 			return true;
 		}
-		clearTimeout(timer.current);
 		setBusy(true);
 		try {
 			return await enqueue(async () => {
@@ -695,11 +696,7 @@ export function ProjectProvider({
 					lastCircuit = nextCircuit;
 					needsSave.current = true;
 					setDirty(true);
-					clearTimeout(timer.current);
-					timer.current = setTimeout(
-						() => void autosave().catch(() => undefined),
-						400,
-					);
+					void autosave(true).catch(() => undefined);
 				}),
 			};
 			circuitDocuments.current.set(file.circuit.id, document);
@@ -785,11 +782,7 @@ export function ProjectProvider({
 					unsubscribe: drawingStore.subscribe(() => {
 						needsSave.current = true;
 						setDirty(true);
-						clearTimeout(timer.current);
-						timer.current = setTimeout(
-							() => void autosave().catch(() => undefined),
-							400,
-						);
+						void autosave(true).catch(() => undefined);
 					}),
 				};
 				drawingDocuments.current.set(drawing.id, document);
@@ -815,11 +808,7 @@ export function ProjectProvider({
 				unsubscribe: symbolStore.subscribe(() => {
 					needsSave.current = true;
 					setDirty(true);
-					clearTimeout(timer.current);
-					timer.current = setTimeout(
-						() => void autosave().catch(() => undefined),
-						400,
-					);
+					void autosave(true).catch(() => undefined);
 				}),
 			};
 			symbolDocuments.current.set(file.id, document);
@@ -833,10 +822,7 @@ export function ProjectProvider({
 				if (!active.current) return;
 				needsSave.current = true;
 				setDirty(true);
-				clearTimeout(timer.current);
-				timer.current = setTimeout(() => {
-					void autosave().catch(() => undefined);
-				}, 400);
+				void autosave(true).catch(() => undefined);
 			}),
 		[store, autosave],
 	);
@@ -853,7 +839,6 @@ export function ProjectProvider({
 		async (name: string | undefined, creating: boolean) => {
 			setBusy(true);
 			setError("");
-			clearTimeout(timer.current);
 			try {
 				await enqueue(async () => {
 					if (needsSave.current) await persist();
@@ -1201,7 +1186,6 @@ export function ProjectProvider({
 		list,
 		reload: async () => {
 			setBusy(true);
-			clearTimeout(timer.current);
 			try {
 				await enqueue(async () => {
 					const snapshot =
