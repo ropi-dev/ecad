@@ -1,4 +1,5 @@
 export const budgets = {
+ "button-shortcuts": { interactionP95Ms: 750, hintsP95Ms: 50, domNodes: 1600, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-text-duplicate": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-clipboard": { copyP95Ms: 750, interactionP95Ms: 750, pasteP95Ms: 100, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "net-symbol-reconcile": { openMs: 3000, syncP95Ms: 150, domNodes: 2200, scriptBytes: 3_000_000 },

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
 import { ProjectFilesSidebar } from "#/projects/ProjectFilesSidebar.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 
@@ -9,6 +10,7 @@ export function ProjectShell({
 	children: ReactNode;
 	sidebar?: ReactNode;
 }) {
+	useButtonShortcuts();
 	const project = useProject();
 	return (
 		<div

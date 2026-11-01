@@ -123,9 +123,9 @@ export function ProjectFilesSidebar() {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (
 				!event.ctrlKey ||
-				!event.altKey ||
+				event.altKey ||
 				event.metaKey ||
-				event.shiftKey ||
+				!event.shiftKey ||
 				event.code !== "KeyS" ||
 				event.isComposing
 			)
@@ -307,6 +307,7 @@ export function ProjectFilesSidebar() {
 		<fieldset
 			ref={sidebarRef}
 			aria-label="File sidebar"
+			data-shortcut-scope="sidebar"
 			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-[#c7d0dc] ${pinned ? "w-64 max-w-[calc(100vw-4rem)]" : "w-0"}`}
 			onPointerEnter={(event) => {
 				if (
@@ -827,8 +828,8 @@ export function ProjectFilesSidebar() {
 						type="button"
 						aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
 						aria-pressed={pinned}
-						aria-keyshortcuts="Control+Alt+S"
-						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · Ctrl+Alt+S`}
+						aria-keyshortcuts="Control+Shift+S"
+						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · Ctrl+Shift+S`}
 						aria-controls={panelId}
 						className={`${button} h-9 w-full justify-start px-2`}
 						onClick={togglePin}
@@ -839,7 +840,7 @@ export function ProjectFilesSidebar() {
 							<Pin size={18} aria-hidden="true" />
 						)}
 						<span>{pinned ? "Pinned" : "Compact"}</span>
-						<kbd className="ml-auto text-[10px] text-[#98a4b6]">Ctrl+Alt+S</kbd>
+						<kbd className="ml-auto text-[10px] text-[#98a4b6]">Ctrl+Shift+S</kbd>
 					</button>
 				</footer>
 			</aside>
