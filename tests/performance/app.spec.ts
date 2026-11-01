@@ -888,6 +888,30 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 	await page.reload();
 	await expect(page).toHaveURL(symbolUrl);
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
+	await page.evaluate(() => {
+		const original = FileSystemFileHandle.prototype.createWritable;
+		FileSystemFileHandle.prototype.createWritable = function (...args) {
+			if (this.name === ".ecadprj") throw new DOMException("Quota exceeded", "QuotaExceededError");
+			return original.apply(this, args);
+		};
+		window.addEventListener("restore-writes", () => { FileSystemFileHandle.prototype.createWritable = original; }, { once: true });
+	});
+	await closeProjectFiles(page);
+	await (await toolbarButton(page, "Rectangle")).click();
+	await page.mouse.move(650, 350);
+	await page.mouse.down();
+	await page.mouse.move(760, 450);
+	await page.mouse.up();
+	await expect(page.getByRole("alert")).toContainText("Quota exceeded");
+	await page.goBack();
+	await expect(page).toHaveURL(symbolUrl);
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
+	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
+	await (await toolbarButton(page, "Undo")).click();
+	await expect(page.getByRole("alert")).toHaveCount(0);
+	await (await openProjectFiles(page)).getByRole("link", { name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/, exact: true }).click();
+	await expect(page).toHaveURL(drawingUrl);
+	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
 });
 
 test("project-file-sidebar", async ({ page }, testInfo) => {

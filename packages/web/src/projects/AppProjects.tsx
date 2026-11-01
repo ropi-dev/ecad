@@ -82,6 +82,9 @@ function useProjectFileUrl() {
 	});
 	const previous = useRef<{ href: string; session: number } | null>(null);
 	const pending = useRef<{ id: string } | null>(null);
+	const [failedRestoration, setFailedRestoration] = useState<{
+		id: string;
+	} | null>(null);
 
 	useEffect(() => {
 		if (!context?.project || context.busy || navigating) return;
@@ -121,6 +124,9 @@ function useProjectFileUrl() {
 								)),
 				)
 			: undefined;
+		const restorationFailed =
+			pending.current !== null && pending.current === failedRestoration;
+		if (restorationFailed) pending.current = null;
 		const changedLocation = previous.current?.href !== location.href;
 		const changedProject = previous.current?.session !== context.session;
 		const initial = previous.current === null || changedProject;
@@ -133,9 +139,16 @@ function useProjectFileUrl() {
 				if (path === "/editor") {
 					if (requested.view === "circuit") {
 						void context.openCircuit(requested.path).catch(() => {
-							if (pending.current === request) pending.current = null;
+							if (pending.current === request) setFailedRestoration(request);
 						});
-					} else context.selectEditorFile(requested.path);
+					} else {
+						void Promise.resolve(context.selectEditorFile(requested.path)).then(
+							(selected) => {
+								if (!selected && pending.current === request)
+									setFailedRestoration(request);
+							},
+						);
+					}
 				} else {
 					const asset = manifest.assets.find(
 						(entry) => entry.path === requested.path,
@@ -155,7 +168,8 @@ function useProjectFileUrl() {
 					file: active?.file,
 					view: active?.view,
 				}),
-				replace: initial || !file || requested?.id === active?.id,
+				replace:
+					initial || !file || requested?.id === active?.id || restorationFailed,
 			});
 		}
 	}, [
@@ -166,5 +180,6 @@ function useProjectFileUrl() {
 		view,
 		navigate,
 		navigating,
+		failedRestoration,
 	]);
 }

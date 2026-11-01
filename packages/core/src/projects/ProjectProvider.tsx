@@ -57,7 +57,7 @@ interface ProjectContextValue {
 	editorSymbol: SymbolDocument | null;
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
-	selectEditorFile(path?: string): void;
+	selectEditorFile(path?: string): boolean | Promise<boolean>;
 	openCircuit(path: string): Promise<void>;
 	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
 	createCircuit(name: string): Promise<string>;
@@ -777,7 +777,7 @@ export function ProjectProvider({
 		}
 	};
 
-	const selectEditorFile = (path?: string) => {
+	const selectEditorFile = (path?: string): boolean | Promise<boolean> => {
 		const selectedSnapshot = active.current;
 		const selectedDrawing =
 			selectedSnapshot?.drawings?.[
@@ -804,11 +804,11 @@ export function ProjectProvider({
 			const symbolId =
 				before?.symbols[before.manifest.symbols.indexOf(path ?? "")]?.id;
 			const request = ++editorSelection.current;
-			void autosave()
+			return autosave()
 				.then(() => {
-					if (request !== editorSelection.current) return;
+					if (request !== editorSelection.current) return false;
 					const current = active.current;
-					selectEditorFile(
+					return selectEditorFile(
 						drawingId
 							? current?.manifest.drawings?.[
 									current.drawings?.findIndex(
@@ -826,16 +826,16 @@ export function ProjectProvider({
 									: path,
 					);
 				})
-				.catch(() => undefined);
-			return;
+				.catch(() => false);
 		}
 		editorSelection.current++;
 		setEditorCircuit(null);
 		const snapshot = active.current;
-		if (!snapshot || !path || path === snapshot.manifest.drawing) {
+		if (!snapshot) return false;
+		if (!path || path === snapshot.manifest.drawing) {
 			setEditorSymbol(null);
 			setEditorDrawing(null);
-			return;
+			return true;
 		}
 		const drawingIndex = snapshot.manifest.drawings?.indexOf(path) ?? -1;
 		const drawing = snapshot.drawings?.[drawingIndex];
@@ -861,11 +861,11 @@ export function ProjectProvider({
 			}
 			setEditorSymbol(null);
 			setEditorDrawing(document);
-			return;
+			return true;
 		}
 		const index = snapshot.manifest.symbols.indexOf(path);
 		const file = snapshot.symbols[index];
-		if (!file) return;
+		if (!file) return false;
 		let document = symbolDocuments.current.get(file.id);
 		if (!document) {
 			const symbolStore = measurePerformance(
@@ -887,6 +887,7 @@ export function ProjectProvider({
 		}
 		setEditorDrawing(null);
 		setEditorSymbol(document);
+		return true;
 	};
 	useEffect(
 		() =>
