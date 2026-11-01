@@ -930,6 +930,27 @@ export function hitShape(
 	point: Point,
 	tolerance: number,
 ): boolean {
+	if (isBoxSymbol(shape)) {
+		const border = boxBorder(shape);
+		return symbolChildren(shape).some((child) => {
+			const world = symbolChildWorld(shape, child.shape);
+			if (child.key !== border?.key) return hitShape(world, point, tolerance);
+			const dx = point.x - world.x;
+			const dy = point.y - world.y;
+			const x = Math.abs(
+				dx * Math.cos(world.rotation) + dy * Math.sin(world.rotation),
+			);
+			const y = Math.abs(
+				-dx * Math.sin(world.rotation) + dy * Math.cos(world.rotation),
+			);
+			const radius = Math.max(world.lineWidth / 2, tolerance);
+			return (
+				x <= world.width / 2 + radius &&
+				y <= world.height / 2 + radius &&
+				(x >= world.width / 2 - radius || y >= world.height / 2 - radius)
+			);
+		});
+	}
 	if (
 		shape.kind === "symbol" &&
 		[...symbolTextShapes(shape), ...symbolShapes(shape)].some((text) =>
