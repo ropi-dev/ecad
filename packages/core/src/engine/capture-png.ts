@@ -5,7 +5,7 @@ export function capturePng(
 	const canvas = document.createElement("canvas");
 	canvas.width = options?.width ?? source.width;
 	canvas.height = options?.height ?? source.height;
-	const context = canvas.getContext("2d");
+	const context = canvas.getContext("2d", { willReadFrequently: true });
 	if (!context) throw new Error("Unable to create the PNG image.");
 	if (options?.background !== null) {
 		context.fillStyle = options?.background ?? "#111318";

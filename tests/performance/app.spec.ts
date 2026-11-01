@@ -2082,3 +2082,139 @@ test("net-symbol-reconcile", async ({page},testInfo) => {
  await page.getByRole("button", { name: "Switch to circuit view", exact: true }).click();
  await expect(page).toHaveURL(circuitUrl);
 });
+
+test("editor-clipboard", async ({ page, context }, testInfo) => {
+	await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await expect(
+		page.getByRole("button", { name: "Select", exact: true }),
+	).toBeEnabled();
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	const canvas = page.locator("canvas");
+	const bounds = (await canvas.boundingBox())!;
+	await canvas.click({
+		position: { x: bounds.width / 2, y: bounds.height / 2 },
+	});
+	await page.keyboard.press("Control+c");
+	await page.waitForFunction(() => window.__ecadPerformance!.snapshot().metrics["drawing.clipboard-write"]?.count === 1);
+	await page.evaluate(async () => {
+		const [item] = await navigator.clipboard.read();
+		const selection = JSON.parse(
+			await (await item.getType("web application/x-ecad-shapes+json")).text(),
+		);
+		const source = selection.shapes[0];
+		selection.shapes = Array.from({ length: 32 }, (_, i) => ({
+			...source,
+			id: i + 1,
+			x: (i % 8) * 15,
+			y: Math.floor(i / 8) * 20,
+		}));
+		await navigator.clipboard.writeText(JSON.stringify(selection));
+	});
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "clipboard.paste", async () => {
+			await page.keyboard.press("Control+v");
+			await page.waitForFunction(
+				(count) =>
+					(window.__ecadPerformance!.snapshot().metrics[
+						"drawing.clipboard-paste"
+					]?.count ?? 0) === count,
+				repeat + 1,
+			);
+			await page.evaluate(
+				() =>
+					new Promise<void>((resolve) =>
+						requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+					),
+			);
+		});
+		await page.keyboard.press("Control+c");
+		await page.waitForFunction(
+			(count) =>
+				window.__ecadPerformance!.snapshot().metrics["drawing.clipboard-write"]
+					?.count === count,
+			repeat + 2,
+		);
+		await page.keyboard.press("Control+z");
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-clipboard", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+		pasteP95Ms: metric(value, "drawing.clipboard-paste")!,
+		copyP95Ms: metric(value, "drawing.clipboard-write")!,
+	});
+});
+
+test("editor-text-duplicate", async ({ page }, testInfo) => {
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await expect(
+		page.getByRole("button", { name: "Select", exact: true }),
+	).toBeEnabled();
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	const bounds = (await page.locator("canvas").boundingBox())!;
+	const sources = [
+		{
+			kind: "Net label",
+			field: "Net name",
+			text: "SIGNAL",
+			x: bounds.x + bounds.width * 0.3,
+			y: bounds.y + bounds.height * 0.45,
+		},
+		{
+			kind: "Text",
+			field: "Text content",
+			text: "Board notes",
+			x: bounds.x + bounds.width * 0.5,
+			y: bounds.y + bounds.height * 0.45,
+		},
+	];
+	for (const source of sources) {
+		await (await toolbarButton(page, source.kind)).click();
+		await page.mouse.click(source.x, source.y);
+		const field = page.getByRole("textbox", {
+			name: source.field,
+			exact: true,
+		});
+		await field.fill(source.text);
+		await field.press("Tab");
+	}
+	let expectedId = 3;
+	for (const source of sources) {
+		for (let repeat = 0; repeat < 3; repeat++) {
+			await interaction(page, "text.duplicate", async () => {
+				await page.keyboard.down("Alt");
+				await page.mouse.move(source.x, source.y);
+				await page.mouse.down();
+				await page.mouse.move(source.x + 80 + repeat * 40, source.y + 60, {
+					steps: 4,
+				});
+				await page.mouse.up();
+				await page.keyboard.up("Alt");
+				await page.waitForFunction(
+					({ field, text, id }) => {
+						const label = Array.from(document.querySelectorAll("dt")).find(
+							(item) => item.textContent === "ID",
+						);
+						return (
+							document.querySelector<HTMLTextAreaElement>(
+								`textarea[aria-label="${field}"]`,
+							)?.value === text &&
+							label?.parentElement?.querySelector("dd")?.textContent ===
+								String(id)
+						);
+					},
+					{ field: source.field, text: source.text, id: expectedId++ },
+				);
+			});
+		}
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-text-duplicate", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
+});
