@@ -706,6 +706,12 @@ export function ProjectFilesSidebar() {
 																{file.href ? (
 																	<ProjectLink
 																		href={file.href}
+																		file={file.path}
+																		view={
+																			file.type === "Circuit"
+																				? "circuit"
+																				: undefined
+																		}
 																		aria-label={`Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`}
 																		title={`${file.name} · ${file.type}`}
 																		className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
@@ -741,6 +747,8 @@ export function ProjectFilesSidebar() {
 																{file.circuitPath && (
 																	<ProjectLink
 																		href="/editor"
+																		file={file.circuitPath ?? file.path}
+																		view="circuit"
 																		aria-label={`Open ${file.name} in circuit view`}
 																		className={`${button} ml-9 px-2`}
 																		onClick={() => {

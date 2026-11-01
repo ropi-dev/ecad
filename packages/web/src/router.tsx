@@ -29,8 +29,8 @@ export function getRouter() {
 		},
 	});
 
-	const ProjectNavigationLink = createRouterProjectLink((href) =>
-		router.navigate({ to: href }),
+	const ProjectNavigationLink = createRouterProjectLink((href, file, view) =>
+		router.navigate({ to: href, search: { file, view } }),
 	);
 
 	setupRouterSsrQueryIntegration({ router, queryClient: context.queryClient });

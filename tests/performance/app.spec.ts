@@ -863,6 +863,20 @@ test("editor-symbol-file", async ({ page }, testInfo) => {
 		coldOpenMs,
 		interactionP95Ms: percentile(timings),
 	});
+	const drawingUrl = page.url();
+	await expect.poll(() => new URL(page.url()).searchParams.get("file")).toMatch(/\.ecaddraw$/);
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open editable-package.ecadsym", exact: true }).click();
+	await expect.poll(() => new URL(page.url()).searchParams.get("file")).toMatch(/editable-package\.ecadsym$/);
+	const symbolUrl = page.url();
+	await page.goBack();
+	await expect(page).toHaveURL(drawingUrl);
+	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(1);
+	await page.goForward();
+	await expect(page).toHaveURL(symbolUrl);
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
+	await page.reload();
+	await expect(page).toHaveURL(symbolUrl);
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText("Symbol editor · Editable package");
 });
 
 test("project-file-sidebar", async ({ page }, testInfo) => {

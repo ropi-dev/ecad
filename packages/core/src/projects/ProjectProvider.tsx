@@ -51,6 +51,7 @@ interface ProjectContextValue {
 	session: number;
 	project: ProjectSnapshot | null;
 	LinkComponent?: ComponentType<ProjectLinkProps>;
+	selectedAsset: ProjectAsset | null;
 	selectAsset(asset: ProjectAsset | null): void;
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
@@ -1097,6 +1098,7 @@ export function ProjectProvider({
 		session: epoch,
 		project,
 		LinkComponent,
+		selectedAsset,
 		selectAsset: (asset) => {
 			editorSelection.current++;
 			setSelectedAsset(asset);
