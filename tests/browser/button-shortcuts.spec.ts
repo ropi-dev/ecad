@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { toolbarButton } from "./toolbar";
 
 const hints = '[data-slot="button-shortcut"]';
 
@@ -112,5 +113,61 @@ test("single-key hints fit beside each other and stay aligned with each toolbar 
 	expect(layout.overlaps).toEqual([]);
 	expect(layout.keys.every((key) => key?.length === 1)).toBe(true);
 	expect(layout.text.every((text) => !text?.includes("Ctrl"))).toBe(true);
+	await page.keyboard.up("Control");
+});
+
+
+test("Ctrl+Plus zooms the editor when Shift produces the plus character", async ({ page }) => {
+	const fit = page.getByRole("button", { name: "Fit drawing", exact: true });
+	const before = await fit.textContent();
+	await page.keyboard.press("Control+Shift+Equal");
+	await expect(fit).not.toHaveText(before!);
+});
+
+test("Undo and Redo follow the key labels on a QWERTZ layout", async ({ page }) => {
+	await (await toolbarButton(page, "Rectangle")).click();
+	await page.mouse.move(600, 300);
+	await page.mouse.down();
+	await page.mouse.move(710, 400);
+	await page.mouse.up();
+	await page.keyboard.press("Escape");
+	const shapes = async () => JSON.parse((await page.locator("#editor-document").textContent())!).shapes;
+	await expect.poll(async () => (await shapes()).length).toBe(1);
+	await page.getByRole("button", { name: "History tools", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeEnabled();
+	await page.keyboard.down("Control");
+	await page.locator("body").dispatchEvent("keydown", { key: "z", code: "KeyY", ctrlKey: true });
+	await expect.poll(async () => (await shapes()).length).toBe(0);
+	await page.locator("body").dispatchEvent("keydown", { key: "y", code: "KeyZ", ctrlKey: true });
+	await expect.poll(async () => (await shapes()).length).toBe(1);
+	await page.keyboard.up("Control");
+});
+
+test("Radix dialogs hide background hints and block background Delete", async ({ page }) => {
+	await page.goto("/tests/browser/projects.html");
+	const { openProjectFiles } = await import("./project-files");
+	const sidebar = await openProjectFiles(page);
+	await sidebar.getByRole("button", { name: "Pin sidebar", exact: true }).click();
+	await sidebar.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true }).click();
+	await (await toolbarButton(page, "Rectangle")).click();
+	await page.mouse.move(600, 300);
+	await page.mouse.down();
+	await page.mouse.move(710, 400);
+	await page.mouse.up();
+	await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+	const shapes = async () => JSON.parse((await page.locator("#project-document").textContent())!).editorShapes;
+	const before = await shapes();
+	expect(before).toHaveLength(1);
+	await sidebar.getByRole("button", { name: "Add file", exact: true }).click();
+	await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
+	const dialog = page.getByRole("dialog");
+	await expect(dialog).toBeVisible();
+	await expect(dialog).not.toHaveAttribute("aria-modal");
+	await page.keyboard.down("Control");
+	await expect(page.locator(hints).first()).toBeVisible();
+	await expect(page.locator(`${hints}[title="Delete"]`)).toHaveCount(0);
+	await expect(page.locator(hints)).toHaveCount(await dialog.getByRole("button").count());
+	await page.locator("body").dispatchEvent("keydown", { key: "d", code: "KeyD", ctrlKey: true });
+	expect(await shapes()).toEqual(before);
 	await page.keyboard.up("Control");
 });

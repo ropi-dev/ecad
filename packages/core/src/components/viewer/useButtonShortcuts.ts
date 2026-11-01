@@ -45,10 +45,13 @@ const labelFor = (button: HTMLButtonElement) =>
 const scopeFor = (button: HTMLButtonElement) =>
 	button.closest('[data-shortcut-scope="sidebar"]') ? "sidebar" : "editor";
 const keyFor = (event: KeyboardEvent) => {
-	if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);
-	if (/^Digit\d$/.test(event.code)) return event.code.slice(5);
-	if (event.code === "Equal") return "+";
-	if (event.code === "Minus") return "-";
+	if (event.key === "=") return "+";
+	if (
+		event.shiftKey &&
+		/^Digit\d$/.test(event.code) &&
+		!/^[A-Z0-9+-]$/i.test(event.key)
+	)
+		return event.code.slice(5);
 	return event.key.toUpperCase();
 };
 
@@ -81,7 +84,7 @@ function listen() {
 				visibilityProperty: true,
 				opacityProperty: true,
 			}) ||
-			button.closest("[inert]")
+			button.closest('[inert], [aria-hidden="true"]')
 		)
 			return false;
 		const rect = button.getBoundingClientRect();
@@ -113,10 +116,18 @@ function listen() {
 		measurePerformance(
 			"ui.button-shortcuts",
 			() => {
-				const dialogs = document.querySelectorAll(
-					'dialog[open], [role="dialog"][aria-modal="true"]',
+				const dialogs = [
+					...document.querySelectorAll<HTMLElement>(
+						'dialog[open], [role="dialog"]',
+					),
+				].filter(
+					(dialog) =>
+						dialog.checkVisibility({
+							visibilityProperty: true,
+							opacityProperty: true,
+						}) && !dialog.closest('[inert], [aria-hidden="true"]'),
 				);
-				const scope = dialogs.item(dialogs.length - 1) ?? document;
+				const scope = dialogs.at(-1) ?? document;
 				const buttons = [
 					...scope.querySelectorAll<HTMLButtonElement>("button"),
 				].filter(visible);
@@ -221,7 +232,7 @@ function listen() {
 			return;
 		const key = keyFor(event);
 		const target = targets.get(
-			`${event.shiftKey ? "sidebar" : "editor"}:${key}`,
+			`${event.shiftKey && key !== "+" ? "sidebar" : "editor"}:${key}`,
 		);
 		if (!target) return;
 		const active = document.activeElement;
@@ -262,6 +273,9 @@ function listen() {
 			"disabled",
 			"aria-expanded",
 			"aria-modal",
+			"aria-hidden",
+			"role",
+			"open",
 			"inert",
 		],
 	};
