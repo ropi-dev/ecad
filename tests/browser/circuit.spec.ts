@@ -177,3 +177,34 @@ test("component picker excludes net symbols while retaining ordinary components"
  await search.fill("Resistor");
  await expect(page.getByRole("button", { name: "Place Resistor", exact: true })).toBeVisible();
 });
+
+test("net connections use a lighter highlight than the selected connection", async ({ page }) => {
+ await createCircuit(page);
+ await placeComponent(page, "Resistor", { x: 280, y: 200 });
+ await placeComponent(page, "Resistor", { x: 620, y: 350 });
+ await placeComponent(page, "Resistor", { x: 900, y: 500 });
+ await dragPins(page, "R1.1", "R2.1");
+ await page.mouse.up();
+ await dragPins(page, "R2.2", "R3.1");
+ await page.mouse.up();
+ await page.getByRole("button", { name: "Collapse R2", exact: true }).click();
+ const circuit = (await state(page)).circuit;
+ const netButton = (index: number) => page.locator(`[data-circuit-net-id="${circuit.nets[index].id}"]`);
+ const edge = (pin: string) => page.getByRole("button", { name: `Connection ${pin}`, exact: true }).locator(".circuit-edge");
+ await netButton(0).click();
+ await expect(edge("R1.1")).toHaveCSS("stroke", "rgb(184, 220, 213)");
+ await expect(edge("R2.1")).toHaveClass(/is-highlighted/);
+ await expect(edge("R3.1")).not.toHaveClass(/is-highlighted/);
+ await expect(page.locator(".circuit-component.is-selected, .circuit-component.is-highlighted")).toHaveCount(0);
+ await page.getByRole("button", { name: "Connection R1.1", exact: true }).focus();
+ await page.keyboard.press("Space");
+ await expect(edge("R1.1")).toHaveCSS("stroke", "rgb(232, 183, 126)");
+ await expect(edge("R2.1")).toHaveCSS("stroke", "rgb(184, 220, 213)");
+ if (process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({ path: process.env.ECAD_SCREENSHOT_PATH });
+ await netButton(1).click();
+ await expect(edge("R1.1")).not.toHaveClass(/is-highlighted|is-selected/);
+ await expect(edge("R2.2")).toHaveClass(/is-highlighted/);
+ await expect(edge("R3.1")).toHaveClass(/is-highlighted/);
+ await page.keyboard.press("Escape");
+ await expect(page.locator(".circuit-edge.is-highlighted, .circuit-edge.is-selected")).toHaveCount(0);
+});

@@ -32,6 +32,7 @@ interface State {
 	} | null;
 	shapes: {
 		name: string;
+		color?: string;
 		texture?: string;
 		x: number;
 		y: number;
@@ -244,4 +245,31 @@ test("wire clicks commit orthogonal segments and pointer release keeps the previ
 		.toBe(3);
 	await page.keyboard.press("Escape");
 	await expect.poll(async () => (await nonPinState(page)).preview).toBeNull();
+});
+
+
+test("selected schematic wires keep a distinct color from related net wires", async ({ page }) => {
+ await page.goto("/tests/browser/editor.html");
+ await expect(page.locator("canvas")).toBeVisible();
+ await page.evaluate(async () => {
+  const fixturePath = "/tests/browser/editor.tsx";
+  const shapesPath = "/packages/core/src/drawing/shapes.ts";
+  const { drawingStore } = await import(fixturePath);
+  const storePath = "/packages/core/src/commands/drawing-store.ts";
+  const { createDrawingStore } = await import(storePath);
+  const { drawShape } = await import(shapesPath);
+  const wire = (id: number, x: number, y: number, endX: number, endY: number) => ({...drawShape(id, "wire", {x,y}, {x:endX,y:endY}),lineWidth:0.6});
+  const label = { id:5,kind:"text",x:0,y:60,width:20,height:5,fontSize:3,lineWidth:0.3,rotation:0, text:"SIGNAL", electrical:"net" };
+  const shapes = [wire(1,-100,0,0,0), wire(2,0,0,0,60), wire(3,40,0,100,0), wire(4,-50,-30,-50,30), label, {...label,id:6,x:40,y:0}];
+  drawingStore.transact(() => [undefined, createDrawingStore(shapes).getSnapshot()]);
+ });
+ await expect.poll(async () => (await state(page)).shapes.filter(shape => shape.name.startsWith("wire ")).length).toBe(4);
+ await clickAt(page, -75, 0);
+ const colors = async () => (await state(page)).shapes.filter(shape => shape.name.startsWith("wire ")).map(shape => shape.color);
+ await expect.poll(colors).toEqual(["e8b77e", "f6cbd1", "f6cbd1", "ef8f9c"]);
+ if (process.env.ECAD_SCHEMATIC_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCHEMATIC_SCREENSHOT_PATH});
+ await page.keyboard.press("Escape");
+ await expect.poll(colors).toEqual(["ef8f9c", "ef8f9c", "ef8f9c", "ef8f9c"]);
+ await clickAt(page, 0, 30);
+ await expect.poll(colors).toEqual(["f6cbd1", "e8b77e", "f6cbd1", "ef8f9c"]);
 });

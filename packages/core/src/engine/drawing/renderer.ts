@@ -111,11 +111,14 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const selected = own(
 			() => new MeshBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
+		const highlighted = own(
+			() => new MeshBasicMaterial({ color: "#f6cbd1", depthTest: false }),
+		);
 		const selection = own(
 			() => new LineBasicMaterial({ color: "#e8b77e", depthTest: false }),
 		);
 		const materialFor = (display: DisplayShape) => {
-			const color = { stroke, pin: stroke, wire, selected, fill }[
+			const color = { stroke, pin: stroke, wire, highlighted, selected, fill }[
 				display.appearance
 			];
 			if (display.text === undefined) return color;
