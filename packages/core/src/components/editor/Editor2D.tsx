@@ -1021,16 +1021,30 @@ function EditorCanvas({
 						? clipboardPaste.current.count + 1
 						: 1;
 				const step = (snapEnabled ? gridStep || 1 : 1) * count;
+				let pasted: EditorShape[];
+				try {
+					pasted = pasteSelection(
+						source,
+						currentShapes.current,
+						nextId.current,
+						{
+							x: step,
+							y: -step,
+						},
+						isSymbol ? "symbol" : "drawing",
+					);
+				} catch (cause) {
+					setError(
+						cause instanceof Error
+							? cause.message
+							: "This selection cannot be pasted into a reusable symbol.",
+					);
+					return;
+				}
 				finishWire();
 				setTool("select");
 				setSymbolPreview(null);
-				placeShapes(
-					pasteSelection(source, currentShapes.current, nextId.current, {
-						x: step,
-						y: -step,
-					}),
-					"Paste selection",
-				);
+				placeShapes(pasted, "Paste selection");
 				clipboardPaste.current = { text, count };
 			}}
 			onKeyDownCapture={(event) => {

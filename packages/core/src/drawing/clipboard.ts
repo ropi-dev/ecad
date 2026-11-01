@@ -1,11 +1,19 @@
 import { z } from "zod";
 import {
+	createEmptySymbolFile,
 	parseSymbolFile,
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
-import { libraryDefinitions } from "#/drawing/symbol-file.ts";
+import {
+	type EditorShape,
+	symbolShapes,
+	symbolTextShapes,
+} from "#/drawing/shapes.ts";
+import {
+	libraryDefinitions,
+	symbolFileWithShapes,
+} from "#/drawing/symbol-file.ts";
 import { createSymbol, duplicateSymbol } from "#/drawing/symbols.ts";
 import type { Point } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -97,12 +105,39 @@ export function pasteSelection(
 	existing: readonly EditorShape[],
 	nextId: number,
 	offset: Point,
+	destination: "drawing" | "symbol" = "drawing",
 ): EditorShape[] {
 	return measurePerformance(
 		"drawing.clipboard-paste",
 		() => {
+			if (
+				destination === "symbol" &&
+				source.some(
+					(shape) =>
+						(shape.kind === "text" && shape.electrical) ||
+						(shape.kind === "symbol" && shape.netSymbol),
+				)
+			)
+				throw new Error(
+					"Net labels, supply labels and net symbols cannot be pasted into reusable symbols.",
+				);
+			const insertable =
+				destination === "symbol"
+					? source.flatMap((shape): EditorShape[] =>
+							shape.kind === "symbol" && !shape.library
+								? [
+										...symbolShapes(shape),
+										...symbolTextShapes(shape).map((text) => ({
+											...text,
+											lineWidth: shape.lineWidth,
+											...(shape.locked ? { locked: true } : {}),
+										})),
+									]
+								: [shape],
+						)
+					: source;
 			const pasted: EditorShape[] = [];
-			for (const shape of source) {
+			for (const shape of insertable) {
 				const id = nextId++;
 				const copy =
 					shape.kind === "symbol"
@@ -111,6 +146,15 @@ export function pasteSelection(
 				if (copy.kind === "text") delete copy.circuitNet;
 				pasted.push({ ...copy, x: copy.x + offset.x, y: copy.y + offset.y });
 			}
+			if (destination === "symbol")
+				parseSymbolFile(
+					JSON.stringify(
+						symbolFileWithShapes(createEmptySymbolFile("Clipboard paste", []), [
+							...existing,
+							...pasted,
+						]),
+					),
+				);
 			return pasted;
 		},
 		{ shapes: source.length },
