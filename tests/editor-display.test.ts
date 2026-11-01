@@ -339,3 +339,30 @@ test("renderer reuses moved geometry and releases replaced, canceled, and owned 
 	assert.equal(oldDisposals, 1);
 	assert.equal(root.children.length, 0);
 });
+
+test("net highlighting follows connected and named wires without selecting components or crossing nets", () => {
+ const wire = (id: number, x: number, y: number, endX: number, endY: number) => drawShape(id, "wire", { x, y }, { x: endX, y: endY });
+ const first = wire(1, 0, 0, 20, 0);
+ const bend = wire(2, 20, 0, 20, 20);
+ const remote = wire(3, 60, 0, 80, 0);
+ const crossing = wire(4, 10, -10, 10, 10);
+ const label = { id: 5, kind: "text" as const, x: 20, y: 20, width: 20, height: 5, fontSize: 3, lineWidth: 0.3, rotation: 0, text: "SIGNAL", electrical: "net" as const };
+ const otherLabel = { ...label, id: 6, x: 60, y: 0 };
+ const symbol = createSymbolFromShapes(8, [drawShape(7, "rectangle", { x: 0, y: 0 }, { x: 10, y: 10 })]);
+ const component = { ...symbol, id: 8 };
+ const shapes = [first, bend, remote, crossing, label, otherLabel, component];
+ const display = buildDrawingDisplay(shapes, new Set([1]));
+ assert.deepEqual(display.shapes.map(shape => shape.appearance), ["selected", "highlighted", "highlighted", "wire", "stroke", "stroke", "stroke"]);
+ assert.equal(display.selections.length, 1);
+ const fromLabel = buildDrawingDisplay(shapes, new Set([5]));
+ assert.deepEqual(fromLabel.shapes.slice(0, 4).map(shape => shape.appearance), ["highlighted", "highlighted", "highlighted", "wire"]);
+ assert.ok(buildDrawingDisplay(shapes, new Set()).shapes.every(shape => shape.appearance !== "highlighted"));
+ const renderer = createDrawingRenderer(null);
+ const root = new Group();
+ renderer.update(root, { ...display, shapes: display.shapes.filter(shape => shape.geometry.kind === "wire") });
+ const color = (name: string) => ((root.getObjectByName(name) as Mesh).material as MeshBasicMaterial).color.getHexString();
+ assert.equal(color("wire 1"), "e8b77e");
+ assert.equal(color("wire 2"), "f6cbd1");
+ assert.equal(color("wire 4"), "ef8f9c");
+ renderer.dispose();
+});

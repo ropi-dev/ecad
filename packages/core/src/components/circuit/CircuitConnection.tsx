@@ -35,7 +35,7 @@ export function CircuitConnection({
 			onContextMenu={onContextMenu}
 		>
 			<path
-				className={`circuit-edge ${selected || highlighted ? "is-selected" : ""}`}
+				className={`circuit-edge ${selected ? "is-selected" : highlighted ? "is-highlighted" : ""}`}
 				d={path}
 			/>
 			<path className="circuit-edge-hit" d={path} />

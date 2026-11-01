@@ -57,6 +57,7 @@ export function exportDrawingSvg(
 				stroke: dark ? "#76c4c0" : "#164b50",
 				pin: dark ? "#76c4c0" : "#164b50",
 				wire: dark ? "#ef8f9c" : "#963343",
+				highlighted: dark ? "#f6cbd1" : "#963343",
 				selected: "#164b50",
 				fill: dark ? "#18282b" : "#e6f0f0",
 			};

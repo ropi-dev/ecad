@@ -158,8 +158,8 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 		selection?.kind === "net"
 			? circuit.nets.find((net) => net.id === selection.id)
 			: undefined;
-	const pin = selection?.kind === "pin" ? pins.get(selection.id) : undefined;
-	const selectedNetId = net?.id ?? (pin ? pinNets.get(pin.id)?.id : undefined);
+	const selectedNetId =
+		net?.id ?? (selection ? pinNets.get(selection.id)?.id : undefined);
 	const connectionStart = connectionDrag?.active
 		? graph.pinNodes.get(connectionDrag.pinId)
 		: undefined;

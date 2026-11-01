@@ -1,4 +1,9 @@
 import type { LineStyle } from "#/drawing/line-style.ts";
+import {
+	type ElectricalNet,
+	electricalNets,
+	isNetLabel,
+} from "#/drawing/named-nets.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
 import {
 	buildWireCrossings,
@@ -49,7 +54,15 @@ export type DrawingGeometry =
 			children: (GeometrySize & DrawingTransform & { kind: ShapeKind })[];
 	  });
 
-export type DrawingAppearance = "stroke" | "pin" | "wire" | "selected" | "fill";
+export type DrawingAppearance =
+	| "stroke"
+	| "pin"
+	| "wire"
+	| "highlighted"
+	| "selected"
+	| "fill";
+
+const netCache = new WeakMap<EditorShape[], ElectricalNet[]>();
 
 export interface DisplayShape extends DrawingTransform, TextAlignment {
 	key: string;
@@ -281,6 +294,34 @@ export function buildDrawingDisplay(
 	selectedIds: ReadonlySet<number>,
 	previews: EditorShape[] = [],
 ): DrawingDisplay {
+	const highlightedWires = new Set<number>();
+	const netSelections = new Set(
+		shapes
+			.filter(
+				(shape) =>
+					selectedIds.has(shape.id) &&
+					(shape.kind === "wire" ||
+						shape.kind === "pin" ||
+						isNetLabel(shape) ||
+						(shape.kind === "symbol" && shape.netSymbol)),
+			)
+			.map((shape) => shape.id),
+	);
+	if (netSelections.size) {
+		let nets = netCache.get(shapes);
+		if (!nets) {
+			nets = electricalNets(shapes);
+			netCache.set(shapes, nets);
+		}
+		for (const net of nets) {
+			if (
+				net.wires.some((id) => netSelections.has(id)) ||
+				net.labels.some((id) => netSelections.has(id)) ||
+				net.pins.some(({ shapeId }) => netSelections.has(shapeId))
+			)
+				for (const id of net.wires) highlightedWires.add(id);
+		}
+	}
 	const terminal = {
 		...drawShape(0, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }),
 		length: 0,
@@ -303,9 +344,11 @@ export function buildDrawingDisplay(
 				`${shape.kind} ${shape.id}`,
 				selectedIds.has(shape.id)
 					? "selected"
-					: shape.kind === "pin" || shape.kind === "wire"
-						? shape.kind
-						: "stroke",
+					: highlightedWires.has(shape.id)
+						? "highlighted"
+						: shape.kind === "pin" || shape.kind === "wire"
+							? shape.kind
+							: "stroke",
 				index + 1,
 			);
 			const crossing = crossings.get(shape.id);
@@ -337,7 +380,11 @@ export function buildDrawingDisplay(
 				{ ...terminal, ...point },
 				"wire-terminal",
 				"",
-				selectedIds.has(shape.id) ? "selected" : "wire",
+				selectedIds.has(shape.id)
+					? "selected"
+					: highlightedWires.has(shape.id)
+						? "highlighted"
+						: "wire",
 				shapes.length + 1,
 			),
 		),
@@ -348,9 +395,11 @@ export function buildDrawingDisplay(
 				"editor-wire-junction",
 				connected.some((shape) => selectedIds.has(shape.id))
 					? "selected"
-					: connected.some((shape) => shape.kind !== "wire")
-						? "pin"
-						: "wire",
+					: connected.some((shape) => highlightedWires.has(shape.id))
+						? "highlighted"
+						: connected.some((shape) => shape.kind !== "wire")
+							? "pin"
+							: "wire",
 				shapes.length + 1,
 			),
 		),

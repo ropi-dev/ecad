@@ -51,6 +51,10 @@
 	opacity: 0.7;
 	pointer-events: none;
 }
+.circuit-edge.is-highlighted {
+	stroke: #b8dcd5;
+	opacity: 1;
+}
 .circuit-edge.is-selected {
 	stroke: #e8b77e;
 	stroke-width: 3;
