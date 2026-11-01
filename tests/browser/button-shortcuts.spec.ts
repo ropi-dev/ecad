@@ -171,3 +171,23 @@ test("Radix dialogs hide background hints and block background Delete", async ({
 	expect(await shapes()).toEqual(before);
 	await page.keyboard.up("Control");
 });
+
+
+for (const label of ["Add file", "Project actions"]) {
+	test(`sidebar shortcut opens the ${label} dropdown`, async ({ page }) => {
+		await page.goto("/tests/browser/projects.html");
+		const { openProjectFiles } = await import("./project-files");
+		const sidebar = await openProjectFiles(page);
+		await sidebar.getByRole("button", { name: "Pin sidebar", exact: true }).click();
+		await page.keyboard.down("Control");
+		const hint = page.locator(`${hints}[title="${label}"]`);
+		await expect(hint).toBeVisible();
+		const key = await hint.getAttribute("data-shortcut");
+		await page.keyboard.down("Shift");
+		await page.keyboard.press(key!);
+		await expect(page.getByRole("menu", { name: label, exact: true })).toBeVisible();
+		await expect(sidebar.getByRole("button", { name: label, exact: true, includeHidden: true })).toHaveAttribute("aria-expanded", "true");
+		await page.keyboard.up("Shift");
+		await page.keyboard.up("Control");
+	});
+}

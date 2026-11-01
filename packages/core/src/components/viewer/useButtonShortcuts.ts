@@ -252,7 +252,16 @@ function listen() {
 			target.getAttribute("aria-disabled") !== "true"
 		) {
 			target.focus({ preventScroll: true });
-			target.click();
+			if (target.getAttribute("aria-haspopup") === "menu") {
+				target.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Enter",
+						code: "Enter",
+						bubbles: true,
+						cancelable: true,
+					}),
+				);
+			} else target.click();
 		}
 		schedule();
 	};
