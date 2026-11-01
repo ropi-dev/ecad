@@ -133,22 +133,24 @@ function useProjectFileUrl() {
 		previous.current = { href: location.href, session: context.session };
 		if (changedLocation || changedProject) {
 			pending.current = null;
+			if (!file && path !== "/editor" && context.selectedAsset) {
+				context.selectAsset(null);
+				return;
+			}
 			if (requested && requested.id !== active?.id) {
 				const request = { id: requested.id };
 				pending.current = request;
 				if (path === "/editor") {
-					if (requested.view === "circuit") {
-						void context.openCircuit(requested.path).catch(() => {
-							if (pending.current === request) setFailedRestoration(request);
-						});
-					} else {
-						void Promise.resolve(context.selectEditorFile(requested.path)).then(
-							(selected) => {
-								if (!selected && pending.current === request)
-									setFailedRestoration(request);
-							},
-						);
-					}
+					const selection =
+						requested.view === "circuit"
+							? context.openCircuit(requested.path)
+							: context.selectEditorFile(requested.path);
+					const failed = () => {
+						if (pending.current === request) setFailedRestoration(request);
+					};
+					void Promise.resolve(selection).then((selected) => {
+						if (!selected) failed();
+					}, failed);
 				} else {
 					const asset = manifest.assets.find(
 						(entry) => entry.path === requested.path,

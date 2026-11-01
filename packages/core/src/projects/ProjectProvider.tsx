@@ -58,7 +58,7 @@ interface ProjectContextValue {
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
-	openCircuit(path: string): Promise<void>;
+	openCircuit(path: string): Promise<boolean>;
 	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
@@ -662,7 +662,7 @@ export function ProjectProvider({
 			selectionRequest !== editorSelection.current ||
 			openedGeneration !== generation.current
 		)
-			return;
+			return false;
 		const snapshot = active.current;
 		const index =
 			snapshot?.manifest.circuits?.findIndex(
@@ -680,7 +680,7 @@ export function ProjectProvider({
 			selectionRequest !== editorSelection.current ||
 			!mounted.current
 		)
-			return;
+			return false;
 		let document = circuitDocuments.current.get(file.circuit.id);
 		if (!document) {
 			const circuitStore = measurePerformance(
@@ -714,6 +714,7 @@ export function ProjectProvider({
 		setEditorSymbol(null);
 		setEditorDrawing(null);
 		setEditorCircuit(document);
+		return true;
 	};
 	const switchEditorView = async (view: "circuit" | "schematic") => {
 		const circuitId =

@@ -304,6 +304,24 @@ test("editor-imports", async ({ page }, testInfo) => {
 	).toBeEnabled();
 	await expect(page.getByRole("alert")).toHaveCount(0);
 	await finish(page, testInfo, "editor-imports");
+	await (await openProjectFiles(page)).getByLabel("Add Gerber files").setInputFiles({ name: "Back.gbr", mimeType: "text/plain", buffer: Buffer.from(pthGerber(2)) });
+	let started = await page.evaluate(() => performance.now());
+	const importedFiles = async () => (await report(page)).events.filter(event => event.name === "import.gerber" && event.startTime >= started && event.status === "ok").at(-1)?.data?.files;
+	await (await openProjectFiles(page)).getByRole("link", { name: "Gerber viewer", exact: true }).click();
+	await expect.poll(importedFiles).toBe(2);
+	await expect.poll(() => new URL(page.url()).searchParams.get("file")).toBeNull();
+	started = await page.evaluate(() => performance.now());
+	await (await openProjectFiles(page)).getByRole("link", { name: "Open PTH.gbr", exact: true }).click();
+	await expect.poll(importedFiles).toBe(1);
+	await expect.poll(() => new URL(page.url()).searchParams.get("file")).toMatch(/PTH\.gbr$/);
+	started = await page.evaluate(() => performance.now());
+	await page.goBack();
+	await expect.poll(importedFiles).toBe(2);
+	await expect.poll(() => new URL(page.url()).searchParams.get("file")).toBeNull();
+	started = await page.evaluate(() => performance.now());
+	await page.goForward();
+	await expect.poll(importedFiles).toBe(1);
+	await expect.poll(() => new URL(page.url()).searchParams.get("file")).toMatch(/PTH\.gbr$/);
 });
 
 test("symbol-libraries", async ({ page }, testInfo) => {
@@ -2026,5 +2044,41 @@ test("net-symbol-reconcile", async ({page},testInfo) => {
  await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
  await page.getByRole("button", {name:"Switch to circuit view",exact:true}).click();
  await expect(page.locator(".circuit-component")).toHaveCount(32);
+ await expect(page).toHaveURL(circuitUrl);
+ await (await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true }).click();
+ await page.getByRole("menuitem", { name: "New drawing", exact: true }).click();
+ await page.getByLabel("Drawing name", { exact: true }).fill("Other");
+ await page.getByRole("button", { name: "Create drawing", exact: true }).click();
+ await expect(page.getByRole("button", { name: "Switch to circuit view", exact: true })).toBeEnabled();
+ await page.getByRole("button", { name: "Switch to circuit view", exact: true }).click();
+ await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("circuit");
+ const otherUrl = page.url();
+ await (await openProjectFiles(page)).getByRole("link", { name: "Open Reconcile.ecaddraw", exact: true }).click();
+ await closeProjectFiles(page);
+ await expect(page.getByRole("button", { name: "Switch to circuit view", exact: true })).toBeEnabled();
+ await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
+ await page.evaluate(() => {
+  const original = FileSystemFileHandle.prototype.createWritable;
+  const gate = new Promise<void>(resolve => window.addEventListener("release-writes", () => resolve(), { once: true }));
+  FileSystemFileHandle.prototype.createWritable = async function (...args) {
+   if (this.name === ".ecadprj") {
+    document.documentElement.dataset.waitingForWrite = "true";
+    await gate;
+   }
+   return original.apply(this, args);
+  };
+ });
+ await (await toolbarButton(page, "Rectangle")).click();
+ await page.mouse.move(600, 300); await page.mouse.down(); await page.mouse.move(710, 400); await page.mouse.up();
+ await expect(page.locator("html")).toHaveAttribute("data-waiting-for-write", "true");
+ await page.goBack();
+ await expect(page).toHaveURL(otherUrl);
+ await page.getByRole("button", { name: "Switch to circuit view", exact: true }).click();
+ await page.evaluate(() => window.dispatchEvent(new Event("release-writes")));
+ await expect(page.locator(".circuit-component")).toHaveCount(32);
+ await expect(page).toHaveURL(circuitUrl);
+ await page.getByRole("button", { name: "Switch to schematic view", exact: true }).click();
+ await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
+ await page.getByRole("button", { name: "Switch to circuit view", exact: true }).click();
  await expect(page).toHaveURL(circuitUrl);
 });
