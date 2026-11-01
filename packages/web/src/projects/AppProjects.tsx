@@ -1,4 +1,8 @@
 import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.tsx";
+import {
+	projectFileSelections,
+	projectFileUrlPath,
+} from "@ecad/core/projects/file-url.ts";
 import { ProjectFilesSidebar } from "@ecad/core/projects/ProjectFilesSidebar.tsx";
 import type { ProjectLinkProps } from "@ecad/core/projects/ProjectLink.tsx";
 import {
@@ -77,7 +81,7 @@ function useProjectFileUrl() {
 		select: (state) => state.status !== "idle" || state.isLoading,
 	});
 	const previous = useRef<{ href: string; session: number } | null>(null);
-	const pending = useRef<{ file: string; view?: "circuit" } | null>(null);
+	const pending = useRef<{ id: string } | null>(null);
 
 	useEffect(() => {
 		if (!context?.project || context.busy || navigating) return;
@@ -89,93 +93,69 @@ function useProjectFileUrl() {
 			pending.current = null;
 			return;
 		}
-		const activeFile =
+		const selections = projectFileSelections(project);
+		const activeId =
 			path === "/editor"
 				? editorCircuit
-					? manifest.circuits?.[
-							project.circuits?.findIndex(
-								(entry) => entry.circuit.id === editorCircuit.file.circuit.id,
-							) ?? -1
-						]?.circuit
+					? `circuit:${editorCircuit.file.circuit.id}`
 					: editorSymbol
-						? manifest.symbols[
-								project.symbols.findIndex(
-									(entry) => entry.id === editorSymbol.file.id,
-								)
-							]
+						? `symbol:${editorSymbol.file.id}`
 						: editorDrawing
-							? manifest.drawings?.[
-									project.drawings?.findIndex(
-										(entry) => entry.id === editorDrawing.file.id,
-									) ?? -1
-								]
-							: manifest.drawing
+							? `drawing:${editorDrawing.file.id}`
+							: "drawing"
 				: context.selectedAsset?.kind === (path === "/step" ? "step" : "gerber")
-					? context.selectedAsset.path
+					? `asset:${context.selectedAsset.path}`
 					: undefined;
-		const activeView =
-			path === "/editor" && editorCircuit ? "circuit" : undefined;
+		const active = selections.find((entry) => entry.id === activeId);
+		const requested = file
+			? selections.find(
+					(entry) =>
+						entry.file === projectFileUrlPath(file) &&
+						entry.view === view &&
+						(path === "/editor"
+							? !entry.id.startsWith("asset:")
+							: manifest.assets.some(
+									(asset) =>
+										asset.path === entry.path &&
+										asset.kind === (path === "/step" ? "step" : "gerber"),
+								)),
+				)
+			: undefined;
 		const changedLocation = previous.current?.href !== location.href;
 		const changedProject = previous.current?.session !== context.session;
 		const initial = previous.current === null || changedProject;
 		previous.current = { href: location.href, session: context.session };
 		if (changedLocation || changedProject) {
 			pending.current = null;
-			if (file && (file !== activeFile || view !== activeView)) {
+			if (requested && requested.id !== active?.id) {
+				const request = { id: requested.id };
+				pending.current = request;
 				if (path === "/editor") {
-					const circuit = manifest.circuits?.find(
-						(entry) => entry.circuit === file || entry.graph === file,
-					);
-					if (
-						circuit &&
-						(view === "circuit" ||
-							(file !== manifest.drawing && !manifest.drawings?.includes(file)))
-					) {
-						pending.current = { file: circuit.circuit, view: "circuit" };
-						void context.openCircuit(file).catch(() => {
-							pending.current = null;
+					if (requested.view === "circuit") {
+						void context.openCircuit(requested.path).catch(() => {
+							if (pending.current === request) pending.current = null;
 						});
-						return;
-					}
-					if (
-						file === manifest.drawing ||
-						manifest.drawings?.includes(file) ||
-						manifest.symbols.includes(file)
-					) {
-						pending.current = { file, view: undefined };
-						context.selectEditorFile(file);
-						return;
-					}
+					} else context.selectEditorFile(requested.path);
 				} else {
 					const asset = manifest.assets.find(
-						(entry) =>
-							entry.path === file &&
-							entry.kind === (path === "/step" ? "step" : "gerber"),
+						(entry) => entry.path === requested.path,
 					);
-					if (asset) {
-						pending.current = { file, view: undefined };
-						context.selectAsset(asset);
-						return;
-					}
+					if (asset) context.selectAsset(asset);
 				}
+				return;
 			}
 		}
-		if (
-			pending.current &&
-			(pending.current.file !== activeFile ||
-				pending.current.view !== activeView)
-		)
-			return;
+		if (pending.current && pending.current.id !== active?.id) return;
 		pending.current = null;
-		if (activeFile !== file || activeView !== view) {
+		if (active?.file !== file || active?.view !== view) {
 			void navigate({
 				to: path,
 				search: (previous) => ({
 					...previous,
-					file: activeFile,
-					view: activeView,
+					file: active?.file,
+					view: active?.view,
 				}),
-				replace: initial || !file,
+				replace: initial || !file || requested?.id === active?.id,
 			});
 		}
 	}, [

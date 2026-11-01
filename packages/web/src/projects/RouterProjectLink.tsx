@@ -1,3 +1,4 @@
+import { projectFileUrlPath } from "@ecad/core/projects/file-url.ts";
 import type {
 	ProjectLinkProps,
 	ProjectPath,
@@ -22,7 +23,7 @@ export function createRouterProjectLink(
 				{...props}
 				href={
 					file
-						? `${href}?${new URLSearchParams({ file, ...(view ? { view } : {}) })}`
+						? `${href}?${new URLSearchParams({ file: projectFileUrlPath(file), ...(view ? { view } : {}) })}`
 						: href
 				}
 				onClick={(event) => {
@@ -39,7 +40,11 @@ export function createRouterProjectLink(
 					)
 						return;
 					event.preventDefault();
-					void navigate(href, file, view);
+					void navigate(
+						href,
+						file ? projectFileUrlPath(file) : undefined,
+						view,
+					);
 				}}
 			/>
 		);
