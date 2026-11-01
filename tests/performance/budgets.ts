@@ -1,4 +1,6 @@
 export const budgets = {
+ "editor-text-duplicate": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
+ "editor-clipboard": { copyP95Ms: 750, interactionP95Ms: 750, pasteP95Ms: 100, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "net-symbol-reconcile": { openMs: 3000, syncP95Ms: 150, domNodes: 2200, scriptBytes: 3_000_000 },
  "circuit-merge-names": { interactionP95Ms: 3000, syncP95Ms: 150, domNodes: 2200, scriptBytes: 3_000_000 },
 	"editor-net-symbols": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
