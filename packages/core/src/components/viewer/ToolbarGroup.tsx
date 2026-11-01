@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
+import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
 import { viewControlButtonClassName } from "./viewControlStyles";
 
 const GroupContext = createContext<{
@@ -26,6 +27,7 @@ export function ToolbarGroups({
 	children: ReactNode;
 	panelHost: HTMLElement | null;
 }) {
+	useButtonShortcuts();
 	const [openId, setOpenId] = useState<string | null>(null);
 	return (
 		<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
