@@ -133,3 +133,27 @@ test("untitled web projects keep their display name and use separate restorable 
 	assert.deepEqual(await storage.load(), second);
 	assert.deepEqual(await storage.open(first?.directory), first);
 });
+
+test("file URL selections survive autosave revisions and resolve the latest physical path", async () => {
+	const { projectFileSelections, projectFileUrlPath } = await import("@ecad/core/projects/file-url.ts");
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	await storage.create("Controller");
+	const symbol = { format: "ecad-symbol" as const, version: 1 as const, units: "mm" as const, id: "connector", name: "Connector", description: "", prefix: "J", value: "", shapes: [] };
+	const before = await storage.save("Controller", { shapes: [], symbols: [symbol], drawings: [{ id: "power", name: "Power", shapes: [] }] });
+	const selected = projectFileSelections(before);
+	const after = await storage.save("Controller", { ...before, shapes: [shape] });
+	assert.notEqual(before.manifest.drawing, after.manifest.drawing);
+	const current = projectFileSelections(after);
+	assert.deepEqual(current.map(({ id, file, view }) => ({ id, file, view })), selected.map(({ id, file, view }) => ({ id, file, view })));
+	for (const old of selected) {
+		const resolved = current.find(entry => entry.file === projectFileUrlPath(old.path) && entry.view === old.view);
+		assert.equal(resolved?.id, old.id);
+		assert.notEqual(resolved?.path, old.path);
+		assert.ok(!resolved?.file.startsWith(".ecad/"));
+	}
+	assert.ok(current.some(entry => entry.view === "circuit"));
+	assert.ok(current.some(entry => entry.id === "symbol:connector"));
+	assert.ok(current.some(entry => entry.id === "drawing:power"));
+	assert.equal(projectFileUrlPath("assets/front panel.step"), "assets/front panel.step");
+});

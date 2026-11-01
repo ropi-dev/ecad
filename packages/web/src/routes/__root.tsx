@@ -16,6 +16,12 @@ interface MyRouterContext {
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
+	validateSearch: (
+		search: Record<string, unknown>,
+	): { file?: string; view?: "circuit" } => ({
+		file: typeof search.file === "string" ? search.file : undefined,
+		view: search.view === "circuit" ? "circuit" : undefined,
+	}),
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },

@@ -51,13 +51,14 @@ interface ProjectContextValue {
 	session: number;
 	project: ProjectSnapshot | null;
 	LinkComponent?: ComponentType<ProjectLinkProps>;
+	selectedAsset: ProjectAsset | null;
 	selectAsset(asset: ProjectAsset | null): void;
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
-	selectEditorFile(path?: string): void;
-	openCircuit(path: string): Promise<void>;
+	selectEditorFile(path?: string): boolean | Promise<boolean>;
+	openCircuit(path: string): Promise<boolean>;
 	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
@@ -661,7 +662,7 @@ export function ProjectProvider({
 			selectionRequest !== editorSelection.current ||
 			openedGeneration !== generation.current
 		)
-			return;
+			return false;
 		const snapshot = active.current;
 		const index =
 			snapshot?.manifest.circuits?.findIndex(
@@ -679,7 +680,7 @@ export function ProjectProvider({
 			selectionRequest !== editorSelection.current ||
 			!mounted.current
 		)
-			return;
+			return false;
 		let document = circuitDocuments.current.get(file.circuit.id);
 		if (!document) {
 			const circuitStore = measurePerformance(
@@ -713,6 +714,7 @@ export function ProjectProvider({
 		setEditorSymbol(null);
 		setEditorDrawing(null);
 		setEditorCircuit(document);
+		return true;
 	};
 	const switchEditorView = async (view: "circuit" | "schematic") => {
 		const circuitId =
@@ -776,7 +778,7 @@ export function ProjectProvider({
 		}
 	};
 
-	const selectEditorFile = (path?: string) => {
+	const selectEditorFile = (path?: string): boolean | Promise<boolean> => {
 		const selectedSnapshot = active.current;
 		const selectedDrawing =
 			selectedSnapshot?.drawings?.[
@@ -803,11 +805,11 @@ export function ProjectProvider({
 			const symbolId =
 				before?.symbols[before.manifest.symbols.indexOf(path ?? "")]?.id;
 			const request = ++editorSelection.current;
-			void autosave()
+			return autosave()
 				.then(() => {
-					if (request !== editorSelection.current) return;
+					if (request !== editorSelection.current) return false;
 					const current = active.current;
-					selectEditorFile(
+					return selectEditorFile(
 						drawingId
 							? current?.manifest.drawings?.[
 									current.drawings?.findIndex(
@@ -825,16 +827,16 @@ export function ProjectProvider({
 									: path,
 					);
 				})
-				.catch(() => undefined);
-			return;
+				.catch(() => false);
 		}
 		editorSelection.current++;
 		setEditorCircuit(null);
 		const snapshot = active.current;
-		if (!snapshot || !path || path === snapshot.manifest.drawing) {
+		if (!snapshot) return false;
+		if (!path || path === snapshot.manifest.drawing) {
 			setEditorSymbol(null);
 			setEditorDrawing(null);
-			return;
+			return true;
 		}
 		const drawingIndex = snapshot.manifest.drawings?.indexOf(path) ?? -1;
 		const drawing = snapshot.drawings?.[drawingIndex];
@@ -860,11 +862,11 @@ export function ProjectProvider({
 			}
 			setEditorSymbol(null);
 			setEditorDrawing(document);
-			return;
+			return true;
 		}
 		const index = snapshot.manifest.symbols.indexOf(path);
 		const file = snapshot.symbols[index];
-		if (!file) return;
+		if (!file) return false;
 		let document = symbolDocuments.current.get(file.id);
 		if (!document) {
 			const symbolStore = measurePerformance(
@@ -886,6 +888,7 @@ export function ProjectProvider({
 		}
 		setEditorDrawing(null);
 		setEditorSymbol(document);
+		return true;
 	};
 	useEffect(
 		() =>
@@ -1097,6 +1100,7 @@ export function ProjectProvider({
 		session: epoch,
 		project,
 		LinkComponent,
+		selectedAsset,
 		selectAsset: (asset) => {
 			editorSelection.current++;
 			setSelectedAsset(asset);
