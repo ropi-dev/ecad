@@ -135,6 +135,7 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 			.toEqual([
 				{
 					name: "rectangle 1",
+					color: "76c4c0",
 					x: rectangle.x,
 					y: rectangle.y,
 					width: rectangle.width,
