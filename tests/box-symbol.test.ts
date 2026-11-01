@@ -145,3 +145,28 @@ test("the Box border cannot be selected, moved or resized as a child", async () 
  assert.deepEqual(boxBorder(textMoved), boxBorder(symbol));
  assert.notDeepEqual(symbolChildren(textMoved)[1], symbolChildren(symbol)[1]);
 });
+
+test("Box clicks select text and the outline but pass through the empty interior", () => {
+ for (const rotation of [0, Math.PI / 6, Math.PI / 2, Math.PI, 3 * Math.PI / 2]) {
+  let symbol = { ...createSymbol(1, definition, { x: 20, y: 30 }), rotation };
+  symbol = asSymbol(editShapeAttribute(symbol, "width", 36));
+  symbol = asSymbol(editShapeAttribute(symbol, "height", 24));
+  const border = symbolChildWorld(symbol, boxBorder(symbol)!.shape);
+  const point = (x: number, y: number) => ({
+   x: border.x + x * Math.cos(rotation) - y * Math.sin(rotation),
+   y: border.y + x * Math.sin(rotation) + y * Math.cos(rotation),
+  });
+  assert.equal(hitShape(symbol, point(0, 0), 0.5), false);
+  assert.equal(hitShape(symbol, point(8, -6), 0.5), false);
+  for (const [x, y] of [[-18, 0], [18, 0], [0, -12], [0, 12], [18, 12]]) {
+   assert.equal(hitShape(symbol, point(x, y), 0), true);
+  }
+  assert.equal(hitShape(symbol, point(18.4, 0), 0.5), true);
+  assert.equal(hitShape(symbol, point(17.6, 0), 0.5), true);
+  assert.equal(hitShape(symbol, point(18.6, 0), 0.5), false);
+  assert.equal(hitShape(symbol, point(17.4, 0), 0.5), false);
+  const text = symbolChildWorld(symbol, symbolChildren(symbol)[1].shape);
+  const bounds = shapeBounds(text);
+  assert.equal(hitShape(symbol, { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }, 0), true);
+ }
+});
