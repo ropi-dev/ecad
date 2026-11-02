@@ -41,7 +41,7 @@ const primitiveInputSchema = z.strictObject({
 	filled: z.boolean().optional(),
 	...geometryFields,
 	lineStyle: z.enum(lineStyles).optional(),
-	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire"]),
+	kind: z.enum(["rectangle", "circle", "triangle", "line", "wire", "no-connect"]),
 });
 const primitiveShapeSchema = primitiveInputSchema.extend({ id: shapeId });
 const pinInputSchema = z.strictObject({

@@ -129,7 +129,7 @@ const shapeSchema = Schema.Union(
 		),
 	),
 	Schema.Struct({
-		kind: Schema.Literal("rectangle", "triangle"),
+		kind: Schema.Literal("rectangle", "triangle", "no-connect"),
 		filled: Schema.optional(Schema.Boolean),
 		locked,
 		lineWidth,

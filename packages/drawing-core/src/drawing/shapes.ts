@@ -20,6 +20,7 @@ export type ShapeKind =
 	| "triangle"
 	| "line"
 	| "wire"
+	| "no-connect"
 	| "pin"
 	| "text";
 interface ShapeGeometry extends Point {
@@ -458,6 +459,7 @@ export function isBasicShape(shape: EditorShape): shape is BasicShape {
 		shape.kind === "rectangle" ||
 		shape.kind === "circle" ||
 		shape.kind === "triangle" ||
+		shape.kind === "no-connect" ||
 		shape.kind === "line"
 	);
 }
@@ -674,6 +676,7 @@ export function resizeHandles(shape: EditorShape): ResizeHandle[] {
 	if (
 		shape.kind === "symbol" ||
 		shape.kind === "pin" ||
+		shape.kind === "no-connect" ||
 		(shape.kind === "text" && shape.electrical)
 	)
 		return [];
@@ -743,6 +746,7 @@ export function resizeShape(
 	if (
 		shape.kind === "symbol" ||
 		shape.kind === "pin" ||
+		shape.kind === "no-connect" ||
 		(shape.kind === "text" && shape.electrical)
 	)
 		return shape;
@@ -842,6 +846,16 @@ export function drawShape(
 	gridStep = 0,
 ): PrimitiveShape {
 	const first = snapPoint(start, gridStep);
+	if (kind === "no-connect")
+		return {
+			id,
+			kind,
+			...first,
+			width: 1.27,
+			height: 1.27,
+			rotation: 0,
+			lineWidth: DEFAULT_LINE_WIDTH,
+		};
 	if (kind === "pin")
 		return {
 			id,
@@ -940,7 +954,9 @@ export function selectionSize(shape: EditorShape) {
 	}
 	const padding = isBoxSymbol(shape)
 		? 0
-		: shape.kind === "symbol" || shape.kind === "wire"
+		: shape.kind === "symbol" ||
+				shape.kind === "wire" ||
+				shape.kind === "no-connect"
 			? 0.5
 			: 4;
 	return {
@@ -1139,8 +1155,20 @@ export function openPins(
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
+	const noConnects = shapes.flatMap((shape) =>
+		shape.kind === "symbol"
+			? symbolShapes(shape).filter((child) => child.kind === "no-connect")
+			: shape.kind === "no-connect"
+				? [shape]
+				: [],
+	);
 	return candidates.filter(
 		(pin) =>
+			!noConnects.some(
+				(shape) =>
+					Math.hypot(shape.x - pin.point.x, shape.y - pin.point.y) <=
+					connectionTolerance,
+			) &&
 			!wires.some(({ start, end }) => pointOnWire(pin.point, start, end)) &&
 			!pins.some(
 				(other) =>
@@ -1684,6 +1712,7 @@ export function moveShapes(
 			anchorShape.kind === "circle" ||
 			anchorShape.kind === "symbol" ||
 			anchorShape.kind === "pin" ||
+			anchorShape.kind === "no-connect" ||
 			anchorShape.kind === "text"
 				? anchorShape
 				: localToWorld(
