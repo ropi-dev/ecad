@@ -1,10 +1,10 @@
-import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
 
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "vite";
 
 const config = defineConfig({
 	envDir: "../..",
@@ -14,6 +14,7 @@ const config = defineConfig({
 			? "../../node_modules/.vite-performance"
 			: undefined,
 	resolve: { tsconfigPaths: true },
+	ssr: { noExternal: [/^@tanstack\//] },
 	plugins: [
 		devtools(),
 		tailwindcss(),
