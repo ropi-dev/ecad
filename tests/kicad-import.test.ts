@@ -26,11 +26,12 @@ test('RP2350A imports all instances, terminal positions, values, wires and visib
   const w = wires[i]; const ends = [-1,1].map(sign=>({x:w.x+sign*Math.cos(w.rotation)*w.width/2,y:w.y+sign*Math.sin(w.rotation)*w.width/2}));
   for(let j=0;j<2;j++) {assert.ok(Math.abs(ends[j].x-expected[j].x)<1e-8);assert.ok(Math.abs(ends[j].y-expected[j].y)<1e-8);}
  }
+ assert.equal(result.shapes.filter(s=>s.kind==='no-connect').length,1);
  assert.equal(result.report.labels.length,94);
  assert.equal(result.shapes.filter(s=>s.kind==='circle').length,83);
  assert.ok(result.report.warnings.some(w=>w.includes('embedded_files')));
  assert.ok(result.report.metadata.some(n=>n[0]==='lib_symbols'));
- assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,622);
+ assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,621);
 });
 
 const fixture = (extra: string, at='10 20 0', mirror='') => `(kicad_sch (version 20250114) (paper "A4") (lib_symbols (symbol "Test" (symbol "Test_1_1" (pin input line (at 2 3 0) (length 2) (name "IN") (number "01"))))) (symbol (lib_id "Test") (at ${at}) ${mirror} (unit 1) (uuid "test") (property "Reference" "X1" (at 10 20 0) (effects hide))) ${extra})`;

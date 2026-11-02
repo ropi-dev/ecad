@@ -159,6 +159,32 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		// Build caps in millimeters before normalizing to avoid stretching them.
 		return new ShapeGeometry(outline).scale(1 / width, 1 / lineWidth, 1);
 	}
+	if (shape.kind === "no-connect") {
+		const { width, height, lineWidth } = shape;
+		if (width <= 0 || height <= 0) return new BufferGeometry();
+		const length = Math.hypot(width, height);
+		const angle = Math.atan2(height, width);
+		const pieces = [-angle, angle].map((rotation) =>
+			createShapeGeometry({
+				kind: "line",
+				width: length,
+				height: lineWidth,
+				lineWidth,
+				lineStyle: shape.lineStyle,
+			})
+				.scale(length, lineWidth, 1)
+				.rotateZ(rotation),
+		);
+		try {
+			return (mergeGeometries(pieces) ?? new BufferGeometry()).scale(
+				1 / width,
+				1 / height,
+				1,
+			);
+		} finally {
+			for (const piece of pieces) piece.dispose();
+		}
+	}
 	if (shape.kind === "text") return new PlaneGeometry(1, 1);
 	if (shape.kind === "junction") return new CircleGeometry(0.5, 32);
 	if (shape.kind === "pin") {

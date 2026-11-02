@@ -474,13 +474,7 @@ function convert(source: string): KiCadImportResult {
 		}
 	for (const nc of nodes(root, "no_connect")) {
 		const [x, y] = world(numbers(nc, "at"));
-		for (const sign of [-1, 1])
-			add(
-				line(
-					[x - 0.6, y - sign * 0.6],
-					[x + 0.6, y + sign * 0.6],
-				) as EditorShape,
-			);
+		add({ kind: "no-connect", x, y, width: 1.2, height: 1.2, rotation: 0, lineWidth: 0.1524 } as EditorShape);
 	}
 	report.metadata.push(node(root, "lib_symbols"));
 	report.warnings = [...warnings];

@@ -10,6 +10,7 @@ const groups: Record<string, string> = {
 	"Net label": "Connections",
 	"Supply label": "Connections",
 	Pin: "Connections",
+	"No connect": "Connections",
 	Undo: "History tools",
 	Redo: "History tools",
 	History: "History tools",
