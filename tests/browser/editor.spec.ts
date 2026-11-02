@@ -2,11 +2,11 @@ import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
 import { SCHEMATIC_STEP } from "#/drawing/units.ts";
-import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 
 const [selected, highlighted, wire] = (
 	["selected", "highlighted", "wire"] as const
-).map((appearance) => lightSchematicTheme.appearance[appearance].slice(1));
+).map((appearance) => darkSchematicTheme.appearance[appearance].slice(1));
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -264,8 +264,10 @@ test("selected schematic wires keep a distinct color from related net wires", as
   const { createDrawingStore } = await import(storePath);
   const { drawShape } = await import(shapesPath);
   const wire = (id: number, x: number, y: number, endX: number, endY: number) => ({...drawShape(id, "wire", {x,y}, {x:endX,y:endY}),lineWidth:0.6});
-  const label = { id:5,kind:"text",x:0,y:60,width:20,height:5,fontSize:3,lineWidth:0.3,rotation:0, text:"SIGNAL", electrical:"net" };
-  const shapes = [wire(1,-100,0,0,0), wire(2,0,0,0,60), wire(3,40,0,100,0), wire(4,-50,-30,-50,30), label, {...label,id:6,x:40,y:0}];
+  const textPath = "/packages/core/src/components/editor/text.ts";
+  const { createTextShape, updateText } = await import(textPath);
+  const label = (id: number, x: number, y: number, horizontalAlign: "center" | "right") => updateText({ ...createTextShape(id, { x, y }), electrical: "net", horizontalAlign, verticalAlign: "bottom" }, "SIGNAL");
+  const shapes = [wire(1,-100,0,0,0), wire(2,0,0,0,60), wire(3,40,0,100,0), wire(4,-50,-30,-50,30), label(5,0,60,"center"), label(6,40,0,"right")];
   drawingStore.transact(() => [undefined, createDrawingStore(shapes).getSnapshot()]);
  });
  await expect.poll(async () => (await state(page)).shapes.filter(shape => shape.name.startsWith("wire ")).length).toBe(4);

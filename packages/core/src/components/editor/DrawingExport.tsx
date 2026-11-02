@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { captureSvgPng } from "#/engine/capture-png.ts";
@@ -89,7 +90,7 @@ export function DrawingExport({
 															background === "transparent"
 																? null
 																: background === "dark"
-																	? "#111318"
+																	? darkSchematicTheme.paper
 																	: "white",
 														);
 											downloadPng(blob, label, format);
