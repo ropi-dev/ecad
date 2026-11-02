@@ -1,4 +1,5 @@
 export const budgets = {
+ "editor-physical-zoom": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "button-shortcuts": { interactionP95Ms: 750, hintsP95Ms: 50, domNodes: 1600, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-text-duplicate": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-clipboard": { copyP95Ms: 750, interactionP95Ms: 750, pasteP95Ms: 100, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },

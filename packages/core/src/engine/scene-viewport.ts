@@ -30,6 +30,9 @@ import { createSceneHover, type SceneTarget } from "./scene-hover";
 import type { Bounds } from "./types";
 import type { Viewer2DSnapshot, Viewer3DHandle } from "./viewport-types";
 
+export const MIN_PHYSICAL_ZOOM = 0.01;
+export const MAX_PHYSICAL_ZOOM = 100;
+
 export interface SceneSelection {
 	name: string;
 	region?: number;
@@ -60,6 +63,8 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	capture: () => Promise<Blob>;
 	update: (update: (object: Object3D) => void) => void;
 	resize: (width: number, height: number) => void;
+	setPhysicalScale: (scale: number | null) => void;
+	actualSize: () => void;
 	setProjection: (projection: "perspective" | "orthographic") => void;
 	dispose: () => void;
 }
@@ -193,6 +198,25 @@ export function createSceneViewport(
 		camera.near = radius / 1000;
 		camera.far = radius * 1000;
 		let zoomReferenceDistance = 0;
+		let physicalScale: number | null = null;
+		let viewportHeight = Math.max(element.clientHeight, 1);
+		const referenceDistance = () =>
+			physicalScale === null
+				? zoomReferenceDistance
+				: viewportHeight / (2 * halfFovTangent * physicalScale);
+		const updateZoomLimits = (activeCamera = camera) => {
+			controls.minDistance =
+				referenceDistance() /
+				(physicalScale === null ? MAX_ZOOM : MAX_PHYSICAL_ZOOM);
+			controls.maxDistance =
+				referenceDistance() /
+				(physicalScale === null ? MIN_ZOOM : MIN_PHYSICAL_ZOOM);
+			if (activeCamera instanceof OrthographicCamera) {
+				const height = activeCamera.top - activeCamera.bottom;
+				controls.minZoom = height / (2 * controls.maxDistance * halfFovTangent);
+				controls.maxZoom = height / (2 * controls.minDistance * halfFovTangent);
+			}
+		};
 		let ready = false;
 		let pointer: Vector2 | null = null;
 		const raycaster = new Raycaster();
@@ -229,10 +253,12 @@ export function createSceneViewport(
 				output.render(scene, camera);
 				onOrientation?.(camera.quaternion);
 				const currentZoom =
-					zoomReferenceDistance / (visibleHeight() / (2 * halfFovTangent));
+					referenceDistance() / (visibleHeight() / (2 * halfFovTangent));
 				onZoom?.(
 					Math.round(
-						Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom)) * 1e6,
+						(physicalScale === null
+							? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom))
+							: currentZoom) * 1e6,
 					) / 1e6,
 				);
 				if (topView) {
@@ -357,8 +383,7 @@ export function createSceneViewport(
 				);
 			const distance = camera.position.distanceTo(controls.target);
 			if (zoomReferenceDistance === 0) zoomReferenceDistance = distance;
-			controls.minDistance = zoomReferenceDistance / MAX_ZOOM;
-			controls.maxDistance = zoomReferenceDistance / MIN_ZOOM;
+			updateZoomLimits();
 			if (camera instanceof OrthographicCamera) {
 				camera.zoom = 1;
 				setOrthographicBounds(camera, 2 * distance * halfFovTangent);
@@ -410,8 +435,7 @@ export function createSceneViewport(
 			orthographic.left = (-height * aspect) / 2;
 			orthographic.right = (height * aspect) / 2;
 			orthographic.updateProjectionMatrix();
-			controls.minZoom = height / (2 * controls.maxDistance * halfFovTangent);
-			controls.maxZoom = height / (2 * controls.minDistance * halfFovTangent);
+			updateZoomLimits(orthographic);
 		};
 		const setProjection = (projection: "perspective" | "orthographic") => {
 			if (
@@ -449,10 +473,18 @@ export function createSceneViewport(
 			schedule();
 		};
 		const resize = (width: number, height: number) => {
+			const resizedHeight =
+				camera instanceof OrthographicCamera && physicalScale !== null
+					? ((camera.top - camera.bottom) * height) / viewportHeight
+					: null;
+			viewportHeight = height;
 			output.setPixelRatio(viewerPixelRatio());
 			output.setSize(width, height, false);
 			if (camera instanceof OrthographicCamera) {
-				setOrthographicBounds(camera, camera.top - camera.bottom);
+				setOrthographicBounds(
+					camera,
+					resizedHeight ?? camera.top - camera.bottom,
+				);
 			} else camera.aspect = width / height;
 			camera.updateProjectionMatrix();
 			schedule();
@@ -571,6 +603,26 @@ export function createSceneViewport(
 			view,
 			resize,
 			setProjection,
+			setPhysicalScale: (scale) => {
+				const next =
+					topView &&
+					lockProjection &&
+					scale !== null &&
+					Number.isFinite(scale) &&
+					scale > 0
+						? scale
+						: null;
+				if (next === physicalScale) return;
+				const previous = physicalScale;
+				physicalScale = next;
+				updateZoomLimits();
+				if (next !== null && previous !== null) zoom(next / previous);
+				schedule();
+			},
+			actualSize: () => {
+				if (physicalScale !== null)
+					zoom((physicalScale * visibleHeight()) / viewportHeight);
+			},
 			capture: () => {
 				if (output.getContext().isContextLost())
 					throw new Error("The graphics context is unavailable.");

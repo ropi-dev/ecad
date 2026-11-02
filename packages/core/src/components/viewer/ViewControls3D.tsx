@@ -2,6 +2,10 @@ import { Box, Download, Scan, Square } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation.ts";
+import {
+	MAX_PHYSICAL_ZOOM,
+	MIN_PHYSICAL_ZOOM,
+} from "#/engine/scene-viewport.ts";
 import { ToolbarGroup, ToolbarGroups } from "./ToolbarGroup";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
 import { ZoomControls } from "./ZoomControls";
@@ -18,6 +22,7 @@ export function ViewControls3D({
 	fit,
 	zoom,
 	zoomLevel,
+	actualSize,
 	view,
 	projection,
 	toggleProjection,
@@ -28,6 +33,7 @@ export function ViewControls3D({
 	enabled: boolean;
 	grouped?: boolean;
 	zoomLevel: number;
+	actualSize?: () => void;
 	projection: "perspective" | "orthographic";
 	toggleProjection?: () => void;
 	children?: ReactNode;
@@ -38,19 +44,37 @@ export function ViewControls3D({
 	const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
 	const button = viewControlButtonClassName;
 	const zoomControls = (
-		<ZoomControls
-			zoom={zoom}
-			fit={fit}
-			enabled={enabled}
-			canZoomIn={zoomLevel < MAX_ZOOM}
-			canZoomOut={zoomLevel > MIN_ZOOM}
-			buttonClassName={button}
-			fitClassName={`${button} min-w-14 tabular-nums`}
-			fitLabel={fitLabel}
-			fitTitle={fitLabel}
-		>
-			{Math.round(zoomLevel * 100)}%
-		</ZoomControls>
+		<>
+			<ZoomControls
+				zoom={zoom}
+				fit={fit}
+				enabled={enabled}
+				canZoomIn={zoomLevel < (actualSize ? MAX_PHYSICAL_ZOOM : MAX_ZOOM)}
+				canZoomOut={zoomLevel > (actualSize ? MIN_PHYSICAL_ZOOM : MIN_ZOOM)}
+				buttonClassName={button}
+				fitClassName={`${button} min-w-14 tabular-nums`}
+				fitLabel={fitLabel}
+				fitTitle={fitLabel}
+			>
+				{actualSize ? (
+					<Scan size={16} aria-hidden="true" />
+				) : (
+					`${Math.round(zoomLevel * 100)}%`
+				)}
+			</ZoomControls>
+			{actualSize && (
+				<TooltipButton
+					type="button"
+					className={`${button} min-w-14 tabular-nums`}
+					disabled={!enabled}
+					tooltip="Actual size, based on reported display dimensions"
+					aria-label="Actual size"
+					onClick={actualSize}
+				>
+					{Math.round(zoomLevel * 100)}%
+				</TooltipButton>
+			)}
+		</>
 	);
 	const viewControls = (
 		<>
