@@ -1,5 +1,9 @@
 ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron desktop apps share the same React editor, drawing model, and Three.js engine.
 
+ECAD is experimental. Features, file formats, and UI behavior may change. Keep backups of project files and verify exports before using them for fabrication.
+
+Original application code is under the [MIT license](LICENSE). Third-party code and assets retain their own licenses, including the KiCad-derived symbols, Caveat font, and LGPL STEP importer. See [third-party notices](THIRD_PARTY_NOTICES.md) and the [publication checklist](docs/publication.md). Production builds include dependency notices and matching STEP importer source archives. The first web or desktop build downloads about 53 MB of source archives; see [source caching and rebuild instructions](licenses/STEP-SOURCE.md).
+
 | Package | Contents |
 | --- | --- |
 | [`@ecad/core`](packages/core) | Shared React editor and viewers, symbol validation, parsers, workers, and rendering. |
@@ -114,7 +118,7 @@ sudo certbot --nginx -d ecad.ropi.dev --redirect
 
 The ACL lets nginx traverse the home directory to reach the build. Keep the build files readable by `www-data`. Adjust the config's absolute root if the checkout moves. Certbot adds the HTTPS configuration to the installed site file. HTTPS is required for browser project storage on this domain.
 
-Google Cloud DNS zone `ropi-dev` in project `calcium-doodad-366020` has a CNAME from `ecad.ropi.dev.` to `mini.ropi.dev.` with a 300-second TTL, matching `auth.ropi.dev`.
+Point the deployment domain's DNS records at the host before requesting its HTTPS certificate.
 
 Run `pnpm run build:web` again to publish changes from this checkout. nginx reads the rebuilt files directly and needs no reload when only the build changes. Each build replaces the client output, so requests during a build and tabs running an older build may need a refresh. The live site has no worktree routing.
 

@@ -1,5 +1,6 @@
 import { build } from "esbuild";
 import { rm } from "node:fs/promises";
+import { writeDistributionLicenses } from "../../../scripts/distribution-licenses.ts";
 
 await rm("dist", { recursive: true, force: true });
 
@@ -15,3 +16,5 @@ await build({
 	target: "node24",
 	logLevel: "info",
 });
+
+await writeDistributionLicenses("cli", "dist");

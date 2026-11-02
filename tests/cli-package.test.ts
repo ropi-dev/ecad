@@ -17,6 +17,10 @@ test("built CLI and stdio MCP work outside the repository with networking and UI
 	const source = fileURLToPath(new URL("../packages/cli", import.meta.url));
 	await run(process.execPath, ["scripts/build.mjs"], { cwd: source });
 	await cp(join(source, "dist"), join(fixture.directory, "dist"), { recursive: true });
+	assert.match(await readFile(join(fixture.directory, "dist", "LICENSE.txt"), "utf8"), /MIT License/);
+	const notices = await readFile(join(fixture.directory, "dist", "THIRD_PARTY_NOTICES.txt"), "utf8");
+	assert.match(notices, /effect@/);
+	assert.match(notices, /zod@/);
 	await cp(join(source, "bin"), join(fixture.directory, "bin"), { recursive: true });
 	await writeFile(join(fixture.directory, "package.json"), JSON.stringify({ type: "module" }));
 	for (const name of ["effect", "zod", "@modelcontextprotocol/sdk"]) {

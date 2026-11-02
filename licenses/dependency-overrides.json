@@ -1,0 +1,33 @@
+{
+	"@t3-oss/env-core@0.13.11": {
+		"files": [
+			"env-core-MIT.txt"
+		],
+		"source": "https://github.com/t3-oss/t3-env/blob/23ddb79a92800665daa54b90c99f7c1099eeb6fb/LICENSE"
+	},
+	"@rolldown/binding-*@1.2.15": {
+		"files": [
+			"rolldown-MIT.txt",
+			"rolldown-THIRD-PARTY.txt"
+		],
+		"source": "https://github.com/rolldown/rolldown/tree/v1.2.15"
+	},
+	"@esbuild/*@0.28.2": {
+		"files": [
+			"esbuild-MIT.txt"
+		],
+		"source": "https://github.com/evanw/esbuild/blob/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
+	},
+	"drizzle-orm@0.45.2": {
+		"files": [
+			"drizzle-Apache-2.0.txt"
+		],
+		"source": "https://github.com/drizzle-team/drizzle-orm/blob/0.45.2/LICENSE"
+	},
+	"react-remove-scroll-bar@2.3.8": {
+		"files": [
+			"react-remove-scroll-bar-MIT.txt"
+		],
+		"source": "https://github.com/theKashey/react-remove-scroll-bar/blob/8ca9ba5ea52de03308fe8ced94f7b159a44d28ff/LICENSE"
+	}
+}

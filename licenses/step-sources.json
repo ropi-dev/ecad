@@ -1,0 +1,17 @@
+{
+	"version": "0.0.23",
+	"wasmSha256": "33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952",
+	"javascriptSha256": "8b090be386bc8ffba32222aa19f38742ae8ed35707819beb7f8ab4938a28c97a",
+	"archives": [
+		{
+			"filename": "occt-import-js-c2148e54b456b571238d35cac037d304053d64b2.tar.gz",
+			"url": "https://codeload.github.com/kovacsv/occt-import-js/tar.gz/c2148e54b456b571238d35cac037d304053d64b2",
+			"sha256": "2bd3799b2ac56cbf3f0df6300a51c8890e137bd001462702b356f621e33ff192"
+		},
+		{
+			"filename": "OCCT-d2abb6d844231cb8f29be6894440874a4700e4a5.tar.gz",
+			"url": "https://codeload.github.com/Open-Cascade-SAS/OCCT/tar.gz/d2abb6d844231cb8f29be6894440874a4700e4a5",
+			"sha256": "2715d89a1bc44dfd34dab88f729c445ea93f6b57d6539b0c89614a80ae144a6c"
+		}
+	]
+}
