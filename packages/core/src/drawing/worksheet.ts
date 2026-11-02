@@ -65,7 +65,7 @@ export function buildWorksheetDisplay(
 		text: string,
 		x: number,
 		y: number,
-		fontSize = 1.3,
+		fontSize = 1.5,
 		align: "left" | "center" = "center",
 		maxWidth = Infinity,
 	) => {

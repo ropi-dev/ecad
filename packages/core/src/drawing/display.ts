@@ -4,6 +4,13 @@ import {
 	electricalNets,
 	isNetLabel,
 } from "#/drawing/named-nets.ts";
+import {
+	fontPixels,
+	type MeasureText,
+	pinNameFontSize,
+	pinNumberFontSize,
+	textLayout,
+} from "#/drawing/text.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
 import {
 	buildWireCrossings,
@@ -14,6 +21,7 @@ import {
 	drawShape,
 	type EditorShape,
 	isBasicShape,
+	isBoxSymbol,
 	openPins,
 	openWireEnds,
 	PIN_RADIUS,
@@ -49,6 +57,7 @@ export type DrawingGeometry =
 	| (GeometrySize & { kind: Exclude<ShapeKind, "wire"> })
 	| (GeometrySize & { kind: "wire" } & Partial<WireCrossings>)
 	| (GeometrySize & { kind: "pin-halo" })
+	| (GeometrySize & { kind: "junction" })
 	| (GeometrySize & {
 			kind: "symbol";
 			children: (GeometrySize & DrawingTransform & { kind: ShapeKind })[];
@@ -60,7 +69,13 @@ export type DrawingAppearance =
 	| "wire"
 	| "highlighted"
 	| "selected"
-	| "fill";
+	| "fill"
+	| "text"
+	| "pin-number"
+	| "note"
+	| "label";
+
+const estimateText: MeasureText = (text) => text.length * fontPixels * 0.55;
 
 const netCache = new WeakMap<EditorShape[], ElectricalNet[]>();
 
@@ -70,6 +85,7 @@ export interface DisplayShape extends DrawingTransform, TextAlignment {
 	geometry: DrawingGeometry;
 	appearance: DrawingAppearance;
 	text?: string;
+	bold?: true;
 	pinLabel?: true;
 	renderOrder: number;
 	children?: DisplayShape[];
@@ -133,9 +149,16 @@ function displayShape(
 	shape: EditorShape,
 	key: string,
 	name: string,
-	appearance: DrawingAppearance,
+	baseAppearance: DrawingAppearance,
 	renderOrder: number,
+	measure: MeasureText = estimateText,
 ): DisplayShape {
+	const appearance =
+		shape.kind === "text" && baseAppearance === "stroke"
+			? isNetLabel(shape)
+				? "label"
+				: "text"
+			: baseAppearance;
 	const display: DisplayShape = {
 		key,
 		name,
@@ -154,6 +177,7 @@ function displayShape(
 		...(shape.kind === "text"
 			? {
 					text: shape.text,
+					...(shape.bold ? { bold: true as const } : {}),
 					horizontalAlign: shape.horizontalAlign,
 					verticalAlign: shape.verticalAlign,
 				}
@@ -202,6 +226,7 @@ function displayShape(
 					`${labels[index].attribute} ${shape.id}`,
 					appearance,
 					renderOrder + 1,
+					measure,
 				),
 				x:
 					textCenter({
@@ -236,10 +261,11 @@ function displayShape(
 			const leadNumber =
 				(shape.length !== undefined || shape.labelOffset !== undefined) &&
 				attribute === "number";
-			const fontSize = leadNumber ? 1 : 1.27;
-			const width = Math.max(fontSize / 2, text.length * fontSize * 0.6);
-			const height = fontSize * 1.5;
-			const offset = shape.labelOffset ?? PIN_RADIUS + 0.5;
+			const fontSize = leadNumber ? pinNumberFontSize : pinNameFontSize;
+			const layout = textLayout(text, measure);
+			const width = (layout.width * fontSize) / fontPixels;
+			const height = (layout.height * fontSize) / fontPixels;
+			const offset = shape.labelOffset ?? PIN_RADIUS + 1.5;
 			const x =
 				shape.length !== undefined
 					? leadNumber
@@ -251,7 +277,7 @@ function displayShape(
 			const y =
 				shape.length !== undefined || shape.labelOffset !== undefined
 					? leadNumber
-						? height / 2 + 0.15
+						? height / 2 - 0.25
 						: 0
 					: attribute === "name"
 						? height / 2
@@ -277,7 +303,12 @@ function displayShape(
 					height: height / shape.height,
 					rotation:
 						shape.length !== undefined ? labelRotation : -shape.rotation,
-					appearance,
+					appearance:
+						appearance === "pin" || appearance === "stroke"
+							? attribute === "number"
+								? ("pin-number" as const)
+								: ("text" as const)
+							: appearance,
 					text,
 					pinLabel: true,
 					renderOrder: renderOrder + 1,
@@ -288,11 +319,27 @@ function displayShape(
 	return display;
 }
 
+function junctionDisplay(
+	...args: Parameters<typeof displayShape>
+): DisplayShape {
+	const display = displayShape(...args);
+	return {
+		...display,
+		geometry: {
+			kind: "junction",
+			width: display.geometry.width,
+			height: display.geometry.height,
+			lineWidth: 0,
+		},
+	};
+}
+
 /** Resolve document, selection, and temporary previews without a renderer or UI. */
 export function buildDrawingDisplay(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
 	previews: EditorShape[] = [],
+	measure: MeasureText = estimateText,
 ): DrawingDisplay {
 	const highlightedWires = new Set<number>();
 	const netSelections = new Set(
@@ -348,8 +395,12 @@ export function buildDrawingDisplay(
 						? "highlighted"
 						: shape.kind === "pin" || shape.kind === "wire"
 							? shape.kind
-							: "stroke",
+							: (shape.kind === "text" && !isNetLabel(shape)) ||
+									isBoxSymbol(shape)
+								? "note"
+								: "stroke",
 				index + 1,
+				measure,
 			);
 			const crossing = crossings.get(shape.id);
 			if (display.geometry.kind === "wire" && crossing)
@@ -376,7 +427,7 @@ export function buildDrawingDisplay(
 				renderOrder: shapes.length + 1,
 			})),
 		terminals: openWireEnds(shapes).map(({ shape, point }) =>
-			displayShape(
+			junctionDisplay(
 				{ ...terminal, ...point },
 				"wire-terminal",
 				"",
@@ -386,10 +437,11 @@ export function buildDrawingDisplay(
 						? "highlighted"
 						: "wire",
 				shapes.length + 1,
+				measure,
 			),
 		),
 		junctions: junctions.map(({ point, shapes: connected }, index) =>
-			displayShape(
+			junctionDisplay(
 				{ ...terminal, ...point },
 				`wire-junction:${index}`,
 				"editor-wire-junction",
@@ -401,6 +453,7 @@ export function buildDrawingDisplay(
 							? "pin"
 							: "wire",
 				shapes.length + 1,
+				measure,
 			),
 		),
 		connections: shapes.flatMap((shape, index) =>
@@ -418,8 +471,11 @@ export function buildDrawingDisplay(
 											? "selected"
 											: child.kind === "pin"
 												? "pin"
-												: "stroke",
+												: isBoxSymbol(shape)
+													? "note"
+													: "stroke",
 										index + 1,
+										measure,
 									),
 								]
 							: [],
@@ -433,13 +489,14 @@ export function buildDrawingDisplay(
 				"editor-pin-halo",
 				selectedIds.has(shape.id) ? "selected" : "pin",
 				shapes.length + 1,
+				measure,
 			),
-			width: PIN_RADIUS * 4,
-			height: PIN_RADIUS * 4,
+			width: PIN_RADIUS * 3,
+			height: PIN_RADIUS * 3,
 			geometry: {
 				kind: "pin-halo",
-				width: PIN_RADIUS * 4,
-				height: PIN_RADIUS * 4,
+				width: PIN_RADIUS * 3,
+				height: PIN_RADIUS * 3,
 				lineWidth: 0.1,
 			},
 		})),
@@ -460,6 +517,7 @@ export function buildDrawingDisplay(
 					name,
 					"selected",
 					shapes.length + 2,
+					measure,
 				),
 				...(preview.kind === "symbol"
 					? symbolShapes(preview).flatMap((child) =>
@@ -473,6 +531,7 @@ export function buildDrawingDisplay(
 											"editor-connection-preview",
 											"selected",
 											shapes.length + 2,
+											measure,
 										),
 									]
 								: [],

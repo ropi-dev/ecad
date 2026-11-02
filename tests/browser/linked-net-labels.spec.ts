@@ -151,8 +151,9 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
   await page.mouse.click(source.x, source.y);
   await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("resize-handle")).toHaveCount(electrical ? 0 : 4);
-  await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveCount(electrical ? 0 : 1);
-  await expect(page.getByRole("spinbutton", { name: "Height", exact: true })).toHaveCount(electrical ? 0 : 1);
+  await expect(page.getByRole("spinbutton", { name: "Width", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("spinbutton", { name: "Height", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("spinbutton", { name: "Font size", exact: true })).toHaveCount(1);
   const snapStep = electrical ? step : step / 10;
   await expect.poll(async () => (await document()).shapes[0].x).toBeCloseTo(snapStep, 6);
   const start = screen(snapStep + 5, 1.5);

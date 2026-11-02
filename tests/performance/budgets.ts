@@ -172,8 +172,6 @@ export const budgets = {
 		scriptBytes: 3_000_000,
 	},
 	"desktop-storage": {
-		legacySaveMs: 2000,
-		migrationMs: 3000,
 		saveMs: 2000,
 		importAssetsMs: 3000,
 		loadMs: 2000,

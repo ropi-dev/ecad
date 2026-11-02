@@ -26,7 +26,6 @@ export interface ProjectDirectory {
 	read(path: string): Promise<Uint8Array>;
 	write(path: string, bytes: Uint8Array): Promise<void>;
 	remove(path: string): Promise<void>;
-	removeEmptyDirectory?(path: string): Promise<void>;
 }
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -110,16 +109,9 @@ export class ProjectRepository {
 					: {
 							circuits: await Promise.all(
 								manifest.circuits.map(async (paths) => {
-									if (paths.graph && this.options.layout === "files") {
-										try {
-											await read(paths.graph);
-										} catch (cause) {
-											if (!isMissing(cause)) throw cause;
-										}
-									}
 									const content = await read(paths.circuit);
 									const value = JSON.parse(content);
-									const circuit = circuitSchema.parse(value.circuit ?? value);
+									const circuit = circuitSchema.parse(value.circuit);
 									if (value.circuitId && value.circuitId !== circuit.id)
 										throw new Error(
 											"The schematic circuit identity does not match its circuit data.",
@@ -326,11 +318,8 @@ export class ProjectRepository {
 			PROJECT_FILE,
 			...snapshot.manifest.assets.map((asset) => asset.path),
 		]);
-		const visible = (path: string) => !path.startsWith(".ecad/");
 		const drawing =
-			previous &&
-			visible(previous.manifest.drawing) &&
-			!reserved.has(previous.manifest.drawing)
+			previous && !reserved.has(previous.manifest.drawing)
 				? previous.manifest.drawing
 				: await this.unusedPath(
 						`${snapshot.manifest.name}/${snapshot.manifest.name}.ecaddraw`,
@@ -369,7 +358,7 @@ export class ProjectRepository {
 		for (const file of snapshot.drawings ?? []) {
 			const existing = previousDrawings.get(file.id);
 			const path =
-				existing && visible(existing) && !reserved.has(existing)
+				existing && !reserved.has(existing)
 					? existing
 					: await this.unusedPath(
 							`${file.name}/${file.name}.ecaddraw`,
@@ -397,7 +386,7 @@ export class ProjectRepository {
 		for (const symbol of snapshot.symbols) {
 			const existing = previousSymbols.get(symbol.id);
 			const path =
-				existing && visible(existing) && !reserved.has(existing)
+				existing && !reserved.has(existing)
 					? existing
 					: await this.unusedPath(`symbols/${symbol.id}.ecadsym`, reserved);
 			reserved.add(path);
@@ -465,20 +454,11 @@ export class ProjectRepository {
 				previous.manifest.drawing,
 				...(previous.manifest.drawings ?? []),
 				...previous.manifest.symbols,
-				...(previous.manifest.circuits ?? []).flatMap((paths) =>
-					paths.graph ? [paths.circuit, paths.graph] : [paths.circuit],
+				...(previous.manifest.circuits ?? []).flatMap((paths) => [paths.circuit],
 				),
 			].filter((path) => !reserved.has(path));
-			for (const path of obsolete) {
+			for (const path of obsolete)
 				await this.directory.remove(path).catch(() => undefined);
-				if (path.startsWith(".ecad/")) {
-					const parts = path.split("/");
-					for (let length = parts.length - 1; length > 0; length--)
-						await this.directory
-							.removeEmptyDirectory?.(parts.slice(0, length).join("/"))
-							.catch(() => undefined);
-				}
-			}
 		}
 		return this.snapshot;
 	}
@@ -513,8 +493,7 @@ export class ProjectRepository {
 				current.manifest.drawing,
 				...(current.manifest.drawings ?? []),
 				...current.manifest.symbols,
-				...(current.manifest.circuits ?? []).flatMap((paths) =>
-					paths.graph ? [paths.circuit, paths.graph] : [paths.circuit],
+				...(current.manifest.circuits ?? []).flatMap((paths) => [paths.circuit],
 				),
 				...current.manifest.assets.map((asset) => asset.path),
 			]);

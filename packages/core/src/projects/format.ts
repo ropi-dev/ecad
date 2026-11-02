@@ -58,7 +58,6 @@ export const manifestSchema = z.strictObject({
 		.array(
 			z.strictObject({
 				circuit: projectPathSchema,
-				graph: projectPathSchema.optional(),
 			}),
 		)
 		.optional(),

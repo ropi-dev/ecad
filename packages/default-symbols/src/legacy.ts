@@ -116,13 +116,13 @@ export function legacySymbols(): DefaultSymbol[] {
 									attribute: "reference",
 									x: 2.4 * scale,
 									y: 0.6 * scale + offsetY,
-									fontSize: 1.3,
+									fontSize: 1.5,
 								},
 								{
 									attribute: "value",
 									x: 2.4 * scale,
 									y: -1.2 * scale + offsetY,
-									fontSize: 1.3,
+									fontSize: 1.5,
 								},
 							]
 						: [
@@ -130,9 +130,9 @@ export function legacySymbols(): DefaultSymbol[] {
 									attribute: "reference",
 									x: 0,
 									y: label * scale,
-									fontSize: 1.3,
+									fontSize: 1.5,
 								},
-								{ attribute: "value", x: 0, y: -label * scale, fontSize: 1.3 },
+								{ attribute: "value", x: 0, y: -label * scale, fontSize: 1.5 },
 							],
 			};
 		},

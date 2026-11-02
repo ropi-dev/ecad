@@ -8,6 +8,7 @@ import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { SymbolLibraryProvider } from "#/symbol-library/storage.tsx";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 import "#/styles.css";
 
 Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
@@ -20,7 +21,7 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	shapes?.traverse((child) => {
  if (child instanceof Mesh && /^text \d+:\d+$/.test(child.name)) symbolStaticTexts.push({ name: child.name, rotation: child.rotation.z, x: child.position.x, y: child.position.y });
 		if (child instanceof Mesh && /^pin (name|number) /.test(child.name))
-			pinTexts.push({ name: child.name, texture: child.material instanceof MeshBasicMaterial ? child.material.map?.uuid : undefined, rotation: child.rotation.z + (child.parent?.rotation.z ?? 0) });
+			pinTexts.push({ name: child.name, texture: child.material instanceof MeshBasicMaterial ? child.material.alphaMap?.uuid : undefined, rotation: child.rotation.z + (child.parent?.rotation.z ?? 0) });
 	});
 	document.querySelector("#editor-scene")!.textContent = JSON.stringify({
 		pinTexts,
@@ -39,8 +40,8 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 		direction: camera.getWorldDirection(new Vector3()).toArray(),
 		origin: origin.toArray(), corner: corner.toArray(),
 		preview: preview instanceof Mesh ? { width: preview.scale.x, height: preview.scale.y, rotation: preview.rotation.z, x: preview.position.x, y: preview.position.y } : null,
-		shapes: shapes?.children.filter((shape) => shape instanceof Mesh).map((shape) => ({ name: shape.name, color: shape.material instanceof MeshBasicMaterial ? shape.material.color.getHexString() : undefined, texture: shape.material instanceof MeshBasicMaterial ? shape.material.map?.uuid : undefined, width: shape.scale.x, height: shape.scale.y, rotation: shape.rotation.z, x: shape.position.x, y: shape.position.y, selected: shape.material instanceof MeshBasicMaterial && shape.material.color.getHexString() === "e8b77e" })),
-		symbolTexts: shapes?.children.filter((shape) => shape instanceof Mesh && shape.name.startsWith("symbol ")).flatMap((symbol) => symbol.children.filter((child) => child instanceof Mesh).map((child) => ({ symbol: symbol.name, name: child.name, corners: [new Vector3(-0.5, 0, 0), new Vector3(0.5, 0, 0)].map((point) => child.localToWorld(point).toArray()), texture: child.material instanceof MeshBasicMaterial ? child.material.map?.uuid : undefined, x: child.getWorldPosition(new Vector3()).x, y: child.getWorldPosition(new Vector3()).y }))),
+		shapes: shapes?.children.filter((shape) => shape instanceof Mesh).map((shape) => ({ name: shape.name, color: shape.material instanceof MeshBasicMaterial ? shape.material.color.getHexString() : undefined, texture: shape.material instanceof MeshBasicMaterial ? shape.material.alphaMap?.uuid : undefined, width: shape.scale.x, height: shape.scale.y, rotation: shape.rotation.z, x: shape.position.x, y: shape.position.y, selected: shape.material instanceof MeshBasicMaterial && shape.material.color.getHexString() === lightSchematicTheme.appearance.selected.slice(1) })),
+		symbolTexts: shapes?.children.filter((shape) => shape instanceof Mesh && shape.name.startsWith("symbol ")).flatMap((symbol) => symbol.children.filter((child) => child instanceof Mesh).map((child) => ({ symbol: symbol.name, name: child.name, corners: [new Vector3(-0.5, 0, 0), new Vector3(0.5, 0, 0)].map((point) => child.localToWorld(point).toArray()), texture: child.material instanceof MeshBasicMaterial ? child.material.alphaMap?.uuid : undefined, x: child.getWorldPosition(new Vector3()).x, y: child.getWorldPosition(new Vector3()).y }))),
 	});
 };
 

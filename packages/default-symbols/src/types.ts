@@ -10,6 +10,7 @@ export type SymbolPrimitive =
 			rotation?: number;
 			locked?: boolean;
 			filled?: boolean;
+			lineWidth?: number;
 	  }
 	| {
 			kind: "text";
@@ -19,6 +20,7 @@ export type SymbolPrimitive =
 			width: number;
 			height: number;
 			fontSize: number;
+			bold?: boolean;
 			horizontalAlign?: "left" | "center" | "right";
 			verticalAlign?: "top" | "middle" | "bottom";
 	  }

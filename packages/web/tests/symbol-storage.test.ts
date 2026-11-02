@@ -72,45 +72,6 @@ test("an absent cache starts empty without creating a saved library", async () =
 	assert.equal(browser.entries.size, 0);
 });
 
-test("legacy multi-symbol browser caches load without overwriting the saved data", async () => {
-	const current = symbol();
-	const cached = JSON.stringify({
-		format: "ecad-symbols",
-		version: 1,
-		units: "mm",
-		symbols: [
-			{
-				id: current.id,
-				name: current.name,
-				description: current.description,
-				prefix: current.prefix,
-				value: current.value,
-				shapes: current.shapes,
-			},
-		],
-	});
-	const browser = memoryStorage(cached);
-	assert.deepEqual(await createWebSymbolLibraryStorage(browser).load(), {
-		symbols: [current],
-	});
-	assert.equal(browser.entries.get(SYMBOL_STORAGE_KEY), cached);
-});
-
-test("older saved pin radii migrate through the shared parser", async () => {
-	const current = symbol();
-	const cached = JSON.stringify([
-		{
-			...current,
-			shapes: current.shapes.map((shape) => ({ ...shape, radius: 0.254 })),
-		},
-	]);
-	const browser = memoryStorage(cached);
-	assert.deepEqual(await createWebSymbolLibraryStorage(browser).load(), {
-		symbols: [current],
-	});
-	assert.equal(browser.entries.get(SYMBOL_STORAGE_KEY), cached);
-});
-
 test("corrupt or incompatible caches report a useful error and keep the original cache", async () => {
 	for (const cached of [
 		"{",
@@ -187,12 +148,12 @@ test("the browser storage getter is lazy and unavailable browser storage stays n
 	}
 });
 
-test("user library configuration migrates the old cache and saves enabled libraries independently", async () => {
+test("user library configuration ignores the symbol cache and saves enabled libraries independently", async () => {
  const { USER_SYMBOL_CONFIG_KEY } = await import("@ecad/core/symbol-library/config.ts");
  const browser = memoryStorage(JSON.stringify([symbol()]));
  const storage = createWebSymbolLibraryStorage(browser);
  const config = await storage.loadConfiguration!();
- assert.equal(config.symbolLibraries.length, 2);
+ assert.equal(config.symbolLibraries.length, 1);
  assert.equal(browser.entries.has(USER_SYMBOL_CONFIG_KEY), false);
  const disabled = { ...config, symbolLibraries: config.symbolLibraries.map(library => ({ ...library, enabled: false })) };
  assert.equal(await storage.saveConfiguration!(disabled), "Saved in this browser.");

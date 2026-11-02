@@ -5,12 +5,20 @@ export const fontPixels = 96;
 export const padding = 12;
 export const lineHeight = 120;
 export const font = `${fontPixels}px Arial, sans-serif`;
-export type MeasureText = (text: string) => number;
+export const boldFont = `bold ${font}`;
+export const pinNameFontSize = 1.5;
+export const pinNumberFontSize = 1.25;
+export type MeasureText = (text: string, bold?: boolean) => number;
 
-export function textLayout(text: string, measureText: MeasureText) {
+export function textLayout(
+	text: string,
+	measureText: MeasureText,
+	bold?: boolean,
+) {
 	const lines = text.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n");
 	const width =
-		Math.max(fontPixels / 2, ...lines.map(measureText)) + padding * 2;
+		Math.max(fontPixels / 2, ...lines.map((line) => measureText(line, bold))) +
+		padding * 2;
 	const height = lines.length * lineHeight + padding * 2;
 	return { lines, width, height };
 }
@@ -20,7 +28,7 @@ export function updateText(
 	text: string,
 	measureText: MeasureText,
 ): TextShape {
-	const layout = textLayout(text, measureText);
+	const layout = textLayout(text, measureText, shape.bold);
 	return {
 		...shape,
 		text,
@@ -44,7 +52,7 @@ export function createTextShape(
 			rotation: 0,
 			lineWidth: 0.2,
 			text: "Text",
-			fontSize: 5,
+			fontSize: pinNameFontSize,
 			horizontalAlign: "center",
 			verticalAlign: "middle",
 		},

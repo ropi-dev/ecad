@@ -3,10 +3,11 @@ import type {
 	SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
 import {
+	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	fitBoxToBorder,
-	normalizeNetSymbol,
 	isBasicShape,
+	normalizeNetSymbol,
 	PIN_RADIUS,
 	symbolShapes,
 } from "#/drawing/shapes.ts";
@@ -28,7 +29,7 @@ export function symbolFileShapes(
 		const base = {
 			id: index + 1,
 			...(shape.locked === undefined ? {} : { locked: shape.locked }),
-			lineWidth: shape.lineWidth ?? 0.254,
+			lineWidth: shape.lineWidth ?? DEFAULT_LINE_WIDTH,
 			...("lineStyle" in shape && shape.lineStyle
 				? { lineStyle: shape.lineStyle }
 				: {}),
@@ -112,7 +113,7 @@ export function symbolFileShapes(
 				x: (shape.x1 + shape.x2) / 2,
 				y: (shape.y1 + shape.y2) / 2,
 				width: Math.hypot(dx, dy),
-				height: 0.254,
+				height: DEFAULT_LINE_WIDTH,
 				rotation: Math.atan2(dy, dx),
 			};
 		}

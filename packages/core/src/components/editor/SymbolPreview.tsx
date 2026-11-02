@@ -60,7 +60,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 					d={lines}
 					fill="none"
 					stroke="currentColor"
-					strokeWidth="0.254"
+					strokeWidth="0.2"
 					strokeLinecap="round"
 					strokeLinejoin="round"
 				/>
@@ -82,7 +82,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 								: "none"
 						}
 						stroke="currentColor"
-						strokeWidth="0.254"
+						strokeWidth="0.2"
 					>
 						{child.kind === "text" ? (
 							<text

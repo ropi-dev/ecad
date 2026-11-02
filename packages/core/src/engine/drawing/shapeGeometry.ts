@@ -160,8 +160,9 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		return new ShapeGeometry(outline).scale(1 / width, 1 / lineWidth, 1);
 	}
 	if (shape.kind === "text") return new PlaneGeometry(1, 1);
+	if (shape.kind === "junction") return new CircleGeometry(0.5, 32);
 	if (shape.kind === "pin") {
-		const dot = new CircleGeometry(0.5, 32);
+		const dot = new CircleGeometry(0.3, 32);
 		if (!shape.length) return dot;
 		const lead = createShapeGeometry({
 			kind: "line",
@@ -179,7 +180,7 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 			lead.dispose();
 		}
 	}
-	if (shape.kind === "pin-halo") return new RingGeometry(0.4, 0.5, 32);
+	if (shape.kind === "pin-halo") return new RingGeometry(0.35, 0.5, 32);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();
 	const halfStroke = lineWidth / 2;

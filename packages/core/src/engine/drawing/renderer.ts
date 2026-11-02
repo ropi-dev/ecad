@@ -16,6 +16,7 @@ import type {
 	DrawingDisplay,
 	DrawingTransform,
 } from "#/drawing/display.ts";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -49,6 +50,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			ReturnType<typeof createTextMaterial> & {
 				text: string;
 				horizontalAlign?: DisplayShape["horizontalAlign"];
+				bold?: true;
 			}
 		>();
 		let pinAtlas: ReturnType<typeof createTextAtlas> | undefined;
@@ -99,28 +101,42 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			new Vector3(0.5, 0.5, 0),
 			new Vector3(-0.5, 0.5, 0),
 		]);
-		const stroke = own(
-			() => new MeshBasicMaterial({ color: "#76c4c0", depthTest: false }),
-		);
-		const fill = own(
-			() => new MeshBasicMaterial({ color: "#18282b", depthTest: false }),
-		);
-		const wire = own(
-			() => new MeshBasicMaterial({ color: "#ef8f9c", depthTest: false }),
-		);
-		const selected = own(
-			() => new MeshBasicMaterial({ color: "#e8b77e", depthTest: false }),
-		);
-		const highlighted = own(
-			() => new MeshBasicMaterial({ color: "#f6cbd1", depthTest: false }),
-		);
+		const colors = Object.fromEntries(
+			Object.entries(lightSchematicTheme.appearance).map(
+				([appearance, color]) => [
+					appearance,
+					own(() => new MeshBasicMaterial({ color, depthTest: false })),
+				],
+			),
+		) as Record<DrawingAppearance, MeshBasicMaterial>;
+		const halos = Object.fromEntries(
+			Object.entries(lightSchematicTheme.appearance).map(
+				([appearance, color]) => [
+					appearance,
+					own(
+						() =>
+							new MeshBasicMaterial({
+								color,
+								transparent: true,
+								opacity: 0.6,
+								depthTest: false,
+								depthWrite: false,
+							}),
+					),
+				],
+			),
+		) as Record<DrawingAppearance, MeshBasicMaterial>;
 		const selection = own(
-			() => new LineBasicMaterial({ color: "#e8b77e", depthTest: false }),
+			() =>
+				new LineBasicMaterial({
+					color: lightSchematicTheme.appearance.selected,
+					depthTest: false,
+				}),
 		);
 		const materialFor = (display: DisplayShape) => {
-			const color = { stroke, pin: stroke, wire, highlighted, selected, fill }[
-				display.appearance
-			];
+			const color = colors[display.appearance];
+			if (display.geometry.kind === "pin-halo")
+				return halos[display.appearance];
 			if (display.text === undefined) return color;
 			if (display.pinLabel) {
 				const entry = pinAtlas?.entries.get(display.text);
@@ -134,7 +150,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				let material = materials.get(display.appearance);
 				if (!material) {
 					material = new MeshBasicMaterial({
-						map: entry.texture,
+						alphaMap: entry.texture,
 						color: color.color,
 						transparent: true,
 						depthTest: false,
@@ -148,11 +164,17 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			if (
 				!cached ||
 				cached.text !== display.text ||
-				cached.horizontalAlign !== display.horizontalAlign
+				cached.horizontalAlign !== display.horizontalAlign ||
+				cached.bold !== display.bold
 			) {
 				const next = {
-					...createTextMaterial(display.text, display.horizontalAlign),
+					...createTextMaterial(
+						display.text,
+						display.horizontalAlign,
+						display.bold,
+					),
 					horizontalAlign: display.horizontalAlign,
+					bold: display.bold,
 					text: display.text,
 				};
 				cached?.dispose();

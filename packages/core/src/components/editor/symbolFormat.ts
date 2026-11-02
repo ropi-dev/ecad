@@ -59,6 +59,7 @@ const shapeSchema = Schema.Union(
 		width: dimension,
 		height: dimension,
 		fontSize: dimension,
+		bold: Schema.optional(Schema.Boolean),
 		text: Schema.String.pipe(Schema.maxLength(2000)),
 		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
 		lineWidth,
@@ -297,56 +298,7 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 
 /** Browser storage is an internal cache of the individual symbol files. */
 export function parseSavedSymbolLibrary(text: string): SymbolLibrary {
-	let value = decodeJson(text);
-	// Preserve symbols previously saved by the original multi-symbol importer.
-	if (
-		typeof value === "object" &&
-		value !== null &&
-		"format" in value &&
-		value.format === "ecad-symbols" &&
-		"version" in value &&
-		value.version === 1 &&
-		"units" in value &&
-		value.units === "mm" &&
-		"symbols" in value &&
-		Array.isArray(value.symbols)
-	) {
-		value = value.symbols.map((symbol: unknown) => {
-			if (typeof symbol !== "object" || symbol === null) return symbol;
-			return { ...symbol, format: "ecad-symbol", version: 1, units: "mm" };
-		});
-	}
-	// Earlier browser caches stored a radius on each pin. Normalize those markers.
-	if (Array.isArray(value)) {
-		value = value.map((symbol: unknown) => {
-			if (
-				typeof symbol !== "object" ||
-				symbol === null ||
-				!("shapes" in symbol) ||
-				!Array.isArray(symbol.shapes)
-			)
-				return symbol;
-			return {
-				...symbol,
-				shapes: symbol.shapes.map((shape: unknown) => {
-					if (
-						typeof shape !== "object" ||
-						shape === null ||
-						!("kind" in shape) ||
-						shape.kind !== "pin" ||
-						!("radius" in shape) ||
-						typeof shape.radius !== "number" ||
-						!Number.isFinite(shape.radius) ||
-						shape.radius < 0.01 ||
-						shape.radius > 1000
-					)
-						return shape;
-					const { radius: _radius, ...pin } = shape;
-					return pin;
-				}),
-			};
-		});
-	}
+	const value = decodeJson(text);
 	const library = decode(savedLibrarySchema, value);
 	checkIds(library);
 	checkSize(JSON.stringify(library));

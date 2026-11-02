@@ -50,7 +50,11 @@ test("filled bodies cover their interiors beneath outlines with readable normal 
 			assert.equal(body.material.transparent, false);
 			const foreground = luminance(outline.material.color.getHexString());
 			const background = luminance(body.material.color.getHexString());
-			assert.ok((foreground + 0.05) / (background + 0.05) >= 4.5);
+			assert.ok(
+				(Math.max(foreground, background) + 0.05) /
+					(Math.min(foreground, background) + 0.05) >=
+					4.5,
+			);
 		} finally { renderer.dispose(); }
 	}
 	const file = parseSymbolFile(JSON.stringify(symbolFileFromSymbol(symbol)));

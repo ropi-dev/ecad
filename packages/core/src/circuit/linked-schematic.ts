@@ -1,19 +1,20 @@
-import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 import {
-	circuitFileSchema,
+	type CircuitComponent,
 	type CircuitFile,
 	type CircuitNet,
-	type CircuitComponent,
+	circuitFileSchema,
 } from "@ecad/drawing-core/circuit/model.ts";
+import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
 import {
+	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	type EditorSymbol,
-	type TextShape,
 	shapeBounds,
 	symbolShapes,
+	type TextShape,
 } from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { font, fontPixels, updateText } from "#/drawing/text.ts";
@@ -71,16 +72,12 @@ export function synchronizePcb(
 					const { circuitNet: _binding, ...edited } = shape;
 					return edited;
 				}
-				const legacySize =
-					shape.fontSize === 1 && shape.width === 5 && shape.height === 2;
 				const old = shape.circuitNet
 					? file.circuit.nets.find((net) => net.id === shape.circuitNet!.id)
 					: previous!.circuit.nets.find(
-							(net) =>
-								shape.text === `N_${net.id}` ||
-								shape.text === previousLabels.get(net.id),
+							(net) => shape.text === previousLabels.get(net.id),
 						);
-				if (!old || (!shape.circuitNet && old.names.length && !legacySize))
+				if (!old || (!shape.circuitNet && old.names.length))
 					return shape;
 				const text = labels.get(old.id);
 				if (!text) return shape;
@@ -94,11 +91,8 @@ export function synchronizePcb(
 							shape.circuitNet?.pinId ??
 							labelPinId(shape, shapes, file.circuit.components, old.pinIds),
 					},
-					...(legacySize
-						? { fontSize: 1.3, ...labelAlignment(shape, shapes) }
-						: {}),
 				};
-				return text === shape.text && !legacySize
+				return text === shape.text
 					? bound
 					: updateText(bound, text, measureLabelText);
 			});
@@ -772,7 +766,7 @@ function fallbackDefinition(component: CircuitComponent): SymbolDefinition {
 			width: 1,
 			height: 1,
 			rotation: 0,
-			lineWidth: 0.25,
+			lineWidth: DEFAULT_LINE_WIDTH,
 			length: 2,
 		})),
 	};
@@ -857,19 +851,6 @@ function measureLabelText(text: string): number {
 	return labelMeasureContext.measureText(text).width;
 }
 
-function labelAlignment(point: Point, shapes: readonly EditorShape[]) {
-	const symbol = shapes.find(
-		(shape): shape is EditorSymbol =>
-			shape.kind === "symbol" &&
-			symbolShapes(shape).some(
-				(child) =>
-					child.kind === "pin" &&
-					Math.hypot(child.x - point.x, child.y - point.y) < 1e-4,
-			),
-	);
-	return alignmentAtPin(point, symbol);
-}
-
 function alignmentAtPin(
 	point: Point,
 	symbol?: EditorSymbol,
@@ -907,7 +888,7 @@ function createNetLabel(
 			rotation: 0,
 			width: 1,
 			height: 1,
-			fontSize: 1.3,
+			fontSize: 1.5,
 			lineWidth: 0.2,
 			text,
 			...alignmentAtPin(point, symbol),

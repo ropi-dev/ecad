@@ -69,6 +69,7 @@ import {
 } from "#/drawing/clipboard-browser.ts";
 import type { LineStyle } from "#/drawing/line-style.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 import {
 	boxBorder,
 	canSelectShape,
@@ -1116,6 +1117,11 @@ function EditorCanvas({
 			<div className="relative flex min-h-0 flex-1">
 				<div
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
+					style={{
+						backgroundColor: isSymbol
+							? lightSchematicTheme.paper
+							: lightSchematicTheme.desk,
+					}}
 					data-tool={tool}
 					onPointerLeave={() => {
 						setSymbolPreview(null);
@@ -1602,6 +1608,7 @@ function EditorCanvas({
 								};
 							}}
 							groupedControls
+							theme="light"
 							gridBounds={
 								isSymbol
 									? undefined
@@ -1825,7 +1832,7 @@ function EditorCanvas({
 									return (
 										<span
 											data-testid="wire-connection"
-											className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#e8b77e]"
+											className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#1458d6]"
 											style={{ left: point.x, top: point.y }}
 										/>
 									);
@@ -1852,7 +1859,7 @@ function EditorCanvas({
 									return (
 										<span
 											data-testid="symbol-child-selection"
-											className="absolute border border-dashed border-[#e8b77e]"
+											className="absolute border border-dashed border-[#1458d6]"
 											style={{
 												left: topLeft.x - 3,
 												top: topLeft.y - 3,
@@ -1874,7 +1881,7 @@ function EditorCanvas({
 										key={anchor.key}
 										data-testid="text-anchor"
 										data-anchor-id={anchor.key}
-										className="pointer-events-none absolute z-1 size-[9px] -translate-x-1/2 -translate-y-1/2 text-[#e8b77e] drop-shadow-[0_0_1px_#19212e] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
+										className="pointer-events-none absolute z-1 size-[9px] -translate-x-1/2 -translate-y-1/2 text-[#1458d6] drop-shadow-[0_0_1px_#ffffff] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
 										style={{ left: point.x, top: point.y }}
 									/>
 								);
@@ -1889,7 +1896,7 @@ function EditorCanvas({
 								return (
 									<span
 										key={`${shape.id}:${handle.id}`}
-										className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 border border-[#e8b77e] bg-[#19212e]"
+										className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 border border-[#1458d6] bg-white"
 										data-testid="resize-handle"
 										data-shape-id={shape.id}
 										data-handle={handle.id}
@@ -1903,8 +1910,8 @@ function EditorCanvas({
 						<div
 							className={`pointer-events-none absolute z-2 border ${
 								marquee.mode === "window"
-									? "border-[#60a5fa] bg-[#60a5fa25]"
-									: "border-dashed border-[#4ade80] bg-[#4ade8025]"
+									? "border-[#1458d6] bg-[#1458d61f]"
+									: "border-dashed border-[#15803d] bg-[#15803d1f]"
 							}`}
 							data-testid="selection-rectangle"
 							data-selection-mode={marquee.mode}

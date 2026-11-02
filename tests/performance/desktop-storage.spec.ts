@@ -20,8 +20,8 @@ test("desktop-storage", async ({}, testInfo) => {
 	};
 	try {
 		const disk = await createDesktopProjectDirectory(directory);
-		const legacy = new ProjectRepository(disk);
-		await legacy.create("Fixture");
+		const repository = new ProjectRepository(disk, { layout: "files" });
+		await repository.create("Fixture");
 		const shapes: EditorShape[] = Array.from({ length: 2000 }, (_, id) => ({
 			id: id + 1,
 			kind: "rectangle",
@@ -47,10 +47,7 @@ test("desktop-storage", async ({}, testInfo) => {
 				}),
 			),
 		);
-		await measure("legacySaveMs", () => legacy.save({ shapes, symbols }));
-		const repository = new ProjectRepository(disk, { layout: "files" });
-		await repository.load();
-		await measure("migrationMs", () => repository.save({ shapes, symbols }));
+		await repository.save({ shapes, symbols });
 		expect(await readdir(directory)).not.toContain(".ecad");
 		const changed = shapes.map((shape) => ({ ...shape, x: shape.x + 1 }));
 		await measure("saveMs", () =>

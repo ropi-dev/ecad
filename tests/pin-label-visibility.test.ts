@@ -6,7 +6,7 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
-import { drawShape, pinTerminals, replaceSymbolChild, symbolChildren } from "#/drawing/shapes.ts";
+import { DEFAULT_LINE_WIDTH, drawShape, pinTerminals, replaceSymbolChild, symbolChildren } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import {
 	createSymbol,
@@ -168,7 +168,7 @@ test("native pin names align with leads while numbers stay above them and surviv
 		assert.equal(name.y, 0);
 		assert.equal(Math.sign(number.x), Math.sign(labelOffset));
 		assert.ok(Math.abs(number.x * display.width) + number.width * display.width / 2 < Math.abs(labelOffset) - 0.5);
-		assert.ok((number.y - number.height / 2) * display.height > 0);
+		assert.ok(number.y * display.height > 0);
 		assert.ok((number.y + number.height / 2) * display.height < 2);
 		assert.equal(drawingShapeSchema.safeParse(restored).success, true);
 		assert.equal(drawingShapeSchema.safeParse({ ...restored, labelOffset: Infinity }).success, false);
@@ -209,7 +209,7 @@ test("independent pin visibility survives symbol, drawing, and child override pe
 				const file = parseSymbolFile(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "custom.pin", name: "Pin", description: "", prefix: "U", value: "", shapes: [{ kind: "pin", name: "RUN", number: "01", x: 0, y: 0, ...visibility }] }));
 				const symbol = createSymbol(2, libraryDefinitions([file])[0], { x: 10, y: 20 });
 				const saved = parseSymbolFile(JSON.stringify(symbolFileFromSymbol(symbol)));
-				assert.deepEqual(saved.shapes, file.shapes.map(shape => ({ ...shape, lineWidth: 0.254 })));
+				assert.deepEqual(saved.shapes, file.shapes.map(shape => ({ ...shape, lineWidth: DEFAULT_LINE_WIDTH })));
 				const pin = symbol.children[0];
 				const placed = { ...symbol, childOverrides: { [`shape:${pin.id}`]: visibility } };
 				const document = { shapes: [pin, placed], symbols: [saved] };

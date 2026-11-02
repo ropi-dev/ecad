@@ -6,7 +6,8 @@ import type { Bounds, Point } from "#/drawing/types.ts";
 
 export const A3 = { width: 420, height: 297 } as const;
 /** All connection markers have the same radius in millimetres. */
-export const PIN_RADIUS = 0.254;
+export const PIN_RADIUS = 0.2;
+export const DEFAULT_LINE_WIDTH = 0.12;
 export type ShapeKind =
 	| "rectangle"
 	| "circle"
@@ -69,21 +70,21 @@ export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
 		(label) => label.attribute === "value",
 	);
 	const hasNameLabel = symbol.texts.some((label) => label.attribute === "name");
-	const legacyValue = Boolean(
+	const hasValue = Boolean(
 		symbol.attributes.value.trim() ||
 			symbol.textPositions?.value ||
 			symbol.textAlignments?.value ||
 			symbol.childOverrides?.["attribute:value"],
 	);
 	const source =
-		hasValueLabel || (!hasNameLabel && legacyValue) ? "value" : "name";
+		hasValueLabel || (!hasNameLabel && hasValue) ? "value" : "name";
 	const label = symbol.texts.find((label) => label.attribute === source) ?? {
 		attribute: "name" as const,
 		x: 0,
 		y:
 			Math.min(0, ...symbol.children.map((child) => shapeBounds(child).minY)) -
 			1.5,
-		fontSize: 1.3,
+		fontSize: 1.5,
 	};
 	const name = symbol.attributes.value.trim()
 		? symbol.attributes.value
@@ -157,6 +158,18 @@ export function boxBorder(
 	if (!original || original.kind !== "rectangle") return;
 	const key = `shape:${original.id}`;
 	return { key, shape: { ...original, ...symbol.childOverrides?.[key] } };
+}
+
+export function boxText(
+	symbol: EditorSymbol,
+): { key: string; shape: TextShape } | undefined {
+	if (!isBoxSymbol(symbol)) return;
+	const child = symbolChildren(symbol).find(
+		(item) => item.shape.kind === "text",
+	);
+	return child?.shape.kind === "text"
+		? { key: child.key, shape: child.shape }
+		: undefined;
 }
 
 export function fitBoxToBorder(
@@ -428,6 +441,7 @@ export interface TextShape extends ShapeGeometry, TextAlignment {
 	kind: "text";
 	text: string;
 	fontSize: number;
+	bold?: boolean;
 }
 
 export type SymbolShape = PrimitiveShape | TextShape;
@@ -548,6 +562,13 @@ export function editShapeAttribute(
 				lineWidth: value,
 				strokeOverride: value,
 			};
+		const text = boxText(shape);
+		if (text && attribute === "fontSize") {
+			const edited = editShapeAttribute(text.shape, attribute, value);
+			return edited.kind === "text"
+				? replaceSymbolChild(shape, text.key, edited)
+				: shape;
+		}
 		if (border && (attribute === "width" || attribute === "height")) {
 			const resized = { ...border.shape, [attribute]: value };
 			return replaceSymbolChild(shape, border.key, {
@@ -826,7 +847,7 @@ export function drawShape(
 			width: 2 * PIN_RADIUS,
 			height: 2 * PIN_RADIUS,
 			rotation: 0,
-			lineWidth: 0.2,
+			lineWidth: DEFAULT_LINE_WIDTH,
 		};
 	const last =
 		kind === "circle"
@@ -845,7 +866,7 @@ export function drawShape(
 			width: radius * 2,
 			height: radius * 2,
 			rotation: 0,
-			lineWidth: 0.2,
+			lineWidth: DEFAULT_LINE_WIDTH,
 		};
 	}
 	return {
@@ -857,7 +878,7 @@ export function drawShape(
 			kind === "wire" || kind === "line" ? Math.hypot(dx, dy) : Math.abs(dx),
 		height: kind === "wire" || kind === "line" ? 1 : Math.abs(dy),
 		rotation: kind === "wire" || kind === "line" ? Math.atan2(dy, dx) : 0,
-		lineWidth: 0.2,
+		lineWidth: DEFAULT_LINE_WIDTH,
 	};
 }
 

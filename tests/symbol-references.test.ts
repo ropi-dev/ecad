@@ -135,11 +135,10 @@ test("legacy inline symbols stay readable when their original library is unavail
 	assert.deepEqual(persistDrawingShapes([instance]), [instance]);
 });
 
-test("saving legacy project instances removes geometry and preserves a uniform stroke edit", async () => {
+test("saving inline project instances removes geometry and preserves a stroke override", async () => {
  const resolved = await resolveSymbolLibraries([library([pin])], []);
  const instance = createSymbol(1, { ...resolved.definitions[0], library: undefined }, { x: 10, y: 20 });
- instance.lineWidth = 0.6;
- instance.children = instance.children.map(child => ({ ...child, lineWidth: 0.6 }));
+ instance.strokeOverride = 0.6;
  const saved = persistProjectDrawingShapes({ shapes: [instance], symbols: [pin] })[0];
  assert.ok(!("children" in saved));
  assert.deepEqual((saved as EditorSymbol).library, { scope: "project", id: "project-symbols" });

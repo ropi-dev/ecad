@@ -1,5 +1,9 @@
 import { Matrix4, Vector3 } from "three";
 import { buildDrawingDisplay, type DisplayShape } from "#/drawing/display.ts";
+import {
+	darkSchematicTheme,
+	lightSchematicTheme,
+} from "#/drawing/schematic-theme.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import {
 	fontPixels,
@@ -51,16 +55,13 @@ export function exportDrawingSvg(
 				throw new RangeError(
 					"Export dimensions must be whole pixels up to 16384 per side and 100 megapixels.",
 				);
-			const display = buildDrawingDisplay(shapes, new Set());
+			const measure =
+				options.measureText ??
+				((text: string) => text.length * fontPixels * 0.55);
+			const display = buildDrawingDisplay(shapes, new Set(), [], measure);
 			const dark = background === "dark";
-			const colors = {
-				stroke: dark ? "#76c4c0" : "#164b50",
-				pin: dark ? "#76c4c0" : "#164b50",
-				wire: dark ? "#ef8f9c" : "#963343",
-				highlighted: dark ? "#f6cbd1" : "#963343",
-				selected: "#164b50",
-				fill: dark ? "#18282b" : "#e6f0f0",
-			};
+			const theme = dark ? darkSchematicTheme : lightSchematicTheme;
+			const colors = theme.appearance;
 			const elements: { order: number; svg: string }[] = [];
 			let minX = Infinity,
 				minY = Infinity,
@@ -72,9 +73,6 @@ export function exportDrawingSvg(
 				minY = Math.min(minY, point.y);
 				maxY = Math.max(maxY, point.y);
 			};
-			const measure =
-				options.measureText ??
-				((text: string) => text.length * fontPixels * 0.55);
 			const visit = (
 				shape: DisplayShape,
 				parent = new Matrix4(),
@@ -106,7 +104,7 @@ export function exportDrawingSvg(
 				const color = colors[shape.appearance];
 				let svg = "";
 				if (shape.text !== undefined) {
-					const layout = textLayout(shape.text, measure);
+					const layout = textLayout(shape.text, measure, shape.bold);
 					for (const x of [-0.5, 0.5])
 						for (const y of [-0.5, 0.5])
 							include(new Vector3(x, y, 0).applyMatrix4(matrix));
@@ -128,7 +126,7 @@ export function exportDrawingSvg(
 							(layout.lines.length - 1) * lineHeight +
 							fontPixels * 0.72) /
 						2;
-					svg = `<g transform="matrix(${[m[0], -m[1], m[4], -m[5], m[12], -m[13]].map(number).join(" ")})" fill="${color}" font-family="Arial, sans-serif" font-size="${fontPixels}" text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${layout.lines.map((line, i) => `<text x="${x}" y="${baseline + i * lineHeight}"${line ? ` textLength="${measure(line)}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line)}</text>`).join("")}</g>`;
+					svg = `<g transform="matrix(${[m[0], -m[1], m[4], -m[5], m[12], -m[13]].map(number).join(" ")})" fill="${color}" font-family="Arial, sans-serif" font-size="${fontPixels}"${shape.bold ? ' font-weight="bold"' : ""} text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${layout.lines.map((line, i) => `<text x="${x}" y="${baseline + i * lineHeight}"${line ? ` textLength="${measure(line, shape.bold)}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line)}</text>`).join("")}</g>`;
 				} else {
 					const geometry = createShapeGeometry(shape.geometry);
 					try {
@@ -174,7 +172,7 @@ export function exportDrawingSvg(
 				maxX = Math.max(maxX, sheet.width / 2);
 				minY = Math.min(minY, -sheet.height / 2);
 				maxY = Math.max(maxY, sheet.height / 2);
-				worksheet = `<g fill="none" stroke="${colors.stroke}" stroke-width="0.15"><path d="${page.frame.map((p, i) => `${i % 2 ? "L" : "M"}${p.x} ${-p.y}`).join("")}"/></g><g fill="${colors.stroke}" font-family="Arial, sans-serif">${page.labels.map((label) => `<text x="${label.x}" y="${-label.y}" dominant-baseline="central" text-anchor="${label.align === "center" ? "middle" : "start"}" font-size="${label.fontSize}">${escapeXml(label.text)}</text>`).join("")}</g>`;
+				worksheet = `<g fill="none" stroke="${theme.sheet}" stroke-width="0.15"><path d="${page.frame.map((p, i) => `${i % 2 ? "L" : "M"}${p.x} ${-p.y}`).join("")}"/></g><g fill="${theme.sheet}" font-family="Arial, sans-serif">${page.labels.map((label) => `<text x="${label.x}" y="${-label.y}" dominant-baseline="central" text-anchor="${label.align === "center" ? "middle" : "start"}" font-size="${label.fontSize}">${escapeXml(label.text)}</text>`).join("")}</g>`;
 			}
 			if (!Number.isFinite(minX)) {
 				minX = -5;
@@ -192,8 +190,8 @@ export function exportDrawingSvg(
 			const rect =
 				background === "transparent"
 					? ""
-					: `<rect x="${minX}" y="${-maxY}" width="${viewWidth}" height="${viewHeight}" fill="${dark ? "#111318" : "white"}"/>`;
-			return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" style="background:${background === "transparent" ? "transparent" : dark ? "#111318" : "white"}" viewBox="${minX} ${-maxY} ${viewWidth} ${viewHeight}">${rect}${worksheet}${elements
+					: `<rect x="${minX}" y="${-maxY}" width="${viewWidth}" height="${viewHeight}" fill="${dark ? theme.paper : "white"}"/>`;
+			return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" style="background:${background === "transparent" ? "transparent" : dark ? theme.paper : "white"}" viewBox="${minX} ${-maxY} ${viewWidth} ${viewHeight}">${rect}${worksheet}${elements
 				.sort((a, b) => a.order - b.order)
 				.map((e) => e.svg)
 				.join("")}</svg>`;
