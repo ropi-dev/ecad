@@ -1155,7 +1155,13 @@ export function openPins(
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
-	const noConnects = shapes.filter((shape) => shape.kind === "no-connect");
+	const noConnects = shapes.flatMap((shape) =>
+		shape.kind === "symbol"
+			? symbolShapes(shape).filter((child) => child.kind === "no-connect")
+			: shape.kind === "no-connect"
+				? [shape]
+				: [],
+	);
 	return candidates.filter(
 		(pin) =>
 			!noConnects.some(
@@ -1706,6 +1712,7 @@ export function moveShapes(
 			anchorShape.kind === "circle" ||
 			anchorShape.kind === "symbol" ||
 			anchorShape.kind === "pin" ||
+			anchorShape.kind === "no-connect" ||
 			anchorShape.kind === "text"
 				? anchorShape
 				: localToWorld(
