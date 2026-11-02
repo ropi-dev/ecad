@@ -1,7 +1,9 @@
+import type { DisplayBridge } from "@ecad/core/components/viewer/displayScale.ts";
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
 import { contextBridge, ipcRenderer } from "electron";
 import {
 	type DesktopSymbolLibraryBridge,
+	displayChannels,
 	libraryChannels,
 	projectChannels,
 } from "#/bridge.ts";
@@ -52,3 +54,15 @@ const projects: ProjectStorage = {
 		ipcRenderer.invoke(projectChannels.canWriteFile, directory, path),
 };
 contextBridge.exposeInMainWorld("ecadProjects", projects);
+
+const display: DisplayBridge = {
+	getCalibration: () => ipcRenderer.invoke(displayChannels.getCalibration),
+	onChanged: (listener) => {
+		const handle = () => listener();
+		ipcRenderer.on(displayChannels.changed, handle);
+		return () => {
+			ipcRenderer.removeListener(displayChannels.changed, handle);
+		};
+	},
+};
+contextBridge.exposeInMainWorld("ecadDisplay", display);

@@ -23,8 +23,10 @@ import {
 	ipcMain,
 	net,
 	protocol,
+	screen,
 } from "electron";
-import { libraryChannels, projectChannels } from "#/bridge.ts";
+import { displayChannels, libraryChannels, projectChannels } from "#/bridge.ts";
+import { readDisplayCalibration } from "#/main/display-calibration.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
 
@@ -280,6 +282,49 @@ function registerProjectHandlers() {
 	);
 }
 
+function registerDisplayHandlers() {
+	let cached: {
+		key: string;
+		value: ReturnType<typeof readDisplayCalibration>;
+	} | null = null;
+	let notification: ReturnType<typeof setTimeout> | undefined;
+	const notify = () => {
+		clearTimeout(notification);
+		notification = setTimeout(() => {
+			if (window && !window.isDestroyed())
+				window.webContents.send(displayChannels.changed);
+		}, 100);
+	};
+	const invalidate = () => {
+		cached = null;
+		notify();
+	};
+	screen.on("display-added", invalidate);
+	screen.on("display-removed", invalidate);
+	screen.on("display-metrics-changed", invalidate);
+	ipcMain.handle(displayChannels.getCalibration, (event) => {
+		assertSender(event);
+		if (!window) return null;
+		const display = screen.getDisplayMatching(window.getBounds());
+		const displays = screen.getAllDisplays();
+		const key = JSON.stringify([
+			display.id,
+			display.size,
+			display.rotation,
+			display.scaleFactor,
+			displays.length,
+		]);
+		if (cached?.key !== key)
+			cached = { key, value: readDisplayCalibration(display, displays.length) };
+		return cached.value;
+	});
+	app.on("browser-window-created", (_event, owner) => {
+		owner.on("move", notify);
+		owner.on("resize", notify);
+	});
+	app.on("will-quit", () => clearTimeout(notification));
+}
+
 function createWindow() {
 	window = new BrowserWindow({
 		width: 1400,
@@ -351,6 +396,7 @@ void app.whenReady().then(() => {
 	});
 	registerLibraryHandlers();
 	registerProjectHandlers();
+	registerDisplayHandlers();
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();

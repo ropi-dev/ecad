@@ -1586,6 +1586,7 @@ function EditorCanvas({
 						<OrthographicViewer2D
 							scene={scene}
 							fitZoom={1.1}
+							physicalSizeZoom
 							getFitBounds={() => {
 								const targets =
 									selectedSymbol && selectedChild

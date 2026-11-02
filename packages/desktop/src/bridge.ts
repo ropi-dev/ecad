@@ -58,3 +58,8 @@ declare global {
 		ecadProjects: ProjectStorage;
 	}
 }
+
+export const displayChannels = {
+	getCalibration: "display:calibration",
+	changed: "display:changed",
+} as const;

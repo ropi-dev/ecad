@@ -23,6 +23,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
 import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
 import type { Viewer3DHandle } from "./types/Viewer3DHandle";
+import { useDisplayScale } from "./useDisplayScale.ts";
 import { useViewportSize } from "./useViewportSize";
 import { ViewControls3D } from "./ViewControls3D";
 import { ViewportRulers, type ViewportRulersHandle } from "./ViewportRulers";
@@ -38,6 +39,7 @@ export interface SceneViewportProps {
 	lockProjection?: boolean;
 	/** Magnification applied to the fitted view that defines 100% zoom. */
 	fitZoom?: number;
+	physicalSizeZoom?: boolean;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	interactionHint?: string;
@@ -60,6 +62,7 @@ export function SceneViewport({
 	projection = "perspective",
 	lockProjection = false,
 	fitZoom = 1,
+	physicalSizeZoom = false,
 	getFitBounds,
 	selectionEnabled = true,
 	interactionHint,
@@ -82,6 +85,7 @@ export function SceneViewport({
 	const [zoomLevel, setZoomLevel] = useState(1);
 	const [activeProjection, setActiveProjection] = useState(projection);
 	useEffect(() => setActiveProjection(projection), [projection]);
+	const displayScale = useDisplayScale(physicalSizeZoom);
 	const host = useRef<HTMLDivElement>(null);
 	const size = useViewportSize(host);
 	const axes = useRef<AxisIndicatorHandle>(null);
@@ -89,6 +93,9 @@ export function SceneViewport({
 	const reportChange = useEffectEvent((snapshot: Viewer2DSnapshot) => {
 		rulers.current?.update(snapshot);
 		onChange?.(snapshot);
+	});
+	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
+		viewport.setPhysicalScale(displayScale);
 	});
 	const readFitBounds = useEffectEvent(() => getFitBounds?.() ?? null);
 	const reportReady = useEffectEvent((ready: boolean) => {
@@ -155,6 +162,7 @@ export function SceneViewport({
 				{ objects: sourceScene.length },
 			);
 			runtime.current = viewport;
+			configureDisplay(viewport);
 		} catch (error) {
 			reportError(
 				`3D viewer unavailable: ${error instanceof Error ? error.message : "WebGL is not supported in this browser."}`,
@@ -173,6 +181,9 @@ export function SceneViewport({
 		lockProjection,
 		fitZoom,
 	]);
+	useEffect(() => {
+		runtime.current?.setPhysicalScale(displayScale);
+	}, [displayScale]);
 	useEffect(() => {
 		runtime.current?.resize(size.width, size.height);
 	}, [size]);
@@ -244,6 +255,11 @@ export function SceneViewport({
 					grouped={groupedControls}
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
+					actualSize={
+						displayScale !== null
+							? () => runtime.current?.actualSize()
+							: undefined
+					}
 					exportPng={exportPng}
 					exporting={exporting}
 					projection={activeProjection}
