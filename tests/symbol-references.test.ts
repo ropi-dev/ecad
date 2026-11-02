@@ -237,7 +237,7 @@ test("reusable symbol import, resolution and saving reject nested net declaratio
 });
 
 
-test("smaller ground geometry preserves saved terminals across rotations and library migration", () => {
+test("resized ground definitions resolve to mil geometry across rotations and remain stable after saving", () => {
  const ground = symbolDefinitions.find(definition => definition.id === "ground")!;
  const oldGround = {
   ...ground,
@@ -258,7 +258,7 @@ test("smaller ground geometry preserves saved terminals across rotations and lib
   for (const inline of [false, true]) {
    const instance = { ...createSymbol(1, oldGround, { x: 10, y: 10 }), rotation };
    if (inline) delete instance.library;
-   const terminals = pinTerminals(instance);
+   const terminals = pinTerminals({ ...createSymbol(1, ground, { x: 10, y: 10 }), rotation });
    const saved = inline ? instance : persistDrawingShapes([instance])[0];
    const result = resolveDrawingSymbols([drawingShapeSchema.parse(saved)], [ground], references);
    assert.deepEqual(result.errors, []);

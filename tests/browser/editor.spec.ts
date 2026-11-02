@@ -1,13 +1,13 @@
 import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
+import { SCHEMATIC_STEP } from "#/drawing/units.ts";
 import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 
 const [selected, highlighted, wire] = (
 	["selected", "highlighted", "wire"] as const
 ).map((appearance) => lightSchematicTheme.appearance[appearance].slice(1));
 
-// Coordinate fixtures use a desktop viewport with a 10 mm grid at the fitted view.
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface State {
@@ -166,10 +166,10 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 	await page.keyboard.press("Shift+ArrowDown");
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes[0].x)
-		.toBeCloseTo(-29, 4);
+		.toBeCloseTo(-30 + SCHEMATIC_STEP, 4);
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes[0].y)
-		.toBeCloseTo(320, 4);
+		.toBeCloseTo(330 - 10 * SCHEMATIC_STEP, 4);
 	await page.keyboard.press("Delete");
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes.length)

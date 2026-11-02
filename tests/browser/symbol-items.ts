@@ -17,7 +17,7 @@ export async function selectDrawingShape(page: Page, id: number, modifiers?: ("C
 }
 
 export async function drawingPoint(page: Page, point: { x: number; y: number }) {
-	return page.getByRole("img", { name: "Drawing rulers in millimetres" }).evaluate((rulers, point) => {
+	return page.getByRole("img", { name: /^Drawing rulers in (mils|millimetres)$/ }).evaluate((rulers, point) => {
 		const bounds = rulers.getBoundingClientRect();
 		const coordinate = (axis: "x" | "y", value: number) => {
 			const ticks = Array.from(rulers.querySelectorAll(`[data-axis="${axis}"]`)).slice(0, 2);
@@ -69,4 +69,11 @@ export async function selectSymbolItem(page: Page, key: string) {
 	}
 	await page.mouse.up();
 	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+}
+
+export async function drawingGridStep(page: Page) {
+ return page.getByRole("img", { name: /^Drawing rulers in (mils|millimetres)$/ }).evaluate(rulers => {
+  const ticks = Array.from(rulers.querySelectorAll('[data-axis="x"]')).slice(0, 2);
+  return Number(ticks[1].getAttribute("data-value")) - Number(ticks[0].getAttribute("data-value"));
+ });
 }

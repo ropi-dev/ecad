@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { EditorShape } from "#/drawing/shapes.ts";
-import { drawingPoint } from "./symbol-items";
+import { snapPoint, type EditorShape } from "#/drawing/shapes.ts";
+import { drawingGridStep, drawingPoint } from "./symbol-items";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 const documentState = async (
@@ -97,8 +97,7 @@ test("Alt-drag copies net labels and text without moving originals or attached w
 		expect(after.shapes.at(-1)).toEqual({
 			...source,
 			id: before.shapes.length + 1,
-			x: source.x + 20,
-			y: source.y - 20,
+			...snapPoint({ x: source.x + 20, y: source.y - 20 }, (await drawingGridStep(page)) / (id === 1 ? 1 : 10)),
 		});
 	}
 	const placed = await documentState(page);
@@ -142,7 +141,6 @@ test("Alt-drag copies topmost text instead of a symbol behind it", async ({
 	expect(after.shapes[5]).toMatchObject({
 		kind: "text",
 		text: "Board notes",
-		x: 20,
-		y: -80,
+		...snapPoint({ x: 20, y: -80 }, (await drawingGridStep(page)) / 10),
 	});
 });

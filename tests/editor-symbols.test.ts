@@ -37,13 +37,13 @@ for (const definition of symbolDefinitions) {
 		const symbol = createSymbol(1, definition, { x: 50, y: 60 });
 		assert.deepEqual(symbolTextShapes(symbol).map((label) => label.text), symbol.texts.map(({ attribute }) => symbol.attributes[attribute]));
 		if (["resistor", "capacitor", "ground"].includes(definition.id)) {
-			assert.equal(Math.max(symbol.width, symbol.height), 6 + 2 * PIN_RADIUS);
+			assert.equal(Math.max(symbol.width, symbol.height), 7.62 + 2 * PIN_RADIUS);
 		}
 		assert.ok(Number.isFinite(symbol.width) && symbol.width > 0);
 		assert.ok(Number.isFinite(symbol.height) && symbol.height > 0);
 		for (const terminal of pinTerminals(symbol)) {
-			assert.equal(terminal.x, Math.round(terminal.x));
-			assert.equal(terminal.y, Math.round(terminal.y));
+			assert.ok(Math.abs((terminal.x - 50) / 1.27 - Math.round((terminal.x - 50) / 1.27)) < 1e-8);
+			assert.ok(Math.abs((terminal.y - 60) / 1.27 - Math.round((terminal.y - 60) / 1.27)) < 1e-8);
 		}
 		const selection = selectionSize(symbol);
 		assert.equal(selection.width, symbol.width + (isBoxSymbol(symbol) ? 0 : 0.5));
@@ -117,8 +117,8 @@ test("rotation transforms symbol children and instances own their attributes", (
 	symbol.attributes.value = "22 kΩ";
 	symbol.children[0].width = 999;
 	assert.equal(second.attributes.value, "10 kΩ");
-	assert.ok(Math.abs(second.children[0].width - 1) < 1e-12);
-	assert.ok(Math.abs(symbolDefinitions[0].children[0].width - 1) < 1e-12);
+	assert.ok(Math.abs(second.children[0].width - 1.27) < 1e-12);
+	assert.ok(Math.abs(symbolDefinitions[0].children[0].width - 1.27) < 1e-12);
 });
 
 test("symbol text resolves reference and value from each instance", () => {

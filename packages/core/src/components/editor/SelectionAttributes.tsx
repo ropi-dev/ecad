@@ -24,11 +24,17 @@ import {
 	type TextAlignment,
 	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
+import {
+	formatMils,
+	fromMils,
+	SCHEMATIC_STEP,
+	toMils,
+} from "#/drawing/units.ts";
 
 function AttributeInput({
 	label,
 	value,
-	unit = "mm",
+	unit = "mil",
 	positive = false,
 	nonNegative = false,
 	step = "any",
@@ -43,13 +49,15 @@ function AttributeInput({
 	onChange: (value: number) => void;
 }) {
 	const inputRef = useRef<HTMLInputElement>(null);
-	const displayValue = value === "" ? "" : Number(value.toFixed(4)) || value;
+	const converted = value === "" ? "" : unit === "mil" ? toMils(value) : value;
+	const displayValue =
+		converted === "" ? "" : Number(converted.toFixed(4)) || converted;
 	useEffect(() => {
 		const input = inputRef.current;
 		// Hide pointer-conversion noise without rewriting a value being typed.
-		if (input && input.valueAsNumber !== value)
+		if (input && input.valueAsNumber !== displayValue)
 			input.value = String(displayValue);
-	}, [displayValue, value]);
+	}, [displayValue]);
 	return (
 		<span className="flex items-center gap-2">
 			<input
@@ -64,14 +72,15 @@ function AttributeInput({
 				data-committed-value={value}
 				className="w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-right text-[#f0f3f8] tabular-nums focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 				onBlur={(event) => {
-					const next = event.currentTarget.valueAsNumber;
+					const entered = event.currentTarget.valueAsNumber;
+					const next = unit === "mil" ? fromMils(entered) : entered;
 					if (
 						Number.isFinite(next) &&
 						(!positive || next > 0) &&
 						(!nonNegative || next >= 0) &&
 						(step !== "90" || next % 90 === 0)
 					) {
-						if (next !== value && next !== displayValue) onChange(next);
+						if (next !== value && entered !== displayValue) onChange(next);
 					} else event.currentTarget.value = String(displayValue);
 				}}
 				onKeyDown={(event) => {
@@ -202,7 +211,7 @@ function SelectionAttributesPanel({
 	const right = Math.max(...bounds.map((box) => box.maxX));
 	const bottom = Math.min(...bounds.map((box) => box.minY));
 	const top = Math.max(...bounds.map((box) => box.maxY));
-	const mm = (value: number) => `${value.toFixed(1)} mm`;
+	const distance = formatMils;
 	const editable = (
 		label: string,
 		attribute: ShapeAttribute,
@@ -216,9 +225,14 @@ function SelectionAttributesPanel({
 				name={attribute}
 				label={label}
 				value={value}
-				unit={attribute === "angle" ? "°" : "mm"}
+				unit={attribute === "angle" ? "°" : "mil"}
 				step={attribute === "angle" ? "90" : "any"}
-				onCommit={(next) => onAttributeChange(attribute, next)}
+				onCommit={(next) =>
+					onAttributeChange(
+						attribute,
+						attribute === "angle" ? next : fromMils(next),
+					)
+				}
 			/>
 		) : (
 			<AttributeInput
@@ -232,7 +246,7 @@ function SelectionAttributesPanel({
 					attribute !== "angle" &&
 					attribute !== "length"
 				}
-				unit={attribute === "angle" ? "°" : "mm"}
+				unit={attribute === "angle" ? "°" : "mil"}
 				step={
 					attribute === "angle" &&
 					(single?.kind === "wire" ||
@@ -387,10 +401,10 @@ function SelectionAttributesPanel({
 			]
 		: [
 				lockAttribute,
-				["Left X", mm(left)],
-				["Bottom Y", mm(bottom)],
-				["Width", mm(right - left)],
-				["Height", mm(top - bottom)],
+				["Left X", distance(left)],
+				["Bottom Y", distance(bottom)],
+				["Width", distance(right - left)],
+				["Height", distance(top - bottom)],
 			];
 	return (
 		<FloatingPanel label="Selection attributes" position="top-right">
@@ -583,10 +597,11 @@ function SelectionAttributesPanel({
 								name="lineWidth"
 								label="Line width"
 								value={lineWidth}
-								unit="mm"
+								unit="mil"
 								positive
 								onCommit={(value) => {
-									if (value !== null) onAttributeChange("lineWidth", value);
+									if (value !== null)
+										onAttributeChange("lineWidth", fromMils(value));
 								}}
 							/>
 						) : (
@@ -610,8 +625,9 @@ function SelectionAttributesPanel({
 								: single && isNetLabel(single)
 									? "Drag to move the label."
 									: "Drag to move; drag handles to resize."}{" "}
-					Arrow keys move {snapStep || 1} mm; Shift + arrows move{" "}
-					{(snapStep || 1) * 10} mm when the drawing is focused.
+					Arrow keys move {formatMils(snapStep || SCHEMATIC_STEP)}; Shift +
+					arrows move {formatMils((snapStep || SCHEMATIC_STEP) * 10)} when the
+					drawing is focused.
 				</p>
 			</div>
 		</FloatingPanel>

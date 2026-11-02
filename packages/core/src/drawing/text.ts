@@ -1,3 +1,9 @@
+import {
+	DEFAULT_STROKE_WIDTH,
+	DEFAULT_TEXT_SIZE,
+	PIN_NAME_SIZE,
+	PIN_NUMBER_SIZE,
+} from "#/drawing/units.ts";
 import type { TextShape } from "./shapes";
 import type { Point } from "./types";
 
@@ -6,8 +12,8 @@ export const padding = 12;
 export const lineHeight = 120;
 export const font = `${fontPixels}px Arial, sans-serif`;
 export const boldFont = `bold ${font}`;
-export const pinNameFontSize = 1.5;
-export const pinNumberFontSize = 1.25;
+export const pinNameFontSize = PIN_NAME_SIZE;
+export const pinNumberFontSize = PIN_NUMBER_SIZE;
 export type MeasureText = (text: string, bold?: boolean) => number;
 
 export function textLayout(
@@ -50,9 +56,9 @@ export function createTextShape(
 			width: 1,
 			height: 1,
 			rotation: 0,
-			lineWidth: 0.2,
+			lineWidth: DEFAULT_STROKE_WIDTH,
 			text: "Text",
-			fontSize: pinNameFontSize,
+			fontSize: DEFAULT_TEXT_SIZE,
 			horizontalAlign: "center",
 			verticalAlign: "middle",
 		},

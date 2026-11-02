@@ -1,3 +1,8 @@
+import {
+	DEFAULT_STROKE_WIDTH,
+	DEFAULT_TEXT_SIZE,
+	fromMils,
+} from "@ecad/drawing-core/drawing/units.ts";
 import type { DefaultSymbol } from "./types.ts";
 
 export function annotationSymbols(): DefaultSymbol[] {
@@ -16,21 +21,21 @@ export function annotationSymbols(): DefaultSymbol[] {
 				shapes: [
 					{
 						kind: "rectangle",
-						x: 10,
-						y: -6,
-						width: 20,
-						height: 12,
-						lineWidth: 0.3,
+						x: fromMils(500),
+						y: fromMils(-300),
+						width: fromMils(1000),
+						height: fromMils(600),
+						lineWidth: DEFAULT_STROKE_WIDTH,
 						locked: false,
 					},
 					{
 						kind: "text",
 						text: "Text",
-						x: 1,
-						y: -1,
-						width: 4.6,
-						height: 3,
-						fontSize: 2,
+						x: fromMils(50),
+						y: fromMils(-50),
+						width: fromMils(230),
+						height: fromMils(150),
+						fontSize: DEFAULT_TEXT_SIZE,
 						bold: true,
 						horizontalAlign: "left",
 						verticalAlign: "top",

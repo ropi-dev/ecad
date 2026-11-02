@@ -1,3 +1,4 @@
+import { fromMils } from "#/drawing/units.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
@@ -33,9 +34,9 @@ function assertFits(symbol: EditorSymbol) {
 test("Box size and selection match its border when placed, edited and rotated", () => {
  for (const rotation of [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]) {
   let symbol = { ...createSymbol(1, definition, { x: 20, y: 30 }), rotation };
-  assert.equal(symbol.width, 20);
-  assert.equal(symbol.height, 12);
-  assert.deepEqual(symbolChildren(symbol)[1].shape, { ...definition.children[1], locked: false, x: 1, y: -1, horizontalAlign: "left", verticalAlign: "top" });
+  assert.equal(symbol.width, fromMils(1000));
+  assert.equal(symbol.height, fromMils(600));
+  assert.deepEqual(symbolChildren(symbol)[1].shape, { ...definition.children[1], locked: false, x: fromMils(50), y: fromMils(-50), horizontalAlign: "left", verticalAlign: "top" });
   assertFits(symbol);
   symbol = asSymbol(editShapeAttribute(symbol, "width", 36));
   symbol = asSymbol(editShapeAttribute(symbol, "height", 24));
@@ -85,10 +86,10 @@ test("Box dimensions survive drawing and nested symbol persistence", () => {
  const references = new Map([[symbolReferenceKey(definition.library!, definition.id), definition]]);
  const restored = asSymbol(resolveDrawingSymbols([drawingShapeSchema.parse(saved)], [definition], references).shapes[0]);
  assert.equal(restored.width, 40);
- assert.equal(restored.height, 15);
+ assert.equal(restored.height, fromMils(600) + 3);
  assert.deepEqual(symbolChildren(restored)[1], symbolChildren(symbol)[1]);
- assert.equal(symbolChildren(restored)[1].shape.x, 1);
- assert.equal(symbolChildren(restored)[1].shape.y, -1);
+ assert.equal(symbolChildren(restored)[1].shape.x, fromMils(50));
+ assert.equal(symbolChildren(restored)[1].shape.y, fromMils(-50));
  assertFits(restored);
  const file = parseSymbolFile(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "box-parent", name: "Box parent", description: "", prefix: "U", value: "", shapes: [] }));
  const nested = symbolFileShapes(parseSymbolFile(JSON.stringify(symbolFileWithShapes(file, [symbol]))), () => definition);

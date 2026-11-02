@@ -16,7 +16,7 @@ test("pins own their leads, bounds, selection, and labels while only the exposed
 	const base = drawShape(1, "pin", { x: 10, y: 20 }, { x: 10, y: 20 });
 	assert.equal(base.kind, "pin");
 	if (base.kind !== "pin") throw new Error("Expected a pin");
-	assert.equal(base.length, 2);
+	assert.equal(base.length, 2.54);
 	for (const angle of [0, 90, 180, -90]) {
 		const pin: PinShape = { ...editShapeAttribute(base, "angle", angle), kind: "pin" as const, name: "SWCLK", number: "24" };
 		const dx = Math.cos(pin.rotation), dy = Math.sin(pin.rotation);
@@ -42,7 +42,7 @@ test("pins own their leads, bounds, selection, and labels while only the exposed
 		const [name, number] = display.children!;
 		assert.ok(name.x * pin.width - name.width * pin.width / 2 > 2);
 		assert.equal(name.y, 0);
-		assert.ok(Math.abs(number.x * pin.width - 1) < 1e-9);
+		assert.ok(Math.abs(number.x * pin.width - base.length / 2) < 1e-9);
 		const textAngle = pin.rotation + name.rotation;
 		assert.ok(textAngle > -Math.PI / 2 - 1e-9 && textAngle <= Math.PI / 2 + 1e-9);
 		const longer = editShapeAttribute(pin, "length", 4);
@@ -78,7 +78,7 @@ test("lead-only edits commit and participate in undo and redo", () => {
 	const read = () => store.getSnapshot().shapes[0] as PinShape;
 	assert.equal(read().length, 4);
 	run(undoEffect);
-	assert.equal(read().length, 2);
+	assert.equal(read().length, 2.54);
 	run(redoEffect);
 	assert.equal(read().length, 4);
 });

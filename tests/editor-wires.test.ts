@@ -80,7 +80,7 @@ test("moving a pin from a wire interior allows travel beyond the original wire",
 
 test("moving away from another pin adds a straight wire or a bend and leaves the other pin fixed", () => {
 	const first = pin(1, 20, 20);
-	const other = createSymbol(2, symbolDefinitions[0], { x: 23, y: 20 });
+	const other = createSymbol(2, symbolDefinitions[0], { x: 23.81, y: 20 });
 	for (const delta of [{ x: 10, y: 0 }, { x: 0, y: -10 }, { x: -10, y: 20 }]) {
 		const moved = moveShapes([first], delta, 0, first, [first, other], 50);
 		assert.equal(moved[1].id, 50);
@@ -219,8 +219,8 @@ test("symbols expose only their external pins, including after rotation", () => 
 		rotation: Math.PI / 2,
 	};
 	assert.deepEqual(pinTerminals(symbol), [
-		{ x: 50, y: 57 },
-		{ x: 50, y: 63 },
+		{ x: 50, y: 56.19 },
+		{ x: 50, y: 63.81 },
 	]);
 	assert.deepEqual(wireConnectionPoints([symbol]), pinTerminals(symbol));
 	assert.equal(findWireConnection([symbol], { x: 50, y: 50 }, 1), undefined);

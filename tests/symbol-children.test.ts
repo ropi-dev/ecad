@@ -93,10 +93,10 @@ test("resizing a Box symbol follows rotated axes and preserves sibling text and 
   if (resized.kind !== "symbol") throw new Error("Expected symbol");
   assert.strictEqual(resizeSymbolChild(symbol, body.key, handle, { x: 4, y: -2 }, 0, true), symbol);
   const [updated, sibling] = symbolChildren(resized);
-  assert.ok(Math.abs(updated.shape.width - 24) < 1e-9);
-  assert.ok(Math.abs(updated.shape.height - 14) < 1e-9);
-  assert.ok(Math.abs(updated.shape.x - 12) < 1e-9);
-  assert.ok(Math.abs(updated.shape.y + 7) < 1e-9);
+  assert.ok(Math.abs(updated.shape.width - Math.round(body.shape.width + 4)) < 1e-9);
+  assert.ok(Math.abs(updated.shape.height - Math.round(body.shape.height + 2)) < 1e-9);
+  assert.ok(Math.abs(updated.shape.x - Math.round(body.shape.width + 4) / 2) < 1e-9);
+  assert.ok(Math.abs(updated.shape.y + Math.round(body.shape.height + 2) / 2) < 1e-9);
   assert.ok(Math.abs(updated.shape.x - updated.shape.width / 2) < 1e-9);
   assert.ok(Math.abs(updated.shape.y + updated.shape.height / 2) < 1e-9);
   assert.equal(updated.shape.rotation, body.shape.rotation);

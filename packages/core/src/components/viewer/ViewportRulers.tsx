@@ -32,10 +32,12 @@ export function ViewportRulers({
 	ref,
 	gridBounds,
 	theme = "dark",
+	unit = "mm",
 }: {
 	ref: Ref<ViewportRulersHandle>;
 	gridBounds?: Bounds;
 	theme?: keyof typeof rulerThemes;
+	unit?: "mm" | "mil";
 }) {
 	const gridMaskId = useId();
 	const gridPatternId = useId();
@@ -61,13 +63,21 @@ export function ViewportRulers({
 		camera,
 		viewport: { width, height },
 	} = view;
-	const horizontal = rulerTicks(camera.x, camera.scale, width).filter(
-		(tick) => tick.position < width - 24,
-	);
-	const vertical = rulerTicks(camera.y, camera.scale, height, true).filter(
-		(tick) => tick.position >= 24,
-	);
-	const layers = gridLayers(camera.scale);
+	const horizontal = rulerTicks(
+		camera.x,
+		camera.scale,
+		width,
+		false,
+		unit,
+	).filter((tick) => tick.position < width - 24);
+	const vertical = rulerTicks(
+		camera.y,
+		camera.scale,
+		height,
+		true,
+		unit,
+	).filter((tick) => tick.position >= 24);
+	const layers = gridLayers(camera.scale, unit);
 	return (
 		<>
 			<svg
@@ -149,11 +159,11 @@ export function ViewportRulers({
 				width={width}
 				height={height}
 				role="img"
-				aria-label="Drawing rulers in millimetres"
+				aria-label={`Drawing rulers in ${unit === "mil" ? "mils" : "millimetres"}`}
 			>
 				<title>
-					Board coordinates in millimetres. X increases to the right; Y
-					increases upward.
+					Coordinates in {unit === "mil" ? "mils" : "millimetres"}. X increases
+					to the right; Y increases upward.
 				</title>
 				<path
 					className="ruler-band"
@@ -200,7 +210,7 @@ export function ViewportRulers({
 					d={`M${width - 24} 0H${width}V24H${width - 24}Z`}
 				/>
 				<text x={width - 12} y="15" textAnchor="middle">
-					mm
+					{unit}
 				</text>
 			</svg>
 		</>

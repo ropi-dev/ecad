@@ -1,3 +1,7 @@
+import {
+	MM_PER_MIL,
+	SYMBOL_TEXT_SIZE,
+} from "@ecad/drawing-core/drawing/units.ts";
 import { annotationSymbols } from "./annotations.ts";
 import { catalog } from "./catalog.ts";
 import { legacySymbols } from "./legacy.ts";
@@ -11,9 +15,7 @@ export type {
 } from "./types.ts";
 export { symbolCategories } from "./types.ts";
 
-// Fifty mils become one editor grid step. Do not fit each symbol independently,
-// since that would move multi-terminal devices off the connection grid.
-const MIL_TO_GRID = 1 / 50;
+const MIL_TO_GRID = MM_PER_MIL;
 const round = (value: number) => Math.round(value * 1e9) / 1e9 || 0;
 
 function generate(source: SourceSymbol): DefaultSymbol {
@@ -126,8 +128,18 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			shapes,
 		},
 		texts: [
-			{ attribute: "reference", x: 0, y: Math.max(...ys) + 1.5, fontSize: 1.5 },
-			{ attribute: "value", x: 0, y: Math.min(...ys) - 1.5, fontSize: 1.5 },
+			{
+				attribute: "reference",
+				x: 0,
+				y: Math.max(...ys) + SYMBOL_TEXT_SIZE,
+				fontSize: SYMBOL_TEXT_SIZE,
+			},
+			{
+				attribute: "value",
+				x: 0,
+				y: Math.min(...ys) - SYMBOL_TEXT_SIZE,
+				fontSize: SYMBOL_TEXT_SIZE,
+			},
 		],
 	};
 }
