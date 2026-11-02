@@ -30,21 +30,21 @@ export const lightSchematicTheme: SchematicTheme = {
 };
 
 export const darkSchematicTheme: SchematicTheme = {
-	desk: "#111318",
-	paper: "#111318",
-	paperEdge: "#59616e",
-	grid: "#303a49",
+	desk: "#0d0f13",
+	paper: "#161a21",
+	paperEdge: "#3d4552",
+	grid: "#2e3744",
 	sheet: "#b87979",
 	appearance: {
 		stroke: "#76c4c0",
 		pin: "#76c4c0",
-		fill: "#18282b",
+		fill: "#1b2e31",
 		wire: "#ef8f9c",
 		highlighted: "#f6cbd1",
 		selected: "#e8b77e",
-		text: "#76c4c0",
-		"pin-number": "#76c4c0",
-		note: "#76c4c0",
-		label: "#76c4c0",
+		text: "#a9d8d5",
+		"pin-number": "#c99aa1",
+		note: "#8fb3ff",
+		label: "#e8edf5",
 	},
 };

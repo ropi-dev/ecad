@@ -45,7 +45,6 @@ export interface SceneViewportProps {
 	interactionHint?: string;
 	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
 	gridBounds?: Bounds;
-	theme?: "dark" | "light";
 	rulerUnit?: "mm" | "mil";
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
@@ -69,7 +68,6 @@ export function SceneViewport({
 	selectionEnabled = true,
 	interactionHint,
 	gridBounds,
-	theme,
 	rulerUnit,
 	onChange,
 	updateScene,
@@ -251,12 +249,7 @@ export function SceneViewport({
 				</FloatingPanel>
 			)}
 			{cameraMode === "top" && (
-				<ViewportRulers
-					unit={rulerUnit}
-					ref={rulers}
-					gridBounds={gridBounds}
-					theme={theme}
-				/>
+				<ViewportRulers unit={rulerUnit} ref={rulers} gridBounds={gridBounds} />
 			)}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (

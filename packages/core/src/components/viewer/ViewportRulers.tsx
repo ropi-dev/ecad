@@ -1,5 +1,5 @@
 import { type Ref, useId, useImperativeHandle, useState } from "react";
-import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { Camera } from "#/engine/index.ts";
 import { gridLayers, rulerTicks } from "#/engine/ruler.ts";
 import type { Bounds } from "#/engine/types.ts";
@@ -13,30 +13,13 @@ export interface ViewportRulersHandle {
 	update: (view: RulerView) => void;
 }
 
-const rulerThemes = {
-	dark: {
-		paper: undefined,
-		grid: "#303a49",
-		rulers:
-			"text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955]",
-	},
-	light: {
-		paper: lightSchematicTheme.paper,
-		grid: lightSchematicTheme.grid,
-		rulers:
-			"text-[#5d5c57] [&_line]:stroke-[#9a9993] [&_.ruler-band]:fill-[#eceae4] [&_.ruler-edge]:stroke-[#c4c2ba]",
-	},
-};
-
 export function ViewportRulers({
 	ref,
 	gridBounds,
-	theme = "dark",
 	unit = "mm",
 }: {
 	ref: Ref<ViewportRulersHandle>;
 	gridBounds?: Bounds;
-	theme?: keyof typeof rulerThemes;
 	unit?: "mm" | "mil";
 }) {
 	const gridMaskId = useId();
@@ -104,7 +87,7 @@ export function ViewportRulers({
 									cx={pixels / 2}
 									cy={pixels / 2}
 									r={1}
-									fill={rulerThemes[theme].grid}
+									fill={darkSchematicTheme.grid}
 								/>
 							</pattern>
 						);
@@ -132,14 +115,14 @@ export function ViewportRulers({
 						</mask>
 					</defs>
 				)}
-				{gridBounds && rulerThemes[theme].paper && (
+				{gridBounds && (
 					<rect
 						data-testid="viewport-paper"
 						x={width / 2 + (gridBounds.minX - camera.x) * camera.scale}
 						y={height / 2 + (camera.y - gridBounds.maxY) * camera.scale}
 						width={(gridBounds.maxX - gridBounds.minX) * camera.scale}
 						height={(gridBounds.maxY - gridBounds.minY) * camera.scale}
-						fill={rulerThemes[theme].paper}
+						fill={darkSchematicTheme.paper}
 					/>
 				)}
 				<g mask={gridBounds ? `url(#${gridMaskId})` : undefined}>
@@ -155,7 +138,7 @@ export function ViewportRulers({
 				</g>
 			</svg>
 			<svg
-				className={`pointer-events-none absolute inset-0 z-2 overflow-hidden [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums ${rulerThemes[theme].rulers}`}
+				className="pointer-events-none absolute inset-0 z-2 overflow-hidden [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955]"
 				width={width}
 				height={height}
 				role="img"

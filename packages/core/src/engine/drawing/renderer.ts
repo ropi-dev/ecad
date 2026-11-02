@@ -16,7 +16,7 @@ import type {
 	DrawingDisplay,
 	DrawingTransform,
 } from "#/drawing/display.ts";
-import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -102,7 +102,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			new Vector3(-0.5, 0.5, 0),
 		]);
 		const colors = Object.fromEntries(
-			Object.entries(lightSchematicTheme.appearance).map(
+			Object.entries(darkSchematicTheme.appearance).map(
 				([appearance, color]) => [
 					appearance,
 					own(() => new MeshBasicMaterial({ color, depthTest: false })),
@@ -110,7 +110,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			),
 		) as Record<DrawingAppearance, MeshBasicMaterial>;
 		const halos = Object.fromEntries(
-			Object.entries(lightSchematicTheme.appearance).map(
+			Object.entries(darkSchematicTheme.appearance).map(
 				([appearance, color]) => [
 					appearance,
 					own(
@@ -129,7 +129,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const selection = own(
 			() =>
 				new LineBasicMaterial({
-					color: lightSchematicTheme.appearance.selected,
+					color: darkSchematicTheme.appearance.selected,
 					depthTest: false,
 				}),
 		);

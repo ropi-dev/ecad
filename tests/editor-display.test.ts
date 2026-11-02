@@ -6,11 +6,11 @@ import { drawShape, PIN_RADIUS, pinTerminals } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
 import type { DrawingAppearance } from "#/drawing/display.ts";
-import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
 
 const hex = (appearance: DrawingAppearance) =>
-	lightSchematicTheme.appearance[appearance].slice(1);
+	darkSchematicTheme.appearance[appearance].slice(1);
 
 test("display resolves wire stroke dimensions, selection, and drawing order without a browser", () => {
 	const rectangle = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 20, y: 10 });

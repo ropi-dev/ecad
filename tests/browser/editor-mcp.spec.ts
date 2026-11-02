@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, type Page, test } from "@playwright/test";
 import type { RectangleInput } from "#/commands/drawing-commands.ts";
-import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { drawingReplySchema } from "#/mcp/drawing-protocol.ts";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -136,7 +136,7 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 			.toEqual([
 				{
 					name: "rectangle 1",
-					color: lightSchematicTheme.appearance.stroke.slice(1),
+					color: darkSchematicTheme.appearance.stroke.slice(1),
 					x: rectangle.x,
 					y: rectangle.y,
 					width: rectangle.width,
