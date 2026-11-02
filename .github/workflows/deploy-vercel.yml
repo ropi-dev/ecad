@@ -32,4 +32,4 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@65.9.0
       - name: Deploy production
-        run: vercel deploy --prod --yes --scope ropis-projects --token "$VERCEL_TOKEN"
+        run: vercel deploy --prod --yes --token "$VERCEL_TOKEN"
