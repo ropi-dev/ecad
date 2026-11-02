@@ -16,3 +16,4 @@ test-results/
 playwright-report/
 
 perf-artifacts/
+.vercel
