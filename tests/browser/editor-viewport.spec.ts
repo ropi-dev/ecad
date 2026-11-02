@@ -126,3 +126,50 @@ test("each document retains independent schematic and circuit zoom and pan", asy
 	await switchTo(page, "circuit");
 	await expect.poll(() => circuitCamera(page)).toBe(initialCircuit);
 });
+
+for (const [direction, steps] of [
+	["in", 12],
+	["out", 8],
+] as const) {
+	test(`physical zoom ${direction} beyond fit-relative limits survives view switches`, async ({
+		page,
+	}) => {
+		await page.addInitScript(() => {
+			window.ecadDisplay = {
+				getCalibration: () =>
+					new Promise((resolve) =>
+						setTimeout(() => resolve({ pixelsPerMm: 6.4 }), 100),
+					),
+				onChanged: () => () => {},
+			};
+		});
+		await page.goto("/tests/browser/projects.html");
+		await (await openProjectFiles(page))
+			.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
+			.click();
+		await closeProjectFiles(page);
+		const actualSize = page.getByRole("button", {
+			name: "Actual size",
+			exact: true,
+		});
+		await expect(actualSize).toBeEnabled();
+		for (let index = 0; index < steps; index++)
+			await page
+				.getByRole("button", { name: `Zoom ${direction}`, exact: true })
+				.click();
+		await moveCamera(page, "schematic", 0);
+		const zoom = await actualSize.innerText();
+		const camera = await schematicCamera(page);
+		for (let index = 0; index < 2; index++) {
+			await switchTo(page, "circuit");
+			await switchTo(page, "schematic");
+			await expect(actualSize).toBeEnabled();
+			await expect(actualSize).toHaveText(zoom);
+			await expect.poll(() => schematicCamera(page)).toBe(camera);
+		}
+		await mkdir("/tmp/ecad-viewport", { recursive: true });
+		await page.screenshot({
+			path: `/tmp/ecad-viewport/physical-zoom-${direction}-restored.png`,
+		});
+	});
+}

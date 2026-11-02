@@ -655,7 +655,6 @@ export function createSceneViewport(
 				camera,
 				Math.max(element.clientHeight, 1) / initialCamera.scale,
 			);
-			controls.update();
 			schedule();
 		}
 		return runtime;
