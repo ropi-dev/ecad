@@ -61,7 +61,7 @@ for (const definition of symbolDefinitions) {
 					x: center.x + x * Math.cos(rotated.rotation) - y * Math.sin(rotated.rotation),
 					y: center.y + x * Math.sin(rotated.rotation) + y * Math.cos(rotated.rotation),
 				};
-				assert.equal(hitShape(rotated, point, 0), expected);
+				assert.equal(hitShape(rotated, point, 0), expected && !(isBoxSymbol(symbol) && x === 0 && y === 0));
 				assert.equal(intersectsSelection(rotated, { minX: point.x, maxX: point.x, minY: point.y, maxY: point.y }), expected);
 			}
 		}

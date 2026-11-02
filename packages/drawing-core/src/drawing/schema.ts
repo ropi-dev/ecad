@@ -80,6 +80,7 @@ const textInputSchema = z.strictObject({
 		.describe(
 			"Font size in millimetres; width and height must already be measured.",
 		),
+	bold: z.boolean().optional(),
 });
 export const symbolChildOverridesSchema = z.record(
 	z.string().regex(/^(shape:[1-9]\d*|attribute:(name|reference|value))$/),
@@ -184,7 +185,7 @@ export const shapeInputSchema = z
 			shape.kind !== "symbol" ||
 			shape.library !== undefined ||
 			shape.children.length > 0,
-		"Symbols require a library reference or legacy inline geometry.",
+		"Symbols require a library reference or inline geometry.",
 	);
 export const drawingShapeSchema = z
 	.discriminatedUnion("kind", [
@@ -198,7 +199,7 @@ export const drawingShapeSchema = z
 			shape.kind !== "symbol" ||
 			shape.library !== undefined ||
 			shape.children.length > 0,
-		"Symbols require a library reference or legacy inline geometry.",
+		"Symbols require a library reference or inline geometry.",
 	)
 	.overwrite((shape) =>
 		shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,

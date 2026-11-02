@@ -1,9 +1,11 @@
 import { drawingShapeSchema } from "#/drawing/schema.ts";
-import type {
-	EditorShape,
-	EditorSymbol,
-	SymbolShape,
-	TextShape,
+import {
+	DEFAULT_LINE_WIDTH,
+	type EditorShape,
+	type EditorSymbol,
+	PIN_RADIUS,
+	type SymbolShape,
+	type TextShape,
 } from "#/drawing/shapes.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import {
@@ -48,7 +50,7 @@ const geometry = (
 	width: number,
 	height: number,
 	rotation = 0,
-	lineWidth = 0.18,
+	lineWidth = DEFAULT_LINE_WIDTH,
 ) => ({
 	id: 1,
 	x,
@@ -62,7 +64,7 @@ const line = (
 	a: XY,
 	b: XY,
 	kind: "line" | "wire" = "line",
-	stroke = 0.18,
+	stroke = DEFAULT_LINE_WIDTH,
 ): SymbolShape => ({
 	...geometry(
 		(a[0] + b[0]) / 2,
@@ -234,7 +236,8 @@ function convert(source: string): KiCadImportResult {
 				.filter((g): g is SExpr => Array.isArray(g))) {
 				const kind = String(g[0]);
 				const stroke =
-					Math.max(Number(value(node(g, "stroke"), "width", "0")), 0) || 0.18;
+					Math.max(Number(value(node(g, "stroke"), "width", "0")), 0) ||
+					DEFAULT_LINE_WIDTH;
 				const fill = value(node(g, "fill"), "type", "none");
 				if (kind === "polyline") {
 					const pts = nodes(node(g, "pts"), "xy").map((p) =>
@@ -324,8 +327,8 @@ function convert(source: string): KiCadImportResult {
 					children.push({
 						...geometry(
 							...p,
-							0.508,
-							0.508,
+							2 * PIN_RADIUS,
+							2 * PIN_RADIUS,
 							Math.atan2(direction[1], direction[0]),
 						),
 						kind: "pin",
@@ -368,8 +371,7 @@ function convert(source: string): KiCadImportResult {
 		const texts: EditorSymbol["texts"] = [];
 		const childOverrides: EditorSymbol["childOverrides"] = {};
 		for (const prop of nodes(instance, "property")) {
-			if (hidden(prop) || !prop[2])
-				continue;
+			if (hidden(prop) || !prop[2]) continue;
 			const at = world(numbers(prop, "at")),
 				label = text(prop, [at[0] - sx, at[1] - sy], String(prop[2]));
 			if (["Reference", "Value"].includes(String(prop[1]))) {

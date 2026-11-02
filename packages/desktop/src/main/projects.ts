@@ -7,7 +7,6 @@ import {
 	realpath,
 	rename,
 	rm,
-	rmdir,
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -110,9 +109,6 @@ export async function createDesktopProjectDirectory(
 		},
 		async remove(path) {
 			await rm(await target(path), { recursive: true, force: true });
-		},
-		async removeEmptyDirectory(path) {
-			await rmdir(await target(path));
 		},
 	};
 }

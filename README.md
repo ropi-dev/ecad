@@ -67,7 +67,7 @@ name = "board.gbr"
 kind = "gerber"
 ```
 
-Desktop projects store the drawing directly in the project directory, custom symbols in `symbols`, and imported Gerber files, archives, and STEP models in `assets`. These paths stay the same across saves. Imports retain their filenames and add a numbered suffix when a name already exists. Existing projects with `.ecad` revision folders move their drawing and symbols to visible paths on the next successful save. Migration removes the old referenced files and empty folders, and keeps unrelated files. Existing drawing and symbol paths outside `.ecad` remain unchanged. The whole project directory can be moved together.
+Desktop projects store the drawing directly in the project directory, custom symbols in `symbols`, and imported Gerber files, archives, and STEP models in `assets`. These paths stay the same across saves. Imports retain their filenames and add a numbered suffix when a name already exists. The whole project directory can be moved together.
 
 Desktop writes replace each file atomically and restore earlier files if a later write fails. A process interruption during a save can still leave files from different saves. External changes to `.ecadprj` stop saves until the project is reopened. Desktop also checks the saved drawing and symbol files for external edits before saving or importing. **Reload project** is available after a save error and discards unsaved drawing changes.
 

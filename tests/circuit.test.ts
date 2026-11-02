@@ -6,7 +6,6 @@ import { circuitFileSchema, createCircuit, parseCircuit, parseGraphLayout, seria
 import { createCircuitComponent, instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import { createCircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import { createCircuitView, untangleCircuitGraph, circuitLayoutQuality } from "@ecad/drawing-core/circuit/untangle.ts";
-import { parseProjectManifest, serializeProjectManifest } from "#/projects/format.ts";
 import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
 
 test("circuit and graph formats round trip independently and reject broken references", () => {
@@ -253,7 +252,6 @@ for (const layout of ["files", "revisions"] as const) {
 		assert.equal(paths.circuit, saved.manifest.drawings![saved.drawings!.findIndex(drawing => drawing.circuitId === file.circuit.id)]);
 		assert.ok(![...memory.files.keys()].some(path => path.endsWith(".ecadcircuit")));
 		assert.deepEqual(JSON.parse(new TextDecoder().decode(memory.files.get(paths.circuit))).circuit, file.circuit);
-		assert.equal(paths.graph, undefined);
 		assert.ok(![...memory.files.keys()].some(path=>path.endsWith(".ecadgraph")));
 		assert.ok(!new TextDecoder().decode(memory.files.get(paths.circuit)).includes("positions"));
 		assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits?.map(file=>file.circuit), saved.circuits!.map(file=>file.circuit));
@@ -280,29 +278,6 @@ test("desktop circuit saves reject external electrical circuit edits", async () 
  const saved = await repository.save({shapes:[],symbols:[],circuits:[createTestCircuit()]});
  memory.files.set(saved.manifest.circuits![0].circuit,new TextEncoder().encode("{}"));
  await assert.rejects(repository.save({shapes:[],symbols:[]}),/changed on disk/);
-});
-
-for (const layout of ["files","revisions"] as const) test(`legacy graph positions are discarded and graph references removed with ${layout} storage`,async()=>{
- const memory=memoryDirectory();
- const repository=new ProjectRepository(memory.directory,{layout});
- await repository.create("Circuit project");
- const file=createTestCircuit();
- await repository.save({shapes:[],symbols:[],circuits:[file]});
- const graphPath="legacy.ecadgraph";
- const legacy={...file.graph,positions:file.graph.positions.map(position=>({...position,x:9999,y:8888})),collapsedComponentIds:[file.circuit.components[0].id]};
- memory.files.set(graphPath,new TextEncoder().encode(serializeGraphLayout(legacy)));
- const manifest=parseProjectManifest(new TextDecoder().decode(memory.files.get(".ecadprj")));
- manifest.circuits![0].graph=graphPath;
- memory.files.set(".ecadprj",new TextEncoder().encode(serializeProjectManifest(manifest)));
- const reopenedRepository=new ProjectRepository(memory.directory,{layout});
- const reopened=await reopenedRepository.load();
- assert.deepEqual(reopened.circuits?.[0].circuit,file.circuit);
- assert.notDeepEqual(reopened.circuits?.[0].graph.positions,legacy.positions);
- assert.equal(reopened.circuits?.[0].graph.collapsedComponentIds,undefined);
- const migrated=await reopenedRepository.save(reopened);
- assert.equal(migrated.manifest.circuits?.[0].graph,undefined);
- if(layout==="files") assert.ok(!memory.files.has(graphPath));
- assert.deepEqual((await new ProjectRepository(memory.directory,{layout}).load()).circuits?.[0].circuit,file.circuit);
 });
 
  test("untangling reduces crossings, separates overlapping nodes, and leaves connectivity intact",()=>{
@@ -345,39 +320,6 @@ for(const layout of ["files","revisions"] as const) test(`legacy PCB identities 
  const reopened=await new ProjectRepository(memory.directory,{layout}).load();
  assert.deepEqual(reopened.circuits!.map(file=>file.circuit),saved.circuits!.map(file=>file.circuit));
 });
-
-for (const layout of ["files", "revisions"] as const) {
- test(`separate legacy circuits migrate into schematics after a successful ${layout} save`, async () => {
-  const memory = memoryDirectory();
-  const initial = new ProjectRepository(memory.directory, { layout });
-  await initial.create("Legacy");
-  const file = createTestCircuit();
-  const saved = await initial.save({ shapes: [], symbols: [], circuits: [file] });
-  const schematicPath = saved.manifest.circuits![0].circuit;
-  const decoder = new TextDecoder(), encoder = new TextEncoder();
-  const schematic = JSON.parse(decoder.decode(memory.files.get(schematicPath)));
-  delete schematic.circuit;
-  memory.files.set(schematicPath, encoder.encode(JSON.stringify(schematic)));
-  memory.files.set("legacy.ecadcircuit", encoder.encode(JSON.stringify(file.circuit)));
-  const manifest = parseProjectManifest(decoder.decode(memory.files.get(".ecadprj")));
-  manifest.circuits![0].circuit = "legacy.ecadcircuit";
-  memory.files.set(".ecadprj", encoder.encode(serializeProjectManifest(manifest)));
-  const repository = new ProjectRepository(memory.directory, { layout });
-  const reopened = await repository.load();
-  assert.deepEqual(reopened.circuits![0].circuit, file.circuit);
-  memory.fail(".ecadprj");
-  await assert.rejects(repository.save(reopened), /Disk full/);
-  assert.ok(memory.files.has("legacy.ecadcircuit"));
-  assert.equal(JSON.parse(decoder.decode(memory.files.get(schematicPath))).circuit, undefined);
-  memory.fail("");
-  const migrated = await repository.save(reopened);
-  const path = migrated.manifest.circuits![0].circuit;
-  assert.ok(path.endsWith(".ecaddraw"));
-  assert.deepEqual(JSON.parse(decoder.decode(memory.files.get(path))).circuit, file.circuit);
-  assert.deepEqual((await new ProjectRepository(memory.directory, { layout }).load()).circuits![0].circuit, file.circuit);
-  if (layout === "files") assert.ok(!memory.files.has("legacy.ecadcircuit"));
- });
-}
 
 test("renaming a net to an existing name merges memberships and aliases in one undo step", () => {
  const file = createTestCircuit();

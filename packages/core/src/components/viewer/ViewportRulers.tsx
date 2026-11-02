@@ -1,4 +1,5 @@
 import { type Ref, useId, useImperativeHandle, useState } from "react";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { Camera } from "#/engine/index.ts";
 import { gridLayers, rulerTicks } from "#/engine/ruler.ts";
 import type { Bounds } from "#/engine/types.ts";
@@ -12,12 +13,29 @@ export interface ViewportRulersHandle {
 	update: (view: RulerView) => void;
 }
 
+const rulerThemes = {
+	dark: {
+		paper: undefined,
+		grid: "#303a49",
+		rulers:
+			"text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955]",
+	},
+	light: {
+		paper: lightSchematicTheme.paper,
+		grid: lightSchematicTheme.grid,
+		rulers:
+			"text-[#5d5c57] [&_line]:stroke-[#9a9993] [&_.ruler-band]:fill-[#eceae4] [&_.ruler-edge]:stroke-[#c4c2ba]",
+	},
+};
+
 export function ViewportRulers({
 	ref,
 	gridBounds,
+	theme = "dark",
 }: {
 	ref: Ref<ViewportRulersHandle>;
 	gridBounds?: Bounds;
+	theme?: keyof typeof rulerThemes;
 }) {
 	const gridMaskId = useId();
 	const gridPatternId = useId();
@@ -72,7 +90,12 @@ export function ViewportRulers({
 								width={pixels}
 								height={pixels}
 							>
-								<circle cx={pixels / 2} cy={pixels / 2} r={1} fill="#303a49" />
+								<circle
+									cx={pixels / 2}
+									cy={pixels / 2}
+									r={1}
+									fill={rulerThemes[theme].grid}
+								/>
 							</pattern>
 						);
 					})}
@@ -99,6 +122,16 @@ export function ViewportRulers({
 						</mask>
 					</defs>
 				)}
+				{gridBounds && rulerThemes[theme].paper && (
+					<rect
+						data-testid="viewport-paper"
+						x={width / 2 + (gridBounds.minX - camera.x) * camera.scale}
+						y={height / 2 + (camera.y - gridBounds.maxY) * camera.scale}
+						width={(gridBounds.maxX - gridBounds.minX) * camera.scale}
+						height={(gridBounds.maxY - gridBounds.minY) * camera.scale}
+						fill={rulerThemes[theme].paper}
+					/>
+				)}
 				<g mask={gridBounds ? `url(#${gridMaskId})` : undefined}>
 					{layers.map(({ spacing, opacity }, index) => (
 						<rect
@@ -112,7 +145,7 @@ export function ViewportRulers({
 				</g>
 			</svg>
 			<svg
-				className="pointer-events-none absolute inset-0 z-2 overflow-hidden text-[#9ba7b8] [&_line]:stroke-[#657183] [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums"
+				className={`pointer-events-none absolute inset-0 z-2 overflow-hidden [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums ${rulerThemes[theme].rulers}`}
 				width={width}
 				height={height}
 				role="img"
@@ -123,11 +156,11 @@ export function ViewportRulers({
 					increases upward.
 				</title>
 				<path
-					className="fill-[#191c22]"
+					className="ruler-band"
 					d={`M0 0H${width}V${height}H${width - 24}V24H0Z`}
 				/>
 				<path
-					className="fill-none stroke-[#414955]"
+					className="ruler-edge fill-none"
 					d={`M0 24H${width - 24}V${height}`}
 				/>
 				{horizontal.map((tick) => (
@@ -163,7 +196,7 @@ export function ViewportRulers({
 					</g>
 				))}
 				<path
-					className="fill-[#191c22]"
+					className="ruler-band"
 					d={`M${width - 24} 0H${width}V24H${width - 24}Z`}
 				/>
 				<text x={width - 12} y="15" textAnchor="middle">

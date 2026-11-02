@@ -7,6 +7,7 @@ import {
 	type SheetSize,
 } from "#/drawing/worksheet.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
+import { measureText } from "#/engine/drawing/text.ts";
 
 type DrawingRenderer = ReturnType<typeof createDrawingRenderer>;
 
@@ -31,7 +32,7 @@ export function useEditorScene(
 		return () => next.dispose();
 	}, [width, height, name]);
 	const display = useMemo(
-		() => buildDrawingDisplay(shapes, selectedIds, previews),
+		() => buildDrawingDisplay(shapes, selectedIds, previews, measureText),
 		[shapes, selectedIds, previews],
 	);
 	const updateScene = useCallback(

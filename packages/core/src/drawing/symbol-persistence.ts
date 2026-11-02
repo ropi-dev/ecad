@@ -14,19 +14,6 @@ import {
 import { measurePerformance } from "#/performance/runtime.ts";
 import type { ProjectDocument } from "#/projects/format.ts";
 
-function legacyStrokeOverride(
-	shape: EditorSymbol,
-	definition?: SymbolDefinition,
-) {
-	if (shape.strokeOverride !== undefined) return shape.strokeOverride;
-	if (shape.library || !definition || !shape.children.length) return undefined;
-	const width = shape.children[0].lineWidth;
-	return shape.children.every((child) => child.lineWidth === width) &&
-		definition.children.some((child) => child.lineWidth !== width)
-		? width
-		: undefined;
-}
-
 /** Save instance attributes and label positions without copying library geometry. */
 export function persistDrawingShapes(
 	shapes: readonly EditorShape[],
@@ -41,16 +28,11 @@ export function persistDrawingShapes(
 		const library = shape.library ?? definition?.library;
 		if (!library) return shape;
 		const { children: _children, texts: _texts, ...instance } = shape;
-		const strokeOverride = legacyStrokeOverride(shape, definition);
-		return {
-			...instance,
-			library,
-			...(strokeOverride === undefined ? {} : { strokeOverride }),
-		};
+		return { ...instance, library };
 	});
 }
 
-/** Migrate known inline definitions while preserving legacy symbols with no library. */
+/** Link inline symbols to known definitions and keep the others inline. */
 export function persistProjectDrawingShapes(document: ProjectDocument) {
 	const definitions: SymbolDefinition[] = [
 		...symbolDefinitions,
@@ -93,7 +75,7 @@ export function resolveDrawingSymbols(
 							)
 						: byId.get(shape.definitionId);
 					if (!definition?.children.length) {
-						if (!shape.library) return shape; // Preserve legacy inline geometry until its library is available.
+						if (!shape.library) return shape;
 						errors.add(
 							`Symbol "${shape.definitionId}" is unavailable in library "${shape.library.id}".`,
 						);
@@ -108,7 +90,7 @@ export function resolveDrawingSymbols(
 						shape,
 						shape.attributes.reference,
 					);
-					const strokeOverride = legacyStrokeOverride(shape, definition);
+					const { strokeOverride } = shape;
 					return fitBoxToBorder(
 						normalizeNetSymbol({
 							...shape,

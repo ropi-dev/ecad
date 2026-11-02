@@ -7,6 +7,7 @@ import {
 	PlaneGeometry,
 	Vector3,
 } from "three";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { updateText } from "#/drawing/text.ts";
 import type { Point } from "#/drawing/types.ts";
 import {
@@ -37,7 +38,7 @@ export function createWorksheetFromDisplay(display: WorksheetDisplay) {
 	try {
 		const paper = new Group();
 		paper.name = display.name;
-		const color = "#b87979";
+		const color = lightSchematicTheme.sheet;
 		const glyphPlane = own(() => new PlaneGeometry(1, 1));
 		const labels = new Map<string, ReturnType<typeof createTextMaterial>>();
 		for (const { text, x, y, fontSize, align, maxWidth } of display.labels) {
@@ -96,7 +97,7 @@ export function createWorksheetFromDisplay(display: WorksheetDisplay) {
 			paper.add(lines);
 		};
 		addLines("Worksheet frame", display.frame, color);
-		addLines("Paper edge", display.edge, "#59616e");
+		addLines("Paper edge", display.edge, lightSchematicTheme.paperEdge);
 		return { paper, dispose: lifetime.dispose };
 	} catch (error) {
 		lifetime.dispose();

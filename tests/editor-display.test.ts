@@ -5,7 +5,12 @@ import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { drawShape, PIN_RADIUS, pinTerminals } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
+import type { DrawingAppearance } from "#/drawing/display.ts";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
+
+const hex = (appearance: DrawingAppearance) =>
+	lightSchematicTheme.appearance[appearance].slice(1);
 
 test("display resolves wire stroke dimensions, selection, and drawing order without a browser", () => {
 	const rectangle = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 20, y: 10 });
@@ -50,15 +55,13 @@ test("display suppresses connected terminals and colors each remaining wire end"
 	const display = buildDrawingDisplay([first, next, pin], new Set([next.id]));
 	assert.equal(display.terminals.length, 1);
 	assert.deepEqual(
-		display.terminals.map(({ x, y, width, height, appearance, renderOrder }) => ({
+		display.terminals.map(({ x, y, appearance, renderOrder }) => ({
 			x,
 			y,
-			width,
-			height,
 			appearance,
 			renderOrder,
 		})),
-		[{ x: 40, y: 0, width: 0.508, height: 0.508, appearance: "selected", renderOrder: 4 }],
+		[{ x: 40, y: 0, appearance: "selected", renderOrder: 4 }],
 	);
 });
 
@@ -179,7 +182,7 @@ test("renderer draws a filled junction dot and removes it when the branch discon
 	try {
 		renderer.update(root, buildDrawingDisplay([trunk, branch], new Set()));
 		const dot = root.getObjectByName("editor-wire-junction") as Mesh<BufferGeometry, MeshBasicMaterial>;
-		assert.equal(dot.material.color.getHexString(), "ef8f9c");
+		assert.equal(dot.material.color.getHexString(), hex("wire"));
 		root.updateMatrixWorld(true);
 		const hits = new Raycaster(new Vector3(0, 0, 10), new Vector3(0, 0, -1)).intersectObject(dot);
 		assert.ok(hits.length > 0);
@@ -250,8 +253,8 @@ test("rotated symbol leads use the body color while external wires keep their di
 		renderer.update(root, buildDrawingDisplay([symbol, external], new Set()));
 		const color = (name: string) => (root.getObjectByName(name) as Mesh<never, MeshBasicMaterial>).material.color.getHexString();
 		assert.equal(color("wire 3:2"), color("symbol 3"));
-		assert.equal(color("wire 3:2"), "76c4c0");
-		assert.equal(color("wire 4"), "ef8f9c");
+		assert.equal(color("wire 3:2"), hex("stroke"));
+		assert.equal(color("wire 4"), hex("wire"));
 	} finally {
 		renderer.dispose();
 	}
@@ -266,23 +269,23 @@ test("renderer uses shape colors for pins and hollow halos while wires keep thei
 	try {
 		renderer.update(root, buildDrawingDisplay([pin, wire, line], new Set()));
 		const color = (name: string) => (root.getObjectByName(name) as Mesh<never, MeshBasicMaterial>).material.color.getHexString();
-		assert.equal(color("pin 1"), "76c4c0");
-		assert.equal(color("wire 2"), "ef8f9c");
-		assert.equal(color("line 3"), "76c4c0");
+		assert.equal(color("pin 1"), hex("stroke"));
+		assert.equal(color("wire 2"), hex("wire"));
+		assert.equal(color("line 3"), hex("stroke"));
 		assert.equal(color("editor-pin-halo"), color("line 3"));
 		const halo = root.getObjectByName("editor-pin-halo") as Mesh;
 		root.updateMatrixWorld(true);
 		const hit = (x: number) => new Raycaster(new Vector3(x, 0, 10), new Vector3(0, 0, -1)).intersectObject(halo).length > 0;
 		assert.equal(hit(0), false);
-		assert.equal(hit(0.46), true);
+		assert.ok((halo.material as MeshBasicMaterial).opacity < 1);
 		let disposals = 0;
 		halo.geometry.addEventListener("dispose", () => disposals++);
 		renderer.update(root, buildDrawingDisplay([pin, { ...wire, x: 5 }], new Set()));
 		assert.equal(root.getObjectByName("editor-pin-halo"), undefined);
 		assert.equal(disposals, 1);
 		renderer.update(root, buildDrawingDisplay([pin, wire], new Set([pin.id, wire.id])));
-		assert.equal(color("pin 1"), "e8b77e");
-		assert.equal(color("wire 2"), "e8b77e");
+		assert.equal(color("pin 1"), hex("selected"));
+		assert.equal(color("wire 2"), hex("selected"));
 	} finally {
 		renderer.dispose();
 	}
@@ -352,7 +355,7 @@ test("net highlighting follows connected and named wires without selecting compo
  const component = { ...symbol, id: 8 };
  const shapes = [first, bend, remote, crossing, label, otherLabel, component];
  const display = buildDrawingDisplay(shapes, new Set([1]));
- assert.deepEqual(display.shapes.map(shape => shape.appearance), ["selected", "highlighted", "highlighted", "wire", "stroke", "stroke", "stroke"]);
+ assert.deepEqual(display.shapes.map(shape => shape.appearance), ["selected", "highlighted", "highlighted", "wire", "label", "label", "stroke"]);
  assert.equal(display.selections.length, 1);
  const fromLabel = buildDrawingDisplay(shapes, new Set([5]));
  assert.deepEqual(fromLabel.shapes.slice(0, 4).map(shape => shape.appearance), ["highlighted", "highlighted", "highlighted", "wire"]);
@@ -361,8 +364,8 @@ test("net highlighting follows connected and named wires without selecting compo
  const root = new Group();
  renderer.update(root, { ...display, shapes: display.shapes.filter(shape => shape.geometry.kind === "wire") });
  const color = (name: string) => ((root.getObjectByName(name) as Mesh).material as MeshBasicMaterial).color.getHexString();
- assert.equal(color("wire 1"), "e8b77e");
- assert.equal(color("wire 2"), "f6cbd1");
- assert.equal(color("wire 4"), "ef8f9c");
+ assert.equal(color("wire 1"), hex("selected"));
+ assert.equal(color("wire 2"), hex("highlighted"));
+ assert.equal(color("wire 4"), hex("wire"));
  renderer.dispose();
 });

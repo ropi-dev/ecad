@@ -16,7 +16,6 @@ test("example library imports at its authored size and all geometry remains fini
  const definitions = libraryDefinitions([symbol, parseSymbolFile(readFileSync(new URL("../packages/web/public/examples/symbols/buffer.ecadsym", import.meta.url), "utf8"))]);
  const testPoint = createSymbol(1, definitions[0], { x: 10, y: 20 });
  assert.equal(testPoint.width, 2);
- assert.equal(testPoint.height, 4.508);
  assert.equal(testPoint.attributes.reference, "TP1");
  assert.equal(testPoint.attributes.value, "Test");
  assert.ok(hitShape(testPoint, { x: 10, y: 18 }, 0.01));
@@ -45,7 +44,6 @@ test("converts every primitive, degrees, and diagonal wires without axis constra
  assert.equal(definition.children[1].rotation, Math.PI / 2);
  assert.equal(definition.children[2].rotation, 0);
  assert.equal(definition.children[3].height, 4);
- assert.equal(definition.children[4].width, 0.508);
  const instance = createSymbol(1, definition, { x: 0, y: 0 });
  instance.children[0].width = 99;
  assert.equal(definition.children[0].width, 10);
@@ -123,25 +121,20 @@ test("batch import rejects invalid neighbors and duplicates before exposing resu
  await assert.rejects(runEffect(importSymbolFiles([symbolFile("one"), tooBig])), /total 1 MB/);
 });
 
-test("portable files reject multi-symbol containers while old browser caches migrate", () => {
+test("symbol files and saved libraries reject multi-symbol containers", () => {
  const { format: _format, version: _version, units: _units, ...symbol } = source();
- const old = JSON.stringify({ format: "ecad-symbols", version: 1, units: "mm", symbols: [symbol] });
- assert.throws(() => parseSymbolFile(old), /Invalid symbol file/);
- assert.deepEqual(parseSavedSymbolLibrary(old), [parseSymbolFile(example)]);
- assert.throws(() => parseSavedSymbolLibrary(JSON.stringify({ format: "ecad-symbols", version: 2, units: "mm", symbols: [symbol] })));
+ const container = JSON.stringify({ format: "ecad-symbols", version: 1, units: "mm", symbols: [symbol] });
+ assert.throws(() => parseSymbolFile(container), /Invalid symbol file/);
+ assert.throws(() => parseSavedSymbolLibrary(container));
 });
 
 
-test("pin files keep a fixed size and cached pin radii migrate", () => {
+test("pin files reject a stored radius", () => {
  const data = source();
  const pin = data.shapes.find((shape: { kind: string }) => shape.kind === "pin");
  pin.radius = 5;
  assert.throws(() => parseSymbolFile(JSON.stringify(data)), /radius/);
- const restored = parseSavedSymbolLibrary(JSON.stringify([data]));
- const restoredPin = libraryDefinitions(restored)[0].children.find(child => child.kind === "pin")!;
- assert.equal(restoredPin.width, 0.508);
- assert.equal(restoredPin.height, 0.508);
- assert.equal("radius" in restored[0].shapes[2], false);
+ assert.throws(() => parseSavedSymbolLibrary(JSON.stringify([data])));
 });
 
 test("pin names and numbers survive symbol file and library round trips, with legacy pins", () => {

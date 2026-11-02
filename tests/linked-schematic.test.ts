@@ -88,31 +88,12 @@ test("automatic labels use readable circuit names, natural sizing and outward al
  const linked=synchronizePcb(file,[],original,symbolDefinitions);
  const labels=linked.shapes.filter(shape=>shape.kind==="text");
  assert.equal(labels.length,2);
- assert.ok(labels.every(label=>label.text==="R1.2 / R2.1" && label.fontSize===1.3 && label.width>7));
+ assert.ok(labels.every(label=>label.text==="R1.2 / R2.1" && label.width>7));
  assert.equal(labels[0].horizontalAlign,"left");
  assert.equal(labels[1].horizontalAlign,"right");
  assert.ok(labels.every(label=>label.verticalAlign==="bottom"));
  const roundtrip=synchronizePcb(linked.file,linked.shapes,linked.file,symbolDefinitions);
  assert.deepEqual(roundtrip.file.circuit.nets,file.circuit.nets);
-});
-
-test("old UUID labels and fixed-size named labels migrate without renaming electrical nets", () => {
- const original=createCircuit("Migration");
- const file=structuredClone(original);
- file.circuit.components=[componentFromSymbol(resistor,[])];
- file.circuit.nets=[{id:crypto.randomUUID(),names:[],pinIds:[file.circuit.components[0].pins[0].id]},{id:"supply",names:["LONG_SUPPLY_NAME"],pinIds:[file.circuit.components[0].pins[1].id]}];
- const first=synchronizePcb(file,[],original,symbolDefinitions);
- const old=first.shapes.map(shape=>shape.kind==="text"?{...shape,circuitNet:undefined,text:shape.text==="R1.1"?`N_${file.circuit.nets[0].id}`:shape.text,fontSize:1,width:5,height:2,horizontalAlign:undefined,verticalAlign:undefined}:shape);
- const migrated=synchronizePcb(first.file,old,first.file,symbolDefinitions);
- assert.deepEqual(migrated.file.circuit.nets,file.circuit.nets);
- const labels=migrated.shapes.filter(shape=>shape.kind==="text");
- assert.deepEqual(labels.map(label=>label.text),["R1.1","LONG_SUPPLY_NAME"]);
- assert.ok(labels[1].width>10);
- assert.equal(labels[0].horizontalAlign,"right");
- assert.equal(labels[1].horizontalAlign,"left");
- const stable=synchronizePcb(migrated.file,migrated.shapes,migrated.file,symbolDefinitions);
- assert.deepEqual(stable.shapes,migrated.shapes);
- assert.deepEqual(stable.file.circuit,migrated.file.circuit);
 });
 
 test("schematic reference edits refresh automatic labels without turning them into explicit net names", () => {

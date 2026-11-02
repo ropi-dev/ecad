@@ -126,8 +126,8 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			shapes,
 		},
 		texts: [
-			{ attribute: "reference", x: 0, y: Math.max(...ys) + 1.5, fontSize: 1.3 },
-			{ attribute: "value", x: 0, y: Math.min(...ys) - 1.5, fontSize: 1.3 },
+			{ attribute: "reference", x: 0, y: Math.max(...ys) + 1.5, fontSize: 1.5 },
+			{ attribute: "value", x: 0, y: Math.min(...ys) - 1.5, fontSize: 1.5 },
 		],
 	};
 }

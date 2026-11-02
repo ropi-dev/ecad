@@ -57,25 +57,7 @@ export function createWebSymbolLibraryStorage(
 				if (temporaryConfiguration !== undefined)
 					return parseSymbolConfig(temporaryConfiguration);
 				const saved = browserStorage().getItem(USER_SYMBOL_CONFIG_KEY);
-				if (saved !== null) return parseSymbolConfig(saved);
-				const config = defaultSymbolConfig();
-				const legacy = browserStorage().getItem(SYMBOL_STORAGE_KEY);
-				if (legacy === null) return config;
-				return {
-					...config,
-					symbolLibraries: [
-						...config.symbolLibraries,
-						{
-							id: "imported",
-							name: "Imported symbols",
-							enabled: true,
-							source: {
-								kind: "embedded" as const,
-								symbols: parseSavedSymbolLibrary(legacy),
-							},
-						},
-					],
-				};
+				return saved === null ? defaultSymbolConfig() : parseSymbolConfig(saved);
 			} catch {
 				throw new Error(
 					"Saved symbols could not be loaded. You can upload a library again.",

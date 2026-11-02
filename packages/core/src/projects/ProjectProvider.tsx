@@ -645,7 +645,7 @@ export function ProjectProvider({
 		const circuitId =
 			before?.circuits?.[
 				before.manifest.circuits?.findIndex(
-					(paths) => paths.circuit === path || paths.graph === path,
+					(paths) => paths.circuit === path,
 				) ?? -1
 			]?.circuit.id;
 		const openedGeneration = generation.current;

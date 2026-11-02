@@ -1,6 +1,11 @@
 import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
 import { expect, type Page, test } from "@playwright/test";
+import { lightSchematicTheme } from "#/drawing/schematic-theme.ts";
+
+const [selected, highlighted, wire] = (
+	["selected", "highlighted", "wire"] as const
+).map((appearance) => lightSchematicTheme.appearance[appearance].slice(1));
 
 // Coordinate fixtures use a desktop viewport with a 10 mm grid at the fitted view.
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -266,10 +271,10 @@ test("selected schematic wires keep a distinct color from related net wires", as
  await expect.poll(async () => (await state(page)).shapes.filter(shape => shape.name.startsWith("wire ")).length).toBe(4);
  await clickAt(page, -75, 0);
  const colors = async () => (await state(page)).shapes.filter(shape => shape.name.startsWith("wire ")).map(shape => shape.color);
- await expect.poll(colors).toEqual(["e8b77e", "f6cbd1", "f6cbd1", "ef8f9c"]);
+ await expect.poll(colors).toEqual([selected, highlighted, highlighted, wire]);
  if (process.env.ECAD_SCHEMATIC_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCHEMATIC_SCREENSHOT_PATH});
  await page.keyboard.press("Escape");
- await expect.poll(colors).toEqual(["ef8f9c", "ef8f9c", "ef8f9c", "ef8f9c"]);
+ await expect.poll(colors).toEqual([wire, wire, wire, wire]);
  await clickAt(page, 0, 30);
- await expect.poll(colors).toEqual(["f6cbd1", "e8b77e", "f6cbd1", "ef8f9c"]);
+ await expect.poll(colors).toEqual([highlighted, selected, highlighted, wire]);
 });

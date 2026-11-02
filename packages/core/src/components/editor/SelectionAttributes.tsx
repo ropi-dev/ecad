@@ -11,6 +11,7 @@ import {
 import { isNetLabel } from "#/drawing/named-nets.ts";
 import {
 	boxBorder,
+	boxText,
 	type EditorShape,
 	type EditorSymbol,
 	isBasicShape,
@@ -352,10 +353,13 @@ function SelectionAttributesPanel({
 						]
 					: symbol
 						? [
-								...(boxBorder(symbol)
+								...(boxText(symbol)
 									? [
-											editable("Width", "width", symbol.width),
-											editable("Height", "height", symbol.height),
+											editable(
+												"Font size",
+												"fontSize",
+												boxText(symbol)?.shape.fontSize ?? 0,
+											),
 										]
 									: []),
 								editable("Angle", "angle", (symbol.rotation * 180) / Math.PI),
@@ -365,7 +369,7 @@ function SelectionAttributesPanel({
 									editable("Length", "width", single.width),
 									editable("Angle", "angle", (single.rotation * 180) / Math.PI),
 								]
-							: isNetLabel(single)
+							: isNetLabel(single) || single.kind === "text"
 								? []
 								: [
 										editable("Width", "width", single.width),
