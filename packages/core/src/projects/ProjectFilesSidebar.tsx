@@ -28,6 +28,11 @@ import {
 } from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
+	formatShortcut,
+	hasShortcutModifier,
+	shortcutModifier,
+} from "#/components/viewer/shortcutModifier.ts";
+import {
 	type AssetKind,
 	PROJECT_FILE,
 	type ProjectAsset,
@@ -122,9 +127,8 @@ export function ProjectFilesSidebar() {
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (
-				!event.ctrlKey ||
+				!hasShortcutModifier(event) ||
 				event.altKey ||
-				event.metaKey ||
 				!event.shiftKey ||
 				event.code !== "KeyS" ||
 				event.isComposing
@@ -828,8 +832,8 @@ export function ProjectFilesSidebar() {
 						type="button"
 						aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
 						aria-pressed={pinned}
-						aria-keyshortcuts="Control+Shift+S"
-						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · Ctrl+Shift+S`}
+						aria-keyshortcuts={`${shortcutModifier().key}+Shift+S`}
+						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · ${formatShortcut("Ctrl+Shift+S")}`}
 						aria-controls={panelId}
 						className={`${button} h-9 w-full justify-start px-2`}
 						onClick={togglePin}
@@ -840,7 +844,9 @@ export function ProjectFilesSidebar() {
 							<Pin size={18} aria-hidden="true" />
 						)}
 						<span>{pinned ? "Pinned" : "Compact"}</span>
-						<kbd className="ml-auto text-[10px] text-[#98a4b6]">Ctrl+Shift+S</kbd>
+						<kbd className="ml-auto text-[10px] text-[#98a4b6]">
+							{formatShortcut("Ctrl+Shift+S")}
+						</kbd>
 					</button>
 				</footer>
 			</aside>

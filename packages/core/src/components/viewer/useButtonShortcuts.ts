@@ -1,5 +1,9 @@
-import { ArrowBigUp, ChevronUp, createElement } from "lucide";
+import { ArrowBigUp, ChevronUp, Command, createElement } from "lucide";
 import { useEffect } from "react";
+import {
+	hasShortcutModifier,
+	shortcutModifier,
+} from "#/components/viewer/shortcutModifier.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 const editorKeys: Record<string, string> = {
@@ -59,6 +63,12 @@ let users = 0;
 let dispose: (() => void) | undefined;
 
 function listen() {
+	const shortcut = shortcutModifier();
+	const preferredEditorKeys =
+		shortcut.key === "Meta"
+			? { ...editorKeys, Select: "2", "History tools": "8" }
+			: editorKeys;
+	const nativeKeys = new Set(shortcut.key === "Meta" ? ["Q", "H", "M"] : []);
 	const overlay = document.createElement("div");
 	overlay.className = "button-shortcuts";
 	overlay.setAttribute("popover", "manual");
@@ -141,7 +151,7 @@ function listen() {
 					const scope = scopeFor(button);
 					const sidebar = scope === "sidebar";
 					const label = labelFor(button);
-					const preferred = sidebar ? sidebarKeys : editorKeys;
+					const preferred = sidebar ? sidebarKeys : preferredEditorKeys;
 					let key = keys.get(button);
 					if (!key) {
 						const reserved = new Set(Object.values(preferred));
@@ -159,6 +169,7 @@ function listen() {
 						key = candidates.find(
 							(candidate) =>
 								candidate &&
+								!nativeKeys.has(candidate) &&
 								available(candidate) &&
 								(candidate === preferred[label] || !reserved.has(candidate)) &&
 								(sidebar ||
@@ -175,11 +186,17 @@ function listen() {
 					hint.dataset.slot = "button-shortcut";
 					hint.dataset.shortcut = key;
 					hint.dataset.scope = scope;
-					const modifier = createElement(ChevronUp, {
-						class: "lucide lucide-chevron-up",
-						"aria-label": "Control",
-						"data-slot": "modifier-icon",
-					});
+					const modifier = createElement(
+						shortcut.key === "Meta" ? Command : ChevronUp,
+						{
+							class:
+								shortcut.key === "Meta"
+									? "lucide lucide-command"
+									: "lucide lucide-chevron-up",
+							"aria-label": shortcut.label,
+							"data-slot": "modifier-icon",
+						},
+					);
 					hint.append(modifier);
 					if (sidebar) {
 						hint.append(
@@ -196,7 +213,7 @@ function listen() {
 					hint.title = label;
 					hint.setAttribute(
 						"aria-label",
-						`Control+${sidebar ? "Shift+" : ""}${key}`,
+						`${shortcut.key}+${sidebar ? "Shift+" : ""}${key}`,
 					);
 					const width = sidebar ? 32 : 23;
 					hint.style.width = `${width}px`;
@@ -217,7 +234,7 @@ function listen() {
 		if (held && !frame) frame = requestAnimationFrame(refresh);
 	};
 	const keydown = (event: KeyboardEvent) => {
-		if (event.key === "Control" && !event.repeat && !held) {
+		if (event.key === shortcut.key && !event.repeat && !held) {
 			held = true;
 			observer.observe(document.body, observation);
 			refresh();
@@ -228,7 +245,7 @@ function listen() {
 			hide();
 			return;
 		}
-		if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing)
+		if (!hasShortcutModifier(event) || event.altKey || event.isComposing)
 			return;
 		const key = keyFor(event);
 		const target = targets.get(
@@ -266,7 +283,7 @@ function listen() {
 		schedule();
 	};
 	const keyup = (event: KeyboardEvent) => {
-		if (event.key === "Control" || !event.ctrlKey) hide();
+		if (event.key === shortcut.key || !event[shortcut.flag]) hide();
 	};
 	const observer = new MutationObserver((records) => {
 		if (records.some((record) => !overlay.contains(record.target))) schedule();

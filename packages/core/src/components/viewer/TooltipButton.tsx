@@ -1,5 +1,6 @@
 import { Tooltip } from "radix-ui";
 import type { ComponentProps } from "react";
+import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 
 export function TooltipButton({
 	tooltip,
@@ -26,7 +27,7 @@ export function TooltipButton({
 						<span>{tooltip}</span>
 						{shortcut && (
 							<kbd className="shrink-0 rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans text-[10px] text-[#b7c1cf]">
-								{shortcut}
+								{formatShortcut(shortcut)}
 							</kbd>
 						)}
 					</span>

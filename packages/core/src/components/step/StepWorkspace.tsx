@@ -1,5 +1,6 @@
 import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
@@ -151,8 +152,9 @@ export function StepWorkspace() {
 			)}
 			{model && (
 				<p className="pointer-events-none absolute bottom-20 left-0 w-full px-4 text-center text-xs text-slate-400">
-					Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom ·
-					F6 to fit
+					{formatShortcut(
+						"Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom · F6 to fit",
+					)}
 				</p>
 			)}
 			{dragging && (
