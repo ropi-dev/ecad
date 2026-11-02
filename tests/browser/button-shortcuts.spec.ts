@@ -234,3 +234,50 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
 		await expect(sidebar).toHaveAttribute("data-pinned", "false");
 	});
 }
+
+
+test("macOS reserves Quit, Hide and Minimize in preferred and fallback assignments", async ({ page }) => {
+	await page.addInitScript(() => {
+		Object.defineProperty(navigator, "platform", { value: "MacIntel" });
+	});
+	await page.reload();
+	await expect(page.getByRole("button", { name: "Shapes", exact: true })).toBeEnabled();
+	await page.getByRole("button", { name: "Pan", exact: true }).click();
+	await page.keyboard.down("Meta");
+	await expect(page.locator(`${hints}[title="Select"]`)).toHaveAttribute("data-shortcut", "2");
+	await expect(page.locator(`${hints}[title="History tools"]`)).toHaveAttribute("data-shortcut", "8");
+	await page.keyboard.press("8");
+	await expect(page.getByRole("toolbar", { name: "History tools toolbar", exact: true })).toBeVisible();
+	await page.keyboard.press("2");
+	await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute("aria-pressed", "true");
+	await expect(page.locator(`${hints}[data-shortcut="Q"], ${hints}[data-shortcut="H"], ${hints}[data-shortcut="M"]`)).toHaveCount(0);
+	await page.screenshot({ path: "/tmp/ecad-shortcuts-macos-reserved.png" });
+	await page.keyboard.up("Meta");
+	await page.evaluate(() => {
+		const dialog = document.createElement("dialog");
+		for (const scope of ["editor", "sidebar"]) {
+			const group = document.createElement("div");
+			group.dataset.shortcutScope = scope;
+			for (const label of ["Q", "H", "M"]) {
+				const button = document.createElement("button");
+				button.textContent = label;
+				group.append(button);
+			}
+			dialog.append(group);
+		}
+		document.body.append(dialog);
+		dialog.showModal();
+	});
+	await page.keyboard.down("Meta");
+	await expect(page.locator(hints)).toHaveCount(6);
+	await expect(page.locator(`${hints}[data-shortcut="Q"], ${hints}[data-shortcut="H"], ${hints}[data-shortcut="M"]`)).toHaveCount(0);
+	const nativeEvents = await page.evaluate(() => [false, true].flatMap((shiftKey) =>
+		["q", "h", "m"].map((key) => {
+			const event = new KeyboardEvent("keydown", { key, metaKey: true, shiftKey, bubbles: true, cancelable: true });
+			window.dispatchEvent(event);
+			return event.defaultPrevented;
+		}),
+	));
+	expect(nativeEvents).toEqual([false, false, false, false, false, false]);
+	await page.keyboard.up("Meta");
+});

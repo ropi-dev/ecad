@@ -64,6 +64,11 @@ let dispose: (() => void) | undefined;
 
 function listen() {
 	const shortcut = shortcutModifier();
+	const preferredEditorKeys =
+		shortcut.key === "Meta"
+			? { ...editorKeys, Select: "2", "History tools": "8" }
+			: editorKeys;
+	const nativeKeys = new Set(shortcut.key === "Meta" ? ["Q", "H", "M"] : []);
 	const overlay = document.createElement("div");
 	overlay.className = "button-shortcuts";
 	overlay.setAttribute("popover", "manual");
@@ -146,7 +151,7 @@ function listen() {
 					const scope = scopeFor(button);
 					const sidebar = scope === "sidebar";
 					const label = labelFor(button);
-					const preferred = sidebar ? sidebarKeys : editorKeys;
+					const preferred = sidebar ? sidebarKeys : preferredEditorKeys;
 					let key = keys.get(button);
 					if (!key) {
 						const reserved = new Set(Object.values(preferred));
@@ -164,6 +169,7 @@ function listen() {
 						key = candidates.find(
 							(candidate) =>
 								candidate &&
+								!nativeKeys.has(candidate) &&
 								available(candidate) &&
 								(candidate === preferred[label] || !reserved.has(candidate)) &&
 								(sidebar ||
