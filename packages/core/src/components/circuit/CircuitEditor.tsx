@@ -9,8 +9,10 @@ import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { untangleCircuitGraph } from "@ecad/drawing-core/circuit/untangle.ts";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import {
+	lazy,
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
+	Suspense,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
@@ -32,6 +34,12 @@ import { CircuitContextMenu } from "./CircuitContextMenu.tsx";
 import { CircuitInlineFields } from "./CircuitInlineFields.tsx";
 import { GraphButton } from "./GraphButton.tsx";
 import { useCircuitNavigation } from "./useCircuitNavigation.ts";
+
+const ErcPanel = lazy(() =>
+	import("#/components/circuit/ErcPanel.tsx").then((module) => ({
+		default: module.ErcPanel,
+	})),
+);
 
 type Selection = {
 	kind: "component" | "pin" | "net" | "connection";
@@ -81,6 +89,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 		return () => window.clearTimeout(timer);
 	}, [collapseMotion]);
 
+	const [ercOpen, setErcOpen] = useState(false);
 	const [selection, setSelection] = useState<Selection>(null);
 	const [pendingPin, setPendingPin] = useState<string | null>(null);
 	const [tool, setTool] = useState<CircuitTool>("select");
@@ -1312,7 +1321,59 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 					)}
 				</div>
 			</div>
+			{ercOpen && (
+				<Suspense
+					fallback={
+						<output className="absolute right-3 top-14 z-20 bg-slate-900 p-4">
+							Loading electrical checks...
+						</output>
+					}
+				>
+					<ErcPanel
+						circuit={circuit}
+						onClose={() => {
+							setErcOpen(false);
+							svg.current?.focus();
+						}}
+						onSelect={(subject) => {
+							let targetGraph = graph;
+							if (subject.kind === "pin") {
+								const owner = graph.components.find((component) =>
+									component.component.pins.some((pin) => pin.id === subject.id),
+								);
+								if (owner?.collapsed) {
+									if (
+										!run({
+											type: "set-component-collapsed",
+											id: owner.id,
+											collapsed: false,
+										})
+									)
+										return;
+									targetGraph = buildCircuitGraph(store.getSnapshot());
+								}
+							}
+							select(subject);
+							const point =
+								subject.kind === "pin"
+									? targetGraph.pinNodes.get(subject.id)
+									: subject.kind === "net"
+										? targetGraph.nets.find((net) => net.id === subject.id)
+										: targetGraph.components.find(
+												(component) => component.id === subject.id,
+											);
+							if (point)
+								setView((current) => ({
+									...current,
+									x: point.x - current.width / 2,
+									y: point.y - current.height / 2,
+								}));
+						}}
+					/>
+				</Suspense>
+			)}
 			<CircuitToolbar
+				onErc={() => setErcOpen((open) => !open)}
 				tool={tool}
 				onToolChange={(next) => {
 					cancelConnectionDrag();

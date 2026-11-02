@@ -1,4 +1,5 @@
 export const budgets = {
+ "circuit-erc": { interactionP95Ms: 1000, ercP95Ms: 100, domNodes: 2800, scriptBytes: 3_000_000 },
  "editor-no-connect": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "editor-physical-zoom": { interactionP95Ms: 750, domNodes: 1500, scriptBytes: 3_000_000, frameP95Ms: 500 },
  "button-shortcuts": { interactionP95Ms: 750, hintsP95Ms: 50, domNodes: 1600, scriptBytes: 3_000_000, frameP95Ms: 500 },

@@ -10,6 +10,7 @@ import {
 	MousePointer2,
 	Redo2,
 	Scan,
+	ShieldCheck,
 	Shuffle,
 	Trash2,
 	Undo2,
@@ -22,8 +23,8 @@ import {
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import { ZoomControls } from "#/components/viewer/ZoomControls.tsx";
-import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
+import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 
 const CircuitComponentPicker = lazy(() =>
 	import("./CircuitComponentPicker.tsx").then((module) => ({
@@ -45,6 +46,7 @@ export function CircuitToolbar({
 	onFit,
 	onPan,
 	onUntangle,
+	onErc,
 	onChooseComponent,
 	onUndo,
 	onRedo,
@@ -60,6 +62,7 @@ export function CircuitToolbar({
 	onFit(): void;
 	onPan(x: number, y: number): void;
 	onUntangle(): void;
+	onErc(): void;
 	onChooseComponent(definition: SymbolDefinition): void;
 	onUndo(): void;
 	onRedo(): void;
@@ -201,6 +204,14 @@ export function CircuitToolbar({
 						onClick={onDelete}
 					>
 						<Trash2 size={18} />
+					</TooltipButton>
+					<TooltipButton
+						className={button}
+						tooltip="Electrical rules check"
+						aria-label="Electrical rules check"
+						onClick={onErc}
+					>
+						<ShieldCheck size={18} />
 					</TooltipButton>
 					<EditorViewSwitch view="circuit" />
 				</div>
