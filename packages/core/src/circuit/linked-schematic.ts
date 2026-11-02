@@ -589,7 +589,13 @@ export function synchronizePcb(
 				const shapeById = new Map(shapes.map((shape) => [shape.id, shape]));
 				const bindingUpdates = new Map<number, string>();
 				const claimed = new Set<string>();
-				circuit.nets = electricalNets(shapes).flatMap((net) => {
+				const schematicNets = electricalNets(shapes);
+				const nameOwners = new Map(
+					schematicNets.flatMap((net) =>
+						net.names.map((name) => [name, net] as const),
+					),
+				);
+				circuit.nets = schematicNets.flatMap((net) => {
 					const pinIds = net.pins.flatMap(
 						(pin) => pinId(pin.shapeId, pin.pinId) ?? [],
 					);
@@ -633,8 +639,13 @@ export function synchronizePcb(
 							}),
 					);
 					const savedNames =
-						old?.names.length && same(names, [old.names[0]])
-							? old.names
+						old?.names.length &&
+						managed.some((shape) => shape.circuitNet?.id === old.id) &&
+						same(names, [old.names[0]])
+							? old.names.filter((name) => {
+									const owner = nameOwners.get(name);
+									return owner === undefined || owner === net;
+								})
 							: names;
 					const schematicShapeIds = [
 						...new Set([
