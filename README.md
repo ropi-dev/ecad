@@ -96,6 +96,14 @@ pnpm run test:browser
 
 Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format`, `pnpm run lint`, and `pnpm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
 
+### Deploy with the Vercel GitHub app
+
+The `ecad` project in the `ropis-projects` Vercel team connects to `ropi-dev/ecad` through the Vercel GitHub app. Pushes to `main` deploy to production. Other branches and pull requests get preview deployments.
+
+Use the TanStack Start framework preset, Node.js 24, and `packages/web` as the project root. Keep the default install, build, and output settings, and allow the build to include files outside the root directory so it can use the shared workspace packages. Vercel sets `VERCEL`, which enables the Nitro adapter in the web Vite config.
+
+Manage the repository connection and automatic deployments in the project's [Git settings](https://vercel.com/ropis-projects/ecad/settings/git). Builds and deployment status appear in Vercel and on GitHub pull requests. Deployment does not use a GitHub Actions workflow or require `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID` in GitHub.
+
 ### Serve the web build with nginx
 
 `pnpm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
