@@ -313,6 +313,11 @@ function EditorCanvas({
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
 	const [view, setView] = useState<Viewer2DSnapshot | null>(null);
 	const drag = useRef<Drag | null>(null);
+	const [movingShapeId, setMovingShapeId] = useState<number | null>(null);
+	const [placementGuide, setPlacementGuide] = useState<{
+		tool: Tool;
+		center: Point;
+	} | null>(null);
 	const wireChain = useRef<WireChain | null>(null);
 	const clipboardPaste = useRef({ text: "", count: 0 });
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
@@ -369,6 +374,27 @@ function EditorCanvas({
 						canSelectSymbolChild(selectedSymbol, child, allowLocked),
 				)
 			: undefined;
+
+	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
+	const guideShape = movingShape ?? (tool === "symbol" ? symbolPreview : null);
+	const guideBounds = guideShape ? shapeBounds(guideShape) : null;
+	const guideCenter = guideBounds
+		? {
+				x: (guideBounds.minX + guideBounds.maxX) / 2,
+				y: (guideBounds.minY + guideBounds.maxY) / 2,
+			}
+		: placementGuide?.tool === tool
+			? placementGuide.center
+			: null;
+	const rulerPosition =
+		guideCenter && view
+			? worldToScreen(
+					guideCenter,
+					view.camera,
+					view.viewport.width,
+					view.viewport.height,
+				)
+			: null;
 
 	const selectionLocked = selectedChild
 		? selectedChild.shape.locked === true
@@ -702,10 +728,13 @@ function EditorCanvas({
 					: Math.min(draft.width, draft.height)) *
 					scale >=
 					3;
+			setMovingShapeId(draft.id);
 			previewReplacements([draft]);
 			return;
 		}
 		if (active.mode === "move" || active.mode === "duplicate") {
+			if (!active.moved) return;
+			setMovingShapeId(active.anchorShape?.id ?? active.originals[0].id);
 			previewReplacements(
 				moveShapes(
 					active.originals,
@@ -747,6 +776,7 @@ function EditorCanvas({
 		const active = drag.current;
 		if (!active) return;
 		drag.current = null;
+		setMovingShapeId(null);
 		active.canvas.style.cursor = "";
 		setMarquee(null);
 		if (cancel || (active.created && !active.valid)) {
@@ -933,6 +963,7 @@ function EditorCanvas({
 			aria-pressed={tool === kind}
 			onClick={() => {
 				finishWire();
+				setPlacementGuide(null);
 				setTool(kind);
 			}}
 		>
@@ -1126,6 +1157,7 @@ function EditorCanvas({
 					}}
 					data-tool={tool}
 					onPointerLeave={() => {
+						setPlacementGuide(null);
 						setSymbolPreview(null);
 						setConnectionHover(null);
 					}}
@@ -1438,6 +1470,46 @@ function EditorCanvas({
 							event.target.style.cursor = connection
 								? "crosshair"
 								: "not-allowed";
+							return;
+						}
+						if (
+							point &&
+							(tool === "pin" ||
+								tool === "text" ||
+								tool === "net" ||
+								tool === "supply")
+						) {
+							const start = snapPoint(point, snapEnabled ? gridStep : 0);
+							const anchor =
+								tool === "net" || tool === "supply"
+									? (findWireConnection(
+											currentShapes.current,
+											point,
+											8 / (snapshot.current?.camera.scale ?? 1),
+										) ?? start)
+									: start;
+							const shape =
+								tool === "pin"
+									? drawShape(nextId.current, "pin", anchor, anchor)
+									: tool === "text"
+										? createTextShape(nextId.current, anchor)
+										: updateText(
+												{
+													...createTextShape(nextId.current, anchor),
+													electrical: tool,
+													horizontalAlign: "left",
+													verticalAlign: "bottom",
+												},
+												tool === "supply" ? "GND" : "NET",
+											);
+							const bounds = shapeBounds(shape);
+							setPlacementGuide({
+								tool,
+								center: {
+									x: (bounds.minX + bounds.maxX) / 2,
+									y: (bounds.minY + bounds.maxY) / 2,
+								},
+							});
 							return;
 						}
 						if (tool === "symbol" && symbolDefinition && point) {
@@ -1823,6 +1895,34 @@ function EditorCanvas({
 							className="pointer-events-none absolute inset-0 z-2 overflow-hidden"
 							aria-hidden="true"
 						>
+							{rulerPosition && (
+								<svg
+									data-testid="ruler-position-guide"
+									aria-hidden="true"
+									className="absolute inset-0 size-full stroke-gray-400/60 stroke-1"
+								>
+									{rulerPosition.y >= 24 &&
+										rulerPosition.y <= view.viewport.height && (
+											<line
+												data-axis="y"
+												x1={view.viewport.width - 24}
+												y1={rulerPosition.y}
+												x2={view.viewport.width}
+												y2={rulerPosition.y}
+											/>
+										)}
+									{rulerPosition.x >= 0 &&
+										rulerPosition.x < view.viewport.width - 24 && (
+											<line
+												data-axis="x"
+												x1={rulerPosition.x}
+												y1={0}
+												x2={rulerPosition.x}
+												y2={24}
+											/>
+										)}
+								</svg>
+							)}
 							{connectionHover &&
 								tool === "wire" &&
 								(() => {

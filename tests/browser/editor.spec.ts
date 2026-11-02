@@ -278,3 +278,112 @@ test("selected schematic wires keep a distinct color from related net wires", as
  await clickAt(page, 0, 30);
  await expect.poll(colors).toEqual([highlighted, selected, highlighted, wire]);
 });
+
+
+test("ruler position guide follows the object center through release and cancellation", async ({ page }) => {
+	await createShape(page, "Rectangle", 100, 100);
+	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
+	const start = await screen(page, 80, 100);
+	const end = await screen(page, 130, 140);
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
+	await page.mouse.move(end.x, end.y, { steps: 4 });
+	const crosshair = page.getByTestId("ruler-position-guide");
+	await expect(crosshair).toBeVisible();
+	const center = await screen(page, 150, 140);
+	const box = (await crosshair.boundingBox())!;
+	await expect.poll(async () => Number(await crosshair.locator("line").nth(0).getAttribute("y1"))).toBeCloseTo(center.y - box.y, 0);
+	await expect.poll(async () => Number(await crosshair.locator("line").nth(1).getAttribute("x1"))).toBeCloseTo(center.x - box.x, 0);
+	await expect(crosshair.locator("line").nth(0)).toHaveAttribute("x1", String(box.width - 24));
+	await expect(crosshair.locator("line").nth(0)).toHaveAttribute("x2", String(box.width));
+	await expect(crosshair.locator("line").nth(1)).toHaveAttribute("y1", "0");
+	await expect(crosshair.locator("line").nth(1)).toHaveAttribute("y2", "24");
+	await page.screenshot({ path: "/tmp/ecad-ruler-position-guide.png" });
+	await page.mouse.up();
+	await expect(crosshair).toHaveCount(0);
+	await page.mouse.move(center.x, center.y);
+	await page.mouse.down();
+	await page.mouse.move(center.x + 40, center.y - 25, { steps: 3 });
+	await expect(crosshair).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(crosshair).toHaveCount(0);
+	await page.mouse.up();
+	const restored = (await state(page)).shapes[0];
+	expect(restored.x).toBeCloseTo(150, 0);
+	expect(restored.y).toBeCloseTo(140, 0);
+});
+
+test("moving a symbol child does not show the ruler position guide", async ({ page }) => {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+	await clickAt(page, 100, 100);
+	const label = (await page.locator('[data-anchor-id="1:label:0"]').boundingBox())!;
+	await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(label.x + 40, label.y - 20, { steps: 4 });
+	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
+	await page.mouse.up();
+});
+
+for (const item of ["Resistor", "Pin", "Text", "Net label", "Supply label"]) {
+	test(`placement ruler guide matches the placed ${item} center`, async ({ page }) => {
+		if (item === "Resistor") {
+			await page.getByRole("button", { name: "Symbols", exact: true }).click();
+			await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+		} else {
+			await (await toolbarButton(page, item)).click();
+		}
+		await moveAt(page, 100, 100);
+		const crosshair = page.getByTestId("ruler-position-guide");
+		await expect(crosshair).toBeVisible();
+		const guide = await crosshair.evaluate(svg => ({
+			x: svg.getBoundingClientRect().x + Number(svg.querySelectorAll("line")[1].getAttribute("x1")),
+			y: svg.getBoundingClientRect().y + Number(svg.querySelectorAll("line")[0].getAttribute("y1")),
+			stroke: getComputedStyle(svg).stroke,
+			confinedToRulers: Array.from(svg.querySelectorAll("line")).every(line => {
+				const x1 = Number(line.getAttribute("x1"));
+				const x2 = Number(line.getAttribute("x2"));
+				const y1 = Number(line.getAttribute("y1"));
+				const y2 = Number(line.getAttribute("y2"));
+				return line.dataset.axis === "x"
+					? y1 === 0 && y2 === 24 && x1 === x2
+					: x1 === svg.getBoundingClientRect().width - 24 && x2 === svg.getBoundingClientRect().width && y1 === y2;
+			}),
+			width: getComputedStyle(svg).strokeWidth,
+		}));
+		expect(guide.width).toBe("1px");
+		expect(guide.confinedToRulers).toBe(true);
+		if (item === "Resistor") await page.screenshot({ path: "/tmp/ecad-placement-ruler-guide.png" });
+		await clickAt(page, 100, 100);
+		await expect(crosshair).toHaveCount(0);
+		const center = await page.evaluate(async () => {
+			const shapesPath = "/packages/core/src/drawing/shapes.ts";
+			const { shapeBounds } = await import(shapesPath);
+			const documentState = JSON.parse(document.querySelector("#editor-document")!.textContent!);
+			const bounds = shapeBounds(documentState.shapes[0]);
+			return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+		});
+		const expected = await screen(page, center.x, center.y);
+		expect(guide.x).toBeCloseTo(expected.x, 0);
+		expect(guide.y).toBeCloseTo(expected.y, 0);
+	});
+}
+
+test("placement ruler guide clears on Escape and appears while drawing a shape", async ({ page }) => {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: "Insert Resistor", exact: true }).click();
+	await moveAt(page, 100, 100);
+	const crosshair = page.getByTestId("ruler-position-guide");
+	await expect(crosshair).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(crosshair).toHaveCount(0);
+	await (await toolbarButton(page, "Rectangle")).click();
+	await moveAt(page, 100, 100);
+	await page.mouse.down();
+	await moveAt(page, 150, 150);
+	await expect(crosshair).toBeVisible();
+	await page.mouse.up();
+	await expect(crosshair).toHaveCount(0);
+});
