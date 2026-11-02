@@ -191,3 +191,46 @@ for (const label of ["Add file", "Project actions"]) {
 		await page.keyboard.up("Control");
 	});
 }
+
+for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
+	test(`${platform} uses its primary modifier for hints and actions`, async ({ page }) => {
+		await page.addInitScript((platform) => {
+			Object.defineProperty(navigator, "platform", { value: platform });
+		}, platform);
+		await page.reload();
+		const mac = platform === "MacIntel";
+		const modifier = mac ? "Meta" : "Control";
+		const other = mac ? "Control" : "Meta";
+		await expect(page.getByRole("button", { name: "Shapes", exact: true })).toBeEnabled();
+		await page.keyboard.down(other);
+		await expect(page.locator(hints)).toHaveCount(0);
+		await page.keyboard.up(other);
+		await page.keyboard.down(modifier);
+		const shapes = page.locator(`${hints}[title="Shapes"]`);
+		await expect(shapes).toHaveAttribute("aria-label", `${modifier}+S`);
+		await expect(shapes.locator('[data-slot="modifier-icon"]')).toHaveClass(mac ? /lucide-command/ : /lucide-chevron-up/);
+		await page.keyboard.press("s");
+		await expect(page.getByRole("toolbar", { name: "Shapes toolbar", exact: true })).toBeVisible();
+		await expect(page.locator(`${hints}[title="Rectangle"]`)).toBeVisible();
+		await page.screenshot({ path: `/tmp/ecad-shortcuts-${platform.split(" ")[0]}.png` });
+		await page.keyboard.up(modifier);
+		await expect(page.locator(hints)).toHaveCount(0);
+		await page.keyboard.down(modifier);
+		await expect(shapes).toBeVisible();
+		await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+		await expect(page.locator(hints)).toHaveCount(0);
+		await page.keyboard.up(modifier);
+
+		await page.goto("/tests/browser/projects.html");
+		await expect(page.getByLabel("Workspace instructions", { exact: true })).toContainText(mac ? "⌘+Shift+S" : "Ctrl+Shift+S");
+		const sidebar = page.getByRole("complementary", { name: "Project files", exact: true, includeHidden: true });
+		await page.keyboard.press(`${other}+Shift+s`);
+		await expect(sidebar).toHaveAttribute("data-pinned", "false");
+		await page.keyboard.press(`${modifier}+Shift+s`);
+		await expect(sidebar).toHaveAttribute("data-pinned", "true");
+		await expect(sidebar.getByRole("button", { name: "Compact sidebar", exact: true })).toHaveAttribute("aria-keyshortcuts", `${modifier}+Shift+S`);
+		await sidebar.getByLabel("Search project files").focus();
+		await page.keyboard.press(`${modifier}+Shift+s`);
+		await expect(sidebar).toHaveAttribute("data-pinned", "false");
+	});
+}

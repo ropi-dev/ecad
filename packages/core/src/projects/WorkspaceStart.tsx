@@ -1,3 +1,4 @@
+import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import "./WorkspaceStart.css";
 
@@ -51,7 +52,7 @@ export function WorkspaceStart() {
 						</div>
 						<div>
 							<dt>Pin or compact sidebar</dt>
-							<dd>Ctrl+Alt+S</dd>
+							<dd>{formatShortcut("Ctrl+Shift+S")}</dd>
 						</div>
 						<div>
 							<dt>View a board</dt>
