@@ -12,6 +12,7 @@ import {
 	textLayout,
 } from "#/drawing/text.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
+import { PIN_LABEL_GAP, PIN_NUMBER_GAP } from "#/drawing/units.ts";
 import {
 	buildWireCrossings,
 	type WireCrossings,
@@ -265,19 +266,21 @@ function displayShape(
 			const layout = textLayout(text, measure);
 			const width = (layout.width * fontSize) / fontPixels;
 			const height = (layout.height * fontSize) / fontPixels;
-			const offset = shape.labelOffset ?? PIN_RADIUS + 1.5;
+			const offset = shape.labelOffset ?? PIN_RADIUS + pinNameFontSize;
 			const x =
 				shape.length !== undefined
 					? leadNumber
 						? shape.length / 2
-						: shape.length + 0.5 + width / 2
+						: shape.length + PIN_LABEL_GAP + width / 2
 					: leadNumber
-						? (Math.sign(offset) * Math.max(0, Math.abs(offset) - 0.5)) / 2
+						? (Math.sign(offset) *
+								Math.max(0, Math.abs(offset) - PIN_LABEL_GAP)) /
+							2
 						: offset + (offset < 0 ? -width / 2 : width / 2);
 			const y =
 				shape.length !== undefined || shape.labelOffset !== undefined
 					? leadNumber
-						? height / 2 - 0.25
+						? height / 2 - PIN_NUMBER_GAP
 						: 0
 					: attribute === "name"
 						? height / 2

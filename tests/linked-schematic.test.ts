@@ -521,9 +521,9 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
   if (contact === "rotated") supply.rotation = Math.PI / 2;
   if (contact === "multi") supply.children.push(drawShape(99,"pin",{x:40,y:0},{x:40,y:0}));
   const terminal = pinTerminals(supply)[0];
-  const component = createSymbol(2, resistor, contact === "wire" ? {x:terminal.x-10,y:terminal.y} : {x:terminal.x+3,y:terminal.y});
+  const component = createSymbol(2, resistor, contact === "wire" ? {x:terminal.x-10,y:terminal.y} : {x:terminal.x+3.81,y:terminal.y});
   const remote = createSymbol(3, symbolDefinitions.find(definition => definition.id === "vdd")!, {x:40,y:0});
-  const shapes = [supply, component, remote, createSymbol(4,resistor,{x:43,y:0}), ...(contact === "wire" ? [drawShape(5,"wire",pinTerminals(component)[1],terminal)] : [])];
+  const shapes = [supply, component, remote, createSymbol(4,resistor,{x:43.81,y:0}), ...(contact === "wire" ? [drawShape(5,"wire",pinTerminals(component)[1],terminal)] : [])];
   const first = synchronizePcb(original, shapes, original, symbolDefinitions);
   const net = first.file.circuit.nets.find(net => net.names.includes("VDD"))!;
   const owner = first.file.circuit.components.find(component => component.schematicShapeId === 2)!;

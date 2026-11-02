@@ -1,3 +1,5 @@
+import { MM_PER_MIL, SCHEMATIC_STEP } from "#/drawing/units.ts";
+
 export interface RulerTick {
 	position: number;
 	value: number;
@@ -15,8 +17,13 @@ const subdivisions = 10;
 const minimumMinorPixels = 10;
 
 /** Shared by the visible grid, ruler ticks, and editor snapping. */
-export function rulerSpacing(scale: number) {
+export function rulerSpacing(scale: number, unit: "mm" | "mil" = "mm") {
 	const desired = minimumMinorPixels / scale;
+	if (unit === "mil") {
+		const minor =
+			SCHEMATIC_STEP * 2 ** Math.ceil(Math.log2(desired / SCHEMATIC_STEP));
+		return { major: minor * subdivisions, minor };
+	}
 	const decade = 10 ** Math.ceil(Math.log10(desired));
 	const minor = decade / 5 >= desired ? decade / 5 : decade;
 	return { major: minor * subdivisions, minor };
@@ -28,8 +35,23 @@ export function rulerTicks(
 	scale: number,
 	length: number,
 	reversed = false,
+	unit: "mm" | "mil" = "mm",
 ): RulerTick[] {
-	return ticksForSpacing(center, scale, length, reversed, rulerSpacing(scale));
+	return ticksForSpacing(
+		center,
+		scale,
+		length,
+		reversed,
+		rulerSpacing(scale, unit),
+	).map((tick) => ({
+		...tick,
+		label:
+			tick.label === undefined
+				? undefined
+				: unit === "mil"
+					? String(Number((tick.value / MM_PER_MIL).toPrecision(12)))
+					: tick.label,
+	}));
 }
 
 function ticksForSpacing(
@@ -104,11 +126,11 @@ export function gridTicks(
 	);
 }
 
-export function gridLayers(scale: number) {
+export function gridLayers(scale: number, unit: "mm" | "mil" = "mm") {
 	if (!Number.isFinite(scale) || scale <= 0) return [];
 	const halfBand = 0.125;
-	const coarse = rulerSpacing(scale / (1 + halfBand));
-	const fine = rulerSpacing(scale / (1 - halfBand));
+	const coarse = rulerSpacing(scale / (1 + halfBand), unit);
+	const fine = rulerSpacing(scale / (1 - halfBand), unit);
 	const cutoff = minimumMinorPixels / fine.minor;
 	const progress = Math.max(
 		0,

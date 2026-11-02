@@ -218,7 +218,11 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
-  packages/default-symbols: {}
+  packages/default-symbols:
+    dependencies:
+      '@ecad/drawing-core':
+        specifier: workspace:*
+        version: link:../drawing-core
 
   packages/desktop:
     dependencies:

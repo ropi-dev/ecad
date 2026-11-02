@@ -3,6 +3,7 @@ import { type ReactNode, useMemo } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { z } from "zod";
 import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
+import { toMils } from "#/drawing/units.ts";
 
 const number = z.number({ error: "Enter a finite number." });
 const schema = z.object({
@@ -40,13 +41,13 @@ export function SymbolInstanceAttributeForm({
 		);
 		return {
 			attributes: { ...symbol.attributes },
-			x: displayNumber(symbol.x),
-			y: displayNumber(symbol.y),
+			x: toMils(symbol.x),
+			y: toMils(symbol.y),
 			angle: displayNumber((symbol.rotation * 180) / Math.PI),
 			lineWidth:
 				outlined.length &&
 				outlined.every((child) => child.lineWidth === outlined[0].lineWidth)
-					? displayNumber(outlined[0].lineWidth)
+					? toMils(outlined[0].lineWidth)
 					: null,
 		};
 	}, [symbol]);

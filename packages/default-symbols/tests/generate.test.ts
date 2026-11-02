@@ -19,10 +19,11 @@ test("default generation is deterministic and returns independent geometry and l
 		assert.ok(!symbol.file.shapes.some((shape) => shape.kind === "wire"), `${symbol.file.id} must draw leads and bodies with lines`);
 		assert.notEqual(symbol.file.shapes, second[index].file.shapes);
 		for (const [labelIndex, label] of symbol.texts.entries()) assert.notEqual(label, second[index].texts[labelIndex]);
+		const grid = 1.27;
 		for (const shape of symbol.file.shapes) {
 			if (shape.kind === "pin") {
-				assert.equal(shape.x, Math.round(shape.x));
-				assert.equal(shape.y, Math.round(shape.y));
+				assert.ok(Math.abs(shape.x / grid - Math.round(shape.x / grid)) < 1e-8);
+				assert.ok(Math.abs(shape.y / grid - Math.round(shape.y / grid)) < 1e-8);
 			}
 		}
 	}
@@ -36,15 +37,15 @@ test("semiconductor and passive variants preserve terminal identity and polarity
 	const pins = (id: string) => files.get(id)!.shapes.filter((shape) => shape.kind === "pin");
 	for (const id of ["diode", "diode-schottky", "diode-zener", "led"]) {
 		assert.deepEqual(pins(id), [
-			{ kind: "pin", name: "K", x: -3, y: 0 },
-			{ kind: "pin", name: "A", x: 3, y: 0 },
+			{ kind: "pin", name: "K", x: -3.81, y: 0 },
+			{ kind: "pin", name: "A", x: 3.81, y: 0 },
 		]);
 	}
 	for (const id of ["transistor-npn", "transistor-pnp"]) {
 		assert.deepEqual(pins(id), [
-			{ kind: "pin", name: "B", x: -4, y: 0 },
-			{ kind: "pin", name: "C", x: 2, y: 4 },
-			{ kind: "pin", name: "E", x: 2, y: -4 },
+			{ kind: "pin", name: "B", x: -5.08, y: 0 },
+			{ kind: "pin", name: "C", x: 2.54, y: 5.08 },
+			{ kind: "pin", name: "E", x: 2.54, y: -5.08 },
 		]);
 	}
 	for (const id of ["mosfet-n", "mosfet-p", "jfet-n", "jfet-p"]) {
@@ -54,7 +55,7 @@ test("semiconductor and passive variants preserve terminal identity and polarity
 	}
 	assert.notDeepEqual(files.get("transistor-npn")!.shapes, files.get("transistor-pnp")!.shapes);
 	assert.deepEqual(pins("potentiometer").map(({ name }) => name), ["1", "2", "3"]);
-	assert.deepEqual(pins("capacitor-polarized").map(({ x, y }) => [x, y]), [[3, 0], [-3, 0]]);
+	assert.deepEqual(pins("capacitor-polarized").map(({ x, y }) => [x, y]), [[3.81, 0], [-3.81, 0]]);
 	assert.equal(pins("transformer").length, 4);
 	assert.equal(pins("connector-8").length, 8);
 	assert.deepEqual(pins("op-amp").map(({ name }) => name), ["+", "V-", "-", "4", "V+"]);
@@ -94,11 +95,11 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 		const pins = file.shapes.filter(shape => shape.kind === "pin");
 		assert.equal(pins.length, count);
 		assert.equal(file.shapes.length, count + 1);
-		assert.ok(pins.every(pin => pin.length === 2));
+		assert.ok(pins.every(pin => pin.length === 2.54));
 		assert.equal(new Set(pins.map(pin => `${pin.x},${pin.y}`)).size, count);
 		for (const side of [-1, 1]) {
 			const ys = pins.filter(pin => Math.sign(pin.x) === side).map(pin => pin.y).sort((a, b) => a - b);
-			assert.ok(ys.slice(1).every((y, index) => y - ys[index] === 2));
+			assert.ok(ys.slice(1).every((y, index) => Math.abs(y - ys[index] - 2.54) < 1e-8));
 		}
 		assert.equal(file.shapes.filter(shape => shape.kind === "text").length, 0);
 		const names = new Map(pins.map(pin => [pin.number, pin.name]));

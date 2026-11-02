@@ -1,13 +1,19 @@
-import { electricalNets } from "#/drawing/named-nets.ts";
 import type { LineStyle } from "#/drawing/line-style.ts";
+import { electricalNets } from "#/drawing/named-nets.ts";
 import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import {
+	CONNECTION_RADIUS,
+	DEFAULT_PIN_LENGTH,
+	DEFAULT_STROKE_WIDTH,
+	SYMBOL_TEXT_SIZE,
+} from "#/drawing/units.ts";
 
 export const A3 = { width: 420, height: 297 } as const;
 /** All connection markers have the same radius in millimetres. */
-export const PIN_RADIUS = 0.2;
-export const DEFAULT_LINE_WIDTH = 0.12;
+export const PIN_RADIUS = CONNECTION_RADIUS;
+export const DEFAULT_LINE_WIDTH = DEFAULT_STROKE_WIDTH;
 export type ShapeKind =
 	| "rectangle"
 	| "circle"
@@ -83,8 +89,8 @@ export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
 		x: 0,
 		y:
 			Math.min(0, ...symbol.children.map((child) => shapeBounds(child).minY)) -
-			1.5,
-		fontSize: 1.5,
+			SYMBOL_TEXT_SIZE,
+		fontSize: SYMBOL_TEXT_SIZE,
 	};
 	const name = symbol.attributes.value.trim()
 		? symbol.attributes.value
@@ -842,7 +848,7 @@ export function drawShape(
 			kind,
 			name: "",
 			number: "",
-			length: 2,
+			length: DEFAULT_PIN_LENGTH,
 			...first,
 			width: 2 * PIN_RADIUS,
 			height: 2 * PIN_RADIUS,

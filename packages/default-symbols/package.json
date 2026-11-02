@@ -14,5 +14,8 @@
     "generate": "tsx scripts/generate.ts",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ecad/drawing-core": "workspace:*"
   }
 }

@@ -5,7 +5,6 @@ import {
 	circuitFileSchema,
 } from "@ecad/drawing-core/circuit/model.ts";
 import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
-
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
 import {
@@ -19,6 +18,12 @@ import {
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { font, fontPixels, updateText } from "#/drawing/text.ts";
 import type { Point } from "#/drawing/types.ts";
+import {
+	DEFAULT_PIN_LENGTH,
+	DEFAULT_TEXT_SIZE,
+	fromMils,
+	SYMBOL_TEXT_SIZE,
+} from "#/drawing/units.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 const fallbackPrefix = "circuit-fallback.";
@@ -77,8 +82,7 @@ export function synchronizePcb(
 					: previous!.circuit.nets.find(
 							(net) => shape.text === previousLabels.get(net.id),
 						);
-				if (!old || (!shape.circuitNet && old.names.length))
-					return shape;
+				if (!old || (!shape.circuitNet && old.names.length)) return shape;
 				const text = labels.get(old.id);
 				if (!text) return shape;
 				const bound = {
@@ -755,19 +759,26 @@ function fallbackDefinition(component: CircuitComponent): SymbolDefinition {
 		prefix: component.reference.replace(/\d+$/, ""),
 		value: component.value,
 		description: "",
-		texts: [{ attribute: "reference", x: 0, y: 3, fontSize: 1.5 }],
+		texts: [
+			{
+				attribute: "reference",
+				x: 0,
+				y: fromMils(150),
+				fontSize: SYMBOL_TEXT_SIZE,
+			},
+		],
 		children: component.pins.map((pin, index) => ({
 			id: index + 1,
 			kind: "pin",
 			name: pin.name,
 			number: pin.number,
-			x: -5,
-			y: -index * 2.5,
+			x: fromMils(-200),
+			y: -index * DEFAULT_PIN_LENGTH,
 			width: 1,
 			height: 1,
 			rotation: 0,
 			lineWidth: DEFAULT_LINE_WIDTH,
-			length: 2,
+			length: DEFAULT_PIN_LENGTH,
 		})),
 	};
 }
@@ -888,8 +899,8 @@ function createNetLabel(
 			rotation: 0,
 			width: 1,
 			height: 1,
-			fontSize: 1.5,
-			lineWidth: 0.2,
+			fontSize: DEFAULT_TEXT_SIZE,
+			lineWidth: DEFAULT_LINE_WIDTH,
 			text,
 			...alignmentAtPin(point, symbol),
 		},

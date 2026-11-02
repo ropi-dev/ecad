@@ -134,7 +134,7 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
  const box = (await page.locator("canvas").boundingBox())!;
  const view = JSON.parse((await page.locator("#editor-scene").textContent())!);
  const scale = (view.corner[0] - view.origin[0]) * box.width / 840;
- const step = rulerSpacing(scale).minor;
+ const step = rulerSpacing(scale, "mil").minor;
  const screen = (x: number, y: number) => ({
   x: box.x + (1 + view.origin[0]) * box.width / 2 + x * scale,
   y: box.y + (1 - view.origin[1]) * box.height / 2 - y * scale,
