@@ -15,7 +15,7 @@ import {
 	type SceneSelection,
 	type SceneViewportRuntime,
 } from "#/engine/scene-viewport.ts";
-import type { Bounds } from "#/engine/types.ts";
+import type { Bounds, Camera } from "#/engine/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { AxisIndicator } from "./AxisIndicator";
 import { downloadPng } from "./exportPng";
@@ -40,6 +40,7 @@ export interface SceneViewportProps {
 	/** Magnification applied to the fitted view that defines 100% zoom. */
 	fitZoom?: number;
 	physicalSizeZoom?: boolean;
+	cameraState?: { camera?: Camera };
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	interactionHint?: string;
@@ -64,6 +65,7 @@ export function SceneViewport({
 	lockProjection = false,
 	fitZoom = 1,
 	physicalSizeZoom = false,
+	cameraState,
 	getFitBounds,
 	selectionEnabled = true,
 	interactionHint,
@@ -94,6 +96,7 @@ export function SceneViewport({
 	const rulers = useRef<ViewportRulersHandle>(null);
 	const reportChange = useEffectEvent((snapshot: Viewer2DSnapshot) => {
 		rulers.current?.update(snapshot);
+		if (cameraState) cameraState.camera = snapshot.camera;
 		onChange?.(snapshot);
 	});
 	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
@@ -142,6 +145,7 @@ export function SceneViewport({
 						projection: currentProjection.current,
 						lockProjection,
 						fitZoom,
+						initialCamera: cameraState?.camera,
 						getFitBounds: readFitBounds,
 						selectionEnabled,
 						ariaLabel: formatShortcut(
@@ -182,6 +186,7 @@ export function SceneViewport({
 		selectionEnabled,
 		lockProjection,
 		fitZoom,
+		cameraState,
 	]);
 	useEffect(() => {
 		runtime.current?.setPhysicalScale(displayScale);

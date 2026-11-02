@@ -33,7 +33,10 @@ import { CircuitConnection } from "./CircuitConnection.tsx";
 import { CircuitContextMenu } from "./CircuitContextMenu.tsx";
 import { CircuitInlineFields } from "./CircuitInlineFields.tsx";
 import { GraphButton } from "./GraphButton.tsx";
-import { useCircuitNavigation } from "./useCircuitNavigation.ts";
+import {
+	type CircuitView,
+	useCircuitNavigation,
+} from "./useCircuitNavigation.ts";
 
 const ErcPanel = lazy(() =>
 	import("#/components/circuit/ErcPanel.tsx").then((module) => ({
@@ -63,6 +66,8 @@ type ConnectionDrag = {
 	active: boolean;
 	target: { kind: "pin" | "net"; id: string } | null;
 };
+
+const viewStates = new WeakMap<CircuitDocument["store"], CircuitView>();
 
 export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	const project = useProject();
@@ -126,7 +131,10 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	const svg = useRef<SVGSVGElement>(null);
 	const fittedStore = useRef<CircuitDocument["store"] | null>(null);
 	const { view, setView, zoom, gridStyle, gridStep, scale } =
-		useCircuitNavigation(svg);
+		useCircuitNavigation(svg, viewStates.get(store));
+	useEffect(() => {
+		viewStates.set(store, view);
+	}, [store, view]);
 	const graph = useMemo(
 		() =>
 			buildCircuitGraph({
@@ -636,7 +644,9 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	useLayoutEffect(() => {
 		if (fittedStore.current === store) return;
 		fittedStore.current = store;
-		fit(buildCircuitGraph(store.getSnapshot()), false);
+		const savedView = viewStates.get(store);
+		if (savedView) setView(savedView);
+		else fit(buildCircuitGraph(store.getSnapshot()), false);
 	});
 	return (
 		<section

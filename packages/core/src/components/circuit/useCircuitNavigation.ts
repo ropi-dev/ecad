@@ -8,8 +8,20 @@ import {
 } from "react";
 import { wheelDelta } from "#/engine/navigation.ts";
 
-export function useCircuitNavigation(svg: RefObject<SVGSVGElement | null>) {
-	const [view, setView] = useState({ x: 0, y: 0, width: 1600, height: 760 });
+export type CircuitView = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+};
+
+export function useCircuitNavigation(
+	svg: RefObject<SVGSVGElement | null>,
+	initialView?: CircuitView,
+) {
+	const [view, setView] = useState(
+		initialView ?? { x: 0, y: 0, width: 1600, height: 760 },
+	);
 	const [size, setSize] = useState({ width: 0, height: 0 });
 	useLayoutEffect(() => {
 		const element = svg.current;
