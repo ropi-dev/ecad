@@ -1,15 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import {
-	lstat,
-	mkdir,
-	open,
-	realpath,
-	rename,
-	rm,
-} from "node:fs/promises";
+import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { SymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import {
 	type AssetKind,
@@ -23,8 +16,10 @@ import {
 	type ProjectDirectory,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
+import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
 	canWriteSymbolPath,
+	type DirectoryAuthorization,
 	inspectDirectorySymbol,
 	readSymbolDirectory,
 	saveDirectorySymbol,
@@ -113,11 +108,30 @@ export async function createDesktopProjectDirectory(
 	};
 }
 
+export interface DesktopProjectsOptions {
+	homeDirectory?: string;
+	/**
+	 * Decides whether the open project may use a library directory outside its
+	 * own directory. Without it, such libraries are refused.
+	 */
+	approveExternalLibrary?(request: ExternalLibraryRequest): Promise<boolean>;
+}
+
+function isInside(parent: string, path: string) {
+	const suffix = relative(parent, path);
+	return (
+		suffix === "" ||
+		(suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix))
+	);
+}
+
 export class DesktopProjects {
 	private active: {
 		directory: string;
 		repository: ProjectRepository;
 		files?: Map<string, Uint8Array>;
+		/** Outside libraries the user refused. Reopening the project asks again. */
+		refused?: Set<string>;
 	} | null = null;
 	private snapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
 		return this.active?.files ? { ...snapshot, inMemory: true } : snapshot;
@@ -127,16 +141,22 @@ export class DesktopProjects {
 		return !!this.active?.files;
 	}
 	private operation: Promise<unknown> = Promise.resolve();
-	constructor(private initialPath?: string) {}
+	constructor(
+		private initialPath?: string,
+		private options: DesktopProjectsOptions = {},
+	) {}
 	private sequential<T>(run: () => Promise<T>) {
 		const next = this.operation.then(run, run);
 		this.operation = next.catch(() => undefined);
 		return next;
 	}
-	private current(directory: string) {
+	private opened(directory: string) {
 		if (!this.active || this.active.directory !== directory)
 			throw new Error("This project is no longer open.");
-		return this.active.repository;
+		return this.active;
+	}
+	private current(directory: string) {
+		return this.opened(directory).repository;
 	}
 	private async openPath(path: string) {
 		const selected = path.endsWith(PROJECT_FILE) ? dirname(path) : path;
@@ -268,10 +288,17 @@ export class DesktopProjects {
 	readAsset(directory: string, path: string) {
 		return this.sequential(() => this.current(directory).readAsset(path));
 	}
-	private symbolLibraryPath(directory: string, path: string) {
-		const repository = this.current(directory);
+	/**
+	 * Project manifests are untrusted. A configured path is used only when it
+	 * resolves inside the project or the user approved the outside directory.
+	 */
+	private symbolLibraryAccess(
+		directory: string,
+		path: string,
+	): { directory: string; authorize: DirectoryAuthorization } {
+		const active = this.opened(directory);
 		if (
-			!repository
+			!active.repository
 				.getSymbolLibraries()
 				.some(
 					(library) =>
@@ -281,21 +308,51 @@ export class DesktopProjects {
 			throw new Error(
 				"This directory is not configured as a project symbol library.",
 			);
-		return path.startsWith("~/")
-			? resolve(homedir(), path.slice(2))
-			: resolve(directory, path);
+		let requested: string;
+		if (path.startsWith("~/"))
+			requested = resolve(
+				this.options.homeDirectory ?? homedir(),
+				path.slice(2),
+			);
+		else if (isAbsolute(path)) requested = resolve(path);
+		else if (active.files)
+			throw new Error(
+				"Save the project before using a library path relative to its directory.",
+			);
+		else requested = resolve(directory, path);
+		return {
+			directory: requested,
+			authorize: async (library) => {
+				if (!active.files && isInside(directory, library)) return;
+				const key = JSON.stringify([directory, library]);
+				if (
+					!active.refused?.has(key) &&
+					(await this.options.approveExternalLibrary?.({
+						project: directory,
+						directory: library,
+					}))
+				)
+					return;
+				active.refused ??= new Set();
+				active.refused.add(key);
+				throw new Error(
+					"This symbol library is outside the project directory and was not allowed. Reopen the project to be asked again.",
+				);
+			},
+		};
 	}
 	readSymbolLibrary(directory: string, path: string) {
-		return this.sequential(
-			async () =>
-				(await readSymbolDirectory(this.symbolLibraryPath(directory, path)))
-					.symbols,
-		);
+		return this.sequential(async () => {
+			const library = this.symbolLibraryAccess(directory, path);
+			return (await readSymbolDirectory(library.directory, library.authorize))
+				.symbols;
+		});
 	}
 	inspectLibrarySymbol(directory: string, path: string, id: string) {
-		return this.sequential(() =>
-			inspectDirectorySymbol(this.symbolLibraryPath(directory, path), id),
-		);
+		return this.sequential(() => {
+			const library = this.symbolLibraryAccess(directory, path);
+			return inspectDirectorySymbol(library.directory, id, library.authorize);
+		});
 	}
 	saveLibrarySymbol(
 		directory: string,
@@ -303,13 +360,15 @@ export class DesktopProjects {
 		original: SymbolFile,
 		next: SymbolFile,
 	) {
-		return this.sequential(() =>
-			saveDirectorySymbol(
-				this.symbolLibraryPath(directory, path),
+		return this.sequential(() => {
+			const library = this.symbolLibraryAccess(directory, path);
+			return saveDirectorySymbol(
+				library.directory,
 				original,
 				next,
-			),
-		);
+				library.authorize,
+			);
+		});
 	}
 	canWriteFile(directory: string, path: string) {
 		return this.sequential(async () => {
