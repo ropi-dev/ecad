@@ -91,7 +91,10 @@ export function unknownCircuitCommand(command: never): never {
 }
 
 export interface CircuitCommandOptions {
-	/** Allocates IDs for nets that commands create. Defaults to `crypto.randomUUID`. */
+	/**
+	 * Allocates IDs for nets that commands create, and for the store's default
+	 * circuit when it has no initial file. Defaults to `crypto.randomUUID`.
+	 */
 	readonly createId?: () => string;
 }
 
