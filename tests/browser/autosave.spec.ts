@@ -6,9 +6,10 @@ async function drawWithTimersPaused(page: Page) {
 	await (await toolbarButton(page, "Rectangle")).click();
 	await page.clock.install();
 	await page.clock.pauseAt(new Date(Date.now() + 100));
+	// Span several 50 mil grid cells even when a small symbol fills the view.
 	await page.mouse.move(600, 300);
 	await page.mouse.down();
-	await page.mouse.move(710, 400);
+	await page.mouse.move(1000, 500);
 	await page.mouse.up();
 }
 
