@@ -62,9 +62,3 @@ export function transformPoint(point: Point, matrix?: Matrix): Point {
 	const [a, b, c, d, e, f] = matrix;
 	return { x: a * point.x + c * point.y + e, y: b * point.x + d * point.y + f };
 }
-
-export function gridSpacing(scale: number): number {
-	const desired = 42 / scale;
-	const magnitude = 10 ** Math.floor(Math.log10(desired));
-	return [1, 2, 5, 10].find((step) => step * magnitude >= desired)! * magnitude;
-}

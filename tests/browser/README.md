@@ -1,6 +1,6 @@
 # Browser coverage
 
-Run `pnpm run test:browser` for the 26 browser cases. CI runs the same suite across two shards, with no retries. Keep browser tests for browser APIs, rendered output, input handling, or interactions between the editor, project provider, and storage. Test document transformations and command edge cases in unit tests.
+Run `pnpm run test:browser` for the browser cases. CI runs the same suite across two shards, with no retries. Keep browser tests for browser APIs, rendered output, input handling, or interactions between the editor, project provider, and storage. Test document transformations and command edge cases in unit tests.
 
 | Browser cases | Coverage that needs a browser |
 | --- | --- |

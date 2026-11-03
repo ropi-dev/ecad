@@ -1,6 +1,6 @@
 # Browser tests
 
-`pnpm run test:browser` runs the same 47 scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each.
+`pnpm run test:browser` runs the same scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each.
 
 | Browser coverage | Scenarios | Detailed lower-level coverage |
 | --- | ---: | --- |
