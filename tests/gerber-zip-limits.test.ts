@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 import { strFromU8, strToU8, zipSync } from "fflate";
-import {
-	expandGerberFile,
-	MAX_GERBER_ARCHIVE_LENGTH,
-} from "#/formats/expandGerberFile.ts";
+import { expandGerberFile } from "#/formats/expandGerberFile.ts";
+import { MAX_GERBER_ARCHIVE_LENGTH } from "#/formats/gerber/archive.ts";
 import {
 	GERBER_EXTENSIONS,
 	hasGerberExtension,
@@ -12,9 +10,12 @@ import {
 } from "#/formats/gerber/detect.ts";
 import { gerberParser } from "#/formats/gerber/index.ts";
 import { ArchiveError } from "#/formats/import-effects.ts";
+import { installArchiveWorker } from "./helpers/archive-worker";
 import { patchZipEntry } from "./helpers/zip";
 
 const MiB = 1024 * 1024;
+const archiveWorker = installArchiveWorker();
+after(archiveWorker.restore);
 const gerber = (fileFunction: string) =>
 	strToU8(
 		`%TF.FileFunction,${fileFunction}*%%FSLAX46Y46*%%MOMM*%%ADD10C,1*%D10*X0Y0D03*M02*`,
@@ -108,20 +109,42 @@ test("many skipped entries are summarized in one message", async () => {
 	]);
 });
 
-test("an unsupported compression method skips only that entry", async () => {
+test("an unsupported compression method skips only that entry, and reasons share one message", async () => {
 	const archive = zipSync({
 		"top.gtl": gerber("Copper,L1,Top"),
 		"bottom.gbl": gerber("Copper,L2,Bot"),
+		"huge.gbr": gerber("Other"),
 	});
 	patchZipEntry(archive, "bottom.gbl", { compression: 12 });
+	patchZipEntry(archive, "huge.gbr", { originalSize: 0xf000_0000 });
 	const { files, messages } = await expand(archive);
 	assert.deepEqual(
 		files.map((file) => file.name),
 		["top.gtl"],
 	);
 	assert.deepEqual(messages, [
-		"Skipped bottom.gbl (unsupported ZIP compression method).",
+		"Skipped bottom.gbl (unsupported ZIP compression method); huge.gbr (larger than the 64 MiB Gerber file limit).",
 	]);
+});
+
+test("ZIP archives are read inside the archive worker, which receives the File itself", async () => {
+	const file = new File(
+		[zipSync({ "top.gtl": gerber("Copper,L1,Top") })],
+		"board.zip",
+	);
+	const created = archiveWorker.workers.length;
+	await expandGerberFile(file, new AbortController().signal);
+	const worker = archiveWorker.workers[created];
+	assert.equal(archiveWorker.workers.length, created + 1);
+	assert.match(worker.url, /\/formats\/gerber\/archive\.worker\.ts$/);
+	assert.deepEqual(worker.posted, [{ file }]);
+	assert.equal(worker.terminated, 1);
+	const loose = new File([gerber("Copper,L1,Top")], "top.gtl");
+	assert.deepEqual(
+		(await expandGerberFile(loose, new AbortController().signal)).files,
+		[loose],
+	);
+	assert.equal(archiveWorker.workers.length, created + 1);
 });
 
 test("binary and non-Gerber entries are skipped and only file headers are decoded", async (t) => {
