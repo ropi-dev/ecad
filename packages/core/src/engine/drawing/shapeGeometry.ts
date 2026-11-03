@@ -1,6 +1,7 @@
 import {
 	BufferGeometry,
 	CircleGeometry,
+	Float32BufferAttribute,
 	Path,
 	PlaneGeometry,
 	RingGeometry,
@@ -13,10 +14,63 @@ import type { DrawingGeometry } from "#/drawing/display.ts";
 import { createLineStyleGeometry } from "#/engine/drawing/lineStyleGeometry.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
+/** Zero-size shapes build geometry without a position attribute. */
+const hasVertices = (geometry: BufferGeometry) =>
+	(geometry.getAttribute("position")?.count ?? 0) > 0;
+
+function mergeAsTriangles(geometries: readonly BufferGeometry[]) {
+	const vertices: number[] = [];
+	for (const geometry of geometries) {
+		const position = geometry.getAttribute("position");
+		const index = geometry.getIndex();
+		for (let item = 0; item < (index?.count ?? position.count); item++) {
+			const vertex = index ? index.getX(item) : item;
+			vertices.push(
+				position.getX(vertex),
+				position.getY(vertex),
+				position.itemSize > 2 ? position.getZ(vertex) : 0,
+			);
+		}
+	}
+	const merged = new BufferGeometry();
+	merged.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+	merged.setIndex(
+		Array.from({ length: vertices.length / 3 }, (_, index) => index),
+	);
+	merged.setAttribute(
+		"uv",
+		new Float32BufferAttribute(new Float32Array((vertices.length / 3) * 2), 2),
+	);
+	merged.computeVertexNormals();
+	return merged;
+}
+
+/**
+ * Merges part meshes so one degenerate part cannot hide the others: empty parts
+ * are skipped, and incompatible layouts merge as plain triangles instead of null.
+ */
+export function mergeShapeGeometries(
+	geometries: readonly BufferGeometry[],
+	kind: string,
+): BufferGeometry {
+	const renderable = geometries.filter(hasVertices);
+	if (!renderable.length) return new BufferGeometry();
+	const merged = mergeGeometries(renderable);
+	if (merged) return merged;
+	if (import.meta.env?.DEV)
+		console.warn(
+			`ecad: merged ${renderable.length} incompatible ${kind} geometries as plain triangles`,
+		);
+	return measurePerformance(
+		"editor.shape-geometry-merge-fallback",
+		() => mergeAsTriangles(renderable),
+		{ kind, parts: renderable.length },
+	);
+}
+
 /** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
-		if (!shape.children.length) return new BufferGeometry();
 		const children = shape.children
 			.filter((child) => child.kind !== "text")
 			.map((child) =>
@@ -31,9 +85,8 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 					.rotateZ(child.rotation)
 					.translate(child.x, child.y, 0),
 			);
-		if (!children.length) return new BufferGeometry();
 		try {
-			return (mergeGeometries(children) ?? new BufferGeometry()).scale(
+			return mergeShapeGeometries(children, shape.kind).scale(
 				1 / shape.width,
 				1 / shape.height,
 				1,
@@ -136,9 +189,8 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 				position = Math.max(position, Math.min(halfLength, end));
 			}
 			segment(position, halfLength);
-			if (!pieces.length) return new BufferGeometry();
 			try {
-				return (mergeGeometries(pieces) ?? new BufferGeometry()).scale(
+				return mergeShapeGeometries(pieces, shape.kind).scale(
 					1 / width,
 					1 / lineWidth,
 					1,
@@ -176,7 +228,7 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 				.rotateZ(rotation),
 		);
 		try {
-			return (mergeGeometries(pieces) ?? new BufferGeometry()).scale(
+			return mergeShapeGeometries(pieces, shape.kind).scale(
 				1 / width,
 				1 / height,
 				1,
@@ -200,7 +252,7 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 			.translate(shape.length / 2, 0, 0)
 			.scale(1 / shape.width, 1 / shape.height, 1);
 		try {
-			return mergeGeometries([dot, lead]) ?? new BufferGeometry();
+			return mergeShapeGeometries([dot, lead], shape.kind);
 		} finally {
 			dot.dispose();
 			lead.dispose();
