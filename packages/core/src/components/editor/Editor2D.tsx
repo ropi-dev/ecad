@@ -16,6 +16,7 @@ import {
 	Square,
 	Trash2,
 	Triangle,
+	TriangleAlert,
 	Type,
 	Unlock,
 	X,
@@ -315,13 +316,51 @@ function EditorCanvas({
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [allowLocked, setAllowLocked] = useState(false);
 	const [ready, setReady] = useState(false);
-	const [commandError, setError] = useState("");
-	const error = [
-		commandError,
-		...(symbolLibrary.loading ? [] : resolved.errors),
-	]
-		.filter(Boolean)
-		.join("\n");
+	// A failed command or clipboard action. The next successful one replaces it.
+	const [commandError, setCommandError] = useState("");
+	const [viewerError, setViewerError] = useState("");
+	// Persistent issues last until their cause is fixed. Dismissing one only
+	// collapses it while that exact message remains.
+	const issues = [
+		...new Set(
+			[
+				viewerError,
+				...(symbolLibrary.loading ? [] : resolved.errors),
+				project?.error ?? "",
+			].filter(Boolean),
+		),
+	];
+	const [dismissedIssues, setDismissedIssues] = useState<ReadonlySet<string>>(
+		() => new Set(),
+	);
+	const hiddenIssues = issues.filter((issue) => dismissedIssues.has(issue));
+	// Forget resolved issues, so a later recurrence is announced again.
+	if (!symbolLibrary.loading && hiddenIssues.length !== dismissedIssues.size)
+		setDismissedIssues(new Set(hiddenIssues));
+	const messages = [
+		...new Set(
+			[
+				commandError,
+				...issues.filter((issue) => !dismissedIssues.has(issue)),
+			].filter(Boolean),
+		),
+	];
+	const dismissMessages = () => {
+		setCommandError("");
+		setDismissedIssues(new Set(issues));
+	};
+	const dismissButton = useRef<HTMLButtonElement>(null);
+	const issuesButton = useRef<HTMLButtonElement>(null);
+	// Dismissing or restoring replaces the focused button, so focus its successor.
+	const pendingFocus = useRef<"issues" | "messages" | null>(null);
+	useEffect(() => {
+		const target = pendingFocus.current;
+		if (!target) return;
+		pendingFocus.current = null;
+		(target === "issues" ? issuesButton : dismissButton).current?.focus({
+			preventScroll: true,
+		});
+	});
 	const snapshot = useRef<Viewer2DSnapshot | null>(null);
 	const [view, setView] = useState<Viewer2DSnapshot | null>(null);
 	const drag = useRef<Drag | null>(null);
@@ -438,7 +477,7 @@ function EditorCanvas({
 				},
 				(cause) => {
 					if (active)
-						setError(
+						setCommandError(
 							cause instanceof Error
 								? cause.message
 								: "Unable to open the symbol definition.",
@@ -533,9 +572,10 @@ function EditorCanvas({
 				program.pipe(Effect.provideService(DrawingStore, store), Effect.either),
 			);
 			if (Either.isLeft(result)) {
-				setError(result.left.message);
+				setCommandError(result.left.message);
 				return undefined;
 			}
+			setCommandError("");
 			return result.right;
 		} finally {
 			executingCommand.current = false;
@@ -1007,7 +1047,7 @@ function EditorCanvas({
 		const text = serializeSelection(source);
 		const captured = parseSelection(text);
 		if (!captured) {
-			setError(
+			setCommandError(
 				"The selection is too large or contains unavailable symbol geometry.",
 			);
 			return;
@@ -1016,13 +1056,14 @@ function EditorCanvas({
 			const file = selectionFileText(captured);
 			event.clipboardData.setData("text/plain", file);
 			event.clipboardData.setData(drawingClipboardType, text);
+			setCommandError("");
 			void writeSelectionClipboard(captured, text, file)?.catch(() => {
-				setError(
+				setCommandError(
 					"Image formats could not be copied. Editable data and save-file text are still available.",
 				);
 			});
 		} catch {
-			setError("Unable to copy the selection to the clipboard.");
+			setCommandError("Unable to copy the selection to the clipboard.");
 			return;
 		}
 		event.preventDefault();
@@ -1080,7 +1121,7 @@ function EditorCanvas({
 						isSymbol ? "symbol" : "drawing",
 					);
 				} catch (cause) {
-					setError(
+					setCommandError(
 						cause instanceof Error
 							? cause.message
 							: "This selection cannot be pasted into a reusable symbol.",
@@ -1720,8 +1761,11 @@ function EditorCanvas({
 							}
 							updateScene={updateScene}
 							selectionEnabled={false}
-							onReady={setReady}
-							onError={setError}
+							onReady={(value) => {
+								setReady(value);
+								if (value) setViewerError("");
+							}}
+							onError={setViewerError}
 							onChange={(value) => {
 								snapshot.current = value;
 								setView((current) =>
@@ -2081,13 +2125,55 @@ function EditorCanvas({
 							Click to place {symbolDefinition.name}. Escape cancels.
 						</output>
 					)}
-					{(error || project?.error) && (
-						<p
-							className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] text-[#edc49a]"
-							role="alert"
-						>
-							{error || project?.error}
-						</p>
+					{(messages.length > 0 || hiddenIssues.length > 0) && (
+						<div className="absolute top-22 left-10 z-3 flex max-w-[min(560px,calc(100%-56px))] flex-col items-start gap-2">
+							{messages.length > 0 && (
+								<div className="flex max-w-full items-start gap-1 rounded-lg border border-[#72543a] bg-[#392e25f5] py-1.5 pr-1.5 pl-3 text-[13px] text-[#edc49a]">
+									<div
+										role="alert"
+										className="max-h-25 min-w-0 flex-1 overflow-auto py-1 break-words"
+									>
+										{messages.map((message) => (
+											<p key={message} className="m-0">
+												{message}
+											</p>
+										))}
+									</div>
+									<button
+										ref={dismissButton}
+										type="button"
+										aria-label="Dismiss editor messages"
+										title="Dismiss"
+										className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-[#edc49a] hover:bg-[#edc49a1f] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+										onClick={(event) => {
+											const canvas = event.currentTarget
+												.closest("main")
+												?.querySelector("canvas");
+											dismissMessages();
+											if (issues.length) pendingFocus.current = "issues";
+											else canvas?.focus({ preventScroll: true });
+										}}
+									>
+										<X size={15} aria-hidden="true" />
+									</button>
+								</div>
+							)}
+							{hiddenIssues.length > 0 && (
+								<button
+									ref={issuesButton}
+									type="button"
+									className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#72543a] bg-[#392e25f5] px-2.5 py-1.5 text-[12px] text-[#edc49a] hover:bg-[#4a3b2ff5] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+									onClick={() => {
+										pendingFocus.current = "messages";
+										setDismissedIssues(new Set());
+									}}
+								>
+									<TriangleAlert size={14} aria-hidden="true" />
+									Show {hiddenIssues.length}{" "}
+									{hiddenIssues.length === 1 ? "issue" : "issues"}
+								</button>
+							)}
+						</div>
 					)}
 				</div>
 				<SelectionAttributes
