@@ -2,11 +2,9 @@
 
 ECAD's original application code is under the root MIT license. That license does not replace the licenses of third-party code, symbols, fonts, or reference designs.
 
-## Copied UI and starter code
+## Starter code
 
-The components in `packages/core/src/components/ui` include code from [shadcn/ui](https://github.com/shadcn-ui/ui). Copyright 2023 shadcn. The full MIT notice is in [licenses/shadcn-MIT.txt](licenses/shadcn-MIT.txt).
-
-The TanStack Start scaffold and demo code originate from the [TanStack project](https://github.com/TanStack/router). Copyright 2021-present Tanner Linsley. The full MIT notice is in [licenses/tanstack-MIT.txt](licenses/tanstack-MIT.txt).
+The TanStack Start scaffold in `packages/web` originates from the [TanStack project](https://github.com/TanStack/router). Copyright 2021-present Tanner Linsley. The full MIT notice is in [licenses/tanstack-MIT.txt](licenses/tanstack-MIT.txt).
 
 ## Schematic symbols
 

@@ -108,7 +108,7 @@ Manage the repository connection and automatic deployments in the project's [Git
 
 `pnpm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
 
-The editor, viewers, and browser project storage work without a Node server. MCP and server-backed demos require a running app server and are unavailable in this static deployment. Development and `pnpm run preview` still support those server features.
+The editor, viewers, and browser project storage work without a Node server. Editor MCP sessions require a running app server and are unavailable in this static deployment. Development and `pnpm run preview` still support those server features.
 
 From `/home/ropi/ecad`, install the site on this Ubuntu host:
 
@@ -148,7 +148,7 @@ Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within 
 
 Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `pnpm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
 
-Tailwind styles live in `packages/core/src/styles.css`. The shared Shadcn configuration is `packages/core/components.json`. Web environment validation lives in `packages/web/src/env.ts`. Database commands such as `pnpm run db:migrate` run in the web workspace and use `DATABASE_URL`.
+Tailwind styles live in `packages/core/src/styles.css`.
 
 See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
 

@@ -28,7 +28,7 @@ The panel provides a configuration in this form. Use the actual URL and token co
 
 Client configuration formats vary; the endpoint uses HTTP and requires the `Authorization: Bearer ...` header. The token grants read and edit access to this drawing. The client must be able to reach the app at the copied URL.
 
-The existing `/mcp` endpoint remains the todo demo, with its `addTodo` tool. Drawing clients use the session-specific `/mcp/editor/<session-id>` endpoint.
+Drawing clients use the session-specific `/mcp/editor/<session-id>` endpoint. The app has no other public MCP endpoint.
 
 ## CLI and stdio access
 
