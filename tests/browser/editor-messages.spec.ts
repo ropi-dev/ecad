@@ -72,6 +72,11 @@ test("a later command or clipboard action clears a command error, and dismiss hi
 	await pasteDiagonalWire(page);
 	await expect(alert).toHaveText(wireError);
 	expect(await documentShapes(page)).toHaveLength(1);
+	const box = (await page.locator("canvas").boundingBox())!;
+	await page
+		.locator("canvas")
+		.click({ position: { x: box.width / 2, y: box.height / 2 } });
+	await expect(alert).toHaveText(wireError);
 
 	await page.keyboard.press("r");
 	await expect
@@ -103,6 +108,45 @@ test("a later command or clipboard action clears a command error, and dismiss hi
 	await expect(alert).toHaveCount(0);
 	await expect(dismiss).toHaveCount(0);
 	await expect(page.locator("canvas")).toBeFocused();
+
+	await pasteDiagonalWire(page);
+	await dismiss.focus();
+	const rotation = (await documentShapes(page))[0].rotation;
+	await page.keyboard.press("r");
+	await expect(alert).toHaveCount(0);
+	await expect(page.locator("canvas")).toBeFocused();
+	await page.keyboard.press("r");
+	await expect
+		.poll(async () => (await documentShapes(page))[0].rotation)
+		.toBeCloseTo(rotation + Math.PI);
+});
+
+test("a late image-copy failure does not replace a newer error", async ({
+	page,
+}) => {
+	await page.evaluate(() =>
+		Object.defineProperty(navigator.clipboard, "write", {
+			configurable: true,
+			value: () =>
+				new Promise((_resolve, reject) => {
+					Object.assign(window, {
+						rejectImageCopy: () =>
+							reject(new DOMException("Denied", "NotAllowedError")),
+					});
+				}),
+		}),
+	);
+	await page.locator("canvas").focus();
+	await page.keyboard.press("Control+c");
+	await pasteDiagonalWire(page);
+	await expect(page.getByRole("alert")).toHaveText(wireError);
+	await page.evaluate(async () => {
+		(window as unknown as { rejectImageCopy: () => void }).rejectImageCopy();
+		await new Promise((resolve) =>
+			requestAnimationFrame(() => requestAnimationFrame(resolve)),
+		);
+	});
+	await expect(page.getByRole("alert")).toHaveText(wireError);
 });
 
 test("dismissed library issues stay available until they are resolved", async ({
@@ -140,9 +184,11 @@ test("dismissed library issues stay available until they are resolved", async ({
 	await expect(alert).toHaveText(wireError);
 	await expect(showIssues).toBeVisible();
 	await dismiss.click();
+	await expect(showIssues).toBeFocused();
 
-	await setResistorLibrary(page, "builtin");
+	await page.keyboard.press("Control+z");
 	await expect(showIssues).toHaveCount(0);
-	await setResistorLibrary(page, "missing");
+	await expect(page.locator("canvas")).toBeFocused();
+	await page.keyboard.press("Control+Shift+z");
 	await expect(alert).toHaveText(libraryError);
 });

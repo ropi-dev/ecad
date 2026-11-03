@@ -241,6 +241,25 @@ export function Editor2D(props: Editor2DProps = {}) {
 	);
 }
 
+function messageButtonRef(target: { current: HTMLButtonElement | null }) {
+	return (button: HTMLButtonElement) => {
+		target.current = button;
+		return () => {
+			if (target.current === button) target.current = null;
+			const owner = button.ownerDocument;
+			if (owner.activeElement !== button) return;
+			const canvas = button.closest("main")?.querySelector("canvas");
+			queueMicrotask(() => {
+				if (
+					!button.isConnected &&
+					(!owner.activeElement || owner.activeElement === owner.body)
+				)
+					canvas?.focus({ preventScroll: true });
+			});
+		};
+	};
+}
+
 function EditorCanvas({
 	sheet = defaultSheet,
 	store: suppliedStore,
@@ -344,6 +363,8 @@ function EditorCanvas({
 	};
 	const dismissButton = useRef<HTMLButtonElement>(null);
 	const issuesButton = useRef<HTMLButtonElement>(null);
+	const [dismissButtonRef] = useState(() => messageButtonRef(dismissButton));
+	const [issuesButtonRef] = useState(() => messageButtonRef(issuesButton));
 	const pendingFocus = useRef<"issues" | "messages" | null>(null);
 	useEffect(() => {
 		const target = pendingFocus.current;
@@ -559,6 +580,7 @@ function EditorCanvas({
 		program: Effect.Effect<A, InvalidDrawingCommand, DrawingStore>,
 	): A | undefined => {
 		executingCommand.current = true;
+		const before = store.getSnapshot();
 		try {
 			const result = Effect.runSync(
 				program.pipe(Effect.provideService(DrawingStore, store), Effect.either),
@@ -567,7 +589,7 @@ function EditorCanvas({
 				setCommandError(result.left.message);
 				return undefined;
 			}
-			setCommandError("");
+			if (store.getSnapshot() !== before) setCommandError("");
 			return result.right;
 		} finally {
 			executingCommand.current = false;
@@ -1051,7 +1073,9 @@ function EditorCanvas({
 			setCommandError("");
 			void writeSelectionClipboard(captured, text, file)?.catch(() => {
 				setCommandError(
-					"Image formats could not be copied. Editable data and save-file text are still available.",
+					(current) =>
+						current ||
+						"Image formats could not be copied. Editable data and save-file text are still available.",
 				);
 			});
 		} catch {
@@ -2118,7 +2142,7 @@ function EditorCanvas({
 						</output>
 					)}
 					{(messages.length > 0 || hiddenIssues.length > 0) && (
-						<div className="absolute top-22 left-10 z-3 flex max-w-[min(560px,calc(100%-56px))] flex-col items-start gap-2">
+						<div className="pointer-events-none absolute top-22 left-10 z-3 flex max-w-[min(560px,calc(100%-56px))] flex-col items-start gap-2 *:pointer-events-auto">
 							{messages.length > 0 && (
 								<div className="flex max-w-full items-start gap-1 rounded-lg border border-[#72543a] bg-[#392e25f5] py-1.5 pr-1.5 pl-3 text-[13px] text-[#edc49a]">
 									<div
@@ -2132,7 +2156,7 @@ function EditorCanvas({
 										))}
 									</div>
 									<button
-										ref={dismissButton}
+										ref={dismissButtonRef}
 										type="button"
 										aria-label="Dismiss editor messages"
 										title="Dismiss"
@@ -2152,7 +2176,7 @@ function EditorCanvas({
 							)}
 							{hiddenIssues.length > 0 && (
 								<button
-									ref={issuesButton}
+									ref={issuesButtonRef}
 									type="button"
 									className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#72543a] bg-[#392e25f5] px-2.5 py-1.5 text-[12px] text-[#edc49a] hover:bg-[#4a3b2ff5] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 									onClick={() => {
