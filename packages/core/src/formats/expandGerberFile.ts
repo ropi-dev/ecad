@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { type UnzipFileInfo, type Unzipped, unzip } from "fflate";
+import { type UnzipFileInfo, unzipSync } from "fflate";
 import {
 	fileExtension,
 	hasGerberExtension,
@@ -80,35 +80,19 @@ function selectEntries() {
 	return { filter, messages };
 }
 
+/**
+ * Inflates on the calling thread. fflate's async `unzip` posts each large
+ * entry to a worker as a view of the archive, which copies the entire archive
+ * per entry; the size caps above bound this synchronous work instead.
+ */
 function unzipEffect(
 	data: Uint8Array,
 	filter: (entry: UnzipFileInfo) => boolean,
 ) {
-	return Effect.async<Unzipped, ArchiveError>((resume) => {
-		try {
-			const terminate = unzip(data, { filter }, (cause, result) => {
-				resume(
-					cause
-						? Effect.fail(
-								new ArchiveError({
-									message: "Unable to read this ZIP archive.",
-									cause,
-								}),
-							)
-						: Effect.succeed(result),
-				);
-			});
-			return Effect.sync(terminate);
-		} catch (cause) {
-			resume(
-				Effect.fail(
-					new ArchiveError({
-						message: "Unable to read this ZIP archive.",
-						cause,
-					}),
-				),
-			);
-		}
+	return Effect.try({
+		try: () => unzipSync(data, { filter }),
+		catch: (cause) =>
+			new ArchiveError({ message: "Unable to read this ZIP archive.", cause }),
 	});
 }
 

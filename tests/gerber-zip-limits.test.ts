@@ -49,6 +49,29 @@ test("a ZIP entry declaring a huge size is skipped without inflating it", async 
 	]);
 });
 
+test("large entries inflate without fflate workers, which would each copy the whole archive", async (t) => {
+	const workers = t.mock.fn();
+	process.on("worker", workers);
+	t.after(() => process.off("worker", workers));
+	// Over 512 KiB and highly compressible: fflate's async unzip sends these to workers.
+	const source = `%TF.FileFunction,Copper,L1,Top*%%FSLAX46Y46*%%MOMM*%%ADD10C,1*%${"G04 padding*\n".repeat(80 * 1024)}D10*X0Y0D03*M02*`;
+	const archive = zipSync({
+		"top.gtl": strToU8(source),
+		"bottom.gbl": strToU8(source.replace("L1,Top", "L2,Bot")),
+		"manual.pdf": [new Uint8Array(8 * MiB), { level: 0 }],
+	});
+	const { files, messages } = await expand(archive);
+	assert.deepEqual(
+		files.map((file) => [file.name, file.size]),
+		[
+			["bottom.gbl", source.length],
+			["top.gtl", source.length],
+		],
+	);
+	assert.deepEqual(messages, []);
+	assert.equal(workers.mock.callCount(), 0);
+});
+
 test("the archive limit counts declared sizes and reports each overflowing entry", async () => {
 	const count = Math.floor(MAX_GERBER_ARCHIVE_LENGTH / (60 * MiB)) + 2;
 	const names = Array.from({ length: count }, (_, index) => `layer-${index}.gbr`);
