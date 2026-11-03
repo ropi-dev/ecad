@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, readlink, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { PassThrough, Readable } from "node:stream";
 import { test, type TestContext } from "node:test";
+import { fileURLToPath } from "node:url";
 import { createLocalDrawing, runCli } from "@ecad/cli";
 import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
@@ -39,10 +40,17 @@ async function exitedPid() {
 	return child.pid;
 }
 
-const lockContent = (owner: { pid: number; hostname?: string; bootId?: string }) => JSON.stringify({ hostname: hostname(), ...owner, id: randomUUID() });
+const linux = process.platform === "linux";
+const readText = (path: string) => readFile(path, "utf8").then((text) => text.trim() || undefined, () => undefined);
+// The identity the CLI records on this computer, so test locks look local.
+const system = linux
+	? { machineId: await readText("/etc/machine-id"), bootId: await readText("/proc/sys/kernel/random/boot_id"), pidNamespace: await readlink("/proc/self/ns/pid") }
+	: {};
+const ownStartTime = linux ? (await readText("/proc/self/stat"))?.split(") ")[1]?.split(" ")[19] : undefined;
+const lockContent = (owner: { pid: number } & Record<string, unknown>) => JSON.stringify({ hostname: hostname(), ...system, ...owner, id: randomUUID() });
+const drawingFiles = new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]);
 
-const fileMode = async (path: string) => (await stat(path)).mode & 0o777;
-const bootId = await readFile("/proc/sys/kernel/random/boot_id", "utf8").then((id) => id.trim(), () => "");
+const fileMode = async (path: string) => (await stat(path)).mode & 0o7777;
 
 async function stdio(context: TestContext, env: Record<string, string>) {
 	const transport = new StdioClientTransport({
@@ -191,51 +199,81 @@ test("CLI recovers a lock left by an exited process", async (context) => {
 	assert.equal(result.code, 0, result.stderr || result.stdout);
 	assert.equal(result.stderr, "");
 	assert.equal((await fixture.read()).shapes.length, 1);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]));
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
 });
 
 test("CLI keeps locks whose owner is running or cannot be checked", async (context) => {
 	const fixture = await drawing(context);
 	const lock = `${fixture.path}.lock`;
-	const contents = [
-		lockContent({ pid: process.pid }),
+	const live = lockContent({ pid: process.pid, startTime: ownStartTime });
+	await writeFile(lock, live);
+	const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], fixture.env).result;
+	assert.equal(result.code, 1);
+	assert.equal(JSON.parse(result.stdout).structuredContent.error.code, "DrawingLocked");
+	assert.equal(await readFile(lock, "utf8"), live);
+	const unknown = [
 		lockContent({ pid: await exitedPid(), hostname: `other-${hostname()}` }),
+		lockContent({ pid: await exitedPid(), machineId: "another-computer" }),
+		lockContent({ pid: await exitedPid(), pidNamespace: "pid:[1]" }),
 		JSON.stringify({ pid: await exitedPid() }),
+		"",
 	];
-	for (const content of contents) {
+	for (const content of unknown) {
 		await writeFile(lock, content);
-		const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], fixture.env).result;
-		assert.equal(result.code, 1);
-		assert.equal(JSON.parse(result.stdout).structuredContent.error.code, "DrawingLocked");
+		await assert.rejects(runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle })), { code: "DrawingLocked" }, content);
 		assert.equal(await readFile(lock, "utf8"), content);
 		assert.deepEqual(await readdir(fixture.directory), ["drawing.ecaddraw.lock"]);
 	}
 });
 
-test("CLI recovers a lock from a previous boot even when its PID is now in use", { skip: !bootId }, async (context) => {
+test("local drawing module keeps a live lock that has this process's PID", async (context) => {
+	const fixture = await drawing(context);
+	const content = lockContent({ pid: process.pid, startTime: ownStartTime });
+	await writeFile(`${fixture.path}.lock`, content);
+	await assert.rejects(runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle })), { code: "DrawingLocked" });
+	assert.equal(await readFile(`${fixture.path}.lock`, "utf8"), content);
+});
+
+test("CLI recovers a lock from an earlier boot even when its PID is now in use", { skip: !(system.machineId && system.bootId) }, async (context) => {
 	const fixture = await drawing(context);
 	await writeFile(`${fixture.path}.lock`, lockContent({ pid: process.pid, bootId: randomUUID() }));
 	const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], fixture.env).result;
 	assert.equal(result.code, 0, result.stderr || result.stdout);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]));
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
 });
 
-test("local drawing module recovers a crashed process's lock after its PID is reused by this process", async (context) => {
+test("local drawing module recovers a lock whose PID now belongs to a later process", { skip: !ownStartTime }, async (context) => {
 	const fixture = await drawing(context);
-	await writeFile(`${fixture.path}.lock`, lockContent({ pid: process.pid, bootId: bootId || undefined }));
+	await writeFile(`${fixture.path}.lock`, lockContent({ pid: process.pid, startTime: "1" }));
 	const reply = await runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle }));
 	assert.ok(reply.ok);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]));
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
 });
 
-test("CLI removes a claim left by a process that exited while recovering a lock", async (context) => {
+test("CLI follows claims left by processes that exited while recovering a lock", async (context) => {
 	const fixture = await drawing(context);
-	const lock = lockContent({ pid: await exitedPid() });
-	await writeFile(`${fixture.path}.lock`, lock);
-	await writeFile(`${fixture.path}.lock.${JSON.parse(lock).id}.claim`, lockContent({ pid: await exitedPid() }));
+	let previous = lockContent({ pid: await exitedPid() });
+	await writeFile(`${fixture.path}.lock`, previous);
+	for (let level = 0; level < 4; level++) {
+		const claim = lockContent({ pid: await exitedPid() });
+		await writeFile(`${fixture.path}.lock.${JSON.parse(previous).id}.claim`, claim);
+		previous = claim;
+	}
 	const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], fixture.env).result;
 	assert.equal(result.code, 0, result.stderr || result.stdout);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]));
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
+});
+
+test("local drawing module stops at a cycle of claims", async (context) => {
+	const fixture = await drawing(context);
+	const [first, second] = [randomUUID(), randomUUID()];
+	const pid = await exitedPid();
+	const owner = (id: string) => JSON.stringify({ hostname: hostname(), ...system, pid, id });
+	await writeFile(`${fixture.path}.lock`, owner(first));
+	await writeFile(`${fixture.path}.lock.${first}.claim`, owner(second));
+	await writeFile(`${fixture.path}.lock.${second}.claim`, owner(first));
+	await assert.rejects(runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle })), { code: "DrawingLocked" });
+	assert.equal((await readdir(fixture.directory)).length, 3);
 });
 
 test("concurrent commands take over an abandoned lock one at a time", async (context) => {
@@ -248,7 +286,26 @@ test("concurrent commands take over an abandoned lock one at a time", async (con
 	assert.ok(replies.every((reply) => reply.ok));
 	assert.deepEqual((await fixture.read()).shapes.map((shape: { id: number }) => shape.id).sort((a: number, b: number) => a - b), Array.from({ length: 11 }, (_, index) => index + 1));
 	assert.equal((await call(fixture.env, "getDrawing")).drawing.history.nodes.length, 12);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]));
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
+});
+
+test("CLI recovers after a process is killed right after creating its lock or claim", async (context) => {
+	const fixture = await drawing(context);
+	const crashOnLock = fileURLToPath(new URL("./helpers/crash-on-lock.ts", import.meta.url));
+	const crashed = async (suffix: string) => {
+		const child = spawn(process.execPath, ["--import", "tsx", "--import", crashOnLock, cliMain, "placeRectangle", JSON.stringify(rectangle)], { env: { ...process.env, ...fixture.env, ECAD_TEST_CRASH_SUFFIX: suffix }, stdio: "ignore" });
+		const [, signal] = await once(child, "exit");
+		assert.equal(signal, "SIGKILL");
+	};
+	const visible = async () => (await readdir(fixture.directory)).filter((name) => !name.startsWith("."));
+	await crashed(".lock");
+	assert.deepEqual(await visible(), ["drawing.ecaddraw.lock"]);
+	assert.equal(typeof JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id, "string");
+	await crashed(".claim");
+	assert.equal((await visible()).filter((name) => name.endsWith(".claim")).length, 1);
+	await call(fixture.env, "placeRectangle", rectangle);
+	assert.deepEqual(new Set(await visible()), drawingFiles);
+	assert.equal((await fixture.read()).shapes.length, 1);
 });
 
 test("local drawing module cancels a lock wait without removing another owner's lock", async (context) => {
@@ -277,6 +334,9 @@ test("saving keeps the drawing and history file modes", { skip: process.platform
 	assert.equal(await fileMode(fixture.path), 0o664);
 	assert.equal(await fileMode(historyPath), 0o640);
 	assert.equal((await fixture.read()).shapes.length, 1);
+	await chmod(fixture.path, 0o6755);
+	assert.ok((await runEffect(local.execute({ type: "redo" }))).ok);
+	assert.equal(await fileMode(fixture.path), 0o6755, "writing does not clear preserved set-ID bits");
 });
 
 test("saving a new drawing applies the umask to the default mode", { skip: process.platform === "win32" }, async (context) => {

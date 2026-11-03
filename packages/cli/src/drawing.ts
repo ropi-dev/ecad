@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-	type FileHandle,
+	link,
 	open,
 	readFile,
+	readlink,
 	realpath,
 	rename,
 	rm,
@@ -75,7 +76,8 @@ async function fileMode(path: string) {
 }
 
 // A replacement keeps the replaced file's mode, which the umask could narrow.
-// A new file gets the default mode minus the umask.
+// A new file gets the default mode minus the umask. The mode is set after
+// writing because a write clears the set-user-ID and set-group-ID bits.
 async function stageFile(path: string, content: string, mode?: number) {
 	const temporary = join(
 		dirname(path),
@@ -84,8 +86,8 @@ async function stageFile(path: string, content: string, mode?: number) {
 	try {
 		const handle = await open(temporary, "wx", mode ?? 0o666);
 		try {
-			if (mode !== undefined) await handle.chmod(mode);
 			await handle.writeFile(content);
+			if (mode !== undefined) await handle.chmod(mode);
 			await handle.sync();
 		} finally {
 			await handle.close();
@@ -173,37 +175,60 @@ async function publish(
 const lockOwnerSchema = z.object({
 	pid: z.number().int().positive(),
 	hostname: z.string(),
+	machineId: z.string().optional(),
 	bootId: z.string().optional(),
+	pidNamespace: z.string().optional(),
+	startTime: z.string().optional(),
 	id: z.uuid(),
 });
 type LockOwner = z.infer<typeof lockOwnerSchema>;
-// IDs of the locks and claims this process holds. They tell a crashed
-// process's lock apart from this one's after the operating system reuses its
-// PID.
-const heldLocks = new Set<string>();
-let bootId: Promise<string | undefined> | undefined;
 
-function currentBootId() {
-	bootId ??= readFile("/proc/sys/kernel/random/boot_id", "utf8").then(
-		(id) => id.trim() || undefined,
+const readText = (path: string) =>
+	readFile(path, "utf8").then(
+		(text) => text.trim() || undefined,
 		() => undefined,
 	);
-	return bootId;
+
+// The process start time in clock ticks since boot, which tells a process
+// apart from a later one that reuses its PID. Linux only.
+async function processStartTime(pid: number | "self") {
+	if (process.platform !== "linux") return undefined;
+	const status = await readText(`/proc/${pid}/stat`);
+	// The command name in parentheses can contain spaces. Field 22 is the
+	// start time, and the fields after the name start at field 3.
+	return status?.slice(status.lastIndexOf(")") + 2).split(" ")[19];
+}
+
+// Identifies this computer, boot and PID namespace where the system allows it.
+let systemIdentity:
+	| Promise<Omit<LockOwner, "pid" | "hostname" | "id">>
+	| undefined;
+
+function currentSystem() {
+	systemIdentity ??= (async () => {
+		if (process.platform !== "linux") return {};
+		const [machineId, bootId, pidNamespace, startTime] = await Promise.all([
+			readText("/etc/machine-id"),
+			readText("/proc/sys/kernel/random/boot_id"),
+			readlink("/proc/self/ns/pid").catch(() => undefined),
+			processStartTime("self"),
+		]);
+		return { machineId, bootId, pidNamespace, startTime };
+	})();
+	return systemIdentity;
 }
 
 async function createLockOwner(): Promise<LockOwner> {
-	const owner = {
+	return {
 		pid: process.pid,
 		hostname: hostname(),
-		bootId: await currentBootId(),
+		...(await currentSystem()),
 		id: randomUUID(),
 	};
-	heldLocks.add(owner.id);
-	return owner;
 }
 
-// Undefined means that the lock is gone. Null means that its owner is unknown,
-// for example while the owner is still writing the file.
+// Undefined means that the file is gone. Null means that its owner is unknown,
+// for example because another program wrote it.
 async function readLockOwner(path: string) {
 	let content: string;
 	try {
@@ -218,58 +243,97 @@ async function readLockOwner(path: string) {
 	}
 }
 
-// Only processes on this computer can be checked. Treat all others as alive.
+// Returns true only when the owner certainly no longer runs. Any owner whose
+// computer, boot or PID namespace differs from this process's counts as alive.
 async function hasExited(owner: LockOwner) {
-	if (owner.hostname !== hostname()) return false;
-	const boot = await currentBootId();
-	if (owner.bootId && boot && owner.bootId !== boot) return true;
-	if (owner.pid === process.pid) return !heldLocks.has(owner.id);
+	const local = { hostname: hostname(), ...(await currentSystem()) };
+	if (owner.hostname !== local.hostname || owner.machineId !== local.machineId)
+		return false;
+	// Only a restart of the same computer changes its boot ID.
+	if (owner.bootId !== local.bootId)
+		return !!(owner.machineId && owner.bootId && local.bootId);
+	if (owner.pidNamespace !== local.pidNamespace) return false;
 	try {
 		process.kill(owner.pid, 0);
-		return false;
 	} catch (error) {
 		return hasCode(error, "ESRCH");
 	}
+	if (owner.startTime === undefined) return false;
+	const startTime = await processStartTime(owner.pid);
+	return startTime !== undefined && startTime !== owner.startTime;
 }
 
-// Removes the file at target if it is a lock or claim whose owner has exited.
-// Returns true when the caller can retry at once, because that file or a claim
-// blocking its removal is gone. Removal needs a claim file named after the
-// exited owner. Creating it exclusively lets only one process act on that
-// lock, and a lock ID is never reused, so a lock that still has the owner's ID
-// while the claim is held is still the abandoned lock.
-async function removeAbandonedLock(
-	lockPath: string,
-	target = lockPath,
-	depth = 0,
-): Promise<boolean> {
-	const owner = await readLockOwner(target);
-	if (owner === undefined) return true;
-	if (owner === null || !(await hasExited(owner))) return false;
-	const claimPath = `${lockPath}.${owner.id}.claim`;
-	const claimer = await createLockOwner();
-	let claim: FileHandle;
-	try {
-		claim = await open(claimPath, "wx", 0o600);
-	} catch (error) {
-		heldLocks.delete(claimer.id);
-		if (!hasCode(error, "EEXIST")) throw error;
-		// Another process is removing the lock, or exited while doing so. Retry
-		// once a claim left by an exited process is gone.
-		return (
-			depth < 2 && (await removeAbandonedLock(lockPath, claimPath, depth + 1))
-		);
-	}
-	try {
-		await claim.writeFile(JSON.stringify(claimer));
-		const current = await readLockOwner(target);
-		if (current?.id !== owner.id) return current === undefined;
-		await rm(target, { force: true });
-		return true;
-	} finally {
-		await claim.close();
-		await rm(claimPath, { force: true });
-		heldLocks.delete(claimer.id);
+const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
+
+// Creates the file at path with the owner's metadata unless the path exists.
+// Linking a complete, synced file publishes the metadata with the file, so a
+// crash or power loss never leaves an empty lock.
+async function prepareLockFile(path: string, owner: LockOwner) {
+	const content = JSON.stringify(owner);
+	const staged = await stageFile(path, content, 0o600);
+	const discard = () => rm(staged, { force: true });
+	return {
+		async create() {
+			try {
+				await link(staged, path);
+				await discard();
+				return true;
+			} catch (error) {
+				if (hasCode(error, "EEXIST")) return false;
+				if (!linkUnsupported.some((code) => hasCode(error, code))) throw error;
+			}
+			// Without hard links, a crash before the write leaves an empty lock.
+			let handle: Awaited<ReturnType<typeof open>>;
+			try {
+				handle = await open(path, "wx", 0o600);
+			} catch (error) {
+				if (hasCode(error, "EEXIST")) return false;
+				throw error;
+			}
+			try {
+				await handle.writeFile(content);
+			} finally {
+				await handle.close();
+			}
+			return true;
+		},
+		discard,
+	};
+}
+
+// Removes an abandoned lock and returns true when the caller can retry at once.
+// Removing a lock needs a claim named after its exited owner. Creating that
+// claim exclusively lets only one process act on that lock, and a lock ID is
+// never reused, so a lock that still has the owner's ID while the claim is held
+// is still the abandoned lock. An existing claim is either in use or abandoned
+// in the same way, so the chain is followed until a file can be removed.
+async function removeAbandonedLock(lockPath: string) {
+	const visited = new Set<string>();
+	let target = lockPath;
+	for (;;) {
+		const owner = await readLockOwner(target);
+		if (owner === undefined) return true;
+		if (owner === null || visited.has(owner.id)) return false;
+		if (!(await hasExited(owner))) return false;
+		visited.add(owner.id);
+		const claimPath = `${lockPath}.${owner.id}.claim`;
+		const claim = await prepareLockFile(claimPath, await createLockOwner());
+		try {
+			if (!(await claim.create())) {
+				target = claimPath;
+				continue;
+			}
+			try {
+				const current = await readLockOwner(target);
+				if (current?.id !== owner.id) return current === undefined;
+				await rm(target, { force: true });
+				return true;
+			} finally {
+				await rm(claimPath, { force: true });
+			}
+		} finally {
+			await claim.discard();
+		}
 	}
 }
 
@@ -281,36 +345,30 @@ async function withDrawingLock<T>(
 ) {
 	const lockPath = `${path}.lock`;
 	const deadline = performance.now() + timeout;
-	const owner = await createLockOwner();
+	const lock = await prepareLockFile(lockPath, await createLockOwner());
 	try {
 		for (;;) {
 			signal.throwIfAborted();
-			let lock: FileHandle;
-			try {
-				lock = await open(lockPath, "wx", 0o600);
-			} catch (error) {
-				if (!hasCode(error, "EEXIST")) throw error;
-				if (await removeAbandonedLock(lockPath)) continue;
-				if (performance.now() >= deadline) {
-					throw new LocalDrawingError({
-						code: "DrawingLocked",
-						message: `The drawing is locked by another process. Lock file: ${lockPath}`,
-					});
-				}
-				await delay(25, undefined, { signal });
-				continue;
+			if (await lock.create()) break;
+			if (await removeAbandonedLock(lockPath)) continue;
+			if (performance.now() >= deadline) {
+				throw new LocalDrawingError({
+					code: "DrawingLocked",
+					message: `The drawing is locked by another process. Lock file: ${lockPath}`,
+				});
 			}
-			try {
-				await lock.writeFile(JSON.stringify(owner));
-				signal.throwIfAborted();
-				return await work();
-			} finally {
-				await lock.close();
-				await rm(lockPath, { force: true });
-			}
+			await delay(25, undefined, { signal });
 		}
+	} catch (error) {
+		await lock.discard();
+		throw error;
+	}
+	try {
+		await lock.discard();
+		signal.throwIfAborted();
+		return await work();
 	} finally {
-		heldLocks.delete(owner.id);
+		await rm(lockPath, { force: true });
 	}
 }
 
