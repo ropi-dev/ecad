@@ -152,6 +152,22 @@ test("symbol children and overrides keep exact optional fields because their def
 	})));
 });
 
+test("override keys set to undefined match the saved form, which drops them", () => {
+	const pinId = symbolInput.children.find((child) => child.kind === "pin")!.id;
+	const hiddenName = {
+		...symbolInput,
+		children: symbolInput.children.map((child) => (child.id === pinId ? { ...child, showName: false } : child)),
+	};
+	const withOverride = (override: Record<string, unknown>) => ({ ...hiddenName, childOverrides: { [`shape:${pinId}`]: override } });
+	const replaceOverride = (override: Record<string, unknown>) =>
+		editSymbol((shape) => { shape.childOverrides = { [`shape:${pinId}`]: override }; });
+	// Saving drops the undefined value, so both overrides restore as {} and keep the name hidden.
+	assert.equal(JSON.stringify(withOverride({ showName: undefined })), JSON.stringify(withOverride({})));
+	assertNoOp(replaceOnly(withOverride({}), replaceOverride({ showName: undefined })));
+	assertNoOp(replaceOnly(withOverride({ showName: undefined }), replaceOverride({})));
+	assertRecorded(replaceOnly(withOverride({}), replaceOverride({ showName: true })));
+});
+
 test("the drawing comparison covers fields it does not know about", () => {
 	const shape = { ...geometry, id: 1, kind: "rectangle" } as EditorShape;
 	const extended = (value: unknown) => ({ shapes: [{ ...shape, future: value } as unknown as EditorShape] });

@@ -42,7 +42,12 @@ function sameValue(first: unknown, second: unknown): boolean {
 	);
 }
 
-/** A key that is absent and a key whose value is `undefined` are equal. */
+/**
+ * A key that is absent and a key whose value is `undefined` are equal, as in
+ * the saved JSON form and the snapshot schema. That holds inside child
+ * overrides too: `{ showName: undefined }` saves as `{}`, so recording it would
+ * create history that reverts on reload.
+ */
 function sameRecord(
 	first: PlainRecord,
 	second: PlainRecord,
