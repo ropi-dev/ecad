@@ -50,6 +50,12 @@ import {
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
+import {
+	dismissEditorIssues,
+	editorIssues,
+	retainDismissedIssues,
+	visibleEditorMessages,
+} from "#/components/editor/editorMessages.ts";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import {
 	parseSymbolFile,
@@ -316,42 +322,28 @@ function EditorCanvas({
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [allowLocked, setAllowLocked] = useState(false);
 	const [ready, setReady] = useState(false);
-	// A failed command or clipboard action. The next successful one replaces it.
 	const [commandError, setCommandError] = useState("");
 	const [viewerError, setViewerError] = useState("");
-	// Persistent issues last until their cause is fixed. Dismissing one only
-	// collapses it while that exact message remains.
-	const issues = [
-		...new Set(
-			[
-				viewerError,
-				...(symbolLibrary.loading ? [] : resolved.errors),
-				project?.error ?? "",
-			].filter(Boolean),
-		),
-	];
+	const issues = editorIssues([
+		viewerError,
+		...(symbolLibrary.loading ? [] : resolved.errors),
+		project?.error,
+	]);
 	const [dismissedIssues, setDismissedIssues] = useState<ReadonlySet<string>>(
 		() => new Set(),
 	);
+	if (!symbolLibrary.loading) {
+		const retained = retainDismissedIssues(dismissedIssues, issues);
+		if (retained !== dismissedIssues) setDismissedIssues(retained);
+	}
 	const hiddenIssues = issues.filter((issue) => dismissedIssues.has(issue));
-	// Forget resolved issues, so a later recurrence is announced again.
-	if (!symbolLibrary.loading && hiddenIssues.length !== dismissedIssues.size)
-		setDismissedIssues(new Set(hiddenIssues));
-	const messages = [
-		...new Set(
-			[
-				commandError,
-				...issues.filter((issue) => !dismissedIssues.has(issue)),
-			].filter(Boolean),
-		),
-	];
+	const messages = visibleEditorMessages(commandError, issues, dismissedIssues);
 	const dismissMessages = () => {
 		setCommandError("");
-		setDismissedIssues(new Set(issues));
+		setDismissedIssues((dismissed) => dismissEditorIssues(dismissed, issues));
 	};
 	const dismissButton = useRef<HTMLButtonElement>(null);
 	const issuesButton = useRef<HTMLButtonElement>(null);
-	// Dismissing or restoring replaces the focused button, so focus its successor.
 	const pendingFocus = useRef<"issues" | "messages" | null>(null);
 	useEffect(() => {
 		const target = pendingFocus.current;

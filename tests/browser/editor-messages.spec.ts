@@ -12,7 +12,6 @@ const libraryError = 'Symbol "resistor" is unavailable in library "missing".';
 const documentShapes = async (page: Page): Promise<EditorShape[]> =>
 	JSON.parse((await page.locator("#editor-document").textContent())!).shapes;
 
-// The clipboard schema accepts this wire, but the drawing command rejects it.
 const diagonalWire = JSON.stringify({
 	format: "ecad-selection",
 	version: 1,
@@ -84,7 +83,6 @@ test("a later command or clipboard action clears a command error, and dismiss hi
 	await expect(alert).toHaveText(wireError);
 	await page.keyboard.press("Control+c");
 	await expect(alert).toHaveCount(0);
-	// Let the asynchronous image write finish before replacing the clipboard.
 	await expect
 		.poll(() =>
 			page.evaluate(async () =>
@@ -138,13 +136,11 @@ test("dismissed library issues stay available until they are resolved", async ({
 	await dismiss.click();
 	await expect(showIssues).toBeVisible();
 
-	// A new message appears without reopening the issue the user dismissed.
 	await pasteDiagonalWire(page);
 	await expect(alert).toHaveText(wireError);
 	await expect(showIssues).toBeVisible();
 	await dismiss.click();
 
-	// A resolved issue is forgotten, so its recurrence is announced again.
 	await setResistorLibrary(page, "builtin");
 	await expect(showIssues).toHaveCount(0);
 	await setResistorLibrary(page, "missing");
