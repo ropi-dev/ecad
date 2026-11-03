@@ -72,9 +72,10 @@ test("attributes open and save the reusable project symbol definition", async ({
 		page.getByRole("button", { name: "Edit symbol", exact: true }),
 	).toHaveCount(0);
 	await (await toolbarButton(page, "Rectangle")).click();
+	// Span several 50 mil grid cells at the definition's fitted zoom.
 	await page.mouse.move(450, 350);
 	await page.mouse.down();
-	await page.mouse.move(550, 420);
+	await page.mouse.move(650, 550);
 	await page.mouse.up();
 	await expect
 		.poll(async () => (await documentState(page)).symbols[0].shapes.length)
