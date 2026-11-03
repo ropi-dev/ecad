@@ -16,9 +16,10 @@ async function createProject(page: Page, _name: string) {
 }
 async function drawRectangle(page: Page) {
 	await (await toolbarButton(page, "Rectangle")).click();
+	// Span several 50 mil grid cells even when a tiny symbol fits the view.
 	await page.mouse.move(600, 300);
 	await page.mouse.down();
-	await page.mouse.move(710, 400);
+	await page.mouse.move(1000, 500);
 	await page.mouse.up();
 }
 

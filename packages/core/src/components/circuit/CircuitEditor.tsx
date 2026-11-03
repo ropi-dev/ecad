@@ -798,6 +798,19 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 							});
 						}}
 						onPointerMove={(event) => {
+							// An active pan owns its pointer, even while a placement tool is
+							// active. Leaving placementPoint untouched keeps the preview under
+							// the cursor, since panning keeps the cursor's graph point fixed.
+							if (pan?.pointerId === event.pointerId) {
+								const matrix = svg.current?.getScreenCTM();
+								if (matrix)
+									setView({
+										...pan.view,
+										x: pan.view.x - (event.clientX - pan.x) / matrix.a,
+										y: pan.view.y - (event.clientY - pan.y) / matrix.d,
+									});
+								return;
+							}
 							if (connectionDrag?.pointerId === event.pointerId) {
 								setConnectionDrag({
 									...connectionDrag,
@@ -818,16 +831,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 										? componentPosition(point(event), placementPinCount)
 										: snap(point(event)),
 								);
-								return;
-							}
-							if (pan && pan.pointerId === event.pointerId) {
-								const matrix = svg.current?.getScreenCTM();
-								if (matrix)
-									setView({
-										...pan.view,
-										x: pan.view.x - (event.clientX - pan.x) / matrix.a,
-										y: pan.view.y - (event.clientY - pan.y) / matrix.d,
-									});
 								return;
 							}
 							if (!drag || drag.pointerId !== event.pointerId) return;
@@ -852,6 +855,10 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 							});
 						}}
 						onPointerUp={(event) => {
+							if (pan?.pointerId === event.pointerId) {
+								setPan(null);
+								return;
+							}
 							if (connectionDrag?.pointerId === event.pointerId) {
 								suppressPinClick.current = true;
 								setConnectionDrag(null);
@@ -887,10 +894,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 										}
 									}
 								}
-								return;
-							}
-							if (pan) {
-								setPan(null);
 								return;
 							}
 							if (!drag || drag.pointerId !== event.pointerId) return;

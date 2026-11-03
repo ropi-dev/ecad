@@ -167,7 +167,6 @@ export async function distributionAssets(workspace: string) {
 	const assets = new Map<string, string | Uint8Array>();
 	const files = [
 		"THIRD_PARTY_NOTICES.md",
-		"licenses/shadcn-MIT.txt",
 		"licenses/tanstack-MIT.txt",
 	];
 	if (workspace !== "cli") {
