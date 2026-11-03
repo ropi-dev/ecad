@@ -32,8 +32,6 @@ Symbols with `netSymbol: true` name the nets at their pin terminals. The instanc
 
 Ground, signal ground, VCC, VDD, and the voltage supply symbols have this flag in their built-in definitions. Ground defaults to `GND`. Portable symbol files preserve the flag, and new instances copy it from the definition. In Attributes, use the Net symbol checkbox to change an instance's role and the Name field to edit its net name. Existing placements can use the same checkbox. Saving, reloading, and undo preserve the role.
 
-`indexElectricalNets(shapes)` returns a map of shape IDs to the IDs sharing their electrical nets. This supports whole-shape selection. A symbol with pins on multiple nets appears in several nets, so its selection entry combines those members. Use `electricalNets` for electrical analysis.
-
 CLI and MCP clients can place or replace these shapes through the existing drawing shape commands. Include `electrical` and the full text geometry in the shape payload. Drawing documents and undo snapshots preserve that field on save and reload.
 
 The `getDrawing` reply includes `drawing.nets` with the same net records as `electricalNets`. CLI and MCP clients can inspect remote named connections through this field. Mutation replies omit `nets`; call `getDrawing` after editing to read the current connectivity. Nets are derived from saved shapes and do not need a separate persistence field.

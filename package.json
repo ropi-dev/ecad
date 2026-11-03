@@ -20,7 +20,6 @@
     "@types/svg-path-parser": "^1.1.6",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "@webgpu/types": "^0.1.72",
     "dotenv": "^17.3.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",

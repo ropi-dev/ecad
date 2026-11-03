@@ -24,7 +24,6 @@ export default defineConfig({
 		launchOptions: {
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 			args: [
-				"--enable-unsafe-webgpu",
 				"--use-angle=swiftshader",
 				"--enable-features=Vulkan",
 				"--disable-vulkan-surface",

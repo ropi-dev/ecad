@@ -1,6 +1,6 @@
 # Browser coverage
 
-Run `pnpm run test:browser` for the 29 browser cases. CI runs the same suite across two shards, with no retries. Keep browser tests for browser APIs, rendered output, input handling, or interactions between the editor, project provider, and storage. Test document transformations and command edge cases in unit tests.
+Run `pnpm run test:browser` for the 26 browser cases. CI runs the same suite across two shards, with no retries. Keep browser tests for browser APIs, rendered output, input handling, or interactions between the editor, project provider, and storage. Test document transformations and command edge cases in unit tests.
 
 | Browser cases | Coverage that needs a browser |
 | --- | --- |
@@ -16,7 +16,6 @@ Run `pnpm run test:browser` for the 29 browser cases. CI runs the same suite acr
 | Export, 2 | Browser SVG and PNG downloads for schematic and Gerber output |
 | Sidebar and toolbar, 4 | Hover, focus, touch dismissal and pinning, keyboard navigation, mobile touch scrolling |
 | MCP, 1 | Browser connection lifecycle and SDK edits of the mounted editor |
-| Renderers, 3 | Pixel output and selection on WebGPU, WebGL and Canvas |
 
 Removed browser checks retain unit coverage in `tests/editor-*.test.ts`, `tests/linked-schematic.test.ts`, `tests/circuit*.test.ts`, `tests/symbol-*.test.ts`, `tests/default-symbols.test.ts`, `tests/item-locks.test.ts`, `tests/pin-label-visibility.test.ts`, `tests/text-alignment.test.ts`, `tests/viewer-lifecycle.test.ts`, and the web and desktop storage suites. Performance workloads remain in `tests/performance`; they run locally.
 
