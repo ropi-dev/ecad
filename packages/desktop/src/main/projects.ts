@@ -112,9 +112,13 @@ export interface DesktopProjectsOptions {
 	homeDirectory?: string;
 	/**
 	 * Decides whether the open project may use a library directory outside its
-	 * own directory. Without it, such libraries are refused.
+	 * own directory. Without it, such libraries are refused. `prompt` is false
+	 * after the user refused, so only approvals that need no question apply.
 	 */
-	approveExternalLibrary?(request: ExternalLibraryRequest): Promise<boolean>;
+	approveExternalLibrary?(
+		request: ExternalLibraryRequest,
+		options: { prompt: boolean },
+	): Promise<boolean>;
 }
 
 function isInside(parent: string, path: string) {
@@ -325,14 +329,17 @@ export class DesktopProjects {
 			authorize: async (library) => {
 				if (!active.files && isInside(directory, library)) return;
 				const key = JSON.stringify([directory, library]);
+				// A refusal stops repeated prompts, but choosing the directory in
+				// the native picker afterwards still approves it.
 				if (
-					!active.refused?.has(key) &&
-					(await this.options.approveExternalLibrary?.({
-						project: directory,
-						directory: library,
-					}))
-				)
+					await this.options.approveExternalLibrary?.(
+						{ project: directory, directory: library },
+						{ prompt: !active.refused?.has(key) },
+					)
+				) {
+					active.refused?.delete(key);
 					return;
+				}
 				active.refused ??= new Set();
 				active.refused.add(key);
 				throw new Error(

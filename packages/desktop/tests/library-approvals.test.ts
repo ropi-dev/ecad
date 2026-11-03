@@ -62,6 +62,21 @@ test("directories chosen in a native dialog are approved without asking again", 
 		assert.equal(await new ExternalLibraryApprovals({ homeDirectory: home }).approve({ project: join(home, "project"), directory: join(home, "other") }), false);
 	}));
 
+test("approvals without a prompt accept only stored and chosen directories", async () =>
+	withHome(async (home) => {
+		const chosen = new Set<string>();
+		const approvals = new ExternalLibraryApprovals({
+			homeDirectory: home,
+			chosen: (directory) => chosen.has(directory),
+			confirm: async () => assert.fail("prompt: false must not ask the user."),
+		});
+		const request = { project: join(home, "project"), directory: join(home, "parts") };
+		assert.equal(await approvals.approve(request, { prompt: false }), false);
+		chosen.add(request.directory);
+		assert.equal(await approvals.approve(request, { prompt: false }), true);
+		assert.equal(await new ExternalLibraryApprovals({ homeDirectory: home }).approve(request, { prompt: false }), true);
+	}));
+
 test("unsaved projects keep approvals for the session only", async () =>
 	withHome(async (home) => {
 		const approvals = new ExternalLibraryApprovals({ homeDirectory: home, confirm: async () => true });

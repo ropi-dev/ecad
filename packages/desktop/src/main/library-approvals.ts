@@ -59,14 +59,21 @@ export class ExternalLibraryApprovals {
 		);
 	}
 
-	approve(request: ExternalLibraryRequest): Promise<boolean> {
+	/**
+	 * Checks stored and session approvals. With `prompt: false`, the user is not
+	 * asked, but a directory chosen in a native dialog since then still counts.
+	 */
+	approve(
+		request: ExternalLibraryRequest,
+		{ prompt = true }: { prompt?: boolean } = {},
+	): Promise<boolean> {
 		return this.sequential(async () => {
 			if (this.session.some((entry) => same(entry, request))) return true;
 			const stored = await this.read();
 			if (stored.some((entry) => same(entry, request))) return true;
 			if (
 				!this.options.chosen?.(request.directory) &&
-				!(await this.options.confirm?.(request))
+				!(prompt && (await this.options.confirm?.(request)))
 			)
 				return false;
 			this.session.push(request);

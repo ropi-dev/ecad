@@ -61,7 +61,10 @@ const approvals = new ExternalLibraryApprovals({
 const projects = new DesktopProjects(
 	directoryArgument &&
 		resolve(process.env.INIT_CWD ?? process.cwd(), directoryArgument),
-	{ approveExternalLibrary: (request) => approvals.approve(request) },
+	{
+		approveExternalLibrary: (request, options) =>
+			approvals.approve(request, options),
+	},
 );
 let window: BrowserWindow | null = null;
 

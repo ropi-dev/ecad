@@ -249,7 +249,7 @@ test("project manifests cannot read or overwrite libraries outside the project w
  assert.deepEqual(JSON.parse(await readFile(filename, "utf8")), symbol);
 
  const asked: ExternalLibraryRequest[] = [];
- const refusing = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: async (request) => { asked.push(request); return false; } });
+ const refusing = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: async (request, { prompt }) => { if (prompt) asked.push(request); return false; } });
  await refusing.openDirectory(directory);
  for (const path of paths) await assert.rejects(refusing.readSymbolLibrary(directory, path), /not allowed/);
  await assert.rejects(refusing.saveLibrarySymbol(directory, paths[0], symbol, next), /not allowed/);
@@ -269,6 +269,33 @@ test("project manifests cannot read or overwrite libraries outside the project w
  assert.equal((await readFile(join(directory, PROJECT_FILE), "utf8")).includes("approved"), false);
 }));
 
+test("choosing a refused directory with Add library directory approves it without asking again", async () => temporary(async (parent) => {
+ const { ExternalLibraryApprovals } = await import("#/main/library-approvals.ts");
+ const { DesktopSymbolLibrary } = await import("#/main/symbol-library.ts");
+ const home = join(parent, "home");
+ const outside = join(parent, "outside");
+ await mkdir(home);
+ await mkdir(outside);
+ await writeFile(join(outside, "point.ecadsym"), JSON.stringify(symbol));
+ const directory = await downloadedProject(parent, ["../outside"]);
+ // These are wired as in main.ts.
+ const library = new DesktopSymbolLibrary(undefined, home);
+ let prompts = 0;
+ const approvals = new ExternalLibraryApprovals({ homeDirectory: home, chosen: (path) => library.isChosenDirectory(path), confirm: async () => { prompts++; return false; } });
+ const projects = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: (request, options) => approvals.approve(request, options) });
+ await projects.openDirectory(directory);
+ await assert.rejects(projects.readSymbolLibrary(directory, "../outside"), /not allowed/);
+ await assert.rejects(projects.readSymbolLibrary(directory, "../outside"), /not allowed/);
+ assert.equal(prompts, 1);
+ await library.openLibraryDirectory(outside, "Outside");
+ assert.deepEqual(await projects.readSymbolLibrary(directory, "../outside"), [symbol]);
+ assert.equal(prompts, 1);
+ // The picker approval is remembered for this project after a restart.
+ const restarted = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: (request, options) => new ExternalLibraryApprovals({ homeDirectory: home }).approve(request, options) });
+ await restarted.openDirectory(directory);
+ assert.deepEqual(await restarted.readSymbolLibrary(directory, "../outside"), [symbol]);
+}));
+
 test("symbolic links cannot move a project library outside the project", async () => temporary(async (parent) => {
  const outside = join(parent, "outside");
  await mkdir(outside);
@@ -280,7 +307,7 @@ test("symbolic links cannot move a project library outside the project", async (
  const local = parseSymbolFile(JSON.stringify({ ...symbol, id: "local-point" }));
  await writeFile(join(directory, "parts", "local.ecadsym"), JSON.stringify(local));
  const asked: ExternalLibraryRequest[] = [];
- const projects = new DesktopProjects(undefined, { approveExternalLibrary: async (request) => { asked.push(request); return false; } });
+ const projects = new DesktopProjects(undefined, { approveExternalLibrary: async (request, { prompt }) => { if (prompt) asked.push(request); return false; } });
  await projects.openDirectory(directory);
  await assert.rejects(projects.readSymbolLibrary(directory, "linked"), /outside the project directory/);
  await assert.rejects(projects.saveLibrarySymbol(directory, "linked", symbol, { ...symbol, shapes: [] }), /outside the project directory/);
