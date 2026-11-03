@@ -21,7 +21,8 @@ export function editorMcpApi(): Plugin {
 				const mcp = url.pathname.match(/^\/mcp\/editor\/([^/]+)$/);
 				const handle =
 					url.pathname === "/api/editor-mcp"
-						? handlers.createSession
+						? (input: Request) =>
+								handlers.createSession(input, request.socket.remoteAddress)
 						: editor
 							? (input: Request) => handlers.session(input, editor[1])
 							: mcp

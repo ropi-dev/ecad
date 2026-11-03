@@ -10,34 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as GerberRouteImport } from './routes/gerber'
-import { Route as McpRouteImport } from './routes/mcp'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as StepRouteImport } from './routes/step'
 import { Route as ApiEditorMcpRouteImport } from './routes/api.editor-mcp'
-import { Route as DemoDrizzleRouteImport } from './routes/demo/drizzle'
-import { Route as DemoMcpTodosRouteImport } from './routes/demo/mcp-todos'
-import { Route as DemoStoreRouteImport } from './routes/demo/store'
-import { Route as DemoTableRouteImport } from './routes/demo/table'
-import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
-import { Route as DemoTrpcTodoRouteImport } from './routes/demo/trpc-todo'
 import { Route as ApiEditorMcpSessionIdRouteImport } from './routes/api.editor-mcp.$sessionId'
-import { Route as ApiTrpcSplatRouteImport } from './routes/api.trpc.$'
-import { Route as DemoApiMcpTodosRouteImport } from './routes/demo/api.mcp-todos'
-import { Route as DemoFormAddressRouteImport } from './routes/demo/form.address'
-import { Route as DemoFormSimpleRouteImport } from './routes/demo/form.simple'
 import { Route as McpEditorSessionIdRouteImport } from './routes/mcp.editor.$sessionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EditorRoute = EditorRouteImport.update({
@@ -48,11 +31,6 @@ const EditorRoute = EditorRouteImport.update({
 const GerberRoute = GerberRouteImport.update({
   id: '/gerber',
   path: '/gerber',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const McpRoute = McpRouteImport.update({
-  id: '/mcp',
-  path: '/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -70,222 +48,89 @@ const ApiEditorMcpRoute = ApiEditorMcpRouteImport.update({
   path: '/api/editor-mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoDrizzleRoute = DemoDrizzleRouteImport.update({
-  id: '/demo/drizzle',
-  path: '/demo/drizzle',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoMcpTodosRoute = DemoMcpTodosRouteImport.update({
-  id: '/demo/mcp-todos',
-  path: '/demo/mcp-todos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoStoreRoute = DemoStoreRouteImport.update({
-  id: '/demo/store',
-  path: '/demo/store',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoTableRoute = DemoTableRouteImport.update({
-  id: '/demo/table',
-  path: '/demo/table',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
-  id: '/demo/tanstack-query',
-  path: '/demo/tanstack-query',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoTrpcTodoRoute = DemoTrpcTodoRouteImport.update({
-  id: '/demo/trpc-todo',
-  path: '/demo/trpc-todo',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiEditorMcpSessionIdRoute = ApiEditorMcpSessionIdRouteImport.update({
   id: '/$sessionId',
   path: '/$sessionId',
   getParentRoute: () => ApiEditorMcpRoute,
 } as any)
-const ApiTrpcSplatRoute = ApiTrpcSplatRouteImport.update({
-  id: '/api/trpc/$',
-  path: '/api/trpc/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoApiMcpTodosRoute = DemoApiMcpTodosRouteImport.update({
-  id: '/demo/api/mcp-todos',
-  path: '/demo/api/mcp-todos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoFormAddressRoute = DemoFormAddressRouteImport.update({
-  id: '/demo/form/address',
-  path: '/demo/form/address',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoFormSimpleRoute = DemoFormSimpleRouteImport.update({
-  id: '/demo/form/simple',
-  path: '/demo/form/simple',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const McpEditorSessionIdRoute = McpEditorSessionIdRouteImport.update({
-  id: '/editor/$sessionId',
-  path: '/editor/$sessionId',
-  getParentRoute: () => McpRoute,
+  id: '/mcp/editor/$sessionId',
+  path: '/mcp/editor/$sessionId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
   '/gerber': typeof GerberRoute
-  '/mcp': typeof McpRouteWithChildren
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
   '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
-  '/demo/drizzle': typeof DemoDrizzleRoute
-  '/demo/mcp-todos': typeof DemoMcpTodosRoute
-  '/demo/store': typeof DemoStoreRoute
-  '/demo/table': typeof DemoTableRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/demo/trpc-todo': typeof DemoTrpcTodoRoute
   '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
-  '/api/trpc/$': typeof ApiTrpcSplatRoute
-  '/demo/api/mcp-todos': typeof DemoApiMcpTodosRoute
-  '/demo/form/address': typeof DemoFormAddressRoute
-  '/demo/form/simple': typeof DemoFormSimpleRoute
   '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
   '/gerber': typeof GerberRoute
-  '/mcp': typeof McpRouteWithChildren
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
   '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
-  '/demo/drizzle': typeof DemoDrizzleRoute
-  '/demo/mcp-todos': typeof DemoMcpTodosRoute
-  '/demo/store': typeof DemoStoreRoute
-  '/demo/table': typeof DemoTableRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/demo/trpc-todo': typeof DemoTrpcTodoRoute
   '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
-  '/api/trpc/$': typeof ApiTrpcSplatRoute
-  '/demo/api/mcp-todos': typeof DemoApiMcpTodosRoute
-  '/demo/form/address': typeof DemoFormAddressRoute
-  '/demo/form/simple': typeof DemoFormSimpleRoute
   '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/editor': typeof EditorRoute
   '/gerber': typeof GerberRoute
-  '/mcp': typeof McpRouteWithChildren
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
   '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
-  '/demo/drizzle': typeof DemoDrizzleRoute
-  '/demo/mcp-todos': typeof DemoMcpTodosRoute
-  '/demo/store': typeof DemoStoreRoute
-  '/demo/table': typeof DemoTableRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/demo/trpc-todo': typeof DemoTrpcTodoRoute
   '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
-  '/api/trpc/$': typeof ApiTrpcSplatRoute
-  '/demo/api/mcp-todos': typeof DemoApiMcpTodosRoute
-  '/demo/form/address': typeof DemoFormAddressRoute
-  '/demo/form/simple': typeof DemoFormSimpleRoute
   '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/about'
     | '/editor'
     | '/gerber'
-    | '/mcp'
     | '/projects'
     | '/step'
     | '/api/editor-mcp'
-    | '/demo/drizzle'
-    | '/demo/mcp-todos'
-    | '/demo/store'
-    | '/demo/table'
-    | '/demo/tanstack-query'
-    | '/demo/trpc-todo'
     | '/api/editor-mcp/$sessionId'
-    | '/api/trpc/$'
-    | '/demo/api/mcp-todos'
-    | '/demo/form/address'
-    | '/demo/form/simple'
     | '/mcp/editor/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/about'
     | '/editor'
     | '/gerber'
-    | '/mcp'
     | '/projects'
     | '/step'
     | '/api/editor-mcp'
-    | '/demo/drizzle'
-    | '/demo/mcp-todos'
-    | '/demo/store'
-    | '/demo/table'
-    | '/demo/tanstack-query'
-    | '/demo/trpc-todo'
     | '/api/editor-mcp/$sessionId'
-    | '/api/trpc/$'
-    | '/demo/api/mcp-todos'
-    | '/demo/form/address'
-    | '/demo/form/simple'
     | '/mcp/editor/$sessionId'
   id:
     | '__root__'
     | '/'
-    | '/about'
     | '/editor'
     | '/gerber'
-    | '/mcp'
     | '/projects'
     | '/step'
     | '/api/editor-mcp'
-    | '/demo/drizzle'
-    | '/demo/mcp-todos'
-    | '/demo/store'
-    | '/demo/table'
-    | '/demo/tanstack-query'
-    | '/demo/trpc-todo'
     | '/api/editor-mcp/$sessionId'
-    | '/api/trpc/$'
-    | '/demo/api/mcp-todos'
-    | '/demo/form/address'
-    | '/demo/form/simple'
     | '/mcp/editor/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
   EditorRoute: typeof EditorRoute
   GerberRoute: typeof GerberRoute
-  McpRoute: typeof McpRouteWithChildren
   ProjectsRoute: typeof ProjectsRoute
   StepRoute: typeof StepRoute
   ApiEditorMcpRoute: typeof ApiEditorMcpRouteWithChildren
-  DemoDrizzleRoute: typeof DemoDrizzleRoute
-  DemoMcpTodosRoute: typeof DemoMcpTodosRoute
-  DemoStoreRoute: typeof DemoStoreRoute
-  DemoTableRoute: typeof DemoTableRoute
-  DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
-  DemoTrpcTodoRoute: typeof DemoTrpcTodoRoute
-  ApiTrpcSplatRoute: typeof ApiTrpcSplatRoute
-  DemoApiMcpTodosRoute: typeof DemoApiMcpTodosRoute
-  DemoFormAddressRoute: typeof DemoFormAddressRoute
-  DemoFormSimpleRoute: typeof DemoFormSimpleRoute
+  McpEditorSessionIdRoute: typeof McpEditorSessionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -295,13 +140,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/editor': {
@@ -316,13 +154,6 @@ declare module '@tanstack/react-router' {
       path: '/gerber'
       fullPath: '/gerber'
       preLoaderRoute: typeof GerberRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mcp': {
-      id: '/mcp'
-      path: '/mcp'
-      fullPath: '/mcp'
-      preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -346,48 +177,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEditorMcpRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/drizzle': {
-      id: '/demo/drizzle'
-      path: '/demo/drizzle'
-      fullPath: '/demo/drizzle'
-      preLoaderRoute: typeof DemoDrizzleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/mcp-todos': {
-      id: '/demo/mcp-todos'
-      path: '/demo/mcp-todos'
-      fullPath: '/demo/mcp-todos'
-      preLoaderRoute: typeof DemoMcpTodosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/store': {
-      id: '/demo/store'
-      path: '/demo/store'
-      fullPath: '/demo/store'
-      preLoaderRoute: typeof DemoStoreRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/table': {
-      id: '/demo/table'
-      path: '/demo/table'
-      fullPath: '/demo/table'
-      preLoaderRoute: typeof DemoTableRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/tanstack-query': {
-      id: '/demo/tanstack-query'
-      path: '/demo/tanstack-query'
-      fullPath: '/demo/tanstack-query'
-      preLoaderRoute: typeof DemoTanstackQueryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/trpc-todo': {
-      id: '/demo/trpc-todo'
-      path: '/demo/trpc-todo'
-      fullPath: '/demo/trpc-todo'
-      preLoaderRoute: typeof DemoTrpcTodoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/editor-mcp/$sessionId': {
       id: '/api/editor-mcp/$sessionId'
       path: '/$sessionId'
@@ -395,53 +184,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEditorMcpSessionIdRouteImport
       parentRoute: typeof ApiEditorMcpRoute
     }
-    '/api/trpc/$': {
-      id: '/api/trpc/$'
-      path: '/api/trpc/$'
-      fullPath: '/api/trpc/$'
-      preLoaderRoute: typeof ApiTrpcSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/api/mcp-todos': {
-      id: '/demo/api/mcp-todos'
-      path: '/demo/api/mcp-todos'
-      fullPath: '/demo/api/mcp-todos'
-      preLoaderRoute: typeof DemoApiMcpTodosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/form/address': {
-      id: '/demo/form/address'
-      path: '/demo/form/address'
-      fullPath: '/demo/form/address'
-      preLoaderRoute: typeof DemoFormAddressRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/form/simple': {
-      id: '/demo/form/simple'
-      path: '/demo/form/simple'
-      fullPath: '/demo/form/simple'
-      preLoaderRoute: typeof DemoFormSimpleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/mcp/editor/$sessionId': {
       id: '/mcp/editor/$sessionId'
-      path: '/editor/$sessionId'
+      path: '/mcp/editor/$sessionId'
       fullPath: '/mcp/editor/$sessionId'
       preLoaderRoute: typeof McpEditorSessionIdRouteImport
-      parentRoute: typeof McpRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
-
-interface McpRouteChildren {
-  McpEditorSessionIdRoute: typeof McpEditorSessionIdRoute
-}
-
-const McpRouteChildren: McpRouteChildren = {
-  McpEditorSessionIdRoute: McpEditorSessionIdRoute,
-}
-
-const McpRouteWithChildren = McpRoute._addFileChildren(McpRouteChildren)
 
 interface ApiEditorMcpRouteChildren {
   ApiEditorMcpSessionIdRoute: typeof ApiEditorMcpSessionIdRoute
@@ -457,23 +208,12 @@ const ApiEditorMcpRouteWithChildren = ApiEditorMcpRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
   EditorRoute: EditorRoute,
   GerberRoute: GerberRoute,
-  McpRoute: McpRouteWithChildren,
   ProjectsRoute: ProjectsRoute,
   StepRoute: StepRoute,
   ApiEditorMcpRoute: ApiEditorMcpRouteWithChildren,
-  DemoDrizzleRoute: DemoDrizzleRoute,
-  DemoMcpTodosRoute: DemoMcpTodosRoute,
-  DemoStoreRoute: DemoStoreRoute,
-  DemoTableRoute: DemoTableRoute,
-  DemoTanstackQueryRoute: DemoTanstackQueryRoute,
-  DemoTrpcTodoRoute: DemoTrpcTodoRoute,
-  ApiTrpcSplatRoute: ApiTrpcSplatRoute,
-  DemoApiMcpTodosRoute: DemoApiMcpTodosRoute,
-  DemoFormAddressRoute: DemoFormAddressRoute,
-  DemoFormSimpleRoute: DemoFormSimpleRoute,
+  McpEditorSessionIdRoute: McpEditorSessionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

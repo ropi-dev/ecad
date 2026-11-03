@@ -590,33 +590,6 @@ export function ProjectProvider({
 		},
 		[enqueue, persist, transferAssets],
 	);
-	useEffect(() => {
-		if (
-			!project?.circuits?.some((file) => {
-				const shapes =
-					file.circuit.id === "pcb-main"
-						? project.shapes
-						: (project.drawings?.find(
-								(drawing) => drawing.circuitId === file.circuit.id,
-							)?.shapes ?? []);
-				return shapes.some(
-					(shape) =>
-						shape.kind === "text" &&
-						shape.electrical === "net" &&
-						file.circuit.nets.some(
-							(net) =>
-								(!net.names.length && shape.text === `N_${net.id}`) ||
-								(shape.fontSize === 1 &&
-									shape.width === 5 &&
-									shape.height === 2 &&
-									net.names[0] === shape.text),
-						),
-				);
-			})
-		)
-			return;
-		void autosave().catch(() => undefined);
-	}, [project, autosave]);
 	const save = useCallback(async () => {
 		if (!storage.saveProject) {
 			await autosave();
