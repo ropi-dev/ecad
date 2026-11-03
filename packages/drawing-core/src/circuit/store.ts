@@ -1,3 +1,6 @@
+import { Data } from "effect";
+import { z } from "zod";
+import { freeze } from "#/lib/freeze.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	type CircuitComponent,
@@ -28,22 +31,88 @@ export type CircuitCommand =
 	| { type: "set-component-collapsed"; id: string; collapsed: boolean }
 	| { type: "replace"; file: CircuitFile };
 
-function freeze<T>(value: T): T {
-	if (value && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const child of Object.values(value)) freeze(child);
-		Object.freeze(value);
-	}
-	return value;
+/** Stable machine-readable causes. `message` is for display and may change. */
+export type CircuitCommandErrorReason =
+	| "circuit-identity-changed"
+	| "component-not-found"
+	| "net-not-found"
+	| "invalid-pins"
+	| "invalid-split"
+	| "invalid-graph-nodes"
+	| "invalid-circuit"
+	| "unknown-command";
+
+export class CircuitCommandError extends Data.TaggedError(
+	"CircuitCommandError",
+)<{
+	readonly reason: CircuitCommandErrorReason;
+	readonly message: string;
+	readonly cause?: unknown;
+}> {}
+
+function invalid(reason: CircuitCommandErrorReason, message: string): never {
+	throw new CircuitCommandError({ reason, message });
 }
 
+/** Schema failures become one display message; the Zod error stays as the cause. */
+function invalidCircuit(error: z.ZodError): CircuitCommandError {
+	return new CircuitCommandError({
+		reason: "invalid-circuit",
+		message: [...new Set(error.issues.map((issue) => issue.message))].join(
+			"; ",
+		),
+		cause: error,
+	});
+}
+
+function parseOrInvalid<T>(schema: z.ZodType<T>, value: unknown): T {
+	const result = schema.safeParse(value);
+	if (result.success) return result.data;
+	throw invalidCircuit(result.error);
+}
+
+function untitledCircuit(id: string): CircuitFile {
+	try {
+		return createCircuit("Untitled circuit", id);
+	} catch (error) {
+		throw error instanceof z.ZodError ? invalidCircuit(error) : error;
+	}
+}
+
+/**
+ * Accepts only `never`, so a `switch` over `CircuitCommand["type"]` that
+ * misses a command type fails to compile. At runtime it rejects forged types.
+ */
+export function unknownCircuitCommand(command: never): never {
+	return invalid(
+		"unknown-command",
+		`Unknown circuit command: ${String((command as { type?: unknown }).type)}.`,
+	);
+}
+
+export interface CircuitCommandOptions {
+	/**
+	 * Allocates IDs for nets that commands create, and for the store's default
+	 * circuit when it has no initial file. Defaults to `crypto.randomUUID`.
+	 */
+	readonly createId?: () => string;
+}
+
+const randomId = () => globalThis.crypto.randomUUID();
+
+/** @throws {CircuitCommandError} when the command or its result is invalid. */
 export function applyCircuitCommand(
 	current: CircuitFile,
 	command: CircuitCommand,
+	{ createId = randomId }: CircuitCommandOptions = {},
 ): CircuitFile {
 	if (command.type === "replace") {
 		if (command.file.circuit.id !== current.circuit.id)
-			throw new Error("Replacing contents must preserve the circuit identity.");
-		return circuitFileSchema.parse(command.file);
+			invalid(
+				"circuit-identity-changed",
+				"Replacing contents must preserve the circuit identity.",
+			);
+		return parseOrInvalid(circuitFileSchema, command.file);
 	}
 	const file = structuredClone(current);
 	const { circuit, graph } = file;
@@ -58,7 +127,10 @@ export function applyCircuitCommand(
 			new Set(pinIds).size !== pinIds.length ||
 			pinIds.some((id) => !pins.has(id))
 		)
-			throw new Error("Choose distinct pins belonging to this circuit.");
+			invalid(
+				"invalid-pins",
+				"Choose distinct pins belonging to this circuit.",
+			);
 	};
 	const detach = (pinIds: Set<string>) => {
 		circuit.nets = circuit.nets.map((net) => ({
@@ -69,7 +141,7 @@ export function applyCircuitCommand(
 	switch (command.type) {
 		case "set-component-collapsed": {
 			if (!circuit.components.some((component) => component.id === command.id))
-				throw new Error("Component no longer exists.");
+				invalid("component-not-found", "Component no longer exists.");
 			const collapsed = new Set(graph.collapsedComponentIds ?? []);
 			if (command.collapsed) collapsed.add(command.id);
 			else collapsed.delete(command.id);
@@ -99,14 +171,15 @@ export function applyCircuitCommand(
 			break;
 		case "remove-net":
 			if (!circuit.nets.some((net) => net.id === command.id))
-				throw new Error("Net no longer exists.");
+				invalid("net-not-found", "Net no longer exists.");
 			circuit.nets = circuit.nets.filter((net) => net.id !== command.id);
 			break;
 		case "update-component": {
 			const component = circuit.components.find(
 				(component) => component.id === command.id,
 			);
-			if (!component) throw new Error("Component no longer exists.");
+			if (!component)
+				invalid("component-not-found", "Component no longer exists.");
 			component.reference = command.reference;
 			component.value = command.value;
 			break;
@@ -115,7 +188,8 @@ export function applyCircuitCommand(
 			const component = circuit.components.find(
 				(component) => component.id === command.id,
 			);
-			if (!component) throw new Error("Component no longer exists.");
+			if (!component)
+				invalid("component-not-found", "Component no longer exists.");
 			const removed = new Set(component.pins.map((pin) => pin.id));
 			circuit.components = circuit.components.filter(
 				(component) => component.id !== command.id,
@@ -132,7 +206,8 @@ export function applyCircuitCommand(
 			const target = command.netId
 				? circuit.nets.find((net) => net.id === command.netId)
 				: undefined;
-			if (command.netId && !target) throw new Error("Net no longer exists.");
+			if (command.netId && !target)
+				invalid("net-not-found", "Net no longer exists.");
 			const joined = circuit.nets.filter(
 				(net) => net === target || net.pinIds.some((id) => selected.has(id)),
 			);
@@ -143,7 +218,7 @@ export function applyCircuitCommand(
 			const joinedIds = new Set(joined.map((net) => net.id));
 			circuit.nets = circuit.nets.filter((net) => !joinedIds.has(net.id));
 			circuit.nets.push({
-				id: survivor?.id ?? globalThis.crypto.randomUUID(),
+				id: survivor?.id ?? createId(),
 				names: [
 					...new Set([
 						...(target?.names ?? []),
@@ -178,10 +253,13 @@ export function applyCircuitCommand(
 				command.pinIds.length >= net.pinIds.length ||
 				command.pinIds.some((id) => !net.pinIds.includes(id))
 			)
-				throw new Error("Select some, but not all, pins of one net to split.");
+				invalid(
+					"invalid-split",
+					"Select some, but not all, pins of one net to split.",
+				);
 			detach(new Set(command.pinIds));
 			circuit.nets.push({
-				id: globalThis.crypto.randomUUID(),
+				id: createId(),
 				names: [],
 				pinIds: command.pinIds,
 			});
@@ -189,8 +267,8 @@ export function applyCircuitCommand(
 		}
 		case "rename-net": {
 			const net = circuit.nets.find((net) => net.id === command.id);
-			if (!net) throw new Error("Net no longer exists.");
-			const names = circuitNetSchema.shape.names.parse(command.names);
+			if (!net) invalid("net-not-found", "Net no longer exists.");
+			const names = parseOrInvalid(circuitNetSchema.shape.names, command.names);
 			const joined = circuit.nets.filter(
 				(candidate) =>
 					candidate !== net &&
@@ -246,7 +324,8 @@ export function applyCircuitCommand(
 					(position) => entities.get(position.id) !== position.kind,
 				)
 			)
-				throw new Error(
+				invalid(
+					"invalid-graph-nodes",
 					"Choose distinct graph nodes belonging to this circuit.",
 				);
 			graph.positions = [
@@ -255,6 +334,8 @@ export function applyCircuitCommand(
 			];
 			break;
 		}
+		default:
+			unknownCircuitCommand(command);
 	}
 	const components = new Set(
 		circuit.components.map((component) => component.id),
@@ -272,13 +353,21 @@ export function applyCircuitCommand(
 	}
 	if (command.type !== "move" && command.type !== "set-component-collapsed")
 		circuit.revision++;
-	return circuitFileSchema.parse(file);
+	return parseOrInvalid(circuitFileSchema, file);
 }
 
+export type CircuitStoreOptions = CircuitCommandOptions;
+
+/** Every method that changes the document throws {@link CircuitCommandError}. */
 export function createCircuitStore(
-	initial = createCircuit("Untitled circuit"),
+	initial?: CircuitFile,
+	{ createId = randomId }: CircuitStoreOptions = {},
 ) {
-	let file = freeze(circuitFileSchema.parse(initial));
+	let file = freeze(
+		initial
+			? parseOrInvalid(circuitFileSchema, initial)
+			: untitledCircuit(createId()),
+	);
 	let past: CircuitFile[] = [];
 	let future: CircuitFile[] = [];
 	let snapshot = { ...file, canUndo: false, canRedo: false };
@@ -304,8 +393,11 @@ export function createCircuitStore(
 			options: { preserveHistory?: boolean } = {},
 		) {
 			if (next.circuit.id !== file.circuit.id)
-				throw new Error("Synchronization must preserve the circuit identity.");
-			file = freeze(circuitFileSchema.parse(next));
+				invalid(
+					"circuit-identity-changed",
+					"Synchronization must preserve the circuit identity.",
+				);
+			file = freeze(parseOrInvalid(circuitFileSchema, next));
 			if (!options.preserveHistory) {
 				past = [];
 				future = [];
@@ -315,7 +407,7 @@ export function createCircuitStore(
 		execute(command: CircuitCommand) {
 			const next = measurePerformance(
 				"circuit.edit",
-				() => freeze(applyCircuitCommand(file, command)),
+				() => freeze(applyCircuitCommand(file, command, { createId })),
 				{
 					components: file.circuit.components.length,
 					nets: file.circuit.nets.length,

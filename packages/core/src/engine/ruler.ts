@@ -20,8 +20,10 @@ const minimumMinorPixels = 10;
 export function rulerSpacing(scale: number, unit: "mm" | "mil" = "mm") {
 	const desired = minimumMinorPixels / scale;
 	if (unit === "mil") {
+		// 50 mil is the finest grid; zooming in further only spreads the dots.
 		const minor =
-			SCHEMATIC_STEP * 2 ** Math.ceil(Math.log2(desired / SCHEMATIC_STEP));
+			SCHEMATIC_STEP *
+			2 ** Math.max(0, Math.ceil(Math.log2(desired / SCHEMATIC_STEP)));
 		return { major: minor * subdivisions, minor };
 	}
 	const decade = 10 ** Math.ceil(Math.log10(desired));

@@ -5,10 +5,23 @@ import { runEffect } from "#/lib/effect.ts";
 import { drawingReplySchema } from "#/mcp/drawing-protocol.ts";
 import { createDrawingMcpServer } from "#/mcp/drawing-server.ts";
 import {
+	editorClientAddress,
+	editorClientKey,
+	requestPeerAddress,
+	trustedProxyHopsFromEnv,
+} from "#/services/server/client-address.ts";
+import {
 	EditorSessionError,
 	type EditorSessionHub,
 	makeEditorSessionHub,
 } from "#/services/server/editor-sessions.ts";
+
+/** Editor replies carry the whole committed drawing and its history entries. */
+export const editorReplyBodyLimit = 8 * 1024 * 1024;
+/** Stays below the editor's 2 MiB command limit, so a large call cannot break the stream. */
+export const mcpRequestBodyLimit = 1024 * 1024;
+/** Session creation, stream, and disconnect requests carry no body; extra bytes are discarded. */
+const emptyBodyLimit = 1024;
 
 const liveHub = makeEditorSessionHub();
 const replySchema = z
@@ -41,14 +54,75 @@ function errorResponse(error: unknown) {
 	);
 }
 
-function checkOrigin(request: Request) {
+const forbiddenOrigin = () =>
+	new EditorSessionError({
+		code: "ForbiddenOrigin",
+		message: "Cross-origin editor access is not allowed.",
+		status: 403,
+	});
+
+/**
+ * Editor endpoints are only called by the app's own page, so they need positive evidence of
+ * a same-origin browser request. Browsers send `Origin` on POST and DELETE, and
+ * `Sec-Fetch-Site` on every request from a secure context, including the GET stream.
+ */
+function requireSameOrigin(request: Request) {
 	const origin = request.headers.get("origin");
-	if (origin && origin !== new URL(request.url).origin)
-		throw new EditorSessionError({
-			code: "ForbiddenOrigin",
-			message: "Cross-origin editor access is not allowed.",
-			status: 403,
-		});
+	const site = request.headers.get("sec-fetch-site");
+	const sameOrigin =
+		origin === null
+			? site === "same-origin"
+			: origin === new URL(request.url).origin &&
+				(site === null || site === "same-origin");
+	if (!sameOrigin) throw forbiddenOrigin();
+}
+
+/** MCP clients usually send no `Origin`; the MCP token authenticates them. */
+function rejectCrossOrigin(request: Request) {
+	const origin = request.headers.get("origin");
+	if (origin !== null && origin !== new URL(request.url).origin)
+		throw forbiddenOrigin();
+}
+
+const payloadTooLarge = (limit: number) =>
+	new EditorSessionError({
+		code: "PayloadTooLarge",
+		message: `The request body must not exceed ${limit} bytes.`,
+		status: 413,
+	});
+
+function checkDeclaredLength(request: Request, limit: number) {
+	if (Number(request.headers.get("content-length")) > limit)
+		throw payloadTooLarge(limit);
+}
+
+/** Reads at most `limit` bytes, whether or not the client declared a length. */
+async function readBody(request: Request, limit: number) {
+	checkDeclaredLength(request, limit);
+	if (!request.body) {
+		// Node adapters expose no body for GET even when chunked bytes follow; they can't be counted.
+		if (request.headers.has("transfer-encoding")) throw payloadTooLarge(limit);
+		return "";
+	}
+	const reader = request.body.getReader();
+	const decoder = new TextDecoder();
+	let received = 0;
+	let text = "";
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			received += value.byteLength;
+			if (received > limit) {
+				reader.cancel().catch(() => {});
+				throw payloadTooLarge(limit);
+			}
+			text += decoder.decode(value, { stream: true });
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	return text + decoder.decode();
 }
 
 function methodNotAllowed(allow: string) {
@@ -108,22 +182,51 @@ function openEditorStream(
 	});
 }
 
+export interface EditorMcpHandlerOptions {
+	/** Reverse proxies trusted to append to `X-Forwarded-For`; defaults to `ECAD_TRUSTED_PROXY_HOPS`. */
+	trustedProxyHops?: number;
+	editorReplyLimit?: number;
+	mcpRequestLimit?: number;
+}
+
 /** HTTP and MCP adapters share a relay; the browser remains the drawing authority. */
-export function createEditorMcpHandlers(hub = liveHub) {
+export function createEditorMcpHandlers(
+	hub = liveHub,
+	{
+		trustedProxyHops,
+		editorReplyLimit = editorReplyBodyLimit,
+		mcpRequestLimit = mcpRequestBodyLimit,
+	}: EditorMcpHandlerOptions = {},
+) {
 	return {
-		async createSession(request: Request): Promise<Response> {
+		/** `peerAddress` is the connecting address; it defaults to the runtime's `request.ip`. */
+		async createSession(
+			request: Request,
+			peerAddress = requestPeerAddress(request),
+		): Promise<Response> {
 			try {
-				checkOrigin(request);
+				requireSameOrigin(request);
 				if (request.method !== "POST") return methodNotAllowed("POST");
-				return Response.json(hub.create(), { status: 201, headers });
+				await readBody(request, emptyBodyLimit);
+				const address = editorClientAddress(
+					request,
+					peerAddress,
+					trustedProxyHops ?? trustedProxyHopsFromEnv(),
+				);
+				return Response.json(hub.create(editorClientKey(address)), {
+					status: 201,
+					headers,
+				});
 			} catch (error) {
 				return errorResponse(error);
 			}
 		},
 		async session(request: Request, sessionId: string): Promise<Response> {
 			try {
-				checkOrigin(request);
+				requireSameOrigin(request);
 				hub.authorize(sessionId, bearer(request), "editor");
+				if (request.method === "GET" || request.method === "DELETE")
+					await readBody(request, emptyBodyLimit);
 				if (request.method === "GET")
 					return openEditorStream(request, hub, sessionId);
 				if (request.method === "DELETE") {
@@ -134,8 +237,9 @@ export function createEditorMcpHandlers(hub = liveHub) {
 					return methodNotAllowed("GET, POST, DELETE");
 				let body: unknown;
 				try {
-					body = await request.json();
-				} catch {
+					body = JSON.parse(await readBody(request, editorReplyLimit));
+				} catch (error) {
+					if (error instanceof EditorSessionError) throw error;
 					throw new EditorSessionError({
 						code: "InvalidReply",
 						message: "The editor reply must be JSON.",
@@ -162,7 +266,7 @@ export function createEditorMcpHandlers(hub = liveHub) {
 		},
 		async mcp(request: Request, sessionId: string): Promise<Response> {
 			try {
-				checkOrigin(request);
+				rejectCrossOrigin(request);
 				hub.authorize(sessionId, bearer(request), "mcp");
 				if (request.method !== "POST") return methodNotAllowed("POST");
 				return await runEffect(
@@ -183,6 +287,7 @@ export function createEditorMcpHandlers(hub = liveHub) {
 										new WebStandardStreamableHTTPServerTransport({
 											sessionIdGenerator: undefined,
 											enableJsonResponse: true,
+											maxRequestBodySize: mcpRequestLimit,
 										}),
 								),
 								(transport) =>
