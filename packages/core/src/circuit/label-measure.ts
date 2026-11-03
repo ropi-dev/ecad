@@ -6,7 +6,6 @@ let context:
 	| CanvasRenderingContext2D
 	| null = null;
 
-/** Measures net label text on a canvas, or estimates it when no canvas exists. */
 export function measureLabelText(text: string): number {
 	if (!context) {
 		if (typeof OffscreenCanvas !== "undefined")

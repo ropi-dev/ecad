@@ -32,19 +32,14 @@ import { measurePerformance } from "#/performance/runtime.ts";
 const fallbackPrefix = "circuit-fallback.";
 const terminalTolerance = 1e-4;
 
-/** Platform services that synchronization needs. Inject them to make the output deterministic. */
 export interface LinkedSchematicEnvironment {
-	/** Measures one line of net label text in font pixels. */
 	measureText: MeasureText;
-	/** Creates identities for new circuit nets and fallback symbol definitions. */
 	newId: () => string;
 }
 
-/** Estimates net label width from its length, for use when no canvas is available. */
 export const estimateLabelTextWidth: MeasureText = (text) =>
 	text.length * fontPixels * 0.6;
 
-/** Thrown when a linked component's symbol definition is not loaded, so its pins are unknown. */
 export class MissingSymbolLibraryError extends Error {
 	constructor() {
 		super("Load the missing symbol library before saving the linked PCB.");
@@ -56,20 +51,12 @@ interface SyncContext {
 	file: CircuitFile;
 	previous: CircuitFile;
 	definitions: DefinitionIndex;
-	/** Labels of the incoming circuit's nets. */
 	labels: ReadonlyMap<string, string>;
-	/** Labels of the previously saved circuit's nets. */
 	previousLabels: ReadonlyMap<string, string>;
 	measureText: MeasureText;
 	newId: () => string;
 }
 
-/**
- * Reconciles a circuit with its linked schematic.
- *
- * When the circuit changed since `previous`, the circuit is written into the
- * schematic. Otherwise the schematic is read back into the circuit.
- */
 export function synchronizePcb(
 	file: CircuitFile,
 	shapes: EditorShape[],
@@ -140,11 +127,6 @@ export function synchronizePcb(
 	);
 }
 
-/**
- * Binds net labels to circuit nets. Labels whose text was edited, or that are
- * no longer net labels, lose their binding. Bound labels take the current
- * automatic label text.
- */
 function bindNetLabels(
 	shapes: readonly EditorShape[],
 	context: SyncContext,
@@ -194,7 +176,6 @@ function bindNetLabels(
 	});
 }
 
-/** Writes circuit changes into the schematic. */
 function placeCircuitInSchematic(
 	circuit: Circuit,
 	shapes: EditorShape[],
@@ -214,10 +195,6 @@ function placeCircuitInSchematic(
 	);
 }
 
-/**
- * Removes symbols of deleted components, updates the attributes of existing
- * ones and places a generated symbol for each component without one.
- */
 function placeComponentSymbols(
 	circuit: Circuit,
 	shapes: readonly EditorShape[],
@@ -299,11 +276,6 @@ function placeComponentSymbols(
 	return { shapes: placed, nextId };
 }
 
-/**
- * Replaces the labels of nets the circuit changed. Wires and labels of the
- * matching schematic nets are removed, and net symbols take the names of the
- * nets they now belong to.
- */
 function placeNetLabels(
 	circuit: Circuit,
 	shapes: EditorShape[],
@@ -375,7 +347,6 @@ function placeNetLabels(
 	return next;
 }
 
-/** Ids of nets that equal a net of the previous circuit. */
 function unchangedNetIds(
 	nets: readonly CircuitNet[],
 	previousNets: readonly CircuitNet[],
@@ -390,10 +361,6 @@ function unchangedNetIds(
 	);
 }
 
-/**
- * Matches the schematic's nets to changed nets of the previous circuit. Returns
- * the wires and labels to remove, and the new name of each affected net symbol.
- */
 function reconcileSchematicNets(
 	circuit: Circuit,
 	shapes: readonly EditorShape[],
@@ -530,7 +497,6 @@ function reconcileSchematicNets(
 	return { remove, symbolNames };
 }
 
-/** Reads the edited schematic back into the circuit. */
 function extractCircuitFromSchematic(
 	circuit: Circuit,
 	shapes: EditorShape[],
@@ -576,11 +542,6 @@ function extractCircuitFromSchematic(
 	return extracted.shapes;
 }
 
-/**
- * Builds one component per schematic symbol with pins. Units of a multi-unit
- * part are grouped into one component. Existing components keep their
- * identities, pin identities, part and annotations.
- */
 function extractComponents(
 	circuit: Circuit,
 	shapes: readonly EditorShape[],
@@ -748,10 +709,6 @@ function extractComponents(
 	return components;
 }
 
-/**
- * Builds circuit nets from the schematic's electrical nets. Each net keeps the
- * identity of the circuit net it matches by label binding, name, or pin set.
- */
 function extractNets(
 	shapes: EditorShape[],
 	components: readonly CircuitComponent[],
@@ -866,7 +823,6 @@ type BoundLabel = TextShape & {
 	circuitNet: NonNullable<TextShape["circuitNet"]>;
 };
 
-/** Labels of a schematic net that are still bound to the circuit net they show. */
 function managedLabels(
 	net: ElectricalNet,
 	shapes: ReadonlyMap<number, EditorShape>,
@@ -881,10 +837,6 @@ function managedLabels(
 	});
 }
 
-/**
- * Drops labels whose net or pin left the circuit and updates the text of
- * labels that still show their net's automatic label.
- */
 function refreshLabels(
 	circuit: Circuit,
 	shapes: readonly EditorShape[],
@@ -915,12 +867,10 @@ function refreshLabels(
 }
 
 interface DefinitionIndex {
-	/** The first definition with this id, optionally from this library. */
 	first(
 		id: string,
 		library?: SymbolDefinition["library"],
 	): SymbolDefinition | undefined;
-	/** The last definition with this id, optionally from this library. */
 	last(
 		id: string,
 		library?: SymbolDefinition["library"],
@@ -949,10 +899,6 @@ function indexDefinitions(
 type NetKey = "id" | "pin" | "name" | "label" | "pinSet";
 type NetLookup = readonly [key: NetKey, values: Iterable<string>];
 
-/**
- * Finds the first net in list order that matches any of several keys, without
- * rescanning the list. Each key's index is built on first use.
- */
 class NetIndex {
 	readonly #nets: readonly CircuitNet[];
 	readonly #labels: ReadonlyMap<string, string> | undefined;
@@ -966,7 +912,6 @@ class NetIndex {
 		this.#labels = labels;
 	}
 
-	/** The earliest net that has any of the looked-up keys and passes `accept`. */
 	first(
 		lookups: readonly NetLookup[],
 		accept: (net: CircuitNet) => boolean = () => true,
@@ -1019,7 +964,6 @@ class NetIndex {
 	}
 }
 
-/** Caches each net's pin ids as a set. Nets must not change while cached. */
 class PinSets {
 	readonly #sets = new Map<CircuitNet, Set<string>>();
 
@@ -1033,7 +977,6 @@ class PinSets {
 	}
 }
 
-/** Net ids named by automatic `N_<id>` net names. */
 function automaticNetIds(names: readonly string[]): string[] {
 	return names.flatMap((name) =>
 		name.startsWith("N_") ? [name.slice(2)] : [],
@@ -1044,7 +987,6 @@ function pinSetKey(pinIds: readonly string[]): string {
 	return JSON.stringify([...pinIds].sort());
 }
 
-/** Lists the component pins of a net in component order, then pin order. */
 function netMembers(components: readonly CircuitComponent[]) {
 	const members: { component: CircuitComponent; pin: CircuitPin }[] = [];
 	const positions = new Map<string, number[]>();
@@ -1062,7 +1004,6 @@ function netMembers(components: readonly CircuitComponent[]) {
 }
 
 interface SymbolTerminals {
-	/** The first pin child matching the circuit pin's source pin or number. */
 	find(pin: CircuitPin): SymbolShape | undefined;
 }
 
@@ -1090,9 +1031,7 @@ function indexTerminals(symbol: EditorSymbol): SymbolTerminals {
 }
 
 interface SymbolLayout {
-	/** Moves a generated symbol to the first free grid slot. */
 	place(symbol: EditorSymbol): EditorSymbol;
-	/** Marks a shape's bounds as occupied. */
 	add(shape: EditorShape): void;
 }
 
@@ -1161,7 +1100,6 @@ function fallbackDefinition(
 	};
 }
 
-/** Binds each of the component's pins on this symbol to one of its pin children. */
 function linkPins(component: CircuitComponent, symbol: EditorSymbol) {
 	const pins = symbol.children.filter((child) => child.kind === "pin");
 	const owned = component.pins.filter(
@@ -1272,7 +1210,6 @@ function createNetLabel(
 	);
 }
 
-/** A schematic pin terminal with the circuit pins drawn on it. */
 interface CircuitTerminal extends Point {
 	pins: CircuitPin[];
 }
@@ -1307,7 +1244,6 @@ function circuitTerminals(
 	});
 }
 
-/** The circuit pin, among `pinIds`, drawn at the label's position. */
 function labelPinId(
 	point: Point,
 	terminals: readonly CircuitTerminal[],
@@ -1333,7 +1269,6 @@ function componentShapeIds(component: CircuitComponent): number[] {
 	);
 }
 
-/** Maps each schematic symbol id to the first component drawn by it. */
 function componentsByShapeId(
 	components: readonly CircuitComponent[],
 ): Map<number, CircuitComponent> {
@@ -1344,7 +1279,6 @@ function componentsByShapeId(
 	return owners;
 }
 
-/** Resolves a symbol's pin child to the id of the circuit pin drawn by it. */
 function schematicPinLookup(
 	components: readonly CircuitComponent[],
 ): (shapeId: number, sourceId: number) => string | undefined {
@@ -1390,10 +1324,6 @@ function stringsEqual(a: readonly string[], b: readonly string[]): boolean {
 	return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-/**
- * Compares schema-validated JSON data as its serialized form would: object key
- * order and keys holding `undefined` are ignored.
- */
 function jsonEqual(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	if (
