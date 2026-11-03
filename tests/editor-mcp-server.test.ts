@@ -11,6 +11,10 @@ import {
 	drawingReplySchema,
 	executeDrawingOperation,
 } from "#/mcp/drawing-protocol.ts";
+import {
+	editorClientAddress,
+	editorClientKey,
+} from "#/services/server/client-address.ts";
 import { createEditorMcpHandlers } from "#/services/server/editor-mcp.ts";
 import {
 	EditorSessionError,
@@ -26,6 +30,17 @@ const failure: DrawingReply = {
 	error: { code: "InvalidDrawingCommand", message: "Invalid geometry" },
 };
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+/** What the app's own page sends: browsers add `Origin` to POST and DELETE requests. */
+const sameOrigin = (token?: string) => ({
+	Origin: "http://localhost",
+	"Sec-Fetch-Site": "same-origin",
+	...(token ? auth(token) : {}),
+});
+/** A same-origin browser GET carries `Sec-Fetch-Site` but no `Origin`. */
+const sameOriginGet = (token?: string) => ({
+	"Sec-Fetch-Site": "same-origin",
+	...(token ? auth(token) : {}),
+});
 
 function captureCommands() {
 	const envelopes: DrawingEnvelope[] = [];
@@ -214,20 +229,28 @@ test("HTTP endpoints reject missing/wrong credentials, cross-origin access, and 
 	const hub = makeEditorSessionHub();
 	const handlers = createEditorMcpHandlers(hub);
 	const created = await handlers.createSession(
-		new Request("http://localhost/api/editor-mcp", { method: "POST" }),
+		new Request("http://localhost/api/editor-mcp", {
+			method: "POST",
+			headers: sameOrigin(),
+		}),
 	);
 	assert.equal(created.status, 201);
 	assert.equal(created.headers.get("cache-control"), "no-store");
 	const session = await created.json();
 	const url = `http://localhost/api/editor-mcp/${session.sessionId}`;
 	assert.equal(
-		(await handlers.session(new Request(url), session.sessionId)).status,
+		(
+			await handlers.session(
+				new Request(url, { headers: sameOriginGet() }),
+				session.sessionId,
+			)
+		).status,
 		401,
 	);
 	assert.equal(
 		(
 			await handlers.session(
-				new Request(url, { headers: auth(session.mcpToken) }),
+				new Request(url, { headers: sameOriginGet(session.mcpToken) }),
 				session.sessionId,
 			)
 		).status,
@@ -259,7 +282,7 @@ test("HTTP endpoints reject missing/wrong credentials, cross-origin access, and 
 	const malformed = await handlers.session(
 		new Request(url, {
 			method: "POST",
-			headers: auth(session.editorToken),
+			headers: sameOrigin(session.editorToken),
 			body: "{}",
 		}),
 		session.sessionId,
@@ -267,14 +290,14 @@ test("HTTP endpoints reject missing/wrong credentials, cross-origin access, and 
 	assert.equal(malformed.status, 400);
 	assert.equal((await malformed.json()).error.code, "InvalidReply");
 	const stream = await handlers.session(
-		new Request(url, { headers: auth(session.editorToken) }),
+		new Request(url, { headers: sameOriginGet(session.editorToken) }),
 		session.sessionId,
 	);
 	assert.equal(stream.status, 200);
 	assert.equal(
 		(
 			await handlers.session(
-				new Request(url, { headers: auth(session.editorToken) }),
+				new Request(url, { headers: sameOriginGet(session.editorToken) }),
 				session.sessionId,
 			)
 		).status,
@@ -345,6 +368,335 @@ test("the official Streamable HTTP client initializes, discovers tools, and rece
 		assert.equal(store.getSnapshot().history.currentId, 1);
 	} finally {
 		await client.close();
+		hub.dispose();
+	}
+});
+
+test("connected sessions close when idle and at their maximum lifetime", async () => {
+	let now = 0;
+	const hub = makeEditorSessionHub({
+		idleTimeoutMs: 100,
+		maxLifetimeMs: 250,
+		sweepIntervalMs: 0,
+		now: () => now,
+	});
+	const connect = () => {
+		const session = hub.create();
+		const state = { closed: 0 };
+		hub.connect(session.sessionId, session.editorToken, {
+			send: () => {},
+			close: () => {
+				state.closed++;
+			},
+		});
+		return { session, state };
+	};
+	try {
+		// Heartbeats keep the stream open, but only MCP use counts as activity.
+		const idle = connect();
+		const waiting = runEffect(hub.request(idle.session.sessionId, rectangle));
+		now = 99;
+		hub.sweep();
+		assert.equal(idle.state.closed, 0);
+		now = 100;
+		hub.sweep();
+		assert.equal(idle.state.closed, 1);
+		await assert.rejects(waiting, /disconnected/);
+		assert.throws(
+			() => hub.authorize(idle.session.sessionId, idle.session.mcpToken, "mcp"),
+			/valid editor session token/,
+		);
+		const busy = connect();
+		for (now = 190; now < 350; now += 80) {
+			hub.authorize(busy.session.sessionId, busy.session.mcpToken, "mcp");
+			hub.sweep();
+			assert.equal(busy.state.closed, 0);
+		}
+		now = 350;
+		// An expired session is closed by any lookup, before its token is accepted.
+		assert.throws(
+			() => hub.authorize(busy.session.sessionId, busy.session.mcpToken, "mcp"),
+			/valid editor session token/,
+		);
+		assert.equal(busy.state.closed, 1);
+	} finally {
+		hub.dispose();
+	}
+});
+
+test("the sweep timer closes idle editor streams without other requests", async () => {
+	const hub = makeEditorSessionHub({ idleTimeoutMs: 20, sweepIntervalMs: 5 });
+	const handlers = createEditorMcpHandlers(hub);
+	try {
+		const session = hub.create();
+		const response = await handlers.session(
+			new Request(`http://localhost/api/editor-mcp/${session.sessionId}`, {
+				headers: sameOriginGet(session.editorToken),
+			}),
+			session.sessionId,
+		);
+		assert.equal(response.status, 200);
+		const reader = response.body?.getReader();
+		assert.ok(reader);
+		assert.deepEqual(new TextDecoder().decode((await reader.read()).value), "\n");
+		assert.equal((await reader.read()).done, true);
+		assert.throws(
+			() => hub.authorize(session.sessionId, session.mcpToken, "mcp"),
+			/valid editor session token/,
+		);
+	} finally {
+		hub.dispose();
+	}
+});
+
+test("one client cannot hold the whole session pool", async () => {
+	const hub = makeEditorSessionHub({ maxSessions: 3, maxSessionsPerClient: 2 });
+	const handlers = createEditorMcpHandlers(hub, { trustedProxyHops: 0 });
+	const create = (peer: string, forwardedFor?: string) =>
+		handlers.createSession(
+			new Request("http://localhost/api/editor-mcp", {
+				method: "POST",
+				headers: {
+					...sameOrigin(),
+					...(forwardedFor ? { "X-Forwarded-For": forwardedFor } : {}),
+				},
+			}),
+			peer,
+		);
+	try {
+		const first = await create("2001:db8:1:2::10");
+		assert.equal(first.status, 201);
+		// Addresses in one IPv6 /64 are one client, and forwarding headers are not trusted.
+		assert.equal(
+			(await create("2001:db8:1:2:aaaa::1", "198.51.100.1")).status,
+			201,
+		);
+		const limited = await create("2001:db8:1:2::ffff", "198.51.100.2");
+		assert.equal(limited.status, 429);
+		assert.equal((await limited.json()).error.code, "ClientSessionLimit");
+		assert.equal((await create("192.0.2.1")).status, 201);
+		const full = await create("192.0.2.2");
+		assert.equal(full.status, 503);
+		assert.equal((await full.json()).error.code, "SessionLimit");
+		// Closing a session returns its slot to that client.
+		const { sessionId, editorToken } = await first.json();
+		hub.disconnect(sessionId, editorToken);
+		assert.equal((await create("2001:db8:1:2::10")).status, 201);
+	} finally {
+		hub.dispose();
+	}
+});
+
+test("client keys use the peer address unless proxy hops are explicitly trusted", () => {
+	const forwarded = new Request("http://localhost/", {
+		headers: { "X-Forwarded-For": "203.0.113.9, 198.51.100.7" },
+	});
+	assert.equal(editorClientAddress(forwarded, "10.0.0.2", 0), "10.0.0.2");
+	// The proxy appended 198.51.100.7; the client wrote 203.0.113.9 itself.
+	assert.equal(editorClientAddress(forwarded, "10.0.0.2", 1), "198.51.100.7");
+	assert.equal(editorClientAddress(forwarded, "10.0.0.2", 2), "203.0.113.9");
+	assert.equal(
+		editorClientAddress(new Request("http://localhost/"), "10.0.0.2", 1),
+		"10.0.0.2",
+	);
+	assert.equal(editorClientKey("::ffff:192.0.2.4"), "192.0.2.4");
+	assert.equal(editorClientKey("[2001:db8::1%eth0]"), "2001:db8:0:0::/64");
+	assert.equal(editorClientKey("2001:db8:0:0:1::1"), "2001:db8:0:0::/64");
+	assert.equal(editorClientKey("64:ff9b::192.0.2.4"), "64:ff9b:0:0::/64");
+	assert.equal(editorClientKey("not an address"), "unknown");
+	assert.equal(editorClientKey(undefined), "unknown");
+});
+
+test("editor endpoints require a same-origin browser request; the MCP endpoint does not", async () => {
+	const hub = makeEditorSessionHub();
+	const handlers = createEditorMcpHandlers(hub);
+	const createUrl = "http://localhost/api/editor-mcp";
+	const rejected = async (response: Response) => {
+		assert.equal(response.status, 403);
+		assert.equal((await response.json()).error.code, "ForbiddenOrigin");
+	};
+	try {
+		const crossOrigin: Record<string, string>[] = [
+			{},
+			{ Origin: "http://unrelated.example" },
+			{ Origin: "null" },
+			{ "Sec-Fetch-Site": "cross-site" },
+			{ "Sec-Fetch-Site": "same-site" },
+			{ Origin: "http://localhost", "Sec-Fetch-Site": "cross-site" },
+		];
+		for (const headers of crossOrigin)
+			await rejected(
+				await handlers.createSession(
+					new Request(createUrl, { method: "POST", headers }),
+				),
+			);
+		const allowed = await handlers.createSession(
+			new Request(createUrl, {
+				method: "POST",
+				headers: { Origin: "http://localhost" },
+			}),
+		);
+		assert.equal(allowed.status, 201);
+		const session = await allowed.json();
+		const url = `${createUrl}/${session.sessionId}`;
+		const editor = auth(session.editorToken);
+		await rejected(
+			await handlers.session(new Request(url, { headers: editor }), session.sessionId),
+		);
+		await rejected(
+			await handlers.session(
+				new Request(url, {
+					method: "POST",
+					headers: editor,
+					body: JSON.stringify({ requestId: crypto.randomUUID(), reply: failure }),
+				}),
+				session.sessionId,
+			),
+		);
+		await rejected(
+			await handlers.session(
+				new Request(url, { method: "DELETE", headers: editor }),
+				session.sessionId,
+			),
+		);
+		const stream = await handlers.session(
+			new Request(url, { headers: sameOriginGet(session.editorToken) }),
+			session.sessionId,
+		);
+		assert.equal(stream.status, 200);
+		// MCP clients send no Origin; the MCP token alone authenticates them.
+		const initialize = (headers: Record<string, string>) =>
+			handlers.mcp(
+				new Request(`http://localhost/mcp/editor/${session.sessionId}`, {
+					method: "POST",
+					headers: {
+						...auth(session.mcpToken),
+						Accept: "application/json, text/event-stream",
+						"Content-Type": "application/json",
+						...headers,
+					},
+					body: JSON.stringify({
+						jsonrpc: "2.0",
+						id: 1,
+						method: "initialize",
+						params: {
+							protocolVersion: "2025-06-18",
+							capabilities: {},
+							clientInfo: { name: "test-client", version: "1.0.0" },
+						},
+					}),
+				}),
+				session.sessionId,
+			);
+		const initialized = await initialize({});
+		assert.equal(initialized.status, 200);
+		assert.equal((await initialized.json()).result.serverInfo.name !== undefined, true);
+		await rejected(await initialize({ Origin: "http://unrelated.example" }));
+		const disconnected = await handlers.session(
+			new Request(url, { method: "DELETE", headers: sameOrigin(session.editorToken) }),
+			session.sessionId,
+		);
+		assert.equal(disconnected.status, 204);
+		await stream.body?.cancel();
+	} finally {
+		hub.dispose();
+	}
+});
+
+test("oversized request bodies are rejected with 413 before they are buffered", async () => {
+	const hub = makeEditorSessionHub();
+	const limit = 256;
+	const handlers = createEditorMcpHandlers(hub, {
+		editorReplyLimit: limit,
+		mcpRequestLimit: limit,
+	});
+	const session = hub.create();
+	const commands = captureCommands();
+	hub.connect(session.sessionId, session.editorToken, {
+		send: commands.send,
+		close: () => {},
+	});
+	const url = `http://localhost/api/editor-mcp/${session.sessionId}`;
+	const tooLarge = async (response: Response) => {
+		assert.equal(response.status, 413);
+		return response.json();
+	};
+	try {
+		const declared = await tooLarge(
+			await handlers.session(
+				new Request(url, {
+					method: "POST",
+					headers: {
+						...sameOrigin(session.editorToken),
+						"Content-Length": String(limit + 1),
+					},
+					body: "x".repeat(limit + 1),
+				}),
+				session.sessionId,
+			),
+		);
+		assert.equal(declared.error.code, "PayloadTooLarge");
+		// A chunked body with no declared length is cut off once it exceeds the limit.
+		let pulled = 0;
+		const chunked = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulled++;
+				controller.enqueue(new TextEncoder().encode("x".repeat(40)));
+				if (pulled === 100) controller.close();
+			},
+		});
+		const streamed = await tooLarge(
+			await handlers.session(
+				new Request(url, {
+					method: "POST",
+					headers: sameOrigin(session.editorToken),
+					body: chunked,
+					duplex: "half",
+				} as RequestInit),
+				session.sessionId,
+			),
+		);
+		assert.equal(streamed.error.code, "PayloadTooLarge");
+		assert.ok(pulled < 100);
+		const mcp = await tooLarge(
+			await handlers.mcp(
+				new Request(`http://localhost/mcp/editor/${session.sessionId}`, {
+					method: "POST",
+					headers: {
+						...auth(session.mcpToken),
+						Accept: "application/json, text/event-stream",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						jsonrpc: "2.0",
+						id: 1,
+						method: "ping",
+						params: { padding: "x".repeat(limit) },
+					}),
+				}),
+				session.sessionId,
+			),
+		);
+		assert.match(mcp.error.message, /Payload Too Large/);
+		assert.equal(commands.envelopes.length, 0);
+		// Within the limit, the reply still reaches the waiting command.
+		const waiting = runEffect(hub.request(session.sessionId, { type: "undo" }));
+		await commands.waitFor(1);
+		const small = {
+			requestId: commands.envelopes[0].requestId,
+			reply: { ok: false, error: { code: "E", message: "m" } },
+		};
+		const accepted = await handlers.session(
+			new Request(url, {
+				method: "POST",
+				headers: sameOrigin(session.editorToken),
+				body: JSON.stringify(small),
+			}),
+			session.sessionId,
+		);
+		assert.equal(accepted.status, 204);
+		assert.deepEqual(await waiting, small.reply);
+	} finally {
 		hub.dispose();
 	}
 });

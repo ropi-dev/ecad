@@ -128,7 +128,45 @@ Web editor UI edits and HTTP MCP edits share the same history. An external mutat
 
 Disabling MCP, closing the tab, leaving the editor, or losing its command stream revokes the session credentials. Enabling MCP again creates a new endpoint and token. Update the client's configuration after reconnecting. Separate editor tabs have separate sessions and drawings.
 
+The server also ends sessions on its own:
+
+| Session state | Ends after |
+| --- | --- |
+| Created, editor stream not yet open | 60 seconds |
+| Connected, no MCP requests | 30 minutes |
+| Connected, any activity | 8 hours from creation |
+
+Only requests to the MCP endpoint reset the idle timer. The stream heartbeat does not. When a session ends, the editor shows that the connection closed, and commands still waiting fail with `EditorDisconnected`.
+
 The browser does not automatically reconnect or replay commands. A timeout, caller cancellation, or failed acknowledgement can occur after a command has reached the browser. Cancellation does not retract a delivered command or roll back its mutation. Inspect the drawing before retrying; after enabling a fresh connection, use `getDrawing` to check the committed state. Disabling MCP does not undo completed edits.
+
+## Limits and request checks
+
+The session endpoints need no login, so the relay limits what one client can hold:
+
+- One client can hold 4 sessions at a time. A fifth **Enable MCP** fails with `ClientSessionLimit` (HTTP 429) until another drawing disables MCP or a session ends.
+- The server holds at most 100 sessions. When all are in use, new sessions fail with `SessionLimit` (HTTP 503).
+- Each session queues at most 128 commands for its editor.
+
+The client key is the connecting IP address. All IPv6 addresses in one /64 network count as one client, because a single host can usually pick any address in its /64. IPv4-mapped IPv6 addresses count as their IPv4 address. Clients behind one NAT share a key and its 4 sessions.
+
+The relay ignores `X-Forwarded-For` by default, because any client can send that header. It uses the peer address that the runtime exposes as `request.ip`:
+
+- Under `pnpm run dev` and `pnpm run preview`, that is the TCP peer.
+- On Vercel, Nitro sets it from `X-Forwarded-For`. Vercel overwrites that header with the client address, so clients cannot spoof it there.
+- Behind your own reverse proxy, every client would share the proxy's address. Set `ECAD_TRUSTED_PROXY_HOPS` to the number of proxies that append the connecting address to `X-Forwarded-For`, for example `1` for nginx with `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`. The relay then reads that many entries from the right of the header and ignores entries further left, which the client wrote. Set it only when clients cannot reach the app server except through those proxies.
+
+The editor endpoints, `POST /api/editor-mcp` and `/api/editor-mcp/<session-id>`, accept only same-origin browser requests. A request needs an `Origin` header matching the app's origin, or `Sec-Fetch-Site: same-origin` when it has no `Origin`. Browsers send `Origin` on POST and DELETE and send `Sec-Fetch-Site` on every request from a secure context, which covers the GET command stream. Open the editor over HTTPS or `localhost`, since browsers omit `Sec-Fetch-Site` on plain HTTP to other hosts. These endpoints reject requests without either header, such as requests from scripts.
+
+The MCP endpoint `/mcp/editor/<session-id>` does not require `Origin`, because MCP clients do not send one. The MCP token authenticates them. A request that does carry a different `Origin` gets HTTP 403.
+
+Request bodies have size limits. The relay checks `Content-Length` and stops reading once a body passes the limit, so a missing or false length does not get around it. Oversized requests get HTTP 413.
+
+| Endpoint | Body limit |
+| --- | --- |
+| MCP requests | 1 MiB, below the editor's 2 MiB command limit |
+| Editor acknowledgements, which include the drawing | 8 MiB |
+| Session creation, stream, and disconnect | 1 KiB |
 
 ## Web implementation and hosting
 
@@ -160,6 +198,13 @@ sequenceDiagram
 `POST /api/editor-mcp` creates a session. The browser connects to `/api/editor-mcp/<session-id>` using a separate editor token, receives newline-delimited operations, and posts acknowledgements there. MCP clients authenticate to `/mcp/editor/<session-id>` with the copied MCP token. The browser token is not included in the client configuration.
 
 The relay currently stores sessions and pending requests in one server process. It stores no drawing document. All creation, browser stream, acknowledgement, and MCP requests for a session must reach that same process. Deploy with one process, or provide session-aware sticky routing across both browser and MCP client requests. Independently routed serverless requests or multiple workers need a shared relay implementation. Server restarts invalidate existing connections.
+
+The Vercel deployment does not meet these conditions, so web editor MCP is unreliable there:
+
+- Vercel runs the app as Vercel Functions through the Nitro adapter. Each function instance has its own copy of the relay. Nothing routes a session's MCP requests to the instance that holds its editor stream. A request that reaches another instance gets HTTP 401, as if the token were wrong.
+- The editor stream is one long function invocation. Vercel stops invocations at the maximum function duration, 300 seconds by default. The stream then closes and the session ends, so the editor needs **Enable MCP** again at least every 5 minutes.
+
+Use `pnpm run dev`, `pnpm run preview`, or another single Node process for web editor MCP. The static nginx deployment has no server endpoints, so MCP is unavailable there.
 
 Keep the browser response stream open through any reverse proxy and disable response buffering for that endpoint. Idle streams send a heartbeat every 15 seconds. Drawing commands currently have a 15-second acknowledgement timeout.
 
