@@ -192,6 +192,11 @@ const CircuitEditor = lazy(() =>
 	})),
 );
 
+const cameraStates = new WeakMap<
+	object,
+	{ camera?: Viewer2DSnapshot["camera"] }
+>();
+
 export function Editor2D(props: Editor2DProps = {}) {
 	const project = useProject();
 	if (!props.store && project?.editorCircuit)
@@ -200,7 +205,7 @@ export function Editor2D(props: Editor2DProps = {}) {
 				fallback={<output className="block p-6">Opening circuit...</output>}
 			>
 				<CircuitEditor
-					key={project.editorCircuit.file.circuit.id}
+					key={`${project.session}:${project.editorCircuit.file.circuit.id}`}
 					document={project.editorCircuit}
 				/>
 			</Suspense>
@@ -247,6 +252,11 @@ function EditorCanvas({
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProject();
 	const store = suppliedStore ?? project?.store ?? ownedStore;
+	let cameraState = cameraStates.get(store);
+	if (!cameraState) {
+		cameraState = {};
+		cameraStates.set(store, cameraState);
+	}
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
 		() => registerEditor?.(store, enableMcp),
@@ -1680,6 +1690,7 @@ function EditorCanvas({
 						<OrthographicViewer2D
 							rulerUnit="mil"
 							scene={scene}
+							cameraState={cameraState}
 							fitZoom={1.1}
 							physicalSizeZoom
 							getFitBounds={() => {

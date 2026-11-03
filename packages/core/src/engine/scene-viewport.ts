@@ -27,7 +27,7 @@ import {
 } from "./navigation";
 import { createSceneDisplay, type ViewerScene } from "./scene";
 import { createSceneHover, type SceneTarget } from "./scene-hover";
-import type { Bounds } from "./types";
+import type { Bounds, Camera } from "./types";
 import type { Viewer2DSnapshot, Viewer3DHandle } from "./viewport-types";
 
 export const MIN_PHYSICAL_ZOOM = 0.01;
@@ -45,6 +45,7 @@ export interface SceneViewportOptions {
 	projection: "perspective" | "orthographic";
 	lockProjection?: boolean;
 	fitZoom?: number;
+	initialCamera?: Camera;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	ariaLabel?: string;
@@ -78,6 +79,7 @@ export function createSceneViewport(
 		projection,
 		lockProjection = false,
 		fitZoom = 1,
+		initialCamera,
 		getFitBounds,
 		selectionEnabled = true,
 		ariaLabel = "3D model",
@@ -640,6 +642,21 @@ export function createSceneViewport(
 		resize(Math.max(element.clientWidth, 1), Math.max(element.clientHeight, 1));
 		view(topView ? "top" : "iso");
 		setProjection(projection);
+		if (topView && camera instanceof OrthographicCamera && initialCamera) {
+			const offset = camera.position.z - controls.target.z;
+			controls.target.set(initialCamera.x, initialCamera.y, controls.target.z);
+			camera.position.set(
+				initialCamera.x,
+				initialCamera.y,
+				controls.target.z + offset,
+			);
+			camera.zoom = 1;
+			setOrthographicBounds(
+				camera,
+				Math.max(element.clientHeight, 1) / initialCamera.scale,
+			);
+			schedule();
+		}
 		return runtime;
 	} catch (error) {
 		dispose();
