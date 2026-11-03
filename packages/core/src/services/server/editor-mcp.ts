@@ -20,7 +20,7 @@ import {
 export const editorReplyBodyLimit = 8 * 1024 * 1024;
 /** Stays below the editor's 2 MiB command limit, so a large call cannot break the stream. */
 export const mcpRequestBodyLimit = 1024 * 1024;
-/** Session creation, stream, and disconnect requests carry no body. */
+/** Session creation, stream, and disconnect requests carry no body; extra bytes are discarded. */
 const emptyBodyLimit = 1024;
 
 const liveHub = makeEditorSessionHub();
@@ -203,7 +203,7 @@ export function createEditorMcpHandlers(
 			try {
 				requireSameOrigin(request);
 				if (request.method !== "POST") return methodNotAllowed("POST");
-				checkDeclaredLength(request, emptyBodyLimit);
+				await readBody(request, emptyBodyLimit);
 				const address = editorClientAddress(
 					request,
 					peerAddress,
@@ -222,7 +222,7 @@ export function createEditorMcpHandlers(
 				requireSameOrigin(request);
 				hub.authorize(sessionId, bearer(request), "editor");
 				if (request.method === "GET" || request.method === "DELETE")
-					checkDeclaredLength(request, emptyBodyLimit);
+					await readBody(request, emptyBodyLimit);
 				if (request.method === "GET")
 					return openEditorStream(request, hub, sessionId);
 				if (request.method === "DELETE") {

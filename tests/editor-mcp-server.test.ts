@@ -499,7 +499,15 @@ test("client keys use the peer address unless proxy hops are explicitly trusted"
 		editorClientAddress(new Request("http://localhost/"), "10.0.0.2", 1),
 		"10.0.0.2",
 	);
-	assert.equal(editorClientKey("::ffff:192.0.2.4"), "192.0.2.4");
+	// IPv4-mapped IPv6 addresses count as their IPv4 address in every notation.
+	for (const mapped of [
+		"::ffff:192.0.2.4",
+		"::FFFF:c000:204",
+		"0:0:0:0:0:ffff:192.0.2.4",
+		"0000:0000:0000:0000:0000:ffff:c000:0204",
+	])
+		assert.equal(editorClientKey(mapped), "192.0.2.4");
+	assert.equal(editorClientKey("::ffff:c000:205"), "192.0.2.5");
 	assert.equal(editorClientKey("[2001:db8::1%eth0]"), "2001:db8:0:0::/64");
 	assert.equal(editorClientKey("2001:db8:0:0:1::1"), "2001:db8:0:0::/64");
 	assert.equal(editorClientKey("64:ff9b::192.0.2.4"), "64:ff9b:0:0::/64");
@@ -658,6 +666,48 @@ test("oversized request bodies are rejected with 413 before they are buffered", 
 		);
 		assert.equal(streamed.error.code, "PayloadTooLarge");
 		assert.ok(pulled < 100);
+		// Requests that carry no body are limited by the bytes read, not the declared length.
+		const padding = "x".repeat(2048);
+		const chunkedPadding = () =>
+			new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode(padding));
+					controller.close();
+				},
+			});
+		const create = (init: RequestInit) =>
+			handlers.createSession(
+				new Request("http://localhost/api/editor-mcp", {
+					method: "POST",
+					...init,
+				} as RequestInit),
+			);
+		await tooLarge(
+			await create({
+				headers: sameOrigin(),
+				body: chunkedPadding(),
+				duplex: "half",
+			} as RequestInit),
+		);
+		await tooLarge(
+			await create({
+				headers: { ...sameOrigin(), "Content-Length": "10" },
+				body: padding,
+			}),
+		);
+		await tooLarge(
+			await handlers.session(
+				new Request(url, {
+					method: "DELETE",
+					headers: sameOrigin(session.editorToken),
+					body: chunkedPadding(),
+					duplex: "half",
+				} as RequestInit),
+				session.sessionId,
+			),
+		);
+		// The refused disconnect left the session connected.
+		hub.authorize(session.sessionId, session.mcpToken, "mcp");
 		const mcp = await tooLarge(
 			await handlers.mcp(
 				new Request(`http://localhost/mcp/editor/${session.sessionId}`, {

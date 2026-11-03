@@ -40,7 +40,8 @@ export function editorClientAddress(
 	return chain[Math.min(trustedProxyHops, chain.length - 1)];
 }
 
-function ipv6Prefix(address: string) {
+/** Expands a valid IPv6 address, including an embedded dotted IPv4 tail, into 8 groups. */
+function ipv6Groups(address: string) {
 	let text = address;
 	const embedded = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(text);
 	if (embedded) {
@@ -54,28 +55,39 @@ function ipv6Prefix(address: string) {
 		tail === undefined
 			? left
 			: [...left, ...Array(8 - left.length - right.length).fill("0"), ...right];
-	return groups
-		.slice(0, 4)
-		.map((group) => Number.parseInt(group, 16).toString(16))
-		.join(":");
+	return groups.map((group) => Number.parseInt(group, 16));
 }
 
 /**
  * Groups addresses into per-client keys: one IPv4 address, or one IPv6 /64 network,
- * since a single IPv6 host can usually choose any address in its /64.
+ * since a single IPv6 host can usually choose any address in its /64. IPv4-mapped
+ * IPv6 addresses (`::ffff:0:0/96`) count as their IPv4 address in any notation.
  */
 export function editorClientKey(address: string | undefined) {
 	let value = address?.trim() ?? "";
 	if (value.startsWith("[") && value.endsWith("]")) value = value.slice(1, -1);
 	const zone = value.indexOf("%");
 	if (zone !== -1) value = value.slice(0, zone);
-	const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(value);
-	if (mapped) value = mapped[1];
 	switch (isIP(value)) {
 		case 4:
 			return value;
-		case 6:
-			return `${ipv6Prefix(value)}::/64`;
+		case 6: {
+			const groups = ipv6Groups(value);
+			if (
+				groups.slice(0, 5).every((group) => group === 0) &&
+				groups[5] === 0xffff
+			)
+				return [
+					groups[6] >> 8,
+					groups[6] & 0xff,
+					groups[7] >> 8,
+					groups[7] & 0xff,
+				].join(".");
+			return `${groups
+				.slice(0, 4)
+				.map((group) => group.toString(16))
+				.join(":")}::/64`;
+		}
 		default:
 			return unknownEditorClient;
 	}
