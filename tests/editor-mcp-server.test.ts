@@ -509,6 +509,8 @@ test("client keys use the peer address unless proxy hops are explicitly trusted"
 		assert.equal(editorClientKey(mapped), "192.0.2.4");
 	assert.equal(editorClientKey("::ffff:c000:205"), "192.0.2.5");
 	assert.equal(editorClientKey("[2001:db8::1%eth0]"), "2001:db8:0:0::/64");
+	assert.equal(editorClientKey("[2001:db8::1]:4444"), "2001:db8:0:0::/64");
+	assert.equal(editorClientKey("198.51.100.7:4444"), "198.51.100.7");
 	assert.equal(editorClientKey("2001:db8:0:0:1::1"), "2001:db8:0:0::/64");
 	assert.equal(editorClientKey("64:ff9b::192.0.2.4"), "64:ff9b:0:0::/64");
 	assert.equal(editorClientKey("not an address"), "unknown");
@@ -706,7 +708,19 @@ test("oversized request bodies are rejected with 413 before they are buffered", 
 				session.sessionId,
 			),
 		);
-		// The refused disconnect left the session connected.
+		// Node adapters expose no body for GET, so a declared chunked body can't be counted.
+		await tooLarge(
+			await handlers.session(
+				new Request(url, {
+					headers: {
+						...sameOriginGet(session.editorToken),
+						"Transfer-Encoding": "chunked",
+					},
+				}),
+				session.sessionId,
+			),
+		);
+		// The refused requests left the session connected.
 		hub.authorize(session.sessionId, session.mcpToken, "mcp");
 		const mcp = await tooLarge(
 			await handlers.mcp(

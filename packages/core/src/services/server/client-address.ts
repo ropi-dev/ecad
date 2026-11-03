@@ -65,7 +65,11 @@ function ipv6Groups(address: string) {
  */
 export function editorClientKey(address: string | undefined) {
 	let value = address?.trim() ?? "";
-	if (value.startsWith("[") && value.endsWith("]")) value = value.slice(1, -1);
+	// Proxies may append a port: `192.0.2.4:4444` or `[2001:db8::1]:4444`.
+	const withPort =
+		/^(\d+\.\d+\.\d+\.\d+):\d+$/.exec(value) ??
+		/^\[([^\]]+)\](?::\d+)?$/.exec(value);
+	if (withPort) value = withPort[1];
 	const zone = value.indexOf("%");
 	if (zone !== -1) value = value.slice(0, zone);
 	switch (isIP(value)) {

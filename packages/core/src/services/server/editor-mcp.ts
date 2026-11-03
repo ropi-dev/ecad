@@ -99,7 +99,11 @@ function checkDeclaredLength(request: Request, limit: number) {
 /** Reads at most `limit` bytes, whether or not the client declared a length. */
 async function readBody(request: Request, limit: number) {
 	checkDeclaredLength(request, limit);
-	if (!request.body) return "";
+	if (!request.body) {
+		// Node adapters expose no body for GET even when chunked bytes follow; they can't be counted.
+		if (request.headers.has("transfer-encoding")) throw payloadTooLarge(limit);
+		return "";
+	}
 	const reader = request.body.getReader();
 	const decoder = new TextDecoder();
 	let received = 0;
