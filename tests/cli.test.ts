@@ -303,8 +303,9 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 	assert.equal(typeof JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id, "string");
 	await crashed(".claim");
 	assert.equal((await visible()).filter((name) => name.endsWith(".claim")).length, 1);
+	assert.ok((await readdir(fixture.directory)).some((name) => name.startsWith(".drawing.ecaddraw.lock.") && name.endsWith(".tmp")), "the killed processes left staged copies");
 	await call(fixture.env, "placeRectangle", rectangle);
-	assert.deepEqual(new Set(await visible()), drawingFiles);
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles, "recovery removes the staged copies too");
 	assert.equal((await fixture.read()).shapes.length, 1);
 });
 
@@ -395,6 +396,24 @@ test("stdio module reports an input stream failure once", async (context) => {
 	input.destroy(new Error("stdin failed"));
 	assert.equal(await work, 1);
 	assert.equal(error, "ecad: stdin failed\n");
+});
+
+test("stdio module shortens long errors and fails when the transport closes after an oversized message", async (context) => {
+	const fixture = await drawing(context);
+	const input = new PassThrough();
+	let error = "";
+	const errors = new PassThrough();
+	errors.on("data", (chunk) => { error += chunk; });
+	const work = runCli(["mcp"], { env: fixture.env, input, output: new PassThrough(), error: errors });
+	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 99, result: { padding: "x".repeat(200_000) } })}\n`);
+	input.write("x".repeat(11 * 1024 * 1024));
+	assert.equal(await work, 1);
+	const lines = error.trimEnd().split("\n");
+	assert.equal(lines.length, 3, error.slice(0, 2000));
+	assert.ok(lines[0].startsWith("ecad: MCP error: Received a response for an unknown message ID") && lines[0].length < 600, lines[0].slice(0, 200));
+	assert.match(lines[1], /^ecad: MCP error: ReadBuffer exceeded maximum size/);
+	assert.equal(lines[2], "ecad: The MCP transport closed after an input error.");
+	input.destroy();
 });
 
 test("standalone stdio MCP and CLI share tools, files and persistent undo history", async (context) => {

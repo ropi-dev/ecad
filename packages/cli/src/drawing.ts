@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
 	link,
+	lstat,
 	open,
+	readdir,
 	readFile,
 	readlink,
 	realpath,
@@ -266,39 +268,58 @@ async function hasExited(owner: LockOwner) {
 const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
 
 // Creates the file at path with the owner's metadata unless the path exists.
-// Linking a complete, synced file publishes the metadata with the file, so a
-// crash or power loss never leaves an empty lock.
-async function prepareLockFile(path: string, owner: LockOwner) {
+// Linking a complete, synced copy publishes the metadata with the file, so a
+// crash or power loss never leaves an empty lock. The copy is staged only when
+// the path looks free, so a waiting process holds no copy.
+async function createLockFile(path: string, owner: LockOwner) {
+	try {
+		await lstat(path);
+		return false;
+	} catch (error) {
+		if (!hasCode(error, "ENOENT")) throw error;
+	}
 	const content = JSON.stringify(owner);
 	const staged = await stageFile(path, content, 0o600);
-	const discard = () => rm(staged, { force: true });
-	return {
-		async create() {
-			try {
-				await link(staged, path);
-				await discard();
-				return true;
-			} catch (error) {
-				if (hasCode(error, "EEXIST")) return false;
-				if (!linkUnsupported.some((code) => hasCode(error, code))) throw error;
-			}
-			// Without hard links, a crash before the write leaves an empty lock.
-			let handle: Awaited<ReturnType<typeof open>>;
-			try {
-				handle = await open(path, "wx", 0o600);
-			} catch (error) {
-				if (hasCode(error, "EEXIST")) return false;
-				throw error;
-			}
-			try {
-				await handle.writeFile(content);
-			} finally {
-				await handle.close();
-			}
-			return true;
-		},
-		discard,
-	};
+	try {
+		await link(staged, path);
+		return true;
+	} catch (error) {
+		if (hasCode(error, "EEXIST")) return false;
+		if (!linkUnsupported.some((code) => hasCode(error, code))) throw error;
+	} finally {
+		await rm(staged, { force: true });
+	}
+	// Without hard links, a crash before the write leaves an empty lock.
+	let handle: Awaited<ReturnType<typeof open>>;
+	try {
+		handle = await open(path, "wx", 0o600);
+	} catch (error) {
+		if (hasCode(error, "EEXIST")) return false;
+		throw error;
+	}
+	try {
+		await handle.writeFile(content);
+	} finally {
+		await handle.close();
+	}
+	return true;
+}
+
+// A process killed while creating a lock or claim can leave its staged copy.
+// The copy names its owner, so remove the copies whose owner has exited.
+async function removeAbandonedCopies(lockPath: string) {
+	const directory = dirname(lockPath);
+	const prefix = `.${basename(lockPath)}.`;
+	const names = await readdir(directory).catch(() => []);
+	await Promise.all(
+		names
+			.filter((name) => name.startsWith(prefix) && name.endsWith(".tmp"))
+			.map(async (name) => {
+				const path = join(directory, name);
+				const owner = await readLockOwner(path);
+				if (owner && (await hasExited(owner))) await rm(path, { force: true });
+			}),
+	);
 }
 
 // Removes an abandoned lock and returns true when the caller can retry at once.
@@ -307,33 +328,29 @@ async function prepareLockFile(path: string, owner: LockOwner) {
 // never reused, so a lock that still has the owner's ID while the claim is held
 // is still the abandoned lock. An existing claim is either in use or abandoned
 // in the same way, so the chain is followed until a file can be removed.
-async function removeAbandonedLock(lockPath: string) {
+async function removeAbandonedLock(lockPath: string, owner: LockOwner) {
 	const visited = new Set<string>();
 	let target = lockPath;
 	for (;;) {
-		const owner = await readLockOwner(target);
-		if (owner === undefined) return true;
-		if (owner === null || visited.has(owner.id)) return false;
-		if (!(await hasExited(owner))) return false;
-		visited.add(owner.id);
-		const claimPath = `${lockPath}.${owner.id}.claim`;
-		const claim = await prepareLockFile(claimPath, await createLockOwner());
-		try {
-			if (!(await claim.create())) {
-				target = claimPath;
-				continue;
-			}
-			try {
-				const current = await readLockOwner(target);
-				if (current?.id !== owner.id) return current === undefined;
-				await rm(target, { force: true });
-				return true;
-			} finally {
-				await rm(claimPath, { force: true });
-			}
-		} finally {
-			await claim.discard();
+		const current = await readLockOwner(target);
+		if (current === undefined) return true;
+		if (current === null || visited.has(current.id)) return false;
+		if (!(await hasExited(current))) return false;
+		visited.add(current.id);
+		const claimPath = `${lockPath}.${current.id}.claim`;
+		if (!(await createLockFile(claimPath, owner))) {
+			target = claimPath;
+			continue;
 		}
+		try {
+			const latest = await readLockOwner(target);
+			if (latest?.id !== current.id) return latest === undefined;
+			await rm(target, { force: true });
+		} finally {
+			await rm(claimPath, { force: true });
+		}
+		await removeAbandonedCopies(lockPath);
+		return true;
 	}
 }
 
@@ -345,26 +362,21 @@ async function withDrawingLock<T>(
 ) {
 	const lockPath = `${path}.lock`;
 	const deadline = performance.now() + timeout;
-	const lock = await prepareLockFile(lockPath, await createLockOwner());
-	try {
-		for (;;) {
-			signal.throwIfAborted();
-			if (await lock.create()) break;
-			if (await removeAbandonedLock(lockPath)) continue;
-			if (performance.now() >= deadline) {
-				throw new LocalDrawingError({
-					code: "DrawingLocked",
-					message: `The drawing is locked by another process. Lock file: ${lockPath}`,
-				});
-			}
-			await delay(25, undefined, { signal });
+	const owner = await createLockOwner();
+	for (;;) {
+		signal.throwIfAborted();
+		if (await createLockFile(lockPath, owner)) break;
+		if (await removeAbandonedLock(lockPath, { ...owner, id: randomUUID() }))
+			continue;
+		if (performance.now() >= deadline) {
+			throw new LocalDrawingError({
+				code: "DrawingLocked",
+				message: `The drawing is locked by another process. Lock file: ${lockPath}`,
+			});
 		}
-	} catch (error) {
-		await lock.discard();
-		throw error;
+		await delay(25, undefined, { signal });
 	}
 	try {
-		await lock.discard();
 		signal.throwIfAborted();
 		return await work();
 	} finally {
