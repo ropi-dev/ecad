@@ -272,3 +272,27 @@ test("the shared protocol validates complete envelopes and acknowledgment data",
 	assert.ok(reply.ok);
 	assert.equal(reply.drawing.shapes[0].width, rectangle.width);
 });
+
+test("MCP replacement records edits that change only text style, circuit nets or KiCad sources", async (context) => {
+	const { call } = await session(context);
+	const label = { kind: "text", text: "VCC", x: 10, y: 20, width: 8, height: 2, rotation: 0, lineWidth: 0.2, fontSize: 2 };
+	const { id: _id, ...symbol } = createSymbol(2, symbolDefinitions[0], { x: 50, y: 30 });
+	await call("placeShapes", { shapes: [label, symbol] });
+	const styled = { ...label, id: 1, bold: true, circuitNet: { id: "net-1", label: "VCC" } };
+	const replaced = await call("replaceShapes", { shapes: [styled], label: "Style label" });
+	assert.ok(replaced.reply.ok);
+	assert.deepEqual(replaced.reply.result?.ids, [1]);
+	assert.deepEqual(replaced.reply.drawing.shapes[0], styled);
+	assert.deepEqual(replaced.reply.drawing.history.nodes.map((node) => node.label), ["Empty drawing", "Place shapes", "Style label"]);
+	const sourced = { ...symbol, id: 2, kicad: { libraryId: "Device:R", unit: 1 } };
+	const linked = await call("replaceShapes", { shapes: [sourced], label: "Link KiCad" });
+	assert.ok(linked.reply.ok);
+	assert.deepEqual(linked.reply.drawing.shapes[1], sourced);
+	assert.equal(linked.reply.drawing.history.currentId, 3);
+	const repeated = await call("replaceShapes", { shapes: [sourced], label: "Unchanged" });
+	assert.ok(repeated.reply.ok);
+	assert.equal(repeated.reply.drawing.history.nodes.length, 4);
+	const undone = await call("undo");
+	assert.ok(undone.reply.ok);
+	assert.deepEqual(undone.reply.drawing.shapes, [styled, { ...symbol, id: 2 }]);
+});
