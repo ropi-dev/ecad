@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import { createHistory, type History } from "#/drawing/history.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { freeze } from "#/lib/freeze.ts";
 
 export interface DrawingDocument {
 	readonly shapes: EditorShape[];
@@ -24,14 +25,6 @@ export class DrawingStore extends Context.Tag("ecad/DrawingStore")<
 	DrawingStore,
 	DrawingStoreService
 >() {}
-
-function freeze<T>(value: T): T {
-	if (value && typeof value === "object" && !Object.isFrozen(value)) {
-		for (const child of Object.values(value)) freeze(child);
-		Object.freeze(value);
-	}
-	return value;
-}
 
 /** A drawing exists independently of any React component or rendering backend. */
 export function createDrawingStore(
