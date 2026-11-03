@@ -5,26 +5,45 @@ import {
 	type LocalDrawingOptions,
 } from "./drawing.ts";
 
+// Schema failures carry every union branch, so summarize them in one line.
+const describeMcpError = (cause: Error) =>
+	cause.name === "ZodError"
+		? "Ignored a message that is not valid JSON-RPC."
+		: cause.message.replace(/\s*\n\s*/g, " ");
+
 export async function serveStdioMcp(
 	options: LocalDrawingOptions & {
 		input: Readable;
 		output: Writable;
+		error?: Writable;
 		signal?: AbortSignal;
 	},
 ) {
-	const { input, output, signal } = options;
+	const { input, output, error = process.stderr, signal } = options;
 	signal?.throwIfAborted();
 	const server = createLocalDrawingMcpServer(options);
+	let failed = false;
 	let finish!: () => void;
-	let fail!: (error: Error) => void;
-	const stopped = new Promise<void>((resolve, reject) => {
+	let reject!: (cause: Error) => void;
+	const stopped = new Promise<void>((resolve, fail) => {
 		finish = resolve;
-		fail = reject;
+		reject = fail;
 	});
+	// A stream failure can arrive before the server is awaited.
+	stopped.catch(() => {});
+	const fail = (cause: Error) => {
+		failed = true;
+		reject(cause);
+	};
 	server.server.onclose = finish;
-	server.server.onerror = fail;
+	// The SDK also reports recoverable problems here, such as a malformed
+	// input line. Log them and keep serving; stdout carries only MCP messages.
+	server.server.onerror = (cause) => {
+		if (!failed) error.write(`ecad: MCP error: ${describeMcpError(cause)}\n`);
+	};
 	input.once("end", finish);
 	input.once("close", finish);
+	input.once("error", fail);
 	output.once("error", fail);
 	signal?.addEventListener("abort", finish, { once: true });
 	try {
@@ -34,6 +53,7 @@ export async function serveStdioMcp(
 	} finally {
 		input.off("end", finish);
 		input.off("close", finish);
+		input.off("error", fail);
 		output.off("error", fail);
 		signal?.removeEventListener("abort", finish);
 		await server.close();
