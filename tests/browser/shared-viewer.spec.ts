@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { demoFiles } from "../fixtures/demo-gerbers";
+import { patchZipEntry } from "../helpers/zip";
 
 test("Gerber ZIP contents become individual layers alongside selected files", async ({
 	page,
@@ -16,21 +17,26 @@ test("Gerber ZIP contents become individual layers alongside selected files", as
 	await expect(page.locator("[data-testid=layer-name]")).toHaveText([
 		standalone.name,
 	]);
+	const board = zipSync({
+		"board/top.GTL": strToU8(demoFiles[1].source),
+		"board/invalid.gbr": strToU8("invalid gerber"),
+		"board/bottom.copper": strToU8(demoFiles[2].source),
+		"board/bomb.gbr": new Uint8Array(64 * 1024),
+		"README.txt": strToU8("Manufacturing instructions"),
+		"board/": new Uint8Array(),
+		"__MACOSX/._top.gbr": strToU8(demoFiles[0].source),
+		".hidden.gbr": strToU8(demoFiles[0].source),
+	});
+	// A few compressed bytes that declare 3.75 GiB and fail if inflated.
+	patchZipEntry(board, "board/bomb.gbr", {
+		originalSize: 0xf000_0000,
+		corrupt: true,
+	});
 	await input.setInputFiles([
 		{
 			name: "board.ZIP",
 			mimeType: "application/zip",
-			buffer: Buffer.from(
-				zipSync({
-					"board/top.GTL": strToU8(demoFiles[1].source),
-					"board/invalid.gbr": strToU8("invalid gerber"),
-					"board/bottom.copper": strToU8(demoFiles[2].source),
-					"README.txt": strToU8("Manufacturing instructions"),
-					"board/": new Uint8Array(),
-					"__MACOSX/._top.gbr": strToU8(demoFiles[0].source),
-					".hidden.gbr": strToU8(demoFiles[0].source),
-				}),
-			),
+			buffer: Buffer.from(board),
 		},
 		{ ...standalone, name: "loose.gbr" },
 		{
@@ -50,6 +56,9 @@ test("Gerber ZIP contents become individual layers alongside selected files", as
 	]);
 	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
 		"board/invalid.gbr:",
+	);
+	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
+		"board.ZIP: Skipped board/bomb.gbr (larger than the 64 MiB Gerber file limit).",
 	);
 	await expect(page.locator("[data-testid=viewer-message]")).not.toContainText(
 		"README",

@@ -10,9 +10,15 @@ export type ImportFile<T> = (
 	file: File,
 ) => Effect.Effect<ParsedFile<T>, ImportError, Scope.Scope>;
 
+export interface ExpandedFile {
+	files: readonly File[];
+	/** Problems with the source file itself, such as skipped archive entries. */
+	messages?: readonly string[];
+}
+
 export type ExpandFile = (
 	file: File,
-) => Effect.Effect<readonly File[], ImportError>;
+) => Effect.Effect<ExpandedFile, ImportError>;
 
 /** One scope owns every parsed value until the complete batch is handed off. */
 export function importFilesEffect<T>(
@@ -27,14 +33,19 @@ export function importFilesEffect<T>(
 			const messages: string[] = [];
 			for (const file of files) {
 				const expanded = yield* Effect.either(
-					expand ? expand(file) : Effect.succeed([file]),
+					expand ? expand(file) : Effect.succeed({ files: [file] }),
 				);
 				if (Either.isLeft(expanded)) {
 					messages.push(`${file.name}: ${expanded.left.message}`);
 					continue;
 				}
+				messages.push(
+					...(expanded.right.messages ?? []).map(
+						(message) => `${file.name}: ${message}`,
+					),
+				);
 				// Preserve the archive's physical layer order and partial successes.
-				for (const entry of expanded.right) {
+				for (const entry of expanded.right.files) {
 					const entryScope = yield* Scope.fork(
 						scope,
 						ExecutionStrategy.sequential,

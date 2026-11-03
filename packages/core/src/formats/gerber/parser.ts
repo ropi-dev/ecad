@@ -10,6 +10,12 @@ import type {
 	SceneObject,
 } from "#/engine/index.ts";
 import {
+	GERBER_EXTENSIONS,
+	hasGerberExtension,
+	hasGerberSignature,
+	MAX_GERBER_SOURCE_LENGTH,
+} from "#/formats/gerber/detect.ts";
+import {
 	apertureMatrix,
 	circle,
 	convexHull,
@@ -72,7 +78,6 @@ interface Region {
 	polarity: Polarity;
 }
 const MAX_OBJECTS = 500_000;
-const MAX_SOURCE_LENGTH = 64 * 1024 * 1024;
 const decimalPattern = "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
 const number = (value: string): number => {
 	if (
@@ -922,10 +927,10 @@ export function parseGerber(
 			plot(old, next, offsetI, offsetJ);
 		}
 	}
-	if (source.length > MAX_SOURCE_LENGTH)
+	if (source.length > MAX_GERBER_SOURCE_LENGTH)
 		diagnostics.push({
 			severity: "error",
-			message: "Gerber file exceeds the 64 MiB parser limit.",
+			message: `Gerber file exceeds the ${MAX_GERBER_SOURCE_LENGTH / 1024 / 1024} MiB parser limit.`,
 		});
 	else
 		for (const token of tokenize(source, diagnostics)) {
@@ -988,37 +993,9 @@ export function parseGerber(
 
 export const gerberParser: FormatParser = {
 	id: "gerber",
-	extensions: [
-		"gbr",
-		"ger",
-		"gerber",
-		"gtl",
-		"gbl",
-		"gts",
-		"gbs",
-		"gto",
-		"gbo",
-		"gtp",
-		"gbp",
-		"gko",
-		"gml",
-		"gm1",
-		"gm2",
-		"pho",
-		"art",
-		"cmp",
-		"sol",
-		"plc",
-		"stc",
-		"sts",
-	],
+	extensions: GERBER_EXTENSIONS,
 	detect: (source, filename) =>
-		/%(?:FS[LT][AI]X\d\dY\d\d|MO(?:MM|IN)|ADD\d|TF\.FileFunction)/.test(
-			source,
-		) ||
-		(/\.(?:gbr|ger|gerber|gtl|gbl|gts|gbs|gto|gbo|gtp|gbp|gko|gml|gm\d+|pho|art|cmp|sol|plc|stc|sts)$/i.test(
-			filename,
-		) &&
-			/(?:D0?[123]\*|M0?2\*|G0?4)/.test(source)),
+		hasGerberSignature(source) ||
+		(hasGerberExtension(filename) && /(?:D0?[123]\*|M0?2\*|G0?4)/.test(source)),
 	parse: parseGerber,
 };

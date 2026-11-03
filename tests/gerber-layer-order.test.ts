@@ -32,10 +32,11 @@ test("ZIP Gerbers follow the physical stack in the panel, including numeric inne
 			]),
 		),
 	);
-	const files = await expandGerberFile(
+	const { files, messages } = await expandGerberFile(
 		new File([new Uint8Array(archive)], "board.zip"),
 		new AbortController().signal,
 	);
+	assert.deepEqual(messages, []);
 	assert.deepEqual(
 		files.map((file) => file.name).reverse(),
 		layers.map(([name]) => `board/${name}`),
@@ -90,7 +91,8 @@ test("attributes override filenames, including legacy comment attributes", () =>
 
 test("standalone imports preserve their file identity", async () => {
 	const file = new File([source("Copper,L1,Top")], "board.gbr");
-	assert.deepEqual(await expandGerberFile(file, new AbortController().signal), [
-		file,
-	]);
+	assert.deepEqual(
+		(await expandGerberFile(file, new AbortController().signal)).files,
+		[file],
+	);
 });
