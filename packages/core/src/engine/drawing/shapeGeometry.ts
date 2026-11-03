@@ -14,7 +14,6 @@ import type { DrawingGeometry } from "#/drawing/display.ts";
 import { createLineStyleGeometry } from "#/engine/drawing/lineStyleGeometry.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
-/** Zero-size shapes build geometry without a position attribute. */
 const hasVertices = (geometry: BufferGeometry) =>
 	(geometry.getAttribute("position")?.count ?? 0) > 0;
 
@@ -45,10 +44,6 @@ function mergeAsTriangles(geometries: readonly BufferGeometry[]) {
 	return merged;
 }
 
-/**
- * Merges part meshes so one degenerate part cannot hide the others: empty parts
- * are skipped, and incompatible layouts merge as plain triangles instead of null.
- */
 export function mergeShapeGeometries(
 	geometries: readonly BufferGeometry[],
 	kind: string,
