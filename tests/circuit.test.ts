@@ -138,6 +138,14 @@ test("an injected ID generator makes commands that create nets deterministic", (
 	let applied = 0;
 	assert.deepEqual(applyCircuitCommand(file, { type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] }, { createId: () => `split-${++applied}` }).circuit.nets.at(-1)?.id, "split-1");
 	assert.equal(createCircuitStore(undefined, { createId: () => "fixed-circuit" }).getSnapshot().circuit.id, "fixed-circuit");
+	assert.throws(() => createCircuitStore(undefined, { createId: () => "" }), (error) => {
+		assert.ok(error instanceof CircuitCommandError);
+		assert.equal(error.reason, "invalid-circuit");
+		assert.ok(error.cause instanceof z.ZodError);
+		return true;
+	});
+	const colliding = createCircuitStore(file, { createId: () => first.id });
+	assertCommandError(() => colliding.execute({ type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] }), "invalid-circuit", `Duplicate circuit identity: ${first.id}`);
 	const random = createCircuitStore(file);
 	random.execute({ type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] });
 	assert.match(random.getSnapshot().circuit.nets.at(-1)!.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);

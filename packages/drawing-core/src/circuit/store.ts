@@ -1,5 +1,5 @@
 import { Data } from "effect";
-import type { z } from "zod";
+import { z } from "zod";
 import { freeze } from "#/lib/freeze.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import {
@@ -55,16 +55,28 @@ function invalid(reason: CircuitCommandErrorReason, message: string): never {
 }
 
 /** Schema failures become one display message; the Zod error stays as the cause. */
+function invalidCircuit(error: z.ZodError): CircuitCommandError {
+	return new CircuitCommandError({
+		reason: "invalid-circuit",
+		message: [...new Set(error.issues.map((issue) => issue.message))].join(
+			"; ",
+		),
+		cause: error,
+	});
+}
+
 function parseOrInvalid<T>(schema: z.ZodType<T>, value: unknown): T {
 	const result = schema.safeParse(value);
 	if (result.success) return result.data;
-	throw new CircuitCommandError({
-		reason: "invalid-circuit",
-		message: [
-			...new Set(result.error.issues.map((issue) => issue.message)),
-		].join("; "),
-		cause: result.error,
-	});
+	throw invalidCircuit(result.error);
+}
+
+function untitledCircuit(id: string): CircuitFile {
+	try {
+		return createCircuit("Untitled circuit", id);
+	} catch (error) {
+		throw error instanceof z.ZodError ? invalidCircuit(error) : error;
+	}
 }
 
 /**
@@ -349,10 +361,9 @@ export function createCircuitStore(
 	{ createId = randomId }: CircuitStoreOptions = {},
 ) {
 	let file = freeze(
-		parseOrInvalid(
-			circuitFileSchema,
-			initial ?? createCircuit("Untitled circuit", createId()),
-		),
+		initial
+			? parseOrInvalid(circuitFileSchema, initial)
+			: untitledCircuit(createId()),
 	);
 	let past: CircuitFile[] = [];
 	let future: CircuitFile[] = [];
