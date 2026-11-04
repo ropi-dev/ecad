@@ -49,12 +49,13 @@ for (const [name, override] of [
 			drawingShapeSchema.safeParse({ ...saved, childOverrides }).success,
 			false,
 		);
-		const parsed = drawingShapeSchema.parse(saved);
-		const symbol = resolveDrawingSymbols(
-			[{ ...parsed, childOverrides } as typeof parsed],
+		// Resolution drops overrides that do not fit, so add it afterwards.
+		const resolved = resolveDrawingSymbols(
+			[drawingShapeSchema.parse(saved)],
 			[resistor],
 			definitions,
 		).shapes[0];
+		const symbol = { ...resolved, childOverrides } as typeof resolved;
 		assert.equal(symbol.kind, "symbol");
 		if (symbol.kind !== "symbol") return;
 		const lead = symbolShapes(symbol).find((child) => child.id === 1)!;

@@ -105,9 +105,15 @@ export function selectionPasteError(text: string): string | undefined {
 	if (text.length > 10_000_000) return;
 	try {
 		const value = JSON.parse(text);
-		if (value?.format !== "ecad-selection") return;
-		const issue = clipboardSchema.safeParse(value).error?.issues[0];
-		if (!issue) return;
+		// The same two forms that parseSelection accepts.
+		const plain = value?.format === undefined && value?.shapes;
+		const selection = plain
+			? { format: "ecad-selection", version: 1, shapes: value.shapes }
+			: value;
+		if (selection?.format !== "ecad-selection") return;
+		const issue = clipboardSchema.safeParse(selection).error?.issues[0];
+		// Plain text with a shapes list is explained only when one shape is wrong.
+		if (!issue || (plain && typeof issue.path[1] !== "number")) return;
 		// Report shape problems the way drawing commands do, relative to the shape.
 		const path = (issue.path[0] === "shapes" ? issue.path.slice(2) : issue.path)
 			.map(String)

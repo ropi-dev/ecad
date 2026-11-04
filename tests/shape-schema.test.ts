@@ -26,6 +26,11 @@ import {
 	type WireShape,
 } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
+import {
+	persistDrawingShapes,
+	resolveDrawingSymbols,
+} from "#/drawing/symbol-persistence.ts";
+import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
@@ -343,7 +348,7 @@ test("symbol files and drawings share the child-override limits", () => {
 	}
 	assert.throws(
 		() => parseSymbolFile(nested({ lineWidth: 0 })),
-		/childOverrides: shape:2\.lineWidth: Too small/,
+		/childOverrides: shape:2\.lineWidth: Sizes and strokes must be greater than zero/,
 	);
 });
 
@@ -662,4 +667,57 @@ test("pasting drawing data the schema rejects explains why", () => {
 	assert.equal(selectionPasteError(selection({ ...box, id: 1, kind: "line" })), undefined);
 	assert.equal(selectionPasteError("plain text"), undefined);
 	assert.equal(selectionPasteError(JSON.stringify({ shapes: [] })), undefined);
+});
+
+test("an edited library symbol drops instance overrides that no longer fit", () => {
+	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const instance = {
+		...createSymbol(1, resistor, { x: 0, y: 0 }),
+		childOverrides: {
+			"shape:3": { lineStyle: "dashed" as const },
+			"shape:4": { name: "OVR" },
+		},
+	};
+	const [saved] = persistDrawingShapes([instance], [resistor]);
+	// Deleting the first lead renumbers the children: shape:3 becomes a pin.
+	const edited = {
+		...resistor,
+		children: resistor.children.slice(1).map((child, index) => ({
+			...child,
+			id: index + 1,
+		})),
+	};
+	const [resolved] = resolveDrawingSymbols(
+		[drawingShapeSchema.parse(saved)],
+		[edited],
+		new Map([[symbolReferenceKey(edited.library!, edited.id), edited]]),
+	).shapes;
+	assert.equal(resolved.kind, "symbol");
+	assert.deepEqual(resolved.kind === "symbol" && resolved.childOverrides, {
+		"shape:4": { name: "OVR" },
+	});
+	assert.equal(editorShapeSchema.safeParse(resolved).success, true);
+});
+
+test("override problems read clearly and are reported once", () => {
+	const issues = drawingShapeSchema.safeParse({
+		...symbol({ childOverrides: { "shape:1": { lineWidth: 0, x: 1143 } } }),
+		id: 1,
+	}).error?.issues;
+	assert.deepEqual(
+		issues?.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+		[
+			"childOverrides.shape:1.x: Symbol children must stay within 1000 mm of the symbol center.",
+			"childOverrides.shape:1.lineWidth: Sizes and strokes must be greater than zero.",
+		],
+	);
+});
+
+test("pasting the plain shapes form explains a rejected shape too", () => {
+	assert.equal(
+		selectionPasteError(
+			JSON.stringify({ shapes: [{ ...box, id: 1, kind: "circle", height: 2 }] }),
+		),
+		"A circle must have equal width and height.",
+	);
 });

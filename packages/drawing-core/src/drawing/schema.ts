@@ -199,8 +199,18 @@ const savedSymbolChildSchema = z.discriminatedUnion(
  * center, so they share the symbol-file bound of ±1000 mm. Sizes and strokes
  * must be positive: a zero size draws nothing and cannot be selected.
  */
-const overrideCoordinate = z.number().min(-1000).max(1000);
-const overrideSize = z.number().positive().max(1000);
+const overrideCoordinate = z
+	.number()
+	.min(-1000, {
+		error: "Symbol children must stay within 1000 mm of the symbol center.",
+	})
+	.max(1000, {
+		error: "Symbol children must stay within 1000 mm of the symbol center.",
+	});
+const overrideSize = z
+	.number()
+	.positive({ error: "Sizes and strokes must be greater than zero." })
+	.max(1000, { error: "Sizes and strokes must be at most 1000 mm." });
 export const symbolChildOverrideSchema = z.strictObject({
 	x: overrideCoordinate.optional(),
 	y: overrideCoordinate.optional(),
@@ -308,7 +318,9 @@ function checkSymbol(
 		ids.add(child.id);
 		const key = `shape:${child.id}`;
 		const override = symbol.childOverrides?.[key];
-		if (!override) continue;
+		// An override that fails on its own already has its issue reported.
+		if (!override || !symbolChildOverrideSchema.safeParse(override).success)
+			continue;
 		const merged = symbolChildSchema.safeParse({ ...child, ...override });
 		for (const issue of merged.error?.issues ?? [])
 			context.addIssue({
@@ -319,6 +331,27 @@ function checkSymbol(
 	}
 }
 const symbolInputSchema = symbolInputObject.superRefine(checkSymbol);
+
+/**
+ * The overrides that still fit their children. Editing a library symbol can
+ * renumber its children, so an instance override may name a child of another
+ * kind. Applying it would produce an invalid child, so it is dropped.
+ */
+export function fittingChildOverrides(
+	children: readonly z.output<typeof symbolChildSchema>[],
+	overrides: Readonly<Record<string, SymbolChildOverride>>,
+) {
+	const byKey = new Map(children.map((child) => [`shape:${child.id}`, child]));
+	const kept = Object.entries(overrides).filter(([key, override]) => {
+		const child = byKey.get(key);
+		return (
+			!child || symbolChildSchema.safeParse({ ...child, ...override }).success
+		);
+	});
+	return kept.length === Object.keys(overrides).length
+		? overrides
+		: Object.fromEntries(kept);
+}
 const symbolShapeSchema = z
 	.strictObject({ ...symbolShapeFields, id: shapeId })
 	.superRefine(checkSymbol);
