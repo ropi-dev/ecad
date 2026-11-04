@@ -5,6 +5,7 @@ import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import {
 	createSymbolFromSelectionEffect,
 	InvalidDrawingCommand,
+	placeRectangleEffect,
 	placeShapesEffect,
 	replaceShapesEffect,
 	type ShapeInput,
@@ -391,6 +392,20 @@ const wireEnds = (shapes: readonly EditorShape[]) =>
 	);
 const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
 	Math.hypot(a.x - b.x, a.y - b.y) < 1e-9;
+/** Nets right after import, and again once a command normalizes the wires. */
+function importedNets(body: string) {
+	const { shapes } = importKiCadSchematic(kicad(body));
+	const store = createDrawingStore(shapes);
+	Effect.runSync(
+		placeRectangleEffect({ ...box, x: 500, y: 500 }).pipe(
+			Effect.provideService(DrawingStore, store),
+		),
+	);
+	const before = electricalNets(shapes);
+	const after = electricalNets(store.getSnapshot().shapes);
+	assert.equal(after.length, before.length, "a later command keeps the nets");
+	return { shapes, nets: before };
+}
 
 test("KiCad diagonal wires import as connected horizontal and vertical wires", () => {
 	const result = importKiCadSchematic(kicad(kicadWire("10 20", "16 28")));
@@ -415,16 +430,16 @@ test("KiCad diagonal wires turn the corner that joins no other net", () => {
 	for (const blocker of [
 		kicadWire("16 20", "20 20"),
 		'(label "N1" (at 16 24 0) (effects (font (size 1.27 1.27))))',
+		// Within the tolerance on each axis, which wire normalization would join.
+		kicadWire("16.00009 19.99991", "20 19.99991"),
 	]) {
-		const { shapes } = importKiCadSchematic(
-			kicad(`${kicadWire("10 20", "16 28")} ${blocker}`),
+		const { shapes, nets } = importedNets(
+			`${kicadWire("10 20", "16 28")} ${blocker}`,
 		);
 		assert.equal(shapes.filter((shape) => shape.kind === "wire").length >= 2, true);
 		// Joined, all three items would share one net.
 		assert.deepEqual(
-			electricalNets(shapes)
-				.map((net) => net.wires.length + net.labels.length)
-				.sort(),
+			nets.map((net) => net.wires.length + net.labels.length).sort(),
 			[1, 2],
 			blocker,
 		);
@@ -432,26 +447,18 @@ test("KiCad diagonal wires turn the corner that joins no other net", () => {
 });
 
 test("KiCad diagonal wires keep every connection along their length", () => {
-	const { shapes } = importKiCadSchematic(
-		kicad(
-			`${kicadWire("10 20", "16 28")} ${kicadWire("13 24", "20 24")} (junction (at 13 24))`,
-		),
+	const { nets } = importedNets(
+		`${kicadWire("10 20", "16 28")} ${kicadWire("13 24", "20 24")} (junction (at 13 24))`,
 	);
-	const nets = electricalNets(shapes);
 	assert.equal(nets.length, 1);
 	assert.equal(nets[0].wires.length, 5, "two routed pieces and the branch");
 });
 
 test("KiCad routes are checked as imported, so a very short leg cannot reach a neighbor", () => {
-	const { shapes } = importKiCadSchematic(
-		kicad(`${kicadWire("10 20", "10.0002 28")} ${kicadWire("9 20", "9.9997 20")}`),
+	const { nets } = importedNets(
+		`${kicadWire("10 20", "10.0002 28")} ${kicadWire("9 20", "9.9997 20")}`,
 	);
-	assert.deepEqual(
-		electricalNets(shapes)
-			.map((net) => net.wires.length)
-			.sort(),
-		[1, 2],
-	);
+	assert.deepEqual(nets.map((net) => net.wires.length).sort(), [1, 2]);
 });
 
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
@@ -468,7 +475,16 @@ test("KiCad diagonal wires with no clear corner import as graphic lines", () => 
 		result.shapes.map((shape) => shape.kind),
 		["wire", "wire", "line"],
 	);
-	assert.equal(electricalNets(result.shapes).length, 2);
+	assert.equal(
+		importedNets(
+			[
+				kicadWire("10 20", "16 28"),
+				kicadWire("16 20", "20 20"),
+				kicadWire("10 28", "4 28"),
+			].join(" "),
+		).nets.length,
+		2,
+	);
 	assert.ok(
 		result.report.warnings.some((warning) => warning.includes("graphic lines")),
 	);

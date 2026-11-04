@@ -93,6 +93,12 @@ function distance(point: XY, [a, b]: Segment) {
 	return Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy);
 }
 const near = (a: XY, b: XY) => distance(a, [b, b]) <= connectionTolerance;
+/**
+ * Wire normalization compares each axis within the connection tolerance, so it
+ * may join points up to √2 times that tolerance apart. Routes keep twice the
+ * tolerance clear, so normalizing them later joins nothing new.
+ */
+const routeClearance = 2 * connectionTolerance;
 
 function wireSegments(shape: EditorShape): Segment[] {
 	if (shape.kind !== "wire") return [];
@@ -133,10 +139,10 @@ function cornerRoute(
 			.filter((end) => !near(end, a) && !near(end, b));
 		if (
 			others.every((point) =>
-				segments.every((part) => distance(point, part) > connectionTolerance),
+				segments.every((part) => distance(point, part) > routeClearance),
 			) &&
 			ends.every((end) =>
-				wires.every((wire) => distance(end, wire) > connectionTolerance),
+				wires.every((wire) => distance(end, wire) > routeClearance),
 			)
 		)
 			return route;
