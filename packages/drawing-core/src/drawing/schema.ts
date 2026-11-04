@@ -326,26 +326,6 @@ function checkSymbol(
 }
 const symbolInputSchema = symbolInputObject.superRefine(checkSymbol);
 
-/**
- * The overrides that still fit their children. Editing a library symbol can
- * renumber its children, so an instance override may name a child of another
- * kind. Applying it would produce an invalid child, so it is dropped.
- */
-export function fittingChildOverrides(
-	children: readonly z.output<typeof symbolChildSchema>[],
-	overrides: Readonly<Record<string, SymbolChildOverride>>,
-) {
-	const byKey = new Map(children.map((child) => [`shape:${child.id}`, child]));
-	const kept = Object.entries(overrides).filter(([key, override]) => {
-		const child = byKey.get(key);
-		return (
-			!child || symbolChildSchema.safeParse({ ...child, ...override }).success
-		);
-	});
-	return kept.length === Object.keys(overrides).length
-		? overrides
-		: Object.fromEntries(kept);
-}
 const symbolShapeSchema = z
 	.strictObject({ ...symbolShapeFields, id: shapeId })
 	.superRefine(checkSymbol);
@@ -406,6 +386,73 @@ export const drawingShapeSchema = z
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 const overrideSizes = new Set(["width", "height", "lineWidth", "fontSize"]);
+const childFields = new Map<string, ReadonlySet<string>>([
+	...fillableShapeKinds.map(
+		(kind) => [kind, new Set(Object.keys(fillableShapeFields))] as const,
+	),
+	["line", new Set(Object.keys(lineShapeFields))],
+	["wire", new Set(Object.keys(wireShapeFields))],
+	["pin", new Set(Object.keys(pinShapeFields))],
+	["text", new Set(Object.keys(plainTextFields))],
+]);
+const applicable = (
+	override: Readonly<Record<string, unknown>>,
+	kind: string | undefined,
+) => {
+	const fields = kind === undefined ? undefined : childFields.get(kind);
+	return Object.fromEntries(
+		Object.entries(override).filter(([field]) => !fields || fields.has(field)),
+	);
+};
+
+export function fittingChildOverrides(
+	children: readonly z.output<typeof symbolChildSchema>[],
+	overrides: Readonly<Record<string, SymbolChildOverride>>,
+) {
+	const byKey = new Map(children.map((child) => [`shape:${child.id}`, child]));
+	let changed = false;
+	const kept: [string, SymbolChildOverride][] = [];
+	for (const [key, override] of Object.entries(overrides)) {
+		const child = byKey.get(key);
+		if (!child) {
+			kept.push([key, override]);
+			continue;
+		}
+		const fitting = applicable(override, child.kind) as SymbolChildOverride;
+		const fits =
+			Object.keys(fitting).length > 0 &&
+			symbolChildSchema.safeParse({ ...child, ...fitting }).success;
+		if (fits) kept.push([key, fitting]);
+		if (!fits || Object.keys(fitting).length < Object.keys(override).length)
+			changed = true;
+	}
+	return changed ? Object.fromEntries(kept) : overrides;
+}
+
+export function upgradeChildOverrides(
+	overrides: unknown,
+	kindOf: (key: string) => string | undefined = () => undefined,
+): unknown {
+	if (!isRecord(overrides)) return overrides;
+	return Object.fromEntries(
+		Object.entries(overrides).map(([key, override]) => [
+			key,
+			isRecord(override)
+				? applicable(
+						Object.fromEntries(
+							Object.entries(override).filter(
+								([field, value]) =>
+									!overrideSizes.has(field) ||
+									typeof value !== "number" ||
+									value > 0,
+							),
+						),
+						kindOf(key),
+					)
+				: override,
+		]),
+	);
+}
 
 function upgradeSavedShape(shape: unknown): unknown {
 	if (!isRecord(shape)) return shape;
@@ -421,21 +468,17 @@ function upgradeSavedShape(shape: unknown): unknown {
 			: {}),
 		...(isRecord(shape.childOverrides)
 			? {
-					childOverrides: Object.fromEntries(
-						Object.entries(shape.childOverrides).map(([key, override]) => [
-							key,
-							isRecord(override)
-								? Object.fromEntries(
-										Object.entries(override).filter(
-											([field, value]) =>
-												!overrideSizes.has(field) ||
-												typeof value !== "number" ||
-												value > 0,
-										),
-									)
-								: override,
-						]),
-					),
+					childOverrides: upgradeChildOverrides(shape.childOverrides, (key) => {
+						const children = Array.isArray(shape.children)
+							? shape.children
+							: [];
+						const child = children.find(
+							(child) => isRecord(child) && `shape:${child.id}` === key,
+						);
+						return isRecord(child) && typeof child.kind === "string"
+							? child.kind
+							: undefined;
+					}),
 				}
 			: {}),
 	};

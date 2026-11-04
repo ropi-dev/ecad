@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Effect, Either } from "effect";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import {
+	parseSavedSymbolLibrary,
+	parseSymbolFile,
+} from "#/components/editor/symbolFormat.ts";
 import {
 	createSymbolFromSelectionEffect,
 	InvalidDrawingCommand,
@@ -21,6 +24,7 @@ import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import {
 	drawingShapeSchema,
 	editorShapeSchema,
+	fittingChildOverrides,
 	legacyDrawingShapeSchema,
 	savedDrawingShapesSchema,
 	symbolChildOverridesSchema,
@@ -335,6 +339,7 @@ test("symbol files and drawings share the child-override limits", () => {
 			accepted,
 			`override schema ${label}`,
 		);
+		const zero = Object.values(override).some((value) => value === 0);
 		assert.equal(
 			(() => {
 				try {
@@ -344,7 +349,7 @@ test("symbol files and drawings share the child-override limits", () => {
 					return false;
 				}
 			})(),
-			accepted,
+			accepted || zero,
 			`symbol file ${label}`,
 		);
 		// The rectangle body also has no pin length or font size.
@@ -355,9 +360,18 @@ test("symbol files and drawings share the child-override limits", () => {
 			`drawing ${label}`,
 		);
 	}
+	const legacyFile = nested({ width: 0, lineWidth: 0, fontSize: 0, x: 1, height: 2 });
+	const upgraded = parseSymbolFile(legacyFile).shapes[0];
+	assert.deepEqual(
+		upgraded.kind === "symbol" && upgraded.childOverrides,
+		{ "shape:2": { x: 1, height: 2 } },
+	);
+	const library = parseSavedSymbolLibrary(`[${legacyFile}]`);
+	assert.deepEqual(library[0].shapes[0], upgraded);
+	assert.deepEqual(parseSavedSymbolLibrary(JSON.stringify(library)), library);
 	assert.throws(
-		() => parseSymbolFile(nested({ lineWidth: 0 })),
-		/childOverrides: shape:2\.lineWidth: Sizes and strokes must be greater than zero/,
+		() => parseSymbolFile(nested({ lineStyle: "wavy" })),
+		/childOverrides: shape:2\.lineStyle/,
 	);
 });
 
@@ -917,4 +931,28 @@ test("a copy may hold a legacy diagonal wire, but pasting it stays strict", () =
 	assert.equal(parseSelection(text, { legacy: true })?.length, 1);
 	assert.equal(parseSelection(text), null);
 	assert.equal(selectionPasteError(text), "Wire segments must be horizontal or vertical.");
+});
+
+test("saved inline symbols drop override fields their children never had", () => {
+	const [saved] = savedDrawingShapesSchema.parse([
+		symbol({
+			id: 1,
+			children: [{ ...box, id: 1, kind: "wire" }],
+			childOverrides: { "shape:1": { lineStyle: "dashed", x: 2 } },
+		}),
+	]);
+	assert.deepEqual(saved.kind === "symbol" && saved.childOverrides, {
+		"shape:1": { x: 2 },
+	});
+	assert.equal(editorShapeSchema.safeParse(saved).success, true);
+});
+
+test("a stale override keeps the fields its new child still has", () => {
+	const children = [{ ...box, id: 1, kind: "rectangle" as const }];
+	assert.deepEqual(
+		fittingChildOverrides(children, {
+			"shape:1": { width: 2, height: 2, fontSize: 3, text: "Old" },
+		}),
+		{ "shape:1": { width: 2, height: 2 } },
+	);
 });

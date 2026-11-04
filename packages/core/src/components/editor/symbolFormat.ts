@@ -6,6 +6,7 @@ import { lineStyles } from "#/drawing/line-style.ts";
 import {
 	type SymbolChildOverride,
 	symbolChildOverridesSchema,
+	upgradeChildOverrides,
 } from "#/drawing/schema.ts";
 import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
@@ -235,9 +236,26 @@ function checkIds(symbols: SymbolLibrary) {
 	}
 }
 
-/** A portable symbol file always describes exactly one symbol. */
+function upgradeSymbolFile(file: unknown): unknown {
+	if (!file || typeof file !== "object" || !("shapes" in file)) return file;
+	const { shapes } = file as { shapes: unknown };
+	return Array.isArray(shapes)
+		? {
+				...file,
+				shapes: shapes.map((shape) =>
+					shape && typeof shape === "object" && "childOverrides" in shape
+						? {
+								...shape,
+								childOverrides: upgradeChildOverrides(shape.childOverrides),
+							}
+						: shape,
+				),
+			}
+		: file;
+}
+
 export function parseSymbolFile(text: string): SymbolFile {
-	const symbol = decode(symbolFileSchema, decodeJson(text));
+	const symbol = decode(symbolFileSchema, upgradeSymbolFile(decodeJson(text)));
 	checkIds([symbol]);
 	return symbol;
 }
@@ -302,7 +320,10 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 /** Browser storage is an internal cache of the individual symbol files. */
 export function parseSavedSymbolLibrary(text: string): SymbolLibrary {
 	const value = decodeJson(text);
-	const library = decode(savedLibrarySchema, value);
+	const library = decode(
+		savedLibrarySchema,
+		Array.isArray(value) ? value.map(upgradeSymbolFile) : value,
+	);
 	checkIds(library);
 	checkSize(JSON.stringify(library));
 	return library;
