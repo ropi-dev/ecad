@@ -10,8 +10,8 @@ Run `pnpm run test:browser` for the browser cases. CI runs the same suite across
 | Projects, 3 | Separate drawing histories and reload, failed symbol save and retry, save/discard/cancel when switching projects |
 | Linked PCB, 3 | Navigation between circuit and schematic, synchronization in both directions, pending autosaves and schematic undo, label movement and component rotation through autosave and reload |
 | Symbols, 2 | File upload, cross-tab library refresh, lazy thumbnails, placement, reusable definition editing |
-| KiCad import, 1 | Imported drawing survives browser storage and reopening |
-| Gerber, 2 | ZIP upload and layer creation, layer ordering, visibility, focus and camera |
+| KiCad import, 2 | Imported drawing survives browser storage and reopening, skipped symbols are named in the notice and report |
+| Gerber, 3 | ZIP upload and layer creation, layer ordering, visibility, focus and camera, partial layers and their diagnostics |
 | STEP, 1 | WASM import, rendered model, view controls, visibility and reopening |
 | Export, 2 | Browser SVG and PNG downloads for schematic and Gerber output |
 | Sidebar and toolbar, 4 | Hover, focus, touch dismissal and pinning, keyboard navigation, mobile touch scrolling |

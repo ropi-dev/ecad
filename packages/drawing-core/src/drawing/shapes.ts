@@ -443,6 +443,184 @@ export function moveSymbolText(
 		: symbol;
 }
 
+export type SymbolLabelPosition =
+	| "default"
+	| "above"
+	| "below"
+	| "left"
+	| "right";
+
+const LABEL_POSITION_EPSILON = 1e-6;
+
+function symbolWorldBounds(symbol: EditorSymbol): Bounds {
+	const boxes = symbolShapes(symbol).map(shapeBounds);
+	return {
+		minX: Math.min(...boxes.map((box) => box.minX)),
+		maxX: Math.max(...boxes.map((box) => box.maxX)),
+		minY: Math.min(...boxes.map((box) => box.minY)),
+		maxY: Math.max(...boxes.map((box) => box.maxY)),
+	};
+}
+
+const LABEL_DIRECTIONS: Record<
+	Exclude<SymbolLabelPosition, "default">,
+	Point
+> = {
+	above: { x: 0, y: 1 },
+	below: { x: 0, y: -1 },
+	left: { x: -1, y: 0 },
+	right: { x: 1, y: 0 },
+};
+
+/**
+ * Anchor and alignment placing a label outside one side of a symbol's
+ * geometry. Alignment applies in the label's own rotated frame, so it is
+ * chosen from the world direction projected onto the label's axes; the text
+ * then always grows away from the geometry.
+ */
+export function symbolLabelAnchor(
+	symbol: EditorSymbol,
+	attribute: SymbolText["attribute"],
+	position: Exclude<SymbolLabelPosition, "default">,
+	gap = SYMBOL_TEXT_SIZE / 4,
+): Point & Required<TextAlignment> {
+	const bounds = symbolWorldBounds(symbol);
+	const direction = LABEL_DIRECTIONS[position];
+	const centerX = (bounds.minX + bounds.maxX) / 2;
+	const centerY = (bounds.minY + bounds.maxY) / 2;
+	const anchor = {
+		x:
+			direction.x === 0
+				? centerX
+				: direction.x > 0
+					? bounds.maxX + gap
+					: bounds.minX - gap,
+		y:
+			direction.y === 0
+				? centerY
+				: direction.y > 0
+					? bounds.maxY + gap
+					: bounds.minY - gap,
+	};
+	const rotation =
+		symbol.rotation +
+		(symbol.childOverrides?.[`attribute:${attribute}`]?.rotation ?? 0);
+	// Components of the direction along the label's local x and y axes.
+	const along =
+		direction.x * Math.cos(rotation) + direction.y * Math.sin(rotation);
+	const across =
+		-direction.x * Math.sin(rotation) + direction.y * Math.cos(rotation);
+	// Local Y points up: "left" text grows +x, "bottom" text grows +y. Align
+	// outward on both axes so a tilted label cannot swing back over the
+	// geometry; an axis perpendicular to the direction stays centred.
+	return {
+		...anchor,
+		horizontalAlign:
+			Math.abs(along) < LABEL_POSITION_EPSILON
+				? "center"
+				: along > 0
+					? "left"
+					: "right",
+		verticalAlign:
+			Math.abs(across) < LABEL_POSITION_EPSILON
+				? "middle"
+				: across > 0
+					? "bottom"
+					: "top",
+	};
+}
+
+function worldToSymbolLocal(symbol: EditorSymbol, point: Point): Point {
+	const dx = point.x - symbol.x;
+	const dy = point.y - symbol.y;
+	return {
+		x: dx * Math.cos(symbol.rotation) + dy * Math.sin(symbol.rotation),
+		y: -dx * Math.sin(symbol.rotation) + dy * Math.cos(symbol.rotation),
+	};
+}
+
+function withoutKey<T extends object>(record: T | undefined, key: string) {
+	if (!record) return undefined;
+	const rest = Object.fromEntries(
+		Object.entries(record).filter(([name]) => name !== key),
+	) as T;
+	return Object.keys(rest).length ? rest : undefined;
+}
+
+/**
+ * Moves a symbol label to one side of the geometry, or back to the
+ * definition's position. Appearance overrides such as font size are kept.
+ */
+export function setSymbolLabelPosition(
+	symbol: EditorSymbol,
+	attribute: SymbolText["attribute"],
+	position: SymbolLabelPosition,
+): EditorSymbol {
+	if (position === "default")
+		return {
+			...symbol,
+			textAlignments: withoutKey(symbol.textAlignments, attribute),
+			textPositions: withoutKey(symbol.textPositions, attribute),
+		};
+	// Unresolved symbols have no geometry to place the label beside.
+	if (!symbol.children.length) return symbol;
+	const { horizontalAlign, verticalAlign, ...anchor } = symbolLabelAnchor(
+		symbol,
+		attribute,
+		position,
+	);
+	return {
+		...symbol,
+		textPositions: {
+			...symbol.textPositions,
+			[attribute]: worldToSymbolLocal(symbol, anchor),
+		},
+		textAlignments: {
+			...symbol.textAlignments,
+			[attribute]: { horizontalAlign, verticalAlign },
+		},
+	};
+}
+
+/** Which side a symbol's label currently sits on, when it matches a preset. */
+export function symbolLabelPosition(
+	symbol: EditorSymbol,
+	attribute: SymbolText["attribute"],
+): SymbolLabelPosition | "custom" {
+	if (
+		symbol.textPositions?.[attribute] === undefined &&
+		symbol.textAlignments?.[attribute] === undefined
+	)
+		return "default";
+	// A label is "default" while its stored anchor still matches the symbol's
+	// own text definition (createSymbol copies it into textPositions; user
+	// moves write an override).
+	const label = symbol.texts.find((text) => text.attribute === attribute);
+	const stored = symbol.textPositions?.[attribute];
+	const alignment = symbol.textAlignments?.[attribute];
+	if (
+		!alignment &&
+		stored !== undefined &&
+		stored.x === label?.x &&
+		stored.y === label?.y
+	)
+		return "default";
+	const local = stored ?? label ?? { x: 0, y: 0 };
+	const matches = (candidate: Exclude<SymbolLabelPosition, "default">) => {
+		const anchor = symbolLabelAnchor(symbol, attribute, candidate);
+		const expected = worldToSymbolLocal(symbol, anchor);
+		return (
+			Math.abs(local.x - expected.x) < LABEL_POSITION_EPSILON &&
+			Math.abs(local.y - expected.y) < LABEL_POSITION_EPSILON &&
+			alignment?.horizontalAlign === anchor.horizontalAlign &&
+			alignment?.verticalAlign === anchor.verticalAlign
+		);
+	};
+	return (
+		(["above", "below", "left", "right"] as const).find(matches) ?? "custom"
+	);
+}
+
 export interface TextShape extends ShapeGeometry, TextAlignment {
 	circuitNet?: { id: string; label: string; pinId?: string };
 	electrical?: "net" | "supply";
@@ -969,6 +1147,75 @@ export function selectionSize(shape: EditorShape) {
 	};
 }
 
+/**
+ * Outline around a symbol's geometry, excluding its text labels, in the
+ * symbol's own frame so rotated symbols stay tight. Box symbols use their
+ * border instead.
+ */
+export function symbolSelectionFrame(
+	symbol: EditorSymbol,
+): Point & { width: number; height: number; rotation: number } {
+	if (isBoxSymbol(symbol))
+		return {
+			...shapeCenter(symbol),
+			...selectionSize(symbol),
+			rotation: symbol.rotation,
+		};
+	// Unresolved symbols keep no children; fall back to their stored size.
+	if (!symbol.children.length)
+		return {
+			...shapeCenter(symbol),
+			...selectionSize(symbol),
+			rotation: symbol.rotation,
+		};
+	const local = { ...symbol, x: 0, y: 0, rotation: 0 };
+	const boxes = symbolShapes(local).map(shapeBounds);
+	const minX = Math.min(...boxes.map((box) => box.minX));
+	const maxX = Math.max(...boxes.map((box) => box.maxX));
+	const minY = Math.min(...boxes.map((box) => box.minY));
+	const maxY = Math.max(...boxes.map((box) => box.maxY));
+	const padding = selectionSize(symbol).width - symbol.width;
+	return {
+		...localToWorld(symbol, (minX + maxX) / 2, (minY + maxY) / 2),
+		width: maxX - minX + padding,
+		height: maxY - minY + padding,
+		rotation: symbol.rotation,
+	};
+}
+
+function hitSymbolContent(
+	symbol: EditorSymbol,
+	point: Point,
+	tolerance: number,
+): boolean {
+	return [...symbolTextShapes(symbol), ...symbolShapes(symbol)].some((child) =>
+		hitShape(child, point, tolerance),
+	);
+}
+
+/**
+ * Topmost shape under a point. Drawn content wins over the empty area inside
+ * a symbol's outline, so a neighbour's outline never steals a click aimed at
+ * a stroke or label.
+ */
+export function shapeAt<T extends EditorShape>(
+	shapes: readonly T[],
+	point: Point,
+	tolerance: number,
+	selectable: (shape: T) => boolean = () => true,
+): T | undefined {
+	let area: T | undefined;
+	for (let index = shapes.length - 1; index >= 0; index--) {
+		const shape = shapes[index];
+		if (!selectable(shape)) continue;
+		if (shape.kind !== "symbol" || isBoxSymbol(shape)) {
+			if (hitShape(shape, point, tolerance)) return shape;
+		} else if (hitSymbolContent(shape, point, tolerance)) return shape;
+		else if (!area && hitShape(shape, point, tolerance)) area = shape;
+	}
+	return area;
+}
+
 export function hitShape(
 	shape: EditorShape,
 	point: Point,
@@ -995,16 +1242,12 @@ export function hitShape(
 			);
 		});
 	}
-	if (
-		shape.kind === "symbol" &&
-		[...symbolTextShapes(shape), ...symbolShapes(shape)].some((text) =>
-			hitShape(text, point, tolerance),
-		)
-	)
+	if (shape.kind === "symbol" && hitSymbolContent(shape, point, tolerance))
 		return true;
-	const { width, height } =
-		shape.kind === "symbol" ? selectionSize(shape) : shape;
-	const center = shapeCenter(shape);
+	const { width, height, ...center } =
+		shape.kind === "symbol"
+			? symbolSelectionFrame(shape)
+			: { ...shape, ...shapeCenter(shape) };
 	const dx = point.x - center.x;
 	const dy = point.y - center.y;
 	if (shape.kind === "pin")
@@ -1037,13 +1280,15 @@ export function hitShape(
 
 /** Window selection includes a symbol only when its body and labels fit. */
 export function containsSelection(shape: EditorShape, bounds: Bounds): boolean {
-	if (
-		shape.kind === "symbol" &&
-		![...symbolTextShapes(shape), ...symbolShapes(shape)].every((child) =>
-			containsSelection(child, bounds),
-		)
-	)
-		return false;
+	if (shape.kind === "symbol") {
+		const fits = [...symbolTextShapes(shape), ...symbolShapes(shape)].every(
+			(child) => containsSelection(child, bounds),
+		);
+		// The stored size is symmetric about the origin, so only box symbols
+		// add their border on top of their children. Unresolved symbols have no
+		// children and fall back to their stored bounds.
+		if (!fits || (!isBoxSymbol(shape) && shape.children.length)) return fits;
+	}
 	const own = shapeBounds(
 		shape.kind === "circle" || (shape.kind === "pin" && !shape.length)
 			? { ...shape, rotation: 0 }
@@ -1071,8 +1316,7 @@ export function intersectsSelection(
 				{
 					...shape,
 					kind: "rectangle",
-					...selectionSize(shape),
-					...shapeCenter(shape),
+					...symbolSelectionFrame(shape),
 				},
 				bounds,
 			)
@@ -1128,12 +1372,86 @@ export function intersectsSelection(
 export const connectionTolerance = 1e-4;
 const normalizationTolerance = connectionTolerance;
 
+// Connection lookups scan nearby buckets instead of every shape. A bucket is far
+// wider than the connection tolerance, so the neighboring buckets hold every
+// candidate and callers still apply the exact test.
+const bucketOf = (value: number) => Math.floor(value);
+
+/** Finds items whose point lies within one bucket of a query point. */
+function createPointIndex<T>(items: readonly T[], pointOf: (item: T) => Point) {
+	const buckets = new Map<number, Map<number, T[]>>();
+	for (const item of items) {
+		const point = pointOf(item);
+		const x = bucketOf(point.x);
+		const y = bucketOf(point.y);
+		let column = buckets.get(x);
+		if (!column) {
+			column = new Map();
+			buckets.set(x, column);
+		}
+		const entries = column.get(y);
+		if (entries) entries.push(item);
+		else column.set(y, [item]);
+	}
+	return (point: Point, test: (item: T) => boolean) => {
+		const x = bucketOf(point.x);
+		const y = bucketOf(point.y);
+		for (let dx = -1; dx <= 1; dx++) {
+			const column = buckets.get(x + dx);
+			if (!column) continue;
+			for (let dy = -1; dy <= 1; dy++)
+				if (column.get(y + dy)?.some(test)) return true;
+		}
+		return false;
+	};
+}
+
+/** Finds wires that `pointOnWire` could accept: those on the point's row or column. */
+function createWireIndex<T extends { start: Point; end: Point }>(
+	wires: readonly T[],
+) {
+	const rows = new Map<number, T[]>();
+	const columns = new Map<number, T[]>();
+	for (const wire of wires) {
+		const vertical =
+			Math.abs(wire.end.x - wire.start.x) < Math.abs(wire.end.y - wire.start.y);
+		const index = vertical ? columns : rows;
+		const key = bucketOf(vertical ? wire.start.x : wire.start.y);
+		const entries = index.get(key);
+		if (entries) entries.push(wire);
+		else index.set(key, [wire]);
+	}
+	return (point: Point, test: (wire: T) => boolean) => {
+		for (const [index, value] of [
+			[rows, point.y],
+			[columns, point.x],
+		] as const) {
+			const key = bucketOf(value);
+			for (let offset = -1; offset <= 1; offset++)
+				if (index.get(key + offset)?.some(test)) return true;
+		}
+		return false;
+	};
+}
+
+// Shapes are immutable, so a drag reuses the terminals of every symbol it did not
+// move. Frozen results keep the shared entries from being changed by a caller.
+const symbolTerminals = new WeakMap<EditorShape, readonly Point[]>();
+
 /** A pin has one terminal at its center, including pins inside rotated symbols. */
-export function pinTerminals(shape: EditorShape): Point[] {
+export function pinTerminals(shape: EditorShape): readonly Point[] {
 	if (shape.kind === "pin") return [{ x: shape.x, y: shape.y }];
-	return shape.kind === "symbol"
-		? symbolShapes(shape).flatMap(pinTerminals)
-		: [];
+	if (shape.kind !== "symbol") return [];
+	let terminals = symbolTerminals.get(shape);
+	if (!terminals) {
+		terminals = Object.freeze(
+			symbolShapes(shape)
+				.flatMap(pinTerminals)
+				.map((point) => Object.freeze(point)),
+		);
+		symbolTerminals.set(shape, terminals);
+	}
+	return terminals;
 }
 
 /** Free pins include symbol terminals and exclude connections along wire interiors. */
@@ -1153,28 +1471,38 @@ export function openPins(
 			)
 		: pins;
 	if (candidates.length === 0) return [];
-	const wires = shapes
-		.filter((shape) => shape.kind === "wire")
-		.map((shape) => ({
-			start: localToWorld(shape, -shape.width / 2, 0),
-			end: localToWorld(shape, shape.width / 2, 0),
-		}));
-	const noConnects = shapes.flatMap((shape) =>
-		shape.kind === "symbol"
-			? symbolShapes(shape).filter((child) => child.kind === "no-connect")
-			: shape.kind === "no-connect"
-				? [shape]
-				: [],
+	const onWire = createWireIndex(
+		shapes
+			.filter((shape) => shape.kind === "wire")
+			.map((shape) => ({
+				start: localToWorld(shape, -shape.width / 2, 0),
+				end: localToWorld(shape, shape.width / 2, 0),
+			})),
 	);
+	const nearNoConnect = createPointIndex(
+		shapes.flatMap((shape) =>
+			shape.kind === "symbol"
+				? symbolShapes(shape).filter((child) => child.kind === "no-connect")
+				: shape.kind === "no-connect"
+					? [shape]
+					: [],
+		),
+		(shape) => shape,
+	);
+	const nearPin = createPointIndex(pins, ({ point }) => point);
 	return candidates.filter(
 		(pin) =>
-			!noConnects.some(
+			!nearNoConnect(
+				pin.point,
 				(shape) =>
 					Math.hypot(shape.x - pin.point.x, shape.y - pin.point.y) <=
 					connectionTolerance,
 			) &&
-			!wires.some(({ start, end }) => pointOnWire(pin.point, start, end)) &&
-			!pins.some(
+			!onWire(pin.point, ({ start, end }) =>
+				pointOnWire(pin.point, start, end),
+			) &&
+			!nearPin(
+				pin.point,
 				(other) =>
 					other !== pin &&
 					Math.hypot(
@@ -1194,7 +1522,10 @@ export function netLabelAnchors(shapes: EditorShape[]): Point[] {
 }
 
 export function openWireEnds(shapes: EditorShape[]) {
-	const pins = [...shapes.flatMap(pinTerminals), ...netLabelAnchors(shapes)];
+	const nearPin = createPointIndex(
+		[...shapes.flatMap(pinTerminals), ...netLabelAnchors(shapes)],
+		(pin) => pin,
+	);
 	const wires = shapes
 		.filter((shape) => shape.kind === "wire")
 		.map((shape) => ({
@@ -1202,16 +1533,19 @@ export function openWireEnds(shapes: EditorShape[]) {
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
+	const onWire = createWireIndex(wires);
 	return wires.flatMap((wire) =>
 		[wire.start, wire.end]
 			.filter(
 				(point) =>
-					!pins.some(
+					!nearPin(
+						point,
 						(pin) =>
 							Math.hypot(pin.x - point.x, pin.y - point.y) <=
 							connectionTolerance,
 					) &&
-					!wires.some(
+					!onWire(
+						point,
 						(other) =>
 							other !== wire && pointOnWire(point, other.start, other.end),
 					),
@@ -1249,14 +1583,19 @@ export function wireJunctions(shapes: EditorShape[]) {
 		entries.push(wire);
 		index.set(key, entries);
 	}
-	const candidates = new Map<string, { point: Point; pins: EditorShape[] }[]>();
+	type Candidate = { point: Point; pins: EditorShape[] };
+	const candidates = new Map<number, Map<number, Candidate[]>>();
+	// Buckets in creation order, so results keep a stable document-derived order.
+	const buckets: Candidate[][] = [];
 	const atPoint = (point: Point) => {
 		const x = bucket(point.x);
 		const y = bucket(point.y);
 		for (let dx = -1; dx <= 1; dx++) {
+			const column = candidates.get(x + dx);
+			if (!column) continue;
 			for (let dy = -1; dy <= 1; dy++) {
-				const existing = candidates
-					.get(`${x + dx}:${y + dy}`)
+				const existing = column
+					.get(y + dy)
 					?.find(
 						(candidate) =>
 							Math.hypot(
@@ -1268,10 +1607,18 @@ export function wireJunctions(shapes: EditorShape[]) {
 			}
 		}
 		const candidate = { point, pins: [] as EditorShape[] };
-		const key = `${x}:${y}`;
-		const entries = candidates.get(key) ?? [];
+		let column = candidates.get(x);
+		if (!column) {
+			column = new Map();
+			candidates.set(x, column);
+		}
+		let entries = column.get(y);
+		if (!entries) {
+			entries = [];
+			column.set(y, entries);
+			buckets.push(entries);
+		}
 		entries.push(candidate);
-		candidates.set(key, entries);
 		return candidate;
 	};
 	for (const shape of shapes) {
@@ -1281,7 +1628,7 @@ export function wireJunctions(shapes: EditorShape[]) {
 		atPoint(start);
 		atPoint(end);
 	}
-	return [...candidates.values()].flat().flatMap(({ point, pins }) => {
+	return buckets.flat().flatMap(({ point, pins }) => {
 		let branches = pins.length;
 		const connected = [...pins];
 		for (const [axis, coordinate] of [point.x, point.y].entries()) {
@@ -1548,13 +1895,17 @@ export function normalizeWireSegments(
 }
 
 function pointOnWire(point: Point, start: Point, end: Point) {
-	const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
-	const along = vertical ? "y" : "x";
-	const across = vertical ? "x" : "y";
+	// Named axes keep this hot connection test free of keyed property lookups.
+	if (Math.abs(end.x - start.x) < Math.abs(end.y - start.y))
+		return (
+			Math.abs(point.x - start.x) <= connectionTolerance &&
+			point.y >= Math.min(start.y, end.y) - connectionTolerance &&
+			point.y <= Math.max(start.y, end.y) + connectionTolerance
+		);
 	return (
-		Math.abs(point[across] - start[across]) <= connectionTolerance &&
-		point[along] >= Math.min(start[along], end[along]) - connectionTolerance &&
-		point[along] <= Math.max(start[along], end[along]) + connectionTolerance
+		Math.abs(point.y - start.y) <= connectionTolerance &&
+		point.x >= Math.min(start.x, end.x) - connectionTolerance &&
+		point.x <= Math.max(start.x, end.x) + connectionTolerance
 	);
 }
 
@@ -1684,7 +2035,7 @@ function moveConnectedWires(
 	);
 }
 
-function movementTerminals(shape: EditorShape): Point[] {
+function movementTerminals(shape: EditorShape): readonly Point[] {
 	if (shape.kind === "text" && shape.electrical && shape.text.trim())
 		return [{ x: shape.x, y: shape.y }];
 	return pinTerminals(shape);

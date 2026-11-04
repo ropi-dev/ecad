@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
-import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, shapeCenter, isBoxSymbol, symbolShapes, symbolTextShapes } from "#/components/editor/shapes.ts";
+import { drawShape, editShapeAttribute, hitShape, intersectsSelection, moveShapes, normalizeWireSegments, PIN_RADIUS, pinTerminals, resizeHandles, selectionSize, shapeBounds, shapeCenter, isBoxSymbol, symbolSelectionFrame, symbolShapes, symbolTextShapes } from "#/components/editor/shapes.ts";
 import { createSymbol, createSymbolFromShapes, symbolDefinitions } from "#/drawing/symbols.ts";
 
 test("converted symbols render each original shape with its own stroke width", () => {
@@ -49,14 +49,26 @@ for (const definition of symbolDefinitions) {
 		assert.equal(selection.width, symbol.width + (isBoxSymbol(symbol) ? 0 : 0.5));
 		assert.equal(selection.height, symbol.height + (isBoxSymbol(symbol) ? 0 : 0.5));
 		for (const angle of [0, 90, 180, 270]) {
-			const rotated = editShapeAttribute(symbol, "angle", angle);
+			const rotated = editShapeAttribute(symbol, "angle", angle) as typeof symbol;
+			const frame = symbolSelectionFrame(rotated);
+			// The outline wraps the geometry only, not the labels or the origin-centred size.
+			const halfWidth = frame.width / 2, halfHeight = frame.height / 2;
+			for (const child of symbolShapes(rotated)) {
+				const box = shapeBounds(child);
+				for (const [px, py] of [[box.minX, box.minY], [box.maxX, box.maxY]]) {
+					const dx = px - frame.x, dy = py - frame.y;
+					const lx = dx * Math.cos(frame.rotation) + dy * Math.sin(frame.rotation);
+					const ly = -dx * Math.sin(frame.rotation) + dy * Math.cos(frame.rotation);
+					assert.ok(Math.abs(lx) <= halfWidth + 1e-9 && Math.abs(ly) <= halfHeight + 1e-9, `${child.kind} must sit inside the outline`);
+				}
+			}
 			for (const [x, y, expected] of [
 				[0, 0, true],
-				[selection.width / 2 - 0.01, selection.height / 2 - 0.01, true],
-				[Math.max(20, selection.width + 1), 0, false],
-				[0, Math.max(20, selection.height + 1), false],
+				[halfWidth - 0.01, halfHeight - 0.01, true],
+				[Math.max(20, frame.width + 1), 0, false],
+				[0, Math.max(20, frame.height + 1), false],
 			] as const) {
-				const center = shapeCenter(rotated);
+				const center = isBoxSymbol(rotated) ? shapeCenter(rotated) : frame;
 				const point = {
 					x: center.x + x * Math.cos(rotated.rotation) - y * Math.sin(rotated.rotation),
 					y: center.y + x * Math.sin(rotated.rotation) + y * Math.cos(rotated.rotation),

@@ -158,3 +158,83 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	).toHaveCount(0);
 	expect(errors).toEqual([]);
 });
+
+test("Gerber layers with recoverable problems render and list their diagnostics", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/viewer.html");
+	const header = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1*%\nD10*\n";
+	const file = (name: string, source: string) => ({
+		name,
+		mimeType: "text/plain",
+		buffer: Buffer.from(source),
+	});
+	await page.locator("input[type=file]").setInputFiles([
+		file("truncated.gbr", `${header}X0Y0D03*\nX2000000Y0D03*\n`),
+		file(
+			"region.gbr",
+			`${header}G99*\nG36*\nX0Y0D02*\nX1000000Y0D01*\nX1000000Y1000000D01*\nG37*\nM02*\n`,
+		),
+		file("negative.gbr", `${header}%IPNEG*%\nX0Y0D03*\nM02*\n`),
+	]);
+	await expect(page.locator("[data-testid=layer-name]")).toHaveText([
+		"region.gbr",
+		"truncated.gbr",
+	]);
+	await expect(page.getByTestId("viewer-message")).toHaveText(
+		"negative.gbr: Line 5: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
+	);
+	await expect
+		.poll(async () =>
+			JSON.parse(
+				(await page.locator("#scene-state").textContent()) || '{"objects":[]}',
+			).objects.filter((object: { visible: boolean }) => object.visible)
+				.length,
+		)
+		.toBe(2);
+	const truncated = page.getByRole("button", {
+		name: "Diagnostics for truncated.gbr: 1 warning",
+		exact: true,
+	});
+	await expect(truncated).toHaveText("1");
+	await expect(truncated).toHaveAttribute("aria-expanded", "false");
+	const region = page.getByRole("button", {
+		name: "Diagnostics for region.gbr: 2 problems (1 error, 1 warning)",
+		exact: true,
+	});
+	await expect(region).not.toHaveAttribute("aria-controls");
+	await region.click();
+	await expect(region).toHaveAttribute("aria-expanded", "true");
+	await expect(region).toHaveAttribute(
+		"aria-controls",
+		(await page.getByTestId("layer-diagnostics-list").getAttribute("id"))!,
+	);
+	const list = page.getByRole("list", {
+		name: "Diagnostics for region.gbr",
+		exact: true,
+	});
+	await expect(list.getByRole("listitem")).toHaveText([
+		"Error · Line 5Unsupported G-code G99",
+		"Warning · Line 10Region contour is not closed; a closing segment was added.",
+	]);
+	// Reading the list must not toggle layer focus.
+	await list.getByRole("listitem").first().click();
+	await expect(
+		page.locator('[data-testid=layer-select][aria-pressed="true"]'),
+	).toHaveCount(0);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: test.info().outputPath("layer-diagnostics.png"),
+		});
+	await truncated.click();
+	await expect(
+		page
+			.getByRole("list", { name: "Diagnostics for truncated.gbr", exact: true })
+			.getByRole("listitem"),
+	).toHaveText([
+		"Warning · Line 6Missing M02 end-of-file command; the file may be truncated.",
+	]);
+	expect(errors).toEqual([]);
+});

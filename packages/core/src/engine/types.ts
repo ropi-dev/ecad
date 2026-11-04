@@ -41,10 +41,18 @@ export interface SceneLayer {
 export interface PlanarObject extends SceneLayer {
 	type: "planar";
 }
+/**
+ * - `warning`: accepted as written, or repaired; the geometry is complete.
+ * - `error`: a command was skipped; the rest of the geometry still renders.
+ * - `fatal`: the geometry is unusable, so the file is rejected.
+ */
+export type DiagnosticSeverity = "warning" | "error" | "fatal";
 export interface Diagnostic {
-	severity: "warning" | "error";
+	severity: DiagnosticSeverity;
 	message: string;
 	line?: number;
+	/** How many unlisted problems a summary entry stands for. */
+	count?: number;
 }
 export interface ParseResult {
 	object: PlanarObject;
