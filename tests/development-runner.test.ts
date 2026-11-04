@@ -141,7 +141,7 @@ test("native perf executes its worker on simulated non-Linux hosts", {
 	}
 });
 
-test("fresh checkout mount points remain owned by the developer", {
+test("fresh checkout preserves mount ownership and relative artifact paths", {
 	skip: process.platform !== "linux",
 }, () => {
 	const directory = mkdtempSync(join(tmpdir(), "ecad-fresh-mounts-"));
@@ -157,10 +157,14 @@ test("fresh checkout mount points remain owned by the developer", {
 		"entrypoint.sh",
 	])
 		copyFileSync(join(root, "scripts/development", name), join(scripts, name));
+	fixtureCommands(directory);
 	const engine = join(directory, "engine");
+	const output = join(directory, "args.json");
+	mkdirSync(join(directory, "artifacts"));
+	symlinkSync("artifacts", join(directory, "perf-artifacts"), "dir");
 	writeFileSync(
 		engine,
-		"#!/usr/bin/env node\nif(process.argv[2]==='image') console.log('fixture-image');\n",
+		"#!/usr/bin/env node\nif(process.argv[2]==='image') console.log('fixture-image');else require('node:fs').writeFileSync(process.env.ECAD_TEST_ARGS,JSON.stringify(process.argv.slice(2)));\n",
 	);
 	chmodSync(engine, 0o755);
 	try {
@@ -172,12 +176,17 @@ test("fresh checkout mount points remain owned by the developer", {
 					...process.env,
 					PATH: `${directory}${delimiter}${process.env.PATH}`,
 					ECAD_CONTAINER_ENGINE: engine,
+					ECAD_TEST_ARGS: output,
 					ECAD_LOCK_DIR: join(directory, "locks"),
 				},
 				encoding: "utf8",
 			},
 		);
 		assert.equal(result.status, 0, result.stderr);
+		const args: string[] = JSON.parse(readFileSync(output, "utf8"));
+		assert.ok(args.includes(`${directory}:${directory}`));
+		assert.ok(args.includes(`ECAD_WORKSPACE=${directory}`));
+		assert.ok(args.includes(`${directory}/artifacts:${directory}/artifacts`));
 		for (const path of ["node_modules", "packages/core/node_modules"]) {
 			assert.equal(statSync(join(directory, path)).uid, process.getuid?.());
 			assert.equal(statSync(join(directory, path)).isDirectory(), true);

@@ -5,14 +5,14 @@ if [[ "${1}" == perf* ]]; then
   source_entries=(/source/*)
   tar -C /source --exclude=.git --exclude=node_modules --exclude=dist --exclude=dist-ssr --exclude=.output --exclude=.tanstack --exclude=.nitro --exclude=perf-artifacts -cf - "${source_entries[@]#/source/}" | tar -C /workspace --no-overwrite-dir -xf -
 fi
-cd /workspace
+cd "${ECAD_WORKSPACE:-/workspace}"
 (
   if [[ "${ECAD_PERF_LOCK_HELD:-0}" != "1" ]]; then
     exec 8>"${ECAD_LOCK_DIR}/perf.lock"
     flock --shared 8
   fi
   flock --exclusive 9
-  fingerprint="$(sha256sum pnpm-lock.yaml package.json pnpm-workspace.yaml packages/*/package.json | sha256sum | cut -d ' ' -f 1)"
+  fingerprint="$( { printf '%s\n' "$PWD"; sha256sum pnpm-lock.yaml package.json pnpm-workspace.yaml packages/*/package.json; } | sha256sum | cut -d ' ' -f 1)"
   if [[ "${1}" == perf* ]] || [[ ! -f node_modules/.ecad-install ]] || [[ "$(cat node_modules/.ecad-install)" != "$fingerprint" ]]; then
     pnpm install --frozen-lockfile --store-dir /pnpm/store
     printf '%s' "$fingerprint" > node_modules/.ecad-install

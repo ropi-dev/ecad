@@ -6,6 +6,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -228,6 +229,26 @@ test("a queued command cannot run after its launcher is killed", {
 		child.kill("SIGTERM");
 		writeFileSync(release, "release");
 		await holder;
+		rmSync(directory, { recursive: true });
+	}
+});
+
+test("native lock overrides create fresh nested directories", {
+	skip: process.platform !== "linux",
+}, async () => {
+	const directory = mkdtempSync(join(tmpdir(), "ecad-fresh-lock-"));
+	const locks = join(directory, "nested/locks");
+	try {
+		assert.equal(
+			await runLocked("perf", process.execPath, ["-e", ""], {
+				...process.env,
+				ECAD_LOCK_DIR: locks,
+			}),
+			0,
+		);
+		assert.equal(statSync(locks).isDirectory(), true);
+		assert.equal(statSync(locks).mode & 0o777, 0o700);
+	} finally {
 		rmSync(directory, { recursive: true });
 	}
 });

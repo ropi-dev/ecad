@@ -11,9 +11,9 @@ export function worktreeId(root = process.cwd()): string {
 		.slice(0, 12);
 }
 
-export function lockDirectory(): string {
+export function lockDirectory(env = process.env): string {
 	const directory =
-		process.env.ECAD_LOCK_DIR ??
+		env.ECAD_LOCK_DIR ??
 		join("/tmp", `ecad-locks-${process.getuid?.() ?? "user"}`);
 	mkdirSync(directory, { recursive: true, mode: 0o700 });
 	return directory;
@@ -78,7 +78,7 @@ export function runLocked(
 		[
 			shared ? "--shared" : "--exclusive",
 			"--no-fork",
-			join(env.ECAD_LOCK_DIR ?? lockDirectory(), `${name}.lock`),
+			join(lockDirectory(env), `${name}.lock`),
 			...guardedCommandArgs(command, args),
 		],
 		env,

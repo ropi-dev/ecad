@@ -74,6 +74,7 @@ if (command === "build-image") {
 	}
 	const perf = command.startsWith("perf");
 	const role = perf ? "perf" : "dev";
+	const workspace = perf ? "/workspace" : root;
 	const topology = capture("lscpu", ["--parse=CPU,CORE,SOCKET,ONLINE"])
 		.split("\n")
 		.filter((line) => !line.startsWith("#"))
@@ -131,7 +132,7 @@ if (command === "build-image") {
 		"--env",
 		"ECAD_SANDBOX=1",
 		"--volume",
-		`ecad-${id}-${role}-root-modules:/workspace/node_modules`,
+		`ecad-${id}-${role}-root-modules:${workspace}/node_modules`,
 		"--volume",
 		"ecad-pnpm-store:/pnpm/store",
 		"--env",
@@ -146,7 +147,7 @@ if (command === "build-image") {
 			});
 			args.push(
 				"--volume",
-				`ecad-${id}-${role}-${entry.name}-modules:/workspace/packages/${entry.name}/node_modules`,
+				`ecad-${id}-${role}-${entry.name}-modules:${workspace}/packages/${entry.name}/node_modules`,
 			);
 		}
 	}
@@ -208,7 +209,11 @@ if (command === "build-image") {
 			"--cpus",
 			cpus,
 			"--volume",
-			`${root}:/workspace`,
+			`${root}:${workspace}`,
+			"--workdir",
+			workspace,
+			"--env",
+			`ECAD_WORKSPACE=${workspace}`,
 			"--volume",
 			`${artifacts}:${artifacts}`,
 		);
