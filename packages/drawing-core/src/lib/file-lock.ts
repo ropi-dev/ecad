@@ -1,6 +1,6 @@
 // Lock files that work across processes on one computer and recover from
 // owners that exited without releasing them. Node only.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
 	link,
@@ -19,17 +19,23 @@ import { z } from "zod";
 
 export class FileLocked extends Data.TaggedError("FileLocked")<{
 	readonly path: string;
-	/** True when the lock names no owner, for example because another program wrote it. */
-	readonly ownerless: boolean;
+	/**
+	 * True when the lock names a process that certainly still runs on this
+	 * computer. Otherwise the lock names no owner, for example because another
+	 * program wrote it or its creator was killed before writing it, or its
+	 * owner cannot be checked. Such a lock is never removed automatically, so
+	 * the user has to remove it once nothing uses the file.
+	 */
+	readonly ownerRunning: boolean;
 	readonly message: string;
 }> {
-	constructor({ path, ownerless }: { path: string; ownerless: boolean }) {
+	constructor({ path, ownerRunning }: { path: string; ownerRunning: boolean }) {
 		super({
 			path,
-			ownerless,
-			message: ownerless
-				? `The file is locked, and the lock does not name its owner: ${path}`
-				: `The file is locked by another process: ${path}`,
+			ownerRunning,
+			message: ownerRunning
+				? `The file is locked by another process: ${path}`
+				: `The file is locked, and the process holding the lock cannot be confirmed to be running: ${path}`,
 		});
 	}
 }
@@ -163,11 +169,7 @@ async function readLockFile(path: string) {
 	try {
 		const info = await handle.stat();
 		if (!info.isFile() || info.size > 4096) return null;
-		return {
-			content: await handle.readFile("utf8"),
-			modified: info.mtimeMs,
-			inode: info.ino,
-		};
+		return { content: await handle.readFile("utf8"), modified: info.mtimeMs };
 	} catch {
 		return null;
 	} finally {
@@ -183,54 +185,88 @@ const parseLockOwner = (content: string) => {
 	}
 };
 
-// Returns true only when the owner certainly no longer runs. On Linux, a PID
-// is checked only when both sides recorded the same boot and PID namespace.
-// Other systems record no such IDs, so the host name identifies the computer.
-async function hasExited(owner: LockOwner) {
+// Undefined means that the file is gone. Null means that its owner is unknown,
+// for example because another program wrote it.
+async function readLockOwner(path: string) {
+	const file = await readLockFile(path);
+	return file && parseLockOwner(file.content);
+}
+
+// Tells whether the owner certainly exited, certainly still runs, or neither.
+// On Linux, a PID is checked only when both sides recorded the same boot and
+// PID namespace. Other systems record no such IDs, so the host name identifies
+// the computer, and without a start time a running PID may have been reused.
+async function ownerState(
+	owner: LockOwner,
+): Promise<"exited" | "running" | "unknown"> {
 	const local = { hostname: hostname(), ...(await currentSystem()) };
 	if (owner.hostname !== local.hostname || owner.machineId !== local.machineId)
-		return false;
+		return "unknown";
 	if (process.platform === "linux") {
-		if (!owner.bootId || !local.bootId) return false;
+		if (!owner.bootId || !local.bootId) return "unknown";
 		// Only a restart of the same computer changes its boot ID.
-		if (owner.bootId !== local.bootId) return !!owner.machineId;
+		if (owner.bootId !== local.bootId)
+			return owner.machineId ? "exited" : "unknown";
 		if (!owner.pidNamespace || owner.pidNamespace !== local.pidNamespace)
-			return false;
-	} else if (owner.bootId || owner.pidNamespace) return false;
+			return "unknown";
+	} else if (owner.bootId || owner.pidNamespace) return "unknown";
 	try {
 		process.kill(owner.pid, 0);
 	} catch (error) {
-		if (hasCode(error, "ESRCH")) return true;
+		if (hasCode(error, "ESRCH")) return "exited";
 		// Another user's process can reuse the PID too.
-		if (!hasCode(error, "EPERM")) return false;
+		if (!hasCode(error, "EPERM")) return "unknown";
 	}
-	if (owner.startTime === undefined) return false;
+	if (owner.startTime === undefined) return "unknown";
 	const status = await processStatus(owner.pid);
-	if (!status) return false;
+	if (!status) return "unknown";
 	// A zombie has exited and only waits for its parent to collect it.
-	return status.state === "Z" || status.startTime !== owner.startTime;
+	return status.state === "Z" || status.startTime !== owner.startTime
+		? "exited"
+		: "running";
 }
+
+const hasExited = async (owner: LockOwner) =>
+	(await ownerState(owner)) === "exited";
 
 const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
 
-// Staged lock copies and claims have short names, so a long drawing name
-// still fits. Owner IDs are unique, so drawings in one folder never collide.
+// Staged lock copies and claims are named after a short hash of their lock's
+// file name, so recovering one lock never touches the leftovers of another
+// lock in the same folder, and a long drawing name still fits. Owner IDs are
+// unique, so the names of one lock's leftovers never collide either.
 const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const lockCopyName = new RegExp(`^\\.ecad-lock-${uuid}\\.tmp$`);
-const claimName = new RegExp(`^\\.ecad-claim-${uuid}$`);
-const claimPath = (directory: string, owner: LockOwner) =>
-	join(directory, `.ecad-claim-${owner.id}`);
+
+/** The tag in the names of the staged copies and claims of the lock at lockPath. */
+export function lockLeftoverTag(lockPath: string) {
+	return createHash("sha256")
+		.update(basename(lockPath))
+		.digest("hex")
+		.slice(0, 12);
+}
+
+function leftovers(lockPath: string) {
+	const directory = dirname(lockPath);
+	const tag = lockLeftoverTag(lockPath);
+	return {
+		directory,
+		copyName: new RegExp(`^\\.ecad-lock-${tag}-${uuid}\\.tmp$`),
+		claimName: new RegExp(`^\\.ecad-claim-${tag}-${uuid}$`),
+		copyPath: () => join(directory, `.ecad-lock-${tag}-${randomUUID()}.tmp`),
+		claimPath: (owner: LockOwner) =>
+			join(directory, `.ecad-claim-${tag}-${owner.id}`),
+	};
+}
 
 // Creates the file at path with the owner's metadata unless the path exists.
 // Linking a complete, synced copy publishes the metadata with the file, so a
 // crash or power loss never leaves an empty lock. The copy is staged only when
 // the path looks free, so a waiting process holds no copy.
-//
-// Without hard links, the file is created empty and written afterwards. The
-// staged copy stays until the file holds the metadata, so a creator killed in
-// between leaves a copy whose content starts with what it wrote, and recovery
-// can tell its file from one that another program wrote.
-async function createLockFile(path: string, owner: LockOwner) {
+async function createLockFile(
+	path: string,
+	owner: LockOwner,
+	names: ReturnType<typeof leftovers>,
+) {
 	const content = JSON.stringify(owner);
 	for (let attempt = 1; ; attempt++) {
 		try {
@@ -239,12 +275,7 @@ async function createLockFile(path: string, owner: LockOwner) {
 		} catch (error) {
 			if (!hasCode(error, "ENOENT")) throw error;
 		}
-		const staged = await stageFile(
-			path,
-			content,
-			0o600,
-			join(dirname(path), `.ecad-lock-${randomUUID()}.tmp`),
-		);
+		const staged = await stageFile(path, content, 0o600, names.copyPath());
 		try {
 			await link(staged, path);
 			return true;
@@ -254,14 +285,12 @@ async function createLockFile(path: string, owner: LockOwner) {
 			// example while this process was paused, so stage it again.
 			if (hasCode(error, "ENOENT") && attempt < 3) continue;
 			if (!linkUnsupported.some((code) => hasCode(error, code))) throw error;
-			return await createWithoutLink(path, content);
 		} finally {
 			await rm(staged, { force: true });
 		}
+		break;
 	}
-}
-
-async function createWithoutLink(path: string, content: string) {
+	// Without hard links, a crash before the write leaves an empty lock.
 	let handle: Awaited<ReturnType<typeof open>>;
 	try {
 		handle = await open(path, "wx", 0o600);
@@ -271,63 +300,10 @@ async function createWithoutLink(path: string, content: string) {
 	}
 	try {
 		await handle.writeFile(content);
-		await handle.sync();
 	} finally {
 		await handle.close();
 	}
 	return true;
-}
-
-// Identifies the owner of a lock or claim. Undefined means that the file is
-// gone and null that its owner is unknown. A file that names no owner belongs
-// to a creator killed before writing it only if that creator's staged copy
-// starts with the file's content and every such copy belongs to an exited
-// process. Its key includes the file's inode, so a later file is never
-// mistaken for it.
-async function fileOwner(path: string) {
-	const file = await readLockFile(path);
-	if (!file) return file;
-	const owner = parseLockOwner(file.content);
-	if (owner) return { owner, key: owner.id };
-	const copies = await stagedCopies(dirname(path));
-	const creators = copies.filter((copy) =>
-		copy.content.startsWith(file.content),
-	);
-	if (!creators.length) return null;
-	const owners: LockOwner[] = [];
-	for (const copy of creators) {
-		if (!copy.owner) {
-			// A copy that is still being staged could belong to the creator. One
-			// left incomplete for a minute is abandoned, as in removeLeftovers.
-			if (Date.now() - copy.modified > 60_000) continue;
-			return null;
-		}
-		if (!(await hasExited(copy.owner))) return null;
-		owners.push(copy.owner);
-	}
-	if (!owners.length) return null;
-	const [creator] = owners.sort((a, b) => a.id.localeCompare(b.id));
-	return {
-		owner: creator,
-		key: `${creator.id}:${file.inode}:${file.content}`,
-	};
-}
-
-async function stagedCopies(directory: string) {
-	const copies: {
-		path: string;
-		content: string;
-		modified: number;
-		owner: LockOwner | null;
-	}[] = [];
-	for (const name of await readdir(directory)) {
-		if (!lockCopyName.test(name)) continue;
-		const path = join(directory, name);
-		const file = await readLockFile(path);
-		if (file)
-			copies.push({ path, ...file, owner: parseLockOwner(file.content) });
-	}
-	return copies;
 }
 
 // Removes the lock or claim at target if its owner has exited. Returns
@@ -338,24 +314,26 @@ async function stagedCopies(directory: string) {
 // ID while the claim is held is still the abandoned file. An existing claim is
 // either in use or abandoned in the same way, so the chain is followed until
 // a file can be removed.
-async function removeAbandonedFile(target: string, claimer: LockOwner) {
-	const directory = dirname(target);
+async function removeAbandonedFile(
+	target: string,
+	claimer: LockOwner,
+	names: ReturnType<typeof leftovers>,
+) {
 	const visited = new Set<string>();
 	for (;;) {
-		const found = await fileOwner(target);
-		if (found === undefined) return "gone";
-		if (found === null || visited.has(found.key)) return "kept";
-		const current = found.owner;
+		const current = await readLockOwner(target);
+		if (current === undefined) return "gone";
+		if (current === null || visited.has(current.id)) return "kept";
 		if (!(await hasExited(current))) return "kept";
-		visited.add(found.key);
-		const claim = claimPath(directory, current);
-		if (!(await createLockFile(claim, claimer))) {
+		visited.add(current.id);
+		const claim = names.claimPath(current);
+		if (!(await createLockFile(claim, claimer, names))) {
 			target = claim;
 			continue;
 		}
 		try {
-			const latest = await fileOwner(target);
-			if (latest?.key !== found.key)
+			const latest = await readLockOwner(target);
+			if (latest?.id !== current.id)
 				return latest === undefined ? "gone" : "kept";
 			await rm(target, { force: true });
 			return "removed";
@@ -369,29 +347,21 @@ async function removeAbandonedFile(target: string, claimer: LockOwner) {
 // goes through the same claim protocol, because another process may create a
 // claim with that name again. A complete staged copy is removed once its owner
 // has exited. Staging takes moments, so a readable but incomplete copy older
-// than a minute is removed too, and a paused creator stages a new one. While
-// a lock or claim names no owner, the copies stay, because they may be the
-// only record of the killed process that created it.
-async function removeLeftovers(lockPath: string, owner: LockOwner) {
-	const directory = dirname(lockPath);
-	const names = await readdir(directory);
-	const ownerless = await Promise.all(
-		[lockPath, ...names.filter((name) => claimName.test(name))].map(
-			async (name) => {
-				const file = await readLockFile(join(directory, basename(name)));
-				return file === null || (!!file && !parseLockOwner(file.content));
-			},
-		),
-	);
-	const keepCopies = ownerless.some(Boolean);
+// than a minute is removed too, and a paused creator stages a new one. Only
+// the leftovers of this lock are touched.
+async function removeLeftovers(
+	names: ReturnType<typeof leftovers>,
+	owner: LockOwner,
+) {
+	const entries = await readdir(names.directory);
 	await Promise.all(
-		names.map(async (name) => {
-			const path = join(directory, name);
-			if (claimName.test(name)) {
-				await removeAbandonedFile(path, { ...owner, id: randomUUID() });
+		entries.map(async (name) => {
+			const path = join(names.directory, name);
+			if (names.claimName.test(name)) {
+				await removeAbandonedFile(path, { ...owner, id: randomUUID() }, names);
 				return;
 			}
-			if (keepCopies || !lockCopyName.test(name)) return;
+			if (!names.copyName.test(name)) return;
 			const file = await readLockFile(path);
 			if (!file) return;
 			const copyOwner = parseLockOwner(file.content);
@@ -411,8 +381,9 @@ export interface FileLockOptions {
 
 /**
  * Runs work while holding the lock file at lockPath. Waits for another owner
- * to release it, removes it if its owner exited, and throws FileLocked when
- * the timeout passes first.
+ * to release it, removes it if its recorded owner has certainly exited, and
+ * throws FileLocked when the timeout passes first. A lock that names no owner,
+ * or whose owner cannot be checked, is never removed.
  */
 export async function withFileLock<T>(
 	lockPath: string,
@@ -421,23 +392,27 @@ export async function withFileLock<T>(
 ) {
 	const deadline = performance.now() + timeout;
 	const owner = await createLockOwner();
+	const names = leftovers(lockPath);
 	for (;;) {
 		signal?.throwIfAborted();
-		if (await createLockFile(lockPath, owner)) break;
-		const recovery = await removeAbandonedFile(lockPath, {
-			...owner,
-			id: randomUUID(),
-		});
+		if (await createLockFile(lockPath, owner, names)) break;
+		const recovery = await removeAbandonedFile(
+			lockPath,
+			{ ...owner, id: randomUUID() },
+			names,
+		);
 		// After removing an abandoned file, try once more even past the deadline.
 		if (recovery === "removed") {
-			await removeLeftovers(lockPath, owner).catch(() => {});
+			await removeLeftovers(names, owner).catch(() => {});
 			continue;
 		}
-		if (performance.now() >= deadline)
+		if (performance.now() >= deadline) {
+			const holder = await readLockOwner(lockPath);
 			throw new FileLocked({
 				path: lockPath,
-				ownerless: (await fileOwner(lockPath)) === null,
+				ownerRunning: !!holder && (await ownerState(holder)) === "running",
 			});
+		}
 		// A lock that vanished was just released, so retry at once.
 		if (recovery === "kept") await delay(25, undefined, { signal });
 	}

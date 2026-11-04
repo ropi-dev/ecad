@@ -153,7 +153,7 @@ async function lockProject<T>(
 	} catch (cause) {
 		if (locked) throw cause;
 		if (cause instanceof FileLocked)
-			throw new ProjectLocked(cause.ownerless ? { path: cause.path } : {});
+			throw new ProjectLocked(cause.ownerRunning ? {} : { path: cause.path });
 		if (
 			mode === "shared" &&
 			cause instanceof Error &&

@@ -127,8 +127,9 @@ export class ProjectStorageUnavailable extends Data.TaggedError(
 }
 
 /**
- * Another window or app holds the project lock. With a path, the lock names no
- * owner, so it may be left over and the user can remove that file.
+ * Another window or app holds the project lock. With a path, the app holding
+ * it cannot be confirmed to be running, so the lock may be left over and the
+ * user can remove that file. Such a lock is never removed automatically.
  */
 export class ProjectLocked extends Data.TaggedError("ProjectLocked")<{
 	readonly path?: string;
@@ -140,7 +141,7 @@ export class ProjectLocked extends Data.TaggedError("ProjectLocked")<{
 			message:
 				path === undefined
 					? "Another window or app is using this project. Try again when it is done."
-					: `This project is locked, but the lock does not say which app holds it. If no other window or app is using the project, delete the lock file "${path}" and try again.`,
+					: `This project is locked, but the window or app holding the lock cannot be confirmed to be running. If no other window or app is using the project, delete the lock file "${path}" and try again.`,
 		});
 	}
 }
