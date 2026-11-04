@@ -13,6 +13,7 @@ import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
 import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
+import { isProjectError } from "#/projects/errors.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	defaultSymbolConfig,
@@ -80,6 +81,10 @@ export function useSymbolLibrary() {
 	);
 	const [sources, setSources] = useState(new Map<string, SymbolSource>());
 	const [loading, setLoading] = useState(true);
+	// The project storage the current definitions were loaded for.
+	const [loadedFor, setLoadedFor] = useState<
+		SymbolLibraryStorage | null | undefined
+	>(undefined);
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
 	const [libraryErrors, setLibraryErrors] = useState<string[]>([]);
@@ -153,6 +158,7 @@ export function useSymbolLibrary() {
 					project.status === "fulfilled" ? project.value : emptyConfig(),
 					controller.signal,
 				);
+				if (!controller.signal.aborted) setLoadedFor(projectStorage ?? null);
 				setError(
 					failures
 						.map((result) =>
@@ -205,7 +211,10 @@ export function useSymbolLibrary() {
 			completed = true;
 			return result;
 		} catch (cause) {
-			if (!controller.signal.aborted)
+			if (
+				!controller.signal.aborted &&
+				!isProjectError(cause, "ProjectConflict")
+			)
 				setError(errorMessage(cause, "Unable to update symbols."));
 			throw cause;
 		} finally {
@@ -439,6 +448,8 @@ export function useSymbolLibrary() {
 				: null;
 		},
 		loading,
+		/** Loaded for the current project, not one opened before it. */
+		ready: !loading && loadedFor === (projectStorage ?? null),
 		message,
 		error: [error, ...libraryErrors].filter(Boolean).join("\n"),
 		upload,

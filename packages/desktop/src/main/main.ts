@@ -18,6 +18,7 @@ import {
 	libraryChannels,
 	projectChannels,
 } from "#/bridge.ts";
+import { encodeIpcError } from "#/ipc-errors.ts";
 import { readDisplayCalibration } from "#/main/display-calibration.ts";
 import { type IpcArguments, parseIpcArguments } from "#/main/ipc.ts";
 import {
@@ -109,9 +110,13 @@ function handle<Channel extends InvokeChannel>(
 	channel: Channel,
 	run: (...args: IpcArguments<Channel>) => unknown,
 ) {
-	ipcMain.handle(channel, (event, ...args: unknown[]) => {
-		assertSender(event);
-		return run(...parseIpcArguments(channel, args));
+	ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+		try {
+			assertSender(event);
+			return await run(...parseIpcArguments(channel, args));
+		} catch (cause) {
+			throw encodeIpcError(cause);
+		}
 	});
 }
 

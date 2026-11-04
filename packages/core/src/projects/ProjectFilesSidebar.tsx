@@ -33,6 +33,8 @@ import {
 	shortcutModifier,
 } from "#/components/viewer/shortcutModifier.ts";
 import type { KiCadImportReport } from "#/formats/kicad/import.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import { isProjectError } from "#/projects/errors.ts";
 import {
 	type AssetKind,
 	PROJECT_FILE,
@@ -275,6 +277,10 @@ export function ProjectFilesSidebar() {
 	const first = currentPage * pageSize;
 	if (!project) return null;
 	const busy = project.busy || importing;
+	function showError(cause: unknown, fallback: string) {
+		if (!isProjectError(cause, "ProjectConflict"))
+			setError(errorMessage(cause, fallback));
+	}
 	async function upload(files: File[], kind: AssetKind) {
 		if (!project || !files.length) return;
 		setImporting(true);
@@ -282,9 +288,7 @@ export function ProjectFilesSidebar() {
 		try {
 			await project.importAssets(files, kind);
 		} catch (cause) {
-			setError(
-				cause instanceof Error ? cause.message : "Unable to add project files.",
-			);
+			showError(cause, "Unable to add project files.");
 		} finally {
 			setImporting(false);
 		}
@@ -300,9 +304,7 @@ export function ProjectFilesSidebar() {
 			project.selectEditorFile(path);
 			editorLink.current?.click();
 		} catch (cause) {
-			setError(
-				cause instanceof Error ? cause.message : "Unable to import schematic.",
-			);
+			showError(cause, "Unable to import schematic.");
 		} finally {
 			setImporting(false);
 		}
@@ -758,10 +760,9 @@ export function ProjectFilesSidebar() {
 																					void project
 																						.openCircuit(file.path)
 																						.catch((cause) =>
-																							setError(
-																								cause instanceof Error
-																									? cause.message
-																									: "Unable to open circuit.",
+																							showError(
+																								cause,
+																								"Unable to open circuit.",
 																							),
 																						);
 																				else
@@ -794,10 +795,9 @@ export function ProjectFilesSidebar() {
 																					file.circuitPath ?? file.path,
 																				)
 																				.catch((cause) =>
-																					setError(
-																						cause instanceof Error
-																							? cause.message
-																							: "Unable to open circuit.",
+																					showError(
+																						cause,
+																						"Unable to open circuit.",
 																					),
 																				);
 																		}}
@@ -902,9 +902,10 @@ export function ProjectFilesSidebar() {
 									setCreatingFile(null);
 									editorLink.current?.click();
 								} catch (cause) {
-									return cause instanceof Error
-										? cause.message
-										: `Unable to create the ${creatingFile}.`;
+									return errorMessage(
+										cause,
+										`Unable to create the ${creatingFile}.`,
+									);
 								}
 							}}
 						/>

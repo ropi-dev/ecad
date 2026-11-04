@@ -37,6 +37,14 @@ Viewport renderers, scene displays, hover overlays, controls, listeners, and edi
 
 `HttpClient` is an injectable service in `packages/core/src/lib/http.ts`. `requestJson` checks HTTP status and decodes the response with Effect Schema. Its request scope remains open while the body is read, so aborting after headers still cancels the fetch. Use `HttpClientLive` in production and `makeHttpClient` with a test implementation in tests.
 
+## Project storage errors
+
+Project storage keeps its Promise API, but its expected failures are `Data.TaggedError` classes from `packages/core/src/projects/errors.ts`. Callers match the tag with `isProjectError(cause, "ProjectConflict")`, never the message text. `ProjectConflict` means a project file changed on disk after it was loaded. `InvalidProjectFile` names the file and gives a readable reason instead of raw Zod issues. Save-time document validation fails with `InvalidProjectDocument`. Electron keeps only an error's message across IPC, so the main process encodes a project error's tag and fields in the message and the renderer storage rebuilds the class.
+
+After a conflict, `ProjectProvider` stops saving and keeps edits in memory. `ProjectShell` shows the conflict with a **Reload from disk** action and warns that reloading discards unsaved changes. Library load failures during a save appear as editor issues. A circuit part from a library that failed to load fails the save instead of becoming a placeholder symbol.
+
+Storage classes and the provider serialize their operations with `createSerialQueue` from `packages/core/src/lib/serial-queue.ts`. A task that throws or rejects fails only its own promise.
+
 ## Server services
 
 Web server services stay behind Start server functions and server routes. The editor MCP session handlers in `packages/core/src/services/server/editor-mcp.ts` back the `/api/editor-mcp` and `/mcp/editor/<session-id>` routes; see the [MCP guide](mcp.md). Desktop filesystem operations live in Electron's main process and are called through the preload bridge. Never import filesystem services into browser helpers or renderer components.

@@ -6,6 +6,7 @@ import {
 	parseSelection,
 	pasteSelection,
 	selectionFileText,
+	selectionPasteError,
 	serializeSelection,
 } from "#/drawing/clipboard.ts";
 import {
@@ -55,7 +56,7 @@ export function useDrawingClipboard({
 			);
 		if (!source.length) return;
 		const text = serializeSelection(source);
-		const captured = parseSelection(text);
+		const captured = parseSelection(text, { legacy: true });
 		if (!captured) {
 			session.setError(
 				"The selection is too large or contains unavailable symbol geometry.",
@@ -94,7 +95,14 @@ export function useDrawingClipboard({
 		if (!available(event)) return;
 		const text = clipboardSelectionText(event.clipboardData);
 		const source = parseSelection(text);
-		if (!source) return;
+		if (!source) {
+			const error = selectionPasteError(text);
+			if (!error) return;
+			event.preventDefault();
+			event.stopPropagation();
+			session.setError(error);
+			return;
+		}
 		event.preventDefault();
 		event.stopPropagation();
 		const count =

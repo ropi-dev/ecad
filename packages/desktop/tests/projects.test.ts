@@ -7,6 +7,7 @@ import { createDrawingStore } from "@ecad/core/commands/drawing-store.ts";
 import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import { parseProjectManifest, PROJECT_FILE, projectNameSchema, projectPathSchema, serializeProjectManifest } from "@ecad/core/projects/format.ts";
+import { InvalidProjectFile, InvalidProjectName, InvalidProjectPath, ProjectClosed, ProjectConflict, SymbolLibraryAccessDenied } from "@ecad/core/projects/errors.ts";
 import { ProjectRepository } from "@ecad/core/projects/repository.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import { createDesktopProjectDirectory, DesktopProjects } from "#/main/projects.ts";
@@ -70,12 +71,13 @@ test("project directories are isolated and stale renderer requests cannot access
 	const second = await projects.create("Second", parent);
 	assert.deepEqual(second.shapes, []);
 	assert.deepEqual(second.symbols, []);
-	await assert.rejects(projects.save(first.directory, { shapes: [], symbols: [] }), /no longer open/);
-	await assert.rejects(projects.readAsset(first.directory, "assets/test.step"), /no longer open/);
+	await assert.rejects(projects.save(first.directory, { shapes: [], symbols: [] }), ProjectClosed);
+	await assert.rejects(projects.readAsset(first.directory, "assets/test.step"), ProjectClosed);
 	const opened = await projects.openDirectory(first.directory);
 	assert.deepEqual(opened.shapes, [shape]);
 	assert.deepEqual(opened.symbols, [symbol]);
 	await assert.rejects(projects.create("First", parent));
+	await assert.rejects(projects.create("a/b", parent), InvalidProjectName);
 	assert.deepEqual((await projects.load())?.shapes, [shape]);
 }));
 
@@ -133,8 +135,8 @@ test("desktop storage refuses symbolic link assets and nested symbolic link dire
 	await mkdir(join(parent, "outside"));
 	await symlink(join(parent, "outside"), join(created.directory, "linked"));
 	const directory = await createDesktopProjectDirectory(created.directory);
-	await assert.rejects(directory.write("linked/secret", new Uint8Array([1])), /symbolic links/);
-	await assert.rejects(directory.read("../outside.ecaddraw"));
+	await assert.rejects(directory.write("linked/secret", new Uint8Array([1])), (error) => error instanceof InvalidProjectPath && /symbolic links/.test(error.message));
+	await assert.rejects(directory.read("../outside.ecaddraw"), InvalidProjectPath);
 	assert.deepEqual(JSON.parse(await readFile(outside, "utf8")), { shapes: [shape] });
 }));
 
@@ -142,7 +144,7 @@ test("directories without a project load as empty without creating project files
 	assert.equal(await new DesktopProjects(parent).load(), null);
 	assert.deepEqual(await readdir(parent), []);
 	await writeFile(join(parent, PROJECT_FILE), "broken TOML [");
-	await assert.rejects(new DesktopProjects(parent).load());
+	await assert.rejects(new DesktopProjects(parent).load(), (error) => error instanceof InvalidProjectFile && error.path === PROJECT_FILE);
 }));
 
 test("desktop imports preserve source filenames and never overwrite existing files", async () => temporary(async (parent) => {
@@ -170,8 +172,8 @@ test("direct drawing and symbol edits reject stale desktop saves and imports", a
 	const drawingPath = join(saved.directory, saved.manifest.drawing);
 	const symbolPath = join(saved.directory, saved.manifest.symbols[0]);
 	await writeFile(drawingPath, JSON.stringify({ ...JSON.parse(await readFile(drawingPath, "utf8")), shapes: [] }));
-	await assert.rejects(projects.save(saved.directory, { shapes: [shape], symbols: [symbol] }), /changed on disk/);
-	await assert.rejects(projects.importAssets(saved.directory, [{ name: "model.step", kind: "step", bytes: new Uint8Array([1]) }]), /changed on disk/);
+	await assert.rejects(projects.save(saved.directory, { shapes: [shape], symbols: [symbol] }), (error) => error instanceof ProjectConflict && error.path === saved.manifest.drawing);
+	await assert.rejects(projects.importAssets(saved.directory, [{ name: "model.step", kind: "step", bytes: new Uint8Array([1]) }]), ProjectConflict);
 	await projects.openDirectory(saved.directory);
 	await writeFile(symbolPath, JSON.stringify({ ...symbol, name: "External edit" }));
 	await assert.rejects(projects.save(saved.directory, { shapes: [], symbols: [] }), /changed on disk/);
@@ -309,7 +311,7 @@ test("symbolic links cannot move a project library outside the project", async (
  const asked: ExternalLibraryRequest[] = [];
  const projects = new DesktopProjects(undefined, { approveExternalLibrary: async (request, { prompt }) => { if (prompt) asked.push(request); return false; } });
  await projects.openDirectory(directory);
- await assert.rejects(projects.readSymbolLibrary(directory, "linked"), /outside the project directory/);
+ await assert.rejects(projects.readSymbolLibrary(directory, "linked"), (error) => error instanceof SymbolLibraryAccessDenied && /outside the project directory/.test(error.message));
  await assert.rejects(projects.saveLibrarySymbol(directory, "linked", symbol, { ...symbol, shapes: [] }), /outside the project directory/);
  // Approval names the real target, so the user sees where the link leads.
  assert.deepEqual(asked, [{ project: directory, directory: await realpath(outside) }]);

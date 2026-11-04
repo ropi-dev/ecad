@@ -32,13 +32,13 @@ export function EditorDocument({
 	const drawing = props.store ? null : project?.editorDrawing;
 	return (
 		<Canvas
-			key={
+			key={`${project?.session ?? 0}:${
 				symbol
 					? `symbol:${symbol.file.id}`
 					: drawing
 						? `drawing:${drawing.file.id}`
 						: "schematic"
-			}
+			}`}
 			{...props}
 			store={symbol?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}

@@ -4,7 +4,10 @@ import {
 	parseSymbolFile,
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import {
+	drawingShapeSchema,
+	legacyDrawingShapeSchema,
+} from "#/drawing/schema.ts";
 import {
 	type EditorShape,
 	symbolShapes,
@@ -24,6 +27,10 @@ const clipboardSchema = z.strictObject({
 	format: z.literal("ecad-selection"),
 	version: z.literal(1),
 	shapes: z.array(drawingShapeSchema).min(1).max(10_000),
+});
+/** What a copy may hold: a drawing can still contain legacy diagonal wires. */
+const copiedSchema = clipboardSchema.extend({
+	shapes: z.array(legacyDrawingShapeSchema).min(1).max(10_000),
 });
 
 export function selectionFileText(shapes: readonly EditorShape[]): string {
@@ -77,7 +84,10 @@ export function serializeSelection(shapes: readonly EditorShape[]): string {
 	);
 }
 
-export function parseSelection(text: string): EditorShape[] | null {
+export function parseSelection(
+	text: string,
+	{ legacy = false }: { legacy?: boolean } = {},
+): EditorShape[] | null {
 	if (text.length > 10_000_000) return null;
 	try {
 		const value = JSON.parse(text);
@@ -85,7 +95,7 @@ export function parseSelection(text: string): EditorShape[] | null {
 			const definition = libraryDefinitions([parseSymbolFile(text)])[0];
 			return [createSymbol(1, definition, { x: 0, y: 0 })];
 		}
-		const result = clipboardSchema.safeParse(
+		const result = (legacy ? copiedSchema : clipboardSchema).safeParse(
 			value?.format === undefined && value?.shapes
 				? { format: "ecad-selection", version: 1, shapes: value.shapes }
 				: value,
@@ -97,6 +107,30 @@ export function parseSelection(text: string): EditorShape[] | null {
 			: null;
 	} catch {
 		return null;
+	}
+}
+
+/** Why copied drawing data cannot be pasted. Other clipboard text has no error. */
+export function selectionPasteError(text: string): string | undefined {
+	if (text.length > 10_000_000) return;
+	try {
+		const value = JSON.parse(text);
+		// The same two forms that parseSelection accepts.
+		const plain = value?.format === undefined && value?.shapes;
+		const selection = plain
+			? { format: "ecad-selection", version: 1, shapes: value.shapes }
+			: value;
+		if (selection?.format !== "ecad-selection") return;
+		const issue = clipboardSchema.safeParse(selection).error?.issues[0];
+		// Plain text with a shapes list is explained only when one shape is wrong.
+		if (!issue || (plain && typeof issue.path[1] !== "number")) return;
+		// Report shape problems the way drawing commands do, relative to the shape.
+		const path = (issue.path[0] === "shapes" ? issue.path.slice(2) : issue.path)
+			.map(String)
+			.join(".");
+		return path ? `${path}: ${issue.message}` : issue.message;
+	} catch {
+		return;
 	}
 }
 

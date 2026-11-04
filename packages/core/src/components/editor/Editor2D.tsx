@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useEffect,
 	useEffectEvent,
+	useId,
 	useLayoutEffect,
 	useMemo,
 	useRef,
@@ -14,6 +15,7 @@ import {
 	createSymbolFromSelectionEffect,
 	redoEffect,
 	removeShapesEffect,
+	replaceAndPlaceShapesEffect,
 	rotateShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
@@ -52,6 +54,7 @@ import { useDrawingClipboard } from "#/components/editor/useDrawingClipboard.ts"
 import { useEditorScene } from "#/components/editor/useEditorScene.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
+import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import {
@@ -88,6 +91,7 @@ import { isEditableTarget } from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
+import { isProjectError } from "#/projects/errors.ts";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
@@ -104,6 +108,8 @@ const cameraStates = new WeakMap<
 	object,
 	{ camera?: Viewer2DSnapshot["camera"] }
 >();
+
+const reroutedStores = new WeakSet<object>();
 
 export type EditorCanvasProps = Editor2DProps & {
 	symbolName?: string;
@@ -207,10 +213,18 @@ function EditorCanvas({
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [viewerError, setViewerError] = useState("");
+	const [rerouteNotice, setRerouteNotice] = useState<{
+		text: string;
+		historyId: number;
+	} | null>(null);
 	const issues = editorIssues([
 		viewerError,
+		rerouteNotice?.historyId === drawing.history.currentId
+			? rerouteNotice.text
+			: "",
 		...(symbolLibrary.loading ? [] : resolved.errors),
 		project?.error,
+		...(project?.libraryErrors ?? []),
 	]);
 	const [dismissedIssues, setDismissedIssues] = useState<ReadonlySet<string>>(
 		() => new Set(),
@@ -526,6 +540,32 @@ function EditorCanvas({
 		finishWire();
 	});
 	useEffect(() => session.connect(store, cancelGestures), [session, store]);
+
+	useEffect(() => {
+		if (
+			isSymbol ||
+			!symbolLibrary.ready ||
+			resolved.errors.length ||
+			reroutedStores.has(store)
+		)
+			return;
+		reroutedStores.add(store);
+		const reroute = rerouteLegacyWires(resolved.shapes);
+		if (
+			reroute &&
+			session.execute(
+				replaceAndPlaceShapesEffect(
+					reroute.replacements,
+					reroute.additions,
+					"Redraw diagonal wires",
+				),
+			)
+		)
+			setRerouteNotice({
+				text: reroute.notice,
+				historyId: store.getSnapshot().history.currentId,
+			});
+	});
 
 	const hasSelection = selected.length > 0;
 	const pickerLibrary = useMemo(
@@ -908,6 +948,15 @@ function LibrarySymbolEditor({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	const dirty = drawing.shapes !== savedShapes;
+	const reportUnsavedEdits = useProject()?.reportUnsavedEdits;
+	const editorKey = useId();
+	useEffect(() => {
+		reportUnsavedEdits?.(editorKey, dirty);
+	}, [reportUnsavedEdits, editorKey, dirty]);
+	useEffect(
+		() => () => reportUnsavedEdits?.(editorKey, false),
+		[reportUnsavedEdits, editorKey],
+	);
 	const save = useCallback(
 		async function persist(): Promise<void> {
 			while (pending.current) await pending.current;
@@ -925,9 +974,10 @@ function LibrarySymbolEditor({
 					setSavedShapes(shapes);
 					setError("");
 				} catch (cause) {
-					setError(
-						errorMessage(cause, "Unable to save the symbol definition."),
-					);
+					if (!isProjectError(cause, "ProjectConflict"))
+						setError(
+							errorMessage(cause, "Unable to save the symbol definition."),
+						);
 					throw cause;
 				} finally {
 					pending.current = null;

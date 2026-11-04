@@ -43,12 +43,19 @@ for (const [name, override] of [
 		const [saved] = persistDrawingShapes([
 			createSymbol(1, resistor, { x: 0, y: 0 }),
 		]);
-		const parsed = drawingShapeSchema.parse({
-			...saved,
-			childOverrides: { "shape:1": override },
-		});
-		const symbol = resolveDrawingSymbols([parsed], [resistor], definitions)
-			.shapes[0];
+		const childOverrides = { "shape:1": override };
+		// Files cannot hold a zero size; the renderer still tolerates one.
+		assert.equal(
+			drawingShapeSchema.safeParse({ ...saved, childOverrides }).success,
+			false,
+		);
+		// Resolution drops overrides that do not fit, so add it afterwards.
+		const resolved = resolveDrawingSymbols(
+			[drawingShapeSchema.parse(saved)],
+			[resistor],
+			definitions,
+		).shapes[0];
+		const symbol = { ...resolved, childOverrides } as typeof resolved;
 		assert.equal(symbol.kind, "symbol");
 		if (symbol.kind !== "symbol") return;
 		const lead = symbolShapes(symbol).find((child) => child.id === 1)!;

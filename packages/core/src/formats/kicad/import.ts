@@ -1,4 +1,5 @@
 import type { ShapeInput } from "#/commands/drawing-commands.ts";
+import { routeDiagonalWires, type Segment } from "#/drawing/diagonal-wires.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
@@ -534,15 +535,27 @@ function convert(source: string): KiCadImportResult {
 			if (converted.supply) report.supplies.push(converted.supply);
 		}
 	}
+	// Diagonal wires are routed once everything they could touch is in place.
+	const diagonalWires: { item: string; segment: Segment }[] = [];
 	for (const wire of nodes(root, "wire")) {
 		const points = nodes(node(wire, "pts"), "xy");
-		attempt(`wire${locate(wire, points[0])}`, () => {
+		const item = `wire${locate(wire, points[0])}`;
+		attempt(item, () => {
 			const pts = points.map((p) => world(p.slice(1).map(Number)));
 			if (pts.length !== 2)
 				throw new Error(
 					`A wire needs two endpoints, but this one has ${pts.length}.`,
 				);
-			return { shapes: [line(pts[0], pts[1], "wire")] };
+			const [start, end] = pts;
+			const angle = Math.atan2(end[1] - start[1], end[0] - start[0]);
+			// The schema explains non-finite coordinates, so only real diagonals wait.
+			if (
+				!pts.flat().every(Number.isFinite) ||
+				Math.abs(Math.sin(2 * angle)) <= 1e-9
+			)
+				return { shapes: [line(start, end, "wire")] };
+			diagonalWires.push({ item, segment: [start, end] });
+			return { shapes: [] };
 		});
 	}
 	for (const junction of nodes(root, "junction"))
@@ -611,6 +624,23 @@ function convert(source: string): KiCadImportResult {
 				],
 			};
 		});
+	const routes = routeDiagonalWires(
+		diagonalWires.map(({ segment }) => segment),
+		shapes,
+	);
+	for (const [index, { item, segment }] of diagonalWires.entries()) {
+		const route = routes[index];
+		if (
+			attempt(item, () => ({
+				shapes: route ?? [line(segment[0], segment[1], "line")],
+			}))
+		)
+			warnings.add(
+				route
+					? "Diagonal wires are imported as horizontal and vertical segments."
+					: "Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
+			);
+	}
 	if (!shapes.length && report.skipped.length) {
 		const [first] = report.skipped;
 		const more = report.skipped.length - 1;

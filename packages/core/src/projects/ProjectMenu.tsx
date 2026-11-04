@@ -2,6 +2,8 @@ import { FolderOpen } from "lucide-react";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { lazy, Suspense, useState } from "react";
 import { createPortal } from "react-dom";
+import { errorMessage } from "#/lib/error-message.ts";
+import { isProjectError } from "#/projects/errors.ts";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 
@@ -79,15 +81,12 @@ export function ProjectMenu() {
 							className={item}
 							onSelect={() => {
 								setSaveError("");
-								void project
-									.save()
-									.catch((cause: unknown) =>
+								void project.save().catch((cause: unknown) => {
+									if (!isProjectError(cause, "ProjectConflict"))
 										setSaveError(
-											cause instanceof Error
-												? cause.message
-												: "Unable to save the project.",
-										),
-									);
+											errorMessage(cause, "Unable to save the project."),
+										);
+								});
 							}}
 						>
 							Save project

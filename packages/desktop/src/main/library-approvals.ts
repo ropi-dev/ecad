@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
+import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import { z } from "zod";
 
 export interface ExternalLibraryRequest {
@@ -41,7 +42,7 @@ function same(left: ExternalLibraryRequest, right: ExternalLibraryRequest) {
 export class ExternalLibraryApprovals {
 	readonly path: string;
 	private session: ExternalLibraryRequest[] = [];
-	private operation: Promise<unknown> = Promise.resolve();
+	private readonly sequential = createSerialQueue();
 
 	constructor(
 		private options: {
@@ -115,11 +116,5 @@ export class ExternalLibraryApprovals {
 		} finally {
 			await rm(temporary, { force: true });
 		}
-	}
-
-	private sequential<T>(run: () => Promise<T>): Promise<T> {
-		const pending = this.operation.then(run, run);
-		this.operation = pending.catch(() => undefined);
-		return pending;
 	}
 }

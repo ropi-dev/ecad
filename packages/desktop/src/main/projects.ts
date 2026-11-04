@@ -4,13 +4,19 @@ import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { SymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
+import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
+import {
+	InvalidProjectPath,
+	ProjectClosed,
+	SymbolLibraryAccessDenied,
+} from "@ecad/core/projects/errors.ts";
 import {
 	type AssetKind,
 	PROJECT_FILE,
 	type ProjectDocument,
 	type ProjectSnapshot,
-	projectNameSchema,
-	projectPathSchema,
+	parseProjectName,
+	parseProjectPath,
 } from "@ecad/core/projects/format.ts";
 import {
 	type ProjectDirectory,
@@ -25,14 +31,23 @@ import {
 	saveDirectorySymbol,
 } from "#/main/symbol-library.ts";
 
+const notRegularFile = (path: string) =>
+	new InvalidProjectPath({
+		path,
+		reason: "Project assets must be regular files.",
+	});
+
 export async function createDesktopProjectDirectory(
 	selected: string,
 ): Promise<ProjectDirectory> {
 	const directory = await realpath(resolve(selected));
 	if (!(await lstat(directory)).isDirectory())
-		throw new Error("Choose a project directory.");
+		throw new InvalidProjectPath({
+			path: selected,
+			reason: "Choose a project directory.",
+		});
 	async function target(path: string, create = false) {
-		const parts = projectPathSchema.parse(path).split("/");
+		const parts = parseProjectPath(path).split("/");
 		let current = directory;
 		for (const part of parts.slice(0, -1)) {
 			current = join(current, part);
@@ -41,7 +56,10 @@ export async function createDesktopProjectDirectory(
 					if (cause.code !== "EEXIST") throw cause;
 				});
 			if (!(await lstat(current)).isDirectory())
-				throw new Error("Project paths cannot contain symbolic links.");
+				throw new InvalidProjectPath({
+					path,
+					reason: "Project paths cannot contain symbolic links.",
+				});
 		}
 		return join(current, parts[parts.length - 1]);
 	}
@@ -63,15 +81,13 @@ export async function createDesktopProjectDirectory(
 		},
 		async read(path) {
 			const filename = await target(path);
-			if (!(await lstat(filename)).isFile())
-				throw new Error("Project assets must be regular files.");
+			if (!(await lstat(filename)).isFile()) throw notRegularFile(path);
 			const file = await open(
 				filename,
 				constants.O_RDONLY | constants.O_NOFOLLOW,
 			);
 			try {
-				if (!(await file.stat()).isFile())
-					throw new Error("Project assets must be regular files.");
+				if (!(await file.stat()).isFile()) throw notRegularFile(path);
 				return new Uint8Array(await file.readFile());
 			} finally {
 				await file.close();
@@ -80,8 +96,7 @@ export async function createDesktopProjectDirectory(
 		async write(path, bytes) {
 			const filename = await target(path, true);
 			try {
-				if (!(await lstat(filename)).isFile())
-					throw new Error("Project assets must be regular files.");
+				if (!(await lstat(filename)).isFile()) throw notRegularFile(path);
 			} catch (cause) {
 				if (
 					!(cause instanceof Error) ||
@@ -144,19 +159,14 @@ export class DesktopProjects {
 		this.current(directory);
 		return !!this.active?.files;
 	}
-	private operation: Promise<unknown> = Promise.resolve();
+	private readonly sequential = createSerialQueue();
 	constructor(
 		private initialPath?: string,
 		private options: DesktopProjectsOptions = {},
 	) {}
-	private sequential<T>(run: () => Promise<T>) {
-		const next = this.operation.then(run, run);
-		this.operation = next.catch(() => undefined);
-		return next;
-	}
 	private opened(directory: string) {
 		if (!this.active || this.active.directory !== directory)
-			throw new Error("This project is no longer open.");
+			throw new ProjectClosed();
 		return this.active;
 	}
 	private current(directory: string) {
@@ -199,9 +209,9 @@ export class DesktopProjects {
 			const files = new Map<string, Uint8Array>();
 			const directory: ProjectDirectory = {
 				name: `memory:${randomUUID()}`,
-				exists: async (path) => files.has(projectPathSchema.parse(path)),
+				exists: async (path) => files.has(parseProjectPath(path)),
 				async read(path) {
-					const bytes = files.get(projectPathSchema.parse(path));
+					const bytes = files.get(parseProjectPath(path));
 					if (!bytes)
 						throw Object.assign(new Error("Project file not found."), {
 							code: "ENOENT",
@@ -209,10 +219,10 @@ export class DesktopProjects {
 					return new Uint8Array(bytes);
 				},
 				async write(path, bytes) {
-					files.set(projectPathSchema.parse(path), new Uint8Array(bytes));
+					files.set(parseProjectPath(path), new Uint8Array(bytes));
 				},
 				async remove(path) {
-					files.delete(projectPathSchema.parse(path));
+					files.delete(parseProjectPath(path));
 				},
 			};
 			const repository = new ProjectRepository(directory, { layout: "files" });
@@ -228,7 +238,7 @@ export class DesktopProjects {
 			if (!files) return source.load();
 			const snapshot = await source.load();
 			const base = await realpath(resolve(parent));
-			const name = projectNameSchema.parse(snapshot.manifest.name);
+			const name = parseProjectName(snapshot.manifest.name);
 			let selected = join(base, name);
 			for (let suffix = 2; ; suffix++) {
 				try {
@@ -259,7 +269,7 @@ export class DesktopProjects {
 	}
 	create(name: string, parent: string) {
 		return this.sequential(async () => {
-			name = projectNameSchema.parse(name);
+			name = parseProjectName(name);
 			const selected = join(await realpath(resolve(parent)), name);
 			await mkdir(selected);
 			try {
@@ -309,9 +319,10 @@ export class DesktopProjects {
 						library.source.kind === "directory" && library.source.path === path,
 				)
 		)
-			throw new Error(
-				"This directory is not configured as a project symbol library.",
-			);
+			throw new SymbolLibraryAccessDenied({
+				path,
+				reason: "This directory is not configured as a project symbol library.",
+			});
 		let requested: string;
 		if (path.startsWith("~/"))
 			requested = resolve(
@@ -320,9 +331,11 @@ export class DesktopProjects {
 			);
 		else if (isAbsolute(path)) requested = resolve(path);
 		else if (active.files)
-			throw new Error(
-				"Save the project before using a library path relative to its directory.",
-			);
+			throw new SymbolLibraryAccessDenied({
+				path,
+				reason:
+					"Save the project before using a library path relative to its directory.",
+			});
 		else requested = resolve(directory, path);
 		return {
 			directory: requested,
@@ -342,9 +355,11 @@ export class DesktopProjects {
 				}
 				active.refused ??= new Set();
 				active.refused.add(key);
-				throw new Error(
-					"This symbol library is outside the project directory and was not allowed. Reopen the project to be asked again.",
-				);
+				throw new SymbolLibraryAccessDenied({
+					path: library,
+					reason:
+						"This symbol library is outside the project directory and was not allowed. Reopen the project to be asked again.",
+				});
 			},
 		};
 	}
@@ -380,7 +395,7 @@ export class DesktopProjects {
 	canWriteFile(directory: string, path: string) {
 		return this.sequential(async () => {
 			this.current(directory);
-			const parts = projectPathSchema.parse(path).split("/");
+			const parts = parseProjectPath(path).split("/");
 			if (this.active?.files) return true;
 			let current = directory;
 			for (const part of parts.slice(0, -1)) {

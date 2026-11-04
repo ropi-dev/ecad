@@ -1,4 +1,5 @@
 import { Data, Effect } from "effect";
+import type { z } from "zod";
 import { sameDrawing } from "#/commands/drawing-equality.ts";
 import {
 	type DrawingDocument,
@@ -14,33 +15,28 @@ import {
 	redoHistory,
 	undoHistory,
 } from "#/drawing/history.ts";
-import { type LineStyle, lineStyles } from "#/drawing/line-style.ts";
-import { symbolChildOverridesSchema } from "#/drawing/schema.ts";
+import {
+	type EditorShape,
+	editorShapeSchema,
+	type RectangleInput,
+	type Same,
+	type shapeInputSchema,
+} from "#/drawing/schema.ts";
 import {
 	connectionTolerance,
 	connectTransformedTerminals,
-	type EditorShape,
-	isBasicShape,
-	pinTerminals,
-	normalizeWireSegments,
 	normalizeNetSymbol,
+	normalizeWireSegments,
+	pinTerminals,
 } from "#/drawing/shapes.ts";
-import { validTextAlignment } from "#/drawing/text-alignment.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 /** Complete geometry, already resolved by the caller. Commands allocate IDs. */
 export type ShapeInput = WithoutId<EditorShape>;
+true satisfies Same<ShapeInput, z.output<typeof shapeInputSchema>>;
 
-export interface RectangleInput {
-	x: number;
-	y: number;
-	width: number;
-	height: number;
-	rotation: number;
-	lineWidth: number;
-	lineStyle?: LineStyle;
-}
+export type { RectangleInput };
 
 export interface CommandResult {
 	readonly ids: number[];
@@ -68,202 +64,35 @@ function validateIds(ids: readonly number[]) {
 	}
 }
 
-function validateShape(shape: EditorShape) {
-	if (shape && shape.locked !== undefined && typeof shape.locked !== "boolean")
-		invalid("Shape locks must be booleans.");
-	if (
-		!shape ||
-		![
-			"rectangle",
-			"circle",
-			"triangle",
-			"no-connect",
-			"line",
-			"wire",
-			"pin",
-			"text",
-			"symbol",
-		].includes(shape.kind)
-	)
-		invalid("A supported shape kind is required.");
-	if (
-		![
-			shape.x,
-			shape.y,
-			shape.width,
-			shape.height,
-			shape.rotation,
-			shape.lineWidth,
-		].every(Number.isFinite)
-	)
-		invalid(
-			"Shape position, dimensions, rotation and line width must be finite.",
-		);
-	if (
-		shape.lineWidth <= 0 ||
-		shape.height <= 0 ||
-		(shape.kind === "wire" ? shape.width < 0 : shape.width <= 0)
-	)
-		invalid("Shape dimensions and line width must be positive.");
-	if (shape.kind === "circle" && Math.abs(shape.width - shape.height) > 1e-9)
-		invalid("A circle must have equal width and height.");
-	if (
-		isBasicShape(shape) &&
-		shape.lineStyle !== undefined &&
-		!lineStyles.includes(shape.lineStyle)
-	)
-		invalid("A supported line style is required.");
-	if (shape.kind === "wire" && Math.abs(Math.sin(2 * shape.rotation)) > 1e-9)
-		invalid("Wire segments must be horizontal or vertical.");
-	if (shape.kind === "pin" && typeof shape.name !== "string")
-		invalid("Pins require a name string.");
-	if (shape.kind === "pin" && typeof shape.number !== "string")
-		invalid("Pins require a number string.");
-	if (
-		shape.kind === "pin" &&
-		(["showLabels", "showName", "showNumber"] as const).some(
-			(field) =>
-				shape[field] !== undefined && typeof shape[field] !== "boolean",
-		)
-	)
-		invalid("Pin label visibility must be a boolean.");
-	if (
-		shape.kind === "pin" &&
-		shape.labelOffset !== undefined &&
-		(!Number.isFinite(shape.labelOffset) || Math.abs(shape.labelOffset) > 1000)
-	)
-		invalid(
-			"Pin label offsets must be finite and between -1000 and 1000 millimetres.",
-		);
-	if (
-		isBasicShape(shape) &&
-		shape.filled !== undefined &&
-		(typeof shape.filled !== "boolean" || shape.kind === "line")
-	)
-		invalid("Only area shapes accept a boolean fill.");
-	if (
-		shape.kind === "pin" &&
-		shape.length !== undefined &&
-		(!Number.isFinite(shape.length) || shape.length < 0 || shape.length > 1000)
-	)
-		invalid("Pin lead lengths must be between 0 and 1000 millimetres.");
-	if (shape.kind === "text") {
-		if (
-			shape.electrical !== undefined &&
-			!["net", "supply"].includes(shape.electrical)
-		)
-			invalid("Invalid electrical label role.");
-		if (!validTextAlignment(shape)) invalid("Invalid text alignment.");
-		if (
-			typeof shape.text !== "string" ||
-			!Number.isFinite(shape.fontSize) ||
-			shape.fontSize <= 0
-		)
-			invalid("Text requires content and a positive finite font size.");
-	}
-	if (shape.kind === "symbol") {
-		if (
-			shape.library !== undefined &&
-			(!shape.library ||
-				!["user", "project"].includes(shape.library.scope) ||
-				typeof shape.library.id !== "string" ||
-				!shape.library.id.length)
-		)
-			invalid(
-				"Symbol references require a library ID and a user or project scope.",
-			);
-		if (
-			shape.strokeOverride !== undefined &&
-			(!Number.isFinite(shape.strokeOverride) || shape.strokeOverride <= 0)
-		)
-			invalid("Symbol stroke overrides must be positive and finite.");
-		if (
-			typeof shape.definitionId !== "string" ||
-			(shape.netSymbol !== undefined && typeof shape.netSymbol !== "boolean") ||
-			!Array.isArray(shape.children) ||
-			(shape.children.length === 0 && !shape.library) ||
-			!shape.attributes ||
-			![
-				shape.attributes.name,
-				shape.attributes.reference,
-				shape.attributes.value,
-			].every((value) => typeof value === "string")
-		)
-			invalid("Symbols require a definition, children and text attributes.");
-		if (
-			!Array.isArray(shape.texts) ||
-			shape.texts.some(
-				(text) =>
-					!text ||
-					typeof text !== "object" ||
-					!["name", "reference", "value"].includes(text.attribute) ||
-					![text.x, text.y, text.fontSize].every(Number.isFinite) ||
-					text.fontSize <= 0 ||
-					(text.locked !== undefined && typeof text.locked !== "boolean") ||
-					!validTextAlignment(text),
-			)
-		)
-			invalid(
-				"Symbol texts require valid attributes, positions and font sizes.",
-			);
-		if (
-			shape.textAlignments !== undefined &&
-			(!shape.textAlignments ||
-				typeof shape.textAlignments !== "object" ||
-				Array.isArray(shape.textAlignments) ||
-				Object.entries(shape.textAlignments).some(
-					([attribute, alignment]) =>
-						!["name", "reference", "value"].includes(attribute) ||
-						!alignment ||
-						typeof alignment !== "object" ||
-						Array.isArray(alignment) ||
-						!validTextAlignment(alignment),
-				))
-		)
-			invalid("Invalid symbol text alignment.");
-		if (
-			shape.childOverrides !== undefined &&
-			!symbolChildOverridesSchema.safeParse(shape.childOverrides).success
-		)
-			invalid("Invalid symbol child overrides.");
-		validateIds(shape.children.map((child) => child.id));
-		if (
-			shape.textPositions !== undefined &&
-			(!shape.textPositions ||
-				typeof shape.textPositions !== "object" ||
-				Array.isArray(shape.textPositions) ||
-				Object.entries(shape.textPositions).some(
-					([attribute, position]) =>
-						!["name", "reference", "value"].includes(attribute) ||
-						!position ||
-						![position.x, position.y].every(Number.isFinite),
-				))
-		)
-			invalid(
-				"Symbol text positions require valid attributes and finite coordinates.",
-			);
-		for (const child of shape.children) {
-			if (child.kind === "text" && child.electrical !== undefined)
-				invalid("Electrical labels must remain standalone drawing items.");
-			if (
-				![
-					"rectangle",
-					"circle",
-					"triangle",
-					"no-connect",
-					"line",
-					"wire",
-					"pin",
-					"text",
-				].includes(child.kind)
-			)
-				invalid("Symbol children must be primitive shapes.");
-			validateShape({
-				...child,
-				...shape.childOverrides?.[`shape:${child.id}`],
-			});
-		}
-	}
+function hasUndefined(value: unknown): boolean {
+	if (value === undefined) return true;
+	if (!value || typeof value !== "object") return false;
+	for (const item of Object.values(value)) if (hasUndefined(item)) return true;
+	return false;
+}
+
+/** The saved form of plain data: JSON drops keys whose value is undefined. */
+function savedForm(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(savedForm);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([key, item]) =>
+			item === undefined ? [] : [[key, savedForm(item)]],
+		),
+	);
+}
+
+/**
+ * Commands apply the drawing schema's rules to the shape as it will be saved,
+ * and commit that form. Editor spreads such as `{ circuitNet: undefined }`
+ * pass, and an undefined override cannot hide a child field in memory.
+ */
+function validShape<T extends EditorShape>(shape: T): T {
+	const saved = hasUndefined(shape) ? (savedForm(shape) as T) : shape;
+	const issue = editorShapeSchema.safeParse(saved).error?.issues[0];
+	if (!issue) return saved;
+	const path = issue.path.join(".");
+	invalid(path ? `${path}: ${issue.message}` : issue.message);
 }
 
 function commit(
@@ -343,11 +172,10 @@ export function placeShapesEffect(
 			if (!Number.isSafeInteger(current.nextShapeId + captured.length))
 				invalid("No more shape IDs are available.");
 			const shapes = captured.map((shape, index) => {
-				const placed = {
+				const placed = validShape({
 					...shape,
 					id: current.nextShapeId + index,
-				} as EditorShape;
-				validateShape(placed);
+				} as EditorShape);
 				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
 			});
 			return commit(
@@ -390,13 +218,14 @@ export function replaceAndPlaceShapesEffect(
 			validateIds(preferredIds);
 			for (const id of preferredIds)
 				if (!existing.has(id)) invalid(`Target shape ${id} does not exist.`);
-			for (const shape of captured.replacements) {
-				validateShape(shape);
+			const replacements = captured.replacements.map((shape) => {
+				const valid = validShape(shape);
 				if (!existing.has(shape.id))
 					invalid(`Shape ${shape.id} does not exist.`);
-			}
+				return valid;
+			});
 			const byId = new Map(
-				captured.replacements.map((shape) => [
+				replacements.map((shape) => [
 					shape.id,
 					shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
 				]),
@@ -404,11 +233,10 @@ export function replaceAndPlaceShapesEffect(
 			if (!Number.isSafeInteger(current.nextShapeId + captured.inputs.length))
 				invalid("No more shape IDs are available.");
 			const additions = captured.inputs.map((shape, index) => {
-				const placed = {
+				const placed = validShape({
 					...shape,
 					id: current.nextShapeId + index,
-				} as EditorShape;
-				validateShape(placed);
+				} as EditorShape);
 				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
 			});
 			return commit(
@@ -443,12 +271,10 @@ export function rotateShapesEffect(
 			const angle = captured.angle % turn;
 			const shapes = current.shapes.map((shape) => {
 				if (!selectedIds.has(shape.id) || angle === 0) return shape;
-				const rotated = {
+				return validShape({
 					...shape,
 					rotation: (((shape.rotation + angle) % turn) + turn) % turn,
-				};
-				validateShape(rotated);
-				return rotated;
+				});
 			});
 			const transformed = new Map(shapes.map((shape) => [shape.id, shape]));
 			const components = current.shapes.filter(
@@ -555,11 +381,12 @@ export function createSymbolFromSelectionEffect(
 					);
 				if (!Number.isSafeInteger(current.nextShapeId + 1))
 					invalid("No more shape IDs are available.");
-				const symbol = createSymbolFromShapes(current.nextShapeId, primitives, {
-					...capturedOptions,
-					name,
-				});
-				validateShape(symbol);
+				const symbol = validShape(
+					createSymbolFromShapes(current.nextShapeId, primitives, {
+						...capturedOptions,
+						name,
+					}),
+				);
 				const firstId = selected[0].id;
 				const shapes = current.shapes.flatMap((shape) =>
 					shape.id === firstId
