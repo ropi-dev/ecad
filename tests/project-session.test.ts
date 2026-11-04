@@ -487,6 +487,57 @@ test("a new project copies the source project's assets except those over the siz
 	t.after(stop);
 	await loaded(f.session);
 	await f.session.getSnapshot().create("Copy");
-	assert.equal(f.session.getSnapshot().error, "");
+	assert.equal(
+		f.session.getSnapshot().error,
+		"The new project leaves out an asset over the size limit, which stays in the original project. huge.step: STEP files must be 256 MiB or smaller.",
+	);
 	assert.deepEqual(imported, [["top.gbr"]]);
+});
+
+test("restoring assets loads every asset within the limit and names the oversized ones", async (t) => {
+	const source = snapshot();
+	source.manifest.assets = [
+		{ path: "assets/small.step", name: "small.step", kind: "step" },
+		{ path: "assets/b.step", name: "b.step", kind: "step" },
+		{ path: "assets/c.step", name: "c.step", kind: "step" },
+		{ path: "assets/top.gbr", name: "top.gbr", kind: "gerber" },
+	];
+	const f = fixture(source);
+	const reads: string[] = [];
+	f.storage.readAsset = async (_directory, path) => {
+		reads.push(path);
+		if (path === "assets/b.step" || path === "assets/c.step")
+			throw new ProjectAssetTooLarge({
+				assetName: path.slice("assets/".length),
+				reason: "STEP files must be 256 MiB or smaller.",
+			});
+		return new TextEncoder().encode(path);
+	};
+	const stop = f.session.connect();
+	t.after(stop);
+	await loaded(f.session);
+	const restored = await f.session.getSnapshot().readAssets("step");
+	assert.deepEqual(
+		restored.files.map((file) => file.name),
+		["small.step"],
+	);
+	assert.equal(await restored.files[0].text(), "assets/small.step");
+	assert.deepEqual(restored.problems, [
+		"b.step: STEP files must be 256 MiB or smaller.",
+		"c.step: STEP files must be 256 MiB or smaller.",
+	]);
+	const gerber = await f.session.getSnapshot().readAssets("gerber");
+	assert.deepEqual(
+		gerber.files.map((file) => file.name),
+		["top.gbr"],
+	);
+	assert.deepEqual(gerber.problems, []);
+	// Other failures still reject the restore, as before.
+	f.storage.readAsset = async () => {
+		throw new Error("disk unavailable");
+	};
+	await assert.rejects(
+		f.session.getSnapshot().readAssets("step"),
+		/disk unavailable/,
+	);
 });

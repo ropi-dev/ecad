@@ -61,7 +61,7 @@ export function useGerberFile() {
 	);
 	const openFile = useCallback(
 		async (files: File[]) => {
-			await readFiles(files, (imported) => {
+			const imported = await readFiles(files, (imported) => {
 				setLayers((previous) => [
 					...previous,
 					...imported.map((layer, index) => ({
@@ -70,14 +70,19 @@ export function useGerberFile() {
 					})),
 				]);
 			});
+			// A successful load replaces an earlier restore problem.
+			if (imported?.length) setRestoreError("");
 		},
 		[readFiles, setLayers],
 	);
 	useEffect(() => {
 		let cancelled = false;
 		void readAssets?.("gerber")
-			.then(async (files) => {
-				if (!cancelled && files.length)
+			.then(async ({ files, problems }) => {
+				if (cancelled) return;
+				// Assets over the size limit are named; the others still load.
+				setRestoreError(problems.join(" "));
+				if (files.length)
 					await readFiles(
 						files,
 						(imported) =>
@@ -103,7 +108,7 @@ export function useGerberFile() {
 	return {
 		layers,
 		loading,
-		messages: restoreError ? [restoreError] : messages,
+		messages: restoreError ? [restoreError, ...messages] : messages,
 		openFile,
 		setLayers,
 	};
