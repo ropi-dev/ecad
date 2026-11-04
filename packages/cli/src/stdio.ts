@@ -5,14 +5,17 @@ import {
 	type LocalDrawingOptions,
 } from "./drawing.ts";
 
+// Whitespace, control characters and format characters such as bidirectional
+// overrides, which a terminal would interpret.
+const unsafeText = /[\s\p{Cc}\p{Cf}]+/gu;
+
 // Schema failures carry every union branch, so summarize them in one line.
-// Other messages can quote a whole input message, so shorten them and drop
-// control characters that a terminal would interpret.
+// Other messages can quote a whole input message, so shorten them and make
+// them safe to print.
 function describeMcpError(cause: Error) {
 	if (cause.name === "ZodError")
 		return "Ignored a message that is not valid JSON-RPC.";
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: removes them.
-	const message = cause.message.replace(/[\s\x00-\x1f\x7f-\x9f]+/g, " ");
+	const message = cause.message.replace(unsafeText, " ");
 	return message.length > 500 ? `${message.slice(0, 500)}…` : message;
 }
 
@@ -68,8 +71,12 @@ export async function serveStdioMcp(
 	// The SDK also reports recoverable problems here, such as a malformed
 	// input line. Log them and keep serving; stdout carries only MCP messages.
 	server.server.onerror = (cause) => {
-		if (!stopping) error.write(`ecad: MCP error: ${describeMcpError(cause)}\n`);
+		if (!stopping && error.writable)
+			error.write(`ecad: MCP error: ${describeMcpError(cause)}\n`);
 	};
+	// Stderr only carries diagnostics, so losing it must not stop the server.
+	const ignore = () => {};
+	error.on("error", ignore);
 	input.once("end", finish);
 	input.once("close", finish);
 	input.on("error", fail);
@@ -87,6 +94,7 @@ export async function serveStdioMcp(
 		await flushOutput(output, signal);
 		input.off("error", fail);
 		output.off("error", fail);
+		error.off("error", ignore);
 	}
 	if (failure) throw failure;
 }

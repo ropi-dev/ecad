@@ -297,9 +297,10 @@ const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
 
 // Staged lock copies and claims have short names, so a long drawing name
 // still fits. Owner IDs are unique, so drawings in one folder never collide.
-const lockCopyPrefix = ".ecad-lock-";
-const claimPath = (lockPath: string, owner: LockOwner) =>
-	join(dirname(lockPath), `.ecad-claim-${owner.id}`);
+const lockCopyName = /^\.ecad-lock-[0-9a-f-]{36}\.tmp$/;
+const claimName = /^\.ecad-claim-[0-9a-f-]{36}$/;
+const claimPath = (directory: string, owner: LockOwner) =>
+	join(directory, `.ecad-claim-${owner.id}`);
 
 // Creates the file at path with the owner's metadata unless the path exists.
 // Linking a complete, synced copy publishes the metadata with the file, so a
@@ -318,7 +319,7 @@ async function createLockFile(path: string, owner: LockOwner) {
 			path,
 			content,
 			0o600,
-			join(dirname(path), `${lockCopyPrefix}${randomUUID()}.tmp`),
+			join(dirname(path), `.ecad-lock-${randomUUID()}.tmp`),
 		);
 		try {
 			await link(staged, path);
@@ -350,59 +351,71 @@ async function createLockFile(path: string, owner: LockOwner) {
 	return true;
 }
 
-// A process killed while creating a lock or claim can leave its staged copy.
-// A complete copy names its owner, so it is removed once that owner has exited.
-// Staging takes moments, so an incomplete copy older than a minute is removed
-// too. If its creator was only paused, it stages a new copy.
-async function removeAbandonedCopies(directory: string) {
-	const names = await readdir(directory).catch(() => []);
-	await Promise.all(
-		names
-			.filter(
-				(name) => name.startsWith(lockCopyPrefix) && name.endsWith(".tmp"),
-			)
-			.map(async (name) => {
-				const path = join(directory, name);
-				const owner = await readLockOwner(path);
-				const abandoned =
-					owner === null
-						? Date.now() - (await stat(path)).mtimeMs > 60_000
-						: owner !== undefined && (await hasExited(owner));
-				if (abandoned) await rm(path, { force: true });
-			}),
-	);
-}
-
-// Removes an abandoned lock and returns true when the caller can retry at once.
-// Removing a lock needs a claim named after its exited owner. Creating that
-// claim exclusively lets only one process act on that lock, and a lock ID is
-// never reused, so a lock that still has the owner's ID while the claim is held
-// is still the abandoned lock. An existing claim is either in use or abandoned
-// in the same way, so the chain is followed until a file can be removed.
-async function removeAbandonedLock(lockPath: string, owner: LockOwner) {
+// Removes the lock or claim at target if its owner has exited. Returns
+// "removed" after removing an abandoned file, "gone" when the file vanished,
+// and "kept" otherwise. Removing a file needs a claim named after its exited
+// owner. Creating that claim exclusively lets only one process act on that
+// file, and an owner ID is never reused, so a file that still has the owner's
+// ID while the claim is held is still the abandoned file. An existing claim is
+// either in use or abandoned in the same way, so the chain is followed until
+// a file can be removed.
+async function removeAbandonedFile(target: string, claimer: LockOwner) {
+	const directory = dirname(target);
 	const visited = new Set<string>();
-	let target = lockPath;
 	for (;;) {
 		const current = await readLockOwner(target);
-		if (current === undefined) return true;
-		if (current === null || visited.has(current.id)) return false;
-		if (!(await hasExited(current))) return false;
+		if (current === undefined) return "gone";
+		if (current === null || visited.has(current.id)) return "kept";
+		if (!(await hasExited(current))) return "kept";
 		visited.add(current.id);
-		const claim = claimPath(lockPath, current);
-		if (!(await createLockFile(claim, owner))) {
+		const claim = claimPath(directory, current);
+		if (!(await createLockFile(claim, claimer))) {
 			target = claim;
 			continue;
 		}
 		try {
 			const latest = await readLockOwner(target);
-			if (latest?.id !== current.id) return latest === undefined;
+			if (latest?.id !== current.id)
+				return latest === undefined ? "gone" : "kept";
 			await rm(target, { force: true });
+			return "removed";
 		} finally {
 			await rm(claim, { force: true });
 		}
-		await removeAbandonedCopies(dirname(lockPath)).catch(() => {});
-		return true;
 	}
+}
+
+// Removes what killed processes leave beside locks. A claim whose owner exited
+// goes through the same claim protocol, because another process may create a
+// claim with that name again. A complete staged copy is removed once its owner
+// has exited. Staging takes moments, so a readable but incomplete copy older
+// than a minute is removed too, and a paused creator stages a new one.
+async function removeLeftovers(directory: string, owner: LockOwner) {
+	const names = await readdir(directory);
+	await Promise.all(
+		names.map(async (name) => {
+			const path = join(directory, name);
+			if (claimName.test(name)) {
+				await removeAbandonedFile(path, { ...owner, id: randomUUID() });
+				return;
+			}
+			if (!lockCopyName.test(name)) return;
+			let content: string;
+			try {
+				content = await readFile(path, "utf8");
+			} catch {
+				return;
+			}
+			let copyOwner: LockOwner | undefined;
+			try {
+				copyOwner = lockOwnerSchema.parse(JSON.parse(content));
+			} catch {}
+			const abandoned = copyOwner
+				? await hasExited(copyOwner)
+				: Date.now() - (await stat(path)).mtimeMs > 60_000;
+			if (abandoned) await rm(path, { force: true });
+		}),
+	);
 }
 
 async function withDrawingLock<T>(
@@ -417,8 +430,13 @@ async function withDrawingLock<T>(
 	for (;;) {
 		signal.throwIfAborted();
 		if (await createLockFile(lockPath, owner)) break;
-		if (await removeAbandonedLock(lockPath, { ...owner, id: randomUUID() }))
-			continue;
+		const recovery = await removeAbandonedFile(lockPath, {
+			...owner,
+			id: randomUUID(),
+		});
+		if (recovery === "removed")
+			await removeLeftovers(dirname(lockPath), owner).catch(() => {});
+		if (recovery !== "kept") continue;
 		if (performance.now() >= deadline) {
 			throw new LocalDrawingError({
 				code: "DrawingLocked",

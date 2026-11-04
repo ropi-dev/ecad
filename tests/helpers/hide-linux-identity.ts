@@ -11,7 +11,10 @@ const paths = new Map([
 	["/proc/sys/kernel/random/boot_id", "bootId"],
 	["/proc/self", "ownProc"],
 ]);
-const blocked = (path: unknown) => hidden.has(paths.get(String(path)) ?? "");
+const blocked = (path: unknown) => {
+	const name = paths.get(String(path));
+	return name !== undefined && hidden.has(name);
+};
 const denied = (path: unknown) =>
 	Object.assign(new Error(`EACCES: permission denied, '${path}'`), { code: "EACCES" });
 const { readFile, readlink } = fs.promises;

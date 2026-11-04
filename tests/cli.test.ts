@@ -360,22 +360,29 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 	assert.equal((await fixture.read()).shapes.length, 1);
 });
 
-test("recovery removes old incomplete lock copies, and a process whose copy was removed stages a new one", async (context) => {
+test("recovery removes leftovers of killed processes, and a process whose copy was removed stages a new one", async (context) => {
 	const fixture = await drawing(context);
-	const old = join(fixture.directory, ".ecad-lock-old.tmp");
-	const fresh = join(fixture.directory, ".ecad-lock-fresh.tmp");
-	await writeFile(old, "");
-	await writeFile(fresh, "");
 	const twoMinutesAgo = new Date(Date.now() - 120_000);
-	await utimes(old, twoMinutesAgo, twoMinutesAgo);
-	await writeFile(`${fixture.path}.lock`, lockContent({ pid: await exitedPid() }));
+	const file = async (name: string, content: string, old = false) => {
+		await writeFile(join(fixture.directory, name), content);
+		if (old) await utimes(join(fixture.directory, name), twoMinutesAgo, twoMinutesAgo);
+	};
+	const fresh = `.ecad-lock-${randomUUID()}.tmp`;
+	await file(`.ecad-lock-${randomUUID()}.tmp`, "", true);
+	await file(`.ecad-lock-${randomUUID()}.tmp`, lockContent({ pid: await exitedPid() }));
+	await file(fresh, "");
+	await file(".ecad-lock-notes.tmp", "", true);
+	// A claim whose lock is gone, left by a process killed after removing the lock.
+	await file(`.ecad-claim-${randomUUID()}`, lockContent({ pid: await exitedPid() }));
+	await file("drawing.ecaddraw.lock", lockContent({ pid: await exitedPid() }));
 	assert.ok((await runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle }))).ok);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set([...drawingFiles, ".ecad-lock-fresh.tmp"]));
+	const kept = new Set([...drawingFiles, fresh, ".ecad-lock-notes.tmp"]);
+	assert.deepEqual(new Set(await readdir(fixture.directory)), kept);
 	const lockFaults = fileURLToPath(new URL("./helpers/lock-faults.ts", import.meta.url));
 	const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_DROP_COPY: "1" }, "", { imports: [lockFaults] }).result;
 	assert.equal(result.code, 0, result.stderr || result.stdout);
 	assert.equal((await fixture.read()).shapes.length, 2);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set([...drawingFiles, ".ecad-lock-fresh.tmp"]));
+	assert.deepEqual(new Set(await readdir(fixture.directory)), kept);
 });
 
 test("local drawing module cancels a lock wait without removing another owner's lock", async (context) => {
@@ -485,6 +492,22 @@ test("stdio module reports an output failure that follows stdin EOF", async (con
 	}
 });
 
+test("stdio module keeps serving when stderr fails", async (context) => {
+	const fixture = await drawing(context);
+	const input = new PassThrough();
+	const output = new PassThrough();
+	const errors = new Writable({ write(_chunk, _encoding, callback) { callback(new Error("stderr closed")); } });
+	const work = runCli(["mcp"], { env: fixture.env, input, output, error: errors });
+	input.write("garbage\n");
+	await new Promise((resolve) => setImmediate(resolve));
+	input.write("more garbage\n");
+	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } })}\n`);
+	const [reply] = await once(output, "data");
+	assert.equal(JSON.parse(String(reply)).id, 1);
+	input.end();
+	assert.equal(await work, 0);
+});
+
 test("stdio module reports a reply write that fails after stdin EOF", async (context) => {
 	const fixture = await drawing(context);
 	const input = new PassThrough();
@@ -514,14 +537,14 @@ test("stdio module shortens long errors and fails when the transport closes afte
 	const errors = new PassThrough();
 	errors.on("data", (chunk) => { error += chunk; });
 	const work = runCli(["mcp"], { env: fixture.env, input, output: new PassThrough(), error: errors });
-	input.write("\u001b]0;title\u0007\r\n");
+	input.write("\u001b]0;title\u0007\u202e\u0085\r\n");
 	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 99, result: { padding: "x".repeat(200_000) } })}\n`);
 	input.write("x".repeat(11 * 1024 * 1024));
 	assert.equal(await work, 1);
 	const lines = error.trimEnd().split("\n");
 	assert.equal(lines.length, 4, error.slice(0, 2000));
 	assert.match(lines[0], /^ecad: MCP error: .*not valid JSON/);
-	assert.ok(lines.every((entry) => !/[\x00-\x1f\x7f]/.test(entry)), JSON.stringify(lines[0]));
+	assert.ok(lines.every((entry) => !/[\p{Cc}\p{Cf}]/u.test(entry)), JSON.stringify(lines[0]));
 	assert.ok(lines[1].startsWith("ecad: MCP error: Received a response for an unknown message ID") && lines[1].length < 600, lines[1].slice(0, 200));
 	assert.match(lines[2], /^ecad: MCP error: ReadBuffer exceeded maximum size/);
 	assert.equal(lines[3], "ecad: The MCP transport closed after an input error.");
