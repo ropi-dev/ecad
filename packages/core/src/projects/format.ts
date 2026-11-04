@@ -9,7 +9,7 @@ import {
 	parseSavedSymbolLibrary,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { savedDrawingShapesSchema } from "#/drawing/schema.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import {
@@ -81,7 +81,7 @@ export const drawingFileSchema = z
 		id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
 		name: projectNameSchema,
 		circuitId: z.string().min(1).optional(),
-		shapes: z.array(drawingShapeSchema),
+		shapes: savedDrawingShapesSchema,
 	})
 	.refine(
 		(file) =>
@@ -179,7 +179,7 @@ export function validateProjectDocument(
 	document: ProjectDocument,
 	files?: ProjectDocumentFiles,
 ): ProjectDocument {
-	const shapes = check(z.array(drawingShapeSchema), document.shapes, {
+	const shapes = check(savedDrawingShapesSchema, document.shapes, {
 		file: files?.drawing,
 		field: "shapes",
 	});

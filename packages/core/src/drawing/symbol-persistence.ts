@@ -1,3 +1,4 @@
+import { fittingChildOverrides } from "#/drawing/schema.ts";
 import {
 	type EditorShape,
 	type EditorSymbol,
@@ -91,6 +92,14 @@ export function resolveDrawingSymbols(
 						shape.attributes.reference,
 					);
 					const { strokeOverride } = shape;
+					const children =
+						strokeOverride === undefined
+							? resolved.children
+							: resolved.children.map((child) => ({
+									...child,
+									lineWidth:
+										child.kind === "text" ? child.lineWidth : strokeOverride,
+								}));
 					return fitBoxToBorder(
 						normalizeNetSymbol({
 							...shape,
@@ -99,16 +108,15 @@ export function resolveDrawingSymbols(
 							height: resolved.height,
 							lineWidth: strokeOverride ?? resolved.lineWidth,
 							...(strokeOverride === undefined ? {} : { strokeOverride }),
-							children:
-								strokeOverride === undefined
-									? resolved.children
-									: resolved.children.map((child) => ({
-											...child,
-											lineWidth:
-												child.kind === "text"
-													? child.lineWidth
-													: strokeOverride,
-										})),
+							...(shape.childOverrides
+								? {
+										childOverrides: fittingChildOverrides(
+											children,
+											shape.childOverrides,
+										),
+									}
+								: {}),
+							children,
 							texts: resolved.texts,
 						} satisfies EditorSymbol),
 						{ preserveChildWorldPositions: true },

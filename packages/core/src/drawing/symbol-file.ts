@@ -2,11 +2,13 @@ import type {
 	SymbolFile,
 	SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
+import { fittingChildOverrides } from "#/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	fitBoxToBorder,
 	isBasicShape,
+	isFillableShape,
 	normalizeNetSymbol,
 	PIN_RADIUS,
 	symbolShapes,
@@ -30,7 +32,8 @@ export function symbolFileShapes(
 			id: index + 1,
 			...(shape.locked === undefined ? {} : { locked: shape.locked }),
 			lineWidth: shape.lineWidth ?? DEFAULT_LINE_WIDTH,
-			...("lineStyle" in shape && shape.lineStyle
+			// Wires have no line style. Older files may still list one.
+			...("lineStyle" in shape && shape.lineStyle && shape.kind !== "wire"
 				? { lineStyle: shape.lineStyle }
 				: {}),
 			rotation: 0,
@@ -71,8 +74,14 @@ export function symbolFileShapes(
 						? {}
 						: { netSymbol: shape.netSymbol }),
 					...(shape.locked === undefined ? {} : { locked: shape.locked }),
+					// Keep only overrides that fit the nested definition's children.
 					...(shape.childOverrides
-						? { childOverrides: structuredClone(shape.childOverrides) }
+						? {
+								childOverrides: fittingChildOverrides(
+									instance.children,
+									structuredClone(shape.childOverrides),
+								),
+							}
 						: {}),
 					library: shape.library,
 					definitionId: shape.definitionId,
@@ -226,7 +235,7 @@ export function symbolFileWithShapes(
 			const base = {
 				...(shape.locked === undefined ? {} : { locked: shape.locked }),
 				lineWidth: shape.lineWidth,
-				...(isBasicShape(shape) && shape.filled !== undefined
+				...(isFillableShape(shape) && shape.filled !== undefined
 					? { filled: shape.filled }
 					: {}),
 				...(isBasicShape(shape) && shape.lineStyle

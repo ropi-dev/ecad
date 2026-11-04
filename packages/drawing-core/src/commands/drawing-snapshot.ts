@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { drawingShapeSchema, shapeId } from "#/drawing/schema.ts";
+import { savedDrawingShapesSchema, shapeId } from "#/drawing/schema.ts";
 
 const historyId = z.number().int().nonnegative().safe();
 const nodeSchema = z.strictObject({
@@ -8,12 +8,12 @@ const nodeSchema = z.strictObject({
 	childIds: z.array(historyId),
 	preferredChildId: historyId.nullable(),
 	label: z.string(),
-	state: z.strictObject({ shapes: z.array(drawingShapeSchema) }),
+	state: z.strictObject({ shapes: savedDrawingShapesSchema }),
 });
 
 export const drawingSnapshotSchema = z
 	.strictObject({
-		shapes: z.array(drawingShapeSchema),
+		shapes: savedDrawingShapesSchema,
 		nextShapeId: shapeId,
 		history: z.strictObject({
 			nodes: z.record(z.string(), nodeSchema),

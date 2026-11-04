@@ -205,13 +205,13 @@ test("MCP replacement, deletion and history navigation use explicit IDs", async 
 });
 
 test("MCP surfaces command failures as structured tool errors without changing the drawing", async (context) => {
-	const { call, store } = await session(context);
+	const { call, client, store } = await session(context);
 	await call("placeRectangle", rectangle);
 	const before = store.getSnapshot();
 	for (const [name, args] of [
 		["removeShapes", { ids: [999] }],
 		["replaceShapes", { shapes: [before.shapes[0], before.shapes[0]] }],
-		["placeShapes", { shapes: [{ ...rectangle, kind: "circle" }] }],
+		["rotateShapes", { ids: [999] }],
 		["jumpHistory", { id: 999 }],
 	] as const) {
 		const { result, reply } = await call(name, args);
@@ -221,6 +221,17 @@ test("MCP surfaces command failures as structured tool errors without changing t
 			assert.equal(reply.error.code, "InvalidDrawingCommand");
 			assert.ok(reply.error.message.length > 0);
 		}
+		assert.strictEqual(store.getSnapshot(), before);
+	}
+	// Shape rules live in the input schema, so these fail before any command runs.
+	for (const [shape, message] of [
+		[{ ...rectangle, kind: "circle" }, /A circle must have equal width and height/],
+		[{ ...rectangle, kind: "wire", lineStyle: "dashed" }, /Unrecognized key/],
+		[{ ...rectangle, kind: "line", filled: true }, /Unrecognized key/],
+	] as const) {
+		const result = await client.callTool({ name: "placeShapes", arguments: { shapes: [shape] } });
+		assert.equal(result.isError, true);
+		assert.match(JSON.stringify(result.content), message);
 		assert.strictEqual(store.getSnapshot(), before);
 	}
 });
