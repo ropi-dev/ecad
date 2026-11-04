@@ -81,7 +81,7 @@ test("replacements keep the selection, and failures report an error and drop the
 	session.preview([{ ...rectangle(1), x: 5 }, rectangle(2, 20)]);
 	assert.equal(session.shapes()[0].x, 5);
 	session.replace([{ ...rectangle(1), width: 0 }], "Broken");
-	assert.match(session.getState().error, /positive/);
+	assert.match(session.getState().error, /^width:.*>0/);
 	assert.equal(session.getState().draft, null);
 	assert.equal(store.getSnapshot().shapes[0].width, 10);
 	session.replace([{ ...rectangle(1), x: 30 }], "Move");

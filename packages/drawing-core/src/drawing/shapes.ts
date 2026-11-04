@@ -1,6 +1,16 @@
-import type { LineStyle } from "#/drawing/line-style.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
-import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
+import type {
+	BasicShape,
+	EditorShape,
+	EditorSymbol,
+	FillableShape,
+	PinShape,
+	PrimitiveShape,
+	SymbolShape,
+	SymbolText,
+	TextShape,
+} from "#/drawing/schema.ts";
+import { fillableShapeKinds, type ShapeKind } from "#/drawing/shape-kinds.ts";
 import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import {
@@ -11,66 +21,26 @@ import {
 } from "#/drawing/units.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
+export type {
+	BasicShape,
+	EditorShape,
+	EditorSymbol,
+	FillableShape,
+	LineShape,
+	PinShape,
+	PrimitiveShape,
+	SymbolChildOverride,
+	SymbolShape,
+	SymbolText,
+	TextShape,
+	WireShape,
+} from "#/drawing/schema.ts";
+export type { ShapeKind } from "#/drawing/shape-kinds.ts";
+
 export const A3 = { width: 420, height: 297 } as const;
 /** All connection markers have the same radius in millimetres. */
 export const PIN_RADIUS = CONNECTION_RADIUS;
 export const DEFAULT_LINE_WIDTH = DEFAULT_STROKE_WIDTH;
-export type ShapeKind =
-	| "rectangle"
-	| "circle"
-	| "triangle"
-	| "line"
-	| "wire"
-	| "no-connect"
-	| "pin"
-	| "text";
-interface ShapeGeometry extends Point {
-	locked?: boolean;
-	id: number;
-	width: number;
-	height: number;
-	lineWidth: number;
-	rotation: number;
-}
-
-export type BasicShape = ShapeGeometry & {
-	kind: Exclude<ShapeKind, "text" | "pin" | "wire">;
-	lineStyle?: LineStyle;
-	filled?: boolean;
-};
-
-export type PrimitiveShape =
-	| BasicShape
-	| (ShapeGeometry & { kind: "wire" })
-	| PinShape;
-
-export interface PinShape extends ShapeGeometry {
-	kind: "pin";
-	name: string;
-	number: string;
-	length?: number;
-	labelOffset?: number;
-	showLabels?: boolean;
-	showName?: boolean;
-	showNumber?: boolean;
-}
-
-export interface EditorSymbol extends ShapeGeometry {
-	kind: "symbol";
-	definitionId: string;
-	netSymbol?: boolean;
-	library?: SymbolLibraryReference;
-	kicad?: { libraryId: string; unit: number };
-	/** An instance stroke override. Definition strokes otherwise remain unchanged. */
-	strokeOverride?: number;
-	/** Children use coordinates relative to the symbol's center. */
-	children: SymbolShape[];
-	texts: SymbolText[];
-	childOverrides?: Record<string, SymbolChildOverride>;
-	textAlignments?: Partial<Record<SymbolText["attribute"], TextAlignment>>;
-	textPositions?: Partial<Record<SymbolText["attribute"], Point>>;
-	attributes: { name: string; reference: string; value: string };
-}
 
 export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
 	if (!symbol.netSymbol) return symbol;
@@ -121,26 +91,6 @@ export function normalizeNetSymbol<T extends EditorSymbol>(symbol: T): T {
 			: undefined,
 	};
 }
-
-export type SymbolChildOverride = Partial<
-	Point &
-		TextAlignment & {
-			width: number;
-			height: number;
-			rotation: number;
-			lineWidth: number;
-			lineStyle: LineStyle;
-			fontSize: number;
-			text: string;
-			name: string;
-			number: string;
-			showLabels: boolean;
-			showName: boolean;
-			showNumber: boolean;
-			length: number;
-			locked: boolean;
-		}
->;
 
 export interface SymbolChild {
 	key: string;
@@ -418,12 +368,6 @@ function resizeSymbolGeometry(
 	});
 }
 
-export interface SymbolText extends Point, TextAlignment {
-	locked?: boolean;
-	attribute: keyof EditorSymbol["attributes"];
-	fontSize: number;
-}
-
 export function symbolTextPosition(
 	symbol: EditorSymbol,
 	label: SymbolText,
@@ -621,26 +565,22 @@ export function symbolLabelPosition(
 	);
 }
 
-export interface TextShape extends ShapeGeometry, TextAlignment {
-	circuitNet?: { id: string; label: string; pinId?: string };
-	electrical?: "net" | "supply";
-	kind: "text";
-	text: string;
-	fontSize: number;
-	bold?: boolean;
-}
-
-export type SymbolShape = PrimitiveShape | TextShape;
-export type EditorShape = SymbolShape | EditorSymbol;
+const basicShapeKinds: ReadonlySet<EditorShape["kind"]> = new Set<ShapeKind>([
+	...fillableShapeKinds,
+	"line",
+]);
 
 export function isBasicShape(shape: EditorShape): shape is BasicShape {
-	return (
-		shape.kind === "rectangle" ||
-		shape.kind === "circle" ||
-		shape.kind === "triangle" ||
-		shape.kind === "no-connect" ||
-		shape.kind === "line"
-	);
+	return basicShapeKinds.has(shape.kind);
+}
+
+const fillableKinds: ReadonlySet<EditorShape["kind"]> = new Set(
+	fillableShapeKinds,
+);
+
+/** Shapes that accept `filled`. Lines and wires never fill. */
+export function isFillableShape(shape: EditorShape): shape is FillableShape {
+	return fillableKinds.has(shape.kind);
 }
 
 export function symbolShapes(symbol: EditorSymbol): SymbolShape[] {

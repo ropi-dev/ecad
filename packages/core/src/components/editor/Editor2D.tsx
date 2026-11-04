@@ -38,6 +38,7 @@ import {
 	jumpHistoryEffect,
 	redoEffect,
 	removeShapesEffect,
+	replaceAndPlaceShapesEffect,
 	rotateShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
@@ -71,6 +72,7 @@ import { useDrawingClipboard } from "#/components/editor/useDrawingClipboard.ts"
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
+import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import {
@@ -153,6 +155,9 @@ const cameraStates = new WeakMap<
 	object,
 	{ camera?: Viewer2DSnapshot["camera"] }
 >();
+
+/** Drawing stores whose legacy diagonal wires were already redrawn. */
+const reroutedStores = new WeakSet<object>();
 
 export function Editor2D(props: Editor2DProps = {}) {
 	const project = useProject();
@@ -287,8 +292,16 @@ function EditorCanvas({
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const [ready, setReady] = useState(false);
 	const [viewerError, setViewerError] = useState("");
+	// Shown while the drawing is at the redraw's history entry.
+	const [rerouteNotice, setRerouteNotice] = useState<{
+		text: string;
+		historyId: number;
+	} | null>(null);
 	const issues = editorIssues([
 		viewerError,
+		rerouteNotice?.historyId === drawing.history.currentId
+			? rerouteNotice.text
+			: "",
 		...(symbolLibrary.loading ? [] : resolved.errors),
 		project?.error,
 	]);
@@ -600,6 +613,32 @@ function EditorCanvas({
 		finishWire();
 	});
 	useEffect(() => session.connect(store, cancelGestures), [session, store]);
+
+	useEffect(() => {
+		if (
+			isSymbol ||
+			!symbolLibrary.ready ||
+			resolved.errors.length ||
+			reroutedStores.has(store)
+		)
+			return;
+		reroutedStores.add(store);
+		const reroute = rerouteLegacyWires(resolved.shapes);
+		if (
+			reroute &&
+			session.execute(
+				replaceAndPlaceShapesEffect(
+					reroute.replacements,
+					reroute.additions,
+					"Redraw diagonal wires",
+				),
+			)
+		)
+			setRerouteNotice({
+				text: reroute.notice,
+				historyId: store.getSnapshot().history.currentId,
+			});
+	});
 
 	const renderTool = ({ kind, label, icon: Icon }: (typeof tools)[number]) => (
 		<TooltipButton

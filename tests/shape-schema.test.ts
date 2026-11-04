@@ -1,0 +1,1015 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { Effect, Either } from "effect";
+import {
+	parseSavedSymbolLibrary,
+	parseSymbolFile,
+	type SymbolFile,
+} from "#/components/editor/symbolFormat.ts";
+import {
+	createSymbolFromSelectionEffect,
+	InvalidDrawingCommand,
+	placeRectangleEffect,
+	placeShapesEffect,
+	replaceAndPlaceShapesEffect,
+	replaceShapesEffect,
+	type ShapeInput,
+} from "#/commands/drawing-commands.ts";
+import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import {
+	parseSelection,
+	selectionPasteError,
+	serializeSelection,
+} from "#/drawing/clipboard.ts";
+import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
+import {
+	drawingShapeSchema,
+	editorShapeSchema,
+	fittingChildOverrides,
+	legacyDrawingShapeSchema,
+	savedDrawingShapesSchema,
+	symbolChildOverridesSchema,
+} from "#/drawing/schema.ts";
+import { electricalNets } from "#/drawing/named-nets.ts";
+import {
+	type EditorShape,
+	type LineShape,
+	type PinShape,
+	symbolShapes,
+	type WireShape,
+} from "#/drawing/shapes.ts";
+import { libraryDefinitions } from "#/drawing/symbol-file.ts";
+import {
+	persistDrawingShapes,
+	resolveDrawingSymbols,
+} from "#/drawing/symbol-persistence.ts";
+import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
+import { serializeProjectManifest, validateProjectDocument } from "#/projects/format.ts";
+import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
+import { parseSymbolConfig, serializeSymbolConfig, validateSymbolLibraries, type ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
+
+const box = { x: 0, y: 0, width: 4, height: 4, rotation: 0, lineWidth: 0.2 };
+const text = (extra: object) => ({
+	...box,
+	kind: "text",
+	text: "N1",
+	fontSize: 1.27,
+	...extra,
+});
+const symbol = (extra: object) => ({
+	...box,
+	kind: "symbol",
+	definitionId: "custom",
+	children: [
+		{ ...box, id: 1, kind: "circle" },
+		{ ...box, id: 2, kind: "wire", rotation: Math.PI / 4 },
+		{ ...box, id: 3, kind: "pin", name: "A", number: "1" },
+	],
+	texts: [],
+	attributes: { name: "Custom", reference: "U1", value: "" },
+	...extra,
+});
+
+function place(shape: unknown) {
+	const store = createDrawingStore();
+	const result = Effect.runSync(
+		Effect.either(
+			placeShapesEffect([shape as ShapeInput], "Place").pipe(
+				Effect.provideService(DrawingStore, store),
+			),
+		),
+	);
+	if (Either.isLeft(result))
+		assert.ok(result.left instanceof InvalidDrawingCommand);
+	return { accepted: Either.isRight(result), store };
+}
+
+/** [case, accepted]. Each shape must get the same verdict from both paths. */
+const cases: [string, object, boolean][] = [
+	["round circle", { ...box, kind: "circle" }, true],
+	["oval circle", { ...box, kind: "circle", height: 2 }, false],
+	["horizontal wire", { ...box, kind: "wire" }, true],
+	["collapsed wire", { ...box, kind: "wire", width: 0 }, true],
+	["diagonal wire", { ...box, kind: "wire", rotation: Math.PI / 4 }, false],
+	["filled wire", { ...box, kind: "wire", filled: false }, false],
+	["dashed wire", { ...box, kind: "wire", lineStyle: "dashed" }, false],
+	["dashed line", { ...box, kind: "line", lineStyle: "dashed" }, true],
+	["filled line", { ...box, kind: "line", filled: true }, false],
+	["zero-length line", { ...box, kind: "line", width: 0 }, false],
+	["zero-width rectangle", { ...box, kind: "rectangle", width: 0 }, false],
+	["zero-stroke rectangle", { ...box, kind: "rectangle", lineWidth: 0 }, false],
+	["filled no-connect", { ...box, kind: "no-connect", filled: true }, true],
+	["bold text", text({ bold: true }), true],
+	["non-boolean bold", text({ bold: "yes" }), false],
+	[
+		"circuit net",
+		text({ electrical: "net", circuitNet: { id: "n1", label: "N1" } }),
+		true,
+	],
+	["empty circuit net ID", text({ circuitNet: { id: "", label: "N1" } }), false],
+	[
+		"circuit net without a label",
+		text({ circuitNet: { id: "n1", pinId: "p1" } }),
+		false,
+	],
+	[
+		"unknown circuit net field",
+		text({ circuitNet: { id: "n1", label: "N1", net: 1 } }),
+		false,
+	],
+	["KiCad source", symbol({ kicad: { libraryId: "Device:R", unit: 1 } }), true],
+	[
+		"KiCad source without a library",
+		symbol({ kicad: { libraryId: "", unit: 1 } }),
+		false,
+	],
+	[
+		"fractional KiCad unit",
+		symbol({ kicad: { libraryId: "Device:R", unit: 1.5 } }),
+		false,
+	],
+	["negative KiCad unit", symbol({ kicad: { libraryId: "R", unit: -1 } }), false],
+	["diagonal symbol wire", symbol({}), true],
+	[
+		"duplicate child IDs",
+		symbol({ children: [symbol({}).children[0], symbol({}).children[0]] }),
+		false,
+	],
+	[
+		"electrical child label",
+		symbol({ children: [{ ...text({ electrical: "net" }), id: 1 }] }),
+		false,
+	],
+	[
+		"thin child stroke override",
+		symbol({ childOverrides: { "shape:1": { lineWidth: 0.001 } } }),
+		true,
+	],
+	[
+		"zero child stroke override",
+		symbol({ childOverrides: { "shape:1": { lineWidth: 0 } } }),
+		false,
+	],
+	[
+		"zero child width override",
+		symbol({ childOverrides: { "shape:1": { width: 0 } } }),
+		false,
+	],
+	[
+		"zero child wire length override",
+		symbol({ childOverrides: { "shape:2": { width: 0 } } }),
+		false,
+	],
+	[
+		"override that makes a circle oval",
+		symbol({ childOverrides: { "shape:1": { width: 2 } } }),
+		false,
+	],
+	[
+		"override field the child does not have",
+		symbol({ childOverrides: { "shape:1": { fontSize: 2 } } }),
+		false,
+	],
+	[
+		"override that resizes a circle",
+		symbol({ childOverrides: { "shape:1": { width: 2, height: 2 } } }),
+		true,
+	],
+];
+
+for (const [name, shape, accepted] of cases) {
+	test(`the drawing schema and commands agree on a ${name}`, () => {
+		const saved = drawingShapeSchema.safeParse({ ...shape, id: 1 }).success;
+		assert.equal(saved, accepted, "drawing schema");
+		assert.equal(
+			editorShapeSchema.safeParse({ ...shape, id: 1 }).success,
+			accepted,
+			"editor schema",
+		);
+		assert.equal(place(shape).accepted, accepted, "place command");
+	});
+}
+
+test("wires and lines cannot carry fields they never draw", () => {
+	const wire: WireShape = { ...box, id: 1, kind: "wire" };
+	const line: LineShape = { ...box, id: 2, kind: "line", lineStyle: "dashed" };
+	// @ts-expect-error Wires have no fill.
+	const filledWire: WireShape = { ...wire, filled: true };
+	// @ts-expect-error Wires have no line style.
+	const dashedWire: WireShape = { ...wire, lineStyle: "dashed" };
+	// @ts-expect-error Lines have no fill.
+	const filledLine: LineShape = { ...line, filled: true };
+	for (const shape of [filledWire, dashedWire, filledLine])
+		assert.equal(drawingShapeSchema.safeParse(shape).success, false);
+	assert.equal(drawingShapeSchema.safeParse(line).success, true);
+});
+
+test("command errors name the failing field and keep rule messages readable", () => {
+	const store = createDrawingStore();
+	const run = (shape: unknown) =>
+		Effect.runSync(
+			Effect.either(
+				placeShapesEffect([shape as ShapeInput], "Place").pipe(
+					Effect.provideService(DrawingStore, store),
+				),
+			),
+		);
+	const messages = [
+		{ ...box, kind: "wire", rotation: 1 },
+		{ ...box, kind: "circle", height: 1 },
+		{ ...box, kind: "hexagon" },
+		symbol({ childOverrides: { "shape:1": { lineWidth: 0 } } }),
+		text({ bold: "yes" }),
+	].map((shape) => {
+		const result = run(shape);
+		return Either.isLeft(result) ? result.left.message : "";
+	});
+	assert.deepEqual(messages.slice(0, 3), [
+		"Wire segments must be horizontal or vertical.",
+		"A circle must have equal width and height.",
+		"kind: A supported shape kind is required.",
+	]);
+	assert.match(messages[3], /^childOverrides\.shape:1\.lineWidth: /);
+	assert.match(messages[4], /^bold: /);
+});
+
+test("commands validate the saved form, where undefined fields disappear", () => {
+	const store = createDrawingStore();
+	const run = <A, E>(program: Effect.Effect<A, E, DrawingStore>) =>
+		Effect.runSync(program.pipe(Effect.provideService(DrawingStore, store)));
+	run(
+		placeShapesEffect(
+			[
+				{ ...box, kind: "rectangle" },
+				{
+					...text({}),
+					electrical: undefined,
+					circuitNet: undefined,
+				} as ShapeInput,
+			],
+			"Place",
+		),
+	);
+	const wire = { ...box, id: 3, kind: "wire", lineStyle: undefined };
+	run(placeShapesEffect([wire as ShapeInput], "Wire"));
+	const created = run(createSymbolFromSelectionEffect([1, 2]));
+	const shapes = store.getSnapshot().shapes;
+	assert.equal(shapes.find(({ id }) => id === created.ids[0])?.kind, "symbol");
+	const placed = shapes.find((shape) => shape.kind === "wire");
+	const replaced = Effect.runSync(
+		Effect.either(
+			replaceShapesEffect(
+				[{ ...placed, lineStyle: "dashed" } as EditorShape],
+				"Style wire",
+			).pipe(Effect.provideService(DrawingStore, store)),
+		),
+	);
+	assert.ok(Either.isLeft(replaced));
+	assert.match(replaced.left.message, /Unrecognized key: "lineStyle"/);
+});
+
+test("saved shapes may omit defaulted fields, but shapes in memory may not", () => {
+	const pin = { ...box, id: 1, kind: "pin" as const };
+	assert.deepEqual(drawingShapeSchema.parse(pin), {
+		...pin,
+		name: "",
+		number: "",
+	} satisfies PinShape);
+	assert.equal(editorShapeSchema.safeParse(pin).success, false);
+	assert.equal(place(pin).accepted, false);
+	const reference = symbol({
+		library: { scope: "user", id: "builtin" },
+		definitionId: "resistor",
+	}) as Record<string, unknown>;
+	delete reference.children;
+	delete reference.texts;
+	const parsed = drawingShapeSchema.parse({ ...reference, id: 1 });
+	assert.equal(parsed.kind === "symbol" && parsed.children.length, 0);
+	assert.equal(place(reference).accepted, false);
+	assert.equal(place({ ...reference, children: [], texts: [] }).accepted, true);
+});
+
+test("symbol files and drawings share the child-override limits", () => {
+	const nested = (override: object) =>
+		JSON.stringify({
+			format: "ecad-symbol",
+			version: 1,
+			units: "mm",
+			id: "override-limits",
+			name: "Override limits",
+			description: "",
+			prefix: "U",
+			value: "",
+			shapes: [
+				{
+					kind: "symbol",
+					library: { scope: "user", id: "builtin" },
+					definitionId: "resistor",
+					x: 0,
+					y: 0,
+					childOverrides: { "shape:2": override },
+				},
+			],
+		});
+	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const drawing = (override: object) => ({
+		...createSymbol(1, resistor, { x: 0, y: 0 }),
+		childOverrides: { "shape:2": override },
+	});
+	for (const [override, accepted] of [
+		[{ x: 1000, y: -1000 }, true],
+		// Drawings never bounded positions or sizes, so neither do symbol files.
+		[{ x: 1000.5 }, true],
+		[{ y: -25000 }, true],
+		[{ width: 1000, height: 1000 }, true],
+		[{ width: 1270 }, true],
+		[{ height: 0.005 }, true],
+		[{ width: 0 }, false],
+		[{ lineWidth: 0 }, false],
+		[{ lineWidth: 1001 }, true],
+		[{ fontSize: 0 }, false],
+		[{ length: 1000 }, true],
+		[{ length: 1001 }, false],
+		[{ rotation: 7 }, true],
+		[{ lineStyle: "wavy" }, false],
+		[{ bold: true }, false],
+	] as const) {
+		const label = JSON.stringify(override);
+		assert.equal(
+			symbolChildOverridesSchema.safeParse({ "shape:2": override }).success,
+			accepted,
+			`override schema ${label}`,
+		);
+		const zero = Object.values(override).some((value) => value === 0);
+		assert.equal(
+			(() => {
+				try {
+					parseSymbolFile(nested(override));
+					return true;
+				} catch {
+					return false;
+				}
+			})(),
+			accepted || zero,
+			`symbol file ${label}`,
+		);
+		// The rectangle body also has no pin length or font size.
+		const fits = !("length" in override) && !("fontSize" in override);
+		assert.equal(
+			drawingShapeSchema.safeParse(drawing(override)).success,
+			accepted && fits,
+			`drawing ${label}`,
+		);
+	}
+	const legacyFile = nested({ width: 0, lineWidth: 0, fontSize: 0, x: 1, height: 2 });
+	const upgraded = parseSymbolFile(legacyFile).shapes[0];
+	assert.deepEqual(
+		upgraded.kind === "symbol" && upgraded.childOverrides,
+		{ "shape:2": { x: 1, height: 2 } },
+	);
+	const library = parseSavedSymbolLibrary(`[${legacyFile}]`);
+	assert.deepEqual(library[0].shapes[0], upgraded);
+	assert.deepEqual(parseSavedSymbolLibrary(JSON.stringify(library)), library);
+	assert.throws(
+		() => parseSymbolFile(nested({ lineStyle: "wavy" })),
+		/childOverrides: shape:2\.lineStyle/,
+	);
+});
+
+test("symbol-file wires drop a line style that wires cannot draw", () => {
+	const file = parseSymbolFile(
+		JSON.stringify({
+			format: "ecad-symbol",
+			version: 1,
+			units: "mm",
+			id: "styled-wires",
+			name: "Styled wires",
+			description: "",
+			prefix: "U",
+			value: "",
+			shapes: [
+				{ kind: "wire", x1: 0, y1: 0, x2: 3, y2: 4, lineStyle: "dashed" },
+				{ kind: "line", x1: 0, y1: 0, x2: 0, y2: 4, lineStyle: "dashed" },
+			],
+		}),
+	);
+	const [definition] = libraryDefinitions([file]);
+	assert.equal("lineStyle" in definition.children[0], false);
+	assert.equal(
+		definition.children[1].kind === "line" && definition.children[1].lineStyle,
+		"dashed",
+	);
+	assert.equal(
+		place(createSymbol(1, definition, { x: 0, y: 0 })).accepted,
+		true,
+	);
+});
+
+const kicad = (body: string) =>
+	`(kicad_sch (version 20250114) (paper "A4") (lib_symbols) ${body})`;
+const kicadWire = (a: string, b: string) => `(wire (pts (xy ${a}) (xy ${b})))`;
+const wireEnds = (shapes: readonly EditorShape[]) =>
+	shapes.flatMap((wire) =>
+		wire.kind === "wire"
+			? [
+					[-1, 1].map((sign) => ({
+						x: wire.x + (sign * Math.cos(wire.rotation) * wire.width) / 2,
+						y: wire.y + (sign * Math.sin(wire.rotation) * wire.width) / 2,
+					})),
+				]
+			: [],
+	);
+const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+	Math.hypot(a.x - b.x, a.y - b.y) < 1e-9;
+const kicadLabel = (name: string, at: string) =>
+	`(label "${name}" (at ${at} 0) (effects (font (size 1.27 1.27))))`;
+/**
+ * Label names grouped by net. The groups must stay the same after any later
+ * command normalizes the wires: an unrelated edit, or an edit of each wire,
+ * which makes that wire the one normalization keeps.
+ */
+function importedNets(...parts: string[]) {
+	const result = importKiCadSchematic(kicad(parts.join(" ")));
+	const groups = (shapes: readonly EditorShape[]) =>
+		electricalNets(shapes)
+			.flatMap((net) => (net.names.length ? [net.names.join("+")] : []))
+			.sort();
+	const imported = groups(result.shapes);
+	for (const command of [
+		placeRectangleEffect({ ...box, x: 500, y: 500 }),
+		...result.shapes.flatMap((shape) =>
+			shape.kind === "wire" ? [replaceShapesEffect([shape], "Edit wire")] : [],
+		),
+	]) {
+		const store = createDrawingStore(result.shapes);
+		Effect.runSync(command.pipe(Effect.provideService(DrawingStore, store)));
+		assert.deepEqual(
+			groups(store.getSnapshot().shapes),
+			imported,
+			"a later command keeps the nets",
+		);
+	}
+	return { ...result, nets: imported };
+}
+
+test("KiCad diagonal wires import as connected horizontal and vertical wires", () => {
+	const result = importKiCadSchematic(kicad(kicadWire("10 20", "16 28")));
+	const wires = result.shapes.filter((shape) => shape.kind === "wire");
+	assert.equal(wires.length, 2);
+	const ends = wireEnds(wires);
+	assert.ok(near(ends[0][1], ends[1][0]), "the segments share a corner");
+	assert.ok(Math.abs(ends[0][0].x - ends[1][1].x + 6) < 1e-9);
+	assert.ok(Math.abs(Math.abs(ends[0][0].y - ends[1][1].y) - 8) < 1e-9);
+	assert.deepEqual(
+		wires.map((wire) => Math.round(Math.abs(Math.sin(wire.rotation)))),
+		[0, 1],
+	);
+	assert.ok(result.report.warnings.some((warning) => warning.includes("Diagonal")));
+	assert.equal(
+		validateProjectDocument({ shapes: result.shapes, symbols: [] }).shapes.length,
+		2,
+	);
+});
+
+test("KiCad diagonal wires turn the corner that joins no other net", () => {
+	for (const blocker of [
+		[kicadWire("16 20", "20 20"), kicadLabel("C", "20 20")],
+		[kicadLabel("C", "16 24")],
+		// Within the tolerance on each axis, which wire normalization would join.
+		[kicadWire("16.00009 19.99991", "20 19.99991"), kicadLabel("C", "20 19.99991")],
+	]) {
+		const { shapes, nets } = importedNets(
+			kicadWire("10 20", "16 28"),
+			kicadLabel("A", "10 20"),
+			kicadLabel("B", "16 28"),
+			...blocker,
+		);
+		assert.equal(shapes.filter((shape) => shape.kind === "line").length, 0);
+		assert.deepEqual(nets, ["A+B", "C"], blocker.join(" "));
+	}
+});
+
+test("KiCad diagonal wires keep every connection along their length", () => {
+	const { shapes, nets } = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("13 24", "20 24"),
+		"(junction (at 13 24))",
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "20 24"),
+	);
+	assert.equal(shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(nets, ["A+B+C"]);
+});
+
+test("KiCad routes survive the wire normalization that the next command runs", () => {
+	// A near-vertical diagonal needs a leg shorter than 0.001 mm at either
+	// corner. Normalization may delete such a leg, or a stretched one could
+	// reach the neighbor, so the diagonal stays a graphic line.
+	for (const [end, neighbor, nets] of [
+		["10.0002 28", "9.9997 20", ["A", "B", "C"]],
+		["10.00009 28", "9.99991 20", ["A+C", "B"]],
+	] as const) {
+		const short = importedNets(
+			kicadWire("10 20", end),
+			kicadWire("9 20", neighbor),
+			kicadLabel("A", "10 20"),
+			kicadLabel("B", end),
+			kicadLabel("C", "9 20"),
+		);
+		assert.equal(short.shapes.filter((shape) => shape.kind === "line").length, 1);
+		assert.deepEqual(short.nets, nets);
+	}
+	// Normalization moves this cluster of near-parallel wires onto y = 20,
+	// through both corners, so the diagonal stays a graphic line.
+	const cluster = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("0 20", "5 20"),
+		kicadWire("0 20.00009", "5 20.00009"),
+		kicadWire("0 20.00018", "5 20.00018"),
+		kicadWire("0 20.00027", "18 20.00027"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "18 20.00027"),
+	);
+	assert.deepEqual(cluster.nets, ["B", "C"]);
+	assert.equal(cluster.shapes.filter((shape) => shape.kind === "line").length, 1);
+});
+
+test("KiCad routes find nets joined by label name anywhere in the drawing", () => {
+	const result = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("16 20", "100 20"),
+		kicadWire("10 28", "0 28"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("A", "100 20"),
+		kicadLabel("A", "0 28"),
+	);
+	assert.equal(result.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(result.nets, ["A+B"]);
+});
+
+test("KiCad routes never join a wire that normalization could move", () => {
+	// Both corners need a 0.00009 mm leg, which would bridge the two wires
+	// into one cluster and move the right one, so the diagonal stays a line.
+	const bridge = importedNets(
+		kicadWire("10 20", "16 20.00009"),
+		kicadWire("0 20", "10 20"),
+		kicadWire("16 20.00009", "100 20.00009"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 20.00009"),
+		kicadLabel("C", "100 20.00018"),
+	);
+	assert.equal(bridge.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.deepEqual(bridge.nets, ["A", "B+C"]);
+	// Running along the left wire 0.00009 mm off would let an edit of the new
+	// wire move the left wire away from C. The other corner is safe.
+	const offset = importedNets(
+		kicadWire("10 20.00009", "16 28"),
+		kicadWire("0 20", "10 20"),
+		kicadLabel("A", "10 20.00009"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "9 19.99991"),
+	);
+	assert.equal(offset.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(offset.nets, ["A+B+C"]);
+});
+
+test("KiCad routes never let normalization fill a gap next to them", () => {
+	// The horizontal corner would leave a 0.00009 mm gap to the wire on the
+	// left. Filling it reaches C, so the vertical corner is taken instead.
+	const leg = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("0 20", "9.99991 20"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "9.999955 19.99991"),
+	);
+	assert.equal(leg.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(leg.nets, ["A+B", "C"]);
+	// These two wires are in line with a 0.00008 mm gap. Filling it would
+	// reach the start of either route, so the diagonal stays a line.
+	const gap = importedNets(
+		kicadWire("10 20.000095", "16 28"),
+		kicadWire("0 20", "9.99996 20"),
+		kicadWire("10.00004 20", "20 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "0 20"),
+		kicadLabel("D", "20 20"),
+	);
+	assert.equal(gap.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.deepEqual(gap.nets, ["B", "C+D"]);
+});
+
+test("KiCad routes stay clear of slightly tilted wires that normalization straightens", () => {
+	// The long wire rises 0.000000008 mm, within the wire rule. Merging with or
+	// cutting it would rebuild it on its center line and move it away from C.
+	const tilted = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("0 20", "20 20.000000008"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "1 19.999900002"),
+	);
+	assert.equal(tilted.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.deepEqual(tilted.nets, ["A+C", "B"]);
+});
+
+test("KiCad diagonal wires go through the same per-item import checks", () => {
+	const result = importKiCadSchematic(
+		kicad(
+			`${kicadWire("10 20", "16 28")} (wire (pts (xy 0 0) (xy 1 1) (xy 2 0)))`,
+		),
+	);
+	assert.equal(result.shapes.filter((shape) => shape.kind === "wire").length, 2);
+	assert.equal(result.report.skipped.length, 1);
+	assert.match(result.report.skipped[0].reason, /two endpoints/);
+	assert.ok(result.report.warnings.some((warning) => warning.includes("Diagonal")));
+	// A wire with a broken coordinate is skipped, and no diagonal warning claims it.
+	const broken = importKiCadSchematic(
+		kicad(`${kicadWire("bad 20", "16 28")} ${kicadWire("0 0", "5 0")}`),
+	);
+	assert.equal(broken.report.skipped.length, 1);
+	assert.equal(
+		broken.report.warnings.some((warning) => warning.includes("Diagonal")),
+		false,
+	);
+});
+
+test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
+	const result = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("16 20", "20 20"),
+		kicadWire("10 28", "4 28"),
+		kicadLabel("C", "20 20"),
+		kicadLabel("D", "4 28"),
+	);
+	assert.deepEqual(
+		result.shapes.flatMap((shape) => (shape.kind === "text" ? [] : [shape.kind])),
+		["wire", "wire", "line"],
+	);
+	assert.deepEqual(result.nets, ["C", "D"]);
+	assert.ok(
+		result.report.warnings.some((warning) => warning.includes("graphic lines")),
+	);
+});
+
+test("an undefined override is committed as saved, so it cannot hide a child field", () => {
+	const { accepted, store } = place(
+		symbol({ childOverrides: { "shape:1": { width: undefined, x: 1 } } }),
+	);
+	assert.equal(accepted, true);
+	const [stored] = store.getSnapshot().shapes;
+	assert.equal(editorShapeSchema.safeParse(stored).success, true);
+	assert.deepEqual(stored.kind === "symbol" && stored.childOverrides, {
+		"shape:1": { x: 1 },
+	});
+	assert.equal(stored.kind === "symbol" && symbolShapes(stored)[0].width, 4);
+	const dashed = place(
+		symbol({
+			children: [{ ...box, id: 1, kind: "line", lineStyle: "dashed" }],
+			childOverrides: { "shape:1": { lineStyle: undefined } },
+		}),
+	).store.getSnapshot().shapes[0];
+	assert.equal(dashed.kind === "symbol" && "lineStyle" in dashed.childOverrides!["shape:1"], false);
+	const [child] = dashed.kind === "symbol" ? symbolShapes(dashed) : [];
+	assert.equal(child.kind === "line" && child.lineStyle, "dashed");
+});
+
+test("pasting drawing data the schema rejects explains why", () => {
+	const selection = (shape: object) =>
+		JSON.stringify({ format: "ecad-selection", version: 1, shapes: [shape] });
+	assert.equal(
+		selectionPasteError(selection({ ...box, id: 1, kind: "wire", rotation: 1 })),
+		"Wire segments must be horizontal or vertical.",
+	);
+	assert.match(
+		selectionPasteError(selection({ ...box, id: 1, kind: "line", width: 0 })) ??
+			"",
+		/^width: Too small/,
+	);
+	assert.equal(selectionPasteError(selection({ ...box, id: 1, kind: "line" })), undefined);
+	assert.equal(selectionPasteError("plain text"), undefined);
+	assert.equal(selectionPasteError(JSON.stringify({ shapes: [] })), undefined);
+});
+
+test("an edited library symbol drops instance overrides that no longer fit", () => {
+	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const instance = {
+		...createSymbol(1, resistor, { x: 0, y: 0 }),
+		childOverrides: {
+			"shape:3": { lineStyle: "dashed" as const },
+			"shape:4": { name: "OVR" },
+		},
+	};
+	const [saved] = persistDrawingShapes([instance], [resistor]);
+	// Deleting the first lead renumbers the children: shape:3 becomes a pin.
+	const edited = {
+		...resistor,
+		children: resistor.children.slice(1).map((child, index) => ({
+			...child,
+			id: index + 1,
+		})),
+	};
+	const [resolved] = resolveDrawingSymbols(
+		[drawingShapeSchema.parse(saved)],
+		[edited],
+		new Map([[symbolReferenceKey(edited.library!, edited.id), edited]]),
+	).shapes;
+	assert.equal(resolved.kind, "symbol");
+	assert.deepEqual(resolved.kind === "symbol" && resolved.childOverrides, {
+		"shape:4": { name: "OVR" },
+	});
+	assert.equal(editorShapeSchema.safeParse(resolved).success, true);
+});
+
+test("override problems read clearly and are reported once", () => {
+	const issues = drawingShapeSchema.safeParse({
+		...symbol({ childOverrides: { "shape:1": { lineWidth: 0, x: 1143 } } }),
+		id: 1,
+	}).error?.issues;
+	assert.deepEqual(
+		issues?.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+		[
+			"childOverrides.shape:1.lineWidth: Sizes and strokes must be greater than zero.",
+		],
+	);
+});
+
+test("pasting the plain shapes form explains a rejected shape too", () => {
+	assert.equal(
+		selectionPasteError(
+			JSON.stringify({ shapes: [{ ...box, id: 1, kind: "circle", height: 2 }] }),
+		),
+		"A circle must have equal width and height.",
+	);
+});
+
+test("projects with diagonal wires saved before the wire rule still open", () => {
+	// KiCad import on earlier versions saved diagonal wires as they were.
+	const legacy = { ...box, id: 1, kind: "wire", width: 10, rotation: Math.PI / 4 };
+	assert.equal(drawingShapeSchema.safeParse(legacy).success, false);
+	assert.equal(legacyDrawingShapeSchema.safeParse(legacy).success, true);
+	assert.equal(
+		validateProjectDocument({ shapes: [legacy] as EditorShape[], symbols: [] })
+			.shapes.length,
+		1,
+	);
+	// New diagonal wires stay rejected everywhere shapes are created or edited.
+	assert.equal(place({ ...legacy, id: undefined }).accepted, false);
+	assert.equal(selectionPasteError(JSON.stringify({ shapes: [legacy] })), "Wire segments must be horizontal or vertical.");
+});
+
+test("the editor redraws legacy diagonal wires without changing their nets", () => {
+	const label = (id: number, name: string, x: number, y: number) =>
+		({ ...text({}), id, text: name, x, y, electrical: "net" }) as EditorShape;
+	const diagonal = (id: number, x: number, y: number, dx: number, dy: number) =>
+		({
+			...box,
+			id,
+			kind: "wire",
+			x: x + dx / 2,
+			y: y + dy / 2,
+			width: Math.hypot(dx, dy),
+			rotation: Math.atan2(dy, dx),
+			lineWidth: 0.3,
+		}) as EditorShape;
+	const shapes = [
+		diagonal(1, 0, 0, 6, 8),
+		label(2, "A", 0, 0),
+		label(3, "B", 6, 8),
+		// Both corners of this one touch other nets, so it becomes a line.
+		diagonal(4, 20, 0, 6, 8),
+		{ ...box, id: 5, kind: "wire", x: 28, y: 0, width: 4, rotation: 0 } as EditorShape,
+		{ ...box, id: 6, kind: "wire", x: 18, y: 8, width: 4, rotation: 0 } as EditorShape,
+		label(7, "C", 30, 0),
+		label(8, "D", 16, 8),
+	];
+	const nets = (list: readonly EditorShape[]) =>
+		electricalNets(list)
+			.flatMap((net) => (net.names.length ? [net.names.join("+")] : []))
+			.sort();
+	const reroute = rerouteLegacyWires(shapes);
+	assert.ok(reroute);
+	assert.equal(
+		reroute.notice,
+		"Redrew 1 diagonal wire from an older version as horizontal and vertical wires. 1 diagonal wire is now a graphic line, because redrawing it would change connections. Draw it again as wires to reconnect.",
+	);
+	const store = createDrawingStore(shapes);
+	Effect.runSync(
+		replaceAndPlaceShapesEffect(
+			reroute.replacements,
+			reroute.additions,
+			"Redraw diagonal wires",
+		).pipe(Effect.provideService(DrawingStore, store)),
+	);
+	const redrawn = store.getSnapshot().shapes;
+	assert.equal(redrawn.find(({ id }) => id === 4)?.kind, "line");
+	assert.ok(
+		redrawn.every(
+			(shape) =>
+				shape.kind !== "wire" ||
+				(Math.abs(Math.sin(2 * shape.rotation)) <= 1e-9 && shape.lineWidth > 0),
+		),
+	);
+	assert.equal(redrawn.find(({ id }) => id === 1)?.lineWidth, 0.3);
+	assert.deepEqual(nets(redrawn), ["A+B", "C", "D"]);
+	assert.equal(rerouteLegacyWires(redrawn), undefined);
+});
+
+test("fields that earlier versions saved without effect are dropped on load", () => {
+	// Earlier MCP and CLI versions accepted these; they never changed the drawing.
+	const [wire, styled] = savedDrawingShapesSchema.parse([
+		{ ...box, id: 1, kind: "wire", lineStyle: "dashed", filled: false },
+		symbol({
+			id: 2,
+			children: [{ ...box, id: 1, kind: "wire", lineStyle: "dotted" }],
+			childOverrides: { "shape:1": { width: 0, lineWidth: 0.3 } },
+		}),
+	]);
+	assert.deepEqual(Object.keys(wire).sort(), Object.keys({ ...box, id: 1, kind: "wire" }).sort());
+	assert.equal(editorShapeSchema.safeParse(wire).success, true);
+	assert.equal(editorShapeSchema.safeParse(styled).success, true);
+	assert.deepEqual(styled.kind === "symbol" && styled.childOverrides, {
+		"shape:1": { lineWidth: 0.3 },
+	});
+	assert.equal(
+		validateProjectDocument({
+			shapes: [{ ...box, id: 1, kind: "wire", lineStyle: "dashed" }] as never,
+			symbols: [],
+		}).shapes.length,
+		1,
+	);
+});
+
+test("symbol files drop nested overrides that do not fit, so the symbol still places", () => {
+	const file = parseSymbolFile(
+		JSON.stringify({
+			format: "ecad-symbol",
+			version: 1,
+			units: "mm",
+			id: "misfit-override",
+			name: "Misfit override",
+			description: "",
+			prefix: "U",
+			value: "",
+			shapes: [
+				{
+					kind: "symbol",
+					library: { scope: "user", id: "builtin" },
+					definitionId: "resistor",
+					x: 0,
+					y: 0,
+					// Child 1 of the resistor is a line, which has no font size.
+					childOverrides: { "shape:1": { fontSize: 2 }, "shape:2": { width: 6 } },
+				},
+			],
+		}),
+	);
+	const [definition] = libraryDefinitions([file], (library, id) =>
+		symbolDefinitions.find(
+			(candidate) =>
+				candidate.id === id && candidate.library?.id === library.id,
+		),
+	);
+	assert.equal(
+		definition.children.some((child) => "fontSize" in child && child.kind !== "text"),
+		false,
+	);
+	assert.ok(definition.children.some((child) => child.kind === "rectangle" && child.width === 6));
+	assert.equal(place(createSymbol(1, definition, { x: 0, y: 0 })).accepted, true);
+});
+
+test("redrawing a legacy wire sees pins that an override moved outside their symbol", () => {
+	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	// The override puts the resistor's first pin at (10, 0), the first corner tried.
+	const part = {
+		...createSymbol(9, resistor, { x: 50, y: 50 }),
+		childOverrides: { "shape:4": { x: -40, y: -50 } },
+	};
+	const label = (id: number, name: string, x: number, y: number) =>
+		({ ...text({}), id, text: name, x, y, electrical: "net" }) as EditorShape;
+	const shapes = [
+		{
+			...box,
+			id: 1,
+			kind: "wire",
+			x: 5,
+			y: 5,
+			width: Math.hypot(10, 10),
+			rotation: Math.PI / 4,
+		} as EditorShape,
+		label(2, "A", 0, 0),
+		label(3, "B", 10, 10),
+		part as EditorShape,
+	];
+	const reroute = rerouteLegacyWires(shapes);
+	assert.ok(reroute);
+	const store = createDrawingStore(shapes);
+	Effect.runSync(
+		replaceAndPlaceShapesEffect(
+			reroute.replacements,
+			reroute.additions,
+			"Redraw diagonal wires",
+		).pipe(Effect.provideService(DrawingStore, store)),
+	);
+	const routed = electricalNets(store.getSnapshot().shapes).find((net) =>
+		net.names.includes("A"),
+	);
+	assert.deepEqual(routed?.names, ["A", "B"]);
+	assert.equal(routed?.pins.length, 0);
+});
+
+test("a copy may hold a legacy diagonal wire, but pasting it stays strict", () => {
+	const legacy = {
+		...box,
+		id: 1,
+		kind: "wire",
+		width: 10,
+		rotation: Math.PI / 4,
+	} as EditorShape;
+	const text = serializeSelection([legacy]);
+	assert.equal(parseSelection(text, { legacy: true })?.length, 1);
+	assert.equal(parseSelection(text), null);
+	assert.equal(selectionPasteError(text), "Wire segments must be horizontal or vertical.");
+});
+
+test("saved inline symbols drop override fields their children never had", () => {
+	const [saved] = savedDrawingShapesSchema.parse([
+		symbol({
+			id: 1,
+			children: [{ ...box, id: 1, kind: "wire" }],
+			childOverrides: { "shape:1": { lineStyle: "dashed", x: 2 } },
+		}),
+	]);
+	assert.deepEqual(saved.kind === "symbol" && saved.childOverrides, {
+		"shape:1": { x: 2 },
+	});
+	assert.equal(editorShapeSchema.safeParse(saved).success, true);
+});
+
+test("a stale override keeps the fields its new child still has", () => {
+	const children = [{ ...box, id: 1, kind: "rectangle" as const }];
+	assert.deepEqual(
+		fittingChildOverrides(children, {
+			"shape:1": { width: 2, height: 2, fontSize: 3, text: "Old" },
+		}),
+		{ "shape:1": { width: 2, height: 2 } },
+	);
+});
+
+
+test("embedded libraries in saved configs and projects upgrade legacy overrides before validation", async () => {
+	const file: SymbolFile = {
+		format: "ecad-symbol", version: 1, units: "mm", id: "legacy-nested",
+		name: "Legacy nested", description: "", prefix: "U", value: "",
+		shapes: [{
+			kind: "symbol", library: { scope: "user", id: "builtin" },
+			definitionId: "resistor", x: 0, y: 0,
+			childOverrides: { "shape:2": { width: 0, lineWidth: 0, x: 2, height: 7 } },
+		}],
+	};
+	const library: ConfiguredSymbolLibrary = {
+		id: "project-symbols", name: "Project symbols", enabled: true,
+		source: { kind: "embedded", symbols: [file] },
+	};
+	const upgradedFile = { ...file, shapes: [{ ...file.shapes[0], childOverrides: { "shape:2": { x: 2, height: 7 } } }] };
+	const expected = [{ ...library, source: { kind: "embedded", symbols: [upgradedFile] } }];
+	assert.deepEqual(validateSymbolLibraries([library]), expected);
+	const config = parseSymbolConfig(JSON.stringify({ version: 1, symbolLibraries: [library] }));
+	assert.deepEqual(config.symbolLibraries, expected);
+	assert.deepEqual(parseSymbolConfig(serializeSymbolConfig(config)), config);
+	assert.deepEqual(validateProjectDocument({ shapes: [], symbols: [file], symbolLibraries: [library] }).symbolLibraries, expected);
+	for (const layout of ["files", "revisions"] as const) {
+		const encoder = new TextEncoder();
+		const entries = new Map<string, Uint8Array>([
+			[".ecadprj", encoder.encode(serializeProjectManifest({
+				format: "ecad-project", version: 1, name: "Legacy",
+				drawing: "main.ecaddraw", symbols: ["nested.ecadsym"], assets: [],
+			}))],
+			["main.ecaddraw", encoder.encode(JSON.stringify({ shapes: [], symbolLibraries: [library] }))],
+			["nested.ecadsym", encoder.encode(JSON.stringify(file))],
+		]);
+		const directory: ProjectDirectory = {
+			name: "Legacy",
+			async read(path) {
+				const value = entries.get(path);
+				if (!value) throw new DOMException("Missing", "NotFoundError");
+				return value;
+			},
+			async write(path, bytes) { entries.set(path, bytes); },
+			async remove(path) {
+				for (const key of entries.keys())
+					if (key === path || key.startsWith(`${path}/`)) entries.delete(key);
+			},
+		};
+		const repository = new ProjectRepository(directory, { layout });
+		const loaded = await repository.load();
+		assert.deepEqual(loaded.symbolLibraries, expected);
+		assert.deepEqual(loaded.symbols, [upgradedFile]);
+		await repository.save(loaded);
+		assert.deepEqual((await new ProjectRepository(directory, { layout }).load()).symbolLibraries, expected);
+	}
+});

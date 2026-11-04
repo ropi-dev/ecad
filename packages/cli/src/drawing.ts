@@ -17,7 +17,7 @@ import {
 	DrawingStore,
 	restoreDrawingStore,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
-import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import { savedDrawingShapesSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	type DrawingOperation,
@@ -34,7 +34,7 @@ export class LocalDrawingError extends Data.TaggedError("LocalDrawingError")<{
 }> {}
 
 const fileSchema = z
-	.object({ shapes: z.array(drawingShapeSchema) })
+	.object({ shapes: savedDrawingShapesSchema })
 	.passthrough()
 	.refine(
 		(file) =>

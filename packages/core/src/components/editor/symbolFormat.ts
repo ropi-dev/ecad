@@ -3,9 +3,19 @@ import * as Effect from "effect/Effect";
 import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
 import { lineStyles } from "#/drawing/line-style.ts";
+import {
+	type SymbolChildOverride,
+	symbolChildOverridesSchema,
+	upgradeChildOverrides,
+} from "#/drawing/schema.ts";
 import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
+import { symbolLibraryScopes } from "#/drawing/symbol-reference.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
+import {
+	horizontalAlignments,
+	verticalAlignments,
+} from "#/drawing/text-alignment.ts";
 import { readFile } from "#/formats/import-effects.ts";
 
 export const SYMBOL_FILE_LIMIT = 1024 * 1024;
@@ -19,36 +29,30 @@ const lineWidth = Schema.optional(
 );
 const lineStyle = Schema.optional(Schema.Literal(...lineStyles));
 const textAlignmentFields = {
-	horizontalAlign: Schema.optional(Schema.Literal("left", "center", "right")),
-	verticalAlign: Schema.optional(Schema.Literal("top", "middle", "bottom")),
+	horizontalAlign: Schema.optional(Schema.Literal(...horizontalAlignments)),
+	verticalAlign: Schema.optional(Schema.Literal(...verticalAlignments)),
 };
 const textAlignment = Schema.Struct(textAlignmentFields);
 const locked = Schema.optional(Schema.Boolean);
+/** Drawings and symbol files share one child-override schema and its limits. */
 const childOverrides = Schema.optional(
-	Schema.Record({
-		key: Schema.String.pipe(
-			Schema.pattern(/^(shape:[1-9]\d*|attribute:(name|reference|value))$/),
-		),
-		value: Schema.Struct({
-			x: Schema.optional(coordinate),
-			y: Schema.optional(coordinate),
-			width: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
-			height: Schema.optional(dimension),
-			rotation: Schema.optional(Schema.Finite),
-			lineWidth: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
-			fontSize: Schema.optional(dimension),
-			text: Schema.optional(Schema.String),
-			name: Schema.optional(Schema.String),
-			number: Schema.optional(Schema.String),
-			showLabels: Schema.optional(Schema.Boolean),
-			showName: Schema.optional(Schema.Boolean),
-			showNumber: Schema.optional(Schema.Boolean),
-			length: Schema.optional(Schema.Number.pipe(Schema.between(0, 1000))),
-			locked,
-			lineStyle,
-			...textAlignmentFields,
-		}),
-	}),
+	Schema.declare(
+		(input): input is Record<string, SymbolChildOverride> =>
+			symbolChildOverridesSchema.safeParse(input).success,
+		{
+			identifier: "SymbolChildOverrides",
+			message: (issue) => {
+				const first =
+					issue._tag === "Type"
+						? symbolChildOverridesSchema.safeParse(issue.actual).error
+								?.issues[0]
+						: undefined;
+				return first
+					? `${first.path.join(".")}: ${first.message}`
+					: "Invalid child overrides.";
+			},
+		},
+	),
 );
 const shapeSchema = Schema.Union(
 	Schema.Struct({
@@ -78,7 +82,7 @@ const shapeSchema = Schema.Union(
 		locked,
 		childOverrides,
 		library: Schema.Struct({
-			scope: Schema.Literal("user", "project"),
+			scope: Schema.Literal(...symbolLibraryScopes),
 			id: label,
 		}),
 		definitionId: Schema.String.pipe(
@@ -180,8 +184,15 @@ const symbolFileSchema = Schema.Struct({
 });
 export type SymbolFile = typeof symbolFileSchema.Type;
 export type SymbolLibrary = readonly SymbolFile[];
-export const savedLibrarySchema = Schema.Array(symbolFileSchema).pipe(
-	Schema.maxItems(100),
+export const savedLibrarySchema = Schema.transform(
+	Schema.Unknown,
+	Schema.Array(symbolFileSchema).pipe(Schema.maxItems(100)),
+	{
+		strict: false,
+		decode: (value) =>
+			Array.isArray(value) ? value.map(upgradeSymbolFile) : value,
+		encode: (value) => value,
+	},
 );
 
 export class SymbolFormatError extends Data.TaggedError("SymbolFormatError")<{
@@ -206,7 +217,7 @@ function decodeJson(text: string): unknown {
 	}
 }
 
-function decode<A>(schema: Schema.Schema<A>, value: unknown): A {
+function decode<A, I>(schema: Schema.Schema<A, I>, value: unknown): A {
 	try {
 		return Schema.decodeUnknownSync(schema)(value, {
 			onExcessProperty: "error",
@@ -232,9 +243,26 @@ function checkIds(symbols: SymbolLibrary) {
 	}
 }
 
-/** A portable symbol file always describes exactly one symbol. */
+function upgradeSymbolFile(file: unknown): unknown {
+	if (!file || typeof file !== "object" || !("shapes" in file)) return file;
+	const { shapes } = file as { shapes: unknown };
+	return Array.isArray(shapes)
+		? {
+				...file,
+				shapes: shapes.map((shape) =>
+					shape && typeof shape === "object" && "childOverrides" in shape
+						? {
+								...shape,
+								childOverrides: upgradeChildOverrides(shape.childOverrides),
+							}
+						: shape,
+				),
+			}
+		: file;
+}
+
 export function parseSymbolFile(text: string): SymbolFile {
-	const symbol = decode(symbolFileSchema, decodeJson(text));
+	const symbol = decode(symbolFileSchema, upgradeSymbolFile(decodeJson(text)));
 	checkIds([symbol]);
 	return symbol;
 }
