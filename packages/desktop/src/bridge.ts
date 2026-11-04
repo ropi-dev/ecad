@@ -63,3 +63,9 @@ export const displayChannels = {
 	getCalibration: "display:calibration",
 	changed: "display:changed",
 } as const;
+
+/** Renderer-to-main request channels. The main process validates their arguments. */
+export type InvokeChannel =
+	| (typeof libraryChannels)[keyof typeof libraryChannels]
+	| (typeof projectChannels)[keyof typeof projectChannels]
+	| typeof displayChannels.getCalibration;

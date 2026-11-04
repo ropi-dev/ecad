@@ -16,7 +16,6 @@
     "@types/svg-path-parser": "^1.1.6",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "@webgpu/types": "^0.1.72",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.3.5",

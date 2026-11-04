@@ -1,8 +1,7 @@
 import earcut from "earcut";
 import libtess from "libtess";
 import svgParser from "svg-path-parser";
-import { inverseTransformPoint } from "./camera";
-import type { Geometry, Point, SceneLayer, SceneObject } from "./types";
+import type { Geometry, Point } from "./types";
 
 type Pair = [number, number];
 type Ring = Pair[];
@@ -449,49 +448,4 @@ export function containsPoint(
 					if (segmentDistance(pair, ring[i], ring[j]) <= tolerance) return true;
 	}
 	return false;
-}
-
-export function hitTestScene(
-	compiler: GeometryCompiler,
-	layers: readonly SceneLayer[],
-	point: Point,
-	tolerance: number,
-): { layer: SceneLayer; object: SceneObject } | null {
-	for (let layerIndex = layers.length - 1; layerIndex >= 0; layerIndex--) {
-		const layer = layers[layerIndex];
-		if (!layer.visible || layer.opacity <= 0) continue;
-		for (let index = layer.objects.length - 1; index >= 0; index--) {
-			const object = layer.objects[index],
-				bounds = object.bounds;
-			if (
-				point.x < bounds.minX - tolerance ||
-				point.x > bounds.maxX + tolerance ||
-				point.y < bounds.minY - tolerance ||
-				point.y > bounds.maxY + tolerance
-			)
-				continue;
-			const local = inverseTransformPoint(point, object.transform);
-			if (!local) continue;
-			const transformScale = object.transform
-				? Math.max(
-						Math.hypot(object.transform[0], object.transform[1]),
-						Math.hypot(object.transform[2], object.transform[3]),
-						1e-12,
-					)
-				: 1;
-			const polygons = compiler.compile(object.geometry).polygons;
-			if (object.polarity === "clear") {
-				if (containsPoint(polygons, local)) break;
-			} else if (containsPoint(polygons, local, tolerance / transformScale))
-				return { layer, object };
-		}
-	}
-	return null;
-}
-
-export function curveTolerance(scale: number): number {
-	return Math.max(
-		0.000001,
-		Math.min(0.02, 0.15 / 2 ** Math.ceil(Math.log2(Math.max(scale, 0.001)))),
-	);
 }

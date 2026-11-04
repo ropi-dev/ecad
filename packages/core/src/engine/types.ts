@@ -63,35 +63,3 @@ export interface Camera {
 	y: number;
 	scale: number;
 }
-export interface RenderOptions {
-	width: number;
-	height: number;
-	pixelRatio: number;
-	camera: Camera;
-	grid: boolean;
-	background: string;
-	selectedIds?: ReadonlySet<string>;
-	/** Other visible layers use translucent X-ray fills and contours when this layer is visible. */
-	focusedLayerId?: string;
-	mirrored?: boolean;
-}
-export interface GraphicsRenderer {
-	getDiagnostics?(): {
-		drawCalls: number;
-		triangles: number;
-		geometries: number;
-		textures: number;
-	};
-	/** Redraw when the canvas emits renderinvalidated after async geometry preparation. */
-	render(
-		canvas: HTMLCanvasElement,
-		layers: readonly SceneLayer[],
-		options: RenderOptions,
-	): void;
-	hitTest(
-		layers: readonly SceneLayer[],
-		point: Point,
-		tolerance: number,
-	): { layer: SceneLayer; object: SceneObject } | null;
-	dispose?(): void;
-}

@@ -278,9 +278,6 @@ export function createSceneViewport(
 						viewport: { width, height },
 						highlighted,
 						diagnostics: {
-							fps: 0,
-							averageMs: 0,
-							peakMs: 0,
 							width: canvas.width,
 							height: canvas.height,
 							drawCalls: output.info.render.calls,

@@ -1,4 +1,4 @@
-import type { Bounds, Geometry, Matrix, Point } from "#/engine/index.ts";
+import type { Bounds, Geometry, Matrix, Point } from "#/engine/types.ts";
 
 export interface Shape {
 	geometry: Geometry;

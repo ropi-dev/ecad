@@ -41,10 +41,9 @@ jobs:
       - name: Install Chromium and system dependencies
         run: pnpm exec playwright install --with-deps chromium
       - name: Install software graphics dependencies
-        run: sudo apt-get install --no-install-recommends -y libvulkan1 mesa-vulkan-drivers xauth xvfb
+        run: sudo apt-get install --no-install-recommends -y libvulkan1 mesa-vulkan-drivers
       - name: Run browser tests
         run: >-
-          xvfb-run -a -s '-screen 0 2560x1440x24'
           pnpm run test:browser
           --forbid-only
           --fully-parallel

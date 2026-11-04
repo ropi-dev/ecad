@@ -8,7 +8,7 @@ import type {
 	ParseResult,
 	Point,
 	SceneObject,
-} from "#/engine/index.ts";
+} from "#/engine/types.ts";
 import {
 	apertureMatrix,
 	circle,

@@ -1,19 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-	fitCamera,
 	getSceneBounds,
-	inverseTransformPoint,
 	screenToWorld,
 	transformPoint,
 	worldToScreen,
 } from "./camera";
-import {
-	containsPoint,
-	flattenPath,
-	GeometryCompiler,
-	hitTestScene,
-} from "./geometry";
+import { containsPoint, flattenPath, GeometryCompiler } from "./geometry";
 import type { Geometry, Matrix, SceneLayer, SceneObject } from "./types";
 
 const rectangle: Geometry = { type: "rect", x: 0, y: 0, width: 10, height: 10 };
@@ -63,15 +56,13 @@ test("camera coordinates round trip in Cartesian and mirrored views", () => {
 	);
 });
 
-test("fit uses both axes, padding, and empty-scene finite defaults", () => {
-	const camera = fitCamera(
-		{ minX: 10, minY: 20, maxX: 110, maxY: 70 },
-		1000,
-		600,
-		50,
-	);
-	assert.deepEqual(camera, { x: 60, y: 45, scale: 9 });
-	assert.ok(Number.isFinite(fitCamera(getSceneBounds([]), 1, 1).scale));
+test("scene bounds ignore hidden layers and default to a finite empty scene", () => {
+	assert.deepEqual(getSceneBounds([]), {
+		minX: -25,
+		minY: -20,
+		maxX: 25,
+		maxY: 20,
+	});
 	assert.deepEqual(
 		getSceneBounds([
 			layer([object("a")]),
@@ -85,13 +76,10 @@ test("fit uses both axes, padding, and empty-scene finite defaults", () => {
 	);
 });
 
-test("affine transforms invert rotation, reflection, scale, and translation", () => {
+test("affine transforms apply rotation, reflection, scale, and translation", () => {
 	const matrix: Matrix = [0, -2, -2, 0, 3, 7];
-	assert.deepEqual(
-		inverseTransformPoint(transformPoint({ x: 4, y: 8 }, matrix), matrix),
-		{ x: 4, y: 8 },
-	);
-	assert.equal(inverseTransformPoint({ x: 1, y: 2 }, [0, 0, 0, 0, 0, 0]), null);
+	assert.deepEqual(transformPoint({ x: 4, y: 8 }, matrix), { x: -13, y: -1 });
+	assert.deepEqual(transformPoint({ x: 4, y: 8 }), { x: 4, y: 8 });
 });
 
 test("nested group holes remain isolated from earlier geometry", () => {
@@ -107,11 +95,6 @@ test("nested group holes remain isolated from earlier geometry", () => {
 	assert.equal(containsPoint(compiled.polygons, { x: 0, y: 0 }), false);
 	assert.equal(containsPoint(compiled.polygons, { x: 4, y: 0 }), true);
 	approximately(meshArea(compiled.vertices), 100 - Math.PI * 4, 0.03);
-	const scene = layer([object("underlying"), object("ring", ring)]);
-	assert.equal(
-		hitTestScene(compiler, [scene], { x: 0, y: 0 }, 0)?.object.id,
-		"underlying",
-	);
 	const nested: Geometry = {
 		type: "group",
 		children: [
@@ -122,24 +105,6 @@ test("nested group holes remain isolated from earlier geometry", () => {
 	const nestedMesh = compiler.compile(nested);
 	assert.equal(containsPoint(nestedMesh.polygons, { x: 0, y: 0 }), true);
 	assert.equal(containsPoint(nestedMesh.polygons, { x: 4, y: 0 }), false);
-});
-
-test("clear layer objects erase earlier dark objects but leave lower layers visible", () => {
-	const compiler = new GeometryCompiler();
-	const lower = layer([object("lower")], "lower");
-	const upper = layer(
-		[object("upper"), object("clear", hole, "clear")],
-		"upper",
-	);
-	assert.equal(
-		hitTestScene(compiler, [lower, upper], { x: 0, y: 0 }, 0)?.object.id,
-		"lower",
-	);
-	assert.equal(hitTestScene(compiler, [upper], { x: 0, y: 0 }, 0), null);
-	assert.equal(
-		hitTestScene(compiler, [lower, upper], { x: 4, y: 0 }, 0)?.object.id,
-		"upper",
-	);
 });
 
 test("odd winding resolves holes with identical winding and self-intersections", () => {
@@ -165,7 +130,7 @@ test("odd winding resolves holes with identical winding and self-intersections",
 	approximately(meshArea(twice.vertices), 0);
 });
 
-test("round path strokes preserve cap coverage and actual object picking", () => {
+test("round path strokes preserve cap coverage", () => {
 	const compiler = new GeometryCompiler();
 	const trace: Geometry = {
 		type: "path",
