@@ -329,6 +329,7 @@ export function ProjectProvider({
 			const [
 				{ pairPcbDocuments, primaryPcbId },
 				{ synchronizePcb },
+				{ measureLabelText },
 				{ symbolDefinitions },
 				{ libraryDefinitions },
 				{ resolveDrawingSymbols },
@@ -336,6 +337,7 @@ export function ProjectProvider({
 			] = await Promise.all([
 				import("#/projects/pcb.ts"),
 				import("#/circuit/linked-schematic.ts"),
+				import("#/circuit/label-measure.ts"),
 				import("#/drawing/symbols.ts"),
 				import("#/drawing/symbol-file.ts"),
 				import("#/drawing/symbol-persistence.ts"),
@@ -432,6 +434,10 @@ export function ProjectProvider({
 					resolved,
 					previous.circuits?.find((old) => old.circuit.id === file.circuit.id),
 					definitions,
+					{
+						measureText: measureLabelText,
+						newId: () => globalThis.crypto.randomUUID(),
+					},
 				);
 				linked.shapes = linked.shapes.map((shape) => {
 					const cached = cachedSymbols.get(shape.id);
