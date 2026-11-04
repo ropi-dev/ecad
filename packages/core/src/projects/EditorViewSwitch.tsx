@@ -2,10 +2,16 @@ import { CircuitBoard, ListTree } from "lucide-react";
 import { useState } from "react";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 
 export function EditorViewSwitch({ view }: { view: "circuit" | "schematic" }) {
-	const project = useProject();
+	const project = useProjectSelection(
+		({ busy, project, switchEditorView }) => ({
+			busy,
+			project,
+			switchEditorView,
+		}),
+	);
 	const [switching, setSwitching] = useState(false);
 	if (!project?.project) return null;
 	const target = view === "circuit" ? "schematic" : "circuit";

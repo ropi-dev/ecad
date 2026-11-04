@@ -6,7 +6,7 @@ import {
 	parseStepFileEffect,
 } from "#/formats/parseStepFile.ts";
 import { errorMessage } from "#/lib/error-message.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 import { useFileImport } from "../viewer/useFileImport";
 
 function readStep(file: File) {
@@ -16,7 +16,7 @@ function readStep(file: File) {
 const release = (model: ParsedStepFile) => model.dispose();
 
 export function useStepFile() {
-	const readAssets = useProject()?.readAssets;
+	const readAssets = useProjectActions()?.readAssets;
 	const [restoreError, setRestoreError] = useState("");
 	const [model, updateModel] = useState<ParsedStepFile | null>(null);
 	const [ownership] = useState(() => new ImportOwnership());

@@ -1,8 +1,16 @@
 import { RefreshCw, TriangleAlert } from "lucide-react";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 
 export function ProjectConflictNotice() {
-	const project = useProject();
+	const project = useProjectSelection(
+		({ busy, conflict, dirty, otherUnsavedEdits, reload }) => ({
+			busy,
+			conflict,
+			dirty,
+			otherUnsavedEdits,
+			reload,
+		}),
+	);
 	if (!project?.conflict) return null;
 	return (
 		<div

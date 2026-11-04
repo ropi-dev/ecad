@@ -1,9 +1,13 @@
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import "./WorkspaceStart.css";
 
 export function WorkspaceStart() {
-	const project = useProject();
+	const project = useProjectSelection(({ busy, error, reload }) => ({
+		busy,
+		error,
+		reload,
+	}));
 	return (
 		<main className="workspace-start relative flex h-full min-h-dvh flex-col font-sans text-slate-400">
 			<div className="workspace-start-pointer">

@@ -33,7 +33,7 @@ import {
 } from "#/lib/keyboard.ts";
 import {
 	type CircuitDocument,
-	useProject,
+	useProjectSelection,
 } from "#/projects/ProjectProvider.tsx";
 import { type CircuitTool, CircuitToolbar } from "./CircuitToolbar.tsx";
 import "./CircuitEditor.css";
@@ -78,7 +78,11 @@ type ConnectionDrag = {
 const viewStates = new WeakMap<CircuitDocument["store"], CircuitView>();
 
 export function CircuitEditor({ document }: { document: CircuitDocument }) {
-	const project = useProject();
+	const project = useProjectSelection(({ dirty, error, libraryErrors }) => ({
+		dirty,
+		error,
+		libraryErrors,
+	}));
 	const store = document.store;
 	const snapshot = useSyncExternalStore(
 		store.subscribe,

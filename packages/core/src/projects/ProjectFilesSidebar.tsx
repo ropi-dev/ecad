@@ -42,7 +42,8 @@ import {
 } from "#/projects/format.ts";
 import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import { primaryPcbId } from "#/projects/pcb.ts";
 import {
 	useWorkspaceControls,
 	workspaceActionClassName,
@@ -89,7 +90,31 @@ interface ProjectFile {
 }
 
 export function ProjectFilesSidebar() {
-	const project = useProject();
+	const project = useProjectSelection(
+		({
+			busy,
+			createCircuit,
+			createDrawing,
+			createSymbol,
+			importAssets,
+			importSchematic,
+			openCircuit,
+			project,
+			selectAsset,
+			selectEditorFile,
+		}) => ({
+			busy,
+			createCircuit,
+			createDrawing,
+			createSymbol,
+			importAssets,
+			importSchematic,
+			openCircuit,
+			project,
+			selectAsset,
+			selectEditorFile,
+		}),
+	);
 	const workspaceControls = useWorkspaceControls();
 	const library = useSymbolLibrary();
 	const [pinned, setPinned] = useState(false);
@@ -182,7 +207,7 @@ export function ProjectFilesSidebar() {
 											(drawing) => drawing.circuitId === file.circuit.id,
 										) ?? -1;
 									const drawingPath =
-										file.circuit.id === "pcb-main"
+										file.circuit.id === primaryPcbId
 											? manifest.drawing
 											: manifest.drawings?.[drawingIndex];
 									return drawingPath
@@ -217,7 +242,7 @@ export function ProjectFilesSidebar() {
 						...(snapshot?.circuits?.length &&
 						!snapshot.circuits.some(
 							(file, index) =>
-								file.circuit.id === "pcb-main" && manifest.circuits?.[index],
+								file.circuit.id === primaryPcbId && manifest.circuits?.[index],
 						)
 							? [
 									{
