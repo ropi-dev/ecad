@@ -431,6 +431,29 @@ test("KiCad diagonal wires turn the corner that joins no other net", () => {
 	}
 });
 
+test("KiCad diagonal wires keep every connection along their length", () => {
+	const { shapes } = importKiCadSchematic(
+		kicad(
+			`${kicadWire("10 20", "16 28")} ${kicadWire("13 24", "20 24")} (junction (at 13 24))`,
+		),
+	);
+	const nets = electricalNets(shapes);
+	assert.equal(nets.length, 1);
+	assert.equal(nets[0].wires.length, 5, "two routed pieces and the branch");
+});
+
+test("KiCad routes are checked as imported, so a very short leg cannot reach a neighbor", () => {
+	const { shapes } = importKiCadSchematic(
+		kicad(`${kicadWire("10 20", "10.0002 28")} ${kicadWire("9 20", "9.9997 20")}`),
+	);
+	assert.deepEqual(
+		electricalNets(shapes)
+			.map((net) => net.wires.length)
+			.sort(),
+		[1, 2],
+	);
+});
+
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
 	const result = importKiCadSchematic(
 		kicad(
@@ -462,6 +485,15 @@ test("an undefined override is committed as saved, so it cannot hide a child fie
 		"shape:1": { x: 1 },
 	});
 	assert.equal(stored.kind === "symbol" && symbolShapes(stored)[0].width, 4);
+	const dashed = place(
+		symbol({
+			children: [{ ...box, id: 1, kind: "line", lineStyle: "dashed" }],
+			childOverrides: { "shape:1": { lineStyle: undefined } },
+		}),
+	).store.getSnapshot().shapes[0];
+	assert.equal(dashed.kind === "symbol" && "lineStyle" in dashed.childOverrides!["shape:1"], false);
+	const [child] = dashed.kind === "symbol" ? symbolShapes(dashed) : [];
+	assert.equal(child.kind === "line" && child.lineStyle, "dashed");
 });
 
 test("pasting drawing data the schema rejects explains why", () => {

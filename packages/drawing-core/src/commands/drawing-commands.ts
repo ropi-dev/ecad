@@ -63,6 +63,13 @@ function validateIds(ids: readonly number[]) {
 	}
 }
 
+function hasUndefined(value: unknown): boolean {
+	if (value === undefined) return true;
+	if (!value || typeof value !== "object") return false;
+	for (const item of Object.values(value)) if (hasUndefined(item)) return true;
+	return false;
+}
+
 /** The saved form of plain data: JSON drops keys whose value is undefined. */
 function savedForm(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(savedForm);
@@ -75,16 +82,14 @@ function savedForm(value: unknown): unknown {
 }
 
 /**
- * Commands apply the drawing schema's rules, so every commit can be saved and
- * reloaded. Returns the shape to commit.
+ * Commands apply the drawing schema's rules to the shape as it will be saved,
+ * and commit that form. Editor spreads such as `{ circuitNet: undefined }`
+ * pass, and an undefined override cannot hide a child field in memory.
  */
 function validShape<T extends EditorShape>(shape: T): T {
-	if (editorShapeSchema.safeParse(shape).success) return shape;
-	// Strict objects reject a key set to undefined, but saving drops that key.
-	// Commit the saved form, so an undefined override cannot hide a child field.
-	const saved = savedForm(shape);
+	const saved = hasUndefined(shape) ? (savedForm(shape) as T) : shape;
 	const issue = editorShapeSchema.safeParse(saved).error?.issues[0];
-	if (!issue) return saved as T;
+	if (!issue) return saved;
 	const path = issue.path.join(".");
 	invalid(path ? `${path}: ${issue.message}` : issue.message);
 }

@@ -78,8 +78,9 @@ const line = (
 	kind,
 });
 const CONNECTION_TOLERANCE = 1e-4;
+type Segment = [XY, XY];
 
-function distance(point: XY, [a, b]: [XY, XY]) {
+function distance(point: XY, [a, b]: Segment) {
 	const dx = b[0] - a[0];
 	const dy = b[1] - a[1];
 	const length = dx * dx + dy * dy;
@@ -91,57 +92,114 @@ function distance(point: XY, [a, b]: [XY, XY]) {
 		: 0;
 	return Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy);
 }
+const near = (a: XY, b: XY) => distance(a, [b, b]) <= CONNECTION_TOLERANCE;
 
-/**
- * ecad wires are horizontal or vertical, so a diagonal wire turns one corner.
- * A route counts only if it touches no other wire end, pin terminal or label
- * anchor, and its corner lies on no other wire. Otherwise it would join nets.
- */
-function orthogonalRoute(
-	start: XY,
-	end: XY,
-	shapes: readonly EditorShape[],
-	pendingEnds: readonly XY[],
-): [XY, XY][] | undefined {
-	const wires = shapes.flatMap((shape): [XY, XY][] => {
-		if (shape.kind !== "wire") return [];
-		const dx = (Math.cos(shape.rotation) * shape.width) / 2;
-		const dy = (Math.sin(shape.rotation) * shape.width) / 2;
-		return [
-			[
-				[shape.x - dx, shape.y - dy],
-				[shape.x + dx, shape.y + dy],
-			],
-		];
-	});
-	const ownEnd = (point: XY) =>
-		distance(point, [start, start]) <= CONNECTION_TOLERANCE ||
-		distance(point, [end, end]) <= CONNECTION_TOLERANCE;
-	const connections = [
-		...wires.flat(),
-		...pendingEnds,
-		...shapes.flatMap((shape): XY[] =>
-			shape.kind === "text" && shape.electrical
-				? [[shape.x, shape.y]]
-				: pinTerminals(shape).map((pin): XY => [pin.x, pin.y]),
-		),
-	].filter((point) => !ownEnd(point));
+function wireSegments(shape: EditorShape): Segment[] {
+	if (shape.kind !== "wire") return [];
+	const dx = (Math.cos(shape.rotation) * shape.width) / 2;
+	const dy = (Math.sin(shape.rotation) * shape.width) / 2;
+	return [
+		[
+			[shape.x - dx, shape.y - dy],
+			[shape.x + dx, shape.y + dy],
+		],
+	];
+}
+
+/** Unlike `line`, keeps a very short wire at its exact length. */
+const wireBetween = (a: XY, b: XY): EditorShape => ({
+	...line(a, b, "wire"),
+	width: Math.hypot(b[0] - a[0], b[1] - a[1]),
+});
+
+/** Two wires from `a` to `b` around one corner that touch nothing else. */
+function cornerRoute(
+	a: XY,
+	b: XY,
+	wires: readonly Segment[],
+	connections: readonly XY[],
+): EditorShape[] | undefined {
+	const others = connections.filter(
+		(point) => !near(point, a) && !near(point, b),
+	);
 	for (const corner of [
-		[end[0], start[1]],
-		[start[0], end[1]],
+		[b[0], a[1]],
+		[a[0], b[1]],
 	] as XY[]) {
-		const route: [XY, XY][] = [
-			[start, corner],
-			[corner, end],
-		];
+		const route = [wireBetween(a, corner), wireBetween(corner, b)];
+		const segments = route.flatMap(wireSegments);
+		const ends = segments
+			.flat()
+			.filter((end) => !near(end, a) && !near(end, b));
 		if (
-			connections.every((point) =>
-				route.every((part) => distance(point, part) > CONNECTION_TOLERANCE),
+			others.every((point) =>
+				segments.every((part) => distance(point, part) > CONNECTION_TOLERANCE),
 			) &&
-			wires.every((wire) => distance(corner, wire) > CONNECTION_TOLERANCE)
+			ends.every((end) =>
+				wires.every((wire) => distance(end, wire) > CONNECTION_TOLERANCE),
+			)
 		)
 			return route;
 	}
+}
+
+/**
+ * ecad wires are horizontal or vertical, so each diagonal wire turns a
+ * corner. A diagonal first splits wherever something connects along it, so
+ * those connections survive. Each piece then takes a corner whose wires touch
+ * no other wire end, pin terminal or label anchor, and whose corner lies on no
+ * other wire, so no nets join. A diagonal with a piece that has no such corner
+ * stays a graphic line.
+ */
+function routeDiagonalWires(
+	diagonals: readonly Segment[],
+	shapes: readonly EditorShape[],
+): { wires: EditorShape[]; lines: Segment[] } {
+	const anchors = shapes.flatMap((shape): XY[] =>
+		shape.kind === "text" && shape.electrical
+			? [[shape.x, shape.y]]
+			: pinTerminals(shape).map((pin): XY => [pin.x, pin.y]),
+	);
+	const wires = shapes.flatMap(wireSegments);
+	// Stops come from the source geometry, before any wire moves.
+	const sourcePoints = [...anchors, ...wires.flat(), ...diagonals.flat()];
+	const stops = diagonals.map(([start, end]) => {
+		const along = (point: XY) =>
+			(point[0] - start[0]) * (end[0] - start[0]) +
+			(point[1] - start[1]) * (end[1] - start[1]);
+		const chain = [start];
+		for (const point of sourcePoints
+			.filter(
+				(point) =>
+					distance(point, [start, end]) <= CONNECTION_TOLERANCE &&
+					!near(point, end),
+			)
+			.sort((first, second) => along(first) - along(second)))
+			if (!near(point, chain[chain.length - 1])) chain.push(point);
+		return [...chain, end];
+	});
+	const routed: EditorShape[] = [];
+	const lines: Segment[] = [];
+	for (const [index, diagonal] of diagonals.entries()) {
+		const pending = diagonals.slice(index + 1).flat();
+		const pieces: EditorShape[] = [];
+		const chain = stops[index];
+		for (let stop = 1; stop < chain.length; stop++) {
+			const current = [...wires, ...pieces.flatMap(wireSegments)];
+			const route = cornerRoute(chain[stop - 1], chain[stop], current, [
+				...anchors,
+				...current.flat(),
+				...pending,
+			]);
+			if (!route) break;
+			pieces.push(...route);
+		}
+		if (pieces.length === 2 * (chain.length - 1)) {
+			routed.push(...pieces);
+			wires.push(...pieces.flatMap(wireSegments));
+		} else lines.push(diagonal);
+	}
+	return { wires: routed, lines };
 }
 
 function text(n: SExpr, at: XY, content: string): TextShape {
@@ -504,7 +562,7 @@ function convert(source: string): KiCadImportResult {
 			}
 		}
 	}
-	const diagonalWires: [XY, XY][] = [];
+	const diagonalWires: Segment[] = [];
 	for (const wire of nodes(root, "wire")) {
 		const pts = nodes(node(wire, "pts"), "xy").map((p) =>
 			world(p.slice(1).map(Number)),
@@ -549,22 +607,17 @@ function convert(source: string): KiCadImportResult {
 		const [x, y] = world(numbers(nc, "at"));
 		add({ kind: "no-connect", x, y, width: 1.2, height: 1.2, rotation: 0, lineWidth: 0.1524 } as EditorShape);
 	}
-	for (const [index, [start, end]] of diagonalWires.entries()) {
-		const route = orthogonalRoute(start, end, shapes, [
-			...diagonalWires.slice(index + 1).flat(),
-		]);
-		if (route) {
-			for (const [a, b] of route) add(line(a, b, "wire") as EditorShape);
-			warnings.add(
-				"Diagonal wires are imported as a horizontal and a vertical segment.",
-			);
-		} else {
-			add(line(start, end, "line") as EditorShape);
-			warnings.add(
-				"Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
-			);
-		}
-	}
+	const diagonals = routeDiagonalWires(diagonalWires, shapes);
+	for (const wire of diagonals.wires) add(wire);
+	for (const [start, end] of diagonals.lines) add(line(start, end, "line"));
+	if (diagonals.wires.length)
+		warnings.add(
+			"Diagonal wires are imported as horizontal and vertical segments.",
+		);
+	if (diagonals.lines.length)
+		warnings.add(
+			"Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
+		);
 	report.metadata.push(node(root, "lib_symbols"));
 	report.warnings = [...warnings];
 	return { shapes: shapes.map((s) => drawingShapeSchema.parse(s)), report };
