@@ -96,3 +96,54 @@ test("an oversized stored STEP asset is named while valid assets still restore, 
 	).toBeEnabled({ timeout: 30_000 });
 	await screenshot(page, "copy-notice.png");
 });
+
+test("sidebar rejection toasts distinguish a rejected batch from partial success", async ({
+	page,
+}) => {
+	await page.addInitScript((oversized) => {
+		const size = Object.getOwnPropertyDescriptor(Blob.prototype, "size")?.get;
+		if (!size) throw new Error("Blob size getter is unavailable");
+		Object.defineProperty(File.prototype, "size", {
+			get() {
+				return this.name === "oversized.step" ? oversized : size.call(this);
+			},
+		});
+	}, 300 * MiB);
+	await page.goto("/tests/browser/projects.html");
+	const sidebar = await openProjectFiles(page);
+	const upload = sidebar.getByLabel("Add STEP files", { exact: true });
+	const rejected = {
+		name: "oversized.step",
+		mimeType: "application/step",
+		buffer: cube,
+	};
+	await upload.setInputFiles(rejected);
+	const error = page.locator('.app-toast[data-type="error"]');
+	await expect(error).toContainText("Unable to add project files");
+	await expect(error).toContainText(
+		"oversized.step: STEP files must be 256 MiB or smaller.",
+	);
+	await expect(page.locator('.app-toast[data-type="success"]')).toHaveCount(0);
+	await page
+		.getByRole("button", {
+			name: "Dismiss Unable to add project files",
+			exact: true,
+		})
+		.click();
+	await (await openProjectFiles(page))
+		.getByLabel("Add STEP files", { exact: true })
+		.setInputFiles([
+			rejected,
+			{ name: "small.step", mimeType: "application/step", buffer: cube },
+		]);
+	await expect(page.locator('.app-toast[data-type="warning"]')).toContainText(
+		"Files added with issues",
+	);
+	await expect
+		.poll(async () =>
+			(await documentState(page)).assets?.map(
+				(asset: { name: string }) => asset.name,
+			),
+		)
+		.toEqual(["small.step"]);
+});

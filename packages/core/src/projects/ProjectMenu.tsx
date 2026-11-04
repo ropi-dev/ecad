@@ -1,7 +1,7 @@
 import { FolderOpen } from "lucide-react";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { lazy, Suspense, useState } from "react";
-import { createPortal } from "react-dom";
+import { toastManager } from "#/components/ui/toast.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
@@ -36,25 +36,6 @@ export function ProjectMenu() {
 	if (!project) return null;
 	return (
 		<>
-			{saveError &&
-				!confirmOpen &&
-				createPortal(
-					<div
-						role="alert"
-						aria-label="Project save failed"
-						className="fixed bottom-4 left-16 z-50 max-w-[calc(100vw-5rem)] rounded-lg border border-amber-400/40 bg-slate-900 p-4 text-sm text-slate-200 shadow-lg"
-					>
-						<p>{saveError}</p>
-						<button
-							type="button"
-							onClick={() => setSaveError("")}
-							className="mt-3 rounded px-2 py-1 text-xs underline hover:bg-white/10 focus-visible:outline-2"
-						>
-							Dismiss save error
-						</button>
-					</div>,
-					document.body,
-				)}
 			<DropdownMenu.Root
 				onOpenChange={(open) => {
 					if (open && project.mode === "web")
@@ -91,12 +72,29 @@ export function ProjectMenu() {
 							className={item}
 							onSelect={() => {
 								setSaveError("");
-								void project.save().catch((cause: unknown) => {
-									if (!isProjectError(cause, "ProjectConflict"))
-										setSaveError(
-											errorMessage(cause, "Unable to save the project."),
-										);
-								});
+								toastManager.close("project-save");
+								void project
+									.save()
+									.then((saved) => {
+										if (saved)
+											toastManager.add({
+												id: "project-save",
+												type: "success",
+												title: "Project saved",
+											});
+									})
+									.catch((cause: unknown) => {
+										if (!isProjectError(cause, "ProjectConflict"))
+											toastManager.add({
+												id: "project-save",
+												type: "error",
+												title: "Project save failed",
+												description: errorMessage(
+													cause,
+													"Unable to save the project.",
+												),
+											});
+									});
 							}}
 						>
 							Save project

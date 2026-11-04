@@ -1,4 +1,9 @@
 export const budgets = {
+	"toast-notifications": {
+		interactionP95Ms: 1000,
+		domNodes: 1200,
+		scriptBytes: 2_500_000,
+	},
 	"editor-placement-rotate": {
 		interactionP95Ms: 750,
 		domNodes: 1500,

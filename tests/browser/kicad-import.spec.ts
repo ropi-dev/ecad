@@ -122,6 +122,10 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 	await dialog.getByLabel("Width in pixels").fill("2400");
 	await dialog.getByLabel("Height in pixels").fill("1600");
 	for (const format of ["svg", "png"]) {
+		if (format === "png")
+			await page
+				.getByRole("button", { name: "Export drawing", exact: true })
+				.click();
 		await dialog
 			.getByRole("combobox", { name: "Format", exact: true })
 			.selectOption(format);
@@ -176,7 +180,7 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 			expect(ink).toBeGreaterThan(10000);
 		}
 	}
-	await dialog.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(dialog).not.toBeVisible();
 	expect(
 		referenceNetGroups(
 			JSON.parse(
