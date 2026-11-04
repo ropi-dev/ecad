@@ -4,6 +4,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	PIN_RADIUS,
+	pinTerminals,
 	type SymbolShape,
 	type TextShape,
 } from "#/drawing/shapes.ts";
@@ -76,6 +77,73 @@ const line = (
 	),
 	kind,
 });
+const CONNECTION_TOLERANCE = 1e-4;
+
+function distance(point: XY, [a, b]: [XY, XY]) {
+	const dx = b[0] - a[0];
+	const dy = b[1] - a[1];
+	const length = dx * dx + dy * dy;
+	const t = length
+		? Math.max(
+				0,
+				Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length),
+			)
+		: 0;
+	return Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy);
+}
+
+/**
+ * ecad wires are horizontal or vertical, so a diagonal wire turns one corner.
+ * A route counts only if it touches no other wire end, pin terminal or label
+ * anchor, and its corner lies on no other wire. Otherwise it would join nets.
+ */
+function orthogonalRoute(
+	start: XY,
+	end: XY,
+	shapes: readonly EditorShape[],
+	pendingEnds: readonly XY[],
+): [XY, XY][] | undefined {
+	const wires = shapes.flatMap((shape): [XY, XY][] => {
+		if (shape.kind !== "wire") return [];
+		const dx = (Math.cos(shape.rotation) * shape.width) / 2;
+		const dy = (Math.sin(shape.rotation) * shape.width) / 2;
+		return [
+			[
+				[shape.x - dx, shape.y - dy],
+				[shape.x + dx, shape.y + dy],
+			],
+		];
+	});
+	const ownEnd = (point: XY) =>
+		distance(point, [start, start]) <= CONNECTION_TOLERANCE ||
+		distance(point, [end, end]) <= CONNECTION_TOLERANCE;
+	const connections = [
+		...wires.flat(),
+		...pendingEnds,
+		...shapes.flatMap((shape): XY[] =>
+			shape.kind === "text" && shape.electrical
+				? [[shape.x, shape.y]]
+				: pinTerminals(shape).map((pin): XY => [pin.x, pin.y]),
+		),
+	].filter((point) => !ownEnd(point));
+	for (const corner of [
+		[end[0], start[1]],
+		[start[0], end[1]],
+	] as XY[]) {
+		const route: [XY, XY][] = [
+			[start, corner],
+			[corner, end],
+		];
+		if (
+			connections.every((point) =>
+				route.every((part) => distance(point, part) > CONNECTION_TOLERANCE),
+			) &&
+			wires.every((wire) => distance(corner, wire) > CONNECTION_TOLERANCE)
+		)
+			return route;
+	}
+}
+
 function text(n: SExpr, at: XY, content: string): TextShape {
 	const size = numbers(node(node(n, "effects"), "font"), "size")[0] ?? 1.27;
 	const justify = node(node(n, "effects"), "justify");
@@ -436,6 +504,7 @@ function convert(source: string): KiCadImportResult {
 			}
 		}
 	}
+	const diagonalWires: [XY, XY][] = [];
 	for (const wire of nodes(root, "wire")) {
 		const pts = nodes(node(wire, "pts"), "xy").map((p) =>
 			world(p.slice(1).map(Number)),
@@ -443,17 +512,9 @@ function convert(source: string): KiCadImportResult {
 		if (pts.length !== 2) throw new Error("KiCad wires require two endpoints.");
 		const [start, end] = pts;
 		const angle = Math.atan2(end[1] - start[1], end[0] - start[0]);
-		if (Math.abs(Math.sin(2 * angle)) <= 1e-9) {
+		if (Math.abs(Math.sin(2 * angle)) <= 1e-9)
 			add(line(start, end, "wire") as EditorShape);
-			continue;
-		}
-		// ecad wires are horizontal or vertical. A corner keeps both ends connected.
-		const corner: XY = [end[0], start[1]];
-		add(line(start, corner, "wire") as EditorShape);
-		add(line(corner, end, "wire") as EditorShape);
-		warnings.add(
-			"Diagonal wires are imported as a horizontal and a vertical segment.",
-		);
+		else diagonalWires.push([start, end]);
 	}
 	for (const junction of nodes(root, "junction")) {
 		const diameter = Number(value(junction, "diameter", "0")) || 0.6;
@@ -487,6 +548,22 @@ function convert(source: string): KiCadImportResult {
 	for (const nc of nodes(root, "no_connect")) {
 		const [x, y] = world(numbers(nc, "at"));
 		add({ kind: "no-connect", x, y, width: 1.2, height: 1.2, rotation: 0, lineWidth: 0.1524 } as EditorShape);
+	}
+	for (const [index, [start, end]] of diagonalWires.entries()) {
+		const route = orthogonalRoute(start, end, shapes, [
+			...diagonalWires.slice(index + 1).flat(),
+		]);
+		if (route) {
+			for (const [a, b] of route) add(line(a, b, "wire") as EditorShape);
+			warnings.add(
+				"Diagonal wires are imported as a horizontal and a vertical segment.",
+			);
+		} else {
+			add(line(start, end, "line") as EditorShape);
+			warnings.add(
+				"Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
+			);
+		}
 	}
 	report.metadata.push(node(root, "lib_symbols"));
 	report.warnings = [...warnings];

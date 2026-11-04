@@ -16,11 +16,13 @@ import {
 	editorShapeSchema,
 	symbolChildOverridesSchema,
 } from "#/drawing/schema.ts";
-import type {
-	EditorShape,
-	LineShape,
-	PinShape,
-	WireShape,
+import { electricalNets } from "#/drawing/named-nets.ts";
+import {
+	type EditorShape,
+	type LineShape,
+	type PinShape,
+	symbolShapes,
+	type WireShape,
 } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
@@ -373,20 +375,28 @@ test("symbol-file wires drop a line style that wires cannot draw", () => {
 	);
 });
 
-test("KiCad diagonal wires import as connected horizontal and vertical wires", () => {
-	const result = importKiCadSchematic(
-		'(kicad_sch (version 20250114) (paper "A4") (lib_symbols) (wire (pts (xy 10 20) (xy 16 28)) (uuid "w")))',
+const kicad = (body: string) =>
+	`(kicad_sch (version 20250114) (paper "A4") (lib_symbols) ${body})`;
+const kicadWire = (a: string, b: string) => `(wire (pts (xy ${a}) (xy ${b})))`;
+const wireEnds = (shapes: readonly EditorShape[]) =>
+	shapes.flatMap((wire) =>
+		wire.kind === "wire"
+			? [
+					[-1, 1].map((sign) => ({
+						x: wire.x + (sign * Math.cos(wire.rotation) * wire.width) / 2,
+						y: wire.y + (sign * Math.sin(wire.rotation) * wire.width) / 2,
+					})),
+				]
+			: [],
 	);
+const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+	Math.hypot(a.x - b.x, a.y - b.y) < 1e-9;
+
+test("KiCad diagonal wires import as connected horizontal and vertical wires", () => {
+	const result = importKiCadSchematic(kicad(kicadWire("10 20", "16 28")));
 	const wires = result.shapes.filter((shape) => shape.kind === "wire");
 	assert.equal(wires.length, 2);
-	const ends = wires.map((wire) =>
-		[-1, 1].map((sign) => ({
-			x: wire.x + (sign * Math.cos(wire.rotation) * wire.width) / 2,
-			y: wire.y + (sign * Math.sin(wire.rotation) * wire.width) / 2,
-		})),
-	);
-	const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-		Math.hypot(a.x - b.x, a.y - b.y) < 1e-9;
+	const ends = wireEnds(wires);
 	assert.ok(near(ends[0][1], ends[1][0]), "the segments share a corner");
 	assert.ok(Math.abs(ends[0][0].x - ends[1][1].x + 6) < 1e-9);
 	assert.ok(Math.abs(Math.abs(ends[0][0].y - ends[1][1].y) - 8) < 1e-9);
@@ -399,6 +409,59 @@ test("KiCad diagonal wires import as connected horizontal and vertical wires", (
 		validateProjectDocument({ shapes: result.shapes, symbols: [] }).shapes.length,
 		2,
 	);
+});
+
+test("KiCad diagonal wires turn the corner that joins no other net", () => {
+	for (const blocker of [
+		kicadWire("16 20", "20 20"),
+		'(label "N1" (at 16 24 0) (effects (font (size 1.27 1.27))))',
+	]) {
+		const { shapes } = importKiCadSchematic(
+			kicad(`${kicadWire("10 20", "16 28")} ${blocker}`),
+		);
+		assert.equal(shapes.filter((shape) => shape.kind === "wire").length >= 2, true);
+		// Joined, all three items would share one net.
+		assert.deepEqual(
+			electricalNets(shapes)
+				.map((net) => net.wires.length + net.labels.length)
+				.sort(),
+			[1, 2],
+			blocker,
+		);
+	}
+});
+
+test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
+	const result = importKiCadSchematic(
+		kicad(
+			[
+				kicadWire("10 20", "16 28"),
+				kicadWire("16 20", "20 20"),
+				kicadWire("10 28", "4 28"),
+			].join(" "),
+		),
+	);
+	assert.deepEqual(
+		result.shapes.map((shape) => shape.kind),
+		["wire", "wire", "line"],
+	);
+	assert.equal(electricalNets(result.shapes).length, 2);
+	assert.ok(
+		result.report.warnings.some((warning) => warning.includes("graphic lines")),
+	);
+});
+
+test("an undefined override is committed as saved, so it cannot hide a child field", () => {
+	const { accepted, store } = place(
+		symbol({ childOverrides: { "shape:1": { width: undefined, x: 1 } } }),
+	);
+	assert.equal(accepted, true);
+	const [stored] = store.getSnapshot().shapes;
+	assert.equal(editorShapeSchema.safeParse(stored).success, true);
+	assert.deepEqual(stored.kind === "symbol" && stored.childOverrides, {
+		"shape:1": { x: 1 },
+	});
+	assert.equal(stored.kind === "symbol" && symbolShapes(stored)[0].width, 4);
 });
 
 test("pasting drawing data the schema rejects explains why", () => {

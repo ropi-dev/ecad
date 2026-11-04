@@ -74,12 +74,17 @@ function savedForm(value: unknown): unknown {
 	);
 }
 
-/** Commands apply the drawing schema's rules, so every commit can be saved and reloaded. */
-function validateShape(shape: EditorShape) {
-	if (editorShapeSchema.safeParse(shape).success) return;
+/**
+ * Commands apply the drawing schema's rules, so every commit can be saved and
+ * reloaded. Returns the shape to commit.
+ */
+function validShape<T extends EditorShape>(shape: T): T {
+	if (editorShapeSchema.safeParse(shape).success) return shape;
 	// Strict objects reject a key set to undefined, but saving drops that key.
-	const issue = editorShapeSchema.safeParse(savedForm(shape)).error?.issues[0];
-	if (!issue) return;
+	// Commit the saved form, so an undefined override cannot hide a child field.
+	const saved = savedForm(shape);
+	const issue = editorShapeSchema.safeParse(saved).error?.issues[0];
+	if (!issue) return saved as T;
 	const path = issue.path.join(".");
 	invalid(path ? `${path}: ${issue.message}` : issue.message);
 }
@@ -161,11 +166,10 @@ export function placeShapesEffect(
 			if (!Number.isSafeInteger(current.nextShapeId + captured.length))
 				invalid("No more shape IDs are available.");
 			const shapes = captured.map((shape, index) => {
-				const placed = {
+				const placed = validShape({
 					...shape,
 					id: current.nextShapeId + index,
-				} as EditorShape;
-				validateShape(placed);
+				} as EditorShape);
 				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
 			});
 			return commit(
@@ -208,13 +212,14 @@ export function replaceAndPlaceShapesEffect(
 			validateIds(preferredIds);
 			for (const id of preferredIds)
 				if (!existing.has(id)) invalid(`Target shape ${id} does not exist.`);
-			for (const shape of captured.replacements) {
-				validateShape(shape);
+			const replacements = captured.replacements.map((shape) => {
+				const valid = validShape(shape);
 				if (!existing.has(shape.id))
 					invalid(`Shape ${shape.id} does not exist.`);
-			}
+				return valid;
+			});
 			const byId = new Map(
-				captured.replacements.map((shape) => [
+				replacements.map((shape) => [
 					shape.id,
 					shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
 				]),
@@ -222,11 +227,10 @@ export function replaceAndPlaceShapesEffect(
 			if (!Number.isSafeInteger(current.nextShapeId + captured.inputs.length))
 				invalid("No more shape IDs are available.");
 			const additions = captured.inputs.map((shape, index) => {
-				const placed = {
+				const placed = validShape({
 					...shape,
 					id: current.nextShapeId + index,
-				} as EditorShape;
-				validateShape(placed);
+				} as EditorShape);
 				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
 			});
 			return commit(
@@ -261,12 +265,10 @@ export function rotateShapesEffect(
 			const angle = captured.angle % turn;
 			const shapes = current.shapes.map((shape) => {
 				if (!selectedIds.has(shape.id) || angle === 0) return shape;
-				const rotated = {
+				return validShape({
 					...shape,
 					rotation: (((shape.rotation + angle) % turn) + turn) % turn,
-				};
-				validateShape(rotated);
-				return rotated;
+				});
 			});
 			const transformed = new Map(shapes.map((shape) => [shape.id, shape]));
 			const components = current.shapes.filter(
@@ -371,11 +373,12 @@ export function createSymbolFromSelectionEffect(
 					);
 				if (!Number.isSafeInteger(current.nextShapeId + 1))
 					invalid("No more shape IDs are available.");
-				const symbol = createSymbolFromShapes(current.nextShapeId, primitives, {
-					...capturedOptions,
-					name,
-				});
-				validateShape(symbol);
+				const symbol = validShape(
+					createSymbolFromShapes(current.nextShapeId, primitives, {
+						...capturedOptions,
+						name,
+					}),
+				);
 				const firstId = selected[0].id;
 				const shapes = current.shapes.flatMap((shape) =>
 					shape.id === firstId
