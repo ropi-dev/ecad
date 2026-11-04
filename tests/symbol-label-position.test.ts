@@ -18,10 +18,13 @@ import {
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
 
-const power = symbolDefinitions.find(
-	(definition) => definition.netSymbol && definition.id === "vdd",
-);
-if (!power) throw new Error("Expected the vdd definition");
+const power = (() => {
+	const definition = symbolDefinitions.find(
+		(candidate) => candidate.netSymbol && candidate.id === "vdd",
+	);
+	if (!definition) throw new Error("Expected the vdd definition");
+	return definition;
+})();
 
 function placed(): EditorSymbol {
 	return createSymbol(1, power, { x: 10, y: 10 });
@@ -209,4 +212,55 @@ test("a neighbour's outline does not steal clicks on drawn content", () => {
 		y: frame.y + frame.height / 2 - 0.01,
 	};
 	assert.equal(shapeAt([vdd, r1], corner, 0)?.id, r1.id);
+});
+
+test("tilted labels align outward on both axes and still clear the geometry", () => {
+	for (const degrees of [30, 45, 135, 200, 315]) {
+		const instance: EditorSymbol = {
+			...placed(),
+			childOverrides: {
+				"attribute:name": { rotation: (degrees * Math.PI) / 180 },
+			},
+		};
+		const geometry = worldBounds(instance);
+		for (const position of ["above", "below", "left", "right"] as const) {
+			const text = symbolTextShapes(
+				setSymbolLabelPosition(instance, "name", position),
+			)[0];
+			// Corners of the rotated text box in world space.
+			const center = { x: 0, y: 0 };
+			const shifted = shapeBounds({ ...text, rotation: 0 });
+			center.x = (shifted.minX + shifted.maxX) / 2 - text.x;
+			center.y = (shifted.minY + shifted.maxY) / 2 - text.y;
+			const corners = [-1, 1].flatMap((sx) =>
+				[-1, 1].map((sy) => {
+					const x = center.x + (sx * text.width) / 2;
+					const y = center.y + (sy * text.height) / 2;
+					return {
+						x: text.x + x * Math.cos(text.rotation) - y * Math.sin(text.rotation),
+						y: text.y + x * Math.sin(text.rotation) + y * Math.cos(text.rotation),
+					};
+				}),
+			);
+			const clear = corners.every((corner) =>
+				position === "above"
+					? corner.y > geometry.maxY
+					: position === "below"
+						? corner.y < geometry.minY
+						: position === "left"
+							? corner.x < geometry.minX
+							: corner.x > geometry.maxX,
+			);
+			assert.ok(clear, `${position} at ${degrees}° must clear the geometry`);
+		}
+	}
+});
+
+test("unresolved symbols without geometry stay selectable and ignore presets", () => {
+	const unresolved: EditorSymbol = { ...placed(), children: [], texts: [] };
+	const frame = symbolSelectionFrame(unresolved);
+	for (const value of [frame.x, frame.y, frame.width, frame.height])
+		assert.ok(Number.isFinite(value));
+	assert.equal(shapeAt([unresolved], { x: unresolved.x, y: unresolved.y }, 0), unresolved);
+	assert.equal(setSymbolLabelPosition(unresolved, "name", "above"), unresolved);
 });

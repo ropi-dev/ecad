@@ -510,18 +510,24 @@ export function symbolLabelAnchor(
 		direction.x * Math.cos(rotation) + direction.y * Math.sin(rotation);
 	const across =
 		-direction.x * Math.sin(rotation) + direction.y * Math.cos(rotation);
-	// Local Y points up: "left" text grows +x, "bottom" text grows +y.
-	return Math.abs(along) >= Math.abs(across)
-		? {
-				...anchor,
-				horizontalAlign: along > 0 ? "left" : "right",
-				verticalAlign: "middle",
-			}
-		: {
-				...anchor,
-				horizontalAlign: "center",
-				verticalAlign: across > 0 ? "bottom" : "top",
-			};
+	// Local Y points up: "left" text grows +x, "bottom" text grows +y. Align
+	// outward on both axes so a tilted label cannot swing back over the
+	// geometry; an axis perpendicular to the direction stays centred.
+	return {
+		...anchor,
+		horizontalAlign:
+			Math.abs(along) < LABEL_POSITION_EPSILON
+				? "center"
+				: along > 0
+					? "left"
+					: "right",
+		verticalAlign:
+			Math.abs(across) < LABEL_POSITION_EPSILON
+				? "middle"
+				: across > 0
+					? "bottom"
+					: "top",
+	};
 }
 
 function worldToSymbolLocal(symbol: EditorSymbol, point: Point): Point {
@@ -556,6 +562,8 @@ export function setSymbolLabelPosition(
 			textAlignments: withoutKey(symbol.textAlignments, attribute),
 			textPositions: withoutKey(symbol.textPositions, attribute),
 		};
+	// Unresolved symbols have no geometry to place the label beside.
+	if (!symbol.children.length) return symbol;
 	const { horizontalAlign, verticalAlign, ...anchor } = symbolLabelAnchor(
 		symbol,
 		attribute,
@@ -1148,6 +1156,13 @@ export function symbolSelectionFrame(
 	symbol: EditorSymbol,
 ): Point & { width: number; height: number; rotation: number } {
 	if (isBoxSymbol(symbol))
+		return {
+			...shapeCenter(symbol),
+			...selectionSize(symbol),
+			rotation: symbol.rotation,
+		};
+	// Unresolved symbols keep no children; fall back to their stored size.
+	if (!symbol.children.length)
 		return {
 			...shapeCenter(symbol),
 			...selectionSize(symbol),

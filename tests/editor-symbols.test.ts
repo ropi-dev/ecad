@@ -49,7 +49,7 @@ for (const definition of symbolDefinitions) {
 		assert.equal(selection.width, symbol.width + (isBoxSymbol(symbol) ? 0 : 0.5));
 		assert.equal(selection.height, symbol.height + (isBoxSymbol(symbol) ? 0 : 0.5));
 		for (const angle of [0, 90, 180, 270]) {
-			const rotated = editShapeAttribute(symbol, "angle", angle);
+			const rotated = editShapeAttribute(symbol, "angle", angle) as typeof symbol;
 			const frame = symbolSelectionFrame(rotated);
 			// The outline wraps the geometry only, not the labels or the origin-centred size.
 			const halfWidth = frame.width / 2, halfHeight = frame.height / 2;
