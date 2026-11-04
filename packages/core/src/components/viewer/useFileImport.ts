@@ -8,7 +8,7 @@ import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import type { AssetKind } from "#/projects/format.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 
 export function useFileImport<T>(
 	parse: ImportFile<T>,
@@ -16,7 +16,7 @@ export function useFileImport<T>(
 	expand?: ExpandFile,
 	kind?: AssetKind,
 ) {
-	const importAssets = useProject()?.importAssets;
+	const importAssets = useProjectActions()?.importAssets;
 	const request = useRef<AbortController | null>(null);
 	const mounted = useRef(true);
 	const [loading, setLoading] = useState(false);

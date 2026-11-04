@@ -4,7 +4,7 @@ import type {
 	EditorCanvasProps,
 } from "#/components/editor/Editor2D.tsx";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectEditor } from "#/projects/ProjectProvider.tsx";
 
 const CircuitEditor = lazy(() =>
 	import("#/components/circuit/CircuitEditor.tsx").then((module) => ({
@@ -16,7 +16,7 @@ export function EditorDocument({
 	Canvas,
 	...props
 }: Editor2DProps & { Canvas: ComponentType<EditorCanvasProps> }) {
-	const project = useProject();
+	const project = useProjectEditor();
 	if (!props.store && project?.editorCircuit)
 		return (
 			<Suspense

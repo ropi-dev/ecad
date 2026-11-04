@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { errorMessage } from "#/lib/error-message.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 
 const SymbolLibrarySettings = lazy(() =>
 	import("#/projects/SymbolLibrarySettings.tsx").then((module) => ({
@@ -17,7 +17,17 @@ const item =
 	"cursor-pointer rounded px-3 py-2 text-xs outline-none data-[highlighted]:bg-white/10 data-[disabled]:opacity-40";
 
 export function ProjectMenu() {
-	const project = useProject();
+	const project = useProjectSelection(
+		({ busy, create, list, mode, open, project, save }) => ({
+			busy,
+			create,
+			list,
+			mode,
+			open,
+			project,
+			save,
+		}),
+	);
 	const [projects, setProjects] = useState<string[]>([]);
 	const [error, setError] = useState("");
 	const [settingsOpen, setSettingsOpen] = useState(false);

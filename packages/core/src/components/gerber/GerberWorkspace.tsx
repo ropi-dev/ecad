@@ -3,14 +3,14 @@ import {
 	describeDiagnostics,
 	summarizeDiagnostics,
 } from "#/formats/diagnostics.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 import { GerberHeader } from "./GerberHeader";
 import { GerberViewer } from "./GerberViewer";
 import { LayerPanel } from "./LayerPanel";
 import { useGerberFile } from "./useGerberFile";
 
 export function GerberWorkspace() {
-	const project = useProject();
+	const project = useProjectActions();
 	const {
 		layers,
 		loading,

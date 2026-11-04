@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
 
 export function GerberHeader({
@@ -10,7 +10,7 @@ export function GerberHeader({
 	loading: boolean;
 	onOpenFile: (files: File[]) => void;
 }) {
-	const project = useProject();
+	const project = useProjectActions();
 	const workspaceControls = useWorkspaceControls();
 	if (workspaceControls) return null;
 	return (

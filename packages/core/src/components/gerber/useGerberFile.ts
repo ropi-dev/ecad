@@ -13,7 +13,7 @@ import {
 	parseGerberFileEffect,
 } from "#/formats/parseGerberFile.ts";
 import { errorMessage } from "#/lib/error-message.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 import { useFileImport } from "../viewer/useFileImport";
 
 const COLORS = [
@@ -34,7 +34,7 @@ function readGerber(file: File) {
 const release = (object: ParsedGerberObject) => object.dispose();
 
 export function useGerberFile() {
-	const readAssets = useProject()?.readAssets;
+	const readAssets = useProjectActions()?.readAssets;
 	const [restoreError, setRestoreError] = useState("");
 	const [layers, updateLayers] = useState<ParsedGerberObject[]>([]);
 	const latest = useRef(layers);

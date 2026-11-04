@@ -92,7 +92,11 @@ import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
 import { isProjectError } from "#/projects/errors.ts";
-import { useProject } from "#/projects/ProjectProvider.tsx";
+import {
+	useProjectActions,
+	useProjectSelection,
+} from "#/projects/ProjectProvider.tsx";
+import { projectIndex } from "#/projects/project-index.ts";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
 
@@ -152,7 +156,14 @@ function EditorCanvas({
 }: EditorCanvasProps) {
 	const isSymbol = symbolName !== undefined;
 	const [ownedStore] = useState(() => createDrawingStore());
-	const project = useProject();
+	const project = useProjectSelection(
+		({ store, error, libraryErrors, selectEditorFile }) => ({
+			store,
+			error,
+			libraryErrors,
+			selectEditorFile,
+		}),
+	);
 	const store = suppliedStore ?? project?.store ?? ownedStore;
 	let cameraState = cameraStates.get(store);
 	if (!cameraState) {
@@ -286,19 +297,18 @@ function EditorCanvas({
 		? selectedChild.shape.locked === true
 		: selected.length > 0 && selected.every((shape) => shape.locked === true);
 
-	const symbolIndex =
-		selectedSymbol &&
-		(!selectedSymbol.library ||
-			(selectedSymbol.library.scope === "project" &&
-				selectedSymbol.library.id === "project-symbols"))
-			? project?.project?.symbols.findIndex(
-					(symbol) => symbol.id === selectedSymbol.definitionId,
-				)
-			: undefined;
-	const symbolPath =
-		symbolIndex !== undefined && symbolIndex >= 0
-			? project?.project?.manifest.symbols[symbolIndex]
-			: undefined;
+	const symbolPath = useProjectSelection(({ project }) => {
+		if (!project || !selectedSymbol) return undefined;
+		if (
+			selectedSymbol.library &&
+			(selectedSymbol.library.scope !== "project" ||
+				selectedSymbol.library.id !== "project-symbols")
+		)
+			return undefined;
+		return projectIndex(project).symbolsById.get(selectedSymbol.definitionId)
+			?.path;
+	});
+
 	const definitionId = selectedSymbol?.definitionId;
 	const definitionLibrary = selectedSymbol?.library;
 	const prepareEdit = useEffectEvent(symbolLibrary.prepareEdit);
@@ -948,7 +958,7 @@ function LibrarySymbolEditor({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	const dirty = drawing.shapes !== savedShapes;
-	const reportUnsavedEdits = useProject()?.reportUnsavedEdits;
+	const reportUnsavedEdits = useProjectActions()?.reportUnsavedEdits;
 	const editorKey = useId();
 	useEffect(() => {
 		reportUnsavedEdits?.(editorKey, dirty);
