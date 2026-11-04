@@ -59,7 +59,7 @@
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check",
-    "test": "tsx --test tests/*.test.ts packages/core/src/engine/*.test.ts && pnpm -r --if-present run test",
+    "test": "tsx --test tests/*.test.ts && pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
     "test:browser": "playwright test --config tests/browser/playwright.config.ts",
     "perf": "tsx scripts/performance/run.ts",

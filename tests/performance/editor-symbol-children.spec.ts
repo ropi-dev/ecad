@@ -1,0 +1,140 @@
+import { expect, test } from "@playwright/test";
+import { drawingPoint, selectSymbolParent } from "../browser/symbol-items";
+import { setupAppTests } from "./app-fixture.ts";
+import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+
+setupAppTests();
+
+test("editor-symbol-children", async ({ page }, testInfo) => {
+	await page.addInitScript(() => {
+		const file = {
+			format: "ecad-symbol",
+			version: 1,
+			units: "mm",
+			id: "hierarchy-part",
+			name: "Hierarchy part",
+			description: "",
+			prefix: "U",
+			value: "",
+			shapes: [
+				{
+					kind: "rectangle",
+					x: 0,
+					y: 0,
+					width: 40,
+					height: 160,
+					locked: false,
+				},
+				{
+					kind: "text",
+					text: "Controller",
+					x: 0,
+					y: 0,
+					width: 15,
+					height: 3,
+					fontSize: 2,
+				},
+				...Array.from({ length: 128 }, (_, index) => ({
+					kind: "pin",
+					x: index < 64 ? -20 : 20,
+					y: ((index % 64) - 32) * 2.54,
+					name: `Signal ${index + 1}`,
+					number: String(index + 1),
+					locked: false,
+				})),
+			],
+		};
+		localStorage.setItem(
+			"ecad.user-config.v1",
+			JSON.stringify({
+				version: 1,
+				symbolLibraries: [
+					{
+						id: "hierarchy",
+						name: "Hierarchy",
+						enabled: true,
+						source: { kind: "embedded", symbols: [file] },
+					},
+				],
+			}),
+		);
+	});
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Hierarchy part", exact: true })
+		.click();
+	const canvas = page.locator("canvas");
+	const box = (await canvas.boundingBox())!;
+	await canvas.click({
+		position: { x: box.width * 0.45, y: box.height * 0.5 },
+	});
+	const center = await page
+		.getByRole("spinbutton", { name: "Center X", exact: true })
+		.inputValue();
+	const parent = {
+		x: Number(center),
+		y: Number(
+			await page
+				.getByRole("spinbutton", { name: "Center Y", exact: true })
+				.inputValue(),
+		),
+	};
+	const children = [
+		{ kind: "rectangle", x: 0, y: 0, label: "Center X" },
+		{ kind: "text", x: 0, y: 0, label: "Anchor X" },
+		{ kind: "pin", x: -20, y: 0, label: "Center X" },
+	];
+	for (let repeat = 0; repeat < 3; repeat++) {
+		for (const child of children) {
+			await interaction(page, "symbol.child-edit", async () => {
+				const point = await drawingPoint(page, {
+					x: parent.x + child.x + (child.kind === "rectangle" ? 10 : 0),
+					y: parent.y + child.y + (child.kind === "rectangle" ? 30 : 0),
+				});
+				await page.mouse.move(point.x, point.y);
+				await page.mouse.down();
+				if (child.kind === "pin") {
+					await page.mouse.move(point.x + 4, point.y);
+					await page.mouse.move(point.x, point.y);
+				}
+				await page.mouse.up();
+				await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+				const { label } = child;
+				const input = page.getByRole("spinbutton", {
+					name: label,
+					exact: true,
+				});
+				const value = child.kind === "pin" ? -20 + repeat : 5 + repeat;
+				await input.fill(String(value));
+				await input.press("Tab");
+				child.x = value;
+				await page.waitForFunction(
+					({ label, value }) =>
+						document
+							.querySelector(`input[aria-label="${label}"]`)
+							?.getAttribute("data-committed-value") === String(value),
+					{ label, value },
+					{ polling: "raf" },
+				);
+				await page.evaluate(
+					() =>
+						new Promise<void>((resolve) =>
+							requestAnimationFrame(() =>
+								requestAnimationFrame(() => resolve()),
+							),
+						),
+				);
+			});
+			await selectSymbolParent(page);
+			await expect(
+				page.getByRole("spinbutton", { name: "Center X", exact: true }),
+			).toHaveValue(center);
+		}
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-symbol-children", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
+});

@@ -1,0 +1,52 @@
+import { expect, test } from "@playwright/test";
+import { setupAppTests } from "./app-fixture.ts";
+import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+
+setupAppTests();
+
+test("editor-symbol-duplicate", async ({ page }, testInfo) => {
+	await page.goto("/editor?perf=1");
+	await ready(page);
+	await expect(
+		page.getByRole("button", { name: "Select", exact: true }),
+	).toBeEnabled();
+	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	const canvas = page.locator("canvas");
+	const bounds = (await canvas.boundingBox())!;
+	const source = {
+		x: bounds.x + bounds.width * 0.35,
+		y: bounds.y + bounds.height * 0.5,
+	};
+	await page.mouse.click(source.x, source.y);
+	await expect(
+		page.getByRole("textbox", { name: "Reference", exact: true }),
+	).toHaveValue("R1");
+	for (let repeat = 0; repeat < 3; repeat++) {
+		await interaction(page, "symbol.duplicate", async () => {
+			await page.keyboard.down("Alt");
+			await page.mouse.move(source.x, source.y);
+			await page.mouse.down();
+			await page.mouse.move(source.x + 80 + repeat * 40, source.y + 60, {
+				steps: 4,
+			});
+			await page.mouse.up();
+			await page.keyboard.up("Alt");
+			await page.waitForFunction(
+				(reference) =>
+					document.querySelector<HTMLInputElement>(
+						'input[aria-label="Reference"]',
+					)?.value === reference,
+				`R${repeat + 2}`,
+				{ polling: "raf" },
+			);
+		});
+	}
+	const value = await report(page);
+	await finish(page, testInfo, "editor-symbol-duplicate", {
+		interactionP95Ms: metric(value, "scenario.interaction")!,
+	});
+});
