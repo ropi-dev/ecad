@@ -1124,12 +1124,86 @@ export function intersectsSelection(
 const connectionTolerance = 1e-4;
 const normalizationTolerance = connectionTolerance;
 
+// Connection lookups scan nearby buckets instead of every shape. A bucket is far
+// wider than the connection tolerance, so the neighboring buckets hold every
+// candidate and callers still apply the exact test.
+const bucketOf = (value: number) => Math.floor(value);
+
+/** Finds items whose point lies within one bucket of a query point. */
+function createPointIndex<T>(items: readonly T[], pointOf: (item: T) => Point) {
+	const buckets = new Map<number, Map<number, T[]>>();
+	for (const item of items) {
+		const point = pointOf(item);
+		const x = bucketOf(point.x);
+		const y = bucketOf(point.y);
+		let column = buckets.get(x);
+		if (!column) {
+			column = new Map();
+			buckets.set(x, column);
+		}
+		const entries = column.get(y);
+		if (entries) entries.push(item);
+		else column.set(y, [item]);
+	}
+	return (point: Point, test: (item: T) => boolean) => {
+		const x = bucketOf(point.x);
+		const y = bucketOf(point.y);
+		for (let dx = -1; dx <= 1; dx++) {
+			const column = buckets.get(x + dx);
+			if (!column) continue;
+			for (let dy = -1; dy <= 1; dy++)
+				if (column.get(y + dy)?.some(test)) return true;
+		}
+		return false;
+	};
+}
+
+/** Finds wires that `pointOnWire` could accept: those on the point's row or column. */
+function createWireIndex<T extends { start: Point; end: Point }>(
+	wires: readonly T[],
+) {
+	const rows = new Map<number, T[]>();
+	const columns = new Map<number, T[]>();
+	for (const wire of wires) {
+		const vertical =
+			Math.abs(wire.end.x - wire.start.x) < Math.abs(wire.end.y - wire.start.y);
+		const index = vertical ? columns : rows;
+		const key = bucketOf(vertical ? wire.start.x : wire.start.y);
+		const entries = index.get(key);
+		if (entries) entries.push(wire);
+		else index.set(key, [wire]);
+	}
+	return (point: Point, test: (wire: T) => boolean) => {
+		for (const [index, value] of [
+			[rows, point.y],
+			[columns, point.x],
+		] as const) {
+			const key = bucketOf(value);
+			for (let offset = -1; offset <= 1; offset++)
+				if (index.get(key + offset)?.some(test)) return true;
+		}
+		return false;
+	};
+}
+
+// Shapes are immutable, so a drag reuses the terminals of every symbol it did not
+// move. Frozen results keep the shared entries from being changed by a caller.
+const symbolTerminals = new WeakMap<EditorShape, readonly Point[]>();
+
 /** A pin has one terminal at its center, including pins inside rotated symbols. */
-export function pinTerminals(shape: EditorShape): Point[] {
+export function pinTerminals(shape: EditorShape): readonly Point[] {
 	if (shape.kind === "pin") return [{ x: shape.x, y: shape.y }];
-	return shape.kind === "symbol"
-		? symbolShapes(shape).flatMap(pinTerminals)
-		: [];
+	if (shape.kind !== "symbol") return [];
+	let terminals = symbolTerminals.get(shape);
+	if (!terminals) {
+		terminals = Object.freeze(
+			symbolShapes(shape)
+				.flatMap(pinTerminals)
+				.map((point) => Object.freeze(point)),
+		);
+		symbolTerminals.set(shape, terminals);
+	}
+	return terminals;
 }
 
 /** Free pins include symbol terminals and exclude connections along wire interiors. */
@@ -1149,28 +1223,38 @@ export function openPins(
 			)
 		: pins;
 	if (candidates.length === 0) return [];
-	const wires = shapes
-		.filter((shape) => shape.kind === "wire")
-		.map((shape) => ({
-			start: localToWorld(shape, -shape.width / 2, 0),
-			end: localToWorld(shape, shape.width / 2, 0),
-		}));
-	const noConnects = shapes.flatMap((shape) =>
-		shape.kind === "symbol"
-			? symbolShapes(shape).filter((child) => child.kind === "no-connect")
-			: shape.kind === "no-connect"
-				? [shape]
-				: [],
+	const onWire = createWireIndex(
+		shapes
+			.filter((shape) => shape.kind === "wire")
+			.map((shape) => ({
+				start: localToWorld(shape, -shape.width / 2, 0),
+				end: localToWorld(shape, shape.width / 2, 0),
+			})),
 	);
+	const nearNoConnect = createPointIndex(
+		shapes.flatMap((shape) =>
+			shape.kind === "symbol"
+				? symbolShapes(shape).filter((child) => child.kind === "no-connect")
+				: shape.kind === "no-connect"
+					? [shape]
+					: [],
+		),
+		(shape) => shape,
+	);
+	const nearPin = createPointIndex(pins, ({ point }) => point);
 	return candidates.filter(
 		(pin) =>
-			!noConnects.some(
+			!nearNoConnect(
+				pin.point,
 				(shape) =>
 					Math.hypot(shape.x - pin.point.x, shape.y - pin.point.y) <=
 					connectionTolerance,
 			) &&
-			!wires.some(({ start, end }) => pointOnWire(pin.point, start, end)) &&
-			!pins.some(
+			!onWire(pin.point, ({ start, end }) =>
+				pointOnWire(pin.point, start, end),
+			) &&
+			!nearPin(
+				pin.point,
 				(other) =>
 					other !== pin &&
 					Math.hypot(
@@ -1190,7 +1274,10 @@ export function netLabelAnchors(shapes: EditorShape[]): Point[] {
 }
 
 export function openWireEnds(shapes: EditorShape[]) {
-	const pins = [...shapes.flatMap(pinTerminals), ...netLabelAnchors(shapes)];
+	const nearPin = createPointIndex(
+		[...shapes.flatMap(pinTerminals), ...netLabelAnchors(shapes)],
+		(pin) => pin,
+	);
 	const wires = shapes
 		.filter((shape) => shape.kind === "wire")
 		.map((shape) => ({
@@ -1198,16 +1285,19 @@ export function openWireEnds(shapes: EditorShape[]) {
 			start: localToWorld(shape, -shape.width / 2, 0),
 			end: localToWorld(shape, shape.width / 2, 0),
 		}));
+	const onWire = createWireIndex(wires);
 	return wires.flatMap((wire) =>
 		[wire.start, wire.end]
 			.filter(
 				(point) =>
-					!pins.some(
+					!nearPin(
+						point,
 						(pin) =>
 							Math.hypot(pin.x - point.x, pin.y - point.y) <=
 							connectionTolerance,
 					) &&
-					!wires.some(
+					!onWire(
+						point,
 						(other) =>
 							other !== wire && pointOnWire(point, other.start, other.end),
 					),
@@ -1245,14 +1335,19 @@ export function wireJunctions(shapes: EditorShape[]) {
 		entries.push(wire);
 		index.set(key, entries);
 	}
-	const candidates = new Map<string, { point: Point; pins: EditorShape[] }[]>();
+	type Candidate = { point: Point; pins: EditorShape[] };
+	const candidates = new Map<number, Map<number, Candidate[]>>();
+	// Buckets in creation order, so results keep a stable document-derived order.
+	const buckets: Candidate[][] = [];
 	const atPoint = (point: Point) => {
 		const x = bucket(point.x);
 		const y = bucket(point.y);
 		for (let dx = -1; dx <= 1; dx++) {
+			const column = candidates.get(x + dx);
+			if (!column) continue;
 			for (let dy = -1; dy <= 1; dy++) {
-				const existing = candidates
-					.get(`${x + dx}:${y + dy}`)
+				const existing = column
+					.get(y + dy)
 					?.find(
 						(candidate) =>
 							Math.hypot(
@@ -1264,10 +1359,18 @@ export function wireJunctions(shapes: EditorShape[]) {
 			}
 		}
 		const candidate = { point, pins: [] as EditorShape[] };
-		const key = `${x}:${y}`;
-		const entries = candidates.get(key) ?? [];
+		let column = candidates.get(x);
+		if (!column) {
+			column = new Map();
+			candidates.set(x, column);
+		}
+		let entries = column.get(y);
+		if (!entries) {
+			entries = [];
+			column.set(y, entries);
+			buckets.push(entries);
+		}
 		entries.push(candidate);
-		candidates.set(key, entries);
 		return candidate;
 	};
 	for (const shape of shapes) {
@@ -1277,7 +1380,7 @@ export function wireJunctions(shapes: EditorShape[]) {
 		atPoint(start);
 		atPoint(end);
 	}
-	return [...candidates.values()].flat().flatMap(({ point, pins }) => {
+	return buckets.flat().flatMap(({ point, pins }) => {
 		let branches = pins.length;
 		const connected = [...pins];
 		for (const [axis, coordinate] of [point.x, point.y].entries()) {
@@ -1551,13 +1654,17 @@ export function normalizeWireSegments(
 }
 
 function pointOnWire(point: Point, start: Point, end: Point) {
-	const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
-	const along = vertical ? "y" : "x";
-	const across = vertical ? "x" : "y";
+	// Named axes keep this hot connection test free of keyed property lookups.
+	if (Math.abs(end.x - start.x) < Math.abs(end.y - start.y))
+		return (
+			Math.abs(point.x - start.x) <= connectionTolerance &&
+			point.y >= Math.min(start.y, end.y) - connectionTolerance &&
+			point.y <= Math.max(start.y, end.y) + connectionTolerance
+		);
 	return (
-		Math.abs(point[across] - start[across]) <= connectionTolerance &&
-		point[along] >= Math.min(start[along], end[along]) - connectionTolerance &&
-		point[along] <= Math.max(start[along], end[along]) + connectionTolerance
+		Math.abs(point.y - start.y) <= connectionTolerance &&
+		point.x >= Math.min(start.x, end.x) - connectionTolerance &&
+		point.x <= Math.max(start.x, end.x) + connectionTolerance
 	);
 }
 
@@ -1687,7 +1794,7 @@ function moveConnectedWires(
 	);
 }
 
-function movementTerminals(shape: EditorShape): Point[] {
+function movementTerminals(shape: EditorShape): readonly Point[] {
 	if (shape.kind === "text" && shape.electrical && shape.text.trim())
 		return [{ x: shape.x, y: shape.y }];
 	return pinTerminals(shape);
