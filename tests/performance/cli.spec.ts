@@ -7,7 +7,7 @@ import {
 	startCli,
 } from "../helpers/cli-mcp.ts";
 
-test("cli-drawing", async (_fixtures, testInfo) => {
+test("cli-drawing", async ({ browserName: _browserName }, testInfo) => {
 	const metrics: Record<string, number> = {};
 	const measure = async <T>(name: string, run: () => Promise<T>) => {
 		const start = performance.now();
@@ -103,7 +103,9 @@ test("cli-drawing", async (_fixtures, testInfo) => {
 	}
 });
 
-test("named-net-connectivity", async (_fixtures, testInfo) => {
+test("named-net-connectivity", async ({
+	browserName: _browserName,
+}, testInfo) => {
 	const { electricalNets } = await import("#/drawing/named-nets.ts");
 	const { drawShape } = await import("#/drawing/shapes.ts");
 	const shapes = [

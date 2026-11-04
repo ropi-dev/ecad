@@ -12,7 +12,7 @@ import {
 import { DesktopSymbolLibrary } from "../../packages/desktop/src/main/symbol-library.ts";
 
 // This measures native filesystem I/O without browser CPU throttling or rendering.
-test("desktop-storage", async (_fixtures, testInfo) => {
+test("desktop-storage", async ({ browserName: _browserName }, testInfo) => {
 	const directory = await mkdtemp(join(tmpdir(), "ecad-perf-"));
 	const metrics: Record<string, number> = {};
 	const measure = async <T>(name: string, run: () => Promise<T>) => {
@@ -122,7 +122,7 @@ test("desktop-storage", async (_fixtures, testInfo) => {
 	}
 });
 
-test("desktop-untitled", async (_fixtures, testInfo) => {
+test("desktop-untitled", async ({ browserName: _browserName }, testInfo) => {
 	const parent = await mkdtemp(join(tmpdir(), "ecad-memory-perf-"));
 	const metrics: Record<string, number> = {};
 	const measure = async <T>(name: string, run: () => Promise<T>) => {

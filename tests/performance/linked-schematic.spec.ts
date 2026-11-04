@@ -5,7 +5,9 @@ const twoPinParts = 240;
 const connectors = 60;
 const repeats = 5;
 
-test("linked-schematic-sync", async (_fixtures, testInfo) => {
+test("linked-schematic-sync", async ({
+	browserName: _browserName,
+}, testInfo) => {
 	const { circuitFileSchema, createCircuit } = await import(
 		"@ecad/drawing-core/circuit/model.ts"
 	);
