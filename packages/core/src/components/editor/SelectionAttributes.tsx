@@ -17,6 +17,8 @@ import {
 	isBasicShape,
 	type ShapeAttribute,
 	shapeBounds,
+	type SymbolLabelPosition,
+	symbolLabelPosition,
 	symbolShapes,
 } from "#/drawing/shapes.ts";
 import {
@@ -104,6 +106,7 @@ interface SelectionAttributesProps {
 	onLineStyleChange: (style: LineStyle) => void;
 	onLockChange: (locked: boolean) => void;
 	onNetSymbolChange?: (netSymbol: boolean) => void;
+	onSymbolLabelPositionChange?: (position: SymbolLabelPosition) => void;
 	onSymbolAttributeChange: (
 		attribute: keyof EditorSymbol["attributes"],
 		value: string,
@@ -141,6 +144,7 @@ function SelectionAttributesPanel({
 	onLockChange,
 	onSymbolAttributeChange,
 	onNetSymbolChange,
+	onSymbolLabelPositionChange,
 	onPinAttributeChange,
 	onPinVisibilityChange,
 	onCreateSymbol,
@@ -535,6 +539,37 @@ function SelectionAttributesPanel({
 						</div>
 					))}
 				</dl>
+				{symbol?.netSymbol && onSymbolLabelPositionChange && (
+					<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
+						Label position
+						<span className="relative mr-7 w-24 shrink-0">
+							<select
+								aria-label="Label position"
+								value={symbolLabelPosition(symbol, "name")}
+								className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+								onChange={(event) =>
+									onSymbolLabelPositionChange(
+										event.currentTarget.value as SymbolLabelPosition,
+									)
+								}
+							>
+								<option value="default">Default</option>
+								<option value="above">Above</option>
+								<option value="below">Below</option>
+								<option value="left">Left</option>
+								<option value="right">Right</option>
+								<option value="custom" disabled>
+									Custom
+								</option>
+							</select>
+							<ChevronDown
+								aria-hidden="true"
+								size={12}
+								className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-[#f0f3f8]"
+							/>
+						</span>
+					</label>
+				)}
 				{textShapes.length > 0 && (
 					<TextAlignmentInputs
 						horizontalAlign={
