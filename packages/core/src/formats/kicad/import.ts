@@ -112,12 +112,16 @@ function describeInvalidShape(
 	if (!path.length) return sentence(issue.message);
 	const [first, index] = path;
 	let owner = "";
+	let key = String(path.at(-1));
 	if (first === "children" && typeof index === "number" && path.length > 2) {
 		const child = shape.kind === "symbol" ? shape.children[index] : undefined;
 		owner = ` of child ${index + 1}${child ? ` (a ${words(child.kind)})` : ""}`;
+		// A KiCad circle has a radius; its converted width and height derive from it.
+		if (child?.kind === "circle" && (key === "width" || key === "height"))
+			key = "radius";
 	} else if (first === "texts" && typeof index === "number" && path.length > 2)
 		owner = " of an attribute label";
-	const field = `${words(String(path.at(-1)))}${owner}`;
+	const field = `${words(key)}${owner}`;
 	return /received NaN$/.test(issue.message)
 		? `The ${field} is not a number.`
 		: `The ${field} is invalid (${issue.message.replace(/^Invalid input: /, "")}).`;

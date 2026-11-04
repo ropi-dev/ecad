@@ -201,7 +201,7 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 	await expect(truncated).toHaveText("1");
 	await expect(truncated).toHaveAttribute("aria-expanded", "false");
 	const region = page.getByRole("button", {
-		name: "Diagnostics for region.gbr: 1 error, 1 warning",
+		name: "Diagnostics for region.gbr: 2 problems (1 error, 1 warning)",
 		exact: true,
 	});
 	await expect(region).not.toHaveAttribute("aria-controls");

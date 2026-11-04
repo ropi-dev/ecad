@@ -59,7 +59,12 @@ export function LayerPanel({
 					const open = expanded.has(layer.id);
 					const counts = countDiagnostics(diagnostics);
 					const errors = counts.error > 0;
-					const summary = describeDiagnostics(diagnostics);
+					const total = (counts.error + counts.warning).toLocaleString();
+					// The accessible name includes the visible count (WCAG 2.5.3).
+					const summary =
+						counts.error && counts.warning
+							? `${total} problems (${describeDiagnostics(diagnostics)})`
+							: describeDiagnostics(diagnostics);
 					const diagnosticsId = `${listId}-${index}`;
 					return (
 						<li
@@ -180,7 +185,7 @@ export function LayerPanel({
 									) : (
 										<TriangleAlert size={14} aria-hidden="true" />
 									)}
-									{(counts.error + counts.warning).toLocaleString()}
+									{total}
 								</button>
 							)}
 							<button
