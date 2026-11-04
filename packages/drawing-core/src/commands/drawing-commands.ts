@@ -1,4 +1,5 @@
 import { Data, Effect } from "effect";
+import { sameDrawing } from "#/commands/drawing-equality.ts";
 import {
 	type DrawingDocument,
 	type DrawingSnapshot,
@@ -262,63 +263,6 @@ function validateShape(shape: EditorShape) {
 			});
 		}
 	}
-}
-
-function sameDrawing(first: DrawingDocument, second: DrawingDocument) {
-	return (
-		first.shapes.length === second.shapes.length &&
-		first.shapes.every((shape, index) => {
-			const other = second.shapes[index];
-			return (
-				shape.id === other.id &&
-				shape.kind === other.kind &&
-				(shape.locked ?? false) === (other.locked ?? false) &&
-				(!isBasicShape(shape) ||
-					(isBasicShape(other) &&
-						(shape.lineStyle ?? "solid") === (other.lineStyle ?? "solid") &&
-						(shape.filled ?? false) === (other.filled ?? false))) &&
-				(shape.kind !== "pin" ||
-					(other.kind === "pin" &&
-						shape.name === other.name &&
-						shape.number === other.number &&
-						shape.length === other.length &&
-						shape.labelOffset === other.labelOffset &&
-						shape.showLabels === other.showLabels &&
-						shape.showName === other.showName &&
-						shape.showNumber === other.showNumber)) &&
-				(shape.kind !== "symbol" ||
-					(other.kind === "symbol" &&
-						shape.definitionId === other.definitionId &&
-						shape.netSymbol === other.netSymbol &&
-						JSON.stringify(shape.library) === JSON.stringify(other.library) &&
-						shape.strokeOverride === other.strokeOverride &&
-						JSON.stringify(shape.textAlignments) ===
-							JSON.stringify(other.textAlignments) &&
-						JSON.stringify(shape.childOverrides) ===
-							JSON.stringify(other.childOverrides) &&
-						JSON.stringify(shape.children) === JSON.stringify(other.children) &&
-						JSON.stringify(shape.texts) === JSON.stringify(other.texts) &&
-						JSON.stringify(shape.textPositions) ===
-							JSON.stringify(other.textPositions) &&
-						shape.attributes.name === other.attributes.name &&
-						shape.attributes.reference === other.attributes.reference &&
-						shape.attributes.value === other.attributes.value)) &&
-				(shape.kind !== "text" ||
-					(other.kind === "text" &&
-						shape.text === other.text &&
-						shape.electrical === other.electrical &&
-						shape.fontSize === other.fontSize &&
-						shape.horizontalAlign === other.horizontalAlign &&
-						shape.verticalAlign === other.verticalAlign)) &&
-				Math.abs(shape.x - other.x) < 1e-9 &&
-				Math.abs(shape.y - other.y) < 1e-9 &&
-				Math.abs(shape.width - other.width) < 1e-9 &&
-				Math.abs(shape.height - other.height) < 1e-9 &&
-				shape.lineWidth === other.lineWidth &&
-				Math.abs(shape.rotation - other.rotation) < 1e-9
-			);
-		})
-	);
 }
 
 function commit(
