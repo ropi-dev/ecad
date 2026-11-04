@@ -13,6 +13,7 @@ import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
 import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
+import { isProjectError } from "#/projects/errors.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	defaultSymbolConfig,
@@ -205,7 +206,11 @@ export function useSymbolLibrary() {
 			completed = true;
 			return result;
 		} catch (cause) {
-			if (!controller.signal.aborted)
+			// The project's conflict notice already explains a conflict.
+			if (
+				!controller.signal.aborted &&
+				!isProjectError(cause, "ProjectConflict")
+			)
 				setError(errorMessage(cause, "Unable to update symbols."));
 			throw cause;
 		} finally {

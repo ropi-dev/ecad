@@ -245,6 +245,36 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	await expect(notice).not.toContainText("Your unsaved changes");
 	expect((await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).assets).toEqual([]);
+
+	// Adding a symbol file is refused the same way.
+	await (await openProjectFiles(page))
+		.getByLabel("Add symbol files", { exact: true })
+		.setInputFiles({
+			name: "point.ecadsym",
+			mimeType: "application/json",
+			buffer: Buffer.from(
+				JSON.stringify({
+					format: "ecad-symbol",
+					version: 1,
+					units: "mm",
+					id: "conflict-point",
+					name: "Conflict point",
+					description: "",
+					prefix: "TP",
+					value: "",
+					shapes: [{ kind: "pin", name: "Signal", x: 0, y: 0 }],
+				}),
+			),
+		});
+	await expect
+		.poll(() =>
+			page.evaluate(() => !document.querySelector('[aria-busy="true"]')),
+		)
+		.toBe(true);
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+	await expect(repeated).toHaveCount(0);
+	await expect(notice).toBeVisible();
+	expect((await documentState(page)).symbols).toEqual([]);
 	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
 	await expect(notice).toHaveCount(0);
 });
