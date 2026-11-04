@@ -446,6 +446,13 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 	).toHaveCount(0);
 	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
 	await expect(notice).toHaveCount(0);
+	// Reloading closes the library editor and its discarded edits.
+	await expect(page.getByRole("heading", { level: 1 })).toContainText(
+		"Schematic editor",
+	);
+	await expect(
+		page.getByRole("button", { name: "Back to schematic", exact: true }),
+	).toHaveCount(0);
 });
 
 const benchParts = {

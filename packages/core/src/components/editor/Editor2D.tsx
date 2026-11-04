@@ -236,13 +236,15 @@ export function Editor2D(props: Editor2DProps = {}) {
 	const drawing = props.store ? null : project?.editorDrawing;
 	return (
 		<EditorCanvas
-			key={
+			// A reloaded or switched project starts a fresh editor, including any
+			// open library symbol editor, even where the shell is not keyed by it.
+			key={`${project?.session ?? 0}:${
 				symbol
 					? `symbol:${symbol.file.id}`
 					: drawing
 						? `drawing:${drawing.file.id}`
 						: "schematic"
-			}
+			}`}
 			{...props}
 			store={symbol?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}
