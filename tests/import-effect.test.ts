@@ -16,6 +16,7 @@ import { type ImportFile, importFilesEffect } from "#/formats/importFiles.ts";
 import { parseStepFile } from "#/formats/parseStepFile.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
 import { runEffect } from "#/lib/effect.ts";
+import { installArchiveWorker } from "./helpers/archive-worker";
 
 function deferred() {
 	let resolve!: () => void;
@@ -182,15 +183,19 @@ test("batch imports preserve order, diagnostics and partial success without disp
 				? Effect.fail(new ArchiveError({ message: "bad archive" }))
 				: Effect.succeed(
 						file.name === "board.zip"
-							? ["bottom.gbr", "bad.gbr", "top.gbr"].map(
-									(name) => new File(["data"], name),
-								)
-							: [file],
+							? {
+									files: ["bottom.gbr", "bad.gbr", "top.gbr"].map(
+										(name) => new File(["data"], name),
+									),
+									messages: ["Skipped manual.pdf (example)."],
+								}
+							: { files: [file] },
 					),
 		),
 	);
 	assert.deepEqual(result.values, ["bottom.gbr", "top.gbr", "last.gbr"]);
 	assert.deepEqual(result.messages, [
+		"board.zip: Skipped manual.pdf (example).",
 		"bottom.gbr: warning",
 		"bad.gbr: bad geometry",
 		"top.gbr: warning",
@@ -293,7 +298,8 @@ test("STEP Promise results retain live geometry until the viewer disposes them",
 	assert.equal(disposeGeometry.mock.calls.length, 1);
 });
 
-test("ZIP failures remain typed and aborted reads cannot proceed to extraction", async () => {
+test("ZIP failures remain typed and aborted reads cannot proceed to extraction", async (t) => {
+	t.after(installArchiveWorker().restore);
 	await assert.rejects(
 		expandGerberFile(
 			new File(["not a zip"], "broken.zip"),
