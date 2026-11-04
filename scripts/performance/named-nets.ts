@@ -26,7 +26,7 @@ for (let run = 0; run < 3; run++) {
 		);
 		const elapsed = performance.now() - start;
 		assert.ok(reply.ok);
-		assert.equal(reply.drawing.nets?.length, 5000);
+		assert.equal(reply.drawing?.nets?.length, 5000);
 		(read === 0 ? firstReads : repeatedReads).push(elapsed);
 	}
 }

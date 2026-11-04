@@ -74,10 +74,35 @@ export const rotateShapesInputSchema = z.strictObject({
 		),
 });
 export const jumpHistoryInputSchema = z.strictObject({ id: historyId });
+export const getDrawingInputSchema = z.strictObject({
+	offset: z
+		.number()
+		.int()
+		.nonnegative()
+		.safe()
+		.optional()
+		.describe(
+			"Index of the first shape to return. Passing offset or limit reads one page; continue from page.nextOffset until it is absent.",
+		),
+	limit: z
+		.number()
+		.int()
+		.positive()
+		.safe()
+		.optional()
+		.describe(
+			"Maximum shapes in this page. A page also stops early to stay within the reply size limit.",
+		),
+});
+
+/** The web relay refuses a larger editor acknowledgement, which carries one reply. */
+export const drawingAcknowledgementByteLimit = 8 * 1024 * 1024;
+/** Every reply fits in one acknowledgement, with room left for its envelope. */
+export const drawingReplyByteLimit = 6 * 1024 * 1024;
 
 /** Only resolved document operations cross the bridge. No tool or pointer state. */
 export const drawingOperationSchema = z.discriminatedUnion("type", [
-	z.strictObject({ type: z.literal("getDrawing") }),
+	getDrawingInputSchema.extend({ type: z.literal("getDrawing") }),
 	z.strictObject({
 		type: z.literal("placeRectangle"),
 		input: rectangleInputSchema,
@@ -127,9 +152,25 @@ const drawingStateSchema = z.strictObject({
 	}),
 });
 
+const count = z.number().int().nonnegative().safe();
+
 export const drawingSuccessReplySchema = z.strictObject({
 	ok: z.literal(true),
-	drawing: drawingStateSchema,
+	/** Only `getDrawing` returns shapes; edits stay small however large the drawing is. */
+	drawing: drawingStateSchema.optional(),
+	page: z
+		.strictObject({
+			offset: count,
+			count,
+			total: count,
+			nextOffset: count.optional(),
+		})
+		.optional(),
+	summary: z.strictObject({
+		shapeCount: count,
+		nextShapeId: shapeId,
+		historyId,
+	}),
 	result: z
 		.strictObject({
 			ids: z.array(shapeId),
@@ -208,9 +249,141 @@ function snapshotNets(snapshot: DrawingSnapshot) {
 	return nets;
 }
 
-/** The browser and headless callers provide their store at the execution boundary. */
+/** UTF-8 length, counting each surrogate half as three bytes, which only overestimates. */
+export function utf8ByteLength(text: string) {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range starts at NUL.
+	if (!/[^\u0000-\u007f]/.test(text)) return text.length;
+	let bytes = text.length;
+	for (let index = 0; index < text.length; index++) {
+		const code = text.charCodeAt(index);
+		if (code >= 0x80) bytes += code >= 0x800 ? 2 : 1;
+	}
+	return bytes;
+}
+
+// Committed shapes, shape lists and nets are frozen, so a measured size stays
+// valid, and repeated reads of a snapshot only measure its history.
+const jsonBytes = new WeakMap<object, number>();
+
+function cachedJsonBytes(
+	value: object,
+	measure = () => utf8ByteLength(JSON.stringify(value)),
+) {
+	let bytes = jsonBytes.get(value);
+	if (bytes === undefined) {
+		bytes = measure();
+		jsonBytes.set(value, bytes);
+	}
+	return bytes;
+}
+
+/** The JSON size of `shapes`, measured from its shapes so pages reuse them. */
+function shapesJsonBytes(shapes: DrawingSnapshot["shapes"]) {
+	return cachedJsonBytes(shapes, () => {
+		let bytes = 2 + Math.max(shapes.length - 1, 0);
+		for (const shape of shapes) bytes += cachedJsonBytes(shape);
+		return bytes;
+	});
+}
+
+type DrawingSuccessReply = z.infer<typeof drawingSuccessReplySchema>;
+
+const tooLarge = (message: string) =>
+	({
+		ok: false,
+		error: { code: "DrawingTooLarge", message },
+	}) as const;
+
+function summary(snapshot: DrawingSnapshot): DrawingSuccessReply["summary"] {
+	return {
+		shapeCount: snapshot.shapes.length,
+		nextShapeId: snapshot.nextShapeId,
+		historyId: snapshot.history.currentId,
+	};
+}
+
+function readDrawing(
+	snapshot: DrawingSnapshot,
+	{ offset, limit }: z.infer<typeof getDrawingInputSchema>,
+	byteLimit: number,
+): DrawingReply {
+	const paged = offset !== undefined || limit !== undefined;
+	const total = snapshot.shapes.length;
+	const start = Math.min(offset ?? 0, total);
+	const end = Math.min(total, start + (limit ?? total));
+	const nets = start === 0 ? snapshotNets(snapshot) : undefined;
+	const header = {
+		ok: true,
+		drawing: {
+			shapes: [] as DrawingSnapshot["shapes"][number][],
+			nextShapeId: snapshot.nextShapeId,
+			history: {
+				currentId: snapshot.history.currentId,
+				nodes: Object.values(snapshot.history.nodes).map((node) => ({
+					id: node.id,
+					parentId: node.parentId,
+					childIds: [...node.childIds],
+					preferredChildId: node.preferredChildId,
+					label: node.label,
+				})),
+			},
+		},
+		// The largest values each field can take, so the final page is no longer.
+		...(paged
+			? {
+					page: { offset: start, count: end - start, total, nextOffset: total },
+				}
+			: {}),
+		summary: summary(snapshot),
+	} satisfies DrawingSuccessReply;
+	let remaining =
+		byteLimit -
+		utf8ByteLength(JSON.stringify(header)) -
+		(nets ? ',"nets":'.length + cachedJsonBytes(nets) : 0);
+	const reply = (shapes: DrawingSnapshot["shapes"]) => ({
+		...header,
+		drawing: { ...header.drawing, shapes, ...(nets ? { nets } : {}) },
+	});
+	if (!paged) {
+		if (shapesJsonBytes(snapshot.shapes) - 2 <= remaining)
+			return reply(snapshot.shapes);
+		return tooLarge(
+			`The drawing's ${total} shapes do not fit in one ${byteLimit}-byte reply. Call getDrawing with offset 0 to read it in pages.`,
+		);
+	}
+	let stop = start;
+	while (stop < end) {
+		const bytes =
+			cachedJsonBytes(snapshot.shapes[stop]) + (stop > start ? 1 : 0);
+		if (bytes > remaining) break;
+		remaining -= bytes;
+		stop++;
+	}
+	if (stop === start && start < end)
+		return tooLarge(
+			remaining < 0
+				? `The drawing's history and nets alone exceed the ${byteLimit}-byte reply limit.`
+				: `The shape at offset ${start} exceeds the ${byteLimit}-byte reply limit.`,
+		);
+	return {
+		...reply(snapshot.shapes.slice(start, stop)),
+		page: {
+			offset: start,
+			count: stop - start,
+			total,
+			...(stop < total ? { nextOffset: stop } : {}),
+		},
+	};
+}
+
+/**
+ * The browser and headless callers provide their store at the execution boundary.
+ * Edits reply with their result and a summary, never the drawing, so a committed
+ * edit is always acknowledged. Reads that do not fit `byteLimit` fail or page.
+ */
 export function executeDrawingOperation(
 	operation: DrawingOperation,
+	byteLimit = drawingReplyByteLimit,
 ): Effect.Effect<DrawingReply, never, DrawingStore> {
 	const program = operationEffect(operation);
 	return Effect.gen(function* () {
@@ -223,33 +396,19 @@ export function executeDrawingOperation(
 			} as const;
 		}
 		const snapshot = store.getSnapshot();
+		if (operation.type === "getDrawing")
+			return readDrawing(snapshot, operation, byteLimit);
+		if (!result.right) return { ok: true, summary: summary(snapshot) } as const;
+		const ids = result.right.ids;
+		const listed = new Set(ids);
+		// The command's mapping covers every shape; unchanged, unlisted IDs are implied.
+		const idMap: Record<string, number> = {};
+		for (const [from, to] of result.right.idMap)
+			if (from !== to || listed.has(from)) idMap[from] = to;
 		return {
 			ok: true,
-			drawing: {
-				shapes: snapshot.shapes,
-				...(operation.type === "getDrawing"
-					? { nets: snapshotNets(snapshot) }
-					: {}),
-				nextShapeId: snapshot.nextShapeId,
-				history: {
-					currentId: snapshot.history.currentId,
-					nodes: Object.values(snapshot.history.nodes).map((node) => ({
-						id: node.id,
-						parentId: node.parentId,
-						childIds: [...node.childIds],
-						preferredChildId: node.preferredChildId,
-						label: node.label,
-					})),
-				},
-			},
-			...(result.right
-				? {
-						result: {
-							ids: result.right.ids,
-							idMap: Object.fromEntries(result.right.idMap),
-						},
-					}
-				: {}),
+			summary: summary(snapshot),
+			result: { ids, idMap },
 		} as const;
 	});
 }

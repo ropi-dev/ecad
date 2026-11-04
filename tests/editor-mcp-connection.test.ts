@@ -39,9 +39,11 @@ function envelope(requestId: string, expiresAt = 1000): DrawingEnvelope {
 function bridge({
 	acknowledge,
 	create,
+	acknowledgementLimit,
 }: {
 	acknowledge?: (requestId: string, signal: AbortSignal) => Promise<Response>;
 	create?: () => Promise<Response>;
+	acknowledgementLimit?: number;
 } = {}) {
 	const store = createDrawingStore();
 	const states: EditorMcpState[] = [];
@@ -83,6 +85,7 @@ function bridge({
 		fetch: request,
 		now: () => time,
 		onState: (state) => states.push(state),
+		acknowledgementLimit,
 	});
 	return {
 		store,
@@ -166,6 +169,41 @@ test("queued commands expire while waiting for an earlier acknowledgement", asyn
 				message: "The drawing command expired before execution.",
 			},
 		});
+	} finally {
+		live.connection.disconnect();
+		await live.connection.done;
+	}
+});
+
+test("a reply over the acknowledgement limit is reported instead of ending the stream", async () => {
+	const live = bridge({ acknowledgementLimit: 300 });
+	try {
+		await until(() => live.states.at(-1)?.status === "connected");
+		const read = (requestId: string): DrawingEnvelope => ({
+			requestId,
+			expiresAt: 1000,
+			operation: { type: "getDrawing" },
+		});
+		live.send(
+			`${JSON.stringify(read("small"))}\n${JSON.stringify(envelope("edit"))}\n${JSON.stringify(read("large"))}\n`,
+		);
+		await until(() => live.replies.length === 3);
+		assert.equal(live.replies[0].reply.ok, true);
+		// The edit's reply has no drawing, so it fits whatever the drawing's size.
+		assert.equal(live.replies[1].reply.ok, true);
+		assert.deepEqual(live.replies[2], {
+			requestId: "large",
+			reply: {
+				ok: false,
+				error: {
+					code: "ReplyTooLarge",
+					message:
+						"The command ran, but its reply was too large to return. Read the drawing with getDrawing before retrying.",
+				},
+			},
+		});
+		assert.equal(live.store.getSnapshot().shapes.length, 1);
+		assert.equal(live.states.at(-1)?.status, "connected");
 	} finally {
 		live.connection.disconnect();
 		await live.connection.done;

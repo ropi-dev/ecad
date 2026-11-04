@@ -89,6 +89,13 @@ async function call(
 	return reply;
 }
 
+/** Edits reply without the drawing, so the test reads it back. */
+async function shapesOf(client: Client) {
+	const reply = await call(client, "getDrawing");
+	if (!reply.drawing) throw new Error("getDrawing returned no drawing.");
+	return reply.drawing.shapes;
+}
+
 test("MCP starts disabled and SDK tools read and edit the active drawing independently of the selected tool", async ({
 	page,
 }) => {
@@ -123,14 +130,19 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 				"jumpHistory",
 			]),
 		);
-		expect((await call(client, "getDrawing")).drawing.shapes).toEqual([]);
+		expect(await shapesOf(client)).toEqual([]);
 		const placed = await call(client, "placeRectangle", { ...rectangle });
-		expect(placed.drawing.shapes).toEqual([
-			{ id: 1, kind: "rectangle", ...rectangle },
-		]);
+		expect(placed.result?.ids).toEqual([1]);
+		expect(placed.summary).toEqual({
+			shapeCount: 1,
+			nextShapeId: 2,
+			historyId: 1,
+		});
+		const placedShapes = [{ id: 1, kind: "rectangle", ...rectangle }];
+		expect(await shapesOf(client)).toEqual(placedShapes);
 		await expect
 			.poll(async () => (await committed(page)).shapes)
-			.toEqual(placed.drawing.shapes);
+			.toEqual(placedShapes);
 		await expect
 			.poll(async () => (await scene(page)).shapes)
 			.toEqual([
@@ -149,23 +161,20 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 			"aria-pressed",
 			"true",
 		);
-		expect((await call(client, "getDrawing")).drawing.shapes).toEqual(
-			placed.drawing.shapes,
-		);
+		expect(await shapesOf(client)).toEqual(placedShapes);
 		await (await toolbarButton(page, "Undo")).click();
-		expect((await call(client, "getDrawing")).drawing.shapes).toEqual([]);
+		expect(await shapesOf(client)).toEqual([]);
 		await (await toolbarButton(page, "Redo")).click();
-		expect((await call(client, "getDrawing")).drawing.shapes).toEqual(
-			placed.drawing.shapes,
-		);
-		const rotated = await call(client, "rotateShapes", { ids: [1] });
-		expect(rotated.drawing.shapes[0]).toEqual({
-			...placed.drawing.shapes[0],
+		expect(await shapesOf(client)).toEqual(placedShapes);
+		await call(client, "rotateShapes", { ids: [1] });
+		const rotated = await shapesOf(client);
+		expect(rotated[0]).toEqual({
+			...placedShapes[0],
 			rotation: Math.PI / 2,
 		});
 		await expect
 			.poll(async () => (await committed(page)).shapes)
-			.toEqual(rotated.drawing.shapes);
+			.toEqual(rotated);
 		await expect
 			.poll(async () => (await scene(page)).shapes[0]?.rotation)
 			.toBeCloseTo(Math.PI / 2);
@@ -176,11 +185,11 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 		await call(client, "undo");
 		await call(client, "removeShapes", { ids: [1] });
 		await expect.poll(async () => (await scene(page)).shapes).toEqual([]);
-		const restored = await call(client, "undo");
-		expect(restored.drawing.shapes).toEqual(placed.drawing.shapes);
+		expect((await call(client, "undo")).summary.shapeCount).toBe(1);
+		expect(await shapesOf(client)).toEqual(placedShapes);
 		await expect
 			.poll(async () => (await committed(page)).shapes)
-			.toEqual(placed.drawing.shapes);
+			.toEqual(placedShapes);
 		await expect.poll(async () => (await scene(page)).shapes.length).toBe(1);
 		await call(client, "redo");
 		await expect.poll(async () => (await committed(page)).shapes).toEqual([]);

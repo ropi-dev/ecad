@@ -4,22 +4,32 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Effect } from "effect";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import type { EditorShape } from "#/drawing/shapes.ts";
 import { runEffect } from "#/lib/effect.ts";
 import {
 	type DrawingEnvelope,
 	type DrawingReply,
 	drawingReplySchema,
 	executeDrawingOperation,
+	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
+import {
+	connectEditorMcp,
+	type EditorMcpState,
+} from "#/mcp/editor-connection.ts";
 import {
 	editorClientAddress,
 	editorClientKey,
 } from "#/services/server/client-address.ts";
-import { createEditorMcpHandlers } from "#/services/server/editor-mcp.ts";
+import {
+	createEditorMcpHandlers,
+	editorReplyBodyLimit,
+} from "#/services/server/editor-mcp.ts";
 import {
 	EditorSessionError,
 	makeEditorSessionHub,
 } from "#/services/server/editor-sessions.ts";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	type: "placeRectangle" as const,
@@ -775,6 +785,206 @@ test("oversized request bodies are rejected with 413 before they are buffered", 
 		);
 		assert.equal(accepted.status, 204);
 		assert.deepEqual(await waiting, small.reply);
+	} finally {
+		hub.dispose();
+	}
+});
+
+test("a drawing larger than one reply accepts and acknowledges edits, and reads back in pages", async () => {
+	const hub = makeEditorSessionHub();
+	const handlers = createEditorMcpHandlers(hub);
+	const text = "x".repeat(1024);
+	const shapes: EditorShape[] = Array.from({ length: 9000 }, (_, index) => ({
+		id: index + 1,
+		kind: "text",
+		text,
+		x: index,
+		y: 0,
+		width: 8,
+		height: 2,
+		rotation: 0,
+		lineWidth: 0.2,
+		fontSize: 2,
+	}));
+	const store = createDrawingStore(shapes);
+	assert.ok(utf8ByteLength(JSON.stringify(shapes)) > editorReplyBodyLimit);
+	// The real browser connection, with each request routed to the relay's handlers.
+	const states: EditorMcpState[] = [];
+	const editor = connectEditorMcp({
+		store,
+		baseUrl: "http://localhost",
+		onState: (state) => states.push(state),
+		fetch: async (url, init = {}) => {
+			const request = new Request(url, {
+				...init,
+				headers: {
+					...sameOrigin(),
+					...Object.fromEntries(new Headers(init.headers)),
+				},
+			});
+			const sessionId = new URL(request.url).pathname.split("/")[3];
+			return sessionId
+				? handlers.session(request, decodeURIComponent(sessionId))
+				: handlers.createSession(request);
+		},
+	});
+	const client = new Client({ name: "large-drawing", version: "1.0.0" });
+	try {
+		for (let attempt = 0; states.at(-1)?.status !== "connected"; attempt++) {
+			assert.ok(attempt < 1000, "The editor did not connect.");
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+		const connected = states.at(-1);
+		assert.ok(connected?.status === "connected");
+		const sessionId = required(new URL(connected.url).pathname.split("/")[3]);
+		await client.connect(
+			new StreamableHTTPClientTransport(new URL(connected.url), {
+				requestInit: { headers: auth(connected.token) },
+				fetch: (url, init) => handlers.mcp(new Request(url, init), sessionId),
+			}),
+		);
+		await client.listTools();
+		const placed = await client.callTool({
+			name: "placeRectangle",
+			arguments: rectangle.input,
+		});
+		assert.equal(placed.isError, undefined);
+		assert.deepEqual(placed.structuredContent, {
+			ok: true,
+			summary: { shapeCount: 9001, nextShapeId: 9002, historyId: 1 },
+			result: { ids: [9001], idMap: { "9001": 9001 } },
+		});
+		assert.equal(store.getSnapshot().shapes.length, 9001);
+		// One reply cannot hold the drawing, so an unpaged read fails cleanly.
+		const whole = await client.callTool({ name: "getDrawing", arguments: {} });
+		assert.equal(whole.isError, true);
+		const failed = drawingReplySchema.parse(whole.structuredContent);
+		assert.equal(failed.ok ? undefined : failed.error.code, "DrawingTooLarge");
+		const read: unknown[] = [];
+		let pages = 0;
+		for (let offset: number | undefined = 0; offset !== undefined; pages++) {
+			const page = await client.callTool({
+				name: "getDrawing",
+				arguments: { offset },
+			});
+			assert.equal(page.isError, undefined);
+			const reply = drawingReplySchema.parse(page.structuredContent);
+			assert.ok(reply.ok && reply.drawing && reply.page);
+			assert.equal(reply.page.offset, offset);
+			assert.equal(reply.page.total, 9001);
+			assert.equal(reply.drawing.nets !== undefined, offset === 0);
+			read.push(...reply.drawing.shapes);
+			offset = reply.page.nextOffset;
+		}
+		assert.ok(pages > 1);
+		assert.deepEqual(read, store.getSnapshot().shapes);
+		// The editor stayed connected through every reply and still executes edits.
+		const undone = await client.callTool({ name: "undo", arguments: {} });
+		assert.equal(undone.isError, undefined);
+		assert.equal(store.getSnapshot().shapes.length, 9000);
+		assert.equal(states.at(-1)?.status, "connected");
+	} finally {
+		await client.close();
+		editor.disconnect();
+		await editor.done;
+		hub.dispose();
+	}
+});
+
+test("an editor stream that is never read holds a bounded queue and drops commands that stopped waiting", async () => {
+	let time = 1000;
+	const hub = makeEditorSessionHub({
+		timeoutMs: 60_000,
+		sweepIntervalMs: 0,
+		now: () => time,
+	});
+	const size = 100_000;
+	const handlers = createEditorMcpHandlers(hub, {
+		streamQueueLimit: 2.5 * size,
+	});
+	const session = hub.create();
+	const response = await handlers.session(
+		new Request(`http://localhost/api/editor-mcp/${session.sessionId}`, {
+			headers: sameOriginGet(session.editorToken),
+		}),
+		session.sessionId,
+	);
+	assert.equal(response.status, 200);
+	const operation: DrawingEnvelope["operation"] = {
+		type: "placeShapes",
+		shapes: [
+			{
+				kind: "text",
+				text: "x".repeat(size),
+				x: 0,
+				y: 0,
+				width: 8,
+				height: 2,
+				rotation: 0,
+				lineWidth: 0.2,
+				fontSize: 2,
+			},
+		],
+	};
+	const request = (signal?: AbortSignal) =>
+		runEffect(hub.request(session.sessionId, operation), signal).catch(
+			(error: unknown) => error,
+		);
+	const code = async (pending: Promise<unknown>) => {
+		const error = await pending;
+		assert.ok(error instanceof EditorSessionError, String(error));
+		return error.code;
+	};
+	try {
+		// The stream buffers the first command and the queue holds two more.
+		const abort = new AbortController();
+		const buffered = request();
+		const expiring = request();
+		const cancelled = request(abort.signal);
+		assert.equal(await code(request()), "EditorBacklogged");
+		// Commands that time out or are cancelled stop holding queue space.
+		abort.abort(new Error("Cancelled request"));
+		assert.match(String(await cancelled), /Cancelled request/);
+		time += 60_000;
+		const accepted = request();
+		const late = request();
+		assert.equal(await code(request()), "EditorBacklogged");
+		hub.authorize(session.sessionId, session.mcpToken, "mcp");
+		// Once the editor reads, it receives the buffered command, then only the
+		// commands that are still waiting.
+		const reader = required(response.body).getReader();
+		const decoder = new TextDecoder();
+		const received: DrawingEnvelope[] = [];
+		let text = "";
+		while (received.length < 3) {
+			const chunk = await reader.read();
+			assert.equal(chunk.done, false);
+			text += decoder.decode(chunk.value, { stream: true });
+			const lines = text.split("\n");
+			text = lines.pop() ?? "";
+			for (const line of lines) if (line) received.push(JSON.parse(line));
+		}
+		assert.throws(
+			() =>
+				hub.acknowledge(
+					session.sessionId,
+					session.editorToken,
+					received[0].requestId,
+					failure,
+				),
+			/no longer waiting/,
+		);
+		for (const envelope of received.slice(1))
+			hub.acknowledge(
+				session.sessionId,
+				session.editorToken,
+				envelope.requestId,
+				failure,
+			);
+		assert.deepEqual(await Promise.all([accepted, late]), [failure, failure]);
+		await reader.cancel();
+		assert.equal(await code(buffered), "EditorDisconnected");
+		assert.equal(await code(expiring), "EditorDisconnected");
 	} finally {
 		hub.dispose();
 	}
