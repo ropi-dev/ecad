@@ -27,6 +27,7 @@ import {
 	useCallback,
 	useEffect,
 	useEffectEvent,
+	useId,
 	useLayoutEffect,
 	useMemo,
 	useRef,
@@ -112,6 +113,7 @@ import { errorMessage } from "#/lib/error-message.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
+import { isProjectError } from "#/projects/errors.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
@@ -176,13 +178,13 @@ export function Editor2D(props: Editor2DProps = {}) {
 	const drawing = props.store ? null : project?.editorDrawing;
 	return (
 		<EditorCanvas
-			key={
+			key={`${project?.session ?? 0}:${
 				symbol
 					? `symbol:${symbol.file.id}`
 					: drawing
 						? `drawing:${drawing.file.id}`
 						: "schematic"
-			}
+			}`}
 			{...props}
 			store={symbol?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}
@@ -304,6 +306,7 @@ function EditorCanvas({
 			: "",
 		...(symbolLibrary.loading ? [] : resolved.errors),
 		project?.error,
+		...(project?.libraryErrors ?? []),
 	]);
 	const [dismissedIssues, setDismissedIssues] = useState<ReadonlySet<string>>(
 		() => new Set(),
@@ -1316,6 +1319,15 @@ function LibrarySymbolEditor({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	const dirty = drawing.shapes !== savedShapes;
+	const reportUnsavedEdits = useProject()?.reportUnsavedEdits;
+	const editorKey = useId();
+	useEffect(() => {
+		reportUnsavedEdits?.(editorKey, dirty);
+	}, [reportUnsavedEdits, editorKey, dirty]);
+	useEffect(
+		() => () => reportUnsavedEdits?.(editorKey, false),
+		[reportUnsavedEdits, editorKey],
+	);
 	const save = useCallback(
 		async function persist(): Promise<void> {
 			while (pending.current) await pending.current;
@@ -1333,9 +1345,10 @@ function LibrarySymbolEditor({
 					setSavedShapes(shapes);
 					setError("");
 				} catch (cause) {
-					setError(
-						errorMessage(cause, "Unable to save the symbol definition."),
-					);
+					if (!isProjectError(cause, "ProjectConflict"))
+						setError(
+							errorMessage(cause, "Unable to save the symbol definition."),
+						);
 					throw cause;
 				} finally {
 					pending.current = null;

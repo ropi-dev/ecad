@@ -131,6 +131,13 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	} | null>(null);
 	const [checkedPins, setCheckedPins] = useState<string[]>([]);
 	const [error, setError] = useState("");
+	const circuitMessages = [
+		...new Set(
+			[error || project?.error, ...(project?.libraryErrors ?? [])].filter(
+				(message): message is string => !!message,
+			),
+		),
+	];
 	const [drag, setDrag] = useState<Drag | null>(null);
 	const [connectionDrag, setConnectionDrag] = useState<ConnectionDrag | null>(
 		null,
@@ -721,9 +728,11 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			}}
 		>
 			<h1 className="sr-only">{circuit.name}</h1>
-			{(error || project?.error) && (
+			{circuitMessages.length > 0 && (
 				<div role="alert" className="circuit-error">
-					{error || project?.error}
+					{circuitMessages.map((message) => (
+						<p key={message}>{message}</p>
+					))}
 				</div>
 			)}
 			<div className="circuit-workspace">

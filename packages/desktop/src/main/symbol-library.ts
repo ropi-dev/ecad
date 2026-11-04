@@ -22,6 +22,8 @@ import {
 	type SymbolFile,
 	type SymbolLibrary,
 } from "@ecad/core/components/editor/symbolFormat.ts";
+import { errorMessage } from "@ecad/core/lib/error-message.ts";
+import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	defaultSymbolConfig,
@@ -99,7 +101,7 @@ async function readDirectoryData(
 			symbolFiles.set(symbol.id, { path, bytes: content.byteLength });
 		} catch (error) {
 			throw new Error(
-				`${relative(directory, path)}: ${error instanceof Error ? error.message : "Unable to read this symbol file."}`,
+				`${relative(directory, path)}: ${errorMessage(error, "Unable to read this symbol file.")}`,
 				{ cause: error },
 			);
 		}
@@ -232,7 +234,7 @@ function orderedLibrary(symbols: SymbolLibrary): string {
  */
 export class DesktopSymbolLibrary {
 	private snapshot: SymbolLibrarySnapshot;
-	private operation: Promise<unknown> = Promise.resolve();
+	private readonly sequential = createSerialQueue();
 	private approvedDirectories = new Set<string>();
 	readonly configurationPath: string;
 
@@ -357,12 +359,6 @@ export class DesktopSymbolLibrary {
 		);
 	}
 
-	private sequential<T>(run: () => Promise<T>): Promise<T> {
-		const pending = this.operation.then(run, run);
-		this.operation = pending.catch(() => undefined);
-		return pending;
-	}
-
 	load(): Promise<SymbolLibrarySnapshot> {
 		return this.sequential(async () => {
 			if (this.snapshot.directory) {
@@ -435,7 +431,7 @@ export class DesktopSymbolLibrary {
 			} catch (error) {
 				await Promise.all(created.map((path) => rm(path, { force: true })));
 				throw new Error(
-					`Unable to save symbols: ${error instanceof Error ? error.message : "Unable to write to this directory."}`,
+					`Unable to save symbols: ${errorMessage(error, "Unable to write to this directory.")}`,
 					{ cause: error },
 				);
 			}

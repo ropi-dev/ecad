@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
+import { ProjectConflictNotice } from "#/projects/ProjectConflictNotice.tsx";
 import { ProjectFilesSidebar } from "#/projects/ProjectFilesSidebar.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 
@@ -22,6 +23,7 @@ export function ProjectShell({
 			<div key={project?.session} className="min-w-0 flex-1 overflow-auto">
 				{children}
 			</div>
+			<ProjectConflictNotice />
 		</div>
 	);
 }

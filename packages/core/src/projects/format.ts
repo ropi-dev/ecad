@@ -2,6 +2,7 @@ import {
 	type CircuitFile,
 	circuitFileSchema,
 } from "@ecad/drawing-core/circuit/model.ts";
+import { ParseResult } from "effect";
 import { parse, stringify } from "smol-toml";
 import { z } from "zod";
 import {
@@ -10,6 +11,14 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { savedDrawingShapesSchema } from "#/drawing/schema.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import {
+	InvalidProjectDocument,
+	InvalidProjectFile,
+	InvalidProjectName,
+	InvalidProjectPath,
+	schemaReason,
+} from "#/projects/errors.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	validateSymbolLibraries,
@@ -93,53 +102,155 @@ export interface ProjectSnapshot extends ProjectDocument {
 	manifest: ProjectManifest;
 }
 
+export function parseProjectName(name: string): string {
+	const result = projectNameSchema.safeParse(name);
+	if (result.success) return result.data;
+	throw new InvalidProjectName({
+		projectName: name,
+		reason: schemaReason(result.error.issues),
+	});
+}
+
+export function parseProjectPath(path: string): string {
+	const result = projectPathSchema.safeParse(path);
+	if (result.success) return result.data;
+	throw new InvalidProjectPath({
+		path,
+		reason: schemaReason(result.error.issues),
+	});
+}
+
 export function parseProjectManifest(content: string): ProjectManifest {
-	return manifestSchema.parse(parse(content));
+	let value: unknown;
+	try {
+		value = parse(content);
+	} catch (cause) {
+		throw new InvalidProjectFile({
+			path: PROJECT_FILE,
+			reason: "The file is not valid TOML.",
+			cause,
+		});
+	}
+	return check(manifestSchema, value, { file: PROJECT_FILE });
 }
 export function serializeProjectManifest(manifest: ProjectManifest): string {
 	return stringify(manifestSchema.parse(manifest));
 }
+
+export interface ProjectDocumentFiles {
+	drawing: string;
+	drawings?: readonly string[];
+	circuits?: readonly string[];
+}
+
+function invalid(file: string | undefined, reason: string, cause?: unknown) {
+	return file === undefined
+		? new InvalidProjectDocument({ reason, cause })
+		: new InvalidProjectFile({ path: file, reason, cause });
+}
+
+function check<T>(
+	schema: z.ZodType<T>,
+	value: unknown,
+	source: { file?: string; field?: string; items?: readonly string[] },
+): T {
+	const result = schema.safeParse(value);
+	if (result.success) return result.data;
+	const first = result.error.issues[0]?.path[0];
+	const item =
+		source.items && typeof first === "number" ? source.items[first] : undefined;
+	const issues =
+		item === undefined
+			? result.error.issues.map((issue) => ({
+					...issue,
+					path: source.field ? [source.field, ...issue.path] : issue.path,
+				}))
+			: result.error.issues
+					.filter((issue) => issue.path[0] === first)
+					.map((issue) => ({ ...issue, path: issue.path.slice(1) }));
+	throw invalid(
+		item ?? (source.items ? undefined : source.file),
+		schemaReason(issues),
+		result.error,
+	);
+}
+
 export function validateProjectDocument(
 	document: ProjectDocument,
+	files?: ProjectDocumentFiles,
 ): ProjectDocument {
-	const shapes = savedDrawingShapesSchema.parse(document.shapes);
+	const shapes = check(savedDrawingShapesSchema, document.shapes, {
+		file: files?.drawing,
+		field: "shapes",
+	});
 	if (new Set(shapes.map((shape) => shape.id)).size !== shapes.length) {
-		throw new Error("The project drawing contains duplicate shape IDs.");
+		throw invalid(
+			files?.drawing,
+			"The project drawing contains duplicate shape IDs.",
+		);
+	}
+	const drawings =
+		document.drawings === undefined
+			? undefined
+			: check(z.array(drawingFileSchema), document.drawings, {
+					field: "drawings",
+					items: files?.drawings,
+				});
+	if (
+		drawings &&
+		new Set(drawings.map((file) => file.id)).size !== drawings.length
+	)
+		throw invalid(
+			files && PROJECT_FILE,
+			"The project contains duplicate drawing IDs.",
+		);
+	const circuits =
+		document.circuits === undefined
+			? undefined
+			: check(z.array(circuitFileSchema), document.circuits, {
+					field: "circuits",
+					items: files?.circuits,
+				});
+	if (
+		circuits &&
+		new Set(circuits.map((file) => file.circuit.id)).size !== circuits.length
+	)
+		throw invalid(files && PROJECT_FILE, "Duplicate circuit identity.");
+	let symbols: SymbolLibrary;
+	try {
+		symbols = parseSavedSymbolLibrary(JSON.stringify(document.symbols));
+	} catch (cause) {
+		throw invalid(
+			files && PROJECT_FILE,
+			errorMessage(cause, "The project symbols are invalid."),
+			cause,
+		);
+	}
+	let symbolLibraries: readonly ConfiguredSymbolLibrary[] | undefined;
+	try {
+		symbolLibraries =
+			document.symbolLibraries === undefined
+				? undefined
+				: validateSymbolLibraries(document.symbolLibraries);
+	} catch (cause) {
+		throw invalid(
+			files?.drawing,
+			ParseResult.isParseError(cause)
+				? schemaReason(
+						ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) => ({
+							path: ["symbolLibraries", ...issue.path],
+							message: issue.message,
+						})),
+					)
+				: errorMessage(cause, "The project symbol libraries are invalid."),
+			cause,
+		);
 	}
 	return {
 		shapes,
-		...(document.drawings === undefined
-			? {}
-			: {
-					drawings: z
-						.array(drawingFileSchema)
-						.refine(
-							(files) =>
-								new Set(files.map((file) => file.id)).size === files.length,
-							"The project contains duplicate drawing IDs.",
-						)
-						.parse(document.drawings),
-				}),
-		...(document.circuits === undefined
-			? {}
-			: {
-					circuits: z
-						.array(circuitFileSchema)
-						.superRefine((files, ctx) => {
-							if (
-								new Set(files.map((file) => file.circuit.id)).size !==
-								files.length
-							)
-								ctx.addIssue({
-									code: "custom",
-									message: "Duplicate circuit identity.",
-								});
-						})
-						.parse(document.circuits),
-				}),
-		symbols: parseSavedSymbolLibrary(JSON.stringify(document.symbols)),
-		...(document.symbolLibraries === undefined
-			? {}
-			: { symbolLibraries: validateSymbolLibraries(document.symbolLibraries) }),
+		...(drawings === undefined ? {} : { drawings }),
+		...(circuits === undefined ? {} : { circuits }),
+		symbols,
+		...(symbolLibraries === undefined ? {} : { symbolLibraries }),
 	};
 }

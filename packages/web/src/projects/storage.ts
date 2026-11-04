@@ -1,7 +1,14 @@
+import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
+import {
+	InvalidProjectName,
+	ProjectClosed,
+	ProjectExists,
+	ProjectStorageUnavailable,
+} from "@ecad/core/projects/errors.ts";
 import {
 	PROJECT_FILE,
-	projectNameSchema,
-	projectPathSchema,
+	parseProjectName,
+	parseProjectPath,
 } from "@ecad/core/projects/format.ts";
 import {
 	type ProjectDirectory,
@@ -35,7 +42,7 @@ export function createBrowserProjectDirectory(
 	handle: BrowserDirectory,
 ): ProjectDirectory {
 	async function parent(path: string, create = false) {
-		const parts = projectPathSchema.parse(path).split("/");
+		const parts = parseProjectPath(path).split("/");
 		const filename = parts.pop() as string;
 		let directory = handle;
 		for (const part of parts)
@@ -74,28 +81,20 @@ export function createWebProjectStorage(
 	selection?: Pick<Storage, "getItem" | "setItem">,
 ): ProjectStorage {
 	let active: { name: string; repository: ProjectRepository } | null = null;
-	let operation: Promise<unknown> = Promise.resolve();
+	const sequential = createSerialQueue();
 	const browserSelection = () => selection ?? globalThis.localStorage;
 	const root = async () => {
 		if (getRoot) return getRoot();
 		if (!globalThis.navigator?.storage?.getDirectory)
-			throw new Error(
-				"Project directories are unavailable in this browser. Use a browser with local filesystem storage support.",
-			);
+			throw new ProjectStorageUnavailable();
 		return (await navigator.storage.getDirectory()) as unknown as BrowserDirectory;
 	};
-	function sequential<T>(run: () => Promise<T>) {
-		const next = operation.then(run, run);
-		operation = next.catch(() => undefined);
-		return next;
-	}
 	function current(directory: string) {
-		if (!active || active.name !== directory)
-			throw new Error("This project is no longer open.");
+		if (!active || active.name !== directory) throw new ProjectClosed();
 		return active.repository;
 	}
 	async function open(name: string) {
-		name = projectNameSchema.parse(name);
+		name = parseProjectName(name);
 		const handle = await (await root()).getDirectoryHandle(name);
 		const repository = new ProjectRepository(
 			createBrowserProjectDirectory(name, handle),
@@ -133,7 +132,7 @@ export function createWebProjectStorage(
 			}),
 		create: (name) =>
 			sequential(async () => {
-				name = projectNameSchema.parse(name);
+				name = parseProjectName(name);
 				const directory = await root();
 				const displayName = name;
 				if (name === "Untitled") name = `Untitled-${crypto.randomUUID()}`;
@@ -160,11 +159,15 @@ export function createWebProjectStorage(
 						throw error;
 					}
 				}
-				throw new Error("A project with this name already exists.");
+				throw new ProjectExists({ projectName: displayName });
 			}),
 		open: (name) =>
 			sequential(() => {
-				if (!name) throw new Error("Choose a project to open.");
+				if (!name)
+					throw new InvalidProjectName({
+						projectName: "",
+						reason: "Choose a project to open.",
+					});
 				return open(name);
 			}),
 		save: (directory, document) =>

@@ -110,6 +110,24 @@ export function serializeSymbolConfig(config: SymbolLibraryConfig): string {
 	return text;
 }
 
+export type SymbolAvailability = (
+	library: SymbolLibraryReference,
+	id: string,
+) => boolean;
+
+export function unavailableSymbols(resolved: {
+	unavailable: readonly SymbolLibraryReference[];
+	unavailableSymbols: readonly string[];
+}): SymbolAvailability {
+	const libraries = new Set(
+		resolved.unavailable.map((library) => `${library.scope}:${library.id}`),
+	);
+	const symbols = new Set(resolved.unavailableSymbols);
+	return (library, id) =>
+		libraries.has(`${library.scope}:${library.id}`) ||
+		symbols.has(symbolReferenceKey(library, id));
+}
+
 /** Later libraries win. Project libraries are resolved after user libraries. */
 export async function resolveSymbolLibraries(
 	user: readonly ConfiguredSymbolLibrary[],
@@ -121,10 +139,13 @@ export async function resolveSymbolLibraries(
 	byReference: Map<string, SymbolDefinition>;
 	referenceSources: Map<string, SymbolSource>;
 	errors: string[];
+	unavailable: SymbolLibraryReference[];
+	unavailableSymbols: string[];
 }> {
 	const definitions = new Map<string, SymbolDefinition>();
 	const sources = new Map<string, SymbolSource>();
 	const errors: string[] = [];
+	const unavailable: SymbolLibraryReference[] = [];
 	const entries = new Map<
 		string,
 		{
@@ -169,6 +190,7 @@ export async function resolveSymbolLibraries(
 					referenceSources.set(key, { scope, library, file: files[index] });
 				}
 			} catch (cause) {
+				unavailable.push({ scope, id: library.id });
 				errors.push(
 					`${library.name}: ${errorMessage(cause, "Unable to load library.")}`,
 				);
@@ -223,10 +245,12 @@ export async function resolveSymbolLibraries(
 			resolving.delete(key);
 		}
 	}
+	const unresolved: string[] = [];
 	for (const entry of entries.values()) {
 		try {
 			resolve(entry.library, entry.definition.id);
 		} catch (cause) {
+			unresolved.push(symbolReferenceKey(entry.library, entry.definition.id));
 			errors.push(errorMessage(cause, "Unable to resolve symbol references."));
 		}
 	}
@@ -244,5 +268,7 @@ export async function resolveSymbolLibraries(
 		byReference,
 		referenceSources,
 		errors: [...new Set(errors)],
+		unavailable,
+		unavailableSymbols: unresolved,
 	};
 }
