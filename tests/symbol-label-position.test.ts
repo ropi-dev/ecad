@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	containsSelection,
 	type EditorSymbol,
 	shapeAt,
 	shapeBounds,
@@ -263,4 +264,17 @@ test("unresolved symbols without geometry stay selectable and ignore presets", (
 		assert.ok(Number.isFinite(value));
 	assert.equal(shapeAt([unresolved], { x: unresolved.x, y: unresolved.y }, 0), unresolved);
 	assert.equal(setSymbolLabelPosition(unresolved, "name", "above"), unresolved);
+});
+
+test("window selection checks an unresolved symbol's stored bounds", () => {
+	const unresolved: EditorSymbol = { ...placed(), children: [], texts: [] };
+	const far = { minX: 500, maxX: 600, minY: 500, maxY: 600 };
+	assert.equal(containsSelection(unresolved, far), false);
+	const around = {
+		minX: unresolved.x - unresolved.width,
+		maxX: unresolved.x + unresolved.width,
+		minY: unresolved.y - unresolved.height,
+		maxY: unresolved.y + unresolved.height,
+	};
+	assert.equal(containsSelection(unresolved, around), true);
 });

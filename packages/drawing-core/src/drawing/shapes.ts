@@ -1285,8 +1285,9 @@ export function containsSelection(shape: EditorShape, bounds: Bounds): boolean {
 			(child) => containsSelection(child, bounds),
 		);
 		// The stored size is symmetric about the origin, so only box symbols
-		// add their border on top of their children.
-		if (!fits || !isBoxSymbol(shape)) return fits;
+		// add their border on top of their children. Unresolved symbols have no
+		// children and fall back to their stored bounds.
+		if (!fits || (!isBoxSymbol(shape) && shape.children.length)) return fits;
 	}
 	const own = shapeBounds(
 		shape.kind === "circle" || (shape.kind === "pin" && !shape.length)
