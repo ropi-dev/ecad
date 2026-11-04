@@ -4,6 +4,7 @@ import {
 	Group,
 	LineBasicMaterial,
 	LineLoop,
+	type Material,
 	Matrix4,
 	Mesh,
 	MeshBasicMaterial,
@@ -14,6 +15,7 @@ import type {
 	DisplayShape,
 	DrawingAppearance,
 	DrawingDisplay,
+	DrawingGeometry,
 	DrawingTransform,
 } from "#/drawing/display.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
@@ -35,26 +37,108 @@ function applyTransform(
 	object.renderOrder = display.renderOrder;
 }
 
-/** Converts display data to Three objects and owns their shared GPU resources. */
+/** Plain display data is equal when every defined value matches. */
+function sameData(first: unknown, second: unknown): boolean {
+	if (first === second) return true;
+	if (
+		typeof first !== "object" ||
+		typeof second !== "object" ||
+		first === null ||
+		second === null
+	)
+		return Number.isNaN(first) && Number.isNaN(second);
+	if (Array.isArray(first) !== Array.isArray(second)) return false;
+	if (Array.isArray(first) && first.length !== (second as unknown[]).length)
+		return false;
+	const a = first as Record<string, unknown>;
+	const b = second as Record<string, unknown>;
+	for (const key in a)
+		if (a[key] !== undefined && !sameData(a[key], b[key])) return false;
+	for (const key in b)
+		if (b[key] !== undefined && a[key] === undefined) return false;
+	return true;
+}
+
+/** Replaces an object's children without Three's per-child search and splice. */
+function setChildren(parent: Object3D, objects: readonly Object3D[]) {
+	const current = parent.children;
+	if (
+		current.length === objects.length &&
+		current.every((object, index) => object === objects[index])
+	)
+		return;
+	const kept = new Set(objects);
+	for (const object of current)
+		if (!kept.has(object) && object.parent === parent) object.parent = null;
+	for (const object of objects)
+		if (object.parent !== parent) {
+			object.removeFromParent();
+			object.parent = parent;
+		}
+	current.length = 0;
+	for (const object of objects) current.push(object);
+}
+
+/** One persistent mesh for a display key, with its child meshes. */
+interface MeshNode {
+	key: string;
+	object: Mesh;
+	display: DisplayShape;
+	parent: DisplayShape | undefined;
+	atlas: number;
+	children: MeshNode[];
+	pinLabels: boolean;
+	/** Smallest and largest transparent object IDs in this subtree. */
+	first: number;
+	last: number;
+	outline?: LineLoop;
+}
+
+/** GPU resources shared by every mesh with the same display key. */
+interface KeyResources {
+	refs: number;
+	geometry?: {
+		source: DrawingGeometry;
+		uv: readonly number[] | undefined;
+		value: BufferGeometry;
+	};
+	text?: ReturnType<typeof createTextMaterial> & {
+		text: string;
+		horizontalAlign?: DisplayShape["horizontalAlign"];
+		bold?: true;
+	};
+}
+
+/**
+ * Converts display data to Three objects and owns their shared GPU resources.
+ * Meshes persist per display key, so an update only touches changed displays.
+ */
 export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 	const lifetime = createLifecycle();
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
 	try {
-		const geometries = new Map<
-			string,
-			{ key: string; geometry: BufferGeometry }
-		>();
-		const texts = new Map<
-			string,
-			ReturnType<typeof createTextMaterial> & {
-				text: string;
-				horizontalAlign?: DisplayShape["horizontalAlign"];
-				bold?: true;
+		const resources = new Map<string, KeyResources>();
+		const retain = (key: string) => {
+			let entry = resources.get(key);
+			if (!entry) {
+				entry = { refs: 0 };
+				resources.set(key, entry);
 			}
-		>();
+			entry.refs++;
+			return entry;
+		};
+		const release = (node: MeshNode) => {
+			for (const child of node.children) release(child);
+			const entry = resources.get(node.key);
+			if (!entry || --entry.refs > 0) return;
+			entry.geometry?.value.dispose();
+			entry.text?.dispose();
+			resources.delete(node.key);
+		};
 		let pinAtlas: ReturnType<typeof createTextAtlas> | undefined;
-		let pinAtlasKey = "";
+		let pinAtlasTexts = new Set<string>();
+		let atlasVersion = 0;
 		const pinMaterials = new Map<
 			CanvasTexture,
 			Map<DrawingAppearance, MeshBasicMaterial>
@@ -67,32 +151,40 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		};
 		lifetime.addFinalizer(clearPinAtlas);
 		lifetime.addFinalizer(() => {
-			for (const { geometry } of geometries.values()) geometry.dispose();
-			geometries.clear();
-			for (const text of texts.values()) text.dispose();
-			texts.clear();
+			for (const { geometry, text } of resources.values()) {
+				geometry?.value.dispose();
+				text?.dispose();
+			}
+			resources.clear();
 		});
-		const geometryFor = (display: DisplayShape) => {
-			const entry =
+		const geometryFor = (display: DisplayShape, entry: KeyResources) => {
+			const atlasEntry =
 				display.pinLabel && display.text !== undefined
 					? pinAtlas?.entries.get(display.text)
 					: undefined;
-			const key = JSON.stringify([display.geometry, entry?.uv]);
-			const cached = geometries.get(display.key);
-			if (cached?.key === key) return cached.geometry;
+			const uv = atlasEntry?.uv;
+			const cached = entry.geometry;
+			if (
+				cached &&
+				sameData(cached.uv, uv) &&
+				sameData(cached.source, display.geometry)
+			) {
+				cached.source = display.geometry;
+				return cached.value;
+			}
 			const geometry = createShapeGeometry(display.geometry);
-			if (entry) {
-				const uv = geometry.getAttribute("uv");
-				const [left, bottom, right, top] = entry.uv;
-				for (let index = 0; index < uv.count; index++)
-					uv.setXY(
+			if (uv) {
+				const coordinates = geometry.getAttribute("uv");
+				const [left, bottom, right, top] = uv;
+				for (let index = 0; index < coordinates.count; index++)
+					coordinates.setXY(
 						index,
-						left + uv.getX(index) * (right - left),
-						bottom + uv.getY(index) * (top - bottom),
+						left + coordinates.getX(index) * (right - left),
+						bottom + coordinates.getY(index) * (top - bottom),
 					);
 			}
-			cached?.geometry.dispose();
-			geometries.set(display.key, { key, geometry });
+			cached?.value.dispose();
+			entry.geometry = { source: display.geometry, uv, value: geometry };
 			return geometry;
 		};
 		const frame = own(() => new BufferGeometry()).setFromPoints([
@@ -133,24 +225,31 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 					depthTest: false,
 				}),
 		);
-		const materialFor = (display: DisplayShape) => {
+		const materialFor = (
+			display: DisplayShape,
+			entry: KeyResources,
+		): Material => {
 			const color = colors[display.appearance];
+			if (display.text === undefined || display.pinLabel) {
+				entry.text?.dispose();
+				entry.text = undefined;
+			}
 			if (display.geometry.kind === "pin-halo")
 				return halos[display.appearance];
 			if (display.text === undefined) return color;
 			if (display.pinLabel) {
-				const entry = pinAtlas?.entries.get(display.text);
-				if (!entry)
+				const atlasEntry = pinAtlas?.entries.get(display.text);
+				if (!atlasEntry)
 					throw new Error("Pin label is missing from the text atlas.");
-				let materials = pinMaterials.get(entry.texture);
+				let materials = pinMaterials.get(atlasEntry.texture);
 				if (!materials) {
 					materials = new Map();
-					pinMaterials.set(entry.texture, materials);
+					pinMaterials.set(atlasEntry.texture, materials);
 				}
 				let material = materials.get(display.appearance);
 				if (!material) {
 					material = new MeshBasicMaterial({
-						alphaMap: entry.texture,
+						alphaMap: atlasEntry.texture,
 						color: color.color,
 						transparent: true,
 						depthTest: false,
@@ -160,7 +259,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				}
 				return material;
 			}
-			let cached = texts.get(display.key);
+			let cached = entry.text;
 			if (
 				!cached ||
 				cached.text !== display.text ||
@@ -179,36 +278,134 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				};
 				cached?.dispose();
 				cached = next;
-				texts.set(display.key, cached);
+				entry.text = cached;
 			}
 			cached.material.color.copy(color.color);
 			return cached.material;
 		};
-		const meshFor = (display: DisplayShape) => {
-			const mesh = new Mesh(geometryFor(display), materialFor(display));
-			mesh.name = display.name;
-			applyTransform(mesh, display);
-			for (const child of display.children ?? []) {
-				const childMesh = meshFor(child);
-				if (display.geometry.kind === "symbol" && child.rotation !== 0) {
-					childMesh.matrixAutoUpdate = false;
-					childMesh.matrix
-						.makeTranslation(child.x, child.y, 0)
-						.multiply(
-							new Matrix4().makeScale(1 / display.width, 1 / display.height, 1),
-						)
-						.multiply(new Matrix4().makeRotationZ(child.rotation))
-						.multiply(
-							new Matrix4().makeScale(
-								child.width * display.width,
-								child.height * display.height,
-								1,
-							),
-						);
-				}
-				mesh.add(childMesh);
+		const scale = new Matrix4();
+		const rotation = new Matrix4();
+		const size = new Matrix4();
+		// Three breaks transparent draw-order ties by object ID. Keeping those IDs
+		// increasing in traversal order reproduces the order of a full rebuild.
+		// Opaque ties share a material and color, so their order never shows.
+		const order = { last: -Infinity };
+		const updateNode = (
+			node: MeshNode | undefined,
+			display: DisplayShape,
+			parent: DisplayShape | undefined,
+		): MeshNode => {
+			const entry = node
+				? (resources.get(display.key) ?? retain(display.key))
+				: retain(display.key);
+			const geometry = geometryFor(display, entry);
+			const material = materialFor(display, entry);
+			let object = node?.object;
+			if (!object || (material.transparent && object.id <= order.last))
+				object = new Mesh(geometry, material);
+			else {
+				object.geometry = geometry;
+				object.material = material;
 			}
-			return mesh;
+			object.name = display.name;
+			applyTransform(object, display);
+			if (parent?.geometry.kind === "symbol" && display.rotation !== 0) {
+				object.matrixAutoUpdate = false;
+				object.matrix
+					.makeTranslation(display.x, display.y, 0)
+					.multiply(scale.makeScale(1 / parent.width, 1 / parent.height, 1))
+					.multiply(rotation.makeRotationZ(display.rotation))
+					.multiply(
+						size.makeScale(
+							display.width * parent.width,
+							display.height * parent.height,
+							1,
+						),
+					);
+				object.matrixWorldNeedsUpdate = true;
+			} else object.matrixAutoUpdate = true;
+			let first = Infinity;
+			let last = -Infinity;
+			if (material.transparent) {
+				first = last = object.id;
+				order.last = object.id;
+			}
+			const children = reconcile(
+				node?.children ?? [],
+				display.children ?? [],
+				display,
+			);
+			let pinLabels = display.pinLabel === true;
+			for (const child of children) {
+				first = Math.min(first, child.first);
+				last = Math.max(last, child.last);
+				pinLabels ||= child.pinLabels;
+			}
+			setChildren(
+				object,
+				children.map((child) => child.object),
+			);
+			return {
+				key: display.key,
+				object,
+				display,
+				parent,
+				atlas: atlasVersion,
+				children,
+				pinLabels,
+				first,
+				last,
+				outline: node?.outline,
+			};
+		};
+		const reconcileNode = (
+			node: MeshNode | undefined,
+			display: DisplayShape,
+			parent: DisplayShape | undefined,
+		) => {
+			if (
+				node?.display === display &&
+				node.parent === parent &&
+				(!node.pinLabels || node.atlas === atlasVersion) &&
+				node.first > order.last
+			) {
+				if (node.last > order.last) order.last = node.last;
+				return node;
+			}
+			return updateNode(node, display, parent);
+		};
+		/** Matches meshes to displays by key, reusing duplicate keys in order. */
+		const reconcile = (
+			previous: readonly MeshNode[],
+			displays: readonly DisplayShape[],
+			parent: DisplayShape | undefined,
+		) => {
+			let aligned = true;
+			for (let index = 0; aligned && index < displays.length; index++)
+				aligned = previous[index]?.key === displays[index].key;
+			let candidates: Map<string, MeshNode[]> | undefined;
+			if (!aligned) {
+				candidates = new Map();
+				for (const node of previous) {
+					const nodes = candidates.get(node.key);
+					if (nodes) nodes.push(node);
+					else candidates.set(node.key, [node]);
+				}
+				for (const nodes of candidates.values()) nodes.reverse();
+			}
+			const next = displays.map((display, index) =>
+				reconcileNode(
+					candidates ? candidates.get(display.key)?.pop() : previous[index],
+					display,
+					parent,
+				),
+			);
+			// Release after reuse, so a shared key keeps its resources.
+			if (candidates)
+				for (const nodes of candidates.values())
+					for (const node of nodes) release(node);
+			else for (const node of previous.slice(displays.length)) release(node);
+			return next;
 		};
 		const scene: ViewerScene = worksheet
 			? [
@@ -220,98 +417,143 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			: [];
 		const drawing = new Group();
 		drawing.name = "editor-shapes";
-		const previews: Object3D[] = [];
-		const clearPreviews = () => {
-			for (const preview of previews.splice(0)) preview.removeFromParent();
-		};
-		lifetime.addFinalizer(() => {
-			clearPreviews();
-			drawing.clear();
-			drawing.removeFromParent();
+		const groups = (
+			[
+				["terminals", "editor-wire-terminals"],
+				["junctions", "editor-wire-junctions"],
+				["connections", "editor-symbol-connections"],
+				["halos", "editor-pin-halos"],
+			] as const
+		).map(([section, name]) => {
+			const group = new Group();
+			group.name = name;
+			return { section, group, nodes: [] as MeshNode[] };
 		});
-		const update = (root: Object3D, display: DrawingDisplay) => {
-			const meshes = [
-				...display.shapes,
-				...display.terminals,
-				...display.junctions,
-				...display.connections,
-				...display.halos,
-				...display.previews,
-			];
-			const allMeshes = meshes.flatMap((mesh) => [
-				mesh,
-				...(mesh.children ?? []),
-			]);
-			const pinTexts = [
-				...new Set(
-					allMeshes.flatMap((mesh) =>
-						mesh.pinLabel && mesh.text !== undefined ? [mesh.text] : [],
-					),
-				),
-			].sort();
-			const nextPinAtlasKey = JSON.stringify(pinTexts);
-			if (nextPinAtlasKey !== pinAtlasKey) {
-				const next = measurePerformance(
-					"editor.pin-label-atlas",
-					() => createTextAtlas(pinTexts),
-					{ labels: pinTexts.length },
-				);
-				clearPinAtlas();
-				pinAtlas = next;
-				pinAtlasKey = nextPinAtlasKey;
+		const previewGroup = new Group();
+		previewGroup.name = "editor-previews";
+		let shapeNodes: MeshNode[] = [];
+		let previewNodes: MeshNode[] = [];
+		let rendered: DrawingDisplay | undefined;
+		let staticLast = -Infinity;
+		lifetime.addFinalizer(() => {
+			for (const node of [
+				...shapeNodes,
+				...groups.flatMap(({ nodes }) => nodes),
+				...previewNodes,
+			])
+				release(node);
+			setChildren(drawing, []);
+			setChildren(previewGroup, []);
+			drawing.removeFromParent();
+			previewGroup.removeFromParent();
+		});
+		const pinTexts = new WeakMap<DisplayShape, readonly string[]>();
+		const pinTextsOf = (display: DisplayShape): readonly string[] => {
+			if (!display.children?.length)
+				return display.pinLabel && display.text !== undefined
+					? [display.text]
+					: [];
+			let texts = pinTexts.get(display);
+			if (!texts) {
+				texts = [
+					...(display.pinLabel && display.text !== undefined
+						? [display.text]
+						: []),
+					...display.children.flatMap(pinTextsOf),
+				];
+				pinTexts.set(display, texts);
 			}
-			const activeKeys = new Set(allMeshes.map(({ key }) => key));
-			const textKeys = new Set(
-				allMeshes
-					.filter(({ text }) => text !== undefined)
-					.map(({ key }) => key),
+			return texts;
+		};
+		const updatePinAtlas = (display: DrawingDisplay) => {
+			const texts = new Set<string>();
+			for (const displays of [
+				display.shapes,
+				display.terminals,
+				display.junctions,
+				display.connections,
+				display.halos,
+				display.previews,
+			])
+				for (const item of displays)
+					for (const text of pinTextsOf(item)) texts.add(text);
+			if (
+				texts.size === pinAtlasTexts.size &&
+				[...texts].every((text) => pinAtlasTexts.has(text))
+			)
+				return;
+			const sorted = [...texts].sort();
+			const next = measurePerformance(
+				"editor.pin-label-atlas",
+				() => createTextAtlas(sorted),
+				{ labels: sorted.length },
 			);
-			for (const [key, { geometry }] of geometries) {
-				if (activeKeys.has(key)) continue;
-				geometry.dispose();
-				geometries.delete(key);
-			}
-			for (const [key, text] of texts) {
-				if (textKeys.has(key)) continue;
-				text.dispose();
-				texts.delete(key);
-			}
-			drawing.clear();
+			clearPinAtlas();
+			pinAtlas = next;
+			pinAtlasTexts = texts;
+			atlasVersion++;
+		};
+		const updateStatic = (display: DrawingDisplay) => {
+			shapeNodes = reconcile(shapeNodes, display.shapes, undefined);
 			const frames = new Map(
 				display.selections.map((outline) => [outline.shapeKey, outline]),
 			);
-			for (const shape of display.shapes) {
-				drawing.add(meshFor(shape));
-				const outline = frames.get(shape.key);
-				if (outline) {
-					const line = new LineLoop(frame, selection);
-					applyTransform(line, outline);
-					drawing.add(line);
+			const children: Object3D[] = [];
+			for (const node of shapeNodes) {
+				children.push(node.object);
+				const outline = frames.get(node.key);
+				if (!outline) {
+					node.outline = undefined;
+					continue;
 				}
+				node.outline ??= new LineLoop(frame, selection);
+				applyTransform(node.outline, outline);
+				children.push(node.outline);
 			}
-			const terminals = new Group();
-			terminals.name = "editor-wire-terminals";
-			for (const terminal of display.terminals)
-				terminals.add(meshFor(terminal));
-			drawing.add(terminals);
-			for (const [name, displays] of [
-				["editor-wire-junctions", display.junctions],
-				["editor-symbol-connections", display.connections],
-				["editor-pin-halos", display.halos],
-			] as const) {
-				const group = new Group();
-				group.name = name;
-				for (const display of displays) group.add(meshFor(display));
-				drawing.add(group);
+			for (const entry of groups) {
+				entry.nodes = reconcile(entry.nodes, display[entry.section], undefined);
+				setChildren(
+					entry.group,
+					entry.nodes.map((node) => node.object),
+				);
+				children.push(entry.group);
 			}
-			if (drawing.parent !== root) root.add(drawing);
-			clearPreviews();
-			for (const preview of display.previews) {
-				const mesh = meshFor(preview);
-				previews.push(mesh);
-				root.add(mesh);
-			}
+			setChildren(drawing, children);
 		};
+		const update = (root: Object3D, display: DrawingDisplay) =>
+			measurePerformance(
+				"editor.scene-update",
+				() => {
+					const staticChanged =
+						!rendered ||
+						rendered.shapes !== display.shapes ||
+						rendered.selections !== display.selections ||
+						rendered.terminals !== display.terminals ||
+						rendered.junctions !== display.junctions ||
+						rendered.connections !== display.connections ||
+						rendered.halos !== display.halos;
+					const previewsChanged = rendered?.previews !== display.previews;
+					const atlas = atlasVersion;
+					if (staticChanged || previewsChanged) updatePinAtlas(display);
+					const atlasChanged = atlas !== atlasVersion;
+					order.last = -Infinity;
+					if (staticChanged || atlasChanged) {
+						updateStatic(display);
+						staticLast = order.last;
+					} else order.last = staticLast;
+					if (staticChanged || previewsChanged || atlasChanged) {
+						previewNodes = reconcile(previewNodes, display.previews, undefined);
+						setChildren(
+							previewGroup,
+							previewNodes.map((node) => node.object),
+						);
+					}
+					rendered = display;
+					if (drawing.parent !== root) root.add(drawing);
+					if (previewGroup.parent !== root) root.add(previewGroup);
+				},
+				{ shapes: display.shapes.length },
+			);
 		return { scene, update, dispose: lifetime.dispose };
 	} catch (error) {
 		lifetime.dispose();
