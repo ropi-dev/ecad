@@ -120,10 +120,13 @@ export async function resolveSymbolLibraries(
 	byReference: Map<string, SymbolDefinition>;
 	referenceSources: Map<string, SymbolSource>;
 	errors: string[];
+	/** Enabled libraries that failed to load. Their symbols are missing. */
+	unavailable: SymbolLibraryReference[];
 }> {
 	const definitions = new Map<string, SymbolDefinition>();
 	const sources = new Map<string, SymbolSource>();
 	const errors: string[] = [];
+	const unavailable: SymbolLibraryReference[] = [];
 	const entries = new Map<
 		string,
 		{
@@ -168,6 +171,7 @@ export async function resolveSymbolLibraries(
 					referenceSources.set(key, { scope, library, file: files[index] });
 				}
 			} catch (cause) {
+				unavailable.push({ scope, id: library.id });
 				errors.push(
 					`${library.name}: ${cause instanceof Error ? cause.message : "Unable to load library."}`,
 				);
@@ -247,5 +251,6 @@ export async function resolveSymbolLibraries(
 		byReference,
 		referenceSources,
 		errors: [...new Set(errors)],
+		unavailable,
 	};
 }

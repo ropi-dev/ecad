@@ -22,12 +22,18 @@ import {
 	symbolFileShapes,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
+import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
 import {
 	getAppPerformance,
 	measurePerformance,
 	measurePerformanceAsync,
 } from "#/performance/runtime.ts";
+import {
+	isProjectError,
+	ProjectClosed,
+	type ProjectConflict,
+} from "#/projects/errors.ts";
 import {
 	type AssetKind,
 	type ProjectAsset,
@@ -66,6 +72,13 @@ interface ProjectContextValue {
 	busy: boolean;
 	dirty: boolean;
 	error: string;
+	/**
+	 * The project changed on disk after it was opened. Saving stops until it is
+	 * reloaded; edits stay in memory and `dirty` stays true.
+	 */
+	conflict: boolean;
+	/** Symbol libraries that failed to load during the last save. */
+	libraryErrors: readonly string[];
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
 	createDrawing(name: string): Promise<string>;
@@ -145,14 +158,25 @@ export function ProjectProvider({
 	const [dirty, setDirty] = useState(false);
 	const needsSave = useRef(false);
 	const [error, setError] = useState("");
+	const [libraryErrors, setLibraryErrors] = useState<readonly string[]>([]);
+	// Set by the first save that finds the project changed on disk. Later saves
+	// fail at once instead of reading the disk again; reloading clears it.
+	const conflict = useRef<ProjectConflict | null>(null);
+	const [hasConflict, setHasConflict] = useState(false);
 	const pendingAssets = useRef<{ file: File; kind: AssetKind }[]>([]);
-	const operation = useRef<Promise<unknown>>(Promise.resolve());
 	const mounted = useRef(true);
 
-	const enqueue = useCallback(<T,>(run: () => Promise<T>): Promise<T> => {
-		const next = operation.current.then(run, run);
-		operation.current = next.catch(() => undefined);
-		return next;
+	const [enqueue] = useState(createSerialQueue);
+	/** Records a conflict so automatic saves stop. Returns whether it was one. */
+	const noteConflict = useCallback((cause: unknown) => {
+		if (!isProjectError(cause, "ProjectConflict")) return false;
+		conflict.current = cause;
+		needsSave.current = true;
+		if (mounted.current) {
+			setHasConflict(true);
+			setDirty(true);
+		}
+		return true;
 	}, []);
 	const update = useCallback((snapshot: ProjectSnapshot) => {
 		active.current = snapshot;
@@ -186,6 +210,9 @@ export function ProjectProvider({
 			setStore(next);
 			setDirty(false);
 			needsSave.current = false;
+			conflict.current = null;
+			setHasConflict(false);
+			setLibraryErrors([]);
 			generation.current += 1;
 			setEpoch(generation.current);
 		},
@@ -234,6 +261,7 @@ export function ProjectProvider({
 			const staged = pendingAssets.current.length;
 			const pending = [...pendingAssets.current, ...files];
 			if (!pending.length) return;
+			if (conflict.current) throw conflict.current;
 			const assets = await Promise.all(
 				pending.map(async ({ file, kind }) => ({
 					name: file.name,
@@ -241,10 +269,15 @@ export function ProjectProvider({
 					bytes: new Uint8Array(await file.arrayBuffer()),
 				})),
 			);
-			update(await storage.importAssets(previous.directory, assets));
+			try {
+				update(await storage.importAssets(previous.directory, assets));
+			} catch (cause) {
+				noteConflict(cause);
+				throw cause;
+			}
 			pendingAssets.current.splice(0, staged);
 		},
-		[storage, update],
+		[storage, update, noteConflict],
 	);
 	const persist = useCallback(
 		async (
@@ -255,6 +288,7 @@ export function ProjectProvider({
 		) => {
 			const previous = active.current;
 			if (!previous) return;
+			if (conflict.current) throw conflict.current;
 			const edits = [...symbolDocuments.current.values()].filter(
 				(document) =>
 					document.store.getSnapshot().shapes !== document.savedShapes,
@@ -372,6 +406,17 @@ export function ProjectProvider({
 							symbolStorage.loadDirectory!(path, scope, previous.directory)
 					: undefined,
 			);
+			if (mounted.current)
+				setLibraryErrors((current) =>
+					current.join("\n") === resolvedLibraries.errors.join("\n")
+						? current
+						: resolvedLibraries.errors,
+				);
+			const unavailable = new Set(
+				resolvedLibraries.unavailable.map(
+					(library) => `${library.scope}:${library.id}`,
+				),
+			);
 			definitions.push(
 				...resolvedLibraries.byReference.values(),
 				...resolvedLibraries.definitions,
@@ -437,6 +482,9 @@ export function ProjectProvider({
 					{
 						measureText: measureLabelText,
 						newId: () => globalThis.crypto.randomUUID(),
+						// Placeholders would replace real symbols once the library loads again.
+						isLibraryUnavailable: (library) =>
+							unavailable.has(`${library.scope}:${library.id}`),
 					},
 				);
 				linked.shapes = linked.shapes.map((shape) => {
@@ -459,7 +507,13 @@ export function ProjectProvider({
 				...paired,
 				symbolLibraries: document.symbolLibraries,
 			};
-			const next = await storage.save(previous.directory, document);
+			let next: ProjectSnapshot;
+			try {
+				next = await storage.save(previous.directory, document);
+			} catch (cause) {
+				noteConflict(cause);
+				throw cause;
+			}
 			const refreshDrawing = (
 				target: ReturnType<typeof createDrawingStore>,
 				shapes: EditorShape[],
@@ -565,13 +619,15 @@ export function ProjectProvider({
 				setError("");
 			}
 		},
-		[storage, update, symbolStorage],
+		[storage, update, symbolStorage, noteConflict],
 	);
 	const autosave = useCallback(
 		async (onlyIfDirty = false) => {
+			// After a conflict, edits wait in memory until the user reloads.
+			if (conflict.current && onlyIfDirty) return;
 			try {
 				await enqueue(async () => {
-					if (onlyIfDirty && !needsSave.current) return;
+					if (onlyIfDirty && (!needsSave.current || conflict.current)) return;
 					await persist();
 					await transferAssets([]);
 				});
@@ -579,11 +635,13 @@ export function ProjectProvider({
 				if (mounted.current) {
 					needsSave.current = true;
 					setDirty(true);
-					setError(
-						cause instanceof Error
-							? cause.message
-							: "Unable to save the project.",
-					);
+					// The conflict notice already explains a conflict.
+					if (!isProjectError(cause, "ProjectConflict"))
+						setError(
+							cause instanceof Error
+								? cause.message
+								: "Unable to save the project.",
+						);
 				}
 				throw cause;
 			}
@@ -984,8 +1042,7 @@ export function ProjectProvider({
 						},
 						async save(next) {
 							await enqueue(() => {
-								if (generation.current !== epoch)
-									throw new Error("This project is no longer open.");
+								if (generation.current !== epoch) throw new ProjectClosed();
 								return persist(next);
 							});
 							return "Saved in this project.";
@@ -1015,8 +1072,7 @@ export function ProjectProvider({
 						},
 						async saveConfiguration(config) {
 							await enqueue(() => {
-								if (generation.current !== epoch)
-									throw new Error("This project is no longer open.");
+								if (generation.current !== epoch) throw new ProjectClosed();
 								const imported = config.symbolLibraries.find(
 									(library) => library.id === "project-symbols",
 								);
@@ -1095,6 +1151,8 @@ export function ProjectProvider({
 		busy,
 		dirty,
 		error,
+		conflict: hasConflict,
+		libraryErrors,
 		create: (name) => switchProject(name, true),
 		importCircuit: (file) =>
 			enqueue(async () => {

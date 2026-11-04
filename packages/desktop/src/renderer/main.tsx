@@ -8,11 +8,15 @@ import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createDesktopSymbolLibraryStorage } from "#/renderer/storage.ts";
+import {
+	createDesktopProjectStorage,
+	createDesktopSymbolLibraryStorage,
+} from "#/renderer/storage.ts";
 import "@ecad/core/styles.css";
 
 type Workspace = "home" | "editor" | "gerber" | "step";
 const storage = createDesktopSymbolLibraryStorage(window.ecadSymbolLibrary);
+const projects = createDesktopProjectStorage(window.ecadProjects);
 function App() {
 	const [workspace, setWorkspace] = useState<Workspace>("home");
 	useEffect(() => {
@@ -38,7 +42,7 @@ function App() {
 		return () => document.removeEventListener("click", navigate);
 	}, []);
 	return (
-		<ProjectProvider storage={window.ecadProjects} symbolStorage={storage}>
+		<ProjectProvider storage={projects} symbolStorage={storage}>
 			<ProjectShell>
 				<PerformanceBoundary
 					name={workspace}

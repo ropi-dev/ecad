@@ -347,6 +347,7 @@ function EditorCanvas({
 		viewerError,
 		...(symbolLibrary.loading ? [] : resolved.errors),
 		project?.error,
+		...(project?.libraryErrors ?? []),
 	]);
 	const [dismissedIssues, setDismissedIssues] = useState<ReadonlySet<string>>(
 		() => new Set(),

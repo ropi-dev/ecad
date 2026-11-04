@@ -4,18 +4,29 @@ import {
 	pcbDocumentName,
 } from "#/projects/pcb.ts";
 import { circuitSchema } from "@ecad/drawing-core/circuit/model.ts";
+import { Predicate } from "effect";
+import { z } from "zod";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
+import { createSerialQueue } from "#/lib/serial-queue.ts";
+import {
+	InvalidProjectFile,
+	ProjectAssetNotFound,
+	ProjectClosed,
+	ProjectConflict,
+	ProjectExists,
+	ProjectRollbackFailed,
+	schemaReason,
+} from "#/projects/errors.ts";
 import {
 	type AssetKind,
 	assetSchema,
-	drawingFileSchema,
 	PROJECT_FILE,
 	type ProjectDocument,
 	type ProjectSnapshot,
 	parseProjectManifest,
-	projectNameSchema,
-	projectPathSchema,
+	parseProjectName,
+	parseProjectPath,
 	serializeProjectManifest,
 	validateProjectDocument,
 } from "#/projects/format.ts";
@@ -38,6 +49,32 @@ function isMissing(cause: unknown) {
 	);
 }
 
+/** Rewraps format errors from one listed file so they name that file. */
+function invalidFile(path: string, cause: unknown): unknown {
+	if (cause instanceof InvalidProjectFile) return cause;
+	if (isMissing(cause))
+		return new InvalidProjectFile({
+			path,
+			reason: "The project lists this file, but it is missing.",
+			cause,
+		});
+	if (cause instanceof SyntaxError)
+		return new InvalidProjectFile({
+			path,
+			reason: "The file is not valid JSON.",
+			cause,
+		});
+	if (cause instanceof z.ZodError)
+		return new InvalidProjectFile({
+			path,
+			reason: schemaReason(cause.issues),
+			cause,
+		});
+	if (Predicate.isTagged(cause, "SymbolFormatError") && cause instanceof Error)
+		return new InvalidProjectFile({ path, reason: cause.message, cause });
+	return cause;
+}
+
 function sameBytes(left: Uint8Array, right: Uint8Array) {
 	return (
 		left.length === right.length &&
@@ -49,7 +86,7 @@ export class ProjectRepository {
 	private snapshot: ProjectSnapshot | null = null;
 	private savedManifest = "";
 	private savedFiles = new Map<string, Uint8Array>();
-	private operation: Promise<unknown> = Promise.resolve();
+	private readonly sequential = createSerialQueue();
 
 	getSymbolLibraries() {
 		return this.snapshot?.symbolLibraries ?? [];
@@ -59,12 +96,6 @@ export class ProjectRepository {
 		private directory: ProjectDirectory,
 		private options: { layout?: "files" | "revisions" } = {},
 	) {}
-
-	private sequential<T>(run: () => Promise<T>): Promise<T> {
-		const next = this.operation.then(run, run);
-		this.operation = next.catch(() => undefined);
-		return next;
-	}
 
 	private async readManifest() {
 		return decoder.decode(await this.directory.read(PROJECT_FILE));
@@ -88,49 +119,84 @@ export class ProjectRepository {
 				if (this.options.layout === "files") savedFiles.set(path, bytes);
 				return decoder.decode(bytes);
 			};
-			const drawing = JSON.parse(await read(manifest.drawing));
+			/** Reads one listed file; any failure names that file. */
+			const readJson = async <T = Record<string, unknown>>(
+				path: string,
+				parse: (value: Record<string, unknown>) => T = (value) => value as T,
+			): Promise<T> => {
+				try {
+					const value: unknown = JSON.parse(await read(path));
+					if (!Predicate.isRecord(value))
+						throw new InvalidProjectFile({
+							path,
+							reason: "The file must contain a JSON object.",
+						});
+					return parse(value);
+				} catch (cause) {
+					throw invalidFile(path, cause);
+				}
+			};
+			const drawing = await readJson(manifest.drawing);
 			const symbols = await Promise.all(
-				manifest.symbols.map(async (path) => parseSymbolFile(await read(path))),
+				manifest.symbols.map(async (path) => {
+					try {
+						return parseSymbolFile(await read(path));
+					} catch (cause) {
+						throw invalidFile(path, cause);
+					}
+				}),
 			);
-			const document = validateProjectDocument({
-				shapes: drawing.shapes,
-				...(manifest.drawings === undefined
-					? {}
-					: {
-							drawings: await Promise.all(
-								manifest.drawings.map(async (path) => {
-									const { circuit, ...drawing } = JSON.parse(await read(path));
-									return drawingFileSchema.parse(drawing);
-								}),
-							),
-						}),
-				...(manifest.circuits === undefined
-					? {}
-					: {
-							circuits: await Promise.all(
-								manifest.circuits.map(async (paths) => {
-									const content = await read(paths.circuit);
-									const value = JSON.parse(content);
-									const circuit = circuitSchema.parse(value.circuit);
-									if (value.circuitId && value.circuitId !== circuit.id)
-										throw new Error(
-											"The schematic circuit identity does not match its circuit data.",
-										);
-									return {
-										circuit,
-										graph: {
-											format: "ecad-circuit-graph" as const,
-											version: 1 as const,
-											circuitId: circuit.id,
-											positions: [],
-										},
-									};
-								}),
-							),
-						}),
-				symbols,
-				symbolLibraries: drawing.symbolLibraries,
-			});
+			const document = validateProjectDocument(
+				{
+					shapes: drawing.shapes as ProjectDocument["shapes"],
+					...(manifest.drawings === undefined
+						? {}
+						: {
+								drawings: await Promise.all(
+									manifest.drawings.map((path) =>
+										readJson(
+											path,
+											({ circuit: _circuit, ...drawing }) => drawing,
+										),
+									),
+								),
+							}),
+					...(manifest.circuits === undefined
+						? {}
+						: {
+								circuits: await Promise.all(
+									manifest.circuits.map((paths) =>
+										readJson(paths.circuit, (value) => {
+											const circuit = circuitSchema.parse(value.circuit);
+											if (value.circuitId && value.circuitId !== circuit.id)
+												throw new InvalidProjectFile({
+													path: paths.circuit,
+													reason:
+														"The schematic circuit identity does not match its circuit data.",
+												});
+											return {
+												circuit,
+												graph: {
+													format: "ecad-circuit-graph" as const,
+													version: 1 as const,
+													circuitId: circuit.id,
+													positions: [],
+												},
+											};
+										}),
+									),
+								),
+							}),
+					symbols,
+					symbolLibraries:
+						drawing.symbolLibraries as ProjectDocument["symbolLibraries"],
+				} as ProjectDocument,
+				{
+					drawing: manifest.drawing,
+					drawings: manifest.drawings,
+					circuits: manifest.circuits?.map((paths) => paths.circuit),
+				},
+			);
 			this.snapshot = { directory: this.directory.name, manifest, ...document };
 			this.savedManifest = content;
 			this.savedFiles = savedFiles;
@@ -140,16 +206,11 @@ export class ProjectRepository {
 
 	create(name: string): Promise<ProjectSnapshot> {
 		return this.sequential(async () => {
-			name = projectNameSchema.parse(name);
+			name = parseProjectName(name);
 			try {
 				await this.directory.read(PROJECT_FILE);
 			} catch (cause) {
-				if (
-					!(cause instanceof Error) ||
-					(cause.name !== "NotFoundError" &&
-						!("code" in cause && cause.code === "ENOENT"))
-				)
-					throw cause;
+				if (!isMissing(cause)) throw cause;
 				return this.publish({
 					directory: this.directory.name,
 					manifest: {
@@ -164,28 +225,30 @@ export class ProjectRepository {
 					symbols: [],
 				});
 			}
-			throw new Error("This directory already contains an ECAD project.");
+			throw new ProjectExists();
 		});
 	}
 
 	private async assertCurrent() {
-		if (!this.snapshot) throw new Error("Open a project before saving.");
-		if ((await this.readManifest()) !== this.savedManifest)
-			throw new Error("The project changed on disk. Reopen it before saving.");
+		if (!this.snapshot) throw new ProjectClosed();
+		let manifest: string;
+		try {
+			manifest = await this.readManifest();
+		} catch (cause) {
+			if (!isMissing(cause)) throw cause;
+			throw new ProjectConflict({ path: PROJECT_FILE });
+		}
+		if (manifest !== this.savedManifest)
+			throw new ProjectConflict({ path: PROJECT_FILE });
 		for (const [path, saved] of this.savedFiles) {
 			let current: Uint8Array;
 			try {
 				current = await this.directory.read(path);
 			} catch (cause) {
 				if (!isMissing(cause)) throw cause;
-				throw new Error(
-					"The project changed on disk. Reopen it before saving.",
-				);
+				throw new ProjectConflict({ path });
 			}
-			if (!sameBytes(current, saved))
-				throw new Error(
-					"The project changed on disk. Reopen it before saving.",
-				);
+			if (!sameBytes(current, saved)) throw new ProjectConflict({ path });
 		}
 		return this.snapshot;
 	}
@@ -222,7 +285,7 @@ export class ProjectRepository {
 			);
 			for (const symbol of document.symbols) {
 				const path = `${revision}/symbols/${symbol.id}.ecadsym`;
-				projectPathSchema.parse(path);
+				parseProjectPath(path);
 				await this.directory.write(
 					path,
 					encoder.encode(JSON.stringify(symbol)),
@@ -231,7 +294,7 @@ export class ProjectRepository {
 			}
 			for (const file of document.drawings ?? []) {
 				const path = `${revision}/pcbs/${file.id}/${file.name}.ecaddraw`;
-				projectPathSchema.parse(path);
+				parseProjectPath(path);
 				await this.directory.write(
 					path,
 					encoder.encode(
@@ -290,7 +353,7 @@ export class ProjectRepository {
 	}
 
 	private async unusedPath(path: string, reserved: Set<string>) {
-		projectPathSchema.parse(path);
+		parseProjectPath(path);
 		const dot = path.lastIndexOf(".");
 		const extension = dot > path.lastIndexOf("/") + 1 ? path.slice(dot) : "";
 		const stem = extension ? path.slice(0, dot) : path;
@@ -439,10 +502,9 @@ export class ProjectRepository {
 				}
 			}
 			if (failures.length)
-				throw new AggregateError(
-					[cause, ...failures],
-					"Save failed and some project files could not be restored.",
-				);
+				throw new ProjectRollbackFailed({
+					cause: new AggregateError([cause, ...failures]),
+				});
 			throw cause;
 		}
 		this.snapshot = { ...snapshot, manifest };
@@ -454,8 +516,9 @@ export class ProjectRepository {
 				previous.manifest.drawing,
 				...(previous.manifest.drawings ?? []),
 				...previous.manifest.symbols,
-				...(previous.manifest.circuits ?? []).flatMap((paths) => [paths.circuit],
-				),
+				...(previous.manifest.circuits ?? []).flatMap((paths) => [
+					paths.circuit,
+				]),
 			].filter((path) => !reserved.has(path));
 			for (const path of obsolete)
 				await this.directory.remove(path).catch(() => undefined);
@@ -493,14 +556,15 @@ export class ProjectRepository {
 				current.manifest.drawing,
 				...(current.manifest.drawings ?? []),
 				...current.manifest.symbols,
-				...(current.manifest.circuits ?? []).flatMap((paths) => [paths.circuit],
-				),
+				...(current.manifest.circuits ?? []).flatMap((paths) => [
+					paths.circuit,
+				]),
 				...current.manifest.assets.map((asset) => asset.path),
 			]);
 			try {
 				const additions = [];
 				for (const input of assets) {
-					const name = projectNameSchema.parse(input.name);
+					const name = parseProjectName(input.name);
 					const asset = assetSchema.parse({
 						name,
 						kind: input.kind,
@@ -534,10 +598,10 @@ export class ProjectRepository {
 		});
 	}
 
-	readAsset(path: string): Promise<Uint8Array> {
-		projectPathSchema.parse(path);
+	async readAsset(path: string): Promise<Uint8Array> {
+		parseProjectPath(path);
 		if (!this.snapshot?.manifest.assets.some((asset) => asset.path === path))
-			throw new Error("This asset does not belong to the open project.");
+			throw new ProjectAssetNotFound({ path });
 		return this.directory.read(path);
 	}
 }

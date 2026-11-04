@@ -6,6 +6,8 @@ import {
 	MissingSymbolLibraryError,
 	synchronizePcb,
 } from "#/circuit/linked-schematic.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 
 const resistor = symbolDefinitions.find(
@@ -70,5 +72,41 @@ test("a linked symbol without its library asks for the library", () => {
 			);
 			return true;
 		},
+	);
+});
+
+test("a part from a library that failed to load is not replaced by a placeholder symbol", () => {
+	const original = createCircuit("Board");
+	const library = { scope: "project" as const, id: "parts" };
+	const component = componentFromSymbol({ ...resistor, library }, []);
+	const file = structuredClone(original);
+	file.circuit.components = [component];
+	assert.equal(component.part.library?.id, "parts");
+	const isLibraryUnavailable = (reference: SymbolLibraryReference) =>
+		reference.scope === library.scope && reference.id === library.id;
+	// The library's definitions are missing because it failed to load.
+	assert.throws(
+		() =>
+			synchronizePcb(file, [], original, symbolDefinitions, {
+				isLibraryUnavailable,
+			}),
+		MissingSymbolLibraryError,
+	);
+	// A loaded library still places its own symbol.
+	const placed = synchronizePcb(
+		file,
+		[],
+		original,
+		[...symbolDefinitions, { ...resistor, library }],
+		{ isLibraryUnavailable: () => false },
+	);
+	const symbol = placed.shapes.find((shape) => shape.kind === "symbol");
+	assert.equal(symbol?.kind === "symbol" && symbol.definitionId, "resistor");
+	// Without a failed library the existing placeholder for a missing part remains.
+	const fallback = synchronizePcb(file, [], original, symbolDefinitions);
+	const box = fallback.shapes.find((shape) => shape.kind === "symbol");
+	assert.match(
+		box?.kind === "symbol" ? box.definitionId : "",
+		/^circuit-fallback\./,
 	);
 });

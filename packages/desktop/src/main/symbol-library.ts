@@ -22,6 +22,7 @@ import {
 	type SymbolFile,
 	type SymbolLibrary,
 } from "@ecad/core/components/editor/symbolFormat.ts";
+import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	defaultSymbolConfig,
@@ -232,7 +233,7 @@ function orderedLibrary(symbols: SymbolLibrary): string {
  */
 export class DesktopSymbolLibrary {
 	private snapshot: SymbolLibrarySnapshot;
-	private operation: Promise<unknown> = Promise.resolve();
+	private readonly sequential = createSerialQueue();
 	private approvedDirectories = new Set<string>();
 	readonly configurationPath: string;
 
@@ -355,12 +356,6 @@ export class DesktopSymbolLibrary {
 		return this.sequential(async () =>
 			saveDirectorySymbol(await this.configuredDirectory(path), original, next),
 		);
-	}
-
-	private sequential<T>(run: () => Promise<T>): Promise<T> {
-		const pending = this.operation.then(run, run);
-		this.operation = pending.catch(() => undefined);
-		return pending;
 	}
 
 	load(): Promise<SymbolLibrarySnapshot> {

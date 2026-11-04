@@ -20,6 +20,7 @@ import {
 	symbolShapes,
 	type TextShape,
 } from "#/drawing/shapes.ts";
+import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { fontPixels, type MeasureText, updateText } from "#/drawing/text.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
@@ -37,6 +38,11 @@ const terminalTolerance = 1e-4;
 export interface LinkedSchematicEnvironment {
 	measureText: MeasureText;
 	newId: () => string;
+	/**
+	 * True for a library that failed to load. A part from such a library is
+	 * not replaced by a placeholder symbol; synchronization fails instead.
+	 */
+	isLibraryUnavailable: (library: SymbolLibraryReference) => boolean;
 }
 
 export const estimateLabelTextWidth: MeasureText = (text) =>
@@ -57,6 +63,7 @@ interface SyncContext {
 	previousLabels: ReadonlyMap<string, string>;
 	measureText: MeasureText;
 	newId: () => string;
+	isLibraryUnavailable: (library: SymbolLibraryReference) => boolean;
 }
 
 export function synchronizePcb(
@@ -104,6 +111,7 @@ function synchronize(
 		previousLabels: circuitNetLabels(base.circuit),
 		measureText: environment.measureText ?? estimateLabelTextWidth,
 		newId: environment.newId ?? (() => globalThis.crypto.randomUUID()),
+		isLibraryUnavailable: environment.isLibraryUnavailable ?? (() => false),
 	};
 	const bound = bindNetLabels(shapes, context);
 	const unplaced = file.circuit.components.some(
@@ -263,6 +271,12 @@ function placeComponentSymbols(
 			component.part.id,
 			component.part.library,
 		);
+		if (
+			!known &&
+			component.part.library &&
+			context.isLibraryUnavailable(component.part.library)
+		)
+			throw new MissingSymbolLibraryError();
 		const definition = known ?? fallbackDefinition(component, context.newId);
 		component.schematicShapeId = nextId++;
 		delete component.schematicShapeIds;

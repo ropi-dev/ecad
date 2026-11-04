@@ -39,6 +39,10 @@ test("enabled libraries resolve in order and project definitions take precedence
  ], []);
  assert.equal(broken.definitions.length, symbolDefinitions.length + 1);
  assert.match(broken.errors[0], /Broken:.*desktop/);
+ assert.deepEqual(broken.unavailable, [{ scope: "user", id: "broken" }]);
+ const failing = await resolveSymbolLibraries([], [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory", path: "parts" } }], async () => { throw new Error("Directory is unreadable."); });
+ assert.deepEqual(failing.unavailable, [{ scope: "project", id: "parts" }]);
+ assert.deepEqual(failing.errors, ["Parts: Directory is unreadable."]);
 });
 
 for (const layout of ["files", "revisions"] as const) test(`project libraries survive saves, reopening and source imports in the ${layout} layout`, async () => {
