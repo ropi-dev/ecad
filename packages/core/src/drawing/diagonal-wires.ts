@@ -157,6 +157,31 @@ function driftAreas(wires: readonly Segment[]): Bounds[] {
 		.map((cluster) => segmentBounds(cluster, connectionTolerance));
 }
 
+const reaches = new WeakMap<EditorShape, Bounds>();
+/**
+ * The bounds of everything a shape connects through. A child override can
+ * move a pin outside its symbol's own bounds, and a label connects at its
+ * anchor.
+ */
+function reach(shape: EditorShape): Bounds {
+	const cached = reaches.get(shape);
+	if (cached) return cached;
+	const bounds = [
+		...(shape.kind === "text" ? [{ x: shape.x, y: shape.y }] : []),
+		...pinTerminals(shape),
+	].reduce(
+		(bounds, point) => ({
+			minX: Math.min(bounds.minX, point.x),
+			minY: Math.min(bounds.minY, point.y),
+			maxX: Math.max(bounds.maxX, point.x),
+			maxY: Math.max(bounds.maxY, point.y),
+		}),
+		shapeBounds(shape),
+	);
+	reaches.set(shape, bounds);
+	return bounds;
+}
+
 /** The net of each source wire, pin and label, counting joins by label name. */
 function sourceNets(shapes: readonly EditorShape[]) {
 	const nets = new Map<string, string>();
@@ -185,7 +210,7 @@ function joined(
 				shape.kind === "pin" ||
 				shape.kind === "symbol" ||
 				(shape.kind === "text" && shape.electrical)) &&
-			overlaps(shapeBounds(shape), box),
+			overlaps(reach(shape), box),
 	);
 	const ids = new Set(wires.map((wire) => wire.id));
 	const net = electricalNets([...local, ...wires]).find((net) =>

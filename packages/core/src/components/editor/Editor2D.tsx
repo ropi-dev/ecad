@@ -357,10 +357,16 @@ function EditorCanvas({
 	const [ready, setReady] = useState(false);
 	const [commandError, setCommandError] = useState("");
 	const [viewerError, setViewerError] = useState("");
-	const [rerouteNotice, setRerouteNotice] = useState("");
+	// Shown while the drawing is at the redraw's history entry.
+	const [rerouteNotice, setRerouteNotice] = useState<{
+		text: string;
+		historyId: number;
+	} | null>(null);
 	const issues = editorIssues([
 		viewerError,
-		rerouteNotice,
+		rerouteNotice?.historyId === drawing.history.currentId
+			? rerouteNotice.text
+			: "",
 		...(symbolLibrary.loading ? [] : resolved.errors),
 		project?.error,
 	]);
@@ -615,7 +621,7 @@ function EditorCanvas({
 	useEffect(() => {
 		if (
 			isSymbol ||
-			symbolLibrary.loading ||
+			!symbolLibrary.ready ||
 			resolved.errors.length ||
 			reroutedStores.has(store)
 		)
@@ -632,7 +638,10 @@ function EditorCanvas({
 				),
 			)
 		)
-			setRerouteNotice(reroute.notice);
+			setRerouteNotice({
+				text: reroute.notice,
+				historyId: store.getSnapshot().history.currentId,
+			});
 	});
 	const acceptEdit = (
 		result: CommandResult,
@@ -1093,7 +1102,8 @@ function EditorCanvas({
 		);
 		if (!source.length) return;
 		const text = serializeSelection(source);
-		const captured = parseSelection(text);
+		// Copying may include legacy diagonal wires; pasting them stays strict.
+		const captured = parseSelection(text, { legacy: true });
 		if (!captured) {
 			setCommandError(
 				"The selection is too large or contains unavailable symbol geometry.",

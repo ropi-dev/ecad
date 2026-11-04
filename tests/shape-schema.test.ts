@@ -12,12 +12,17 @@ import {
 	type ShapeInput,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { selectionPasteError } from "#/drawing/clipboard.ts";
+import {
+	parseSelection,
+	selectionPasteError,
+	serializeSelection,
+} from "#/drawing/clipboard.ts";
 import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import {
 	drawingShapeSchema,
 	editorShapeSchema,
 	legacyDrawingShapeSchema,
+	savedDrawingShapesSchema,
 	symbolChildOverridesSchema,
 } from "#/drawing/schema.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
@@ -308,14 +313,15 @@ test("symbol files and drawings share the child-override limits", () => {
 	});
 	for (const [override, accepted] of [
 		[{ x: 1000, y: -1000 }, true],
-		[{ x: 1000.5 }, false],
-		[{ y: -1001 }, false],
+		// Drawings never bounded positions or sizes, so neither do symbol files.
+		[{ x: 1000.5 }, true],
+		[{ y: -25000 }, true],
 		[{ width: 1000, height: 1000 }, true],
-		[{ width: 1001 }, false],
+		[{ width: 1270 }, true],
 		[{ height: 0.005 }, true],
 		[{ width: 0 }, false],
 		[{ lineWidth: 0 }, false],
-		[{ lineWidth: 1001 }, false],
+		[{ lineWidth: 1001 }, true],
 		[{ fontSize: 0 }, false],
 		[{ length: 1000 }, true],
 		[{ length: 1001 }, false],
@@ -710,7 +716,6 @@ test("override problems read clearly and are reported once", () => {
 	assert.deepEqual(
 		issues?.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
 		[
-			"childOverrides.shape:1.x: Symbol children must stay within 1000 mm of the symbol center.",
 			"childOverrides.shape:1.lineWidth: Sizes and strokes must be greater than zero.",
 		],
 	);
@@ -795,4 +800,121 @@ test("the editor redraws legacy diagonal wires without changing their nets", () 
 	assert.equal(redrawn.find(({ id }) => id === 1)?.lineWidth, 0.3);
 	assert.deepEqual(nets(redrawn), ["A+B", "C", "D"]);
 	assert.equal(rerouteLegacyWires(redrawn), undefined);
+});
+
+test("fields that earlier versions saved without effect are dropped on load", () => {
+	// Earlier MCP and CLI versions accepted these; they never changed the drawing.
+	const [wire, styled] = savedDrawingShapesSchema.parse([
+		{ ...box, id: 1, kind: "wire", lineStyle: "dashed", filled: false },
+		symbol({
+			id: 2,
+			children: [{ ...box, id: 1, kind: "wire", lineStyle: "dotted" }],
+			childOverrides: { "shape:1": { width: 0, lineWidth: 0.3 } },
+		}),
+	]);
+	assert.deepEqual(Object.keys(wire).sort(), Object.keys({ ...box, id: 1, kind: "wire" }).sort());
+	assert.equal(editorShapeSchema.safeParse(wire).success, true);
+	assert.equal(editorShapeSchema.safeParse(styled).success, true);
+	assert.deepEqual(styled.kind === "symbol" && styled.childOverrides, {
+		"shape:1": { lineWidth: 0.3 },
+	});
+	assert.equal(
+		validateProjectDocument({
+			shapes: [{ ...box, id: 1, kind: "wire", lineStyle: "dashed" }] as never,
+			symbols: [],
+		}).shapes.length,
+		1,
+	);
+});
+
+test("symbol files drop nested overrides that do not fit, so the symbol still places", () => {
+	const file = parseSymbolFile(
+		JSON.stringify({
+			format: "ecad-symbol",
+			version: 1,
+			units: "mm",
+			id: "misfit-override",
+			name: "Misfit override",
+			description: "",
+			prefix: "U",
+			value: "",
+			shapes: [
+				{
+					kind: "symbol",
+					library: { scope: "user", id: "builtin" },
+					definitionId: "resistor",
+					x: 0,
+					y: 0,
+					// Child 1 of the resistor is a line, which has no font size.
+					childOverrides: { "shape:1": { fontSize: 2 }, "shape:2": { width: 6 } },
+				},
+			],
+		}),
+	);
+	const [definition] = libraryDefinitions([file], (library, id) =>
+		symbolDefinitions.find(
+			(candidate) =>
+				candidate.id === id && candidate.library?.id === library.id,
+		),
+	);
+	assert.equal(
+		definition.children.some((child) => "fontSize" in child && child.kind !== "text"),
+		false,
+	);
+	assert.ok(definition.children.some((child) => child.kind === "rectangle" && child.width === 6));
+	assert.equal(place(createSymbol(1, definition, { x: 0, y: 0 })).accepted, true);
+});
+
+test("redrawing a legacy wire sees pins that an override moved outside their symbol", () => {
+	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	// The override puts the resistor's first pin at (10, 0), the first corner tried.
+	const part = {
+		...createSymbol(9, resistor, { x: 50, y: 50 }),
+		childOverrides: { "shape:4": { x: -40, y: -50 } },
+	};
+	const label = (id: number, name: string, x: number, y: number) =>
+		({ ...text({}), id, text: name, x, y, electrical: "net" }) as EditorShape;
+	const shapes = [
+		{
+			...box,
+			id: 1,
+			kind: "wire",
+			x: 5,
+			y: 5,
+			width: Math.hypot(10, 10),
+			rotation: Math.PI / 4,
+		} as EditorShape,
+		label(2, "A", 0, 0),
+		label(3, "B", 10, 10),
+		part as EditorShape,
+	];
+	const reroute = rerouteLegacyWires(shapes);
+	assert.ok(reroute);
+	const store = createDrawingStore(shapes);
+	Effect.runSync(
+		replaceAndPlaceShapesEffect(
+			reroute.replacements,
+			reroute.additions,
+			"Redraw diagonal wires",
+		).pipe(Effect.provideService(DrawingStore, store)),
+	);
+	const routed = electricalNets(store.getSnapshot().shapes).find((net) =>
+		net.names.includes("A"),
+	);
+	assert.deepEqual(routed?.names, ["A", "B"]);
+	assert.equal(routed?.pins.length, 0);
+});
+
+test("a copy may hold a legacy diagonal wire, but pasting it stays strict", () => {
+	const legacy = {
+		...box,
+		id: 1,
+		kind: "wire",
+		width: 10,
+		rotation: Math.PI / 4,
+	} as EditorShape;
+	const text = serializeSelection([legacy]);
+	assert.equal(parseSelection(text, { legacy: true })?.length, 1);
+	assert.equal(parseSelection(text), null);
+	assert.equal(selectionPasteError(text), "Wire segments must be horizontal or vertical.");
 });

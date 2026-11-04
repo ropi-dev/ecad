@@ -196,22 +196,15 @@ const savedSymbolChildSchema = z.discriminatedUnion(
 
 /**
  * Instance edits to one child, keyed `shape:<id>` or `attribute:<name>`.
- * Symbol files use the same schema. Coordinates are relative to the symbol
- * center, so they share the symbol-file bound of ±1000 mm. Sizes and strokes
- * must be positive: a zero size draws nothing and cannot be selected.
+ * Symbol files use the same schema and limits as drawings. Coordinates and
+ * sizes have no upper bound, because earlier versions saved drawings without
+ * one. Sizes and strokes must be positive: a zero size draws nothing and
+ * cannot be selected.
  */
-const overrideCoordinate = z
-	.number()
-	.min(-1000, {
-		error: "Symbol children must stay within 1000 mm of the symbol center.",
-	})
-	.max(1000, {
-		error: "Symbol children must stay within 1000 mm of the symbol center.",
-	});
+const overrideCoordinate = z.number();
 const overrideSize = z
 	.number()
-	.positive({ error: "Sizes and strokes must be greater than zero." })
-	.max(1000, { error: "Sizes and strokes must be at most 1000 mm." });
+	.positive({ error: "Sizes and strokes must be greater than zero." });
 export const symbolChildOverrideSchema = z.strictObject({
 	x: overrideCoordinate.optional(),
 	y: overrideCoordinate.optional(),
@@ -410,6 +403,52 @@ export const drawingShapeSchema = z
 		shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
 	);
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+const overrideSizes = new Set(["width", "height", "lineWidth", "fontSize"]);
+
+function upgradeSavedShape(shape: unknown): unknown {
+	if (!isRecord(shape)) return shape;
+	if (shape.kind === "wire") {
+		const { filled: _filled, lineStyle: _lineStyle, ...wire } = shape;
+		return wire;
+	}
+	if (shape.kind !== "symbol") return shape;
+	return {
+		...shape,
+		...(Array.isArray(shape.children)
+			? { children: shape.children.map(upgradeSavedShape) }
+			: {}),
+		...(isRecord(shape.childOverrides)
+			? {
+					childOverrides: Object.fromEntries(
+						Object.entries(shape.childOverrides).map(([key, override]) => [
+							key,
+							isRecord(override)
+								? Object.fromEntries(
+										Object.entries(override).filter(
+											([field, value]) =>
+												!overrideSizes.has(field) ||
+												typeof value !== "number" ||
+												value > 0,
+										),
+									)
+								: override,
+						]),
+					),
+				}
+			: {}),
+	};
+}
+
+/**
+ * Upgrades shapes saved by earlier versions before validation. They could save
+ * fields that never had an effect: a fill or line style on a wire, and a zero
+ * size in a child override, which drew nothing.
+ */
+export const upgradeSavedShapes = (shapes: unknown) =>
+	Array.isArray(shapes) ? shapes.map(upgradeSavedShape) : shapes;
+
 /**
  * Reads saved drawings, which may hold diagonal wires from before wires had to
  * be horizontal or vertical, such as KiCad imports from older versions. The
@@ -432,6 +471,12 @@ export const legacyDrawingShapeSchema = z
 	.overwrite((shape) =>
 		shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
 	);
+
+/** A saved drawing's shapes, upgraded from earlier versions where needed. */
+export const savedDrawingShapesSchema = z.preprocess(
+	upgradeSavedShapes,
+	z.array(legacyDrawingShapeSchema),
+);
 
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export interface LineShape extends z.output<typeof lineShapeSchema> {}

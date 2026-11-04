@@ -2,6 +2,7 @@ import type {
 	SymbolFile,
 	SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
+import { fittingChildOverrides } from "#/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
@@ -73,8 +74,14 @@ export function symbolFileShapes(
 						? {}
 						: { netSymbol: shape.netSymbol }),
 					...(shape.locked === undefined ? {} : { locked: shape.locked }),
+					// Keep only overrides that fit the nested definition's children.
 					...(shape.childOverrides
-						? { childOverrides: structuredClone(shape.childOverrides) }
+						? {
+								childOverrides: fittingChildOverrides(
+									instance.children,
+									structuredClone(shape.childOverrides),
+								),
+							}
 						: {}),
 					library: shape.library,
 					definitionId: shape.definitionId,

@@ -80,6 +80,10 @@ export function useSymbolLibrary() {
 	);
 	const [sources, setSources] = useState(new Map<string, SymbolSource>());
 	const [loading, setLoading] = useState(true);
+	// The project storage the current definitions were loaded for.
+	const [loadedFor, setLoadedFor] = useState<
+		SymbolLibraryStorage | null | undefined
+	>(undefined);
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
 	const [libraryErrors, setLibraryErrors] = useState<string[]>([]);
@@ -153,6 +157,7 @@ export function useSymbolLibrary() {
 					project.status === "fulfilled" ? project.value : emptyConfig(),
 					controller.signal,
 				);
+				if (!controller.signal.aborted) setLoadedFor(projectStorage ?? null);
 				setError(
 					failures
 						.map((result) =>
@@ -439,6 +444,8 @@ export function useSymbolLibrary() {
 				: null;
 		},
 		loading,
+		/** Loaded for the current project, not one opened before it. */
+		ready: !loading && loadedFor === (projectStorage ?? null),
 		message,
 		error: [error, ...libraryErrors].filter(Boolean).join("\n"),
 		upload,
