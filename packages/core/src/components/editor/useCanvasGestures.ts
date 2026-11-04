@@ -4,6 +4,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	type SetStateAction,
 	useCallback,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -13,6 +14,7 @@ import { pasteSelection } from "#/drawing/clipboard.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
 import {
 	createPlacementShape,
+	isPlacementTool,
 	type PlacementTool,
 	placementLabel,
 	placementSnapsToConnection,
@@ -37,7 +39,6 @@ import {
 	routeWire,
 	type ShapeKind,
 	shapeAt,
-	shapeBounds,
 	snapPoint,
 	symbolChildren,
 	symbolChildWorld,
@@ -145,7 +146,45 @@ export function useCanvasGestures({
 	setTextFocusId,
 }: CanvasGesturesOptions) {
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
-	const [symbolPreview, setSymbolPreview] = useState<EditorShape | null>(null);
+	const [placement, setPlacement] = useState({
+		tool,
+		symbolDefinition,
+		rotation: 0,
+	});
+	if (
+		placement.tool !== tool ||
+		placement.symbolDefinition !== symbolDefinition
+	)
+		setPlacement({ tool, symbolDefinition, rotation: 0 });
+	const placementRotation =
+		placement.tool === tool && placement.symbolDefinition === symbolDefinition
+			? placement.rotation
+			: 0;
+	const canRotatePlacement =
+		isPlacementTool(tool) || (tool === "symbol" && !!symbolDefinition);
+	const rotatePlacement = useCallback((angle: number) => {
+		setPlacement((current) => ({
+			...current,
+			rotation: (current.rotation + angle) % (2 * Math.PI),
+		}));
+	}, []);
+	const [pendingPreview, setPlacementPreview] = useState<{
+		tool: CanvasTool;
+		symbolDefinition: SymbolDefinition | null;
+		shape: EditorShape;
+	} | null>(null);
+	const placementPreview = useMemo(
+		() =>
+			pendingPreview?.tool === tool &&
+			pendingPreview.symbolDefinition === symbolDefinition
+				? { ...pendingPreview.shape, rotation: placementRotation }
+				: null,
+		[pendingPreview, tool, symbolDefinition, placementRotation],
+	);
+	const clearPlacementPreview = useCallback(
+		() => setPlacementPreview(null),
+		[],
+	);
 	const gesture = useRef<CanvasGesture>({ kind: "idle" });
 	const getGesture = useCallback(
 		(): CanvasGesture =>
@@ -163,10 +202,6 @@ export function useCanvasGestures({
 		return active.kind === "wire" ? active.wire : null;
 	}, [getGesture]);
 	const [movingShapeId, setMovingShapeId] = useState<number | null>(null);
-	const [placementGuide, setPlacementGuide] = useState<{
-		tool: CanvasTool;
-		center: Point;
-	} | null>(null);
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const handleAt = (point: Point) => {
@@ -241,8 +276,8 @@ export function useCanvasGestures({
 		if (gesture.current.kind === "wire") gesture.current = { kind: "idle" };
 		setWirePreview(null);
 		setConnectionHover(null);
-		setSymbolPreview(null);
-	}, []);
+		clearPlacementPreview();
+	}, [clearPlacementPreview]);
 	const startWire = useCallback(
 		(connection: Point, pointerId: number) => {
 			gesture.current = {
@@ -443,20 +478,25 @@ export function useCanvasGestures({
 
 	const placementHandler = (kind: PlacementTool): ToolHandler => ({
 		press: (_event, point, start) => {
-			const placed = createPlacementShape(
-				kind,
-				session.nextId(),
-				placementAnchor(kind, point, start),
-				measureText,
-			);
+			const placed = {
+				...createPlacementShape(
+					kind,
+					session.nextId(),
+					placementAnchor(kind, point, start),
+					measureText,
+				),
+				rotation: placementRotation,
+			};
 			session.place([placed], placementLabel(kind));
 			setTool("select");
 			if (placed.kind === "text") setTextFocusId(placed.id);
 			return;
 		},
 		hover: (_event, point) => {
-			const bounds = shapeBounds(
-				createPlacementShape(
+			setPlacementPreview({
+				tool,
+				symbolDefinition,
+				shape: createPlacementShape(
 					kind,
 					session.nextId(),
 					placementAnchor(
@@ -466,13 +506,6 @@ export function useCanvasGestures({
 					),
 					measureText,
 				),
-			);
-			setPlacementGuide({
-				tool,
-				center: {
-					x: (bounds.minX + bounds.maxX) / 2,
-					y: (bounds.minY + bounds.maxY) / 2,
-				},
 			});
 			return true;
 		},
@@ -498,22 +531,27 @@ export function useCanvasGestures({
 			press: (_event, _point, start) => {
 				if (!symbolDefinition || (isSymbol && symbolDefinition.netSymbol))
 					return;
-				const symbol = createSymbol(session.nextId(), symbolDefinition, start);
+				const symbol = {
+					...createSymbol(session.nextId(), symbolDefinition, start),
+					rotation: placementRotation,
+				};
 				session.place([symbol], `Insert ${symbol.attributes.name}`);
-				setSymbolPreview(null);
+				clearPlacementPreview();
 				setTool("select");
 				return;
 			},
 			hover: (_event, point) => {
 				if (!symbolDefinition) return false;
 
-				setSymbolPreview(
-					createSymbol(
+				setPlacementPreview({
+					tool,
+					symbolDefinition,
+					shape: createSymbol(
 						session.nextId(),
 						symbolDefinition,
 						snapPoint(point, snapEnabled ? gridStep : 0),
 					),
-				);
+				});
 				return true;
 			},
 		},
@@ -574,8 +612,7 @@ export function useCanvasGestures({
 		| "onLostPointerCapture"
 	> = {
 		onPointerLeave: () => {
-			setPlacementGuide(null);
-			setSymbolPreview(null);
+			clearPlacementPreview();
 			setConnectionHover(null);
 		},
 		onDoubleClickCapture: (event) => {
@@ -814,7 +851,7 @@ export function useCanvasGestures({
 		},
 		onPointerCancelCapture: (event) => {
 			if (tool === "symbol") {
-				setSymbolPreview(null);
+				clearPlacementPreview();
 				setTool("select");
 				return;
 			}
@@ -837,11 +874,11 @@ export function useCanvasGestures({
 		getWire,
 		marquee,
 		movingShapeId,
-		placementGuide,
 		wirePreview,
-		symbolPreview,
-		setSymbolPreview,
-		setPlacementGuide,
+		placementPreview,
+		clearPlacementPreview,
+		canRotatePlacement,
+		rotatePlacement,
 		connectionHover,
 		finishDrag,
 		finishWire,

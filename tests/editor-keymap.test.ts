@@ -16,7 +16,7 @@ const key = (value: string, modifiers: Partial<EditorKey> = {}): EditorKey => ({
 });
 const shortcutContext = {
 	dialogOpen: false,
-	placingSymbol: false,
+	placing: false,
 	editable: false,
 	canRotate: true,
 };
@@ -83,7 +83,7 @@ test("Escape cancels symbol placement, even from a text field, but never in the 
 	assert.deepEqual(
 		editorShortcut(key("Escape"), {
 			...shortcutContext,
-			placingSymbol: true,
+			placing: true,
 			editable: true,
 		}),
 		{ kind: "cancel-placement" },
@@ -92,7 +92,7 @@ test("Escape cancels symbol placement, even from a text field, but never in the 
 	assert.equal(
 		editorShortcut(key("Escape"), {
 			...shortcutContext,
-			placingSymbol: true,
+			placing: true,
 			dialogOpen: true,
 		}),
 		undefined,

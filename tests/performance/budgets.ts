@@ -1,4 +1,10 @@
 export const budgets = {
+	"editor-placement-rotate": {
+		interactionP95Ms: 750,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"circuit-erc": {
 		interactionP95Ms: 1000,
 		ercP95Ms: 100,

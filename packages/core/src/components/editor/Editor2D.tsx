@@ -23,10 +23,7 @@ import { createDrawingStore } from "#/commands/drawing-store.ts";
 import { CanvasOverlay } from "#/components/editor/CanvasOverlay.tsx";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { createCanvasView } from "#/components/editor/canvasView.ts";
-import {
-	EditorToolbar,
-	isConnectionTool,
-} from "#/components/editor/EditorToolbar.tsx";
+import { EditorToolbar } from "#/components/editor/EditorToolbar.tsx";
 import {
 	canvasKeyCommand,
 	editorShortcut,
@@ -364,11 +361,11 @@ function EditorCanvas({
 		getWire,
 		marquee,
 		movingShapeId,
-		placementGuide,
 		wirePreview,
-		symbolPreview,
-		setSymbolPreview,
-		setPlacementGuide,
+		placementPreview,
+		clearPlacementPreview,
+		canRotatePlacement,
+		rotatePlacement,
 		connectionHover,
 		finishDrag,
 		finishWire,
@@ -393,8 +390,8 @@ function EditorCanvas({
 		setTextFocusId,
 	});
 	const previews = useMemo(
-		() => wirePreview ?? (symbolPreview ? [symbolPreview] : []),
-		[wirePreview, symbolPreview],
+		() => wirePreview ?? (placementPreview ? [placementPreview] : []),
+		[wirePreview, placementPreview],
 	);
 	const { scene, updateScene } = useEditorScene(
 		shapes,
@@ -403,16 +400,14 @@ function EditorCanvas({
 		isSymbol ? null : sheet,
 	);
 	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
-	const guideShape = movingShape ?? (tool === "symbol" ? symbolPreview : null);
+	const guideShape = movingShape ?? placementPreview;
 	const guideBounds = guideShape ? shapeBounds(guideShape) : null;
 	const guideCenter = guideBounds
 		? {
 				x: (guideBounds.minX + guideBounds.maxX) / 2,
 				y: (guideBounds.minY + guideBounds.maxY) / 2,
 			}
-		: placementGuide?.tool === tool
-			? placementGuide.center
-			: null;
+		: null;
 	const editSelection = useCallback(
 		(edit: SelectionEdit) => {
 			const current = session.getState();
@@ -459,9 +454,14 @@ function EditorCanvas({
 	);
 	const undo = useCallback(() => restoreHistory(undoEffect), [restoreHistory]);
 	const redo = useCallback(() => restoreHistory(redoEffect), [restoreHistory]);
-	const rotateSelected = useCallback(
+	const rotateItems = useCallback(
 		(angle: number) => {
-			if (!ready || !session.getState().selection.size) return;
+			if (!ready) return;
+			if (canRotatePlacement) {
+				rotatePlacement(angle);
+				return;
+			}
+			if (!session.getState().selection.size) return;
 			const active = getDrag();
 			const childKey = active ? active.previousChild : selectedChildKey;
 			finishDrag(true);
@@ -489,7 +489,16 @@ function EditorCanvas({
 
 			session.commit(rotateShapesEffect([...selection], angle));
 		},
-		[ready, session, getDrag, selectedChildKey, finishDrag, finishWire],
+		[
+			ready,
+			canRotatePlacement,
+			rotatePlacement,
+			session,
+			getDrag,
+			selectedChildKey,
+			finishDrag,
+			finishWire,
+		],
 	);
 	const removeSelected = useCallback(() => {
 		finishDrag();
@@ -590,7 +599,7 @@ function EditorCanvas({
 		beforePaste: () => {
 			finishWire();
 			setTool("select");
-			setSymbolPreview(null);
+			clearPlacementPreview();
 		},
 	});
 
@@ -660,15 +669,17 @@ function EditorCanvas({
 			onKeyDownCapture={(event) => {
 				const shortcut = editorShortcut(event, {
 					dialogOpen: creatingSymbol,
-					placingSymbol: tool === "symbol",
+					placing: canRotatePlacement,
 					editable: isEditableTarget(event),
-					canRotate: ready && session.getState().selection.size > 0,
+					canRotate:
+						ready &&
+						(canRotatePlacement || session.getState().selection.size > 0),
 				});
 				if (!shortcut) return;
 				if (shortcut.kind === "cancel-placement") {
-					setSymbolPreview(null);
+					clearPlacementPreview();
 					setTool("select");
-				} else if (shortcut.kind === "rotate") rotateSelected(shortcut.angle);
+				} else if (shortcut.kind === "rotate") rotateItems(shortcut.angle);
 				else if (shortcut.kind === "undo") undo();
 				else redo();
 				event.preventDefault();
@@ -822,14 +833,15 @@ function EditorCanvas({
 									finishWire={finishWire}
 									setSymbolDefinition={setSymbolDefinition}
 									setTool={setTool}
-									setPlacementGuide={setPlacementGuide}
+									clearPlacementPreview={clearPlacementPreview}
+									canRotatePlacement={canRotatePlacement}
 									snapEnabled={snapEnabled}
 									setSnapEnabled={setSnapEnabled}
 									gridStep={gridStep}
 									allowLocked={allowLocked}
 									session={session}
 									hasSelection={hasSelection}
-									rotateSelected={rotateSelected}
+									rotateItems={rotateItems}
 									selectionLocked={selectionLocked}
 									editSelection={editSelection}
 									removeSelected={removeSelected}
@@ -837,7 +849,7 @@ function EditorCanvas({
 								/>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires, pins, no-connect markers, net labels and supply labels. Choose No connect and click a pin to mark it with an X. Matching label names connect across the drawing. The cross marks the electrical anchor. Edit the net name in Attributes. Open History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag any item on an unselected symbol to move the whole symbol. Select a symbol first, then drag a child to customize it. Select a child on the canvas to edit its position, size or content in Attributes relative to the symbol center. Locked items cannot be selected or moved. Select locked items allows selecting and moving locked symbols and standalone items while keeping locked symbol children unselectable. Press R to rotate selected components 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol, net label, supply label or text to duplicate it. Dragging a symbol label duplicates the whole symbol. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a pin with a 100 mil lead. Edit its name, number, lead length and angle in Attributes. Labels follow the lead, and wires connect to the exposed terminal. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; net and supply labels use the visible grid spacing. Ordinary text moves at one-tenth of the visible grid spacing. Arrow keys move by one snapping step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 50 mil, Shift + arrows by 500 mil. Delete removes the selection. Copy with Ctrl or Cmd + C, cut with Ctrl or Cmd + X, and paste with Ctrl or Cmd + V. Each paste offsets the group by one grid step and assigns new component references. Copy and cut act on whole selected items, including a selected symbol child's parent symbol. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the selection, or the drawing when nothing is selected."
+							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires, pins, no-connect markers, net labels and supply labels. Choose No connect and click a pin to mark it with an X. Matching label names connect across the drawing. The cross marks the electrical anchor. Edit the net name in Attributes. Open History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag any item on an unselected symbol to move the whole symbol. Select a symbol first, then drag a child to customize it. Select a child on the canvas to edit its position, size or content in Attributes relative to the symbol center. Locked items cannot be selected or moved. Select locked items allows selecting and moving locked symbols and standalone items while keeping locked symbol children unselectable. Press R to rotate an item being placed or the selection 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol, net label, supply label or text to duplicate it. Dragging a symbol label duplicates the whole symbol. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a pin with a 100 mil lead. Edit its name, number, lead length and angle in Attributes. Labels follow the lead, and wires connect to the exposed terminal. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; net and supply labels use the visible grid spacing. Ordinary text moves at one-tenth of the visible grid spacing. Arrow keys move by one snapping step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 50 mil, Shift + arrows by 500 mil. Delete removes the selection. Copy with Ctrl or Cmd + C, cut with Ctrl or Cmd + X, and paste with Ctrl or Cmd + V. Each paste offsets the group by one grid step and assigns new component references. Copy and cut act on whole selected items, including a selected symbol child's parent symbol. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the selection, or the drawing when nothing is selected."
 						/>
 					)}
 					<CanvasOverlay
@@ -852,24 +864,6 @@ function EditorCanvas({
 						connectionHover={connectionHover}
 						marquee={marquee}
 					/>
-					{isConnectionTool(tool) && (
-						<output className="pointer-events-none absolute bottom-32 left-1/2 z-2 -translate-x-1/2 rounded-lg border border-[#414955] bg-[#191c22] px-3 py-2 text-sm text-[#e8b77e]">
-							{tool === "no-connect"
-								? "Click a pin to mark it as no connect."
-								: tool === "pin"
-									? "Click to place a pin."
-									: tool === "net" || tool === "supply"
-										? "Click to place a label anchor, then edit its net name in Attributes."
-										: getWire()
-											? "Click for a corner or connect to a pin or open wire end. Enter finishes."
-											: "Start at a pin or an open wire end."}
-						</output>
-					)}
-					{tool === "symbol" && symbolDefinition && (
-						<output className="pointer-events-none absolute bottom-32 left-1/2 z-2 -translate-x-1/2 rounded-lg border border-[#414955] bg-[#191c22] px-3 py-2 text-sm text-[#e8b77e]">
-							Click to place {symbolDefinition.name}. Escape cancels.
-						</output>
-					)}
 					{(messages.length > 0 || hiddenIssues.length > 0) && (
 						<div className="pointer-events-none absolute top-22 left-10 z-3 flex max-w-[min(560px,calc(100%-56px))] flex-col items-start gap-2 *:pointer-events-auto">
 							{messages.length > 0 && (

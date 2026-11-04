@@ -19,6 +19,9 @@ import "#/styles.css";
 Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	const shapes = this.getObjectByName("editor-shapes");
 	const preview = this.getObjectByName("editor-wire-preview");
+	const placement =
+		this.getObjectByName("editor-symbol-preview") ??
+		this.getObjectByName("editor-shape-preview");
 	const origin = new Vector3(0, 0, 0).project(camera);
 	const corner = new Vector3(420, 297, 0).project(camera);
 	const pinTexts: { name: string; texture?: string; rotation: number }[] = [];
@@ -48,6 +51,13 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 	});
 	required(document.querySelector("#editor-scene")).textContent =
 		JSON.stringify({
+			placement: placement
+				? {
+						x: placement.position.x,
+						y: placement.position.y,
+						rotation: placement.rotation.z,
+					}
+				: null,
 			pinTexts,
 			symbolStaticTexts,
 			worksheet: this.getObjectByName("Worksheet frame")?.parent?.name,

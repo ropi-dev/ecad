@@ -81,14 +81,17 @@ interface EditorToolbarProps {
 	finishWire: () => void;
 	setSymbolDefinition: Dispatch<SetStateAction<SymbolDefinition | null>>;
 	setTool: Dispatch<SetStateAction<Tool>>;
-	setPlacementGuide: ReturnType<typeof useCanvasGestures>["setPlacementGuide"];
+	clearPlacementPreview: ReturnType<
+		typeof useCanvasGestures
+	>["clearPlacementPreview"];
+	canRotatePlacement: boolean;
 	snapEnabled: boolean;
 	setSnapEnabled: Dispatch<SetStateAction<boolean>>;
 	gridStep: number;
 	allowLocked: boolean;
 	session: ReturnType<typeof createEditorSession>;
 	hasSelection: boolean;
-	rotateSelected: (angle: number) => void;
+	rotateItems: (angle: number) => void;
 	selectionLocked: boolean;
 	editSelection: (edit: SelectionEdit) => void;
 	removeSelected: () => void;
@@ -111,14 +114,15 @@ export const EditorToolbar = memo(function EditorToolbar({
 	finishWire,
 	setSymbolDefinition,
 	setTool,
-	setPlacementGuide,
+	clearPlacementPreview,
+	canRotatePlacement,
 	snapEnabled,
 	setSnapEnabled,
 	gridStep,
 	allowLocked,
 	session,
 	hasSelection,
-	rotateSelected,
+	rotateItems,
 	selectionLocked,
 	editSelection,
 	removeSelected,
@@ -135,7 +139,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 			aria-pressed={tool === kind}
 			onClick={() => {
 				finishWire();
-				setPlacementGuide(null);
+				clearPlacementPreview();
 				setTool(kind);
 			}}
 		>
@@ -245,12 +249,12 @@ export const EditorToolbar = memo(function EditorToolbar({
 					key={label}
 					type="button"
 					className={viewControlButtonClassName}
-					disabled={!ready || !hasSelection}
+					disabled={!ready || (!hasSelection && !canRotatePlacement)}
 					aria-label={label}
 					aria-keyshortcuts={shortcut}
 					tooltip={`${label} 90°`}
 					shortcut={shortcut}
-					onClick={() => rotateSelected(angle)}
+					onClick={() => rotateItems(angle)}
 				>
 					<Icon size={18} aria-hidden="true" />
 				</TooltipButton>
@@ -302,5 +306,3 @@ function LiveDrawingExport({
 	);
 	return <DrawingExport {...props} shapes={draft ?? shapes} />;
 }
-export const isConnectionTool = (tool: Tool) =>
-	tools.some((item) => item.kind === tool && item.group === "connections");
