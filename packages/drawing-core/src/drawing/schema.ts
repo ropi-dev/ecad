@@ -6,7 +6,7 @@ import {
 	type SymbolAttribute,
 	symbolAttributes,
 } from "#/drawing/shape-kinds.ts";
-import { normalizeNetSymbol } from "#/drawing/shapes.ts";
+import { normalizeNetSymbol } from "#/drawing/net-symbol.ts";
 import { symbolLibraryScopes } from "#/drawing/symbol-reference.ts";
 import {
 	horizontalAlignments,

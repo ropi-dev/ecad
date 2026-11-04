@@ -1,9 +1,6 @@
-import {
-	connectionTolerance,
-	type EditorShape,
-	symbolShapes,
-	type TextShape,
-} from "#/drawing/shapes.ts";
+import { connectionTolerance } from "#/drawing/connection-geometry.ts";
+import type { EditorShape, TextShape } from "#/drawing/schema.ts";
+import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import { unionFind } from "#/lib/union-find.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
