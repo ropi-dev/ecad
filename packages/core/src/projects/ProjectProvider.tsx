@@ -178,10 +178,17 @@ export function ProjectProvider({
 		if (mounted.current) setHasConflict(true);
 	}, []);
 	/** The conflict notice explains a conflict, so it is not repeated here. */
-	const showError = useCallback((cause: unknown, fallback: string) => {
-		if (!isProjectError(cause, "ProjectConflict"))
-			setError(errorMessage(cause, fallback));
-	}, []);
+	/**
+	 * Shows a failure of the open project. A conflict is recorded instead,
+	 * so the notice explains it even when the save did not go through persist.
+	 */
+	const showError = useCallback(
+		(cause: unknown, fallback: string) => {
+			if (isProjectError(cause, "ProjectConflict")) noteConflict(cause);
+			else setError(errorMessage(cause, fallback));
+		},
+		[noteConflict],
+	);
 	const update = useCallback((snapshot: ProjectSnapshot) => {
 		active.current = snapshot;
 		if (mounted.current) setProject(snapshot);

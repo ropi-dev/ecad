@@ -293,6 +293,54 @@ test("creating a project from one with a conflict carries its assets and leaves 
 	).toHaveCount(0);
 });
 
+test("a conflict found by a new project's first save shows the notice", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await openSchematic(page);
+	await drawRectangle(page);
+	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
+	const original = await page.evaluate(() =>
+		localStorage.getItem("ecad.active-project"),
+	);
+	// Another window changes the new project right after it is created.
+	await page.evaluate((original) => {
+		const createWritable = FileSystemFileHandle.prototype.createWritable;
+		FileSystemFileHandle.prototype.createWritable = async function (...args) {
+			const writable = await createWritable.apply(this, args);
+			if (
+				this.name !== ".ecadprj" ||
+				localStorage.getItem("ecad.active-project") !== original
+			)
+				return writable;
+			FileSystemFileHandle.prototype.createWritable = createWritable;
+			const write = writable.write.bind(writable);
+			writable.write = async (data: FileSystemWriteChunkType) =>
+				write(
+					new Blob([data as BlobPart, "\n# Edited in another window\n"]),
+				);
+			return writable;
+		};
+	}, original);
+	await openProjectActions(page);
+	await page
+		.getByRole("menuitem", { name: "New untitled project", exact: true })
+		.click();
+	await expect
+		.poll(() => page.evaluate(() => localStorage.getItem("ecad.active-project")))
+		.not.toBe(original);
+	const notice = page.getByRole("alert").filter({
+		hasText: "This project changed on disk",
+	});
+	await expect(notice).toBeVisible();
+	await expect(notice).toContainText("Your unsaved changes are still here.");
+	expect((await documentState(page)).dirty).toBe(true);
+	expect((await documentState(page)).shapes).toHaveLength(1);
+	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await expect(notice).toHaveCount(0);
+});
+
 const benchParts = {
 	id: "parts",
 	name: "Bench parts",
