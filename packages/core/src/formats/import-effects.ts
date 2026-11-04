@@ -1,6 +1,7 @@
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import { errorMessage } from "#/lib/error-message.ts";
 
 export class FileReadError extends Data.TaggedError("FileReadError")<{
 	readonly message: string;
@@ -37,8 +38,7 @@ export function readFile<A>(read: () => Promise<A>) {
 		try: read,
 		catch: (cause) =>
 			new FileReadError({
-				message:
-					cause instanceof Error ? cause.message : "Unable to read this file.",
+				message: errorMessage(cause, "Unable to read this file."),
 				cause,
 			}),
 	});
@@ -114,8 +114,7 @@ export function requestWorker<A>(options: WorkerRequest) {
 					resume(
 						Effect.fail(
 							new WorkerError({
-								message:
-									cause instanceof Error ? cause.message : options.startMessage,
+								message: errorMessage(cause, options.startMessage),
 								cause,
 							}),
 						),

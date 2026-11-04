@@ -1,4 +1,5 @@
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { parsers } from "./registry";
 
 self.onmessage = (
@@ -17,8 +18,7 @@ self.onmessage = (
 	} catch (error) {
 		self.postMessage({
 			id,
-			error:
-				error instanceof Error ? error.message : "Unable to parse this file.",
+			error: errorMessage(error, "Unable to parse this file."),
 		});
 	}
 };

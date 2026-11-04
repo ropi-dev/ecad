@@ -23,6 +23,7 @@ import {
 	type shapeInputSchema,
 } from "#/drawing/schema.ts";
 import {
+	connectionTolerance,
 	connectTransformedTerminals,
 	normalizeNetSymbol,
 	normalizeWireSegments,
@@ -288,7 +289,9 @@ export function rotateShapesEffect(
 					continue;
 				const component = components.find((shape) =>
 					pinTerminals(shape).some(
-						(pin) => Math.hypot(pin.x - label.x, pin.y - label.y) <= 1e-4,
+						(pin) =>
+							Math.hypot(pin.x - label.x, pin.y - label.y) <=
+							connectionTolerance,
 					),
 				);
 				if (!component) continue;

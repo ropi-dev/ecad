@@ -4,6 +4,7 @@ import {
 	hasShortcutModifier,
 	shortcutModifier,
 } from "#/components/viewer/shortcutModifier.ts";
+import { isEditableTarget } from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 const editorKeys: Record<string, string> = {
@@ -252,12 +253,7 @@ function listen() {
 			`${event.shiftKey && key !== "+" ? "sidebar" : "editor"}:${key}`,
 		);
 		if (!target) return;
-		const active = document.activeElement;
-		if (
-			active instanceof HTMLElement &&
-			active.closest("input, textarea, select, [contenteditable=true]") &&
-			["A", "C", "V", "X", "Y", "Z"].includes(key)
-		)
+		if (isEditableTarget(event) && ["A", "C", "V", "X", "Y", "Z"].includes(key))
 			return;
 		event.preventDefault();
 		event.stopImmediatePropagation();

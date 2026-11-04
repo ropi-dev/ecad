@@ -6,6 +6,7 @@ import {
 } from "@ecad/drawing-core/erc/engine.ts";
 import { defaultErcRules } from "@ecad/drawing-core/erc/rules.ts";
 import { useMemo, useState } from "react";
+import { errorMessage } from "#/lib/error-message.ts";
 
 export function ErcPanel({
 	circuit,
@@ -60,7 +61,7 @@ export function ErcPanel({
 						setError("");
 						setPage(0);
 					} catch (cause) {
-						setError(cause instanceof Error ? cause.message : "ERC failed.");
+						setError(errorMessage(cause, "ERC failed."));
 					}
 				}}
 			>

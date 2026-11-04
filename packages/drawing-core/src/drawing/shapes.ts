@@ -19,6 +19,7 @@ import {
 	DEFAULT_STROKE_WIDTH,
 	SYMBOL_TEXT_SIZE,
 } from "#/drawing/units.ts";
+import { unionFind } from "#/lib/union-find.ts";
 
 export type {
 	BasicShape,
@@ -1060,8 +1061,11 @@ export function intersectsSelection(
 	);
 }
 
-// Pointer-to-world conversion can leave roughly 0.00001 mm after a visual collapse.
-const connectionTolerance = 1e-4;
+/**
+ * Distance within which two points form one electrical connection. Pointer-to-world
+ * conversion can leave roughly 0.00001 mm after a visual collapse.
+ */
+export const connectionTolerance = 1e-4;
 const normalizationTolerance = connectionTolerance;
 
 /** A pin has one terminal at its center, including pins inside rotated symbols. */
@@ -1346,15 +1350,8 @@ export function normalizeWireSegments(
 			},
 		];
 	});
-	const parents = wires.map((_, index) => index);
+	const sets = unionFind(wires.length);
 	const junctions: Point[] = shapes.flatMap(pinTerminals);
-	const root = (index: number): number => {
-		while (parents[index] !== index) {
-			parents[index] = parents[parents[index]];
-			index = parents[index];
-		}
-		return index;
-	};
 	for (let first = 0; first < wires.length; first++) {
 		for (let second = first + 1; second < wires.length; second++) {
 			const a = wires[first];
@@ -1384,12 +1381,12 @@ export function normalizeWireSegments(
 				a.min <= b.max + normalizationTolerance &&
 				b.min <= a.max + normalizationTolerance
 			)
-				parents[root(second)] = root(first);
+				sets.union(second, first);
 		}
 	}
 	const clusters = new Map<number, typeof wires>();
 	for (const [index, wire] of wires.entries()) {
-		const key = root(index);
+		const key = sets.find(index);
 		const cluster = clusters.get(key) ?? [];
 		cluster.push(wire);
 		clusters.set(key, cluster);

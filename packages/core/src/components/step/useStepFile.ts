@@ -5,6 +5,7 @@ import {
 	type ParsedStepFile,
 	parseStepFileEffect,
 } from "#/formats/parseStepFile.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useFileImport } from "../viewer/useFileImport";
 
@@ -62,9 +63,7 @@ export function useStepFile() {
 			.catch((cause: unknown) => {
 				if (!cancelled)
 					setRestoreError(
-						cause instanceof Error
-							? cause.message
-							: "Unable to load project assets.",
+						errorMessage(cause, "Unable to load project assets."),
 					);
 			});
 		return () => {

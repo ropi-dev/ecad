@@ -5,6 +5,7 @@ import {
 	importFilesEffect,
 } from "#/formats/importFiles.ts";
 import { runEffect } from "#/lib/effect.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import type { AssetKind } from "#/projects/format.ts";
 import { useProject } from "#/projects/ProjectProvider.tsx";
@@ -87,9 +88,7 @@ export function useFileImport<T>(
 			} catch (error) {
 				if (controller.signal.aborted) return null;
 				if (mounted.current)
-					setMessage(
-						error instanceof Error ? error.message : "Unable to import files.",
-					);
+					setMessage(errorMessage(error, "Unable to import files."));
 				return null;
 			} finally {
 				if (request.current === controller) {

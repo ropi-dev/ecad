@@ -16,6 +16,7 @@ import {
 	type SceneViewportRuntime,
 } from "#/engine/scene-viewport.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { AxisIndicator } from "./AxisIndicator";
 import { downloadPng } from "./exportPng";
@@ -171,7 +172,7 @@ export function SceneViewport({
 			configureDisplay(viewport);
 		} catch (error) {
 			reportError(
-				`3D viewer unavailable: ${error instanceof Error ? error.message : "WebGL is not supported in this browser."}`,
+				`3D viewer unavailable: ${errorMessage(error, "WebGL is not supported in this browser.")}`,
 			);
 		}
 		return () => {
@@ -203,7 +204,7 @@ export function SceneViewport({
 			downloadPng(blob, ariaLabel);
 		} catch (error) {
 			setExportError(
-				`PNG export failed: ${error instanceof Error ? error.message : "Please try again."}`,
+				`PNG export failed: ${errorMessage(error, "Please try again.")}`,
 			);
 		} finally {
 			setExporting(false);

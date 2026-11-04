@@ -6,6 +6,7 @@ import type { EditorShape } from "#/drawing/shapes.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { captureSvgPng } from "#/engine/capture-png.ts";
 import { measureText } from "#/engine/drawing/text.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 export function DrawingExport({
@@ -98,9 +99,7 @@ export function DrawingExport({
 										{ shapes: shapes.length, width, height, format },
 									);
 								} catch (cause) {
-									setError(
-										cause instanceof Error ? cause.message : "Export failed.",
-									);
+									setError(errorMessage(cause, "Export failed."));
 								} finally {
 									setBusy(false);
 								}

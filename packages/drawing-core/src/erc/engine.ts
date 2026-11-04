@@ -1,3 +1,4 @@
+import { errorMessage } from "#/lib/error-message.ts";
 import type {
 	Circuit,
 	CircuitComponent,
@@ -117,7 +118,7 @@ export function runErc(
 					}
 				} catch (cause) {
 					throw new Error(
-						`ERC rule "${rule.id}" failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+						`ERC rule "${rule.id}" failed: ${errorMessage(cause)}`,
 						{ cause },
 					);
 				}
