@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { SymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
@@ -131,9 +132,12 @@ export async function createDesktopProjectDirectory(
 const unwritable = ["EACCES", "EPERM", "EROFS"];
 
 // Every desktop instance that opens or saves this project takes the same lock
-// file, which is removed if its owner exits without releasing it. Taking the
-// lock creates files in the project directory, so a project in a directory
-// this process cannot write is read without it. Writes there fail anyway.
+// file, which is removed if its recorded owner has exited. The lock file is
+// always exclusive: a shared request takes it like an exclusive one.
+//
+// Taking the lock creates files in the project directory. A project in a
+// directory this process cannot write is therefore read without it, and the
+// read is checked with readConsistently. Writes always need the lock.
 async function lockProject<T>(
 	directory: string,
 	timeout: number,
@@ -160,9 +164,53 @@ async function lockProject<T>(
 			"code" in cause &&
 			unwritable.includes(String(cause.code))
 		)
-			return work();
+			return readConsistently(directory, work);
 		throw cause;
 	}
+}
+
+// Identifies the last commit to the project, or returns undefined while a
+// writer holds the lock. A writer holds the lock for its whole commit and
+// replaces the manifest last, through a new file, so every commit changes the
+// manifest's inode or change time.
+async function commitMarker(directory: string) {
+	try {
+		await lstat(join(directory, `${PROJECT_FILE}.lock`));
+		return undefined;
+	} catch (cause) {
+		if (!isMissing(cause)) throw cause;
+	}
+	try {
+		const info = await lstat(join(directory, PROJECT_FILE), { bigint: true });
+		return `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+	} catch (cause) {
+		if (!isMissing(cause)) throw cause;
+		return "missing";
+	}
+}
+
+const readAttempts = 4;
+
+// Reads without the lock, keeping a read only when no writer held the lock
+// and no commit finished while it ran. Otherwise the read may mix files from
+// two commits, so it is repeated and, if writes keep interfering, rejected.
+async function readConsistently<T>(
+	directory: string,
+	read: () => Promise<T>,
+): Promise<T> {
+	for (let attempt = 1; ; attempt++) {
+		const before = await commitMarker(directory);
+		if (before !== undefined) {
+			const result = await read();
+			if ((await commitMarker(directory)) === before) return result;
+		}
+		if (attempt === readAttempts) throw new ProjectLocked();
+		await delay(50 * attempt);
+	}
+}
+
+function isMissing(cause: unknown) {
+	return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
 }
 
 export interface DesktopProjectsOptions {

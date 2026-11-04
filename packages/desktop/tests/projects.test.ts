@@ -362,7 +362,81 @@ test(
 		}),
 );
 
-test("a held project lock is reported as a project error, naming the lock file only when it has no owner", async () =>
+test(
+	"a read-only project read while another app saves it never mixes two saves",
+	{
+		skip:
+			process.platform === "win32" || process.getuid?.() === 0
+				? "needs a directory this process cannot write"
+				: false,
+	},
+	async () =>
+		temporary(async (parent) => {
+			const writer = new DesktopProjects();
+			const created = await writer.create("Torn", parent);
+			// Each save keeps the main drawing's shape ID and ten times it in the
+			// additional drawing, so a read that mixes two saves shows 3 and 40.
+			const version = (id: number) => ({
+				shapes: [{ ...shape, id }],
+				symbols: [],
+				drawings: [
+					{
+						id: "power",
+						circuitId: "pcb-power",
+						name: "Power",
+						shapes: [{ ...shape, id: id * 10 }],
+					},
+				],
+			});
+			let saved = 3;
+			await writer.save(created.directory, version(saved));
+			const saveElsewhere = async () => {
+				await chmod(created.directory, 0o755);
+				try {
+					await writer.save(created.directory, version(++saved));
+				} finally {
+					await chmod(created.directory, 0o555);
+				}
+			};
+			await chmod(created.directory, 0o555);
+			try {
+				const disk = await createDesktopProjectDirectory(created.directory);
+				let interruptions = 1;
+				const reader = new ProjectRepository(
+					{
+						...disk,
+						// Another app saves right after the main drawing was read.
+						read: async (path) => {
+							const bytes = await disk.read(path);
+							if (path === "Torn/Torn.ecaddraw" && interruptions > 0) {
+								interruptions--;
+								await saveElsewhere();
+							}
+							return bytes;
+						},
+					},
+					{ layout: "files" },
+				);
+				const loaded = await reader.load();
+				assert.deepEqual(
+					[loaded.shapes[0].id, loaded.drawings?.[0].shapes[0].id],
+					[4, 40],
+				);
+				interruptions = Number.POSITIVE_INFINITY;
+				await assert.rejects(reader.load(), ProjectLocked);
+				interruptions = 0;
+				const settled = await reader.load();
+				assert.deepEqual(
+					[settled.shapes[0].id, settled.drawings?.[0].shapes[0].id],
+					[saved, saved * 10],
+				);
+			} finally {
+				await chmod(created.directory, 0o755);
+			}
+		}),
+);
+
+test("a held project lock is reported as a project error, naming the lock file unless its owner is confirmed running", async () =>
 	temporary(async (parent) => {
 		const created = await new DesktopProjects().create("Busy", parent);
 		const holder = await createDesktopProjectDirectory(created.directory);
@@ -380,15 +454,20 @@ test("a held project lock is reported as a project error, naming the lock file o
 					return cause;
 				},
 			);
+		const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
 		await required(holder.lock)(async () => {
 			const held = await failure();
+			// Only Linux records the start time that confirms a running owner.
+			if (process.platform !== "linux") {
+				assert.equal(held.path, lockFile);
+				return;
+			}
 			assert.equal(held.path, undefined);
 			assert.equal(
 				held.message,
 				"Another window or app is using this project. Try again when it is done.",
 			);
 		}, "exclusive");
-		const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
 		await writeFile(lockFile, "");
 		const ownerless = await failure();
 		assert.equal(ownerless.path, lockFile);
