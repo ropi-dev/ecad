@@ -55,7 +55,7 @@ function invalid(reason: CircuitCommandErrorReason, message: string): never {
 }
 
 /** Schema failures become one display message; the Zod error stays as the cause. */
-function invalidCircuit(error: z.ZodError): CircuitCommandError {
+export function invalidCircuit(error: z.ZodError): CircuitCommandError {
 	return new CircuitCommandError({
 		reason: "invalid-circuit",
 		message: [...new Set(error.issues.map((issue) => issue.message))].join(

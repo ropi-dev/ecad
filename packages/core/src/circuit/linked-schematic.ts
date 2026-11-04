@@ -7,6 +7,8 @@ import {
 	circuitFileSchema,
 } from "@ecad/drawing-core/circuit/model.ts";
 import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
+import { invalidCircuit } from "@ecad/drawing-core/circuit/store.ts";
+import { z } from "zod";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { type ElectricalNet, electricalNets } from "#/drawing/named-nets.ts";
 import {
@@ -63,68 +65,84 @@ export function synchronizePcb(
 	previous: CircuitFile | undefined,
 	definitions: readonly SymbolDefinition[],
 	environment: Partial<LinkedSchematicEnvironment> = {},
-): {
-	file: CircuitFile;
-	shapes: EditorShape[];
-	source: "circuit" | "schematic";
-} {
+): LinkedSchematic {
 	return measurePerformance(
 		"pcb.synchronize",
 		() => {
-			const imported =
-				previous === undefined &&
-				(file.circuit.components.length > 0 || file.circuit.nets.length > 0);
-			const base = previous ?? file;
-			const context: SyncContext = {
-				file,
-				previous: base,
-				definitions: indexDefinitions(definitions),
-				labels: circuitNetLabels(file.circuit),
-				previousLabels: circuitNetLabels(base.circuit),
-				measureText: environment.measureText ?? estimateLabelTextWidth,
-				newId: environment.newId ?? (() => globalThis.crypto.randomUUID()),
-			};
-			const bound = bindNetLabels(shapes, context);
-			const unplaced = file.circuit.components.some(
-				(component) => component.schematicShapeId === undefined,
-			);
-			const circuitChanged =
-				imported || !jsonEqual(file.circuit, base.circuit) || unplaced;
-			const circuit = structuredClone(file.circuit);
-			const linked = circuitChanged
-				? placeCircuitInSchematic(
-						circuit,
-						bound,
-						context,
-						imported ||
-							(file.circuit.components.length > 0 &&
-								file.circuit.components.every(
-									(component) => component.schematicShapeId === undefined,
-								)),
-					)
-				: extractCircuitFromSchematic(circuit, bound, context);
-			const ids = new Set(
-				[...circuit.components, ...circuit.nets].map((entity) => entity.id),
-			);
-			return {
-				file: circuitFileSchema.parse({
-					circuit,
-					graph: {
-						...file.graph,
-						positions: file.graph.positions.filter((position) =>
-							ids.has(position.id),
-						),
-						collapsedComponentIds: file.graph.collapsedComponentIds?.filter(
-							(id) => ids.has(id),
-						),
-					},
-				}),
-				shapes: refreshLabels(circuit, linked, context.measureText),
-				source: circuitChanged ? "circuit" : "schematic",
-			};
+			try {
+				return synchronize(file, shapes, previous, definitions, environment);
+			} catch (error) {
+				throw error instanceof z.ZodError ? invalidCircuit(error) : error;
+			}
 		},
 		{ components: file.circuit.components.length, shapes: shapes.length },
 	);
+}
+
+interface LinkedSchematic {
+	file: CircuitFile;
+	shapes: EditorShape[];
+	source: "circuit" | "schematic";
+}
+
+function synchronize(
+	file: CircuitFile,
+	shapes: EditorShape[],
+	previous: CircuitFile | undefined,
+	definitions: readonly SymbolDefinition[],
+	environment: Partial<LinkedSchematicEnvironment>,
+): LinkedSchematic {
+	const imported =
+		previous === undefined &&
+		(file.circuit.components.length > 0 || file.circuit.nets.length > 0);
+	const base = previous ?? file;
+	const context: SyncContext = {
+		file,
+		previous: base,
+		definitions: indexDefinitions(definitions),
+		labels: circuitNetLabels(file.circuit),
+		previousLabels: circuitNetLabels(base.circuit),
+		measureText: environment.measureText ?? estimateLabelTextWidth,
+		newId: environment.newId ?? (() => globalThis.crypto.randomUUID()),
+	};
+	const bound = bindNetLabels(shapes, context);
+	const unplaced = file.circuit.components.some(
+		(component) => component.schematicShapeId === undefined,
+	);
+	const circuitChanged =
+		imported || !jsonEqual(file.circuit, base.circuit) || unplaced;
+	const circuit = structuredClone(file.circuit);
+	const linked = circuitChanged
+		? placeCircuitInSchematic(
+				circuit,
+				bound,
+				context,
+				imported ||
+					(file.circuit.components.length > 0 &&
+						file.circuit.components.every(
+							(component) => component.schematicShapeId === undefined,
+						)),
+			)
+		: extractCircuitFromSchematic(circuit, bound, context);
+	const ids = new Set(
+		[...circuit.components, ...circuit.nets].map((entity) => entity.id),
+	);
+	return {
+		file: circuitFileSchema.parse({
+			circuit,
+			graph: {
+				...file.graph,
+				positions: file.graph.positions.filter((position) =>
+					ids.has(position.id),
+				),
+				collapsedComponentIds: file.graph.collapsedComponentIds?.filter((id) =>
+					ids.has(id),
+				),
+			},
+		}),
+		shapes: refreshLabels(circuit, linked, context.measureText),
+		source: circuitChanged ? "circuit" : "schematic",
+	};
 }
 
 function bindNetLabels(
