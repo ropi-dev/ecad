@@ -297,8 +297,9 @@ const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
 
 // Staged lock copies and claims have short names, so a long drawing name
 // still fits. Owner IDs are unique, so drawings in one folder never collide.
-const lockCopyName = /^\.ecad-lock-[0-9a-f-]{36}\.tmp$/;
-const claimName = /^\.ecad-claim-[0-9a-f-]{36}$/;
+const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const lockCopyName = new RegExp(`^\\.ecad-lock-${uuid}\\.tmp$`);
+const claimName = new RegExp(`^\\.ecad-claim-${uuid}$`);
 const claimPath = (directory: string, owner: LockOwner) =>
 	join(directory, `.ecad-claim-${owner.id}`);
 

@@ -35,6 +35,19 @@ async function flushOutput(output: Writable, signal?: AbortSignal) {
 	controller.abort();
 }
 
+// Removes a stream's error listener once no writes are pending. Writes can
+// still be pending after an abort. Their failure no longer changes the result,
+// but must not become an unhandled stream error, so the listener stays until
+// they finish, or for good if they fail.
+function releaseStream(stream: Writable, listener: (cause: Error) => void) {
+	if (stream.destroyed || stream.writableLength === 0)
+		stream.off("error", listener);
+	else if (!stream.writableEnded)
+		stream.write("", (failed) => {
+			if (!failed) stream.off("error", listener);
+		});
+}
+
 export async function serveStdioMcp(
 	options: LocalDrawingOptions & {
 		input: Readable;
@@ -93,8 +106,8 @@ export async function serveStdioMcp(
 		await server.close();
 		await flushOutput(output, signal);
 		input.off("error", fail);
-		output.off("error", fail);
-		error.off("error", ignore);
+		releaseStream(output, fail);
+		releaseStream(error, ignore);
 	}
 	if (failure) throw failure;
 }

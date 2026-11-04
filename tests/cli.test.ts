@@ -372,11 +372,12 @@ test("recovery removes leftovers of killed processes, and a process whose copy w
 	await file(`.ecad-lock-${randomUUID()}.tmp`, lockContent({ pid: await exitedPid() }));
 	await file(fresh, "");
 	await file(".ecad-lock-notes.tmp", "", true);
+	await file(`.ecad-lock-${"a".repeat(36)}.tmp`, "", true);
 	// A claim whose lock is gone, left by a process killed after removing the lock.
 	await file(`.ecad-claim-${randomUUID()}`, lockContent({ pid: await exitedPid() }));
 	await file("drawing.ecaddraw.lock", lockContent({ pid: await exitedPid() }));
 	assert.ok((await runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle }))).ok);
-	const kept = new Set([...drawingFiles, fresh, ".ecad-lock-notes.tmp"]);
+	const kept = new Set([...drawingFiles, fresh, ".ecad-lock-notes.tmp", `.ecad-lock-${"a".repeat(36)}.tmp`]);
 	assert.deepEqual(new Set(await readdir(fixture.directory)), kept);
 	const lockFaults = fileURLToPath(new URL("./helpers/lock-faults.ts", import.meta.url));
 	const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_DROP_COPY: "1" }, "", { imports: [lockFaults] }).result;
@@ -528,6 +529,32 @@ test("stdio module reports a reply write that fails after stdin EOF", async (con
 	input.end();
 	assert.equal(await work, 1);
 	assert.equal(error, "ecad: write failed\n");
+});
+
+test("stdio module handles a reply write that fails after an abort", async (context) => {
+	const fixture = await drawing(context);
+	const input = new PassThrough();
+	let submitted!: () => void;
+	const replied = new Promise<void>((resolve) => { submitted = resolve; });
+	let failWrite!: () => void;
+	const output = new Writable({
+		write(_chunk, _encoding, callback) {
+			submitted();
+			failWrite = () => callback(new Error("write failed"));
+		},
+	});
+	const controller = new AbortController();
+	const work = runCli(["mcp"], { env: fixture.env, input, output, error: new PassThrough(), signal: controller.signal });
+	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } })}\n`);
+	await replied;
+	controller.abort();
+	assert.equal(await work, 0, "an abort does not wait for stdout");
+	// The pending write fails after the server returned. The stream error must
+	// stay handled, or the test process would crash.
+	failWrite();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.ok(output.destroyed);
+	input.destroy();
 });
 
 test("stdio module shortens long errors and fails when the transport closes after an oversized message", async (context) => {
