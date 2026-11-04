@@ -157,7 +157,9 @@ async function withDrawingLock<T>(
 		if (!(error instanceof FileLocked)) throw error;
 		throw new LocalDrawingError({
 			code: "DrawingLocked",
-			message: `The drawing is locked by another process. Lock file: ${error.path}`,
+			message: error.ownerless
+				? `The drawing is locked, and the lock file does not name the process that holds it. If no other process is using the drawing, remove the lock file and retry: ${error.path}`
+				: `The drawing is locked by another process. Lock file: ${error.path}`,
 		});
 	}
 }

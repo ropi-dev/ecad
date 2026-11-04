@@ -662,6 +662,69 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 	assert.equal((await fixture.read()).shapes.length, 1);
 });
 
+test("without hard links, recovery removes a lock left empty by a process killed right after creating it", async (context) => {
+	const fixture = await drawing(context);
+	const lockFaults = fileURLToPath(
+		new URL("./helpers/lock-faults.ts", import.meta.url),
+	);
+	const result = await startCli(
+		["placeRectangle", JSON.stringify(rectangle)],
+		{
+			...fixture.env,
+			ECAD_TEST_NO_HARD_LINKS: "1",
+			ECAD_TEST_CRASH_PATTERN: "\\.lock$",
+		},
+		"",
+		{ imports: [lockFaults] },
+	).result;
+	assert.equal(result.signal, "SIGKILL", result.stderr);
+	assert.equal(await readFile(`${fixture.path}.lock`, "utf8"), "");
+	assert.ok(
+		(await readdir(fixture.directory)).some(
+			(name) => name.startsWith(".ecad-lock-") && name.endsWith(".tmp"),
+		),
+		"the killed process kept its staged copy",
+	);
+	const reply = await runEffect(
+		createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({
+			type: "placeRectangle",
+			input: rectangle,
+		}),
+		AbortSignal.timeout(5_000),
+	);
+	assert.ok(reply.ok);
+	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
+	assert.equal((await fixture.read()).shapes.length, 1);
+});
+
+test("locks that name no owner are kept however old they are, and the error says so", async (context) => {
+	const fixture = await drawing(context);
+	const lock = `${fixture.path}.lock`;
+	const twoMinutesAgo = new Date(Date.now() - 120_000);
+	const copy = join(fixture.directory, `.ecad-lock-${randomUUID()}.tmp`);
+	for (const content of ["", "written by another program"]) {
+		await writeFile(lock, content);
+		await utimes(lock, twoMinutesAgo, twoMinutesAgo);
+		// A staged copy of an exited process whose content shows that it did
+		// not write this lock. An empty lock has no copy at all.
+		if (content) await writeFile(copy, lockContent({ pid: await exitedPid() }));
+		await assert.rejects(
+			runEffect(
+				createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({
+					type: "placeRectangle",
+					input: rectangle,
+				}),
+				AbortSignal.timeout(5_000),
+			),
+			(error: { code?: string; message?: string }) =>
+				error.code === "DrawingLocked" &&
+				/does not name the process/.test(error.message ?? "") &&
+				error.message?.includes(lock) === true,
+		);
+		assert.equal(await readFile(lock, "utf8"), content);
+	}
+});
+
 test("recovery removes leftovers of killed processes, and a process whose copy was removed stages a new one", async (context) => {
 	const fixture = await drawing(context);
 	const twoMinutesAgo = new Date(Date.now() - 120_000);
