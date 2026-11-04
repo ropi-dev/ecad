@@ -229,15 +229,32 @@ async function ownerState(
 const hasExited = async (owner: LockOwner) =>
 	(await ownerState(owner)) === "exited";
 
+/**
+ * Tells whether the lock at lockPath is free, held by an owner that certainly
+ * exited, held by a process that certainly still runs, or held by an owner
+ * that is unknown or cannot be checked.
+ */
+export async function inspectLock(
+	lockPath: string,
+): Promise<"free" | "exited" | "running" | "unknown"> {
+	const file = await readLockFile(lockPath);
+	if (file === undefined) return "free";
+	const owner = file && parseLockOwner(file.content);
+	return owner ? ownerState(owner) : "unknown";
+}
+
 const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
 
-// Staged lock copies and claims are named after a short hash of their lock's
-// file name, so recovering one lock never touches the leftovers of another
-// lock in the same folder, and a long drawing name still fits. Owner IDs are
-// unique, so the names of one lock's leftovers never collide either.
+// Staged lock copies are named after a short hash of their lock's file name,
+// so cleaning up after one lock never touches another lock's copies in the
+// same folder, and a long drawing name still fits. Claims keep the name every
+// version of this protocol uses, after the exited owner they act on, so all
+// versions contend for the same claim. Owner IDs are unique, so claims for
+// different locks never collide. A claim whose claimer exited is removed
+// through the claim protocol, which is safe whichever lock it was for.
 const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
-/** The tag in the names of the staged copies and claims of the lock at lockPath. */
+/** The tag in the names of the staged copies of the lock at lockPath. */
 export function lockLeftoverTag(lockPath: string) {
 	return createHash("sha256")
 		.update(basename(lockPath))
@@ -251,10 +268,9 @@ function leftovers(lockPath: string) {
 	return {
 		directory,
 		copyName: new RegExp(`^\\.ecad-lock-${tag}-${uuid}\\.tmp$`),
-		claimName: new RegExp(`^\\.ecad-claim-${tag}-${uuid}$`),
+		claimName: new RegExp(`^\\.ecad-claim-${uuid}$`),
 		copyPath: () => join(directory, `.ecad-lock-${tag}-${randomUUID()}.tmp`),
-		claimPath: (owner: LockOwner) =>
-			join(directory, `.ecad-claim-${tag}-${owner.id}`),
+		claimPath: (owner: LockOwner) => join(directory, `.ecad-claim-${owner.id}`),
 	};
 }
 
@@ -348,7 +364,7 @@ async function removeAbandonedFile(
 // claim with that name again. A complete staged copy is removed once its owner
 // has exited. Staging takes moments, so a readable but incomplete copy older
 // than a minute is removed too, and a paused creator stages a new one. Only
-// the leftovers of this lock are touched.
+// this lock's staged copies are touched.
 async function removeLeftovers(
 	names: ReturnType<typeof leftovers>,
 	owner: LockOwner,
@@ -406,13 +422,11 @@ export async function withFileLock<T>(
 			await removeLeftovers(names, owner).catch(() => {});
 			continue;
 		}
-		if (performance.now() >= deadline) {
-			const holder = await readLockOwner(lockPath);
+		if (performance.now() >= deadline)
 			throw new FileLocked({
 				path: lockPath,
-				ownerRunning: !!holder && (await ownerState(holder)) === "running",
+				ownerRunning: (await inspectLock(lockPath)) === "running",
 			});
-		}
 		// A lock that vanished was just released, so retry at once.
 		if (recovery === "kept") await delay(25, undefined, { signal });
 	}

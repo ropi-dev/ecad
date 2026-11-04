@@ -553,7 +553,7 @@ test("CLI follows claims left by processes that exited while recovering a lock",
 	for (let level = 0; level < 4; level++) {
 		const claim = lockContent({ pid: await exitedPid() });
 		await writeFile(
-			join(fixture.directory, `.ecad-claim-${tag}-${JSON.parse(previous).id}`),
+			join(fixture.directory, `.ecad-claim-${JSON.parse(previous).id}`),
 			claim,
 		);
 		previous = claim;
@@ -574,11 +574,11 @@ test("local drawing module stops at a cycle of claims", async (context) => {
 		JSON.stringify({ hostname: hostname(), ...system, pid, id });
 	await writeFile(`${fixture.path}.lock`, owner(first));
 	await writeFile(
-		join(fixture.directory, `.ecad-claim-${tag}-${first}`),
+		join(fixture.directory, `.ecad-claim-${first}`),
 		owner(second),
 	);
 	await writeFile(
-		join(fixture.directory, `.ecad-claim-${tag}-${second}`),
+		join(fixture.directory, `.ecad-claim-${second}`),
 		owner(first),
 	);
 	await assert.rejects(
@@ -644,16 +644,16 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 		(await readdir(fixture.directory)).filter((name) => !name.startsWith("."));
 	await crashed("\\.lock$");
 	assert.deepEqual(await visible(), ["drawing.ecaddraw.lock"]);
-	assert.equal(
-		typeof JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id,
-		"string",
-	);
+	const killed = JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id;
+	assert.equal(typeof killed, "string");
 	await crashed("^\\.ecad-claim-");
-	assert.equal(
+	// The claim has the name every version of the protocol uses for this
+	// owner, so older and newer processes recovering the lock exclude each other.
+	assert.deepEqual(
 		(await readdir(fixture.directory)).filter((name) =>
 			name.startsWith(".ecad-claim-"),
-		).length,
-		1,
+		),
+		[`.ecad-claim-${killed}`],
 	);
 	assert.ok(
 		(await readdir(fixture.directory)).some(
@@ -762,20 +762,21 @@ test("a lock held by a running process is reported without asking to remove it",
 	assert.ok((await place()).ok);
 });
 
-test("recovering one lock leaves the leftovers of other locks in the folder alone", async (context) => {
+test("recovering one lock leaves the staged copies of other locks in the folder alone", async (context) => {
 	const fixture = await drawing(context);
 	const other = lockLeftoverTag("other.ecaddraw.lock");
 	const dead = async () => lockContent({ pid: await exitedPid() });
 	const otherFiles = [
 		"other.ecaddraw.lock",
 		`.ecad-lock-${other}-${randomUUID()}.tmp`,
-		`.ecad-claim-${other}-${randomUUID()}`,
 	];
 	for (const name of otherFiles)
 		await writeFile(join(fixture.directory, name), await dead());
+	// Claims are not tagged, so every version contends for the same claim. One
+	// whose claimer exited is removed through the claim protocol.
 	const ownFiles = [
 		`.ecad-lock-${tag}-${randomUUID()}.tmp`,
-		`.ecad-claim-${tag}-${randomUUID()}`,
+		`.ecad-claim-${randomUUID()}`,
 	];
 	for (const name of ownFiles)
 		await writeFile(join(fixture.directory, name), await dead());
@@ -815,7 +816,7 @@ test("recovery removes leftovers of killed processes, and a process whose copy w
 	await file(`.ecad-lock-${"a".repeat(36)}.tmp`, "", true);
 	// A claim whose lock is gone, left by a process killed after removing the lock.
 	await file(
-		`.ecad-claim-${tag}-${randomUUID()}`,
+		`.ecad-claim-${randomUUID()}`,
 		lockContent({ pid: await exitedPid() }),
 	);
 	await file("drawing.ecaddraw.lock", lockContent({ pid: await exitedPid() }));
@@ -855,7 +856,7 @@ test("recovery skips FIFOs and symbolic links named like claims or lock copies",
 }, async (context) => {
 	const fixture = await drawing(context);
 	const special = [
-		`.ecad-claim-${tag}-${randomUUID()}`,
+		`.ecad-claim-${randomUUID()}`,
 		`.ecad-lock-${tag}-${randomUUID()}.tmp`,
 	];
 	for (const name of special)
