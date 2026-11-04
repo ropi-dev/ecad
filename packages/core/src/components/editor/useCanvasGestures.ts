@@ -1,12 +1,13 @@
 import {
 	type Dispatch,
 	type DOMAttributes,
-	type RefObject,
-	type SetStateAction,
 	type PointerEvent as ReactPointerEvent,
+	type SetStateAction,
+	useCallback,
 	useRef,
 	useState,
 } from "react";
+import type { CanvasView } from "#/components/editor/canvasView.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
@@ -23,6 +24,7 @@ import {
 	containsSelection,
 	drawShape,
 	type EditorShape,
+	type EditorSymbol,
 	findWireConnection,
 	hitShape,
 	intersectsSelection,
@@ -39,14 +41,11 @@ import {
 	snapPoint,
 	symbolChildren,
 	symbolChildWorld,
-	type EditorSymbol,
 } from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import type { Point } from "#/drawing/types.ts";
 import { screenToWorld } from "#/engine/camera.ts";
 import { measureText } from "#/engine/drawing/text.ts";
-import { rulerSpacing } from "#/engine/ruler.ts";
-import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export type CanvasTool =
@@ -104,7 +103,7 @@ interface ToolHandler {
 
 interface CanvasGesturesOptions {
 	session: EditorSession;
-	snapshot: RefObject<Viewer2DSnapshot | null>;
+	cameraView: CanvasView;
 	tool: CanvasTool;
 	setTool: Dispatch<SetStateAction<CanvasTool>>;
 	shapes: EditorShape[];
@@ -128,7 +127,7 @@ interface CanvasGesturesOptions {
 
 export function useCanvasGestures({
 	session,
-	snapshot,
+	cameraView,
 	tool,
 	setTool,
 	shapes,
@@ -148,18 +147,21 @@ export function useCanvasGestures({
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [symbolPreview, setSymbolPreview] = useState<EditorShape | null>(null);
 	const gesture = useRef<CanvasGesture>({ kind: "idle" });
-	const getGesture = (): CanvasGesture =>
-		gesture.current.kind === "idle" && tool !== "select" && tool !== "pan"
-			? { kind: "placing", tool }
-			: gesture.current;
-	const getDrag = () => {
+	const getGesture = useCallback(
+		(): CanvasGesture =>
+			gesture.current.kind === "idle" && tool !== "select" && tool !== "pan"
+				? { kind: "placing", tool }
+				: gesture.current,
+		[tool],
+	);
+	const getDrag = useCallback(() => {
 		const active = getGesture();
 		return active.kind === "drag" ? active.drag : null;
-	};
-	const getWire = () => {
+	}, [getGesture]);
+	const getWire = useCallback(() => {
 		const active = getGesture();
 		return active.kind === "wire" ? active.wire : null;
-	};
+	}, [getGesture]);
 	const [movingShapeId, setMovingShapeId] = useState<number | null>(null);
 	const [placementGuide, setPlacementGuide] = useState<{
 		tool: CanvasTool;
@@ -168,7 +170,7 @@ export function useCanvasGestures({
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const handleAt = (point: Point) => {
-		const tolerance = 7 / (snapshot.current?.camera.scale ?? 1);
+		const tolerance = 7 / (cameraView.getSnapshot()?.camera.scale ?? 1);
 		return [...handles]
 			.reverse()
 			.find(
@@ -181,7 +183,7 @@ export function useCanvasGestures({
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
 	) => {
-		const view = snapshot.current;
+		const view = cameraView.getSnapshot();
 		if (!view) return null;
 		const rect = canvas.getBoundingClientRect();
 		return screenToWorld(
@@ -211,40 +213,46 @@ export function useCanvasGestures({
 			? (findWireConnection(
 					session.shapes(),
 					point,
-					8 / (snapshot.current?.camera.scale ?? 1),
+					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 				) ?? start)
 			: start;
-	const previewWire = (point: Point) => {
-		const active = getWire();
-		if (!active) return null;
-		const snapStep =
-			snapEnabled && snapshot.current
-				? rulerSpacing(snapshot.current.camera.scale, "mil").minor
-				: 0;
-		const connection = findWireConnection(
-			session.shapes(),
-			point,
-			8 / (snapshot.current?.camera.scale ?? 1),
-			active.start,
-		);
-		const end =
-			connection ?? constrainWireEndpoint(active.start, point, snapStep);
-		setConnectionHover(connection ?? null);
+	const previewWire = useCallback(
+		(point: Point) => {
+			const active = getWire();
+			if (!active) return null;
+			const snapStep = snapEnabled ? cameraView.getGridStep() : 0;
+			const connection = findWireConnection(
+				session.shapes(),
+				point,
+				8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+				active.start,
+			);
+			const end =
+				connection ?? constrainWireEndpoint(active.start, point, snapStep);
+			setConnectionHover(connection ?? null);
 
-		const segments = routeWire(session.nextId(), active.start, end);
-		setWirePreview(segments);
-		return { segments, end, connected: !!connection };
-	};
-	const finishWire = () => {
+			const segments = routeWire(session.nextId(), active.start, end);
+			setWirePreview(segments);
+			return { segments, end, connected: !!connection };
+		},
+		[getWire, snapEnabled, cameraView, session],
+	);
+	const finishWire = useCallback(() => {
 		if (gesture.current.kind === "wire") gesture.current = { kind: "idle" };
 		setWirePreview(null);
 		setConnectionHover(null);
 		setSymbolPreview(null);
-	};
-	const startWire = (connection: Point, pointerId: number) => {
-		gesture.current = { kind: "wire", wire: { start: connection, pointerId } };
-		previewWire(connection);
-	};
+	}, []);
+	const startWire = useCallback(
+		(connection: Point, pointerId: number) => {
+			gesture.current = {
+				kind: "wire",
+				wire: { start: connection, pointerId },
+			};
+			previewWire(connection);
+		},
+		[previewWire],
+	);
 	const updateDrag = (event: ReactPointerEvent) => {
 		const active = getDrag();
 		if (!active || active.pointerId !== event.pointerId) return;
@@ -320,7 +328,7 @@ export function useCanvasGestures({
 				point,
 				active.gridStep,
 			);
-			const scale = snapshot.current?.camera.scale ?? 1;
+			const scale = cameraView.getSnapshot()?.camera.scale ?? 1;
 			active.valid =
 				draft.width > 0 &&
 				draft.height > 0 &&
@@ -373,56 +381,59 @@ export function useCanvasGestures({
 		for (const shape of shapes) if (matches(shape, bounds)) ids.add(shape.id);
 		session.select(ids);
 	};
-	const finishDrag = (cancel = false) => {
-		const active = getDrag();
-		if (!active) return;
-		gesture.current = { kind: "idle" };
-		setMovingShapeId(null);
-		active.canvas.style.cursor = "";
-		setMarquee(null);
-		if (cancel || (active.created && !active.valid)) {
-			session.preview(null);
-			session.select(active.previousSelection);
-			session.selectChild(active.previousChild);
-		} else if (active.wireStart && !active.moved) {
-			session.preview(null);
-			session.select(new Set());
-			setTool("wire");
-			startWire(active.wireStart, active.pointerId);
-		} else if (active.created) {
-			const original = active.originals[0];
-			const kind =
-				original.kind === "text" && original.electrical
-					? `${original.electrical} label`
-					: original.kind;
-			const createdIds = new Set(active.originals.map((shape) => shape.id));
-			session.place(
-				session.shapes().filter((shape) => createdIds.has(shape.id)),
-				active.mode === "duplicate" ? `Duplicate ${kind}` : `Draw ${kind}`,
-			);
-			setTool("select");
-		} else if (
-			active.mode === "move" ||
-			active.mode === "resize" ||
-			active.mode === "symbol-child"
-		) {
-			const initial = new Map(
-				active.initialShapes.map((shape) => [shape.id, shape]),
-			);
-			session.replace(
-				session.shapes().filter((shape) => shape !== initial.get(shape.id)),
+	const finishDrag = useCallback(
+		(cancel = false) => {
+			const active = getDrag();
+			if (!active) return;
+			gesture.current = { kind: "idle" };
+			setMovingShapeId(null);
+			active.canvas.style.cursor = "";
+			setMarquee(null);
+			if (cancel || (active.created && !active.valid)) {
+				session.preview(null);
+				session.select(active.previousSelection);
+				session.selectChild(active.previousChild);
+			} else if (active.wireStart && !active.moved) {
+				session.preview(null);
+				session.select(new Set());
+				setTool("wire");
+				startWire(active.wireStart, active.pointerId);
+			} else if (active.created) {
+				const original = active.originals[0];
+				const kind =
+					original.kind === "text" && original.electrical
+						? `${original.electrical} label`
+						: original.kind;
+				const createdIds = new Set(active.originals.map((shape) => shape.id));
+				session.place(
+					session.shapes().filter((shape) => createdIds.has(shape.id)),
+					active.mode === "duplicate" ? `Duplicate ${kind}` : `Draw ${kind}`,
+				);
+				setTool("select");
+			} else if (
+				active.mode === "move" ||
+				active.mode === "resize" ||
 				active.mode === "symbol-child"
-					? active.handle
-						? "Resize symbol child"
-						: "Move symbol child"
-					: active.mode === "move"
-						? "Move selection"
-						: `Resize ${active.originals[0].kind}`,
-			);
-		}
-		if (active.canvas.hasPointerCapture(active.pointerId))
-			active.canvas.releasePointerCapture(active.pointerId);
-	};
+			) {
+				const initial = new Map(
+					active.initialShapes.map((shape) => [shape.id, shape]),
+				);
+				session.replace(
+					session.shapes().filter((shape) => shape !== initial.get(shape.id)),
+					active.mode === "symbol-child"
+						? active.handle
+							? "Resize symbol child"
+							: "Move symbol child"
+						: active.mode === "move"
+							? "Move selection"
+							: `Resize ${active.originals[0].kind}`,
+				);
+			}
+			if (active.canvas.hasPointerCapture(active.pointerId))
+				active.canvas.releasePointerCapture(active.pointerId);
+		},
+		[getDrag, session, setTool, startWire],
+	);
 	const selectShape = (id: number, additive: boolean) => {
 		const ids = new Set(additive ? selectedIds : []);
 		if (additive && ids.has(id)) ids.delete(id);
@@ -513,7 +524,7 @@ export function useCanvasGestures({
 					const connection = findWireConnection(
 						session.shapes(),
 						point,
-						8 / (snapshot.current?.camera.scale ?? 1),
+						8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 					);
 					if (!connection) return;
 					startWire(connection, event.pointerId);
@@ -523,7 +534,7 @@ export function useCanvasGestures({
 				if (
 					!next ||
 					next.segments.reduce((sum, segment) => sum + segment.width, 0) *
-						(snapshot.current?.camera.scale ?? 1) <
+						(cameraView.getSnapshot()?.camera.scale ?? 1) <
 						3
 				)
 					return;
@@ -544,7 +555,7 @@ export function useCanvasGestures({
 				const connection = findWireConnection(
 					session.shapes(),
 					point,
-					8 / (snapshot.current?.camera.scale ?? 1),
+					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 				);
 				setConnectionHover(connection ?? null);
 				canvas.style.cursor = connection ? "crosshair" : "not-allowed";
@@ -604,7 +615,7 @@ export function useCanvasGestures({
 					? shapeAt(
 							shapes,
 							point,
-							6 / (snapshot.current?.camera.scale ?? 1),
+							6 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 							(candidate) => canSelectShape(candidate, allowLocked),
 						)
 					: undefined;
@@ -619,10 +630,7 @@ export function useCanvasGestures({
 			canvas.style.cursor = resize?.handle.cursor ?? "";
 			let shape: EditorShape | undefined;
 			const created = tool !== "select";
-			const snapStep =
-				snapEnabled && snapshot.current
-					? rulerSpacing(snapshot.current.camera.scale, "mil").minor
-					: 0;
+			const snapStep = snapEnabled ? cameraView.getGridStep() : 0;
 			const start = created ? snapPoint(point, snapStep) : point;
 			let wireStart: Point | undefined;
 			const childHit =
@@ -658,7 +666,7 @@ export function useCanvasGestures({
 				(!childHit || childHit.shape.kind === "pin")
 			) {
 				let connection: ReturnType<typeof openPins>[number] | undefined;
-				let distance = 8 / (snapshot.current?.camera.scale ?? 1);
+				let distance = 8 / (cameraView.getSnapshot()?.camera.scale ?? 1);
 				const candidates = measurePerformance(
 					"editor.pin-hit-test",
 					() =>
