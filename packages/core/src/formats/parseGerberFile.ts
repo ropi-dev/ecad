@@ -7,7 +7,11 @@ import {
 import type { PlanarObject, SpatialObject } from "#/engine/scene.ts";
 import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
-import { formatDiagnostic, summarizeDiagnostics } from "./diagnostics";
+import {
+	asSentence,
+	formatDiagnostic,
+	summarizeDiagnostics,
+} from "./diagnostics";
 import {
 	acquireImported,
 	InvalidFile,
@@ -49,7 +53,9 @@ export function parseGerberFileEffect(file: File) {
 		);
 		if (fatal.length)
 			return yield* new InvalidFile({
-				message: fatal.map(formatDiagnostic).join("; "),
+				message: fatal
+					.map((entry) => asSentence(formatDiagnostic(entry)))
+					.join(" "),
 			});
 		if (!parsed.mesh?.positions.length) {
 			// Explain an empty result with the commands that were skipped.

@@ -367,15 +367,20 @@ export function ProjectFilesSidebar() {
 								aria-label="Skipped KiCad items"
 								className="m-0 mt-1 max-h-32 list-disc overflow-y-auto pl-4"
 							>
-								{importReport.skipped.slice(0, 20).map(({ item, reason }) => (
-									<li key={`${item}: ${reason}`}>
-										{item.charAt(0).toUpperCase() + item.slice(1)}: {reason}
-									</li>
-								))}
+								{importReport.skipped
+									.slice(0, 20)
+									.map(({ item, reason }, index) => (
+										// Units of one multi-unit part share a name and reason.
+										// biome-ignore lint/suspicious/noArrayIndexKey: see above
+										<li key={index}>
+											{item.charAt(0).toUpperCase() + item.slice(1)}: {reason}
+										</li>
+									))}
 							</ul>
 							{importReport.skipped.length > 20 && (
 								<span className="block">
-									The report lists the other {importReport.skipped.length - 20}.
+									Showing the first 20. The report lists all{" "}
+									{importReport.skipped.length}.
 								</span>
 							)}
 						</>

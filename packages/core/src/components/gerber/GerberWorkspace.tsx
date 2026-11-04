@@ -14,7 +14,7 @@ export function GerberWorkspace() {
 	const {
 		layers,
 		loading,
-		message: fileMessage,
+		messages: fileMessages,
 		openFile,
 		setLayers,
 	} = useGerberFile();
@@ -29,7 +29,7 @@ export function GerberWorkspace() {
 						`${layer.name}: ${describeDiagnostics(layer.diagnostics)} (${summarizeDiagnostics(layer.diagnostics, 10)})`,
 				)
 		: [];
-	const message = [fileMessage, ...diagnostics, rendererError]
+	const message = [...fileMessages, ...diagnostics, rendererError]
 		.filter(Boolean)
 		.join("\n");
 	return (

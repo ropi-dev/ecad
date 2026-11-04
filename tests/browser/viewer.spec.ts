@@ -184,7 +184,7 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 		"truncated.gbr",
 	]);
 	await expect(page.getByTestId("viewer-message")).toHaveText(
-		"negative.gbr: Line 5: Legacy negative image polarity IPNEG is unsupported; the image would render inverted",
+		"negative.gbr: Line 5: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
 	);
 	await expect
 		.poll(async () =>
@@ -195,22 +195,22 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 		)
 		.toBe(2);
 	const truncated = page.getByRole("button", {
-		name: "Show 1 warning for truncated.gbr",
+		name: "Diagnostics for truncated.gbr: 1 warning",
 		exact: true,
 	});
 	await expect(truncated).toHaveText("1");
 	await expect(truncated).toHaveAttribute("aria-expanded", "false");
 	const region = page.getByRole("button", {
-		name: "Show 1 error, 1 warning for region.gbr",
+		name: "Diagnostics for region.gbr: 1 error, 1 warning",
 		exact: true,
 	});
+	await expect(region).not.toHaveAttribute("aria-controls");
 	await region.click();
-	await expect(
-		page.getByRole("button", {
-			name: "Hide 1 error, 1 warning for region.gbr",
-			exact: true,
-		}),
-	).toHaveAttribute("aria-expanded", "true");
+	await expect(region).toHaveAttribute("aria-expanded", "true");
+	await expect(region).toHaveAttribute(
+		"aria-controls",
+		(await page.getByTestId("layer-diagnostics-list").getAttribute("id"))!,
+	);
 	const list = page.getByRole("list", {
 		name: "Diagnostics for region.gbr",
 		exact: true,

@@ -57,7 +57,8 @@ export function LayerPanel({
 					const focused = focusedLayerId === layer.id;
 					const diagnostics = layer.diagnostics ?? [];
 					const open = expanded.has(layer.id);
-					const errors = countDiagnostics(diagnostics).error > 0;
+					const counts = countDiagnostics(diagnostics);
+					const errors = counts.error > 0;
 					const summary = describeDiagnostics(diagnostics);
 					const diagnosticsId = `${listId}-${index}`;
 					return (
@@ -161,11 +162,11 @@ export function LayerPanel({
 								<button
 									type="button"
 									data-testid="layer-diagnostics"
-									className={`relative z-1 inline-flex h-[30px] cursor-pointer items-center gap-1 rounded-[5px] border-0 bg-transparent px-1.5 text-[11px] font-medium tabular-nums hover:bg-[#ffffff10] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] ${errors ? severityStyle.error.className : severityStyle.warning.className}`}
-									aria-label={`${open ? "Hide" : "Show"} ${summary} for ${layer.name}`}
+									className={`relative z-1 inline-flex h-[30px] cursor-pointer items-center gap-1 rounded-[5px] border-0 bg-transparent px-1.5 text-[11px] font-medium tabular-nums group-data-[hidden=true]:opacity-40 hover:bg-[#ffffff10] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] ${errors ? severityStyle.error.className : severityStyle.warning.className}`}
+									aria-label={`Diagnostics for ${layer.name}: ${summary}`}
 									title={summary}
 									aria-expanded={open}
-									aria-controls={diagnosticsId}
+									aria-controls={open ? diagnosticsId : undefined}
 									onClick={() =>
 										setExpanded((current) => {
 											const next = new Set(current);
@@ -179,7 +180,7 @@ export function LayerPanel({
 									) : (
 										<TriangleAlert size={14} aria-hidden="true" />
 									)}
-									{diagnostics.length}
+									{(counts.error + counts.warning).toLocaleString()}
 								</button>
 							)}
 							<button

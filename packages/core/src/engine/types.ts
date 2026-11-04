@@ -51,6 +51,8 @@ export interface Diagnostic {
 	severity: DiagnosticSeverity;
 	message: string;
 	line?: number;
+	/** How many unlisted problems a summary entry stands for. */
+	count?: number;
 }
 export interface ParseResult {
 	object: PlanarObject;

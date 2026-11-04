@@ -229,8 +229,7 @@ export function parseGerber(
 		objectCount = 0,
 		isX3 = false;
 	const warned = new Set<string>();
-	let omitted = 0,
-		omittedError = false;
+	const omitted = { warning: 0, error: 0 };
 	/** `at` is null for problems with the whole file rather than one line. */
 	const diagnostic = (
 		severity: DiagnosticSeverity,
@@ -238,8 +237,7 @@ export function parseGerber(
 		at: number | null = line,
 	) => {
 		if (severity !== "fatal" && diagnostics.length >= MAX_DIAGNOSTICS) {
-			omitted++;
-			omittedError ||= severity === "error";
+			omitted[severity]++;
 			return;
 		}
 		diagnostics.push(
@@ -1021,11 +1019,15 @@ export function parseGerber(
 				null,
 			);
 	}
-	if (omitted)
-		diagnostics.push({
-			severity: omittedError ? "error" : "warning",
-			message: `${omitted.toLocaleString()} more ${omitted === 1 ? "problem is" : "problems are"} not listed.`,
-		});
+	for (const severity of ["error", "warning"] as const) {
+		const count = omitted[severity];
+		if (count)
+			diagnostics.push({
+				severity,
+				message: `${count.toLocaleString()} more ${severity}${count === 1 ? " is" : "s are"} not listed.`,
+				count,
+			});
+	}
 	const bounds = finiteBounds(
 		objects
 			.filter((object) => object.polarity === "dark")

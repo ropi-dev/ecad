@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import {
+	countDiagnostics,
+	describeDiagnostics,
+	summarizeDiagnostics,
+} from "#/formats/diagnostics.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { parseGerberFile } from "#/formats/parseGerberFile.ts";
 import { installParseWorker } from "./helpers/parse-worker";
@@ -132,7 +137,7 @@ test("malformed tokens count toward the diagnostic limit", () => {
 		"tokens.gbr",
 	);
 	assert.equal(result.diagnostics.length, 201);
-	assert.equal(result.diagnostics.at(-1)?.message, "1,800 more problems are not listed.");
+	assert.equal(result.diagnostics.at(-1)?.message, "1,800 more errors are not listed.");
 	assert.equal(result.object.objects.length, 1);
 });
 
@@ -144,9 +149,25 @@ test("a file with many bad commands keeps a bounded diagnostic list", () => {
 	assert.equal(result.diagnostics.length, 201);
 	assert.deepEqual(result.diagnostics.at(-1), {
 		severity: "error",
-		message: "800 more problems are not listed.",
+		message: "800 more errors are not listed.",
+		count: 800,
 	});
 	assert.equal(result.object.objects.length, 1);
+});
+
+test("a fatal problem after the diagnostic limit still rejects the file", async () => {
+	const source = `${header}${"G99*\n".repeat(300)}%IPNEG*%\n${flash}M02*`;
+	const result = parseGerber(source, "saturated.gbr");
+	assert.equal(result.diagnostics.length, 202);
+	assert.equal(result.diagnostics[200].severity, "fatal");
+	await assert.rejects(
+		parseGerberFile(new File([source], "saturated.gbr")),
+		{
+			_tag: "InvalidFile",
+			message:
+				"Line 305: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
+		},
+	);
 });
 
 test("a Gerber file without M02 renders with its warning", async () => {
@@ -190,14 +211,14 @@ test("a fatal Gerber file is rejected with its reason", async () => {
 		{
 			_tag: "InvalidFile",
 			message:
-				"Line 5: Legacy negative image polarity IPNEG is unsupported; the image would render inverted",
+				"Line 5: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
 		},
 	);
 	await assert.rejects(
 		parseGerberFile(new File([`%ADD10C,1*%D10*${flash}M02*`], "units.gbr")),
 		{
 			message:
-				"Missing MO units declaration, so no coordinates can be read.; Missing FS coordinate format declaration, so no coordinates can be read.",
+				"Missing MO units declaration, so no coordinates can be read. Missing FS coordinate format declaration, so no coordinates can be read.",
 		},
 	);
 });
@@ -208,7 +229,24 @@ test("a file whose every command was skipped explains why nothing rendered", asy
 		{
 			_tag: "InvalidFile",
 			message:
-				"This file contains no drawable geometry (Line 5: Selected undefined aperture D11.; Line 6: Aperture D11 is undefined).",
+				"This file contains no drawable geometry (Line 5: Selected undefined aperture D11; Line 6: Aperture D11 is undefined).",
 		},
+	);
+});
+
+test("summary entries count every problem they stand for", () => {
+	const diagnostics = parseGerber(
+		`${header}${"G99*\n".repeat(5000)}${flash}M02*`,
+		"noisy.gbr",
+	).diagnostics;
+	assert.deepEqual(countDiagnostics(diagnostics), {
+		warning: 0,
+		error: 5000,
+		fatal: 0,
+	});
+	assert.equal(describeDiagnostics(diagnostics), "5,000 errors");
+	assert.equal(
+		summarizeDiagnostics(diagnostics, 1),
+		"Line 5: Unsupported G-code G99; and 4,999 more problems",
 	);
 });

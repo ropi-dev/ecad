@@ -185,7 +185,7 @@ const twoSymbols = (definition: string, extra = '') => `(kicad_sch (version 2025
 test('a symbol whose converted geometry is invalid is skipped with a readable reason', () => {
  const result = importKiCadSchematic(twoSymbols('(symbol "Bad" (symbol "Bad_1_1" (pin input line (at 0 0 0) (length 2) (name "A") (number "1")) (circle (center 0 0) (radius wide))))'));
  assert.deepEqual(result.shapes.map(s=>s.kind),['symbol','wire']);
- assert.deepEqual(result.report.skipped,[{item:'symbol X2 (Bad)',reason:'The width of child 2 (a circle) is invalid (expected number, received NaN).'}]);
+ assert.deepEqual(result.report.skipped,[{item:'symbol X2 (Bad)',reason:'The width of child 2 (a circle) is not a number.'}]);
  assert.equal(result.report.components.length,1);
 });
 

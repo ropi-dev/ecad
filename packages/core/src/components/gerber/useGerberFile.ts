@@ -53,7 +53,7 @@ export function useGerberFile() {
 		ownership.commit(layers.map((object) => object.dispose));
 	}, [layers, ownership]);
 	useEffect(() => () => ownership.dispose(), [ownership]);
-	const { loading, message, readFiles } = useFileImport(
+	const { loading, messages, readFiles } = useFileImport(
 		readGerber,
 		release,
 		expandGerberFileEffect,
@@ -103,7 +103,7 @@ export function useGerberFile() {
 	return {
 		layers,
 		loading,
-		message: restoreError || message,
+		messages: restoreError ? [restoreError] : messages,
 		openFile,
 		setLayers,
 	};

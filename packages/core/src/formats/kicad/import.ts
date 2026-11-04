@@ -8,6 +8,7 @@ import {
 	type SymbolShape,
 	type TextShape,
 } from "#/drawing/shapes.ts";
+import { asSentence as sentence } from "#/formats/diagnostics.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import {
@@ -81,7 +82,6 @@ const line = (
 	),
 	kind,
 });
-const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
 const words = (key: string) =>
 	key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
 /** The KiCad source position, so the item can be found in KiCad. */
@@ -114,7 +114,10 @@ function describeInvalidShape(
 		owner = ` of child ${index + 1}${child ? ` (a ${words(child.kind)})` : ""}`;
 	} else if (first === "texts" && typeof index === "number" && path.length > 2)
 		owner = " of an attribute label";
-	return `The ${words(String(path.at(-1)))}${owner} is invalid (${issue.message.replace(/^Invalid input: /, "")}).`;
+	const field = `${words(String(path.at(-1)))}${owner}`;
+	return /received NaN$/.test(issue.message)
+		? `The ${field} is not a number.`
+		: `The ${field} is invalid (${issue.message.replace(/^Invalid input: /, "")}).`;
 }
 function text(n: SExpr, at: XY, content: string): TextShape {
 	const size = numbers(node(node(n, "effects"), "font"), "size")[0] ?? 1.27;
