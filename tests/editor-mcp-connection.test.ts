@@ -216,3 +216,13 @@ test("invalid envelopes and disconnected streams stop without creating a replace
 		assert.equal(live.calls.filter((call) => call.options.method === "DELETE").length, 1);
 	}
 });
+
+test("a refused session reports the server's limit and opens no stream", async () => {
+	const message = "Too many editor connections from this network. Disable MCP in another drawing and try again.";
+	const live = bridge({
+		create: async () => Response.json({ error: { code: "ClientSessionLimit", message } }, { status: 429 }),
+	});
+	await live.connection.done;
+	assert.deepEqual(live.states.at(-1), { status: "error", message });
+	assert.deepEqual(live.calls.map((call) => call.options.method), ["POST"]);
+});

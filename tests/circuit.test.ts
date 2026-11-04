@@ -1,10 +1,11 @@
-import { createTestCircuit } from "./fixtures/circuit.ts";
+import { createTestCircuit, createTestComponent } from "./fixtures/circuit.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { z } from "zod";
 import { arrangeCircuitGraph, buildCircuitGraph } from "@ecad/drawing-core/circuit/graph.ts";
 import { circuitFileSchema, createCircuit, parseCircuit, parseGraphLayout, serializeCircuit, serializeGraphLayout } from "@ecad/drawing-core/circuit/model.ts";
-import { createCircuitComponent, instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
-import { createCircuitStore } from "@ecad/drawing-core/circuit/store.ts";
+import { instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
+import { applyCircuitCommand, type CircuitCommand, CircuitCommandError, type CircuitCommandErrorReason, createCircuitStore, unknownCircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { createCircuitView, untangleCircuitGraph, circuitLayoutQuality } from "@ecad/drawing-core/circuit/untangle.ts";
 import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
 
@@ -65,20 +66,89 @@ test("splitting keeps selected pins connected while disconnecting leaves them in
 	assert.ok(!store.getSnapshot().circuit.nets.some((net) => net.pinIds.some((id) => second.pinIds.includes(id))));
 });
 
-test("invalid commands publish nothing and preserve history", () => {
+function assertCommandError(run: () => unknown, reason: CircuitCommandErrorReason, message?: string) {
+	assert.throws(run, (error) => {
+		assert.ok(error instanceof CircuitCommandError);
+		assert.equal(error._tag, "CircuitCommandError");
+		assert.equal(error.reason, reason);
+		assert.ok(error.message);
+		if (message !== undefined) assert.equal(error.message, message);
+		return true;
+	});
+}
+
+test("invalid commands publish nothing, preserve history, and fail with a typed reason", () => {
 	const file = createTestCircuit();
 	const store = createCircuitStore(file);
 	const before = store.getSnapshot();
 	let notifications = 0;
 	store.subscribe(() => notifications++);
-	assert.throws(() => store.execute({ type: "connect", pinIds: ["missing"] }));
-	assert.throws(() => store.execute({ type: "rename-net", id: "missing-net", names: ["3V3"] }));
-	assert.throws(() => store.execute({ type: "split-net", netId: file.circuit.nets[0].id, pinIds: file.circuit.nets[0].pinIds }));
-	assert.throws(() => store.execute({ type: "update-component", id: file.circuit.components[1].id, reference: "J1", value: "" }));
-	assert.throws(() => store.execute({ type: "move", positions: [{ id: "missing", kind: "component", x: 0, y: 0 }] }));
-	assert.throws(() => store.execute({ type: "replace", file: createCircuit("Another circuit") }));
+	assertCommandError(() => store.execute({ type: "connect", pinIds: ["missing"] }), "invalid-pins", "Choose distinct pins belonging to this circuit.");
+	assertCommandError(() => store.execute({ type: "connect", pinIds: [file.circuit.nets[0].pinIds[0]], netId: "missing-net" }), "net-not-found", "Net no longer exists.");
+	assertCommandError(() => store.execute({ type: "rename-net", id: "missing-net", names: ["3V3"] }), "net-not-found");
+	assertCommandError(() => store.execute({ type: "rename-net", id: file.circuit.nets[0].id, names: [" "] }), "invalid-circuit");
+	assertCommandError(() => store.execute({ type: "split-net", netId: file.circuit.nets[0].id, pinIds: file.circuit.nets[0].pinIds }), "invalid-split");
+	assertCommandError(() => store.execute({ type: "remove-component", id: "missing" }), "component-not-found", "Component no longer exists.");
+	assertCommandError(() => store.execute({ type: "move", positions: [{ id: "missing", kind: "component", x: 0, y: 0 }] }), "invalid-graph-nodes");
+	assertCommandError(() => store.execute({ type: "replace", file: createCircuit("Another circuit") }), "circuit-identity-changed");
+	assertCommandError(() => store.synchronize(createCircuit("Another circuit")), "circuit-identity-changed");
+	assert.throws(() => store.execute({ type: "update-component", id: file.circuit.components[1].id, reference: "J1", value: "" }), (error) => {
+		assert.ok(error instanceof CircuitCommandError);
+		assert.equal(error.reason, "invalid-circuit");
+		assert.equal(error.message, "Duplicate component reference: J1");
+		assert.ok(error.cause instanceof z.ZodError);
+		return true;
+	});
 	assert.equal(store.getSnapshot(), before);
 	assert.equal(notifications, 0);
+});
+
+test("the command switch is exhaustive at compile time and rejects forged command types", () => {
+	const file = createTestCircuit();
+	const forged = { type: "rotate", id: file.circuit.components[0].id } as unknown as CircuitCommand;
+	assertCommandError(() => applyCircuitCommand(file, forged), "unknown-command", "Unknown circuit command: rotate.");
+	const store = createCircuitStore(file);
+	const before = store.getSnapshot();
+	assertCommandError(() => store.execute(forged), "unknown-command");
+	assert.equal(store.getSnapshot(), before);
+	assert.equal(store.getSnapshot().circuit.revision, file.circuit.revision);
+	const handleOnlyMoves = (command: CircuitCommand) => {
+		if (command.type === "move") return command.positions.length;
+		// @ts-expect-error Every unhandled command type is still possible here, so the guard does not compile.
+		return unknownCircuitCommand(command);
+	};
+	assertCommandError(() => handleOnlyMoves({ type: "remove-net", id: "spare" }), "unknown-command", "Unknown circuit command: remove-net.");
+});
+
+test("an injected ID generator makes commands that create nets deterministic", () => {
+	const file = createTestCircuit();
+	const [first, second] = file.circuit.nets;
+	const edit = () => {
+		let next = 0;
+		const store = createCircuitStore(file, { createId: () => `net-${++next}` });
+		store.execute({ type: "disconnect", pinIds: second.pinIds });
+		store.execute({ type: "connect", pinIds: second.pinIds });
+		store.execute({ type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] });
+		return store.getSnapshot();
+	};
+	const snapshot = edit();
+	assert.deepEqual(snapshot.circuit.nets.find((net) => net.id === "net-1")?.pinIds, second.pinIds);
+	assert.deepEqual(snapshot.circuit.nets.find((net) => net.id === "net-2")?.pinIds, [first.pinIds[0]]);
+	assert.deepEqual(edit(), snapshot);
+	let applied = 0;
+	assert.deepEqual(applyCircuitCommand(file, { type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] }, { createId: () => `split-${++applied}` }).circuit.nets.at(-1)?.id, "split-1");
+	assert.equal(createCircuitStore(undefined, { createId: () => "fixed-circuit" }).getSnapshot().circuit.id, "fixed-circuit");
+	assert.throws(() => createCircuitStore(undefined, { createId: () => "" }), (error) => {
+		assert.ok(error instanceof CircuitCommandError);
+		assert.equal(error.reason, "invalid-circuit");
+		assert.ok(error.cause instanceof z.ZodError);
+		return true;
+	});
+	const colliding = createCircuitStore(file, { createId: () => first.id });
+	assertCommandError(() => colliding.execute({ type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] }), "invalid-circuit", `Duplicate circuit identity: ${first.id}`);
+	const random = createCircuitStore(file);
+	random.execute({ type: "split-net", netId: first.id, pinIds: [first.pinIds[0]] });
+	assert.match(random.getSnapshot().circuit.nets.at(-1)!.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 });
 
 test("standalone nets survive disconnection, component deletion, serialization, and arrangement", () => {
@@ -90,7 +160,7 @@ test("standalone nets survive disconnection, component deletion, serialization, 
 	assert.deepEqual(buildCircuitGraph(empty).nets[0].net, net);
 	assert.equal(buildCircuitGraph(empty).edges.length, 0);
 	assert.doesNotThrow(() => circuitFileSchema.parse({ circuit: empty.circuit, graph: { ...empty.graph, positions: arrangeCircuitGraph(empty) } }));
-	const component = createCircuitComponent("resistor", []);
+	const component = createTestComponent("resistor", []);
 	store.execute({ type: "add-component", component });
 	store.execute({ type: "connect", pinIds: [component.pins[0].id], netId: net.id });
 	store.execute({ type: "disconnect", pinIds: [component.pins[0].id] });
@@ -157,7 +227,7 @@ test("no-connect declarations and component deletion clean up memberships and la
 
 test("large nets produce one membership edge per pin and layouts accommodate tall components", () => {
 	const file = createCircuit("Large net");
-	for (let index = 0; index < 100; index++) file.circuit.components.push(createCircuitComponent("connector-8", file.circuit.components));
+	for (let index = 0; index < 100; index++) file.circuit.components.push(createTestComponent("connector-8", file.circuit.components));
 	file.circuit.nets.push({ id: "ground", names: ["GND"], pinIds: file.circuit.components.flatMap((component) => component.pins.map((pin) => pin.id)) });
 	file.graph.positions = arrangeCircuitGraph(file);
 	const graph = buildCircuitGraph(circuitFileSchema.parse(file));
@@ -209,7 +279,7 @@ test("collapsed components hide every pin and share one endpoint per side withou
 
 test("collapse validation, empty compact components, and deletion preserve graph integrity", () => {
 	const file = createCircuit("Compact");
-	const component = createCircuitComponent("connector-8", []);
+	const component = createTestComponent("connector-8", []);
 	file.circuit.components.push(component);
 	const store = createCircuitStore(file);
 	const original = store.getSnapshot();
@@ -282,7 +352,7 @@ test("desktop circuit saves reject external electrical circuit edits", async () 
 
  test("untangling reduces crossings, separates overlapping nodes, and leaves connectivity intact",()=>{
  const file=createCircuit("Crossings");
- for(let index=0;index<4;index++) file.circuit.components.push(createCircuitComponent("resistor",file.circuit.components));
+ for(let index=0;index<4;index++) file.circuit.components.push(createTestComponent("resistor",file.circuit.components));
  const [a,b,c,d]=file.circuit.components;
  file.circuit.nets.push({id:"a",names:["A"],pinIds:[a.pins[0].id,d.pins[0].id]},{id:"b",names:["B"],pinIds:[b.pins[0].id,c.pins[0].id]});
  file.graph.positions=[{id:a.id,kind:"component",x:60,y:60},{id:b.id,kind:"component",x:500,y:60},{id:c.id,kind:"component",x:60,y:400},{id:d.id,kind:"component",x:500,y:400},{id:"a",kind:"net",x:800,y:350},{id:"b",kind:"net",x:-140,y:350}];
