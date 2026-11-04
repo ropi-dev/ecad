@@ -990,10 +990,15 @@ export function createProjectSession(
 			enqueue(async () => {
 				if (!active || generation !== epoch)
 					throw new Error("Open a project before importing a schematic.");
-				const { importKiCadSchematic } = await import(
-					"#/formats/kicad/import.ts"
+				const { parseKiCadFile } = await import("#/formats/parseKiCadFile.ts");
+				const result = await measurePerformanceAsync("import.kicad", () =>
+					parseKiCadFile(file),
 				);
-				const result = importKiCadSchematic(await file.text());
+				// Parsing now waits on a worker, so recheck the project it targets.
+				if (!active || generation !== epoch)
+					throw new Error(
+						"The project changed while the schematic was importing.",
+					);
 				const drawings = active.drawings ?? [];
 				let id = "kicad-import";
 				for (

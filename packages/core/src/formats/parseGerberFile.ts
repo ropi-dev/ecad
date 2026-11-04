@@ -12,6 +12,7 @@ import {
 	formatDiagnostic,
 	summarizeDiagnostics,
 } from "./diagnostics";
+import { MAX_GERBER_SOURCE_LENGTH } from "./gerber/detect";
 import {
 	acquireImported,
 	InvalidFile,
@@ -19,6 +20,15 @@ import {
 	requestWorker,
 } from "./import-effects";
 import type { ParseWorkerResult } from "./parse-reply";
+
+const MiB = 1024 * 1024;
+
+/**
+ * Checked before the file is read. Gerber is ASCII, so this matches the
+ * parser's character limit, which still applies to the decoded text. ZIP
+ * extraction skips entries over the same size.
+ */
+export const MAX_GERBER_FILE_BYTES = MAX_GERBER_SOURCE_LENGTH;
 
 export interface ParsedGerberObject
 	extends Omit<PlanarObject, "type">,
@@ -35,6 +45,10 @@ export interface ParsedGerberFile extends Omit<ParseResult, "object"> {
 
 export function parseGerberFileEffect(file: File) {
 	return Effect.gen(function* () {
+		if (file.size > MAX_GERBER_FILE_BYTES)
+			return yield* new InvalidFile({
+				message: `Gerber files must be ${MAX_GERBER_FILE_BYTES / MiB} MiB or smaller.`,
+			});
 		const source = yield* readFile(() => file.text());
 		const parsed = yield* requestWorker<ParseWorkerResult>({
 			create: () =>

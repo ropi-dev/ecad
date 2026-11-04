@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { InvalidFile } from "#/formats/import-effects.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
+import { MAX_KICAD_FILE_BYTES } from "#/formats/parseKiCadFile.ts";
 import { createDocumentRegistry } from "#/projects/document-registry.ts";
 import { ProjectClosed, ProjectConflict } from "#/projects/errors.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
@@ -14,6 +18,7 @@ import { createProjectIndex, projectIndex } from "#/projects/project-index.ts";
 import { assembleProjectSave } from "#/projects/save-assembly.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import { installKiCadWorker } from "./helpers/kicad-worker.ts";
 import { required } from "./helpers/required.ts";
 
 const rectangle = {
@@ -347,4 +352,60 @@ test("linked PCB assembly preserves the first drawing match and never mutates it
 	const first = result.document.drawings?.[0].shapes[0];
 	assert.equal(first?.kind === "symbol" && first.attributes.value, "Changed");
 	assert.deepEqual(document, before);
+});
+
+test("schematic import parses in the KiCad worker and rejects oversized files without saving", async (t) => {
+	const installed = installKiCadWorker();
+	t.after(installed.restore);
+	const f = fixture();
+	// Real storage assigns each drawing a file path when it is saved.
+	const save = f.storage.save.bind(f.storage);
+	f.storage.save = async (...args) => {
+		const saved = await save(...args);
+		return {
+			...saved,
+			manifest: {
+				...saved.manifest,
+				drawings: saved.drawings?.map((drawing) => `${drawing.id}.ecaddraw`),
+			},
+		};
+	};
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const oversized = new File(["(kicad_sch)"], "huge.kicad_sch");
+	Object.defineProperty(oversized, "size", { value: MAX_KICAD_FILE_BYTES + 1 });
+	const before = f.saves;
+	await assert.rejects(
+		f.session.getSnapshot().importSchematic(oversized),
+		(error) =>
+			error instanceof InvalidFile &&
+			error.message === "KiCad schematics must be 32 MiB or smaller.",
+	);
+	assert.equal(f.saves, before);
+	assert.equal(installed.workers.length, 0);
+	const source = readFileSync(
+		new URL(
+			"./fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch",
+			import.meta.url,
+		),
+		"utf8",
+	);
+	const expected = importKiCadSchematic(source);
+	const { path, report } = await f.session
+		.getSnapshot()
+		.importSchematic(new File([source], "RPI-RP2350A-MINIMAL_R4-S1.kicad_sch"));
+	assert.deepEqual(report, expected.report);
+	const project = required(f.session.getSnapshot().project);
+	const drawing = required(
+		project.drawings?.find((entry) => entry.id === "kicad-import"),
+	);
+	assert.equal(drawing.name, "RPI-RP2350A-MINIMAL_R4-S1");
+	assert.deepEqual(drawing.shapes, expected.shapes);
+	assert.equal(
+		projectIndex(project).drawingsById.get("kicad-import")?.path,
+		path,
+	);
+	assert.equal(installed.workers.length, 1);
+	assert.equal(installed.workers[0].terminated, 1);
+	stop();
 });

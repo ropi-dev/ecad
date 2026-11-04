@@ -19,9 +19,11 @@ Domain functions return Effects and declare expected errors with `Data.TaggedErr
 ## Imports and ownership
 
 - `packages/core/src/formats/import-effects.ts` contains file read errors, scoped worker requests, timeouts, and import ownership registration.
-- `parseGerberFileEffect`, `parseStepFileEffect`, and `expandGerberFileEffect` compose the import operations. The existing Promise functions remain available for callers outside Effect.
+- `parseGerberFileEffect`, `parseStepFileEffect`, `parseKiCadFileEffect`, and `expandGerberFileEffect` compose the import operations. The existing Promise functions remain available for callers outside Effect.
 - `importFilesEffect` processes files in order and collects per-file failures as messages. Valid files survive a neighboring invalid file. Gerber archives retain their physical layer ordering.
 - `useFileImport` runs a batch once, aborts a superseded batch, and updates React state. Its synchronous acceptance callback stages ownership before another request or unmount can intervene. `ImportOwnership` keeps pending and displayed resources alive through React commits, and releases uncommitted results on unmount.
+
+Each file parser compares `file.size` with its byte limit before reading the file and fails with `InvalidFile` when the file is too large. The limits are `MAX_STEP_FILE_BYTES` (256 MiB), `MAX_GERBER_FILE_BYTES` (64 MiB) and `MAX_KICAD_FILE_BYTES` (32 MiB). Checks on the decoded content, such as the Gerber parser's character limit, still apply.
 
 Workers belong to the parsing operation. Their finalizers terminate them on success, failure, timeout, or interruption. CPU-heavy parsing still runs in Web Workers. ZIP cancellation invokes the decompressor's cancellation function. Browser `File.text()` and `File.arrayBuffer()` cannot themselves be interrupted, but cancellation prevents subsequent processing.
 
