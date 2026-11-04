@@ -97,7 +97,10 @@ test("Alt-drag copies net labels and text without moving originals or attached w
 		expect(after.shapes.at(-1)).toEqual({
 			...source,
 			id: before.shapes.length + 1,
-			...snapPoint({ x: source.x + 20, y: source.y - 20 }, (await drawingGridStep(page)) / (id === 1 ? 1 : 10)),
+			...snapPoint(
+				{ x: source.x + 20, y: source.y - 20 },
+				(await drawingGridStep(page)) / (id === 1 ? 1 : 10),
+			),
 		});
 	}
 	const placed = await documentState(page);

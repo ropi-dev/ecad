@@ -25,5 +25,7 @@ canvas { outline: none !important; }
 `;
 
 export function canvasScreenshot(canvas: Locator) {
-	return stableScreenshot(() => canvas.screenshot({ style: sceneScreenshotStyle }));
+	return stableScreenshot(() =>
+		canvas.screenshot({ style: sceneScreenshotStyle }),
+	);
 }

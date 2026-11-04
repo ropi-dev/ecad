@@ -27,14 +27,22 @@ Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
 };
 
 function CircuitDocumentState() {
- const project = useProject();
- const store = project?.editorCircuit?.store;
- if (!store) return null;
- return <CircuitSnapshot store={store} />;
+	const project = useProject();
+	const store = project?.editorCircuit?.store;
+	if (!store) return null;
+	return <CircuitSnapshot store={store} />;
 }
-function CircuitSnapshot({store}: {store: import("@ecad/drawing-core/circuit/store.ts").CircuitStore}) {
- const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
- return <output id="circuit-document" hidden>{JSON.stringify({circuit: snapshot.circuit, graph: snapshot.graph})}</output>;
+function CircuitSnapshot({
+	store,
+}: {
+	store: import("@ecad/drawing-core/circuit/store.ts").CircuitStore;
+}) {
+	const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+	return (
+		<output id="circuit-document" hidden>
+			{JSON.stringify({ circuit: snapshot.circuit, graph: snapshot.graph })}
+		</output>
+	);
 }
 function ProjectDocument() {
 	const project = useProject();

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createDrawingStore } from "#/commands/drawing-store.ts";
 import type { DrawingEnvelope, DrawingReply } from "#/mcp/drawing-protocol.ts";
-import { connectEditorMcp, type EditorMcpState } from "#/mcp/editor-connection.ts";
+import {
+	connectEditorMcp,
+	type EditorMcpState,
+} from "#/mcp/editor-connection.ts";
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -59,7 +62,10 @@ function bridge({
 		calls.push({ url: target, options });
 		if (target.endsWith("/api/editor-mcp"))
 			return create ? create() : Response.json(credentials);
-		assert.equal(new Headers(options.headers).get("Authorization"), "Bearer owner-secret");
+		assert.equal(
+			new Headers(options.headers).get("Authorization"),
+			"Bearer owner-secret",
+		);
 		if (options.method === "DELETE") return new Response(null, { status: 204 });
 		if (options.method === "POST") {
 			const value = JSON.parse(String(options.body));
@@ -84,8 +90,11 @@ function bridge({
 		replies,
 		calls,
 		connection,
-		setTime: (value: number) => { time = value; },
-		send: (value: string) => controller.enqueue(new TextEncoder().encode(value)),
+		setTime: (value: number) => {
+			time = value;
+		},
+		send: (value: string) =>
+			controller.enqueue(new TextEncoder().encode(value)),
 		close: () => controller.close(),
 		cancelled: () => streamCancelled,
 	};
@@ -94,7 +103,10 @@ function bridge({
 test("the connection executes in the supplied drawing and awaits each acknowledgement", async () => {
 	const firstAck = deferred<Response>();
 	const live = bridge({
-		acknowledge: (id) => id === "first" ? firstAck.promise : Promise.resolve(new Response(null, { status: 204 })),
+		acknowledge: (id) =>
+			id === "first"
+				? firstAck.promise
+				: Promise.resolve(new Response(null, { status: 204 })),
 	});
 	try {
 		await until(() => live.states.at(-1)?.status === "connected");
@@ -112,13 +124,19 @@ test("the connection executes in the supplied drawing and awaits each acknowledg
 		assert.equal(live.replies[0].reply.ok, true);
 		firstAck.resolve(new Response(null, { status: 204 }));
 		await until(() => live.replies.length === 2);
-		assert.deepEqual(live.store.getSnapshot().shapes.map((shape) => shape.id), [1, 2]);
+		assert.deepEqual(
+			live.store.getSnapshot().shapes.map((shape) => shape.id),
+			[1, 2],
+		);
 	} finally {
 		live.connection.disconnect();
 		await live.connection.done;
 	}
 	assert.equal(live.cancelled(), true);
-	assert.equal(live.calls.filter((call) => call.options.method === "DELETE").length, 1);
+	assert.equal(
+		live.calls.filter((call) => call.options.method === "DELETE").length,
+		1,
+	);
 	assert.equal(live.calls.at(-1)?.options.keepalive, true);
 	assert.equal(live.states.at(-1)?.status, "disconnected");
 });
@@ -126,11 +144,16 @@ test("the connection executes in the supplied drawing and awaits each acknowledg
 test("queued commands expire while waiting for an earlier acknowledgement", async () => {
 	const firstAck = deferred<Response>();
 	const live = bridge({
-		acknowledge: (id) => id === "first" ? firstAck.promise : Promise.resolve(new Response(null, { status: 204 })),
+		acknowledge: (id) =>
+			id === "first"
+				? firstAck.promise
+				: Promise.resolve(new Response(null, { status: 204 })),
 	});
 	try {
 		await until(() => live.states.at(-1)?.status === "connected");
-		live.send(`${JSON.stringify(envelope("first"))}\n${JSON.stringify(envelope("expired", 200))}\n`);
+		live.send(
+			`${JSON.stringify(envelope("first"))}\n${JSON.stringify(envelope("expired", 200))}\n`,
+		);
 		await until(() => live.replies.length === 1);
 		live.setTime(300);
 		firstAck.resolve(new Response(null, { status: 204 }));
@@ -138,7 +161,10 @@ test("queued commands expire while waiting for an earlier acknowledgement", asyn
 		assert.equal(live.store.getSnapshot().shapes.length, 1);
 		assert.deepEqual(live.replies[1].reply, {
 			ok: false,
-			error: { code: "CommandExpired", message: "The drawing command expired before execution." },
+			error: {
+				code: "CommandExpired",
+				message: "The drawing command expired before execution.",
+			},
 		});
 	} finally {
 		live.connection.disconnect();
@@ -154,32 +180,54 @@ test("a repeated request stops the stream without replaying its mutation", async
 	await live.connection.done;
 	assert.equal(live.store.getSnapshot().shapes.length, 1);
 	assert.equal(live.replies.length, 1);
-	assert.deepEqual(live.states.at(-1), { status: "error", message: "The MCP server repeated a command." });
+	assert.deepEqual(live.states.at(-1), {
+		status: "error",
+		message: "The MCP server repeated a command.",
+	});
 	assert.equal(live.cancelled(), true);
-	assert.equal(live.calls.filter((call) => call.url.endsWith("/api/editor-mcp")).length, 1);
+	assert.equal(
+		live.calls.filter((call) => call.url.endsWith("/api/editor-mcp")).length,
+		1,
+	);
 });
 
 test("an acknowledgement failure preserves one committed mutation and never retries", async () => {
 	const live = bridge({
-		acknowledge: async () => Response.json({ error: { code: "Offline", message: "Editor disconnected." } }, { status: 410 }),
+		acknowledge: async () =>
+			Response.json(
+				{ error: { code: "Offline", message: "Editor disconnected." } },
+				{ status: 410 },
+			),
 	});
 	await until(() => live.states.at(-1)?.status === "connected");
-	live.send(`${JSON.stringify(envelope("first"))}\n${JSON.stringify(envelope("second"))}\n`);
+	live.send(
+		`${JSON.stringify(envelope("first"))}\n${JSON.stringify(envelope("second"))}\n`,
+	);
 	await live.connection.done;
 	assert.equal(live.store.getSnapshot().shapes.length, 1);
 	assert.equal(live.replies.length, 1);
-	assert.deepEqual(live.states.at(-1), { status: "error", message: "Editor disconnected." });
+	assert.deepEqual(live.states.at(-1), {
+		status: "error",
+		message: "Editor disconnected.",
+	});
 	assert.equal(live.cancelled(), true);
 });
 
 test("disconnect interrupts an acknowledgement and prevents later queued mutations", async () => {
 	const live = bridge({
-		acknowledge: (_, signal) => new Promise((_, reject) => {
-			signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
-		}),
+		acknowledge: (_, signal) =>
+			new Promise((_, reject) => {
+				signal.addEventListener(
+					"abort",
+					() => reject(new DOMException("Aborted", "AbortError")),
+					{ once: true },
+				);
+			}),
 	});
 	await until(() => live.states.at(-1)?.status === "connected");
-	live.send(`${JSON.stringify(envelope("first"))}\n${JSON.stringify(envelope("second"))}\n`);
+	live.send(
+		`${JSON.stringify(envelope("first"))}\n${JSON.stringify(envelope("second"))}\n`,
+	);
 	await until(() => live.replies.length === 1);
 	live.connection.disconnect();
 	live.connection.disconnect();
@@ -187,7 +235,10 @@ test("disconnect interrupts an acknowledgement and prevents later queued mutatio
 	assert.equal(live.store.getSnapshot().shapes.length, 1);
 	assert.equal(live.replies.length, 1);
 	assert.equal(live.cancelled(), true);
-	assert.equal(live.calls.filter((call) => call.options.method === "DELETE").length, 1);
+	assert.equal(
+		live.calls.filter((call) => call.options.method === "DELETE").length,
+		1,
+	);
 });
 
 test("disconnect during session creation deletes late credentials without opening a stream", async () => {
@@ -197,7 +248,10 @@ test("disconnect during session creation deletes late credentials without openin
 	live.connection.disconnect();
 	creation.resolve(Response.json(credentials));
 	await live.connection.done;
-	assert.deepEqual(live.calls.map((call) => call.options.method), ["POST", "DELETE"]);
+	assert.deepEqual(
+		live.calls.map((call) => call.options.method),
+		["POST", "DELETE"],
+	);
 	assert.equal(live.states.at(-1)?.status, "disconnected");
 	assert.equal(live.store.getSnapshot().shapes.length, 0);
 });
@@ -206,23 +260,40 @@ test("invalid envelopes and disconnected streams stop without creating a replace
 	for (const invalid of [true, false]) {
 		const live = bridge();
 		await until(() => live.states.at(-1)?.status === "connected");
-		if (invalid) live.send('{"requestId":"invalid","operation":{"type":"placeRectangle"}}\n');
+		if (invalid)
+			live.send(
+				'{"requestId":"invalid","operation":{"type":"placeRectangle"}}\n',
+			);
 		else live.close();
 		await live.connection.done;
 		assert.equal(live.store.getSnapshot().shapes.length, 0);
 		assert.equal(live.replies.length, 0);
 		assert.equal(live.states.at(-1)?.status, "error");
-		assert.equal(live.calls.filter((call) => call.url.endsWith("/api/editor-mcp")).length, 1);
-		assert.equal(live.calls.filter((call) => call.options.method === "DELETE").length, 1);
+		assert.equal(
+			live.calls.filter((call) => call.url.endsWith("/api/editor-mcp")).length,
+			1,
+		);
+		assert.equal(
+			live.calls.filter((call) => call.options.method === "DELETE").length,
+			1,
+		);
 	}
 });
 
 test("a refused session reports the server's limit and opens no stream", async () => {
-	const message = "Too many editor connections from this network. Disable MCP in another drawing and try again.";
+	const message =
+		"Too many editor connections from this network. Disable MCP in another drawing and try again.";
 	const live = bridge({
-		create: async () => Response.json({ error: { code: "ClientSessionLimit", message } }, { status: 429 }),
+		create: async () =>
+			Response.json(
+				{ error: { code: "ClientSessionLimit", message } },
+				{ status: 429 },
+			),
 	});
 	await live.connection.done;
 	assert.deepEqual(live.states.at(-1), { status: "error", message });
-	assert.deepEqual(live.calls.map((call) => call.options.method), ["POST"]);
+	assert.deepEqual(
+		live.calls.map((call) => call.options.method),
+		["POST"],
+	);
 });

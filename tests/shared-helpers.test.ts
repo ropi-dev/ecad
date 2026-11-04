@@ -39,15 +39,25 @@ test("long union chains stay correct after path halving", () => {
 	const sets = unionFind(size);
 	for (let index = 1; index < size; index++) sets.union(index - 1, index);
 	const root = sets.find(0);
-	for (let index = 0; index < size; index += 997) assert.equal(sets.find(index), root);
+	for (let index = 0; index < size; index += 997)
+		assert.equal(sets.find(index), root);
 });
 
 test("error messages prefer the thrown Error and fall back otherwise", () => {
-	assert.equal(errorMessage(new Error("Disk full"), "Unable to save."), "Disk full");
-	assert.equal(errorMessage(new TypeError("Bad type"), "Unable to save."), "Bad type");
+	assert.equal(
+		errorMessage(new Error("Disk full"), "Unable to save."),
+		"Disk full",
+	);
+	assert.equal(
+		errorMessage(new TypeError("Bad type"), "Unable to save."),
+		"Bad type",
+	);
 	assert.equal(errorMessage("offline", "Unable to save."), "Unable to save.");
 	assert.equal(errorMessage(undefined, "Unable to save."), "Unable to save.");
-	assert.equal(errorMessage({ message: "not an Error" }, "Unable to save."), "Unable to save.");
+	assert.equal(
+		errorMessage({ message: "not an Error" }, "Unable to save."),
+		"Unable to save.",
+	);
 	assert.equal(errorMessage("offline"), "offline");
 	assert.equal(errorMessage(42), "42");
 	assert.equal(errorMessage(new Error("")), "");

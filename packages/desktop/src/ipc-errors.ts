@@ -21,8 +21,7 @@ export function decodeIpcError(cause: unknown): unknown {
 				JSON.parse(cause.message.slice(index + marker.length)),
 			);
 			if (revived) return revived;
-		} catch {
-		}
+		} catch {}
 	}
 	const message = cause.message.replace(remotePrefix, "");
 	return message === cause.message ? cause : new Error(message, { cause });

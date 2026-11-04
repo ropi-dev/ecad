@@ -57,7 +57,9 @@ export function createWebSymbolLibraryStorage(
 				if (temporaryConfiguration !== undefined)
 					return parseSymbolConfig(temporaryConfiguration);
 				const saved = browserStorage().getItem(USER_SYMBOL_CONFIG_KEY);
-				return saved === null ? defaultSymbolConfig() : parseSymbolConfig(saved);
+				return saved === null
+					? defaultSymbolConfig()
+					: parseSymbolConfig(saved);
 			} catch {
 				throw new Error(
 					"Saved symbols could not be loaded. You can upload a library again.",

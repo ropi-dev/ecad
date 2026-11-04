@@ -39,17 +39,27 @@ afterEach(() => {
 
 test("typing targets include form controls and every content-editable element", () => {
 	for (const tag of ["INPUT", "TEXTAREA", "SELECT"])
-		assert.equal(isEditableTarget({ target: new FakeElement(tag) as never }), true, tag);
+		assert.equal(
+			isEditableTarget({ target: new FakeElement(tag) as never }),
+			true,
+			tag,
+		);
 	const editor = new FakeElement("DIV", true);
 	assert.equal(isEditableTarget({ target: editor as never }), true);
 	assert.equal(
-		isEditableTarget({ target: new FakeElement("SPAN", true, editor) as never }),
+		isEditableTarget({
+			target: new FakeElement("SPAN", true, editor) as never,
+		}),
 		true,
 		"elements inside an editing host inherit isContentEditable",
 	);
 	assert.equal(
 		isEditableTarget({
-			target: new FakeElement("OPTION", false, new FakeElement("SELECT")) as never,
+			target: new FakeElement(
+				"OPTION",
+				false,
+				new FakeElement("SELECT"),
+			) as never,
 		}),
 		true,
 	);
@@ -57,7 +67,11 @@ test("typing targets include form controls and every content-editable element", 
 
 test("buttons, canvases, non-elements and missing targets are not typing targets", () => {
 	for (const tag of ["BUTTON", "DIV", "BODY"])
-		assert.equal(isEditableTarget({ target: new FakeElement(tag) as never }), false, tag);
+		assert.equal(
+			isEditableTarget({ target: new FakeElement(tag) as never }),
+			false,
+			tag,
+		);
 	assert.equal(isEditableTarget({ target: null }), false);
 	assert.equal(
 		isEditableTarget({ target: { closest: () => ({}) } as never }),
@@ -83,7 +97,12 @@ test("arrow deltas follow screen coordinates by default and flip y for drawing c
 });
 
 test("history keys undo with Ctrl or Cmd+Z and redo with Shift+Z or Y", () => {
-	const press = (key: string, modifiers: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) => {
+	const press = (
+		key: string,
+		modifiers: Partial<
+			Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>
+		> = {},
+	) => {
 		const calls: string[] = [];
 		const event = {
 			key,
@@ -100,11 +119,26 @@ test("history keys undo with Ctrl or Cmd+Z and redo with Shift+Z or Y", () => {
 		});
 		return { handled, calls };
 	};
-	assert.deepEqual(press("z", { ctrlKey: true }), { handled: true, calls: ["undo", "prevented"] });
-	assert.deepEqual(press("z", { metaKey: true }), { handled: true, calls: ["undo", "prevented"] });
-	assert.deepEqual(press("Z", { ctrlKey: true, shiftKey: true }), { handled: true, calls: ["redo", "prevented"] });
-	assert.deepEqual(press("y", { ctrlKey: true }), { handled: true, calls: ["redo", "prevented"] });
-	assert.deepEqual(press("Y", { metaKey: true }), { handled: true, calls: ["redo", "prevented"] });
+	assert.deepEqual(press("z", { ctrlKey: true }), {
+		handled: true,
+		calls: ["undo", "prevented"],
+	});
+	assert.deepEqual(press("z", { metaKey: true }), {
+		handled: true,
+		calls: ["undo", "prevented"],
+	});
+	assert.deepEqual(press("Z", { ctrlKey: true, shiftKey: true }), {
+		handled: true,
+		calls: ["redo", "prevented"],
+	});
+	assert.deepEqual(press("y", { ctrlKey: true }), {
+		handled: true,
+		calls: ["redo", "prevented"],
+	});
+	assert.deepEqual(press("Y", { metaKey: true }), {
+		handled: true,
+		calls: ["redo", "prevented"],
+	});
 	for (const [key, modifiers] of [
 		["z", {}],
 		["y", {}],
@@ -112,5 +146,9 @@ test("history keys undo with Ctrl or Cmd+Z and redo with Shift+Z or Y", () => {
 		["y", { ctrlKey: true, shiftKey: true }],
 		["x", { ctrlKey: true }],
 	] as const)
-		assert.deepEqual(press(key, modifiers), { handled: false, calls: [] }, `${key} ${JSON.stringify(modifiers)}`);
+		assert.deepEqual(
+			press(key, modifiers),
+			{ handled: false, calls: [] },
+			`${key} ${JSON.stringify(modifiers)}`,
+		);
 });

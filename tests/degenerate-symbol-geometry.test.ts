@@ -127,8 +127,24 @@ test("a symbol whose children are all degenerate renders nothing without failing
 		height: 4,
 		lineWidth: 0.2,
 		children: [
-			{ kind: "line", x: 0, y: 0, width: 0, height: 1, rotation: 0, lineWidth: 0.2 },
-			{ kind: "wire", x: 0, y: 1, width: 2, height: 1, rotation: 0, lineWidth: 0 },
+			{
+				kind: "line",
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 1,
+				rotation: 0,
+				lineWidth: 0.2,
+			},
+			{
+				kind: "wire",
+				x: 0,
+				y: 1,
+				width: 2,
+				height: 1,
+				rotation: 0,
+				lineWidth: 0,
+			},
 		],
 	});
 	try {

@@ -30,9 +30,15 @@ test("desktop storage delegates only symbol operations to the preload bridge", a
 test("desktop bridge errors reach the shared editor", async () => {
 	const failure = new Error("The directory is unreadable.");
 	const storage = createDesktopSymbolLibraryStorage({
-		async load() { throw failure; },
-		async save() { throw failure; },
-		async openDirectory() { throw failure; },
+		async load() {
+			throw failure;
+		},
+		async save() {
+			throw failure;
+		},
+		async openDirectory() {
+			throw failure;
+		},
 	});
 	await assert.rejects(storage.load(), failure);
 	await assert.rejects(storage.save([], []), failure);
@@ -42,39 +48,87 @@ test("desktop bridge errors reach the shared editor", async () => {
 });
 
 test("desktop configuration and scoped directory reads use the existing preload bridge", async () => {
- const { defaultSymbolConfig } = await import("@ecad/core/symbol-library/config.ts");
- const config = defaultSymbolConfig();
- const calls: unknown[] = [];
- const storage = createDesktopSymbolLibraryStorage({
-  async load() { return { symbols: [] }; },
-  async save() { return "Legacy save"; },
-  async openDirectory() { return null; },
-  async loadConfiguration() { calls.push("loadConfiguration"); return config; },
-  async saveConfiguration(next) { calls.push(["saveConfiguration", next]); return "Saved config"; },
-  async openLibraryDirectory(name) { calls.push(["openLibraryDirectory", name]); return null; },
-  async loadDirectory(path, scope, directory) { calls.push(["loadDirectory", path, scope, directory]); return []; },
- });
- assert.equal(await storage.loadConfiguration!(), config);
- assert.equal(await storage.saveConfiguration!(config), "Saved config");
- assert.equal(await storage.openLibraryDirectory!("Project parts"), null);
- assert.deepEqual(await storage.loadDirectory!("libraries", "project", "/project"), []);
- assert.deepEqual(calls, ["loadConfiguration", ["saveConfiguration", config], ["openLibraryDirectory", "Project parts"], ["loadDirectory", "libraries", "project", "/project"]]);
+	const { defaultSymbolConfig } = await import(
+		"@ecad/core/symbol-library/config.ts"
+	);
+	const config = defaultSymbolConfig();
+	const calls: unknown[] = [];
+	const storage = createDesktopSymbolLibraryStorage({
+		async load() {
+			return { symbols: [] };
+		},
+		async save() {
+			return "Legacy save";
+		},
+		async openDirectory() {
+			return null;
+		},
+		async loadConfiguration() {
+			calls.push("loadConfiguration");
+			return config;
+		},
+		async saveConfiguration(next) {
+			calls.push(["saveConfiguration", next]);
+			return "Saved config";
+		},
+		async openLibraryDirectory(name) {
+			calls.push(["openLibraryDirectory", name]);
+			return null;
+		},
+		async loadDirectory(path, scope, directory) {
+			calls.push(["loadDirectory", path, scope, directory]);
+			return [];
+		},
+	});
+	assert.equal(await storage.loadConfiguration!(), config);
+	assert.equal(await storage.saveConfiguration!(config), "Saved config");
+	assert.equal(await storage.openLibraryDirectory!("Project parts"), null);
+	assert.deepEqual(
+		await storage.loadDirectory!("libraries", "project", "/project"),
+		[],
+	);
+	assert.deepEqual(calls, [
+		"loadConfiguration",
+		["saveConfiguration", config],
+		["openLibraryDirectory", "Project parts"],
+		["loadDirectory", "libraries", "project", "/project"],
+	]);
 });
 
 test("desktop library writes invalidate subscribers, but reads and failed writes do not", async () => {
- const { defaultSymbolConfig } = await import("@ecad/core/symbol-library/config.ts");
- let fail = false;
- const storage = createDesktopSymbolLibraryStorage({
- async load() {return {symbols: []};},
- async save() {if (fail) throw new Error("Disk full"); return "Saved";},
- async openDirectory() {return null;},
- async saveConfiguration() {return "Saved";},
- });
- let updates = 0;
- const stop = storage.subscribe!(() => {updates++;});
- await storage.load(); assert.equal(updates, 0);
- await storage.save([], []); assert.equal(updates, 1);
- await storage.saveConfiguration!(defaultSymbolConfig()); assert.equal(updates, 2);
- fail = true; await assert.rejects(storage.save([], []), /Disk full/); assert.equal(updates, 2);
- stop(); await storage.saveConfiguration!(defaultSymbolConfig()); assert.equal(updates, 2);
+	const { defaultSymbolConfig } = await import(
+		"@ecad/core/symbol-library/config.ts"
+	);
+	let fail = false;
+	const storage = createDesktopSymbolLibraryStorage({
+		async load() {
+			return { symbols: [] };
+		},
+		async save() {
+			if (fail) throw new Error("Disk full");
+			return "Saved";
+		},
+		async openDirectory() {
+			return null;
+		},
+		async saveConfiguration() {
+			return "Saved";
+		},
+	});
+	let updates = 0;
+	const stop = storage.subscribe!(() => {
+		updates++;
+	});
+	await storage.load();
+	assert.equal(updates, 0);
+	await storage.save([], []);
+	assert.equal(updates, 1);
+	await storage.saveConfiguration!(defaultSymbolConfig());
+	assert.equal(updates, 2);
+	fail = true;
+	await assert.rejects(storage.save([], []), /Disk full/);
+	assert.equal(updates, 2);
+	stop();
+	await storage.saveConfiguration!(defaultSymbolConfig());
+	assert.equal(updates, 2);
 });

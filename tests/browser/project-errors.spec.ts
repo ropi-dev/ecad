@@ -81,7 +81,8 @@ async function readProjectFile(page: Page, path: string) {
 		).getDirectoryHandle(name);
 		const parts = path.split("/");
 		const filename = parts.pop() as string;
-		for (const part of parts) directory = await directory.getDirectoryHandle(part);
+		for (const part of parts)
+			directory = await directory.getDirectoryHandle(part);
 		return (await (await directory.getFileHandle(filename)).getFile()).text();
 	}, path);
 }
@@ -90,13 +91,20 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
 	await openSchematic(page);
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).shapes).toHaveLength(1);
 
-	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	await editProjectFile(
+		page,
+		".ecadprj",
+		"\n# Edited in another tab\n",
+		"append",
+	);
 	await page.evaluate(() => {
 		const counts = { manifestReads: 0, writes: 0 };
 		Object.assign(window, { projectFileAccess: counts });
@@ -114,9 +122,11 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	const access = () =>
 		page.evaluate(
 			() =>
-				(window as unknown as {
-					projectFileAccess: { manifestReads: number; writes: number };
-				}).projectFileAccess,
+				(
+					window as unknown as {
+						projectFileAccess: { manifestReads: number; writes: number };
+					}
+				).projectFileAccess,
 		);
 
 	await drawRectangle(page, 40);
@@ -133,17 +143,19 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	expect((await documentState(page)).dirty).toBe(true);
 	expect((await documentState(page)).shapes).toHaveLength(2);
 	await expect(
-		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+		page
+			.getByRole("alert")
+			.filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
 	await screenshot(page, "project-conflict.png");
 
 	const afterConflict = await access();
 	expect(afterConflict.writes).toBe(0);
 	await drawRectangle(page, 80);
-	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(3);
-	await page.evaluate(
-		() => new Promise((resolve) => setTimeout(resolve, 300)),
-	);
+	await expect
+		.poll(async () => (await documentState(page)).shapes.length)
+		.toBe(3);
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
 	expect(await access()).toEqual(afterConflict);
 	await expect(notice).toBeVisible();
 	await expect(notice).toContainText(
@@ -157,7 +169,9 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	await switchView.click();
 	await expect(switchView).toBeEnabled();
 	await expect(
-		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+		page
+			.getByRole("alert")
+			.filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
 	expect(await access()).toEqual(afterConflict);
 	expect((await documentState(page)).shapes).toHaveLength(3);
@@ -169,12 +183,16 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 		.click();
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
 	await expect(
-		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+		page
+			.getByRole("alert")
+			.filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
 	expect(await access()).toEqual(afterConflict);
 	await closeProjectFiles(page);
 
-	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await notice
+		.getByRole("button", { name: "Reload from disk", exact: true })
+		.click();
 	await expect(notice).toHaveCount(0);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).shapes).toHaveLength(1);
@@ -183,7 +201,9 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled();
 	await drawRectangle(page, 40);
-	await expect.poll(async () => (await documentState(page)).shapes.length).toBe(2);
+	await expect
+		.poll(async () => (await documentState(page)).shapes.length)
+		.toBe(2);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect(await readProjectFile(page, ".ecadprj")).not.toContain(
 		"Edited in another tab",
@@ -194,8 +214,15 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
-	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
+	await editProjectFile(
+		page,
+		".ecadprj",
+		"\n# Edited in another tab\n",
+		"append",
+	);
 	const notice = page.getByRole("alert").filter({
 		hasText: "This project changed on disk",
 	});
@@ -204,7 +231,9 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 		.filter({ hasText: "Reload it from disk before saving" });
 
 	await openProjectActions(page);
-	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await page
+		.getByRole("menuitem", { name: "Save project", exact: true })
+		.click();
 	await expect(notice).toBeVisible();
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
 	await expect(notice).not.toContainText("Your unsaved changes");
@@ -224,9 +253,7 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 		});
 	await expect
 		.poll(() =>
-			page.evaluate(
-				() => !document.querySelector('[aria-busy="true"]'),
-			),
+			page.evaluate(() => !document.querySelector('[aria-busy="true"]')),
 		)
 		.toBe(true);
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
@@ -263,7 +290,9 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	await expect(repeated).toHaveCount(0);
 	await expect(notice).toBeVisible();
 	expect((await documentState(page)).symbols).toEqual([]);
-	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await notice
+		.getByRole("button", { name: "Reload from disk", exact: true })
+		.click();
 	await expect(notice).toHaveCount(0);
 });
 
@@ -271,7 +300,9 @@ test("creating a project from one with a conflict carries its assets and leaves 
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
 	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files", { exact: true })
 		.setInputFiles({
@@ -286,12 +317,19 @@ test("creating a project from one with a conflict carries its assets and leaves 
 	const original = await page.evaluate(() =>
 		localStorage.getItem("ecad.active-project"),
 	);
-	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	await editProjectFile(
+		page,
+		".ecadprj",
+		"\n# Edited in another tab\n",
+		"append",
+	);
 	const notice = page.getByRole("alert").filter({
 		hasText: "This project changed on disk",
 	});
 	await openProjectActions(page);
-	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await page
+		.getByRole("menuitem", { name: "Save project", exact: true })
+		.click();
 	await expect(notice).toBeVisible();
 
 	await openProjectActions(page);
@@ -299,7 +337,9 @@ test("creating a project from one with a conflict carries its assets and leaves 
 		.getByRole("menuitem", { name: "New untitled project", exact: true })
 		.click();
 	await expect
-		.poll(() => page.evaluate(() => localStorage.getItem("ecad.active-project")))
+		.poll(() =>
+			page.evaluate(() => localStorage.getItem("ecad.active-project")),
+		)
 		.not.toBe(original);
 	await expect(notice).toHaveCount(0);
 	await expect
@@ -307,7 +347,9 @@ test("creating a project from one with a conflict carries its assets and leaves 
 		.toBe(1);
 	expect((await documentState(page)).dirty).toBe(false);
 	await expect(
-		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+		page
+			.getByRole("alert")
+			.filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
 });
 
@@ -315,7 +357,9 @@ test("a conflict found by a new project's first save shows the notice", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
 	await openSchematic(page);
 	await drawRectangle(page);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
@@ -334,9 +378,7 @@ test("a conflict found by a new project's first save shows the notice", async ({
 			FileSystemFileHandle.prototype.createWritable = createWritable;
 			const write = writable.write.bind(writable);
 			writable.write = async (data: FileSystemWriteChunkType) =>
-				write(
-					new Blob([data as BlobPart, "\n# Edited in another window\n"]),
-				);
+				write(new Blob([data as BlobPart, "\n# Edited in another window\n"]));
 			return writable;
 		};
 	}, original);
@@ -345,7 +387,9 @@ test("a conflict found by a new project's first save shows the notice", async ({
 		.getByRole("menuitem", { name: "New untitled project", exact: true })
 		.click();
 	await expect
-		.poll(() => page.evaluate(() => localStorage.getItem("ecad.active-project")))
+		.poll(() =>
+			page.evaluate(() => localStorage.getItem("ecad.active-project")),
+		)
 		.not.toBe(original);
 	const notice = page.getByRole("alert").filter({
 		hasText: "This project changed on disk",
@@ -354,7 +398,9 @@ test("a conflict found by a new project's first save shows the notice", async ({
 	await expect(notice).toContainText("Your unsaved changes are still here.");
 	expect((await documentState(page)).dirty).toBe(true);
 	expect((await documentState(page)).shapes).toHaveLength(1);
-	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await notice
+		.getByRole("button", { name: "Reload from disk", exact: true })
+		.click();
 	await expect(notice).toHaveCount(0);
 });
 
@@ -363,7 +409,9 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 }) => {
 	await page.setViewportSize({ width: 1440, height: 1000 });
 	await page.goto("/tests/browser/projects.html");
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
 	const manifest = await readProjectFile(page, ".ecadprj");
 	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
 	if (!drawing) throw new Error("The project has no drawing.");
@@ -401,10 +449,14 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 		"json",
 	);
 	await page.reload();
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
 	await openSchematic(page);
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
-	await page.getByRole("button", { name: "Insert QA part", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert QA part", exact: true })
+		.click();
 	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
 	await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
@@ -412,7 +464,12 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 	);
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 
-	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	await editProjectFile(
+		page,
+		".ecadprj",
+		"\n# Edited in another tab\n",
+		"append",
+	);
 	await (await toolbarButton(page, "Rectangle")).click();
 	await page.mouse.move(450, 350);
 	await page.mouse.down();
@@ -428,9 +485,13 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 		"Your unsaved changes are still here. Reloading from disk discards them.",
 	);
 	await expect(
-		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+		page
+			.getByRole("alert")
+			.filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
-	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await notice
+		.getByRole("button", { name: "Reload from disk", exact: true })
+		.click();
 	await expect(notice).toHaveCount(0);
 	await expect(page.getByRole("heading", { level: 1 })).toContainText(
 		"Schematic editor",
@@ -519,8 +580,18 @@ for (const { name, libraries, part } of [
 								library: { scope: "project", id: part.library },
 							},
 							pins: [
-								{ id: "r1-1", name: "1", number: "1", electricalType: "passive" },
-								{ id: "r1-2", name: "2", number: "2", electricalType: "passive" },
+								{
+									id: "r1-1",
+									name: "1",
+									number: "1",
+									electricalType: "passive",
+								},
+								{
+									id: "r1-2",
+									name: "2",
+									number: "2",
+									electricalType: "passive",
+								},
 							],
 						},
 					],
@@ -638,7 +709,13 @@ for (const {
 		const amp = symbolFile("amp", [
 			{ kind: "pin", name: "IN", x: -5, y: 0 },
 			{ kind: "pin", name: "GND", x: 0, y: 5 },
-			{ kind: "symbol", library: childLibrary, definitionId: "core", x: 0, y: 0 },
+			{
+				kind: "symbol",
+				library: childLibrary,
+				definitionId: "core",
+				x: 0,
+				y: 0,
+			},
 		]);
 		const coreDefinition = {
 			...libraryDefinitions([core])[0],
@@ -716,11 +793,15 @@ for (const {
 		await openSchematic(page);
 		await drawRectangle(page, 120);
 		if (keepChild) {
-			await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
+			await expect
+				.poll(async () => (await documentState(page)).dirty)
+				.toBe(false);
 			const saved = JSON.parse(
 				await readProjectFile(
 					page,
-					/^drawing = "(.+)"$/m.exec(await readProjectFile(page, ".ecadprj"))![1],
+					/^drawing = "(.+)"$/m.exec(
+						await readProjectFile(page, ".ecadprj"),
+					)![1],
 				),
 			);
 			expect(saved.shapes).toHaveLength(2);

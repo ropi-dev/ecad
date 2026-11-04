@@ -16,10 +16,28 @@ const blocked = (path: unknown) => {
 	return name !== undefined && hidden.has(name);
 };
 const denied = (path: unknown) =>
-	Object.assign(new Error(`EACCES: permission denied, '${path}'`), { code: "EACCES" });
+	Object.assign(new Error(`EACCES: permission denied, '${path}'`), {
+		code: "EACCES",
+	});
 const { readFile, readlink } = fs.promises;
-fs.promises.readFile = ((path: Parameters<typeof readFile>[0], ...rest: unknown[]) =>
-	blocked(path) ? Promise.reject(denied(path)) : (readFile as (...args: unknown[]) => unknown)(path, ...rest)) as typeof readFile;
-fs.promises.readlink = ((path: Parameters<typeof readlink>[0], ...rest: unknown[]) =>
-	blocked(path) ? Promise.reject(denied(path)) : (readlink as (...args: unknown[]) => unknown)(path, ...rest)) as typeof readlink;
+fs.promises.readFile = ((
+	path: Parameters<typeof readFile>[0],
+	...rest: unknown[]
+) =>
+	blocked(path)
+		? Promise.reject(denied(path))
+		: (readFile as (...args: unknown[]) => unknown)(
+				path,
+				...rest,
+			)) as typeof readFile;
+fs.promises.readlink = ((
+	path: Parameters<typeof readlink>[0],
+	...rest: unknown[]
+) =>
+	blocked(path)
+		? Promise.reject(denied(path))
+		: (readlink as (...args: unknown[]) => unknown)(
+				path,
+				...rest,
+			)) as typeof readlink;
 syncBuiltinESMExports();

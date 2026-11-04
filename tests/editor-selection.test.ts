@@ -15,15 +15,30 @@ test("window selection requires the whole shape, with inclusive edges", () => {
 	assert.equal(containsSelection(shape, bounds), false);
 	assert.equal(intersectsSelection(shape, bounds), true);
 	assert.equal(containsSelection(shape, shapeBounds(shape)), true);
-	assert.equal(containsSelection(shape, { ...shapeBounds(shape), minY: 21 }), false);
+	assert.equal(
+		containsSelection(shape, { ...shapeBounds(shape), minY: 21 }),
+		false,
+	);
 });
 
 test("window selection accounts for rotated lines and circular bounds", () => {
 	const line = drawShape(1, "line", { x: 10, y: 20 }, { x: 30, y: 40 });
-	assert.equal(containsSelection(line, { minX: 9, maxX: 31, minY: 19, maxY: 41 }), true);
-	assert.equal(containsSelection(line, { minX: 15, maxX: 25, minY: 15, maxY: 45 }), false);
-	const circle = { ...drawShape(2, "circle", { x: 20, y: 30 }, { x: 25, y: 30 }), rotation: Math.PI / 4 };
-	assert.equal(containsSelection(circle, { minX: 15, maxX: 25, minY: 25, maxY: 35 }), true);
+	assert.equal(
+		containsSelection(line, { minX: 9, maxX: 31, minY: 19, maxY: 41 }),
+		true,
+	);
+	assert.equal(
+		containsSelection(line, { minX: 15, maxX: 25, minY: 15, maxY: 45 }),
+		false,
+	);
+	const circle = {
+		...drawShape(2, "circle", { x: 20, y: 30 }, { x: 25, y: 30 }),
+		rotation: Math.PI / 4,
+	};
+	assert.equal(
+		containsSelection(circle, { minX: 15, maxX: 25, minY: 25, maxY: 35 }),
+		true,
+	);
 });
 
 test("window selection includes all symbol labels at every quarter turn", () => {
@@ -42,7 +57,12 @@ test("window selection includes all symbol labels at every quarter turn", () => 
 		};
 		assert.equal(containsSelection(symbol, full), true);
 		const label = symbolTextShapes(symbol)[0];
-		const touch = { minX: label.x, maxX: label.x, minY: label.y, maxY: label.y };
+		const touch = {
+			minX: label.x,
+			maxX: label.x,
+			minY: label.y,
+			maxY: label.y,
+		};
 		assert.equal(intersectsSelection(symbol, touch), true);
 		assert.equal(containsSelection(symbol, touch), false);
 	}

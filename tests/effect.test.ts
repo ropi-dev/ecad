@@ -6,7 +6,10 @@ import { runEffect } from "#/lib/effect.ts";
 test("framework boundary preserves values and domain error identity", async () => {
 	assert.equal(await runEffect(Effect.succeed(42)), 42);
 	const failure = new Error("Invalid file");
-	await assert.rejects(runEffect(Effect.fail(failure)), (error) => error === failure);
+	await assert.rejects(
+		runEffect(Effect.fail(failure)),
+		(error) => error === failure,
+	);
 });
 
 test("pre-aborted requests never acquire resources", async () => {
@@ -15,7 +18,12 @@ test("pre-aborted requests never acquire resources", async () => {
 	controller.abort(reason);
 	let acquired = false;
 	await assert.rejects(
-		runEffect(Effect.sync(() => { acquired = true; }), controller.signal),
+		runEffect(
+			Effect.sync(() => {
+				acquired = true;
+			}),
+			controller.signal,
+		),
 		(error) => error === reason,
 	);
 	assert.equal(acquired, false);
@@ -26,15 +34,26 @@ test("cancellation releases resources before rejecting with the original reason"
 	const reason = new Error("Closed viewer");
 	let released = false;
 	const program = Effect.acquireUseRelease(
-		Effect.sync(() => { queueMicrotask(() => controller.abort(reason)); }),
+		Effect.sync(() => {
+			queueMicrotask(() => controller.abort(reason));
+		}),
 		() => Effect.never,
-		() => Effect.sync(() => { released = true; }),
+		() =>
+			Effect.sync(() => {
+				released = true;
+			}),
 	);
-	await assert.rejects(runEffect(program, controller.signal), (error) => error === reason);
+	await assert.rejects(
+		runEffect(program, controller.signal),
+		(error) => error === reason,
+	);
 	assert.equal(released, true);
 });
 
 test("unexpected defects remain distinguishable from expected failures", async () => {
 	const defect = new TypeError("Unexpected invariant");
-	await assert.rejects(runEffect(Effect.die(defect)), (error) => error === defect);
+	await assert.rejects(
+		runEffect(Effect.die(defect)),
+		(error) => error === defect,
+	);
 });

@@ -14,7 +14,10 @@ import {
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import type { Point } from "#/drawing/types.ts";
-import { buildWireCrossings, type WireCrossings } from "#/drawing/wire-crossings.ts";
+import {
+	buildWireCrossings,
+	type WireCrossings,
+} from "#/drawing/wire-crossings.ts";
 
 // The connection analyses use spatial indexes. These copies of the original
 // all-pairs scans define the expected results, including tolerance boundaries.
@@ -287,8 +290,11 @@ function randomDrawing(seed: number): EditorShape[] {
 		state = (state * 1664525 + 1013904223) % 4294967296;
 		return state / 4294967296;
 	};
-	const pick = <T>(items: readonly T[]) => items[Math.floor(random() * items.length)];
-	const nudges = [0, 0, 0, 0, 0.5e-4, -0.5e-4, 1e-4, -1e-4, 1.5e-4, -1.5e-4, 0.3];
+	const pick = <T>(items: readonly T[]) =>
+		items[Math.floor(random() * items.length)];
+	const nudges = [
+		0, 0, 0, 0, 0.5e-4, -0.5e-4, 1e-4, -1e-4, 1.5e-4, -1.5e-4, 0.3,
+	];
 	const coordinate = () => Math.round(random() * 16 - 8) * 1.27 + pick(nudges);
 	const point = () => ({ x: coordinate(), y: coordinate() });
 	const parts = ["resistor", "capacitor", "led", "connector-4"].map(
@@ -314,7 +320,8 @@ function randomDrawing(seed: number): EditorShape[] {
 				...createSymbol(id, pick(parts), start),
 				rotation: (Math.PI / 2) * Math.floor(random() * 4),
 			});
-		else if (kind < 0.88) shapes.push(drawShape(id, "no-connect", start, start));
+		else if (kind < 0.88)
+			shapes.push(drawShape(id, "no-connect", start, start));
 		else
 			shapes.push({
 				id,
@@ -339,19 +346,43 @@ test("indexed connection analyses match the all-pairs scans", () => {
 	for (let seed = 1; seed <= 400; seed++) {
 		const shapes = randomDrawing(seed);
 		const message = `seed ${seed}`;
-		assert.deepEqual(ids(openPins(shapes)), ids(referenceOpenPins(shapes)), message);
-		const near = { point: shapes[seed % shapes.length], tolerance: 2 };
 		assert.deepEqual(
-			ids(openPins(shapes, { point: { x: near.point.x, y: near.point.y }, tolerance: near.tolerance })),
-			ids(referenceOpenPins(shapes, { point: { x: near.point.x, y: near.point.y }, tolerance: near.tolerance })),
+			ids(openPins(shapes)),
+			ids(referenceOpenPins(shapes)),
 			message,
 		);
-		assert.deepEqual(ids(openWireEnds(shapes)), ids(referenceOpenWireEnds(shapes)), message);
+		const near = { point: shapes[seed % shapes.length], tolerance: 2 };
+		assert.deepEqual(
+			ids(
+				openPins(shapes, {
+					point: { x: near.point.x, y: near.point.y },
+					tolerance: near.tolerance,
+				}),
+			),
+			ids(
+				referenceOpenPins(shapes, {
+					point: { x: near.point.x, y: near.point.y },
+					tolerance: near.tolerance,
+				}),
+			),
+			message,
+		);
+		assert.deepEqual(
+			ids(openWireEnds(shapes)),
+			ids(referenceOpenWireEnds(shapes)),
+			message,
+		);
 		const junctions = wireJunctions(shapes);
 		const expected = referenceWireJunctions(shapes);
 		assert.deepEqual(
-			junctions.map(({ point, shapes }) => ({ point, ids: shapes.map(({ id }) => id) })),
-			expected.map(({ point, shapes }) => ({ point, ids: shapes.map(({ id }) => id) })),
+			junctions.map(({ point, shapes }) => ({
+				point,
+				ids: shapes.map(({ id }) => id),
+			})),
+			expected.map(({ point, shapes }) => ({
+				point,
+				ids: shapes.map(({ id }) => id),
+			})),
 			message,
 		);
 		const points = expected.map(({ point }) => point);
@@ -372,10 +403,15 @@ test("crossing lookups match the full scan for long wires and dense junction row
 		wire(3, 10, -1, 10, 1),
 		wire(4, 10.0002, -1, 10.0002, 1),
 		wire(5, -20, 0.00005, 20, 0.00005),
-		...Array.from({ length: 40 }, (_, index) => wire(6 + index, index * 0.7 - 14, -3, index * 0.7 - 14, 3)),
+		...Array.from({ length: 40 }, (_, index) =>
+			wire(6 + index, index * 0.7 - 14, -3, index * 0.7 - 14, 3),
+		),
 	];
 	const junctions: Point[] = [
-		...Array.from({ length: 30 }, (_, index) => ({ x: index * 0.9 - 13, y: 0 })),
+		...Array.from({ length: 30 }, (_, index) => ({
+			x: index * 0.9 - 13,
+			y: 0,
+		})),
 		{ x: 10.0001, y: 0.00009 },
 		{ x: 3, y: 0.0002 },
 	];
@@ -413,9 +449,10 @@ test("crossings stay exact and finish at very large coordinates", () => {
 		}
 	}
 	const far = wire(1, 0, 1e18 - 512, 0, 1e18 + 512);
-	assert.deepEqual([...buildWireCrossings([far, wire(2, -1, 1e18, 1, 1e18)], [])], [
-		...referenceWireCrossings([far, wire(2, -1, 1e18, 1, 1e18)], []),
-	]);
+	assert.deepEqual(
+		[...buildWireCrossings([far, wire(2, -1, 1e18, 1, 1e18)], [])],
+		[...referenceWireCrossings([far, wire(2, -1, 1e18, 1, 1e18)], [])],
+	);
 });
 
 test("symbol terminals are shared, frozen, and follow a moved symbol", () => {

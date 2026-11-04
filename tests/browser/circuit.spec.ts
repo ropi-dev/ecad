@@ -25,8 +25,15 @@ async function placeComponent(
 async function createCircuit(page: Page) {
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
-	await expect((await openProjectFiles(page)).getByRole("button", { name: "Add file", exact: true })).toBeEnabled();
+	await expect(
+		page.getByLabel("Workspace instructions", { exact: true }),
+	).toBeVisible();
+	await expect(
+		(await openProjectFiles(page)).getByRole("button", {
+			name: "Add file",
+			exact: true,
+		}),
+	).toBeEnabled();
 	await openProjectFiles(page);
 	await page.getByRole("button", { name: "Add file", exact: true }).click();
 	await page
@@ -65,7 +72,10 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	await createCircuit(page);
 	await placeComponent(page, "Resistor", { x: 300, y: 230 });
 	await placeComponent(page, "Resistor", { x: 650, y: 400 });
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	const initial = await state(page);
 	await dragPins(page, "R1.1", "R2.1");
 	await expect(page.locator("[data-connection-preview]")).toBeVisible();
@@ -111,57 +121,102 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	await dragPins(page, "R1.1", "R2.1");
 	await page.mouse.up();
 	expect(await state(page)).toEqual(merged);
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	const saved = await state(page);
 	expect(saved.circuit.nets).toEqual(merged.circuit.nets);
 	if (captureArtifacts)
 		await page.screenshot({
-			path: resolve("/tmp/ecad-shared-schematic/circuit-pin-drag-connected.png"),
+			path: resolve(
+				"/tmp/ecad-shared-schematic/circuit-pin-drag-connected.png",
+			),
 			fullPage: true,
 		});
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open LED driver.ecaddraw in circuit view", exact: true })
+		.getByRole("link", {
+			name: "Open LED driver.ecaddraw in circuit view",
+			exact: true,
+		})
 		.click();
 	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
 
-test("an autosave completing during a pin drag preserves the connection gesture", async ({page}) => {
+test("an autosave completing during a pin drag preserves the connection gesture", async ({
+	page,
+}) => {
 	await createCircuit(page);
-	await placeComponent(page, "Resistor", {x:300,y:230});
-	await expect.poll(async () => (await state(page)).circuit.components[0]?.schematicShapeId).toBeGreaterThan(0);
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await placeComponent(page, "Resistor", { x: 300, y: 230 });
+	await expect
+		.poll(
+			async () => (await state(page)).circuit.components[0]?.schematicShapeId,
+		)
+		.toBeGreaterThan(0);
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	await page.evaluate(() => {
-		const state = window as typeof window & {savePending?: boolean; releaseSave?: () => void};
+		const state = window as typeof window & {
+			savePending?: boolean;
+			releaseSave?: () => void;
+		};
 		const original = FileSystemFileHandle.prototype.createWritable;
 		let hold = true;
-		FileSystemFileHandle.prototype.createWritable = async function(options) {
+		FileSystemFileHandle.prototype.createWritable = async function (options) {
 			const writable = await original.call(this, options);
 			if (this.name === ".ecadprj" && hold) {
 				hold = false;
 				state.savePending = true;
-				await new Promise<void>(resolve => {state.releaseSave = () => {FileSystemFileHandle.prototype.createWritable = original; resolve();};});
+				await new Promise<void>((resolve) => {
+					state.releaseSave = () => {
+						FileSystemFileHandle.prototype.createWritable = original;
+						resolve();
+					};
+				});
 			}
 			return writable;
 		};
 	});
-	await placeComponent(page, "Resistor", {x:650,y:400});
-	await page.waitForFunction(() => (window as typeof window & {savePending?: boolean}).savePending);
+	await placeComponent(page, "Resistor", { x: 650, y: 400 });
+	await page.waitForFunction(
+		() => (window as typeof window & { savePending?: boolean }).savePending,
+	);
 	await dragPins(page, "R1.1", "R2.1");
 	await expect(page.locator("[data-connection-preview]")).toBeVisible();
-	await page.evaluate(() => (window as typeof window & {releaseSave: () => void}).releaseSave());
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await page.evaluate(() =>
+		(window as typeof window & { releaseSave: () => void }).releaseSave(),
+	);
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	await expect(page.locator("[data-connection-preview]")).toBeVisible();
 	await page.mouse.up();
-	await expect.poll(async () => (await state(page)).circuit.nets.length).toBe(1);
+	await expect
+		.poll(async () => (await state(page)).circuit.nets.length)
+		.toBe(1);
 	await dragPins(page, "R1.2", "R2.2");
 	await page.mouse.up();
-	await expect.poll(async () => (await state(page)).circuit.nets.length).toBe(2);
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await expect
+		.poll(async () => (await state(page)).circuit.nets.length)
+		.toBe(2);
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	const saved = (await state(page)).circuit;
-	if (process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({path:process.env.ECAD_SCREENSHOT_PATH});
+	if (process.env.ECAD_SCREENSHOT_PATH)
+		await page.screenshot({ path: process.env.ECAD_SCREENSHOT_PATH });
 	await page.reload();
-	await (await openProjectFiles(page)).getByRole("link", {name:"Open LED driver.ecaddraw in circuit view",exact:true}).click();
+	await (await openProjectFiles(page))
+		.getByRole("link", {
+			name: "Open LED driver.ecaddraw in circuit view",
+			exact: true,
+		})
+		.click();
 	expect((await state(page)).circuit).toEqual(saved);
 });
 
@@ -174,7 +229,9 @@ for (const tool of ["component", "net"] as const) {
 			exact: true,
 		});
 		if (tool === "component") {
-			await page.getByRole("button", { name: "Components", exact: true }).click();
+			await page
+				.getByRole("button", { name: "Components", exact: true })
+				.click();
 			await page
 				.getByRole("searchbox", { name: "Search components", exact: true })
 				.fill("Resistor");
@@ -245,59 +302,104 @@ for (const tool of ["component", "net"] as const) {
 	});
 }
 
-test("component picker excludes net symbols while retaining ordinary components", async ({ page }) => {
- await createCircuit(page);
- await page.getByRole("button", { name: "Components", exact: true }).click();
- const search = page.getByRole("searchbox", { name: "Search components", exact: true });
- for (const name of ["Ground", "VDD", "VCC"]) {
-  await search.fill(name);
-  await expect(page.getByRole("button", { name: `Place ${name}`, exact: true })).toHaveCount(0);
-  if (captureArtifacts && name === "Ground") await page.screenshot({ path: resolve("/tmp/ecad-browser-artifacts", test.info().testId, "circuit-net-symbol-filter.png") });
- }
- await search.fill("Resistor");
- await expect(page.getByRole("button", { name: "Place Resistor", exact: true })).toBeVisible();
+test("component picker excludes net symbols while retaining ordinary components", async ({
+	page,
+}) => {
+	await createCircuit(page);
+	await page.getByRole("button", { name: "Components", exact: true }).click();
+	const search = page.getByRole("searchbox", {
+		name: "Search components",
+		exact: true,
+	});
+	for (const name of ["Ground", "VDD", "VCC"]) {
+		await search.fill(name);
+		await expect(
+			page.getByRole("button", { name: `Place ${name}`, exact: true }),
+		).toHaveCount(0);
+		if (captureArtifacts && name === "Ground")
+			await page.screenshot({
+				path: resolve(
+					"/tmp/ecad-browser-artifacts",
+					test.info().testId,
+					"circuit-net-symbol-filter.png",
+				),
+			});
+	}
+	await search.fill("Resistor");
+	await expect(
+		page.getByRole("button", { name: "Place Resistor", exact: true }),
+	).toBeVisible();
 });
 
-test("net connections use a lighter highlight than the selected connection", async ({ page }) => {
- await createCircuit(page);
- await placeComponent(page, "Resistor", { x: 280, y: 200 });
- await placeComponent(page, "Resistor", { x: 620, y: 350 });
- await placeComponent(page, "Resistor", { x: 900, y: 500 });
- await dragPins(page, "R1.1", "R2.1");
- await page.mouse.up();
- await dragPins(page, "R2.2", "R3.1");
- await page.mouse.up();
- await page.getByRole("button", { name: "Collapse R2", exact: true }).click();
- const circuit = (await state(page)).circuit;
- const netButton = (index: number) => page.locator(`[data-circuit-net-id="${circuit.nets[index].id}"]`);
- const edge = (pin: string) => page.getByRole("button", { name: `Connection ${pin}`, exact: true }).locator(".circuit-edge");
- await netButton(0).click();
- await expect(edge("R1.1")).toHaveCSS("stroke", "rgb(184, 220, 213)");
- await expect(edge("R2.1")).toHaveClass(/is-highlighted/);
- await expect(edge("R3.1")).not.toHaveClass(/is-highlighted/);
- await expect(page.locator(".circuit-component.is-selected, .circuit-component.is-highlighted")).toHaveCount(0);
- await page.getByRole("button", { name: "Connection R1.1", exact: true }).focus();
- await page.keyboard.press("Space");
- await expect(edge("R1.1")).toHaveCSS("stroke", "rgb(232, 183, 126)");
- await expect(edge("R2.1")).toHaveCSS("stroke", "rgb(184, 220, 213)");
- if (process.env.ECAD_SCREENSHOT_PATH) await page.screenshot({ path: process.env.ECAD_SCREENSHOT_PATH });
- await netButton(1).click();
- await expect(edge("R1.1")).not.toHaveClass(/is-highlighted|is-selected/);
- await expect(edge("R2.2")).toHaveClass(/is-highlighted/);
- await expect(edge("R3.1")).toHaveClass(/is-highlighted/);
- await page.keyboard.press("Escape");
- await expect(page.locator(".circuit-edge.is-highlighted, .circuit-edge.is-selected")).toHaveCount(0);
+test("net connections use a lighter highlight than the selected connection", async ({
+	page,
+}) => {
+	await createCircuit(page);
+	await placeComponent(page, "Resistor", { x: 280, y: 200 });
+	await placeComponent(page, "Resistor", { x: 620, y: 350 });
+	await placeComponent(page, "Resistor", { x: 900, y: 500 });
+	await dragPins(page, "R1.1", "R2.1");
+	await page.mouse.up();
+	await dragPins(page, "R2.2", "R3.1");
+	await page.mouse.up();
+	await page.getByRole("button", { name: "Collapse R2", exact: true }).click();
+	const circuit = (await state(page)).circuit;
+	const netButton = (index: number) =>
+		page.locator(`[data-circuit-net-id="${circuit.nets[index].id}"]`);
+	const edge = (pin: string) =>
+		page
+			.getByRole("button", { name: `Connection ${pin}`, exact: true })
+			.locator(".circuit-edge");
+	await netButton(0).click();
+	await expect(edge("R1.1")).toHaveCSS("stroke", "rgb(184, 220, 213)");
+	await expect(edge("R2.1")).toHaveClass(/is-highlighted/);
+	await expect(edge("R3.1")).not.toHaveClass(/is-highlighted/);
+	await expect(
+		page.locator(
+			".circuit-component.is-selected, .circuit-component.is-highlighted",
+		),
+	).toHaveCount(0);
+	await page
+		.getByRole("button", { name: "Connection R1.1", exact: true })
+		.focus();
+	await page.keyboard.press("Space");
+	await expect(edge("R1.1")).toHaveCSS("stroke", "rgb(232, 183, 126)");
+	await expect(edge("R2.1")).toHaveCSS("stroke", "rgb(184, 220, 213)");
+	if (process.env.ECAD_SCREENSHOT_PATH)
+		await page.screenshot({ path: process.env.ECAD_SCREENSHOT_PATH });
+	await netButton(1).click();
+	await expect(edge("R1.1")).not.toHaveClass(/is-highlighted|is-selected/);
+	await expect(edge("R2.2")).toHaveClass(/is-highlighted/);
+	await expect(edge("R3.1")).toHaveClass(/is-highlighted/);
+	await page.keyboard.press("Escape");
+	await expect(
+		page.locator(".circuit-edge.is-highlighted, .circuit-edge.is-selected"),
+	).toHaveCount(0);
 });
 
-test("Ctrl+Y redoes circuit edits, and history keys typed into inputs stay with the input", async ({ page }) => {
+test("Ctrl+Y redoes circuit edits, and history keys typed into inputs stay with the input", async ({
+	page,
+}) => {
 	await createCircuit(page);
 	await placeComponent(page, "Resistor", { x: 300, y: 230 });
-	await expect.poll(async () => (await state(page)).circuit.components[0]?.schematicShapeId).toBeGreaterThan(0);
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await expect
+		.poll(
+			async () => (await state(page)).circuit.components[0]?.schematicShapeId,
+		)
+		.toBeGreaterThan(0);
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	const placed = await state(page);
 	const position = (document: typeof placed) =>
-		document.graph.positions.find((entry: { kind: string }) => entry.kind === "component");
-	const resistor = page.getByRole("button", { name: "Select component R1", exact: true });
+		document.graph.positions.find(
+			(entry: { kind: string }) => entry.kind === "component",
+		);
+	const resistor = page.getByRole("button", {
+		name: "Select component R1",
+		exact: true,
+	});
 	await resistor.focus();
 	await page.keyboard.press("ArrowRight");
 	await page.keyboard.press("ArrowDown");
@@ -314,7 +416,10 @@ test("Ctrl+Y redoes circuit edits, and history keys typed into inputs stay with 
 	await page.keyboard.press("Control+Shift+z");
 	expect(await state(page)).toEqual(moved);
 	await page.getByRole("button", { name: "Components", exact: true }).click();
-	const search = page.getByRole("searchbox", { name: "Search components", exact: true });
+	const search = page.getByRole("searchbox", {
+		name: "Search components",
+		exact: true,
+	});
 	await search.fill("Res");
 	await search.press("Control+z");
 	await search.press("Control+y");
@@ -322,7 +427,9 @@ test("Ctrl+Y redoes circuit edits, and history keys typed into inputs stay with 
 	expect(await state(page)).toEqual(moved);
 });
 
-test("fitting the circuit graph keeps a wide net label inside the fitted view", async ({ page }) => {
+test("fitting the circuit graph keeps a wide net label inside the fitted view", async ({
+	page,
+}) => {
 	await createCircuit(page);
 	await placeComponent(page, "Resistor", { x: 200, y: 230 });
 	const canvas = page.getByLabel("Circuit connections graph", { exact: true });
@@ -336,7 +443,10 @@ test("fitting the circuit graph keeps a wide net label inside the fitted view", 
 	await page.keyboard.press("Enter");
 	const net = page.getByRole("button", { name: `Net ${name}`, exact: true });
 	await expect(net).toBeVisible();
-	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
 	// The fitted viewBox, not just the canvas element, must hold the label:
 	// letterboxing can leave spare room beside a view that is too narrow.
 	const contained = async () => {
@@ -345,7 +455,10 @@ test("fitting the circuit graph keeps a wide net label inside the fitted view", 
 			const matrix = svg.getScreenCTM();
 			if (!matrix) throw new Error("Missing canvas transform.");
 			const start = new DOMPoint(box.x, box.y).matrixTransform(matrix);
-			const end = new DOMPoint(box.x + box.width, box.y + box.height).matrixTransform(matrix);
+			const end = new DOMPoint(
+				box.x + box.width,
+				box.y + box.height,
+			).matrixTransform(matrix);
 			return { left: start.x, top: start.y, right: end.x, bottom: end.y };
 		});
 		const label = await net.boundingBox();
@@ -360,13 +473,18 @@ test("fitting the circuit graph keeps a wide net label inside the fitted view", 
 	// Opening the circuit fits the whole graph, including the widest net label.
 	await page.reload();
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open LED driver.ecaddraw in circuit view", exact: true })
+		.getByRole("link", {
+			name: "Open LED driver.ecaddraw in circuit view",
+			exact: true,
+		})
 		.click();
 	await closeProjectFiles(page);
 	await expect(net).toBeVisible();
 	expect(await contained()).toBe(true);
 	if (captureArtifacts)
-		await page.screenshot({ path: "/tmp/ecad-shared-helpers/circuit-fit-wide-net.png" });
+		await page.screenshot({
+			path: "/tmp/ecad-shared-helpers/circuit-fit-wide-net.png",
+		});
 	await page.getByRole("button", { name: "Untangle", exact: true }).click();
 	await expect.poll(contained).toBe(true);
 });

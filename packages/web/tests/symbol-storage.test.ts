@@ -98,7 +98,10 @@ test("unreadable storage reports the load error while a later import can still s
 	});
 	await assert.rejects(storage.load(), { message: loadFailure });
 	const imported = symbol();
-	assert.equal(await storage.save([imported], [imported]), "Saved in this browser.");
+	assert.equal(
+		await storage.save([imported], [imported]),
+		"Saved in this browser.",
+	);
 	readable = true;
 	assert.deepEqual(await storage.load(), { symbols: [imported] });
 });
@@ -122,7 +125,10 @@ test("quota failures return a warning without rejecting the imported library", a
 });
 
 test("the browser storage getter is lazy and unavailable browser storage stays nonfatal on save", async () => {
-	const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+	const descriptor = Object.getOwnPropertyDescriptor(
+		globalThis,
+		"localStorage",
+	);
 	let accesses = 0;
 	Object.defineProperty(globalThis, "localStorage", {
 		configurable: true,
@@ -143,24 +149,39 @@ test("the browser storage getter is lazy and unavailable browser storage stays n
 		assert.deepEqual(await injected.load(), { symbols: [] });
 		assert.equal(accesses, 2);
 	} finally {
-		if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+		if (descriptor)
+			Object.defineProperty(globalThis, "localStorage", descriptor);
 		else Reflect.deleteProperty(globalThis, "localStorage");
 	}
 });
 
 test("user library configuration ignores the symbol cache and saves enabled libraries independently", async () => {
- const { USER_SYMBOL_CONFIG_KEY } = await import("@ecad/core/symbol-library/config.ts");
- const browser = memoryStorage(JSON.stringify([symbol()]));
- const storage = createWebSymbolLibraryStorage(browser);
- const config = await storage.loadConfiguration!();
- assert.equal(config.symbolLibraries.length, 1);
- assert.equal(browser.entries.has(USER_SYMBOL_CONFIG_KEY), false);
- const disabled = { ...config, symbolLibraries: config.symbolLibraries.map(library => ({ ...library, enabled: false })) };
- assert.equal(await storage.saveConfiguration!(disabled), "Saved in this browser.");
- assert.deepEqual(await createWebSymbolLibraryStorage(browser).loadConfiguration!(), disabled);
- assert.equal(browser.entries.has(SYMBOL_STORAGE_KEY), true);
- await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
- assert.deepEqual((await storage.loadConfiguration!()).symbolLibraries, []);
+	const { USER_SYMBOL_CONFIG_KEY } = await import(
+		"@ecad/core/symbol-library/config.ts"
+	);
+	const browser = memoryStorage(JSON.stringify([symbol()]));
+	const storage = createWebSymbolLibraryStorage(browser);
+	const config = await storage.loadConfiguration!();
+	assert.equal(config.symbolLibraries.length, 1);
+	assert.equal(browser.entries.has(USER_SYMBOL_CONFIG_KEY), false);
+	const disabled = {
+		...config,
+		symbolLibraries: config.symbolLibraries.map((library) => ({
+			...library,
+			enabled: false,
+		})),
+	};
+	assert.equal(
+		await storage.saveConfiguration!(disabled),
+		"Saved in this browser.",
+	);
+	assert.deepEqual(
+		await createWebSymbolLibraryStorage(browser).loadConfiguration!(),
+		disabled,
+	);
+	assert.equal(browser.entries.has(SYMBOL_STORAGE_KEY), true);
+	await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
+	assert.deepEqual((await storage.loadConfiguration!()).symbolLibraries, []);
 });
 
 test("temporary user configuration survives navigation and clears after a successful retry", async () => {
@@ -169,24 +190,39 @@ test("temporary user configuration survives navigation and clears after a succes
 	const storage = createWebSymbolLibraryStorage({
 		getItem: browser.getItem,
 		setItem(key, value) {
-			if (!writable) throw new DOMException("Quota exceeded", "QuotaExceededError");
+			if (!writable)
+				throw new DOMException("Quota exceeded", "QuotaExceededError");
 			browser.setItem(key, value);
 		},
 	});
 	const original = await storage.loadConfiguration!();
 	const next = {
 		...original,
-		symbolLibraries: [...original.symbolLibraries, {
-			id: "imported", name: "Imported symbols", enabled: true,
-			source: { kind: "embedded" as const, symbols: [symbol()] },
-		}],
+		symbolLibraries: [
+			...original.symbolLibraries,
+			{
+				id: "imported",
+				name: "Imported symbols",
+				enabled: true,
+				source: { kind: "embedded" as const, symbols: [symbol()] },
+			},
+		],
 	};
 	assert.equal(await storage.saveConfiguration!(next), saveFailure);
 	assert.deepEqual(await storage.loadConfiguration!(), next);
-	assert.deepEqual(await createWebSymbolLibraryStorage(browser).loadConfiguration!(), original);
+	assert.deepEqual(
+		await createWebSymbolLibraryStorage(browser).loadConfiguration!(),
+		original,
+	);
 	writable = true;
-	assert.equal(await storage.saveConfiguration!(next), "Saved in this browser.");
-	assert.deepEqual(await createWebSymbolLibraryStorage(browser).loadConfiguration!(), next);
+	assert.equal(
+		await storage.saveConfiguration!(next),
+		"Saved in this browser.",
+	);
+	assert.deepEqual(
+		await createWebSymbolLibraryStorage(browser).loadConfiguration!(),
+		next,
+	);
 	await createWebSymbolLibraryStorage(browser).saveConfiguration!(original);
 	assert.deepEqual(await storage.loadConfiguration!(), original);
 });

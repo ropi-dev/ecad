@@ -46,8 +46,9 @@ export async function closeProjectFiles(page: Page) {
 	});
 }
 
-
 export async function openProjectActions(page: Page) {
 	const sidebar = await openProjectFiles(page);
-	await sidebar.getByRole("button", { name: "Project actions", exact: true }).click();
+	await sidebar
+		.getByRole("button", { name: "Project actions", exact: true })
+		.click();
 }

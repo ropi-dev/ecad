@@ -33,7 +33,9 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 	test.setTimeout(120000);
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
+	await expect(
+		page.getByLabel("Workspace instructions", { exact: true }),
+	).toBeVisible();
 	await (await openProjectFiles(page))
 		.getByLabel("Add KiCad schematic files")
 		.setInputFiles(fixture);
@@ -202,7 +204,9 @@ test("a KiCad schematic with one broken symbol imports the rest and names the sk
 	).toHaveText(
 		"Symbol U2 (Lib:Missing): Its library symbol is not embedded in the schematic.",
 	);
-	await expect(page.getByText("Skipped 1 item that could not be converted:")).toBeVisible();
+	await expect(
+		page.getByText("Skipped 1 item that could not be converted:"),
+	).toBeVisible();
 	await expect
 		.poll(async () =>
 			(
@@ -210,7 +214,9 @@ test("a KiCad schematic with one broken symbol imports the rest and names the sk
 					(await page.locator("#project-document").textContent()) ?? "{}",
 				).editorShapes as EditorShape[] | undefined
 			)?.map((shape) =>
-				shape.kind === "symbol" ? `symbol ${shape.attributes.reference}` : shape.kind,
+				shape.kind === "symbol"
+					? `symbol ${shape.attributes.reference}`
+					: shape.kind,
 			),
 		)
 		.toEqual(["symbol U1", "wire", "text"]);

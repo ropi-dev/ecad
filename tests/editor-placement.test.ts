@@ -43,24 +43,50 @@ test("each placement tool creates its own kind of item at the anchor", () => {
 		assert.equal(isPlacementTool(tool), true);
 		const shape = createPlacementShape(tool, 3, anchor, measureText);
 		assert.equal(shape.id, 3);
-		assert.equal(shape.kind, tool === "net" || tool === "supply" ? "text" : tool);
+		assert.equal(
+			shape.kind,
+			tool === "net" || tool === "supply" ? "text" : tool,
+		);
 		assert.deepEqual({ x: shape.x, y: shape.y }, anchor);
 	}
-	assert.deepEqual(createPlacementShape("pin", 3, anchor, measureText), drawShape(3, "pin", anchor, anchor));
-	assert.deepEqual(createPlacementShape("no-connect", 3, anchor, measureText), drawShape(3, "no-connect", anchor, anchor));
-	assert.deepEqual(createPlacementShape("text", 3, anchor, measureText), createTextShape(3, anchor, measureText));
-	assert.deepEqual(createPlacementShape("supply", 3, anchor, measureText), createLabelShape(3, anchor, "supply", measureText));
-	for (const tool of ["select", "pan", "wire", "rectangle", "symbol"]) assert.equal(isPlacementTool(tool), false);
+	assert.deepEqual(
+		createPlacementShape("pin", 3, anchor, measureText),
+		drawShape(3, "pin", anchor, anchor),
+	);
+	assert.deepEqual(
+		createPlacementShape("no-connect", 3, anchor, measureText),
+		drawShape(3, "no-connect", anchor, anchor),
+	);
+	assert.deepEqual(
+		createPlacementShape("text", 3, anchor, measureText),
+		createTextShape(3, anchor, measureText),
+	);
+	assert.deepEqual(
+		createPlacementShape("supply", 3, anchor, measureText),
+		createLabelShape(3, anchor, "supply", measureText),
+	);
+	for (const tool of ["select", "pan", "wire", "rectangle", "symbol"])
+		assert.equal(isPlacementTool(tool), false);
 });
 
 test("labels and no-connect markers snap to connections; pins and text stay on the grid", () => {
 	assert.deepEqual(
-		(["pin", "no-connect", "text", "net", "supply"] as const).filter(placementSnapsToConnection),
+		(["pin", "no-connect", "text", "net", "supply"] as const).filter(
+			placementSnapsToConnection,
+		),
 		["no-connect", "net", "supply"],
 	);
 	assert.deepEqual(
-		(["pin", "no-connect", "text", "net", "supply"] as const).map(placementLabel),
-		["Place pin", "Place no connect", "Draw text", "Place net label", "Place net label"],
+		(["pin", "no-connect", "text", "net", "supply"] as const).map(
+			placementLabel,
+		),
+		[
+			"Place pin",
+			"Place no connect",
+			"Draw text",
+			"Place net label",
+			"Place net label",
+		],
 	);
 });
 
@@ -68,7 +94,12 @@ test("placing a route keeps split pieces of an existing wire out of the selectio
 	const store = createDrawingStore();
 	const run = <A, E>(program: Effect.Effect<A, E, DrawingStore>) =>
 		Effect.runSync(Effect.provideService(program, DrawingStore, store));
-	run(placeShapesEffect([drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })], "Trunk"));
+	run(
+		placeShapesEffect(
+			[drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })],
+			"Trunk",
+		),
+	);
 	const before = store.getSnapshot();
 	// The last leg runs along the trunk, which normalization splits at the junction.
 	const legs = routeWire(before.nextShapeId, { x: 50, y: 50 }, { x: 80, y: 0 });
@@ -79,7 +110,10 @@ test("placing a route keeps split pieces of an existing wire out of the selectio
 	assert.ok(reused, "a trunk piece reuses a new leg's ID");
 	assert.ok(result.ids.includes(reused.id));
 	const selection = placedSelection(before.shapes, result);
-	assert.deepEqual([...selection], result.ids.filter((id) => !trunkPieces.includes(id)));
+	assert.deepEqual(
+		[...selection],
+		result.ids.filter((id) => !trunkPieces.includes(id)),
+	);
 	assert.equal(selection.has(reused.id), false);
 	assert.ok(selection.size > 0);
 });
@@ -87,14 +121,23 @@ test("placing a route keeps split pieces of an existing wire out of the selectio
 test("placing shapes without wire splits selects every placed shape", () => {
 	const result = {
 		ids: [4, 5],
-		idsBySource: new Map([[1, [1]], [4, [4]], [5, [5]]]),
+		idsBySource: new Map([
+			[1, [1]],
+			[4, [4]],
+			[5, [5]],
+		]),
 	};
 	const previous = [drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })];
 	assert.deepEqual([...placedSelection(previous, result)], [4, 5]);
 	// Only existing wires count. A rectangle mapped to several IDs is not a split wire.
 	const rectangle = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 10, y: 10 });
 	assert.deepEqual(
-		[...placedSelection([rectangle], { ids: [1, 4], idsBySource: new Map([[1, [1, 4]]]) })],
+		[
+			...placedSelection([rectangle], {
+				ids: [1, 4],
+				idsBySource: new Map([[1, [1, 4]]]),
+			}),
+		],
 		[1, 4],
 	);
 });

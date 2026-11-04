@@ -12,7 +12,8 @@ import { installParseWorker } from "./helpers/parse-worker";
 const header = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1*%\nD10*\n";
 const flash = "X0Y0D03*\n";
 // A square region whose last segment stops short of the start point.
-const openContour = "G36*\nX0Y0D02*\nX1000000Y0D01*\nX1000000Y1000000D01*\nX0Y1000000D01*\nG37*\n";
+const openContour =
+	"G36*\nX0Y0D02*\nX1000000Y0D01*\nX1000000Y1000000D01*\nX0Y1000000D01*\nG37*\n";
 const severities = (source: string) =>
 	parseGerber(source, "test.gbr").diagnostics.map(
 		({ severity, message }) => `${severity}: ${message}`,
@@ -91,10 +92,9 @@ test("step and repeat over the object limit is fatal, invalid parameters are ski
 		),
 		[`fatal: ${limit}`],
 	);
-	assert.deepEqual(
-		severities(`${header}%SRX2Y2I-1J1*%\n${flash}M02*`),
-		["error: Invalid step-and-repeat counts or distances"],
-	);
+	assert.deepEqual(severities(`${header}%SRX2Y2I-1J1*%\n${flash}M02*`), [
+		"error: Invalid step-and-repeat counts or distances",
+	]);
 });
 
 test("identity image transformations are accepted and others are fatal", () => {
@@ -137,7 +137,10 @@ test("malformed tokens count toward the diagnostic limit", () => {
 		"tokens.gbr",
 	);
 	assert.equal(result.diagnostics.length, 201);
-	assert.equal(result.diagnostics.at(-1)?.message, "1,800 more errors are not listed.");
+	assert.equal(
+		result.diagnostics.at(-1)?.message,
+		"1,800 more errors are not listed.",
+	);
 	assert.equal(result.object.objects.length, 1);
 });
 
@@ -160,14 +163,11 @@ test("a fatal problem after the diagnostic limit still rejects the file", async 
 	const result = parseGerber(source, "saturated.gbr");
 	assert.equal(result.diagnostics.length, 202);
 	assert.equal(result.diagnostics[200].severity, "fatal");
-	await assert.rejects(
-		parseGerberFile(new File([source], "saturated.gbr")),
-		{
-			_tag: "InvalidFile",
-			message:
-				"Line 305: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
-		},
-	);
+	await assert.rejects(parseGerberFile(new File([source], "saturated.gbr")), {
+		_tag: "InvalidFile",
+		message:
+			"Line 305: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
+	});
 });
 
 test("a Gerber file without M02 renders with its warning", async () => {
@@ -180,8 +180,7 @@ test("a Gerber file without M02 renders with its warning", async () => {
 		assert.deepEqual(parsed.object.diagnostics, [
 			{
 				severity: "warning",
-				message:
-					"Missing M02 end-of-file command; the file may be truncated.",
+				message: "Missing M02 end-of-file command; the file may be truncated.",
 				line: 5,
 			},
 		]);

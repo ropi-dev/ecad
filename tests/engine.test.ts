@@ -6,8 +6,17 @@ import {
 	transformPoint,
 	worldToScreen,
 } from "#/engine/camera.ts";
-import { containsPoint, flattenPath, GeometryCompiler } from "#/engine/geometry.ts";
-import type { Geometry, Matrix, SceneLayer, SceneObject } from "#/engine/types.ts";
+import {
+	containsPoint,
+	flattenPath,
+	GeometryCompiler,
+} from "#/engine/geometry.ts";
+import type {
+	Geometry,
+	Matrix,
+	SceneLayer,
+	SceneObject,
+} from "#/engine/types.ts";
 
 const rectangle: Geometry = { type: "rect", x: 0, y: 0, width: 10, height: 10 };
 const hole: Geometry = { type: "circle", x: 0, y: 0, radius: 2 };

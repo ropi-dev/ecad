@@ -30,7 +30,9 @@ const test = base.extend<{ libraries: Page }>({
 		const libraries = await context.newPage();
 		await libraries.goto("/tests/browser/projects.html");
 		await openProjectActions(libraries);
-		await libraries.getByRole("menuitem", { name: "Symbol libraries...", exact: true }).click();
+		await libraries
+			.getByRole("menuitem", { name: "Symbol libraries...", exact: true })
+			.click();
 		await libraries.getByLabel("Library scope").selectOption("user");
 		await expect(libraries.getByLabel("Upload symbol files")).toBeEnabled();
 		await use(libraries);
@@ -57,9 +59,7 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
 	await libraries
 		.getByLabel("Upload symbol files")
 		.setInputFiles([upload, bufferUpload]);
-	await expect(libraries.getByRole("status")).toContainText(
-		"Symbols added.",
-	);
+	await expect(libraries.getByRole("status")).toContainText("Symbols added.");
 	const custom = page.getByRole("region", {
 		name: "Custom symbols",
 		exact: true,

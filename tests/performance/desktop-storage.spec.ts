@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
-import { createDesktopProjectDirectory, DesktopProjects } from "../../packages/desktop/src/main/projects.ts";
+import {
+	createDesktopProjectDirectory,
+	DesktopProjects,
+} from "../../packages/desktop/src/main/projects.ts";
 import { DesktopSymbolLibrary } from "../../packages/desktop/src/main/symbol-library.ts";
 
 // This measures native filesystem I/O without browser CPU throttling or rendering.
@@ -68,14 +71,35 @@ test("desktop-storage", async ({}, testInfo) => {
 				await repository.readAsset(imported.manifest.assets[0].path),
 			).equals(Buffer.from(bytes)),
 		).toBe(true);
-		const config = { version: 1 as const, symbolLibraries: [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory" as const, path: "symbols" } }] };
+		const config = {
+			version: 1 as const,
+			symbolLibraries: [
+				{
+					id: "parts",
+					name: "Parts",
+					enabled: true,
+					source: { kind: "directory" as const, path: "symbols" },
+				},
+			],
+		};
 		// Saves accept only directories the user already configured or picked.
 		await mkdir(join(directory, ".ecad"));
-		await writeFile(join(directory, ".ecad", "config.json"), JSON.stringify(config));
+		await writeFile(
+			join(directory, ".ecad", "config.json"),
+			JSON.stringify(config),
+		);
 		const library = new DesktopSymbolLibrary(undefined, directory);
-		await measure("symbolConfigSaveMs", () => library.saveConfiguration(config));
-		expect(await measure("symbolConfigLoadMs", () => library.loadConfiguration())).toEqual(config);
-		expect(await measure("libraryReadMs", () => library.loadConfiguredDirectory("symbols"))).toHaveLength(50);
+		await measure("symbolConfigSaveMs", () =>
+			library.saveConfiguration(config),
+		);
+		expect(
+			await measure("symbolConfigLoadMs", () => library.loadConfiguration()),
+		).toEqual(config);
+		expect(
+			await measure("libraryReadMs", () =>
+				library.loadConfiguredDirectory("symbols"),
+			),
+		).toHaveLength(50);
 		await testInfo.attach("performance", {
 			body: JSON.stringify({
 				scenario: "desktop-storage",
@@ -98,7 +122,6 @@ test("desktop-storage", async ({}, testInfo) => {
 	}
 });
 
-
 test("desktop-untitled", async ({}, testInfo) => {
 	const parent = await mkdtemp(join(tmpdir(), "ecad-memory-perf-"));
 	const metrics: Record<string, number> = {};
@@ -111,19 +134,56 @@ test("desktop-untitled", async ({}, testInfo) => {
 	try {
 		const projects = new DesktopProjects();
 		const created = await measure("createMs", () => projects.createUntitled());
-		const shapes: EditorShape[] = Array.from({ length: 2000 }, (_, id) => ({ id: id + 1, kind: "rectangle", x: id % 100, y: Math.floor(id / 100), width: 5, height: 8, rotation: 0, lineWidth: 0.2 }));
-		await measure("saveMemoryMs", () => projects.save(created.directory, { shapes, symbols: [] }));
+		const shapes: EditorShape[] = Array.from({ length: 2000 }, (_, id) => ({
+			id: id + 1,
+			kind: "rectangle",
+			x: id % 100,
+			y: Math.floor(id / 100),
+			width: 5,
+			height: 8,
+			rotation: 0,
+			lineWidth: 0.2,
+		}));
+		await measure("saveMemoryMs", () =>
+			projects.save(created.directory, { shapes, symbols: [] }),
+		);
 		const bytes = new Uint8Array(10 * 1024 * 1024).fill(42);
-		const imported = await measure("importMemoryMs", () => projects.importAssets(created.directory, [{ name: "model.step", kind: "step", bytes }]));
+		const imported = await measure("importMemoryMs", () =>
+			projects.importAssets(created.directory, [
+				{ name: "model.step", kind: "step", bytes },
+			]),
+		);
 		expect(imported.inMemory).toBe(true);
 		expect(await readdir(parent)).toEqual([]);
-		const saved = await measure("saveToDiskMs", () => projects.saveToDirectory(created.directory, parent));
-		const reopened = await measure("reopenMs", () => new DesktopProjects(saved.directory).load());
+		const saved = await measure("saveToDiskMs", () =>
+			projects.saveToDirectory(created.directory, parent),
+		);
+		const reopened = await measure("reopenMs", () =>
+			new DesktopProjects(saved.directory).load(),
+		);
 		expect(reopened?.shapes).toEqual(shapes);
 		expect(reopened?.inMemory).toBeUndefined();
-		expect(await projects.readAsset(saved.directory, imported.manifest.assets[0].path)).toEqual(bytes);
+		expect(
+			await projects.readAsset(
+				saved.directory,
+				imported.manifest.assets[0].path,
+			),
+		).toEqual(bytes);
 		await testInfo.attach("performance", {
-			body: JSON.stringify({ scenario: "desktop-untitled", metrics, report: { mode: process.env.ECAD_PERF_MODE ?? "production", environment: { userAgent: `Node/${process.versions.node}`, platform: process.platform, arch: process.arch, cpuThrottle: 1 }, workload: { shapes: 2000, sourceBytes: bytes.length } } }),
+			body: JSON.stringify({
+				scenario: "desktop-untitled",
+				metrics,
+				report: {
+					mode: process.env.ECAD_PERF_MODE ?? "production",
+					environment: {
+						userAgent: `Node/${process.versions.node}`,
+						platform: process.platform,
+						arch: process.arch,
+						cpuThrottle: 1,
+					},
+					workload: { shapes: 2000, sourceBytes: bytes.length },
+				},
+			}),
 			contentType: "application/json",
 		});
 	} finally {

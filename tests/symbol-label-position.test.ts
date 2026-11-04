@@ -67,19 +67,34 @@ test("label presets anchor the label outside the geometry on the chosen side", (
 	);
 	assert.equal(texts.above.text.x, (bounds.minX + bounds.maxX) / 2);
 	assert.ok(texts.above.text.y > bounds.maxY, "above must clear the top edge");
-	assert.equal(texts.above.symbol.textAlignments?.name?.verticalAlign, "bottom");
+	assert.equal(
+		texts.above.symbol.textAlignments?.name?.verticalAlign,
+		"bottom",
+	);
 
 	assert.equal(texts.below.text.x, (bounds.minX + bounds.maxX) / 2);
-	assert.ok(texts.below.text.y < bounds.minY, "below must clear the bottom edge");
+	assert.ok(
+		texts.below.text.y < bounds.minY,
+		"below must clear the bottom edge",
+	);
 	assert.equal(texts.below.symbol.textAlignments?.name?.verticalAlign, "top");
 
 	assert.ok(texts.left.text.x < bounds.minX, "left must clear the left edge");
 	assert.equal(texts.left.text.y, (bounds.minY + bounds.maxY) / 2);
-	assert.equal(texts.left.symbol.textAlignments?.name?.horizontalAlign, "right");
+	assert.equal(
+		texts.left.symbol.textAlignments?.name?.horizontalAlign,
+		"right",
+	);
 
-	assert.ok(texts.right.text.x > bounds.maxX, "right must clear the right edge");
+	assert.ok(
+		texts.right.text.x > bounds.maxX,
+		"right must clear the right edge",
+	);
 	assert.equal(texts.right.text.y, (bounds.minY + bounds.maxY) / 2);
-	assert.equal(texts.right.symbol.textAlignments?.name?.horizontalAlign, "left");
+	assert.equal(
+		texts.right.symbol.textAlignments?.name?.horizontalAlign,
+		"left",
+	);
 
 	for (const position of Object.keys(texts) as (keyof typeof texts)[])
 		assert.equal(symbolLabelPosition(texts[position].symbol, "name"), position);
@@ -157,7 +172,10 @@ test("label text never overlaps the symbol geometry at any rotation", () => {
 						: position === "left"
 							? text.maxX < geometry.minX
 							: text.minX > geometry.maxX;
-			assert.ok(clear, `${position} at ${quarter * 90}° must clear the geometry`);
+			assert.ok(
+				clear,
+				`${position} at ${quarter * 90}° must clear the geometry`,
+			);
 		}
 	}
 });
@@ -169,15 +187,16 @@ test("resetting to default keeps the label's appearance overrides", () => {
 		"left",
 	);
 	const cleared = setSymbolLabelPosition(instance, "name", "default");
-	assert.deepEqual(cleared.childOverrides, { "attribute:name": { fontSize: 4 } });
+	assert.deepEqual(cleared.childOverrides, {
+		"attribute:name": { fontSize: 4 },
+	});
 	assert.equal(symbolTextShapes(cleared)[0].fontSize, 4);
 });
 
 test("the selection outline wraps the geometry and ignores the label", () => {
-	const frames = (
-		["default", "above", "below", "left", "right"] as const
-	).map((position) =>
-		symbolSelectionFrame(setSymbolLabelPosition(placed(), "name", position)),
+	const frames = (["default", "above", "below", "left", "right"] as const).map(
+		(position) =>
+			symbolSelectionFrame(setSymbolLabelPosition(placed(), "name", position)),
 	);
 	for (const frame of frames.slice(1)) assert.deepEqual(frame, frames[0]);
 	const geometry = worldBounds(placed());
@@ -202,7 +221,11 @@ test("a neighbour's outline does not steal clicks on drawn content", () => {
 		x: pinTerminals(vdd)[0].x - pinTerminals(resistor)[0].x,
 		y: pinTerminals(vdd)[0].y - pinTerminals(resistor)[0].y,
 	};
-	const r1 = { ...resistor, x: resistor.x + offset.x, y: resistor.y + offset.y };
+	const r1 = {
+		...resistor,
+		x: resistor.x + offset.x,
+		y: resistor.y + offset.y,
+	};
 	// The resistor is on top and its value label reaches over the VDD arrow.
 	const arrow = { x: vdd.x, y: vdd.y + 1.5 };
 	assert.equal(shapeAt([vdd, r1], arrow, 0)?.id, vdd.id);
@@ -238,8 +261,14 @@ test("tilted labels align outward on both axes and still clear the geometry", ()
 					const x = center.x + (sx * text.width) / 2;
 					const y = center.y + (sy * text.height) / 2;
 					return {
-						x: text.x + x * Math.cos(text.rotation) - y * Math.sin(text.rotation),
-						y: text.y + x * Math.sin(text.rotation) + y * Math.cos(text.rotation),
+						x:
+							text.x +
+							x * Math.cos(text.rotation) -
+							y * Math.sin(text.rotation),
+						y:
+							text.y +
+							x * Math.sin(text.rotation) +
+							y * Math.cos(text.rotation),
 					};
 				}),
 			);
@@ -262,7 +291,10 @@ test("unresolved symbols without geometry stay selectable and ignore presets", (
 	const frame = symbolSelectionFrame(unresolved);
 	for (const value of [frame.x, frame.y, frame.width, frame.height])
 		assert.ok(Number.isFinite(value));
-	assert.equal(shapeAt([unresolved], { x: unresolved.x, y: unresolved.y }, 0), unresolved);
+	assert.equal(
+		shapeAt([unresolved], { x: unresolved.x, y: unresolved.y }, 0),
+		unresolved,
+	);
 	assert.equal(setSymbolLabelPosition(unresolved, "name", "above"), unresolved);
 });
 

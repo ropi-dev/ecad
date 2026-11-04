@@ -62,15 +62,37 @@ function drawing(): EditorShape[] {
 	const wire = (id: number, x: number, y: number, endX: number, endY: number) =>
 		drawShape(id, "wire", { x, y }, { x: endX, y: endY });
 	return [
-		...[0, 1, 2, 3].map((index) => wire(1 + index, -30, index * 5, 30, index * 5)),
-		...[0, 1, 2, 3].map((index) => wire(5 + index, index * 7 - 10, -8, index * 7 - 10, 20)),
+		...[0, 1, 2, 3].map((index) =>
+			wire(1 + index, -30, index * 5, 30, index * 5),
+		),
+		...[0, 1, 2, 3].map((index) =>
+			wire(5 + index, index * 7 - 10, -8, index * 7 - 10, 20),
+		),
 		wire(9, 4, 5, 4, 30),
-		{ ...drawShape(10, "pin", { x: 40, y: 0 }, { x: 40, y: 0 }), name: "CLK", number: "3" } as EditorShape,
-		{ ...drawShape(11, "pin", { x: 40, y: 10 }, { x: 40, y: 10 }), name: "EN", number: "4", rotation: Math.PI / 2 } as EditorShape,
+		{
+			...drawShape(10, "pin", { x: 40, y: 0 }, { x: 40, y: 0 }),
+			name: "CLK",
+			number: "3",
+		} as EditorShape,
+		{
+			...drawShape(11, "pin", { x: 40, y: 10 }, { x: 40, y: 10 }),
+			name: "EN",
+			number: "4",
+			rotation: Math.PI / 2,
+		} as EditorShape,
 		createSymbol(12, part("resistor"), { x: -20, y: 30 }),
-		{ ...createSymbol(13, part("connector-4"), { x: 10, y: 40 }), rotation: Math.PI / 2 },
-		{ ...createSymbol(14, part("transistor-npn"), { x: 30, y: 40 }), rotation: Math.PI },
-		{ ...drawShape(15, "rectangle", { x: -40, y: -20 }, { x: -30, y: -10 }), filled: true } as EditorShape,
+		{
+			...createSymbol(13, part("connector-4"), { x: 10, y: 40 }),
+			rotation: Math.PI / 2,
+		},
+		{
+			...createSymbol(14, part("transistor-npn"), { x: 30, y: 40 }),
+			rotation: Math.PI,
+		},
+		{
+			...drawShape(15, "rectangle", { x: -40, y: -20 }, { x: -30, y: -10 }),
+			filled: true,
+		} as EditorShape,
 		{
 			id: 16,
 			kind: "text",
@@ -133,7 +155,9 @@ function describe(root: Object3D) {
 				alphaMap: paint.alphaMap ? true : undefined,
 			},
 			geometry: geometry && {
-				position: [...(geometry.getAttribute("position")?.array ?? [])].map(round),
+				position: [...(geometry.getAttribute("position")?.array ?? [])].map(
+					round,
+				),
 				uv: [...(geometry.getAttribute("uv")?.array ?? [])].map(round),
 				index: [...(geometry.getIndex()?.array ?? [])],
 			},
@@ -208,7 +232,10 @@ test("incremental scene updates match a full rebuild and release replaced resour
 		assert.deepEqual(describe(root), fresh(value), step);
 		const live = resources();
 		for (const item of owned)
-			assert.ok(live.has(item) || disposed.has(item), `${step}: leaked resource`);
+			assert.ok(
+				live.has(item) || disposed.has(item),
+				`${step}: leaked resource`,
+			);
 	};
 	try {
 		let shapes = drawing();

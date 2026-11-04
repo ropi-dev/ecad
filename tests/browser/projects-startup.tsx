@@ -12,8 +12,16 @@ const snapshot: ProjectSnapshot = {
 	shapes: [],
 	symbols: [],
 	manifest: {
-		format: "ecad-project", version: 1, name: "Large project", drawing: "drawing.ecaddraw", symbols: [],
-		assets: Array.from({ length: 10000 }, (_, index) => ({ name: `file-${index}.gbr`, path: `assets/file-${index}.gbr`, kind: "gerber" })),
+		format: "ecad-project",
+		version: 1,
+		name: "Large project",
+		drawing: "drawing.ecaddraw",
+		symbols: [],
+		assets: Array.from({ length: 10000 }, (_, index) => ({
+			name: `file-${index}.gbr`,
+			path: `assets/file-${index}.gbr`,
+			kind: "gerber",
+		})),
 	},
 };
 const storage: ProjectStorage = {
@@ -26,4 +34,13 @@ const storage: ProjectStorage = {
 	importAssets: async () => snapshot,
 	readAsset: async () => new Uint8Array(),
 };
-createRoot(document.getElementById("root") as HTMLElement).render(<ProjectProvider storage={storage} symbolStorage={createMemorySymbolLibraryStorage()}><ProjectShell><WorkspaceStart /></ProjectShell></ProjectProvider>);
+createRoot(document.getElementById("root") as HTMLElement).render(
+	<ProjectProvider
+		storage={storage}
+		symbolStorage={createMemorySymbolLibraryStorage()}
+	>
+		<ProjectShell>
+			<WorkspaceStart />
+		</ProjectShell>
+	</ProjectProvider>,
+);

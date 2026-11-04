@@ -46,9 +46,20 @@ import {
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
-import { serializeProjectManifest, validateProjectDocument } from "#/projects/format.ts";
-import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
-import { parseSymbolConfig, serializeSymbolConfig, validateSymbolLibraries, type ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
+import {
+	serializeProjectManifest,
+	validateProjectDocument,
+} from "#/projects/format.ts";
+import {
+	ProjectRepository,
+	type ProjectDirectory,
+} from "#/projects/repository.ts";
+import {
+	parseSymbolConfig,
+	serializeSymbolConfig,
+	validateSymbolLibraries,
+	type ConfiguredSymbolLibrary,
+} from "#/symbol-library/config.ts";
 
 const box = { x: 0, y: 0, width: 4, height: 4, rotation: 0, lineWidth: 0.2 };
 const text = (extra: object) => ({
@@ -108,7 +119,11 @@ const cases: [string, object, boolean][] = [
 		text({ electrical: "net", circuitNet: { id: "n1", label: "N1" } }),
 		true,
 	],
-	["empty circuit net ID", text({ circuitNet: { id: "", label: "N1" } }), false],
+	[
+		"empty circuit net ID",
+		text({ circuitNet: { id: "", label: "N1" } }),
+		false,
+	],
 	[
 		"circuit net without a label",
 		text({ circuitNet: { id: "n1", pinId: "p1" } }),
@@ -130,7 +145,11 @@ const cases: [string, object, boolean][] = [
 		symbol({ kicad: { libraryId: "Device:R", unit: 1.5 } }),
 		false,
 	],
-	["negative KiCad unit", symbol({ kicad: { libraryId: "R", unit: -1 } }), false],
+	[
+		"negative KiCad unit",
+		symbol({ kicad: { libraryId: "R", unit: -1 } }),
+		false,
+	],
 	["diagonal symbol wire", symbol({}), true],
 	[
 		"duplicate child IDs",
@@ -363,12 +382,17 @@ test("symbol files and drawings share the child-override limits", () => {
 			`drawing ${label}`,
 		);
 	}
-	const legacyFile = nested({ width: 0, lineWidth: 0, fontSize: 0, x: 1, height: 2 });
+	const legacyFile = nested({
+		width: 0,
+		lineWidth: 0,
+		fontSize: 0,
+		x: 1,
+		height: 2,
+	});
 	const upgraded = parseSymbolFile(legacyFile).shapes[0];
-	assert.deepEqual(
-		upgraded.kind === "symbol" && upgraded.childOverrides,
-		{ "shape:2": { x: 1, height: 2 } },
-	);
+	assert.deepEqual(upgraded.kind === "symbol" && upgraded.childOverrides, {
+		"shape:2": { x: 1, height: 2 },
+	});
 	const library = parseSavedSymbolLibrary(`[${legacyFile}]`);
 	assert.deepEqual(library[0].shapes[0], upgraded);
 	assert.deepEqual(parseSavedSymbolLibrary(JSON.stringify(library)), library);
@@ -466,9 +490,12 @@ test("KiCad diagonal wires import as connected horizontal and vertical wires", (
 		wires.map((wire) => Math.round(Math.abs(Math.sin(wire.rotation)))),
 		[0, 1],
 	);
-	assert.ok(result.report.warnings.some((warning) => warning.includes("Diagonal")));
+	assert.ok(
+		result.report.warnings.some((warning) => warning.includes("Diagonal")),
+	);
 	assert.equal(
-		validateProjectDocument({ shapes: result.shapes, symbols: [] }).shapes.length,
+		validateProjectDocument({ shapes: result.shapes, symbols: [] }).shapes
+			.length,
 		2,
 	);
 });
@@ -478,7 +505,10 @@ test("KiCad diagonal wires turn the corner that joins no other net", () => {
 		[kicadWire("16 20", "20 20"), kicadLabel("C", "20 20")],
 		[kicadLabel("C", "16 24")],
 		// Within the tolerance on each axis, which wire normalization would join.
-		[kicadWire("16.00009 19.99991", "20 19.99991"), kicadLabel("C", "20 19.99991")],
+		[
+			kicadWire("16.00009 19.99991", "20 19.99991"),
+			kicadLabel("C", "20 19.99991"),
+		],
 	]) {
 		const { shapes, nets } = importedNets(
 			kicadWire("10 20", "16 28"),
@@ -519,7 +549,10 @@ test("KiCad routes survive the wire normalization that the next command runs", (
 			kicadLabel("B", end),
 			kicadLabel("C", "9 20"),
 		);
-		assert.equal(short.shapes.filter((shape) => shape.kind === "line").length, 1);
+		assert.equal(
+			short.shapes.filter((shape) => shape.kind === "line").length,
+			1,
+		);
 		assert.deepEqual(short.nets, nets);
 	}
 	// Normalization moves this cluster of near-parallel wires onto y = 20,
@@ -534,7 +567,10 @@ test("KiCad routes survive the wire normalization that the next command runs", (
 		kicadLabel("C", "18 20.00027"),
 	);
 	assert.deepEqual(cluster.nets, ["B", "C"]);
-	assert.equal(cluster.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.equal(
+		cluster.shapes.filter((shape) => shape.kind === "line").length,
+		1,
+	);
 });
 
 test("KiCad routes find nets joined by label name anywhere in the drawing", () => {
@@ -547,7 +583,10 @@ test("KiCad routes find nets joined by label name anywhere in the drawing", () =
 		kicadLabel("A", "100 20"),
 		kicadLabel("A", "0 28"),
 	);
-	assert.equal(result.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.equal(
+		result.shapes.filter((shape) => shape.kind === "line").length,
+		0,
+	);
 	assert.deepEqual(result.nets, ["A+B"]);
 });
 
@@ -562,7 +601,10 @@ test("KiCad routes never join a wire that normalization could move", () => {
 		kicadLabel("B", "16 20.00009"),
 		kicadLabel("C", "100 20.00018"),
 	);
-	assert.equal(bridge.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.equal(
+		bridge.shapes.filter((shape) => shape.kind === "line").length,
+		1,
+	);
 	assert.deepEqual(bridge.nets, ["A", "B+C"]);
 	// Running along the left wire 0.00009 mm off would let an edit of the new
 	// wire move the left wire away from C. The other corner is safe.
@@ -573,7 +615,10 @@ test("KiCad routes never join a wire that normalization could move", () => {
 		kicadLabel("B", "16 28"),
 		kicadLabel("C", "9 19.99991"),
 	);
-	assert.equal(offset.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.equal(
+		offset.shapes.filter((shape) => shape.kind === "line").length,
+		0,
+	);
 	assert.deepEqual(offset.nets, ["A+B+C"]);
 });
 
@@ -613,7 +658,10 @@ test("KiCad routes stay clear of slightly tilted wires that normalization straig
 		kicadLabel("B", "16 28"),
 		kicadLabel("C", "1 19.999900002"),
 	);
-	assert.equal(tilted.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.equal(
+		tilted.shapes.filter((shape) => shape.kind === "line").length,
+		1,
+	);
 	assert.deepEqual(tilted.nets, ["A+C", "B"]);
 });
 
@@ -623,10 +671,15 @@ test("KiCad diagonal wires go through the same per-item import checks", () => {
 			`${kicadWire("10 20", "16 28")} (wire (pts (xy 0 0) (xy 1 1) (xy 2 0)))`,
 		),
 	);
-	assert.equal(result.shapes.filter((shape) => shape.kind === "wire").length, 2);
+	assert.equal(
+		result.shapes.filter((shape) => shape.kind === "wire").length,
+		2,
+	);
 	assert.equal(result.report.skipped.length, 1);
 	assert.match(result.report.skipped[0].reason, /two endpoints/);
-	assert.ok(result.report.warnings.some((warning) => warning.includes("Diagonal")));
+	assert.ok(
+		result.report.warnings.some((warning) => warning.includes("Diagonal")),
+	);
 	// A wire with a broken coordinate is skipped, and no diagonal warning claims it.
 	const broken = importKiCadSchematic(
 		kicad(`${kicadWire("bad 20", "16 28")} ${kicadWire("0 0", "5 0")}`),
@@ -647,7 +700,9 @@ test("KiCad diagonal wires with no clear corner import as graphic lines", () => 
 		kicadLabel("D", "4 28"),
 	);
 	assert.deepEqual(
-		result.shapes.flatMap((shape) => (shape.kind === "text" ? [] : [shape.kind])),
+		result.shapes.flatMap((shape) =>
+			shape.kind === "text" ? [] : [shape.kind],
+		),
 		["wire", "wire", "line"],
 	);
 	assert.deepEqual(result.nets, ["C", "D"]);
@@ -673,7 +728,11 @@ test("an undefined override is committed as saved, so it cannot hide a child fie
 			childOverrides: { "shape:1": { lineStyle: undefined } },
 		}),
 	).store.getSnapshot().shapes[0];
-	assert.equal(dashed.kind === "symbol" && "lineStyle" in dashed.childOverrides!["shape:1"], false);
+	assert.equal(
+		dashed.kind === "symbol" &&
+			"lineStyle" in dashed.childOverrides!["shape:1"],
+		false,
+	);
 	const [child] = dashed.kind === "symbol" ? symbolShapes(dashed) : [];
 	assert.equal(child.kind === "line" && child.lineStyle, "dashed");
 });
@@ -682,7 +741,9 @@ test("pasting drawing data the schema rejects explains why", () => {
 	const selection = (shape: object) =>
 		JSON.stringify({ format: "ecad-selection", version: 1, shapes: [shape] });
 	assert.equal(
-		selectionPasteError(selection({ ...box, id: 1, kind: "wire", rotation: 1 })),
+		selectionPasteError(
+			selection({ ...box, id: 1, kind: "wire", rotation: 1 }),
+		),
 		"Wire segments must be horizontal or vertical.",
 	);
 	assert.match(
@@ -690,7 +751,10 @@ test("pasting drawing data the schema rejects explains why", () => {
 			"",
 		/^width: Too small/,
 	);
-	assert.equal(selectionPasteError(selection({ ...box, id: 1, kind: "line" })), undefined);
+	assert.equal(
+		selectionPasteError(selection({ ...box, id: 1, kind: "line" })),
+		undefined,
+	);
 	assert.equal(selectionPasteError("plain text"), undefined);
 	assert.equal(selectionPasteError(JSON.stringify({ shapes: [] })), undefined);
 });
@@ -741,7 +805,9 @@ test("override problems read clearly and are reported once", () => {
 test("pasting the plain shapes form explains a rejected shape too", () => {
 	assert.equal(
 		selectionPasteError(
-			JSON.stringify({ shapes: [{ ...box, id: 1, kind: "circle", height: 2 }] }),
+			JSON.stringify({
+				shapes: [{ ...box, id: 1, kind: "circle", height: 2 }],
+			}),
 		),
 		"A circle must have equal width and height.",
 	);
@@ -749,7 +815,13 @@ test("pasting the plain shapes form explains a rejected shape too", () => {
 
 test("projects with diagonal wires saved before the wire rule still open", () => {
 	// KiCad import on earlier versions saved diagonal wires as they were.
-	const legacy = { ...box, id: 1, kind: "wire", width: 10, rotation: Math.PI / 4 };
+	const legacy = {
+		...box,
+		id: 1,
+		kind: "wire",
+		width: 10,
+		rotation: Math.PI / 4,
+	};
 	assert.equal(drawingShapeSchema.safeParse(legacy).success, false);
 	assert.equal(legacyDrawingShapeSchema.safeParse(legacy).success, true);
 	assert.equal(
@@ -759,7 +831,10 @@ test("projects with diagonal wires saved before the wire rule still open", () =>
 	);
 	// New diagonal wires stay rejected everywhere shapes are created or edited.
 	assert.equal(place({ ...legacy, id: undefined }).accepted, false);
-	assert.equal(selectionPasteError(JSON.stringify({ shapes: [legacy] })), "Wire segments must be horizontal or vertical.");
+	assert.equal(
+		selectionPasteError(JSON.stringify({ shapes: [legacy] })),
+		"Wire segments must be horizontal or vertical.",
+	);
 });
 
 test("the editor redraws legacy diagonal wires without changing their nets", () => {
@@ -782,8 +857,24 @@ test("the editor redraws legacy diagonal wires without changing their nets", () 
 		label(3, "B", 6, 8),
 		// Both corners of this one touch other nets, so it becomes a line.
 		diagonal(4, 20, 0, 6, 8),
-		{ ...box, id: 5, kind: "wire", x: 28, y: 0, width: 4, rotation: 0 } as EditorShape,
-		{ ...box, id: 6, kind: "wire", x: 18, y: 8, width: 4, rotation: 0 } as EditorShape,
+		{
+			...box,
+			id: 5,
+			kind: "wire",
+			x: 28,
+			y: 0,
+			width: 4,
+			rotation: 0,
+		} as EditorShape,
+		{
+			...box,
+			id: 6,
+			kind: "wire",
+			x: 18,
+			y: 8,
+			width: 4,
+			rotation: 0,
+		} as EditorShape,
 		label(7, "C", 30, 0),
 		label(8, "D", 16, 8),
 	];
@@ -829,7 +920,10 @@ test("fields that earlier versions saved without effect are dropped on load", ()
 			childOverrides: { "shape:1": { width: 0, lineWidth: 0.3 } },
 		}),
 	]);
-	assert.deepEqual(Object.keys(wire).sort(), Object.keys({ ...box, id: 1, kind: "wire" }).sort());
+	assert.deepEqual(
+		Object.keys(wire).sort(),
+		Object.keys({ ...box, id: 1, kind: "wire" }).sort(),
+	);
 	assert.equal(editorShapeSchema.safeParse(wire).success, true);
 	assert.equal(editorShapeSchema.safeParse(styled).success, true);
 	assert.deepEqual(styled.kind === "symbol" && styled.childOverrides, {
@@ -863,7 +957,10 @@ test("symbol files drop nested overrides that do not fit, so the symbol still pl
 					x: 0,
 					y: 0,
 					// Child 1 of the resistor is a line, which has no font size.
-					childOverrides: { "shape:1": { fontSize: 2 }, "shape:2": { width: 6 } },
+					childOverrides: {
+						"shape:1": { fontSize: 2 },
+						"shape:2": { width: 6 },
+					},
 				},
 			],
 		}),
@@ -875,11 +972,20 @@ test("symbol files drop nested overrides that do not fit, so the symbol still pl
 		),
 	);
 	assert.equal(
-		definition.children.some((child) => "fontSize" in child && child.kind !== "text"),
+		definition.children.some(
+			(child) => "fontSize" in child && child.kind !== "text",
+		),
 		false,
 	);
-	assert.ok(definition.children.some((child) => child.kind === "rectangle" && child.width === 6));
-	assert.equal(place(createSymbol(1, definition, { x: 0, y: 0 })).accepted, true);
+	assert.ok(
+		definition.children.some(
+			(child) => child.kind === "rectangle" && child.width === 6,
+		),
+	);
+	assert.equal(
+		place(createSymbol(1, definition, { x: 0, y: 0 })).accepted,
+		true,
+	);
 });
 
 test("redrawing a legacy wire sees pins that an override moved outside their symbol", () => {
@@ -933,7 +1039,10 @@ test("a copy may hold a legacy diagonal wire, but pasting it stays strict", () =
 	const text = serializeSelection([legacy]);
 	assert.equal(parseSelection(text, { legacy: true })?.length, 1);
 	assert.equal(parseSelection(text), null);
-	assert.equal(selectionPasteError(text), "Wire segments must be horizontal or vertical.");
+	assert.equal(
+		selectionPasteError(text),
+		"Wire segments must be horizontal or vertical.",
+	);
 });
 
 test("saved inline symbols drop override fields their children never had", () => {
@@ -960,36 +1069,80 @@ test("a stale override keeps the fields its new child still has", () => {
 	);
 });
 
-
 test("embedded libraries in saved configs and projects upgrade legacy overrides before validation", async () => {
 	const file: SymbolFile = {
-		format: "ecad-symbol", version: 1, units: "mm", id: "legacy-nested",
-		name: "Legacy nested", description: "", prefix: "U", value: "",
-		shapes: [{
-			kind: "symbol", library: { scope: "user", id: "builtin" },
-			definitionId: "resistor", x: 0, y: 0,
-			childOverrides: { "shape:2": { width: 0, lineWidth: 0, x: 2, height: 7 } },
-		}],
+		format: "ecad-symbol",
+		version: 1,
+		units: "mm",
+		id: "legacy-nested",
+		name: "Legacy nested",
+		description: "",
+		prefix: "U",
+		value: "",
+		shapes: [
+			{
+				kind: "symbol",
+				library: { scope: "user", id: "builtin" },
+				definitionId: "resistor",
+				x: 0,
+				y: 0,
+				childOverrides: {
+					"shape:2": { width: 0, lineWidth: 0, x: 2, height: 7 },
+				},
+			},
+		],
 	};
 	const library: ConfiguredSymbolLibrary = {
-		id: "project-symbols", name: "Project symbols", enabled: true,
+		id: "project-symbols",
+		name: "Project symbols",
+		enabled: true,
 		source: { kind: "embedded", symbols: [file] },
 	};
-	const upgradedFile = { ...file, shapes: [{ ...file.shapes[0], childOverrides: { "shape:2": { x: 2, height: 7 } } }] };
-	const expected = [{ ...library, source: { kind: "embedded", symbols: [upgradedFile] } }];
+	const upgradedFile = {
+		...file,
+		shapes: [
+			{ ...file.shapes[0], childOverrides: { "shape:2": { x: 2, height: 7 } } },
+		],
+	};
+	const expected = [
+		{ ...library, source: { kind: "embedded", symbols: [upgradedFile] } },
+	];
 	assert.deepEqual(validateSymbolLibraries([library]), expected);
-	const config = parseSymbolConfig(JSON.stringify({ version: 1, symbolLibraries: [library] }));
+	const config = parseSymbolConfig(
+		JSON.stringify({ version: 1, symbolLibraries: [library] }),
+	);
 	assert.deepEqual(config.symbolLibraries, expected);
 	assert.deepEqual(parseSymbolConfig(serializeSymbolConfig(config)), config);
-	assert.deepEqual(validateProjectDocument({ shapes: [], symbols: [file], symbolLibraries: [library] }).symbolLibraries, expected);
+	assert.deepEqual(
+		validateProjectDocument({
+			shapes: [],
+			symbols: [file],
+			symbolLibraries: [library],
+		}).symbolLibraries,
+		expected,
+	);
 	for (const layout of ["files", "revisions"] as const) {
 		const encoder = new TextEncoder();
 		const entries = new Map<string, Uint8Array>([
-			[".ecadprj", encoder.encode(serializeProjectManifest({
-				format: "ecad-project", version: 1, name: "Legacy",
-				drawing: "main.ecaddraw", symbols: ["nested.ecadsym"], assets: [],
-			}))],
-			["main.ecaddraw", encoder.encode(JSON.stringify({ shapes: [], symbolLibraries: [library] }))],
+			[
+				".ecadprj",
+				encoder.encode(
+					serializeProjectManifest({
+						format: "ecad-project",
+						version: 1,
+						name: "Legacy",
+						drawing: "main.ecaddraw",
+						symbols: ["nested.ecadsym"],
+						assets: [],
+					}),
+				),
+			],
+			[
+				"main.ecaddraw",
+				encoder.encode(
+					JSON.stringify({ shapes: [], symbolLibraries: [library] }),
+				),
+			],
 			["nested.ecadsym", encoder.encode(JSON.stringify(file))],
 		]);
 		const directory: ProjectDirectory = {
@@ -999,7 +1152,9 @@ test("embedded libraries in saved configs and projects upgrade legacy overrides 
 				if (!value) throw new DOMException("Missing", "NotFoundError");
 				return value;
 			},
-			async write(path, bytes) { entries.set(path, bytes); },
+			async write(path, bytes) {
+				entries.set(path, bytes);
+			},
 			async remove(path) {
 				for (const key of entries.keys())
 					if (key === path || key.startsWith(`${path}/`)) entries.delete(key);
@@ -1010,6 +1165,10 @@ test("embedded libraries in saved configs and projects upgrade legacy overrides 
 		assert.deepEqual(loaded.symbolLibraries, expected);
 		assert.deepEqual(loaded.symbols, [upgradedFile]);
 		await repository.save(loaded);
-		assert.deepEqual((await new ProjectRepository(directory, { layout }).load()).symbolLibraries, expected);
+		assert.deepEqual(
+			(await new ProjectRepository(directory, { layout }).load())
+				.symbolLibraries,
+			expected,
+		);
 	}
 });

@@ -1,21 +1,14 @@
 {
 	"@rolldown/binding-*@1.2.15": {
-		"files": [
-			"rolldown-MIT.txt",
-			"rolldown-THIRD-PARTY.txt"
-		],
+		"files": ["rolldown-MIT.txt", "rolldown-THIRD-PARTY.txt"],
 		"source": "https://github.com/rolldown/rolldown/tree/v1.2.15"
 	},
 	"@esbuild/*@0.28.2": {
-		"files": [
-			"esbuild-MIT.txt"
-		],
+		"files": ["esbuild-MIT.txt"],
 		"source": "https://github.com/evanw/esbuild/blob/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
 	},
 	"react-remove-scroll-bar@2.3.8": {
-		"files": [
-			"react-remove-scroll-bar-MIT.txt"
-		],
+		"files": ["react-remove-scroll-bar-MIT.txt"],
 		"source": "https://github.com/theKashey/react-remove-scroll-bar/blob/8ca9ba5ea52de03308fe8ced94f7b159a44d28ff/LICENSE"
 	}
 }

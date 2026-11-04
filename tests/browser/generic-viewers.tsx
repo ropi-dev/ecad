@@ -109,8 +109,7 @@ function Model() {
 			},
 		};
 	}, [revision, empty]);
-	const [scene, setScene] =
-		useState<import("#/engine/scene.ts").ViewerScene>();
+	const [scene, setScene] = useState<import("#/engine/scene.ts").ViewerScene>();
 	useEffect(() => {
 		const result = createScene();
 		setScene([{ type: "spatial", object: result.object }]);

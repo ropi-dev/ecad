@@ -75,7 +75,10 @@ test("large entries inflate without fflate workers, which would each copy the wh
 
 test("the archive limit counts declared sizes and reports each overflowing entry", async () => {
 	const count = Math.floor(MAX_GERBER_ARCHIVE_LENGTH / (60 * MiB)) + 2;
-	const names = Array.from({ length: count }, (_, index) => `layer-${index}.gbr`);
+	const names = Array.from(
+		{ length: count },
+		(_, index) => `layer-${index}.gbr`,
+	);
 	const archive = zipSync(
 		Object.fromEntries(names.map((name) => [name, gerber("Other,Comment")])),
 		{ level: 0 },
@@ -103,7 +106,9 @@ test("many skipped entries are summarized in one message", async () => {
 		{ level: 0 },
 	);
 	for (const name of names)
-		patchZipEntry(archive, name, { originalSize: MAX_GERBER_SOURCE_LENGTH + 1 });
+		patchZipEntry(archive, name, {
+			originalSize: MAX_GERBER_SOURCE_LENGTH + 1,
+		});
 	assert.deepEqual((await expand(archive)).messages, [
 		"Skipped huge-0.gbr, huge-1.gbr, huge-2.gbr and 3 more files (larger than the 64 MiB Gerber file limit).",
 	]);

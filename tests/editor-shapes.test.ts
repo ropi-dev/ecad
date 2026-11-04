@@ -1,18 +1,39 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { constrainWireEndpoint, drawShape, editShapeAttribute, type EditorShape, moveShapes, normalizeWireSegments, resizeHandles, resizeShape, snapPoint } from "#/components/editor/shapes.ts";
+import {
+	constrainWireEndpoint,
+	drawShape,
+	editShapeAttribute,
+	type EditorShape,
+	moveShapes,
+	normalizeWireSegments,
+	resizeHandles,
+	resizeShape,
+	snapPoint,
+} from "#/components/editor/shapes.ts";
 
 import { rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
 
-const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
+const close = (actual: number, expected: number) =>
+	assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 
 test("rotated corner resizing anchors the opposite corner and clamps dimensions above zero", () => {
-	const original = { ...drawShape(1, "rectangle", { x: 10, y: 20 }, { x: 50, y: 40 }), rotation: Math.PI / 3 };
+	const original = {
+		...drawShape(1, "rectangle", { x: 10, y: 20 }, { x: 50, y: 40 }),
+		rotation: Math.PI / 3,
+	};
 	const handle = resizeHandles(original).find((handle) => handle.id === "1,1")!;
-	const fixed = resizeHandles(original).find((handle) => handle.id === "-1,-1")!;
-	for (const delta of [{ x: 15, y: 30 }, { x: -1000, y: -1000 }]) {
+	const fixed = resizeHandles(original).find(
+		(handle) => handle.id === "-1,-1",
+	)!;
+	for (const delta of [
+		{ x: 15, y: 30 },
+		{ x: -1000, y: -1000 },
+	]) {
 		const resized = resizeShape(original, handle, delta);
-		const anchor = resizeHandles(resized).find((handle) => handle.id === "-1,-1")!;
+		const anchor = resizeHandles(resized).find(
+			(handle) => handle.id === "-1,-1",
+		)!;
 		close(anchor.x, fixed.x);
 		close(anchor.y, fixed.y);
 		assert.ok(resized.width >= 0.1 && resized.height >= 0.1);
@@ -44,32 +65,56 @@ test("lines project onto the dominant axis in every direction with horizontal ti
 		[10, 20, 10, 20],
 	]) {
 		const end = { x, y };
-		assert.deepEqual(constrainWireEndpoint(start, end), { x: expectedX, y: expectedY });
+		assert.deepEqual(constrainWireEndpoint(start, end), {
+			x: expectedX,
+			y: expectedY,
+		});
 		const shape = drawShape(1, "wire", start, end);
 		const [first, last] = resizeHandles(shape);
 		close(first.x, start.x);
 		close(first.y, start.y);
 		close(last.x, expectedX);
 		close(last.y, expectedY);
-		close(shape.rotation / (Math.PI / 2), Math.round(shape.rotation / (Math.PI / 2)));
+		close(
+			shape.rotation / (Math.PI / 2),
+			Math.round(shape.rotation / (Math.PI / 2)),
+		);
 		close(shape.height, 1);
 	}
 });
 
 test("snapping a line endpoint preserves an off-grid start", () => {
 	const start = { x: 13, y: -7 };
-	assert.deepEqual(constrainWireEndpoint(start, { x: 37, y: 18 }, 10), { x: 40, y: -7 });
-	assert.deepEqual(constrainWireEndpoint(start, { x: 24, y: -42 }, 10), { x: 13, y: -40 });
+	assert.deepEqual(constrainWireEndpoint(start, { x: 37, y: 18 }, 10), {
+		x: 40,
+		y: -7,
+	});
+	assert.deepEqual(constrainWireEndpoint(start, { x: 24, y: -42 }, 10), {
+		x: 13,
+		y: -40,
+	});
 	assert.deepEqual(start, { x: 13, y: -7 });
 });
 
 test("either line endpoint can pass its opposite endpoint without moving the anchor", () => {
-	for (const end of [{ x: 50, y: 30 }, { x: -30, y: 30 }, { x: 20, y: 60 }, { x: 20, y: -20 }]) {
+	for (const end of [
+		{ x: 50, y: 30 },
+		{ x: -30, y: 30 },
+		{ x: 20, y: 60 },
+		{ x: 20, y: -20 },
+	]) {
 		const original = drawShape(1, "wire", { x: 10, y: 20 }, end);
 		for (const handle of resizeHandles(original)) {
-			const fixed = resizeHandles(original).find((other) => other.id !== handle.id)!;
-			const resized = resizeShape(original, handle, { x: 2 * (fixed.x - handle.x), y: 2 * (fixed.y - handle.y) });
-			const anchor = resizeHandles(resized).find((other) => other.id === fixed.id)!;
+			const fixed = resizeHandles(original).find(
+				(other) => other.id !== handle.id,
+			)!;
+			const resized = resizeShape(original, handle, {
+				x: 2 * (fixed.x - handle.x),
+				y: 2 * (fixed.y - handle.y),
+			});
+			const anchor = resizeHandles(resized).find(
+				(other) => other.id === fixed.id,
+			)!;
 			close(anchor.x, fixed.x);
 			close(anchor.y, fixed.y);
 			close(resized.width, 40);
@@ -79,10 +124,17 @@ test("either line endpoint can pass its opposite endpoint without moving the anc
 });
 
 test("either line endpoint can collapse onto its anchor before commit normalization", () => {
-	for (const end of [{ x: 50, y: 30 }, { x: -30, y: 30 }, { x: 20, y: 60 }, { x: 20, y: -20 }]) {
+	for (const end of [
+		{ x: 50, y: 30 },
+		{ x: -30, y: 30 },
+		{ x: 20, y: 60 },
+		{ x: 20, y: -20 },
+	]) {
 		const original = drawShape(1, "wire", { x: 10, y: 20 }, end);
 		for (const handle of resizeHandles(original)) {
-			const fixed = resizeHandles(original).find((other) => other.id !== handle.id)!;
+			const fixed = resizeHandles(original).find(
+				(other) => other.id !== handle.id,
+			)!;
 			const delta = { x: fixed.x - handle.x, y: fixed.y - handle.y };
 			for (const step of [0, 10]) {
 				const resized = resizeShape(original, handle, delta, step);
@@ -100,12 +152,25 @@ test("either line endpoint can collapse onto its anchor before commit normalizat
 });
 
 test("either line endpoint stays orthogonal and anchors the other end during snapped resizing", () => {
-	for (const end of [{ x: 53, y: -7 }, { x: 13, y: 33 }]) {
+	for (const end of [
+		{ x: 53, y: -7 },
+		{ x: 13, y: 33 },
+	]) {
 		const original = drawShape(1, "wire", { x: 13, y: -7 }, end);
 		for (const handle of resizeHandles(original)) {
-			const fixed = resizeHandles(original).find((other) => other.id !== handle.id)!;
-			for (const target of [{ x: 94, y: 25 }, { x: -48, y: 96 }]) {
-				const resized = resizeShape(original, handle, { x: target.x - handle.x, y: target.y - handle.y }, 10);
+			const fixed = resizeHandles(original).find(
+				(other) => other.id !== handle.id,
+			)!;
+			for (const target of [
+				{ x: 94, y: 25 },
+				{ x: -48, y: 96 },
+			]) {
+				const resized = resizeShape(
+					original,
+					handle,
+					{ x: target.x - handle.x, y: target.y - handle.y },
+					10,
+				);
 				const handles = resizeHandles(resized);
 				const anchor = handles.find((other) => other.id === fixed.id)!;
 				const moved = handles.find((other) => other.id === handle.id)!;
@@ -113,8 +178,10 @@ test("either line endpoint stays orthogonal and anchors the other end during sna
 				close(anchor.y, fixed.y);
 				const snapped = snapPoint(target, 10);
 				assert.ok(
-					Math.abs(moved.x - fixed.x) < 1e-9 && Math.abs(moved.y - snapped.y) < 1e-9 ||
-					Math.abs(moved.y - fixed.y) < 1e-9 && Math.abs(moved.x - snapped.x) < 1e-9,
+					(Math.abs(moved.x - fixed.x) < 1e-9 &&
+						Math.abs(moved.y - snapped.y) < 1e-9) ||
+						(Math.abs(moved.y - fixed.y) < 1e-9 &&
+							Math.abs(moved.x - snapped.x) < 1e-9),
 				);
 			}
 		}
@@ -126,7 +193,10 @@ test("snapping uses the visible grid spacing at different zoom levels and signed
 		const { minor } = rulerSpacing(scale);
 		const ticks = rulerTicks(0, scale, 800);
 		close(ticks[1].value - ticks[0].value, minor);
-		assert.deepEqual(snapPoint({ x: -3.2 * minor, y: 2.3 * minor }, minor), { x: Number((-3 * minor).toPrecision(12)), y: Number((2 * minor).toPrecision(12)) });
+		assert.deepEqual(snapPoint({ x: -3.2 * minor, y: 2.3 * minor }, minor), {
+			x: Number((-3 * minor).toPrecision(12)),
+			y: Number((2 * minor).toPrecision(12)),
+		});
 	}
 });
 
@@ -155,7 +225,11 @@ test("snapped drawing aligns corners, line endpoints, and circle radii", () => {
 test("snapped resizing fixes the opposite side and rounds circle radii", () => {
 	for (const kind of ["rectangle", "triangle", "wire", "circle"] as const) {
 		const original = drawShape(1, kind, { x: 0, y: 0 }, { x: 30, y: 40 }, 10);
-		const handle = resizeHandles(original).find((handle) => handle.id === (kind === "rectangle" || kind === "triangle" ? "1,1" : "1,0"))!;
+		const handle = resizeHandles(original).find(
+			(handle) =>
+				handle.id ===
+				(kind === "rectangle" || kind === "triangle" ? "1,1" : "1,0"),
+		)!;
 		const resized = resizeShape(original, handle, { x: 13, y: 17 }, 10);
 		if (kind === "circle") {
 			close(resized.width, 140);
@@ -187,9 +261,18 @@ test("group moves snap the grabbed shape's anchor and preserve relative position
 	close(movedRectangle.width, rectangle.width);
 });
 
-const segment = (id: number, x1: number, y1: number, x2: number, y2: number) => drawShape(id, "wire", { x: x1, y: y1 }, { x: x2, y: y2 });
-const endpoints = (shape: EditorShape) => resizeHandles(shape).map(({ x, y }) => ({ x, y }));
-function assertSegment(shapes: EditorShape[], id: number, x1: number, y1: number, x2: number, y2: number) {
+const segment = (id: number, x1: number, y1: number, x2: number, y2: number) =>
+	drawShape(id, "wire", { x: x1, y: y1 }, { x: x2, y: y2 });
+const endpoints = (shape: EditorShape) =>
+	resizeHandles(shape).map(({ x, y }) => ({ x, y }));
+function assertSegment(
+	shapes: EditorShape[],
+	id: number,
+	x1: number,
+	y1: number,
+	x2: number,
+	y2: number,
+) {
 	const shape = shapes.find((shape) => shape.id === id)!;
 	assert.ok(shape, `Missing segment ${id}`);
 	const [start, end] = endpoints(shape);
@@ -204,11 +287,19 @@ test("moving a segment stretches attached ends while keeping separate shapes and
 	const middle = segment(2, 160, 100, 160, 165);
 	const last = segment(3, 160, 165, 105, 165);
 	const separate = segment(4, 300, 100, 340, 100);
-	const rectangle = drawShape(5, "rectangle", { x: 10, y: 10 }, { x: 50, y: 50 });
+	const rectangle = drawShape(
+		5,
+		"rectangle",
+		{ x: 10, y: 10 },
+		{ x: 50, y: 50 },
+	);
 	const all = [first, middle, last, separate, rectangle];
 	const before = structuredClone(all);
 	const moved = moveShapes([middle], { x: 30, y: 10 }, 0, middle, all);
-	assert.deepEqual(moved.map(({ id }) => id), [2, 1, 3]);
+	assert.deepEqual(
+		moved.map(({ id }) => id),
+		[2, 1, 3],
+	);
 	assertSegment(moved, 1, 100, 110, 190, 110);
 	assertSegment(moved, 2, 190, 110, 190, 175);
 	assertSegment(moved, 3, 190, 175, 105, 175);
@@ -222,12 +313,21 @@ test("axis constraints propagate through branches while body crossings stay inde
 	const continuation = segment(3, 30, 40, 60, 40);
 	const branchUp = segment(4, 30, 40, 30, 70);
 	const crossing = segment(5, 45, 20, 45, 60);
-	const moved = moveShapes([trunk], { x: -10, y: 10 }, 0, trunk, [trunk, branch, continuation, branchUp, crossing]);
+	const moved = moveShapes([trunk], { x: -10, y: 10 }, 0, trunk, [
+		trunk,
+		branch,
+		continuation,
+		branchUp,
+		crossing,
+	]);
 	assertSegment(moved, 1, -10, 10, -10, 50);
 	assertSegment(moved, 2, -10, 50, 30, 50);
 	assertSegment(moved, 3, 30, 50, 60, 50);
 	assertSegment(moved, 4, 30, 50, 30, 70);
-	assert.equal(moved.some(({ id }) => id === crossing.id), false);
+	assert.equal(
+		moved.some(({ id }) => id === crossing.id),
+		false,
+	);
 });
 
 test("T junction ends follow a selected segment in both axes and constrain a selected branch symmetrically", () => {
@@ -241,17 +341,37 @@ test("T junction ends follow a selected segment in both axes and constrain a sel
 	assertSegment(movedBranch, 1, 0, 10, 100, 10);
 	assertSegment(movedBranch, 2, 70, 10, 70, 50);
 	const detached = moveShapes([branch], { x: 60, y: 10 }, 0, branch, all);
-	assert.equal(detached.find(({ id }) => id === trunk.id), trunk);
-	assert.equal(detached.find(({ id }) => id === branch.id), branch);
+	assert.equal(
+		detached.find(({ id }) => id === trunk.id),
+		trunk,
+	);
+	assert.equal(
+		detached.find(({ id }) => id === branch.id),
+		branch,
+	);
 });
 
 test("snapped multi-selection uses one rigid delta for selected shapes and adjusts connected neighbors", () => {
 	const first = segment(1, 13, 17, 53, 17);
 	const middle = segment(2, 53, 17, 53, 57);
 	const last = segment(3, 53, 57, 13, 57);
-	const rectangle = drawShape(4, "rectangle", { x: 100, y: 100 }, { x: 120, y: 120 });
-	const moved = moveShapes([first, middle, rectangle], { x: 13, y: 13 }, 10, middle, [first, middle, last, rectangle]);
-	assert.deepEqual(moved.map(({ id }) => id), [1, 2, 4, 3]);
+	const rectangle = drawShape(
+		4,
+		"rectangle",
+		{ x: 100, y: 100 },
+		{ x: 120, y: 120 },
+	);
+	const moved = moveShapes(
+		[first, middle, rectangle],
+		{ x: 13, y: 13 },
+		10,
+		middle,
+		[first, middle, last, rectangle],
+	);
+	assert.deepEqual(
+		moved.map(({ id }) => id),
+		[1, 2, 4, 3],
+	);
 	assertSegment(moved, 1, 30, 30, 70, 30);
 	assertSegment(moved, 2, 70, 30, 70, 70);
 	assertSegment(moved, 3, 70, 70, 13, 70);
@@ -266,7 +386,12 @@ test("moving one side of a loop preserves every junction without merging its seg
 	const right = segment(2, 40, 0, 40, 30);
 	const top = segment(3, 40, 30, 0, 30);
 	const left = segment(4, 0, 30, 0, 0);
-	const moved = moveShapes([right], { x: 20, y: 10 }, 0, right, [bottom, right, top, left]);
+	const moved = moveShapes([right], { x: 20, y: 10 }, 0, right, [
+		bottom,
+		right,
+		top,
+		left,
+	]);
 	assert.equal(moved.length, 4);
 	assertSegment(moved, 1, 0, 10, 60, 10);
 	assertSegment(moved, 2, 60, 10, 60, 40);
@@ -287,7 +412,11 @@ test("zero-axis reversals restore originals while raw movement can pass through 
 	assertSegment(reversed, 3, 40, 40, 0, 40);
 	const restored = moveShapes([middle], { x: 0, y: 0 }, 0, middle, all);
 	assert.equal(restored.length, 3);
-	for (const original of all) assert.equal(restored.find(({ id }) => id === original.id), original);
+	for (const original of all)
+		assert.equal(
+			restored.find(({ id }) => id === original.id),
+			original,
+		);
 	const collapsed = moveShapes([middle], { x: -40, y: 10 }, 0, middle, all);
 	assertSegment(collapsed, 1, 0, 10, 0, 10);
 	assertSegment(collapsed, 2, 0, 10, 0, 40);
@@ -297,7 +426,10 @@ test("zero-axis reversals restore originals while raw movement can pass through 
 	assertSegment(past, 2, -10, 10, -10, 40);
 	assertSegment(past, 3, -10, 40, 0, 40);
 	const normalized = normalizeWireSegments(collapsed);
-	assert.deepEqual(normalized.shapes.map(({ id }) => id), [middle.id]);
+	assert.deepEqual(
+		normalized.shapes.map(({ id }) => id),
+		[middle.id],
+	);
 	assert.deepEqual([...normalized.idMap], [[middle.id, middle.id]]);
 });
 
@@ -305,7 +437,11 @@ test("connections tolerate endpoint rounding and retain tiny existing segment le
 	const first = segment(1, 0, 0, 40, 0);
 	const middle = segment(2, 40 + 1e-8, 0, 40 + 1e-8, 30);
 	const tiny = segment(3, 40 + 1e-8, 30, 40.01 + 1e-8, 30);
-	const moved = moveShapes([middle, tiny], { x: 10, y: 10 }, 0, middle, [first, middle, tiny]);
+	const moved = moveShapes([middle, tiny], { x: 10, y: 10 }, 0, middle, [
+		first,
+		middle,
+		tiny,
+	]);
 	assertSegment(moved, 1, 0, 10, 50, 10);
 	assertSegment(moved, 2, 50 + 1e-8, 10, 50 + 1e-8, 40);
 	assertSegment(moved, 3, 50 + 1e-8, 40, 50.01 + 1e-8, 40);
@@ -315,12 +451,26 @@ test("connections tolerate endpoint rounding and retain tiny existing segment le
 test("normalization drops zero segments while retaining small segments and nonline shapes", () => {
 	const zero = segment(1, 10, 20, 10, 20);
 	const tiny = segment(2, 30, 40, 30.001, 40);
-	const rectangle = drawShape(3, "rectangle", { x: 100, y: 100 }, { x: 120, y: 120 });
-	const result = normalizeWireSegments([zero, tiny, rectangle], new Set([zero.id]));
+	const rectangle = drawShape(
+		3,
+		"rectangle",
+		{ x: 100, y: 100 },
+		{ x: 120, y: 120 },
+	);
+	const result = normalizeWireSegments(
+		[zero, tiny, rectangle],
+		new Set([zero.id]),
+	);
 	assert.deepEqual(result.shapes, [tiny, rectangle]);
 	assert.equal(result.shapes[0], tiny);
 	assert.equal(result.shapes[1], rectangle);
-	assert.deepEqual([...result.idMap], [[2, 2], [3, 3]]);
+	assert.deepEqual(
+		[...result.idMap],
+		[
+			[2, 2],
+			[3, 3],
+		],
+	);
 });
 
 test("normalization merges overlapping ranges and preserves the preferred survivor direction", () => {
@@ -332,10 +482,22 @@ test("normalization merges overlapping ranges and preserves the preferred surviv
 		segment(5, 80, 50, 80, 10),
 	];
 	const result = normalizeWireSegments(shapes, new Set([2, 5]));
-	assert.deepEqual(result.shapes.map(({ id }) => id), [2, 5]);
+	assert.deepEqual(
+		result.shapes.map(({ id }) => id),
+		[2, 5],
+	);
 	assertSegment(result.shapes, 2, 50, 0, 0, 0);
 	assertSegment(result.shapes, 5, 80, 50, 80, 0);
-	assert.deepEqual([...result.idMap], [[1, 2], [2, 2], [3, 2], [4, 5], [5, 5]]);
+	assert.deepEqual(
+		[...result.idMap],
+		[
+			[1, 2],
+			[2, 2],
+			[3, 2],
+			[4, 5],
+			[5, 5],
+		],
+	);
 });
 
 test("normalization merges unordered bridges transitively with containment and reversed duplicates", () => {
@@ -350,7 +512,16 @@ test("normalization merges unordered bridges transitively with containment and r
 	const result = normalizeWireSegments(shapes);
 	assert.equal(result.shapes.length, 1);
 	assertSegment(result.shapes, 1, 0, 0, 30, 0);
-	assert.deepEqual([...result.idMap], [[1, 1], [2, 1], [3, 1], [4, 1], [5, 1]]);
+	assert.deepEqual(
+		[...result.idMap],
+		[
+			[1, 1],
+			[2, 1],
+			[3, 1],
+			[4, 1],
+			[5, 1],
+		],
+	);
 	assert.deepEqual(shapes, original);
 	assert.deepEqual(normalizeWireSegments(result.shapes).shapes, result.shapes);
 });
@@ -380,13 +551,26 @@ test("collapsing a loop commits as one preferred line and maps only surviving so
 	const original = structuredClone(all);
 	const moved = moveShapes([right], { x: -40, y: 10 }, 0, right, all);
 	const replacements = new Map(moved.map((shape) => [shape.id, shape]));
-	const result = normalizeWireSegments(all.map((shape) => replacements.get(shape.id) ?? shape), new Set([right.id]));
+	const result = normalizeWireSegments(
+		all.map((shape) => replacements.get(shape.id) ?? shape),
+		new Set([right.id]),
+	);
 	assert.equal(result.shapes.length, 1);
 	assertSegment(result.shapes, 2, 0, 10, 0, 40);
-	assert.deepEqual([...result.idMap], [[2, 2], [4, 2]]);
+	assert.deepEqual(
+		[...result.idMap],
+		[
+			[2, 2],
+			[4, 2],
+		],
+	);
 	assert.deepEqual(all, original);
 	const restored = moveShapes([right], { x: 0, y: 0 }, 0, right, all);
-	for (const shape of all) assert.equal(restored.find(({ id }) => id === shape.id), shape);
+	for (const shape of all)
+		assert.equal(
+			restored.find(({ id }) => id === shape.id),
+			shape,
+		);
 });
 
 test("normalization chooses the first preferred source and preserves intervening nonline order", () => {
@@ -394,8 +578,14 @@ test("normalization chooses the first preferred source and preserves intervening
 	const circle = drawShape(2, "circle", { x: 40, y: 40 }, { x: 50, y: 40 });
 	const second = segment(3, 20, 0, 5, 0);
 	const third = segment(4, 20, 0, 30, 0);
-	const result = normalizeWireSegments([first, circle, second, third], new Set([3, 4]));
-	assert.deepEqual(result.shapes.map(({ id }) => id), [3, 2]);
+	const result = normalizeWireSegments(
+		[first, circle, second, third],
+		new Set([3, 4]),
+	);
+	assert.deepEqual(
+		result.shapes.map(({ id }) => id),
+		[3, 2],
+	);
 	assertSegment(result.shapes, 3, 30, 0, 0, 0);
 	assert.equal(result.shapes[1], circle);
 	assert.deepEqual(new Set(result.idMap.values()), new Set([2, 3]));
@@ -404,28 +594,68 @@ test("normalization chooses the first preferred source and preserves intervening
 test("normalization cleans pointer precision remnants and preserves attached branches", () => {
 	const collapsed = segment(1, 160, 160, 160.000012636, 160);
 	const first = segment(2, 100, 100, 100, 160);
-	const nearDuplicate = segment(3, 100.000012636, 160.000004768, 100.000012636, 100.000004768);
+	const nearDuplicate = segment(
+		3,
+		100.000012636,
+		160.000004768,
+		100.000012636,
+		100.000004768,
+	);
 	const nearTouching = segment(4, 200, 100, 220, 100);
-	const continuation = segment(5, 220.000012636, 100.000004768, 240, 100.000004768);
+	const continuation = segment(
+		5,
+		220.000012636,
+		100.000004768,
+		240,
+		100.000004768,
+	);
 	const branch = segment(6, 100, 130, 80, 130);
-	const result = normalizeWireSegments([collapsed, first, nearDuplicate, nearTouching, continuation, branch], new Set([nearDuplicate.id]));
-	assert.deepEqual(result.shapes.map(({ id }) => id), [3, 2, 4, 6]);
-	assertSegment(result.shapes, 3, 100.000012636, 160.000004768, 100.000012636, 130);
+	const result = normalizeWireSegments(
+		[collapsed, first, nearDuplicate, nearTouching, continuation, branch],
+		new Set([nearDuplicate.id]),
+	);
+	assert.deepEqual(
+		result.shapes.map(({ id }) => id),
+		[3, 2, 4, 6],
+	);
+	assertSegment(
+		result.shapes,
+		3,
+		100.000012636,
+		160.000004768,
+		100.000012636,
+		130,
+	);
 	assertSegment(result.shapes, 2, 100.000012636, 130, 100.000012636, 100);
 	assertSegment(result.shapes, 4, 200, 100, 240, 100);
 	assert.equal(result.idMap.has(collapsed.id), false);
 	assert.equal(result.idMap.get(first.id), first.id);
 	const host = result.shapes.find(({ id }) => id === nearDuplicate.id)!;
 	const moved = moveShapes([host], { x: 20, y: 10 }, 0, host, result.shapes);
-	assert.deepEqual(moved.map(({ id }) => id), [3, 2, 6]);
+	assert.deepEqual(
+		moved.map(({ id }) => id),
+		[3, 2, 6],
+	);
 	assertSegment(moved, 6, 120, 140, 80, 140);
 	const distant = segment(7, 220.001, 100, 240, 100);
-	const independent = moveShapes([nearTouching], { x: 0, y: 10 }, 0, nearTouching, [nearTouching, distant]);
-	assert.deepEqual(independent.map(({ id }) => id), [nearTouching.id]);
+	const independent = moveShapes(
+		[nearTouching],
+		{ x: 0, y: 10 },
+		0,
+		nearTouching,
+		[nearTouching, distant],
+	);
+	assert.deepEqual(
+		independent.map(({ id }) => id),
+		[nearTouching.id],
+	);
 });
 
 test("attribute edits retain centers and strokes and keep circle dimensions linked", () => {
-	const circle = { ...drawShape(1, "circle", { x: 10, y: 20 }, { x: 30, y: 20 }), lineWidth: 2.5 };
+	const circle = {
+		...drawShape(1, "circle", { x: 10, y: 20 }, { x: 30, y: 20 }),
+		lineWidth: 2.5,
+	};
 	for (const attribute of ["width", "height", "radius"] as const) {
 		const edited = editShapeAttribute(circle, attribute, 12);
 		assert.equal(edited.width, attribute === "radius" ? 24 : 12);
@@ -435,7 +665,10 @@ test("attribute edits retain centers and strokes and keep circle dimensions link
 		assert.equal(edited.lineWidth, 2.5);
 	}
 	const rectangle = drawShape(2, "rectangle", { x: 0, y: 0 }, { x: 30, y: 20 });
-	assert.deepEqual(editShapeAttribute(rectangle, "width", 45), { ...rectangle, width: 45 });
+	assert.deepEqual(editShapeAttribute(rectangle, "width", 45), {
+		...rectangle,
+		width: 45,
+	});
 	assert.equal(editShapeAttribute(rectangle, "x", -5).x, -5);
 	assert.equal(editShapeAttribute(rectangle, "y", 0).y, 0);
 	for (const value of [0, -1, Number.NaN, Infinity]) {
@@ -451,15 +684,31 @@ test("angle attributes preserve the orthogonal line constraint", () => {
 });
 
 test("text resizing preserves aspect ratio, font size and the opposite corner", () => {
-	const text: EditorShape = { id: 1, kind: "text", text: "Label", fontSize: 5, x: 10, y: 20, width: 30, height: 10, rotation: Math.PI / 4, lineWidth: 0.2 };
+	const text: EditorShape = {
+		id: 1,
+		kind: "text",
+		text: "Label",
+		fontSize: 5,
+		x: 10,
+		y: 20,
+		width: 30,
+		height: 10,
+		rotation: Math.PI / 4,
+		lineWidth: 0.2,
+	};
 	const handle = resizeHandles(text).find((handle) => handle.id === "1,1")!;
 	const fixed = resizeHandles(text).find((handle) => handle.id === "-1,-1")!;
-	const resized = resizeShape(text, handle, { x: handle.x - fixed.x, y: handle.y - fixed.y });
+	const resized = resizeShape(text, handle, {
+		x: handle.x - fixed.x,
+		y: handle.y - fixed.y,
+	});
 	assert.equal(resized.kind, "text");
 	if (resized.kind !== "text") return;
 	close(resized.fontSize, 10);
 	close(resized.width / resized.height, 3);
-	const anchor = resizeHandles(resized).find((handle) => handle.id === "-1,-1")!;
+	const anchor = resizeHandles(resized).find(
+		(handle) => handle.id === "-1,-1",
+	)!;
 	close(anchor.x, fixed.x);
 	close(anchor.y, fixed.y);
 	assert.equal(resized.text, "Label");
@@ -474,28 +723,48 @@ test("text resizing preserves aspect ratio, font size and the opposite corner", 
 	assert.equal(moved.kind === "text" && moved.text, "Label");
 });
 
-for (const vertical of [false, true]) test(`normalization splits ${vertical ? "vertical" : "horizontal"} trunks at each branch and retains IDs on repeat`, () => {
-	const point = (along: number, across: number) => vertical ? { x: across, y: along } : { x: along, y: across };
-	const trunk = { ...drawShape(1, "wire", point(100, 0), point(0, 0)), lineWidth: 0.8 };
-	const branches = [25, 75].map((along, index) => drawShape(index + 2, "wire", point(along, -20), point(along, 0)));
-	const original = [trunk, ...branches];
-	const copy = structuredClone(original);
-	const result = normalizeWireSegments(original);
-	assert.equal(result.shapes.length, 5);
-	assert.equal(result.nextShapeId, 6);
-	assert.equal(new Set(result.shapes.map(({ id }) => id)).size, 5);
-	const pieces = result.shapes.filter(({ lineWidth }) => lineWidth === 0.8);
-	assert.deepEqual(pieces.map(({ width }) => width), [25, 50, 25]);
-	assert.equal(pieces[0].id, 1);
-	for (const along of [25, 75]) {
-		const at = point(along, 0);
-		assert.equal(result.shapes.flatMap(resizeHandles).filter((end) => Math.hypot(end.x - at.x, end.y - at.y) < 1e-6).length, 3);
-	}
-	const again = normalizeWireSegments(result.shapes, new Set(), result.nextShapeId);
-	assert.deepEqual(again.shapes, result.shapes);
-	assert.equal(again.nextShapeId, result.nextShapeId);
-	assert.deepEqual(original, copy);
-});
+for (const vertical of [false, true])
+	test(`normalization splits ${vertical ? "vertical" : "horizontal"} trunks at each branch and retains IDs on repeat`, () => {
+		const point = (along: number, across: number) =>
+			vertical ? { x: across, y: along } : { x: along, y: across };
+		const trunk = {
+			...drawShape(1, "wire", point(100, 0), point(0, 0)),
+			lineWidth: 0.8,
+		};
+		const branches = [25, 75].map((along, index) =>
+			drawShape(index + 2, "wire", point(along, -20), point(along, 0)),
+		);
+		const original = [trunk, ...branches];
+		const copy = structuredClone(original);
+		const result = normalizeWireSegments(original);
+		assert.equal(result.shapes.length, 5);
+		assert.equal(result.nextShapeId, 6);
+		assert.equal(new Set(result.shapes.map(({ id }) => id)).size, 5);
+		const pieces = result.shapes.filter(({ lineWidth }) => lineWidth === 0.8);
+		assert.deepEqual(
+			pieces.map(({ width }) => width),
+			[25, 50, 25],
+		);
+		assert.equal(pieces[0].id, 1);
+		for (const along of [25, 75]) {
+			const at = point(along, 0);
+			assert.equal(
+				result.shapes
+					.flatMap(resizeHandles)
+					.filter((end) => Math.hypot(end.x - at.x, end.y - at.y) < 1e-6)
+					.length,
+				3,
+			);
+		}
+		const again = normalizeWireSegments(
+			result.shapes,
+			new Set(),
+			result.nextShapeId,
+		);
+		assert.deepEqual(again.shapes, result.shapes);
+		assert.equal(again.nextShapeId, result.nextShapeId);
+		assert.deepEqual(original, copy);
+	});
 
 test("opposite branches form four segments and removing them rejoins the trunk", () => {
 	const trunk = segment(1, 0, 0, 100, 0);
@@ -503,45 +772,104 @@ test("opposite branches form four segments and removing them rejoins the trunk",
 	const down = segment(3, 50, -20, 50, 0);
 	const result = normalizeWireSegments([trunk, up, down]);
 	assert.equal(result.shapes.length, 4);
-	assert.equal(result.shapes.flatMap(resizeHandles).filter(({ x, y }) => Math.abs(x - 50) < 1e-6 && Math.abs(y) < 1e-6).length, 4);
+	assert.equal(
+		result.shapes
+			.flatMap(resizeHandles)
+			.filter(({ x, y }) => Math.abs(x - 50) < 1e-6 && Math.abs(y) < 1e-6)
+			.length,
+		4,
+	);
 	assert.deepEqual(normalizeWireSegments(result.shapes).shapes, result.shapes);
-	const rejoined = normalizeWireSegments(result.shapes.filter(({ rotation }) => rotation === 0));
+	const rejoined = normalizeWireSegments(
+		result.shapes.filter(({ rotation }) => rotation === 0),
+	);
 	assert.equal(rejoined.shapes.length, 1);
 	assert.equal(rejoined.shapes[0].width, 100);
 });
 
-for (const vertical of [false, true]) for (const reversed of [false, true]) test(`pin terminals split ${vertical ? "vertical" : "horizontal"} wires with reversed=${reversed}`, () => {
-	const point = (along: number, across = 0) => vertical ? { x: across, y: along } : { x: along, y: across };
-	const trunk = { ...drawShape(1, "wire", point(reversed ? 100 : 0), point(reversed ? 0 : 100)), lineWidth: 0.8 };
-	const pins = [point(0), point(25), point(25), point(75), point(100), point(50, 0.001)].map((at, index) => drawShape(index + 2, "pin", at, at));
-	const original = [trunk, ...pins];
-	const copy = structuredClone(original);
-	const result = normalizeWireSegments(original);
-	const pieces = result.shapes.filter((shape) => shape.kind === "wire");
-	assert.deepEqual(pieces.map(({ width }) => width), [25, 50, 25]);
-	assert.ok(pieces.every(({ lineWidth }) => lineWidth === 0.8));
-	assert.deepEqual(result.idsBySource.get(1), pieces.map(({ id }) => id));
-	assert.deepEqual(result.shapes.filter((shape) => shape.kind === "pin"), pins);
-	const repeated = normalizeWireSegments(result.shapes, new Set(), result.nextShapeId);
-	assert.deepEqual(repeated.shapes, result.shapes);
-	assert.equal(repeated.nextShapeId, result.nextShapeId);
-	assert.equal(normalizeWireSegments(pieces).shapes.length, 1);
-	assert.deepEqual(original, copy);
-});
+for (const vertical of [false, true])
+	for (const reversed of [false, true])
+		test(`pin terminals split ${vertical ? "vertical" : "horizontal"} wires with reversed=${reversed}`, () => {
+			const point = (along: number, across = 0) =>
+				vertical ? { x: across, y: along } : { x: along, y: across };
+			const trunk = {
+				...drawShape(
+					1,
+					"wire",
+					point(reversed ? 100 : 0),
+					point(reversed ? 0 : 100),
+				),
+				lineWidth: 0.8,
+			};
+			const pins = [
+				point(0),
+				point(25),
+				point(25),
+				point(75),
+				point(100),
+				point(50, 0.001),
+			].map((at, index) => drawShape(index + 2, "pin", at, at));
+			const original = [trunk, ...pins];
+			const copy = structuredClone(original);
+			const result = normalizeWireSegments(original);
+			const pieces = result.shapes.filter((shape) => shape.kind === "wire");
+			assert.deepEqual(
+				pieces.map(({ width }) => width),
+				[25, 50, 25],
+			);
+			assert.ok(pieces.every(({ lineWidth }) => lineWidth === 0.8));
+			assert.deepEqual(
+				result.idsBySource.get(1),
+				pieces.map(({ id }) => id),
+			);
+			assert.deepEqual(
+				result.shapes.filter((shape) => shape.kind === "pin"),
+				pins,
+			);
+			const repeated = normalizeWireSegments(
+				result.shapes,
+				new Set(),
+				result.nextShapeId,
+			);
+			assert.deepEqual(repeated.shapes, result.shapes);
+			assert.equal(repeated.nextShapeId, result.nextShapeId);
+			assert.equal(normalizeWireSegments(pieces).shapes.length, 1);
+			assert.deepEqual(original, copy);
+		});
 
 test("a pin at a crossing splits both wires into four ends", () => {
 	const at = { x: 50, y: 0 };
-	const result = normalizeWireSegments([segment(1, 0, 0, 100, 0), segment(2, 50, -20, 50, 20), drawShape(3, "pin", at, at)]);
+	const result = normalizeWireSegments([
+		segment(1, 0, 0, 100, 0),
+		segment(2, 50, -20, 50, 20),
+		drawShape(3, "pin", at, at),
+	]);
 	const wires = result.shapes.filter((shape) => shape.kind === "wire");
 	assert.equal(wires.length, 4);
-	assert.equal(wires.flatMap(resizeHandles).filter(({ x, y }) => Math.hypot(x - at.x, y - at.y) < 1e-6).length, 4);
+	assert.equal(
+		wires
+			.flatMap(resizeHandles)
+			.filter(({ x, y }) => Math.hypot(x - at.x, y - at.y) < 1e-6).length,
+		4,
+	);
 });
 
 test("normalization preserves pointer-rounded split wires during unrelated edits", () => {
-	const first: EditorShape = { ...segment(2, 97, 150, 103, 150), x: 99.99999999999997, width: 6.000000000000014 };
+	const first: EditorShape = {
+		...segment(2, 97, 150, 103, 150),
+		x: 99.99999999999997,
+		width: 6.000000000000014,
+	};
 	const second = segment(3, 103, 150, 180, 150);
-	const pins = [97, 103].map((x, index) => drawShape(index + 4, "pin", { x, y: 150 }, { x, y: 150 }));
-	const unrelated = drawShape(6, "rectangle", { x: 200, y: 200 }, { x: 220, y: 220 });
+	const pins = [97, 103].map((x, index) =>
+		drawShape(index + 4, "pin", { x, y: 150 }, { x, y: 150 }),
+	);
+	const unrelated = drawShape(
+		6,
+		"rectangle",
+		{ x: 200, y: 200 },
+		{ x: 220, y: 220 },
+	);
 	const shapes = [first, second, ...pins, unrelated];
 	const result = normalizeWireSegments(shapes, new Set([unrelated.id]));
 	assert.strictEqual(result.shapes[0], first);
