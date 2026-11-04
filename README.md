@@ -28,6 +28,12 @@ pnpm install
 pnpm run dev
 ```
 
+The dev server answers requests for `localhost` and IP addresses. To reach it under another hostname, such as a Tailscale machine name, list the hostnames in `ECAD_ALLOWED_HOSTS`, separated by commas. Set the variable in your shell or in a `.env.local` file at the repository root. `pnpm run preview` uses the same list.
+
+```bash
+ECAD_ALLOWED_HOSTS=devbox.example.ts.net pnpm run dev
+```
+
 Open `http://localhost:3000/editor` for the drawing editor. Manage symbol libraries under **Projects → Symbol libraries**, where you can upload files or directories into user or project libraries. User libraries live in project-independent localStorage. Project libraries save with the project. Uploading a directory copies its current symbols; it does not keep access to that directory.
 
 The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `pnpm run symbols:generate /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API.

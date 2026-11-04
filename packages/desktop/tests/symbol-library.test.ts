@@ -183,11 +183,50 @@ test("desktop user configuration persists in the home directory and validates be
 test("configured relative user directories resolve against the home directory", async () => {
  await withDirectory(async home => {
   await mkdir(join(home, "parts"));
+  await mkdir(join(home, ".ecad"));
   await writeFile(join(home, "parts", "point.ecadsym"), JSON.stringify(symbol("point")));
-  const storage = new DesktopSymbolLibrary(undefined, home);
   for (const path of ["parts", "~/parts"]) {
-   await storage.saveConfiguration({ version: 1, symbolLibraries: [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory", path } }] });
+   // The user wrote these paths into their own configuration.
+   const config = { version: 1 as const, symbolLibraries: [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory" as const, path } }] };
+   await writeFile(join(home, ".ecad", "config.json"), JSON.stringify(config));
+   const storage = new DesktopSymbolLibrary(undefined, home);
    assert.deepEqual(await storage.loadConfiguredDirectory(path), [symbol("point")]);
+   // Saving keeps paths that are already configured.
+   const disabled = { ...config, symbolLibraries: [{ ...config.symbolLibraries[0], enabled: false }] };
+   await storage.saveConfiguration(disabled);
+   assert.deepEqual(await storage.loadConfiguration(), disabled);
+  }
+ });
+});
+
+test("user configuration saves accept only directories the main process chose or the user configured", async () => {
+ await withDirectory(async home => {
+  const { defaultSymbolConfig } = await import("@ecad/core/symbol-library/config.ts");
+  const outside = await mkdtemp(join(tmpdir(), "ecad-outside-"));
+  try {
+   await writeFile(join(outside, "secret.ecadsym"), JSON.stringify(symbol("secret")));
+   const storage = new DesktopSymbolLibrary(undefined, home);
+   const builtin = defaultSymbolConfig().symbolLibraries;
+   const injected = (path: string) => ({ version: 1 as const, symbolLibraries: [...builtin, { id: "injected", name: "Injected", enabled: true, source: { kind: "directory" as const, path } }] });
+   for (const path of [outside, "~/../..", "..", "~/.ssh"])
+    await assert.rejects(storage.saveConfiguration(injected(path)), /Add library directory/);
+   await assert.rejects(readFile(storage.configurationPath), { code: "ENOENT" });
+   await assert.rejects(storage.loadConfiguredDirectory(outside), /not configured/);
+
+   // A damaged configuration trusts nothing, but a safe configuration can replace it.
+   await mkdir(join(home, ".ecad"));
+   await writeFile(storage.configurationPath, "{");
+   await assert.rejects(storage.saveConfiguration(injected(outside)), /Add library directory/);
+   await storage.saveConfiguration(defaultSymbolConfig());
+   assert.deepEqual(await storage.loadConfiguration(), defaultSymbolConfig());
+
+   const chosen = await storage.openLibraryDirectory(outside, "Chosen");
+   await storage.saveConfiguration({ version: 1, symbolLibraries: [...builtin, chosen] });
+   assert.deepEqual(await new DesktopSymbolLibrary(undefined, home).loadConfiguredDirectory(chosen.source.kind === "directory" ? chosen.source.path : ""), [symbol("secret")]);
+   // A renamed path is a different directory and still needs the picker.
+   await assert.rejects(storage.saveConfiguration(injected(`${outside}/..`)), /Add library directory/);
+  } finally {
+   await rm(outside, { recursive: true, force: true });
   }
  });
 });

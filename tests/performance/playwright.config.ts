@@ -4,7 +4,12 @@ const port = Number(process.env.ECAD_PERF_PORT ?? 4175);
 const development = process.env.ECAD_PERF_MODE === "development";
 export default defineConfig({
 	testDir: ".",
-	testMatch: ["app.spec.ts", "desktop-storage.spec.ts", "cli.spec.ts"],
+	testMatch: [
+		"app.spec.ts",
+		"desktop-storage.spec.ts",
+		"cli.spec.ts",
+		"linked-schematic.spec.ts",
+	],
 	outputDir: "../../perf-artifacts/results",
 	workers: 1,
 	fullyParallel: false,
