@@ -1,4 +1,3 @@
-import { Effect, Either } from "effect";
 import {
 	Cable,
 	Circle,
@@ -23,59 +22,53 @@ import {
 } from "lucide-react";
 import {
 	lazy,
-	type ClipboardEvent as ReactClipboardEvent,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
 	Suspense,
 	useCallback,
 	useEffect,
 	useEffectEvent,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
 import {
-	type CommandResult,
 	createSymbolFromSelectionEffect,
-	type InvalidDrawingCommand,
 	jumpHistoryEffect,
-	placeShapesEffect,
 	redoEffect,
 	removeShapesEffect,
-	replaceAndPlaceShapesEffect,
 	rotateShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import { createDrawingStore } from "#/commands/drawing-store.ts";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
+import {
+	canvasKeyCommand,
+	editorShortcut,
+} from "#/components/editor/editorKeymap.ts";
 import {
 	dismissEditorIssues,
 	editorIssues,
 	retainDismissedIssues,
 	visibleEditorMessages,
 } from "#/components/editor/editorMessages.ts";
+import {
+	createEditorSession,
+	type DrawingCommand,
+} from "#/components/editor/editorSession.ts";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import {
 	parseSymbolFile,
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
+import { useDrawingClipboard } from "#/components/editor/useDrawingClipboard.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
-import {
-	drawingClipboardType,
-	parseSelection,
-	pasteSelection,
-	selectionFileText,
-	serializeSelection,
-} from "#/drawing/clipboard.ts";
-import {
-	clipboardSelectionText,
-	writeSelectionClipboard,
-} from "#/drawing/clipboard-browser.ts";
-import { placedSelection } from "#/drawing/command-selection.ts";
+import { pasteSelection } from "#/drawing/clipboard.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
 import {
 	createPlacementShape,
@@ -135,12 +128,7 @@ import { measureText } from "#/engine/drawing/text.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { errorMessage } from "#/lib/error-message.ts";
-import {
-	arrowDelta,
-	handleHistoryKeyDown,
-	isArrowKey,
-	isEditableTarget,
-} from "#/lib/keyboard.ts";
+import { isEditableTarget } from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
@@ -174,7 +162,7 @@ interface Drag {
 	canvas: HTMLCanvasElement;
 	start: Point;
 	startScreen: Point;
-	previousSelection: Set<number>;
+	previousSelection: ReadonlySet<number>;
 	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-child";
 	childKey?: string;
 	previousChild: string | null;
@@ -307,40 +295,38 @@ function EditorCanvas({
 		store.getSnapshot,
 	);
 	const history = drawing.history;
-	const executingCommand = useRef(false);
-	// A gesture changes only this preview. Commands receive the completed geometry.
-	const [draftShapes, setDraftShapes] = useState<EditorShape[] | null>(null);
-	const currentDraft = useRef<EditorShape[] | null>(null);
 	const symbolLibrary = useSymbolLibrary();
-	const resolved = useMemo(
-		() =>
-			resolveDrawingSymbols(
-				drawing.shapes,
-				symbolLibrary.definitions,
-				symbolLibrary.byReference,
-			),
-		[drawing.shapes, symbolLibrary.definitions, symbolLibrary.byReference],
+	const { definitions, byReference } = symbolLibrary;
+	const resolveShapes = useCallback(
+		(shapes: EditorShape[]) =>
+			resolveDrawingSymbols(shapes, definitions, byReference).shapes,
+		[definitions, byReference],
 	);
-	const shapes = draftShapes ?? resolved.shapes;
-	const currentShapes = {
-		get current() {
-			return (
-				currentDraft.current ??
-				(store.getSnapshot().shapes === drawing.shapes
-					? resolved.shapes
-					: resolveDrawingSymbols(
-							store.getSnapshot().shapes,
-							symbolLibrary.definitions,
-							symbolLibrary.byReference,
-						).shapes)
-			);
-		},
-	};
-	const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-	const currentSelection = useRef(selectedIds);
-	const [selectedChildKey, setSelectedChildKey] = useState<string | null>(null);
-	// Selection restoration is an editor preference, separate from document history.
-	const historySelection = useRef(new Map<number, number[]>([[0, []]]));
+	const resolved = useMemo(
+		() => resolveDrawingSymbols(drawing.shapes, definitions, byReference),
+		[drawing.shapes, definitions, byReference],
+	);
+	const [session] = useState(() => createEditorSession(store, resolveShapes));
+	useLayoutEffect(
+		() =>
+			session.setResolver(resolveShapes, {
+				input: drawing.shapes,
+				output: resolved.shapes,
+			}),
+		[session, resolveShapes, drawing.shapes, resolved.shapes],
+	);
+	const editor = useSyncExternalStore(
+		session.subscribe,
+		session.getState,
+		session.getState,
+	);
+	const {
+		selection: selectedIds,
+		childKey: selectedChildKey,
+		error: commandError,
+		allowLocked,
+	} = editor;
+	const shapes = editor.draft ?? resolved.shapes;
 	const [marquee, setMarquee] = useState<Marquee | null>(null);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
@@ -352,9 +338,7 @@ function EditorCanvas({
 	const [editingDefinition, setEditingDefinition] =
 		useState<SymbolEditTarget | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
-	const [allowLocked, setAllowLocked] = useState(false);
 	const [ready, setReady] = useState(false);
-	const [commandError, setCommandError] = useState("");
 	const [viewerError, setViewerError] = useState("");
 	const issues = editorIssues([
 		viewerError,
@@ -371,7 +355,7 @@ function EditorCanvas({
 	const hiddenIssues = issues.filter((issue) => dismissedIssues.has(issue));
 	const messages = visibleEditorMessages(commandError, issues, dismissedIssues);
 	const dismissMessages = () => {
-		setCommandError("");
+		session.setError("");
 		setDismissedIssues((dismissed) => dismissEditorIssues(dismissed, issues));
 	};
 	const dismissButton = useRef<HTMLButtonElement>(null);
@@ -396,14 +380,8 @@ function EditorCanvas({
 		center: Point;
 	} | null>(null);
 	const wireChain = useRef<WireChain | null>(null);
-	const clipboardPaste = useRef({ text: "", count: 0 });
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
-	const nextId = {
-		get current() {
-			return store.getSnapshot().nextShapeId;
-		},
-	};
 	const previews = useMemo(
 		() => wirePreview ?? (symbolPreview ? [symbolPreview] : []),
 		[wirePreview, symbolPreview],
@@ -503,7 +481,7 @@ function EditorCanvas({
 				},
 				(cause) => {
 					if (active)
-						setCommandError(
+						session.setError(
 							errorMessage(cause, "Unable to open the symbol definition."),
 						);
 				},
@@ -512,7 +490,7 @@ function EditorCanvas({
 		return () => {
 			active = false;
 		};
-	}, [definitionId, definitionLibrary, symbolLibrary.loading]);
+	}, [session, definitionId, definitionLibrary, symbolLibrary.loading]);
 	const gridStep = view ? rulerSpacing(view.camera.scale, "mil").minor : 0;
 	const selectionSnapStep = snapEnabled
 		? selected.length > 0 &&
@@ -566,93 +544,6 @@ function EditorCanvas({
 		event.preventDefault();
 		event.stopPropagation();
 	};
-	const setPreviewShapes = (next: EditorShape[] | null) => {
-		currentDraft.current = next;
-		setDraftShapes(next);
-	};
-	const applySelection = (ids: Set<number>) => {
-		ids = new Set(
-			currentShapes.current
-				.filter(
-					(shape) => ids.has(shape.id) && canSelectShape(shape, allowLocked),
-				)
-				.map((shape) => shape.id),
-		);
-		if (
-			ids.size === currentSelection.current.size &&
-			[...ids].every((id) => currentSelection.current.has(id))
-		)
-			return;
-		currentSelection.current = ids;
-		setSelectedIds(ids);
-		setSelectedChildKey(null);
-	};
-	const execute = <A,>(
-		program: Effect.Effect<A, InvalidDrawingCommand, DrawingStore>,
-	): A | undefined => {
-		executingCommand.current = true;
-		const before = store.getSnapshot();
-		try {
-			const result = Effect.runSync(
-				program.pipe(Effect.provideService(DrawingStore, store), Effect.either),
-			);
-			if (Either.isLeft(result)) {
-				setCommandError(result.left.message);
-				return undefined;
-			}
-			if (store.getSnapshot() !== before) setCommandError("");
-			return result.right;
-		} finally {
-			executingCommand.current = false;
-		}
-	};
-	const acceptEdit = (
-		result: CommandResult,
-		previousHistoryId: number,
-		ids = new Set(
-			[...currentSelection.current].flatMap(
-				(id) => result.idsBySource.get(id) ?? [],
-			),
-		),
-	) => {
-		setPreviewShapes(null);
-		const committed = store.getSnapshot();
-		const existingIds = new Set(committed.shapes.map((shape) => shape.id));
-		const selection = new Set<number>();
-		for (const id of ids) {
-			if (existingIds.has(id)) selection.add(id);
-		}
-		applySelection(selection);
-		const historyId = committed.history.currentId;
-		if (historyId !== previousHistoryId)
-			historySelection.current.set(historyId, [...selection]);
-	};
-	const placeShapes = (next: EditorShape[], label: string) => {
-		const previous = store.getSnapshot();
-		const result = execute(placeShapesEffect(next, label));
-		if (result)
-			acceptEdit(
-				result,
-				previous.history.currentId,
-				placedSelection(previous.shapes, result),
-			);
-		else setPreviewShapes(null);
-	};
-	const commitReplacements = (replacements: EditorShape[], label: string) => {
-		const previous = store.getSnapshot();
-		const previousHistoryId = previous.history.currentId;
-		const existing = new Set(previous.shapes.map((shape) => shape.id));
-		const result = execute(
-			replaceAndPlaceShapesEffect(
-				replacements.filter((shape) => existing.has(shape.id)),
-				replacements.filter((shape) => !existing.has(shape.id)),
-				label,
-				[...currentSelection.current],
-			),
-		);
-		if (result) acceptEdit(result, previousHistoryId);
-		else setPreviewShapes(null);
-	};
 	const editSelection = (edit: SelectionEdit) => {
 		const result = applySelectionEdit(edit, {
 			selection: selected,
@@ -660,22 +551,22 @@ function EditorCanvas({
 				selectedSymbol && selectedChild
 					? { symbol: selectedSymbol, child: selectedChild }
 					: undefined,
-			shapes: currentShapes.current,
-			nextId: nextId.current,
+			shapes: session.shapes(),
+			nextId: session.nextId(),
 			allowLocked,
 			measureText,
 		});
-		if (result) commitReplacements(result.replacements, result.label);
-		if (edit.kind === "lock" && selectedChild) setSelectedChildKey(null);
+		if (result) session.replace(result.replacements, result.label);
+		if (edit.kind === "lock" && selectedChild) session.selectChild(null);
 	};
 
 	const previewReplacements = (
 		replacements: EditorShape[],
-		base = currentShapes.current,
+		base = session.shapes(),
 	) => {
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
 		const existing = new Set(base.map((shape) => shape.id));
-		setPreviewShapes([
+		session.preview([
 			...base.map((shape) => byId.get(shape.id) ?? shape),
 			...replacements.filter((shape) => !existing.has(shape.id)),
 		]);
@@ -683,7 +574,7 @@ function EditorCanvas({
 	const placementAnchor = (tool: PlacementTool, point: Point, start: Point) =>
 		placementSnapsToConnection(tool)
 			? (findWireConnection(
-					currentShapes.current,
+					session.shapes(),
 					point,
 					8 / (snapshot.current?.camera.scale ?? 1),
 				) ?? start)
@@ -696,7 +587,7 @@ function EditorCanvas({
 				? rulerSpacing(snapshot.current.camera.scale, "mil").minor
 				: 0;
 		const connection = findWireConnection(
-			currentShapes.current,
+			session.shapes(),
 			point,
 			8 / (snapshot.current?.camera.scale ?? 1),
 			active.start,
@@ -705,7 +596,7 @@ function EditorCanvas({
 			connection ?? constrainWireEndpoint(active.start, point, snapStep);
 		setConnectionHover(connection ?? null);
 		// Only snap the new endpoint so changing the grid never separates corners.
-		const segments = routeWire(nextId.current, active.start, end);
+		const segments = routeWire(session.nextId(), active.start, end);
 		setWirePreview(segments);
 		return { segments, end, connected: !!connection };
 	};
@@ -820,7 +711,7 @@ function EditorCanvas({
 					active.gridStep,
 					active.anchorShape,
 					active.mode === "duplicate" ? active.originals : active.initialShapes,
-					nextId.current,
+					session.nextId(),
 					allowLocked,
 				),
 				active.initialShapes,
@@ -831,7 +722,7 @@ function EditorCanvas({
 			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) < 3
 		) {
 			setMarquee(null);
-			applySelection(active.additive ? active.previousSelection : new Set());
+			session.select(active.additive ? active.previousSelection : new Set());
 			return;
 		}
 		const mode = end.x < active.startScreen.x ? "crossing" : "window";
@@ -845,7 +736,7 @@ function EditorCanvas({
 		const ids = new Set(active.additive ? active.previousSelection : []);
 		const matches = mode === "window" ? containsSelection : intersectsSelection;
 		for (const shape of shapes) if (matches(shape, bounds)) ids.add(shape.id);
-		applySelection(ids);
+		session.select(ids);
 	};
 	const finishDrag = (cancel = false) => {
 		const active = drag.current;
@@ -855,12 +746,12 @@ function EditorCanvas({
 		active.canvas.style.cursor = "";
 		setMarquee(null);
 		if (cancel || (active.created && !active.valid)) {
-			setPreviewShapes(null);
-			applySelection(active.previousSelection);
-			setSelectedChildKey(active.previousChild);
+			session.preview(null);
+			session.select(active.previousSelection);
+			session.selectChild(active.previousChild);
 		} else if (active.wireStart && !active.moved) {
-			setPreviewShapes(null);
-			applySelection(new Set());
+			session.preview(null);
+			session.select(new Set());
 			setTool("wire");
 			startWire(active.wireStart, active.pointerId);
 		} else if (active.created) {
@@ -870,8 +761,8 @@ function EditorCanvas({
 					? `${original.electrical} label`
 					: original.kind;
 			const createdIds = new Set(active.originals.map((shape) => shape.id));
-			placeShapes(
-				currentShapes.current.filter((shape) => createdIds.has(shape.id)),
+			session.place(
+				session.shapes().filter((shape) => createdIds.has(shape.id)),
 				active.mode === "duplicate" ? `Duplicate ${kind}` : `Draw ${kind}`,
 			);
 			setTool("select");
@@ -883,10 +774,8 @@ function EditorCanvas({
 			const initial = new Map(
 				active.initialShapes.map((shape) => [shape.id, shape]),
 			);
-			commitReplacements(
-				currentShapes.current.filter(
-					(shape) => shape !== initial.get(shape.id),
-				),
+			session.replace(
+				session.shapes().filter((shape) => shape !== initial.get(shape.id)),
 				active.mode === "symbol-child"
 					? active.handle
 						? "Resize symbol child"
@@ -899,43 +788,31 @@ function EditorCanvas({
 		if (active.canvas.hasPointerCapture(active.pointerId))
 			active.canvas.releasePointerCapture(active.pointerId);
 	};
-	const restoreHistory = (
-		program: Effect.Effect<unknown, InvalidDrawingCommand, DrawingStore>,
-	) => {
+	const restoreHistory = (program: DrawingCommand<unknown>) => {
 		finishDrag(true);
 		finishWire();
 		if (tool === "symbol") setTool("select");
-		execute(program);
-		const restored = store.getSnapshot();
-		setPreviewShapes(null);
-		const existing = new Set(restored.shapes.map((shape) => shape.id));
-		applySelection(
-			new Set(
-				(historySelection.current.get(restored.history.currentId) ?? []).filter(
-					(id) => existing.has(id),
-				),
-			),
-		);
+		session.restore(program);
 	};
 	const undo = () => restoreHistory(undoEffect);
 	const redo = () => restoreHistory(redoEffect);
 	const rotateSelected = (angle: number) => {
-		if (!ready || !currentSelection.current.size) return;
+		if (!ready || !session.getState().selection.size) return;
 		const childKey = drag.current
 			? drag.current.previousChild
 			: selectedChildKey;
 		finishDrag(true);
 		finishWire();
 		setTool("select");
-		const parent = currentShapes.current.find((shape) =>
-			currentSelection.current.has(shape.id),
-		);
+		// Cancelling a drag can restore the selection from before it started.
+		const { selection } = session.getState();
+		const parent = session.shapes().find((shape) => selection.has(shape.id));
 		if (childKey && parent?.kind === "symbol") {
 			const child = symbolChildren(parent).find(
 				(item) => item.key === childKey,
 			);
 			if (child)
-				commitReplacements(
+				session.replace(
 					[
 						replaceSymbolChild(parent, childKey, {
 							...child.shape,
@@ -947,11 +824,7 @@ function EditorCanvas({
 			return;
 		}
 
-		const previousHistoryId = store.getSnapshot().history.currentId;
-		const result = execute(
-			rotateShapesEffect([...currentSelection.current], angle),
-		);
-		if (result) acceptEdit(result, previousHistoryId);
+		session.commit(rotateShapesEffect([...selection], angle));
 	};
 	const removeSelected = () => {
 		finishDrag();
@@ -959,21 +832,22 @@ function EditorCanvas({
 			finishWire();
 			setTool("select");
 		}
-		const previousHistoryId = store.getSnapshot().history.currentId;
-		const result = execute(removeShapesEffect([...currentSelection.current]));
-		if (result) acceptEdit(result, previousHistoryId, new Set());
+		session.commit(
+			removeShapesEffect([...session.getState().selection]),
+			new Set(),
+		);
 	};
 	const createSelectionSymbol = async (
 		name: string,
 	): Promise<string | undefined> => {
 		finishDrag();
 		finishWire();
-		const previousHistoryId = store.getSnapshot().history.currentId;
-		const originalDrawing = store.getSnapshot();
-		const ids = [...currentSelection.current];
-		const primitives = store
-			.getSnapshot()
-			.shapes.filter((shape) => currentSelection.current.has(shape.id))
+		const originalDrawing = session.drawing();
+		const previousHistoryId = originalDrawing.history.currentId;
+		const { selection } = session.getState();
+		const ids = [...selection];
+		const primitives = originalDrawing.shapes
+			.filter((shape) => selection.has(shape.id))
 			.filter((shape) => shape.kind !== "symbol");
 		if (primitives.length !== ids.length || ids.length < 2)
 			return "Select at least two drawing shapes to create a symbol.";
@@ -982,18 +856,23 @@ function EditorCanvas({
 				name,
 				definitionId: `custom.${crypto.randomUUID()}`,
 			};
-			const draft = createSymbolFromShapes(nextId.current, primitives, options);
+			const draft = createSymbolFromShapes(
+				session.nextId(),
+				primitives,
+				options,
+			);
 			const saveSymbol = symbolLibrary.prepareAddition(
 				symbolFileFromSymbol(draft),
 			);
 			const library = await saveSymbol();
 			options.library = library;
-			if (store.getSnapshot() !== originalDrawing)
+			if (session.drawing() !== originalDrawing)
 				return "The drawing changed while saving. The symbol is in your library; select the shapes and try again.";
-			const result = execute(createSymbolFromSelectionEffect(ids, options));
+			const result = session.commit(
+				createSymbolFromSelectionEffect(ids, options),
+			);
 			if (!result) return "Unable to create a symbol from this selection.";
-			historySelection.current.set(previousHistoryId, ids);
-			acceptEdit(result, previousHistoryId);
+			session.rememberSelection(previousHistoryId, ids);
 			setTool("select");
 			setCreatingSymbol(false);
 		} catch (cause) {
@@ -1004,26 +883,15 @@ function EditorCanvas({
 		const ids = new Set(additive ? selectedIds : []);
 		if (additive && ids.has(id)) ids.delete(id);
 		else ids.add(id);
-		applySelection(ids);
+		session.select(ids);
 	};
 
-	const reconcileExternalEdit = useEffectEvent(() => {
-		if (executingCommand.current) return;
-		// Another caller changed the document. A stale gesture must not overwrite it.
+	// Another caller changed the document. A stale gesture must not overwrite it.
+	const cancelGestures = useEffectEvent(() => {
 		finishDrag(true);
 		finishWire();
-		const existing = new Set(
-			store.getSnapshot().shapes.map((shape) => shape.id),
-		);
-		applySelection(
-			new Set([...currentSelection.current].filter((id) => existing.has(id))),
-		);
 	});
-	useEffect(() => {
-		historySelection.current = new Map([[0, []]]);
-		reconcileExternalEdit();
-		return store.subscribe(reconcileExternalEdit);
-	}, [store]);
+	useEffect(() => session.connect(store, cancelGestures), [session, store]);
 
 	const renderTool = ({ kind, label, icon: Icon }: (typeof tools)[number]) => (
 		<TooltipButton
@@ -1043,63 +911,18 @@ function EditorCanvas({
 			<Icon size={18} aria-hidden="true" />
 		</TooltipButton>
 	);
-	const clipboardAvailable = (event: ReactClipboardEvent) => {
-		const target = event.target;
-		return (
-			ready &&
-			!creatingSymbol &&
-			!drag.current &&
-			!wireChain.current &&
-			!isEditableTarget(event) &&
-			!(target instanceof HTMLElement && target.closest("[role=dialog]"))
-		);
-	};
-	const copySelection = (event: ReactClipboardEvent, cut = false) => {
-		if (!clipboardAvailable(event)) return;
-		const source = currentShapes.current.filter(
-			(shape) =>
-				currentSelection.current.has(shape.id) &&
-				canSelectShape(shape, allowLocked),
-		);
-		if (!source.length) return;
-		const text = serializeSelection(source);
-		const captured = parseSelection(text);
-		if (!captured) {
-			setCommandError(
-				"The selection is too large or contains unavailable symbol geometry.",
-			);
-			return;
-		}
-		try {
-			const file = selectionFileText(captured);
-			event.clipboardData.setData("text/plain", file);
-			event.clipboardData.setData(drawingClipboardType, text);
-			setCommandError("");
-			void writeSelectionClipboard(captured, text, file)?.catch(() => {
-				setCommandError(
-					(current) =>
-						current ||
-						"Image formats could not be copied. Editable data and save-file text are still available.",
-				);
-			});
-		} catch {
-			setCommandError("Unable to copy the selection to the clipboard.");
-			return;
-		}
-		event.preventDefault();
-		event.stopPropagation();
-		clipboardPaste.current = { text, count: 0 };
-		if (cut) {
-			const previous = store.getSnapshot().history.currentId;
-			const result = execute(
-				removeShapesEffect(
-					source.map((shape) => shape.id),
-					"Cut selection",
-				),
-			);
-			if (result) acceptEdit(result, previous, new Set());
-		}
-	};
+	const clipboard = useDrawingClipboard({
+		session,
+		enabled: () =>
+			ready && !creatingSymbol && !drag.current && !wireChain.current,
+		target: isSymbol ? "symbol" : "drawing",
+		pasteStep: snapEnabled ? gridStep || SCHEMATIC_STEP : SCHEMATIC_STEP,
+		beforePaste: () => {
+			finishWire();
+			setTool("select");
+			setSymbolPreview(null);
+		},
+	});
 
 	if (editingDefinition) {
 		return (
@@ -1113,68 +936,23 @@ function EditorCanvas({
 	return (
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
-			onCopy={(event) => copySelection(event)}
-			onCut={(event) => copySelection(event, true)}
-			onPaste={(event) => {
-				if (!clipboardAvailable(event)) return;
-				const text = clipboardSelectionText(event.clipboardData);
-				const source = parseSelection(text);
-				if (!source) return;
-				event.preventDefault();
-				event.stopPropagation();
-				const count =
-					clipboardPaste.current.text === text
-						? clipboardPaste.current.count + 1
-						: 1;
-				const step =
-					(snapEnabled ? gridStep || SCHEMATIC_STEP : SCHEMATIC_STEP) * count;
-				let pasted: EditorShape[];
-				try {
-					pasted = pasteSelection(
-						source,
-						currentShapes.current,
-						nextId.current,
-						{
-							x: step,
-							y: -step,
-						},
-						isSymbol ? "symbol" : "drawing",
-					);
-				} catch (cause) {
-					setCommandError(
-						errorMessage(
-							cause,
-							"This selection cannot be pasted into a reusable symbol.",
-						),
-					);
-					return;
-				}
-				finishWire();
-				setTool("select");
-				setSymbolPreview(null);
-				placeShapes(pasted, "Paste selection");
-				clipboardPaste.current = { text, count };
-			}}
+			{...clipboard}
 			onKeyDownCapture={(event) => {
-				if (creatingSymbol) return;
-				if (event.key === "Escape" && tool === "symbol") {
+				const shortcut = editorShortcut(event, {
+					dialogOpen: creatingSymbol,
+					placingSymbol: tool === "symbol",
+					editable: isEditableTarget(event),
+					canRotate: ready && session.getState().selection.size > 0,
+				});
+				if (!shortcut) return;
+				if (shortcut.kind === "cancel-placement") {
 					setSymbolPreview(null);
 					setTool("select");
-					event.preventDefault();
-					event.stopPropagation();
-					return;
-				}
-				if (event.altKey || isEditableTarget(event)) return;
-				const key = event.key.toLowerCase();
-				if (!(event.ctrlKey || event.metaKey)) {
-					if (key !== "r" || !ready || !currentSelection.current.size) return;
-					rotateSelected(((event.shiftKey ? -1 : 1) * Math.PI) / 2);
-					event.preventDefault();
-					event.stopPropagation();
-					return;
-				}
-				if (handleHistoryKeyDown(event, { undo, redo }))
-					event.stopPropagation();
+				} else if (shortcut.kind === "rotate") rotateSelected(shortcut.angle);
+				else if (shortcut.kind === "undo") undo();
+				else redo();
+				event.preventDefault();
+				event.stopPropagation();
 			}}
 		>
 			<h1 className="sr-only">
@@ -1238,7 +1016,7 @@ function EditorCanvas({
 						if (shape?.kind !== "text") return;
 						event.preventDefault();
 						event.stopPropagation();
-						applySelection(new Set([shape.id]));
+						session.select(new Set([shape.id]));
 						setTextFocusId(shape.id);
 					}}
 					onPointerDownCapture={(event) => {
@@ -1321,11 +1099,11 @@ function EditorCanvas({
 							const candidates = measurePerformance(
 								"editor.pin-hit-test",
 								() =>
-									openPins(currentShapes.current, {
+									openPins(session.shapes(), {
 										point,
 										tolerance: distance,
 									}),
-								{ shapes: currentShapes.current.length },
+								{ shapes: session.shapes().length },
 							);
 							for (const candidate of candidates) {
 								const terminal = candidate.point;
@@ -1349,11 +1127,11 @@ function EditorCanvas({
 						if (isPlacementTool(tool)) {
 							const placed = createPlacementShape(
 								tool,
-								nextId.current,
+								session.nextId(),
 								placementAnchor(tool, point, start),
 								measureText,
 							);
-							placeShapes([placed], placementLabel(tool));
+							session.place([placed], placementLabel(tool));
 							setTool("select");
 							if (placed.kind === "text") setTextFocusId(placed.id);
 							return;
@@ -1362,11 +1140,11 @@ function EditorCanvas({
 							if (!symbolDefinition || (isSymbol && symbolDefinition.netSymbol))
 								return;
 							const symbol = createSymbol(
-								nextId.current,
+								session.nextId(),
 								symbolDefinition,
 								start,
 							);
-							placeShapes([symbol], `Insert ${symbol.attributes.name}`);
+							session.place([symbol], `Insert ${symbol.attributes.name}`);
 							setSymbolPreview(null);
 							setTool("select");
 							return;
@@ -1375,7 +1153,7 @@ function EditorCanvas({
 							const active = wireChain.current;
 							if (!active) {
 								const connection = findWireConnection(
-									currentShapes.current,
+									session.shapes(),
 									point,
 									8 / (snapshot.current?.camera.scale ?? 1),
 								);
@@ -1391,7 +1169,7 @@ function EditorCanvas({
 									3
 							)
 								return;
-							placeShapes(next.segments, "Draw wire");
+							session.place(next.segments, "Draw wire");
 							if (next.connected) {
 								finishWire();
 								setTool("select");
@@ -1403,14 +1181,14 @@ function EditorCanvas({
 							return;
 						}
 						if (duplicate) {
-							shape = pasteSelection([duplicate], shapes, nextId.current, {
+							shape = pasteSelection([duplicate], shapes, session.nextId(), {
 								x: 0,
 								y: 0,
 							})[0];
-							setPreviewShapes([...currentShapes.current, shape]);
+							session.preview([...session.shapes(), shape]);
 						} else if (created) {
-							shape = drawShape(nextId.current, tool, start, start);
-							setPreviewShapes([...currentShapes.current, shape]);
+							shape = drawShape(session.nextId(), tool, start, start);
+							session.preview([...session.shapes(), shape]);
 						} else if (resize) shape = resize.shape;
 						else if (!shape) shape = hit;
 						if (shape && event.shiftKey && !created && !resize && !duplicate) {
@@ -1428,7 +1206,7 @@ function EditorCanvas({
 								? selected
 								: [shape]
 							: [];
-						applySelection(
+						session.select(
 							resize
 								? selectedIds
 								: shape
@@ -1437,7 +1215,7 @@ function EditorCanvas({
 										? selectedIds
 										: new Set(),
 						);
-						setSelectedChildKey(childKey ?? null);
+						session.selectChild(childKey ?? null);
 						const rect = canvas.getBoundingClientRect();
 						drag.current = {
 							pointerId: event.pointerId,
@@ -1475,7 +1253,7 @@ function EditorCanvas({
 									: snapStep,
 							moved: false,
 							originals,
-							initialShapes: currentShapes.current,
+							initialShapes: session.shapes(),
 							created: created || !!duplicate,
 							valid: false,
 							additive: event.shiftKey,
@@ -1492,7 +1270,7 @@ function EditorCanvas({
 						const point = pointAt(event, event.target);
 						if (tool === "wire" && !wireChain.current && point) {
 							const connection = findWireConnection(
-								currentShapes.current,
+								session.shapes(),
 								point,
 								8 / (snapshot.current?.camera.scale ?? 1),
 							);
@@ -1506,7 +1284,7 @@ function EditorCanvas({
 							const bounds = shapeBounds(
 								createPlacementShape(
 									tool,
-									nextId.current,
+									session.nextId(),
 									placementAnchor(
 										tool,
 										point,
@@ -1527,7 +1305,7 @@ function EditorCanvas({
 						if (tool === "symbol" && symbolDefinition && point) {
 							setSymbolPreview(
 								createSymbol(
-									nextId.current,
+									session.nextId(),
 									symbolDefinition,
 									snapPoint(point, snapEnabled ? gridStep : 0),
 								),
@@ -1576,74 +1354,69 @@ function EditorCanvas({
 					}}
 					onKeyDownCapture={(event) => {
 						if (!(event.target instanceof HTMLCanvasElement)) return;
-						if (
-							wireChain.current &&
-							(event.key === "Escape" || event.key === "Enter")
-						) {
-							finishWire();
-							setTool("select");
-							event.preventDefault();
-							event.stopPropagation();
-							return;
-						}
-						if (event.key === "Escape") {
-							if (drag.current) finishDrag(true);
-							else if (selectedChild) setSelectedChildKey(null);
-							else applySelection(new Set());
-						} else if (
-							selected.length > 0 &&
-							(event.key === "Delete" || event.key === "Backspace")
-						) {
-							finishDrag();
-							removeSelected();
-						} else if (
-							selectedChild &&
-							selectedSymbol &&
-							isArrowKey(event.key) &&
-							!drag.current
-						) {
-							const step =
-								(snapEnabled
-									? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
-									: SCHEMATIC_STEP) * (event.shiftKey ? 10 : 1);
-							commitReplacements(
-								[
-									moveSymbolChild(
-										selectedSymbol,
-										selectedChild.key,
-										arrowDelta(event.key, step, "up"),
-										0,
-										allowLocked,
-									),
-								],
-								"Move symbol child",
-							);
-						} else if (selected.length > 0 && isArrowKey(event.key)) {
-							if (drag.current) {
-								event.preventDefault();
-								event.stopPropagation();
-								return;
-							}
-							if (wireChain.current) {
+						const command = canvasKeyCommand(event, {
+							wiring: !!wireChain.current,
+							dragging: !!drag.current,
+							hasSelection: selected.length > 0,
+							childSelected: selectedChild !== undefined,
+							childStep: snapEnabled
+								? gridStep / (selectedChild?.shape.kind === "text" ? 10 : 1)
+								: SCHEMATIC_STEP,
+							selectionStep: selectionSnapStep || SCHEMATIC_STEP,
+						});
+						if (!command) return;
+						switch (command.kind) {
+							case "end-wire":
 								finishWire();
 								setTool("select");
-							}
-							const snapStep = selectionSnapStep;
-							const step =
-								(snapStep || SCHEMATIC_STEP) * (event.shiftKey ? 10 : 1);
-							commitReplacements(
-								moveShapes(
-									selected,
-									arrowDelta(event.key, step, "up"),
-									snapStep,
-									selected[0],
-									currentShapes.current,
-									nextId.current,
-									allowLocked,
-								),
-								"Move selection",
-							);
-						} else return;
+								break;
+							case "cancel-drag":
+								finishDrag(true);
+								break;
+							case "deselect-child":
+								session.selectChild(null);
+								break;
+							case "deselect":
+								session.select(new Set());
+								break;
+							case "delete":
+								finishDrag();
+								removeSelected();
+								break;
+							case "move-child":
+								if (selectedSymbol && selectedChild)
+									session.replace(
+										[
+											moveSymbolChild(
+												selectedSymbol,
+												selectedChild.key,
+												command.delta,
+												0,
+												allowLocked,
+											),
+										],
+										"Move symbol child",
+									);
+								break;
+							case "move-selection":
+								if (command.endWire) {
+									finishWire();
+									setTool("select");
+								}
+								session.replace(
+									moveShapes(
+										selected,
+										command.delta,
+										selectionSnapStep,
+										selected[0],
+										session.shapes(),
+										session.nextId(),
+										allowLocked,
+									),
+									"Move selection",
+								);
+								break;
+						}
 						event.preventDefault();
 						event.stopPropagation();
 					}}
@@ -1807,20 +1580,7 @@ function EditorCanvas({
 										className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
 										onClick={() => {
 											finishDrag(true);
-											const next = !allowLocked;
-											const ids = new Set(
-												currentShapes.current
-													.filter(
-														(shape) =>
-															currentSelection.current.has(shape.id) &&
-															canSelectShape(shape, next),
-													)
-													.map((shape) => shape.id),
-											);
-											currentSelection.current = ids;
-											setSelectedIds(ids);
-											setSelectedChildKey(null);
-											setAllowLocked(next);
+											session.setAllowLocked(!allowLocked);
 										}}
 									>
 										<LockKeyhole size={18} aria-hidden="true" />
@@ -2125,7 +1885,7 @@ function EditorCanvas({
 								: 0
 							: selectionSnapStep
 					}
-					onClear={() => applySelection(new Set())}
+					onClear={() => session.select(new Set())}
 					textFocusId={textFocusId}
 					onTextFocus={() => setTextFocusId(null)}
 				/>
