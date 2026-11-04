@@ -1,53 +1,18 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { run, runLocked } from "../development/common.ts";
 
-const args = process.argv.slice(2);
-const development = args.includes("--development");
-const baseline = args.includes("--baseline");
-const forwarded = args.filter(
-	(arg) => arg !== "--development" && arg !== "--baseline",
-);
-const env = {
-	...process.env,
-	ECAD_PERF_MODE: development ? "development" : "production",
-	ECAD_PERF_UPDATE_BASELINE: baseline ? "1" : "0",
-	ECAD_PERF_BASELINE_PATH:
-		process.env.ECAD_PERF_BASELINE_PATH ??
-		(development
-			? "perf-artifacts/development-baseline.json"
-			: "perf-artifacts/baseline.json"),
-};
-mkdirSync("perf-artifacts", { recursive: true });
-for (const target of development ? ["build:cli"] : ["build:web", "build:cli"]) {
-	console.log(
-		`[perf] Running ${target}. Build output goes to perf-artifacts/build.log.`,
+const args = [
+	"--import",
+	"tsx",
+	fileURLToPath(new URL("./worker.ts", import.meta.url)),
+	...process.argv.slice(2),
+];
+const env = { ...process.env, ECAD_PERF_LOCK_HELD: "1" };
+const alreadyLocked = process.env.ECAD_PERF_LOCK_HELD === "1";
+if (process.platform !== "linux" && !alreadyLocked)
+	console.warn(
+		"[ecad] The host benchmark queue is Linux-only. Running native perf without the shared queue.",
 	);
-	const build = spawnSync(
-		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-		["run", target],
-		{ encoding: "utf8", env },
-	);
-	writeFileSync(
-		"perf-artifacts/build.log",
-		(build.stdout ?? "") + (build.stderr ?? ""),
-		{ flag: target === (development ? "build:cli" : "build:web") ? "w" : "a" },
-	);
-	if (build.status !== 0) {
-		console.error(build.error ?? "Build failed. See perf-artifacts/build.log.");
-		process.exit(build.status ?? 1);
-	}
-}
-const run = spawnSync(
-	process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-	[
-		"exec",
-		"playwright",
-		"test",
-		"--config",
-		"tests/performance/playwright.config.ts",
-		...forwarded,
-	],
-	{ stdio: "inherit", env },
-);
-if (run.error) console.error(run.error);
-process.exit(run.status ?? 1);
+process.exitCode = await (alreadyLocked || process.platform !== "linux"
+	? run(process.execPath, args, env)
+	: runLocked("perf", process.execPath, args, env));

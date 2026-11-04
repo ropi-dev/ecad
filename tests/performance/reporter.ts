@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
 	FullResult,
@@ -42,6 +49,9 @@ export default class PerformanceReporter implements Reporter {
 				cpu: Number(process.env.ECAD_PERF_CPU ?? 4),
 				platform: process.platform,
 				browser: this.runs[0]?.report.environment.userAgent ?? "unavailable",
+				...(process.env.ECAD_PERF_ENVIRONMENT
+					? { environment: process.env.ECAD_PERF_ENVIRONMENT }
+					: {}),
 			},
 			scenarios: {},
 		};
@@ -73,9 +83,11 @@ export default class PerformanceReporter implements Reporter {
 		}
 		let revision = "unknown";
 		try {
-			revision = execFileSync("git", ["rev-parse", "HEAD"], {
-				encoding: "utf8",
-			}).trim();
+			revision =
+				process.env.ECAD_REVISION ??
+				execFileSync("git", ["rev-parse", "HEAD"], {
+					encoding: "utf8",
+				}).trim();
 		} catch {
 			revision = "unknown";
 		}
@@ -91,6 +103,16 @@ export default class PerformanceReporter implements Reporter {
 			resolve(directory, "latest.json"),
 			JSON.stringify(artifact, null, 2),
 		);
+		writeFileSync(
+			resolve(directory, `run-${Date.now()}.json`),
+			JSON.stringify(artifact, null, 2),
+		);
+		for (const old of readdirSync(directory)
+			.filter((name) => /^run-\d+\.json$/.test(name))
+			.sort()
+			.reverse()
+			.slice(20))
+			unlinkSync(resolve(directory, old));
 		if (
 			process.env.ECAD_PERF_UPDATE_BASELINE === "1" &&
 			result.status === "passed" &&

@@ -8,6 +8,8 @@ pnpm run perf:baseline
 pnpm run perf
 ```
 
+For parallel threads, use the [container setup](parallel-development.md). Native and sandbox performance commands share a host-wide benchmark lock. Artifacts live under `/tmp`, with `perf-artifacts` linking to the native checkout's artifact directory. Sandbox artifacts have a separate location and baseline.
+
 Both commands build the web app and run Chromium against a fresh preview server on port 4175. Each browser scenario runs three times, with one worker, an empty browser context, HTTP cache disabled, a 1280 × 800 viewport, and 4× CPU throttling. The large-project test seeds browser storage and reloads; this models opening an existing project. GPU tests use Chromium's software renderer. These numbers describe that test environment, rather than a user's GPU performance.
 
 The scenarios cover startup without a project, restoring 10,000 project assets and interacting with the paginated list, and creating/editing/saving a drawing followed by a 2,000-hole Gerber import and a STEP import. The `symbol-libraries` scenario restores 400 symbols across 10 user and 10 project libraries, disables one user library, opens the picker, and searches the combined library. It requires library loading and resolution below 1.2 seconds, interaction p95 below 2 seconds, fewer than 4,000 DOM nodes, and less than 2.5 MB of decoded scripts in this environment. Add scenarios for new flows and larger representative inputs as features grow.
