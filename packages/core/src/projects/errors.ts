@@ -113,6 +113,19 @@ export class ProjectAssetNotFound extends Data.TaggedError(
 	}
 }
 
+/** A project asset is over its import size limit, so it is not read or stored. */
+export class ProjectAssetTooLarge extends Data.TaggedError(
+	"ProjectAssetTooLarge",
+)<{
+	readonly assetName: string;
+	readonly reason: string;
+	readonly message: string;
+}> {
+	constructor({ assetName, reason }: { assetName: string; reason: string }) {
+		super({ assetName, reason, message: `${assetName}: ${reason}` });
+	}
+}
+
 export class ProjectStorageUnavailable extends Data.TaggedError(
 	"ProjectStorageUnavailable",
 )<{
@@ -181,6 +194,7 @@ export type ProjectError =
 	| InvalidProjectPath
 	| InvalidProjectName
 	| ProjectAssetNotFound
+	| ProjectAssetTooLarge
 	| ProjectStorageUnavailable
 	| ProjectLocked
 	| ProjectRollbackFailed
@@ -203,7 +217,7 @@ export function projectErrorData(
 	if (!reviveProjectError(cause)) return undefined;
 	const fields = cause as Record<string, unknown>;
 	const data: Record<string, string> = { _tag: text(fields._tag) };
-	for (const key of ["path", "reason", "projectName"])
+	for (const key of ["path", "reason", "projectName", "assetName"])
 		if (typeof fields[key] === "string") data[key] = fields[key];
 	return data;
 }
@@ -241,6 +255,11 @@ export function reviveProjectError(value: unknown): ProjectError | undefined {
 			});
 		case "ProjectAssetNotFound":
 			return new ProjectAssetNotFound({ path: text(fields.path) });
+		case "ProjectAssetTooLarge":
+			return new ProjectAssetTooLarge({
+				assetName: text(fields.assetName),
+				reason: text(fields.reason),
+			});
 		case "ProjectStorageUnavailable":
 			return new ProjectStorageUnavailable();
 		case "ProjectLocked":

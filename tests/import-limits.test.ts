@@ -1,17 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { Effect } from "effect";
+import { expandGerberFile } from "#/formats/expandGerberFile.ts";
+import { MAX_GERBER_ARCHIVE_LENGTH } from "#/formats/gerber/archive.ts";
 import { InvalidFile, WorkerError } from "#/formats/import-effects.ts";
-import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import {
+	MAX_GERBER_ARCHIVE_BYTES,
 	MAX_GERBER_FILE_BYTES,
-	parseGerberFile,
-} from "#/formats/parseGerberFile.ts";
-import {
 	MAX_KICAD_FILE_BYTES,
-	parseKiCadFile,
-} from "#/formats/parseKiCadFile.ts";
-import { MAX_STEP_FILE_BYTES, parseStepFile } from "#/formats/parseStepFile.ts";
+	MAX_STEP_FILE_BYTES,
+} from "#/formats/import-limits.ts";
+import { importFilesEffect } from "#/formats/importFiles.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
+import { parseGerberFile } from "#/formats/parseGerberFile.ts";
+import { parseKiCadFile } from "#/formats/parseKiCadFile.ts";
+import { parseStepFile, parseStepFileEffect } from "#/formats/parseStepFile.ts";
+import type { StepModel } from "#/formats/step/types/StepModel.ts";
+import { runEffect } from "#/lib/effect.ts";
 import { installKiCadWorker } from "./helpers/kicad-worker.ts";
 
 const fixturePath = new URL(
@@ -63,6 +69,12 @@ const cases = [
 		message: "Gerber files must be 64 MiB or smaller.",
 	},
 	{
+		name: "board.zip",
+		limit: MAX_GERBER_ARCHIVE_BYTES,
+		parse: (file: File) => expandGerberFile(file, new AbortController().signal),
+		message: "Gerber ZIP archives must be 256 MiB or smaller.",
+	},
+	{
 		name: "huge.kicad_sch",
 		limit: MAX_KICAD_FILE_BYTES,
 		parse: (file: File) => parseKiCadFile(file),
@@ -84,6 +96,60 @@ for (const { name, limit, parse, message } of cases)
 
 test("import limits cover the KiCad fixture with a wide margin", () => {
 	assert.ok(readFileSync(fixturePath).byteLength * 20 < MAX_KICAD_FILE_BYTES);
+});
+
+test("the ZIP archive cap equals the bytes one archive may extract", () => {
+	assert.equal(MAX_GERBER_ARCHIVE_BYTES, MAX_GERBER_ARCHIVE_LENGTH);
+	assert.equal(MAX_GERBER_ARCHIVE_BYTES, 4 * MAX_GERBER_FILE_BYTES);
+});
+
+test("a mixed batch accepts only the files that imported, without reading the oversized one", async (t) => {
+	const model: StepModel = {
+		name: "part.step",
+		meshes: [
+			{
+				id: "part",
+				name: "part",
+				attributes: { position: { array: [0, 0, 0, 1, 0, 0, 0, 1, 0] } },
+				index: { array: [0, 1, 2] },
+			},
+		],
+	};
+	const previous = globalThis.Worker;
+	let workers = 0;
+	globalThis.Worker = class {
+		onmessage: Worker["onmessage"] = null;
+		constructor() {
+			workers++;
+		}
+		postMessage() {
+			queueMicrotask(() =>
+				this.onmessage?.call(
+					this as unknown as Worker,
+					new MessageEvent("message", { data: { result: model } }),
+				),
+			);
+		}
+		terminate() {}
+	} as unknown as typeof Worker;
+	t.after(() => {
+		globalThis.Worker = previous;
+	});
+	const valid = new File(["STEP"], "part.step");
+	const { file: huge, reads } = oversized("huge.step", MAX_STEP_FILE_BYTES + 1);
+	const result = await runEffect(
+		importFilesEffect([huge, valid], (file) =>
+			Effect.map(parseStepFileEffect(file), (value) => ({ value })),
+		),
+	);
+	assert.deepEqual(result.accepted, [valid]);
+	assert.equal(result.values.length, 1);
+	assert.deepEqual(result.messages, [
+		"huge.step: STEP files must be 256 MiB or smaller.",
+	]);
+	assert.deepEqual(reads, []);
+	assert.equal(workers, 1);
+	for (const value of result.values) value.dispose();
 });
 
 test("the KiCad worker imports the RP2350A fixture exactly as the inline converter does", async (t) => {

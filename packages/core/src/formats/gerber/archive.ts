@@ -6,11 +6,12 @@ import {
 	MAX_GERBER_SOURCE_LENGTH,
 } from "#/formats/gerber/detect.ts";
 import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
+import { MAX_GERBER_ARCHIVE_BYTES } from "#/formats/import-limits.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 
 const MiB = 1024 * 1024;
 /** Bytes one archive may extract; each entry is held to the parser limit. */
-export const MAX_GERBER_ARCHIVE_LENGTH = 4 * MAX_GERBER_SOURCE_LENGTH;
+export const MAX_GERBER_ARCHIVE_LENGTH = MAX_GERBER_ARCHIVE_BYTES;
 /** Format signatures and X2 file attributes appear in the file header. */
 const HEADER_LENGTH = 8 * 1024;
 /** Files that fabrication archives bundle beside Gerber layers. */

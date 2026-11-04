@@ -116,7 +116,7 @@ export async function createDesktopProjectDirectory(
 				throw cause;
 			}
 		},
-		async read(path) {
+		async read(path, beforeRead) {
 			const filename = await target(path);
 			if (!(await lstat(filename)).isFile()) throw notRegularFile(path);
 			const file = await open(
@@ -126,6 +126,7 @@ export async function createDesktopProjectDirectory(
 			try {
 				const info = await file.stat({ bigint: true });
 				if (!info.isFile()) throw notRegularFile(path);
+				beforeRead?.(Number(info.size));
 				// The open file's identity is that of the bytes read.
 				if (reads && !reads.has(path)) reads.set(path, fileKey(info));
 				return new Uint8Array(await file.readFile());
@@ -339,12 +340,13 @@ export class DesktopProjects {
 			const directory: ProjectDirectory = {
 				name: `memory:${randomUUID()}`,
 				exists: async (path) => files.has(parseProjectPath(path)),
-				async read(path) {
+				async read(path, beforeRead) {
 					const bytes = files.get(parseProjectPath(path));
 					if (!bytes)
 						throw Object.assign(new Error("Project file not found."), {
 							code: "ENOENT",
 						});
+					beforeRead?.(bytes.byteLength);
 					return new Uint8Array(bytes);
 				},
 				async write(path, bytes) {

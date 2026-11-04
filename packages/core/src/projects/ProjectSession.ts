@@ -14,6 +14,7 @@ import type {
 } from "#/components/editor/symbolFormat.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
+import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
@@ -22,7 +23,11 @@ import {
 	measurePerformance,
 	measurePerformanceAsync,
 } from "#/performance/runtime.ts";
-import { isProjectError, type ProjectConflict } from "#/projects/errors.ts";
+import {
+	isProjectError,
+	ProjectAssetTooLarge,
+	type ProjectConflict,
+} from "#/projects/errors.ts";
 import {
 	type AssetKind,
 	type ProjectAsset,
@@ -796,7 +801,15 @@ export function createProjectSession(
 				const assets = [...pendingAssets];
 				if (creating && source) {
 					for (const asset of source.manifest.assets) {
-						const bytes = await storage.readAsset(source.directory, asset.path);
+						let bytes: Uint8Array;
+						try {
+							bytes = await storage.readAsset(source.directory, asset.path);
+						} catch (cause) {
+							// An asset over its limit cannot be opened, so it is not copied.
+							// The original project keeps it.
+							if (isProjectError(cause, "ProjectAssetTooLarge")) continue;
+							throw cause;
+						}
 						assets.push({
 							file: new File([new Uint8Array(bytes).buffer], asset.name),
 							kind: asset.kind,
@@ -840,11 +853,17 @@ export function createProjectSession(
 			getLibraries: () => libraries,
 		});
 
-	const importAssets = (
+	const importAssets = async (
 		files: readonly File[],
 		kind: AssetKind,
 		epoch: number,
 	) => {
+		// Checked before anything is read, so an oversized file is never stored.
+		for (const file of files) {
+			const reason = fileSizeProblem(assetFormat(file.name, kind), file.size);
+			if (reason)
+				throw new ProjectAssetTooLarge({ assetName: file.name, reason });
+		}
 		const directory = active?.directory;
 		return enqueue(() => {
 			if (generation !== epoch || directory !== active?.directory)

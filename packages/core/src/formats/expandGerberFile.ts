@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { GerberArchive } from "#/formats/gerber/archive.ts";
 import { runEffect } from "#/lib/effect.ts";
-import { ArchiveError, requestWorker } from "./import-effects";
+import { ArchiveError, checkFileSize, requestWorker } from "./import-effects";
 
 const UNREADABLE = "Unable to read this ZIP archive.";
 
@@ -13,6 +13,8 @@ const UNREADABLE = "Unable to read this ZIP archive.";
 export function expandGerberFileEffect(file: File) {
 	return Effect.gen(function* () {
 		if (!/\.zip$/i.test(file.name)) return { files: [file], messages: [] };
+		const tooLarge = checkFileSize(file, "gerber-archive");
+		if (tooLarge) return yield* tooLarge;
 		const archive = yield* requestWorker<GerberArchive>({
 			create: () =>
 				new Worker(new URL("./gerber/archive.worker.ts", import.meta.url), {

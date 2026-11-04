@@ -12,6 +12,7 @@ import {
 	realpath,
 	rm,
 	symlink,
+	truncate,
 	writeFile,
 } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
@@ -21,9 +22,14 @@ import { createDrawingStore } from "@ecad/core/commands/drawing-store.ts";
 import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import {
+	MAX_GERBER_FILE_BYTES,
+	MAX_STEP_FILE_BYTES,
+} from "@ecad/core/formats/import-limits.ts";
+import {
 	InvalidProjectFile,
 	InvalidProjectName,
 	InvalidProjectPath,
+	ProjectAssetTooLarge,
 	ProjectClosed,
 	ProjectConflict,
 	ProjectLocked,
@@ -1363,5 +1369,38 @@ test("failed memory export preserves the project and does not overwrite an exist
 		assert.equal(
 			(await projects.saveToDirectory(next.directory, parent)).directory,
 			join(parent, "Untitled 3"),
+		);
+	}));
+
+test("desktop assets over the size limit are not stored, and are not read back when they grow on disk", async () =>
+	temporary(async (parent) => {
+		const projects = new DesktopProjects();
+		const created = await projects.create("Limits", parent);
+		const huge = new Uint8Array([1]);
+		Object.defineProperty(huge, "byteLength", {
+			value: MAX_GERBER_FILE_BYTES + 1,
+		});
+		await assert.rejects(
+			projects.importAssets(created.directory, [
+				{ name: "top.gbr", kind: "gerber", bytes: huge },
+			]),
+			(error) =>
+				error instanceof ProjectAssetTooLarge &&
+				error.message === "top.gbr: Gerber files must be 64 MiB or smaller.",
+		);
+		await assert.rejects(readdir(join(created.directory, "assets")), {
+			code: "ENOENT",
+		});
+		const imported = await projects.importAssets(created.directory, [
+			{ name: "part.step", kind: "step", bytes: new Uint8Array([1, 2]) },
+		]);
+		const { path } = imported.manifest.assets[0];
+		// A sparse file reports the size without occupying it.
+		await truncate(join(created.directory, path), MAX_STEP_FILE_BYTES + 1);
+		await assert.rejects(
+			projects.readAsset(created.directory, path),
+			(error) =>
+				error instanceof ProjectAssetTooLarge &&
+				error.message === "part.step: STEP files must be 256 MiB or smaller.",
 		);
 	}));

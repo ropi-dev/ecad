@@ -1,25 +1,12 @@
 import { Effect } from "effect";
 import { runEffect } from "#/lib/effect.ts";
-import { InvalidFile, requestWorker } from "./import-effects";
+import { checkFileSize, requestWorker } from "./import-effects";
 import type { KiCadImportResult } from "./kicad/import.ts";
-
-const MiB = 1024 * 1024;
-
-/**
- * Checked before the file is read. The 535 KB RP2350A fixture, with 87
- * components and their embedded symbols, is about 1.6% of this limit, so it
- * leaves room for sheets far larger than usual. Parsing holds the text and its
- * whole expression tree in memory, so larger files would cost hundreds of
- * megabytes in the worker.
- */
-export const MAX_KICAD_FILE_BYTES = 32 * MiB;
 
 export function parseKiCadFileEffect(file: File) {
 	return Effect.gen(function* () {
-		if (file.size > MAX_KICAD_FILE_BYTES)
-			return yield* new InvalidFile({
-				message: `KiCad schematics must be ${MAX_KICAD_FILE_BYTES / MiB} MiB or smaller.`,
-			});
+		const tooLarge = checkFileSize(file, "kicad");
+		if (tooLarge) return yield* tooLarge;
 		return yield* requestWorker<KiCadImportResult>({
 			create: () =>
 				new Worker(new URL("./kicad/parse.worker.ts", import.meta.url), {

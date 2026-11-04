@@ -3,10 +3,12 @@ import { Predicate } from "effect";
 import { z } from "zod";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
+import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import {
 	InvalidProjectFile,
 	ProjectAssetNotFound,
+	ProjectAssetTooLarge,
 	ProjectClosed,
 	ProjectConflict,
 	ProjectExists,
@@ -34,7 +36,12 @@ import {
 export interface ProjectDirectory {
 	name: string;
 	exists?(path: string): Promise<boolean>;
-	read(path: string): Promise<Uint8Array>;
+	/**
+	 * `beforeRead` receives the file's size before its contents are read, so
+	 * it can reject a file that is too large by throwing. Implementations that
+	 * cannot learn the size cheaply may skip it.
+	 */
+	read(path: string, beforeRead?: (size: number) => void): Promise<Uint8Array>;
 	write(path: string, bytes: Uint8Array): Promise<void>;
 	remove(path: string): Promise<void>;
 	/**
@@ -47,6 +54,15 @@ export interface ProjectDirectory {
 	 * name.
 	 */
 	lock?<T>(work: () => Promise<T>, mode: ProjectLockMode): Promise<T>;
+}
+
+/** Assets over their import limit are neither stored nor read back. */
+function assertAssetSize(
+	asset: { name: string; kind: AssetKind },
+	size: number,
+) {
+	const reason = fileSizeProblem(assetFormat(asset.name, asset.kind), size);
+	if (reason) throw new ProjectAssetTooLarge({ assetName: asset.name, reason });
 }
 
 export type ProjectLockMode = "shared" | "exclusive";
@@ -638,6 +654,8 @@ export class ProjectRepository {
 			]);
 			try {
 				const additions = [];
+				for (const input of assets)
+					assertAssetSize(input, input.bytes.byteLength);
 				for (const input of assets) {
 					const name = parseProjectName(input.name);
 					const asset = assetSchema.parse({
@@ -675,8 +693,14 @@ export class ProjectRepository {
 
 	async readAsset(path: string): Promise<Uint8Array> {
 		parseProjectPath(path);
-		if (!this.snapshot?.manifest.assets.some((asset) => asset.path === path))
-			throw new ProjectAssetNotFound({ path });
-		return this.directory.read(path);
+		const asset = this.snapshot?.manifest.assets.find(
+			(entry) => entry.path === path,
+		);
+		if (!asset) throw new ProjectAssetNotFound({ path });
+		const check = (size: number) => assertAssetSize(asset, size);
+		const bytes = await this.directory.read(path, check);
+		// Directories that cannot report the size first are checked afterwards.
+		check(bytes.byteLength);
+		return bytes;
 	}
 }

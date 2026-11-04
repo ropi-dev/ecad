@@ -4,22 +4,13 @@ import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import {
 	acquireImported,
+	checkFileSize,
 	InvalidFile,
 	readFile,
 	requestWorker,
 } from "./import-effects";
 import { createStepGroup, disposeStepGroup } from "./step/scene";
 import type { StepModel } from "./step/types/StepModel";
-
-const MiB = 1024 * 1024;
-
-/**
- * Checked before the file is read. Single component models are usually a few
- * MiB and whole-board assemblies tens of MiB. The importer copies the file into
- * WebAssembly memory and tessellates it there, so files beyond this size are
- * likely to exhaust that memory or the import timeout anyway.
- */
-export const MAX_STEP_FILE_BYTES = 256 * MiB;
 
 export interface ParsedStepFile {
 	name: string;
@@ -36,10 +27,8 @@ export function parseStepFileEffect(file: File) {
 			});
 		if (!file.size)
 			return yield* new InvalidFile({ message: "This STEP file is empty." });
-		if (file.size > MAX_STEP_FILE_BYTES)
-			return yield* new InvalidFile({
-				message: `STEP files must be ${MAX_STEP_FILE_BYTES / MiB} MiB or smaller.`,
-			});
+		const tooLarge = checkFileSize(file, "step");
+		if (tooLarge) return yield* tooLarge;
 		const buffer = yield* readFile(() => file.arrayBuffer());
 		const model = yield* requestWorker<StepModel>({
 			create: () =>
