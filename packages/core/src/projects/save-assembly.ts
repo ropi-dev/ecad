@@ -1,4 +1,7 @@
-import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type {
+	CircuitFile,
+	GraphLayout,
+} from "@ecad/drawing-core/circuit/model.ts";
 import {
 	parseSymbolFile,
 	type SymbolLibrary,
@@ -47,7 +50,9 @@ export function assembleProjectSave({
 				}),
 		symbols: savedSymbols,
 		symbolLibraries: libraries.map((library) =>
-			library.id === "project-symbols" && library.source.kind === "embedded"
+			library.id === "project-symbols" &&
+			library.source.kind === "embedded" &&
+			library.source.symbols !== savedSymbols
 				? {
 						...library,
 						source: {
@@ -57,5 +62,36 @@ export function assembleProjectSave({
 					}
 				: library,
 		),
+	};
+}
+
+export function withCurrentGraph(
+	file: CircuitFile,
+	graph: GraphLayout,
+): CircuitFile {
+	const components = new Set(
+		file.circuit.components.map((component) => component.id),
+	);
+	const nets = new Set(file.circuit.nets.map((net) => net.id));
+	const positions = graph.positions.filter((position) =>
+		(position.kind === "component" ? components : nets).has(position.id),
+	);
+	const placed = new Set(positions.map((position) => position.id));
+	return {
+		circuit: file.circuit,
+		graph: {
+			...graph,
+			positions: [
+				...positions,
+				...file.graph.positions.filter((position) => !placed.has(position.id)),
+			],
+			...(graph.collapsedComponentIds === undefined
+				? {}
+				: {
+						collapsedComponentIds: graph.collapsedComponentIds.filter((id) =>
+							components.has(id),
+						),
+					}),
+		},
 	};
 }

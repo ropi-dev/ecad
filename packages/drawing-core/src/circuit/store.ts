@@ -397,7 +397,16 @@ export function createCircuitStore(
 					"circuit-identity-changed",
 					"Synchronization must preserve the circuit identity.",
 				);
+			const previousCircuit = file.circuit;
 			file = freeze(parseOrInvalid(circuitFileSchema, next));
+			if (options.preserveHistory) {
+				const acknowledge = (entry: CircuitFile) =>
+					entry.circuit === previousCircuit
+						? freeze({ ...entry, circuit: file.circuit })
+						: entry;
+				past = past.map(acknowledge);
+				future = future.map(acknowledge);
+			}
 			if (!options.preserveHistory) {
 				past = [];
 				future = [];
@@ -407,7 +416,15 @@ export function createCircuitStore(
 		execute(command: CircuitCommand) {
 			const next = measurePerformance(
 				"circuit.edit",
-				() => freeze(applyCircuitCommand(file, command, { createId })),
+				() => {
+					const applied = applyCircuitCommand(file, command, { createId });
+					return freeze(
+						command.type === "move" ||
+							command.type === "set-component-collapsed"
+							? { ...applied, circuit: file.circuit }
+							: applied,
+					);
+				},
 				{
 					components: file.circuit.components.length,
 					nets: file.circuit.nets.length,

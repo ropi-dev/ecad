@@ -60,3 +60,21 @@ test("desktop configuration and scoped directory reads use the existing preload 
  assert.deepEqual(await storage.loadDirectory!("libraries", "project", "/project"), []);
  assert.deepEqual(calls, ["loadConfiguration", ["saveConfiguration", config], ["openLibraryDirectory", "Project parts"], ["loadDirectory", "libraries", "project", "/project"]]);
 });
+
+test("desktop library writes invalidate subscribers, but reads and failed writes do not", async () => {
+ const { defaultSymbolConfig } = await import("@ecad/core/symbol-library/config.ts");
+ let fail = false;
+ const storage = createDesktopSymbolLibraryStorage({
+ async load() {return {symbols: []};},
+ async save() {if (fail) throw new Error("Disk full"); return "Saved";},
+ async openDirectory() {return null;},
+ async saveConfiguration() {return "Saved";},
+ });
+ let updates = 0;
+ const stop = storage.subscribe!(() => {updates++;});
+ await storage.load(); assert.equal(updates, 0);
+ await storage.save([], []); assert.equal(updates, 1);
+ await storage.saveConfiguration!(defaultSymbolConfig()); assert.equal(updates, 2);
+ fail = true; await assert.rejects(storage.save([], []), /Disk full/); assert.equal(updates, 2);
+ stop(); await storage.saveConfiguration!(defaultSymbolConfig()); assert.equal(updates, 2);
+});

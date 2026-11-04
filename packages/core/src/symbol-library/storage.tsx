@@ -106,10 +106,17 @@ export function SymbolLibraryProvider({
 
 /** Standalone core consumers can use the editor without choosing a host. */
 export function createMemorySymbolLibraryStorage(): SymbolLibraryStorage {
+	const listeners = new Set<() => void>();
 	let library: SymbolLibrary = [];
 	let config = defaultSymbolConfig();
 	return {
 		mode: "memory",
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 		async load() {
 			return { symbols: library };
 		},
@@ -128,6 +135,7 @@ export function createMemorySymbolLibraryStorage(): SymbolLibraryStorage {
 					imported,
 				],
 			};
+			for (const listener of listeners) listener();
 			return "Saved for this editor session.";
 		},
 		async loadConfiguration() {
@@ -140,6 +148,7 @@ export function createMemorySymbolLibraryStorage(): SymbolLibraryStorage {
 			);
 			library =
 				imported?.source.kind === "embedded" ? imported.source.symbols : [];
+			for (const listener of listeners) listener();
 			return "Saved for this editor session.";
 		},
 	};
