@@ -1052,9 +1052,10 @@ function indexTerminals(symbol: EditorSymbol): SymbolTerminals {
 				pin.sourcePinId === undefined
 					? undefined
 					: bySource.get(pin.sourcePinId);
-			const number = byNumber.get(pin.number);
-			const position = Math.min(source ?? Infinity, number ?? Infinity);
-			return position === Infinity ? undefined : children[position];
+			// A resolved source pin is authoritative. The pin number is only a
+			// fallback, because symbols can repeat pin numbers.
+			const position = source ?? byNumber.get(pin.number);
+			return position === undefined ? undefined : children[position];
 		},
 	};
 }

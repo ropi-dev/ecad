@@ -1161,6 +1161,32 @@ test("legacy shared pin names bind exact numbers to distinct symbol terminals", 
 	);
 });
 
+test("net labels attach to the source pin when an earlier pin repeats its number", () => {
+	const child = required(
+		resistor.children.find((child) => child.kind === "pin"),
+	);
+	const definition = {
+		...resistor,
+		id: "repeated-number",
+		children: [
+			{ ...child, id: 1, name: "A", number: "1", x: 0, y: 0 },
+			{ ...child, id: 2, name: "B", number: "1", x: 0, y: -10 },
+		],
+	};
+	const symbol = createSymbol(1, definition, { x: 0, y: 0 }, "U1");
+	const component = componentFromSymbol(definition, []);
+	component.schematicShapeId = symbol.id;
+	const target = component.pins[1];
+	assert.equal(target.sourcePinId, "2");
+	const file = createCircuit("Repeated numbers");
+	file.circuit.components = [component];
+	file.circuit.nets = [{ id: "net", names: ["N1"], pinIds: [target.id] }];
+	const { shapes } = synchronizePcb(file, [symbol], undefined, [definition]);
+	const label = required(shapes.find((shape) => shape.kind === "text"));
+	assert.equal(label.circuitNet?.pinId, target.id);
+	assert.deepEqual({ x: label.x, y: label.y }, { x: 0, y: -10 });
+});
+
 test("rotating generated components preserves attached and independently moved labels", async () => {
 	const { Effect } = await import("effect");
 	const { createDrawingStore, DrawingStore } = await import(
