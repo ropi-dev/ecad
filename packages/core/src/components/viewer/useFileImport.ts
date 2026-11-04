@@ -20,7 +20,7 @@ export function useFileImport<T>(
 	const request = useRef<AbortController | null>(null);
 	const mounted = useRef(true);
 	const [loading, setLoading] = useState(false);
-	const [message, setMessage] = useState("");
+	const [messages, setMessages] = useState<readonly string[]>([]);
 	useEffect(() => {
 		mounted.current = true;
 		return () => {
@@ -34,7 +34,7 @@ export function useFileImport<T>(
 		request.current = null;
 		setLoading(false);
 	}, []);
-	const clearMessage = useCallback(() => setMessage(""), []);
+	const clearMessage = useCallback(() => setMessages([]), []);
 	const readFiles = useCallback(
 		async (
 			files: readonly File[],
@@ -45,7 +45,7 @@ export function useFileImport<T>(
 			const controller = new AbortController();
 			request.current = controller;
 			setLoading(true);
-			setMessage("");
+			setMessages([]);
 			try {
 				const imported = await measurePerformanceAsync(
 					`import.${kind ?? "files"}`,
@@ -83,12 +83,12 @@ export function useFileImport<T>(
 					for (const value of imported.values) dispose?.(value);
 					throw error;
 				}
-				setMessage(imported.messages.join("; "));
+				setMessages(imported.messages);
 				return imported.values;
 			} catch (error) {
 				if (controller.signal.aborted) return null;
 				if (mounted.current)
-					setMessage(errorMessage(error, "Unable to import files."));
+					setMessages([errorMessage(error, "Unable to import files.")]);
 				return null;
 			} finally {
 				if (request.current === controller) {
@@ -99,5 +99,13 @@ export function useFileImport<T>(
 		},
 		[parse, dispose, expand, kind, importAssets],
 	);
-	return { loading, message, readFiles, cancel, clearMessage };
+	return {
+		loading,
+		message: messages.join("; "),
+		/** One entry per file problem, for workspaces that list them separately. */
+		messages,
+		readFiles,
+		cancel,
+		clearMessage,
+	};
 }

@@ -16,7 +16,9 @@ import {
 	moveShapes,
 	normalizeNetSymbol,
 	replaceSymbolChild,
+	setSymbolLabelPosition,
 	symbolChildren,
+	symbolLabelPosition,
 	type TextShape,
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
@@ -229,6 +231,26 @@ test("edits with no matching shapes still commit an empty replacement list", () 
 		replacements: [],
 		label: "Change net symbol",
 	});
+});
+
+test("label position edits move the name label of each selected symbol", () => {
+	const vdd = symbolDefinitions.find((definition) => definition.netSymbol && definition.id === "vdd");
+	assert.ok(vdd);
+	const power = createSymbol(14, vdd, { x: 10, y: 10 });
+	const edit = applySelectionEdit({ kind: "symbol-label-position", position: "left" }, context([power, rectangle]));
+	assert.deepEqual(edit, {
+		replacements: [setSymbolLabelPosition(power, "name", "left")],
+		label: "Position label",
+	});
+	const [moved] = edit?.replacements ?? [];
+	assert.ok(moved?.kind === "symbol");
+	assert.equal(symbolLabelPosition(moved, "name"), "left");
+	// A selected child does not take the edit; the parent symbol does.
+	const [child] = symbolChildren(power);
+	assert.deepEqual(
+		applySelectionEdit({ kind: "symbol-label-position", position: "left" }, context([power], { child: { symbol: power, child } })),
+		applySelectionEdit({ kind: "symbol-label-position", position: "left" }, context([power])),
+	);
 });
 
 test("symbol-level edits made while a child is selected still change the parent symbol", () => {

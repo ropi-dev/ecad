@@ -1,7 +1,24 @@
-import { Eye, EyeOff, GripVertical, X } from "lucide-react";
-import { useState } from "react";
-import type { SceneLayer } from "#/engine/types.ts";
+import {
+	Eye,
+	EyeOff,
+	GripVertical,
+	OctagonAlert,
+	TriangleAlert,
+	X,
+} from "lucide-react";
+import { useId, useState } from "react";
+import type { Diagnostic, SceneLayer } from "#/engine/types.ts";
+import {
+	countDiagnostics,
+	describeDiagnostics,
+} from "#/formats/diagnostics.ts";
 import { FloatingPanel } from "../viewer/FloatingPanel";
+
+const severityStyle = {
+	warning: { label: "Warning", className: "text-amber-200" },
+	error: { label: "Error", className: "text-red-300" },
+	fatal: { label: "Fatal", className: "text-red-300" },
+} as const;
 
 export function LayerPanel({
 	layers,
@@ -11,7 +28,7 @@ export function LayerPanel({
 	onMove,
 	onRemove,
 }: {
-	layers: readonly SceneLayer[];
+	layers: readonly (SceneLayer & { diagnostics?: readonly Diagnostic[] })[];
 	focusedLayerId?: string;
 	onFocus: (id?: string) => void;
 	onVisibility: (id: string) => void;
@@ -21,6 +38,8 @@ export function LayerPanel({
 	const [dragged, setDragged] = useState<string>();
 	const [drop, setDrop] = useState<{ id: string; after: boolean }>();
 	const [announcement, setAnnouncement] = useState("");
+	const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+	const listId = useId();
 	const ordered = [...layers].reverse();
 	const finishDrag = () => {
 		setDragged(undefined);
@@ -36,10 +55,21 @@ export function LayerPanel({
 			>
 				{ordered.map((layer, index) => {
 					const focused = focusedLayerId === layer.id;
+					const diagnostics = layer.diagnostics ?? [];
+					const open = expanded.has(layer.id);
+					const counts = countDiagnostics(diagnostics);
+					const errors = counts.error > 0;
+					const total = (counts.error + counts.warning).toLocaleString();
+					// The accessible name includes the visible count (WCAG 2.5.3).
+					const summary =
+						counts.error && counts.warning
+							? `${total} problems (${describeDiagnostics(diagnostics)})`
+							: describeDiagnostics(diagnostics);
+					const diagnosticsId = `${listId}-${index}`;
 					return (
 						<li
 							key={layer.id}
-							className="group relative mb-[3px] grid min-h-11 grid-cols-[16px_minmax(0,1fr)_28px_24px] items-center gap-1.5 rounded-md border border-transparent px-1 py-1.5 transition-[background,border-color] duration-150 ease-[ease] last:mb-0 hover:bg-[#ffffff08] data-[focused=true]:border-[#b88f6170] data-[focused=true]:bg-[#e8b77e0c] data-[dragging=true]:opacity-35 after:pointer-events-none after:absolute after:inset-x-0 after:hidden after:h-0.5 after:rounded-[3px] after:bg-[#e8b77e] data-[drop]:after:block data-[drop=before]:after:-top-[3px] data-[drop=after]:after:-bottom-[3px]"
+							className={`group relative mb-[3px] grid min-h-11 ${diagnostics.length ? "grid-cols-[16px_minmax(0,1fr)_auto_28px_24px]" : "grid-cols-[16px_minmax(0,1fr)_28px_24px]"} items-center gap-1.5 rounded-md border border-transparent px-1 py-1.5 transition-[background,border-color] duration-150 ease-[ease] last:mb-0 hover:bg-[#ffffff08] data-[focused=true]:border-[#b88f6170] data-[focused=true]:bg-[#e8b77e0c] data-[dragging=true]:opacity-35 after:pointer-events-none after:absolute after:inset-x-0 after:hidden after:h-0.5 after:rounded-[3px] after:bg-[#e8b77e] data-[drop]:after:block data-[drop=before]:after:-top-[3px] data-[drop=after]:after:-bottom-[3px]`}
 							data-layer-id={layer.id}
 							data-focused={focused}
 							data-hidden={!layer.visible}
@@ -133,6 +163,31 @@ export function LayerPanel({
 									{layer.name}
 								</span>
 							</button>
+							{diagnostics.length > 0 && (
+								<button
+									type="button"
+									data-testid="layer-diagnostics"
+									className={`relative z-1 inline-flex h-[30px] cursor-pointer items-center gap-1 rounded-[5px] border-0 bg-transparent px-1.5 text-[11px] font-medium tabular-nums group-data-[hidden=true]:opacity-40 hover:bg-[#ffffff10] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] ${errors ? severityStyle.error.className : severityStyle.warning.className}`}
+									aria-label={`Diagnostics for ${layer.name}: ${summary}`}
+									title={summary}
+									aria-expanded={open}
+									aria-controls={open ? diagnosticsId : undefined}
+									onClick={() =>
+										setExpanded((current) => {
+											const next = new Set(current);
+											if (!next.delete(layer.id)) next.add(layer.id);
+											return next;
+										})
+									}
+								>
+									{errors ? (
+										<OctagonAlert size={14} aria-hidden="true" />
+									) : (
+										<TriangleAlert size={14} aria-hidden="true" />
+									)}
+									{total}
+								</button>
+							)}
 							<button
 								type="button"
 								className="relative z-1 grid h-[30px] place-items-center rounded-[5px] border-0 bg-transparent p-0 hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] w-full cursor-pointer text-[#98a4b6]"
@@ -152,6 +207,38 @@ export function LayerPanel({
 							>
 								<X size={14} />
 							</button>
+							{open && diagnostics.length > 0 && (
+								<ul
+									id={diagnosticsId}
+									data-testid="layer-diagnostics-list"
+									aria-label={`Diagnostics for ${layer.name}`}
+									className="relative z-1 col-span-full m-0 mt-1 max-h-48 list-none overflow-y-auto overscroll-contain rounded-[5px] bg-[#0f1115] px-2 py-1.5 text-[11px] leading-[1.4] text-[#c7d0dc]"
+								>
+									{diagnostics.map((diagnostic, position) => (
+										<li
+											// Diagnostics never reorder, and messages can repeat.
+											// biome-ignore lint/suspicious/noArrayIndexKey: see above
+											key={position}
+											className="py-0.5"
+										>
+											<span
+												className={`font-medium ${severityStyle[diagnostic.severity].className}`}
+											>
+												{severityStyle[diagnostic.severity].label}
+											</span>
+											{diagnostic.line !== undefined && (
+												<span className="text-[#8892a2]">
+													{" "}
+													· Line {diagnostic.line}
+												</span>
+											)}
+											<span className="block break-words">
+												{diagnostic.message}
+											</span>
+										</li>
+									))}
+								</ul>
+							)}
 						</li>
 					);
 				})}

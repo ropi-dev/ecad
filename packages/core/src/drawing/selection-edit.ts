@@ -11,6 +11,8 @@ import {
 	replaceSymbolChild,
 	type ShapeAttribute,
 	type SymbolChild,
+	type SymbolLabelPosition,
+	setSymbolLabelPosition,
 	type TextShape,
 } from "#/drawing/shapes.ts";
 import { type MeasureText, updateText } from "#/drawing/text.ts";
@@ -43,7 +45,11 @@ export type SelectionEdit =
 			readonly attribute: keyof EditorSymbol["attributes"];
 			readonly value: string;
 	  }
-	| { readonly kind: "net-symbol"; readonly netSymbol: boolean };
+	| { readonly kind: "net-symbol"; readonly netSymbol: boolean }
+	| {
+			readonly kind: "symbol-label-position";
+			readonly position: SymbolLabelPosition;
+	  };
 
 export interface SelectionEditContext {
 	/** The selected top-level shapes. */
@@ -210,6 +216,13 @@ export function applySelectionEdit(
 						normalizeNetSymbol({ ...shape, netSymbol: edit.netSymbol }),
 					),
 				label: "Change net symbol",
+			};
+		case "symbol-label-position":
+			return {
+				replacements: selection
+					.filter((shape) => shape.kind === "symbol")
+					.map((shape) => setSymbolLabelPosition(shape, "name", edit.position)),
+				label: "Position label",
 			};
 	}
 }
