@@ -6,6 +6,7 @@ import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import { defineConfig, loadEnv } from "vite";
 import { distributionLicenses } from "../../scripts/distribution-licenses.ts";
+import { SECURITY_HEADERS, WORKER_CSP } from "./src/security-headers.ts";
 
 const envDir = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -30,7 +31,21 @@ const config = defineConfig(({ mode }) => ({
 	plugins: [
 		tailwindcss(),
 		tanstackStart({ spa: { enabled: true, maskPath: "/" } }),
-		...(process.env.VERCEL ? [nitro()] : []),
+		...(process.env.VERCEL
+			? [
+					nitro({
+						// Same headers as deploy/nginx/ecad.conf. A CSP header only
+						// governs documents and workers, so under /assets it reaches
+						// just the bundled workers.
+						routeRules: {
+							"/**": { headers: SECURITY_HEADERS },
+							"/assets/**": {
+								headers: { "Content-Security-Policy": WORKER_CSP },
+							},
+						},
+					}),
+				]
+			: []),
 		viteReact(),
 		distributionLicenses("web"),
 	],

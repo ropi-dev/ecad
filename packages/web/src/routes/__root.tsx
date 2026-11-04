@@ -21,6 +21,14 @@ export const Route = createRootRoute({
 			},
 		],
 		links: [{ rel: "stylesheet", href: appCss }],
+		scripts: [
+			{
+				// The deployed CSP blocks eval, so zod cannot compile parsers. Turn its
+				// JIT off before any schema is defined, or its `new Function` probe is
+				// reported as a CSP violation. This runs before the module scripts.
+				children: "globalThis.__zod_globalConfig={jitless:true}",
+			},
+		],
 	}),
 	shellComponent: RootDocument,
 	component: AppWorkspace,
