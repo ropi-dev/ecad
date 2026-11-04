@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createDrawingStore } from "#/commands/drawing-store.ts";
-import type { DrawingEnvelope, DrawingReply } from "#/mcp/drawing-protocol.ts";
+import { Effect } from "effect";
+import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import {
+	type DrawingEnvelope,
+	type DrawingReply,
+	executeDrawingOperation,
+} from "#/mcp/drawing-protocol.ts";
 import {
 	connectEditorMcp,
 	type EditorMcpState,
@@ -176,7 +181,16 @@ test("queued commands expire while waiting for an earlier acknowledgement", asyn
 });
 
 test("a reply over the acknowledgement limit is reported instead of ending the stream", async () => {
-	const live = bridge({ acknowledgementLimit: 300 });
+	// Room for the empty drawing's reply, but not once it holds a shape.
+	const empty = Effect.runSync(
+		executeDrawingOperation({ type: "getDrawing" }).pipe(
+			Effect.provideService(DrawingStore, createDrawingStore()),
+		),
+	);
+	const live = bridge({
+		acknowledgementLimit:
+			JSON.stringify({ requestId: "small", reply: empty }).length + 20,
+	});
 	try {
 		await until(() => live.states.at(-1)?.status === "connected");
 		const read = (requestId: string): DrawingEnvelope => ({

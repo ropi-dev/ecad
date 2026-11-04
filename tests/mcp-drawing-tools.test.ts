@@ -8,13 +8,16 @@ import { drawShape } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import {
 	type DrawingOperation,
+	type DrawingReply,
 	drawingEnvelopeSchema,
 	drawingOperationSchema,
 	drawingReplySchema,
 	executeDrawingOperation,
-	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
-import { createDrawingMcpServer } from "#/mcp/drawing-server.ts";
+import {
+	createDrawingMcpServer,
+	drawingToolResult,
+} from "#/mcp/drawing-server.ts";
 import { required } from "./helpers/required.ts";
 
 const rectangle = {
@@ -512,12 +515,21 @@ test("MCP replacement records edits that change only text style, circuit nets or
 	assert.deepEqual((await read()).shapes, [styled, { ...symbol, id: 2 }]);
 });
 
-test("getDrawing pages stay within the reply limit and edits reply without the drawing", () => {
-	const shapes = Array.from({ length: 50 }, (_, index) => ({
-		...rectangle,
-		kind: "rectangle" as const,
+test("getDrawing pages fit the serialized tool result exactly, including multibyte and escaped text", () => {
+	// Accents, quotes, backslashes, newlines and astral characters all serialize
+	// differently in the structured copy and the escaped text copy.
+	const texts = ["plain", 'é "quoted" \\ back', "€ line\nbreak", "🔌🔋 plug"];
+	const shapes = Array.from({ length: 60 }, (_, index) => ({
 		id: index + 1,
+		kind: "text" as const,
+		text: texts[index % texts.length].repeat(1 + (index % 7)),
 		x: index,
+		y: 0,
+		width: 8,
+		height: 2,
+		rotation: 0,
+		lineWidth: 0.2,
+		fontSize: 2,
 	}));
 	const store = createDrawingStore(shapes);
 	const run = (operation: DrawingOperation, byteLimit: number) =>
@@ -526,28 +538,49 @@ test("getDrawing pages stay within the reply limit and edits reply without the d
 				Effect.provideService(DrawingStore, store),
 			),
 		);
-	const byteLimit = 2048;
-	assert.ok(utf8ByteLength(JSON.stringify(shapes)) > byteLimit);
+	const resultBytes = (reply: DrawingReply) =>
+		Buffer.byteLength(JSON.stringify(drawingToolResult(reply)));
+	const byteLimit = 4096;
 	const whole = run({ type: "getDrawing" }, byteLimit);
 	assert.ok(!whole.ok);
 	assert.equal(whole.error.code, "DrawingTooLarge");
 	assert.match(whole.error.message, /offset 0/);
-	// Every page fits, and the pages together hold every shape exactly once.
+	const first = run({ type: "getDrawing", offset: 0 }, byteLimit);
+	assert.ok(first.ok && first.revision);
+	const revision = first.revision;
+	// Every page fits, and stops only where the next shape would not have fitted.
 	const read: unknown[] = [];
 	let pages = 0;
 	for (let offset: number | undefined = 0; offset !== undefined; pages++) {
-		const reply = run({ type: "getDrawing", offset }, byteLimit);
+		const reply = run({ type: "getDrawing", offset, revision }, byteLimit);
 		assert.ok(reply.ok && reply.drawing && reply.page);
-		assert.ok(utf8ByteLength(JSON.stringify(reply)) <= byteLimit);
+		assert.equal(reply.revision, revision);
+		const bytes = resultBytes(reply);
+		assert.ok(bytes <= byteLimit, `${bytes} > ${byteLimit}`);
+		const next = reply.page.nextOffset;
+		if (next !== undefined) {
+			// The protocol reserves 256 bytes for the JSON-RPC envelope.
+			const withNext = {
+				...reply,
+				drawing: {
+					...reply.drawing,
+					shapes: [...reply.drawing.shapes, shapes[next]],
+				},
+			};
+			assert.ok(resultBytes(withNext) > byteLimit - 256);
+		}
 		assert.equal(reply.drawing.nets !== undefined, offset === 0);
-		assert.equal(reply.page.total, 50);
+		assert.equal(reply.page.total, 60);
 		assert.equal(reply.page.count, reply.drawing.shapes.length);
 		read.push(...reply.drawing.shapes);
 		offset = reply.page.nextOffset;
 	}
 	assert.ok(pages > 2);
 	assert.deepEqual(read, shapes);
-	const limited = run({ type: "getDrawing", offset: 10, limit: 3 }, byteLimit);
+	const limited = run(
+		{ type: "getDrawing", offset: 10, limit: 3, revision },
+		byteLimit,
+	);
 	assert.ok(limited.ok);
 	assert.deepEqual(
 		limited.drawing?.shapes.map((shape) => shape.id),
@@ -556,16 +589,22 @@ test("getDrawing pages stay within the reply limit and edits reply without the d
 	assert.deepEqual(limited.page, {
 		offset: 10,
 		count: 3,
-		total: 50,
+		total: 60,
 		nextOffset: 13,
 	});
-	const past = run({ type: "getDrawing", offset: 99 }, byteLimit);
+	const past = run({ type: "getDrawing", offset: 99, revision }, byteLimit);
 	assert.ok(past.ok);
 	assert.deepEqual(past.drawing?.shapes, []);
-	assert.deepEqual(past.page, { offset: 50, count: 0, total: 50 });
+	assert.deepEqual(past.page, { offset: 60, count: 0, total: 60 });
+	// Later pages need the first page's revision.
+	const missing = run({ type: "getDrawing", offset: 1 }, byteLimit);
+	assert.ok(!missing.ok);
+	assert.equal(missing.error.code, "RevisionRequired");
 	// A shape that cannot fit any page fails instead of stalling the caller.
-	const empty = utf8ByteLength(JSON.stringify(past));
-	const tooSmall = run({ type: "getDrawing", offset: 1 }, empty + 20);
+	const tooSmall = run(
+		{ type: "getDrawing", offset: 1, revision },
+		resultBytes(past) + 256 + 20,
+	);
 	assert.ok(!tooSmall.ok);
 	assert.equal(tooSmall.error.code, "DrawingTooLarge");
 	assert.match(tooSmall.error.message, /shape at offset 1/);
@@ -573,12 +612,45 @@ test("getDrawing pages stay within the reply limit and edits reply without the d
 	const placed = run({ type: "placeRectangle", input: rectangle }, 1);
 	assert.deepEqual(placed, {
 		ok: true,
-		summary: { shapeCount: 51, nextShapeId: 52, historyId: 1 },
-		result: { ids: [51], idMap: { "51": 51 } },
+		summary: { shapeCount: 61, nextShapeId: 62, historyId: 1 },
+		result: { ids: [61], idMap: { "61": 61 } },
 	});
-	assert.equal(store.getSnapshot().shapes.length, 51);
+	assert.equal(store.getSnapshot().shapes.length, 61);
+	const stale = run({ type: "getDrawing", offset: 1, revision }, byteLimit);
+	assert.ok(!stale.ok);
+	assert.equal(stale.error.code, "DrawingChanged");
 	assert.deepEqual(run({ type: "undo" }, 1), {
 		ok: true,
-		summary: { shapeCount: 50, nextShapeId: 52, historyId: 0 },
+		summary: { shapeCount: 60, nextShapeId: 62, historyId: 0 },
 	});
+});
+
+test("the revision depends on drawing content, not on store identity or history", () => {
+	const shapes = [1, 2, 3].map((id) => ({
+		...rectangle,
+		kind: "rectangle" as const,
+		id,
+		x: id,
+	}));
+	const read = (store: ReturnType<typeof createDrawingStore>) => {
+		const reply = Effect.runSync(
+			executeDrawingOperation({ type: "getDrawing" }).pipe(
+				Effect.provideService(DrawingStore, store),
+			),
+		);
+		assert.ok(reply.ok && reply.revision);
+		return reply.revision;
+	};
+	const original = read(createDrawingStore(shapes));
+	// A separate process reading the same file agrees on the revision.
+	assert.equal(read(createDrawingStore(structuredClone(shapes))), original);
+	// Reordering, as an external edit can, changes it even with the same IDs.
+	assert.notEqual(
+		read(createDrawingStore([shapes[1], shapes[0], shapes[2]])),
+		original,
+	);
+	assert.notEqual(
+		read(createDrawingStore([{ ...shapes[0], x: 9 }, shapes[1], shapes[2]])),
+		original,
+	);
 });

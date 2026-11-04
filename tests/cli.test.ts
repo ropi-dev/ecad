@@ -1639,3 +1639,109 @@ for (const currentId of [0, 75, 250]) {
 		assert.equal((await call(fixture.env, "redo")).summary.historyId, 251);
 	});
 }
+
+test("stdio MCP pages a drawing whose results would exceed the transport's 10 MiB message limit", async (context) => {
+	const fixture = await drawing(context);
+	// About 7.4 MiB of shapes, with quotes and multibyte text that grow when escaped.
+	const text = `${'say "hi" é '.repeat(70)}🔌`;
+	const shapes = Array.from({ length: 9000 }, (_, index) => ({
+		id: index + 1,
+		kind: "text",
+		text,
+		x: index,
+		y: 0,
+		width: 8,
+		height: 2,
+		rotation: 0,
+		lineWidth: 0.2,
+		fontSize: 2,
+	}));
+	await writeFile(fixture.path, JSON.stringify({ shapes }));
+	assert.ok(Buffer.byteLength(JSON.stringify(shapes)) > 7 * 1024 * 1024);
+	const { client } = await stdio(context, fixture.env);
+	const call = (name: string, args: Record<string, unknown> = {}) =>
+		client.callTool({ name, arguments: args }, undefined, { timeout: 60_000 });
+	const placed = await call("placeRectangle", rectangle);
+	assert.equal(placed.isError, undefined);
+	const whole = await call("getDrawing");
+	assert.equal(whole.isError, true);
+	const failed = drawingReplySchema.parse(whole.structuredContent);
+	assert.equal(failed.ok ? undefined : failed.error.code, "DrawingTooLarge");
+	const read: unknown[] = [];
+	let revision: string | undefined;
+	let pages = 0;
+	for (let offset: number | undefined = 0; offset !== undefined; pages++) {
+		const page = await call("getDrawing", {
+			offset,
+			...(revision ? { revision } : {}),
+		});
+		assert.equal(page.isError, undefined);
+		const reply = drawingReplySchema.parse(page.structuredContent);
+		assert.ok(reply.ok && reply.drawing && reply.page);
+		revision ??= reply.revision;
+		read.push(...reply.drawing.shapes);
+		offset = reply.page.nextOffset;
+	}
+	assert.ok(pages > 1);
+	assert.deepEqual(read, (await fixture.read()).shapes);
+	// The server survived every reply and still edits the drawing.
+	assert.equal((await call("undo")).isError, undefined);
+	assert.equal((await fixture.read()).shapes.length, 9000);
+});
+
+test("CLI pages reject a revision from before an external edit that reordered the drawing", async (context) => {
+	const fixture = await drawing(context);
+	const shapes = [1, 2, 3].map((id) => ({
+		...rectangle,
+		kind: "rectangle",
+		id,
+		x: id * 10,
+	}));
+	await writeFile(fixture.path, JSON.stringify({ shapes }));
+	const page = (args: Record<string, unknown>) =>
+		startCli(["getDrawing", JSON.stringify(args)], fixture.env).result.then(
+			(result) => ({
+				code: result.code,
+				reply: drawingReplySchema.parse(
+					JSON.parse(result.stdout).structuredContent,
+				),
+			}),
+		);
+	const first = await page({ offset: 0, limit: 1 });
+	assert.ok(first.reply.ok && first.reply.revision);
+	assert.deepEqual(
+		first.reply.drawing?.shapes.map((shape) => shape.id),
+		[1],
+	);
+	const { revision } = first.reply;
+	// Separate processes reading the same file agree on the revision.
+	const second = await page({ offset: 1, limit: 1, revision });
+	assert.ok(second.reply.ok);
+	assert.deepEqual(
+		second.reply.drawing?.shapes.map((shape) => shape.id),
+		[2],
+	);
+	// An external edit resets history to 0, but still changes the revision.
+	await writeFile(
+		fixture.path,
+		JSON.stringify({ shapes: [shapes[1], shapes[0], shapes[2]] }),
+	);
+	const stale = await page({ offset: 1, revision });
+	assert.equal(stale.code, 1);
+	assert.equal(
+		stale.reply.ok ? undefined : stale.reply.error.code,
+		"DrawingChanged",
+	);
+	const unpinned = await page({ offset: 1 });
+	assert.equal(
+		unpinned.reply.ok ? undefined : unpinned.reply.error.code,
+		"RevisionRequired",
+	);
+	const restarted = await page({ offset: 0 });
+	assert.ok(restarted.reply.ok);
+	assert.notEqual(restarted.reply.revision, revision);
+	assert.deepEqual(
+		restarted.reply.drawing?.shapes.map((shape) => shape.id),
+		[2, 1, 3],
+	);
+});

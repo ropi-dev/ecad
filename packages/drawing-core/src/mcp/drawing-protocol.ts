@@ -84,6 +84,14 @@ export const getDrawingInputSchema = z.strictObject({
 		.describe(
 			"Index of the first shape to return. Passing offset or limit reads one page; continue from page.nextOffset until it is absent.",
 		),
+	revision: z
+		.string()
+		.min(1)
+		.max(64)
+		.optional()
+		.describe(
+			"The revision returned by the page at offset 0. Required for later pages; the read fails with DrawingChanged when the drawing no longer matches it.",
+		),
 	limit: z
 		.number()
 		.int()
@@ -97,8 +105,14 @@ export const getDrawingInputSchema = z.strictObject({
 
 /** The web relay refuses a larger editor acknowledgement, which carries one reply. */
 export const drawingAcknowledgementByteLimit = 8 * 1024 * 1024;
-/** Every reply fits in one acknowledgement, with room left for its envelope. */
-export const drawingReplyByteLimit = 6 * 1024 * 1024;
+/**
+ * The largest serialized MCP tool result. A result repeats its reply as escaped
+ * JSON text, and the SDK's stdio transport refuses messages over 10 MiB. The
+ * reply itself is under half of this, so it also fits one acknowledgement.
+ */
+export const drawingToolResultByteLimit = 8 * 1024 * 1024;
+/** Room for the tool result wrapper and JSON-RPC envelope around both copies. */
+const toolResultOverhead = 256;
 
 /** Only resolved document operations cross the bridge. No tool or pointer state. */
 export const drawingOperationSchema = z.discriminatedUnion("type", [
@@ -156,6 +170,8 @@ const count = z.number().int().nonnegative().safe();
 
 export const drawingSuccessReplySchema = z.strictObject({
 	ok: z.literal(true),
+	/** `getDrawing` only: changes whenever the drawing's shapes or ID allocation change. */
+	revision: z.string().min(1).optional(),
 	/** Only `getDrawing` returns shapes; edits stay small however large the drawing is. */
 	drawing: drawingStateSchema.optional(),
 	page: z
@@ -249,50 +265,100 @@ function snapshotNets(snapshot: DrawingSnapshot) {
 	return nets;
 }
 
-/** UTF-8 length, counting each surrogate half as three bytes, which only overestimates. */
+/** The exact UTF-8 length of `text`; a lone surrogate encodes as U+FFFD. */
 export function utf8ByteLength(text: string) {
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range starts at NUL.
 	if (!/[^\u0000-\u007f]/.test(text)) return text.length;
-	let bytes = text.length;
+	let bytes = 0;
 	for (let index = 0; index < text.length; index++) {
 		const code = text.charCodeAt(index);
-		if (code >= 0x80) bytes += code >= 0x800 ? 2 : 1;
+		if (code < 0x80) bytes += 1;
+		else if (code < 0x800) bytes += 2;
+		else if (code >= 0xd800 && code <= 0xdbff) {
+			const next = text.charCodeAt(index + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				bytes += 4;
+				index++;
+			} else bytes += 3;
+		} else bytes += 3;
 	}
 	return bytes;
 }
 
-// Committed shapes, shape lists and nets are frozen, so a measured size stays
+/**
+ * The bytes a JSON fragment adds to a tool result, which holds the reply once as
+ * structured content and once as escaped JSON text. JSON escapes each character
+ * on its own, so fragment sizes add up exactly.
+ */
+export function toolResultBytes(json: string) {
+	return utf8ByteLength(json) + utf8ByteLength(JSON.stringify(json)) - 2;
+}
+
+function hashText(text: string) {
+	let first = 0x811c9dc5;
+	let second = 0x9747b28c;
+	for (let index = 0; index < text.length; index++) {
+		const code = text.charCodeAt(index);
+		first = Math.imul(first ^ code, 0x01000193);
+		second = Math.imul(second ^ code, 0x5bd1e995);
+		second ^= second >>> 15;
+	}
+	return [first >>> 0, second >>> 0] as const;
+}
+
+// Committed shapes, shape lists and nets are frozen, so a measurement stays
 // valid, and repeated reads of a snapshot only measure its history.
-const jsonBytes = new WeakMap<object, number>();
+const measuredShapes = new WeakMap<
+	object,
+	{ bytes: number; hash: readonly [number, number] }
+>();
+const measuredLists = new WeakMap<object, { bytes: number; hash: string }>();
+const measuredNets = new WeakMap<object, number>();
 
-function cachedJsonBytes(
-	value: object,
-	measure = () => utf8ByteLength(JSON.stringify(value)),
-) {
-	let bytes = jsonBytes.get(value);
-	if (bytes === undefined) {
-		bytes = measure();
-		jsonBytes.set(value, bytes);
+function measureShape(shape: DrawingSnapshot["shapes"][number]) {
+	let measured = measuredShapes.get(shape);
+	if (!measured) {
+		const json = JSON.stringify(shape);
+		measured = { bytes: toolResultBytes(json), hash: hashText(json) };
+		measuredShapes.set(shape, measured);
 	}
-	return bytes;
+	return measured;
 }
 
-/** The JSON size of `shapes`, measured from its shapes so pages reuse them. */
-function shapesJsonBytes(shapes: DrawingSnapshot["shapes"]) {
-	return cachedJsonBytes(shapes, () => {
-		let bytes = 2 + Math.max(shapes.length - 1, 0);
-		for (const shape of shapes) bytes += cachedJsonBytes(shape);
-		return bytes;
-	});
+/** Tool result bytes of the shapes between brackets, and an ordered content hash. */
+function measureShapes(shapes: DrawingSnapshot["shapes"]) {
+	let measured = measuredLists.get(shapes);
+	if (!measured) {
+		let bytes = 0;
+		let first = 0x811c9dc5 ^ shapes.length;
+		let second = 0x9747b28c ^ shapes.length;
+		for (const [index, shape] of shapes.entries()) {
+			const { bytes: shapeBytes, hash } = measureShape(shape);
+			bytes += shapeBytes + (index > 0 ? toolResultBytes(",") : 0);
+			first = Math.imul(first ^ hash[0], 0x01000193);
+			second = Math.imul(second ^ hash[1], 0x5bd1e995);
+			second ^= second >>> 15;
+		}
+		const hex = (value: number) => (value >>> 0).toString(16).padStart(8, "0");
+		measured = { bytes, hash: hex(first) + hex(second) };
+		measuredLists.set(shapes, measured);
+	}
+	return measured;
+}
+
+function measureNets(nets: ReturnType<typeof snapshotNets>) {
+	let bytes = measuredNets.get(nets);
+	if (bytes === undefined) {
+		bytes = toolResultBytes(JSON.stringify(nets));
+		measuredNets.set(nets, bytes);
+	}
+	return bytes;
 }
 
 type DrawingSuccessReply = z.infer<typeof drawingSuccessReplySchema>;
 
-const tooLarge = (message: string) =>
-	({
-		ok: false,
-		error: { code: "DrawingTooLarge", message },
-	}) as const;
+const failure = (code: string, message: string) =>
+	({ ok: false, error: { code, message } }) as const;
 
 function summary(snapshot: DrawingSnapshot): DrawingSuccessReply["summary"] {
 	return {
@@ -304,16 +370,30 @@ function summary(snapshot: DrawingSnapshot): DrawingSuccessReply["summary"] {
 
 function readDrawing(
 	snapshot: DrawingSnapshot,
-	{ offset, limit }: z.infer<typeof getDrawingInputSchema>,
+	{ offset, limit, revision: expected }: z.infer<typeof getDrawingInputSchema>,
 	byteLimit: number,
 ): DrawingReply {
 	const paged = offset !== undefined || limit !== undefined;
 	const total = snapshot.shapes.length;
+	const measured = measureShapes(snapshot.shapes);
+	// Content-derived, so separate processes and external file edits agree on it.
+	const revision = `${measured.hash}${snapshot.nextShapeId.toString(36)}`;
+	if (expected !== undefined && expected !== revision)
+		return failure(
+			"DrawingChanged",
+			"The drawing changed since the read that returned this revision. Read it again from offset 0.",
+		);
+	if ((offset ?? 0) > 0 && expected === undefined)
+		return failure(
+			"RevisionRequired",
+			"Pass the revision from the page at offset 0 to read later pages.",
+		);
 	const start = Math.min(offset ?? 0, total);
 	const end = Math.min(total, start + (limit ?? total));
 	const nets = start === 0 ? snapshotNets(snapshot) : undefined;
 	const header = {
 		ok: true,
+		revision,
 		drawing: {
 			shapes: [] as DrawingSnapshot["shapes"][number][],
 			nextShapeId: snapshot.nextShapeId,
@@ -338,32 +418,35 @@ function readDrawing(
 	} satisfies DrawingSuccessReply;
 	let remaining =
 		byteLimit -
-		utf8ByteLength(JSON.stringify(header)) -
-		(nets ? ',"nets":'.length + cachedJsonBytes(nets) : 0);
+		toolResultOverhead -
+		toolResultBytes(JSON.stringify(header)) -
+		(nets ? toolResultBytes(',"nets":') + measureNets(nets) : 0);
 	const reply = (shapes: DrawingSnapshot["shapes"]) => ({
 		...header,
 		drawing: { ...header.drawing, shapes, ...(nets ? { nets } : {}) },
 	});
 	if (!paged) {
-		if (shapesJsonBytes(snapshot.shapes) - 2 <= remaining)
-			return reply(snapshot.shapes);
-		return tooLarge(
-			`The drawing's ${total} shapes do not fit in one ${byteLimit}-byte reply. Call getDrawing with offset 0 to read it in pages.`,
+		if (measured.bytes <= remaining) return reply(snapshot.shapes);
+		return failure(
+			"DrawingTooLarge",
+			`The drawing's ${total} shapes do not fit in one ${byteLimit}-byte tool result. Call getDrawing with offset 0 to read it in pages.`,
 		);
 	}
 	let stop = start;
 	while (stop < end) {
 		const bytes =
-			cachedJsonBytes(snapshot.shapes[stop]) + (stop > start ? 1 : 0);
+			measureShape(snapshot.shapes[stop]).bytes +
+			(stop > start ? toolResultBytes(",") : 0);
 		if (bytes > remaining) break;
 		remaining -= bytes;
 		stop++;
 	}
 	if (stop === start && start < end)
-		return tooLarge(
+		return failure(
+			"DrawingTooLarge",
 			remaining < 0
-				? `The drawing's history and nets alone exceed the ${byteLimit}-byte reply limit.`
-				: `The shape at offset ${start} exceeds the ${byteLimit}-byte reply limit.`,
+				? `The drawing's history and nets alone exceed the ${byteLimit}-byte tool result limit.`
+				: `The shape at offset ${start} exceeds the ${byteLimit}-byte tool result limit.`,
 		);
 	return {
 		...reply(snapshot.shapes.slice(start, stop)),
@@ -379,11 +462,12 @@ function readDrawing(
 /**
  * The browser and headless callers provide their store at the execution boundary.
  * Edits reply with their result and a summary, never the drawing, so a committed
- * edit is always acknowledged. Reads that do not fit `byteLimit` fail or page.
+ * edit is always acknowledged. Reads whose tool result would exceed `byteLimit`
+ * fail or page.
  */
 export function executeDrawingOperation(
 	operation: DrawingOperation,
-	byteLimit = drawingReplyByteLimit,
+	byteLimit = drawingToolResultByteLimit,
 ): Effect.Effect<DrawingReply, never, DrawingStore> {
 	const program = operationEffect(operation);
 	return Effect.gen(function* () {

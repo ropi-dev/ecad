@@ -9,6 +9,7 @@ import {
 	drawingFailureReplySchema,
 	drawingReplySchema,
 	drawingSuccessReplySchema,
+	drawingToolResultByteLimit,
 	getDrawingInputSchema,
 	jumpHistoryInputSchema,
 	placeShapesInputSchema,
@@ -16,6 +17,7 @@ import {
 	removeShapesInputSchema,
 	replaceShapesInputSchema,
 	rotateShapesInputSchema,
+	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
 
 // MCP requires an object output schema. Clients validate structured errors too,
@@ -31,10 +33,21 @@ const drawingToolReplySchema = drawingSuccessReplySchema
 	});
 
 // Edit replies never carry the drawing, so their size does not grow with it.
-const shapeEditReply =
-	" The reply has result.ids (the committed IDs of the affected shapes), result.idMap (source ID to committed ID for those shapes and for wires merged or renumbered; other IDs are unchanged) and a summary with shapeCount, nextShapeId and historyId. It has no shapes; call getDrawing to read committed geometry.";
+const replySummary =
+	"a summary with shapeCount, nextShapeId and historyId. It has no shapes; call getDrawing to read committed geometry.";
+const shapeEditReply = ` The reply has result.ids (the committed IDs of the affected shapes), result.idMap (source ID to committed ID for those shapes and for wires merged or renumbered; other IDs are unchanged) and ${replySummary}`;
+const removeReply = ` The reply has result.ids, which is empty because removed shapes have no committed IDs, result.idMap (wires merged or renumbered by the removal; other IDs are unchanged) and ${replySummary}`;
 const historyEditReply =
 	" The reply has a summary with shapeCount, nextShapeId and historyId but no shapes; call getDrawing to read the restored drawing.";
+
+/** The MCP result for a reply: structured content plus the same reply as JSON text. */
+export function drawingToolResult(reply: DrawingReply): CallToolResult {
+	return {
+		content: [{ type: "text", text: JSON.stringify(reply) }],
+		structuredContent: reply,
+		...(reply.ok ? {} : { isError: true }),
+	};
+}
 
 export interface DrawingMcpErrorLike {
 	readonly message: string;
@@ -65,11 +78,18 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			),
 			signal,
 		);
-		return {
-			content: [{ type: "text", text: JSON.stringify(reply) }],
-			structuredContent: reply,
-			...(reply.ok ? {} : { isError: true }),
-		};
+		const result = drawingToolResult(reply);
+		// Replies are sized to fit, but a larger result would close a stdio client.
+		if (utf8ByteLength(JSON.stringify(result)) <= drawingToolResultByteLimit)
+			return result;
+		return drawingToolResult({
+			ok: false,
+			error: {
+				code: "ReplyTooLarge",
+				message:
+					"The command ran, but its result was too large to return. Read the drawing with getDrawing before retrying.",
+			},
+		});
 	};
 	const readOnly = {
 		readOnlyHint: true,
@@ -94,7 +114,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Read drawing",
 			description:
-				"Read the drawing's committed shapes, electrical nets, allocated IDs and history branches. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews and selection are not drawing data. Without arguments, a drawing too large for one reply fails with DrawingTooLarge. Pass offset (start with 0) and optionally limit to read pages of drawing.shapes; continue from page.nextOffset until it is absent. Only the page at offset 0 includes nets. If summary.historyId changes between pages, the drawing changed; read again from offset 0.",
+				"Read the drawing's committed shapes, electrical nets, allocated IDs and history branches. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews and selection are not drawing data. Without arguments, a drawing too large for one tool result fails with DrawingTooLarge. Pass offset 0, and optionally limit, to read a page of drawing.shapes. Continue from page.nextOffset until it is absent, passing the revision from the first page with every later page. If the drawing changed in between, the call fails with DrawingChanged; read again from offset 0. Only the page at offset 0 includes nets.",
 			inputSchema: getDrawingInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: readOnly,
@@ -159,7 +179,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			title: "Remove shapes",
 			description:
 				"Remove explicit existing shape IDs from the drawing as one undo step. Read getDrawing to obtain IDs; editor selection is not consulted." +
-				shapeEditReply,
+				removeReply,
 			inputSchema: removeShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,

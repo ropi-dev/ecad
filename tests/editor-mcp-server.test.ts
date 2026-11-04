@@ -862,14 +862,18 @@ test("a drawing larger than one reply accepts and acknowledges edits, and reads 
 		assert.equal(failed.ok ? undefined : failed.error.code, "DrawingTooLarge");
 		const read: unknown[] = [];
 		let pages = 0;
+		let revision: string | undefined;
 		for (let offset: number | undefined = 0; offset !== undefined; pages++) {
 			const page = await client.callTool({
 				name: "getDrawing",
-				arguments: { offset },
+				arguments: { offset, ...(revision ? { revision } : {}) },
 			});
 			assert.equal(page.isError, undefined);
+			// Each page fits a stdio message, which the SDK caps at 10 MiB.
+			assert.ok(Buffer.byteLength(JSON.stringify(page)) < 8 * 1024 * 1024);
 			const reply = drawingReplySchema.parse(page.structuredContent);
 			assert.ok(reply.ok && reply.drawing && reply.page);
+			revision ??= reply.revision;
 			assert.equal(reply.page.offset, offset);
 			assert.equal(reply.page.total, 9001);
 			assert.equal(reply.drawing.nets !== undefined, offset === 0);
@@ -987,5 +991,78 @@ test("an editor stream that is never read holds a bounded queue and drops comman
 		assert.equal(await code(expiring), "EditorDisconnected");
 	} finally {
 		hub.dispose();
+	}
+});
+
+test("an MCP client receives EditorBacklogged as a tool error while the editor is not reading", async () => {
+	const hub = makeEditorSessionHub();
+	const size = 100_000;
+	const handlers = createEditorMcpHandlers(hub, {
+		streamQueueLimit: 1.5 * size,
+	});
+	const session = hub.create();
+	const stream = await handlers.session(
+		new Request(`http://localhost/api/editor-mcp/${session.sessionId}`, {
+			headers: sameOriginGet(session.editorToken),
+		}),
+		session.sessionId,
+	);
+	assert.equal(stream.status, 200);
+	const client = new Client({ name: "backlog-client", version: "1.0.0" });
+	const place = () =>
+		client
+			.callTool({
+				name: "placeShapes",
+				arguments: {
+					shapes: [
+						{
+							kind: "text",
+							text: "x".repeat(size),
+							x: 0,
+							y: 0,
+							width: 8,
+							height: 2,
+							rotation: 0,
+							lineWidth: 0.2,
+							fontSize: 2,
+						},
+					],
+				},
+			})
+			.catch((error: unknown) => error);
+	try {
+		await client.connect(
+			new StreamableHTTPClientTransport(
+				new URL(`http://localhost/mcp/editor/${session.sessionId}`),
+				{
+					requestInit: { headers: auth(session.mcpToken) },
+					fetch: (url, init) =>
+						handlers.mcp(new Request(url, init), session.sessionId),
+				},
+			),
+		);
+		await client.listTools();
+		// The stream buffers one command and the queue holds one more, in whatever
+		// order the calls arrive. The others fail at once; none are ever read.
+		const calls = [place(), place(), place(), place()];
+		const result = (await Promise.race(calls)) as Awaited<
+			ReturnType<typeof client.callTool>
+		>;
+		assert.equal(result.isError, true);
+		const reply = drawingReplySchema.parse(result.structuredContent);
+		assert.equal(reply.ok ? undefined : reply.error.code, "EditorBacklogged");
+		hub.dispose();
+		const settled = await Promise.all(calls);
+		assert.equal(
+			settled.filter((call) =>
+				JSON.stringify(
+					(call as { structuredContent?: unknown }).structuredContent ?? "",
+				).includes("EditorBacklogged"),
+			).length,
+			2,
+		);
+	} finally {
+		hub.dispose();
+		await client.close();
 	}
 });

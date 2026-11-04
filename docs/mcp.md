@@ -96,7 +96,7 @@ Coordinates and dimensions are millimetres. `x` and `y` specify the shape center
 
 | Tool | Arguments | Behavior |
 | --- | --- | --- |
-| `getDrawing` | optional `offset`, optional `limit` | Read committed shapes, nets, `nextShapeId`, and history entries. `offset` or `limit` reads one page of shapes. |
+| `getDrawing` | optional `offset`, `limit`, `revision` | Read committed shapes, nets, `nextShapeId`, and history entries. `offset` or `limit` reads one page of shapes; later pages need the first page's `revision`. |
 | `placeRectangle` | `x`, `y`, `width`, `height`, `rotation`, `lineWidth` | Place one rectangle and allocate its ID. |
 | `placeShapes` | `shapes`, optional `label` | Place complete shapes without top-level IDs in one history transaction. |
 | `replaceShapes` | `shapes`, optional `label`, optional `targetIds` | Replace complete geometry for explicit existing IDs. `targetIds` prefer IDs to retain when wires merge. |
@@ -139,13 +139,16 @@ Edits do not return the drawing, so their replies stay small however large the d
 
 Call `getDrawing` to read committed geometry after an edit. It returns `drawing` with `shapes`, `nets`, `nextShapeId`, and `history`. The history includes entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state.
 
-A reply holds at most 6 MiB of JSON, so it fits in one editor acknowledgement. Without arguments, `getDrawing` returns the whole drawing, or fails with `DrawingTooLarge` when it does not fit. To read a larger drawing, pass `offset: 0` and continue from `page.nextOffset` until a reply has no `nextOffset`:
+An MCP tool result carries its reply twice: once as `structuredContent` and once as escaped JSON text. `getDrawing` sizes its reply so the whole serialized result stays within 8 MiB. That keeps it under the 10 MiB message limit of the MCP SDK's stdio transport, and keeps the reply itself small enough for one editor acknowledgement. Without arguments, `getDrawing` returns the whole drawing, or fails with `DrawingTooLarge` when the result would not fit. To read a larger drawing, pass `offset: 0`. Then continue from `page.nextOffset`, passing the first page's `revision`, until a reply has no `nextOffset`:
 
-```json
+```text
 { "name": "getDrawing", "arguments": { "offset": 0 } }
+{ "name": "getDrawing", "arguments": { "offset": 1840, "revision": "<revision from the first page>" } }
 ```
 
-A paged reply also contains `page` with `offset`, `count`, `total`, and `nextOffset`. Each page returns as many shapes as fit in a reply, up to `limit` when given. Only the page at offset 0 includes `nets`, which cover the whole drawing. Every page includes the history. If `summary.historyId` changes between pages, the drawing changed; read it again from offset 0. A drawing whose history and nets alone exceed the limit, or a single shape over the limit, fails with `DrawingTooLarge`. In the web editor, an acknowledgement that would still exceed the relay's limit becomes a `ReplyTooLarge` error and the editor stays connected. The command may have run, so read the drawing before retrying.
+Every `getDrawing` reply contains a `revision` derived from the drawing's shapes and ID allocation. Readers of the same content, including separate CLI processes, get the same revision, and any change to the shapes produces a new one. That includes external edits to a CLI drawing, which reset its history. A page after offset 0 requires `revision`. When the drawing no longer matches it, the read fails with `DrawingChanged`; read again from offset 0. Without it, the read fails with `RevisionRequired`.
+
+A paged reply also contains `page` with `offset`, `count`, `total`, and `nextOffset`. Each page returns as many shapes as fit, up to `limit` when given. Only the page at offset 0 includes `nets`, which cover the whole drawing. Every page includes the history. A drawing whose history and nets alone exceed the limit, or a single shape over the limit, fails with `DrawingTooLarge`. As a last check, a tool result that would still exceed 8 MiB becomes a `ReplyTooLarge` error, and so does a web editor acknowledgement over the relay's limit. The connection stays open, but the command may have run, so read the drawing before retrying.
 
 Web editor UI edits and HTTP MCP edits share the same history. An external mutation cancels an unfinished gesture before its preview can overwrite the command.
 
@@ -172,7 +175,7 @@ The session endpoints need no login, so the relay limits what one client can hol
 - One client can hold 4 sessions at a time. A fifth **Enable MCP** fails with `ClientSessionLimit` (HTTP 429) until another drawing disables MCP or a session ends.
 - The server holds at most 100 sessions. When all are in use, new sessions fail with `SessionLimit` (HTTP 503).
 - Each session queues at most 128 commands for its editor.
-- While the editor is not reading its command stream, at most 8 MiB of commands wait for it. A command that would exceed that fails with `EditorBacklogged` (HTTP 429) and is not delivered. Commands that time out or are cancelled before delivery are dropped from the queue and never reach the editor.
+- While the editor is not reading its command stream, the relay holds at most 8 MiB of undelivered commands for it. Network and browser buffers can hold more data in transit. A command that would exceed that fails with `EditorBacklogged` (HTTP 429) and is not delivered. Commands that time out or are cancelled before delivery are dropped from the relay's queue and never reach the editor.
 
 The client key is the connecting IP address. All IPv6 addresses in one /64 network count as one client, because a single host can usually pick any address in its /64. IPv4-mapped IPv6 addresses count as their IPv4 address. Clients behind one NAT share a key and its 4 sessions.
 
