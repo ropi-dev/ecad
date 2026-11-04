@@ -586,6 +586,18 @@ test("KiCad routes stay clear of slightly tilted wires that normalization straig
 	assert.deepEqual(tilted.nets, ["A+C", "B"]);
 });
 
+test("KiCad diagonal wires go through the same per-item import checks", () => {
+	const result = importKiCadSchematic(
+		kicad(
+			`${kicadWire("10 20", "16 28")} (wire (pts (xy 0 0) (xy 1 1) (xy 2 0)))`,
+		),
+	);
+	assert.equal(result.shapes.filter((shape) => shape.kind === "wire").length, 2);
+	assert.equal(result.report.skipped.length, 1);
+	assert.match(result.report.skipped[0].reason, /two endpoints/);
+	assert.ok(result.report.warnings.some((warning) => warning.includes("Diagonal")));
+});
+
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
 	const result = importedNets(
 		kicadWire("10 20", "16 28"),

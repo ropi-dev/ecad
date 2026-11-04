@@ -219,7 +219,7 @@ test('unsupported macro geometry and malformed files produce explicit errors',()
   const truncated=parseGerber(header+'%ADD10C,1*%D10*X0Y0D03*','truncated.gbr')
   assert.ok(truncated.diagnostics.some(d=>d.message.includes('Missing M02')))
   const unsupported=parse('%IPNEG*%')
-  assert.ok(unsupported.diagnostics.some(d=>d.severity==='error' && d.message.includes('IPNEG')))
+  assert.ok(unsupported.diagnostics.some(d=>d.severity==='fatal' && d.message.includes('IPNEG')))
 })
 
 test('rejects non-circular modern draws without approximating their aperture as a circle',()=> {
@@ -238,7 +238,7 @@ test('legacy rectangular draws sweep a fixed rectangle, including diagonal strok
 test('rejects unclosed regions, unmatched blocks, invalid holes and excessive repeats',()=> {
   for(const body of ['G36*X0Y0D02*X1000000Y0D01*','%AB*%','%ADD10C,1X2*%','%SRX999999999Y2I1J1*%']) {
     const result=parse(body)
-    assert.ok(result.diagnostics.some(d=>d.severity==='error'),body)
+    assert.ok(result.diagnostics.some(d=>d.severity===(body.startsWith('%SR')?'fatal':'error')),body)
   }
 })
 

@@ -1,4 +1,5 @@
 import { unionFind } from "@ecad/drawing-core/lib/union-find.ts";
+import type { ShapeInput } from "#/commands/drawing-commands.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
@@ -13,6 +14,8 @@ import {
 	type TextShape,
 } from "#/drawing/shapes.ts";
 import type { Bounds } from "#/drawing/types.ts";
+import { asSentence as sentence } from "#/formats/diagnostics.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	node,
@@ -38,7 +41,10 @@ export interface KiCadImportReport {
 	}[];
 	labels: { kind: string; text: string; x: number; y: number }[];
 	supplies: { reference: string; text: string; x: number; y: number }[];
+	/** Each skipped item also appears in `warnings` as a sentence. */
 	warnings: string[];
+	/** Items left out of the drawing. Everything else was imported. */
+	skipped: { item: string; reason: string }[];
 	counts: Record<string, number>;
 }
 export interface KiCadImportResult {
@@ -82,6 +88,50 @@ const line = (
 	),
 	kind,
 });
+const words = (key: string) =>
+	key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
+/** The KiCad source position, or else the UUID, so the item can be found. */
+const locate = (item: SExpr, at: SExpr = node(item, "at")) => {
+	const [x, y] = at.slice(1);
+	const uuid = value(item, "uuid");
+	return typeof x === "string" && typeof y === "string"
+		? ` at (${x}, ${y})`
+		: uuid
+			? ` with UUID ${uuid}`
+			: "";
+};
+/**
+ * Names one invalid field in words instead of listing schema issues. The
+ * deepest issue is the cause: a bad child also invalidates the symbol size.
+ */
+function describeInvalidShape(
+	shape: ShapeInput,
+	issues: readonly { path: readonly PropertyKey[]; message: string }[],
+) {
+	const issue = issues.reduce<(typeof issues)[number] | undefined>(
+		(deepest, next) =>
+			!deepest || next.path.length > deepest.path.length ? next : deepest,
+		undefined,
+	);
+	if (!issue) return "The converted shape is invalid.";
+	const { path } = issue;
+	if (!path.length) return sentence(issue.message);
+	const [first, index] = path;
+	let owner = "";
+	let key = String(path.at(-1));
+	if (first === "children" && typeof index === "number" && path.length > 2) {
+		const child = shape.kind === "symbol" ? shape.children[index] : undefined;
+		owner = ` of child ${index + 1}${child ? ` (a ${words(child.kind)})` : ""}`;
+		// A KiCad circle has a radius; its converted width and height derive from it.
+		if (child?.kind === "circle" && (key === "width" || key === "height"))
+			key = "radius";
+	} else if (first === "texts" && typeof index === "number" && path.length > 2)
+		owner = " of an attribute label";
+	const field = `${words(key)}${owner}`;
+	return /received NaN$/.test(issue.message)
+		? `The ${field} is not a number.`
+		: `The ${field} is invalid (${issue.message.replace(/^Invalid input: /, "")}).`;
+}
 type Segment = [XY, XY];
 
 function distance(point: XY, [a, b]: Segment) {
@@ -279,13 +329,14 @@ const sameSet = <T>(first: ReadonlySet<T>, second: ReadonlySet<T>) =>
  *   wire is at least 0.001 mm long, can merge only with wires exactly in line
  *   that it overlaps or touches, and stays clear of clusters that
  *   normalization could shift or join across a gap.
- * A diagonal with a piece that has no such corner stays a graphic line.
+ * Returns each diagonal's wires, or undefined where a piece has no such
+ * corner and the diagonal stays a graphic line.
  */
 function routeDiagonalWires(
 	diagonals: readonly Segment[],
 	shapes: readonly EditorShape[],
-): { wires: EditorShape[]; lines: Segment[] } {
-	if (!diagonals.length) return { wires: [], lines: [] };
+): (EditorShape[] | undefined)[] {
+	if (!diagonals.length) return [];
 	let nextId = shapes.reduce(
 		(maximum, shape) => Math.max(maximum, shape.id),
 		0,
@@ -330,9 +381,7 @@ function routeDiagonalWires(
 	});
 	const current = [...shapes];
 	const pending = diagonals.map(([a, b], index) => diagonal(index, wire(a, b)));
-	const routed: EditorShape[] = [];
-	const lines: Segment[] = [];
-	for (const [index, chain] of chains.entries()) {
+	return chains.map((chain, index) => {
 		// Every other diagonal, routed or not, as it stands now.
 		const drawing = [...current, ...pending.slice(index + 1)];
 		const pieces: EditorShape[] = [];
@@ -362,12 +411,11 @@ function routeDiagonalWires(
 			if (!route) break;
 			pieces.push(...route);
 		}
-		if (pieces.length === 2 * (chain.length - 1)) {
-			for (const piece of pieces) routed.push(diagonal(index, piece));
-			current.push(...pieces);
-		} else lines.push(diagonals[index]);
-	}
-	return { wires: routed, lines };
+		if (pieces.length < 2 * (chain.length - 1)) return undefined;
+		for (const piece of pieces) diagonal(index, piece);
+		current.push(...pieces);
+		return pieces;
+	});
 }
 
 function text(n: SExpr, at: XY, content: string): TextShape {
@@ -424,7 +472,7 @@ function convert(source: string): KiCadImportResult {
 		throw new Error("Unsupported KiCad paper size.");
 	if (paper.includes("portrait")) sheet = [sheet[1], sheet[0]];
 	const world = (a: number[]): XY => {
-		if (a.length < 2) throw new Error("Missing KiCad position.");
+		if (a.length < 2) throw new Error("The position is missing.");
 		return [a[0] - sheet[0] / 2, sheet[1] / 2 - a[1]];
 	};
 	const warnings = new Set<string>([
@@ -443,6 +491,7 @@ function convert(source: string): KiCadImportResult {
 		labels: [],
 		supplies: [],
 		warnings: [],
+		skipped: [],
 		counts: {},
 	};
 	const supported = new Set([
@@ -482,32 +531,51 @@ function convert(source: string): KiCadImportResult {
 		nodes(node(root, "lib_symbols"), "symbol").map((n) => [String(n[1]), n]),
 	);
 	const shapes: EditorShape[] = [];
-	const add = (s: EditorShape) => shapes.push({ ...s, id: shapes.length + 1 });
-	for (const instance of nodes(root, "symbol")) {
-		const libraryId = value(instance, "lib_id");
+	/**
+	 * Converts and validates one source item where it is produced. A failure
+	 * leaves out only that item, with a readable reason, and the import goes on.
+	 */
+	const attempt = <T extends { shapes: ShapeInput[] }>(
+		item: string,
+		convert: () => T,
+	): T | undefined => {
+		try {
+			const converted = convert();
+			const valid = converted.shapes.map((shape, index) => {
+				const parsed = drawingShapeSchema.safeParse({
+					...shape,
+					id: shapes.length + index + 1,
+				});
+				if (!parsed.success)
+					throw new Error(describeInvalidShape(shape, parsed.error.issues));
+				return parsed.data;
+			});
+			shapes.push(...valid);
+			return converted;
+		} catch (error) {
+			report.skipped.push({
+				item,
+				reason: sentence(errorMessage(error, "It could not be converted.")),
+			});
+		}
+	};
+	const convertSymbol = (
+		instance: SExpr,
+		libraryId: string,
+		props: Record<string, string>,
+	) => {
 		const definition = libraries.get(libraryId);
-		if (!definition) throw new Error(`Missing embedded symbol: ${libraryId}.`);
+		if (!definition)
+			throw new Error("Its library symbol is not embedded in the schematic.");
 		if (value(definition, "extends"))
 			throw new Error(
-				`Inherited symbol definitions are unsupported: ${libraryId}.`,
+				"Its library symbol extends another symbol, which is unsupported.",
 			);
-		const props = Object.fromEntries(
-			nodes(instance, "property").map((p) => [String(p[1]), String(p[2])]),
-		);
 		const [sx, sy] = world(numbers(instance, "at"));
 		const angle = numbers(instance, "at")[2] ?? 0,
 			theta = radians(angle),
 			mirror = value(instance, "mirror");
 		const unit = Number(value(instance, "unit", "1"));
-		report.components.push({
-			uuid: value(instance, "uuid"),
-			libraryId,
-			unit,
-			rotation: angle,
-			mirror,
-			properties: props,
-		});
-		report.metadata.push(instance);
 		const transform = (x: number, y: number): XY => {
 			if (mirror === "y") x = -x;
 			if (mirror === "x") y = -y;
@@ -519,7 +587,10 @@ function convert(source: string): KiCadImportResult {
 		const children: SymbolShape[] = [];
 		for (const part of nodes(definition, "symbol")) {
 			const match = String(part[1]).match(/_(\d+)_(\d+)$/);
-			if (!match) throw new Error(`Invalid embedded symbol unit: ${part[1]}.`);
+			if (!match)
+				throw new Error(
+					`Its library symbol has an invalid unit name, ${part[1]}.`,
+				);
 			if (
 				![0, unit].includes(Number(match[1])) ||
 				![0, Number(value(instance, "convert", "1"))].includes(Number(match[2]))
@@ -681,14 +752,11 @@ function convert(source: string): KiCadImportResult {
 				});
 			} else children.push(label);
 		}
-		if (!children.length)
-			throw new Error(
-				`Symbol ${props.Reference ?? libraryId} has no supported geometry.`,
-			);
+		if (!children.length) throw new Error("It has no supported geometry.");
 		children.forEach((c, i) => {
 			c.id = i + 1;
 		});
-		add({
+		const symbol: ShapeInput = {
 			...geometry(
 				sx,
 				sy,
@@ -707,7 +775,8 @@ function convert(source: string): KiCadImportResult {
 				reference: props.Reference ?? "",
 				value: props.Value ?? "",
 			},
-		});
+		};
+		let supply: KiCadImportReport["supplies"][number] | undefined;
 		if (nodes(definition, "power").length && props.Value) {
 			if (libraryId.split(":").at(-1) === "PWR_FLAG") {
 				warnings.add(
@@ -717,84 +786,157 @@ function convert(source: string): KiCadImportResult {
 				const terminals = children.filter((child) => child.kind === "pin");
 				if (terminals.length !== 1)
 					throw new Error(
-						`Power symbol ${libraryId} must have exactly one terminal.`,
+						`A power symbol needs exactly one pin, but this one has ${terminals.length}.`,
 					);
 				const pin = terminals[0];
-				const at: XY = [sx + pin.x, sy + pin.y];
-				report.supplies.push({
+				supply = {
 					reference: props.Reference ?? "",
 					text: props.Value,
-					x: at[0],
-					y: at[1],
-				});
+					x: sx + pin.x,
+					y: sy + pin.y,
+				};
 			}
 		}
-	}
-	const diagonalWires: Segment[] = [];
-	for (const wire of nodes(root, "wire")) {
-		const pts = nodes(node(wire, "pts"), "xy").map((p) =>
-			world(p.slice(1).map(Number)),
+		const component = {
+			uuid: value(instance, "uuid"),
+			libraryId,
+			unit,
+			rotation: angle,
+			mirror,
+			properties: props,
+		};
+		return { shapes: [symbol], component, supply };
+	};
+	for (const instance of nodes(root, "symbol")) {
+		const libraryId = value(instance, "lib_id");
+		const props = Object.fromEntries(
+			nodes(instance, "property").map((p) => [String(p[1]), String(p[2])]),
 		);
-		if (pts.length !== 2) throw new Error("KiCad wires require two endpoints.");
-		const [start, end] = pts;
-		const angle = Math.atan2(end[1] - start[1], end[0] - start[0]);
-		if (Math.abs(Math.sin(2 * angle)) <= 1e-9)
-			add(line(start, end, "wire") as EditorShape);
-		else diagonalWires.push([start, end]);
+		report.metadata.push(instance);
+		// Units of one multi-unit part share a reference.
+		const unit = value(instance, "unit", "1");
+		const name = `${props.Reference || libraryId}${unit === "1" ? "" : ` unit ${unit}`}`;
+		const converted = attempt(
+			`symbol ${props.Reference ? `${name} (${libraryId})` : name}`,
+			() => convertSymbol(instance, libraryId, props),
+		);
+		// Components and supplies stay aligned with the imported symbols.
+		if (converted) {
+			report.components.push(converted.component);
+			if (converted.supply) report.supplies.push(converted.supply);
+		}
 	}
-	for (const junction of nodes(root, "junction")) {
-		const diameter = Number(value(junction, "diameter", "0")) || 0.6;
-		add({
-			...geometry(
-				...world(numbers(junction, "at")),
-				diameter,
-				diameter,
-				0,
-				0.1,
-			),
-			kind: "circle",
-			filled: true,
+	// Diagonal wires are routed once everything they could touch is in place.
+	const diagonalWires: { item: string; segment: Segment }[] = [];
+	for (const wire of nodes(root, "wire")) {
+		const points = nodes(node(wire, "pts"), "xy");
+		const item = `wire${locate(wire, points[0])}`;
+		attempt(item, () => {
+			const pts = points.map((p) => world(p.slice(1).map(Number)));
+			if (pts.length !== 2)
+				throw new Error(
+					`A wire needs two endpoints, but this one has ${pts.length}.`,
+				);
+			const [start, end] = pts;
+			const angle = Math.atan2(end[1] - start[1], end[0] - start[0]);
+			if (Math.abs(Math.sin(2 * angle)) <= 1e-9)
+				return { shapes: [line(start, end, "wire")] };
+			diagonalWires.push({ item, segment: [start, end] });
+			return { shapes: [] };
 		});
 	}
-	for (const kind of ["label", "global_label", "hierarchical_label", "text"])
+	for (const junction of nodes(root, "junction"))
+		attempt(`junction${locate(junction)}`, () => {
+			const diameter = Number(value(junction, "diameter", "0")) || 0.6;
+			return {
+				shapes: [
+					{
+						...geometry(
+							...world(numbers(junction, "at")),
+							diameter,
+							diameter,
+							0,
+							0.1,
+						),
+						kind: "circle",
+						filled: true,
+					},
+				],
+			};
+		});
+	const labelKinds = {
+		label: "label",
+		global_label: "global label",
+		hierarchical_label: "hierarchical label",
+		text: "text",
+	};
+	for (const [kind, kindName] of Object.entries(labelKinds))
 		for (const label of nodes(root, kind)) {
-			const at = world(numbers(label, "at"));
-			add({
-				...text(label, at, String(label[1])),
-				...(kind === "text" ? {} : { electrical: "net" as const }),
+			const content = String(label[1]);
+			const name = content.length > 40 ? `${content.slice(0, 40)}…` : content;
+			const converted = attempt(`${kindName} "${name}"${locate(label)}`, () => {
+				const at = world(numbers(label, "at"));
+				return {
+					shapes: [
+						{
+							...text(label, at, content),
+							...(kind === "text" ? {} : { electrical: "net" as const }),
+						},
+					],
+					at,
+				};
 			});
-			if (kind !== "text")
+			if (converted && kind !== "text")
 				report.labels.push({
 					kind,
-					text: String(label[1]),
-					x: at[0],
-					y: at[1],
+					text: content,
+					x: converted.at[0],
+					y: converted.at[1],
 				});
 		}
-	for (const nc of nodes(root, "no_connect")) {
-		const [x, y] = world(numbers(nc, "at"));
-		add({
-			kind: "no-connect",
-			x,
-			y,
-			width: 1.2,
-			height: 1.2,
-			rotation: 0,
-			lineWidth: 0.1524,
-		} as EditorShape);
+	for (const nc of nodes(root, "no_connect"))
+		attempt(`no-connect marker${locate(nc)}`, () => {
+			const [x, y] = world(numbers(nc, "at"));
+			return {
+				shapes: [
+					{
+						kind: "no-connect",
+						x,
+						y,
+						width: 1.2,
+						height: 1.2,
+						rotation: 0,
+						lineWidth: 0.1524,
+					},
+				],
+			};
+		});
+	const routes = routeDiagonalWires(
+		diagonalWires.map(({ segment }) => segment),
+		shapes,
+	);
+	for (const [index, { item, segment }] of diagonalWires.entries()) {
+		const route = routes[index];
+		warnings.add(
+			route
+				? "Diagonal wires are imported as horizontal and vertical segments."
+				: "Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
+		);
+		attempt(item, () => ({
+			shapes: route ?? [line(segment[0], segment[1], "line")],
+		}));
 	}
-	const diagonals = routeDiagonalWires(diagonalWires, shapes);
-	for (const wire of diagonals.wires) add(wire);
-	for (const [start, end] of diagonals.lines) add(line(start, end, "line"));
-	if (diagonals.wires.length)
-		warnings.add(
-			"Diagonal wires are imported as horizontal and vertical segments.",
+	if (!shapes.length && report.skipped.length) {
+		const [first] = report.skipped;
+		const more = report.skipped.length - 1;
+		throw new Error(
+			`Nothing could be imported. Skipped ${first.item}. ${first.reason}${more ? ` ${more} more ${more === 1 ? "item was" : "items were"} skipped too.` : ""}`,
 		);
-	if (diagonals.lines.length)
-		warnings.add(
-			"Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
-		);
+	}
 	report.metadata.push(node(root, "lib_symbols"));
-	report.warnings = [...warnings];
-	return { shapes: shapes.map((s) => drawingShapeSchema.parse(s)), report };
+	report.warnings = [
+		...report.skipped.map(({ item, reason }) => `Skipped ${item}. ${reason}`),
+		...warnings,
+	];
+	return { shapes, report };
 }

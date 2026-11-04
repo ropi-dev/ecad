@@ -178,3 +178,56 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 		),
 	).toEqual(oracle);
 });
+
+test("a KiCad schematic with one broken symbol imports the rest and names the skipped symbol", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await closeProjectFiles(page);
+	const source = `(kicad_sch (version 20250114) (paper "A4")
+	(lib_symbols (symbol "Good" (symbol "Good_1_1" (rectangle (start -2 -2) (end 2 2)) (pin input line (at -4 0 0) (length 2) (name "IN") (number "1")))))
+	(symbol (lib_id "Good") (at 100 100 0) (unit 1) (uuid "good") (property "Reference" "U1" (at 100 96 0)))
+	(symbol (lib_id "Lib:Missing") (at 130 100 0) (unit 1) (uuid "missing") (property "Reference" "U2" (at 130 96 0)))
+	(wire (pts (xy 90 100) (xy 96 100)))
+	(label "IN" (at 90 100 0)))`;
+	await (await openProjectFiles(page))
+		.getByLabel("Add KiCad schematic files")
+		.setInputFiles({
+			name: "partial.kicad_sch",
+			mimeType: "text/plain",
+			buffer: Buffer.from(source),
+		});
+	await expect(
+		page.getByRole("list", { name: "Skipped KiCad items", exact: true }),
+	).toHaveText(
+		"Symbol U2 (Lib:Missing): Its library symbol is not embedded in the schematic.",
+	);
+	await expect(page.getByText("Skipped 1 item that could not be converted:")).toBeVisible();
+	await expect
+		.poll(async () =>
+			(
+				JSON.parse(
+					(await page.locator("#project-document").textContent()) ?? "{}",
+				).editorShapes as EditorShape[] | undefined
+			)?.map((shape) =>
+				shape.kind === "symbol" ? `symbol ${shape.attributes.reference}` : shape.kind,
+			),
+		)
+		.toEqual(["symbol U1", "wire", "text"]);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: test.info().outputPath("kicad-skipped-items.png"),
+		});
+	const download = page.waitForEvent("download");
+	await page
+		.getByRole("button", { name: "Download import report", exact: true })
+		.click();
+	const path = await (await download).path();
+	const report = JSON.parse(readFileSync(path!, "utf8"));
+	expect(report.skipped).toEqual([
+		{
+			item: "symbol U2 (Lib:Missing)",
+			reason: "Its library symbol is not embedded in the schematic.",
+		},
+	]);
+});
