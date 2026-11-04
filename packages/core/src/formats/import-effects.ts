@@ -2,6 +2,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { errorMessage } from "#/lib/error-message.ts";
+import { fileSizeProblem, type ImportFormat } from "./import-limits.ts";
 
 export class FileReadError extends Data.TaggedError("FileReadError")<{
 	readonly message: string;
@@ -32,6 +33,15 @@ export type ImportError =
 	| WorkerError
 	| ImportTimeout
 	| ArchiveError;
+
+/** Compares `file.size` with the limit, so the file is never read when too large. */
+export function checkFileSize(
+	file: { readonly size: number },
+	format: ImportFormat,
+) {
+	const problem = fileSizeProblem(format, file.size);
+	return problem ? new InvalidFile({ message: problem }) : undefined;
+}
 
 export function readFile<A>(read: () => Promise<A>) {
 	return Effect.tryPromise({

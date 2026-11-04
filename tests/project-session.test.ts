@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { InvalidFile } from "#/formats/import-effects.ts";
+import {
+	MAX_GERBER_ARCHIVE_BYTES,
+	MAX_KICAD_FILE_BYTES,
+	MAX_STEP_FILE_BYTES,
+} from "#/formats/import-limits.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import { createDocumentRegistry } from "#/projects/document-registry.ts";
-import { ProjectClosed, ProjectConflict } from "#/projects/errors.ts";
+import {
+	ProjectAssetTooLarge,
+	ProjectClosed,
+	ProjectConflict,
+} from "#/projects/errors.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import { assembleLinkedPcbs } from "#/projects/linked-pcb.ts";
 import { createProjectSession } from "#/projects/ProjectSession.ts";
@@ -14,6 +26,7 @@ import { createProjectIndex, projectIndex } from "#/projects/project-index.ts";
 import { assembleProjectSave } from "#/projects/save-assembly.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import { installKiCadWorker } from "./helpers/kicad-worker.ts";
 import { required } from "./helpers/required.ts";
 
 const rectangle = {
@@ -347,4 +360,184 @@ test("linked PCB assembly preserves the first drawing match and never mutates it
 	const first = result.document.drawings?.[0].shapes[0];
 	assert.equal(first?.kind === "symbol" && first.attributes.value, "Changed");
 	assert.deepEqual(document, before);
+});
+
+test("schematic import parses in the KiCad worker and rejects oversized files without saving", async (t) => {
+	const installed = installKiCadWorker();
+	t.after(installed.restore);
+	const f = fixture();
+	// Real storage assigns each drawing a file path when it is saved.
+	const save = f.storage.save.bind(f.storage);
+	f.storage.save = async (...args) => {
+		const saved = await save(...args);
+		return {
+			...saved,
+			manifest: {
+				...saved.manifest,
+				drawings: saved.drawings?.map((drawing) => `${drawing.id}.ecaddraw`),
+			},
+		};
+	};
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const oversized = new File(["(kicad_sch)"], "huge.kicad_sch");
+	Object.defineProperty(oversized, "size", { value: MAX_KICAD_FILE_BYTES + 1 });
+	const before = f.saves;
+	await assert.rejects(
+		f.session.getSnapshot().importSchematic(oversized),
+		(error) =>
+			error instanceof InvalidFile &&
+			error.message === "KiCad schematics must be 32 MiB or smaller.",
+	);
+	assert.equal(f.saves, before);
+	assert.equal(installed.workers.length, 0);
+	const source = readFileSync(
+		new URL(
+			"./fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch",
+			import.meta.url,
+		),
+		"utf8",
+	);
+	const expected = importKiCadSchematic(source);
+	const { path, report } = await f.session
+		.getSnapshot()
+		.importSchematic(new File([source], "RPI-RP2350A-MINIMAL_R4-S1.kicad_sch"));
+	assert.deepEqual(report, expected.report);
+	const project = required(f.session.getSnapshot().project);
+	const drawing = required(
+		project.drawings?.find((entry) => entry.id === "kicad-import"),
+	);
+	assert.equal(drawing.name, "RPI-RP2350A-MINIMAL_R4-S1");
+	assert.deepEqual(drawing.shapes, expected.shapes);
+	assert.equal(
+		projectIndex(project).drawingsById.get("kicad-import")?.path,
+		path,
+	);
+	assert.equal(installed.workers.length, 1);
+	assert.equal(installed.workers[0].terminated, 1);
+	stop();
+});
+
+test("project assets over the size limit are rejected before they are read or stored", async (t) => {
+	const f = fixture();
+	const imported: { name: string; kind: string; size: number }[][] = [];
+	f.storage.importAssets = async (_directory, assets) => {
+		imported.push(
+			assets.map(({ name, kind, bytes }) => ({
+				name,
+				kind,
+				size: bytes.byteLength,
+			})),
+		);
+		return required(await f.storage.load());
+	};
+	const stop = f.session.connect();
+	t.after(stop);
+	await loaded(f.session);
+	const huge = new File(["x"], "huge.zip");
+	Object.defineProperty(huge, "size", { value: MAX_GERBER_ARCHIVE_BYTES + 1 });
+	huge.arrayBuffer = () => {
+		throw new Error("An oversized asset was read.");
+	};
+	await assert.rejects(
+		f.session
+			.getSnapshot()
+			.importAssets([new File(["G04*"], "top.gbr"), huge], "gerber"),
+		(error) =>
+			error instanceof ProjectAssetTooLarge &&
+			error.message ===
+				"huge.zip: Gerber ZIP archives must be 256 MiB or smaller.",
+	);
+	assert.deepEqual(imported, []);
+	const step = new File(["x"], "huge.step");
+	Object.defineProperty(step, "size", { value: MAX_STEP_FILE_BYTES + 1 });
+	await assert.rejects(
+		f.session.getSnapshot().importAssets([step], "step"),
+		(error) =>
+			error instanceof ProjectAssetTooLarge &&
+			error.message === "huge.step: STEP files must be 256 MiB or smaller.",
+	);
+	await f.session
+		.getSnapshot()
+		.importAssets([new File(["G04*"], "top.gbr")], "gerber");
+	assert.deepEqual(imported, [[{ name: "top.gbr", kind: "gerber", size: 4 }]]);
+});
+
+test("a new project copies the source project's assets except those over the size limit", async (t) => {
+	const source = snapshot();
+	source.manifest.assets = [
+		{ path: "assets/huge.step", name: "huge.step", kind: "step" },
+		{ path: "assets/top.gbr", name: "top.gbr", kind: "gerber" },
+	];
+	const f = fixture(source);
+	const imported: string[][] = [];
+	f.storage.readAsset = async (_directory, path) => {
+		if (path === "assets/huge.step")
+			throw new ProjectAssetTooLarge({
+				assetName: "huge.step",
+				reason: "STEP files must be 256 MiB or smaller.",
+			});
+		return new Uint8Array([1, 2]);
+	};
+	f.storage.importAssets = async (_directory, assets) => {
+		imported.push(assets.map((asset) => asset.name));
+		return required(await f.storage.load());
+	};
+	const stop = f.session.connect();
+	t.after(stop);
+	await loaded(f.session);
+	await f.session.getSnapshot().create("Copy");
+	assert.equal(
+		f.session.getSnapshot().error,
+		"The new project leaves out an asset over the size limit, which stays in the original project. huge.step: STEP files must be 256 MiB or smaller.",
+	);
+	assert.deepEqual(imported, [["top.gbr"]]);
+});
+
+test("restoring assets loads every asset within the limit and names the oversized ones", async (t) => {
+	const source = snapshot();
+	source.manifest.assets = [
+		{ path: "assets/small.step", name: "small.step", kind: "step" },
+		{ path: "assets/b.step", name: "b.step", kind: "step" },
+		{ path: "assets/c.step", name: "c.step", kind: "step" },
+		{ path: "assets/top.gbr", name: "top.gbr", kind: "gerber" },
+	];
+	const f = fixture(source);
+	const reads: string[] = [];
+	f.storage.readAsset = async (_directory, path) => {
+		reads.push(path);
+		if (path === "assets/b.step" || path === "assets/c.step")
+			throw new ProjectAssetTooLarge({
+				assetName: path.slice("assets/".length),
+				reason: "STEP files must be 256 MiB or smaller.",
+			});
+		return new TextEncoder().encode(path);
+	};
+	const stop = f.session.connect();
+	t.after(stop);
+	await loaded(f.session);
+	const restored = await f.session.getSnapshot().readAssets("step");
+	assert.deepEqual(
+		restored.files.map((file) => file.name),
+		["small.step"],
+	);
+	assert.equal(await restored.files[0].text(), "assets/small.step");
+	assert.deepEqual(restored.problems, [
+		"b.step: STEP files must be 256 MiB or smaller.",
+		"c.step: STEP files must be 256 MiB or smaller.",
+	]);
+	const gerber = await f.session.getSnapshot().readAssets("gerber");
+	assert.deepEqual(
+		gerber.files.map((file) => file.name),
+		["top.gbr"],
+	);
+	assert.deepEqual(gerber.problems, []);
+	// Other failures still reject the restore, as before.
+	f.storage.readAsset = async () => {
+		throw new Error("disk unavailable");
+	};
+	await assert.rejects(
+		f.session.getSnapshot().readAssets("step"),
+		/disk unavailable/,
+	);
 });

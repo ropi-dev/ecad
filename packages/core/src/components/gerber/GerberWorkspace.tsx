@@ -3,7 +3,10 @@ import {
 	describeDiagnostics,
 	summarizeDiagnostics,
 } from "#/formats/diagnostics.ts";
-import { useProjectActions } from "#/projects/ProjectProvider.tsx";
+import {
+	useProjectActions,
+	useProjectSelection,
+} from "#/projects/ProjectProvider.tsx";
 import { GerberHeader } from "./GerberHeader";
 import { GerberViewer } from "./GerberViewer";
 import { LayerPanel } from "./LayerPanel";
@@ -11,6 +14,8 @@ import { useGerberFile } from "./useGerberFile";
 
 export function GerberWorkspace() {
 	const project = useProjectActions();
+	// Project messages, such as assets a new project left out, show here too.
+	const projectError = useProjectSelection((value) => value.error) ?? "";
 	const {
 		layers,
 		loading,
@@ -29,7 +34,7 @@ export function GerberWorkspace() {
 						`${layer.name}: ${describeDiagnostics(layer.diagnostics)} (${summarizeDiagnostics(layer.diagnostics, 10)})`,
 				)
 		: [];
-	const message = [...fileMessages, ...diagnostics, rendererError]
+	const message = [projectError, ...fileMessages, ...diagnostics, rendererError]
 		.filter(Boolean)
 		.join("\n");
 	return (

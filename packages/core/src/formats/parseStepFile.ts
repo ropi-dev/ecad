@@ -4,6 +4,7 @@ import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import {
 	acquireImported,
+	checkFileSize,
 	InvalidFile,
 	readFile,
 	requestWorker,
@@ -26,6 +27,8 @@ export function parseStepFileEffect(file: File) {
 			});
 		if (!file.size)
 			return yield* new InvalidFile({ message: "This STEP file is empty." });
+		const tooLarge = checkFileSize(file, "step");
+		if (tooLarge) return yield* tooLarge;
 		const buffer = yield* readFile(() => file.arrayBuffer());
 		const model = yield* requestWorker<StepModel>({
 			create: () =>

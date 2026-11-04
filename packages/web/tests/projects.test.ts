@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import {
+	MAX_GERBER_ARCHIVE_BYTES,
+	MAX_STEP_FILE_BYTES,
+} from "@ecad/core/formats/import-limits.ts";
+import { ProjectAssetTooLarge } from "@ecad/core/projects/errors.ts";
+import {
 	PROJECT_FILE,
 	parseProjectManifest,
 } from "@ecad/core/projects/format.ts";
@@ -9,9 +14,13 @@ import {
 	type BrowserDirectory,
 	createWebProjectStorage,
 } from "#/projects/storage.ts";
+import { required } from "../../../tests/helpers/required.ts";
 
 function browserFilesystem() {
 	const entries = new Map<string, Uint8Array>();
+	/** Reported sizes that differ from the stored bytes, by path. */
+	const sizes = new Map<string, number>();
+	const reads: string[] = [];
 	const directories = new Set([""]);
 	let failManifest = false;
 	const missing = () => new DOMException("Not found", "NotFoundError");
@@ -30,7 +39,9 @@ function browserFilesystem() {
 				return {
 					async getFile() {
 						return {
+							size: sizes.get(file) ?? entries.get(file)?.byteLength ?? 0,
 							async arrayBuffer() {
+								reads.push(file);
 								const value = entries.get(file);
 								if (!value) throw missing();
 								return new Uint8Array(value).buffer;
@@ -81,6 +92,8 @@ function browserFilesystem() {
 	const selection = new Map<string, string>();
 	return {
 		entries,
+		sizes,
+		reads,
 		root: () => Promise.resolve(handle("")),
 		selection: {
 			getItem: (key: string) => selection.get(key) ?? null,
@@ -365,5 +378,46 @@ test("two tabs creating the same project keep the winner's files and report that
 	assert.deepEqual(
 		reopened?.shapes.map((saved) => saved.id),
 		[shape.id],
+	);
+});
+
+test("browser storage refuses oversized assets before storing them or reading them back", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	await storage.create("Limits");
+	const huge = new Uint8Array([1]);
+	Object.defineProperty(huge, "byteLength", { value: MAX_STEP_FILE_BYTES + 1 });
+	const before = [...browser.entries.keys()];
+	await assert.rejects(
+		storage.importAssets("Limits", [
+			{ name: "part.step", kind: "step", bytes: new Uint8Array([2]) },
+			{ name: "huge.step", kind: "step", bytes: huge },
+		]),
+		(error) =>
+			error instanceof ProjectAssetTooLarge &&
+			error.message === "huge.step: STEP files must be 256 MiB or smaller.",
+	);
+	assert.deepEqual([...browser.entries.keys()], before);
+	const imported = await storage.importAssets("Limits", [
+		{ name: "board.zip", kind: "gerber", bytes: new Uint8Array([3]) },
+	]);
+	const { path } = imported.manifest.assets[0];
+	const key = required(
+		[...browser.entries.keys()].find((entry) => entry.endsWith(path)),
+	);
+	browser.sizes.set(key, MAX_GERBER_ARCHIVE_BYTES + 1);
+	browser.reads.length = 0;
+	await assert.rejects(
+		storage.readAsset("Limits", path),
+		(error) =>
+			error instanceof ProjectAssetTooLarge &&
+			error.message ===
+				"board.zip: Gerber ZIP archives must be 256 MiB or smaller.",
+	);
+	assert.deepEqual(browser.reads, []);
+	browser.sizes.delete(key);
+	assert.deepEqual(
+		await storage.readAsset("Limits", path),
+		new Uint8Array([3]),
 	);
 });

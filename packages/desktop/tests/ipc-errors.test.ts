@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	InvalidProjectFile,
+	ProjectAssetTooLarge,
 	ProjectClosed,
 	ProjectConflict,
 } from "@ecad/core/projects/errors.ts";
@@ -40,6 +41,21 @@ test("project errors keep their tag and fields across the IPC boundary", () => {
 	assert.equal(invalid.path, ".ecadprj");
 	assert.equal(invalid.reason, "The file is not valid TOML.");
 	assert.equal(invalid.cause, undefined);
+
+	const tooLarge = decodeIpcError(
+		overIpc(
+			"projects:read-asset",
+			new ProjectAssetTooLarge({
+				assetName: "board.step",
+				reason: "STEP files must be 256 MiB or smaller.",
+			}),
+		),
+	);
+	assert.ok(tooLarge instanceof ProjectAssetTooLarge);
+	assert.equal(
+		tooLarge.message,
+		"board.step: STEP files must be 256 MiB or smaller.",
+	);
 });
 
 test("other errors pass through IPC with Electron's prefix removed", () => {

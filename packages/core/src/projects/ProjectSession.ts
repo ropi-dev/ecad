@@ -14,6 +14,7 @@ import type {
 } from "#/components/editor/symbolFormat.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
+import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
@@ -22,7 +23,11 @@ import {
 	measurePerformance,
 	measurePerformanceAsync,
 } from "#/performance/runtime.ts";
-import { isProjectError, type ProjectConflict } from "#/projects/errors.ts";
+import {
+	isProjectError,
+	ProjectAssetTooLarge,
+	type ProjectConflict,
+} from "#/projects/errors.ts";
 import {
 	type AssetKind,
 	type ProjectAsset,
@@ -35,6 +40,11 @@ import type { ProjectStorage } from "#/projects/storage.ts";
 
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+
+export interface RestoredAssets {
+	files: File[];
+	problems: string[];
+}
 
 export interface ProjectContextValue {
 	session: number;
@@ -71,7 +81,11 @@ export interface ProjectContextValue {
 	list(): Promise<string[]>;
 	save(): Promise<boolean>;
 	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
-	readAssets(kind: AssetKind): Promise<File[]>;
+	/**
+	 * Reads the stored assets of one kind. Assets over their size limit are
+	 * not read; `problems` names each of them, and the others still load.
+	 */
+	readAssets(kind: AssetKind): Promise<RestoredAssets>;
 }
 export interface CircuitDocument {
 	file: CircuitFile;
@@ -778,6 +792,8 @@ export function createProjectSession(
 	const switchProject = async (name: string | undefined, creating: boolean) => {
 		setBusy(true);
 		setError("");
+		/** Source assets left out of a new project because of their size. */
+		let skipped: string[] = [];
 		try {
 			await enqueue(async () => {
 				if (needsSave) await persist();
@@ -794,9 +810,21 @@ export function createProjectSession(
 				};
 				const source = active;
 				const assets = [...pendingAssets];
+				skipped = [];
 				if (creating && source) {
 					for (const asset of source.manifest.assets) {
-						const bytes = await storage.readAsset(source.directory, asset.path);
+						let bytes: Uint8Array;
+						try {
+							bytes = await storage.readAsset(source.directory, asset.path);
+						} catch (cause) {
+							// An asset over its limit cannot be opened, so it is not copied.
+							// The original project keeps it.
+							if (isProjectError(cause, "ProjectAssetTooLarge")) {
+								skipped.push(cause.message);
+								continue;
+							}
+							throw cause;
+						}
 						assets.push({
 							file: new File([new Uint8Array(bytes).buffer], asset.name),
 							kind: asset.kind,
@@ -806,7 +834,10 @@ export function createProjectSession(
 				const next = creating
 					? await storage.create(name ?? "")
 					: await storage.open(name);
-				if (!next) return;
+				if (!next) {
+					skipped = [];
+					return;
+				}
 				if (creating) {
 					update(next);
 					conflict = null;
@@ -822,6 +853,11 @@ export function createProjectSession(
 				} else adopt(next);
 				pendingAssets = [];
 			});
+			// The session message names each asset the new project left out.
+			if (skipped.length)
+				setError(
+					`The new project leaves out ${skipped.length === 1 ? "an asset" : "assets"} over the size limit, which ${skipped.length === 1 ? "stays" : "stay"} in the original project. ${skipped.join(" ")}`,
+				);
 		} catch (cause) {
 			showError(cause, "Unable to open the project.");
 		} finally {
@@ -840,11 +876,17 @@ export function createProjectSession(
 			getLibraries: () => libraries,
 		});
 
-	const importAssets = (
+	const importAssets = async (
 		files: readonly File[],
 		kind: AssetKind,
 		epoch: number,
 	) => {
+		// Checked before anything is read, so an oversized file is never stored.
+		for (const file of files) {
+			const reason = fileSizeProblem(assetFormat(file.name, kind), file.size);
+			if (reason)
+				throw new ProjectAssetTooLarge({ assetName: file.name, reason });
+		}
 		const directory = active?.directory;
 		return enqueue(() => {
 			if (generation !== epoch || directory !== active?.directory)
@@ -852,13 +894,16 @@ export function createProjectSession(
 			return transferAssets(files.map((file) => ({ file, kind })));
 		});
 	};
-	const readAssets = async (kind: AssetKind): Promise<File[]> => {
+	const readAssets = async (kind: AssetKind): Promise<RestoredAssets> => {
 		const snapshot = active;
 		if (!snapshot)
-			return pendingAssets
-				.filter((asset) => asset.kind === kind)
-				.map((asset) => asset.file);
-		return Promise.all(
+			return {
+				files: pendingAssets
+					.filter((asset) => asset.kind === kind)
+					.map((asset) => asset.file),
+				problems: [],
+			};
+		const read = await Promise.all(
 			snapshot.manifest.assets
 				.filter(
 					(asset) =>
@@ -868,10 +913,25 @@ export function createProjectSession(
 							asset.path === selectedAsset.path),
 				)
 				.map(async (asset) => {
-					const bytes = await storage.readAsset(snapshot.directory, asset.path);
-					return new File([new Uint8Array(bytes).buffer], asset.name);
+					try {
+						const bytes = await storage.readAsset(
+							snapshot.directory,
+							asset.path,
+						);
+						return new File([new Uint8Array(bytes).buffer], asset.name);
+					} catch (cause) {
+						// One oversized asset must not keep the others from loading.
+						if (isProjectError(cause, "ProjectAssetTooLarge")) return cause;
+						throw cause;
+					}
 				}),
 		);
+		return {
+			files: read.filter((entry) => entry instanceof File),
+			problems: read.flatMap((entry) =>
+				entry instanceof File ? [] : [entry.message],
+			),
+		};
 	};
 	const list = () => storage.list();
 	const buildValue = (epoch = generation): ProjectContextValue => ({
@@ -990,10 +1050,15 @@ export function createProjectSession(
 			enqueue(async () => {
 				if (!active || generation !== epoch)
 					throw new Error("Open a project before importing a schematic.");
-				const { importKiCadSchematic } = await import(
-					"#/formats/kicad/import.ts"
+				const { parseKiCadFile } = await import("#/formats/parseKiCadFile.ts");
+				const result = await measurePerformanceAsync("import.kicad", () =>
+					parseKiCadFile(file),
 				);
-				const result = importKiCadSchematic(await file.text());
+				// Parsing now waits on a worker, so recheck the project it targets.
+				if (!active || generation !== epoch)
+					throw new Error(
+						"The project changed while the schematic was importing.",
+					);
 				const drawings = active.drawings ?? [];
 				let id = "kicad-import";
 				for (

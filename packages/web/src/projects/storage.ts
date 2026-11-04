@@ -27,7 +27,10 @@ export interface BrowserDirectory {
 		name: string,
 		options?: { create?: boolean },
 	): Promise<{
-		getFile(): Promise<{ arrayBuffer(): Promise<ArrayBuffer> }>;
+		getFile(): Promise<{
+			readonly size: number;
+			arrayBuffer(): Promise<ArrayBuffer>;
+		}>;
 		createWritable(): Promise<{
 			write(data: ArrayBuffer): Promise<void>;
 			close(): Promise<void>;
@@ -73,9 +76,10 @@ export function createBrowserProjectDirectory(
 	return {
 		name,
 		lock,
-		async read(path) {
+		async read(path, beforeRead) {
 			const { directory, filename } = await parent(path);
 			const file = await (await directory.getFileHandle(filename)).getFile();
+			beforeRead?.(file.size);
 			return new Uint8Array(await file.arrayBuffer());
 		},
 		async write(path, bytes) {

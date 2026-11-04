@@ -2,7 +2,10 @@ import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
-import { useProjectActions } from "#/projects/ProjectProvider.tsx";
+import {
+	useProjectActions,
+	useProjectSelection,
+} from "#/projects/ProjectProvider.tsx";
 import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
 import { StepControls } from "./StepControls";
 import { StepParts } from "./StepParts";
@@ -13,10 +16,13 @@ export function StepWorkspace() {
 	const project = useProjectActions();
 	const workspaceControls = useWorkspaceControls();
 	const { model, loading, message, openFile, cancel, clear } = useStepFile();
+	// Project messages, such as assets a new project left out, show here too.
+	const projectError = useProjectSelection((value) => value.error) ?? "";
 	const [hidden, setHidden] = useState<Set<number>>(new Set());
 	const [wireframe, setWireframe] = useState(false);
 	const [ready, setReady] = useState(false);
 	const [rendererError, setRendererError] = useState("");
+	const notices = [projectError, message || rendererError].filter(Boolean);
 	const [dragging, setDragging] = useState(false);
 	const dragDepth = useRef(0);
 	const load = async (file: File) => {
@@ -86,12 +92,16 @@ export function StepWorkspace() {
 					</ProjectLink>
 				</header>
 			)}
-			{(message || rendererError) && (
+			{notices.length > 0 && (
 				<div
 					role="alert"
 					className="absolute left-4 top-20 z-20 max-h-28 max-w-[calc(100%-2rem)] overflow-auto rounded-lg border border-amber-200/30 bg-slate-900 p-3 text-sm text-amber-200 sm:max-w-sm"
 				>
-					{message || rendererError}
+					{notices.map((notice) => (
+						<p key={notice} className="m-0">
+							{notice}
+						</p>
+					))}
 				</div>
 			)}
 			{model ? (

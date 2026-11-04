@@ -42,6 +42,8 @@ export function useStepFile() {
 			const models = await readFiles([file], (imported) => {
 				if (imported.length) setModel(imported[0]);
 			});
+			// A successful load replaces an earlier restore problem.
+			if (models?.length) setRestoreError("");
 			return Boolean(models?.length);
 		},
 		[readFiles, setModel],
@@ -49,9 +51,12 @@ export function useStepFile() {
 	useEffect(() => {
 		let cancelled = false;
 		void readAssets?.("step")
-			.then(async (files) => {
+			.then(async ({ files, problems }) => {
+				if (cancelled) return;
+				// Assets over the size limit are named; the newest valid one loads.
+				setRestoreError(problems.join(" "));
 				const file = files.at(-1);
-				if (!cancelled && file)
+				if (file)
 					await readFiles(
 						[file],
 						(imported) => {
@@ -73,12 +78,13 @@ export function useStepFile() {
 	return {
 		model,
 		loading,
-		message: restoreError || message,
+		message: [restoreError, message].filter(Boolean).join("; "),
 		openFile,
 		cancel,
 		clear: () => {
 			cancel();
 			setModel(null);
+			setRestoreError("");
 			clearMessage();
 		},
 	};

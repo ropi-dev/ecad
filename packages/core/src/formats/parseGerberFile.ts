@@ -14,6 +14,7 @@ import {
 } from "./diagnostics";
 import {
 	acquireImported,
+	checkFileSize,
 	InvalidFile,
 	readFile,
 	requestWorker,
@@ -35,6 +36,8 @@ export interface ParsedGerberFile extends Omit<ParseResult, "object"> {
 
 export function parseGerberFileEffect(file: File) {
 	return Effect.gen(function* () {
+		const tooLarge = checkFileSize(file, "gerber");
+		if (tooLarge) return yield* tooLarge;
 		const source = yield* readFile(() => file.text());
 		const parsed = yield* requestWorker<ParseWorkerResult>({
 			create: () =>
