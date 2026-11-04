@@ -10,17 +10,17 @@ export interface WireCrossings {
 	gaps: { start: number; end: number }[];
 }
 
-/** First index whose value is greater than `value` in an ascending list. */
-function firstAbove<T>(
+/** First index in an ascending list whose value passes `after`. */
+function firstAfter<T>(
 	items: readonly T[],
-	value: number,
 	of: (item: T) => number,
+	after: (value: number) => boolean,
 ) {
 	let low = 0;
 	let high = items.length;
 	while (low < high) {
 		const middle = (low + high) >>> 1;
-		if (of(items[middle]) > value) high = middle;
+		if (after(of(items[middle]))) high = middle;
 		else low = middle + 1;
 	}
 	return low;
@@ -39,8 +39,9 @@ function junctionRows(junctions: Point[], tolerance: number) {
 		// A row bucket is far wider than the tolerance, so neighbors hold every match.
 		const key = Math.floor(y);
 		const points: Point[] = [];
-		for (let offset = -1; offset <= 1; offset++)
-			for (const point of rows.get(key + offset) ?? [])
+		// Past 2^53 neighboring keys round together, so visit each bucket once.
+		for (const neighbor of new Set([key - 1, key, key + 1]))
+			for (const point of rows.get(neighbor) ?? [])
 				if (Math.abs(point.y - y) <= tolerance) points.push(point);
 		// NaN positions do not sort, so such rows use the full scan.
 		const sorted = points.every((point) => !Number.isNaN(point.x));
@@ -52,9 +53,16 @@ function junctionRows(junctions: Point[], tolerance: number) {
 					return points.some(
 						(point) => Math.hypot(point.x - x, point.y - y) <= tolerance,
 					);
+				// Inclusive bounds, because x ± 2 × tolerance rounds to x at large x.
+				const low = x - tolerance * 2;
+				const high = x + tolerance * 2;
 				for (
-					let index = firstAbove(points, x - tolerance * 2, (point) => point.x);
-					index < points.length && points[index].x <= x + tolerance * 2;
+					let index = firstAfter(
+						points,
+						(point) => point.x,
+						(value) => value >= low,
+					);
+					index < points.length && points[index].x <= high;
 					index++
 				)
 					if (Math.hypot(points[index].x - x, points[index].y - y) <= tolerance)
@@ -65,7 +73,11 @@ function junctionRows(junctions: Point[], tolerance: number) {
 			clearance: (x: number) => {
 				if (!sorted)
 					return Math.min(...points.map((point) => Math.abs(point.x - x) / 2));
-				const index = firstAbove(points, x, (point) => point.x);
+				const index = firstAfter(
+					points,
+					(point) => point.x,
+					(value) => value > x,
+				);
 				return Math.min(
 					index > 0 ? Math.abs(points[index - 1].x - x) / 2 : Infinity,
 					index < points.length ? Math.abs(points[index].x - x) / 2 : Infinity,
@@ -106,7 +118,12 @@ export function buildWireCrossings(shapes: EditorShape[], junctions: Point[]) {
 		if (!Number.isFinite(wire.shape.x)) continue;
 		const first = Math.floor((wire.min + tolerance) / band);
 		const last = Math.floor((wire.max - tolerance) / band);
-		if (!(last - first <= longest)) {
+		// Long spans and band keys past 2^53, where `key++` stalls, scan unbanded.
+		if (
+			!Number.isSafeInteger(first) ||
+			!Number.isSafeInteger(last) ||
+			last - first > longest
+		) {
 			if (!(first > last)) unbanded.push(wire);
 			continue;
 		}
@@ -145,10 +162,10 @@ export function buildWireCrossings(shapes: EditorShape[], junctions: Point[]) {
 			unbanded,
 		])
 			for (
-				let index = firstAbove(
+				let index = firstAfter(
 					candidates,
-					min + tolerance,
 					(wire) => wire.shape.x,
+					(value) => value > min + tolerance,
 				);
 				index < candidates.length &&
 				candidates[index].shape.x < max - tolerance;

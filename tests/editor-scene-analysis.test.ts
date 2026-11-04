@@ -390,6 +390,34 @@ test("crossing lookups match the full scan for long wires and dense junction row
 	);
 });
 
+test("crossings stay exact and finish at very large coordinates", () => {
+	const wire = (id: number, x: number, y: number, endX: number, endY: number) =>
+		drawShape(id, "wire", { x, y }, { x: endX, y: endY });
+	// Near 2^53 and beyond, x ± tolerance rounds to x and integer keys stop advancing.
+	for (let power = 0; power <= 62; power++) {
+		const x = 2 ** power;
+		for (const [shapes, junctions] of [
+			[[wire(1, -2 * x, 0, 2 * x, 0), wire(2, x, -5, x, 5)], [{ x, y: 0 }]],
+			[[wire(1, -2 * x, 0, 2 * x, 0), wire(2, x, -5, x, 5)], []],
+			[[wire(1, -1, x, 1, x), wire(2, 0, x - 512, 0, x + 512)], []],
+			[
+				[wire(1, -1, x, 1, x), wire(2, 0.5, x - 512, 0.5, x + 512)],
+				[{ x: 0.5, y: x }],
+			],
+		] as const) {
+			assert.deepEqual(
+				[...buildWireCrossings([...shapes], [...junctions])],
+				[...referenceWireCrossings([...shapes], [...junctions])],
+				`2^${power}`,
+			);
+		}
+	}
+	const far = wire(1, 0, 1e18 - 512, 0, 1e18 + 512);
+	assert.deepEqual([...buildWireCrossings([far, wire(2, -1, 1e18, 1, 1e18)], [])], [
+		...referenceWireCrossings([far, wire(2, -1, 1e18, 1, 1e18)], []),
+	]);
+});
+
 test("symbol terminals are shared, frozen, and follow a moved symbol", () => {
 	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
 	const symbol = createSymbol(1, resistor, { x: 0, y: 0 });
