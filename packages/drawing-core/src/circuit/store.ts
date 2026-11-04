@@ -397,7 +397,16 @@ export function createCircuitStore(
 					"circuit-identity-changed",
 					"Synchronization must preserve the circuit identity.",
 				);
+			const previousCircuit = file.circuit;
 			file = freeze(parseOrInvalid(circuitFileSchema, next));
+			if (options.preserveHistory) {
+				const acknowledge = (entry: CircuitFile) =>
+					entry.circuit === previousCircuit
+						? freeze({ ...entry, circuit: file.circuit })
+						: entry;
+				past = past.map(acknowledge);
+				future = future.map(acknowledge);
+			}
 			if (!options.preserveHistory) {
 				past = [];
 				future = [];

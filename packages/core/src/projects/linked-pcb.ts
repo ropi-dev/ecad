@@ -162,8 +162,17 @@ export async function assembleLinkedPcbs(
 	try {
 		resolvedLibraries = await resolution;
 	} catch (cause) {
-		if (cache?.resolution === resolution) cache.resolution = undefined;
+		if (cache?.resolution === resolution) {
+			cache.resolution = undefined;
+			cache.definitions = undefined;
+			cache.entries.clear();
+		}
 		throw cause;
+	}
+	if (resolvedLibraries.errors.length && cache?.resolution === resolution) {
+		cache.resolution = undefined;
+		cache.definitions = undefined;
+		cache.entries.clear();
 	}
 	reportLibraryErrors(resolvedLibraries.errors);
 	const isUnavailable = unavailableSymbols(resolvedLibraries);
@@ -274,6 +283,11 @@ export async function assembleLinkedPcbs(
 				isSymbolUnavailable: isUnavailable,
 			},
 		);
+		if (
+			linked.source === "schematic" &&
+			linked.file.circuit.revision === file.circuit.revision
+		)
+			linked.file = { ...linked.file, circuit: file.circuit };
 		linked.shapes = linked.shapes.map((shape) => {
 			const cached = cachedSymbols.get(shape.id);
 			return shape.kind === "symbol" && cached

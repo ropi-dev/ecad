@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { ProjectConflict } from "#/projects/errors.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import { createLinkedPcbAssembler } from "#/projects/linked-pcb.ts";
@@ -434,4 +436,170 @@ test("a rejected library resolution retries instead of caching its rejection", a
 	);
 	await assembler.assemble(document, previous, symbols, () => {});
 	assert.equal(attempts, 2);
+});
+
+test("graph move during electrical save survives completion", async () => {
+	const f = fixture();
+	await f.ready;
+	try {
+		await f.session.getSnapshot().openCircuit("main.ecaddraw");
+		const c = f.session.getSnapshot().editorCircuit!.store;
+		const gate = f.block();
+		c.execute({
+			type: "add-net",
+			net: { id: "n1", names: ["TEST"], pinIds: [] },
+			position: { x: 1, y: 2 },
+		});
+		await f.entered.promise;
+		c.execute({
+			type: "move",
+			positions: [{ kind: "net", id: "n1", x: 100, y: 200 }],
+		});
+		assert.equal(c.getSnapshot().graph.positions[0].x, 100);
+		gate.resolve();
+		await clean(f);
+		assert.equal(c.getSnapshot().graph.positions[0].x, 100);
+	} finally {
+		f.stop();
+	}
+});
+
+test("retry reloads a transiently unavailable directory library", async () => {
+	const assembler = createLinkedPcbAssembler();
+	let attempts = 0;
+	const storage: SymbolLibraryStorage = {
+		mode: "memory",
+		async load() {
+			return { symbols: [] };
+		},
+		async save() {
+			return "Saved";
+		},
+		async loadConfiguration() {
+			return {
+				version: 1,
+				symbolLibraries: [
+					{
+						id: "ext",
+						name: "External",
+						enabled: true,
+						source: { kind: "directory", path: "external" },
+					},
+				],
+			};
+		},
+		async loadDirectory() {
+			if (++attempts === 1) throw new Error("Temporary read failure");
+			return [];
+		},
+	};
+	const previous = snapshot();
+	const document = { ...previous, symbolLibraries: [] };
+	const errors: string[][] = [];
+	await assembler.assemble(document, previous, storage, (e) =>
+		errors.push([...e]),
+	);
+	await assembler.assemble(document, previous, storage, (e) =>
+		errors.push([...e]),
+	);
+	assert.equal(attempts, 2);
+	assert.deepEqual(errors[1], []);
+});
+
+test("collapse and graph undo survive electrical save completion without another write", async () => {
+	const f = fixture();
+	await f.ready;
+	try {
+		await f.session.getSnapshot().openCircuit("main.ecaddraw");
+		const circuit = f.session.getSnapshot().editorCircuit!.store;
+		const component = componentFromSymbol(
+			symbolDefinitions.find((definition) => definition.id === "resistor")!,
+			[],
+		);
+		const gate = f.block();
+		circuit.execute({
+			type: "add-component",
+			component,
+			position: { x: 1, y: 2 },
+		});
+		await f.entered.promise;
+		circuit.execute({
+			type: "set-component-collapsed",
+			id: component.id,
+			collapsed: true,
+		});
+		circuit.execute({
+			type: "move",
+			positions: [{ id: component.id, kind: "component", x: 100, y: 200 }],
+		});
+		gate.resolve();
+		await clean(f);
+		assert.equal(circuit.getSnapshot().graph.positions[0].x, 100);
+		assert.deepEqual(circuit.getSnapshot().graph.collapsedComponentIds, [
+			component.id,
+		]);
+		const count = f.writes.length;
+		circuit.undo();
+		assert.equal(circuit.getSnapshot().graph.positions[0].x, 1);
+		circuit.undo();
+		assert.deepEqual(
+			circuit.getSnapshot().graph.collapsedComponentIds ?? [],
+			[],
+		);
+		circuit.redo();
+		circuit.redo();
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(f.writes.length, count);
+		assert.equal(f.session.getSnapshot().dirty, false);
+	} finally {
+		f.stop();
+	}
+});
+
+test("non-electrical schematic saves preserve circuit graph undo and redo history", async () => {
+	const f = fixture();
+	await f.ready;
+	try {
+		await f.session.getSnapshot().openCircuit("main.ecaddraw");
+		const circuit = f.session.getSnapshot().editorCircuit!.store;
+		const component = componentFromSymbol(
+			symbolDefinitions.find((definition) => definition.id === "resistor")!,
+			[],
+		);
+		circuit.execute({
+			type: "add-component",
+			component,
+			position: { x: 1, y: 2 },
+		});
+		await clean(f);
+		circuit.execute({
+			type: "move",
+			positions: [{ id: component.id, kind: "component", x: 100, y: 200 }],
+		});
+		const electrical = circuit.getSnapshot().circuit;
+		const drawing = f.session.getSnapshot().store;
+		drawing.transact((current) => [
+			undefined,
+			{ ...current, shapes: [...current.shapes, { ...rectangle, id: 9999 }] },
+		]);
+		await clean(f);
+		assert.equal(circuit.getSnapshot().circuit, electrical);
+		assert.equal(circuit.getSnapshot().canUndo, true);
+		circuit.undo();
+		assert.equal(circuit.getSnapshot().graph.positions[0].x, 1);
+		assert.equal(circuit.getSnapshot().canRedo, true);
+		drawing.transact((current) => [
+			undefined,
+			{
+				...current,
+				shapes: current.shapes.filter((shape) => shape.id !== 9999),
+			},
+		]);
+		await clean(f);
+		assert.equal(circuit.getSnapshot().canRedo, true);
+		circuit.redo();
+		assert.equal(circuit.getSnapshot().graph.positions[0].x, 100);
+	} finally {
+		f.stop();
+	}
 });

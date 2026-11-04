@@ -354,7 +354,9 @@ export function createProjectSession(
 				: file;
 		});
 
-		const { assembleProjectSave } = await import("#/projects/save-assembly.ts");
+		const { assembleProjectSave, withCurrentGraph } = await import(
+			"#/projects/save-assembly.ts"
+		);
 		let document = assembleProjectSave({
 			symbols: nextSymbols ?? symbols,
 			libraries: nextLibraries ?? libraries,
@@ -447,9 +449,12 @@ export function createProjectSession(
 					circuitInputs.get(file.circuit.id) &&
 				target.store.getSnapshot().circuit !== file.circuit
 			) {
-				target.store.synchronize(file, {
-					preserveHistory: circuitSources.get(file.circuit.id) === "circuit",
-				});
+				target.store.synchronize(
+					withCurrentGraph(file, target.store.getSnapshot().graph),
+					{
+						preserveHistory: circuitSources.get(file.circuit.id) === "circuit",
+					},
+				);
 				synchronizedCircuits.set(file.circuit.id, target.store.getSnapshot());
 			}
 		}
