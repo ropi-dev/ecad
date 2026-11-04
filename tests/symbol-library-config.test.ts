@@ -123,7 +123,7 @@ test("a symbol that depends on a library that failed to load is unavailable and 
  assert.match(missing?.kind === "symbol" ? missing.definitionId : "", /^circuit-fallback\./);
 });
 
-test("dependency on a failed library is found even when another reference fails to resolve first", async () => {
+test("every symbol that fails to resolve is unavailable, whatever fails first", async () => {
  const bench = { scope: "user" as const, id: "bench" };
  const kit = { scope: "project" as const, id: "kit" };
  const file = (id: string, nested: { library: typeof bench | typeof kit; definitionId: string }[]) =>
@@ -143,9 +143,12 @@ test("dependency on a failed library is found even when another reference fails 
   ] } }],
   async () => { throw new Error("Directory is unreadable."); },
  );
- assert.deepEqual(new Set(resolved.unavailableSymbols), new Set(["divider", "assembly", "loop-a", "loop-b"].map((id) => symbolReferenceKey(kit, id))));
+ assert.deepEqual(new Set(resolved.unavailableSymbols), new Set(["divider", "assembly", "loop-a", "loop-b", "broken"].map((id) => symbolReferenceKey(kit, id))));
  const isSymbolUnavailable = unavailableSymbols(resolved);
- assert.equal(isSymbolUnavailable(kit, "broken"), false);
  assert.equal(isSymbolUnavailable(kit, "plain"), false);
- assert.equal((await resolveSymbolLibraries([], [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [file("divider", [{ library: bench, definitionId: "core" }])] } }])).unavailableSymbols.length, 0);
+ // A library that is not configured at all leaves the symbol incomplete too.
+ assert.deepEqual((await resolveSymbolLibraries([], [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [file("divider", [{ library: bench, definitionId: "core" }])] } }])).unavailableSymbols, [symbolReferenceKey(kit, "divider")]);
+ // Symbols that resolve, including nested ones, stay available.
+ const nested = await resolveSymbolLibraries([], [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [file("plain", []), file("wrapper", [{ library: kit, definitionId: "plain" }])] } }]);
+ assert.deepEqual(nested.unavailableSymbols, []);
 });

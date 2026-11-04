@@ -111,8 +111,8 @@ export function serializeSymbolConfig(config: SymbolLibraryConfig): string {
 }
 
 /**
- * True when a library failed to load, or when a symbol could not resolve
- * because a symbol it places comes from such a library.
+ * True when a library failed to load, or when one of its loaded symbols could
+ * not resolve. Either way the symbol's full definition is unavailable.
  */
 export type SymbolAvailability = (
 	library: SymbolLibraryReference,
@@ -132,42 +132,6 @@ export function unavailableSymbols(resolved: {
 		symbols.has(symbolReferenceKey(library, id));
 }
 
-/**
- * Loaded symbols that place a symbol from a failed library, directly or
- * through other symbols. Every nested placement is checked, so another
- * failure that stops resolution first cannot hide the missing library.
- */
-function dependentSymbols(
-	entries: ReadonlyMap<string, { file?: SymbolLibrary[number] }>,
-	unavailable: readonly SymbolLibraryReference[],
-): string[] {
-	const failed = new Set(
-		unavailable.map((library) => `${library.scope}:${library.id}`),
-	);
-	const blocked = new Set<string>();
-	// Repeat until stable; this also settles reference cycles.
-	for (let changed = failed.size > 0; changed; ) {
-		changed = false;
-		for (const [key, { file }] of entries) {
-			if (
-				blocked.has(key) ||
-				!file?.shapes.some(
-					(shape) =>
-						shape.kind === "symbol" &&
-						(failed.has(`${shape.library.scope}:${shape.library.id}`) ||
-							blocked.has(
-								symbolReferenceKey(shape.library, shape.definitionId),
-							)),
-				)
-			)
-				continue;
-			blocked.add(key);
-			changed = true;
-		}
-	}
-	return [...blocked];
-}
-
 /** Later libraries win. Project libraries are resolved after user libraries. */
 export async function resolveSymbolLibraries(
 	user: readonly ConfiguredSymbolLibrary[],
@@ -182,8 +146,9 @@ export async function resolveSymbolLibraries(
 	/** Enabled libraries that failed to load. Their symbols are missing. */
 	unavailable: SymbolLibraryReference[];
 	/**
-	 * `symbolReferenceKey`s of loaded symbols that place a symbol from a
-	 * library in `unavailable`, directly or through other symbols.
+	 * `symbolReferenceKey`s of loaded symbols that failed to resolve, for
+	 * example because a symbol they place is missing, its library failed to
+	 * load, or the references form a cycle. Their definitions are incomplete.
 	 */
 	unavailableSymbols: string[];
 }> {
@@ -290,10 +255,12 @@ export async function resolveSymbolLibraries(
 			resolving.delete(key);
 		}
 	}
+	const unresolved: string[] = [];
 	for (const entry of entries.values()) {
 		try {
 			resolve(entry.library, entry.definition.id);
 		} catch (cause) {
+			unresolved.push(symbolReferenceKey(entry.library, entry.definition.id));
 			errors.push(errorMessage(cause, "Unable to resolve symbol references."));
 		}
 	}
@@ -312,6 +279,6 @@ export async function resolveSymbolLibraries(
 		referenceSources,
 		errors: [...new Set(errors)],
 		unavailable,
-		unavailableSymbols: dependentSymbols(entries, unavailable),
+		unavailableSymbols: unresolved,
 	};
 }

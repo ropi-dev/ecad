@@ -378,20 +378,23 @@ export function ProjectProvider({
 				import("#/drawing/symbol-reference.ts"),
 			]);
 			const paired = pairPcbDocuments(document, previous.manifest.name);
-			let definitions = [
+			// Read without resolving references, a symbol that places other
+			// symbols lacks their shapes and pins. Only its resolved definition,
+			// added below, may be used; if it does not resolve, it is missing.
+			const flatDefinitions = (files: SymbolLibrary, id: string) =>
+				libraryDefinitions(files).flatMap((definition, index) =>
+					files[index]?.shapes.some((shape) => shape.kind === "symbol")
+						? []
+						: [{ ...definition, library: { scope: "project" as const, id } }],
+				);
+			const definitions = [
 				...symbolDefinitions,
-				...libraryDefinitions(savedSymbols).map((definition) => ({
-					...definition,
-					library: { scope: "project" as const, id: "project-symbols" },
-				})),
+				...flatDefinitions(savedSymbols, "project-symbols"),
 			];
 			for (const library of document.symbolLibraries) {
 				if (library.enabled && library.source.kind === "embedded")
 					definitions.push(
-						...libraryDefinitions(library.source.symbols).map((definition) => ({
-							...definition,
-							library: { scope: "project" as const, id: library.id },
-						})),
+						...flatDefinitions(library.source.symbols, library.id),
 					);
 			}
 			const { resolveSymbolLibraries, unavailableSymbols } = await import(
@@ -433,14 +436,6 @@ export function ProjectProvider({
 			definitions.push(
 				...resolvedLibraries.byReference.values(),
 				...resolvedLibraries.definitions,
-			);
-			// An embedded definition listed above does not resolve the symbols it
-			// places. When one of those comes from a failed library, saving through
-			// it would rebuild placed pins from an incomplete symbol.
-			definitions = definitions.filter(
-				(definition) =>
-					!definition.library ||
-					!isUnavailable(definition.library, definition.id),
 			);
 			const byReference = new Map(
 				definitions

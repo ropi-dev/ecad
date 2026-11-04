@@ -358,16 +358,52 @@ async function writeProjectFile(page: Page, path: string, content: string) {
 	);
 }
 
-for (const source of ["an embedded library", "a standalone project symbol"])
-	test(`a placed part from ${source} keeps its pins when a library its symbol depends on fails to load`, async ({
-		page,
-	}) => {
-		const standalone = source === "a standalone project symbol";
-		const parts = { scope: "project" as const, id: "parts" };
-		const owner = {
-			scope: "project" as const,
-			id: standalone ? "project-symbols" : "good",
-		};
+const placedPartCases = [
+	{
+		name: "an embedded symbol whose nested library fails to load",
+		owner: "good",
+		child: "parts",
+		issue: "Bench parts: Directory paths require the desktop app.",
+	},
+	{
+		name: "a standalone project symbol whose nested library fails to load",
+		owner: "project-symbols",
+		child: "parts",
+		issue: "Bench parts: Directory paths require the desktop app.",
+	},
+	{
+		name: "a disabled project symbols library whose nested library fails to load",
+		owner: "project-symbols",
+		child: "parts",
+		disabled: true,
+		issue: "Bench parts: Directory paths require the desktop app.",
+	},
+	{
+		name: "an embedded symbol whose nested symbol was deleted",
+		owner: "good",
+		child: "good",
+		issue: 'Symbol "core" is unavailable in library "good".',
+	},
+	{
+		name: "a nested symbol that resolves, and saves normally",
+		owner: "good",
+		child: "good",
+		keepChild: true,
+	},
+];
+
+for (const {
+	name,
+	owner: ownerId,
+	child,
+	disabled,
+	issue,
+	keepChild,
+} of placedPartCases)
+	test(`a placed part keeps its pins with ${name}`, async ({ page }) => {
+		const standalone = ownerId === "project-symbols";
+		const childLibrary = { scope: "project" as const, id: child };
+		const owner = { scope: "project" as const, id: ownerId };
 		const symbolFile = (id: string, shapes: unknown[]) =>
 			parseSymbolFile(
 				JSON.stringify({
@@ -386,13 +422,16 @@ for (const source of ["an embedded library", "a standalone project symbol"])
 		const amp = symbolFile("amp", [
 			{ kind: "pin", name: "IN", x: -5, y: 0 },
 			{ kind: "pin", name: "GND", x: 0, y: 5 },
-			{ kind: "symbol", library: parts, definitionId: "core", x: 0, y: 0 },
+			{ kind: "symbol", library: childLibrary, definitionId: "core", x: 0, y: 0 },
 		]);
-		// Link U1 while "parts" still loaded, so the circuit has all three pins.
-		const coreDefinition = { ...libraryDefinitions([core])[0], library: parts };
+		// Link U1 while "core" still resolved, so the circuit has all three pins.
+		const coreDefinition = {
+			...libraryDefinitions([core])[0],
+			library: childLibrary,
+		};
 		const ampDefinition = {
 			...libraryDefinitions([amp], (library, id) =>
-				library.id === parts.id && id === "core" ? coreDefinition : undefined,
+				library.id === child && id === "core" ? coreDefinition : undefined,
 			)[0],
 			library: owner,
 		};
@@ -413,7 +452,7 @@ for (const source of ["an embedded library", "a standalone project symbol"])
 		const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
 		if (!drawing) throw new Error("The project has no drawing.");
 		if (standalone) {
-			// Listed in the manifest only; no "project-symbols" library entry.
+			// Listed in the manifest as a standalone project symbol.
 			await writeProjectFile(page, "symbols/amp.ecadsym", JSON.stringify(amp));
 			await writeProjectFile(
 				page,
@@ -422,6 +461,7 @@ for (const source of ["an embedded library", "a standalone project symbol"])
 			);
 		}
 		// "parts" is a directory library, which cannot load in the browser.
+		// In the deleted case, "good" no longer contains "core".
 		await editProjectFile(
 			page,
 			drawing,
@@ -429,15 +469,27 @@ for (const source of ["an embedded library", "a standalone project symbol"])
 				shapes: persistDrawingShapes(linked.shapes, definitions),
 				circuit: linked.file.circuit,
 				symbolLibraries: [
-					{ ...benchParts, id: parts.id },
+					...(child === "parts" ? [{ ...benchParts, id: "parts" }] : []),
 					...(standalone
-						? []
+						? disabled
+							? [
+									{
+										id: "project-symbols",
+										name: "Project symbols",
+										enabled: false,
+										source: { kind: "embedded", symbols: [amp] },
+									},
+								]
+							: []
 						: [
 								{
 									id: owner.id,
 									name: "Good",
 									enabled: true,
-									source: { kind: "embedded", symbols: [amp] },
+									source: {
+										kind: "embedded",
+										symbols: keepChild ? [amp, core] : [amp],
+									},
 								},
 							]),
 				],
@@ -451,11 +503,26 @@ for (const source of ["an embedded library", "a standalone project symbol"])
 			.toBe("Untitled");
 		await openSchematic(page);
 		await drawRectangle(page, 120);
+		if (keepChild) {
+			await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
+			const saved = JSON.parse(
+				await readProjectFile(
+					page,
+					/^drawing = "(.+)"$/m.exec(await readProjectFile(page, ".ecadprj"))![1],
+				),
+			);
+			expect(saved.shapes).toHaveLength(2);
+			expect(saved.circuit.components[0].pins).toEqual(
+				linked.file.circuit.components[0].pins,
+			);
+			return;
+		}
 
-		const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });
-		await expect(banner).toContainText(
-			"Load the missing symbol library before saving the linked PCB.",
-		);
+		const banner = page.getByRole("alert").filter({
+			hasText: "Load the missing symbol library before saving the linked PCB.",
+		});
+		await expect(banner).toBeVisible();
+		await expect(banner).toContainText(issue ?? "");
 		expect((await documentState(page)).dirty).toBe(true);
 		// Nothing was rebuilt from the incomplete symbol.
 		expect(await readProjectFile(page, drawing)).toBe(before);
