@@ -106,6 +106,39 @@ for (const layout of ["files", "revisions"] as const)
 		await repository.save({ shapes: [rectangle(1)], symbols: [] });
 	});
 
+for (const layout of ["files", "revisions"] as const)
+	test(`concurrent saves from two repositories keep the first edit and reject the second in the ${layout} layout`, async () => {
+		const { directory } = memoryDirectory();
+		await new ProjectRepository(directory, { layout }).create("Project");
+		const first = new ProjectRepository(directory, { layout });
+		const second = new ProjectRepository(directory, { layout });
+		await Promise.all([first.load(), second.load()]);
+		const [kept, lost] = await Promise.allSettled([
+			first.save({ shapes: [rectangle(1)], symbols: [] }),
+			second.save({ shapes: [rectangle(2)], symbols: [] }),
+		]);
+		assert.equal(kept.status, "fulfilled");
+		await rejection(
+			lost.status === "rejected"
+				? Promise.reject(lost.reason)
+				: Promise.resolve(),
+			ProjectConflict,
+		);
+		const reopened = await new ProjectRepository(directory, { layout }).load();
+		assert.deepEqual(
+			reopened.shapes.map((shape) => shape.id),
+			[1],
+		);
+		await second.load();
+		await second.save({ shapes: [rectangle(1), rectangle(2)], symbols: [] });
+		assert.deepEqual(
+			(await new ProjectRepository(directory, { layout }).load()).shapes.map(
+				(shape) => shape.id,
+			),
+			[1, 2],
+		);
+	});
+
 test("a changed or deleted project file names that file in ProjectConflict", async () => {
 	const { directory, files, edit } = memoryDirectory();
 	const repository = new ProjectRepository(directory, { layout: "files" });

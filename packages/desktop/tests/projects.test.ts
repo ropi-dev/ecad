@@ -291,6 +291,42 @@ test("invalid documents and externally edited manifests do not replace the saved
 		await projects.save(created.directory, { shapes: [shape], symbols: [] });
 	}));
 
+test("desktop windows saving one project take its lock file, so the second save sees the first and conflicts", async () =>
+	temporary(async (parent) => {
+		const first = new DesktopProjects();
+		const created = await first.create("Shared", parent);
+		const second = new DesktopProjects();
+		await second.openDirectory(created.directory);
+		const [kept, lost] = await Promise.allSettled([
+			first.save(created.directory, { shapes: [shape], symbols: [] }),
+			second.save(created.directory, {
+				shapes: [{ ...shape, id: 8 }],
+				symbols: [],
+			}),
+		]);
+		assert.equal(kept.status, "fulfilled");
+		assert.equal(lost.status, "rejected");
+		assert.ok(lost.reason instanceof ProjectConflict);
+		assert.deepEqual(
+			(await new DesktopProjects().openDirectory(created.directory)).shapes.map(
+				(saved) => saved.id,
+			),
+			[shape.id],
+		);
+		const directory = await createDesktopProjectDirectory(created.directory);
+		const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
+		await required(directory.lock)(async () => {
+			assert.equal(
+				JSON.parse(await readFile(lockFile, "utf8")).pid,
+				process.pid,
+			);
+		});
+		assert.equal(
+			(await readdir(created.directory)).some((name) => name.includes("lock")),
+			false,
+		);
+	}));
+
 test("project names, manifests and asset paths reject traversal and unsupported versions", () => {
 	for (const name of [
 		"",

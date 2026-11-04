@@ -37,6 +37,28 @@ export interface ProjectDirectory {
 	read(path: string): Promise<Uint8Array>;
 	write(path: string, bytes: Uint8Array): Promise<void>;
 	remove(path: string): Promise<void>;
+	/**
+	 * Runs work while holding a lock on this project that other repositories,
+	 * windows and processes also take. Without it, the lock covers only the
+	 * repositories in this JavaScript realm that use a directory of the same
+	 * name.
+	 */
+	lock?<T>(work: () => Promise<T>): Promise<T>;
+}
+
+const localLocks = new Map<string, Promise<void>>();
+
+function withLocalLock<T>(name: string, work: () => Promise<T>): Promise<T> {
+	const run = (localLocks.get(name) ?? Promise.resolve()).then(work);
+	const released = run.then(
+		() => {},
+		() => {},
+	);
+	localLocks.set(name, released);
+	void released.then(() => {
+		if (localLocks.get(name) === released) localLocks.delete(name);
+	});
+	return run;
 }
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -96,12 +118,23 @@ export class ProjectRepository {
 		private options: { layout?: "files" | "revisions" } = {},
 	) {}
 
+	// Reading, checking for changes and publishing hold the project lock, so a
+	// save from another repository either finishes first and is detected as an
+	// external change, or starts after this one finishes.
+	private exclusive<T>(work: () => Promise<T>): Promise<T> {
+		return this.sequential(() =>
+			this.directory.lock
+				? this.directory.lock(work)
+				: withLocalLock(this.directory.name, work),
+		);
+	}
+
 	private async readManifest() {
 		return decoder.decode(await this.directory.read(PROJECT_FILE));
 	}
 
 	load(): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.exclusive(async () => {
 			const content = await this.readManifest();
 			const manifest = parseProjectManifest(content);
 			const savedFiles = new Map<string, Uint8Array>();
@@ -215,7 +248,7 @@ export class ProjectRepository {
 	}
 
 	create(name: string): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.exclusive(async () => {
 			name = parseProjectName(name);
 			try {
 				await this.directory.read(PROJECT_FILE);
@@ -542,7 +575,7 @@ export class ProjectRepository {
 	}
 
 	save(document: ProjectDocument): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.exclusive(async () => {
 			const current = await this.assertCurrent();
 			const validated = validateProjectDocument(document);
 			const circuits = validated.circuits;
@@ -566,7 +599,7 @@ export class ProjectRepository {
 	importAssets(
 		assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
 	): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.exclusive(async () => {
 			const current = await this.assertCurrent();
 			const created: string[] = [];
 			const reserved = new Set([

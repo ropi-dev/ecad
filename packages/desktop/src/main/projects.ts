@@ -22,6 +22,7 @@ import {
 	type ProjectDirectory,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
+import { withFileLock } from "@ecad/drawing-core/lib/file-lock.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
 	canWriteSymbolPath,
@@ -65,6 +66,14 @@ export async function createDesktopProjectDirectory(
 	}
 	return {
 		name: directory,
+		// Every desktop instance that saves this project takes the same lock
+		// file, which is removed if its owner exits without releasing it.
+		lock: (work) =>
+			withFileLock(
+				join(directory, `${PROJECT_FILE}.lock`),
+				{ timeout: 30_000 },
+				work,
+			),
 		async exists(path) {
 			try {
 				await lstat(await target(path));

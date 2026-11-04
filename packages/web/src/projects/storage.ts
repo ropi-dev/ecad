@@ -49,8 +49,15 @@ export function createBrowserProjectDirectory(
 			directory = await directory.getDirectoryHandle(part, { create });
 		return { directory, filename };
 	}
+	const locks = globalThis.navigator?.locks;
 	return {
 		name,
+		// Project names are unique within the origin's private file system, and
+		// Web Locks span every tab and worker of the origin.
+		...(locks && {
+			lock: <T>(work: () => Promise<T>) =>
+				locks.request(`ecad-project:${name}`, work) as Promise<T>,
+		}),
 		async read(path) {
 			const { directory, filename } = await parent(path);
 			const file = await (await directory.getFileHandle(filename)).getFile();
