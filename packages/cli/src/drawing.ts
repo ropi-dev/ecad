@@ -570,7 +570,14 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 										Effect.provideService(DrawingStore, store),
 									),
 								);
-								if (reply.ok && store.getSnapshot() !== before) {
+								if (
+									reply.ok &&
+									(store.getSnapshot() !== before ||
+										(saved?.drawingHash === hash(content) &&
+											Object.keys(saved.snapshot.history.nodes).length >
+												Object.keys(before.history.nodes).length))
+								) {
+									cachedRead = undefined;
 									signal.throwIfAborted();
 									await publish(
 										path,

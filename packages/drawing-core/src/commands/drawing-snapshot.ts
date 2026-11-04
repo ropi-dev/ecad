@@ -28,10 +28,10 @@ export const drawingSnapshotSchema = z
 				code: "custom",
 				message: "Invalid drawing history or shape ID allocation.",
 			});
-		if (!nodes[0] || nodes[0].parentId !== null || !nodes[currentId])
-			return fail();
+		const roots = Object.values(nodes).filter((node) => node.parentId === null);
+		if (roots.length !== 1 || !nodes[currentId]) return fail();
 		const visited = new Set<number>();
-		const pending = [0];
+		const pending = [roots[0].id];
 		while (pending.length) {
 			const id = pending.pop();
 			if (id === undefined) break;

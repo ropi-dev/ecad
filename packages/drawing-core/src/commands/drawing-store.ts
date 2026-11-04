@@ -1,5 +1,9 @@
 import * as Context from "effect/Context";
-import { createHistory, type History } from "#/drawing/history.ts";
+import {
+	createHistory,
+	type History,
+	pruneHistory,
+} from "#/drawing/history.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { freeze } from "#/lib/freeze.ts";
 
@@ -44,7 +48,8 @@ export function createDrawingStore(
 export function restoreDrawingStore(
 	initial: DrawingSnapshot,
 ): DrawingStoreService {
-	let snapshot = freeze(structuredClone(initial));
+	const history = pruneHistory(initial.history);
+	let snapshot = freeze(structuredClone({ ...initial, history }));
 	const listeners = new Set<() => void>();
 	return DrawingStore.of({
 		getSnapshot: () => snapshot,
