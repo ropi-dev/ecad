@@ -22,6 +22,9 @@ export function HistoryControls({
 	const toggle = useRef<HTMLButtonElement>(null);
 	const panel = useRef<HTMLElement>(null);
 	const current = history.nodes[history.currentId];
+	const roots = Object.values(history.nodes).filter(
+		(node) => node.parentId === null,
+	);
 	const redoId = current.preferredChildId ?? current.childIds.at(-1);
 	const redo = redoId === undefined ? undefined : history.nodes[redoId];
 	useEffect(() => {
@@ -133,7 +136,9 @@ export function HistoryControls({
 						</button>
 					</header>
 					<div className="min-h-0 overflow-auto overscroll-contain">
-						<ol className="m-0 min-w-max list-none p-0">{renderNode(0)}</ol>
+						<ol className="m-0 min-w-max list-none p-0">
+							{roots.map((node) => renderNode(node.id))}
+						</ol>
 					</div>
 				</section>
 			)}
