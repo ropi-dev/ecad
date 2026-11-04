@@ -1,10 +1,11 @@
-import { expect, test } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { pinTerminals } from "#/drawing/shapes.ts";
-import { openProjectFiles, closeProjectFiles } from "./project-files";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "../helpers/required.ts";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
 for (const connected of [false, true])
@@ -12,12 +13,12 @@ for (const connected of [false, true])
 		page,
 	}) => {
 		const original = createCircuit("Untitled", "pcb-main");
-		const definition = symbolDefinitions.find(
-			(definition) => definition.id === "ground",
-		)!;
-		const resistor = symbolDefinitions.find(
-			(definition) => definition.id === "resistor",
-		)!;
+		const definition = required(
+			symbolDefinitions.find((definition) => definition.id === "ground"),
+		);
+		const resistor = required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		);
 		const a = createSymbol(1, definition, { x: 0, y: 0 });
 		const b = createSymbol(2, definition, { x: 40, y: 0 });
 		const parts = [a, b].map((symbol, index) => {
@@ -126,7 +127,9 @@ for (const connected of [false, true])
 		);
 		await expect
 			.poll(async () =>
-				JSON.parse((await page.locator("#project-document").textContent())!)
+				JSON.parse(
+					required(await page.locator("#project-document").textContent()),
+				)
 					.shapes.filter(
 						(shape: { kind: string; netSymbol?: boolean }) =>
 							shape.kind === "symbol" && shape.netSymbol,
@@ -146,7 +149,9 @@ for (const connected of [false, true])
 			.getByRole("button", { name: "Switch to schematic view", exact: true })
 			.click();
 		const doc = async () =>
-			JSON.parse((await page.locator("#project-document").textContent())!);
+			JSON.parse(
+				required(await page.locator("#project-document").textContent()),
+			);
 		await expect
 			.poll(async () =>
 				(await doc()).shapes
@@ -202,9 +207,9 @@ test("custom project symbols marked as net symbols share their name across save 
 		...libraryDefinitions([custom])[0],
 		library: { scope: "project" as const, id: "project-symbols" },
 	};
-	const resistor = symbolDefinitions.find(
-		(definition) => definition.id === "resistor",
-	)!;
+	const resistor = required(
+		symbolDefinitions.find((definition) => definition.id === "resistor"),
+	);
 	const symbols = [-40, 40].map((x, index) => {
 		const symbol = createSymbol(
 			index + 1,
@@ -225,7 +230,7 @@ test("custom project symbols marked as net symbols share their name across save 
 			`R${index + 1}`,
 		);
 		const target = pinTerminals(symbol)[0],
-			terminal = pinTerminals(part).at(-1)!;
+			terminal = required(pinTerminals(part).at(-1));
 		return { ...part, x: target.x - terminal.x, y: target.y - terminal.y };
 	});
 	await page.goto("/tests/browser/projects.html");
@@ -333,17 +338,19 @@ for (const kind of ["built-in", "custom"] as const)
 	}) => {
 		const { normalizeNetSymbol } = await import("#/drawing/shapes.ts");
 		const original = createCircuit("Untitled", "pcb-main");
-		const resistor = symbolDefinitions.find(
-			(definition) => definition.id === "resistor",
-		)!;
+		const resistor = required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		);
 		const supplies = ["VDD", "VDD", "GND", "GND"].map((name, index) => {
 			const definition =
 				kind === "custom"
 					? { ...resistor, id: "custom-supply", library: undefined }
-					: symbolDefinitions.find(
-							(definition) =>
-								definition.id === (name === "VDD" ? "vdd" : "ground"),
-						)!;
+					: required(
+							symbolDefinitions.find(
+								(definition) =>
+									definition.id === (name === "VDD" ? "vdd" : "ground"),
+							),
+						);
 			const symbol = createSymbol(
 				index + 1,
 				definition,
@@ -364,7 +371,7 @@ for (const kind of ["built-in", "custom"] as const)
 				`R${index + 1}`,
 			);
 			const target = pinTerminals(symbol)[0],
-				terminal = pinTerminals(part).at(-1)!;
+				terminal = required(pinTerminals(part).at(-1));
 			return { ...part, x: target.x - terminal.x, y: target.y - terminal.y };
 		});
 		const stale = synchronizePcb(

@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
 import { pthGerber } from "../fixtures/pth-gerber";
 import { ready, report } from "./app-helpers.ts";

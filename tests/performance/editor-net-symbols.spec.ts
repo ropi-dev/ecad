@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -14,7 +15,7 @@ test("editor-net-symbols", async ({ page }, testInfo) => {
 			.getByRole("button", { name: `Insert ${name}`, exact: true })
 			.click();
 		const canvas = page.locator("canvas");
-		const bounds = (await canvas.boundingBox())!;
+		const bounds = required(await canvas.boundingBox());
 		await canvas.click({
 			position: {
 				x: bounds.width * (name === "Ground" ? 0.35 : 0.55),
@@ -52,6 +53,8 @@ test("editor-net-symbols", async ({ page }, testInfo) => {
 	}
 	await page.screenshot({ path: "/tmp/ecad-net-symbols/interface.png" });
 	await finish(page, testInfo, "editor-net-symbols", {
-		interactionP95Ms: metric(await report(page), "scenario.interaction")!,
+		interactionP95Ms: required(
+			metric(await report(page), "scenario.interaction"),
+		),
 	});
 });

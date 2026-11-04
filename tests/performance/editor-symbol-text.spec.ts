@@ -3,6 +3,7 @@ import {
 	selectSymbolAttribute,
 	selectSymbolParent,
 } from "../browser/symbol-items";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -16,7 +17,7 @@ test("editor-symbol-text", async ({ page }, testInfo) => {
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
 	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	await canvas.click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
 	const center = page.getByRole("spinbutton", {
 		name: "Center X",
@@ -56,6 +57,6 @@ test("editor-symbol-text", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-text", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

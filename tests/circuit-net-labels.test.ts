@@ -9,6 +9,7 @@ import {
 import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 import { instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import { createCircuitStore } from "@ecad/drawing-core/circuit/store.ts";
+import { required } from "./helpers/required.ts";
 
 function fixture() {
 	const file = createCircuit("Names");
@@ -61,16 +62,20 @@ test("automatic labels avoid manual names, aliases, and each other without mergi
 	const file = fixture();
 	file.circuit.nets.push({ id: "named", names: ["GROUND", "GND"], pinIds: [] });
 	file.circuit.nets[1].pinIds.forEach((id) => {
-		file.circuit.components
-			.flatMap((component) => component.pins)
-			.find((pin) => pin.id === id)!.name = "GND";
+		required(
+			file.circuit.components
+				.flatMap((component) => component.pins)
+				.find((pin) => pin.id === id),
+		).name = "GND";
 	});
 	const labels = circuitNetLabels(file.circuit);
 	assert.equal(labels.get("clock"), "GND_2");
 	assert.equal(labels.get("ground"), "GND_3");
 	const reversed = structuredClone(file.circuit);
 	reversed.nets.reverse();
-	reversed.nets.forEach((net) => net.pinIds.reverse());
+	reversed.nets.forEach((net) => {
+		net.pinIds.reverse();
+	});
 	reversed.components.reverse();
 	assert.deepEqual(circuitNetLabels(reversed), labels);
 	assert.equal(file.circuit.nets.length, 4);
@@ -134,6 +139,6 @@ test("large automatic labels remain bounded and empty nets still have a label", 
 	for (const component of file.circuit.components)
 		for (const pin of component.pins) pin.name = pin.id.repeat(8);
 	const labels = circuitNetLabels(file.circuit);
-	assert.ok(labels.get("bus")!.length <= 180);
+	assert.ok(required(labels.get("bus")).length <= 180);
 	assert.equal(labels.get("empty"), "Net 2");
 });

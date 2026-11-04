@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Effect } from "effect";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { executeDrawingOperation } from "#/mcp/drawing-protocol.ts";
 import { drawShape } from "#/drawing/shapes.ts";
+import { executeDrawingOperation } from "#/mcp/drawing-protocol.ts";
 
 const shapes = Array.from({ length: 5000 }, (_, index) =>
 	drawShape(

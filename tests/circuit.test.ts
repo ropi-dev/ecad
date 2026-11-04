@@ -1,8 +1,5 @@
-import { memoryDirectory } from "./helpers/project-directory.ts";
-import { createTestCircuit, createTestComponent } from "./fixtures/circuit.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { z } from "zod";
 import {
 	arrangeCircuitGraph,
 	buildCircuitGraph,
@@ -25,11 +22,15 @@ import {
 	unknownCircuitCommand,
 } from "@ecad/drawing-core/circuit/store.ts";
 import {
+	circuitLayoutQuality,
 	createCircuitView,
 	untangleCircuitGraph,
-	circuitLayoutQuality,
 } from "@ecad/drawing-core/circuit/untangle.ts";
+import { z } from "zod";
 import { ProjectRepository } from "#/projects/repository.ts";
+import { createTestCircuit, createTestComponent } from "./fixtures/circuit.ts";
+import { memoryDirectory } from "./helpers/project-directory.ts";
+import { required } from "./helpers/required.ts";
 
 test("circuit and graph formats round trip independently and reject broken references", () => {
 	const file = createTestCircuit();
@@ -92,9 +93,9 @@ test("net merges preserve aliases and survivor identity without retaining edge i
 		pinIds: [second.pinIds[0]],
 		netId: first.id,
 	});
-	const merged = store
-		.getSnapshot()
-		.circuit.nets.find((net) => net.id === first.id)!;
+	const merged = required(
+		store.getSnapshot().circuit.nets.find((net) => net.id === first.id),
+	);
 	assert.deepEqual(merged.names, ["3V3", "LED_DRIVE"]);
 	assert.deepEqual(
 		new Set(merged.pinIds),
@@ -131,9 +132,11 @@ test("splitting keeps selected pins connected while disconnecting leaves them in
 		netId: first.id,
 	});
 	store.execute({ type: "split-net", netId: first.id, pinIds: second.pinIds });
-	const split = store
-		.getSnapshot()
-		.circuit.nets.find((net) => net.pinIds.includes(second.pinIds[0]))!;
+	const split = required(
+		store
+			.getSnapshot()
+			.circuit.nets.find((net) => net.pinIds.includes(second.pinIds[0])),
+	);
 	assert.notEqual(split.id, first.id);
 	assert.deepEqual(split.pinIds, second.pinIds);
 	assert.deepEqual(split.names, []);
@@ -350,7 +353,7 @@ test("an injected ID generator makes commands that create nets deterministic", (
 		pinIds: [first.pinIds[0]],
 	});
 	assert.match(
-		random.getSnapshot().circuit.nets.at(-1)!.id,
+		required(random.getSnapshot().circuit.nets.at(-1)).id,
 		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 	);
 });
@@ -689,12 +692,12 @@ for (const layout of ["files", "revisions"] as const) {
 			symbols: [],
 			circuits: [file],
 		});
-		const paths = saved.manifest.circuits![0];
+		const paths = required(saved.manifest.circuits)[0];
 		assert.ok(paths.circuit.endsWith(".ecaddraw"));
 		assert.equal(
 			paths.circuit,
-			saved.manifest.drawings![
-				saved.drawings!.findIndex(
+			required(saved.manifest.drawings)[
+				required(saved.drawings).findIndex(
 					(drawing) => drawing.circuitId === file.circuit.id,
 				)
 			],
@@ -719,7 +722,7 @@ for (const layout of ["files", "revisions"] as const) {
 			(
 				await new ProjectRepository(memory.directory, { layout }).load()
 			).circuits?.map((file) => file.circuit),
-			saved.circuits!.map((file) => file.circuit),
+			required(saved.circuits).map((file) => file.circuit),
 		);
 		const changed = structuredClone(file);
 		changed.circuit.components[0].value = "New value";
@@ -733,7 +736,7 @@ for (const layout of ["files", "revisions"] as const) {
 			(
 				await new ProjectRepository(memory.directory, { layout }).load()
 			).circuits?.map((file) => file.circuit),
-			saved.circuits!.map((file) => file.circuit),
+			required(saved.circuits).map((file) => file.circuit),
 		);
 		memory.fail("");
 		await repository.save({ shapes: [], symbols: [] });
@@ -741,7 +744,7 @@ for (const layout of ["files", "revisions"] as const) {
 			(
 				await new ProjectRepository(memory.directory, { layout }).load()
 			).circuits?.map((file) => file.circuit),
-			saved.circuits!.map((file) => file.circuit),
+			required(saved.circuits).map((file) => file.circuit),
 		);
 		await repository.save({ shapes: [], symbols: [], circuits: [] });
 		assert.equal(
@@ -770,7 +773,7 @@ test("desktop circuit saves reject external electrical circuit edits", async () 
 		circuits: [createTestCircuit()],
 	});
 	memory.files.set(
-		saved.manifest.circuits![0].circuit,
+		required(saved.manifest.circuits)[0].circuit,
 		new TextEncoder().encode("{}"),
 	);
 	await assert.rejects(
@@ -865,12 +868,12 @@ for (const layout of ["files", "revisions"] as const)
 			circuits: files,
 		});
 		assert.deepEqual(
-			saved
-				.circuits!.slice(0, 3)
+			required(saved.circuits)
+				.slice(0, 3)
 				.map((file) => [file.circuit.id, file.circuit.name]),
 			files.map((file) => [file.circuit.id, file.circuit.name]),
 		);
-		const drawings = saved.drawings!;
+		const drawings = required(saved.drawings);
 		assert.equal(new Set(drawings.map((drawing) => drawing.id)).size, 3);
 		assert.ok(
 			drawings.every((drawing) => /^[a-z0-9][a-z0-9_-]*$/.test(drawing.id)),
@@ -879,8 +882,8 @@ for (const layout of ["files", "revisions"] as const)
 			layout,
 		}).load();
 		assert.deepEqual(
-			reopened.circuits!.map((file) => file.circuit),
-			saved.circuits!.map((file) => file.circuit),
+			required(reopened.circuits).map((file) => file.circuit),
+			required(saved.circuits).map((file) => file.circuit),
 		);
 	});
 
@@ -895,7 +898,9 @@ test("renaming a net to an existing name merges memberships and aliases in one u
 		names: [` ${first.names[0]} `],
 	});
 	const after = store.getSnapshot();
-	const merged = after.circuit.nets.find((net) => net.id === second.id)!;
+	const merged = required(
+		after.circuit.nets.find((net) => net.id === second.id),
+	);
 	assert.equal(after.circuit.nets.length, before.circuit.nets.length - 1);
 	assert.deepEqual(merged.names, first.names);
 	assert.deepEqual(

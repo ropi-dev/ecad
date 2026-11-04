@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -58,7 +59,7 @@ test("editor-item-locks", async ({ page }, testInfo) => {
 		.getByRole("button", { name: "Insert Lock part", exact: true })
 		.click();
 	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	const position = { x: box.width * 0.45, y: box.height * 0.5 };
 	await canvas.click({ position });
 	await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
@@ -116,6 +117,6 @@ test("editor-item-locks", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-item-locks", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

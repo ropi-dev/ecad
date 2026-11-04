@@ -8,12 +8,12 @@ import {
 	Ray,
 	Vector3,
 } from "three";
-import { createSceneDisplay } from "#/engine/scene.ts";
-import { createSceneHover } from "#/engine/scene-hover.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
 } from "#/engine/planar-object.ts";
+import { createSceneDisplay } from "#/engine/scene.ts";
+import { createSceneHover } from "#/engine/scene-hover.ts";
 import type { PlanarObject, SceneObject } from "#/engine/types.ts";
 
 const rect = (

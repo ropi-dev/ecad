@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -59,7 +60,7 @@ test("editor-named-nets", async ({ page }, testInfo) => {
 	await expect(page.getByTestId("text-anchor")).toHaveCount(94);
 	await (await toolbarButton(page, "Supply label")).click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	await canvas.click({
 		position: { x: bounds.width * 0.4, y: bounds.height * 0.3 },
 	});
@@ -87,6 +88,8 @@ test("editor-named-nets", async ({ page }, testInfo) => {
 		path: "perf-artifacts/named-nets-workload.png",
 		fullPage: true,
 	});
-	const interactionP95Ms = metric(await report(page), "scenario.interaction")!;
+	const interactionP95Ms = required(
+		metric(await report(page), "scenario.interaction"),
+	);
 	await finish(page, testInfo, "editor-named-nets", { interactionP95Ms });
 });

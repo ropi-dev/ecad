@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test, type TestContext } from "node:test";
+import { type TestContext, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { Effect } from "effect";
@@ -13,6 +13,7 @@ import {
 	executeDrawingOperation,
 } from "#/mcp/drawing-protocol.ts";
 import { createDrawingMcpServer } from "#/mcp/drawing-server.ts";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	x: 12.5,
@@ -68,14 +69,15 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 		"rotateShapes",
 		"undo",
 	]);
-	const place = tools.find((tool) => tool.name === "placeRectangle")!;
+	const place = required(tools.find((tool) => tool.name === "placeRectangle"));
 	assert.deepEqual(
 		new Set(place.inputSchema.required),
 		new Set(Object.keys(rectangle)),
 	);
 	assert.ok(place.outputSchema);
 	assert.equal(
-		tools.find((tool) => tool.name === "getDrawing")!.annotations?.readOnlyHint,
+		required(tools.find((tool) => tool.name === "getDrawing")).annotations
+			?.readOnlyHint,
 		true,
 	);
 	const before = store.getSnapshot();

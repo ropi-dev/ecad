@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Effect, Either } from "effect";
 import {
+	placeShapesEffect,
+	redoEffect,
+	replaceShapesEffect,
+	undoEffect,
+} from "#/commands/drawing-commands.ts";
+import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { drawingShapeSchema } from "#/drawing/schema.ts";
+import {
 	canSelectShape,
 	canSelectSymbolChild,
 	drawShape,
@@ -12,30 +21,22 @@ import {
 	symbolChildren,
 } from "#/drawing/shapes.ts";
 import {
-	createSymbol,
-	createSymbolFromShapes,
-	symbolDefinitions,
-} from "#/drawing/symbols.ts";
-import { createTextShape } from "#/drawing/text.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+	libraryDefinitions,
+	symbolFileShapes,
+	symbolFileWithShapes,
+} from "#/drawing/symbol-file.ts";
 import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import {
-	symbolFileShapes,
-	symbolFileWithShapes,
-	libraryDefinitions,
-} from "#/drawing/symbol-file.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import {
-	placeShapesEffect,
-	replaceShapesEffect,
-	undoEffect,
-	redoEffect,
-} from "#/commands/drawing-commands.ts";
+	createSymbol,
+	createSymbolFromShapes,
+	symbolDefinitions,
+} from "#/drawing/symbols.ts";
+import { createTextShape } from "#/drawing/text.ts";
+import { required } from "./helpers/required.ts";
 
 const definition = symbolDefinitions[0];
 
@@ -80,9 +81,9 @@ test("non-text symbol children default to locked while text and standalone shape
 
 test("explicit child unlocks and text locks override the defaults and survive saving", () => {
 	const symbol = createSymbol(1, definition, { x: 0, y: 0 });
-	const child = symbolChildren(symbol).find(
-		(child) => child.shape.kind === "rectangle",
-	)!;
+	const child = required(
+		symbolChildren(symbol).find((child) => child.shape.kind === "rectangle"),
+	);
 	const unlocked = replaceSymbolChild(symbol, child.key, {
 		...child.shape,
 		locked: false,
@@ -92,21 +93,26 @@ test("explicit child unlocks and text locks override the defaults and survive sa
 		[drawingShapeSchema.parse(saved)],
 		[definition],
 		new Map([
-			[symbolReferenceKey(definition.library!, definition.id), definition],
+			[
+				symbolReferenceKey(required(definition.library), definition.id),
+				definition,
+			],
 		]),
 	).shapes[0];
 	assert.equal(restored.kind, "symbol");
 	if (restored.kind !== "symbol") throw new Error("Expected symbol");
-	const body = symbolChildren(restored).find((item) => item.key === child.key)!;
+	const body = required(
+		symbolChildren(restored).find((item) => item.key === child.key),
+	);
 	assert.equal(body.shape.locked, false);
 	assert.equal(canSelectSymbolChild(restored, body), true);
 	assert.notStrictEqual(
 		moveSymbolChild(restored, body.key, { x: 5, y: 3 }),
 		restored,
 	);
-	const label = symbolChildren(restored).find(
-		(item) => item.key === "attribute:reference",
-	)!;
+	const label = required(
+		symbolChildren(restored).find((item) => item.key === "attribute:reference"),
+	);
 	const locked = replaceSymbolChild(restored, label.key, {
 		...label.shape,
 		locked: true,
@@ -114,7 +120,7 @@ test("explicit child unlocks and text locks override the defaults and survive sa
 	assert.equal(
 		canSelectSymbolChild(
 			locked,
-			symbolChildren(locked).find((item) => item.key === label.key)!,
+			required(symbolChildren(locked).find((item) => item.key === label.key)),
 			true,
 		),
 		false,
@@ -170,9 +176,11 @@ test("the toolbar override applies to roots while child locks always prevent sel
 			false,
 		);
 	}
-	const label = symbolChildren(lockedSymbol).find(
-		(child) => child.key === "attribute:reference",
-	)!;
+	const label = required(
+		symbolChildren(lockedSymbol).find(
+			(child) => child.key === "attribute:reference",
+		),
+	);
 	assert.strictEqual(
 		moveSymbolChild(lockedSymbol, label.key, { x: 5, y: 3 }),
 		lockedSymbol,
@@ -199,9 +207,9 @@ test("the toolbar override applies to roots while child locks always prevent sel
 
 test("root and child locks survive reference-only saves, nested symbol files, and undo", () => {
 	let symbol = createSymbol(1, definition, { x: 10, y: 20 });
-	const label = symbolChildren(symbol).find(
-		(child) => child.key === "attribute:reference",
-	)!;
+	const label = required(
+		symbolChildren(symbol).find((child) => child.key === "attribute:reference"),
+	);
 	symbol = {
 		...replaceSymbolChild(symbol, label.key, { ...label.shape, locked: true }),
 		locked: true,
@@ -212,15 +220,18 @@ test("root and child locks survive reference-only saves, nested symbol files, an
 		[drawingShapeSchema.parse(saved)],
 		[definition],
 		new Map([
-			[symbolReferenceKey(definition.library!, definition.id), definition],
+			[
+				symbolReferenceKey(required(definition.library), definition.id),
+				definition,
+			],
 		]),
 	).shapes[0];
 	assert.equal(restored.locked, true);
 	assert.equal(restored.kind, "symbol");
 	if (restored.kind !== "symbol") throw new Error("Expected symbol");
 	assert.equal(
-		symbolChildren(restored).find((child) => child.key === label.key)!.shape
-			.locked,
+		required(symbolChildren(restored).find((child) => child.key === label.key))
+			.shape.locked,
 		true,
 	);
 	assert.strictEqual(
@@ -283,7 +294,10 @@ test("primitive locks round-trip and wire normalization preserves their lock sta
 	];
 	const normalized = normalizeWireSegments(shapes).shapes;
 	assert.equal(normalized.filter((shape) => shape.kind === "wire").length, 2);
-	assert.equal(normalized.find((shape) => shape.id === 1)!.locked, true);
+	assert.equal(
+		required(normalized.find((shape) => shape.id === 1)).locked,
+		true,
+	);
 	const file = parseSymbolFile(
 		JSON.stringify({
 			format: "ecad-symbol",
@@ -309,5 +323,5 @@ test("primitive locks round-trip and wire normalization preserves their lock sta
 		shapes[1],
 		shapes,
 	);
-	assert.equal(connected.find((shape) => shape.id === 1)!.y, 0);
+	assert.equal(required(connected.find((shape) => shape.id === 1)).y, 0);
 });

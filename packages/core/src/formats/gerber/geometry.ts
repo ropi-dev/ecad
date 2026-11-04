@@ -87,7 +87,7 @@ export function polygon(points: Point[]): Shape {
 	return {
 		geometry: {
 			type: "path",
-			d: points.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ") + " Z",
+			d: `${points.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ")} Z`,
 			fill: true,
 		},
 		bounds: pointsBounds(points),

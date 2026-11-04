@@ -1,12 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
-import { snapPoint, type EditorShape } from "#/drawing/shapes.ts";
+import { expect, type Page, test } from "@playwright/test";
+import { type EditorShape, snapPoint } from "#/drawing/shapes.ts";
+import { required } from "../helpers/required.ts";
 import { drawingGridStep, drawingPoint } from "./symbol-items";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 const documentState = async (
 	page: Page,
 ): Promise<{ shapes: EditorShape[]; historyId: number; historySize: number }> =>
-	JSON.parse((await page.locator("#editor-document").textContent())!);
+	JSON.parse(required(await page.locator("#editor-document").textContent()));
 
 async function shapePoint(page: Page, id: number) {
 	const center = await page.evaluate(async (id) => {
@@ -93,7 +94,7 @@ test("Alt-drag copies net labels and text without moving originals or attached w
 		const after = await documentState(page);
 		expect(after.shapes.slice(0, -1)).toEqual(before.shapes);
 		expect(after.historySize).toBe(before.historySize + 1);
-		const source = before.shapes.find((shape) => shape.id === id)!;
+		const source = required(before.shapes.find((shape) => shape.id === id));
 		expect(after.shapes.at(-1)).toEqual({
 			...source,
 			id: before.shapes.length + 1,

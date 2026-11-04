@@ -1,25 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Effect } from "effect";
+import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import {
+	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-	redoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import {
 	parseSymbolFile,
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
-	type PinShape,
 	containsSelection,
 	drawShape,
 	editShapeAttribute,
 	hitShape,
 	intersectsSelection,
+	type PinShape,
 	pinTerminals,
 	shapeBounds,
 } from "#/drawing/shapes.ts";
@@ -27,6 +27,7 @@ import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
+import { required } from "./helpers/required.ts";
 
 test("pins own their leads, bounds, selection, and labels while only the exposed end connects", () => {
 	const base = drawShape(1, "pin", { x: 10, y: 20 }, { x: 10, y: 20 });
@@ -88,7 +89,7 @@ test("pins own their leads, bounds, selection, and labels while only the exposed
 			geometry.dispose();
 			material.dispose();
 		}
-		const [name, number] = display.children!;
+		const [name, number] = required(display.children);
 		assert.ok(name.x * pin.width - (name.width * pin.width) / 2 > 2);
 		assert.equal(name.y, 0);
 		assert.ok(Math.abs(number.x * pin.width - base.length / 2) < 1e-9);

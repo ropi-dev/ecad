@@ -1,6 +1,7 @@
-import { captureArtifacts } from "./artifacts";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
 
 const fixture = JSON.parse(
 	await readFile("tests/fixtures/rp2350a-reference/drawing.ecaddraw", "utf8"),
@@ -49,7 +50,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	const svgDownload = await pending;
 	expect(serializerRequests).toHaveLength(1);
 	await svgDownload.saveAs(`${artifacts}/rp2350a-sheet.svg`);
-	const svg = await readFile((await svgDownload.path())!, "utf8");
+	const svg = await readFile(required(await svgDownload.path()), "utf8");
 	expect(svg).not.toMatch(/<image|data:image|selection|editor-wire-preview/);
 	const coverage = await page.evaluate((svg) => {
 		const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
@@ -74,7 +75,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	await dialog.getByRole("button", { name: "Download", exact: true }).click();
 	const png = await pending;
 	await png.saveAs(`${artifacts}/rp2350a-sheet-9600x6400.png`);
-	const bytes = await readFile((await png.path())!);
+	const bytes = await readFile(required(await png.path()));
 	expect(bytes.readUInt32BE(16)).toBe(9600);
 	expect(bytes.readUInt32BE(20)).toBe(6400);
 	const detail = await page.evaluate(async (base64) => {
@@ -84,9 +85,12 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 		const canvas = document.createElement("canvas");
 		canvas.width = 2000;
 		canvas.height = 1600;
-		canvas
-			.getContext("2d")!
-			.drawImage(image, 3500, 2600, 2000, 1600, 0, 0, 2000, 1600);
+		(
+			canvas.getContext("2d") ??
+			(() => {
+				throw new Error("Expected a value");
+			})()
+		).drawImage(image, 3500, 2600, 2000, 1600, 0, 0, 2000, 1600);
 		return canvas.toDataURL("image/png").split(",")[1];
 	}, bytes.toString("base64"));
 	await writeFile(
@@ -101,7 +105,11 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 		const canvas = document.createElement("canvas");
 		canvas.width = 9600;
 		canvas.height = 6400;
-		const context = canvas.getContext("2d")!;
+		const context =
+			canvas.getContext("2d") ??
+			(() => {
+				throw new Error("Expected a value");
+			})();
 		context.drawImage(image, 0, 0);
 		const corner = [...context.getImageData(0, 0, 1, 1).data];
 		const data = context.getImageData(400, 400, 8800, 5600).data;

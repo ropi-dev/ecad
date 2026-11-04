@@ -6,6 +6,7 @@ import {
 	planarRegionPositions,
 } from "#/engine/planar-regions.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
+import { required } from "./helpers/required.ts";
 
 const compile = (body: string) => {
 	const result = parseGerber(`%FSLAX46Y46*%%MOMM*%${body}M02*`);
@@ -44,7 +45,7 @@ D11*X8000000Y4000000D03*X2000000Y3000000D03*`);
 		trace,
 		"overlapping bounding boxes do not connect separate geometry",
 	);
-	assert.ok(area(planarRegionPositions(geometry, trace!)) > 10);
+	assert.ok(area(planarRegionPositions(geometry, required(trace))) > 10);
 });
 
 test("clear cutouts break connections and leave a nearby island separate", () => {
@@ -57,8 +58,8 @@ test("clear cutouts break connections and leave a nearby island separate", () =>
 	assert.notEqual(right, undefined);
 	assert.notEqual(left, right);
 	assert.equal(pickPlanarRegion(geometry, { x: 0, y: 0 }, 0), undefined);
-	assert.equal(area(planarRegionPositions(geometry, left!)), 28);
-	assert.equal(area(planarRegionPositions(geometry, right!)), 28);
+	assert.equal(area(planarRegionPositions(geometry, required(left))), 28);
+	assert.equal(area(planarRegionPositions(geometry, required(right))), 28);
 	const ring = compile(
 		`%ADD10R,8X8*%%ADD11R,4X4*%%ADD12R,2X2*%D10*X0Y0D03*%LPC*%D11*X0Y0D03*%LPD*%D12*X0Y0D03*`,
 	);
@@ -76,6 +77,6 @@ test("point-touching shapes connect without merging shapes across a visible gap"
 	const first = pickPlanarRegion(geometry, { x: 0, y: 0 }, 0);
 	assert.notEqual(first, undefined);
 	assert.equal(pickPlanarRegion(geometry, { x: 2, y: 2 }, 0), first);
-	assert.equal(area(planarRegionPositions(geometry, first!)), 8);
+	assert.equal(area(planarRegionPositions(geometry, required(first))), 8);
 	assert.notEqual(pickPlanarRegion(geometry, { x: 4.02, y: 2 }, 0), first);
 });

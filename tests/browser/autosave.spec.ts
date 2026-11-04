@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "../helpers/required.ts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
@@ -92,8 +93,12 @@ test("user-library symbol edits persist while timers are paused", async ({
 		.poll(() =>
 			page.evaluate(
 				() =>
-					JSON.parse(localStorage.getItem("ecad.user-config.v1")!)
-						.symbolLibraries[0].source.symbols[0].shapes.length,
+					JSON.parse(
+						localStorage.getItem("ecad.user-config.v1") ??
+							(() => {
+								throw new Error("Expected a value");
+							})(),
+					).symbolLibraries[0].source.symbols[0].shapes.length,
 			),
 		)
 		.toBe(2);
@@ -107,7 +112,7 @@ test("opening a project with legacy net labels does not save repeatedly", async 
 	const original = createCircuit("Untitled", "pcb-main");
 	const file = structuredClone(original);
 	const symbol = (id: string) =>
-		symbolDefinitions.find((definition) => definition.id === id)!;
+		required(symbolDefinitions.find((definition) => definition.id === id));
 	const resistor = componentFromSymbol(symbol("resistor"), []);
 	const capacitor = componentFromSymbol(symbol("capacitor"), [resistor]);
 	file.circuit.components = [resistor, capacitor];
@@ -165,7 +170,7 @@ test("opening a project with legacy net labels does not save repeatedly", async 
 	});
 	await page.reload();
 	const document = async () =>
-		JSON.parse((await page.locator("#project-document").textContent())!);
+		JSON.parse(required(await page.locator("#project-document").textContent()));
 	await expect
 		.poll(async () =>
 			(await document()).shapes

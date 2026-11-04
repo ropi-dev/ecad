@@ -216,18 +216,17 @@ test("rotated rounded pad unions tolerate coincident edges at submillimetre scal
 		const rect = (width: number, height: number): Geometry => ({
 			type: "path",
 			fill: true,
-			d:
-				[
-					[-width / 2, height / 2],
-					[width / 2, height / 2],
-					[width / 2, -height / 2],
-					[-width / 2, -height / 2],
-				]
-					.map(([x, y], index) => {
-						const p = rotate(x, y);
-						return `${index ? "L" : "M"}${p.x} ${p.y}`;
-					})
-					.join(" ") + " Z",
+			d: `${[
+				[-width / 2, height / 2],
+				[width / 2, height / 2],
+				[width / 2, -height / 2],
+				[-width / 2, -height / 2],
+			]
+				.map(([x, y], index) => {
+					const p = rotate(x, y);
+					return `${index ? "L" : "M"}${p.x} ${p.y}`;
+				})
+				.join(" ")} Z`,
 		});
 		const shapes: Geometry[] = [rect(4, 2), rect(3, 3)];
 		for (const x of [-1.5, 1.5])

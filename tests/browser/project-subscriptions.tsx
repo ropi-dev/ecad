@@ -1,8 +1,8 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import type { ProjectSnapshot } from "#/projects/format.ts";
 import * as projectHooks from "#/projects/ProjectProvider.tsx";
 import type { ProjectContextValue } from "#/projects/ProjectSession.ts";
-import type { ProjectSnapshot } from "#/projects/format.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
 

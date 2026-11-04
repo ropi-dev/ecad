@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
+import {
+	Group,
+	type Mesh,
+	type MeshBasicMaterial,
+	Raycaster,
+	Vector3,
+} from "three";
 import {
 	parseSymbolFile,
 	symbolFileFromSymbol,

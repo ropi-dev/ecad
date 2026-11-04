@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -47,7 +48,7 @@ test("editor-line-styles", async ({ page }, testInfo) => {
 				(await report(page)).metrics["editor.line-style-geometry"]?.count ?? 0,
 		)
 		.toBeGreaterThan(0);
-	const bounds = (await page.locator("canvas").boundingBox())!;
+	const bounds = required(await page.locator("canvas").boundingBox());
 	await page.mouse.move(
 		bounds.x + bounds.width * 0.25,
 		bounds.y + bounds.height * 0.2,
@@ -92,10 +93,17 @@ test("editor-line-styles", async ({ page }, testInfo) => {
 				const manifest = await (
 					await directory.getFileHandle(".ecadprj")
 				).getFile();
-				const path = (await manifest.text())
-					.match(/^drawing\s*=\s*"([^"]+)"/m)![1]
-					.split("/");
-				const name = path.pop()!;
+				const path = ((await manifest.text()).match(
+					/^drawing\s*=\s*"([^"]+)"/m,
+				) ??
+					(() => {
+						throw new Error("Expected a value");
+					})())[1].split("/");
+				const name =
+					path.pop() ??
+					(() => {
+						throw new Error("Expected a value");
+					})();
 				let folder = directory;
 				for (const segment of path)
 					folder = await folder.getDirectoryHandle(segment);
@@ -106,7 +114,9 @@ test("editor-line-styles", async ({ page }, testInfo) => {
 			}),
 		)
 		.toBe(true);
-	const interactionP95Ms = metric(await report(page), "scenario.interaction")!;
+	const interactionP95Ms = required(
+		metric(await report(page), "scenario.interaction"),
+	);
 	await page.reload();
 	await ready(page);
 	await expect
@@ -118,6 +128,6 @@ test("editor-line-styles", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "editor-line-styles", {
 		interactionP95Ms,
-		styleGeometryP95Ms: metric(value, "editor.line-style-geometry")!,
+		styleGeometryP95Ms: required(metric(value, "editor.line-style-geometry")),
 	});
 });

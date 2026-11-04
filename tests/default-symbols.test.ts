@@ -1,10 +1,11 @@
-import type { EditorSymbol, TextShape } from "#/drawing/shapes.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import type { EditorSymbol, TextShape } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 test("every generated default is valid portable geometry and has a reserved built-in ID", () => {
 	for (const { file, texts, category } of generateDefaultSymbols()) {
@@ -30,7 +31,9 @@ test("every generated default is valid portable geometry and has a reserved buil
 
 test("every default places with its geometry, pin names, and instance attributes", () => {
 	for (const [index, { file }] of generateDefaultSymbols().entries()) {
-		const definition = symbolDefinitions.find(({ id }) => id === file.id)!;
+		const definition = required(
+			symbolDefinitions.find(({ id }) => id === file.id),
+		);
 		const symbol = createSymbol(index + 1, definition, { x: 0, y: 0 });
 		assert.equal(symbol.definitionId, file.id);
 		assert.equal(symbol.children.length, file.shapes.length);
@@ -56,7 +59,8 @@ test("custom net symbols keep their role through portable and nested library rou
 		"#/drawing/symbol-file.ts"
 	);
 	const file = {
-		...generateDefaultSymbols().find(({ file }) => file.id === "vdd")!.file,
+		...required(generateDefaultSymbols().find(({ file }) => file.id === "vdd"))
+			.file,
 		id: "custom.power",
 	};
 	const parsed = parseSymbolFile(JSON.stringify(file));
@@ -90,9 +94,9 @@ test("portable net symbols place one visible name label and retain its edits aft
 	);
 	const { drawingShapeSchema } = await import("#/drawing/schema.ts");
 	const { symbolReferenceKey } = await import("#/drawing/symbol-reference.ts");
-	const original = generateDefaultSymbols().find(
-		({ file }) => file.id === "vdd",
-	)!.file;
+	const original = required(
+		generateDefaultSymbols().find(({ file }) => file.id === "vdd"),
+	).file;
 	const file = parseSymbolFile(
 		JSON.stringify({ ...original, id: "custom.net" }),
 	);
@@ -132,9 +136,9 @@ test("portable net symbols place one visible name label and retain its edits aft
 			["VDD"],
 		);
 	}
-	const child = symbolChildren(symbol).find(
-		(child) => child.key === "attribute:name",
-	)!;
+	const child = required(
+		symbolChildren(symbol).find((child) => child.key === "attribute:name"),
+	);
 	const edited = replaceSymbolChild(symbol, child.key, {
 		...child.shape,
 		kind: "text",

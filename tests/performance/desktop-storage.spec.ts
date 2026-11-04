@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { expect, test } from "@playwright/test";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
@@ -12,7 +12,7 @@ import {
 import { DesktopSymbolLibrary } from "../../packages/desktop/src/main/symbol-library.ts";
 
 // This measures native filesystem I/O without browser CPU throttling or rendering.
-test("desktop-storage", async ({}, testInfo) => {
+test("desktop-storage", async (_fixtures, testInfo) => {
 	const directory = await mkdtemp(join(tmpdir(), "ecad-perf-"));
 	const metrics: Record<string, number> = {};
 	const measure = async <T>(name: string, run: () => Promise<T>) => {
@@ -122,7 +122,7 @@ test("desktop-storage", async ({}, testInfo) => {
 	}
 });
 
-test("desktop-untitled", async ({}, testInfo) => {
+test("desktop-untitled", async (_fixtures, testInfo) => {
 	const parent = await mkdtemp(join(tmpdir(), "ecad-memory-perf-"));
 	const metrics: Record<string, number> = {};
 	const measure = async <T>(name: string, run: () => Promise<T>) => {

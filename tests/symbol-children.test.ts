@@ -1,25 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	moveSymbolChild,
+	pinTerminals,
 	replaceSymbolChild,
 	symbolChildren,
 	symbolShapes,
 	symbolTextShapes,
-	pinTerminals,
 } from "#/drawing/shapes.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import {
-	persistDrawingShapes,
-	resolveDrawingSymbols,
-} from "#/drawing/symbol-persistence.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
+import {
+	persistDrawingShapes,
+	resolveDrawingSymbols,
+} from "#/drawing/symbol-persistence.ts";
+import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 const definition = {
 	...symbolDefinitions[0],
@@ -36,9 +37,9 @@ test("symbol children use local coordinates and move independently after rotatio
 	};
 	for (const child of symbolChildren(symbol)) {
 		const moved = moveSymbolChild(symbol, child.key, { x: 4, y: 7 });
-		const updated = symbolChildren(moved).find(
-			(item) => item.key === child.key,
-		)!;
+		const updated = required(
+			symbolChildren(moved).find((item) => item.key === child.key),
+		);
 		assert.ok(Math.abs(updated.shape.x - child.shape.x - 7) < 1e-9);
 		assert.ok(Math.abs(updated.shape.y - child.shape.y + 4) < 1e-9);
 		assert.equal(moved.x, symbol.x);
@@ -53,9 +54,9 @@ test("symbol children use local coordinates and move independently after rotatio
 			);
 		}
 	}
-	const label = symbolChildren(symbol).find(
-		(item) => item.key === "attribute:reference",
-	)!;
+	const label = required(
+		symbolChildren(symbol).find((item) => item.key === "attribute:reference"),
+	);
 	const centered = replaceSymbolChild(symbol, label.key, {
 		...label.shape,
 		x: 0,
@@ -67,9 +68,9 @@ test("symbol children use local coordinates and move independently after rotatio
 
 test("child customization survives reference-only persistence, nested files, and definition reloads", () => {
 	const symbol = createSymbol(1, definition, { x: 10, y: 20 });
-	const body = symbolChildren(symbol).find(
-		(item) => item.shape.kind === "rectangle",
-	)!;
+	const body = required(
+		symbolChildren(symbol).find((item) => item.shape.kind === "rectangle"),
+	);
 	const edited = replaceSymbolChild(symbol, body.key, {
 		...body.shape,
 		x: 8,
@@ -82,7 +83,10 @@ test("child customization survives reference-only persistence, nested files, and
 		[parsed],
 		[definition],
 		new Map([
-			[symbolReferenceKey(definition.library!, definition.id), definition],
+			[
+				symbolReferenceKey(required(definition.library), definition.id),
+				definition,
+			],
 		]),
 	).shapes[0];
 	assert.equal(restored.kind, "symbol");
@@ -188,7 +192,7 @@ test("resizing a Box symbol follows rotated axes and preserves sibling text and 
 		resizeSymbolChild,
 		canSelectSymbolChild,
 	} = await import("#/drawing/shapes.ts");
-	const box = symbolDefinitions.find(({ id }) => id === "box")!;
+	const box = required(symbolDefinitions.find(({ id }) => id === "box"));
 	for (const rotation of [0, Math.PI / 2, Math.PI]) {
 		const symbol = { ...createSymbol(1, box, { x: 20, y: 30 }), rotation };
 		const [body, text] = symbolChildren(symbol);
@@ -197,7 +201,9 @@ test("resizing a Box symbol follows rotated axes and preserves sibling text and 
 		assert.equal(canSelectSymbolChild(symbol, text), true);
 		assert.equal(body.shape.x - body.shape.width / 2, 0);
 		assert.equal(body.shape.y + body.shape.height / 2, 0);
-		const handle = resizeHandles(symbol).find(({ id }) => id === "1,-1")!;
+		const handle = required(
+			resizeHandles(symbol).find(({ id }) => id === "1,-1"),
+		);
 		const resized = resizeShape(
 			symbol,
 			handle,

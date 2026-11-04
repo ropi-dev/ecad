@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -16,7 +17,7 @@ test("button-shortcuts", async ({ page }, testInfo) => {
 		});
 		const hint = page.locator('[data-slot="button-shortcut"][title="Shapes"]');
 		const key = await hint.getAttribute("data-shortcut");
-		await page.keyboard.press(key!);
+		await page.keyboard.press(required(key));
 		await expect(
 			page.getByRole("toolbar", { name: "Shapes toolbar", exact: true }),
 		).toBeVisible();
@@ -26,7 +27,7 @@ test("button-shortcuts", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "button-shortcuts", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
-		hintsP95Ms: metric(value, "ui.button-shortcuts")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
+		hintsP95Ms: required(metric(value, "ui.button-shortcuts")),
 	});
 });

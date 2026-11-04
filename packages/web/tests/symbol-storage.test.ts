@@ -5,6 +5,7 @@ import {
 	SYMBOL_STORAGE_KEY,
 } from "@ecad/core/components/editor/symbolFormat.ts";
 import { createWebSymbolLibraryStorage } from "#/symbol-library/storage.ts";
+import { required } from "../../../tests/helpers/required.ts";
 
 const loadFailure =
 	"Saved symbols could not be loaded. You can upload a library again.";
@@ -161,7 +162,7 @@ test("user library configuration ignores the symbol cache and saves enabled libr
 	);
 	const browser = memoryStorage(JSON.stringify([symbol()]));
 	const storage = createWebSymbolLibraryStorage(browser);
-	const config = await storage.loadConfiguration!();
+	const config = await required(storage.loadConfiguration)();
 	assert.equal(config.symbolLibraries.length, 1);
 	assert.equal(browser.entries.has(USER_SYMBOL_CONFIG_KEY), false);
 	const disabled = {
@@ -172,16 +173,22 @@ test("user library configuration ignores the symbol cache and saves enabled libr
 		})),
 	};
 	assert.equal(
-		await storage.saveConfiguration!(disabled),
+		await required(storage.saveConfiguration)(disabled),
 		"Saved in this browser.",
 	);
 	assert.deepEqual(
-		await createWebSymbolLibraryStorage(browser).loadConfiguration!(),
+		await required(createWebSymbolLibraryStorage(browser).loadConfiguration)(),
 		disabled,
 	);
 	assert.equal(browser.entries.has(SYMBOL_STORAGE_KEY), true);
-	await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
-	assert.deepEqual((await storage.loadConfiguration!()).symbolLibraries, []);
+	await required(storage.saveConfiguration)({
+		version: 1,
+		symbolLibraries: [],
+	});
+	assert.deepEqual(
+		(await required(storage.loadConfiguration)()).symbolLibraries,
+		[],
+	);
 });
 
 test("temporary user configuration survives navigation and clears after a successful retry", async () => {
@@ -195,7 +202,7 @@ test("temporary user configuration survives navigation and clears after a succes
 			browser.setItem(key, value);
 		},
 	});
-	const original = await storage.loadConfiguration!();
+	const original = await required(storage.loadConfiguration)();
 	const next = {
 		...original,
 		symbolLibraries: [
@@ -208,21 +215,23 @@ test("temporary user configuration survives navigation and clears after a succes
 			},
 		],
 	};
-	assert.equal(await storage.saveConfiguration!(next), saveFailure);
-	assert.deepEqual(await storage.loadConfiguration!(), next);
+	assert.equal(await required(storage.saveConfiguration)(next), saveFailure);
+	assert.deepEqual(await required(storage.loadConfiguration)(), next);
 	assert.deepEqual(
-		await createWebSymbolLibraryStorage(browser).loadConfiguration!(),
+		await required(createWebSymbolLibraryStorage(browser).loadConfiguration)(),
 		original,
 	);
 	writable = true;
 	assert.equal(
-		await storage.saveConfiguration!(next),
+		await required(storage.saveConfiguration)(next),
 		"Saved in this browser.",
 	);
 	assert.deepEqual(
-		await createWebSymbolLibraryStorage(browser).loadConfiguration!(),
+		await required(createWebSymbolLibraryStorage(browser).loadConfiguration)(),
 		next,
 	);
-	await createWebSymbolLibraryStorage(browser).saveConfiguration!(original);
-	assert.deepEqual(await storage.loadConfiguration!(), original);
+	await required(createWebSymbolLibraryStorage(browser).saveConfiguration)(
+		original,
+	);
+	assert.deepEqual(await required(storage.loadConfiguration)(), original);
 });

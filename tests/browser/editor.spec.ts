@@ -1,8 +1,9 @@
+import { expect, type Page, test } from "@playwright/test";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { SCHEMATIC_STEP } from "#/drawing/units.ts";
+import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
-import { expect, type Page, test } from "@playwright/test";
-import { SCHEMATIC_STEP } from "#/drawing/units.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 
 const [selected, highlighted, wire] = (
 	["selected", "highlighted", "wire"] as const
@@ -62,7 +63,7 @@ async function placePin(page: Page, x: number, y: number) {
 }
 async function screen(page: Page, x: number, y: number) {
 	const view = await state(page);
-	const box = (await page.locator("canvas").boundingBox())!;
+	const box = required(await page.locator("canvas").boundingBox());
 	return {
 		x:
 			box.x +
@@ -340,7 +341,7 @@ test("ruler position guide follows the object center through release and cancell
 	const crosshair = page.getByTestId("ruler-position-guide");
 	await expect(crosshair).toBeVisible();
 	const center = await screen(page, 150, 140);
-	const box = (await crosshair.boundingBox())!;
+	const box = required(await crosshair.boundingBox());
 	await expect
 		.poll(async () =>
 			Number(await crosshair.locator("line").nth(0).getAttribute("y1")),
@@ -384,9 +385,9 @@ test("moving a symbol child does not show the ruler position guide", async ({
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
 	await clickAt(page, 100, 100);
-	const label = (await page
-		.locator('[data-anchor-id="1:label:0"]')
-		.boundingBox())!;
+	const label = required(
+		await page.locator('[data-anchor-id="1:label:0"]').boundingBox(),
+	);
 	await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2);
 	await page.mouse.down();
 	await page.mouse.move(label.x + 40, label.y - 20, { steps: 4 });
@@ -443,7 +444,15 @@ for (const item of ["Resistor", "Pin", "Text", "Net label", "Supply label"]) {
 			const shapesPath = "/packages/core/src/drawing/shapes.ts";
 			const { shapeBounds } = await import(shapesPath);
 			const documentState = JSON.parse(
-				document.querySelector("#editor-document")!.textContent!,
+				(
+					document.querySelector("#editor-document") ??
+					(() => {
+						throw new Error("Expected a value");
+					})()
+				).textContent ??
+					(() => {
+						throw new Error("Expected a value");
+					})(),
 			);
 			const bounds = shapeBounds(documentState.shapes[0]);
 			return {

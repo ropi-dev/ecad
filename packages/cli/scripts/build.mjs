@@ -1,5 +1,5 @@
-import { build } from "esbuild";
 import { rm } from "node:fs/promises";
+import { build } from "esbuild";
 import { writeDistributionLicenses } from "../../../scripts/distribution-licenses.ts";
 
 await rm("dist", { recursive: true, force: true });

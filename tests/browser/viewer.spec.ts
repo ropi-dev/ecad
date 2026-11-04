@@ -1,7 +1,8 @@
-import { captureArtifacts } from "./artifacts";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
 
 test("reorders layers and preserves focus, visibility and camera", async ({
 	page,
@@ -48,9 +49,12 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 					ticks.every((tick) => {
 						const horizontal = tick.dataset.axis === "x";
 						const position = Number(
-							tick
-								.querySelector("line")!
-								.getAttribute(horizontal ? "x1" : "y1"),
+							(
+								tick.querySelector("line") ??
+								(() => {
+									throw new Error("Expected a value");
+								})()
+							).getAttribute(horizontal ? "x1" : "y1"),
 						);
 						return patterns.some((pattern) => {
 							const spacing = Number(pattern.getAttribute("width"));
@@ -103,7 +107,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	await handle.dragTo(rows.last(), { targetPosition: { x: 80, y: 40 } });
 	await expect(names.last()).toHaveText(focused);
 	expect(
-		await canvasHandle!.evaluate(
+		await required(canvasHandle).evaluate(
 			(element) => element === document.querySelector("canvas"),
 		),
 	).toBe(true);
@@ -233,7 +237,9 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 	await expect(region).toHaveAttribute("aria-expanded", "true");
 	await expect(region).toHaveAttribute(
 		"aria-controls",
-		(await page.getByTestId("layer-diagnostics-list").getAttribute("id"))!,
+		required(
+			await page.getByTestId("layer-diagnostics-list").getAttribute("id"),
+		),
 	);
 	const list = page.getByRole("list", {
 		name: "Diagnostics for region.gbr",

@@ -1,5 +1,5 @@
-import { openProjectActions } from "./project-files";
 import { expect, test } from "@playwright/test";
+import { openProjectActions } from "./project-files";
 
 test("opening another project protects drafts through save, discard, errors and cancellation", async ({
 	page,

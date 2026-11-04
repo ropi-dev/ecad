@@ -23,10 +23,13 @@ import {
 	createShapeGeometry,
 	mergeShapeGeometries,
 } from "#/engine/drawing/shapeGeometry.ts";
+import { required } from "./helpers/required.ts";
 
-const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+const resistor = required(
+	symbolDefinitions.find(({ id }) => id === "resistor"),
+);
 const definitions = new Map([
-	[symbolReferenceKey(resistor.library!, resistor.id), resistor],
+	[symbolReferenceKey(required(resistor.library), resistor.id), resistor],
 ]);
 
 const positions = (geometry: BufferGeometry) => [
@@ -58,7 +61,7 @@ for (const [name, override] of [
 		const symbol = { ...resolved, childOverrides } as typeof resolved;
 		assert.equal(symbol.kind, "symbol");
 		if (symbol.kind !== "symbol") return;
-		const lead = symbolShapes(symbol).find((child) => child.id === 1)!;
+		const lead = required(symbolShapes(symbol).find((child) => child.id === 1));
 		assert.ok(lead.width === 0 || lead.lineWidth === 0);
 		const display = buildDrawingDisplay([symbol], new Set()).shapes[0];
 		assert.equal(display.geometry.kind, "symbol");
@@ -169,8 +172,8 @@ test("parts with incompatible layouts merge as plain triangles instead of vanish
 	);
 	try {
 		const position = merged.getAttribute("position");
-		const index = merged.getIndex()!;
-		assert.equal(index.count, plane.getIndex()!.count + 3);
+		const index = required(merged.getIndex());
+		assert.equal(index.count, required(plane.getIndex()).count + 3);
 		assert.equal(merged.getAttribute("uv").count, position.count);
 		assert.equal(merged.getAttribute("normal").count, position.count);
 		const corners = Array.from({ length: index.count }, (_, item) =>

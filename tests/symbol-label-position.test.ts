@@ -1,23 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	containsSelection,
 	type EditorSymbol,
+	pinTerminals,
+	setSymbolLabelPosition,
 	shapeAt,
 	shapeBounds,
 	symbolLabelPosition,
 	symbolSelectionFrame,
 	symbolShapes,
 	symbolTextShapes,
-	setSymbolLabelPosition,
 } from "#/drawing/shapes.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import { pinTerminals } from "#/drawing/shapes.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 const power = (() => {
 	const definition = symbolDefinitions.find(
@@ -213,7 +214,9 @@ test("a neighbour's outline does not steal clicks on drawn content", () => {
 	const vdd = placed();
 	const resistor = createSymbol(
 		2,
-		symbolDefinitions.find((definition) => definition.id === "resistor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		),
 		{ x: 0, y: 0 },
 		"R1",
 	);

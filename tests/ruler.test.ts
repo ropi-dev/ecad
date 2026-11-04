@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { gridTicks, rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
+import { required } from "./helpers/required.ts";
 
 test("rulers place signed coordinates and reverse the vertical axis", () => {
 	const horizontal = rulerTicks(10, 5, 400);
@@ -51,7 +52,8 @@ test("invalid or unmeasured viewports have no ruler ticks", () => {
 
 test("grid crossfades unique lines while shared lines retain their strength", () => {
 	const ticks = gridTicks(0, 10, 6000);
-	const tickAt = (value: number) => ticks.find((tick) => tick.value === value)!;
+	const tickAt = (value: number) =>
+		required(ticks.find((tick) => tick.value === value));
 	assert.equal(new Set(ticks.map((tick) => tick.value)).size, ticks.length);
 	for (const value of [-5, -1, 1, 5])
 		assert.ok(Math.abs(tickAt(value).opacity - 0.5) < 1e-10);
@@ -61,7 +63,9 @@ test("grid crossfades unique lines while shared lines retain their strength", ()
 	assert.equal(tickAt(20).majorOpacity, 1);
 	assert.ok(Math.abs(tickAt(50).majorOpacity - 0.5) < 1e-10);
 	assert.equal(tickAt(100).majorOpacity, 1);
-	const earlyFineLine = gridTicks(0, 9, 997).find((tick) => tick.value === 1)!;
+	const earlyFineLine = required(
+		gridTicks(0, 9, 997).find((tick) => tick.value === 1),
+	);
 	assert.ok(earlyFineLine.opacity > 0 && earlyFineLine.opacity < 0.5);
 	assert.equal(rulerSpacing(9).minor, 2);
 	assert.equal(rulerSpacing(10).minor, 1);

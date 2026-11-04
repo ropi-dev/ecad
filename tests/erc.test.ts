@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-	createCircuit,
 	type CircuitPin,
+	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import { type ErcRule, runErc } from "@ecad/drawing-core/erc/engine.ts";
 import { defaultErcRules } from "@ecad/drawing-core/erc/rules.ts";

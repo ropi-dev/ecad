@@ -2,11 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Effect, Either } from "effect";
 import {
-	parseSavedSymbolLibrary,
-	parseSymbolFile,
-	type SymbolFile,
-} from "#/components/editor/symbolFormat.ts";
-import {
 	createSymbolFromSelectionEffect,
 	InvalidDrawingCommand,
 	placeRectangleEffect,
@@ -17,11 +12,17 @@ import {
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import {
+	parseSavedSymbolLibrary,
+	parseSymbolFile,
+	type SymbolFile,
+} from "#/components/editor/symbolFormat.ts";
+import {
 	parseSelection,
 	selectionPasteError,
 	serializeSelection,
 } from "#/drawing/clipboard.ts";
 import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
+import { electricalNets } from "#/drawing/named-nets.ts";
 import {
 	drawingShapeSchema,
 	editorShapeSchema,
@@ -30,7 +31,6 @@ import {
 	savedDrawingShapesSchema,
 	symbolChildOverridesSchema,
 } from "#/drawing/schema.ts";
-import { electricalNets } from "#/drawing/named-nets.ts";
 import {
 	type EditorShape,
 	type LineShape,
@@ -51,15 +51,16 @@ import {
 	validateProjectDocument,
 } from "#/projects/format.ts";
 import {
-	ProjectRepository,
 	type ProjectDirectory,
+	ProjectRepository,
 } from "#/projects/repository.ts";
 import {
+	type ConfiguredSymbolLibrary,
 	parseSymbolConfig,
 	serializeSymbolConfig,
 	validateSymbolLibraries,
-	type ConfiguredSymbolLibrary,
 } from "#/symbol-library/config.ts";
+import { required } from "./helpers/required.ts";
 
 const box = { x: 0, y: 0, width: 4, height: 4, rotation: 0, lineWidth: 0.2 };
 const text = (extra: object) => ({
@@ -332,7 +333,9 @@ test("symbol files and drawings share the child-override limits", () => {
 				},
 			],
 		});
-	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const resistor = required(
+		symbolDefinitions.find(({ id }) => id === "resistor"),
+	);
 	const drawing = (override: object) => ({
 		...createSymbol(1, resistor, { x: 0, y: 0 }),
 		childOverrides: { "shape:2": override },
@@ -730,7 +733,7 @@ test("an undefined override is committed as saved, so it cannot hide a child fie
 	).store.getSnapshot().shapes[0];
 	assert.equal(
 		dashed.kind === "symbol" &&
-			"lineStyle" in dashed.childOverrides!["shape:1"],
+			"lineStyle" in required(dashed.childOverrides)["shape:1"],
 		false,
 	);
 	const [child] = dashed.kind === "symbol" ? symbolShapes(dashed) : [];
@@ -760,7 +763,9 @@ test("pasting drawing data the schema rejects explains why", () => {
 });
 
 test("an edited library symbol drops instance overrides that no longer fit", () => {
-	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const resistor = required(
+		symbolDefinitions.find(({ id }) => id === "resistor"),
+	);
 	const instance = {
 		...createSymbol(1, resistor, { x: 0, y: 0 }),
 		childOverrides: {
@@ -780,7 +785,9 @@ test("an edited library symbol drops instance overrides that no longer fit", () 
 	const [resolved] = resolveDrawingSymbols(
 		[drawingShapeSchema.parse(saved)],
 		[edited],
-		new Map([[symbolReferenceKey(edited.library!, edited.id), edited]]),
+		new Map([
+			[symbolReferenceKey(required(edited.library), edited.id), edited],
+		]),
 	).shapes;
 	assert.equal(resolved.kind, "symbol");
 	assert.deepEqual(resolved.kind === "symbol" && resolved.childOverrides, {
@@ -989,7 +996,9 @@ test("symbol files drop nested overrides that do not fit, so the symbol still pl
 });
 
 test("redrawing a legacy wire sees pins that an override moved outside their symbol", () => {
-	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const resistor = required(
+		symbolDefinitions.find(({ id }) => id === "resistor"),
+	);
 	// The override puts the resistor's first pin at (10, 0), the first corner tried.
 	const part = {
 		...createSymbol(9, resistor, { x: 50, y: 50 }),

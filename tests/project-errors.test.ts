@@ -9,8 +9,8 @@ import {
 	ProjectAssetNotFound,
 	ProjectClosed,
 	ProjectConflict,
-	ProjectExists,
 	type ProjectError,
+	ProjectExists,
 	ProjectRollbackFailed,
 	ProjectStorageUnavailable,
 	projectErrorData,
@@ -26,6 +26,7 @@ import {
 	type ProjectDirectory,
 	ProjectRepository,
 } from "#/projects/repository.ts";
+import { required } from "./helpers/required.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -235,7 +236,7 @@ test("an invalid symbol, drawing or circuit file is reported against that file",
 			new ProjectRepository(project.directory, { layout: "files" }).load(),
 			InvalidProjectFile,
 		);
-	const drawing = saved.manifest.drawings![0];
+	const drawing = required(saved.manifest.drawings)[0];
 	const original = project.text(drawing);
 	project.edit(drawing, (content) =>
 		content.replace('"id":"control"', '"id":"Bad ID"'),
@@ -245,9 +246,11 @@ test("an invalid symbol, drawing or circuit file is reported against that file",
 	assert.match(invalidDrawing.reason, /^id: /);
 	project.files.set(drawing, encoder.encode(original));
 
-	const circuit = saved.manifest.circuits!.find(
-		(paths) => paths.circuit === drawing,
-	)!.circuit;
+	const circuit = required(
+		required(saved.manifest.circuits).find(
+			(paths) => paths.circuit === drawing,
+		),
+	).circuit;
 	project.edit(circuit, (content) =>
 		content.replace('"circuitId":"', '"circuitId":"other-'),
 	);
@@ -344,10 +347,10 @@ test("readAsset returns a rejected promise instead of throwing", async () => {
 		outside = repository.readAsset("../secret");
 		unknown = repository.readAsset("assets/other.step");
 	});
-	const path = await rejection(outside!, InvalidProjectPath);
+	const path = await rejection(required(outside), InvalidProjectPath);
 	assert.equal(path.path, "../secret");
 	assert.equal(
-		(await rejection(unknown!, ProjectAssetNotFound)).path,
+		(await rejection(required(unknown), ProjectAssetNotFound)).path,
 		"assets/other.step",
 	);
 	assert.deepEqual(

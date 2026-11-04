@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect } from "effect";
 import { sameDrawing } from "@ecad/drawing-core/commands/drawing-equality.ts";
+import { Effect } from "effect";
 import {
 	placeShapesEffect,
 	replaceShapesEffect,
@@ -20,6 +20,7 @@ import {
 	symbolChildren,
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 const geometry = {
 	x: 10,
@@ -329,7 +330,7 @@ test("symbol children and overrides keep exact optional fields because their def
 	const selectable = (shape: EditorSymbol) =>
 		canSelectSymbolChild(
 			shape,
-			symbolChildren(shape).find((child) => child.key === pinKey)!,
+			required(symbolChildren(shape).find((child) => child.key === pinKey)),
 		);
 	assert.equal(selectable(before), false);
 	assert.equal(selectable(unlocked.edited as EditorSymbol), true);
@@ -348,7 +349,9 @@ test("symbol children and overrides keep exact optional fields because their def
 });
 
 test("override keys set to undefined match the saved form, which drops them", () => {
-	const pinId = symbolInput.children.find((child) => child.kind === "pin")!.id;
+	const pinId = required(
+		symbolInput.children.find((child) => child.kind === "pin"),
+	).id;
 	const hiddenName = {
 		...symbolInput,
 		children: symbolInput.children.map((child) =>

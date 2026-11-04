@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PerformanceRecorder } from "#/performance/recorder.ts";
+import { required } from "./helpers/required.ts";
 import { budgets } from "./performance/budgets.ts";
 import {
 	checkBudgets,
@@ -94,7 +95,7 @@ test("performance snapshots are detached, timers finish once, and reset clears m
 	const report = recorder.snapshot();
 	assert.equal(report.metrics.operation.count, 1);
 	assert.equal(report.events[0].data?.count, 3);
-	report.events[0].data!.count = 44;
+	required(report.events[0].data).count = 44;
 	report.metrics.operation.total = 100;
 	assert.equal(recorder.snapshot().events[0].data?.count, 3);
 	assert.equal(recorder.snapshot().metrics.operation.total, 10);

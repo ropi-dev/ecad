@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import {
+	mkdir,
 	mkdtemp,
-	readFile,
 	readdir,
+	readFile,
 	realpath,
 	rm,
 	symlink,
 	writeFile,
-	mkdir,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,13 +16,6 @@ import { createDrawingStore } from "@ecad/core/commands/drawing-store.ts";
 import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import {
-	parseProjectManifest,
-	PROJECT_FILE,
-	projectNameSchema,
-	projectPathSchema,
-	serializeProjectManifest,
-} from "@ecad/core/projects/format.ts";
-import {
 	InvalidProjectFile,
 	InvalidProjectName,
 	InvalidProjectPath,
@@ -30,12 +23,20 @@ import {
 	ProjectConflict,
 	SymbolLibraryAccessDenied,
 } from "@ecad/core/projects/errors.ts";
+import {
+	PROJECT_FILE,
+	parseProjectManifest,
+	projectNameSchema,
+	projectPathSchema,
+	serializeProjectManifest,
+} from "@ecad/core/projects/format.ts";
 import { ProjectRepository } from "@ecad/core/projects/repository.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
 	createDesktopProjectDirectory,
 	DesktopProjects,
 } from "#/main/projects.ts";
+import { required } from "../../../tests/helpers/required.ts";
 
 const shape: EditorShape = {
 	id: 7,
@@ -883,7 +884,7 @@ test("edits writable relative project directory symbols and checks project file 
 				directory: path,
 			})),
 		);
-		const snapshot = (await projects.load())!;
+		const snapshot = required(await projects.load());
 		const symbolPath = snapshot.manifest.symbols[0];
 		assert.equal(
 			await projects.canWriteFile(project.directory, symbolPath),

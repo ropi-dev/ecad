@@ -1,5 +1,6 @@
-import { captureArtifacts } from "./artifacts";
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
 
 test("the sidebar slides over the workspace from an invisible edge handle", async ({
 	page,
@@ -17,9 +18,11 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 	const frame = sidebar.locator("..");
 	const content = frame.locator("+ div");
 	await expect(sidebar).toHaveAttribute("data-open", "false");
-	expect((await frame.boundingBox())!.width).toBe(0);
-	expect((await content.boundingBox())!.x).toBe(0);
-	await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(-256);
+	expect(required(await frame.boundingBox()).width).toBe(0);
+	expect(required(await content.boundingBox()).x).toBe(0);
+	await expect
+		.poll(async () => required(await sidebar.boundingBox()).x)
+		.toBe(-256);
 	if (captureArtifacts)
 		await page.screenshot({
 			path: "perf-artifacts/sidebar-hidden-desktop.png",
@@ -30,8 +33,10 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 		.getByRole("button", { name: "Show project files", exact: true })
 		.hover();
 	await expect(sidebar).toHaveAttribute("data-open", "true");
-	await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(0);
-	expect((await content.boundingBox())!.x).toBe(0);
+	await expect
+		.poll(async () => required(await sidebar.boundingBox()).x)
+		.toBe(0);
+	expect(required(await content.boundingBox()).x).toBe(0);
 	await sidebar.hover({ position: { x: 100, y: 20 } });
 	if (captureArtifacts)
 		await page.screenshot({
@@ -39,7 +44,9 @@ test("the sidebar slides over the workspace from an invisible edge handle", asyn
 		});
 	await page.mouse.move(900, 400);
 	await expect(sidebar).toHaveAttribute("data-open", "false");
-	await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(-256);
+	await expect
+		.poll(async () => required(await sidebar.boundingBox()).x)
+		.toBe(-256);
 	await page
 		.getByRole("button", { name: "Show project files", exact: true })
 		.focus();
@@ -69,28 +76,30 @@ test("Ctrl+Shift+S toggles pinned and Compact states, including from file search
 	await expect(sidebar).toHaveAttribute("data-open", "false");
 	await page.keyboard.press("Control+Shift+s");
 	await expect(sidebar).toHaveAttribute("data-pinned", "true");
-	await expect.poll(async () => (await content.boundingBox())!.x).toBe(256);
+	await expect
+		.poll(async () => required(await content.boundingBox()).x)
+		.toBe(256);
 	const compact = sidebar.getByRole("button", {
 		name: "Compact sidebar",
 		exact: true,
 	});
 	await expect(compact).toContainText("Pinned");
 	await expect(compact).toHaveAttribute("aria-keyshortcuts", "Control+Shift+S");
-	await page
-		.locator("body")
-		.dispatchEvent("keydown", {
-			code: "KeyS",
-			key: "s",
-			ctrlKey: true,
-			shiftKey: true,
-			repeat: true,
-		});
+	await page.locator("body").dispatchEvent("keydown", {
+		code: "KeyS",
+		key: "s",
+		ctrlKey: true,
+		shiftKey: true,
+		repeat: true,
+	});
 	await expect(sidebar).toHaveAttribute("data-pinned", "true");
 	await sidebar.getByLabel("Search project files").focus();
 	await page.keyboard.press("Control+Shift+s");
 	await expect(sidebar).toHaveAttribute("data-pinned", "false");
 	await expect(sidebar).toHaveAttribute("data-open", "false");
-	await expect.poll(async () => (await content.boundingBox())!.x).toBe(0);
+	await expect
+		.poll(async () => required(await content.boundingBox()).x)
+		.toBe(0);
 	await page
 		.getByRole("button", { name: "Show project files", exact: true })
 		.hover();
@@ -119,20 +128,24 @@ test.describe("touch sidebar", () => {
 		});
 		const content = sidebar.locator("..").locator("+ div");
 		await expect(sidebar).toHaveAttribute("data-open", "false");
-		expect((await content.boundingBox())!.width).toBe(390);
+		expect(required(await content.boundingBox()).width).toBe(390);
 		await page
 			.getByRole("button", { name: "Show project files", exact: true })
 			.tap();
 		await expect(sidebar).toHaveAttribute("data-open", "true");
-		await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(0);
-		expect((await content.boundingBox())!.width).toBe(390);
+		await expect
+			.poll(async () => required(await sidebar.boundingBox()).x)
+			.toBe(0);
+		expect(required(await content.boundingBox()).width).toBe(390);
 		if (captureArtifacts)
 			await page.screenshot({
 				path: "perf-artifacts/sidebar-expanded-mobile.png",
 			});
 		await page.touchscreen.tap(350, 400);
 		await expect(sidebar).toHaveAttribute("data-open", "false");
-		await expect.poll(async () => (await sidebar.boundingBox())!.x).toBe(-256);
+		await expect
+			.poll(async () => required(await sidebar.boundingBox()).x)
+			.toBe(-256);
 		if (captureArtifacts)
 			await page.screenshot({
 				path: "perf-artifacts/sidebar-dismissed-mobile.png",
@@ -144,8 +157,10 @@ test.describe("touch sidebar", () => {
 		await sidebar
 			.getByRole("button", { name: "Pin sidebar", exact: true })
 			.tap();
-		await expect.poll(async () => (await content.boundingBox())!.x).toBe(256);
-		expect((await content.boundingBox())!.width).toBe(134);
+		await expect
+			.poll(async () => required(await content.boundingBox()).x)
+			.toBe(256);
+		expect(required(await content.boundingBox()).width).toBe(134);
 		await page.touchscreen.tap(350, 400);
 		await expect(sidebar).toHaveAttribute("data-open", "true");
 		if (captureArtifacts)

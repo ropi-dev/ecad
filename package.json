@@ -1,71 +1,71 @@
 {
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": "^24.14.0 || >=25.4.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.4.5",
-    "@playwright/test": "^1.63.0",
-    "@tanstack/router-cli": "1.167.46",
-    "@types/earcut": "^3.0.0",
-    "@types/libtess": "^1.2.0",
-    "@types/node": "^24.19.2",
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
-    "@types/svg-path-parser": "^1.1.6",
-    "@types/three": "^0.186.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.2",
-    "vite": "^8.3.5",
-    "esbuild": "^0.28.0",
-    "@ecad/cli": "workspace:*",
-    "@ecad/default-symbols": "workspace:*",
-    "@ecad/drawing-core": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "@tailwindcss/vite": "^4.1.18",
-    "effect": "^3.22.2",
-    "fflate": "^0.8.3",
-    "occt-import-js": "^0.0.23",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "three": "^0.186.0",
-    "zod": "^4.6.7",
-    "tailwindcss": "^4.1.18"
-  },
-  "intent": {
-    "skills": [
-      "*"
-    ]
-  },
-  "name": "ecad",
-  "imports": {
-    "#/*": "./packages/core/src/*",
-    "#web/*": "./packages/web/src/*"
-  },
-  "scripts": {
-    "dev": "pnpm --filter @ecad/web run dev",
-    "dev:web": "pnpm --filter @ecad/web run dev",
-    "dev:desktop": "pnpm --filter @ecad/desktop run dev",
-    "generate-routes": "pnpm --filter @ecad/web run generate-routes",
-    "build": "pnpm run build:web && pnpm run build:desktop && pnpm run build:cli",
-    "build:web": "pnpm --filter @ecad/web run build",
-    "build:desktop": "pnpm --filter @ecad/desktop run build",
-    "build:cli": "pnpm --filter @ecad/cli run build",
-    "cli": "tsx packages/cli/src/main.ts",
-    "preview": "pnpm --filter @ecad/web run preview",
-    "start:desktop": "pnpm --filter @ecad/desktop run start",
-    "format": "biome format",
-    "lint": "biome lint",
-    "check": "biome check",
-    "test": "tsx --test tests/*.test.ts && pnpm -r --if-present run test",
-    "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
-    "test:browser": "playwright test --config tests/browser/playwright.config.ts",
-    "perf": "tsx scripts/performance/run.ts",
-    "perf:dev": "tsx scripts/performance/run.ts --development",
-    "perf:baseline": "tsx scripts/performance/run.ts --baseline",
-    "symbols:generate": "pnpm --filter @ecad/default-symbols run generate"
-  },
-  "packageManager": "pnpm@10.34.9"
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": "^24.14.0 || >=25.4.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.5",
+		"@playwright/test": "^1.63.0",
+		"@tanstack/router-cli": "1.167.46",
+		"@types/earcut": "^3.0.0",
+		"@types/libtess": "^1.2.0",
+		"@types/node": "^24.19.2",
+		"@types/react": "^19.2.0",
+		"@types/react-dom": "^19.2.0",
+		"@types/svg-path-parser": "^1.1.6",
+		"@types/three": "^0.186.0",
+		"@vitejs/plugin-react": "^6.0.1",
+		"tsx": "^4.21.0",
+		"typescript": "^6.0.2",
+		"vite": "^8.3.5",
+		"esbuild": "^0.28.0",
+		"@ecad/cli": "workspace:*",
+		"@ecad/default-symbols": "workspace:*",
+		"@ecad/drawing-core": "workspace:*",
+		"@modelcontextprotocol/sdk": "^1.32.2",
+		"@tailwindcss/vite": "^4.1.18",
+		"effect": "^3.22.2",
+		"fflate": "^0.8.3",
+		"occt-import-js": "^0.0.23",
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0",
+		"three": "^0.186.0",
+		"zod": "^4.6.7",
+		"tailwindcss": "^4.1.18"
+	},
+	"intent": {
+		"skills": [
+			"*"
+		]
+	},
+	"name": "ecad",
+	"imports": {
+		"#/*": "./packages/core/src/*",
+		"#web/*": "./packages/web/src/*"
+	},
+	"scripts": {
+		"dev": "pnpm --filter @ecad/web run dev",
+		"dev:web": "pnpm --filter @ecad/web run dev",
+		"dev:desktop": "pnpm --filter @ecad/desktop run dev",
+		"generate-routes": "pnpm --filter @ecad/web run generate-routes",
+		"build": "pnpm run build:web && pnpm run build:desktop && pnpm run build:cli",
+		"build:web": "pnpm --filter @ecad/web run build",
+		"build:desktop": "pnpm --filter @ecad/desktop run build",
+		"build:cli": "pnpm --filter @ecad/cli run build",
+		"cli": "tsx packages/cli/src/main.ts",
+		"preview": "pnpm --filter @ecad/web run preview",
+		"start:desktop": "pnpm --filter @ecad/desktop run start",
+		"format": "biome format --write .",
+		"lint": "biome ci --error-on-warnings .",
+		"check": "biome check --error-on-warnings .",
+		"test": "tsx --test tests/*.test.ts && pnpm -r --if-present run test",
+		"typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
+		"test:browser": "playwright test --config tests/browser/playwright.config.ts",
+		"perf": "tsx scripts/performance/run.ts",
+		"perf:dev": "tsx scripts/performance/run.ts --development",
+		"perf:baseline": "tsx scripts/performance/run.ts --baseline",
+		"symbols:generate": "pnpm --filter @ecad/default-symbols run generate"
+	},
+	"packageManager": "pnpm@10.34.9"
 }

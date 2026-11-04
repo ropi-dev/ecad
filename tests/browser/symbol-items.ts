@@ -6,6 +6,7 @@ import {
 	symbolChildren,
 	symbolChildWorld,
 } from "#/drawing/shapes.ts";
+import { required } from "../helpers/required.ts";
 import { closeProjectFiles } from "./project-files";
 
 export async function selectDrawingShape(
@@ -16,7 +17,9 @@ export async function selectDrawingShape(
 	await closeProjectFiles(page);
 	await selectSymbolParent(page);
 	const document = JSON.parse(
-		(await page.locator("#editor-document, #project-document").textContent())!,
+		required(
+			await page.locator("#editor-document, #project-document").textContent(),
+		),
 	);
 	const shape = document.shapes.find(
 		(shape: { id: number }) => shape.id === id,
@@ -28,7 +31,7 @@ export async function selectDrawingShape(
 			: { x: shape.x, y: shape.y },
 	);
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	await canvas.click({
 		position: { x: point.x - bounds.x, y: point.y - bounds.y },
 		modifiers,
@@ -56,7 +59,14 @@ export async function drawingPoint(
 					Number(tick.getAttribute("data-value")),
 				);
 				const positions = ticks.map((tick) =>
-					Number(tick.querySelector("line")!.getAttribute(`${axis}1`)),
+					Number(
+						(
+							tick.querySelector("line") ??
+							(() => {
+								throw new Error("Expected a value");
+							})()
+						).getAttribute(`${axis}1`),
+					),
 				);
 				return (
 					positions[0] +
@@ -91,8 +101,8 @@ export async function selectSymbolAttribute(page: Page, attribute: string) {
 		)
 		.boundingBox();
 	await page.mouse.click(
-		marker!.x + marker!.width / 2,
-		marker!.y + marker!.height / 2,
+		required(marker).x + required(marker).width / 2,
+		required(marker).y + required(marker).height / 2,
 	);
 	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
 }
@@ -102,14 +112,18 @@ export async function symbolItemPoint(page: Page, key: string) {
 		.getByTestId("text-anchor")
 		.first()
 		.getAttribute("data-anchor-id");
-	const id = Number(anchor!.split(":")[0]);
+	const id = Number(required(anchor).split(":")[0]);
 	const document = JSON.parse(
-		(await page.locator("#editor-document, #project-document").textContent())!,
+		required(
+			await page.locator("#editor-document, #project-document").textContent(),
+		),
 	);
 	const symbol = document.shapes.find(
 		(shape: EditorSymbol) => shape.id === id,
 	) as EditorSymbol;
-	const child = symbolChildren(symbol).find((child) => child.key === key)!;
+	const child = required(
+		symbolChildren(symbol).find((child) => child.key === key),
+	);
 	const bounds = shapeBounds(symbolChildWorld(symbol, child.shape));
 	const point = await drawingPoint(page, {
 		x: (bounds.minX + bounds.maxX) / 2,

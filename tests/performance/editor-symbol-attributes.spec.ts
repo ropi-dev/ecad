@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -51,7 +52,7 @@ test("editor-symbol-attributes", async ({ page }, testInfo) => {
 		await page
 			.getByRole("button", { name: "Insert Editable package", exact: true })
 			.click();
-		const bounds = (await page.locator("canvas").boundingBox())!;
+		const bounds = required(await page.locator("canvas").boundingBox());
 		await page
 			.locator("canvas")
 			.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });

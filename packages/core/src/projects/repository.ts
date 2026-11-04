@@ -1,8 +1,3 @@
-import {
-	pairPcbDocuments,
-	primaryPcbId,
-	pcbDocumentName,
-} from "#/projects/pcb.ts";
 import { circuitSchema } from "@ecad/drawing-core/circuit/model.ts";
 import { Predicate } from "effect";
 import { z } from "zod";
@@ -30,6 +25,11 @@ import {
 	serializeProjectManifest,
 	validateProjectDocument,
 } from "#/projects/format.ts";
+import {
+	pairPcbDocuments,
+	pcbDocumentName,
+	primaryPcbId,
+} from "#/projects/pcb.ts";
 
 export interface ProjectDirectory {
 	name: string;
@@ -545,16 +545,15 @@ export class ProjectRepository {
 		return this.sequential(async () => {
 			const current = await this.assertCurrent();
 			const validated = validateProjectDocument(document);
+			const circuits = validated.circuits;
 			const drawings =
 				validated.drawings ??
-				(validated.circuits === undefined
+				(circuits === undefined
 					? current.drawings
 					: current.drawings?.filter(
 							(drawing) =>
 								!drawing.circuitId ||
-								validated.circuits!.some(
-									(file) => file.circuit.id === drawing.circuitId,
-								),
+								circuits.some((file) => file.circuit.id === drawing.circuitId),
 						));
 			const snapshot = { ...current, ...validated, drawings };
 			return this.publish(

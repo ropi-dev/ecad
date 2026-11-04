@@ -6,6 +6,7 @@ import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { persistDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import {
 	closeProjectFiles,
@@ -799,9 +800,9 @@ for (const {
 			const saved = JSON.parse(
 				await readProjectFile(
 					page,
-					/^drawing = "(.+)"$/m.exec(
-						await readProjectFile(page, ".ecadprj"),
-					)![1],
+					required(
+						/^drawing = "(.+)"$/m.exec(await readProjectFile(page, ".ecadprj")),
+					)[1],
 				),
 			);
 			expect(saved.shapes).toHaveLength(2);

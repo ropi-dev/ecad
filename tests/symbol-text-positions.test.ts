@@ -3,17 +3,18 @@ import { test } from "node:test";
 import { Effect, Either } from "effect";
 import {
 	placeShapesEffect,
+	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-	redoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
-	moveSymbolText,
-	symbolTextShapes,
-	pinTerminals,
 	type EditorSymbol,
+	moveSymbolText,
+	pinTerminals,
+	symbolTextShapes,
 } from "#/drawing/shapes.ts";
 import {
 	persistDrawingShapes,
@@ -21,7 +22,7 @@ import {
 } from "#/drawing/symbol-persistence.ts";
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { required } from "./helpers/required.ts";
 
 const definition = symbolDefinitions[0];
 
@@ -42,14 +43,18 @@ test("each instance owns its label centers and moving rotated text snaps in worl
 	assert.equal(moved.y, first.y);
 	assert.deepEqual(first.textPositions, second.textPositions);
 	assert.notStrictEqual(
-		first.textPositions!.reference,
-		second.textPositions!.reference,
+		required(first.textPositions).reference,
+		required(second.textPositions).reference,
 	);
 	assert.deepEqual(moved.children, first.children);
 	assert.deepEqual(definition.texts, first.texts);
-	const display = buildDrawingDisplay([moved], new Set()).shapes[0]
-		.children![0];
-	assert.equal(display.x * moved.width, moved.textPositions!.reference!.x);
+	const display = required(
+		buildDrawingDisplay([moved], new Set()).shapes[0].children,
+	)[0];
+	assert.equal(
+		display.x * moved.width,
+		required(required(moved.textPositions).reference).x,
+	);
 });
 
 test("instance positions survive serialization and definition changes while legacy drawings use defaults", () => {
@@ -69,7 +74,7 @@ test("instance positions survive serialization and definition changes while lega
 		texts: definition.texts.map((text) => ({ ...text, x: text.x + 20 })),
 	};
 	const references = new Map([
-		[symbolReferenceKey(definition.library!, definition.id), updated],
+		[symbolReferenceKey(required(definition.library), definition.id), updated],
 	]);
 	const result = resolveDrawingSymbols([restored], [updated], references)
 		.shapes[0] as EditorSymbol;

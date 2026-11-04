@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
+import { test as base, expect, type Page } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { openProjectActions } from "./project-files";
 import { toolbarButton } from "./toolbar";
-import { readFileSync } from "node:fs";
-import { expect, test as base, type Page } from "@playwright/test";
 
 const example = readFileSync(
 	new URL(
@@ -89,7 +90,7 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
 	await expect(buffer.locator("svg polygon")).toHaveCount(1);
 	await testPoint.click();
 	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
 	await expect(
 		page.getByRole("textbox", { name: "Reference", exact: true }),
@@ -100,24 +101,24 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#editor-scene").textContent())!).shapes
-					.length,
+				JSON.parse(required(await page.locator("#editor-scene").textContent()))
+					.shapes.length,
 		)
 		.toBe(1);
 	await (await toolbarButton(page, "Undo")).click();
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#editor-scene").textContent())!).shapes
-					.length,
+				JSON.parse(required(await page.locator("#editor-scene").textContent()))
+					.shapes.length,
 		)
 		.toBe(0);
 	await (await toolbarButton(page, "Redo")).click();
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#editor-scene").textContent())!).shapes
-					.length,
+				JSON.parse(required(await page.locator("#editor-scene").textContent()))
+					.shapes.length,
 		)
 		.toBe(1);
 	await page.reload();

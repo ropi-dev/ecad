@@ -1,7 +1,7 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
-import type { SymbolDefinition } from "#/drawing/symbols.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
+import type { EditorShape } from "#/drawing/shapes.ts";
+import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { ProjectDocument, ProjectSnapshot } from "#/projects/format.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
@@ -145,14 +145,14 @@ export async function assembleLinkedPcbs(
 					...document.symbolLibraries,
 				]
 			: document.symbolLibraries;
+	const loadDirectory = symbolStorage.loadDirectory?.bind(symbolStorage);
 	const resolve = async () => {
 		const userConfig = await symbolStorage.loadConfiguration?.();
 		return resolveSymbolLibraries(
 			userConfig?.symbolLibraries ?? [],
 			projectLibraries,
-			symbolStorage.loadDirectory
-				? (path, scope) =>
-						symbolStorage.loadDirectory!(path, scope, previous.directory)
+			loadDirectory
+				? (path, scope) => loadDirectory(path, scope, previous.directory)
 				: undefined,
 		);
 	};
@@ -197,12 +197,16 @@ export async function assembleLinkedPcbs(
 		})();
 	if (cache && cache.resolution === resolution) cache.definitions = definitions;
 	const byReference = new Map(
-		definitions
-			.filter((definition) => definition.library)
-			.map((definition) => [
-				symbolReferenceKey(definition.library!, definition.id),
-				definition,
-			]),
+		definitions.flatMap((definition) =>
+			definition.library
+				? [
+						[
+							symbolReferenceKey(definition.library, definition.id),
+							definition,
+						] as const,
+					]
+				: [],
+		),
 	);
 	const circuitSources = new Map<string, "circuit" | "schematic">();
 	const externalDrawings = new Set<string>();

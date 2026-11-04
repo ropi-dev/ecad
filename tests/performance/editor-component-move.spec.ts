@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -12,7 +13,9 @@ test("editor-component-move", async ({ page }, testInfo) => {
 	const { drawShape, pinTerminals } = await import("#/drawing/shapes.ts");
 	const symbol = createSymbol(
 		201,
-		symbolDefinitions.find((definition) => definition.id === "resistor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		),
 		{ x: 0, y: 0 },
 	);
 	const [left, right] = pinTerminals(symbol);
@@ -58,7 +61,7 @@ test("editor-component-move", async ({ page }, testInfo) => {
 	).toBeEnabled();
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	const source = {
 		x: bounds.x + bounds.width / 2,
 		y: bounds.y + bounds.height / 2,
@@ -92,11 +95,18 @@ test("editor-component-move", async ({ page }, testInfo) => {
 					const manifest = await (
 						await directory.getFileHandle(".ecadprj")
 					).getFile();
-					const path = (await manifest.text())
-						.match(/^drawing\s*=\s*"([^"]+)"/m)![1]
-						.split("/");
+					const path = ((await manifest.text()).match(
+						/^drawing\s*=\s*"([^"]+)"/m,
+					) ??
+						(() => {
+							throw new Error("Expected a value");
+						})())[1].split("/");
 					let current = directory;
-					const name = path.pop()!;
+					const name =
+						path.pop() ??
+						(() => {
+							throw new Error("Expected a value");
+						})();
 					for (const part of path)
 						current = await current.getDirectoryHandle(part);
 					return JSON.parse(
@@ -112,7 +122,7 @@ test("editor-component-move", async ({ page }, testInfo) => {
 		.toBe(207);
 	const value = await report(page);
 	await finish(page, testInfo, "editor-component-move", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
-		normalizationP95Ms: metric(value, "editor.wire-normalize")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
+		normalizationP95Ms: required(metric(value, "editor.wire-normalize")),
 	});
 });

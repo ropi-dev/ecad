@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import createImporter from "occt-import-js";
 import { Box3, Color, Mesh, SRGBColorSpace, Vector3 } from "three";
-import { createStepGroup, disposeStepGroup } from "#/formats/step/scene.ts";
 import { parseStepFile } from "#/formats/parseStepFile.ts";
+import { createStepGroup, disposeStepGroup } from "#/formats/step/scene.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
 
 test("STEP geometry retains millimetre dimensions for different source units and centers the model", async () => {

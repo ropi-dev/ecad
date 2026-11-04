@@ -1,10 +1,10 @@
-import { toolbarButton } from "./toolbar";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, type Page, test } from "@playwright/test";
 import type { RectangleInput } from "#/commands/drawing-commands.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { drawingReplySchema } from "#/mcp/drawing-protocol.ts";
+import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 

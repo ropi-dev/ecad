@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+
 const args = process.argv.slice(2);
 const development = args.includes("--development");
 const baseline = args.includes("--baseline");

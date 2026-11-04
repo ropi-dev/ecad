@@ -1,19 +1,20 @@
-import { synchronizePcb } from "#/circuit/linked-schematic.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import { assembleLinkedPcbs } from "#/projects/linked-pcb.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createDocumentRegistry } from "#/projects/document-registry.ts";
 import { ProjectClosed, ProjectConflict } from "#/projects/errors.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
+import { assembleLinkedPcbs } from "#/projects/linked-pcb.ts";
+import { createProjectSession } from "#/projects/ProjectSession.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import { createProjectIndex, projectIndex } from "#/projects/project-index.ts";
-import { createProjectSession } from "#/projects/ProjectSession.ts";
 import { assembleProjectSave } from "#/projects/save-assembly.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	id: 1,
@@ -224,7 +225,7 @@ test("session caches snapshots and actions across status changes and rejects obs
 	assert.equal(next.otherUnsavedEdits, true);
 	const oldLibrary = session.getProjectSymbols(first.session);
 	await next.reload();
-	await assert.rejects(() => oldLibrary!.save([], []), ProjectClosed);
+	await assert.rejects(() => required(oldLibrary).save([], []), ProjectClosed);
 	stop();
 });
 

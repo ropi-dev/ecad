@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -48,7 +49,7 @@ test("editor-wire-crossings", async ({ page }, testInfo) => {
 				(await report(page)).metrics["editor.wire-crossings"]?.count ?? 0,
 		)
 		.toBeGreaterThan(0);
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	for (let repeat = 0; repeat < 3; repeat++) {
 		await interaction(page, "crossings.select-all", async () => {
 			await page.mouse.move(
@@ -71,7 +72,7 @@ test("editor-wire-crossings", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-wire-crossings", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
-		crossingsP95Ms: metric(value, "editor.wire-crossings")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
+		crossingsP95Ms: required(metric(value, "editor.wire-crossings")),
 	});
 });

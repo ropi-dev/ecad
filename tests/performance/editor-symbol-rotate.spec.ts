@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -15,7 +16,7 @@ test("editor-symbol-rotate", async ({ page }, testInfo) => {
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
 	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
 	const center = page.getByRole("spinbutton", {
 		name: "Center X",
@@ -51,6 +52,6 @@ test("editor-symbol-rotate", async ({ page }, testInfo) => {
 	await expect(center).toHaveValue(originalCenter);
 	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-rotate", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

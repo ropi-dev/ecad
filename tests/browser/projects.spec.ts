@@ -1,10 +1,10 @@
+import { expect, type Page, test } from "@playwright/test";
 import {
+	closeProjectFiles,
 	openProjectActions,
 	openProjectFiles,
-	closeProjectFiles,
 } from "./project-files";
 import { toolbarButton } from "./toolbar";
-import { expect, test, type Page } from "@playwright/test";
 
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");

@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import {
+	type ConfiguredSymbolLibrary,
 	defaultSymbolConfig,
 	resolveSymbolLibraries,
-	type ConfiguredSymbolLibrary,
 } from "#/symbol-library/config.ts";
 import { prepareSymbolEdit } from "#/symbol-library/editing.ts";
 import { createMemorySymbolLibraryStorage } from "#/symbol-library/storage.tsx";
+import { required } from "./helpers/required.ts";
 
 const file = parseSymbolFile(
 	JSON.stringify({
@@ -34,8 +35,11 @@ test("editing uses the winning source and preserves other libraries and metadata
 	const project = createMemorySymbolLibraryStorage();
 	const userLibraries = [library("first", "Earlier"), library("last", "User")];
 	const projectLibraries = [library("custom-project", "Project")];
-	await user.saveConfiguration!({ version: 1, symbolLibraries: userLibraries });
-	await project.saveConfiguration!({
+	await required(user.saveConfiguration)({
+		version: 1,
+		symbolLibraries: userLibraries,
+	});
+	await required(project.saveConfiguration)({
 		version: 1,
 		symbolLibraries: projectLibraries,
 	});
@@ -43,7 +47,7 @@ test("editing uses the winning source and preserves other libraries and metadata
 		userLibraries,
 		projectLibraries,
 	);
-	const source = resolved.sources.get(file.id)!;
+	const source = required(resolved.sources.get(file.id));
 	assert.equal(source.scope, "project");
 	assert.equal(source.library.id, "custom-project");
 	const target = await prepareSymbolEdit(source, user, project);
@@ -52,8 +56,8 @@ test("editing uses the winning source and preserves other libraries and metadata
 		...target.file,
 		shapes: [...target.file.shapes, { kind: "circle", x: 1, y: 2, radius: 3 }],
 	});
-	const saved = await project.loadConfiguration!();
-	assert.deepEqual(await user.loadConfiguration!(), {
+	const saved = await required(project.loadConfiguration)();
+	assert.deepEqual(await required(user.loadConfiguration)(), {
 		version: 1,
 		symbolLibraries: userLibraries,
 	});
@@ -66,19 +70,25 @@ test("editing uses the winning source and preserves other libraries and metadata
 		shapes: [...file.shapes, { kind: "circle", x: 1, y: 2, radius: 3 }],
 	});
 	await target.save({ ...target.file, shapes: [] });
-	assert.equal((await project.loadConfiguration!()).symbolLibraries.length, 1);
+	assert.equal(
+		(await required(project.loadConfiguration)()).symbolLibraries.length,
+		1,
+	);
 });
 
 test("user definitions are editable without an open project and stale writes are rejected", async () => {
 	const user = createMemorySymbolLibraryStorage();
 	const entry = library("user");
-	await user.saveConfiguration!({ version: 1, symbolLibraries: [entry] });
-	const source = (await resolveSymbolLibraries([entry], [])).sources.get(
-		file.id,
-	)!;
+	await required(user.saveConfiguration)({
+		version: 1,
+		symbolLibraries: [entry],
+	});
+	const source = required(
+		(await resolveSymbolLibraries([entry], [])).sources.get(file.id),
+	);
 	const target = await prepareSymbolEdit(source, user);
 	assert.ok(target);
-	await user.saveConfiguration!({
+	await required(user.saveConfiguration)({
 		version: 1,
 		symbolLibraries: [library("user", "External change")],
 	});
@@ -92,9 +102,9 @@ test("user definitions are editable without an open project and stale writes are
 test("read-only sources and bundled definitions have no editing target", async () => {
 	const user = createMemorySymbolLibraryStorage();
 	const entry = library("user");
-	const source = (await resolveSymbolLibraries([entry], [])).sources.get(
-		file.id,
-	)!;
+	const source = required(
+		(await resolveSymbolLibraries([entry], [])).sources.get(file.id),
+	);
 	assert.equal(
 		await prepareSymbolEdit(source, {
 			...user,
@@ -102,9 +112,11 @@ test("read-only sources and bundled definitions have no editing target", async (
 		}),
 		null,
 	);
-	const builtin = (
-		await resolveSymbolLibraries(defaultSymbolConfig().symbolLibraries, [])
-	).sources.get("resistor")!;
+	const builtin = required(
+		(
+			await resolveSymbolLibraries(defaultSymbolConfig().symbolLibraries, [])
+		).sources.get("resistor"),
+	);
 	assert.equal(await prepareSymbolEdit(builtin, user), null);
 	const project = { ...user, canEditSymbol: async () => false };
 	assert.equal(
@@ -120,9 +132,9 @@ test("read-only sources and bundled definitions have no editing target", async (
 test("project files depend on their own permissions rather than the drawing's permissions", async () => {
 	const user = createMemorySymbolLibraryStorage();
 	const entry = library("project-symbols");
-	const source = (await resolveSymbolLibraries([], [entry])).sources.get(
-		file.id,
-	)!;
+	const source = required(
+		(await resolveSymbolLibraries([], [entry])).sources.get(file.id),
+	);
 	const project = {
 		...user,
 		canEditSymbol: async () => true,
@@ -139,9 +151,11 @@ test("directory edits pass the original source and project directory to host per
 		enabled: true,
 		source: { kind: "directory", path: "../parts" },
 	};
-	const source = (
-		await resolveSymbolLibraries([], [entry], async () => [file])
-	).sources.get(file.id)!;
+	const source = required(
+		(await resolveSymbolLibraries([], [entry], async () => [file])).sources.get(
+			file.id,
+		),
+	);
 	const calls: unknown[] = [];
 	const request = {
 		id: file.id,

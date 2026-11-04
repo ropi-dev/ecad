@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Effect, Either } from "effect";
 import {
+	createSymbolFromSelectionEffect,
 	placeShapesEffect,
+	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-	redoEffect,
-	createSymbolFromSelectionEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
@@ -14,6 +14,7 @@ import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	containsSelection,
+	type EditorSymbol,
 	hitShape,
 	resizeHandles,
 	resizeShape,
@@ -21,12 +22,11 @@ import {
 	symbolShapes,
 	symbolTextShapes,
 	type TextShape,
-	type EditorSymbol,
 } from "#/drawing/shapes.ts";
 import {
+	libraryDefinitions,
 	symbolFileShapes,
 	symbolFileWithShapes,
-	libraryDefinitions,
 } from "#/drawing/symbol-file.ts";
 import {
 	persistDrawingShapes,
@@ -35,9 +35,10 @@ import {
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import {
 	horizontalAlignments,
-	verticalAlignments,
 	textCenter,
+	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
+import { required } from "./helpers/required.ts";
 
 const text: TextShape = {
 	id: 1,
@@ -142,7 +143,9 @@ test("symbol label alignment survives saving, resolution, rotation and nested fi
 	const restored = resolveDrawingSymbols(
 		[saved],
 		[],
-		new Map([[`user:${definition.library!.id}:${definition.id}`, definition]]),
+		new Map([
+			[`user:${required(definition.library).id}:${definition.id}`, definition],
+		]),
 	).shapes[0] as EditorSymbol;
 	assert.deepEqual(restored.textAlignments, aligned.textAlignments);
 	assert.equal(symbolTextShapes(first)[0].horizontalAlign, undefined);
@@ -151,7 +154,7 @@ test("symbol label alignment survives saving, resolution, rotation and nested fi
 	const center = textCenter(label);
 	assert.ok(hitShape(aligned, center, 0));
 	const display = buildDrawingDisplay([aligned], new Set()).shapes[0];
-	const child = display.children![0];
+	const child = required(display.children)[0];
 	const worldX = aligned.x - child.y * aligned.height;
 	const worldY = aligned.y + child.x * aligned.width;
 	assert.ok(Math.abs(worldX - center.x) < 1e-9);

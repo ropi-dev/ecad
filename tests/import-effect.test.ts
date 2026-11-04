@@ -4,8 +4,8 @@ import { Cause, Effect, Exit, Fiber, TestClock, TestContext } from "effect";
 import { BufferGeometry, Mesh } from "three";
 import { expandGerberFile } from "#/formats/expandGerberFile.ts";
 import {
-	acquireImported,
 	ArchiveError,
+	acquireImported,
 	ImportTimeout,
 	InvalidFile,
 	requestWorker,

@@ -1,10 +1,10 @@
 import { Effect } from "effect";
-import type { Diagnostic, ParseResult } from "#/engine/types.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
 } from "#/engine/planar-object.ts";
 import type { PlanarObject, SpatialObject } from "#/engine/scene.ts";
+import type { Diagnostic, ParseResult } from "#/engine/types.ts";
 import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import {

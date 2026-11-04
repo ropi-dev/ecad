@@ -10,14 +10,15 @@ import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import {
-	resolveSymbolLibraries,
 	type ConfiguredSymbolLibrary,
+	resolveSymbolLibraries,
 } from "#/symbol-library/config.ts";
+import { required } from "./helpers/required.ts";
 
 test("symbol placement snapshots library identity and all pins with independent instance identities", () => {
-	const definition = symbolDefinitions.find(
-		(definition) => definition.id === "rp2040",
-	)!;
+	const definition = required(
+		symbolDefinitions.find((definition) => definition.id === "rp2040"),
+	);
 	const first = componentFromSymbol(definition, []);
 	const second = componentFromSymbol(definition, [first]);
 	const sourcePins = definition.children.filter(
@@ -52,7 +53,9 @@ test("symbol placement snapshots library identity and all pins with independent 
 
 test("unnumbered legacy pins receive numbers and source definitions remain independent", () => {
 	const definition = structuredClone(
-		symbolDefinitions.find((definition) => definition.id === "resistor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		),
 	);
 	const component = componentFromSymbol(definition, [
 		{ ...componentFromSymbol(definition, []), reference: "R1" },
@@ -63,10 +66,12 @@ test("unnumbered legacy pins receive numbers and source definitions remain indep
 		["1", "2"],
 	);
 	const original = structuredClone(component);
-	const pin = definition.children.find((child) => child.kind === "pin")!;
+	const pin = required(
+		definition.children.find((child) => child.kind === "pin"),
+	);
 	pin.name = "Changed";
 	pin.number = "99";
-	definition.library!.id = "Changed";
+	required(definition.library).id = "Changed";
 	assert.deepEqual(component, original);
 });
 
@@ -124,9 +129,9 @@ test("nested project symbols use the same resolved pins and project precedence a
 		[library],
 	);
 	assert.deepEqual(resolved.errors, []);
-	const definition = resolved.definitions.find(
-		(definition) => definition.id === parent.id,
-	)!;
+	const definition = required(
+		resolved.definitions.find((definition) => definition.id === parent.id),
+	);
 	const component = componentFromSymbol(definition, []);
 	assert.deepEqual(component.part.library, { scope: "project", id: "parts" });
 	assert.equal(component.part.name, "Parent");
@@ -140,7 +145,9 @@ test("a placed symbol and its layout form one undo transaction and invalid place
 	const store = createCircuitStore(createCircuit("Placement"));
 	const original = store.getSnapshot();
 	const component = componentFromSymbol(
-		symbolDefinitions.find((definition) => definition.id === "resistor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		),
 		[],
 	);
 	assert.throws(() =>
@@ -167,7 +174,7 @@ test("a placed symbol and its layout form one undo transaction and invalid place
 	assert.deepEqual(store.getSnapshot().circuit.components, [component]);
 	assert.throws(() =>
 		componentFromSymbol(
-			symbolDefinitions.find((definition) => definition.id === "box")!,
+			required(symbolDefinitions.find((definition) => definition.id === "box")),
 			[],
 		),
 	);

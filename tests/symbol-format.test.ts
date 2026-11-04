@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
+import { hitShape, symbolShapes } from "#/components/editor/shapes.ts";
 import {
+	createEmptySymbolFile,
 	importSymbolFile,
 	importSymbolFiles,
 	libraryDefinitions,
@@ -9,15 +12,10 @@ import {
 	parseSavedSymbolLibrary,
 	parseSymbolFile,
 	SYMBOL_FILE_LIMIT,
-} from "#/components/editor/symbolFormat.ts";
-import { createSymbol } from "#/components/editor/symbols.ts";
-import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
-import { hitShape, symbolShapes } from "#/components/editor/shapes.ts";
-import { runEffect } from "#/lib/effect.ts";
-import {
-	createEmptySymbolFile,
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
+import { createSymbol } from "#/components/editor/symbols.ts";
+import { runEffect } from "#/lib/effect.ts";
 
 const example = readFileSync(
 	new URL(
@@ -91,91 +89,91 @@ test("converts every primitive, degrees, and diagonal wires without axis constra
 for (const [name, mutate] of [
 	[
 		"version",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.version = 2;
 		},
 	],
 	[
 		"units",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.units = "in";
 		},
 	],
 	[
 		"unsupported primitive",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes[0].kind = "svg";
 		},
 	],
 	[
 		"negative radius",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes[0].radius = -1;
 		},
 	],
 	[
 		"coordinate overflow",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes[0].x = 1001;
 		},
 	],
 	[
 		"nonfinite coordinate",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes[0].x = Infinity;
 		},
 	],
 	[
 		"numeric string",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes[0].x = "0";
 		},
 	],
 	[
 		"zero length wire",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes = [{ kind: "wire", x1: 0, y1: 0, x2: 0, y2: 0 }];
 		},
 	],
 	[
 		"reserved ID",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.id = "resistor";
 		},
 	],
 	[
 		"missing name",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			delete data.name;
 		},
 	],
 	[
 		"blank name",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.name = "   ";
 		},
 	],
 	[
 		"invalid ID",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.id = "../bad";
 		},
 	],
 	[
 		"unknown property",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes[0].raduis = 1;
 		},
 	],
 	[
 		"too many shapes",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.shapes = Array(257).fill(data.shapes[0]);
 		},
 	],
 	[
 		"multi-symbol container",
-		(data: any) => {
+		(data: Record<string, unknown> & { shapes: Record<string, unknown>[] }) => {
 			data.symbols = [{ ...data }];
 		},
 	],

@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { Effect } from "effect";
 import {
 	placeShapesEffect,
-	removeShapesEffect,
 	redoEffect,
+	removeShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";

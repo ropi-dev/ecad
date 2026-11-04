@@ -3,6 +3,7 @@ import { instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles } from "../browser/project-files";
 import { createTestComponent } from "../fixtures/circuit.ts";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -93,7 +94,7 @@ test("circuit-collapse", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-collapse", {
 		interactionP95Ms: percentile(times),
-		graphP95Ms: metric(value, "circuit.graph")!,
-		editP95Ms: metric(value, "circuit.edit")!,
+		graphP95Ms: required(metric(value, "circuit.graph")),
+		editP95Ms: required(metric(value, "circuit.edit")),
 	});
 });

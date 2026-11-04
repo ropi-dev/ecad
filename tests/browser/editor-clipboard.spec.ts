@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { required } from "../helpers/required.ts";
 import { selectSymbolAttribute } from "./symbol-items";
 
 test.describe.configure({ mode: "serial" });
@@ -12,7 +13,7 @@ test.use({
 const documentState = async (
 	page: import("@playwright/test").Page,
 ): Promise<{ shapes: EditorShape[]; historyId: number; historySize: number }> =>
-	JSON.parse((await page.locator("#editor-document").textContent())!);
+	JSON.parse(required(await page.locator("#editor-document").textContent()));
 
 async function copiedSelection(page: import("@playwright/test").Page) {
 	await expect
@@ -39,7 +40,7 @@ test.beforeEach(async ({ page }) => {
 	await page
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
-	const box = (await page.locator("canvas").boundingBox())!;
+	const box = required(await page.locator("canvas").boundingBox());
 	await page
 		.locator("canvas")
 		.click({ position: { x: box.width / 2, y: box.height / 2 } });
@@ -102,11 +103,21 @@ test("one copy offers a vector image, a PNG, editable data and importable save-f
 		const [item] = await navigator.clipboard.read();
 		const html = await (await item.getType("text/html")).text();
 		const file = await (await item.getType("text/plain")).text();
-		const image = new DOMParser()
-			.parseFromString(html, "text/html")
-			.querySelector("img")!;
+		const image =
+			new DOMParser().parseFromString(html, "text/html").querySelector("img") ??
+			(() => {
+				throw new Error("Expected a value");
+			})();
 		const svg = decodeURIComponent(
-			image.getAttribute("src")!.split(",").slice(1).join(","),
+			(
+				image.getAttribute("src") ??
+				(() => {
+					throw new Error("Expected a value");
+				})()
+			)
+				.split(",")
+				.slice(1)
+				.join(","),
 		);
 		const png = await item.getType("image/png");
 		const bitmap = await createImageBitmap(png);
@@ -141,11 +152,20 @@ test("one copy offers a vector image, a PNG, editable data and importable save-f
 			"position:fixed;left:40px;top:110px;z-index:50;background:#fff;color:#17232b;padding:24px;border-radius:12px;width:480px;font:15px sans-serif;box-shadow:0 10px 40px #0006";
 		destination.innerHTML =
 			'<h2 style="margin:0 0 16px">Paste into different destinations</h2><label>Plain text destination<textarea aria-label="Plain text destination" style="display:block;width:100%;height:130px;margin:12px 0 20px;font:12px monospace"></textarea></label><label>Image destination<div role="textbox" contenteditable="true" aria-label="Image destination" style="min-height:140px;margin-top:12px;border:1px solid #bbc;padding:12px"></div></label>';
-		const imageTarget = destination.querySelector<HTMLElement>(
-			'[aria-label="Image destination"]',
-		)!;
+		const imageTarget =
+			destination.querySelector<HTMLElement>(
+				'[aria-label="Image destination"]',
+			) ??
+			(() => {
+				throw new Error("Expected a value");
+			})();
 		imageTarget.addEventListener("paste", (event) => {
-			const file = (event as ClipboardEvent).clipboardData!.files[0];
+			const file = (
+				(event as ClipboardEvent).clipboardData ??
+				(() => {
+					throw new Error("Expected a value");
+				})()
+			).files[0];
 			if (!file) return;
 			event.preventDefault();
 			const image = new Image();

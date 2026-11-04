@@ -11,6 +11,7 @@ import { ProjectRepository } from "#/projects/repository.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
 import { memoryDirectory } from "./helpers/project-directory.ts";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	id: 1,
@@ -364,7 +365,7 @@ test("electrical edits during save retain the latest revision and graph-only cha
 	await f.ready;
 	try {
 		await f.session.getSnapshot().openCircuit("main.ecaddraw");
-		const circuit = f.session.getSnapshot().editorCircuit!.store;
+		const circuit = required(f.session.getSnapshot().editorCircuit).store;
 		const gate = f.block();
 		const file = circuit.getSnapshot();
 		circuit.execute({
@@ -443,7 +444,7 @@ test("graph move during electrical save survives completion", async () => {
 	await f.ready;
 	try {
 		await f.session.getSnapshot().openCircuit("main.ecaddraw");
-		const c = f.session.getSnapshot().editorCircuit!.store;
+		const c = required(f.session.getSnapshot().editorCircuit).store;
 		const gate = f.block();
 		c.execute({
 			type: "add-net",
@@ -511,9 +512,11 @@ test("collapse and graph undo survive electrical save completion without another
 	await f.ready;
 	try {
 		await f.session.getSnapshot().openCircuit("main.ecaddraw");
-		const circuit = f.session.getSnapshot().editorCircuit!.store;
+		const circuit = required(f.session.getSnapshot().editorCircuit).store;
 		const component = componentFromSymbol(
-			symbolDefinitions.find((definition) => definition.id === "resistor")!,
+			required(
+				symbolDefinitions.find((definition) => definition.id === "resistor"),
+			),
 			[],
 		);
 		const gate = f.block();
@@ -561,9 +564,11 @@ test("non-electrical schematic saves preserve circuit graph undo and redo histor
 	await f.ready;
 	try {
 		await f.session.getSnapshot().openCircuit("main.ecaddraw");
-		const circuit = f.session.getSnapshot().editorCircuit!.store;
+		const circuit = required(f.session.getSnapshot().editorCircuit).store;
 		const component = componentFromSymbol(
-			symbolDefinitions.find((definition) => definition.id === "resistor")!,
+			required(
+				symbolDefinitions.find((definition) => definition.id === "resistor"),
+			),
 			[],
 		);
 		circuit.execute({

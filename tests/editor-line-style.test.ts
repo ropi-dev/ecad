@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Effect } from "effect";
+import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import {
 	placeShapesEffect,
+	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-	redoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { lineStyles } from "#/drawing/line-style.ts";

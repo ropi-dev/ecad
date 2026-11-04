@@ -4,6 +4,7 @@ import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { cliMain, createCliDrawing, startCli } from "./helpers/cli-mcp.ts";
+import { required } from "./helpers/required.ts";
 
 const wire = (x: number) => ({
 	kind: "wire",
@@ -65,11 +66,11 @@ test("CLI saves electrical roles and exposes named nets across fresh processes, 
 	});
 	const renamed = await call(fixture.env, "getDrawing");
 	assert.deepEqual(
-		renamed.nets!.map((net) => net.wires),
+		required(renamed.nets).map((net) => net.wires),
 		[[1], [2]],
 	);
 	assert.deepEqual(
-		renamed.nets!.map((net) => net.names),
+		required(renamed.nets).map((net) => net.names),
 		[["+3V3"], ["GND"]],
 	);
 	await call(fixture.env, "undo");
@@ -114,7 +115,9 @@ test("stdio MCP accepts named-net shapes and shares persisted electrical connect
 		arguments: { shapes: [{ ...label(30, "supply", "GND"), id: 4 }] },
 	});
 	assert.deepEqual(
-		(await call(fixture.env, "getDrawing")).nets!.map((net) => net.wires),
+		required((await call(fixture.env, "getDrawing")).nets).map(
+			(net) => net.wires,
+		),
 		[[1], [2]],
 	);
 	await client.callTool({ name: "undo", arguments: {} });
@@ -203,7 +206,7 @@ test("local MCP drawing reads reuse nets and invalidate on commands and external
 			local.execute({ type: "getDrawing" }),
 		);
 		assert.ok(reply.ok);
-		return reply.drawing.nets!;
+		return required(reply.drawing.nets);
 	};
 	const first = await read();
 	assert.equal(await read(), first);

@@ -337,12 +337,14 @@ function placeNetLabels(
 	const members = netMembers(circuit.components);
 	circuit.nets.forEach((net, index) => {
 		if (unchanged.has(net.id)) return;
+		const label = labels.get(net.id);
+		if (label === undefined) throw new Error(`Missing label for net ${net.id}`);
 		if (!net.pinIds.length)
 			next.push(
 				createNetLabel(
 					net.id,
 					nextId++,
-					labels.get(net.id)!,
+					label,
 					{ x: 200 + index * 10, y: -200 },
 					measureText,
 				),
@@ -362,7 +364,7 @@ function placeNetLabels(
 				createNetLabel(
 					net.id,
 					nextId++,
-					labels.get(net.id)!,
+					label,
 					terminal,
 					measureText,
 					symbol,

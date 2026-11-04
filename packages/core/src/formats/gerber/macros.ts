@@ -6,8 +6,8 @@ import {
 	polygon,
 	rectangle,
 	regularPolygon,
-	transformPoint,
 	type Shape,
+	transformPoint,
 } from "./geometry";
 
 /** Recursive descent; Gerber expressions are data and are never evaluated as JavaScript. */
@@ -149,7 +149,7 @@ export function buildMacro(
 				throw new Error("Macro outline must have 3 to 5000 vertices");
 			requireCount(2 * n + 5);
 			exposure = p[0];
-			const matrix = apertureMatrix("N", p.at(-1)!, 1),
+			const matrix = apertureMatrix("N", p[p.length - 1], 1),
 				points: Point[] = [];
 			for (let i = 0; i <= n; i++)
 				points.push(

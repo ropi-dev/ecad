@@ -1,13 +1,13 @@
-import { expect, test } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { expect, test } from "@playwright/test";
 import {
 	cliExecutable,
 	createCliDrawing,
 	startCli,
 } from "../helpers/cli-mcp.ts";
 
-test("cli-drawing", async ({}, testInfo) => {
+test("cli-drawing", async (_fixtures, testInfo) => {
 	const metrics: Record<string, number> = {};
 	const measure = async <T>(name: string, run: () => Promise<T>) => {
 		const start = performance.now();
@@ -103,7 +103,7 @@ test("cli-drawing", async ({}, testInfo) => {
 	}
 });
 
-test("named-net-connectivity", async ({}, testInfo) => {
+test("named-net-connectivity", async (_fixtures, testInfo) => {
 	const { electricalNets } = await import("#/drawing/named-nets.ts");
 	const { drawShape } = await import("#/drawing/shapes.ts");
 	const shapes = [

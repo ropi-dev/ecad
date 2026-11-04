@@ -13,7 +13,6 @@ import {
 	parseSymbolFile,
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
-import { createSymbol, createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	drawShape,
@@ -27,8 +26,10 @@ import {
 	symbolShapes,
 	wireConnectionPoints,
 } from "#/drawing/shapes.ts";
+import { createSymbol, createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { drawingShapeSchema } from "#/mcp/drawing-protocol.ts";
+import { required } from "./helpers/required.ts";
 
 const close = (actual: number, expected: number) =>
 	assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
@@ -112,7 +113,9 @@ test("lines do not merge or connect to wires, and their render width follows the
 		geometry.computeBoundingBox();
 		assert.ok(
 			Math.abs(
-				geometry.boundingBox!.max.y - geometry.boundingBox!.min.y - 0.7,
+				required(geometry.boundingBox).max.y -
+					required(geometry.boundingBox).min.y -
+					0.7,
 			) < 1e-6,
 		);
 	} finally {

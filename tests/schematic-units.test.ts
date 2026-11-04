@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { formatInches, formatMils, fromMils, toMils } from "#/drawing/units.ts";
 import { gridLayers, rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
+import { required } from "./helpers/required.ts";
 
 test("schematic display units preserve physical dimensions", () => {
 	assert.equal(fromMils(1000), 25.4);
@@ -62,7 +63,7 @@ test("new shapes and text use mil-sized defaults", async () => {
 			{ x: fromMils(100), y: fromMils(100) },
 		);
 		assert.equal(toMils(shape.lineWidth), 5);
-		if (shape.kind === "pin") assert.equal(toMils(shape.length!), 100);
+		if (shape.kind === "pin") assert.equal(toMils(required(shape.length)), 100);
 	}
 	const text = createTextShape(2, { x: 0, y: 0 }, (value) => value.length * 48);
 	assert.equal(toMils(text.fontSize), 100);
@@ -75,14 +76,16 @@ test("new shapes and text use mil-sized defaults", async () => {
 test("built-in annotation sizes and symbol labels use round mil dimensions", async () => {
 	const { generateDefaultSymbols } = await import("@ecad/default-symbols");
 	const symbols = generateDefaultSymbols();
-	const box = symbols.find(({ file }) => file.id === "box")!.file;
-	const border = box.shapes.find((shape) => shape.kind === "rectangle")!;
+	const box = required(symbols.find(({ file }) => file.id === "box")).file;
+	const border = required(
+		box.shapes.find((shape) => shape.kind === "rectangle"),
+	);
 	assert.equal(border.kind, "rectangle");
 	if (border.kind !== "rectangle") throw new Error("Expected a rectangle");
 	assert.equal(toMils(border.width), 1000);
 	assert.equal(toMils(border.height), 600);
-	assert.equal(toMils(border.lineWidth!), 5);
-	const text = box.shapes.find((shape) => shape.kind === "text")!;
+	assert.equal(toMils(required(border.lineWidth)), 5);
+	const text = required(box.shapes.find((shape) => shape.kind === "text"));
 	assert.equal(text.kind, "text");
 	if (text.kind !== "text") throw new Error("Expected text");
 	assert.equal(toMils(text.fontSize), 100);

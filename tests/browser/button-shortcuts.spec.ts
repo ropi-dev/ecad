@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { toolbarButton } from "./toolbar";
 
 const hints = '[data-slot="button-shortcut"]';
@@ -23,12 +24,12 @@ test("Ctrl shows separate hints for every visible button and activates a group",
 		.locator(`${hints}[title="Shapes"]`)
 		.getAttribute("data-shortcut");
 	expect(key).toBeTruthy();
-	await page.keyboard.press(key!);
+	await page.keyboard.press(required(key));
 	await expect(shapes).toHaveAttribute("aria-expanded", "true");
 	await expect(page.locator(`${hints}[title="Rectangle"]`)).toBeVisible();
-	await page.keyboard.press(key!);
+	await page.keyboard.press(required(key));
 	await expect(page.locator(`${hints}[title="Rectangle"]`)).toHaveCount(0);
-	await page.keyboard.press(key!);
+	await page.keyboard.press(required(key));
 	await expect(page.locator(`${hints}[title="Rectangle"]`)).toHaveAttribute(
 		"data-shortcut",
 		"R",
@@ -46,7 +47,7 @@ test("hints reset on blur and disabled buttons cannot activate", async ({
 	await expect(disabled).toBeVisible();
 	const key = await disabled.getAttribute("data-shortcut");
 	const before = await page.locator("#editor-document").textContent();
-	await page.keyboard.press(key!);
+	await page.keyboard.press(required(key));
 	expect(await page.locator("#editor-document").textContent()).toBe(before);
 	await page.evaluate(() => window.dispatchEvent(new Event("blur")));
 	await expect(page.locator(hints)).toHaveCount(0);
@@ -85,7 +86,12 @@ test("sidebar needs Ctrl+Shift while Ctrl reveals both scopes", async ({
 			return new DOMPoint(
 				bounds.x,
 				bounds.y + bounds.height / 2,
-			).matrixTransform(shape.getScreenCTM()!).y;
+			).matrixTransform(
+				shape.getScreenCTM() ??
+					(() => {
+						throw new Error("Expected a value");
+					})(),
+			).y;
 		}),
 	);
 	expect(Math.abs(centers[0] - centers[1])).toBeLessThan(0.1);
@@ -103,10 +109,10 @@ test("sidebar needs Ctrl+Shift while Ctrl reveals both scopes", async ({
 		});
 	expect(Math.abs(letterMiddle - middle)).toBeLessThan(0.1);
 	const key = await hint.getAttribute("data-shortcut");
-	await page.keyboard.press(key!);
+	await page.keyboard.press(required(key));
 	await expect(sidebar).toHaveAttribute("data-pinned", "true");
 	await page.keyboard.down("Shift");
-	await page.keyboard.press(key!);
+	await page.keyboard.press(required(key));
 	await expect(sidebar).toHaveAttribute("data-pinned", "false");
 	await page.keyboard.up("Shift");
 	await expect(page.locator(hints).first()).toBeVisible();
@@ -171,7 +177,7 @@ test("Ctrl+Plus zooms the editor when Shift produces the plus character", async 
 	const fit = page.getByRole("button", { name: "Fit drawing", exact: true });
 	const before = await fit.textContent();
 	await page.keyboard.press("Control+Shift+Equal");
-	await expect(fit).not.toHaveText(before!);
+	await expect(fit).not.toHaveText(required(before));
 });
 
 test("Undo and Redo follow the key labels on a QWERTZ layout", async ({
@@ -184,7 +190,8 @@ test("Undo and Redo follow the key labels on a QWERTZ layout", async ({
 	await page.mouse.up();
 	await page.keyboard.press("Escape");
 	const shapes = async () =>
-		JSON.parse((await page.locator("#editor-document").textContent())!).shapes;
+		JSON.parse(required(await page.locator("#editor-document").textContent()))
+			.shapes;
 	await expect.poll(async () => (await shapes()).length).toBe(1);
 	await page
 		.getByRole("button", { name: "History tools", exact: true })
@@ -225,7 +232,7 @@ test("Radix dialogs hide background hints and block background Delete", async ({
 		page.getByRole("button", { name: "Delete", exact: true }),
 	).toBeEnabled();
 	const shapes = async () =>
-		JSON.parse((await page.locator("#project-document").textContent())!)
+		JSON.parse(required(await page.locator("#project-document").textContent()))
 			.editorShapes;
 	const before = await shapes();
 	expect(before).toHaveLength(1);
@@ -262,7 +269,7 @@ for (const label of ["Add file", "Project actions"]) {
 		await expect(hint).toBeVisible();
 		const key = await hint.getAttribute("data-shortcut");
 		await page.keyboard.down("Shift");
-		await page.keyboard.press(key!);
+		await page.keyboard.press(required(key));
 		await expect(
 			page.getByRole("menu", { name: label, exact: true }),
 		).toBeVisible();

@@ -4,6 +4,7 @@ import {
 	selectSymbolParent,
 } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -59,7 +60,7 @@ test("editor-text-alignment", async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	for (const x of [0.3, 0.6]) {
 		await interaction(page, "symbol.text-placement", async () => {
 			await page.getByRole("button", { name: "Symbols", exact: true }).click();
@@ -149,6 +150,6 @@ test("editor-text-alignment", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-text-alignment", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

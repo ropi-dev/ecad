@@ -1,11 +1,12 @@
 import { resolve } from "node:path";
+import { expect, type Page, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
-import { expect, test, type Page } from "@playwright/test";
 import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>
-	JSON.parse((await page.locator("#project-document").textContent())!);
+	JSON.parse(required(await page.locator("#project-document").textContent()));
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 

@@ -9,13 +9,14 @@ import {
 	Raycaster,
 	Vector3,
 } from "three";
+import type { DrawingAppearance } from "#/drawing/display.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { drawShape, PIN_RADIUS, pinTerminals } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
-import type { DrawingAppearance } from "#/drawing/display.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
+import { required } from "./helpers/required.ts";
 
 const hex = (appearance: DrawingAppearance) =>
 	darkSchematicTheme.appearance[appearance].slice(1);
@@ -362,7 +363,7 @@ test("legacy pin labels show names and numbers upright on standalone pins, rotat
 			parent.children?.map((label) => label.text),
 			["VCC", "01"],
 		);
-		for (const label of parent.children!) {
+		for (const label of required(parent.children)) {
 			assert.equal(label.appearance, "selected");
 			assert.equal(parent.rotation + label.rotation, 0);
 			const x = label.x * parent.width;
@@ -524,9 +525,11 @@ test("renderer reuses moved geometry and releases replaced, canceled, and owned 
 	assert.equal(moved.geometry, geometry);
 	assert.equal(moved.position.x, 70);
 	assert.equal(oldDisposals, 0);
-	const selection = root
-		.getObjectByName("editor-shapes")!
-		.children.find((part) => part instanceof LineLoop)!;
+	const selection = required(
+		required(root.getObjectByName("editor-shapes")).children.find(
+			(part) => part instanceof LineLoop,
+		),
+	);
 	assert.equal(selection.position.x, 70);
 	assert.equal(selection.scale.x, rectangle.width + 4);
 	const resized = update({ ...rectangle, width: 40 }, [

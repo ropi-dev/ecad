@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -53,7 +54,7 @@ test("circuit-auto-names", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-auto-names", {
 		interactionP95Ms: percentile(times),
-		graphP95Ms: metric(value, "circuit.graph")!,
-		editP95Ms: metric(value, "circuit.edit")!,
+		graphP95Ms: required(metric(value, "circuit.graph")),
+		editP95Ms: required(metric(value, "circuit.edit")),
 	});
 });

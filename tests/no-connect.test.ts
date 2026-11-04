@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { exportDrawingSvg } from "#/drawing/export.ts";
+import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	drawShape,
 	hitShape,
@@ -9,10 +12,8 @@ import {
 	symbolShapes,
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
-import { exportDrawingSvg } from "#/drawing/export.ts";
+import { required } from "./helpers/required.ts";
 
 test("no-connect markers survive storage, hide the open-pin halo and do not create terminals", () => {
 	const pin = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
@@ -32,8 +33,8 @@ test("no-connect geometry draws both diagonals in the editor and SVG export", ()
 	try {
 		geometry.computeBoundingBox();
 		assert.ok(geometry.getAttribute("position").count > 0);
-		assert.ok(geometry.boundingBox!.max.x > 0.5);
-		assert.ok(geometry.boundingBox!.min.y < -0.5);
+		assert.ok(required(geometry.boundingBox).max.x > 0.5);
+		assert.ok(required(geometry.boundingBox).min.y < -0.5);
 	} finally {
 		geometry.dispose();
 	}
@@ -71,9 +72,9 @@ test("no-connect symbol children suppress transformed terminal halos and honor o
 			openPins([symbol], { point: terminal, tolerance: 0.1 }).length,
 			0,
 		);
-		const worldMarker = symbolShapes(symbol).find(
-			(shape) => shape.kind === "no-connect",
-		)!;
+		const worldMarker = required(
+			symbolShapes(symbol).find((shape) => shape.kind === "no-connect"),
+		);
 		assert.ok(
 			Math.hypot(worldMarker.x - terminal.x, worldMarker.y - terminal.y) < 1e-9,
 		);

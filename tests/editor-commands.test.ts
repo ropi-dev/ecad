@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Effect, Either } from "effect";
 import {
-	InvalidDrawingCommand,
 	createSymbolFromSelectionEffect,
+	InvalidDrawingCommand,
 	jumpHistoryEffect,
 	placeRectangleEffect,
 	placeShapesEffect,
 	redoEffect,
 	removeShapesEffect,
-	replaceShapesEffect,
 	replaceAndPlaceShapesEffect,
+	replaceShapesEffect,
 	rotateShapesEffect,
 	type ShapeInput,
 	undoEffect,
@@ -25,6 +25,7 @@ import {
 	symbolTextShapes,
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	x: 10,
@@ -79,9 +80,11 @@ test("rotation preserves component centers, definitions and labels in one undoab
 	const rotatedPin = pinTerminals(symbol)[0];
 	assert.ok(Math.abs(rotatedPin.x - (first.x - (pin.y - first.y))) < 1e-9);
 	assert.ok(Math.abs(rotatedPin.y - (first.y + (pin.x - first.x))) < 1e-9);
-	const label = symbolTextShapes(symbol).find(
-		(text) => text.text === first.attributes.reference,
-	)!;
+	const label = required(
+		symbolTextShapes(symbol).find(
+			(text) => text.text === first.attributes.reference,
+		),
+	);
 	assert.equal(label.x, first.x - 4);
 	assert.equal(label.y, first.y + 8);
 	run(undoEffect);
@@ -554,15 +557,16 @@ test("concurrent Effect callers commit against current state and allocate distin
 });
 
 // Compile-time examples document that a placement cannot depend on a later UI gesture.
-if (false) {
+function placementTypeExamples() {
 	// @ts-expect-error Placement requires size, rotation and stroke, not only a position.
 	placeRectangleEffect({ x: 10, y: 20 });
-	// @ts-expect-error Text placement requires its already measured dimensions.
 	placeShapesEffect(
+		// @ts-expect-error Text placement requires its already measured dimensions.
 		[{ kind: "text", text: "Pending", fontSize: 5 }],
 		"Place text",
 	);
 }
+void placementTypeExamples;
 
 test("branch placement splits a trunk in one transaction with stable IDs and atomic undo", () => {
 	const { store, run } = session();
@@ -1073,7 +1077,9 @@ test("moving an electrical label preserves unrelated nets along both direct rout
 			),
 		);
 		const before = store.getSnapshot();
-		const selected = before.shapes.find((shape) => shape.id === label.id)!;
+		const selected = required(
+			before.shapes.find((shape) => shape.id === label.id),
+		);
 		const replacements = moveShapes(
 			[selected],
 			{ x: 30, y: 10 },

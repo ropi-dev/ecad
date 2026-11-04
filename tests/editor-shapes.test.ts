@@ -3,16 +3,16 @@ import { test } from "node:test";
 import {
 	constrainWireEndpoint,
 	drawShape,
-	editShapeAttribute,
 	type EditorShape,
+	editShapeAttribute,
 	moveShapes,
 	normalizeWireSegments,
 	resizeHandles,
 	resizeShape,
 	snapPoint,
 } from "#/components/editor/shapes.ts";
-
 import { rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
+import { required } from "./helpers/required.ts";
 
 const close = (actual: number, expected: number) =>
 	assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
@@ -22,18 +22,20 @@ test("rotated corner resizing anchors the opposite corner and clamps dimensions 
 		...drawShape(1, "rectangle", { x: 10, y: 20 }, { x: 50, y: 40 }),
 		rotation: Math.PI / 3,
 	};
-	const handle = resizeHandles(original).find((handle) => handle.id === "1,1")!;
-	const fixed = resizeHandles(original).find(
-		(handle) => handle.id === "-1,-1",
-	)!;
+	const handle = required(
+		resizeHandles(original).find((handle) => handle.id === "1,1"),
+	);
+	const fixed = required(
+		resizeHandles(original).find((handle) => handle.id === "-1,-1"),
+	);
 	for (const delta of [
 		{ x: 15, y: 30 },
 		{ x: -1000, y: -1000 },
 	]) {
 		const resized = resizeShape(original, handle, delta);
-		const anchor = resizeHandles(resized).find(
-			(handle) => handle.id === "-1,-1",
-		)!;
+		const anchor = required(
+			resizeHandles(resized).find((handle) => handle.id === "-1,-1"),
+		);
 		close(anchor.x, fixed.x);
 		close(anchor.y, fixed.y);
 		assert.ok(resized.width >= 0.1 && resized.height >= 0.1);
@@ -43,7 +45,9 @@ test("rotated corner resizing anchors the opposite corner and clamps dimensions 
 
 test("circle resizing keeps its center and diameter consistent", () => {
 	const original = drawShape(1, "circle", { x: 10, y: 20 }, { x: 25, y: 20 });
-	const handle = resizeHandles(original).find((handle) => handle.id === "1,0")!;
+	const handle = required(
+		resizeHandles(original).find((handle) => handle.id === "1,0"),
+	);
 	const resized = resizeShape(original, handle, { x: 15, y: 40 });
 	close(resized.width, 100);
 	close(resized.height, 100);
@@ -105,16 +109,16 @@ test("either line endpoint can pass its opposite endpoint without moving the anc
 	]) {
 		const original = drawShape(1, "wire", { x: 10, y: 20 }, end);
 		for (const handle of resizeHandles(original)) {
-			const fixed = resizeHandles(original).find(
-				(other) => other.id !== handle.id,
-			)!;
+			const fixed = required(
+				resizeHandles(original).find((other) => other.id !== handle.id),
+			);
 			const resized = resizeShape(original, handle, {
 				x: 2 * (fixed.x - handle.x),
 				y: 2 * (fixed.y - handle.y),
 			});
-			const anchor = resizeHandles(resized).find(
-				(other) => other.id === fixed.id,
-			)!;
+			const anchor = required(
+				resizeHandles(resized).find((other) => other.id === fixed.id),
+			);
 			close(anchor.x, fixed.x);
 			close(anchor.y, fixed.y);
 			close(resized.width, 40);
@@ -132,9 +136,9 @@ test("either line endpoint can collapse onto its anchor before commit normalizat
 	]) {
 		const original = drawShape(1, "wire", { x: 10, y: 20 }, end);
 		for (const handle of resizeHandles(original)) {
-			const fixed = resizeHandles(original).find(
-				(other) => other.id !== handle.id,
-			)!;
+			const fixed = required(
+				resizeHandles(original).find((other) => other.id !== handle.id),
+			);
 			const delta = { x: fixed.x - handle.x, y: fixed.y - handle.y };
 			for (const step of [0, 10]) {
 				const resized = resizeShape(original, handle, delta, step);
@@ -158,9 +162,9 @@ test("either line endpoint stays orthogonal and anchors the other end during sna
 	]) {
 		const original = drawShape(1, "wire", { x: 13, y: -7 }, end);
 		for (const handle of resizeHandles(original)) {
-			const fixed = resizeHandles(original).find(
-				(other) => other.id !== handle.id,
-			)!;
+			const fixed = required(
+				resizeHandles(original).find((other) => other.id !== handle.id),
+			);
 			for (const target of [
 				{ x: 94, y: 25 },
 				{ x: -48, y: 96 },
@@ -172,8 +176,8 @@ test("either line endpoint stays orthogonal and anchors the other end during sna
 					10,
 				);
 				const handles = resizeHandles(resized);
-				const anchor = handles.find((other) => other.id === fixed.id)!;
-				const moved = handles.find((other) => other.id === handle.id)!;
+				const anchor = required(handles.find((other) => other.id === fixed.id));
+				const moved = required(handles.find((other) => other.id === handle.id));
 				close(anchor.x, fixed.x);
 				close(anchor.y, fixed.y);
 				const snapped = snapPoint(target, 10);
@@ -225,11 +229,13 @@ test("snapped drawing aligns corners, line endpoints, and circle radii", () => {
 test("snapped resizing fixes the opposite side and rounds circle radii", () => {
 	for (const kind of ["rectangle", "triangle", "wire", "circle"] as const) {
 		const original = drawShape(1, kind, { x: 0, y: 0 }, { x: 30, y: 40 }, 10);
-		const handle = resizeHandles(original).find(
-			(handle) =>
-				handle.id ===
-				(kind === "rectangle" || kind === "triangle" ? "1,1" : "1,0"),
-		)!;
+		const handle = required(
+			resizeHandles(original).find(
+				(handle) =>
+					handle.id ===
+					(kind === "rectangle" || kind === "triangle" ? "1,1" : "1,0"),
+			),
+		);
 		const resized = resizeShape(original, handle, { x: 13, y: 17 }, 10);
 		if (kind === "circle") {
 			close(resized.width, 140);
@@ -239,7 +245,7 @@ test("snapped resizing fixes the opposite side and rounds circle radii", () => {
 			const handles = resizeHandles(resized);
 			close(handles[0].x, 0);
 			close(handles[0].y, 0);
-			const end = handles.find((item) => item.id === handle.id)!;
+			const end = required(handles.find((item) => item.id === handle.id));
 			close(end.x, kind === "wire" ? 0 : 40);
 			close(end.y, 60);
 		}
@@ -273,7 +279,7 @@ function assertSegment(
 	x2: number,
 	y2: number,
 ) {
-	const shape = shapes.find((shape) => shape.id === id)!;
+	const shape = required(shapes.find((shape) => shape.id === id));
 	assert.ok(shape, `Missing segment ${id}`);
 	const [start, end] = endpoints(shape);
 	close(start.x, x1);
@@ -445,7 +451,7 @@ test("connections tolerate endpoint rounding and retain tiny existing segment le
 	assertSegment(moved, 1, 0, 10, 50, 10);
 	assertSegment(moved, 2, 50 + 1e-8, 10, 50 + 1e-8, 40);
 	assertSegment(moved, 3, 50 + 1e-8, 40, 50.01 + 1e-8, 40);
-	close(moved.find(({ id }) => id === tiny.id)!.width, 0.01);
+	close(required(moved.find(({ id }) => id === tiny.id)).width, 0.01);
 });
 
 test("normalization drops zero segments while retaining small segments and nonline shapes", () => {
@@ -630,7 +636,9 @@ test("normalization cleans pointer precision remnants and preserves attached bra
 	assertSegment(result.shapes, 4, 200, 100, 240, 100);
 	assert.equal(result.idMap.has(collapsed.id), false);
 	assert.equal(result.idMap.get(first.id), first.id);
-	const host = result.shapes.find(({ id }) => id === nearDuplicate.id)!;
+	const host = required(
+		result.shapes.find(({ id }) => id === nearDuplicate.id),
+	);
 	const moved = moveShapes([host], { x: 20, y: 10 }, 0, host, result.shapes);
 	assert.deepEqual(
 		moved.map(({ id }) => id),
@@ -696,8 +704,12 @@ test("text resizing preserves aspect ratio, font size and the opposite corner", 
 		rotation: Math.PI / 4,
 		lineWidth: 0.2,
 	};
-	const handle = resizeHandles(text).find((handle) => handle.id === "1,1")!;
-	const fixed = resizeHandles(text).find((handle) => handle.id === "-1,-1")!;
+	const handle = required(
+		resizeHandles(text).find((handle) => handle.id === "1,1"),
+	);
+	const fixed = required(
+		resizeHandles(text).find((handle) => handle.id === "-1,-1"),
+	);
 	const resized = resizeShape(text, handle, {
 		x: handle.x - fixed.x,
 		y: handle.y - fixed.y,
@@ -706,9 +718,9 @@ test("text resizing preserves aspect ratio, font size and the opposite corner", 
 	if (resized.kind !== "text") return;
 	close(resized.fontSize, 10);
 	close(resized.width / resized.height, 3);
-	const anchor = resizeHandles(resized).find(
-		(handle) => handle.id === "-1,-1",
-	)!;
+	const anchor = required(
+		resizeHandles(resized).find((handle) => handle.id === "-1,-1"),
+	);
 	close(anchor.x, fixed.x);
 	close(anchor.y, fixed.y);
 	assert.equal(resized.text, "Label");

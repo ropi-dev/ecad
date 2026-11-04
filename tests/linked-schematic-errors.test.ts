@@ -9,10 +9,11 @@ import {
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
-const resistor = symbolDefinitions.find(
-	(definition) => definition.id === "resistor",
-)!;
+const resistor = required(
+	symbolDefinitions.find((definition) => definition.id === "resistor"),
+);
 
 const invalidCircuit = (message: string) => (error: unknown) => {
 	assert.ok(error instanceof CircuitCommandError);

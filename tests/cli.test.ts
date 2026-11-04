@@ -5,8 +5,8 @@ import { once } from "node:events";
 import {
 	chmod,
 	mkdir,
-	readFile,
 	readdir,
+	readFile,
 	readlink,
 	stat,
 	symlink,
@@ -17,7 +17,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { PassThrough, Readable, Writable } from "node:stream";
-import { test, type TestContext } from "node:test";
+import { type TestContext, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createLocalDrawing, runCli } from "@ecad/cli";

@@ -13,6 +13,7 @@ import {
 	textCenter,
 	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
+import { required } from "./helpers/required.ts";
 
 const text: TextShape = {
 	id: 1,
@@ -93,7 +94,7 @@ test("symbol references and values use their combined rotation and retain their 
 		const display = buildDrawingDisplay([symbol], new Set(), [symbol]);
 		for (const parent of [display.shapes[0], display.previews[0]]) {
 			assert.equal(parent.rotation, symbol.rotation);
-			for (const [index, label] of parent.children!.entries()) {
+			for (const [index, label] of required(parent.children).entries()) {
 				const worldRotation = parent.rotation + label.rotation;
 				assert.ok(
 					worldRotation > -Math.PI / 2 - 1e-9 &&
@@ -130,9 +131,13 @@ test("static symbol text and pin labels stay upright in committed shapes and pre
 		};
 		symbol.children.push({ ...text, id: 99, rotation: radians(45) });
 		const display = buildDrawingDisplay([symbol], new Set(), [symbol]);
-		const source = symbolShapes(symbol).find((child) => child.kind === "text")!;
+		const source = required(
+			symbolShapes(symbol).find((child) => child.kind === "text"),
+		);
 		for (const shapes of [display.connections, display.previews]) {
-			const staticText = shapes.find((shape) => shape.text === text.text)!;
+			const staticText = required(
+				shapes.find((shape) => shape.text === text.text),
+			);
 			assert.ok(Math.cos(staticText.rotation) >= -1e-9);
 			close(Math.sin(staticText.rotation - source.rotation), 0);
 			assert.deepEqual(

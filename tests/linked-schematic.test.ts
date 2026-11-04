@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-	createCircuit,
 	circuitFileSchema,
+	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import { applyCircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { pairPcbDocuments } from "#/projects/pcb.ts";
+import { required } from "./helpers/required.ts";
 
-const resistor = symbolDefinitions.find(
-	(definition) => definition.id === "resistor",
-)!;
+const resistor = required(
+	symbolDefinitions.find((definition) => definition.id === "resistor"),
+);
 test("schematic instances keep component and pin identities through edits and duplication", () => {
 	const original = createCircuit("Board");
 	const symbol = createSymbol(1, resistor, { x: 0, y: 0 }, "R1");
@@ -400,9 +401,9 @@ test("legacy LED pins keep their anode and cathode meaning through both projecti
 		symbolDefinitions,
 	);
 	for (const old of original.circuit.components) {
-		const component = next.file.circuit.components.find(
-			(component) => component.id === old.id,
-		)!;
+		const component = required(
+			next.file.circuit.components.find((component) => component.id === old.id),
+		);
 		assert.deepEqual(
 			component.pins.map(
 				({ sourcePinId: _source, sourcePin: _metadata, ...pin }) => pin,
@@ -410,19 +411,21 @@ test("legacy LED pins keep their anode and cathode meaning through both projecti
 			old.pins,
 		);
 	}
-	const led = first.file.circuit.components.find(
-		(component) => component.part.id === "led",
-	)!;
-	const symbol = first.shapes.find(
-		(shape) => shape.id === led.schematicShapeId,
-	)!;
+	const led = required(
+		first.file.circuit.components.find(
+			(component) => component.part.id === "led",
+		),
+	);
+	const symbol = required(
+		first.shapes.find((shape) => shape.id === led.schematicShapeId),
+	);
 	assert.equal(symbol.kind, "symbol");
 	if (symbol.kind !== "symbol") return;
 	const anode = symbol.children.find(
 		(child) =>
 			child.kind === "pin" &&
 			String(child.id) ===
-				led.pins.find((pin) => pin.number === "A")!.sourcePinId,
+				required(led.pins.find((pin) => pin.number === "A")).sourcePinId,
 	);
 	assert.ok(anode?.kind === "pin");
 	if (anode?.kind === "pin") assert.equal(anode.name, "A");
@@ -574,7 +577,7 @@ test("generated labels move independently with wires and survive synchronization
 	];
 	const first = synchronizePcb(file, [], original, symbolDefinitions);
 	for (const kind of ["text", "symbol"] as const) {
-		const shape = first.shapes.find((shape) => shape.kind === kind)!;
+		const shape = required(first.shapes.find((shape) => shape.kind === kind));
 		const delta = { x: 20, y: -40 };
 		const moved = moveShapes([shape], delta, 0, shape, first.shapes);
 		const replacements = new Map(moved.map((shape) => [shape.id, shape]));
@@ -655,7 +658,7 @@ test("KiCad units share a component while retaining unit-qualified pin identity"
 	assert.equal(new Set(component.pins.map((pin) => pin.id)).size, 4);
 	assert.deepEqual(
 		first.file.circuit.nets[0].pinIds
-			.map((id) => component.pins.find((pin) => pin.id === id)!.number)
+			.map((id) => required(component.pins.find((pin) => pin.id === id)).number)
 			.sort(),
 		["2", "3"],
 	);
@@ -708,7 +711,8 @@ test("KiCad units share a component while retaining unit-qualified pin identity"
 		linked.file.circuit,
 	);
 	const edited = linked.shapes.map((shape) =>
-		shape.kind === "symbol" && shape.id === component.schematicShapeIds![1]
+		shape.kind === "symbol" &&
+		shape.id === required(component.schematicShapeIds)[1]
 			? { ...shape, attributes: { ...shape.attributes, reference: "U10" } }
 			: shape,
 	);
@@ -799,7 +803,7 @@ test("saved circuits with schematic bindings initialize imported drawings withou
 test("blank and whitespace schematic pin numbers normalize while their display overrides remain", () => {
 	const original = createCircuit("Blank pins");
 	const symbol = createSymbol(1, resistor, { x: 0, y: 0 }, "R1");
-	const pin = symbol.children.find((child) => child.kind === "pin")!;
+	const pin = required(symbol.children.find((child) => child.kind === "pin"));
 	const first = synchronizePcb(
 		original,
 		[{ ...symbol, childOverrides: { [`shape:${pin.id}`]: { number: "7" } } }],
@@ -823,7 +827,7 @@ test("blank and whitespace schematic pin numbers normalize while their display o
 			next.file.circuit.components[0].pins[0].id,
 			first.file.circuit.components[0].pins[0].id,
 		);
-		const kept = next.shapes.find((shape) => shape.kind === "symbol")!;
+		const kept = required(next.shapes.find((shape) => shape.kind === "symbol"));
 		assert.ok(kept.kind === "symbol");
 		if (kept.kind === "symbol")
 			assert.equal(kept.childOverrides?.[`shape:${pin.id}`]?.number, number);
@@ -832,7 +836,7 @@ test("blank and whitespace schematic pin numbers normalize while their display o
 
 test("generated symbols avoid occupied positions after deletion and do not create accidental nets", () => {
 	const original = createCircuit("Placement");
-	let file = structuredClone(original);
+	const file = structuredClone(original);
 	for (let index = 0; index < 3; index++)
 		file.circuit.components.push(
 			componentFromSymbol(resistor, file.circuit.components),
@@ -904,7 +908,7 @@ test("unavailable-library fallbacks retain inline pins and original part identit
 		"#/drawing/symbol-persistence.ts"
 	);
 	const { drawingFileSchema } = await import("#/projects/format.ts");
-	const pin = resistor.children.find((child) => child.kind === "pin")!;
+	const pin = required(resistor.children.find((child) => child.kind === "pin"));
 	for (const id of ["unavailable-widget", "resistor"]) {
 		const definition = {
 			...resistor,
@@ -942,7 +946,9 @@ test("unavailable-library fallbacks retain inline pins and original part identit
 				name: "Inline",
 				shapes: saved,
 			}).shapes;
-			const symbol = reopened.find((shape) => shape.kind === "symbol")!;
+			const symbol = required(
+				reopened.find((shape) => shape.kind === "symbol"),
+			);
 			assert.ok(symbol.kind === "symbol");
 			if (symbol.kind !== "symbol") return;
 			assert.equal(
@@ -1042,7 +1048,9 @@ test("reusable definition pin edits and cleared overrides update metadata and ge
 	const first = synchronizePcb(file, initial.shapes, initial.file, [
 		definition,
 	]);
-	const sourceId = first.file.circuit.components[0].pins[0].sourcePinId!;
+	const sourceId = required(
+		first.file.circuit.components[0].pins[0].sourcePinId,
+	);
 	const updated = {
 		...definition,
 		children: definition.children.map((child) =>
@@ -1117,7 +1125,9 @@ test("reusable definition pin edits and cleared overrides update metadata and ge
 });
 
 test("legacy shared pin names bind exact numbers to distinct symbol terminals", () => {
-	const child = resistor.children.find((child) => child.kind === "pin")!;
+	const child = required(
+		resistor.children.find((child) => child.kind === "pin"),
+	);
 	const definition = {
 		...resistor,
 		id: "shared-ground",
@@ -1173,10 +1183,12 @@ test("rotating generated components preserves attached and independently moved l
 		for (const movedLabel of [false, true])
 			for (const angle of [Math.PI / 2, Math.PI, -Math.PI / 2]) {
 				let shapes = first.shapes;
-				const label = shapes.find(
-					(shape) =>
-						shape.kind === "text" && shape.circuitNet?.pinId === a.pins[1].id,
-				)!;
+				const label = required(
+					shapes.find(
+						(shape) =>
+							shape.kind === "text" && shape.circuitNet?.pinId === a.pins[1].id,
+					),
+				);
 				if (movedLabel) {
 					const replacements = moveShapes(
 						[label],
@@ -1213,7 +1225,7 @@ test("rotating generated components preserves attached and independently moved l
 				run(placeShapesEffect(linked.shapes, "Generated schematic"));
 				const before = store.getSnapshot().shapes;
 				const ids = [
-					first.file.circuit.components[0].schematicShapeId!,
+					required(first.file.circuit.components[0].schematicShapeId),
 					...(selectLabels
 						? before
 								.filter((shape) => shape.kind === "text")
@@ -1237,10 +1249,12 @@ test("rotating generated components preserves attached and independently moved l
 				);
 				assert.deepEqual(next.file.circuit.nets, first.file.circuit.nets);
 				if (movedLabel) {
-					const actual = next.shapes.find((shape) => shape.id === label.id)!;
-					const expected = linked.shapes.find(
-						(shape) => shape.id === label.id,
-					)!;
+					const actual = required(
+						next.shapes.find((shape) => shape.id === label.id),
+					);
+					const expected = required(
+						linked.shapes.find((shape) => shape.id === label.id),
+					);
 					assert.deepEqual(
 						{ x: actual.x, y: actual.y },
 						{ x: expected.x, y: expected.y },
@@ -1262,7 +1276,7 @@ test("net symbols name circuit nets without becoming referenced components", () 
 	const file = createCircuit("Board");
 	const supply = createSymbol(
 		1,
-		symbolDefinitions.find((definition) => definition.id === "vdd")!,
+		required(symbolDefinitions.find((definition) => definition.id === "vdd")),
 		{ x: 0, y: 0 },
 	);
 	const first = synchronizePcb(file, [supply], file, symbolDefinitions);
@@ -1295,7 +1309,9 @@ test("circuit renames and deletions update net-symbol declarations without resur
 			const original = createCircuit("Board");
 			const supply = createSymbol(
 				1,
-				symbolDefinitions.find((definition) => definition.id === "vdd")!,
+				required(
+					symbolDefinitions.find((definition) => definition.id === "vdd"),
+				),
 				{ x: 0, y: 0 },
 			);
 			const shapes = connected
@@ -1304,7 +1320,9 @@ test("circuit renames and deletions update net-symbol declarations without resur
 						createSymbol(2, resistor, { x: 3, y: 0 }),
 						createSymbol(
 							3,
-							symbolDefinitions.find((definition) => definition.id === "vdd")!,
+							required(
+								symbolDefinitions.find((definition) => definition.id === "vdd"),
+							),
 							{ x: 30, y: 0 },
 						),
 						createSymbol(4, resistor, { x: 33, y: 0 }),
@@ -1316,9 +1334,9 @@ test("circuit renames and deletions update net-symbol declarations without resur
 				original,
 				symbolDefinitions,
 			);
-			const net = first.file.circuit.nets.find((net) =>
-				net.names.includes("VDD"),
-			)!;
+			const net = required(
+				first.file.circuit.nets.find((net) => net.names.includes("VDD")),
+			);
 			const edited = applyCircuitCommand(
 				first.file,
 				edit === "delete"
@@ -1360,10 +1378,12 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
 			"split-net",
 		] as const) {
 			const original = createCircuit("Board");
-			const definition = symbolDefinitions.find(
-				(definition) =>
-					definition.id === (contact === "rotated" ? "ground" : "vdd"),
-			)!;
+			const definition = required(
+				symbolDefinitions.find(
+					(definition) =>
+						definition.id === (contact === "rotated" ? "ground" : "vdd"),
+				),
+			);
 			const supply = createSymbol(1, definition, { x: 0, y: 0 });
 			supply.attributes.name = "VDD";
 			if (contact === "rotated") supply.rotation = Math.PI / 2;
@@ -1381,7 +1401,9 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
 			);
 			const remote = createSymbol(
 				3,
-				symbolDefinitions.find((definition) => definition.id === "vdd")!,
+				required(
+					symbolDefinitions.find((definition) => definition.id === "vdd"),
+				),
 				{ x: 40, y: 0 },
 			);
 			const shapes = [
@@ -1399,13 +1421,17 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
 				original,
 				symbolDefinitions,
 			);
-			const net = first.file.circuit.nets.find((net) =>
-				net.names.includes("VDD"),
-			)!;
-			const owner = first.file.circuit.components.find(
-				(component) => component.schematicShapeId === 2,
-			)!;
-			const pin = owner.pins.find((pin) => net.pinIds.includes(pin.id))!;
+			const net = required(
+				first.file.circuit.nets.find((net) => net.names.includes("VDD")),
+			);
+			const owner = required(
+				first.file.circuit.components.find(
+					(component) => component.schematicShapeId === 2,
+				),
+			);
+			const pin = required(
+				owner.pins.find((pin) => net.pinIds.includes(pin.id)),
+			);
 			assert.ok(pin);
 			const edited = applyCircuitCommand(
 				first.file,
@@ -1437,9 +1463,9 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
 				second.file.circuit.noConnectPinIds,
 			);
 			assert.ok(
-				!third.file.circuit.nets
-					.find((net) => net.names.includes("VDD"))!
-					.pinIds.includes(pin.id),
+				!required(
+					third.file.circuit.nets.find((net) => net.names.includes("VDD")),
+				).pinIds.includes(pin.id),
 			);
 			const retained = third.shapes.find((shape) => shape.id === 3);
 			assert.ok(retained?.kind === "symbol");
@@ -1449,9 +1475,9 @@ test("circuit membership removals survive direct and rotated net-symbol contacts
 
 test("matching net symbols share a circuit net through renames and repeated synchronization", () => {
 	const original = createCircuit("Rails");
-	const definition = symbolDefinitions.find(
-		(definition) => definition.id === "vdd",
-	)!;
+	const definition = required(
+		symbolDefinitions.find((definition) => definition.id === "vdd"),
+	);
 	const firstSymbol = createSymbol(1, definition, { x: 0, y: 0 });
 	const secondSymbol = createSymbol(2, definition, { x: 40, y: 0 });
 	const first = synchronizePcb(
@@ -1472,9 +1498,9 @@ test("matching net symbols share a circuit net through renames and repeated sync
 		symbolDefinitions,
 	);
 	assert.equal(separated.file.circuit.nets.length, 2);
-	const other = separated.file.circuit.nets.find((net) =>
-		net.names.includes("OTHER"),
-	)!;
+	const other = required(
+		separated.file.circuit.nets.find((net) => net.names.includes("OTHER")),
+	);
 	const edited = applyCircuitCommand(separated.file, {
 		type: "rename-net",
 		id: other.id,
@@ -1508,9 +1534,9 @@ test("undo and redo of a net-name merge restore every symbol declaration and mem
 	const { drawingFileSchema } = await import("#/projects/format.ts");
 	for (const connected of [0, 1, 2]) {
 		const original = createCircuit("Undo rails");
-		const definition = symbolDefinitions.find(
-			(definition) => definition.id === "vdd",
-		)!;
+		const definition = required(
+			symbolDefinitions.find((definition) => definition.id === "vdd"),
+		);
 		const symbols = [
 			createSymbol(1, definition, { x: 0, y: 0 }),
 			createSymbol(2, definition, { x: 40, y: 0 }),
@@ -1524,7 +1550,7 @@ test("undo and redo of a net-name merge restore every symbol declaration and mem
 				`R${index + 1}`,
 			);
 			const target = pinTerminals(symbol)[0],
-				terminal = pinTerminals(part).at(-1)!;
+				terminal = required(pinTerminals(part).at(-1));
 			return { ...part, x: target.x - terminal.x, y: target.y - terminal.y };
 		});
 		const first = synchronizePcb(
@@ -1534,9 +1560,9 @@ test("undo and redo of a net-name merge restore every symbol declaration and mem
 			symbolDefinitions,
 		);
 		const store = createCircuitStore(first.file);
-		const other = first.file.circuit.nets.find((net) =>
-			net.names.includes("OTHER"),
-		)!;
+		const other = required(
+			first.file.circuit.nets.find((net) => net.names.includes("OTHER")),
+		);
 		store.execute({ type: "rename-net", id: other.id, names: ["VDD"] });
 		const merged = synchronizePcb(
 			store.getSnapshot(),

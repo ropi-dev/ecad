@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { required } from "../../../tests/helpers/required.ts";
 import { generateDefaultSymbols, symbolCategories } from "../src/index.ts";
 
 test("default generation is deterministic and returns independent geometry and labels", () => {
@@ -49,7 +50,7 @@ test("semiconductor and passive variants preserve terminal identity and polarity
 		generateDefaultSymbols().map(({ file }) => [file.id, file]),
 	);
 	const pins = (id: string) =>
-		files.get(id)!.shapes.filter((shape) => shape.kind === "pin");
+		required(files.get(id)).shapes.filter((shape) => shape.kind === "pin");
 	for (const id of ["diode", "diode-schottky", "diode-zener", "led"]) {
 		assert.deepEqual(pins(id), [
 			{ kind: "pin", name: "K", x: -3.81, y: 0 },
@@ -69,11 +70,14 @@ test("semiconductor and passive variants preserve terminal identity and polarity
 			["G", "S", "D"],
 		);
 		const opposite = `${id.slice(0, -1)}${id.endsWith("n") ? "p" : "n"}`;
-		assert.notDeepEqual(files.get(id)!.shapes, files.get(opposite)!.shapes);
+		assert.notDeepEqual(
+			required(files.get(id)).shapes,
+			required(files.get(opposite)).shapes,
+		);
 	}
 	assert.notDeepEqual(
-		files.get("transistor-npn")!.shapes,
-		files.get("transistor-pnp")!.shapes,
+		required(files.get("transistor-npn")).shapes,
+		required(files.get("transistor-pnp")).shapes,
 	);
 	assert.deepEqual(
 		pins("potentiometer").map(({ name }) => name),
@@ -183,9 +187,9 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 			},
 		],
 	] as const) {
-		const { file, category } = generateDefaultSymbols().find(
-			({ file }) => file.id === id,
-		)!;
+		const { file, category } = required(
+			generateDefaultSymbols().find(({ file }) => file.id === id),
+		);
 		assert.equal(category, "Microcontrollers");
 		assert.equal(file.prefix, "U");
 		const pins = file.shapes.filter((shape) => shape.kind === "pin");
@@ -216,7 +220,7 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 		assert.equal(names.get(String(count)), "GND");
 		const gpios = pins
 			.filter((pin) => pin.name.startsWith("GPIO"))
-			.map((pin) => Number(pin.name.match(/^GPIO(\d+)/)![1]))
+			.map((pin) => Number(required(pin.name.match(/^GPIO(\d+)/))[1]))
 			.sort((a, b) => a - b);
 		assert.deepEqual(
 			gpios,

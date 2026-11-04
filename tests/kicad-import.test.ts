@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { importKiCadSchematic } from "#/formats/kicad/import.ts";
-import { parseSExpr, nodes, node } from "#/formats/kicad/sexpr.ts";
 import { symbolTextShapes } from "#/drawing/shapes.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
+import { node, nodes, parseSExpr } from "#/formats/kicad/sexpr.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
+import { required } from "./helpers/required.ts";
 
 const source = readFileSync(
 	new URL(
@@ -97,7 +98,7 @@ test("rotation and mirrors preserve terminal positions and lead directions", () 
 			const s = r.shapes[0];
 			assert.equal(s.kind, "symbol");
 			if (s.kind !== "symbol") return;
-			const p = s.children.find((c) => c.kind === "pin")!;
+			const p = required(s.children.find((c) => c.kind === "pin"));
 			const x = mirror === "y" ? -2 : 2,
 				y = mirror === "x" ? -3 : 3,
 				a = (angle * Math.PI) / 180;
@@ -120,10 +121,7 @@ test("unsupported constructs produce reports and documents with nothing importab
 		fixture("").replace('(lib_id "Test")', '(lib_id "Missing")'),
 	])
 		assert.throws(() => importKiCadSchematic(s));
-	assert.equal(
-		parseSExpr('(text "hello\\n\\\"world\\\"")')[1],
-		'hello\n"world"',
-	);
+	assert.equal(parseSExpr('(text "hello\\n\\"world\\"")')[1], 'hello\n"world"');
 });
 
 test("rotated reference and value labels stay bound after edits and serialization", () => {

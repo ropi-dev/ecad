@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 
 const twoPinParts = 240;
 const connectors = 60;
 const repeats = 5;
 
-test("linked-schematic-sync", async ({}, testInfo) => {
+test("linked-schematic-sync", async (_fixtures, testInfo) => {
 	const { circuitFileSchema, createCircuit } = await import(
 		"@ecad/drawing-core/circuit/model.ts"
 	);
@@ -17,7 +18,7 @@ test("linked-schematic-sync", async ({}, testInfo) => {
 	);
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
 	const definition = (id: string) =>
-		symbolDefinitions.find((definition) => definition.id === id)!;
+		required(symbolDefinitions.find((definition) => definition.id === id));
 	const resistor = definition("resistor");
 	const capacitor = definition("capacitor");
 	const connector = definition("connector-8");

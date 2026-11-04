@@ -1,7 +1,8 @@
-import { captureArtifacts } from "./artifacts";
-import { expect, test } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { openProjectFiles, closeProjectFiles } from "./project-files";
+import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
 test("one schematic opens both editors and saves edits in both directions", async ({
@@ -39,7 +40,7 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		"false",
 	);
 	const circuit = JSON.parse(
-		(await page.locator("#circuit-document").textContent())!,
+		required(await page.locator("#circuit-document").textContent()),
 	);
 	const schematicSwitch = page.getByRole("button", {
 		name: "Switch to schematic view",
@@ -57,7 +58,7 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		.poll(
 			async () =>
 				JSON.parse(
-					(await page.locator("#project-document").textContent())!,
+					required(await page.locator("#project-document").textContent()),
 				).shapes.filter((s: { kind: string }) => s.kind === "symbol").length,
 		)
 		.toBe(1);
@@ -73,7 +74,7 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		.poll(
 			async () =>
 				JSON.parse(
-					(await page.locator("#project-document").textContent())!,
+					required(await page.locator("#project-document").textContent()),
 				).shapes.filter((shape: { kind: string }) => shape.kind === "symbol")
 					.length,
 		)
@@ -81,8 +82,9 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#project-document").textContent())!)
-					.dirty,
+				JSON.parse(
+					required(await page.locator("#project-document").textContent()),
+				).dirty,
 		)
 		.toBe(false);
 	await (await toolbarButton(page, "Undo")).click();
@@ -90,7 +92,7 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		.poll(
 			async () =>
 				JSON.parse(
-					(await page.locator("#project-document").textContent())!,
+					required(await page.locator("#project-document").textContent()),
 				).shapes.filter((shape: { kind: string }) => shape.kind === "symbol")
 					.length,
 		)
@@ -100,7 +102,7 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		.poll(
 			async () =>
 				JSON.parse(
-					(await page.locator("#project-document").textContent())!,
+					required(await page.locator("#project-document").textContent()),
 				).shapes.filter((shape: { kind: string }) => shape.kind === "symbol")
 					.length,
 		)
@@ -108,8 +110,9 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#project-document").textContent())!)
-					.dirty,
+				JSON.parse(
+					required(await page.locator("#project-document").textContent()),
+				).dirty,
 		)
 		.toBe(false);
 	await openProjectFiles(page);
@@ -135,8 +138,8 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		});
 	await circuitSwitch.click();
 	expect(
-		JSON.parse((await page.locator("#circuit-document").textContent())!).circuit
-			.components[0].id,
+		JSON.parse(required(await page.locator("#circuit-document").textContent()))
+			.circuit.components[0].id,
 	).toBe(circuit.circuit.components[0].id);
 	await expect(
 		page.getByRole("button", { name: "Select component R2", exact: true }),
@@ -184,7 +187,7 @@ test("toolbar switches keep an additional schematic selected with pending edits"
 		.getByLabel("Circuit connections graph", { exact: true })
 		.click({ position: { x: 350, y: 250 } });
 	const component = JSON.parse(
-		(await page.locator("#circuit-document").textContent())!,
+		required(await page.locator("#circuit-document").textContent()),
 	).circuit.components[0];
 	await page
 		.getByRole("button", { name: "Switch to schematic view", exact: true })
@@ -196,7 +199,7 @@ test("toolbar switches keep an additional schematic selected with pending edits"
 		.poll(
 			async () =>
 				JSON.parse(
-					(await page.locator("#project-document").textContent())!,
+					required(await page.locator("#project-document").textContent()),
 				).editorShapes.filter(
 					(shape: { kind: string }) => shape.kind === "symbol",
 				).length,
@@ -209,7 +212,7 @@ test("toolbar switches keep an additional schematic selected with pending edits"
 		"Power stage",
 	);
 	expect(
-		JSON.parse((await page.locator("#circuit-document").textContent())!).circuit
-			.components[0].id,
+		JSON.parse(required(await page.locator("#circuit-document").textContent()))
+			.circuit.components[0].id,
 	).toBe(component.id);
 });

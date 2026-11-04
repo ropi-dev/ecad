@@ -3,9 +3,9 @@ import { Editor2D } from "@ecad/core/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "@ecad/core/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "@ecad/core/components/step/StepWorkspace.tsx";
 import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.tsx";
-import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
+import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {

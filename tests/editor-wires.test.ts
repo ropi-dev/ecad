@@ -17,6 +17,7 @@ import {
 	createSymbol,
 	symbolDefinitions,
 } from "#/components/editor/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 const pin = (id: number, x: number, y: number) =>
 	drawShape(id, "pin", { x, y }, { x, y });
@@ -157,7 +158,10 @@ test("moving away from another pin adds a straight wire or a bend and leaves the
 		const moved = moveShapes([first], delta, 0, first, [first, other], 50);
 		assert.equal(moved[1].id, 50);
 		assert.deepEqual(endpoints(moved[1])[0], [20, 20]);
-		assert.deepEqual(endpoints(moved.at(-1)!)[1], [20 + delta.x, 20 + delta.y]);
+		assert.deepEqual(endpoints(required(moved.at(-1)))[1], [
+			20 + delta.x,
+			20 + delta.y,
+		]);
 		assert.equal(moved.length, delta.x !== 0 && delta.y !== 0 ? 3 : 2);
 		assert.deepEqual(pinTerminals(other)[0], { x: 20, y: 20 });
 	}
@@ -418,7 +422,7 @@ for (const electrical of ["net", "supply"] as const) {
 			assert.equal(moved[0].x, 30);
 			assert.equal(moved[0].y, 35);
 			assert.deepEqual(endpoints(moved[1])[0], [20, 20]);
-			assert.deepEqual(endpoints(moved.at(-1)!)[1], [30, 35]);
+			assert.deepEqual(endpoints(required(moved.at(-1)))[1], [30, 35]);
 			const movedPin = moveShapes(
 				[neighbor],
 				{ x: 10, y: 15 },
@@ -450,7 +454,7 @@ test("moving a named net symbol avoids connecting an unrelated pin", async () =>
 	const { electricalNets } = await import("#/drawing/named-nets.ts");
 	const symbol = createSymbol(
 		1,
-		symbolDefinitions.find((definition) => definition.id === "vdd")!,
+		required(symbolDefinitions.find((definition) => definition.id === "vdd")),
 		{ x: -10, y: 0 },
 	);
 	const attached = pin(2, -10, 0);
@@ -458,7 +462,7 @@ test("moving a named net symbol avoids connecting an unrelated pin", async () =>
 	const shapes = [symbol, attached, unrelated];
 	const moved = moveShapes([symbol], { x: 30, y: 10 }, 0, symbol, shapes);
 	const nets = electricalNets([attached, unrelated, ...moved]);
-	const named = nets.find((net) => net.names.includes("VDD"))!;
+	const named = required(nets.find((net) => net.names.includes("VDD")));
 	assert.ok(named);
 	assert.ok(named.pins.some((pin) => pin.shapeId === 2));
 	assert.ok(!named.pins.some((pin) => pin.shapeId === 3));

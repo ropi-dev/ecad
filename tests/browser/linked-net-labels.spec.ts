@@ -1,10 +1,15 @@
-import { expect, test } from "@playwright/test";
-import { captureArtifacts } from "./artifacts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import type { EditorShape } from "#/drawing/shapes.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
-import { openProjectFiles, closeProjectFiles } from "./project-files";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
+
+type LabelView = { x: number; y: number; scale: number };
+type LabelWindow = typeof window & { labelView: LabelView };
 
 test("pending autosaves preserve generated net bindings and schematic undo", async ({
 	page,
@@ -12,11 +17,15 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
 	const original = createCircuit("Untitled", "pcb-main");
 	const file = structuredClone(original);
 	const resistor = componentFromSymbol(
-		symbolDefinitions.find((definition) => definition.id === "resistor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		),
 		[],
 	);
 	const capacitor = componentFromSymbol(
-		symbolDefinitions.find((definition) => definition.id === "capacitor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "capacitor"),
+		),
 		[resistor],
 	);
 	file.circuit.components = [resistor, capacitor];
@@ -100,7 +109,7 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
 		(window as typeof window & { releaseQaSave: () => void }).releaseQaSave(),
 	);
 	const doc = async () =>
-		JSON.parse((await page.locator("#project-document").textContent())!);
+		JSON.parse(required(await page.locator("#project-document").textContent()));
 	await expect.poll(async () => (await doc()).dirty).toBe(false);
 	await expect
 		.poll(
@@ -141,8 +150,9 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#circuit-document").textContent())!)
-					.circuit.nets[0].names,
+				JSON.parse(
+					required(await page.locator("#circuit-document").textContent()),
+				).circuit.nets[0].names,
 		)
 		.toEqual([]);
 });
@@ -153,7 +163,9 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	const original = createCircuit("Untitled", "pcb-main");
 	const file = structuredClone(original);
 	const resistor = componentFromSymbol(
-		symbolDefinitions.find((definition) => definition.id === "resistor")!,
+		required(
+			symbolDefinitions.find((definition) => definition.id === "resistor"),
+		),
 		[],
 	);
 	file.circuit.components = [resistor];
@@ -166,7 +178,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		x: shape.x - 30,
 		y: shape.y + 30,
 	}));
-	const label = shapes.find((shape) => shape.kind === "text")!;
+	const label = required(shapes.find((shape) => shape.kind === "text"));
 	await page.goto("/tests/browser/projects.html");
 	await expect(page.locator("#project-document")).toContainText(
 		'"name":"Untitled"',
@@ -200,7 +212,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 			const camera = args[2];
 			const origin = new Vector3(0, 0, 0).project(camera);
 			const corner = new Vector3(1, 1, 0).project(camera);
-			(window as any).labelView = {
+			(window as LabelWindow).labelView = {
 				x: origin.x,
 				y: origin.y,
 				scale: corner.x - origin.x,
@@ -210,11 +222,11 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	for (let index = 0; index < 7; index++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	await page.waitForFunction(() => (window as any).labelView);
-	const view = await page.evaluate(() => (window as any).labelView);
+	await page.waitForFunction(() => (window as LabelWindow).labelView);
+	const view = await page.evaluate(() => (window as LabelWindow).labelView);
 	const { shapeBounds } = await import("#/drawing/shapes.ts");
 	const bounds = shapeBounds(label);
-	const canvas = (await page.locator("canvas").boundingBox())!;
+	const canvas = required(await page.locator("canvas").boundingBox());
 	const scale = (view.scale * canvas.width) / 2;
 	const x =
 		canvas.x +
@@ -225,7 +237,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		((1 - view.y) * canvas.height) / 2 -
 		((bounds.minY + bounds.maxY) / 2) * scale;
 	const document = async () =>
-		JSON.parse((await page.locator("#project-document").textContent())!);
+		JSON.parse(required(await page.locator("#project-document").textContent()));
 	await page.mouse.move(x, y);
 	await page.mouse.down();
 	await page.mouse.move(x + 12 * scale, y + 10 * scale, { steps: 8 });
@@ -233,13 +245,16 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	await expect
 		.poll(
 			async () =>
-				(await document()).shapes.find((shape: any) => shape.id === label.id)
-					?.x,
+				(await document()).shapes.find(
+					(shape: EditorShape) => shape.id === label.id,
+				)?.x,
 		)
 		.toBeCloseTo(label.x + 12, 4);
 	await expect.poll(async () => (await document()).dirty).toBe(false);
 	expect(
-		(await document()).shapes.filter((shape: any) => shape.kind === "wire"),
+		(await document()).shapes.filter(
+			(shape: EditorShape) => shape.kind === "wire",
+		),
 	).toHaveLength(2);
 	const moved = (await document()).shapes;
 	await page.mouse.move(20, 20);
@@ -250,14 +265,17 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	await expect
 		.poll(
 			async () =>
-				(await document()).shapes.find((shape: any) => shape.id === label.id)
-					?.x,
+				(await document()).shapes.find(
+					(shape: EditorShape) => shape.id === label.id,
+				)?.x,
 		)
 		.toBe(label.x);
 	await (await toolbarButton(page, "Redo")).click();
 	await expect.poll(async () => (await document()).shapes).toEqual(moved);
 	await expect.poll(async () => (await document()).dirty).toBe(false);
-	const component = moved.find((shape: any) => shape.kind === "symbol");
+	const component = required(
+		moved.find((shape: EditorShape) => shape.kind === "symbol"),
+	);
 	await page.mouse.click(
 		canvas.x + ((1 + view.x) * canvas.width) / 2 + component.x * scale,
 		canvas.y + ((1 - view.y) * canvas.height) / 2 - component.y * scale,
@@ -267,14 +285,16 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		.poll(
 			async () =>
 				(await document()).shapes.find(
-					(shape: any) => shape.id === component.id,
+					(shape: EditorShape) => shape.id === component.id,
 				)?.rotation,
 		)
 		.toBeCloseTo(Math.PI / 2, 6);
 	await expect.poll(async () => (await document()).dirty).toBe(false);
 	expect(
-		(await document()).shapes.find((shape: any) => shape.id === label.id),
-	).toEqual(moved.find((shape: any) => shape.id === label.id));
+		(await document()).shapes.find(
+			(shape: EditorShape) => shape.id === label.id,
+		),
+	).toEqual(moved.find((shape: EditorShape) => shape.id === label.id));
 	const rotated = (await document()).shapes;
 	await page.mouse.move(20, 20);
 	if (captureArtifacts)
@@ -289,9 +309,11 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	await page.reload();
 	await expect
 		.poll(async () =>
-			(await document()).shapes.filter((shape: any) => shape.kind !== "symbol"),
+			(await document()).shapes.filter(
+				(shape: EditorShape) => shape.kind !== "symbol",
+			),
 		)
-		.toEqual(rotated.filter((shape: any) => shape.kind !== "symbol"));
+		.toEqual(rotated.filter((shape: EditorShape) => shape.kind !== "symbol"));
 	await (await openProjectFiles(page))
 		.getByRole("link", {
 			name: "Open Untitled.ecaddraw in circuit view",
@@ -301,8 +323,9 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	await expect
 		.poll(
 			async () =>
-				JSON.parse((await page.locator("#circuit-document").textContent())!)
-					.circuit.nets,
+				JSON.parse(
+					required(await page.locator("#circuit-document").textContent()),
+				).circuit.nets,
 		)
 		.toEqual(file.circuit.nets);
 });
@@ -313,8 +336,10 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 	await page.goto("/tests/browser/editor.html");
 	await expect(page.locator("canvas")).toBeVisible();
 	const { rulerSpacing } = await import("#/engine/ruler.ts");
-	const box = (await page.locator("canvas").boundingBox())!;
-	const view = JSON.parse((await page.locator("#editor-scene").textContent())!);
+	const box = required(await page.locator("canvas").boundingBox());
+	const view = JSON.parse(
+		required(await page.locator("#editor-scene").textContent()),
+	);
 	const scale = ((view.corner[0] - view.origin[0]) * box.width) / 840;
 	const step = rulerSpacing(scale, "mil").minor;
 	const screen = (x: number, y: number) => ({
@@ -322,7 +347,7 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 		y: box.y + ((1 - view.origin[1]) * box.height) / 2 - y * scale,
 	});
 	const document = async () =>
-		JSON.parse((await page.locator("#editor-document").textContent())!);
+		JSON.parse(required(await page.locator("#editor-document").textContent()));
 	for (const electrical of ["net", "supply", undefined]) {
 		await page.evaluate(async (electrical) => {
 			const path = "/tests/browser/editor.tsx";

@@ -1,9 +1,9 @@
 import { createRoot } from "react-dom/client";
-import { ProjectShell } from "#/projects/ProjectShell.tsx";
-import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
-import { ProjectProvider } from "#/projects/ProjectProvider.tsx";
 import type { ProjectSnapshot } from "#/projects/format.ts";
+import { ProjectProvider } from "#/projects/ProjectProvider.tsx";
+import { ProjectShell } from "#/projects/ProjectShell.tsx";
 import type { ProjectStorage } from "#/projects/storage.ts";
+import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
 import { createMemorySymbolLibraryStorage } from "#/symbol-library/storage.tsx";
 import "#/styles.css";
 

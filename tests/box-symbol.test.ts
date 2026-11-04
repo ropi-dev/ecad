@@ -1,9 +1,12 @@
-import { fromMils } from "#/drawing/units.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	boxBorder,
+	type EditorShape,
+	type EditorSymbol,
 	editShapeAttribute,
 	fitBoxToBorder,
 	hitShape,
@@ -14,30 +17,28 @@ import {
 	shapeBounds,
 	symbolChildren,
 	symbolChildWorld,
-	type EditorShape,
-	type EditorSymbol,
 } from "#/drawing/shapes.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import {
-	persistDrawingShapes,
-	resolveDrawingSymbols,
-} from "#/drawing/symbol-persistence.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
+import {
+	persistDrawingShapes,
+	resolveDrawingSymbols,
+} from "#/drawing/symbol-persistence.ts";
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { fromMils } from "#/drawing/units.ts";
+import { required } from "./helpers/required.ts";
 
-const definition = symbolDefinitions.find(({ id }) => id === "box")!;
+const definition = required(symbolDefinitions.find(({ id }) => id === "box"));
 const asSymbol = (shape: EditorShape): EditorSymbol => {
 	if (shape.kind !== "symbol") throw new Error("Expected symbol");
 	return shape;
 };
 
 function assertFits(symbol: EditorSymbol) {
-	const border = boxBorder(symbol)!.shape;
+	const border = required(boxBorder(symbol)).shape;
 	assert.equal(symbol.width, border.width);
 	assert.equal(symbol.height, border.height);
 	assert.ok(Math.abs(border.x - border.width / 2) < 1e-9);
@@ -75,7 +76,7 @@ test("Box size and selection match its border when placed, edited and rotated", 
 		assert.equal(symbol.x, 20);
 		assert.equal(symbol.y, 30);
 		assertFits(symbol);
-		const border = boxBorder(symbol)!;
+		const border = required(boxBorder(symbol));
 		symbol = replaceSymbolChild(symbol, border.key, {
 			...border.shape,
 			width: 42,
@@ -85,8 +86,8 @@ test("Box size and selection match its border when placed, edited and rotated", 
 		});
 		assertFits(symbol);
 		symbol = asSymbol(editShapeAttribute(symbol, "lineWidth", 0.4));
-		assert.equal(boxBorder(symbol)!.shape.lineWidth, 0.4);
-		assert.equal(boxBorder(symbol)!.shape.lineStyle, "dashed");
+		assert.equal(required(boxBorder(symbol)).shape.lineWidth, 0.4);
+		assert.equal(required(boxBorder(symbol)).shape.lineStyle, "dashed");
 		assertFits(symbol);
 	}
 });
@@ -139,12 +140,17 @@ test("Box dimensions survive drawing and nested symbol persistence", () => {
 			36,
 		),
 	);
-	const handle = resizeHandles(symbol).find((handle) => handle.id === "-1,1")!;
+	const handle = required(
+		resizeHandles(symbol).find((handle) => handle.id === "-1,1"),
+	);
 	symbol = asSymbol(resizeShape(symbol, handle, { x: -4, y: 3 }));
 	const saved = persistDrawingShapes([symbol])[0];
 	assert.ok(!("children" in saved));
 	const references = new Map([
-		[symbolReferenceKey(definition.library!, definition.id), definition],
+		[
+			symbolReferenceKey(required(definition.library), definition.id),
+			definition,
+		],
 	]);
 	const restored = asSymbol(
 		resolveDrawingSymbols(
@@ -219,7 +225,7 @@ test("the Box border cannot be selected, moved or resized as a child", async () 
 			...createSymbol(1, definition, { x: 20, y: 30 }),
 			rotation,
 		};
-		const border = boxBorder(symbol)!;
+		const border = required(boxBorder(symbol));
 		const before = symbolChildren(symbol);
 		const item = symbolChildren(symbol)[0];
 		assert.equal(canSelectSymbolChild(symbol, item), false);
@@ -301,7 +307,7 @@ test("Box clicks select text and the outline but pass through the empty interior
 		let symbol = { ...createSymbol(1, definition, { x: 20, y: 30 }), rotation };
 		symbol = asSymbol(editShapeAttribute(symbol, "width", 36));
 		symbol = asSymbol(editShapeAttribute(symbol, "height", 24));
-		const border = symbolChildWorld(symbol, boxBorder(symbol)!.shape);
+		const border = symbolChildWorld(symbol, required(boxBorder(symbol)).shape);
 		const point = (x: number, y: number) => ({
 			x: border.x + x * Math.cos(rotation) - y * Math.sin(rotation),
 			y: border.y + x * Math.sin(rotation) + y * Math.cos(rotation),

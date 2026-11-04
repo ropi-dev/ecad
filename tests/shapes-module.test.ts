@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { build } from "esbuild";
-import * as publicShapes from "@ecad/drawing-core/drawing/shapes.ts";
 import { connectTransformedTerminals } from "@ecad/drawing-core/drawing/connected-wire-transforms.ts";
 import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import { drawShape } from "@ecad/drawing-core/drawing/shape-geometry.ts";
+import * as publicShapes from "@ecad/drawing-core/drawing/shapes.ts";
 import { normalizeWireSegments } from "@ecad/drawing-core/drawing/wire-normalization.ts";
+import { build } from "esbuild";
 import * as editorShapes from "#/components/editor/shapes.ts";
 
 test("package and editor shape imports expose the same routing API", () => {

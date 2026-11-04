@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	editorReady,
@@ -56,7 +57,7 @@ for (const scenario of [
 		await editorReady(page, "Symbol editor · Labeled package");
 		await (await toolbarButton(page, "Pin")).click();
 		const canvas = page.locator("canvas");
-		const bounds = (await canvas.boundingBox())!;
+		const bounds = required(await canvas.boundingBox());
 		await canvas.click({
 			position: { x: bounds.width * 0.4, y: bounds.height / 2 },
 		});
@@ -85,8 +86,12 @@ for (const scenario of [
 						await expect(input).toBeChecked({ checked: repeat % 2 === 1 });
 						await page.waitForFunction(
 							(before) =>
-								(window.__ecadPerformance!.snapshot().metrics["renderer.frame"]
-									?.count ?? 0) > before,
+								((
+									window.__ecadPerformance ??
+									(() => {
+										throw new Error("Expected a value");
+									})()
+								).snapshot().metrics["renderer.frame"]?.count ?? 0) > before,
 							before,
 						);
 					});
@@ -110,15 +115,19 @@ for (const scenario of [
 					}
 					await page.waitForFunction(
 						(before) =>
-							(window.__ecadPerformance!.snapshot().metrics["renderer.frame"]
-								?.count ?? 0) > before,
+							((
+								window.__ecadPerformance ??
+								(() => {
+									throw new Error("Expected a value");
+								})()
+							).snapshot().metrics["renderer.frame"]?.count ?? 0) > before,
 						before,
 					);
 				});
 			}
 		const value = await report(page);
 		await finish(page, testInfo, scenario, {
-			interactionP95Ms: metric(value, "scenario.interaction")!,
+			interactionP95Ms: required(metric(value, "scenario.interaction")),
 		});
 	});
 }

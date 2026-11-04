@@ -1,11 +1,11 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
+	FullResult,
 	Reporter,
 	TestCase,
 	TestResult,
-	FullResult,
 } from "@playwright/test/reporter";
 import { checkBudgets, compareBaseline, type Summary } from "./comparison.ts";
 

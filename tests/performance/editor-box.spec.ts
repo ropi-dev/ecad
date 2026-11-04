@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { selectSymbolParent } from "../browser/symbol-items";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -11,7 +12,7 @@ test("editor-box", async ({ page }, testInfo) => {
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
 	await page.getByRole("button", { name: "Insert Box", exact: true }).click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	await canvas.click({
 		position: { x: bounds.width / 2, y: bounds.height / 2 },
 	});
@@ -38,9 +39,11 @@ test("editor-box", async ({ page }, testInfo) => {
 		});
 		await selectParent();
 		await expect(page.getByTestId("resize-handle")).toHaveCount(8);
-		const handle = (await page
-			.locator('[data-testid="resize-handle"][data-handle="1,1"]')
-			.boundingBox())!;
+		const handle = required(
+			await page
+				.locator('[data-testid="resize-handle"][data-handle="1,1"]')
+				.boundingBox(),
+		);
 		const before = Number(
 			await page
 				.getByRole("spinbutton", { name: "Width", exact: true })
@@ -82,9 +85,9 @@ test("editor-box", async ({ page }, testInfo) => {
 					),
 			);
 		});
-		const textAnchor = (await page
-			.locator('[data-anchor-id="1:text:2"]')
-			.boundingBox())!;
+		const textAnchor = required(
+			await page.locator('[data-anchor-id="1:text:2"]').boundingBox(),
+		);
 		await page.mouse.click(
 			textAnchor.x + textAnchor.width / 2 + 5,
 			textAnchor.y + textAnchor.height / 2 + 5,
@@ -107,6 +110,6 @@ test("editor-box", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-box", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -55,9 +56,9 @@ test("circuit-components", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-components", {
 		interactionP95Ms: percentile(times),
-		graphP95Ms: metric(value, "circuit.graph")!,
-		componentP95Ms: metric(value, "circuit.component-from-symbol")!,
-		thumbnailP95Ms: metric(value, "symbol.thumbnail")!,
-		libraryResolveMs: metric(value, "symbol-library.resolve")!,
+		graphP95Ms: required(metric(value, "circuit.graph")),
+		componentP95Ms: required(metric(value, "circuit.component-from-symbol")),
+		thumbnailP95Ms: required(metric(value, "symbol.thumbnail")),
+		libraryResolveMs: required(metric(value, "symbol-library.resolve")),
 	});
 });

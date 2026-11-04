@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -37,7 +38,7 @@ test("circuit-erc", async ({ page }, testInfo) => {
 	await expect(panel.getByRole("listitem")).toHaveCount(14);
 	await panel.getByRole("button", { name: "Previous", exact: true }).click();
 	const finding = panel.getByRole("listitem").first().getByRole("button");
-	const reference = (await finding.innerText()).match(/R\d+/)![0];
+	const reference = required((await finding.innerText()).match(/R\d+/))[0];
 	await page
 		.getByRole("button", { name: `Collapse ${reference}`, exact: true })
 		.click();
@@ -72,6 +73,6 @@ test("circuit-erc", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-erc", {
 		interactionP95Ms: percentile(times),
-		ercP95Ms: metric(value, "circuit.erc")!,
+		ercP95Ms: required(metric(value, "circuit.erc")),
 	});
 });

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
 import { Effect } from "effect";
 import {
 	placeShapesEffect,
@@ -11,7 +12,6 @@ import {
 	DrawingStore,
 	restoreDrawingStore,
 } from "#/commands/drawing-store.ts";
-import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
@@ -20,6 +20,7 @@ import {
 	type TextShape,
 } from "#/drawing/shapes.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
+import { required } from "./helpers/required.ts";
 
 const wire = (id: number, x: number, y: number, endX: number, endY = y) =>
 	drawShape(id, "wire", { x, y }, { x: endX, y: endY });
@@ -450,7 +451,7 @@ test("getDrawing caches immutable nets by snapshot and invalidates after editing
 			),
 		);
 		assert.ok(reply.ok);
-		return reply.drawing.nets!;
+		return required(reply.drawing.nets);
 	};
 	const first = read();
 	assert.equal(first, read());
@@ -489,11 +490,15 @@ test("net symbols name terminal nets, merge aliases, and follow instance names",
 		"power-3v3",
 		"power-5v",
 	]) {
-		const definition = symbolDefinitions.find((symbol) => symbol.id === id)!;
+		const definition = required(
+			symbolDefinitions.find((symbol) => symbol.id === id),
+		);
 		const symbol = createSymbol(1, definition, { x: 10, y: 20 });
 		assert.equal(symbol.netSymbol, true);
 		symbol.rotation = Math.PI / 2;
-		const pin = symbolShapes(symbol).find((child) => child.kind === "pin")!;
+		const pin = required(
+			symbolShapes(symbol).find((child) => child.kind === "pin"),
+		);
 		const shapes = [
 			symbol,
 			wire(2, pin.x, pin.y, pin.x + 10),
@@ -517,7 +522,9 @@ test("net symbols name terminal nets, merge aliases, and follow instance names",
 		assert.deepEqual(netForWire([fallback, ...shapes.slice(1)], 2).names, []);
 	}
 	for (const id of ["battery", "battery-cell", "resistor"]) {
-		const definition = symbolDefinitions.find((symbol) => symbol.id === id)!;
+		const definition = required(
+			symbolDefinitions.find((symbol) => symbol.id === id),
+		);
 		assert.equal(
 			createSymbol(1, definition, { x: 0, y: 0 }).netSymbol,
 			undefined,
@@ -531,7 +538,7 @@ test("net symbol role and names survive save, reload, edits, and undo", async ()
 	);
 	const symbol = createSymbol(
 		1,
-		symbolDefinitions.find((symbol) => symbol.id === "vdd")!,
+		required(symbolDefinitions.find((symbol) => symbol.id === "vdd")),
 		{ x: 0, y: 0 },
 	);
 	const store = createDrawingStore();
@@ -573,7 +580,7 @@ test("net symbols have one editable name label and no reference on duplication o
 	);
 	const symbol = createSymbol(
 		1,
-		symbolDefinitions.find((definition) => definition.id === "vdd")!,
+		required(symbolDefinitions.find((definition) => definition.id === "vdd")),
 		{ x: 0, y: 0 },
 	);
 	assert.deepEqual(symbol.attributes, {
@@ -589,9 +596,9 @@ test("net symbols have one editable name label and no reference on duplication o
 		symbolTextShapes(symbol).map((label) => label.text),
 		["VDD"],
 	);
-	const name = symbolChildren(symbol).find(
-		(child) => child.key === "attribute:name",
-	)!;
+	const name = required(
+		symbolChildren(symbol).find((child) => child.key === "attribute:name"),
+	);
 	assert.equal(name.shape.kind, "text");
 	const edited = replaceSymbolChild(symbol, name.key, {
 		...name.shape,
@@ -635,7 +642,7 @@ test("direct placement canonicalizes conflicting net-symbol attributes before sa
 	);
 	const symbol = createSymbol(
 		1,
-		symbolDefinitions.find((definition) => definition.id === "vdd")!,
+		required(symbolDefinitions.find((definition) => definition.id === "vdd")),
 		{ x: 0, y: 0 },
 	);
 	const input = {

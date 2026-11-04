@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { expectKeyboardNavigation } from "./keyboard-navigation";
 
 test.beforeEach(async ({ page }) => {
@@ -46,7 +47,7 @@ test.describe("mobile touch scrolling", () => {
 		});
 		const row = main.locator(":scope > div").first();
 		const camera = await page.locator("#editor-scene").textContent();
-		const box = (await row.boundingBox())!;
+		const box = required(await row.boundingBox());
 		const session = await page.context().newCDPSession(page);
 		const startX = box.x + box.width * 0.8;
 		const y = box.y + box.height / 2;

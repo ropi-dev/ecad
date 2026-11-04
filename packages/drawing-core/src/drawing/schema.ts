@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { lineStyles } from "#/drawing/line-style.ts";
+import { normalizeNetSymbol } from "#/drawing/net-symbol.ts";
 import {
 	electricalLabelRoles,
 	fillableShapeKinds,
 	type SymbolAttribute,
 	symbolAttributes,
 } from "#/drawing/shape-kinds.ts";
-import { normalizeNetSymbol } from "#/drawing/net-symbol.ts";
 import { symbolLibraryScopes } from "#/drawing/symbol-reference.ts";
 import {
 	horizontalAlignments,

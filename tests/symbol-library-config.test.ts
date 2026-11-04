@@ -1,9 +1,15 @@
-import { memoryDirectory } from "./helpers/project-directory.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { symbolDefinitions } from "#/drawing/symbols.ts";
+import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import {
+	MissingSymbolLibraryError,
+	synchronizePcb,
+} from "#/circuit/linked-schematic.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
+import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
 import {
 	type ConfiguredSymbolLibrary,
@@ -13,13 +19,8 @@ import {
 	serializeSymbolConfig,
 	unavailableSymbols,
 } from "#/symbol-library/config.ts";
-import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import {
-	MissingSymbolLibraryError,
-	synchronizePcb,
-} from "#/circuit/linked-schematic.ts";
-import { componentFromSymbol } from "#/circuit/symbol-components.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
+import { memoryDirectory } from "./helpers/project-directory.ts";
+import { required } from "./helpers/required.ts";
 
 const symbol = parseSymbolFile(
 	readFileSync(
@@ -193,13 +194,16 @@ test("memory configuration keeps symbols seeded through the existing storage API
 	);
 	const storage = createMemorySymbolLibraryStorage();
 	await storage.save([symbol], [symbol]);
-	const config = await storage.loadConfiguration!();
+	const config = await required(storage.loadConfiguration)();
 	assert.equal(
 		(await resolveSymbolLibraries(config.symbolLibraries, [])).definitions
 			.length,
 		symbolDefinitions.length + 1,
 	);
-	await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
+	await required(storage.saveConfiguration)({
+		version: 1,
+		symbolLibraries: [],
+	});
 	assert.deepEqual((await storage.load()).symbols, []);
 });
 
@@ -257,9 +261,9 @@ test("a symbol that depends on a library that failed to load is unavailable and 
 	assert.equal(isSymbolUnavailable(kit, "standalone"), false);
 
 	const definitions = [...symbolDefinitions, ...resolved.byReference.values()];
-	const standaloneDefinition = resolved.byReference.get(
-		symbolReferenceKey(kit, "standalone"),
-	)!;
+	const standaloneDefinition = required(
+		resolved.byReference.get(symbolReferenceKey(kit, "standalone")),
+	);
 	const original = createCircuit("Board", "pcb-main");
 	const place = (part: { id: string; name: string }) => {
 		const file = structuredClone(original);

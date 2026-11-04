@@ -1,3 +1,4 @@
+import { required } from "../helpers/required.ts";
 /** A deterministic example built from Gerber source, using the same import path as user files. */
 export const demoName = "Atlas sensor board";
 
@@ -70,9 +71,9 @@ class Gerber {
 
 	path(points: readonly Point[], aperture = 10) {
 		this.commands.push(`D${aperture}*`, "G01*");
-		points.forEach((point, index) =>
-			this.commands.push(`${xy(point)}D0${index ? 1 : 2}*`),
-		);
+		points.forEach((point, index) => {
+			this.commands.push(`${xy(point)}D0${index ? 1 : 2}*`);
+		});
 		return this;
 	}
 
@@ -243,7 +244,9 @@ for (const component of components.filter(({ reference }) =>
 	pad([x + offset, y], 15, component.reference, 2);
 }
 for (const reference of ["U2", "U3"]) {
-	const component = components.find((item) => item.reference === reference)!;
+	const component = required(
+		components.find((item) => item.reference === reference),
+	);
 	const [x, y] = component.position;
 	for (let index = 0; index < 4; index++) {
 		pad([x - 2.6, y - 1.905 + index * 1.27], 18, reference, index + 1);

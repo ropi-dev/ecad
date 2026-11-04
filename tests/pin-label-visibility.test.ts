@@ -20,6 +20,7 @@ import {
 	symbolDefinitions,
 } from "#/drawing/symbols.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
+import { required } from "./helpers/required.ts";
 
 test("hidden pin labels preserve terminals in standalone pins, rotated symbols and previews", () => {
 	const pin = {
@@ -177,7 +178,7 @@ test("native pin names align with leads while numbers stay above them and surviv
 			pinTerminals({ ...restored, labelOffset: undefined }),
 		);
 		const [display] = buildDrawingDisplay([pin], new Set()).shapes;
-		const [name, number] = display.children!;
+		const [name, number] = required(display.children);
 		const edge =
 			name.x * display.width +
 			(labelOffset < 0
@@ -242,7 +243,7 @@ test("independent visibility overrides the legacy fallback without moving either
 						);
 						assert.deepEqual(
 							display.shapes[0].children,
-							full.children!.filter((_, index) => visible[index]),
+							required(full.children).filter((_, index) => visible[index]),
 						);
 						for (const item of [
 							display.connections[0],

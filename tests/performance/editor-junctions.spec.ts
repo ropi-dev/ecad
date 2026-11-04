@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -48,7 +49,7 @@ for (const connectionKind of ["wire", "pin"] as const)
 			.getByRole("button", { name: "Snap to grid", exact: true })
 			.click();
 		const canvas = page.locator("canvas");
-		const bounds = (await canvas.boundingBox())!;
+		const bounds = required(await canvas.boundingBox());
 		const start = { x: bounds.width * 0.25, y: bounds.height * 0.6 };
 		const end = { x: bounds.width * 0.55, y: start.y };
 		const branch = { x: bounds.width * 0.4, y: bounds.height * 0.4 };
@@ -83,10 +84,17 @@ for (const connectionKind of ["wire", "pin"] as const)
 					const manifest = await (
 						await directory.getFileHandle(".ecadprj")
 					).getFile();
-					const path = (await manifest.text())
-						.match(/^drawing\s*=\s*"([^"]+)"/m)![1]
-						.split("/");
-					const name = path.pop()!;
+					const path = ((await manifest.text()).match(
+						/^drawing\s*=\s*"([^"]+)"/m,
+					) ??
+						(() => {
+							throw new Error("Expected a value");
+						})())[1].split("/");
+					const name =
+						path.pop() ??
+						(() => {
+							throw new Error("Expected a value");
+						})();
 					for (const part of path)
 						directory = await directory.getDirectoryHandle(part);
 					const file = await (await directory.getFileHandle(name)).getFile();
@@ -96,7 +104,7 @@ for (const connectionKind of ["wire", "pin"] as const)
 			.toBe(connectionKind === "wire" ? 205 : 204);
 		const value = await report(page);
 		await finish(page, testInfo, `editor-${connectionKind}-junction`, {
-			interactionP95Ms: metric(value, "scenario.interaction")!,
-			normalizationP95Ms: metric(value, "editor.wire-normalize")!,
+			interactionP95Ms: required(metric(value, "scenario.interaction")),
+			normalizationP95Ms: required(metric(value, "editor.wire-normalize")),
 		});
 	});

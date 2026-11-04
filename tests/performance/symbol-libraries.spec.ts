@@ -1,6 +1,7 @@
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -105,8 +106,8 @@ test("symbol-libraries", async ({ page }, testInfo) => {
 	});
 	const value = await report(page);
 	await finish(page, testInfo, "symbol-libraries", {
-		libraryLoadMs: metric(value, "symbol-library.load")!,
-		libraryResolveMs: metric(value, "symbol-library.resolve")!,
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		libraryLoadMs: required(metric(value, "symbol-library.load")),
+		libraryResolveMs: required(metric(value, "symbol-library.resolve")),
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

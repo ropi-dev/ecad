@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
+import { required } from "./helpers/required.ts";
 
 const later = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
 
@@ -65,7 +66,7 @@ test("a task that throws synchronously rejects instead of throwing and does not 
 			throw failure;
 		});
 	});
-	await assert.rejects(result!, failure);
+	await assert.rejects(required(result), failure);
 	assert.equal(await enqueue(() => "next"), "next");
 });
 

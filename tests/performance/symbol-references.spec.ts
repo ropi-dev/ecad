@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -62,7 +63,7 @@ test("symbol-references", async ({ page }, testInfo) => {
 		await page
 			.getByRole("button", { name: "Insert Reference parent", exact: true })
 			.click();
-		const bounds = (await page.locator("canvas").boundingBox())!;
+		const bounds = required(await page.locator("canvas").boundingBox());
 		await page
 			.locator("canvas")
 			.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
@@ -85,15 +86,23 @@ test("symbol-references", async ({ page }, testInfo) => {
 			page.evaluate(async () => {
 				const root = await navigator.storage.getDirectory();
 				const directory = await root.getDirectoryHandle(
-					localStorage.getItem("ecad.active-project")!,
+					localStorage.getItem("ecad.active-project") ??
+						(() => {
+							throw new Error("Expected a value");
+						})(),
 				);
 				const manifest = await (
 					await directory.getFileHandle(".ecadprj")
 				).getFile();
-				const path = (await manifest.text())
-					.match(/drawing = "([^"]+)"/)![1]
-					.split("/");
-				const name = path.pop()!;
+				const path = ((await manifest.text()).match(/drawing = "([^"]+)"/) ??
+					(() => {
+						throw new Error("Expected a value");
+					})())[1].split("/");
+				const name =
+					path.pop() ??
+					(() => {
+						throw new Error("Expected a value");
+					})();
 				let folder = directory;
 				for (const part of path) folder = await folder.getDirectoryHandle(part);
 				const drawing = JSON.parse(
@@ -132,7 +141,7 @@ test("symbol-references", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "symbol-references", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
-		resolveP95Ms: metric(value, "drawing.resolve-symbols")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
+		resolveP95Ms: required(metric(value, "drawing.resolve-symbols")),
 	});
 });

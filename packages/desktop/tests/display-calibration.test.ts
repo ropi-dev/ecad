@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { cssPixelsPerMm } from "@ecad/core/components/viewer/displayScale.ts";
+import { required } from "../../../tests/helpers/required.ts";
 import {
 	calibrateDisplay,
+	type DisplayGeometry,
 	edidDimensions,
 	xrandrDimensions,
-	type DisplayGeometry,
 } from "../src/main/display-calibration.ts";
 
 const display: DisplayGeometry = {
@@ -18,10 +19,10 @@ const display: DisplayGeometry = {
 };
 
 test("100% maps an A3 sheet to physical pixels through OS and browser scaling", () => {
-	const calibration = calibrateDisplay(display, 600, 337.5)!;
+	const calibration = required(calibrateDisplay(display, 600, 337.5));
 	assert.equal(calibration.pixelsPerMm, 6.4);
 	for (const ratio of [1, 1.25, 2, 3]) {
-		const scale = cssPixelsPerMm(calibration, ratio)!;
+		const scale = required(cssPixelsPerMm(calibration, ratio));
 		assert.equal((420 * scale * ratio) / calibration.pixelsPerMm, 420);
 		assert.equal((297 * scale * ratio) / calibration.pixelsPerMm, 297);
 	}

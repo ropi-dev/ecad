@@ -18,6 +18,7 @@ import {
 	buildWireCrossings,
 	type WireCrossings,
 } from "#/drawing/wire-crossings.ts";
+import { required } from "./helpers/required.ts";
 
 // The connection analyses use spatial indexes. These copies of the original
 // all-pairs scans define the expected results, including tolerance boundaries.
@@ -297,8 +298,8 @@ function randomDrawing(seed: number): EditorShape[] {
 	];
 	const coordinate = () => Math.round(random() * 16 - 8) * 1.27 + pick(nudges);
 	const point = () => ({ x: coordinate(), y: coordinate() });
-	const parts = ["resistor", "capacitor", "led", "connector-4"].map(
-		(id) => symbolDefinitions.find((definition) => definition.id === id)!,
+	const parts = ["resistor", "capacitor", "led", "connector-4"].map((id) =>
+		required(symbolDefinitions.find((definition) => definition.id === id)),
 	);
 	const shapes: EditorShape[] = [];
 	for (let id = 1; shapes.length < 70; id++) {
@@ -456,7 +457,9 @@ test("crossings stay exact and finish at very large coordinates", () => {
 });
 
 test("symbol terminals are shared, frozen, and follow a moved symbol", () => {
-	const resistor = symbolDefinitions.find(({ id }) => id === "resistor")!;
+	const resistor = required(
+		symbolDefinitions.find(({ id }) => id === "resistor"),
+	);
 	const symbol = createSymbol(1, resistor, { x: 0, y: 0 });
 	const terminals = pinTerminals(symbol);
 	assert.equal(pinTerminals(symbol), terminals);

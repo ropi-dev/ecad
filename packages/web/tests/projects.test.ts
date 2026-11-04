@@ -69,8 +69,7 @@ function browserFilesystem() {
 			async *keys() {
 				for (const key of directories) {
 					if (
-						key &&
-						key.startsWith(prefix) &&
+						key?.startsWith(prefix) &&
 						key.split("/").length ===
 							(prefix ? prefix.split("/").length + 1 : 1)
 					)

@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { demoFiles } from "./fixtures/demo-gerbers";
 import {
 	GERBER_SPEC_REVISION,
 	gerberParser,
 	parseGerber,
 } from "#/formats/gerber/index.ts";
 import { evaluateExpression } from "#/formats/gerber/macros.ts";
+import { demoFiles } from "./fixtures/demo-gerbers";
+import { required } from "./helpers/required.ts";
 
 const header = "%FSLAX46Y46*%\n%MOMM*%\n";
 const parse = (body: string) =>
-	parseGerber(header + body + "\nM02*", "test.gbr");
+	parseGerber(`${header + body}\nM02*`, "test.gbr");
 const clean = (body: string) => {
 	const result = parse(body);
 	assert.deepEqual(result.diagnostics, []);
@@ -71,8 +72,8 @@ test("normalizes inch coordinates, aperture sizes and bounds", () => {
 	assert.deepEqual(result.diagnostics, []);
 	assert.equal(result.units, "in");
 	const object = result.object.objects[0];
-	close(object.transform![4], 25.4);
-	close(object.transform![5], 50.8);
+	close(required(object.transform)[4], 25.4);
+	close(required(object.transform)[5], 50.8);
 	assert.equal(object.geometry.type, "rect");
 	if (object.geometry.type === "rect") {
 		close(object.geometry.width, 2.54);
@@ -90,10 +91,10 @@ test("supports legacy trailing zero suppression and incremental coordinates with
 		0,
 	);
 	assert.ok(result.diagnostics.some((d) => d.message.includes("incremental")));
-	close(result.object.objects[0].transform![4], 1);
-	close(result.object.objects[0].transform![5], 2);
-	close(result.object.objects[1].transform![4], 1.5);
-	close(result.object.objects[1].transform![5], 1.5);
+	close(required(result.object.objects[0].transform)[4], 1);
+	close(required(result.object.objects[0].transform)[5], 2);
+	close(required(result.object.objects[1].transform)[4], 1.5);
+	close(required(result.object.objects[1].transform)[5], 1.5);
 });
 
 test("X3 component metadata survives scoped attribute deletion and decodes escapes", () => {
@@ -191,7 +192,7 @@ test("aperture transforms apply mirror, rotation, scale, then flash translation"
 		"%AMOffCenter*1,1,2,3,0*%%ADD10OffCenter*%%LMX*%%LR90*%%LS2*%D10*X10000000Y20000000D03*",
 	);
 	const object = layer.objects[0],
-		m = object.transform!;
+		m = required(object.transform);
 	close(m[0], 0);
 	close(m[1], -2);
 	close(m[2], -2);
@@ -288,7 +289,7 @@ test("step and repeat copies complete ordered blocks, Y first, and resets curren
 		["dark", "clear", "dark", "clear", "dark", "clear", "dark", "clear"],
 	);
 	assert.deepEqual(
-		layer.objects.map((object) => object.transform!.slice(4)),
+		layer.objects.map((object) => required(object.transform).slice(4)),
 		[
 			[0, 0],
 			[1, 0],
@@ -318,7 +319,7 @@ test("AB expands dark and clear objects and toggles each polarity at LPC flash",
 		["clear", "dark"],
 	);
 	assert.deepEqual(
-		layer.objects.map((object) => object.transform!.slice(4)),
+		layer.objects.map((object) => required(object.transform).slice(4)),
 		[
 			[10, 0],
 			[11, 0],
@@ -331,10 +332,10 @@ test("nested AB preserves defined apertures and graphics state instead of restor
 		"%ADD10C,2*%D10*%ABD20*%%ABD21*%X0Y0D03*%AB*%D21*X1000000Y0D03*%AB*%D20*%LR90*%X10000000Y0D03*D21*X20000000Y0D03*",
 	);
 	assert.equal(layer.objects.length, 2);
-	close(layer.objects[0].transform![4], 10);
-	close(layer.objects[0].transform![5], 1);
-	close(layer.objects[1].transform![4], 20);
-	close(layer.objects[1].transform![5], 0);
+	close(required(layer.objects[0].transform)[4], 10);
+	close(required(layer.objects[0].transform)[5], 1);
+	close(required(layer.objects[1].transform)[4], 20);
+	close(required(layer.objects[1].transform)[5], 0);
 });
 
 test("safe macro arithmetic handles precedence, signs, variables and assignments", () => {
@@ -392,7 +393,7 @@ test("unsupported macro geometry and malformed files produce explicit errors", (
 		),
 	);
 	const truncated = parseGerber(
-		header + "%ADD10C,1*%D10*X0Y0D03*",
+		`${header}%ADD10C,1*%D10*X0Y0D03*`,
 		"truncated.gbr",
 	);
 	assert.ok(

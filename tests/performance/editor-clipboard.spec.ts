@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -16,15 +17,19 @@ test("editor-clipboard", async ({ page, context }, testInfo) => {
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	await canvas.click({
 		position: { x: bounds.width / 2, y: bounds.height / 2 },
 	});
 	await page.keyboard.press("Control+c");
 	await page.waitForFunction(
 		() =>
-			window.__ecadPerformance!.snapshot().metrics["drawing.clipboard-write"]
-				?.count === 1,
+			(
+				window.__ecadPerformance ??
+				(() => {
+					throw new Error("Expected a value");
+				})()
+			).snapshot().metrics["drawing.clipboard-write"]?.count === 1,
 	);
 	await page.evaluate(async () => {
 		const [item] = await navigator.clipboard.read();
@@ -45,9 +50,13 @@ test("editor-clipboard", async ({ page, context }, testInfo) => {
 			await page.keyboard.press("Control+v");
 			await page.waitForFunction(
 				(count) =>
-					(window.__ecadPerformance!.snapshot().metrics[
-						"drawing.clipboard-paste"
-					]?.count ?? 0) === count,
+					((
+						window.__ecadPerformance ??
+						(() => {
+							throw new Error("Expected a value");
+						})()
+					).snapshot().metrics["drawing.clipboard-paste"]?.count ?? 0) ===
+					count,
 				repeat + 1,
 			);
 			await page.evaluate(
@@ -60,16 +69,20 @@ test("editor-clipboard", async ({ page, context }, testInfo) => {
 		await page.keyboard.press("Control+c");
 		await page.waitForFunction(
 			(count) =>
-				window.__ecadPerformance!.snapshot().metrics["drawing.clipboard-write"]
-					?.count === count,
+				(
+					window.__ecadPerformance ??
+					(() => {
+						throw new Error("Expected a value");
+					})()
+				).snapshot().metrics["drawing.clipboard-write"]?.count === count,
 			repeat + 2,
 		);
 		await page.keyboard.press("Control+z");
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-clipboard", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
-		pasteP95Ms: metric(value, "drawing.clipboard-paste")!,
-		copyP95Ms: metric(value, "drawing.clipboard-write")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
+		pasteP95Ms: required(metric(value, "drawing.clipboard-paste")),
+		copyP95Ms: required(metric(value, "drawing.clipboard-write")),
 	});
 });

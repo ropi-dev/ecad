@@ -1,4 +1,3 @@
-import { memoryDirectory } from "./helpers/project-directory.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -7,8 +6,8 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
-	editShapeAttribute,
 	type EditorSymbol,
+	editShapeAttribute,
 	pinTerminals,
 } from "#/drawing/shapes.ts";
 import {
@@ -29,6 +28,8 @@ import {
 	type ConfiguredSymbolLibrary,
 	resolveSymbolLibraries,
 } from "#/symbol-library/config.ts";
+import { memoryDirectory } from "./helpers/project-directory.ts";
+import { required } from "./helpers/required.ts";
 
 const reference = { scope: "user", id: "parts" } as const;
 const pin: SymbolFile = {
@@ -127,9 +128,9 @@ test("nested symbol files save references and resolve transforms and terminals r
 	const parsed = parseSymbolFile(JSON.stringify(nested));
 	const resolved = await resolveSymbolLibraries([library([pin, parsed])], []);
 	assert.deepEqual(resolved.errors, []);
-	const definition = resolved.byReference.get(
-		symbolReferenceKey(reference, nested.id),
-	)!;
+	const definition = required(
+		resolved.byReference.get(symbolReferenceKey(reference, nested.id)),
+	);
 	const instance = createSymbol(1, definition, { x: 20, y: 30 });
 	assert.deepEqual(pinTerminals(instance), [{ x: 30, y: 33 }]);
 	const editorShapes = symbolFileShapes(parsed, (library, id) =>
@@ -150,7 +151,7 @@ test("nested symbol files save references and resolve transforms and terminals r
 	const reopened = await resolveSymbolLibraries([library([pin, saved])], []);
 	assert.deepEqual(reopened.errors, []);
 	assert.deepEqual(
-		reopened.byReference.get(symbolReferenceKey(reference, nested.id))!
+		required(reopened.byReference.get(symbolReferenceKey(reference, nested.id)))
 			.children,
 		definition.children,
 	);
@@ -302,9 +303,9 @@ test("legacy net-symbol label edits survive reference-only save, migration, and 
 	const { symbolTextShapes, normalizeNetSymbol } = await import(
 		"#/drawing/shapes.ts"
 	);
-	const definition = symbolDefinitions.find(
-		(definition) => definition.id === "vdd",
-	)!;
+	const definition = required(
+		symbolDefinitions.find((definition) => definition.id === "vdd"),
+	);
 	const legacy = {
 		...createSymbol(1, { ...definition, netSymbol: false }, { x: 0, y: 0 }),
 		netSymbol: true,
@@ -329,7 +330,10 @@ test("legacy net-symbol label edits survive reference-only save, migration, and 
 			[parsed],
 			[definition],
 			new Map([
-				[symbolReferenceKey(definition.library!, definition.id), definition],
+				[
+					symbolReferenceKey(required(definition.library), definition.id),
+					definition,
+				],
 			]),
 		);
 		assert.deepEqual(resolved.errors, []);
@@ -349,9 +353,9 @@ test("legacy net-symbol label edits survive reference-only save, migration, and 
 test("legacy supply instances retain their value labels until explicitly converted", async () => {
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
 	const { symbolTextShapes } = await import("#/drawing/shapes.ts");
-	const definition = symbolDefinitions.find(
-		(definition) => definition.id === "power-3v3",
-	)!;
+	const definition = required(
+		symbolDefinitions.find((definition) => definition.id === "power-3v3"),
+	);
 	const legacy = createSymbol(
 		1,
 		{ ...definition, netSymbol: false },
@@ -367,7 +371,10 @@ test("legacy supply instances retain their value labels until explicitly convert
 		[parsed],
 		[definition],
 		new Map([
-			[symbolReferenceKey(definition.library!, definition.id), definition],
+			[
+				symbolReferenceKey(required(definition.library), definition.id),
+				definition,
+			],
 		]),
 	);
 	assert.deepEqual(result.errors, []);
@@ -385,9 +392,9 @@ test("legacy supply instances retain their value labels until explicitly convert
 test("nested legacy supplies preserve their labels and overrides", async () => {
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
 	const { symbolTextShapes } = await import("#/drawing/shapes.ts");
-	const definition = symbolDefinitions.find(
-		(definition) => definition.id === "power-3v3",
-	)!;
+	const definition = required(
+		symbolDefinitions.find((definition) => definition.id === "power-3v3"),
+	);
 	for (const role of [undefined, false]) {
 		const file: SymbolFile = {
 			...pin,
@@ -395,7 +402,7 @@ test("nested legacy supplies preserve their labels and overrides", async () => {
 			shapes: [
 				{
 					kind: "symbol",
-					library: definition.library!,
+					library: required(definition.library),
 					definitionId: definition.id,
 					x: 0,
 					y: 0,
@@ -420,7 +427,7 @@ test("nested legacy supplies preserve their labels and overrides", async () => {
 			symbolTextShapes(resolved).map((label) => label.text),
 			["PWR7", "+1V8"],
 		);
-		const label = symbolTextShapes(resolved).at(-1)!;
+		const label = required(symbolTextShapes(resolved).at(-1));
 		assert.equal(label.x, 12);
 		assert.equal(label.y, 34);
 		assert.equal(label.horizontalAlign, "right");
@@ -440,16 +447,16 @@ test("nested legacy supplies preserve their labels and overrides", async () => {
 test("reusable symbol import, resolution and saving reject nested net declarations", async () => {
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
 	const { libraryDefinitions } = await import("#/drawing/symbol-file.ts");
-	const definition = symbolDefinitions.find(
-		(definition) => definition.id === "vdd",
-	)!;
+	const definition = required(
+		symbolDefinitions.find((definition) => definition.id === "vdd"),
+	);
 	const file: SymbolFile = {
 		...pin,
 		id: "invalid.nested.net",
 		shapes: [
 			{
 				kind: "symbol",
-				library: definition.library!,
+				library: required(definition.library),
 				definitionId: definition.id,
 				x: 0,
 				y: 0,
@@ -479,9 +486,9 @@ test("reusable symbol import, resolution and saving reject nested net declaratio
 });
 
 test("resized ground definitions resolve to mil geometry across rotations and remain stable after saving", () => {
-	const ground = symbolDefinitions.find(
-		(definition) => definition.id === "ground",
-	)!;
+	const ground = required(
+		symbolDefinitions.find((definition) => definition.id === "ground"),
+	);
 	const oldGround = {
 		...ground,
 		...libraryDefinitions([
@@ -506,7 +513,7 @@ test("resized ground definitions resolve to mil geometry across rotations and re
 		])[0],
 	};
 	const references = new Map([
-		[symbolReferenceKey(ground.library!, ground.id), ground],
+		[symbolReferenceKey(required(ground.library), ground.id), ground],
 	]);
 	for (const rotation of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
 		for (const inline of [false, true]) {
