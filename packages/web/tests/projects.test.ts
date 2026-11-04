@@ -304,3 +304,66 @@ test("file URL selections survive autosave revisions and resolve the latest phys
 		"assets/front panel.step",
 	);
 });
+
+test("browser tabs saving one project take its Web Lock, so the second save sees the first and conflicts", async () => {
+	const browser = browserFilesystem();
+	const first = createWebProjectStorage(browser.root, browser.selection);
+	await first.create("Shared");
+	const second = createWebProjectStorage(browser.root, browser.selection);
+	await second.open("Shared");
+	const [kept, lost] = await Promise.allSettled([
+		first.save("Shared", { shapes: [shape], symbols: [] }),
+		second.save("Shared", { shapes: [{ ...shape, id: 4 }], symbols: [] }),
+	]);
+	assert.equal(kept.status, "fulfilled");
+	assert.equal(lost.status, "rejected");
+	assert.equal((lost.reason as { _tag?: string })._tag, "ProjectConflict");
+	const reopened = await createWebProjectStorage(
+		browser.root,
+		browser.selection,
+	).open("Shared");
+	assert.deepEqual(
+		reopened?.shapes.map((saved) => saved.id),
+		[shape.id],
+	);
+	// Another tab holding the project lock delays this tab's reload until it
+	// releases the lock.
+	let settled = false;
+	let reload: Promise<unknown> | undefined;
+	await navigator.locks.request("ecad-project:Shared", async () => {
+		reload = second.open("Shared").finally(() => {
+			settled = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		assert.equal(settled, false);
+	});
+	assert.deepEqual(
+		((await reload) as { shapes: EditorShape[] }).shapes.map(
+			(saved) => saved.id,
+		),
+		[shape.id],
+	);
+});
+
+test("two tabs creating the same project keep the winner's files and report that it exists", async () => {
+	const browser = browserFilesystem();
+	const first = createWebProjectStorage(browser.root, browser.selection);
+	const second = createWebProjectStorage(browser.root, browser.selection);
+	const [created, lost] = await Promise.allSettled([
+		first.create("Shared"),
+		second.create("Shared"),
+	]);
+	assert.equal(created.status, "fulfilled");
+	assert.equal(lost.status, "rejected");
+	assert.equal((lost.reason as { _tag?: string })._tag, "ProjectExists");
+	assert.ok(browser.entries.has(`Shared/${PROJECT_FILE}`));
+	await first.save("Shared", { shapes: [shape], symbols: [] });
+	const reopened = await createWebProjectStorage(
+		browser.root,
+		browser.selection,
+	).open("Shared");
+	assert.deepEqual(
+		reopened?.shapes.map((saved) => saved.id),
+		[shape.id],
+	);
+});

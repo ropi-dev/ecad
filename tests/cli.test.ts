@@ -8,6 +8,7 @@ import {
 	readdir,
 	readFile,
 	readlink,
+	rm,
 	stat,
 	symlink,
 	utimes,
@@ -23,6 +24,10 @@ import { fileURLToPath } from "node:url";
 import { createLocalDrawing, runCli } from "@ecad/cli";
 import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
 import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
+import {
+	lockLeftoverTag,
+	withFileLock,
+} from "@ecad/drawing-core/lib/file-lock.ts";
 import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -93,6 +98,9 @@ const drawingFiles = new Set([
 	"drawing.ecaddraw",
 	"drawing.ecaddraw.history.json",
 ]);
+
+// Staged copies and claims of the fixture drawing's lock carry this tag.
+const tag = lockLeftoverTag("drawing.ecaddraw.lock");
 
 const fileMode = async (path: string) => (await stat(path)).mode & 0o7777;
 
@@ -636,16 +644,16 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 		(await readdir(fixture.directory)).filter((name) => !name.startsWith("."));
 	await crashed("\\.lock$");
 	assert.deepEqual(await visible(), ["drawing.ecaddraw.lock"]);
-	assert.equal(
-		typeof JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id,
-		"string",
-	);
+	const killed = JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id;
+	assert.equal(typeof killed, "string");
 	await crashed("^\\.ecad-claim-");
-	assert.equal(
+	// The claim has the name every version of the protocol uses for this
+	// owner, so older and newer processes recovering the lock exclude each other.
+	assert.deepEqual(
 		(await readdir(fixture.directory)).filter((name) =>
 			name.startsWith(".ecad-claim-"),
-		).length,
-		1,
+		),
+		[`.ecad-claim-${killed}`],
 	);
 	assert.ok(
 		(await readdir(fixture.directory)).some(
@@ -662,6 +670,133 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 	assert.equal((await fixture.read()).shapes.length, 1);
 });
 
+test("without hard links, a lock left empty by a process killed right after creating it is kept and reported until removed", async (context) => {
+	const fixture = await drawing(context);
+	const lock = `${fixture.path}.lock`;
+	const lockFaults = fileURLToPath(
+		new URL("./helpers/lock-faults.ts", import.meta.url),
+	);
+	const result = await startCli(
+		["placeRectangle", JSON.stringify(rectangle)],
+		{
+			...fixture.env,
+			ECAD_TEST_NO_HARD_LINKS: "1",
+			ECAD_TEST_CRASH_PATTERN: "\\.lock$",
+		},
+		"",
+		{ imports: [lockFaults] },
+	).result;
+	assert.equal(result.signal, "SIGKILL", result.stderr);
+	assert.equal(await readFile(lock, "utf8"), "");
+	const place = () =>
+		runEffect(
+			createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({
+				type: "placeRectangle",
+				input: rectangle,
+			}),
+			AbortSignal.timeout(5_000),
+		);
+	await assert.rejects(place(), {
+		code: "DrawingLocked",
+		message: `The drawing is locked, but the process holding the lock cannot be confirmed to be running. If no other process is using the drawing, remove the lock file and retry: ${lock}`,
+	});
+	assert.equal(await readFile(lock, "utf8"), "");
+	await rm(lock);
+	assert.ok((await place()).ok);
+	assert.equal((await fixture.read()).shapes.length, 1);
+});
+
+test("locks without a verifiable owner are kept however old they are, and the error names them", async (context) => {
+	const fixture = await drawing(context);
+	const lock = `${fixture.path}.lock`;
+	const twoMinutesAgo = new Date(Date.now() - 120_000);
+	// A dead process's staged copy for this lock gives no reason to remove it.
+	await writeFile(
+		join(fixture.directory, `.ecad-lock-${tag}-${randomUUID()}.tmp`),
+		lockContent({ pid: await exitedPid() }),
+	);
+	for (const content of [
+		"",
+		"written by another program",
+		lockContent({ pid: await exitedPid(), hostname: "another-computer" }),
+	]) {
+		await writeFile(lock, content);
+		await utimes(lock, twoMinutesAgo, twoMinutesAgo);
+		await assert.rejects(
+			runEffect(
+				createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({
+					type: "placeRectangle",
+					input: rectangle,
+				}),
+				AbortSignal.timeout(5_000),
+			),
+			(error: { code?: string; message?: string }) =>
+				error.code === "DrawingLocked" &&
+				/cannot be confirmed to be running/.test(error.message ?? "") &&
+				error.message?.endsWith(lock) === true,
+		);
+		assert.equal(await readFile(lock, "utf8"), content);
+	}
+});
+
+test("a lock held by a running process is reported without asking to remove it", {
+	// Only Linux records the start time that confirms a running owner.
+	skip: process.platform !== "linux",
+}, async (context) => {
+	const fixture = await drawing(context);
+	const lock = `${fixture.path}.lock`;
+	const place = () =>
+		runEffect(
+			createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({
+				type: "placeRectangle",
+				input: rectangle,
+			}),
+			AbortSignal.timeout(5_000),
+		);
+	await withFileLock(lock, { timeout: 1_000 }, () =>
+		assert.rejects(place(), {
+			code: "DrawingLocked",
+			message: `The drawing is locked by another process. Lock file: ${lock}`,
+		}),
+	);
+	assert.ok((await place()).ok);
+});
+
+test("recovering one lock leaves the staged copies of other locks in the folder alone", async (context) => {
+	const fixture = await drawing(context);
+	const other = lockLeftoverTag("other.ecaddraw.lock");
+	const dead = async () => lockContent({ pid: await exitedPid() });
+	const otherFiles = [
+		"other.ecaddraw.lock",
+		`.ecad-lock-${other}-${randomUUID()}.tmp`,
+	];
+	for (const name of otherFiles)
+		await writeFile(join(fixture.directory, name), await dead());
+	// Claims are not tagged, so every version contends for the same claim. One
+	// whose claimer exited is removed through the claim protocol.
+	const ownFiles = [
+		`.ecad-lock-${tag}-${randomUUID()}.tmp`,
+		`.ecad-claim-${randomUUID()}`,
+	];
+	for (const name of ownFiles)
+		await writeFile(join(fixture.directory, name), await dead());
+	await writeFile(`${fixture.path}.lock`, await dead());
+	assert.ok(
+		(
+			await runEffect(
+				createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({
+					type: "placeRectangle",
+					input: rectangle,
+				}),
+			)
+		).ok,
+	);
+	assert.deepEqual(
+		new Set(await readdir(fixture.directory)),
+		new Set([...drawingFiles, ...otherFiles]),
+	);
+});
+
 test("recovery removes leftovers of killed processes, and a process whose copy was removed stages a new one", async (context) => {
 	const fixture = await drawing(context);
 	const twoMinutesAgo = new Date(Date.now() - 120_000);
@@ -670,10 +805,10 @@ test("recovery removes leftovers of killed processes, and a process whose copy w
 		if (old)
 			await utimes(join(fixture.directory, name), twoMinutesAgo, twoMinutesAgo);
 	};
-	const fresh = `.ecad-lock-${randomUUID()}.tmp`;
-	await file(`.ecad-lock-${randomUUID()}.tmp`, "", true);
+	const fresh = `.ecad-lock-${tag}-${randomUUID()}.tmp`;
+	await file(`.ecad-lock-${tag}-${randomUUID()}.tmp`, "", true);
 	await file(
-		`.ecad-lock-${randomUUID()}.tmp`,
+		`.ecad-lock-${tag}-${randomUUID()}.tmp`,
 		lockContent({ pid: await exitedPid() }),
 	);
 	await file(fresh, "");
@@ -722,11 +857,11 @@ test("recovery skips FIFOs and symbolic links named like claims or lock copies",
 	const fixture = await drawing(context);
 	const special = [
 		`.ecad-claim-${randomUUID()}`,
-		`.ecad-lock-${randomUUID()}.tmp`,
+		`.ecad-lock-${tag}-${randomUUID()}.tmp`,
 	];
 	for (const name of special)
 		await once(spawn("mkfifo", [join(fixture.directory, name)]), "exit");
-	const link = `.ecad-lock-${randomUUID()}.tmp`;
+	const link = `.ecad-lock-${tag}-${randomUUID()}.tmp`;
 	await symlink("/dev/zero", join(fixture.directory, link));
 	await writeFile(
 		`${fixture.path}.lock`,

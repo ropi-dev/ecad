@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { type BigIntStats, constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { SymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
 	InvalidProjectPath,
 	ProjectClosed,
+	ProjectLocked,
 	SymbolLibraryAccessDenied,
 } from "@ecad/core/projects/errors.ts";
 import {
@@ -20,8 +22,14 @@ import {
 } from "@ecad/core/projects/format.ts";
 import {
 	type ProjectDirectory,
+	type ProjectLockMode,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
+import {
+	FileLocked,
+	inspectLock,
+	withFileLock,
+} from "@ecad/drawing-core/lib/file-lock.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
 	canWriteSymbolPath,
@@ -39,6 +47,7 @@ const notRegularFile = (path: string) =>
 
 export async function createDesktopProjectDirectory(
 	selected: string,
+	{ lockTimeout = 30_000 }: { lockTimeout?: number } = {},
 ): Promise<ProjectDirectory> {
 	const directory = await realpath(resolve(selected));
 	if (!(await lstat(directory)).isDirectory())
@@ -63,8 +72,36 @@ export async function createDesktopProjectDirectory(
 		}
 		return join(current, parts[parts.length - 1]);
 	}
+	// While a read runs without the lock, the identity of each file it reads.
+	let reads: Map<string, string> | undefined;
+	const recordReads: RecordReads = async (work) => {
+		const recorded = new Map<string, string>();
+		reads = recorded;
+		try {
+			const result = await work();
+			return {
+				result,
+				async unchanged() {
+					for (const [path, key] of recorded) {
+						try {
+							const info = await lstat(await target(path), { bigint: true });
+							if (fileKey(info) !== key) return false;
+						} catch (cause) {
+							if (isMissing(cause)) return false;
+							throw cause;
+						}
+					}
+					return true;
+				},
+			};
+		} finally {
+			if (reads === recorded) reads = undefined;
+		}
+	};
 	return {
 		name: directory,
+		lock: (work, mode) =>
+			lockProject(directory, lockTimeout, work, mode, recordReads),
 		async exists(path) {
 			try {
 				await lstat(await target(path));
@@ -87,7 +124,10 @@ export async function createDesktopProjectDirectory(
 				constants.O_RDONLY | constants.O_NOFOLLOW,
 			);
 			try {
-				if (!(await file.stat()).isFile()) throw notRegularFile(path);
+				const info = await file.stat({ bigint: true });
+				if (!info.isFile()) throw notRegularFile(path);
+				// The open file's identity is that of the bytes read.
+				if (reads && !reads.has(path)) reads.set(path, fileKey(info));
 				return new Uint8Array(await file.readFile());
 			} finally {
 				await file.close();
@@ -121,6 +161,95 @@ export async function createDesktopProjectDirectory(
 			await rm(await target(path), { recursive: true, force: true });
 		},
 	};
+}
+
+const unwritable = ["EACCES", "EPERM", "EROFS"];
+
+// Every desktop instance that opens or saves this project takes the same lock
+// file, which is removed if its recorded owner has exited. The lock file is
+// always exclusive: a shared request takes it like an exclusive one.
+//
+// Taking the lock creates files in the project directory. A project in a
+// directory this process cannot write is therefore read without it, and the
+// read is checked with readConsistently. Writes always need the lock.
+async function lockProject<T>(
+	directory: string,
+	timeout: number,
+	work: () => Promise<T>,
+	mode: ProjectLockMode,
+	recordReads: RecordReads,
+): Promise<T> {
+	let locked = false;
+	try {
+		return await withFileLock(
+			join(directory, `${PROJECT_FILE}.lock`),
+			{ timeout },
+			() => {
+				locked = true;
+				return work();
+			},
+		);
+	} catch (cause) {
+		if (locked) throw cause;
+		if (cause instanceof FileLocked)
+			throw new ProjectLocked(cause.ownerRunning ? {} : { path: cause.path });
+		if (
+			mode === "shared" &&
+			cause instanceof Error &&
+			"code" in cause &&
+			unwritable.includes(String(cause.code))
+		)
+			return readConsistently(directory, work, recordReads);
+		throw cause;
+	}
+}
+
+// Runs work while recording the identity of every file it reads, and tells
+// afterwards whether each of those files is still the one that was read.
+type RecordReads = <T>(
+	work: () => Promise<T>,
+) => Promise<{ result: T; unchanged(): Promise<boolean> }>;
+
+// Desktop writes replace files through new files, so a replaced or restored
+// file gets a new inode and new times.
+const fileKey = (info: BigIntStats) =>
+	`${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+
+const readAttempts = 4;
+
+// Reads without the lock, keeping a read only when no writer held the lock
+// after it and every file it read is still the one it read. A writer holds
+// the lock for its whole save, including a rollback, so one that wrote
+// during the read either still holds the lock or already replaced a file
+// that was read before it was written. The read then matches the files as
+// they are after a finished save. A lock whose owner certainly exited counts
+// as free, because it cannot be removed here. If writers keep interfering,
+// the read is rejected, naming the lock file when its owner is unknown.
+async function readConsistently<T>(
+	directory: string,
+	read: () => Promise<T>,
+	recordReads: RecordReads,
+): Promise<T> {
+	const lockPath = join(directory, `${PROJECT_FILE}.lock`);
+	const holder = async () => {
+		const state = await inspectLock(lockPath);
+		return state === "running" || state === "unknown" ? state : undefined;
+	};
+	for (let attempt = 1; ; attempt++) {
+		let writer = await holder();
+		if (!writer) {
+			const { result, unchanged } = await recordReads(read);
+			writer = await holder();
+			if (!writer && (await unchanged())) return result;
+		}
+		if (attempt === readAttempts)
+			throw new ProjectLocked(writer === "unknown" ? { path: lockPath } : {});
+		await delay(50 * attempt);
+	}
+}
+
+function isMissing(cause: unknown) {
+	return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
 }
 
 export interface DesktopProjectsOptions {

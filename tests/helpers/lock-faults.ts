@@ -6,12 +6,15 @@
 // - ECAD_TEST_SIGNAL_ON_RELEASE: send this signal, such as SIGTERM, to this
 //   process when it starts removing a drawing lock, and finish the removal
 //   300 ms later.
+// - ECAD_TEST_NO_HARD_LINKS: fail every hard link with EPERM, as file systems
+//   without hard links do.
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { basename } from "node:path";
 
 const pattern = process.env.ECAD_TEST_CRASH_PATTERN;
 let dropCopy = !!process.env.ECAD_TEST_DROP_COPY;
+const noHardLinks = !!process.env.ECAD_TEST_NO_HARD_LINKS;
 let signalOnRelease = process.env.ECAD_TEST_SIGNAL_ON_RELEASE as
 	| NodeJS.Signals
 	| undefined;
@@ -21,6 +24,10 @@ const crash = (path: fs.PathLike) => {
 		process.kill(process.pid, "SIGKILL");
 };
 fs.promises.link = async (existing, path) => {
+	if (noHardLinks)
+		throw Object.assign(new Error("Operation not permitted"), {
+			code: "EPERM",
+		});
 	if (dropCopy) {
 		dropCopy = false;
 		await rm(existing);

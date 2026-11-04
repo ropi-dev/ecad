@@ -37,6 +37,38 @@ export interface ProjectDirectory {
 	read(path: string): Promise<Uint8Array>;
 	write(path: string, bytes: Uint8Array): Promise<void>;
 	remove(path: string): Promise<void>;
+	/**
+	 * Runs work while holding a lock on this project that other repositories,
+	 * windows and processes also take. Reads ask for a shared lock and writes
+	 * for an exclusive one. An implementation may read without the lock when
+	 * it cannot take one, for example in a read-only directory, but must
+	 * never write without it. Without this method, the lock covers only the
+	 * repositories in this JavaScript realm that use a directory of the same
+	 * name.
+	 */
+	lock?<T>(work: () => Promise<T>, mode: ProjectLockMode): Promise<T>;
+}
+
+export type ProjectLockMode = "shared" | "exclusive";
+
+const localLocks = new Map<string, Promise<void>>();
+
+/** Runs work after earlier work under the same name in this JavaScript realm. */
+
+export function withLocalLock<T>(
+	name: string,
+	work: () => Promise<T>,
+): Promise<T> {
+	const run = (localLocks.get(name) ?? Promise.resolve()).then(work);
+	const released = run.then(
+		() => {},
+		() => {},
+	);
+	localLocks.set(name, released);
+	void released.then(() => {
+		if (localLocks.get(name) === released) localLocks.delete(name);
+	});
+	return run;
 }
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -96,126 +128,151 @@ export class ProjectRepository {
 		private options: { layout?: "files" | "revisions" } = {},
 	) {}
 
+	// Reading, checking for changes and publishing hold the project lock, so a
+	// save from another repository either finishes first and is detected as an
+	// external change, or starts after this one finishes.
+	private locked<T>(mode: ProjectLockMode, work: () => Promise<T>): Promise<T> {
+		return this.sequential(() => this.withLock(mode, work));
+	}
+
+	private withLock<T>(mode: ProjectLockMode, work: () => Promise<T>) {
+		return this.directory.lock
+			? this.directory.lock(work, mode)
+			: withLocalLock(this.directory.name, work);
+	}
+
 	private async readManifest() {
 		return decoder.decode(await this.directory.read(PROJECT_FILE));
 	}
 
+	// The read only becomes the repository's state once the lock is released,
+	// because a directory may reject a read it cannot verify after it finished.
 	load(): Promise<ProjectSnapshot> {
 		return this.sequential(async () => {
-			const content = await this.readManifest();
-			const manifest = parseProjectManifest(content);
-			const savedFiles = new Map<string, Uint8Array>();
-			const contents = new Map<string, Promise<string>>();
-			const read = (path: string): Promise<string> => {
-				const existing = contents.get(path);
-				if (existing) return existing;
-				const pending = readFile(path);
-				contents.set(path, pending);
-				return pending;
-			};
-			const readFile = async (path: string) => {
-				const bytes = await this.directory.read(path);
-				if (this.options.layout === "files") savedFiles.set(path, bytes);
-				return decoder.decode(bytes);
-			};
-			const readJson = async <T = Record<string, unknown>>(
-				path: string,
-				parse: (value: Record<string, unknown>) => T = (value) => value as T,
-			): Promise<T> => {
-				try {
-					const value: unknown = JSON.parse(await read(path));
-					if (!Predicate.isRecord(value))
-						throw new InvalidProjectFile({
-							path,
-							reason: "The file must contain a JSON object.",
-						});
-					return parse(value);
-				} catch (cause) {
-					throw invalidFile(path, cause);
-				}
-			};
-			const drawing = await readJson(manifest.drawing);
-			const symbols = await Promise.all(
-				manifest.symbols.map(async (path) => {
-					try {
-						return parseSymbolFile(await read(path));
-					} catch (cause) {
-						throw invalidFile(path, cause);
-					}
-				}),
-			);
-			const document = validateProjectDocument(
-				{
-					shapes: drawing.shapes as ProjectDocument["shapes"],
-					...(manifest.drawings === undefined
-						? {}
-						: {
-								drawings: await Promise.all(
-									manifest.drawings.map((path) =>
-										readJson(
-											path,
-											({ circuit: _circuit, ...drawing }) => drawing,
-										),
-									),
-								),
-							}),
-					...(manifest.circuits === undefined
-						? {}
-						: {
-								circuits: await Promise.all(
-									manifest.circuits.map((paths) =>
-										readJson(paths.circuit, (value) => {
-											const parsed = circuitSchema.safeParse(value.circuit);
-											if (!parsed.success)
-												throw new InvalidProjectFile({
-													path: paths.circuit,
-													reason: schemaReason(
-														parsed.error.issues.map((issue) => ({
-															...issue,
-															path: ["circuit", ...issue.path],
-														})),
-													),
-													cause: parsed.error,
-												});
-											const circuit = parsed.data;
-											if (value.circuitId && value.circuitId !== circuit.id)
-												throw new InvalidProjectFile({
-													path: paths.circuit,
-													reason:
-														"The schematic circuit identity does not match its circuit data.",
-												});
-											return {
-												circuit,
-												graph: {
-													format: "ecad-circuit-graph" as const,
-													version: 1 as const,
-													circuitId: circuit.id,
-													positions: [],
-												},
-											};
-										}),
-									),
-								),
-							}),
-					symbols,
-					symbolLibraries:
-						drawing.symbolLibraries as ProjectDocument["symbolLibraries"],
-				} as ProjectDocument,
-				{
-					drawing: manifest.drawing,
-					drawings: manifest.drawings,
-					circuits: manifest.circuits?.map((paths) => paths.circuit),
-				},
-			);
-			this.snapshot = { directory: this.directory.name, manifest, ...document };
-			this.savedManifest = content;
-			this.savedFiles = savedFiles;
-			return this.snapshot;
+			const loaded = await this.withLock("shared", () => this.read());
+			this.snapshot = loaded.snapshot;
+			this.savedManifest = loaded.content;
+			this.savedFiles = loaded.savedFiles;
+			return loaded.snapshot;
 		});
 	}
 
+	private async read() {
+		const content = await this.readManifest();
+		const manifest = parseProjectManifest(content);
+		const savedFiles = new Map<string, Uint8Array>();
+		const contents = new Map<string, Promise<string>>();
+		const read = (path: string): Promise<string> => {
+			const existing = contents.get(path);
+			if (existing) return existing;
+			const pending = readFile(path);
+			contents.set(path, pending);
+			return pending;
+		};
+		const readFile = async (path: string) => {
+			const bytes = await this.directory.read(path);
+			if (this.options.layout === "files") savedFiles.set(path, bytes);
+			return decoder.decode(bytes);
+		};
+		const readJson = async <T = Record<string, unknown>>(
+			path: string,
+			parse: (value: Record<string, unknown>) => T = (value) => value as T,
+		): Promise<T> => {
+			try {
+				const value: unknown = JSON.parse(await read(path));
+				if (!Predicate.isRecord(value))
+					throw new InvalidProjectFile({
+						path,
+						reason: "The file must contain a JSON object.",
+					});
+				return parse(value);
+			} catch (cause) {
+				throw invalidFile(path, cause);
+			}
+		};
+		const drawing = await readJson(manifest.drawing);
+		const symbols = await Promise.all(
+			manifest.symbols.map(async (path) => {
+				try {
+					return parseSymbolFile(await read(path));
+				} catch (cause) {
+					throw invalidFile(path, cause);
+				}
+			}),
+		);
+		const document = validateProjectDocument(
+			{
+				shapes: drawing.shapes as ProjectDocument["shapes"],
+				...(manifest.drawings === undefined
+					? {}
+					: {
+							drawings: await Promise.all(
+								manifest.drawings.map((path) =>
+									readJson(
+										path,
+										({ circuit: _circuit, ...drawing }) => drawing,
+									),
+								),
+							),
+						}),
+				...(manifest.circuits === undefined
+					? {}
+					: {
+							circuits: await Promise.all(
+								manifest.circuits.map((paths) =>
+									readJson(paths.circuit, (value) => {
+										const parsed = circuitSchema.safeParse(value.circuit);
+										if (!parsed.success)
+											throw new InvalidProjectFile({
+												path: paths.circuit,
+												reason: schemaReason(
+													parsed.error.issues.map((issue) => ({
+														...issue,
+														path: ["circuit", ...issue.path],
+													})),
+												),
+												cause: parsed.error,
+											});
+										const circuit = parsed.data;
+										if (value.circuitId && value.circuitId !== circuit.id)
+											throw new InvalidProjectFile({
+												path: paths.circuit,
+												reason:
+													"The schematic circuit identity does not match its circuit data.",
+											});
+										return {
+											circuit,
+											graph: {
+												format: "ecad-circuit-graph" as const,
+												version: 1 as const,
+												circuitId: circuit.id,
+												positions: [],
+											},
+										};
+									}),
+								),
+							),
+						}),
+				symbols,
+				symbolLibraries:
+					drawing.symbolLibraries as ProjectDocument["symbolLibraries"],
+			} as ProjectDocument,
+			{
+				drawing: manifest.drawing,
+				drawings: manifest.drawings,
+				circuits: manifest.circuits?.map((paths) => paths.circuit),
+			},
+		);
+		const snapshot: ProjectSnapshot = {
+			directory: this.directory.name,
+			manifest,
+			...document,
+		};
+		return { snapshot, content, savedFiles };
+	}
+
 	create(name: string): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.locked("exclusive", async () => {
 			name = parseProjectName(name);
 			try {
 				await this.directory.read(PROJECT_FILE);
@@ -542,7 +599,7 @@ export class ProjectRepository {
 	}
 
 	save(document: ProjectDocument): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.locked("exclusive", async () => {
 			const current = await this.assertCurrent();
 			const validated = validateProjectDocument(document);
 			const circuits = validated.circuits;
@@ -566,7 +623,7 @@ export class ProjectRepository {
 	importAssets(
 		assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
 	): Promise<ProjectSnapshot> {
-		return this.sequential(async () => {
+		return this.locked("exclusive", async () => {
 			const current = await this.assertCurrent();
 			const created: string[] = [];
 			const reserved = new Set([

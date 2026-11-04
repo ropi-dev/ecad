@@ -12,7 +12,9 @@ import {
 } from "@ecad/core/projects/format.ts";
 import {
 	type ProjectDirectory,
+	type ProjectLockMode,
 	ProjectRepository,
+	withLocalLock,
 } from "@ecad/core/projects/repository.ts";
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
 
@@ -37,9 +39,28 @@ export interface BrowserDirectory {
 }
 const selectedProjectKey = "ecad.active-project";
 
+type ProjectLock = NonNullable<ProjectDirectory["lock"]>;
+
+/**
+ * Runs work while holding the project's lock. Project names are unique within
+ * the origin's private file system, and Web Locks span every tab and worker of
+ * the origin.
+ */
+function projectLock<T>(
+	name: string,
+	work: () => Promise<T>,
+	mode: ProjectLockMode,
+): Promise<T> {
+	const locks = globalThis.navigator?.locks;
+	return locks
+		? (locks.request(`ecad-project:${name}`, { mode }, work) as Promise<T>)
+		: withLocalLock(`ecad-project:${name}`, work);
+}
+
 export function createBrowserProjectDirectory(
 	name: string,
 	handle: BrowserDirectory,
+	lock: ProjectLock = (work, mode) => projectLock(name, work, mode),
 ): ProjectDirectory {
 	async function parent(path: string, create = false) {
 		const parts = parseProjectPath(path).split("/");
@@ -51,6 +72,7 @@ export function createBrowserProjectDirectory(
 	}
 	return {
 		name,
+		lock,
 		async read(path) {
 			const { directory, filename } = await parent(path);
 			const file = await (await directory.getFileHandle(filename)).getFile();
@@ -136,30 +158,50 @@ export function createWebProjectStorage(
 				const directory = await root();
 				const displayName = name;
 				if (name === "Untitled") name = `Untitled-${crypto.randomUUID()}`;
-				try {
-					await directory.getDirectoryHandle(name);
-				} catch (cause) {
-					if (!(cause instanceof Error) || cause.name !== "NotFoundError")
-						throw cause;
-					const handle = await directory.getDirectoryHandle(name, {
-						create: true,
-					});
-					const repository = new ProjectRepository(
-						createBrowserProjectDirectory(name, handle),
-					);
-					try {
-						const snapshot = await repository.create(displayName);
-						browserSelection().setItem(selectedProjectKey, name);
-						active = { name, repository };
-						return snapshot;
-					} catch (error) {
-						await directory
-							.removeEntry(name, { recursive: true })
-							.catch(() => undefined);
-						throw error;
-					}
-				}
-				throw new ProjectExists({ projectName: displayName });
+				const projectName = name;
+				// The lock covers the existence check, the creation and the cleanup
+				// of a failed creation, so a tab that loses a race to create the
+				// same project never removes the project that another tab created.
+				return projectLock(
+					projectName,
+					async () => {
+						try {
+							await directory.getDirectoryHandle(projectName);
+						} catch (cause) {
+							if (!(cause instanceof Error) || cause.name !== "NotFoundError")
+								throw cause;
+							const handle = await directory.getDirectoryHandle(projectName, {
+								create: true,
+							});
+							// Web Locks are not reentrant, so the repository uses the lock
+							// held here until the project exists.
+							let held = true;
+							const repository = new ProjectRepository(
+								createBrowserProjectDirectory(
+									projectName,
+									handle,
+									(work, mode) =>
+										held ? work() : projectLock(projectName, work, mode),
+								),
+							);
+							try {
+								const snapshot = await repository.create(displayName);
+								browserSelection().setItem(selectedProjectKey, projectName);
+								active = { name: projectName, repository };
+								return snapshot;
+							} catch (error) {
+								await directory
+									.removeEntry(projectName, { recursive: true })
+									.catch(() => undefined);
+								throw error;
+							} finally {
+								held = false;
+							}
+						}
+						throw new ProjectExists({ projectName: displayName });
+					},
+					"exclusive",
+				);
 			}),
 		open: (name) =>
 			sequential(() => {
