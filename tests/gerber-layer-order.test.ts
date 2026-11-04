@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 import { strToU8, zipSync } from "fflate";
 import { expandGerberFile } from "#/formats/expandGerberFile.ts";
 import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
+import { installArchiveWorker } from "./helpers/archive-worker";
+
+after(installArchiveWorker().restore);
 
 const source = (fileFunction = "") =>
 	`${fileFunction ? `%TF.FileFunction,${fileFunction}*%` : ""}%FSLAX46Y46*%%MOMM*%%ADD10C,1*%D10*X0Y0D03*M02*`;
@@ -32,10 +35,11 @@ test("ZIP Gerbers follow the physical stack in the panel, including numeric inne
 			]),
 		),
 	);
-	const files = await expandGerberFile(
+	const { files, messages } = await expandGerberFile(
 		new File([new Uint8Array(archive)], "board.zip"),
 		new AbortController().signal,
 	);
+	assert.deepEqual(messages, []);
 	assert.deepEqual(
 		files.map((file) => file.name).reverse(),
 		layers.map(([name]) => `board/${name}`),
@@ -90,7 +94,8 @@ test("attributes override filenames, including legacy comment attributes", () =>
 
 test("standalone imports preserve their file identity", async () => {
 	const file = new File([source("Copper,L1,Top")], "board.gbr");
-	assert.deepEqual(await expandGerberFile(file, new AbortController().signal), [
-		file,
-	]);
+	assert.deepEqual(
+		(await expandGerberFile(file, new AbortController().signal)).files,
+		[file],
+	);
 });

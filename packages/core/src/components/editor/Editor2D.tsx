@@ -127,6 +127,13 @@ import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { screenToWorld, worldToScreen } from "#/engine/camera.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import {
+	arrowDelta,
+	handleHistoryKeyDown,
+	isArrowKey,
+	isEditableTarget,
+} from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
@@ -491,9 +498,7 @@ function EditorCanvas({
 				(cause) => {
 					if (active)
 						setCommandError(
-							cause instanceof Error
-								? cause.message
-								: "Unable to open the symbol definition.",
+							errorMessage(cause, "Unable to open the symbol definition."),
 						);
 				},
 			);
@@ -988,9 +993,7 @@ function EditorCanvas({
 			setTool("select");
 			setCreatingSymbol(false);
 		} catch (cause) {
-			return cause instanceof Error
-				? cause.message
-				: "Unable to save this symbol.";
+			return errorMessage(cause, "Unable to save this symbol.");
 		}
 	};
 	const selectShape = (id: number, additive: boolean) => {
@@ -1043,11 +1046,8 @@ function EditorCanvas({
 			!creatingSymbol &&
 			!drag.current &&
 			!wireChain.current &&
-			!(
-				target instanceof HTMLElement &&
-				(target.isContentEditable ||
-					target.closest("input, textarea, select, [role=dialog]"))
-			)
+			!isEditableTarget(event) &&
+			!(target instanceof HTMLElement && target.closest("[role=dialog]"))
 		);
 	};
 	const copySelection = (event: ReactClipboardEvent, cut = false) => {
@@ -1138,9 +1138,10 @@ function EditorCanvas({
 					);
 				} catch (cause) {
 					setCommandError(
-						cause instanceof Error
-							? cause.message
-							: "This selection cannot be pasted into a reusable symbol.",
+						errorMessage(
+							cause,
+							"This selection cannot be pasted into a reusable symbol.",
+						),
 					);
 					return;
 				}
@@ -1152,7 +1153,6 @@ function EditorCanvas({
 			}}
 			onKeyDownCapture={(event) => {
 				if (creatingSymbol) return;
-				const target = event.target;
 				if (event.key === "Escape" && tool === "symbol") {
 					setSymbolPreview(null);
 					setTool("select");
@@ -1160,13 +1160,7 @@ function EditorCanvas({
 					event.stopPropagation();
 					return;
 				}
-				if (
-					event.altKey ||
-					(target instanceof HTMLElement &&
-						(target.isContentEditable ||
-							target.closest("input, textarea, select")))
-				)
-					return;
+				if (event.altKey || isEditableTarget(event)) return;
 				const key = event.key.toLowerCase();
 				if (!(event.ctrlKey || event.metaKey)) {
 					if (key !== "r" || !ready || !currentSelection.current.size) return;
@@ -1175,13 +1169,8 @@ function EditorCanvas({
 					event.stopPropagation();
 					return;
 				}
-				if (key === "z") {
-					if (event.shiftKey) redo();
-					else undo();
-				} else if (key === "y" && !event.shiftKey) redo();
-				else return;
-				event.preventDefault();
-				event.stopPropagation();
+				if (handleHistoryKeyDown(event, { undo, redo }))
+					event.stopPropagation();
 			}}
 		>
 			<h1 className="sr-only">
@@ -1668,7 +1657,7 @@ function EditorCanvas({
 						} else if (
 							selectedChild &&
 							selectedSymbol &&
-							event.key.startsWith("Arrow") &&
+							isArrowKey(event.key) &&
 							!drag.current
 						) {
 							const step =
@@ -1680,27 +1669,14 @@ function EditorCanvas({
 									moveSymbolChild(
 										selectedSymbol,
 										selectedChild.key,
-										{
-											x:
-												event.key === "ArrowRight"
-													? step
-													: event.key === "ArrowLeft"
-														? -step
-														: 0,
-											y:
-												event.key === "ArrowUp"
-													? step
-													: event.key === "ArrowDown"
-														? -step
-														: 0,
-										},
+										arrowDelta(event.key, step, "up"),
 										0,
 										allowLocked,
 									),
 								],
 								"Move symbol child",
 							);
-						} else if (selected.length > 0 && event.key.startsWith("Arrow")) {
+						} else if (selected.length > 0 && isArrowKey(event.key)) {
 							if (drag.current) {
 								event.preventDefault();
 								event.stopPropagation();
@@ -1716,20 +1692,7 @@ function EditorCanvas({
 							commitReplacements(
 								moveShapes(
 									selected,
-									{
-										x:
-											event.key === "ArrowRight"
-												? step
-												: event.key === "ArrowLeft"
-													? -step
-													: 0,
-										y:
-											event.key === "ArrowUp"
-												? step
-												: event.key === "ArrowDown"
-													? -step
-													: 0,
-									},
+									arrowDelta(event.key, step, "up"),
 									snapStep,
 									selected[0],
 									currentShapes.current,
@@ -2422,9 +2385,7 @@ function LibrarySymbolEditor({
 					setError("");
 				} catch (cause) {
 					setError(
-						cause instanceof Error
-							? cause.message
-							: "Unable to save the symbol definition.",
+						errorMessage(cause, "Unable to save the symbol definition."),
 					);
 					throw cause;
 				} finally {

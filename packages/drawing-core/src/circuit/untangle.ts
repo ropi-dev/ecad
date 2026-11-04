@@ -1,5 +1,11 @@
 import { measurePerformance } from "#/performance/runtime.ts";
-import { buildCircuitGraph, componentWidth } from "./graph.ts";
+import {
+	buildCircuitGraph,
+	componentWidth,
+	connectionCurveOffset,
+	netNodeBox,
+	netNodeWidth,
+} from "./graph.ts";
 import { CIRCUIT_GRID_SPACING, snapCircuitPoint } from "./grid.ts";
 import type { Circuit, CircuitFile, GraphLayout } from "./model.ts";
 
@@ -12,8 +18,16 @@ const intersects = (a: Box, b: Box) =>
 	a.x + a.width > b.x &&
 	a.y < b.y + b.height &&
 	a.y + a.height > b.y;
-const netWidth = (label: string) =>
-	Math.max(100, Math.min(360, label.length * 8 + 16));
+/** A net node's rendered box plus the clearance the layout keeps around it. */
+const netClearance = (x: number, y: number, label: string): Box => {
+	const box = netNodeBox(label);
+	return {
+		x: x + box.x - 12,
+		y: y + box.y - 4,
+		width: box.width + 24,
+		height: box.height + 12,
+	};
+};
 const orientation = (a: Point, b: Point, c: Point) =>
 	(b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 const crosses = (a: Point, b: Point, c: Point, d: Point) =>
@@ -28,19 +42,15 @@ function score(graph: Graph) {
 			width: componentWidth + 24,
 			height: node.height + 24,
 		})),
-		...graph.nets.map((node) => ({
-			x: node.x - netWidth(node.label) / 2 - 12,
-			y: node.y - 44,
-			width: netWidth(node.label) + 24,
-			height: 72,
-		})),
+		...graph.nets.map((node) => netClearance(node.x, node.y, node.label)),
 	];
 	let overlaps = 0;
 	for (let first = 0; first < boxes.length; first++)
 		for (let second = first + 1; second < boxes.length; second++)
 			if (intersects(boxes[first], boxes[second])) overlaps++;
 	const paths = graph.edges.map((edge) => {
-		const direction = edge.pin.side === "left" ? -65 : 65;
+		const direction =
+			edge.pin.side === "left" ? -connectionCurveOffset : connectionCurveOffset;
 		const points = Array.from({ length: 5 }, (_, index) => {
 			const t = index / 4,
 				u = 1 - t;
@@ -254,7 +264,8 @@ export function untangleCircuitGraph(
 				}),
 			);
 			const gap =
-				Math.max(160, ...graph.nets.map((node) => netWidth(node.label))) + 100;
+				Math.max(160, ...graph.nets.map((node) => netNodeWidth(node.label))) +
+				100;
 			const pitch = Math.ceil((componentWidth + gap) / step) * step;
 			for (const order of orders)
 				for (
@@ -346,12 +357,7 @@ export function untangleCircuitGraph(
 							).x;
 							const spacing = Math.ceil(80 / step) * step;
 							let y = snapCircuitPoint(center, step).y;
-							let box: Box = {
-								x: x - netWidth(node.label) / 2 - 12,
-								y: y - 44,
-								width: netWidth(node.label) + 24,
-								height: 72,
-							};
+							let box = netClearance(x, y, node.label);
 							for (
 								let attempt = 0;
 								occupied.some((other) => intersects(box, other));
@@ -362,7 +368,7 @@ export function untangleCircuitGraph(
 									Math.ceil((attempt + 1) / 2) *
 										spacing *
 										(attempt % 2 === 0 ? 1 : -1);
-								box = { ...box, y: y - 44 };
+								box = netClearance(x, y, node.label);
 							}
 							occupied.push(box);
 							positions.push({ id: node.id, kind: "net", x, y });

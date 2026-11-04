@@ -288,3 +288,85 @@ test("net connections use a lighter highlight than the selected connection", asy
  await page.keyboard.press("Escape");
  await expect(page.locator(".circuit-edge.is-highlighted, .circuit-edge.is-selected")).toHaveCount(0);
 });
+
+test("Ctrl+Y redoes circuit edits, and history keys typed into inputs stay with the input", async ({ page }) => {
+	await createCircuit(page);
+	await placeComponent(page, "Resistor", { x: 300, y: 230 });
+	await expect.poll(async () => (await state(page)).circuit.components[0]?.schematicShapeId).toBeGreaterThan(0);
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	const placed = await state(page);
+	const position = (document: typeof placed) =>
+		document.graph.positions.find((entry: { kind: string }) => entry.kind === "component");
+	const resistor = page.getByRole("button", { name: "Select component R1", exact: true });
+	await resistor.focus();
+	await page.keyboard.press("ArrowRight");
+	await page.keyboard.press("ArrowDown");
+	const moved = await state(page);
+	expect(position(moved).x).toBeGreaterThan(position(placed).x);
+	expect(position(moved).y).toBeGreaterThan(position(placed).y);
+	await page.keyboard.press("Control+z");
+	await page.keyboard.press("Control+z");
+	expect(await state(page)).toEqual(placed);
+	await page.keyboard.press("Control+y");
+	await page.keyboard.press("Control+y");
+	expect(await state(page)).toEqual(moved);
+	await page.keyboard.press("Control+z");
+	await page.keyboard.press("Control+Shift+z");
+	expect(await state(page)).toEqual(moved);
+	await page.getByRole("button", { name: "Components", exact: true }).click();
+	const search = page.getByRole("searchbox", { name: "Search components", exact: true });
+	await search.fill("Res");
+	await search.press("Control+z");
+	await search.press("Control+y");
+	await search.press("ArrowLeft");
+	expect(await state(page)).toEqual(moved);
+});
+
+test("fitting the circuit graph keeps a wide net label inside the fitted view", async ({ page }) => {
+	await createCircuit(page);
+	await placeComponent(page, "Resistor", { x: 200, y: 230 });
+	const canvas = page.getByLabel("Circuit connections graph", { exact: true });
+	const initial = await canvas.boundingBox();
+	if (!initial) throw new Error("Missing circuit canvas.");
+	await page.getByRole("button", { name: "Add net", exact: true }).click();
+	await canvas.click({ position: { x: initial.width - 160, y: 260 } });
+	// Long enough to reach the 360-unit maximum net width.
+	const name = "LONG_NET_LABEL_".repeat(3);
+	await page.getByLabel("Net name", { exact: true }).fill(name);
+	await page.keyboard.press("Enter");
+	const net = page.getByRole("button", { name: `Net ${name}`, exact: true });
+	await expect(net).toBeVisible();
+	await expect(page.locator(".circuit-editor")).toHaveAttribute("data-pending-changes", "false");
+	// The fitted viewBox, not just the canvas element, must hold the label:
+	// letterboxing can leave spare room beside a view that is too narrow.
+	const contained = async () => {
+		const view = await canvas.evaluate((svg: SVGSVGElement) => {
+			const box = svg.viewBox.baseVal;
+			const matrix = svg.getScreenCTM();
+			if (!matrix) throw new Error("Missing canvas transform.");
+			const start = new DOMPoint(box.x, box.y).matrixTransform(matrix);
+			const end = new DOMPoint(box.x + box.width, box.y + box.height).matrixTransform(matrix);
+			return { left: start.x, top: start.y, right: end.x, bottom: end.y };
+		});
+		const label = await net.boundingBox();
+		if (!label) throw new Error("Missing net label.");
+		return (
+			label.x >= view.left - 0.5 &&
+			label.y >= view.top - 0.5 &&
+			label.x + label.width <= view.right + 0.5 &&
+			label.y + label.height <= view.bottom + 0.5
+		);
+	};
+	// Opening the circuit fits the whole graph, including the widest net label.
+	await page.reload();
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open LED driver.ecaddraw in circuit view", exact: true })
+		.click();
+	await closeProjectFiles(page);
+	await expect(net).toBeVisible();
+	expect(await contained()).toBe(true);
+	if (captureArtifacts)
+		await page.screenshot({ path: "/tmp/ecad-shared-helpers/circuit-fit-wide-net.png" });
+	await page.getByRole("button", { name: "Untangle", exact: true }).click();
+	await expect.poll(contained).toBe(true);
+});

@@ -1,5 +1,6 @@
 import { addAbortSignal, type Readable, type Writable } from "node:stream";
 import { parseArgs } from "node:util";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 
 const help = `Usage: ecad [options] <command> [json|-]
 
@@ -120,9 +121,7 @@ export async function runCli(args: string[], options: CliOptions = {}) {
 			await session.close();
 		}
 	} catch (cause) {
-		error.write(
-			`ecad: ${cause instanceof Error ? cause.message : String(cause)}\n`,
-		);
+		error.write(`ecad: ${errorMessage(cause)}\n`);
 		return 1;
 	}
 }
