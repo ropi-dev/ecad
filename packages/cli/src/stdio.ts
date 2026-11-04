@@ -1,31 +1,102 @@
 import type { Readable, Writable } from "node:stream";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
-	createLocalDrawingMcpServer,
+	createLocalDrawingSession,
 	type LocalDrawingOptions,
 } from "./drawing.ts";
+
+// Whitespace, control characters and format characters such as bidirectional
+// overrides, which a terminal would interpret.
+const unsafeText = /[\s\p{Cc}\p{Cf}]+/gu;
+
+// Schema failures carry every union branch, so summarize them in one line.
+// Other messages can quote a whole input message, so shorten them and make
+// them safe to print.
+function describeMcpError(cause: Error) {
+	if (cause.name === "ZodError")
+		return "Ignored a message that is not valid JSON-RPC.";
+	const message = cause.message.replace(unsafeText, " ");
+	return message.length > 500 ? `${message.slice(0, 500)}…` : message;
+}
+
+// Waits until replies already handed to the output are written, so a failed
+// write still fails the command. An abort stops the wait.
+async function flushOutput(output: Writable, signal?: AbortSignal) {
+	if (output.destroyed || output.writableLength === 0 || signal?.aborted)
+		return;
+	const controller = new AbortController();
+	await new Promise<void>((resolve) => {
+		signal?.addEventListener("abort", () => resolve(), {
+			once: true,
+			signal: controller.signal,
+		});
+		output.write("", () => resolve());
+	});
+	controller.abort();
+}
+
+// Removes a stream's error listener once no writes are pending. Writes can
+// still be pending after an abort. Their failure no longer changes the result,
+// but must not become an unhandled stream error, so the listener stays until
+// they finish, or for good if they fail. A destroyed stream can still emit its
+// error, so the listener stays until the stream closes.
+function releaseStream(stream: Writable, listener: (cause: Error) => void) {
+	if (stream.destroyed) {
+		if (stream.closed) stream.off("error", listener);
+		else stream.once("close", () => stream.off("error", listener));
+	} else if (stream.writableLength === 0) stream.off("error", listener);
+	else if (!stream.writableEnded)
+		stream.write("", (failed) => {
+			if (!failed) stream.off("error", listener);
+		});
+}
 
 export async function serveStdioMcp(
 	options: LocalDrawingOptions & {
 		input: Readable;
 		output: Writable;
+		error?: Writable;
 		signal?: AbortSignal;
 	},
 ) {
-	const { input, output, signal } = options;
+	const { input, output, error = process.stderr, signal } = options;
 	signal?.throwIfAborted();
-	const server = createLocalDrawingMcpServer(options);
-	let finish!: () => void;
-	let fail!: (error: Error) => void;
-	const stopped = new Promise<void>((resolve, reject) => {
-		finish = resolve;
-		fail = reject;
+	const { server, settled } = createLocalDrawingSession(options);
+	let stopping = false;
+	let failure: Error | undefined;
+	let resolve!: () => void;
+	const stopped = new Promise<void>((done) => {
+		resolve = done;
 	});
-	server.server.onclose = finish;
-	server.server.onerror = fail;
+	const finish = () => {
+		stopping = true;
+		resolve();
+	};
+	// A stream can fail after another event already started the shutdown, so
+	// the failure is kept and reported once the server has closed.
+	const fail = (cause: Error) => {
+		failure ??= cause;
+		finish();
+	};
+	// The transport closes itself only after input it cannot recover from,
+	// such as an oversized message.
+	server.server.onclose = () => {
+		if (!stopping)
+			fail(new Error("The MCP transport closed after an input error."));
+	};
+	// The SDK also reports recoverable problems here, such as a malformed
+	// input line. Log them and keep serving; stdout carries only MCP messages.
+	server.server.onerror = (cause) => {
+		if (!stopping && error.writable)
+			error.write(`ecad: MCP error: ${describeMcpError(cause)}\n`);
+	};
+	// Stderr only carries diagnostics, so losing it must not stop the server.
+	const ignore = () => {};
+	error.on("error", ignore);
 	input.once("end", finish);
 	input.once("close", finish);
-	output.once("error", fail);
+	input.on("error", fail);
+	output.on("error", fail);
 	signal?.addEventListener("abort", finish, { once: true });
 	try {
 		await server.connect(new StdioServerTransport(input, output));
@@ -34,8 +105,13 @@ export async function serveStdioMcp(
 	} finally {
 		input.off("end", finish);
 		input.off("close", finish);
-		output.off("error", fail);
 		signal?.removeEventListener("abort", finish);
 		await server.close();
+		await settled();
+		await flushOutput(output, signal);
+		input.off("error", fail);
+		releaseStream(output, fail);
+		releaseStream(error, ignore);
 	}
+	if (failure) throw failure;
 }

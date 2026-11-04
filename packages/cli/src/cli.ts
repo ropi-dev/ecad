@@ -93,7 +93,7 @@ export async function runCli(args: string[], options: CliOptions = {}) {
 		};
 		if (command === "mcp") {
 			const { serveStdioMcp } = await import("./stdio.ts");
-			await serveStdioMcp({ ...drawing, input, output, signal });
+			await serveStdioMcp({ ...drawing, input, output, error, signal });
 			return 0;
 		}
 		const { createLocalClient } = await import("./local-client.ts");
