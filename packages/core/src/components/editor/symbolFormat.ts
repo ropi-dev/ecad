@@ -184,8 +184,15 @@ const symbolFileSchema = Schema.Struct({
 });
 export type SymbolFile = typeof symbolFileSchema.Type;
 export type SymbolLibrary = readonly SymbolFile[];
-export const savedLibrarySchema = Schema.Array(symbolFileSchema).pipe(
-	Schema.maxItems(100),
+export const savedLibrarySchema = Schema.transform(
+	Schema.Unknown,
+	Schema.Array(symbolFileSchema).pipe(Schema.maxItems(100)),
+	{
+		strict: false,
+		decode: (value) =>
+			Array.isArray(value) ? value.map(upgradeSymbolFile) : value,
+		encode: (value) => value,
+	},
 );
 
 export class SymbolFormatError extends Data.TaggedError("SymbolFormatError")<{
@@ -210,7 +217,7 @@ function decodeJson(text: string): unknown {
 	}
 }
 
-function decode<A>(schema: Schema.Schema<A>, value: unknown): A {
+function decode<A, I>(schema: Schema.Schema<A, I>, value: unknown): A {
 	try {
 		return Schema.decodeUnknownSync(schema)(value, {
 			onExcessProperty: "error",
@@ -320,10 +327,7 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 /** Browser storage is an internal cache of the individual symbol files. */
 export function parseSavedSymbolLibrary(text: string): SymbolLibrary {
 	const value = decodeJson(text);
-	const library = decode(
-		savedLibrarySchema,
-		Array.isArray(value) ? value.map(upgradeSymbolFile) : value,
-	);
+	const library = decode(savedLibrarySchema, value);
 	checkIds(library);
 	checkSize(JSON.stringify(library));
 	return library;

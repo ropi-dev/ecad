@@ -4,6 +4,7 @@ import { Effect, Either } from "effect";
 import {
 	parseSavedSymbolLibrary,
 	parseSymbolFile,
+	type SymbolFile,
 } from "#/components/editor/symbolFormat.ts";
 import {
 	createSymbolFromSelectionEffect,
@@ -45,7 +46,9 @@ import {
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
-import { validateProjectDocument } from "#/projects/format.ts";
+import { serializeProjectManifest, validateProjectDocument } from "#/projects/format.ts";
+import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
+import { parseSymbolConfig, serializeSymbolConfig, validateSymbolLibraries, type ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
 
 const box = { x: 0, y: 0, width: 4, height: 4, rotation: 0, lineWidth: 0.2 };
 const text = (extra: object) => ({
@@ -955,4 +958,58 @@ test("a stale override keeps the fields its new child still has", () => {
 		}),
 		{ "shape:1": { width: 2, height: 2 } },
 	);
+});
+
+
+test("embedded libraries in saved configs and projects upgrade legacy overrides before validation", async () => {
+	const file: SymbolFile = {
+		format: "ecad-symbol", version: 1, units: "mm", id: "legacy-nested",
+		name: "Legacy nested", description: "", prefix: "U", value: "",
+		shapes: [{
+			kind: "symbol", library: { scope: "user", id: "builtin" },
+			definitionId: "resistor", x: 0, y: 0,
+			childOverrides: { "shape:2": { width: 0, lineWidth: 0, x: 2, height: 7 } },
+		}],
+	};
+	const library: ConfiguredSymbolLibrary = {
+		id: "project-symbols", name: "Project symbols", enabled: true,
+		source: { kind: "embedded", symbols: [file] },
+	};
+	const upgradedFile = { ...file, shapes: [{ ...file.shapes[0], childOverrides: { "shape:2": { x: 2, height: 7 } } }] };
+	const expected = [{ ...library, source: { kind: "embedded", symbols: [upgradedFile] } }];
+	assert.deepEqual(validateSymbolLibraries([library]), expected);
+	const config = parseSymbolConfig(JSON.stringify({ version: 1, symbolLibraries: [library] }));
+	assert.deepEqual(config.symbolLibraries, expected);
+	assert.deepEqual(parseSymbolConfig(serializeSymbolConfig(config)), config);
+	assert.deepEqual(validateProjectDocument({ shapes: [], symbols: [file], symbolLibraries: [library] }).symbolLibraries, expected);
+	for (const layout of ["files", "revisions"] as const) {
+		const encoder = new TextEncoder();
+		const entries = new Map<string, Uint8Array>([
+			[".ecadprj", encoder.encode(serializeProjectManifest({
+				format: "ecad-project", version: 1, name: "Legacy",
+				drawing: "main.ecaddraw", symbols: ["nested.ecadsym"], assets: [],
+			}))],
+			["main.ecaddraw", encoder.encode(JSON.stringify({ shapes: [], symbolLibraries: [library] }))],
+			["nested.ecadsym", encoder.encode(JSON.stringify(file))],
+		]);
+		const directory: ProjectDirectory = {
+			name: "Legacy",
+			async read(path) {
+				const value = entries.get(path);
+				if (!value) throw new DOMException("Missing", "NotFoundError");
+				return value;
+			},
+			async write(path, bytes) { entries.set(path, bytes); },
+			async remove(path) {
+				for (const key of entries.keys())
+					if (key === path || key.startsWith(`${path}/`)) entries.delete(key);
+			},
+		};
+		const repository = new ProjectRepository(directory, { layout });
+		const loaded = await repository.load();
+		assert.deepEqual(loaded.symbolLibraries, expected);
+		assert.deepEqual(loaded.symbols, [upgradedFile]);
+		await repository.save(loaded);
+		assert.deepEqual((await new ProjectRepository(directory, { layout }).load()).symbolLibraries, expected);
+	}
 });
