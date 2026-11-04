@@ -115,6 +115,30 @@ const isVertical = ([a, b]: Segment) =>
 /** The coordinate across a wire, such as y for a horizontal wire. */
 const across = (segment: Segment) => segment[0][isVertical(segment) ? 0 : 1];
 
+/** The extent of a wire along its own direction. */
+const extent = (segment: Segment): [number, number] => {
+	const along = isVertical(segment) ? 1 : 0;
+	return [
+		Math.min(segment[0][along], segment[1][along]),
+		Math.max(segment[0][along], segment[1][along]),
+	];
+};
+
+/**
+ * Wires whose merge adds no geometry: exactly in line, overlapping or touching.
+ * Normalization would fill any gap between them, which can reach a label or
+ * pin that neither wire touched.
+ */
+function mergeKeepsShape(first: Segment, second: Segment) {
+	const [a, b] = extent(first);
+	const [c, d] = extent(second);
+	return (
+		Math.abs(across(first) - across(second)) <= 1e-9 &&
+		a <= d + 1e-9 &&
+		c <= b + 1e-9
+	);
+}
+
 /** Wires that wire normalization may merge: parallel, in line and overlapping. */
 function mayMerge(first: Segment, second: Segment) {
 	if (isVertical(first) !== isVertical(second)) return false;
@@ -146,10 +170,10 @@ const segmentBounds = (segments: readonly Segment[], margin = 0): Bounds => {
 };
 
 /**
- * Normalization merges a cluster of parallel wires onto the line of one of
- * them, chosen by the command that runs it. A cluster whose wires are not
- * exactly in line can therefore move by up to its spread. These are the areas
- * such clusters can move through.
+ * Normalization merges a cluster of parallel wires into one wire on the line of
+ * one of them, chosen by the command that runs it. A cluster whose wires are
+ * not exactly in line can move by up to its spread, and one with gaps along
+ * its length gets them filled. These are the areas such clusters can change.
  */
 function driftAreas(wires: readonly Segment[]): Bounds[] {
 	const sets = unionFind(wires.length);
@@ -165,7 +189,14 @@ function driftAreas(wires: readonly Segment[]): Bounds[] {
 	return [...clusters.values()]
 		.filter((cluster) => {
 			const lines = cluster.map(across);
-			return Math.max(...lines) - Math.min(...lines) > 1e-9;
+			if (Math.max(...lines) - Math.min(...lines) > 1e-9) return true;
+			const extents = cluster.map(extent).sort((a, b) => a[0] - b[0]);
+			let reach = extents[0][1];
+			for (const [start, end] of extents) {
+				if (start > reach + 1e-9) return true;
+				reach = Math.max(reach, end);
+			}
+			return false;
 		})
 		.map((cluster) => segmentBounds(cluster, connectionTolerance));
 }
@@ -224,9 +255,10 @@ const sameSet = <T>(first: ReadonlySet<T>, second: ReadonlySet<T>) =>
  * - the new wires join exactly the nets the diagonal joined, counting nets
  *   joined by label name anywhere in the drawing; and
  * - wire normalization, which every later command runs, cannot move or
- *   delete the new wires or move another wire onto them. Each new wire is at
- *   least 0.001 mm long, can merge only with wires exactly in line with it,
- *   and stays clear of clusters that normalization could shift.
+ *   delete the new wires or move or extend another wire onto them. Each new
+ *   wire is at least 0.001 mm long, can merge only with wires exactly in line
+ *   that it overlaps or touches, and stays clear of clusters that
+ *   normalization could shift or join across a gap.
  * A diagonal with a piece that has no such corner stays a graphic line.
  */
 function routeDiagonalWires(
@@ -291,8 +323,7 @@ function routeDiagonalWires(
 				distance(segment[0], [segment[1], segment[1]]) >= 0.001 &&
 				existing.every(
 					(other) =>
-						!mayMerge(segment, other) ||
-						Math.abs(across(segment) - across(other)) <= 1e-9,
+						!mayMerge(segment, other) || mergeKeepsShape(segment, other),
 				) &&
 				drift.every((area) => !overlaps(segmentBounds([segment]), area));
 			const expected = joined(drawing, groups, [wire(from, to)]);

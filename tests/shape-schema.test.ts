@@ -546,6 +546,32 @@ test("KiCad routes never join a wire that normalization could move", () => {
 	assert.deepEqual(offset.nets, ["A+B+C"]);
 });
 
+test("KiCad routes never let normalization fill a gap next to them", () => {
+	// The horizontal corner would leave a 0.00009 mm gap to the wire on the
+	// left. Filling it reaches C, so the vertical corner is taken instead.
+	const leg = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("0 20", "9.99991 20"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "9.999955 19.99991"),
+	);
+	assert.equal(leg.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(leg.nets, ["A+B", "C"]);
+	// These two wires are in line with a 0.00008 mm gap. Filling it would
+	// reach the start of either route, so the diagonal stays a line.
+	const gap = importedNets(
+		kicadWire("10 20.000095", "16 28"),
+		kicadWire("0 20", "9.99996 20"),
+		kicadWire("10.00004 20", "20 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "0 20"),
+		kicadLabel("D", "20 20"),
+	);
+	assert.equal(gap.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.deepEqual(gap.nets, ["B", "C+D"]);
+});
+
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
 	const result = importedNets(
 		kicadWire("10 20", "16 28"),
