@@ -54,26 +54,30 @@ function sameRecord(
 	defaults?: PlainRecord,
 ): boolean {
 	for (const key in first) {
-		let value = first[key];
-		let other = second[key];
-		if (value === other) continue;
-		if (defaults && Object.hasOwn(defaults, key)) {
-			value ??= defaults[key];
-			other ??= defaults[key];
-		}
-		if (!sameValue(value, other)) return false;
+		if (!Object.hasOwn(first, key)) continue;
+		const other = Object.hasOwn(second, key) ? second[key] : undefined;
+		if (!sameField(key, first[key], other, defaults)) return false;
 	}
 	for (const key in second) {
-		const other = second[key];
-		if (other === undefined || Object.hasOwn(first, key)) continue;
-		if (
-			!defaults ||
-			!Object.hasOwn(defaults, key) ||
-			!sameValue(defaults[key], other)
-		)
-			return false;
+		if (!Object.hasOwn(second, key) || Object.hasOwn(first, key)) continue;
+		if (!sameField(key, undefined, second[key], defaults)) return false;
 	}
 	return true;
+}
+
+/** Both sides get the same default, so the comparison is symmetric. */
+function sameField(
+	key: string,
+	value: unknown,
+	other: unknown,
+	defaults?: PlainRecord,
+): boolean {
+	if (value === other) return true;
+	if (defaults && Object.hasOwn(defaults, key)) {
+		value ??= defaults[key];
+		other ??= defaults[key];
+	}
+	return sameValue(value, other);
 }
 
 /**

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { Effect } from "effect";
 import { sameDrawing } from "@ecad/drawing-core/commands/drawing-equality.ts";
 import { placeShapesEffect, replaceShapesEffect, type ShapeInput, undoEffect } from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import { createDrawingStore, type DrawingDocument, DrawingStore } from "#/commands/drawing-store.ts";
 import { canSelectSymbolChild, type EditorShape, type EditorSymbol, symbolChildren } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 
@@ -168,20 +168,33 @@ test("override keys set to undefined match the saved form, which drops them", ()
 	assertRecorded(replaceOnly(withOverride({}), replaceOverride({ showName: true })));
 });
 
-test("the drawing comparison covers fields it does not know about", () => {
+/** Asserts the comparison result in both argument orders. */
+function assertSame(first: DrawingDocument, second: DrawingDocument, expected: boolean) {
+	assert.equal(sameDrawing(first, second), expected);
+	assert.equal(sameDrawing(second, first), expected);
+}
+
+test("the drawing comparison covers fields it does not know about, symmetrically", () => {
 	const shape = { ...geometry, id: 1, kind: "rectangle" } as EditorShape;
-	const extended = (value: unknown) => ({ shapes: [{ ...shape, future: value } as unknown as EditorShape] });
-	assert.equal(sameDrawing({ shapes: [shape] }, { shapes: [structuredClone(shape)] }), true);
-	assert.equal(sameDrawing({ shapes: [shape] }, extended({ nested: [1, 2] })), false);
-	assert.equal(sameDrawing(extended({ nested: [1, 2] }), extended({ nested: [1, 2 + 1e-12] })), true);
-	assert.equal(sameDrawing(extended({ nested: [1, 2] }), extended({ nested: [1, 3] })), false);
-	assert.equal(sameDrawing(extended({ nested: [1, 2] }), extended({ nested: [1, 2, 3] })), false);
-	assert.equal(sameDrawing(extended({ nested: [1] }), extended({ nested: { 0: 1 } })), false);
-	assert.equal(sameDrawing(extended(undefined), { shapes: [shape] }), true);
-	assert.equal(sameDrawing(extended(new Map()), extended(new Map())), false);
-	assert.equal(sameDrawing({ shapes: [shape] }, { shapes: [shape, { ...shape, id: 2 }] }), false);
-	assert.equal(
-		sameDrawing({ shapes: [shape], layer: "top" } as never, { shapes: [shape], layer: "bottom" } as never),
-		false,
-	);
+	const drawing = (fields: Record<string, unknown> = {}) => ({ shapes: [{ ...shape, ...fields } as unknown as EditorShape] });
+	const extended = (value: unknown) => drawing({ future: value });
+	assertSame(drawing(), { shapes: [structuredClone(shape)] }, true);
+	assertSame(drawing(), extended({ nested: [1, 2] }), false);
+	assertSame(extended({ nested: [1, 2] }), extended({ nested: [1, 2 + 1e-12] }), true);
+	assertSame(extended({ nested: [1, 2] }), extended({ nested: [1, 3] }), false);
+	assertSame(extended({ nested: [1, 2] }), extended({ nested: [1, 2, 3] }), false);
+	assertSame(extended({ nested: [1] }), extended({ nested: { 0: 1 } }), false);
+	assertSame(extended(undefined), drawing(), true);
+	assertSame(extended(null), drawing(), false);
+	assertSame(extended(new Map()), extended(new Map()), false);
+	assertSame(drawing(), { shapes: [shape, { ...shape, id: 2 }] }, false);
+	assertSame({ shapes: [shape], layer: "top" } as never, { shapes: [shape], layer: "bottom" } as never, false);
+	// Defaults apply to whichever side lacks the field.
+	for (const field of ["locked", "lineStyle", "filled"]) assertSame(drawing({ [field]: null }), drawing(), true);
+	assertSame(drawing({ lineStyle: null }), drawing({ lineStyle: "dashed" }), false);
+	// Only own keys count, so names on Object.prototype behave like any other key.
+	assertSame(extended({ constructor: undefined }), extended({}), true);
+	assertSame(extended({ toString: undefined }), extended({ hasOwnProperty: undefined }), true);
+	assertSame(extended({ constructor: 1 }), extended({}), false);
+	assertSame(drawing({ constructor: "x" }), drawing(), false);
 });
