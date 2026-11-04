@@ -110,9 +110,6 @@ export function serializeSymbolConfig(config: SymbolLibraryConfig): string {
 	return text;
 }
 
-/** A reference into a library that failed to load. Resolution fails with it. */
-class UnavailableDependency extends Error {}
-
 /**
  * True when a library failed to load, or when a symbol could not resolve
  * because a symbol it places comes from such a library.
@@ -135,6 +132,42 @@ export function unavailableSymbols(resolved: {
 		symbols.has(symbolReferenceKey(library, id));
 }
 
+/**
+ * Loaded symbols that place a symbol from a failed library, directly or
+ * through other symbols. Every nested placement is checked, so another
+ * failure that stops resolution first cannot hide the missing library.
+ */
+function dependentSymbols(
+	entries: ReadonlyMap<string, { file?: SymbolLibrary[number] }>,
+	unavailable: readonly SymbolLibraryReference[],
+): string[] {
+	const failed = new Set(
+		unavailable.map((library) => `${library.scope}:${library.id}`),
+	);
+	const blocked = new Set<string>();
+	// Repeat until stable; this also settles reference cycles.
+	for (let changed = failed.size > 0; changed; ) {
+		changed = false;
+		for (const [key, { file }] of entries) {
+			if (
+				blocked.has(key) ||
+				!file?.shapes.some(
+					(shape) =>
+						shape.kind === "symbol" &&
+						(failed.has(`${shape.library.scope}:${shape.library.id}`) ||
+							blocked.has(
+								symbolReferenceKey(shape.library, shape.definitionId),
+							)),
+				)
+			)
+				continue;
+			blocked.add(key);
+			changed = true;
+		}
+	}
+	return [...blocked];
+}
+
 /** Later libraries win. Project libraries are resolved after user libraries. */
 export async function resolveSymbolLibraries(
 	user: readonly ConfiguredSymbolLibrary[],
@@ -149,8 +182,8 @@ export async function resolveSymbolLibraries(
 	/** Enabled libraries that failed to load. Their symbols are missing. */
 	unavailable: SymbolLibraryReference[];
 	/**
-	 * `symbolReferenceKey`s of loaded symbols that failed to resolve because a
-	 * symbol they place comes from a library in `unavailable`.
+	 * `symbolReferenceKey`s of loaded symbols that place a symbol from a
+	 * library in `unavailable`, directly or through other symbols.
 	 */
 	unavailableSymbols: string[];
 }> {
@@ -218,16 +251,10 @@ export async function resolveSymbolLibraries(
 	): SymbolDefinition {
 		const key = library ? symbolReferenceKey(library, id) : winners.get(id);
 		const entry = key ? entries.get(key) : undefined;
-		if (!key || !entry) {
-			const message = `Symbol "${id}" is unavailable in library "${library?.id ?? "unknown"}".`;
-			throw library &&
-				unavailable.some(
-					(failed) =>
-						failed.scope === library.scope && failed.id === library.id,
-				)
-				? new UnavailableDependency(message)
-				: new Error(message);
-		}
+		if (!key || !entry)
+			throw new Error(
+				`Symbol "${id}" is unavailable in library "${library?.id ?? "unknown"}".`,
+			);
 		const cached = byReference.get(key);
 		if (cached) return cached;
 		if (resolving.has(key))
@@ -263,13 +290,10 @@ export async function resolveSymbolLibraries(
 			resolving.delete(key);
 		}
 	}
-	const unresolved: string[] = [];
 	for (const entry of entries.values()) {
 		try {
 			resolve(entry.library, entry.definition.id);
 		} catch (cause) {
-			if (cause instanceof UnavailableDependency)
-				unresolved.push(symbolReferenceKey(entry.library, entry.definition.id));
 			errors.push(errorMessage(cause, "Unable to resolve symbol references."));
 		}
 	}
@@ -288,6 +312,6 @@ export async function resolveSymbolLibraries(
 		referenceSources,
 		errors: [...new Set(errors)],
 		unavailable,
-		unavailableSymbols: unresolved,
+		unavailableSymbols: dependentSymbols(entries, unavailable),
 	};
 }

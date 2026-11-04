@@ -1,7 +1,11 @@
 import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { captureArtifacts } from "./artifacts";
-import { closeProjectFiles, openProjectFiles } from "./project-files";
+import {
+	closeProjectFiles,
+	openProjectActions,
+	openProjectFiles,
+} from "./project-files";
 import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>
@@ -174,12 +178,29 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	);
 });
 
-test("a conflict found by an import alone does not claim unsaved changes", async ({
+test("a conflict found by an explicit save or an import alone does not claim unsaved changes", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
 	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	const notice = page.getByRole("alert").filter({
+		hasText: "This project changed on disk",
+	});
+	const repeated = page
+		.getByRole("alert")
+		.filter({ hasText: "Reload it from disk before saving" });
+
+	// Save project on a clean project finds the conflict.
+	await openProjectActions(page);
+	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await expect(notice).toBeVisible();
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+	await expect(notice).not.toContainText("Your unsaved changes");
+	await expect(repeated).toHaveCount(0);
+	expect((await documentState(page)).dirty).toBe(false);
+
+	// An import is refused in the sidebar and leaves nothing unsaved.
 	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files", { exact: true })
 		.setInputFiles({
@@ -187,10 +208,7 @@ test("a conflict found by an import alone does not claim unsaved changes", async
 			mimeType: "application/step",
 			buffer: Buffer.from("ISO-10303-21;"),
 		});
-	const notice = page.getByRole("alert").filter({
-		hasText: "This project changed on disk",
-	});
-	await expect(notice).toBeVisible();
+	await expect(repeated).toHaveCount(1);
 	await expect(notice).not.toContainText("Your unsaved changes");
 	expect((await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).assets).toEqual([]);

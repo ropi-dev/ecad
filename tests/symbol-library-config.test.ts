@@ -122,3 +122,30 @@ test("a symbol that depends on a library that failed to load is unavailable and 
  const missing = place({ id: "removed", name: "Removed" }).shapes.find((shape) => shape.kind === "symbol");
  assert.match(missing?.kind === "symbol" ? missing.definitionId : "", /^circuit-fallback\./);
 });
+
+test("dependency on a failed library is found even when another reference fails to resolve first", async () => {
+ const bench = { scope: "user" as const, id: "bench" };
+ const kit = { scope: "project" as const, id: "kit" };
+ const file = (id: string, nested: { library: typeof bench | typeof kit; definitionId: string }[]) =>
+  parseSymbolFile(JSON.stringify({ ...symbol, id, name: id, shapes: [...symbol.shapes, ...nested.map((reference) => ({ kind: "symbol", ...reference, x: 0, y: 0 }))] }));
+ const resolved = await resolveSymbolLibraries(
+  [{ id: bench.id, name: "Bench", enabled: true, source: { kind: "directory", path: "bench" } }],
+  [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [
+   // A deleted symbol stops resolution before the failed library is reached.
+   file("divider", [{ library: kit, definitionId: "deleted" }, { library: bench, definitionId: "core" }]),
+   // Only reaches the failed library through another symbol.
+   file("assembly", [{ library: kit, definitionId: "divider" }]),
+   // Reference cycles are rejected; one of them also needs the failed library.
+   file("loop-a", [{ library: kit, definitionId: "loop-b" }]),
+   file("loop-b", [{ library: kit, definitionId: "loop-a" }, { library: bench, definitionId: "core" }]),
+   file("broken", [{ library: kit, definitionId: "deleted" }]),
+   file("plain", []),
+  ] } }],
+  async () => { throw new Error("Directory is unreadable."); },
+ );
+ assert.deepEqual(new Set(resolved.unavailableSymbols), new Set(["divider", "assembly", "loop-a", "loop-b"].map((id) => symbolReferenceKey(kit, id))));
+ const isSymbolUnavailable = unavailableSymbols(resolved);
+ assert.equal(isSymbolUnavailable(kit, "broken"), false);
+ assert.equal(isSymbolUnavailable(kit, "plain"), false);
+ assert.equal((await resolveSymbolLibraries([], [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [file("divider", [{ library: bench, definitionId: "core" }])] } }])).unavailableSymbols.length, 0);
+});

@@ -627,7 +627,9 @@ export function ProjectProvider({
 					await transferAssets([]);
 				});
 			} catch (cause) {
-				if (mounted.current) {
+				// A conflict leaves the dirty state as it was: a clean project has
+				// nothing unsaved to warn about.
+				if (mounted.current && !isProjectError(cause, "ProjectConflict")) {
 					needsSave.current = true;
 					setDirty(true);
 					showError(cause, "Unable to save the project.");

@@ -2,6 +2,7 @@ import {
 	type CircuitFile,
 	circuitFileSchema,
 } from "@ecad/drawing-core/circuit/model.ts";
+import { ParseResult } from "effect";
 import { parse, stringify } from "smol-toml";
 import { z } from "zod";
 import {
@@ -249,7 +250,14 @@ export function validateProjectDocument(
 	} catch (cause) {
 		throw invalid(
 			files?.drawing,
-			errorMessage(cause, "The project symbol libraries are invalid."),
+			ParseResult.isParseError(cause)
+				? schemaReason(
+						ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) => ({
+							path: ["symbolLibraries", ...issue.path],
+							message: issue.message,
+						})),
+					)
+				: errorMessage(cause, "The project symbol libraries are invalid."),
 			cause,
 		);
 	}

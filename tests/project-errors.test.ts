@@ -274,6 +274,25 @@ test("saving an invalid document rejects with InvalidProjectDocument and writes 
 		InvalidProjectDocument,
 	);
 	assert.match(shape.reason, /^shapes\.0\.width: /);
+	const libraries = await rejection(
+		repository.save({
+			shapes: [],
+			symbols: [],
+			symbolLibraries: [
+				{
+					id: "parts",
+					name: "Parts",
+					enabled: true,
+					source: { kind: "directory", path: 5 },
+				},
+			] as never,
+		}),
+		InvalidProjectDocument,
+	);
+	assert.equal(
+		libraries.reason,
+		"symbolLibraries.0.source.path: Expected string, actual 5.",
+	);
 	assert.deepEqual(files, before);
 	assert.throws(
 		() =>
