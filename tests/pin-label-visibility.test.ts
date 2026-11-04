@@ -128,8 +128,23 @@ test("pin label visibility survives symbol and project round trips and rejects n
 	}
 });
 
-test("built-in ground and supply symbols hide pin labels while other parts use native pin labels", () => {
-	const supplies = new Set([
+test("built-ins hide redundant terminal labels and retain pinout and polarity labels", () => {
+	const hidden = new Set([
+		"resistor-us",
+		"variable-resistor",
+		"thermistor",
+		"photoresistor",
+		"capacitor-polarized",
+		"capacitor-variable",
+		"inductor",
+		"ferrite-bead",
+		"crystal",
+		"fuse",
+		"switch-spst",
+		"switch-spdt",
+		"switch-push",
+		"speaker",
+		"antenna",
 		"signal-ground",
 		"vcc",
 		"vdd",
@@ -142,11 +157,13 @@ test("built-in ground and supply symbols hide pin labels while other parts use n
 		const labels = buildDrawingDisplay([symbol], new Set()).connections.flatMap(
 			(pin) => pin.children ?? [],
 		);
-		if (supplies.has(definition.id)) {
-			assert.equal(pins.length, 1);
-			assert.ok(pins[0].name);
-			assert.equal(pins[0].showLabels, false);
-			assert.deepEqual(labels, []);
+		if (hidden.has(definition.id)) {
+			assert.ok(pins.length > 0);
+			for (const pin of pins) {
+				assert.ok(pin.name);
+				assert.equal(pin.showLabels, false);
+			}
+			assert.deepEqual(labels, [], definition.id);
 		} else {
 			assert.deepEqual(
 				labels.map((label) => label.text),
