@@ -432,6 +432,12 @@ function readDrawing(
 			`The drawing's ${total} shapes do not fit in one ${byteLimit}-byte tool result. Call getDrawing with offset 0 to read it in pages.`,
 		);
 	}
+	// Every page carries the history (and page 0 the nets), even an empty one.
+	if (remaining < 0)
+		return failure(
+			"DrawingTooLarge",
+			`The drawing's history and nets alone exceed the ${byteLimit}-byte tool result limit.`,
+		);
 	let stop = start;
 	while (stop < end) {
 		const bytes =
@@ -444,9 +450,7 @@ function readDrawing(
 	if (stop === start && start < end)
 		return failure(
 			"DrawingTooLarge",
-			remaining < 0
-				? `The drawing's history and nets alone exceed the ${byteLimit}-byte tool result limit.`
-				: `The shape at offset ${start} exceeds the ${byteLimit}-byte tool result limit.`,
+			`The shape at offset ${start} exceeds the ${byteLimit}-byte tool result limit.`,
 		);
 	return {
 		...reply(snapshot.shapes.slice(start, stop)),

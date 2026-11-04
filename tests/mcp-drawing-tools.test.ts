@@ -596,6 +596,14 @@ test("getDrawing pages fit the serialized tool result exactly, including multiby
 	assert.ok(past.ok);
 	assert.deepEqual(past.drawing?.shapes, []);
 	assert.deepEqual(past.page, { offset: 60, count: 0, total: 60 });
+	// An empty page still carries the history, so it must fit the limit too.
+	const emptyTooLarge = run(
+		{ type: "getDrawing", offset: 99, revision },
+		resultBytes(past),
+	);
+	assert.ok(!emptyTooLarge.ok);
+	assert.equal(emptyTooLarge.error.code, "DrawingTooLarge");
+	assert.match(emptyTooLarge.error.message, /history and nets alone/);
 	// Later pages need the first page's revision.
 	const missing = run({ type: "getDrawing", offset: 1 }, byteLimit);
 	assert.ok(!missing.ok);
