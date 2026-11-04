@@ -18,17 +18,16 @@ import { isEditableTarget } from "#/lib/keyboard.ts";
 
 export interface DrawingClipboardOptions {
 	session: EditorSession;
-	/** Whether the editor takes clipboard input now, such as outside gestures. */
+
 	enabled: () => boolean;
-	/** A reusable symbol rejects pasted electrical items. */
+
 	target: "symbol" | "drawing";
-	/** The offset of the first paste. Each repeated paste adds one more step. */
+
 	pasteStep: number;
-	/** Ends tool state before the pasted shapes are placed. */
+
 	beforePaste: () => void;
 }
 
-/** Copy, cut and paste handlers for the editor's root element. */
 export function useDrawingClipboard({
 	session,
 	enabled,

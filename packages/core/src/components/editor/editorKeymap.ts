@@ -19,17 +19,12 @@ export type EditorShortcut =
 	| { readonly kind: "undo" }
 	| { readonly kind: "redo" };
 
-/**
- * Shortcuts that work anywhere in the editor. `undefined` leaves the key to
- * the page.
- */
 export function editorShortcut(
 	event: EditorKey,
 	context: {
-		/** The Create symbol dialog takes every key. */
 		readonly dialogOpen: boolean;
 		readonly placingSymbol: boolean;
-		/** The key goes to a text field or another control. */
+
 		readonly editable: boolean;
 		readonly canRotate: boolean;
 	},
@@ -74,13 +69,11 @@ export type CanvasKeyCommand =
 	| {
 			readonly kind: "move-selection";
 			readonly delta: Point;
-			/** An open wire chain ends before the selection moves. */
+
 			readonly endWire: boolean;
 	  }
-	/** Arrow keys during a drag do nothing, but the page must not scroll. */
 	| { readonly kind: "ignore" };
 
-/** Keys pressed while the drawing canvas has focus. */
 export function canvasKeyCommand(
 	event: EditorKey,
 	context: {
@@ -88,9 +81,9 @@ export function canvasKeyCommand(
 		readonly dragging: boolean;
 		readonly hasSelection: boolean;
 		readonly childSelected: boolean;
-		/** Arrow key distance for a selected symbol child. */
+
 		readonly childStep: number;
-		/** Arrow key distance for the selection. */
+
 		readonly selectionStep: number;
 	},
 ): CanvasKeyCommand | undefined {

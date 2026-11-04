@@ -142,6 +142,19 @@ test("connecting another store resets saved history selections", () => {
 	assert.equal(store.getSnapshot().shapes.length, 1, "the first store is untouched");
 });
 
+test("a store switch during an async edit is visible as a changed drawing, and commands follow the new store", () => {
+	const { session, store } = setup([rectangle(1), rectangle(2, 20)]);
+	session.connect(store, () => {});
+	const before = session.drawing();
+	const other = createDrawingStore([rectangle(1), rectangle(2, 20)]);
+	session.connect(other, () => {});
+	assert.notEqual(session.drawing(), before);
+	assert.equal(session.drawing(), other.getSnapshot());
+	session.commit(removeShapesEffect([1]), new Set());
+	assert.equal(other.getSnapshot().shapes.length, 1);
+	assert.equal(store.getSnapshot().shapes.length, 2);
+});
+
 test("shapes are resolved once per document version and the draft wins while it exists", () => {
 	const store = createDrawingStore([rectangle(1)]);
 	let calls = 0;

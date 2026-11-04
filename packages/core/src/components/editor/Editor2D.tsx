@@ -842,13 +842,12 @@ function EditorCanvas({
 	): Promise<string | undefined> => {
 		finishDrag();
 		finishWire();
-		const previousHistoryId = store.getSnapshot().history.currentId;
-		const originalDrawing = store.getSnapshot();
+		const originalDrawing = session.drawing();
+		const previousHistoryId = originalDrawing.history.currentId;
 		const { selection } = session.getState();
 		const ids = [...selection];
-		const primitives = store
-			.getSnapshot()
-			.shapes.filter((shape) => selection.has(shape.id))
+		const primitives = originalDrawing.shapes
+			.filter((shape) => selection.has(shape.id))
 			.filter((shape) => shape.kind !== "symbol");
 		if (primitives.length !== ids.length || ids.length < 2)
 			return "Select at least two drawing shapes to create a symbol.";
@@ -867,7 +866,7 @@ function EditorCanvas({
 			);
 			const library = await saveSymbol();
 			options.library = library;
-			if (store.getSnapshot() !== originalDrawing)
+			if (session.drawing() !== originalDrawing)
 				return "The drawing changed while saving. The symbol is in your library; select the shapes and try again.";
 			const result = session.commit(
 				createSymbolFromSelectionEffect(ids, options),
