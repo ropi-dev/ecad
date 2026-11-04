@@ -9,6 +9,8 @@ import {
 	lineStyles,
 } from "#/drawing/line-style.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
+import type { LabelRole } from "#/drawing/placement.ts";
+import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import {
 	boxBorder,
 	boxText,
@@ -16,8 +18,8 @@ import {
 	type EditorSymbol,
 	isBasicShape,
 	type ShapeAttribute,
-	shapeBounds,
 	type SymbolLabelPosition,
+	shapeBounds,
 	symbolLabelPosition,
 	symbolShapes,
 } from "#/drawing/shapes.ts";
@@ -102,23 +104,9 @@ interface SelectionAttributesProps {
 	onClear: () => void;
 	onCreateSymbol?: () => void;
 	onEditSymbol?: () => void;
-	onAttributeChange: (attribute: ShapeAttribute, value: number) => void;
-	onLineStyleChange: (style: LineStyle) => void;
-	onLockChange: (locked: boolean) => void;
-	onNetSymbolChange?: (netSymbol: boolean) => void;
-	onSymbolLabelPositionChange?: (position: SymbolLabelPosition) => void;
-	onSymbolAttributeChange: (
-		attribute: keyof EditorSymbol["attributes"],
-		value: string,
-	) => void;
-	onTextChange: (text: string) => void;
-	onElectricalChange?: (role: "net" | "supply" | undefined) => void;
-	onTextAlignmentChange: (alignment: TextAlignment) => void;
-	onPinVisibilityChange: (
-		attribute: "showName" | "showNumber",
-		value: boolean,
-	) => void;
-	onPinAttributeChange: (attribute: "name" | "number", value: string) => void;
+	/** Shows the net symbol and label role controls. Reusable symbols have no nets. */
+	allowNetEdits?: boolean;
+	onEdit: (edit: SelectionEdit) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
 }
@@ -139,19 +127,10 @@ function SelectionAttributesPanel({
 	shapes,
 	snapStep = 0,
 	onClear,
-	onAttributeChange,
-	onLineStyleChange,
-	onLockChange,
-	onSymbolAttributeChange,
-	onNetSymbolChange,
-	onSymbolLabelPositionChange,
-	onPinAttributeChange,
-	onPinVisibilityChange,
+	allowNetEdits = false,
+	onEdit,
 	onCreateSymbol,
 	onEditSymbol,
-	onTextChange,
-	onElectricalChange,
-	onTextAlignmentChange,
 	textFocusId,
 	onTextFocus,
 }: SelectionAttributesProps) {
@@ -188,6 +167,8 @@ function SelectionAttributesPanel({
 			? outlinedShapes[0].lineWidth
 			: "";
 	if (!shapes.length) return null;
+	const onAttributeChange = (attribute: ShapeAttribute, value: number) =>
+		onEdit({ kind: "attribute", attribute, value });
 	const single = shapes.length === 1 ? shapes[0] : undefined;
 	const canCreateSymbol = shapes.every(
 		(shape) =>
@@ -206,7 +187,9 @@ function SelectionAttributesPanel({
 				if (input)
 					input.indeterminate = !locked && shapes.some((shape) => shape.locked);
 			}}
-			onChange={(event) => onLockChange(event.currentTarget.checked)}
+			onChange={(event) =>
+				onEdit({ kind: "lock", locked: event.currentTarget.checked })
+			}
 			className="size-4 cursor-pointer accent-[#e8b77e] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 		/>,
 	];
@@ -288,7 +271,11 @@ function SelectionAttributesPanel({
 									defaultValue={single[attribute]}
 									className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 									onBlur={(event) =>
-										onPinAttributeChange(attribute, event.currentTarget.value)
+										onEdit({
+											kind: "pin",
+											attribute,
+											value: event.currentTarget.value,
+										})
 									}
 								/>,
 							],
@@ -307,10 +294,11 @@ function SelectionAttributesPanel({
 										aria-label={label}
 										checked={single[attribute] ?? single.showLabels ?? true}
 										onChange={(event) =>
-											onPinVisibilityChange(
+											onEdit({
+												kind: "pin",
 												attribute,
-												event.currentTarget.checked,
-											)
+												value: event.currentTarget.checked,
+											})
 										}
 									/>,
 								];
@@ -319,7 +307,7 @@ function SelectionAttributesPanel({
 					: []),
 				...(symbol
 					? [
-							...(onNetSymbolChange
+							...(allowNetEdits
 								? [
 										[
 											"Net symbol",
@@ -329,7 +317,10 @@ function SelectionAttributesPanel({
 												aria-label="Net symbol"
 												checked={symbol.netSymbol ?? false}
 												onChange={(event) =>
-													onNetSymbolChange(event.currentTarget.checked)
+													onEdit({
+														kind: "net-symbol",
+														netSymbol: event.currentTarget.checked,
+													})
 												}
 											/>,
 										] as [string, ReactNode],
@@ -348,7 +339,13 @@ function SelectionAttributesPanel({
 										name={`attributes.${key}`}
 										label={label}
 										value={symbol.attributes[key]}
-										onCommit={(next) => onSymbolAttributeChange(key, next)}
+										onCommit={(next) =>
+											onEdit({
+												kind: "symbol-attribute",
+												attribute: key,
+												value: next,
+											})
+										}
 									/>,
 								] as [string, ReactNode];
 							}),
@@ -483,7 +480,7 @@ function SelectionAttributesPanel({
 						</p>
 					</>
 				)}
-				{single?.kind === "text" && onElectricalChange && !isSymbolChild && (
+				{single?.kind === "text" && allowNetEdits && !isSymbolChild && (
 					<label className="mt-3 block text-xs text-[#9ba7b8]">
 						Label role
 						<select
@@ -491,11 +488,13 @@ function SelectionAttributesPanel({
 							className="mt-2 block w-full rounded bg-[#19212e] p-2 text-[#f0f3f8]"
 							value={single.electrical ?? "text"}
 							onChange={(event) =>
-								onElectricalChange(
-									event.target.value === "text"
-										? undefined
-										: (event.target.value as "net" | "supply"),
-								)
+								onEdit({
+									kind: "label-role",
+									role:
+										event.target.value === "text"
+											? undefined
+											: (event.target.value as LabelRole),
+								})
 							}
 						>
 							<option value="text">Ordinary text</option>
@@ -521,7 +520,9 @@ function SelectionAttributesPanel({
 							rows={3}
 							maxLength={2000}
 							className="mt-2 block w-full resize-y rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-							onBlur={(event) => onTextChange(event.currentTarget.value)}
+							onBlur={(event) =>
+								onEdit({ kind: "text", text: event.currentTarget.value })
+							}
 							onKeyDown={(event) => {
 								if (event.key === "Escape") event.currentTarget.blur();
 							}}
@@ -539,39 +540,38 @@ function SelectionAttributesPanel({
 						</div>
 					))}
 				</dl>
-				{symbol?.netSymbol &&
-					symbol.children.length > 0 &&
-					onSymbolLabelPositionChange && (
-						<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
-							Label position
-							<span className="relative mr-7 w-24 shrink-0">
-								<select
-									aria-label="Label position"
-									value={symbolLabelPosition(symbol, "name")}
-									className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-									onChange={(event) =>
-										onSymbolLabelPositionChange(
-											event.currentTarget.value as SymbolLabelPosition,
-										)
-									}
-								>
-									<option value="default">Default</option>
-									<option value="above">Above</option>
-									<option value="below">Below</option>
-									<option value="left">Left</option>
-									<option value="right">Right</option>
-									<option value="custom" disabled>
-										Custom
-									</option>
-								</select>
-								<ChevronDown
-									aria-hidden="true"
-									size={12}
-									className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-[#f0f3f8]"
-								/>
-							</span>
-						</label>
-					)}
+				{symbol?.netSymbol && symbol.children.length > 0 && allowNetEdits && (
+					<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
+						Label position
+						<span className="relative mr-7 w-24 shrink-0">
+							<select
+								aria-label="Label position"
+								value={symbolLabelPosition(symbol, "name")}
+								className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+								onChange={(event) =>
+									onEdit({
+										kind: "symbol-label-position",
+										position: event.currentTarget.value as SymbolLabelPosition,
+									})
+								}
+							>
+								<option value="default">Default</option>
+								<option value="above">Above</option>
+								<option value="below">Below</option>
+								<option value="left">Left</option>
+								<option value="right">Right</option>
+								<option value="custom" disabled>
+									Custom
+								</option>
+							</select>
+							<ChevronDown
+								aria-hidden="true"
+								size={12}
+								className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-[#f0f3f8]"
+							/>
+						</span>
+					</label>
+				)}
 				{textShapes.length > 0 && (
 					<TextAlignmentInputs
 						horizontalAlign={
@@ -592,7 +592,9 @@ function SelectionAttributesPanel({
 								? (textShapes[0].verticalAlign ?? "middle")
 								: ""
 						}
-						onChange={onTextAlignmentChange}
+						onChange={(alignment) =>
+							onEdit({ kind: "text-alignment", alignment })
+						}
 					/>
 				)}
 				{basicShapes.length > 0 && (
@@ -604,7 +606,10 @@ function SelectionAttributesPanel({
 								value={lineStyle}
 								className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 								onChange={(event) =>
-									onLineStyleChange(event.currentTarget.value as LineStyle)
+									onEdit({
+										kind: "line-style",
+										lineStyle: event.currentTarget.value as LineStyle,
+									})
 								}
 							>
 								{lineStyle === "" && (
