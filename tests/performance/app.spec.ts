@@ -1581,7 +1581,7 @@ test("editor-named-nets", async ({ page }, testInfo) => {
 		});
 	}
 	await expect(page.getByTestId("text-anchor")).toHaveCount(95);
-	await page.screenshot({ path: "artifacts/named-nets-workload.png", fullPage: true });
+	await page.screenshot({ path: "perf-artifacts/named-nets-workload.png", fullPage: true });
 	const interactionP95Ms = metric(await report(page), "scenario.interaction")!;
 	await finish(page, testInfo, "editor-named-nets", { interactionP95Ms });
 });
