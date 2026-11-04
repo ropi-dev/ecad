@@ -1,0 +1,253 @@
+import { Effect, Either } from "effect";
+import {
+	type CommandResult,
+	type InvalidDrawingCommand,
+	placeShapesEffect,
+	replaceAndPlaceShapesEffect,
+} from "#/commands/drawing-commands.ts";
+import {
+	type createDrawingStore,
+	DrawingStore,
+} from "#/commands/drawing-store.ts";
+import { placedSelection } from "#/drawing/command-selection.ts";
+import { canSelectShape, type EditorShape } from "#/drawing/shapes.ts";
+
+type Store = ReturnType<typeof createDrawingStore>;
+export type DrawingCommand<A> = Effect.Effect<
+	A,
+	InvalidDrawingCommand,
+	DrawingStore
+>;
+/** Turns stored shapes into the shapes the editor shows, such as resolved symbols. */
+export type ResolveShapes = (shapes: EditorShape[]) => EditorShape[];
+
+export interface EditorSessionState {
+	/** Selected top-level shape IDs. */
+	readonly selection: ReadonlySet<number>;
+	/** The selected child of the one selected symbol. */
+	readonly childKey: string | null;
+	/** A gesture changes only this preview. Commands receive the completed geometry. */
+	readonly draft: EditorShape[] | null;
+	/** The last command failure, cleared by the next command that changes the drawing. */
+	readonly error: string;
+	/** Whether locked symbols and standalone items can be selected. */
+	readonly allowLocked: boolean;
+}
+
+export type EditorSession = ReturnType<typeof createEditorSession>;
+
+/**
+ * The editor's selection and command state, outside React. Commands run
+ * against the drawing store; the session keeps the selection on the shapes
+ * each command produces and remembers it for every history step.
+ */
+export function createEditorSession(
+	initialStore: Store,
+	initialResolve: ResolveShapes = (shapes) => shapes,
+) {
+	let store = initialStore;
+	let state: EditorSessionState = {
+		selection: new Set(),
+		childKey: null,
+		draft: null,
+		error: "",
+		allowLocked: false,
+	};
+	const listeners = new Set<() => void>();
+	let executing = false;
+	// Selection restoration is an editor preference, separate from document history.
+	let historySelection = new Map<number, number[]>([[0, []]]);
+	let resolve = initialResolve;
+	let resolved: { input: EditorShape[]; output: EditorShape[] } | undefined;
+
+	const update = (next: Partial<EditorSessionState>) => {
+		state = { ...state, ...next };
+		for (const listener of listeners) listener();
+	};
+	const shapes = () => {
+		if (state.draft) return state.draft;
+		const input = store.getSnapshot().shapes;
+		if (resolved?.input !== input) resolved = { input, output: resolve(input) };
+		return resolved.output;
+	};
+	const preview = (draft: EditorShape[] | null) => {
+		if (draft !== state.draft) update({ draft });
+	};
+	const select = (ids: ReadonlySet<number>) => {
+		const next = new Set(
+			shapes()
+				.filter(
+					(shape) =>
+						ids.has(shape.id) && canSelectShape(shape, state.allowLocked),
+				)
+				.map((shape) => shape.id),
+		);
+		if (
+			next.size === state.selection.size &&
+			[...next].every((id) => state.selection.has(id))
+		)
+			return;
+		update({ selection: next, childKey: null });
+	};
+	const setError = (error: string | ((current: string) => string)) => {
+		const next = typeof error === "function" ? error(state.error) : error;
+		if (next !== state.error) update({ error: next });
+	};
+	const execute = <A>(program: DrawingCommand<A>): A | undefined => {
+		executing = true;
+		const before = store.getSnapshot();
+		try {
+			const result = Effect.runSync(
+				program.pipe(Effect.provideService(DrawingStore, store), Effect.either),
+			);
+			if (Either.isLeft(result)) {
+				setError(result.left.message);
+				return undefined;
+			}
+			if (store.getSnapshot() !== before) setError("");
+			return result.right;
+		} finally {
+			executing = false;
+		}
+	};
+	/** Selects the committed shapes and remembers the selection for the new history step. */
+	const acceptEdit = (
+		result: CommandResult,
+		previousHistoryId: number,
+		ids: ReadonlySet<number> = new Set(
+			[...state.selection].flatMap((id) => result.idsBySource.get(id) ?? []),
+		),
+	) => {
+		preview(null);
+		const committed = store.getSnapshot();
+		const existing = new Set(committed.shapes.map((shape) => shape.id));
+		const selection = new Set([...ids].filter((id) => existing.has(id)));
+		select(selection);
+		const historyId = committed.history.currentId;
+		if (historyId !== previousHistoryId)
+			historySelection.set(historyId, [...selection]);
+	};
+	const retainExisting = () => {
+		const existing = new Set(
+			store.getSnapshot().shapes.map((shape) => shape.id),
+		);
+		select(new Set([...state.selection].filter((id) => existing.has(id))));
+	};
+
+	return {
+		getState: () => state,
+		subscribe(listener: () => void) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
+		/** The draft while a gesture runs, otherwise the resolved document. */
+		shapes,
+		nextId: () => store.getSnapshot().nextShapeId,
+		historyId: () => store.getSnapshot().history.currentId,
+		/**
+		 * Uses `resolve` for later documents. `known` passes an already resolved
+		 * document so the session does not resolve it again.
+		 */
+		setResolver(
+			next: ResolveShapes,
+			known?: { input: EditorShape[]; output: EditorShape[] },
+		) {
+			if (next !== resolve) resolved = undefined;
+			resolve = next;
+			if (known) resolved = known;
+		},
+		preview,
+		select,
+		selectChild(childKey: string | null) {
+			if (childKey !== state.childKey) update({ childKey });
+		},
+		/** Changes the locked-item rule and drops selected shapes it no longer allows. */
+		setAllowLocked(allowLocked: boolean) {
+			const selection = new Set(
+				shapes()
+					.filter(
+						(shape) =>
+							state.selection.has(shape.id) &&
+							canSelectShape(shape, allowLocked),
+					)
+					.map((shape) => shape.id),
+			);
+			update({ selection, childKey: null, allowLocked });
+		},
+		setError,
+		execute,
+		acceptEdit,
+		/** Runs a command and keeps the selection on the shapes it produced. */
+		commit<A extends CommandResult>(
+			program: DrawingCommand<A>,
+			selection?: ReadonlySet<number>,
+		) {
+			const previousHistoryId = store.getSnapshot().history.currentId;
+			const result = execute(program);
+			if (result) acceptEdit(result, previousHistoryId, selection);
+			return result;
+		},
+		/** Adds shapes and selects them. */
+		place(next: EditorShape[], label: string) {
+			const previous = store.getSnapshot();
+			const result = execute(placeShapesEffect(next, label));
+			if (result)
+				acceptEdit(
+					result,
+					previous.history.currentId,
+					placedSelection(previous.shapes, result),
+				);
+			else preview(null);
+		},
+		/** Replaces existing shapes and adds the rest. */
+		replace(replacements: EditorShape[], label: string) {
+			const previous = store.getSnapshot();
+			const existing = new Set(previous.shapes.map((shape) => shape.id));
+			const result = execute(
+				replaceAndPlaceShapesEffect(
+					replacements.filter((shape) => existing.has(shape.id)),
+					replacements.filter((shape) => !existing.has(shape.id)),
+					label,
+					[...state.selection],
+				),
+			);
+			if (result) acceptEdit(result, previous.history.currentId);
+			else preview(null);
+		},
+		/** Moves through history and restores the selection saved for that step. */
+		restore(program: DrawingCommand<unknown>) {
+			execute(program);
+			const restored = store.getSnapshot();
+			preview(null);
+			const existing = new Set(restored.shapes.map((shape) => shape.id));
+			select(
+				new Set(
+					(historySelection.get(restored.history.currentId) ?? []).filter(
+						(id) => existing.has(id),
+					),
+				),
+			);
+		},
+		rememberSelection(historyId: number, ids: readonly number[]) {
+			historySelection.set(historyId, [...ids]);
+		},
+		/**
+		 * Follows `next` and calls `onExternalEdit` whenever another caller changes
+		 * the document, before dropping selected shapes that no longer exist.
+		 */
+		connect(next: Store, onExternalEdit: () => void) {
+			if (next !== store) resolved = undefined;
+			store = next;
+			historySelection = new Map([[0, []]]);
+			const reconcile = () => {
+				if (executing) return;
+				onExternalEdit();
+				retainExisting();
+			};
+			reconcile();
+			return store.subscribe(reconcile);
+		},
+	};
+}
