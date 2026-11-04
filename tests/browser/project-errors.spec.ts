@@ -249,6 +249,50 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	await expect(notice).toHaveCount(0);
 });
 
+test("creating a project from one with a conflict carries its assets and leaves the conflict behind", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await (await openProjectFiles(page))
+		.getByLabel("Add STEP files", { exact: true })
+		.setInputFiles({
+			name: "board.step",
+			mimeType: "application/step",
+			buffer: Buffer.from("ISO-10303-21;"),
+		});
+	await expect
+		.poll(async () => (await documentState(page)).assets?.length)
+		.toBe(1);
+	await closeProjectFiles(page);
+	const original = await page.evaluate(() =>
+		localStorage.getItem("ecad.active-project"),
+	);
+	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	const notice = page.getByRole("alert").filter({
+		hasText: "This project changed on disk",
+	});
+	await openProjectActions(page);
+	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await expect(notice).toBeVisible();
+
+	await openProjectActions(page);
+	await page
+		.getByRole("menuitem", { name: "New untitled project", exact: true })
+		.click();
+	await expect
+		.poll(() => page.evaluate(() => localStorage.getItem("ecad.active-project")))
+		.not.toBe(original);
+	await expect(notice).toHaveCount(0);
+	await expect
+		.poll(async () => (await documentState(page)).assets?.length)
+		.toBe(1);
+	expect((await documentState(page)).dirty).toBe(false);
+	await expect(
+		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+	).toHaveCount(0);
+});
+
 const benchParts = {
 	id: "parts",
 	name: "Bench parts",

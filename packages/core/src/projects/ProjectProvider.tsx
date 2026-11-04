@@ -989,6 +989,9 @@ export function ProjectProvider({
 					if (!next) return;
 					if (creating) {
 						update(next);
+						// A conflict belongs to the project that found it, not to the copy.
+						conflict.current = null;
+						setHasConflict(false);
 						pendingAssets.current = assets;
 						symbols.current = document.symbols;
 						libraries.current = document.symbolLibraries;
