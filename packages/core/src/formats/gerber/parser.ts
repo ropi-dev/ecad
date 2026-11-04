@@ -937,9 +937,10 @@ export function parseGerber(
 			throw new Error(
 				"Both X and Y are required when the current point is undefined",
 			);
-		const old = position ?? { x: 0, y: 0 };
-		const x = fields.X === undefined ? old.x : coordinate(fields.X, "x"),
-			y = fields.Y === undefined ? old.y : coordinate(fields.Y, "y");
+		const old = position;
+		const current = position ?? { x: 0, y: 0 };
+		const x = fields.X === undefined ? current.x : coordinate(fields.X, "x"),
+			y = fields.Y === undefined ? current.y : coordinate(fields.Y, "y");
 		const next = {
 			x: format?.mode === "I" && fields.X !== undefined ? x + (old?.x ?? 0) : x,
 			y: format?.mode === "I" && fields.Y !== undefined ? y + (old?.y ?? 0) : y,

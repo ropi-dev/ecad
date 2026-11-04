@@ -473,3 +473,16 @@ test("all six bundled demo layers parse without warnings or errors", () => {
 		"Gerber X3",
 	);
 });
+
+test("D01 without an established current point reports an error and emits no stroke", () => {
+	const result = parse("%ADD10C,0.2*%D10*X1000000Y1000000D01*");
+	assert.equal(result.object.objects.length, 0);
+	assert.ok(
+		result.diagnostics.some(
+			(diagnostic) =>
+				diagnostic.severity === "error" &&
+				diagnostic.message ===
+					"D01 draw requires a current point set by D02 or D03",
+		),
+	);
+});
