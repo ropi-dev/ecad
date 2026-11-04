@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { captureArtifacts } from "./artifacts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
@@ -46,7 +47,7 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
  await expect.poll(async()=>JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets[0].names).toEqual([]);
 });
 
-test("dragging a generated label adds wires and persists through autosave, undo and reload", async ({ page }) => {
+test("dragging a generated label adds wires and persists through autosave, undo and reload", async ({ page }, testInfo) => {
  const original = createCircuit("Untitled", "pcb-main");
  const file = structuredClone(original);
  const resistor = componentFromSymbol(symbolDefinitions.find(definition => definition.id === "resistor")!, []);
@@ -100,7 +101,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
  expect((await document()).shapes.filter((shape: any) => shape.kind === "wire")).toHaveLength(2);
  const moved = (await document()).shapes;
  await page.mouse.move(20, 20);
- await page.screenshot({ path: "/tmp/ecad-net-label-artifacts/moved-net-label.png" });
+ if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("moved-net-label.png") });
  const { toolbarButton } = await import("./toolbar");
  await (await toolbarButton(page, "Undo")).click();
  await expect.poll(async () => (await document()).shapes.find((shape: any) => shape.id === label.id)?.x).toBe(label.x);
@@ -115,7 +116,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
  expect((await document()).shapes.find((shape: any) => shape.id === label.id)).toEqual(moved.find((shape: any) => shape.id === label.id));
  const rotated = (await document()).shapes;
  await page.mouse.move(20, 20);
- await page.screenshot({ path: "/tmp/ecad-net-label-artifacts/rotated-net-label.png" });
+ if (captureArtifacts) await page.screenshot({ path: testInfo.outputPath("rotated-net-label.png") });
  await (await toolbarButton(page, "Undo")).click();
  await expect.poll(async () => (await document()).shapes).toEqual(moved);
  await (await toolbarButton(page, "Redo")).click();
@@ -127,7 +128,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
  await expect.poll(async () => JSON.parse((await page.locator("#circuit-document").textContent())!).circuit.nets).toEqual(file.circuit.nets);
 });
 
-test("electrical labels use the normal grid for dragging and keyboard movement", async ({ page }) => {
+test("electrical labels use the normal grid for dragging and keyboard movement", async ({ page }, testInfo) => {
  await page.goto("/tests/browser/editor.html");
  await expect(page.locator("canvas")).toBeVisible();
  const { rulerSpacing } = await import("#/engine/ruler.ts");
@@ -163,6 +164,6 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
   await page.mouse.up();
   await expect.poll(async () => (await document()).shapes[0].x).toBeCloseTo(electrical ? step * 2 : step * 1.5, 6);
   await expect.poll(async () => (await document()).shapes[0].y).toBeCloseTo(electrical ? -step : -step * 1.4, 6);
-  if (electrical === "net") await page.screenshot({ path: "/tmp/ecad-net-label-artifacts/net-label-no-resize.png" });
+  if (captureArtifacts && electrical === "net") await page.screenshot({ path: testInfo.outputPath("net-label-no-resize.png") });
  }
 });

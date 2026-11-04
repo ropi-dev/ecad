@@ -1,14 +1,23 @@
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { distributionLicenses } from "../../scripts/distribution-licenses.ts";
 
-const config = defineConfig({
-	envDir: "../..",
-	server: { allowedHosts: ["server.tail68bf0c.ts.net"] },
+const envDir = fileURLToPath(new URL("../..", import.meta.url));
+
+const config = defineConfig(({ mode }) => ({
+	envDir,
+	server: {
+		// Comma-separated extra hostnames for the dev and preview servers.
+		allowedHosts: (loadEnv(mode, envDir, "ECAD_").ECAD_ALLOWED_HOSTS ?? "")
+			.split(",")
+			.map((host) => host.trim())
+			.filter(Boolean),
+	},
 	cacheDir:
 		process.env.ECAD_PERF_MODE === "development"
 			? "../../node_modules/.vite-performance"
@@ -22,6 +31,6 @@ const config = defineConfig({
 		viteReact(),
 		distributionLicenses("web"),
 	],
-});
+}));
 
 export default config;
