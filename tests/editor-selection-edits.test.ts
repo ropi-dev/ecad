@@ -189,10 +189,46 @@ test("a selected symbol child receives geometry, style, text and lock edits", ()
 		applySelectionEdit({ kind: "text-alignment", alignment: { horizontalAlign: "center", verticalAlign: "middle" } }, childContext(label)),
 		expected(label, { ...label.shape, horizontalAlign: "center", verticalAlign: "middle" }),
 	);
+	// Child edits skip the selection's finite-number guard; editShapeAttribute keeps the child unchanged.
+	assert.deepEqual(
+		applySelectionEdit({ kind: "attribute", attribute: "width", value: Number.NaN }, childContext(border)),
+		expected(border, border.shape),
+	);
 	// Edits that do not fit the child change nothing.
 	assert.equal(applySelectionEdit({ kind: "text", text: "Board" }, childContext(border)), undefined);
 	assert.equal(applySelectionEdit({ kind: "line-style", lineStyle: "dashed" }, childContext(label)), undefined);
 	assert.equal(applySelectionEdit({ kind: "pin", attribute: "name", value: "A" }, childContext(label)), undefined);
+});
+
+test("pin edits reach a selected pin child of a symbol", () => {
+	const symbol = resistor(5);
+	const pinChild = symbolChildren(symbol).find((child) => child.shape.kind === "pin");
+	assert.ok(pinChild && pinChild.shape.kind === "pin");
+	const withChild = context([symbol], { child: { symbol, child: pinChild } });
+	assert.deepEqual(applySelectionEdit({ kind: "pin", attribute: "name", value: "A" }, withChild), {
+		replacements: [replaceSymbolChild(symbol, pinChild.key, { ...pinChild.shape, name: "A" })],
+		label: "Edit symbol child",
+	});
+	assert.deepEqual(applySelectionEdit({ kind: "pin", attribute: "showName", value: false }, withChild), {
+		replacements: [replaceSymbolChild(symbol, pinChild.key, { ...pinChild.shape, showName: false })],
+		label: "Edit symbol child",
+	});
+});
+
+test("edits with no matching shapes still commit an empty replacement list", () => {
+	// The editor commits these so the selection and preview reset as before.
+	assert.deepEqual(applySelectionEdit({ kind: "text-alignment", alignment: { horizontalAlign: "left" } }, context([rectangle])), {
+		replacements: [],
+		label: "Align text",
+	});
+	assert.deepEqual(applySelectionEdit({ kind: "line-style", lineStyle: "dashed" }, context([text])), {
+		replacements: [],
+		label: "Change line style",
+	});
+	assert.deepEqual(applySelectionEdit({ kind: "net-symbol", netSymbol: true }, context([rectangle])), {
+		replacements: [],
+		label: "Change net symbol",
+	});
 });
 
 test("symbol-level edits made while a child is selected still change the parent symbol", () => {

@@ -12,7 +12,7 @@ import {
 	placementLabel,
 	placementSnapsToConnection,
 } from "#/drawing/placement.ts";
-import { drawShape, routeWire, shapeBounds } from "#/drawing/shapes.ts";
+import { drawShape, routeWire } from "#/drawing/shapes.ts";
 import { createTextShape } from "#/drawing/text.ts";
 
 const measureText = (value: string) => value.length * 48;
@@ -37,14 +37,14 @@ test("new net and supply labels start as NET and GND, anchored at their bottom l
 	}
 });
 
-test("placement tools create the same item for the hover guide and the click", () => {
+// tests/browser/editor.spec.ts checks that the hover guide and the click place the same item.
+test("each placement tool creates its own kind of item at the anchor", () => {
 	for (const tool of ["pin", "no-connect", "text", "net", "supply"] as const) {
 		assert.equal(isPlacementTool(tool), true);
-		const first = createPlacementShape(tool, 3, anchor, measureText);
-		const second = createPlacementShape(tool, 3, anchor, measureText);
-		assert.deepEqual(first, second);
-		assert.deepEqual(shapeBounds(first), shapeBounds(second));
-		assert.equal(first.id, 3);
+		const shape = createPlacementShape(tool, 3, anchor, measureText);
+		assert.equal(shape.id, 3);
+		assert.equal(shape.kind, tool === "net" || tool === "supply" ? "text" : tool);
+		assert.deepEqual({ x: shape.x, y: shape.y }, anchor);
 	}
 	assert.deepEqual(createPlacementShape("pin", 3, anchor, measureText), drawShape(3, "pin", anchor, anchor));
 	assert.deepEqual(createPlacementShape("no-connect", 3, anchor, measureText), drawShape(3, "no-connect", anchor, anchor));
