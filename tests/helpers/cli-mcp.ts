@@ -9,8 +9,9 @@ export const cliMain = fileURLToPath(new URL("../../packages/cli/src/main.ts", i
 export const cliExecutable = fileURLToPath(new URL("../../packages/cli/bin/ecad.mjs", import.meta.url));
 const tsxLoader = fileURLToPath(import.meta.resolve("tsx"));
 
-export function startCli(args: string[], env: NodeJS.ProcessEnv = {}, input = "", options: { built?: boolean; cwd?: string } = {}) {
-	const child = spawn(process.execPath, options.built ? [cliExecutable, ...args] : ["--import", tsxLoader, cliMain, ...args], {
+export function startCli(args: string[], env: NodeJS.ProcessEnv = {}, input = "", options: { built?: boolean; cwd?: string; imports?: string[] } = {}) {
+	const imports = (options.imports ?? []).flatMap((path) => ["--import", path]);
+	const child = spawn(process.execPath, options.built ? [...imports, cliExecutable, ...args] : ["--import", tsxLoader, ...imports, cliMain, ...args], {
 		cwd: options.cwd,
 		env: { ...process.env, ECAD_DRAWING: "", ...env },
 		stdio: ["pipe", "pipe", "pipe"],

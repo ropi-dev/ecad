@@ -26,21 +26,20 @@ export async function serveStdioMcp(
 	signal?.throwIfAborted();
 	const server = createLocalDrawingMcpServer(options);
 	let stopping = false;
+	let failure: Error | undefined;
 	let resolve!: () => void;
-	let reject!: (cause: Error) => void;
-	const stopped = new Promise<void>((done, fail) => {
+	const stopped = new Promise<void>((done) => {
 		resolve = done;
-		reject = fail;
 	});
-	// A stream failure can arrive before the server is awaited.
-	stopped.catch(() => {});
 	const finish = () => {
 		stopping = true;
 		resolve();
 	};
+	// A stream can fail after another event already started the shutdown, so
+	// the failure is kept and reported once the server has closed.
 	const fail = (cause: Error) => {
-		stopping = true;
-		reject(cause);
+		failure ??= cause;
+		finish();
 	};
 	// The transport closes itself only after input it cannot recover from,
 	// such as an oversized message.
@@ -55,8 +54,8 @@ export async function serveStdioMcp(
 	};
 	input.once("end", finish);
 	input.once("close", finish);
-	input.once("error", fail);
-	output.once("error", fail);
+	input.on("error", fail);
+	output.on("error", fail);
 	signal?.addEventListener("abort", finish, { once: true });
 	try {
 		await server.connect(new StdioServerTransport(input, output));
@@ -65,9 +64,10 @@ export async function serveStdioMcp(
 	} finally {
 		input.off("end", finish);
 		input.off("close", finish);
-		input.off("error", fail);
-		output.off("error", fail);
 		signal?.removeEventListener("abort", finish);
 		await server.close();
+		input.off("error", fail);
+		output.off("error", fail);
 	}
+	if (failure) throw failure;
 }

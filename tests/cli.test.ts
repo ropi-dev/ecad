@@ -217,12 +217,28 @@ test("CLI keeps locks whose owner is running or cannot be checked", async (conte
 		lockContent({ pid: await exitedPid(), pidNamespace: "pid:[1]" }),
 		JSON.stringify({ pid: await exitedPid() }),
 		"",
+		// On Linux, a PID is only checked with matching boot and namespace IDs.
+		...(linux ? [lockContent({ pid: await exitedPid(), pidNamespace: undefined }), lockContent({ pid: await exitedPid(), bootId: undefined })] : []),
 	];
 	for (const content of unknown) {
 		await writeFile(lock, content);
 		await assert.rejects(runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle })), { code: "DrawingLocked" }, content);
 		assert.equal(await readFile(lock, "utf8"), content);
 		assert.deepEqual(await readdir(fixture.directory), ["drawing.ecaddraw.lock"]);
+	}
+});
+
+test("CLI keeps a lock when neither side recorded a PID namespace or boot ID", { skip: !linux }, async (context) => {
+	const fixture = await drawing(context);
+	const lock = `${fixture.path}.lock`;
+	const hideIdentity = fileURLToPath(new URL("./helpers/hide-linux-identity.ts", import.meta.url));
+	for (const field of ["pidNamespace", "bootId"]) {
+		const content = lockContent({ pid: await exitedPid(), [field]: undefined });
+		await writeFile(lock, content);
+		const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_HIDE_IDENTITY: field }, "", { imports: [hideIdentity] }).result;
+		assert.equal(result.code, 1, `${field}: ${result.stderr || result.stdout}`);
+		assert.equal(JSON.parse(result.stdout).structuredContent.error.code, "DrawingLocked");
+		assert.equal(await readFile(lock, "utf8"), content);
 	}
 });
 
@@ -293,9 +309,8 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 	const fixture = await drawing(context);
 	const crashOnLock = fileURLToPath(new URL("./helpers/crash-on-lock.ts", import.meta.url));
 	const crashed = async (suffix: string) => {
-		const child = spawn(process.execPath, ["--import", "tsx", "--import", crashOnLock, cliMain, "placeRectangle", JSON.stringify(rectangle)], { env: { ...process.env, ...fixture.env, ECAD_TEST_CRASH_SUFFIX: suffix }, stdio: "ignore" });
-		const [, signal] = await once(child, "exit");
-		assert.equal(signal, "SIGKILL");
+		const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_CRASH_SUFFIX: suffix }, "", { imports: [crashOnLock] }).result;
+		assert.equal(result.signal, "SIGKILL", result.stderr);
 	};
 	const visible = async () => (await readdir(fixture.directory)).filter((name) => !name.startsWith("."));
 	await crashed(".lock");
@@ -396,6 +411,24 @@ test("stdio module reports an input stream failure once", async (context) => {
 	input.destroy(new Error("stdin failed"));
 	assert.equal(await work, 1);
 	assert.equal(error, "ecad: stdin failed\n");
+});
+
+test("stdio module reports an output failure that follows stdin EOF", async (context) => {
+	const fixture = await drawing(context);
+	for (const outputFailsFirst of [false, true]) {
+		const input = new PassThrough();
+		const output = new PassThrough();
+		let error = "";
+		const errors = new PassThrough();
+		errors.on("data", (chunk) => { error += chunk; });
+		const work = runCli(["mcp"], { env: fixture.env, input, output, error: errors });
+		await new Promise((resolve) => setImmediate(resolve));
+		if (outputFailsFirst) output.destroy(new Error("write failed"));
+		input.end();
+		if (!outputFailsFirst) output.destroy(new Error("write failed"));
+		assert.equal(await work, 1, `output fails first: ${outputFailsFirst}`);
+		assert.equal(error, "ecad: write failed\n");
+	}
 });
 
 test("stdio module shortens long errors and fails when the transport closes after an oversized message", async (context) => {

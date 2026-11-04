@@ -245,16 +245,20 @@ async function readLockOwner(path: string) {
 	}
 }
 
-// Returns true only when the owner certainly no longer runs. Any owner whose
-// computer, boot or PID namespace differs from this process's counts as alive.
+// Returns true only when the owner certainly no longer runs. On Linux, a PID
+// is checked only when both sides recorded the same boot and PID namespace.
+// Other systems record no such IDs, so the host name identifies the computer.
 async function hasExited(owner: LockOwner) {
 	const local = { hostname: hostname(), ...(await currentSystem()) };
 	if (owner.hostname !== local.hostname || owner.machineId !== local.machineId)
 		return false;
-	// Only a restart of the same computer changes its boot ID.
-	if (owner.bootId !== local.bootId)
-		return !!(owner.machineId && owner.bootId && local.bootId);
-	if (owner.pidNamespace !== local.pidNamespace) return false;
+	if (process.platform === "linux") {
+		if (!owner.bootId || !local.bootId) return false;
+		// Only a restart of the same computer changes its boot ID.
+		if (owner.bootId !== local.bootId) return !!owner.machineId;
+		if (!owner.pidNamespace || owner.pidNamespace !== local.pidNamespace)
+			return false;
+	} else if (owner.bootId || owner.pidNamespace) return false;
 	try {
 		process.kill(owner.pid, 0);
 	} catch (error) {
