@@ -112,8 +112,21 @@ function wireSegments(shape: EditorShape): Segment[] {
 
 const isVertical = ([a, b]: Segment) =>
 	Math.abs(b[0] - a[0]) < Math.abs(b[1] - a[1]);
-/** The coordinate across a wire, such as y for a horizontal wire. */
-const across = (segment: Segment) => segment[0][isVertical(segment) ? 0 : 1];
+/**
+ * The coordinate across a wire, such as y for a horizontal wire, at its
+ * center. Normalization rebuilds merged and cut wires on this line.
+ */
+const across = ([a, b]: Segment) => {
+	const axis = isVertical([a, b]) ? 0 : 1;
+	return (a[axis] + b[axis]) / 2;
+};
+/** Floating-point noise; anything larger is a real offset. */
+const EXACT = 1e-12;
+/** A wire that normalization can rebuild without moving it. */
+const exactlyStraight = ([a, b]: Segment) => {
+	const axis = isVertical([a, b]) ? 0 : 1;
+	return Math.abs(a[axis] - b[axis]) <= EXACT;
+};
 
 /** The extent of a wire along its own direction. */
 const extent = (segment: Segment): [number, number] => {
@@ -133,9 +146,11 @@ function mergeKeepsShape(first: Segment, second: Segment) {
 	const [a, b] = extent(first);
 	const [c, d] = extent(second);
 	return (
-		Math.abs(across(first) - across(second)) <= 1e-9 &&
-		a <= d + 1e-9 &&
-		c <= b + 1e-9
+		exactlyStraight(first) &&
+		exactlyStraight(second) &&
+		Math.abs(across(first) - across(second)) <= EXACT &&
+		a <= d + EXACT &&
+		c <= b + EXACT
 	);
 }
 
@@ -171,9 +186,10 @@ const segmentBounds = (segments: readonly Segment[], margin = 0): Bounds => {
 
 /**
  * Normalization merges a cluster of parallel wires into one wire on the line of
- * one of them, chosen by the command that runs it. A cluster whose wires are
- * not exactly in line can move by up to its spread, and one with gaps along
- * its length gets them filled. These are the areas such clusters can change.
+ * one of them, chosen by the command that runs it, and rebuilds a wire it cuts
+ * on that wire's center line. A cluster whose wires are slightly tilted or not
+ * exactly in line can move, even a cluster of one, and one with gaps along its
+ * length gets them filled. These are the areas such clusters can change.
  */
 function driftAreas(wires: readonly Segment[]): Bounds[] {
 	const sets = unionFind(wires.length);
@@ -189,11 +205,15 @@ function driftAreas(wires: readonly Segment[]): Bounds[] {
 	return [...clusters.values()]
 		.filter((cluster) => {
 			const lines = cluster.map(across);
-			if (Math.max(...lines) - Math.min(...lines) > 1e-9) return true;
+			if (
+				!cluster.every(exactlyStraight) ||
+				Math.max(...lines) - Math.min(...lines) > EXACT
+			)
+				return true;
 			const extents = cluster.map(extent).sort((a, b) => a[0] - b[0]);
 			let reach = extents[0][1];
 			for (const [start, end] of extents) {
-				if (start > reach + 1e-9) return true;
+				if (start > reach + EXACT) return true;
 				reach = Math.max(reach, end);
 			}
 			return false;

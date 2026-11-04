@@ -572,6 +572,20 @@ test("KiCad routes never let normalization fill a gap next to them", () => {
 	assert.deepEqual(gap.nets, ["B", "C+D"]);
 });
 
+test("KiCad routes stay clear of slightly tilted wires that normalization straightens", () => {
+	// The long wire rises 0.000000008 mm, within the wire rule. Merging with or
+	// cutting it would rebuild it on its center line and move it away from C.
+	const tilted = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("0 20", "20 20.000000008"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "1 19.999900002"),
+	);
+	assert.equal(tilted.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.deepEqual(tilted.nets, ["A+C", "B"]);
+});
+
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
 	const result = importedNets(
 		kicadWire("10 20", "16 28"),
