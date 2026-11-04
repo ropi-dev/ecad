@@ -100,6 +100,24 @@ export function parseSelection(text: string): EditorShape[] | null {
 	}
 }
 
+/** Why copied drawing data cannot be pasted. Other clipboard text has no error. */
+export function selectionPasteError(text: string): string | undefined {
+	if (text.length > 10_000_000) return;
+	try {
+		const value = JSON.parse(text);
+		if (value?.format !== "ecad-selection") return;
+		const issue = clipboardSchema.safeParse(value).error?.issues[0];
+		if (!issue) return;
+		// Report shape problems the way drawing commands do, relative to the shape.
+		const path = (issue.path[0] === "shapes" ? issue.path.slice(2) : issue.path)
+			.map(String)
+			.join(".");
+		return path ? `${path}: ${issue.message}` : issue.message;
+	} catch {
+		return;
+	}
+}
+
 export function pasteSelection(
 	source: readonly EditorShape[],
 	existing: readonly EditorShape[],

@@ -441,7 +441,19 @@ function convert(source: string): KiCadImportResult {
 			world(p.slice(1).map(Number)),
 		);
 		if (pts.length !== 2) throw new Error("KiCad wires require two endpoints.");
-		add(line(pts[0], pts[1], "wire") as EditorShape);
+		const [start, end] = pts;
+		const angle = Math.atan2(end[1] - start[1], end[0] - start[0]);
+		if (Math.abs(Math.sin(2 * angle)) <= 1e-9) {
+			add(line(start, end, "wire") as EditorShape);
+			continue;
+		}
+		// ecad wires are horizontal or vertical. A corner keeps both ends connected.
+		const corner: XY = [end[0], start[1]];
+		add(line(start, corner, "wire") as EditorShape);
+		add(line(corner, end, "wire") as EditorShape);
+		warnings.add(
+			"Diagonal wires are imported as a horizontal and a vertical segment.",
+		);
 	}
 	for (const junction of nodes(root, "junction")) {
 		const diameter = Number(value(junction, "diameter", "0")) || 0.6;

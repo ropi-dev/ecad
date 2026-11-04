@@ -23,6 +23,7 @@ import {
 	type EditorShape,
 	isBasicShape,
 	isBoxSymbol,
+	isFillableShape,
 	openPins,
 	openWireEnds,
 	PIN_RADIUS,
@@ -187,15 +188,13 @@ function displayShape(
 	};
 	const fillChildren =
 		shape.kind === "symbol" &&
-		shape.children.some((child) => isBasicShape(child) && child.filled)
+		shape.children.some((child) => isFillableShape(child) && child.filled)
 			? symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
-			: isBasicShape(shape) && shape.filled
+			: isFillableShape(shape) && shape.filled
 				? [shape]
 				: [];
 	const fills = fillChildren
-		.filter(
-			(child) => isBasicShape(child) && child.filled && child.kind !== "line",
-		)
+		.filter((child) => isFillableShape(child) && child.filled)
 		.map((child) => ({
 			key: `${key}:fill:${child.id}`,
 			name: `fill ${shape.id}:${child.id}`,

@@ -29,12 +29,3 @@ export function textCenter(
 		y: shape.y + x * Math.sin(shape.rotation) + y * Math.cos(shape.rotation),
 	};
 }
-
-export function validTextAlignment(value: TextAlignment): boolean {
-	return (
-		(value.horizontalAlign === undefined ||
-			horizontalAlignments.includes(value.horizontalAlign)) &&
-		(value.verticalAlign === undefined ||
-			verticalAlignments.includes(value.verticalAlign))
-	);
-}

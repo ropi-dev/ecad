@@ -69,6 +69,7 @@ import {
 	parseSelection,
 	pasteSelection,
 	selectionFileText,
+	selectionPasteError,
 	serializeSelection,
 } from "#/drawing/clipboard.ts";
 import {
@@ -1115,7 +1116,14 @@ function EditorCanvas({
 				if (!clipboardAvailable(event)) return;
 				const text = clipboardSelectionText(event.clipboardData);
 				const source = parseSelection(text);
-				if (!source) return;
+				if (!source) {
+					const error = selectionPasteError(text);
+					if (!error) return;
+					event.preventDefault();
+					event.stopPropagation();
+					setCommandError(error);
+					return;
+				}
 				event.preventDefault();
 				event.stopPropagation();
 				const count =

@@ -7,6 +7,7 @@ import {
 	type EditorShape,
 	fitBoxToBorder,
 	isBasicShape,
+	isFillableShape,
 	normalizeNetSymbol,
 	PIN_RADIUS,
 	symbolShapes,
@@ -30,7 +31,8 @@ export function symbolFileShapes(
 			id: index + 1,
 			...(shape.locked === undefined ? {} : { locked: shape.locked }),
 			lineWidth: shape.lineWidth ?? DEFAULT_LINE_WIDTH,
-			...("lineStyle" in shape && shape.lineStyle
+			// Wires have no line style. Older files may still list one.
+			...("lineStyle" in shape && shape.lineStyle && shape.kind !== "wire"
 				? { lineStyle: shape.lineStyle }
 				: {}),
 			rotation: 0,
@@ -226,7 +228,7 @@ export function symbolFileWithShapes(
 			const base = {
 				...(shape.locked === undefined ? {} : { locked: shape.locked }),
 				lineWidth: shape.lineWidth,
-				...(isBasicShape(shape) && shape.filled !== undefined
+				...(isFillableShape(shape) && shape.filled !== undefined
 					? { filled: shape.filled }
 					: {}),
 				...(isBasicShape(shape) && shape.lineStyle
