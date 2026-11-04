@@ -14,6 +14,7 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
+import { errorMessage } from "#/lib/error-message.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { getAppPerformance } from "#/performance/runtime.ts";
 import { getSceneBounds } from "./camera";
@@ -294,9 +295,7 @@ export function createSceneViewport(
 			} catch (error) {
 				cancel();
 				onReady?.(false);
-				onError?.(
-					error instanceof Error ? error.message : "Unable to draw this scene.",
-				);
+				onError?.(errorMessage(error, "Unable to draw this scene."));
 			} finally {
 				recorder?.record(
 					"renderer.frame",

@@ -1,5 +1,6 @@
 import createImporter from "occt-import-js";
 import wasmUrl from "occt-import-js/dist/occt-import-js.wasm?url";
+import { errorMessage } from "#/lib/error-message.ts";
 
 self.onmessage = async (
 	event: MessageEvent<{ buffer: ArrayBuffer; name: string }>,
@@ -21,10 +22,7 @@ self.onmessage = async (
 		self.postMessage({ result: { name: event.data.name, meshes } });
 	} catch (error) {
 		self.postMessage({
-			error:
-				error instanceof Error
-					? error.message
-					: "Unable to read this STEP file.",
+			error: errorMessage(error, "Unable to read this STEP file."),
 		});
 	}
 };
