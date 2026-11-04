@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+	chmod,
 	mkdir,
 	mkdtemp,
 	readdir,
@@ -21,6 +22,7 @@ import {
 	InvalidProjectPath,
 	ProjectClosed,
 	ProjectConflict,
+	ProjectLocked,
 	SymbolLibraryAccessDenied,
 } from "@ecad/core/projects/errors.ts";
 import {
@@ -320,11 +322,80 @@ test("desktop windows saving one project take its lock file, so the second save 
 				JSON.parse(await readFile(lockFile, "utf8")).pid,
 				process.pid,
 			);
-		});
+		}, "exclusive");
 		assert.equal(
 			(await readdir(created.directory)).some((name) => name.includes("lock")),
 			false,
 		);
+	}));
+
+test(
+	"projects in read-only directories open without the lock, and saving them still fails",
+	{
+		skip:
+			process.platform === "win32" || process.getuid?.() === 0
+				? "needs a directory this process cannot write"
+				: false,
+	},
+	async () =>
+		temporary(async (parent) => {
+			const writer = new DesktopProjects();
+			const created = await writer.create("Read only", parent);
+			await writer.save(created.directory, { shapes: [shape], symbols: [] });
+			const before = await readdir(created.directory);
+			await chmod(created.directory, 0o555);
+			try {
+				const reader = new DesktopProjects();
+				const opened = await reader.openDirectory(created.directory);
+				assert.deepEqual(
+					opened.shapes.map((saved) => saved.id),
+					[shape.id],
+				);
+				await assert.rejects(
+					reader.save(created.directory, { shapes: [], symbols: [] }),
+					{ code: "EACCES" },
+				);
+				assert.deepEqual(await readdir(created.directory), before);
+			} finally {
+				await chmod(created.directory, 0o755);
+			}
+		}),
+);
+
+test("a held project lock is reported as a project error, naming the lock file only when it has no owner", async () =>
+	temporary(async (parent) => {
+		const created = await new DesktopProjects().create("Busy", parent);
+		const holder = await createDesktopProjectDirectory(created.directory);
+		const waiting = new ProjectRepository(
+			await createDesktopProjectDirectory(created.directory, {
+				lockTimeout: 50,
+			}),
+			{ layout: "files" },
+		);
+		const failure = () =>
+			waiting.load().then(
+				() => assert.fail("expected the project to be locked"),
+				(cause: unknown) => {
+					assert.ok(cause instanceof ProjectLocked);
+					return cause;
+				},
+			);
+		await required(holder.lock)(async () => {
+			const held = await failure();
+			assert.equal(held.path, undefined);
+			assert.equal(
+				held.message,
+				"Another window or app is using this project. Try again when it is done.",
+			);
+		}, "exclusive");
+		const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
+		await writeFile(lockFile, "");
+		const ownerless = await failure();
+		assert.equal(ownerless.path, lockFile);
+		assert.ok(ownerless.message.includes(`delete the lock file "${lockFile}"`));
+		assert.equal(await readFile(lockFile, "utf8"), "");
+		await rm(lockFile);
+		await waiting.load();
 	}));
 
 test("project names, manifests and asset paths reject traversal and unsupported versions", () => {
@@ -866,7 +937,6 @@ test("untitled projects ask before using directory libraries and reject relative
 
 test("edits writable relative project directory symbols and checks project file permissions", async () =>
 	temporary(async (parent) => {
-		const { chmod } = await import("node:fs/promises");
 		const approved: ExternalLibraryRequest[] = [];
 		const projects = new DesktopProjects(undefined, {
 			approveExternalLibrary: async (request) => {

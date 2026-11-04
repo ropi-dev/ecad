@@ -11,6 +11,7 @@ import {
 	ProjectConflict,
 	type ProjectError,
 	ProjectExists,
+	ProjectLocked,
 	ProjectRollbackFailed,
 	ProjectStorageUnavailable,
 	projectErrorData,
@@ -408,6 +409,8 @@ test("project errors keep their tag and fields when rebuilt from transported dat
 		new InvalidProjectName({ projectName: "a/b", reason: "Invalid name." }),
 		new ProjectAssetNotFound({ path: "assets/x" }),
 		new ProjectStorageUnavailable(),
+		new ProjectLocked(),
+		new ProjectLocked({ path: "/projects/board/.ecadprj.lock" }),
 		new ProjectRollbackFailed({ cause: new AggregateError([]) }),
 		new SymbolLibraryAccessDenied({ path: "/parts", reason: "Not allowed." }),
 	];

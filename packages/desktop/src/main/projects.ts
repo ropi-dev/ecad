@@ -8,6 +8,7 @@ import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
 	InvalidProjectPath,
 	ProjectClosed,
+	ProjectLocked,
 	SymbolLibraryAccessDenied,
 } from "@ecad/core/projects/errors.ts";
 import {
@@ -20,9 +21,10 @@ import {
 } from "@ecad/core/projects/format.ts";
 import {
 	type ProjectDirectory,
+	type ProjectLockMode,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
-import { withFileLock } from "@ecad/drawing-core/lib/file-lock.ts";
+import { FileLocked, withFileLock } from "@ecad/drawing-core/lib/file-lock.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
 	canWriteSymbolPath,
@@ -40,6 +42,7 @@ const notRegularFile = (path: string) =>
 
 export async function createDesktopProjectDirectory(
 	selected: string,
+	{ lockTimeout = 30_000 }: { lockTimeout?: number } = {},
 ): Promise<ProjectDirectory> {
 	const directory = await realpath(resolve(selected));
 	if (!(await lstat(directory)).isDirectory())
@@ -66,14 +69,7 @@ export async function createDesktopProjectDirectory(
 	}
 	return {
 		name: directory,
-		// Every desktop instance that saves this project takes the same lock
-		// file, which is removed if its owner exits without releasing it.
-		lock: (work) =>
-			withFileLock(
-				join(directory, `${PROJECT_FILE}.lock`),
-				{ timeout: 30_000 },
-				work,
-			),
+		lock: (work, mode) => lockProject(directory, lockTimeout, work, mode),
 		async exists(path) {
 			try {
 				await lstat(await target(path));
@@ -130,6 +126,43 @@ export async function createDesktopProjectDirectory(
 			await rm(await target(path), { recursive: true, force: true });
 		},
 	};
+}
+
+const unwritable = ["EACCES", "EPERM", "EROFS"];
+
+// Every desktop instance that opens or saves this project takes the same lock
+// file, which is removed if its owner exits without releasing it. Taking the
+// lock creates files in the project directory, so a project in a directory
+// this process cannot write is read without it. Writes there fail anyway.
+async function lockProject<T>(
+	directory: string,
+	timeout: number,
+	work: () => Promise<T>,
+	mode: ProjectLockMode,
+): Promise<T> {
+	let locked = false;
+	try {
+		return await withFileLock(
+			join(directory, `${PROJECT_FILE}.lock`),
+			{ timeout },
+			() => {
+				locked = true;
+				return work();
+			},
+		);
+	} catch (cause) {
+		if (locked) throw cause;
+		if (cause instanceof FileLocked)
+			throw new ProjectLocked(cause.ownerless ? { path: cause.path } : {});
+		if (
+			mode === "shared" &&
+			cause instanceof Error &&
+			"code" in cause &&
+			unwritable.includes(String(cause.code))
+		)
+			return work();
+		throw cause;
+	}
 }
 
 export interface DesktopProjectsOptions {

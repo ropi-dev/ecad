@@ -344,3 +344,26 @@ test("browser tabs saving one project take its Web Lock, so the second save sees
 		[shape.id],
 	);
 });
+
+test("two tabs creating the same project keep the winner's files and report that it exists", async () => {
+	const browser = browserFilesystem();
+	const first = createWebProjectStorage(browser.root, browser.selection);
+	const second = createWebProjectStorage(browser.root, browser.selection);
+	const [created, lost] = await Promise.allSettled([
+		first.create("Shared"),
+		second.create("Shared"),
+	]);
+	assert.equal(created.status, "fulfilled");
+	assert.equal(lost.status, "rejected");
+	assert.equal((lost.reason as { _tag?: string })._tag, "ProjectExists");
+	assert.ok(browser.entries.has(`Shared/${PROJECT_FILE}`));
+	await first.save("Shared", { shapes: [shape], symbols: [] });
+	const reopened = await createWebProjectStorage(
+		browser.root,
+		browser.selection,
+	).open("Shared");
+	assert.deepEqual(
+		reopened?.shapes.map((saved) => saved.id),
+		[shape.id],
+	);
+});

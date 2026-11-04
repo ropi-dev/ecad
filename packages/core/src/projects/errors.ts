@@ -126,6 +126,25 @@ export class ProjectStorageUnavailable extends Data.TaggedError(
 	}
 }
 
+/**
+ * Another window or app holds the project lock. With a path, the lock names no
+ * owner, so it may be left over and the user can remove that file.
+ */
+export class ProjectLocked extends Data.TaggedError("ProjectLocked")<{
+	readonly path?: string;
+	readonly message: string;
+}> {
+	constructor({ path }: { path?: string } = {}) {
+		super({
+			...(path === undefined ? {} : { path }),
+			message:
+				path === undefined
+					? "Another window or app is using this project. Try again when it is done."
+					: `This project is locked, but the lock does not say which app holds it. If no other window or app is using the project, delete the lock file "${path}" and try again.`,
+		});
+	}
+}
+
 export class ProjectRollbackFailed extends Data.TaggedError(
 	"ProjectRollbackFailed",
 )<{
@@ -162,6 +181,7 @@ export type ProjectError =
 	| InvalidProjectName
 	| ProjectAssetNotFound
 	| ProjectStorageUnavailable
+	| ProjectLocked
 	| ProjectRollbackFailed
 	| SymbolLibraryAccessDenied;
 
@@ -222,6 +242,10 @@ export function reviveProjectError(value: unknown): ProjectError | undefined {
 			return new ProjectAssetNotFound({ path: text(fields.path) });
 		case "ProjectStorageUnavailable":
 			return new ProjectStorageUnavailable();
+		case "ProjectLocked":
+			return new ProjectLocked(
+				typeof fields.path === "string" ? { path: fields.path } : {},
+			);
 		case "ProjectRollbackFailed":
 			return new ProjectRollbackFailed();
 		case "SymbolLibraryAccessDenied":
