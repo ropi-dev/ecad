@@ -15,6 +15,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "10 kΩ",
 		source: "Device:R_US",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["polyline", [0.0, -90.0], [0.0, -100.0]],
 			["polyline", [0.0, 90.0], [0.0, 100.0]],
@@ -55,6 +56,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "10 kΩ",
 		source: "Device:R_Variable",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -40.0, -100.0, 40.0, 100.0],
 			[
@@ -96,6 +98,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "10 kΩ",
 		source: "Device:Thermistor",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -40.0, 100.0, 40.0, -100.0],
 			[
@@ -119,6 +122,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "LDR",
 		source: "Device:R_Photo",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -40.0, 100.0, 40.0, -100.0],
 			["polyline", [-60.0, -90.0], [-160.0, 10.0]],
@@ -140,6 +144,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "10 µF",
 		source: "Device:C_Polarized",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -90.0, 20.0, 90.0, 40.0],
 			["rectangle", 90.0, -20.0, -90.0, -40.0],
@@ -158,6 +163,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "100 pF",
 		source: "Device:C_Variable",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["polyline", [-80.0, -30.0], [80.0, -30.0]],
 			["polyline", [-80.0, 30.0], [80.0, 30.0]],
@@ -177,6 +183,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "10 µH",
 		source: "Device:L",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["arc", 0.0, -75.0, 25.0, -89.9, 179.8],
 			["arc", 0.0, -25.0, 25.0, -89.9, 179.8],
@@ -195,6 +202,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "600 Ω",
 		source: "Device:FerriteBead",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["polyline", [0.0, -50.0], [0.0, -48.0]],
 			["polyline", [0.0, 50.0], [0.0, 51.0]],
@@ -253,6 +261,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "16 MHz",
 		source: "Device:Crystal",
 		rotation: 0,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -45.0, 100.0, 45.0, -100.0],
 			["polyline", [-100.0, 0.0], [-75.0, 0.0]],
@@ -272,6 +281,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "1 A",
 		source: "Device:Fuse",
 		rotation: -90,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -30.0, -100.0, 30.0, 100.0],
 			["polyline", [0.0, 100.0], [0.0, -100.0]],
@@ -601,6 +611,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "SPST",
 		source: "Switch:SW_SPST",
 		rotation: 0,
+		showPinLabels: false,
 		drawing: [
 			["circle", -80.0, 0.0, 20.0],
 			["circle", 80.0, 0.0, 20.0],
@@ -618,6 +629,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "SPDT",
 		source: "Switch:SW_SPDT",
 		rotation: 0,
+		showPinLabels: false,
 		drawing: [
 			["circle", -80.0, 0.0, 20.0],
 			["circle", 80.0, -100.0, 20.0],
@@ -637,6 +649,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "Push",
 		source: "Switch:SW_Push",
 		rotation: 0,
+		showPinLabels: false,
 		drawing: [
 			["circle", -80.0, 0.0, 20.0],
 			["circle", 80.0, 0.0, 20.0],
@@ -911,6 +924,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "Speaker",
 		source: "Device:Speaker",
 		rotation: 0,
+		showPinLabels: false,
 		drawing: [
 			["rectangle", -100.0, 50.0, 40.0, -150.0],
 			[
@@ -951,6 +965,7 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "Antenna",
 		source: "Device:Antenna",
 		rotation: 0,
+		showPinLabels: false,
 		drawing: [
 			["polyline", [0.0, 100.0], [0.0, -150.0]],
 			["polyline", [50.0, 100.0], [0.0, -100.0], [-50.0, 100.0]],

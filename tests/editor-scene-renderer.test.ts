@@ -288,7 +288,17 @@ test("incremental scene updates match a full rebuild and release replaced resour
 		shapes = [...shapes.slice(0, -1), placed];
 		check(display(shapes, [102]), "edit");
 		// A replaced text ties in draw order with the pin labels before it.
-		const labelled = createSymbol(103, part("resistor-us"), { x: 20, y: -30 });
+		const labelledDefinition = part("resistor-us");
+		const labelled = createSymbol(
+			103,
+			{
+				...labelledDefinition,
+				children: labelledDefinition.children.map((child) =>
+					child.kind === "pin" ? { ...child, showLabels: true } : child,
+				),
+			},
+			{ x: 20, y: -30 },
+		);
 		const note = required(
 			shapes.find(
 				(shape): shape is TextShape => shape.id === 17 && shape.kind === "text",
