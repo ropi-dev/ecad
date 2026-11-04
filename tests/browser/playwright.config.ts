@@ -1,6 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 
+import { prepareArtifacts } from "../../scripts/development/artifacts.ts";
+
+prepareArtifacts();
+
 const port = Number(process.env.ECAD_BROWSER_PORT ?? 4174);
 export default defineConfig({
 	testDir: ".",
@@ -27,6 +31,6 @@ export default defineConfig({
 		command: `pnpm exec vite --config tests/browser/vite.config.ts --host 127.0.0.1 --port ${port} --strictPort`,
 		url: `http://127.0.0.1:${port}/tests/browser/editor.html`,
 		stdout: "pipe",
-		reuseExistingServer: !process.env.CI,
+		reuseExistingServer: false,
 	},
 });

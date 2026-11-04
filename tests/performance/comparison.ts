@@ -2,7 +2,13 @@ import { budgets, regressionFloors, type Scenario } from "./budgets.ts";
 
 export interface Summary {
 	version: number;
-	profile: { mode: string; cpu: number; platform: string; browser: string };
+	profile: {
+		mode: string;
+		cpu: number;
+		platform: string;
+		browser: string;
+		environment?: string;
+	};
 	scenarios: Record<
 		string,
 		Record<string, { median: number; p95: number; samples: number }>
@@ -39,12 +45,15 @@ export function checkBudgets(summary: Summary): string[] {
 export function compareBaseline(baseline: Summary, current: Summary): string[] {
 	if (
 		baseline.version !== current.version ||
-		(Object.keys(current.profile) as (keyof Summary["profile"])[]).some(
-			(key) => baseline.profile[key] !== current.profile[key],
-		)
+		(
+			Object.keys({
+				...baseline.profile,
+				...current.profile,
+			}) as (keyof Summary["profile"])[]
+		).some((key) => baseline.profile[key] !== current.profile[key])
 	)
 		return [
-			"Baseline profile differs. Use the same mode, CPU throttle, platform and browser, or explicitly capture a new baseline.",
+			"Baseline profile differs. Use the same mode, CPU throttle, platform, browser and container environment, or explicitly capture a new baseline.",
 		];
 	const failures: string[] = [];
 	for (const [scenario, metrics] of Object.entries(current.scenarios)) {

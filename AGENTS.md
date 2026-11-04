@@ -28,3 +28,10 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 - Measure expensive operations with the shared helpers in `packages/core/src/performance/runtime.ts`. Keep metric names stable, metadata small, and reports free of project contents, file names, and directory paths. Keep buffers bounded and production collection opt-in.
 - Use `pnpm run perf:dev` with a separate baseline path to investigate React render costs. Production benchmarks determine shipped performance. See `docs/performance.md` for commands and metric limitations.
 - Investigate a failed budget or baseline comparison before changing thresholds. Explain any intentional budget change and its user impact.
+
+## Parallel development
+
+- Prefer `pnpm sandbox <command>` for dev servers, tests, typechecks, and performance checks when multiple threads share this machine. Run `pnpm sandbox build-image` first if the image is missing.
+- Run timing checks through `pnpm sandbox perf`, `pnpm sandbox perf:baseline`, or the native `pnpm perf` scripts. These share a host benchmark lock. Sandbox tests and typechecks share access while benchmarks need exclusive access. Do not bypass the lock with direct Playwright performance invocations or set `ECAD_PERF_LOCK_HELD` yourself.
+- Capture baselines and comparisons in the same environment. Native and sandbox baselines are separate.
+- See `docs/parallel-development.md` for resource allocations, artifacts, overrides, and cleanup.
