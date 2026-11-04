@@ -9,6 +9,7 @@ import type {
 	Point,
 	SceneObject,
 } from "#/engine/types.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import {
 	GERBER_EXTENSIONS,
 	hasGerberExtension,
@@ -942,10 +943,7 @@ export function parseGerber(
 			try {
 				token.extended ? extended(token.text) : standard(token.text);
 			} catch (error) {
-				diagnostic(
-					"error",
-					error instanceof Error ? error.message : String(error),
-				);
+				diagnostic("error", errorMessage(error));
 				if (objectCount >= MAX_OBJECTS) break;
 			}
 		}

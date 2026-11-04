@@ -11,6 +11,7 @@ import {
 } from "#/drawing/symbol-reference.ts";
 import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
 import { runEffect } from "#/lib/effect.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import {
 	type ConfiguredSymbolLibrary,
@@ -156,20 +157,17 @@ export function useSymbolLibrary() {
 					failures
 						.map((result) =>
 							result.status === "rejected"
-								? result.reason instanceof Error
-									? result.reason.message
-									: "Unable to load symbol libraries."
+								? errorMessage(
+										result.reason,
+										"Unable to load symbol libraries.",
+									)
 								: "",
 						)
 						.join("\n"),
 				);
 			} catch (cause) {
 				if (active)
-					setError(
-						cause instanceof Error
-							? cause.message
-							: "Unable to load symbol libraries.",
-					);
+					setError(errorMessage(cause, "Unable to load symbol libraries."));
 			} finally {
 				if (active && request.current === controller) {
 					request.current = null;
@@ -208,9 +206,7 @@ export function useSymbolLibrary() {
 			return result;
 		} catch (cause) {
 			if (!controller.signal.aborted)
-				setError(
-					cause instanceof Error ? cause.message : "Unable to update symbols.",
-				);
+				setError(errorMessage(cause, "Unable to update symbols."));
 			throw cause;
 		} finally {
 			if (request.current === controller && !controller.signal.aborted) {

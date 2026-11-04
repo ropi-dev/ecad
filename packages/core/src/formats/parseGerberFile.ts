@@ -7,6 +7,7 @@ import {
 } from "#/engine/planar-object.ts";
 import type { PlanarObject, SpatialObject } from "#/engine/scene.ts";
 import { runEffect } from "#/lib/effect.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import {
 	acquireImported,
 	InvalidFile,
@@ -91,10 +92,10 @@ export function parseGerberFileEffect(file: File) {
 				},
 				catch: (cause) =>
 					new InvalidFile({
-						message:
-							cause instanceof Error
-								? cause.message
-								: "Unable to create the Gerber geometry.",
+						message: errorMessage(
+							cause,
+							"Unable to create the Gerber geometry.",
+						),
 					}),
 			}),
 			(parsed) => parsed.dispose(),

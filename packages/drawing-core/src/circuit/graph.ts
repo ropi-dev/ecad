@@ -5,6 +5,16 @@ import { circuitNetLabels } from "./net-labels.ts";
 
 export const componentWidth = 200;
 export const componentHeight = (pinCount: number) => 116 + pinCount * 30;
+/** Rendered width of a net node, which grows with its label up to 360. */
+export const netNodeWidth = (label: string) =>
+	Math.max(100, Math.min(360, label.length * 8 + 16));
+/** A net node's rendered box relative to its anchor; the label sits above the anchor. */
+export const netNodeBox = (label: string) => {
+	const width = netNodeWidth(label);
+	return { x: -width / 2, y: -40, width, height: 60 };
+};
+/** Horizontal distance from a connection's endpoint to its Bézier control point. */
+export const connectionCurveOffset = 65;
 
 export function buildCircuitGraph(file: CircuitFile) {
 	return measurePerformance(
