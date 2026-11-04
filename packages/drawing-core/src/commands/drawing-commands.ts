@@ -318,7 +318,7 @@ export function rotateShapesEffect(
 				originals.map((shape) => transformed.get(shape.id) ?? shape),
 				current.shapes,
 				current.nextShapeId,
-				true,
+				{ rerouteWireEnds: true },
 			);
 			const updates = new Map(connected.map((shape) => [shape.id, shape]));
 			const additions = connected.filter((shape) => !existing.has(shape.id));
