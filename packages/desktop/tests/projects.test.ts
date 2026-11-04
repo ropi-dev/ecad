@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import {
 	chmod,
 	mkdir,
 	mkdtemp,
 	readdir,
 	readFile,
+	readlink,
 	realpath,
 	rm,
 	symlink,
 	writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createDrawingStore } from "@ecad/core/commands/drawing-store.ts";
@@ -429,6 +433,160 @@ test(
 				assert.deepEqual(
 					[settled.shapes[0].id, settled.drawings?.[0].shapes[0].id],
 					[saved, saved * 10],
+				);
+			} finally {
+				await chmod(created.directory, 0o755);
+			}
+		}),
+);
+
+const readOnly = {
+	skip:
+		process.platform === "win32" || process.getuid?.() === 0
+			? "needs a directory this process cannot write"
+			: false,
+};
+
+function deferred() {
+	let resolve!: () => void;
+	const promise = new Promise<void>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
+
+test(
+	"a read-only project read while another app's save fails and rolls back never mixes the two",
+	readOnly,
+	async () =>
+		temporary(async (parent) => {
+			const app = new DesktopProjects();
+			const created = await app.create("Rollback", parent);
+			const version = (main: number, power: number) => ({
+				shapes: [{ ...shape, id: main }],
+				symbols: [],
+				drawings: [
+					{ id: "power", name: "Power", shapes: [{ ...shape, id: power }] },
+				],
+			});
+			const first = await app.save(created.directory, version(3, 4));
+			// The other app replaces both drawings, fails to write the manifest
+			// and restores the drawings.
+			const writerDisk = await createDesktopProjectDirectory(created.directory);
+			const staged = deferred();
+			const rollback = deferred();
+			const writer = new ProjectRepository(
+				{
+					...writerDisk,
+					write: async (path, bytes) => {
+						if (path === PROJECT_FILE) {
+							staged.resolve();
+							await rollback.promise;
+							throw new Error("Disk full");
+						}
+						await writerDisk.write(path, bytes);
+					},
+				},
+				{ layout: "files" },
+			);
+			await writer.load();
+			const disk = await createDesktopProjectDirectory(created.directory);
+			let saving: Promise<unknown> | undefined;
+			const reader = new ProjectRepository(
+				{
+					...disk,
+					read: async (path) => {
+						const bytes = await disk.read(path);
+						if (!saving && path === first.manifest.drawing) {
+							await chmod(created.directory, 0o755);
+							saving = writer.save(version(30, 40)).catch((cause) => cause);
+							await staged.promise;
+						}
+						if (saving && path === first.manifest.drawings?.[0]) {
+							rollback.resolve();
+							await saving;
+						}
+						return bytes;
+					},
+				},
+				{ layout: "files" },
+			);
+			await chmod(created.directory, 0o555);
+			try {
+				const loaded = await reader.load();
+				assert.match(String(await saving), /Disk full/);
+				assert.deepEqual(
+					[loaded.shapes[0].id, loaded.drawings?.[0].shapes[0].id],
+					[3, 4],
+				);
+			} finally {
+				await chmod(created.directory, 0o755);
+			}
+		}),
+);
+
+test(
+	"a read-only project opens past a lock whose owner exited, and names a lock with an unknown owner",
+	{
+		skip:
+			readOnly.skip ||
+			(process.platform !== "linux" && "checks owners through /proc"),
+	},
+	async () =>
+		temporary(async (parent) => {
+			const app = new DesktopProjects();
+			const created = await app.create("Stale", parent);
+			await app.save(created.directory, { shapes: [shape], symbols: [] });
+			const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
+			const exited = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+			await once(exited, "exit");
+			const text = async (path: string) =>
+				(await readFile(path, "utf8")).trim();
+			await writeFile(
+				lockFile,
+				JSON.stringify({
+					pid: exited.pid,
+					hostname: hostname(),
+					machineId: await text("/etc/machine-id"),
+					bootId: await text("/proc/sys/kernel/random/boot_id"),
+					pidNamespace: await readlink("/proc/self/ns/pid"),
+					id: randomUUID(),
+				}),
+			);
+			const stale = await readFile(lockFile, "utf8");
+			await chmod(created.directory, 0o555);
+			try {
+				const opened = await new DesktopProjects().openDirectory(
+					created.directory,
+				);
+				assert.deepEqual(
+					opened.shapes.map((saved) => saved.id),
+					[shape.id],
+				);
+				// It cannot be removed in a read-only directory, so it stays.
+				assert.equal(await readFile(lockFile, "utf8"), stale);
+				// A lock that names no owner appears while the project is read.
+				const disk = await createDesktopProjectDirectory(created.directory);
+				let replaced = false;
+				const reader = new ProjectRepository(
+					{
+						...disk,
+						read: async (path) => {
+							if (!replaced) {
+								replaced = true;
+								await chmod(created.directory, 0o755);
+								await writeFile(lockFile, "");
+								await chmod(created.directory, 0o555);
+							}
+							return disk.read(path);
+						},
+					},
+					{ layout: "files" },
+				);
+				await assert.rejects(
+					reader.load(),
+					(cause: unknown) =>
+						cause instanceof ProjectLocked && cause.path === lockFile,
 				);
 			} finally {
 				await chmod(created.directory, 0o755);
