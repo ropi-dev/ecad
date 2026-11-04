@@ -6,8 +6,10 @@ import {
 } from "#/commands/drawing-store.ts";
 import {
 	type DrawingReply,
+	drawingAcknowledgementByteLimit,
 	drawingEnvelopeSchema,
 	executeDrawingOperation,
+	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
 
 export type EditorMcpState =
@@ -18,6 +20,8 @@ export type EditorMcpState =
 
 export interface EditorMcpConnectionOptions {
 	store: ReturnType<typeof createDrawingStore>;
+	/** Largest acknowledgement body to send; the relay refuses larger ones. */
+	acknowledgementLimit?: number;
 	onState: (state: EditorMcpState) => void;
 	baseUrl?: string;
 	fetch?: typeof globalThis.fetch;
@@ -43,6 +47,7 @@ export function connectEditorMcp({
 	baseUrl = window.location.origin,
 	fetch: request = globalThis.fetch.bind(globalThis),
 	now = Date.now,
+	acknowledgementLimit = drawingAcknowledgementByteLimit,
 }: EditorMcpConnectionOptions) {
 	const abort = new AbortController();
 	const interrupt = new AbortController();
@@ -174,11 +179,25 @@ export function connectEditorMcp({
 								: yield* executeDrawingOperation(envelope.operation).pipe(
 										Effect.provideService(DrawingStore, store),
 									);
+						let body = JSON.stringify({ requestId: envelope.requestId, reply });
+						// Replies are bounded, but a refused acknowledgement would end the stream.
+						if (utf8ByteLength(body) > acknowledgementLimit)
+							body = JSON.stringify({
+								requestId: envelope.requestId,
+								reply: {
+									ok: false,
+									error: {
+										code: "ReplyTooLarge",
+										message:
+											"The command ran, but its reply was too large to return. Read the drawing with getDrawing before retrying.",
+									},
+								} satisfies DrawingReply,
+							});
 						// A failed acknowledgement stops processing; the mutation is never retried.
 						yield* requestEffect(ownerUrl, {
 							method: "POST",
 							headers: { ...headers, "Content-Type": "application/json" },
-							body: JSON.stringify({ requestId: envelope.requestId, reply }),
+							body,
 						});
 					}
 					newline = pending.indexOf("\n");

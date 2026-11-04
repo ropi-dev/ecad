@@ -44,9 +44,9 @@ test("cli-drawing", async ({ browserName: _browserName }, testInfo) => {
 				).result,
 		);
 		expect(placed.code, placed.stderr).toBe(0);
-		expect(
-			JSON.parse(placed.stdout).structuredContent.drawing.shapes,
-		).toHaveLength(2000);
+		expect(JSON.parse(placed.stdout).structuredContent.result.ids).toHaveLength(
+			2000,
+		);
 		const read = await measure(
 			"readMs",
 			() => startCli(["getDrawing"], drawing.env, "", { built: true }).result,

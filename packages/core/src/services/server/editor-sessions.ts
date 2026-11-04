@@ -19,7 +19,12 @@ export interface EditorSessionCredentials {
 }
 
 interface Connection {
-	send: (message: DrawingEnvelope) => void;
+	/**
+	 * `isPending` reports whether the command still waits for its reply, so a
+	 * queued command can be dropped once it times out or is cancelled. Throwing an
+	 * `EditorSessionError` fails only this command; other errors disconnect.
+	 */
+	send: (message: DrawingEnvelope, isPending: () => boolean) => void;
 	close: () => void;
 }
 
@@ -261,9 +266,14 @@ export function makeEditorSessionHub({
 					fail: (error) => resume(Effect.fail(error)),
 				});
 				try {
-					session.connection.send({ requestId, expiresAt, operation });
-				} catch {
-					remove(session);
+					session.connection.send(
+						{ requestId, expiresAt, operation },
+						() => (session.pending.get(requestId)?.expiresAt ?? 0) > now(),
+					);
+				} catch (error) {
+					if (!(error instanceof EditorSessionError)) remove(session);
+					else if (session.pending.delete(requestId))
+						resume(Effect.fail(error));
 				}
 				return Effect.sync(() => {
 					session.pending.delete(requestId);

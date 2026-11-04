@@ -46,25 +46,27 @@ async function call(
 		JSON.parse(result.stdout).structuredContent,
 	);
 	assert.ok(reply.ok);
-	return reply.drawing;
+	return reply;
+}
+
+/** Edits reply without the drawing, so tests read it back. */
+async function read(env: NodeJS.ProcessEnv) {
+	return required((await call(env, "getDrawing")).drawing);
 }
 
 test("CLI saves electrical roles and exposes named nets across fresh processes, rename, and undo", async (context) => {
 	const fixture = await createCliDrawing();
 	context.after(() => fixture.close());
-	const placed = await call(fixture.env, "placeShapes", { shapes });
-	assert.deepEqual(
-		placed.shapes,
-		shapes.map((shape, index) => ({ ...shape, id: index + 1 })),
-	);
-	assert.deepEqual((await fixture.read()).shapes, placed.shapes);
-	const loaded = await call(fixture.env, "getDrawing");
+	await call(fixture.env, "placeShapes", { shapes });
+	const placed = shapes.map((shape, index) => ({ ...shape, id: index + 1 }));
+	assert.deepEqual((await fixture.read()).shapes, placed);
+	const loaded = await read(fixture.env);
 	assert.deepEqual(loaded.nets, expectedNets);
-	assert.deepEqual(loaded.shapes, placed.shapes);
+	assert.deepEqual(loaded.shapes, placed);
 	await call(fixture.env, "replaceShapes", {
 		shapes: [{ ...label(30, "supply", "GND"), id: 4 }],
 	});
-	const renamed = await call(fixture.env, "getDrawing");
+	const renamed = await read(fixture.env);
 	assert.deepEqual(
 		required(renamed.nets).map((net) => net.wires),
 		[[1], [2]],
@@ -74,7 +76,7 @@ test("CLI saves electrical roles and exposes named nets across fresh processes, 
 		[["+3V3"], ["GND"]],
 	);
 	await call(fixture.env, "undo");
-	assert.deepEqual((await call(fixture.env, "getDrawing")).nets, expectedNets);
+	assert.deepEqual((await read(fixture.env)).nets, expectedNets);
 });
 
 test("stdio MCP accepts named-net shapes and shares persisted electrical connectivity with CLI", async (context) => {
@@ -107,26 +109,28 @@ test("stdio MCP accepts named-net shapes and shares persisted electrical connect
 	assert.notEqual(result.isError, true);
 	const placed = drawingReplySchema.parse(result.structuredContent);
 	assert.ok(placed.ok);
-	const loaded = await call(fixture.env, "getDrawing");
-	assert.deepEqual(loaded.shapes, placed.drawing.shapes);
+	const loaded = await read(fixture.env);
+	assert.deepEqual(
+		loaded.shapes,
+		shapes.map((shape, index) => ({ ...shape, id: index + 1 })),
+	);
+	assert.deepEqual(placed.result?.ids, [1, 2, 3, 4]);
 	assert.deepEqual(loaded.nets, expectedNets);
 	await client.callTool({
 		name: "replaceShapes",
 		arguments: { shapes: [{ ...label(30, "supply", "GND"), id: 4 }] },
 	});
 	assert.deepEqual(
-		required((await call(fixture.env, "getDrawing")).nets).map(
-			(net) => net.wires,
-		),
+		required((await read(fixture.env)).nets).map((net) => net.wires),
 		[[1], [2]],
 	);
 	await client.callTool({ name: "undo", arguments: {} });
-	const read = drawingReplySchema.parse(
+	const reread = drawingReplySchema.parse(
 		(await client.callTool({ name: "getDrawing", arguments: {} }))
 			.structuredContent,
 	);
-	assert.ok(read.ok);
-	assert.deepEqual(read.drawing.nets, expectedNets);
+	assert.ok(reread.ok);
+	assert.deepEqual(reread.drawing?.nets, expectedNets);
 });
 
 test("CLI and MCP reject rotated symbol payloads with hidden electrical child labels", async (context) => {
@@ -206,7 +210,7 @@ test("local MCP drawing reads reuse nets and invalidate on commands and external
 			local.execute({ type: "getDrawing" }),
 		);
 		assert.ok(reply.ok);
-		return required(reply.drawing.nets);
+		return required(reply.drawing?.nets);
 	};
 	const first = await read();
 	assert.equal(await read(), first);

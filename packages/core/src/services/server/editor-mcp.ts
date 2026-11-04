@@ -2,7 +2,10 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Effect } from "effect";
 import { z } from "zod";
 import { runEffect } from "#/lib/effect.ts";
-import { drawingReplySchema } from "#/mcp/drawing-protocol.ts";
+import {
+	drawingAcknowledgementByteLimit,
+	drawingReplySchema,
+} from "#/mcp/drawing-protocol.ts";
 import { createDrawingMcpServer } from "#/mcp/drawing-server.ts";
 import {
 	editorClientAddress,
@@ -16,10 +19,17 @@ import {
 	makeEditorSessionHub,
 } from "#/services/server/editor-sessions.ts";
 
-/** Editor replies carry the whole committed drawing and its history entries. */
-export const editorReplyBodyLimit = 8 * 1024 * 1024;
+/** An editor reply carries at most one drawing page; edits reply with IDs only. */
+export const editorReplyBodyLimit = drawingAcknowledgementByteLimit;
 /** Stays below the editor's 2 MiB command limit, so a large call cannot break the stream. */
 export const mcpRequestBodyLimit = 1024 * 1024;
+/**
+ * Commands waiting for an editor that is not reading its stream. A full MCP request
+ * fits several times; timed-out and cancelled commands are dropped from the queue.
+ */
+export const editorStreamQueueLimit = 8 * 1024 * 1024;
+/** What the stream itself buffers before commands wait in the bounded queue. */
+const streamHighWaterMark = 64 * 1024;
 /** Session creation, stream, and disconnect requests carry no body; extra bytes are discarded. */
 const emptyBodyLimit = 1024;
 
@@ -136,15 +146,29 @@ function openEditorStream(
 	request: Request,
 	hub: EditorSessionHub,
 	sessionId: string,
+	queueLimit: number,
 ) {
 	const encoder = new TextEncoder();
 	let controller!: ReadableStreamDefaultController<Uint8Array>;
 	let stopped = false;
 	let disconnect: (() => void) | undefined;
 	let heartbeat: ReturnType<typeof setInterval> | undefined;
+	// Commands wait here while the stream is full, so a reader that falls behind
+	// holds a bounded number of bytes and none for commands that stopped waiting.
+	let queue: { bytes: Uint8Array; isPending: () => boolean }[] = [];
+	let queuedBytes = 0;
+	const flush = () => {
+		while (!stopped && queue.length && (controller.desiredSize ?? 0) > 0) {
+			const next = queue.shift() as (typeof queue)[number];
+			queuedBytes -= next.bytes.byteLength;
+			if (next.isPending()) controller.enqueue(next.bytes);
+		}
+	};
 	const stop = () => {
 		if (stopped) return;
 		stopped = true;
+		queue = [];
+		queuedBytes = 0;
 		clearInterval(heartbeat);
 		request.signal.removeEventListener("abort", stop);
 		disconnect?.();
@@ -154,23 +178,44 @@ function openEditorStream(
 			/* The reader may already have cancelled. */
 		}
 	};
-	const stream = new ReadableStream<Uint8Array>({
-		start(value) {
-			controller = value;
+	const stream = new ReadableStream<Uint8Array>(
+		{
+			start(value) {
+				controller = value;
+			},
+			pull: flush,
+			cancel: stop,
 		},
-		cancel: stop,
-	});
+		new ByteLengthQueuingStrategy({ highWaterMark: streamHighWaterMark }),
+	);
 	// Authorize the single consumer before returning a successful streaming response.
 	disconnect = hub.connect(sessionId, bearer(request), {
-		send: (envelope) =>
-			controller.enqueue(encoder.encode(`${JSON.stringify(envelope)}\n`)),
+		send: (envelope, isPending) => {
+			const bytes = encoder.encode(`${JSON.stringify(envelope)}\n`);
+			queue = queue.filter((entry) => entry.isPending());
+			queuedBytes = queue.reduce(
+				(total, entry) => total + entry.bytes.byteLength,
+				0,
+			);
+			if (queuedBytes + bytes.byteLength > queueLimit)
+				throw new EditorSessionError({
+					code: "EditorBacklogged",
+					message:
+						"The editor is not reading its commands. Wait for earlier commands to finish, or enable MCP again in the drawing.",
+					status: 429,
+				});
+			queue.push({ bytes, isPending });
+			queuedBytes += bytes.byteLength;
+			flush();
+		},
 		close: stop,
 	});
 	controller.enqueue(encoder.encode("\n"));
-	heartbeat = setInterval(
-		() => controller.enqueue(encoder.encode("\n")),
-		15_000,
-	);
+	// A heartbeat only matters on an idle stream, which has room for it.
+	heartbeat = setInterval(() => {
+		if (!queue.length && (controller.desiredSize ?? 0) > 0)
+			controller.enqueue(encoder.encode("\n"));
+	}, 15_000);
 	if (request.signal.aborted) stop();
 	else request.signal.addEventListener("abort", stop, { once: true });
 	return new Response(stream, {
@@ -187,6 +232,8 @@ export interface EditorMcpHandlerOptions {
 	trustedProxyHops?: number;
 	editorReplyLimit?: number;
 	mcpRequestLimit?: number;
+	/** Bytes of commands that may wait for an editor that is not reading its stream. */
+	streamQueueLimit?: number;
 }
 
 /** HTTP and MCP adapters share a relay; the browser remains the drawing authority. */
@@ -196,6 +243,7 @@ export function createEditorMcpHandlers(
 		trustedProxyHops,
 		editorReplyLimit = editorReplyBodyLimit,
 		mcpRequestLimit = mcpRequestBodyLimit,
+		streamQueueLimit = editorStreamQueueLimit,
 	}: EditorMcpHandlerOptions = {},
 ) {
 	return {
@@ -228,7 +276,7 @@ export function createEditorMcpHandlers(
 				if (request.method === "GET" || request.method === "DELETE")
 					await readBody(request, emptyBodyLimit);
 				if (request.method === "GET")
-					return openEditorStream(request, hub, sessionId);
+					return openEditorStream(request, hub, sessionId, streamQueueLimit);
 				if (request.method === "DELETE") {
 					hub.disconnect(sessionId, bearer(request));
 					return new Response(null, { status: 204, headers });

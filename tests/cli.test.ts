@@ -32,6 +32,7 @@ import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { cliMain, createCliDrawing, startCli } from "./helpers/cli-mcp.ts";
+import { required } from "./helpers/required.ts";
 
 const rectangle = {
 	x: 12,
@@ -61,6 +62,11 @@ async function call(
 	);
 	assert.ok(reply.ok);
 	return reply;
+}
+
+/** Edits reply without the drawing, so tests read it back. */
+async function readDrawing(env: NodeJS.ProcessEnv) {
+	return required((await call(env, "getDrawing")).drawing);
 }
 
 async function exitedPid() {
@@ -152,43 +158,34 @@ test("CLI executes every drawing tool and preserves history between processes", 
 		"rotateShapes",
 		"undo",
 	]);
-	assert.deepEqual((await call(fixture.env, "getDrawing")).drawing.shapes, []);
+	assert.deepEqual((await readDrawing(fixture.env)).shapes, []);
 	const placed = await call(fixture.env, "placeRectangle", rectangle);
-	const shape = placed.drawing.shapes[0];
+	assert.deepEqual(placed.result?.ids, [1]);
+	const shape = (await readDrawing(fixture.env)).shapes[0];
 	await call(fixture.env, "placeShapes", {
 		shapes: [{ ...rectangle, kind: "rectangle", x: 50 }],
 	});
+	await call(fixture.env, "rotateShapes", { ids: [shape.id] });
+	assert.equal((await fixture.read()).shapes[0].rotation, Math.PI / 2);
+	await call(fixture.env, "replaceShapes", { shapes: [{ ...shape, x: 99 }] });
+	assert.equal((await fixture.read()).shapes[0].x, 99);
 	assert.equal(
-		(await call(fixture.env, "rotateShapes", { ids: [shape.id] })).drawing
-			.shapes[0].rotation,
-		Math.PI / 2,
-	);
-	assert.equal(
-		(
-			await call(fixture.env, "replaceShapes", {
-				shapes: [{ ...shape, x: 99 }],
-			})
-		).drawing.shapes[0].x,
-		99,
-	);
-	assert.equal(
-		(await call(fixture.env, "removeShapes", { ids: [shape.id] })).drawing
-			.shapes.length,
+		(await call(fixture.env, "removeShapes", { ids: [shape.id] })).summary
+			.shapeCount,
 		1,
 	);
-	assert.equal((await call(fixture.env, "undo")).drawing.shapes.length, 2);
-	assert.equal((await call(fixture.env, "redo")).drawing.shapes.length, 1);
-	await call(fixture.env, "jumpHistory", {
-		id: placed.drawing.history.currentId,
-	});
+	assert.equal((await call(fixture.env, "undo")).summary.shapeCount, 2);
+	assert.equal((await call(fixture.env, "redo")).summary.shapeCount, 1);
+	await call(fixture.env, "jumpHistory", { id: placed.summary.historyId });
 	const branch = await call(fixture.env, "placeRectangle", {
 		...rectangle,
 		x: 100,
 	});
 	assert.deepEqual(branch.result?.ids, [3]);
-	assert.equal(branch.drawing.history.nodes.length, 7);
-	assert.equal(branch.drawing.history.nodes[1].childIds.length, 2);
-	assert.deepEqual((await fixture.read()).shapes, branch.drawing.shapes);
+	const branched = await readDrawing(fixture.env);
+	assert.equal(branched.history.nodes.length, 7);
+	assert.equal(branched.history.nodes[1].childIds.length, 2);
+	assert.deepEqual((await fixture.read()).shapes, branched.shapes);
 	assert.deepEqual(
 		new Set(await readdir(fixture.directory)),
 		new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]),
@@ -271,9 +268,10 @@ test("CLI preserves project drawing metadata and resets history after external e
 		shapes: [{ ...original.shapes[0], x: 99 }],
 	});
 	await writeFile(fixture.path, changed);
-	const undone = await call(fixture.env, "undo");
-	assert.equal(undone.drawing.history.nodes.length, 1);
-	assert.equal(undone.drawing.shapes[0].x, 99);
+	assert.equal((await call(fixture.env, "undo")).summary.historyId, 0);
+	const undone = await readDrawing(fixture.env);
+	assert.equal(undone.history.nodes.length, 1);
+	assert.equal(undone.shapes[0].x, 99);
 	assert.equal(await readFile(fixture.path, "utf8"), changed);
 });
 
@@ -619,10 +617,7 @@ test("concurrent commands take over an abandoned lock one at a time", async (con
 			.sort((a: number, b: number) => a - b),
 		Array.from({ length: 11 }, (_, index) => index + 1),
 	);
-	assert.equal(
-		(await call(fixture.env, "getDrawing")).drawing.history.nodes.length,
-		12,
-	);
+	assert.equal((await readDrawing(fixture.env)).history.nodes.length, 12);
 	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
 });
 
@@ -1280,7 +1275,7 @@ test("standalone stdio MCP and CLI share tools, files and persistent undo histor
 			.structuredContent,
 	);
 	assert.ok(read.ok);
-	assert.equal(read.drawing.shapes.length, 2);
+	assert.equal(read.drawing?.shapes.length, 2);
 	await client.callTool({ name: "undo", arguments: {} });
 	assert.equal((await fixture.read()).shapes.length, 1);
 	await client.close();
@@ -1310,10 +1305,7 @@ test("concurrent CLI processes and MCP requests allocate distinct IDs without lo
 			.sort(),
 		[1, 2, 3, 4, 5],
 	);
-	assert.equal(
-		(await call(fixture.env, "getDrawing")).drawing.history.nodes.length,
-		6,
-	);
+	assert.equal((await readDrawing(fixture.env)).history.nodes.length, 6);
 });
 
 test("stdio MCP exits on stdin EOF and SIGTERM without stdout diagnostics", async (context) => {
@@ -1557,33 +1549,21 @@ test("CLI keeps persisted edit history bounded across invocations and branches",
 		);
 		assert.ok(Object.keys(saved.snapshot.history.nodes).length <= 100);
 	}
-	const atTip = await call(fixture.env, "getDrawing");
-	assert.equal(atTip.drawing.history.nodes.length, 100);
+	const atTip = await readDrawing(fixture.env);
+	assert.equal(atTip.history.nodes.length, 100);
 	await call(fixture.env, "undo");
 	const branch = await call(fixture.env, "replaceShapes", {
 		shapes: [{ ...rectangle, kind: "rectangle", id: 1, x: -1 }],
 	});
-	assert.equal(branch.drawing.history.nodes.length, 100);
-	assert.ok(branch.drawing.history.currentId > atTip.drawing.history.currentId);
+	assert.equal((await readDrawing(fixture.env)).history.nodes.length, 100);
+	assert.ok(branch.summary.historyId > atTip.history.currentId);
+	await call(fixture.env, "jumpHistory", { id: atTip.history.currentId });
+	assert.equal((await fixture.read()).shapes[0].x, 120);
+	await call(fixture.env, "jumpHistory", { id: branch.summary.historyId });
+	assert.equal((await fixture.read()).shapes[0].x, -1);
 	assert.equal(
-		(
-			await call(fixture.env, "jumpHistory", {
-				id: atTip.drawing.history.currentId,
-			})
-		).drawing.shapes[0].x,
-		120,
-	);
-	assert.equal(
-		(
-			await call(fixture.env, "jumpHistory", {
-				id: branch.drawing.history.currentId,
-			})
-		).drawing.shapes[0].x,
-		-1,
-	);
-	assert.equal(
-		(await call(fixture.env, "redo")).drawing.history.currentId,
-		branch.drawing.history.currentId,
+		(await call(fixture.env, "redo")).summary.historyId,
+		branch.summary.historyId,
 	);
 	const saved = JSON.parse(
 		await readFile(`${fixture.path}.history.json`, "utf8"),
@@ -1634,10 +1614,10 @@ for (const currentId of [0, 75, 250]) {
 		);
 		if (process.platform !== "win32")
 			await chmod(`${fixture.path}.history.json`, 0o640);
-		const read = await call(fixture.env, "getDrawing");
-		assert.equal(read.drawing.history.nodes.length, 100);
-		assert.equal(read.drawing.history.currentId, currentId);
-		assert.equal(read.drawing.shapes[0].x, currentId);
+		const read = await readDrawing(fixture.env);
+		assert.equal(read.history.nodes.length, 100);
+		assert.equal(read.history.currentId, currentId);
+		assert.equal(read.shapes[0].x, currentId);
 		const saved = JSON.parse(
 			await readFile(`${fixture.path}.history.json`, "utf8"),
 		);
@@ -1647,21 +1627,121 @@ for (const currentId of [0, 75, 250]) {
 		assert.equal((await fixture.read()).title, "Legacy drawing");
 		if (process.platform !== "win32")
 			assert.equal(await fileMode(`${fixture.path}.history.json`), 0o640);
-		assert.equal(
-			(await call(fixture.env, "getDrawing")).drawing.history.currentId,
-			currentId,
-		);
+		assert.equal((await readDrawing(fixture.env)).history.currentId, currentId);
 		const edit = await call(fixture.env, "replaceShapes", {
 			shapes: shapes(-1),
 		});
-		assert.equal(edit.drawing.history.currentId, 251);
+		assert.equal(edit.summary.historyId, 251);
 		assert.equal(
-			(await call(fixture.env, "undo")).drawing.history.currentId,
+			(await call(fixture.env, "undo")).summary.historyId,
 			currentId,
 		);
-		assert.equal(
-			(await call(fixture.env, "redo")).drawing.history.currentId,
-			251,
-		);
+		assert.equal((await call(fixture.env, "redo")).summary.historyId, 251);
 	});
 }
+
+test("stdio MCP pages a drawing whose results would exceed the transport's 10 MiB message limit", async (context) => {
+	const fixture = await drawing(context);
+	// About 7.4 MiB of shapes, with quotes and multibyte text that grow when escaped.
+	const text = `${'say "hi" é '.repeat(70)}🔌`;
+	const shapes = Array.from({ length: 9000 }, (_, index) => ({
+		id: index + 1,
+		kind: "text",
+		text,
+		x: index,
+		y: 0,
+		width: 8,
+		height: 2,
+		rotation: 0,
+		lineWidth: 0.2,
+		fontSize: 2,
+	}));
+	await writeFile(fixture.path, JSON.stringify({ shapes }));
+	assert.ok(Buffer.byteLength(JSON.stringify(shapes)) > 7 * 1024 * 1024);
+	const { client } = await stdio(context, fixture.env);
+	const call = (name: string, args: Record<string, unknown> = {}) =>
+		client.callTool({ name, arguments: args }, undefined, { timeout: 60_000 });
+	const placed = await call("placeRectangle", rectangle);
+	assert.equal(placed.isError, undefined);
+	const whole = await call("getDrawing");
+	assert.equal(whole.isError, true);
+	const failed = drawingReplySchema.parse(whole.structuredContent);
+	assert.equal(failed.ok ? undefined : failed.error.code, "DrawingTooLarge");
+	const read: unknown[] = [];
+	let revision: string | undefined;
+	let pages = 0;
+	for (let offset: number | undefined = 0; offset !== undefined; pages++) {
+		const page = await call("getDrawing", {
+			offset,
+			...(revision ? { revision } : {}),
+		});
+		assert.equal(page.isError, undefined);
+		const reply = drawingReplySchema.parse(page.structuredContent);
+		assert.ok(reply.ok && reply.drawing && reply.page);
+		revision ??= reply.revision;
+		read.push(...reply.drawing.shapes);
+		offset = reply.page.nextOffset;
+	}
+	assert.ok(pages > 1);
+	assert.deepEqual(read, (await fixture.read()).shapes);
+	// The server survived every reply and still edits the drawing.
+	assert.equal((await call("undo")).isError, undefined);
+	assert.equal((await fixture.read()).shapes.length, 9000);
+});
+
+test("CLI pages reject a revision from before an external edit that reordered the drawing", async (context) => {
+	const fixture = await drawing(context);
+	const shapes = [1, 2, 3].map((id) => ({
+		...rectangle,
+		kind: "rectangle",
+		id,
+		x: id * 10,
+	}));
+	await writeFile(fixture.path, JSON.stringify({ shapes }));
+	const page = (args: Record<string, unknown>) =>
+		startCli(["getDrawing", JSON.stringify(args)], fixture.env).result.then(
+			(result) => ({
+				code: result.code,
+				reply: drawingReplySchema.parse(
+					JSON.parse(result.stdout).structuredContent,
+				),
+			}),
+		);
+	const first = await page({ offset: 0, limit: 1 });
+	assert.ok(first.reply.ok && first.reply.revision);
+	assert.deepEqual(
+		first.reply.drawing?.shapes.map((shape) => shape.id),
+		[1],
+	);
+	const { revision } = first.reply;
+	// Separate processes reading the same file agree on the revision.
+	const second = await page({ offset: 1, limit: 1, revision });
+	assert.ok(second.reply.ok);
+	assert.deepEqual(
+		second.reply.drawing?.shapes.map((shape) => shape.id),
+		[2],
+	);
+	// An external edit resets history to 0, but still changes the revision.
+	await writeFile(
+		fixture.path,
+		JSON.stringify({ shapes: [shapes[1], shapes[0], shapes[2]] }),
+	);
+	const stale = await page({ offset: 1, revision });
+	assert.equal(stale.code, 1);
+	assert.equal(
+		stale.reply.ok ? undefined : stale.reply.error.code,
+		"DrawingChanged",
+	);
+	const unpinned = await page({ offset: 1 });
+	assert.equal(
+		unpinned.reply.ok ? undefined : unpinned.reply.error.code,
+		"RevisionRequired",
+	);
+	const restarted = await page({ offset: 0 });
+	assert.ok(restarted.reply.ok);
+	assert.notEqual(restarted.reply.revision, revision);
+	assert.deepEqual(
+		restarted.reply.drawing?.shapes.map((shape) => shape.id),
+		[2, 1, 3],
+	);
+});
