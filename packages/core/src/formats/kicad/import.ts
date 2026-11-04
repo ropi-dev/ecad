@@ -1,14 +1,18 @@
+import { electricalNets } from "#/drawing/named-nets.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	type EditorSymbol,
+	normalizeWireSegments,
 	PIN_RADIUS,
 	pinTerminals,
 	type SymbolShape,
+	shapeBounds,
 	type TextShape,
 } from "#/drawing/shapes.ts";
+import type { Bounds } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	node,
@@ -93,12 +97,6 @@ function distance(point: XY, [a, b]: Segment) {
 	return Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy);
 }
 const near = (a: XY, b: XY) => distance(a, [b, b]) <= connectionTolerance;
-/**
- * Wire normalization compares each axis within the connection tolerance, so it
- * may join points up to √2 times that tolerance apart. Routes keep twice the
- * tolerance clear, so normalizing them later joins nothing new.
- */
-const routeClearance = 2 * connectionTolerance;
 
 function wireSegments(shape: EditorShape): Segment[] {
 	if (shape.kind !== "wire") return [];
@@ -112,64 +110,152 @@ function wireSegments(shape: EditorShape): Segment[] {
 	];
 }
 
-/** Unlike `line`, keeps a very short wire at its exact length. */
-const wireBetween = (a: XY, b: XY): EditorShape => ({
-	...line(a, b, "wire"),
-	width: Math.hypot(b[0] - a[0], b[1] - a[1]),
-});
-
-/** Two wires from `a` to `b` around one corner that touch nothing else. */
-function cornerRoute(
-	a: XY,
-	b: XY,
-	wires: readonly Segment[],
-	connections: readonly XY[],
-): EditorShape[] | undefined {
-	const others = connections.filter(
-		(point) => !near(point, a) && !near(point, b),
+/** Wires that wire normalization may merge: parallel, in line and overlapping. */
+function mayMerge([a, b]: Segment, [c, d]: Segment) {
+	const vertical = (start: XY, end: XY) =>
+		Math.abs(end[0] - start[0]) < Math.abs(end[1] - start[1]);
+	if (vertical(a, b) !== vertical(c, d)) return false;
+	const [along, across] = vertical(a, b) ? [1, 0] : [0, 1];
+	return (
+		Math.abs(a[across] - c[across]) <= connectionTolerance &&
+		Math.min(a[along], b[along]) <=
+			Math.max(c[along], d[along]) + connectionTolerance &&
+		Math.min(c[along], d[along]) <=
+			Math.max(a[along], b[along]) + connectionTolerance
 	);
-	for (const corner of [
-		[b[0], a[1]],
-		[a[0], b[1]],
-	] as XY[]) {
-		const route = [wireBetween(a, corner), wireBetween(corner, b)];
-		const segments = route.flatMap(wireSegments);
-		const ends = segments
-			.flat()
-			.filter((end) => !near(end, a) && !near(end, b));
-		if (
-			others.every((point) =>
-				segments.every((part) => distance(point, part) > routeClearance),
-			) &&
-			ends.every((end) =>
-				wires.every((wire) => distance(end, wire) > routeClearance),
+}
+
+/**
+ * The shapes that can affect connectivity within 1 mm of `box`. The result
+ * also holds every wire that normalization could merge with one of them, so
+ * normalizing the subset picks the same survivors as normalizing the whole.
+ */
+function nearby(shapes: readonly EditorShape[], box: Bounds): EditorShape[] {
+	const margin = 1;
+	const local = new Set(
+		shapes.filter((shape) => {
+			if (
+				shape.kind !== "wire" &&
+				shape.kind !== "pin" &&
+				shape.kind !== "symbol" &&
+				!(shape.kind === "text" && shape.electrical)
 			)
-		)
-			return route;
+				return false;
+			const bounds = shapeBounds(shape);
+			return (
+				bounds.minX <= box.maxX + margin &&
+				bounds.maxX >= box.minX - margin &&
+				bounds.minY <= box.maxY + margin &&
+				bounds.maxY >= box.minY - margin
+			);
+		}),
+	);
+	const wires = shapes.flatMap((shape) =>
+		wireSegments(shape).map((segment) => ({ shape, segment })),
+	);
+	const inside = wires.filter((wire) => local.has(wire.shape));
+	for (let grew = true; grew; ) {
+		grew = false;
+		for (const wire of wires)
+			if (
+				!local.has(wire.shape) &&
+				inside.some((other) => mayMerge(wire.segment, other.segment))
+			) {
+				local.add(wire.shape);
+				inside.push(wire);
+				grew = true;
+			}
 	}
+	return shapes.filter((shape) => local.has(shape));
+}
+
+/**
+ * The net of each item: a pin, a label, or the wires that make up one source
+ * wire or diagonal. Undefined when one item lands on two nets.
+ */
+function itemNets(
+	shapes: readonly EditorShape[],
+	wireItems: (id: number) => readonly string[],
+): Map<string, number> | undefined {
+	const nets = new Map<string, number>();
+	for (const [index, net] of electricalNets(shapes).entries())
+		for (const item of [
+			...net.wires.flatMap(wireItems),
+			...net.pins.map((pin) => `pin ${pin.shapeId} ${pin.pinId}`),
+			...net.labels.map((label) => `label ${label}`),
+		]) {
+			if ((nets.get(item) ?? index) !== index) return;
+			nets.set(item, index);
+		}
+	return nets;
+}
+
+/** True when both group the same items together. */
+function sameNets(
+	first: ReadonlyMap<string, number>,
+	second: ReadonlyMap<string, number> | undefined,
+) {
+	if (!second || first.size !== second.size) return false;
+	const forward = new Map<number, number>();
+	const backward = new Map<number, number>();
+	for (const [item, net] of first) {
+		const other = second.get(item);
+		if (
+			other === undefined ||
+			(forward.get(net) ?? other) !== other ||
+			(backward.get(other) ?? net) !== net
+		)
+			return false;
+		forward.set(net, other);
+		backward.set(other, net);
+	}
+	return true;
 }
 
 /**
  * ecad wires are horizontal or vertical, so each diagonal wire turns a
- * corner. A diagonal first splits wherever something connects along it, so
- * those connections survive. Each piece then takes a corner whose wires touch
- * no other wire end, pin terminal or label anchor, and whose corner lies on no
- * other wire, so no nets join. A diagonal with a piece that has no such corner
- * stays a graphic line.
+ * corner. A diagonal first splits wherever something connects along it in
+ * the source. Each piece then takes the first corner that leaves every pin,
+ * label, wire and diagonal on the same nets as the diagonal did, both as
+ * imported and after the wire normalization that the next command runs. A
+ * diagonal with a piece that has no such corner stays a graphic line.
  */
 function routeDiagonalWires(
 	diagonals: readonly Segment[],
 	shapes: readonly EditorShape[],
 ): { wires: EditorShape[]; lines: Segment[] } {
-	const anchors = shapes.flatMap((shape): XY[] =>
-		shape.kind === "text" && shape.electrical
-			? [[shape.x, shape.y]]
-			: pinTerminals(shape).map((pin): XY => [pin.x, pin.y]),
+	if (!diagonals.length) return { wires: [], lines: [] };
+	const itemOf = new Map<number, string>();
+	for (const shape of shapes)
+		if (shape.kind === "wire") itemOf.set(shape.id, `wire ${shape.id}`);
+	const items = (id: number) => {
+		const item = itemOf.get(id);
+		return item ? [item] : [];
+	};
+	let nextId = shapes.reduce(
+		(maximum, shape) => Math.max(maximum, shape.id),
+		0,
 	);
-	const wires = shapes.flatMap(wireSegments);
-	// Stops come from the source geometry, before any wire moves.
-	const sourcePoints = [...anchors, ...wires.flat(), ...diagonals.flat()];
-	const stops = diagonals.map(([start, end]) => {
+	// `line` would stretch a very short wire, so set the exact length.
+	const wire = (a: XY, b: XY, item: string): EditorShape => {
+		const shape = {
+			...line(a, b, "wire"),
+			id: ++nextId,
+			width: Math.hypot(b[0] - a[0], b[1] - a[1]),
+		};
+		itemOf.set(shape.id, item);
+		return shape;
+	};
+	const sourcePoints = [
+		...shapes.flatMap((shape): XY[] =>
+			shape.kind === "text" && shape.electrical
+				? [[shape.x, shape.y]]
+				: pinTerminals(shape).map((pin): XY => [pin.x, pin.y]),
+		),
+		...shapes.flatMap(wireSegments).flat(),
+		...diagonals.flat(),
+	];
+	const chains = diagonals.map(([start, end]) => {
 		const along = (point: XY) =>
 			(point[0] - start[0]) * (end[0] - start[0]) +
 			(point[1] - start[1]) * (end[1] - start[1]);
@@ -184,26 +270,73 @@ function routeDiagonalWires(
 			if (!near(point, chain[chain.length - 1])) chain.push(point);
 		return [...chain, end];
 	});
+	const current = [...shapes];
 	const routed: EditorShape[] = [];
 	const lines: Segment[] = [];
-	for (const [index, diagonal] of diagonals.entries()) {
-		const pending = diagonals.slice(index + 1).flat();
+	for (const [index, chain] of chains.entries()) {
+		const item = `diagonal ${index}`;
+		// Diagonals not routed yet still connect what they touch.
+		const later = diagonals
+			.slice(index + 1)
+			.map(([a, b], offset) => wire(a, b, `diagonal ${index + 1 + offset}`));
+		const end = diagonals[index][1];
 		const pieces: EditorShape[] = [];
-		const chain = stops[index];
 		for (let stop = 1; stop < chain.length; stop++) {
-			const current = [...wires, ...pieces.flatMap(wireSegments)];
-			const route = cornerRoute(chain[stop - 1], chain[stop], current, [
-				...anchors,
-				...current.flat(),
-				...pending,
+			const [from, to] = [chain[stop - 1], chain[stop]];
+			// Nets far from this piece are the same with either connection.
+			const local = (shapes: readonly EditorShape[]) =>
+				nearby(shapes, {
+					minX: Math.min(from[0], to[0]),
+					minY: Math.min(from[1], to[1]),
+					maxX: Math.max(from[0], to[0]),
+					maxY: Math.max(from[1], to[1]),
+				});
+			const rest = local([
+				...later,
+				...(stop < chain.length - 1 ? [wire(to, end, item)] : []),
 			]);
+			const drawing = local([...current, ...pieces]);
+			const expected = itemNets(
+				[...drawing, wire(from, to, item), ...rest],
+				items,
+			);
+			const route =
+				expected &&
+				(
+					[
+						[to[0], from[1]],
+						[from[0], to[1]],
+					] as XY[]
+				)
+					.map((corner) => [wire(from, corner, item), wire(corner, to, item)])
+					.find((route) => {
+						if (
+							!sameNets(
+								expected,
+								itemNets([...drawing, ...route, ...rest], items),
+							)
+						)
+							return false;
+						const normalized = normalizeWireSegments([...drawing, ...route]);
+						const sources = new Map<number, string[]>();
+						for (const [source, ids] of normalized.idsBySource)
+							for (const id of ids)
+								sources.set(id, [...(sources.get(id) ?? []), ...items(source)]);
+						return sameNets(
+							expected,
+							itemNets(
+								[...normalized.shapes, ...rest],
+								(id) => sources.get(id) ?? items(id),
+							),
+						);
+					});
 			if (!route) break;
 			pieces.push(...route);
 		}
 		if (pieces.length === 2 * (chain.length - 1)) {
 			routed.push(...pieces);
-			wires.push(...pieces.flatMap(wireSegments));
-		} else lines.push(diagonal);
+			current.push(...pieces);
+		} else lines.push(diagonals[index]);
 	}
 	return { wires: routed, lines };
 }
@@ -611,7 +744,15 @@ function convert(source: string): KiCadImportResult {
 		}
 	for (const nc of nodes(root, "no_connect")) {
 		const [x, y] = world(numbers(nc, "at"));
-		add({ kind: "no-connect", x, y, width: 1.2, height: 1.2, rotation: 0, lineWidth: 0.1524 } as EditorShape);
+		add({
+			kind: "no-connect",
+			x,
+			y,
+			width: 1.2,
+			height: 1.2,
+			rotation: 0,
+			lineWidth: 0.1524,
+		} as EditorShape);
 	}
 	const diagonals = routeDiagonalWires(diagonalWires, shapes);
 	for (const wire of diagonals.wires) add(wire);
