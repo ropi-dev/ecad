@@ -39,10 +39,11 @@ export interface LinkedSchematicEnvironment {
 	measureText: MeasureText;
 	newId: () => string;
 	/**
-	 * True for a library that failed to load. A part from such a library is
-	 * not replaced by a placeholder symbol; synchronization fails instead.
+	 * True for a part whose symbol is missing or incomplete because its
+	 * library, or a library it depends on, failed to load. Synchronization
+	 * then fails instead of placing a placeholder or partial symbol.
 	 */
-	isLibraryUnavailable: (library: SymbolLibraryReference) => boolean;
+	isSymbolUnavailable: (library: SymbolLibraryReference, id: string) => boolean;
 }
 
 export const estimateLabelTextWidth: MeasureText = (text) =>
@@ -63,7 +64,7 @@ interface SyncContext {
 	previousLabels: ReadonlyMap<string, string>;
 	measureText: MeasureText;
 	newId: () => string;
-	isLibraryUnavailable: (library: SymbolLibraryReference) => boolean;
+	isSymbolUnavailable: (library: SymbolLibraryReference, id: string) => boolean;
 }
 
 export function synchronizePcb(
@@ -111,7 +112,7 @@ function synchronize(
 		previousLabels: circuitNetLabels(base.circuit),
 		measureText: environment.measureText ?? estimateLabelTextWidth,
 		newId: environment.newId ?? (() => globalThis.crypto.randomUUID()),
-		isLibraryUnavailable: environment.isLibraryUnavailable ?? (() => false),
+		isSymbolUnavailable: environment.isSymbolUnavailable ?? (() => false),
 	};
 	const bound = bindNetLabels(shapes, context);
 	const unplaced = file.circuit.components.some(
@@ -271,10 +272,11 @@ function placeComponentSymbols(
 			component.part.id,
 			component.part.library,
 		);
+		// Neither a placeholder nor a partly resolved symbol may stand in for
+		// one whose library is missing; placing it later links the real pins.
 		if (
-			!known &&
 			component.part.library &&
-			context.isLibraryUnavailable(component.part.library)
+			context.isSymbolUnavailable(component.part.library, component.part.id)
 		)
 			throw new MissingSymbolLibraryError();
 		const definition = known ?? fallbackDefinition(component, context.newId);

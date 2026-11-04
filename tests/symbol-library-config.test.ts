@@ -4,7 +4,11 @@ import { test } from "node:test";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
-import { type ConfiguredSymbolLibrary, defaultSymbolConfig, parseSymbolConfig, resolveSymbolLibraries, serializeSymbolConfig } from "#/symbol-library/config.ts";
+import { type ConfiguredSymbolLibrary, defaultSymbolConfig, parseSymbolConfig, resolveSymbolLibraries, serializeSymbolConfig, unavailableSymbols } from "#/symbol-library/config.ts";
+import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { MissingSymbolLibraryError, synchronizePcb } from "#/circuit/linked-schematic.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 
 const symbol = parseSymbolFile(readFileSync(new URL("../packages/core/src/symbol-library/examples/test-point.ecadsym", import.meta.url), "utf8"));
 const library = (id: string, name = "Test point"): ConfiguredSymbolLibrary => ({ id, name: id, enabled: true, source: { kind: "embedded", symbols: [{ ...symbol, name }] } });
@@ -74,4 +78,47 @@ test("memory configuration keeps symbols seeded through the existing storage API
  assert.equal((await resolveSymbolLibraries(config.symbolLibraries, [])).definitions.length, symbolDefinitions.length + 1);
  await storage.saveConfiguration!({ version: 1, symbolLibraries: [] });
  assert.deepEqual((await storage.load()).symbols, []);
+});
+
+test("a symbol that depends on a library that failed to load is unavailable and never becomes a placeholder", async () => {
+ const bench = { scope: "user" as const, id: "bench" };
+ const kit = { scope: "project" as const, id: "kit" };
+ const divider = parseSymbolFile(JSON.stringify({ ...symbol, id: "divider", name: "Divider", shapes: [...symbol.shapes, { kind: "symbol", library: bench, definitionId: "core", x: 0, y: 0 }] }));
+ const standalone = parseSymbolFile(JSON.stringify({ ...symbol, id: "standalone", name: "Standalone" }));
+ const resolved = await resolveSymbolLibraries(
+  [{ id: bench.id, name: "Bench", enabled: true, source: { kind: "directory", path: "bench" } }],
+  [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [divider, standalone] } }],
+  async () => { throw new Error("Directory is unreadable."); },
+ );
+ assert.deepEqual(resolved.unavailable, [bench]);
+ assert.deepEqual(resolved.unavailableSymbols, [symbolReferenceKey(kit, "divider")]);
+ assert.ok(resolved.byReference.has(symbolReferenceKey(kit, "standalone")));
+ assert.ok(resolved.errors.some((error) => /Bench: Directory is unreadable/.test(error)));
+ const isSymbolUnavailable = unavailableSymbols(resolved);
+ assert.equal(isSymbolUnavailable(kit, "divider"), true);
+ assert.equal(isSymbolUnavailable(bench, "core"), true);
+ assert.equal(isSymbolUnavailable(kit, "standalone"), false);
+
+ const definitions = [...symbolDefinitions, ...resolved.byReference.values()];
+ const standaloneDefinition = resolved.byReference.get(symbolReferenceKey(kit, "standalone"))!;
+ const original = createCircuit("Board", "pcb-main");
+ const place = (part: { id: string; name: string }) => {
+  const file = structuredClone(original);
+  const component = componentFromSymbol(standaloneDefinition, []);
+  file.circuit.components = [{ ...component, part: { ...component.part, ...part, library: kit } }];
+  return synchronizePcb(file, [], original, definitions, { isSymbolUnavailable });
+ };
+ assert.throws(() => place({ id: "divider", name: "Divider" }), MissingSymbolLibraryError);
+ // The provider also lists embedded definitions without resolving references.
+ // A partly resolved definition must not be placed either.
+ const partial = [...definitions, { ...standaloneDefinition, id: "divider", library: kit }];
+ const file = structuredClone(original);
+ const component = componentFromSymbol(standaloneDefinition, []);
+ file.circuit.components = [{ ...component, part: { ...component.part, id: "divider", library: kit } }];
+ assert.throws(() => synchronizePcb(file, [], original, partial, { isSymbolUnavailable }), MissingSymbolLibraryError);
+ const placed = place({ id: "standalone", name: "Standalone" }).shapes.find((shape) => shape.kind === "symbol");
+ assert.equal(placed?.kind === "symbol" && placed.definitionId, "standalone");
+ // A symbol missing from a library that did load keeps the existing placeholder.
+ const missing = place({ id: "removed", name: "Removed" }).shapes.find((shape) => shape.kind === "symbol");
+ assert.match(missing?.kind === "symbol" ? missing.definitionId : "", /^circuit-fallback\./);
 });

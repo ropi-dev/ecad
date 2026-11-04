@@ -158,69 +158,117 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	);
 });
 
-test("a symbol library that fails to load is reported and never saved as placeholder symbols", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects.html");
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
-	const manifest = await readProjectFile(page, ".ecadprj");
-	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
-	if (!drawing) throw new Error("The project has no drawing.");
-	const saved = JSON.parse(await readProjectFile(page, drawing));
-	// A directory library cannot load in the browser. Its part is not placed yet.
-	await editProjectFile(
-		page,
-		drawing,
-		JSON.stringify({
-			symbolLibraries: [
-				{
-					id: "parts",
-					name: "Bench parts",
-					enabled: true,
-					source: { kind: "directory", path: "parts" },
-				},
-			],
-			circuit: {
-				...saved.circuit,
-				components: [
+const benchParts = {
+	id: "parts",
+	name: "Bench parts",
+	enabled: true,
+	source: { kind: "directory", path: "parts" },
+};
+// An embedded library loads, but its symbol places one from Bench parts.
+const kit = {
+	id: "kit",
+	name: "Kit",
+	enabled: true,
+	source: {
+		kind: "embedded",
+		symbols: [
+			{
+				format: "ecad-symbol",
+				version: 1,
+				units: "mm",
+				id: "divider",
+				name: "Divider",
+				description: "",
+				prefix: "R",
+				value: "",
+				shapes: [
+					{ kind: "pin", name: "1", x: 0, y: 0 },
+					{ kind: "pin", name: "2", x: 0, y: 5 },
 					{
-						id: "r1",
-						reference: "R1",
-						value: "10k",
-						part: {
-							id: "resistor",
-							name: "Resistor",
-							library: { scope: "project", id: "parts" },
-						},
-						pins: [
-							{ id: "r1-1", name: "1", number: "1", electricalType: "passive" },
-							{ id: "r1-2", name: "2", number: "2", electricalType: "passive" },
-						],
+						kind: "symbol",
+						library: { scope: "project", id: "parts" },
+						definitionId: "resistor",
+						x: 0,
+						y: 0,
 					},
 				],
 			},
-		}),
-		"json",
-	);
-	await page.reload();
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
-	await closeProjectFiles(page);
+		],
+	},
+};
 
-	const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });
-	await expect(banner).toContainText(
-		"Bench parts: Directory paths require the desktop app.",
-	);
-	await expect(banner).toContainText(
-		"Load the missing symbol library before saving the linked PCB.",
-	);
-	await screenshot(page, "library-load-error.png");
+for (const { name, libraries, part } of [
+	{
+		name: "its own library",
+		libraries: [benchParts],
+		part: { id: "resistor", library: "parts" },
+	},
+	{
+		name: "a library it depends on",
+		libraries: [benchParts, kit],
+		part: { id: "divider", library: "kit" },
+	},
+])
+	test(`a part whose symbol needs ${name} that fails to load is reported and never saved as a placeholder`, async ({
+		page,
+	}) => {
+		await page.goto("/tests/browser/projects.html");
+		await expect
+			.poll(async () => (await documentState(page)).name)
+			.toBe("Untitled");
+		const manifest = await readProjectFile(page, ".ecadprj");
+		const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
+		if (!drawing) throw new Error("The project has no drawing.");
+		const saved = JSON.parse(await readProjectFile(page, drawing));
+		// A directory library cannot load in the browser. The part is not placed yet.
+		await editProjectFile(
+			page,
+			drawing,
+			JSON.stringify({
+				symbolLibraries: libraries,
+				circuit: {
+					...saved.circuit,
+					components: [
+						{
+							id: "r1",
+							reference: "R1",
+							value: "10k",
+							part: {
+								id: part.id,
+								name: "Resistor",
+								library: { scope: "project", id: part.library },
+							},
+							pins: [
+								{ id: "r1-1", name: "1", number: "1", electricalType: "passive" },
+								{ id: "r1-2", name: "2", number: "2", electricalType: "passive" },
+							],
+						},
+					],
+				},
+			}),
+			"json",
+		);
+		await page.reload();
+		await expect
+			.poll(async () => (await documentState(page)).name)
+			.toBe("Untitled");
+		await (await openProjectFiles(page))
+			.getByRole("link", { name: "Schematic editor", exact: true })
+			.click();
+		await closeProjectFiles(page);
 
-	const stored = JSON.parse(await readProjectFile(page, drawing));
-	expect(stored.shapes).toEqual([]);
-	expect(JSON.stringify(stored)).not.toContain("circuit-fallback");
-	expect(stored.circuit.components[0].schematicShapeId).toBeUndefined();
-	expect((await documentState(page)).shapes).toEqual([]);
-});
+		const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });
+		await expect(banner).toContainText(
+			"Bench parts: Directory paths require the desktop app.",
+		);
+		await expect(banner).toContainText(
+			"Load the missing symbol library before saving the linked PCB.",
+		);
+		await screenshot(page, "library-load-error.png");
+
+		const stored = JSON.parse(await readProjectFile(page, drawing));
+		expect(stored.shapes).toEqual([]);
+		expect(JSON.stringify(stored)).not.toContain("circuit-fallback");
+		expect(stored.circuit.components[0].schematicShapeId).toBeUndefined();
+		expect((await documentState(page)).shapes).toEqual([]);
+	});

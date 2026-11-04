@@ -394,7 +394,7 @@ export function ProjectProvider({
 						})),
 					);
 			}
-			const { resolveSymbolLibraries } = await import(
+			const { resolveSymbolLibraries, unavailableSymbols } = await import(
 				"#/symbol-library/config.ts"
 			);
 			const userConfig = await symbolStorage.loadConfiguration?.();
@@ -412,11 +412,7 @@ export function ProjectProvider({
 						? current
 						: resolvedLibraries.errors,
 				);
-			const unavailable = new Set(
-				resolvedLibraries.unavailable.map(
-					(library) => `${library.scope}:${library.id}`,
-				),
-			);
+			const isUnavailable = unavailableSymbols(resolvedLibraries);
 			definitions.push(
 				...resolvedLibraries.byReference.values(),
 				...resolvedLibraries.definitions,
@@ -483,8 +479,7 @@ export function ProjectProvider({
 						measureText: measureLabelText,
 						newId: () => globalThis.crypto.randomUUID(),
 						// Placeholders would replace real symbols once the library loads again.
-						isLibraryUnavailable: (library) =>
-							unavailable.has(`${library.scope}:${library.id}`),
+						isSymbolUnavailable: isUnavailable,
 					},
 				);
 				linked.shapes = linked.shapes.map((shape) => {

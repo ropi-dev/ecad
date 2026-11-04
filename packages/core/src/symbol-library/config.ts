@@ -109,6 +109,31 @@ export function serializeSymbolConfig(config: SymbolLibraryConfig): string {
 	return text;
 }
 
+/** A reference into a library that failed to load. Resolution fails with it. */
+class UnavailableDependency extends Error {}
+
+/**
+ * True when a library failed to load, or when a symbol could not resolve
+ * because a symbol it places comes from such a library.
+ */
+export type SymbolAvailability = (
+	library: SymbolLibraryReference,
+	id: string,
+) => boolean;
+
+export function unavailableSymbols(resolved: {
+	unavailable: readonly SymbolLibraryReference[];
+	unavailableSymbols: readonly string[];
+}): SymbolAvailability {
+	const libraries = new Set(
+		resolved.unavailable.map((library) => `${library.scope}:${library.id}`),
+	);
+	const symbols = new Set(resolved.unavailableSymbols);
+	return (library, id) =>
+		libraries.has(`${library.scope}:${library.id}`) ||
+		symbols.has(symbolReferenceKey(library, id));
+}
+
 /** Later libraries win. Project libraries are resolved after user libraries. */
 export async function resolveSymbolLibraries(
 	user: readonly ConfiguredSymbolLibrary[],
@@ -122,6 +147,11 @@ export async function resolveSymbolLibraries(
 	errors: string[];
 	/** Enabled libraries that failed to load. Their symbols are missing. */
 	unavailable: SymbolLibraryReference[];
+	/**
+	 * `symbolReferenceKey`s of loaded symbols that failed to resolve because a
+	 * symbol they place comes from a library in `unavailable`.
+	 */
+	unavailableSymbols: string[];
 }> {
 	const definitions = new Map<string, SymbolDefinition>();
 	const sources = new Map<string, SymbolSource>();
@@ -187,10 +217,16 @@ export async function resolveSymbolLibraries(
 	): SymbolDefinition {
 		const key = library ? symbolReferenceKey(library, id) : winners.get(id);
 		const entry = key ? entries.get(key) : undefined;
-		if (!key || !entry)
-			throw new Error(
-				`Symbol "${id}" is unavailable in library "${library?.id ?? "unknown"}".`,
-			);
+		if (!key || !entry) {
+			const message = `Symbol "${id}" is unavailable in library "${library?.id ?? "unknown"}".`;
+			throw library &&
+				unavailable.some(
+					(failed) =>
+						failed.scope === library.scope && failed.id === library.id,
+				)
+				? new UnavailableDependency(message)
+				: new Error(message);
+		}
 		const cached = byReference.get(key);
 		if (cached) return cached;
 		if (resolving.has(key))
@@ -226,10 +262,13 @@ export async function resolveSymbolLibraries(
 			resolving.delete(key);
 		}
 	}
+	const unresolved: string[] = [];
 	for (const entry of entries.values()) {
 		try {
 			resolve(entry.library, entry.definition.id);
 		} catch (cause) {
+			if (cause instanceof UnavailableDependency)
+				unresolved.push(symbolReferenceKey(entry.library, entry.definition.id));
 			errors.push(
 				cause instanceof Error
 					? cause.message
@@ -252,5 +291,6 @@ export async function resolveSymbolLibraries(
 		referenceSources,
 		errors: [...new Set(errors)],
 		unavailable,
+		unavailableSymbols: unresolved,
 	};
 }
