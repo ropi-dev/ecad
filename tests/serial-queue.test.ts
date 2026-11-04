@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
+import { required } from "./helpers/required.ts";
 
 const later = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
 
@@ -19,7 +20,12 @@ test("queued tasks run one at a time in call order", async () => {
 		enqueue(() => "sync"),
 	]);
 	assert.deepEqual(results, ["slow", "fast", "sync"]);
-	assert.deepEqual(events, ["start slow", "end slow", "start fast", "end fast"]);
+	assert.deepEqual(events, [
+		"start slow",
+		"end slow",
+		"start fast",
+		"end fast",
+	]);
 });
 
 test("a task does not start until the caller's turn, even when queued synchronously", async () => {
@@ -60,7 +66,7 @@ test("a task that throws synchronously rejects instead of throwing and does not 
 			throw failure;
 		});
 	});
-	await assert.rejects(result!, failure);
+	await assert.rejects(required(result), failure);
 	assert.equal(await enqueue(() => "next"), "next");
 });
 
@@ -68,7 +74,9 @@ test("separate queues do not wait for each other", async () => {
 	const first = createSerialQueue();
 	const second = createSerialQueue();
 	let release!: () => void;
-	const blocked = first(() => new Promise<void>((resolve) => (release = resolve)));
+	const blocked = first(
+		() => new Promise<void>((resolve) => (release = resolve)),
+	);
 	assert.equal(await second(() => "independent"), "independent");
 	release();
 	await blocked;

@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import { defaultSymbolConfig } from "@ecad/core/symbol-library/config.ts";
-import {
-	displayChannels,
-	libraryChannels,
-	projectChannels,
-} from "#/bridge.ts";
+import { displayChannels, libraryChannels, projectChannels } from "#/bridge.ts";
 import { ipcArguments, parseIpcArguments } from "#/main/ipc.ts";
 
 const symbol = parseSymbolFile(
@@ -118,14 +114,29 @@ test("malformed renderer arguments are rejected before any handler runs", () => 
 		[libraryChannels.inspectDirectorySymbol, [{ ...request, extra: true }]],
 		[libraryChannels.inspectDirectorySymbol, ["libraries"]],
 		[libraryChannels.saveDirectorySymbol, [request, symbol]],
-		[libraryChannels.saveDirectorySymbol, [request, symbol, { ...symbol, id: "../escape" }]],
+		[
+			libraryChannels.saveDirectorySymbol,
+			[request, symbol, { ...symbol, id: "../escape" }],
+		],
 		[libraryChannels.saveDirectorySymbol, [request, { id: symbol.id }, symbol]],
 		[libraryChannels.saveConfiguration, []],
 		[libraryChannels.saveConfiguration, [{ version: 2, symbolLibraries: [] }]],
-		[libraryChannels.saveConfiguration, ["{\"version\":1,\"symbolLibraries\":[]}"]],
+		[libraryChannels.saveConfiguration, ['{"version":1,"symbolLibraries":[]}']],
 		[
 			libraryChannels.saveConfiguration,
-			[{ version: 1, symbolLibraries: [{ id: "x", name: "X", enabled: true, source: { kind: "directory", path: "" } }] }],
+			[
+				{
+					version: 1,
+					symbolLibraries: [
+						{
+							id: "x",
+							name: "X",
+							enabled: true,
+							source: { kind: "directory", path: "" },
+						},
+					],
+				},
+			],
 		],
 		[libraryChannels.save, [[symbol]]],
 		[libraryChannels.save, [[{ ...symbol, id: "../outside" }], []]],
@@ -135,22 +146,48 @@ test("malformed renderer arguments are rejected before any handler runs", () => 
 		[projectChannels.create, [undefined]],
 		[projectChannels.open, ["/somewhere/else"]],
 		[projectChannels.save, ["/projects/controller"]],
-		[projectChannels.save, ["/projects/controller", { shapes: "none", symbols: [] }]],
+		[
+			projectChannels.save,
+			["/projects/controller", { shapes: "none", symbols: [] }],
+		],
 		[projectChannels.save, ["", { shapes: [], symbols: [] }]],
 		[projectChannels.saveProject, [null]],
-		[projectChannels.importAssets, ["/projects/controller", [{ name: "board.zip", kind: "gerber", bytes: [1, 2] }]]],
-		[projectChannels.importAssets, ["/projects/controller", [{ name: "../board.zip", kind: "gerber", bytes: new Uint8Array() }]]],
-		[projectChannels.importAssets, ["/projects/controller", [{ name: "model.exe", kind: "binary", bytes: new Uint8Array() }]]],
+		[
+			projectChannels.importAssets,
+			[
+				"/projects/controller",
+				[{ name: "board.zip", kind: "gerber", bytes: [1, 2] }],
+			],
+		],
+		[
+			projectChannels.importAssets,
+			[
+				"/projects/controller",
+				[{ name: "../board.zip", kind: "gerber", bytes: new Uint8Array() }],
+			],
+		],
+		[
+			projectChannels.importAssets,
+			[
+				"/projects/controller",
+				[{ name: "model.exe", kind: "binary", bytes: new Uint8Array() }],
+			],
+		],
 		[projectChannels.readAsset, ["/projects/controller", "../secret"]],
 		[projectChannels.readAsset, ["/projects/controller", "/etc/passwd"]],
-		[projectChannels.canWriteFile, ["/projects/controller", "assets\\..\\secret"]],
+		[
+			projectChannels.canWriteFile,
+			["/projects/controller", "assets\\..\\secret"],
+		],
 		[projectChannels.canWriteFile, ["/projects/controller"]],
 		[displayChannels.getCalibration, [1]],
 	];
 	for (const [channel, args] of rejected)
 		assert.throws(
 			() => parseIpcArguments(channel as keyof typeof ipcArguments, args),
-			new RegExp(`^Error: Invalid ${channel.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")} request`),
+			new RegExp(
+				`^Error: Invalid ${channel.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")} request`,
+			),
 			`${channel} accepted ${JSON.stringify(args)}`,
 		);
 	assert.throws(

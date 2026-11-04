@@ -1,5 +1,6 @@
 import { test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	editorReady,
@@ -51,7 +52,7 @@ test("editor-user-symbol", async ({ page }, testInfo) => {
 	await page
 		.getByRole("button", { name: "Insert User package", exact: true })
 		.click();
-	const bounds = (await page.locator("canvas").boundingBox())!;
+	const bounds = required(await page.locator("canvas").boundingBox());
 	await page
 		.locator("canvas")
 		.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
@@ -76,8 +77,12 @@ test("editor-user-symbol", async ({ page }, testInfo) => {
 			await page.mouse.up();
 			await page.waitForFunction(
 				(count) =>
-					JSON.parse(localStorage.getItem("ecad.user-config.v1")!)
-						.symbolLibraries[0].source.symbols[0].shapes.length === count,
+					JSON.parse(
+						localStorage.getItem("ecad.user-config.v1") ??
+							(() => {
+								throw new Error("Expected a value");
+							})(),
+					).symbolLibraries[0].source.symbols[0].shapes.length === count,
 				129 + repeat,
 				{ polling: "raf", timeout: 30_000 },
 			);

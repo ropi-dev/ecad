@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -12,7 +13,7 @@ test("editor-text-duplicate", async ({ page }, testInfo) => {
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled();
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
-	const bounds = (await page.locator("canvas").boundingBox())!;
+	const bounds = required(await page.locator("canvas").boundingBox());
 	const sources = [
 		{
 			kind: "Net label",
@@ -71,6 +72,6 @@ test("editor-text-duplicate", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-text-duplicate", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

@@ -1,6 +1,7 @@
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -11,7 +12,7 @@ test("editor-pin-leads", async ({ page }, testInfo) => {
 	await ready(page);
 	await (await toolbarButton(page, "Pin")).click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	await canvas.click({
 		position: { x: bounds.width * 0.4, y: bounds.height / 2 },
 	});
@@ -58,6 +59,6 @@ test("editor-pin-leads", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-pin-leads", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

@@ -77,7 +77,13 @@ export function createTestComponent(
 
 export function createTestCircuit(name = "Test circuit"): CircuitFile {
 	let file = createCircuit(name);
-	for (const part of ["connector-2", "resistor", "led", "resistor", "led"] as const)
+	for (const part of [
+		"connector-2",
+		"resistor",
+		"led",
+		"resistor",
+		"led",
+	] as const)
 		file = applyCircuitCommand(file, {
 			type: "add-component",
 			component: createTestComponent(part, file.circuit.components),

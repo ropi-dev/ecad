@@ -1,5 +1,6 @@
-import { defineConfig } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+import { defineConfig } from "@playwright/test";
+
 const port = Number(process.env.ECAD_PERF_PORT ?? 4175);
 const development = process.env.ECAD_PERF_MODE === "development";
 export default defineConfig({

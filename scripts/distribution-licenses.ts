@@ -165,10 +165,7 @@ export async function stepSourceAssets() {
 
 export async function distributionAssets(workspace: string) {
 	const assets = new Map<string, string | Uint8Array>();
-	const files = [
-		"THIRD_PARTY_NOTICES.md",
-		"licenses/tanstack-MIT.txt",
-	];
+	const files = ["THIRD_PARTY_NOTICES.md", "licenses/tanstack-MIT.txt"];
 	if (workspace !== "cli") {
 		files.push(
 			"packages/default-symbols/LICENSE.md",

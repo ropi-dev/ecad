@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Box3, Mesh } from "three";
 import {
 	compilePlanarGeometry,
 	simplifyPlanarEdges,
@@ -10,7 +11,6 @@ import {
 } from "#/engine/planar-object.ts";
 import type { SceneObject } from "#/engine/types.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
-import { Box3, Mesh } from "three";
 import { pthGerber } from "./fixtures/pth-gerber";
 
 const rect = (

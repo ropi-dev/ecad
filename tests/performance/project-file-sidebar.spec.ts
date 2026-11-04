@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	editorReady,
@@ -25,7 +26,12 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 	await page.evaluate(async () => {
 		const directory = await (
 			await navigator.storage.getDirectory()
-		).getDirectoryHandle(localStorage.getItem("ecad.active-project")!);
+		).getDirectoryHandle(
+			localStorage.getItem("ecad.active-project") ??
+				(() => {
+					throw new Error("Expected a value");
+				})(),
+		);
 		const handle = await directory.getFileHandle(".ecadprj");
 		const manifest = (await (await handle.getFile()).text()).replace(
 			/^assets\s*=\s*\[\s*\]\s*$/m,
@@ -139,7 +145,7 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		);
 		await page.mouse.move(900, 400);
 		await expect(sidebar).toHaveAttribute("data-open", "false");
-		expect((await page.locator("canvas").boundingBox())!.x).toBe(0);
+		expect(required(await page.locator("canvas").boundingBox()).x).toBe(0);
 	}
 	const hoverRevealMs = await interaction(page, "sidebar.reveal", async () => {
 		await openProjectFiles(page);
@@ -216,6 +222,6 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 		hoverRevealMs,
 		railNavigationMs: percentile(railNavigationTimes),
 		menuOpenMs: percentile(menuOpenTimes),
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

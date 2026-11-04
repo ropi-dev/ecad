@@ -6,10 +6,11 @@ import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { runInNewContext } from "node:vm";
 import { transform } from "esbuild";
-import { libraryChannels } from "#/bridge.ts";
 import * as bridge from "#/bridge.ts";
+import { libraryChannels } from "#/bridge.ts";
 import * as errors from "#/ipc-errors.ts";
 import * as ipc from "#/main/ipc.ts";
+import { required } from "../../../tests/helpers/required.ts";
 
 async function boot() {
 	const handlers = new Map<
@@ -32,7 +33,7 @@ async function boot() {
 		on() {}
 		loadURL() {}
 		static getAllWindows() {
-			return [this];
+			return [Window];
 		}
 	}
 	class Library {
@@ -46,11 +47,10 @@ async function boot() {
 			isPackaged: true,
 			getPath: () => "/tmp/ecad-test-user",
 			on() {},
-			whenReady: () => ({
-				then(callback: () => void) {
-					ready = Promise.resolve().then(callback);
-				},
-			}),
+			whenReady: () => {
+				ready = Promise.resolve();
+				return ready;
+			},
 		},
 		BrowserWindow: Window,
 		dialog: {},
@@ -114,7 +114,7 @@ async function boot() {
 
 test("IPC accepts only the editor's main frame and validates arguments before dispatch", async () => {
 	const app = await boot();
-	const invoke = app.handlers.get(libraryChannels.load)!;
+	const invoke = required(app.handlers.get(libraryChannels.load));
 	const valid = { sender: app.contents, senderFrame: app.frame };
 	for (const event of [
 		{ ...valid, sender: {} },
@@ -144,7 +144,7 @@ test("the packaged protocol confines requests and applies separate worker CSP", 
 		assert.equal(response.status, 200);
 		assert.equal(response.headers.get("Content-Type"), "text/javascript");
 		assert.match(
-			response.headers.get("Content-Security-Policy")!,
+			required(response.headers.get("Content-Security-Policy")),
 			name.includes(".worker-")
 				? /script-src 'self' 'unsafe-eval'/
 				: /script-src 'self' 'wasm-unsafe-eval'/,

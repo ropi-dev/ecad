@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -35,11 +36,11 @@ test("circuit-grid-snap", async ({ page }, testInfo) => {
 					{ steps: 6 },
 				);
 				await page.mouse.up();
-				await expect(node).not.toHaveAttribute("transform", original!);
+				await expect(node).not.toHaveAttribute("transform", required(original));
 			}),
 		);
 		await page.keyboard.press("Control+z");
-		await expect(node).toHaveAttribute("transform", original!);
+		await expect(node).toHaveAttribute("transform", required(original));
 	}
 	await expect(page.locator(".circuit-editor")).toHaveAttribute(
 		"data-pending-changes",
@@ -48,7 +49,7 @@ test("circuit-grid-snap", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-grid-snap", {
 		interactionP95Ms: percentile(times),
-		graphP95Ms: metric(value, "circuit.graph")!,
-		editP95Ms: metric(value, "circuit.edit")!,
+		graphP95Ms: required(metric(value, "circuit.graph")),
+		editP95Ms: required(metric(value, "circuit.edit")),
 	});
 });

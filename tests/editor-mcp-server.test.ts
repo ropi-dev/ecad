@@ -438,7 +438,10 @@ test("the sweep timer closes idle editor streams without other requests", async 
 		assert.equal(response.status, 200);
 		const reader = response.body?.getReader();
 		assert.ok(reader);
-		assert.deepEqual(new TextDecoder().decode((await reader.read()).value), "\n");
+		assert.deepEqual(
+			new TextDecoder().decode((await reader.read()).value),
+			"\n",
+		);
 		assert.equal((await reader.read()).done, true);
 		assert.throws(
 			() => hub.authorize(session.sessionId, session.mcpToken, "mcp"),
@@ -551,14 +554,20 @@ test("editor endpoints require a same-origin browser request; the MCP endpoint d
 		const url = `${createUrl}/${session.sessionId}`;
 		const editor = auth(session.editorToken);
 		await rejected(
-			await handlers.session(new Request(url, { headers: editor }), session.sessionId),
+			await handlers.session(
+				new Request(url, { headers: editor }),
+				session.sessionId,
+			),
 		);
 		await rejected(
 			await handlers.session(
 				new Request(url, {
 					method: "POST",
 					headers: editor,
-					body: JSON.stringify({ requestId: crypto.randomUUID(), reply: failure }),
+					body: JSON.stringify({
+						requestId: crypto.randomUUID(),
+						reply: failure,
+					}),
 				}),
 				session.sessionId,
 			),
@@ -600,10 +609,16 @@ test("editor endpoints require a same-origin browser request; the MCP endpoint d
 			);
 		const initialized = await initialize({});
 		assert.equal(initialized.status, 200);
-		assert.equal((await initialized.json()).result.serverInfo.name !== undefined, true);
+		assert.equal(
+			(await initialized.json()).result.serverInfo.name !== undefined,
+			true,
+		);
 		await rejected(await initialize({ Origin: "http://unrelated.example" }));
 		const disconnected = await handlers.session(
-			new Request(url, { method: "DELETE", headers: sameOrigin(session.editorToken) }),
+			new Request(url, {
+				method: "DELETE",
+				headers: sameOrigin(session.editorToken),
+			}),
 			session.sessionId,
 		);
 		assert.equal(disconnected.status, 204);

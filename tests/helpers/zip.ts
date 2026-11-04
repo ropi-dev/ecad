@@ -10,7 +10,9 @@ export function patchZipEntry(
 	for (let entry = 0; entry + 46 <= archive.length; entry++) {
 		if (view.getUint32(entry, true) !== 0x02014b50) continue;
 		const nameLength = view.getUint16(entry + 28, true);
-		if (strFromU8(archive.subarray(entry + 46, entry + 46 + nameLength)) !== name)
+		if (
+			strFromU8(archive.subarray(entry + 46, entry + 46 + nameLength)) !== name
+		)
 			continue;
 		const local = view.getUint32(entry + 42, true);
 		if (patch.compression !== undefined) {

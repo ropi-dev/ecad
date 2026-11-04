@@ -15,12 +15,13 @@ import {
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import type { Point } from "#/drawing/types.ts";
+import { required } from "./helpers/required.ts";
 
-const connector = symbolDefinitions.find(
-	(definition) => definition.id === "connector-3",
-)!;
+const connector = required(
+	symbolDefinitions.find((definition) => definition.id === "connector-3"),
+);
 const firstPin = (symbol: EditorSymbol) =>
-	symbolShapes(symbol).find((shape) => shape.kind === "pin")!;
+	required(symbolShapes(symbol).find((shape) => shape.kind === "pin"));
 const label = (id: number, text: string, point: Point): TextShape => ({
 	id,
 	kind: "text",
@@ -108,10 +109,12 @@ for (const saveBetweenEdits of [false, true]) {
 		);
 		assert.equal(saved.file.circuit.components.length, 2);
 		for (const net of saved.file.circuit.nets) {
-			const owner = saved.file.circuit.components.find(
-				(component) =>
-					component.reference === (net.names[0] === "SWDIO" ? "J2" : "J1"),
-			)!;
+			const owner = required(
+				saved.file.circuit.components.find(
+					(component) =>
+						component.reference === (net.names[0] === "SWDIO" ? "J2" : "J1"),
+				),
+			);
 			assert.deepEqual(net.pinIds, [owner.pins[0].id]);
 		}
 		const reopened = circuitFileSchema.parse(

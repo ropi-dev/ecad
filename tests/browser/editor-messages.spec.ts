@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { required } from "../helpers/required.ts";
 
 test.use({
 	viewport: { width: 1440, height: 900 },
@@ -10,7 +11,8 @@ const wireError = "Wire segments must be horizontal or vertical.";
 const libraryError = 'Symbol "resistor" is unavailable in library "missing".';
 
 const documentShapes = async (page: Page): Promise<EditorShape[]> =>
-	JSON.parse((await page.locator("#editor-document").textContent())!).shapes;
+	JSON.parse(required(await page.locator("#editor-document").textContent()))
+		.shapes;
 
 const diagonalWire = JSON.stringify({
 	format: "ecad-selection",
@@ -56,7 +58,7 @@ test.beforeEach(async ({ page }) => {
 	await page
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
-	const box = (await page.locator("canvas").boundingBox())!;
+	const box = required(await page.locator("canvas").boundingBox());
 	await page
 		.locator("canvas")
 		.click({ position: { x: box.width / 2, y: box.height / 2 } });
@@ -72,7 +74,7 @@ test("a later command or clipboard action clears a command error, and dismiss hi
 	await pasteDiagonalWire(page);
 	await expect(alert).toHaveText(wireError);
 	expect(await documentShapes(page)).toHaveLength(1);
-	const box = (await page.locator("canvas").boundingBox())!;
+	const box = required(await page.locator("canvas").boundingBox());
 	await page
 		.locator("canvas")
 		.click({ position: { x: box.width / 2, y: box.height / 2 } });

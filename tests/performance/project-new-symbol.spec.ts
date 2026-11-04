@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	editorReady,
@@ -58,10 +59,12 @@ test("project-new-symbol", async ({ page }, testInfo) => {
 	);
 	const value = await report(page);
 	await finish(page, testInfo, "project-new-symbol", {
-		createMs: value.events.find(
-			(event) =>
-				event.name === "scenario.interaction" &&
-				event.data?.name === "symbol.create",
-		)!.duration,
+		createMs: required(
+			value.events.find(
+				(event) =>
+					event.name === "scenario.interaction" &&
+					event.data?.name === "symbol.create",
+			),
+		).duration,
 	});
 });

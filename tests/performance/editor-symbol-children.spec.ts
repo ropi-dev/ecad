@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { drawingPoint, selectSymbolParent } from "../browser/symbol-items";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -66,7 +67,7 @@ test("editor-symbol-children", async ({ page }, testInfo) => {
 		.getByRole("button", { name: "Insert Hierarchy part", exact: true })
 		.click();
 	const canvas = page.locator("canvas");
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	await canvas.click({
 		position: { x: box.width * 0.45, y: box.height * 0.5 },
 	});
@@ -135,6 +136,6 @@ test("editor-symbol-children", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-children", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

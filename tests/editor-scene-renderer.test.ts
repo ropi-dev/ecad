@@ -6,7 +6,7 @@ import {
 	LineLoop,
 	Material,
 	Mesh,
-	MeshBasicMaterial,
+	type MeshBasicMaterial,
 	type Object3D,
 	Texture,
 } from "three";
@@ -23,6 +23,7 @@ import {
 } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
+import { required } from "./helpers/required.ts";
 
 // Glyph textures need a 2D canvas. This stand-in measures text by its length.
 const context = {
@@ -55,22 +56,44 @@ for (const type of [BufferGeometry, Texture, Material]) {
 }
 
 const part = (id: string) =>
-	symbolDefinitions.find((definition) => definition.id === id)!;
+	required(symbolDefinitions.find((definition) => definition.id === id));
 
 /** Wires with crossings and junctions, labelled pins, symbols, and net labels. */
 function drawing(): EditorShape[] {
 	const wire = (id: number, x: number, y: number, endX: number, endY: number) =>
 		drawShape(id, "wire", { x, y }, { x: endX, y: endY });
 	return [
-		...[0, 1, 2, 3].map((index) => wire(1 + index, -30, index * 5, 30, index * 5)),
-		...[0, 1, 2, 3].map((index) => wire(5 + index, index * 7 - 10, -8, index * 7 - 10, 20)),
+		...[0, 1, 2, 3].map((index) =>
+			wire(1 + index, -30, index * 5, 30, index * 5),
+		),
+		...[0, 1, 2, 3].map((index) =>
+			wire(5 + index, index * 7 - 10, -8, index * 7 - 10, 20),
+		),
 		wire(9, 4, 5, 4, 30),
-		{ ...drawShape(10, "pin", { x: 40, y: 0 }, { x: 40, y: 0 }), name: "CLK", number: "3" } as EditorShape,
-		{ ...drawShape(11, "pin", { x: 40, y: 10 }, { x: 40, y: 10 }), name: "EN", number: "4", rotation: Math.PI / 2 } as EditorShape,
+		{
+			...drawShape(10, "pin", { x: 40, y: 0 }, { x: 40, y: 0 }),
+			name: "CLK",
+			number: "3",
+		} as EditorShape,
+		{
+			...drawShape(11, "pin", { x: 40, y: 10 }, { x: 40, y: 10 }),
+			name: "EN",
+			number: "4",
+			rotation: Math.PI / 2,
+		} as EditorShape,
 		createSymbol(12, part("resistor"), { x: -20, y: 30 }),
-		{ ...createSymbol(13, part("connector-4"), { x: 10, y: 40 }), rotation: Math.PI / 2 },
-		{ ...createSymbol(14, part("transistor-npn"), { x: 30, y: 40 }), rotation: Math.PI },
-		{ ...drawShape(15, "rectangle", { x: -40, y: -20 }, { x: -30, y: -10 }), filled: true } as EditorShape,
+		{
+			...createSymbol(13, part("connector-4"), { x: 10, y: 40 }),
+			rotation: Math.PI / 2,
+		},
+		{
+			...createSymbol(14, part("transistor-npn"), { x: 30, y: 40 }),
+			rotation: Math.PI,
+		},
+		{
+			...drawShape(15, "rectangle", { x: -40, y: -20 }, { x: -30, y: -10 }),
+			filled: true,
+		} as EditorShape,
 		{
 			id: 16,
 			kind: "text",
@@ -123,7 +146,8 @@ function describe(root: Object3D) {
 		return {
 			type: object.type,
 			name: object.name,
-			parent: object.parent === root ? "root" : index.get(object.parent!),
+			parent:
+				object.parent === root ? "root" : index.get(required(object.parent)),
 			renderOrder: object.renderOrder,
 			matrix: object.matrixWorld.elements.map(round),
 			material: paint && {
@@ -133,7 +157,9 @@ function describe(root: Object3D) {
 				alphaMap: paint.alphaMap ? true : undefined,
 			},
 			geometry: geometry && {
-				position: [...(geometry.getAttribute("position")?.array ?? [])].map(round),
+				position: [...(geometry.getAttribute("position")?.array ?? [])].map(
+					round,
+				),
 				uv: [...(geometry.getAttribute("uv")?.array ?? [])].map(round),
 				index: [...(geometry.getIndex()?.array ?? [])],
 			},
@@ -146,12 +172,16 @@ function describe(root: Object3D) {
 	const drawn = objects.filter((object) => material(object));
 	const sorted = (transparent: boolean) =>
 		drawn
-			.filter((object) => material(object)!.transparent === transparent)
+			.filter(
+				(object) => required(material(object)).transparent === transparent,
+			)
 			.sort(
 				(a, b) =>
 					a.renderOrder - b.renderOrder ||
 					(transparent ? 0 : materialId(a) - materialId(b)) ||
-					(transparent ? a.id - b.id : index.get(a)! - index.get(b)!),
+					(transparent
+						? a.id - b.id
+						: required(index.get(a)) - required(index.get(b))),
 			)
 			.map((object) => index.get(object));
 	return { description, transparent: sorted(true), opaque: sorted(false) };
@@ -208,7 +238,10 @@ test("incremental scene updates match a full rebuild and release replaced resour
 		assert.deepEqual(describe(root), fresh(value), step);
 		const live = resources();
 		for (const item of owned)
-			assert.ok(live.has(item) || disposed.has(item), `${step}: leaked resource`);
+			assert.ok(
+				live.has(item) || disposed.has(item),
+				`${step}: leaked resource`,
+			);
 	};
 	try {
 		let shapes = drawing();
@@ -256,9 +289,11 @@ test("incremental scene updates match a full rebuild and release replaced resour
 		check(display(shapes, [102]), "edit");
 		// A replaced text ties in draw order with the pin labels before it.
 		const labelled = createSymbol(103, part("resistor-us"), { x: 20, y: -30 });
-		const note = shapes.find(
-			(shape): shape is TextShape => shape.id === 17 && shape.kind === "text",
-		)!;
+		const note = required(
+			shapes.find(
+				(shape): shape is TextShape => shape.id === 17 && shape.kind === "text",
+			),
+		);
 		shapes = [...shapes, labelled, note];
 		check(display(shapes, []), "labelled symbol");
 		shapes = [...shapes.slice(0, -1), { ...note, id: 104, text: "Replaced" }];
@@ -282,14 +317,14 @@ test("previews update in their own group without touching document meshes", () =
 		const shapes = drawing();
 		const document = buildStaticDisplay(shapes, new Set());
 		renderer.update(root, { ...document, previews: [] });
-		const drawingGroup = root.getObjectByName("editor-shapes")!;
+		const drawingGroup = required(root.getObjectByName("editor-shapes"));
 		const children = [...drawingGroup.children];
 		const wire = drawShape(101, "wire", { x: 40, y: 0 }, { x: 50, y: 0 });
 		renderer.update(root, {
 			...document,
 			previews: buildPreviewDisplay([wire], shapes.length),
 		});
-		const preview = root.getObjectByName("editor-wire-preview")!;
+		const preview = required(root.getObjectByName("editor-wire-preview"));
 		assert.equal(preview.parent?.name, "editor-previews");
 		assert.deepEqual(drawingGroup.children, children);
 		renderer.update(root, {

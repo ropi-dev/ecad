@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -14,7 +15,7 @@ test("editor-pin-wire", async ({ page }, testInfo) => {
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await (await toolbarButton(page, "Pin")).click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	const pin = { x: bounds.width * 0.4, y: bounds.height / 2 };
 	await canvas.click({ position: pin });
 	await expect(page.locator('[data-tool="select"]')).toBeAttached();
@@ -35,6 +36,6 @@ test("editor-pin-wire", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-pin-wire", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

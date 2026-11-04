@@ -1,9 +1,10 @@
-import { createSymbolFromShapes } from "#/drawing/symbols.ts";
-import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { exportDrawingSvg } from "#/drawing/export.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { createSymbolFromShapes } from "#/drawing/symbols.ts";
+
 const options = {
 	width: 9600,
 	height: 6400,

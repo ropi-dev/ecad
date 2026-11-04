@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -74,15 +75,19 @@ test("projects-large", async ({ page }, testInfo) => {
 				.filter((event) => event.name === "scenario.interaction")
 				.map((event) => event.duration),
 		),
-		searchMs: fileInteractions.events.find(
-			(event) =>
-				event.data?.name === "files.search" &&
-				event.name === "scenario.interaction",
-		)!.duration,
-		filterMs: fileInteractions.events.find(
-			(event) =>
-				event.data?.name === "files.filter" &&
-				event.name === "scenario.interaction",
-		)!.duration,
+		searchMs: required(
+			fileInteractions.events.find(
+				(event) =>
+					event.data?.name === "files.search" &&
+					event.name === "scenario.interaction",
+			),
+		).duration,
+		filterMs: required(
+			fileInteractions.events.find(
+				(event) =>
+					event.data?.name === "files.filter" &&
+					event.name === "scenario.interaction",
+			),
+		).duration,
 	});
 });

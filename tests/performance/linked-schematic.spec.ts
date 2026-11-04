@@ -1,10 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 
 const twoPinParts = 240;
 const connectors = 60;
 const repeats = 5;
 
-test("linked-schematic-sync", async ({}, testInfo) => {
+test("linked-schematic-sync", async ({
+	browserName: _browserName,
+}, testInfo) => {
 	const { circuitFileSchema, createCircuit } = await import(
 		"@ecad/drawing-core/circuit/model.ts"
 	);
@@ -12,10 +15,12 @@ test("linked-schematic-sync", async ({}, testInfo) => {
 		"@ecad/drawing-core/circuit/store.ts"
 	);
 	const { synchronizePcb } = await import("#/circuit/linked-schematic.ts");
-	const { componentFromSymbol } = await import("#/circuit/symbol-components.ts");
+	const { componentFromSymbol } = await import(
+		"#/circuit/symbol-components.ts"
+	);
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
 	const definition = (id: string) =>
-		symbolDefinitions.find((definition) => definition.id === id)!;
+		required(symbolDefinitions.find((definition) => definition.id === id));
 	const resistor = definition("resistor");
 	const capacitor = definition("capacitor");
 	const connector = definition("connector-8");
@@ -34,8 +39,16 @@ test("linked-schematic-sync", async ({}, testInfo) => {
 			names: index % 10 ? [] : [`SIG_${index}`],
 			pinIds: [parts[index].pins[1].id, part.pins[0].id],
 		})),
-		{ id: "vcc", names: ["VCC"], pinIds: headers.map((header) => header.pins[0].id) },
-		{ id: "gnd", names: ["GND"], pinIds: headers.map((header) => header.pins[7].id) },
+		{
+			id: "vcc",
+			names: ["VCC"],
+			pinIds: headers.map((header) => header.pins[0].id),
+		},
+		{
+			id: "gnd",
+			names: ["GND"],
+			pinIds: headers.map((header) => header.pins[7].id),
+		},
 		...headers.flatMap((header, index) =>
 			index % 2
 				? [1, 2, 3, 4, 5, 6].map((pin) => ({
@@ -97,7 +110,8 @@ test("linked-schematic-sync", async ({}, testInfo) => {
 		circuitEdits.push(ms);
 		expect(next.source).toBe("circuit");
 		expect(
-			next.file.circuit.nets.find((candidate) => candidate.id === net.id)?.names,
+			next.file.circuit.nets.find((candidate) => candidate.id === net.id)
+				?.names,
 		).toEqual([`RENAMED_${index}`]);
 		saved = next;
 	}

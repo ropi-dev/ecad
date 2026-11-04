@@ -526,7 +526,8 @@ export function createProjectSession(
 		return autosavePending;
 	};
 	const save = async () => {
-		if (!storage.saveProject) {
+		const saveProject = storage.saveProject?.bind(storage);
+		if (!saveProject) {
 			await autosave();
 			return true;
 		}
@@ -539,7 +540,7 @@ export function createProjectSession(
 				if (!snapshot) return false;
 				const saved = await measurePerformanceAsync(
 					"project.save-to-disk",
-					() => storage.saveProject!(snapshot.directory),
+					() => saveProject(snapshot.directory),
 				);
 				if (saved) update(saved);
 				return saved !== null && saved !== undefined;

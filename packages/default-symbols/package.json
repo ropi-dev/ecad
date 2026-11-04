@@ -1,21 +1,21 @@
 {
-  "name": "@ecad/default-symbols",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "license": "CC-BY-SA-4.0",
-  "engines": {
-    "node": "^24.14.0 || >=25.4.0"
-  },
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "scripts": {
-    "generate": "tsx scripts/generate.ts",
-    "test": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@ecad/drawing-core": "workspace:*"
-  }
+	"name": "@ecad/default-symbols",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"license": "CC-BY-SA-4.0",
+	"engines": {
+		"node": "^24.14.0 || >=25.4.0"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"generate": "tsx scripts/generate.ts",
+		"test": "tsx --test tests/*.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@ecad/drawing-core": "workspace:*"
+	}
 }

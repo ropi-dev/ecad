@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -24,7 +25,11 @@ test("circuit-untangle", async ({ page }, testInfo) => {
 					.map((element) => {
 						const box = element.getBoundingClientRect();
 						return {
-							label: element.getAttribute("aria-label")!,
+							label:
+								element.getAttribute("aria-label") ??
+								(() => {
+									throw new Error("Expected a value");
+								})(),
 							x: box.x,
 							y: box.y,
 							width: box.width,
@@ -82,7 +87,7 @@ test("circuit-untangle", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-untangle", {
 		interactionP95Ms: percentile(times),
-		untangleP95Ms: metric(value, "circuit.untangle")!,
-		graphP95Ms: metric(value, "circuit.graph")!,
+		untangleP95Ms: required(metric(value, "circuit.untangle")),
+		graphP95Ms: required(metric(value, "circuit.graph")),
 	});
 });

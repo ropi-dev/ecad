@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { build } from "esbuild";
-import * as publicShapes from "@ecad/drawing-core/drawing/shapes.ts";
 import { connectTransformedTerminals } from "@ecad/drawing-core/drawing/connected-wire-transforms.ts";
 import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import { drawShape } from "@ecad/drawing-core/drawing/shape-geometry.ts";
+import * as publicShapes from "@ecad/drawing-core/drawing/shapes.ts";
 import { normalizeWireSegments } from "@ecad/drawing-core/drawing/wire-normalization.ts";
+import { build } from "esbuild";
 import * as editorShapes from "#/components/editor/shapes.ts";
 
 test("package and editor shape imports expose the same routing API", () => {
 	assert.equal(publicShapes.drawShape, drawShape);
-	assert.equal(editorShapes.connectTransformedTerminals, connectTransformedTerminals);
+	assert.equal(
+		editorShapes.connectTransformedTerminals,
+		connectTransformedTerminals,
+	);
 	assert.equal(publicShapes.normalizeWireSegments, normalizeWireSegments);
 	const terminal = drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
 	const wire = drawShape(2, "wire", { x: 0, y: 0 }, { x: 10, y: 0 });
@@ -18,7 +21,13 @@ test("package and editor shape imports expose the same routing API", () => {
 	const original = [terminal, wire, neighbor];
 	const replacement = { ...terminal, x: -5, y: 5 };
 	for (const options of [undefined, {}, { rerouteWireEnds: true }]) {
-		const transformed = connectTransformedTerminals([terminal], [replacement], original, 4, options);
+		const transformed = connectTransformedTerminals(
+			[terminal],
+			[replacement],
+			original,
+			4,
+			options,
+		);
 		const updates = new Map(transformed.map((shape) => [shape.id, shape]));
 		const result = normalizeWireSegments([
 			...original.map((shape) => updates.get(shape.id) ?? shape),
@@ -51,10 +60,17 @@ test("shape and schema runtime imports stay acyclic and independent of the UI", 
 		metafile: true,
 	});
 	const inputs = result.metafile.inputs;
-	assert.ok(Object.keys(inputs).every((path) => !/components\/|renderer\/|react/.test(path)));
+	assert.ok(
+		Object.keys(inputs).every(
+			(path) => !/components\/|renderer\/|react/.test(path),
+		),
+	);
 	const visited = new Set<string>();
 	function visit(path: string, ancestors: string[]) {
-		assert.ok(!ancestors.includes(path), `Runtime import cycle: ${[...ancestors, path].join(" -> ")}`);
+		assert.ok(
+			!ancestors.includes(path),
+			`Runtime import cycle: ${[...ancestors, path].join(" -> ")}`,
+		);
 		if (visited.has(path)) return;
 		for (const dependency of inputs[path]?.imports ?? []) {
 			if (!dependency.external) visit(dependency.path, [...ancestors, path]);
@@ -71,5 +87,9 @@ test("shape and schema runtime imports stay acyclic and independent of the UI", 
 		}
 	}
 	collect("packages/drawing-core/src/drawing/schema.ts");
-	assert.ok(![...schemaDependencies].some((path) => /named-nets|terminals|connected-wire|shape-editing/.test(path)));
+	assert.ok(
+		![...schemaDependencies].some((path) =>
+			/named-nets|terminals|connected-wire|shape-editing/.test(path),
+		),
+	);
 });

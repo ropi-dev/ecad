@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { Effect } from "effect";
 import {
 	placeShapesEffect,
-	removeShapesEffect,
 	redoEffect,
+	removeShapesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
@@ -67,12 +67,17 @@ test("placing shapes selects them and history steps restore their own selection"
 });
 
 test("a placed route that splits an existing wire selects only the new legs", () => {
-	const { session } = setup([drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })]);
+	const { session } = setup([
+		drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 }),
+	]);
 	const legs = routeWire(session.nextId(), { x: 50, y: 50 }, { x: 80, y: 0 });
 	session.place(legs, "Draw wire");
 	const selected = [...session.getState().selection];
 	assert.equal(selected.length, 1);
-	assert.equal(session.shapes().find((shape) => shape.id === selected[0])?.rotation, -Math.PI / 2);
+	assert.equal(
+		session.shapes().find((shape) => shape.id === selected[0])?.rotation,
+		-Math.PI / 2,
+	);
 });
 
 test("replacements keep the selection, and failures report an error and drop the draft", () => {
@@ -87,7 +92,11 @@ test("replacements keep the selection, and failures report an error and drop the
 	session.replace([{ ...rectangle(1), x: 30 }], "Move");
 	assert.equal(session.getState().error, "");
 	assert.deepEqual([...session.getState().selection], [1]);
-	assert.equal(store.getSnapshot().history.nodes[store.getSnapshot().history.currentId].label, "Move");
+	assert.equal(
+		store.getSnapshot().history.nodes[store.getSnapshot().history.currentId]
+			.label,
+		"Move",
+	);
 });
 
 test("a command that changes nothing keeps the last error", () => {
@@ -107,7 +116,11 @@ test("commit with an explicit selection, such as deleting, selects that instead"
 	assert.deepEqual([...session.getState().selection], []);
 	assert.equal(session.shapes().length, 1);
 	session.restore(undoEffect);
-	assert.deepEqual([...session.getState().selection], [], "the start step had no saved selection");
+	assert.deepEqual(
+		[...session.getState().selection],
+		[],
+		"the start step had no saved selection",
+	);
 	session.rememberSelection(0, [1, 2]);
 	session.restore(redoEffect);
 	session.restore(undoEffect);
@@ -139,7 +152,11 @@ test("connecting another store resets saved history selections", () => {
 	session.place([rectangle(2, 20)], "Second");
 	session.restore(undoEffect);
 	assert.deepEqual([...session.getState().selection], []);
-	assert.equal(store.getSnapshot().shapes.length, 1, "the first store is untouched");
+	assert.equal(
+		store.getSnapshot().shapes.length,
+		1,
+		"the first store is untouched",
+	);
 });
 
 test("a store switch during an async edit is visible as a changed drawing, and commands follow the new store", () => {
@@ -171,7 +188,10 @@ test("shapes are resolved once per document version and the draft wins while it 
 	assert.equal(session.shapes(), draft);
 	session.preview(null);
 	session.place([rectangle(2, 20)], "Add");
-	assert.deepEqual(session.shapes().map((shape) => shape.x), [105, 125]);
+	assert.deepEqual(
+		session.shapes().map((shape) => shape.x),
+		[105, 125],
+	);
 	assert.equal(calls, 2);
 	// A known resolution is reused instead of resolving again.
 	const known = { input: store.getSnapshot().shapes, output: [rectangle(7)] };
@@ -179,5 +199,8 @@ test("shapes are resolved once per document version and the draft wins while it 
 	assert.equal(session.shapes(), known.output);
 	assert.equal(calls, 2);
 	session.setResolver((shapes) => shapes);
-	assert.deepEqual(session.shapes().map((shape) => shape.x), [5, 25]);
+	assert.deepEqual(
+		session.shapes().map((shape) => shape.x),
+		[5, 25],
+	);
 });

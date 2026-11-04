@@ -20,7 +20,9 @@ const groups: Record<string, string> = {
 /** Open a tool's group when testing the schematic editor. Viewer controls stay direct. */
 export async function toolbarButton(page: Page, name: string) {
 	await page
-		.getByRole("toolbar", { name: /^(View controls|3D view controls|Circuit tools)$/ })
+		.getByRole("toolbar", {
+			name: /^(View controls|3D view controls|Circuit tools)$/,
+		})
 		.waitFor();
 	const group = groups[name];
 	if (group) {

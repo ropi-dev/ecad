@@ -18,7 +18,10 @@ for (const kind of ["line", "wire"] as const) {
 				};
 				const shape = grouped ? createSymbolFromShapes(2, [line]) : line;
 				const drawing = buildDrawingDisplay([shape], new Set());
-				const display = grouped && kind === "wire" ? drawing.connections[0] : drawing.shapes[0];
+				const display =
+					grouped && kind === "wire"
+						? drawing.connections[0]
+						: drawing.shapes[0];
 				const geometry = createShapeGeometry(display.geometry);
 				const material = new MeshBasicMaterial();
 				const mesh = new Mesh(geometry, material);
@@ -32,8 +35,10 @@ for (const kind of ["line", "wire"] as const) {
 						line.y + x * Math.sin(rotation) + y * Math.cos(rotation),
 						10,
 					);
-					return new Raycaster(point, new Vector3(0, 0, -1))
-						.intersectObject(mesh).length > 0;
+					return (
+						new Raycaster(point, new Vector3(0, 0, -1)).intersectObject(mesh)
+							.length > 0
+					);
 				};
 				try {
 					assert.equal(hits(0, 1.9), true);

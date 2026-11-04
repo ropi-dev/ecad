@@ -1,11 +1,12 @@
 import { resolve } from "node:path";
+import { expect, type Page, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
-import { expect, test, type Page } from "@playwright/test";
 import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>
-	JSON.parse((await page.locator("#project-document").textContent())!);
+	JSON.parse(required(await page.locator("#project-document").textContent()));
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 
@@ -15,7 +16,9 @@ test("attributes open and save the reusable project symbol definition", async ({
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/projects.html");
-	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
+	await expect(
+		page.getByLabel("Workspace instructions", { exact: true }),
+	).toBeVisible();
 	const symbol = {
 		format: "ecad-symbol",
 		version: 1,
@@ -101,22 +104,62 @@ test("attributes open and save the reusable project symbol definition", async ({
 	expect(errors).toEqual([]);
 });
 
-test("reusable symbol editing excludes net-symbol placement and role changes", async ({ page }) => {
- await page.goto("/tests/browser/projects.html");
- const file = {format:"ecad-symbol",version:1,units:"mm",id:"geometry-only",name:"Geometry only",description:"",prefix:"U",value:"",shapes:[{kind:"rectangle",x:0,y:0,width:10,height:6}]};
- await (await openProjectFiles(page)).getByLabel("Add symbol files").setInputFiles({name:"geometry-only.ecadsym",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(file))});
- await (await openProjectFiles(page)).getByRole("link",{name:"Open geometry-only.ecadsym",exact:true}).click();
- await expect(page.getByRole("heading",{level:1})).toHaveText("Symbol editor · Geometry only");
- await page.getByRole("button",{name:"Symbols",exact:true}).click();
- const search = page.getByRole("searchbox",{name:"Search symbols",exact:true});
- for (const name of ["Ground","VDD","VCC"]) {
-  await search.fill(name);
-  await expect(page.getByRole("button",{name:`Insert ${name}`,exact:true})).toHaveCount(0);
- }
- await search.fill("Resistor");
- await page.getByRole("button",{name:"Insert Resistor",exact:true}).click();
- await page.locator("canvas").click({position:{x:600,y:450}});
- await expect(page.getByRole("textbox",{name:"Name",exact:true})).toHaveValue("Resistor");
- await expect(page.getByRole("checkbox",{name:"Net symbol",exact:true})).toHaveCount(0);
- if (captureArtifacts) await page.screenshot({path:resolve("/tmp/ecad-browser-artifacts", test.info().testId, "symbol-geometry-only.png")});
+test("reusable symbol editing excludes net-symbol placement and role changes", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	const file = {
+		format: "ecad-symbol",
+		version: 1,
+		units: "mm",
+		id: "geometry-only",
+		name: "Geometry only",
+		description: "",
+		prefix: "U",
+		value: "",
+		shapes: [{ kind: "rectangle", x: 0, y: 0, width: 10, height: 6 }],
+	};
+	await (await openProjectFiles(page))
+		.getByLabel("Add symbol files")
+		.setInputFiles({
+			name: "geometry-only.ecadsym",
+			mimeType: "application/json",
+			buffer: Buffer.from(JSON.stringify(file)),
+		});
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open geometry-only.ecadsym", exact: true })
+		.click();
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+		"Symbol editor · Geometry only",
+	);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	const search = page.getByRole("searchbox", {
+		name: "Search symbols",
+		exact: true,
+	});
+	for (const name of ["Ground", "VDD", "VCC"]) {
+		await search.fill(name);
+		await expect(
+			page.getByRole("button", { name: `Insert ${name}`, exact: true }),
+		).toHaveCount(0);
+	}
+	await search.fill("Resistor");
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveValue("Resistor");
+	await expect(
+		page.getByRole("checkbox", { name: "Net symbol", exact: true }),
+	).toHaveCount(0);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: resolve(
+				"/tmp/ecad-browser-artifacts",
+				test.info().testId,
+				"symbol-geometry-only.png",
+			),
+		});
 });

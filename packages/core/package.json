@@ -1,40 +1,40 @@
 {
-  "name": "@ecad/core",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": "^24.14.0 || >=25.4.0"
-  },
-  "imports": {
-    "#/*": "./src/*"
-  },
-  "exports": {
-    "./*": "./src/*"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@ecad/drawing-core": "workspace:*",
-    "@ecad/default-symbols": "workspace:*",
-    "@hookform/resolvers": "^5.9.2",
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "earcut": "^3.2.3",
-    "effect": "^3.22.2",
-    "fflate": "^0.8.3",
-    "libtess": "^1.2.2",
-    "lucide": "0.577.0",
-    "lucide-react": "^0.577.0",
-    "occt-import-js": "^0.0.23",
-    "radix-ui": "^1.6.7",
-    "react": "^19.2.0",
-    "react-hook-form": "^7.91.0",
-    "smol-toml": "^1.9.0",
-    "svg-path-parser": "^1.1.0",
-    "tailwindcss": "^4.1.18",
-    "three": "^0.186.0",
-    "zod": "^4.6.7",
-    "react-dom": "^19.2.0"
-  }
+	"name": "@ecad/core",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": "^24.14.0 || >=25.4.0"
+	},
+	"imports": {
+		"#/*": "./src/*"
+	},
+	"exports": {
+		"./*": "./src/*"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@ecad/drawing-core": "workspace:*",
+		"@ecad/default-symbols": "workspace:*",
+		"@hookform/resolvers": "^5.9.2",
+		"@modelcontextprotocol/sdk": "^1.32.2",
+		"earcut": "^3.2.3",
+		"effect": "^3.22.2",
+		"fflate": "^0.8.3",
+		"libtess": "^1.2.2",
+		"lucide": "0.577.0",
+		"lucide-react": "^0.577.0",
+		"occt-import-js": "^0.0.23",
+		"radix-ui": "^1.6.7",
+		"react": "^19.2.0",
+		"react-hook-form": "^7.91.0",
+		"smol-toml": "^1.9.0",
+		"svg-path-parser": "^1.1.0",
+		"tailwindcss": "^4.1.18",
+		"three": "^0.186.0",
+		"zod": "^4.6.7",
+		"react-dom": "^19.2.0"
+	}
 }

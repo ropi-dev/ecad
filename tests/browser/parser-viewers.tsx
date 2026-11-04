@@ -1,12 +1,13 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
-import { Viewer3D } from "#/components/viewer/Viewer3D.tsx";
 import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
 import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
+import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
+import { Viewer3D } from "#/components/viewer/Viewer3D.tsx";
 import type { ViewerScene } from "#/engine/scene.ts";
 import { parseGerberFile } from "#/formats/parseGerberFile.ts";
 import { parseStepFile } from "#/formats/parseStepFile.ts";
+import { required } from "../helpers/required.ts";
 import "#/styles.css";
 
 function App() {
@@ -91,7 +92,7 @@ function App() {
 	);
 }
 
-createRoot(document.getElementById("root")!).render(
+createRoot(required(document.getElementById("root"))).render(
 	<StrictMode>
 		<App />
 	</StrictMode>,

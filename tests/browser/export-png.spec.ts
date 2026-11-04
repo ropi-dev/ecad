@@ -1,14 +1,15 @@
-import { toolbarButton } from "./toolbar";
 import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
+import { required } from "../helpers/required.ts";
+import { toolbarButton } from "./toolbar";
 
 async function exportPng(page: Page, filename: string) {
 	const pending = page.waitForEvent("download");
 	await (await toolbarButton(page, "Export PNG")).click();
 	const download = await pending;
 	expect(download.suggestedFilename()).toBe(filename);
-	const bytes = await readFile((await download.path())!);
+	const bytes = await readFile(required(await download.path()));
 	expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
 	const dimensions = await page
 		.locator("canvas")
@@ -26,7 +27,11 @@ async function exportPng(page: Page, filename: string) {
 		const canvas = document.createElement("canvas");
 		canvas.width = image.width;
 		canvas.height = image.height;
-		const context = canvas.getContext("2d")!;
+		const context =
+			canvas.getContext("2d") ??
+			(() => {
+				throw new Error("Expected a value");
+			})();
 		context.drawImage(image, 0, 0);
 		const pixels = context.getImageData(0, 0, image.width, image.height).data;
 		const colors = new Set<number>();

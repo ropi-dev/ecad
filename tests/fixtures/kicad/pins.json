@@ -1,1906 +1,1906 @@
 [
-  {
-    "reference": "U3",
-    "number": "1",
-    "name": "~{CS}",
-    "x": -149.04,
-    "y": 20.23
-  },
-  {
-    "reference": "U3",
-    "number": "2",
-    "name": "DO_IO1",
-    "x": -149.04,
-    "y": 11.34
-  },
-  {
-    "reference": "U3",
-    "number": "3",
-    "name": "~{WP}_IO2",
-    "x": -149.04,
-    "y": 7.53
-  },
-  {
-    "reference": "U3",
-    "number": "4",
-    "name": "GND",
-    "x": -128.72,
-    "y": 3.72
-  },
-  {
-    "reference": "U3",
-    "number": "5",
-    "name": "DI_IO0",
-    "x": -149.04,
-    "y": 13.88
-  },
-  {
-    "reference": "U3",
-    "number": "6",
-    "name": "CLK",
-    "x": -149.04,
-    "y": 17.69
-  },
-  {
-    "reference": "U3",
-    "number": "7",
-    "name": "~{HOLD}_IO3",
-    "x": -149.04,
-    "y": 3.72
-  },
-  {
-    "reference": "U3",
-    "number": "8",
-    "name": "VCC",
-    "x": -128.72,
-    "y": 20.23
-  },
-  {
-    "reference": "#PWR4",
-    "number": "1",
-    "name": "",
-    "x": -126.18,
-    "y": 36.74
-  },
-  {
-    "reference": "#PWR5",
-    "number": "1",
-    "name": "",
-    "x": -127.45,
-    "y": 1.18
-  },
-  {
-    "reference": "R1",
-    "number": "1",
-    "name": "",
-    "x": -151.58,
-    "y": 31.66
-  },
-  {
-    "reference": "R1",
-    "number": "2",
-    "name": "",
-    "x": -151.58,
-    "y": 26.58
-  },
-  {
-    "reference": "C2",
-    "number": "1",
-    "name": "",
-    "x": -119.83,
-    "y": 17.69
-  },
-  {
-    "reference": "C2",
-    "number": "2",
-    "name": "",
-    "x": -119.83,
-    "y": 12.61
-  },
-  {
-    "reference": "#PWR6",
-    "number": "1",
-    "name": "",
-    "x": -119.83,
-    "y": 10.07
-  },
-  {
-    "reference": "J1",
-    "number": "1",
-    "name": "VCC",
-    "x": -169.36,
-    "y": 104.05
-  },
-  {
-    "reference": "J1",
-    "number": "2",
-    "name": "D-",
-    "x": -169.36,
-    "y": 101.51
-  },
-  {
-    "reference": "J1",
-    "number": "3",
-    "name": "D+",
-    "x": -169.36,
-    "y": 98.97
-  },
-  {
-    "reference": "J1",
-    "number": "4",
-    "name": "ID",
-    "x": -169.36,
-    "y": 96.43
-  },
-  {
-    "reference": "J1",
-    "number": "5",
-    "name": "GND",
-    "x": -169.36,
-    "y": 93.89
-  },
-  {
-    "reference": "J1",
-    "number": "6",
-    "name": "SH",
-    "x": -178.25,
-    "y": 111.67
-  },
-  {
-    "reference": "J1",
-    "number": "7",
-    "name": "SH",
-    "x": -175.71,
-    "y": 111.67
-  },
-  {
-    "reference": "J1",
-    "number": "8",
-    "name": "SH",
-    "x": -173.17,
-    "y": 111.67
-  },
-  {
-    "reference": "J1",
-    "number": "9",
-    "name": "SH",
-    "x": -178.25,
-    "y": 86.27
-  },
-  {
-    "reference": "J1",
-    "number": "10",
-    "name": "SH",
-    "x": -175.71,
-    "y": 86.27
-  },
-  {
-    "reference": "J1",
-    "number": "11",
-    "name": "SH",
-    "x": -173.17,
-    "y": 86.27
-  },
-  {
-    "reference": "#PWR21",
-    "number": "1",
-    "name": "",
-    "x": -37.28,
-    "y": -30.57
-  },
-  {
-    "reference": "R7",
-    "number": "1",
-    "name": "",
-    "x": 61.78,
-    "y": 82.46
-  },
-  {
-    "reference": "R7",
-    "number": "2",
-    "name": "",
-    "x": 56.7,
-    "y": 82.46
-  },
-  {
-    "reference": "R8",
-    "number": "1",
-    "name": "",
-    "x": 61.78,
-    "y": 73.57
-  },
-  {
-    "reference": "R8",
-    "number": "2",
-    "name": "",
-    "x": 56.7,
-    "y": 73.57
-  },
-  {
-    "reference": "#PWR1",
-    "number": "1",
-    "name": "",
-    "x": -168.09,
-    "y": 82.46
-  },
-  {
-    "reference": "#PWR26",
-    "number": "1",
-    "name": "",
-    "x": 132.9,
-    "y": -17.87
-  },
-  {
-    "reference": "#PWR29",
-    "number": "1",
-    "name": "",
-    "x": 148.14,
-    "y": -17.87
-  },
-  {
-    "reference": "#PWR22",
-    "number": "1",
-    "name": "",
-    "x": 66.86,
-    "y": 120.56
-  },
-  {
-    "reference": "C12",
-    "number": "1",
-    "name": "",
-    "x": 75.75,
-    "y": 114.21
-  },
-  {
-    "reference": "C12",
-    "number": "2",
-    "name": "",
-    "x": 75.75,
-    "y": 109.13
-  },
-  {
-    "reference": "C13",
-    "number": "1",
-    "name": "",
-    "x": 87.18,
-    "y": 114.21
-  },
-  {
-    "reference": "C13",
-    "number": "2",
-    "name": "",
-    "x": 87.18,
-    "y": 109.13
-  },
-  {
-    "reference": "C14",
-    "number": "1",
-    "name": "",
-    "x": 98.61,
-    "y": 114.21
-  },
-  {
-    "reference": "C14",
-    "number": "2",
-    "name": "",
-    "x": 98.61,
-    "y": 109.13
-  },
-  {
-    "reference": "C15",
-    "number": "1",
-    "name": "",
-    "x": 110.04,
-    "y": 114.21
-  },
-  {
-    "reference": "C15",
-    "number": "2",
-    "name": "",
-    "x": 110.04,
-    "y": 109.13
-  },
-  {
-    "reference": "C16",
-    "number": "1",
-    "name": "",
-    "x": 121.47,
-    "y": 114.21
-  },
-  {
-    "reference": "C16",
-    "number": "2",
-    "name": "",
-    "x": 121.47,
-    "y": 109.13
-  },
-  {
-    "reference": "C17",
-    "number": "1",
-    "name": "",
-    "x": 132.9,
-    "y": 114.21
-  },
-  {
-    "reference": "C17",
-    "number": "2",
-    "name": "",
-    "x": 132.9,
-    "y": 109.13
-  },
-  {
-    "reference": "U2",
-    "number": "1",
-    "name": "GND",
-    "x": -133.8,
-    "y": 97.7
-  },
-  {
-    "reference": "U2",
-    "number": "2",
-    "name": "OUT",
-    "x": -124.91,
-    "y": 102.78
-  },
-  {
-    "reference": "U2",
-    "number": "3",
-    "name": "IN",
-    "x": -142.69,
-    "y": 104.05
-  },
-  {
-    "reference": "U2",
-    "number": "4",
-    "name": "OUT",
-    "x": -124.91,
-    "y": 105.32
-  },
-  {
-    "reference": "#PWR2",
-    "number": "1",
-    "name": "",
-    "x": -161.74,
-    "y": 105.32
-  },
-  {
-    "reference": "#PWR8",
-    "number": "1",
-    "name": "",
-    "x": -133.8,
-    "y": 95.16
-  },
-  {
-    "reference": "#PWR10",
-    "number": "1",
-    "name": "",
-    "x": -116.02,
-    "y": 105.32
-  },
-  {
-    "reference": "C1",
-    "number": "1",
-    "name": "",
-    "x": -151.58,
-    "y": 98.97
-  },
-  {
-    "reference": "C1",
-    "number": "2",
-    "name": "",
-    "x": -151.58,
-    "y": 93.89
-  },
-  {
-    "reference": "C5",
-    "number": "1",
-    "name": "",
-    "x": -116.02,
-    "y": 98.97
-  },
-  {
-    "reference": "C5",
-    "number": "2",
-    "name": "",
-    "x": -116.02,
-    "y": 93.89
-  },
-  {
-    "reference": "#PWR3",
-    "number": "1",
-    "name": "",
-    "x": -151.58,
-    "y": 91.35
-  },
-  {
-    "reference": "#PWR11",
-    "number": "1",
-    "name": "",
-    "x": -116.02,
-    "y": 91.35
-  },
-  {
-    "reference": "#PWR27",
-    "number": "1",
-    "name": "",
-    "x": 89.72,
-    "y": 12.61
-  },
-  {
-    "reference": "C19",
-    "number": "1",
-    "name": "",
-    "x": 89.72,
-    "y": 8.8
-  },
-  {
-    "reference": "C19",
-    "number": "2",
-    "name": "",
-    "x": 89.72,
-    "y": 3.72
-  },
-  {
-    "reference": "#PWR28",
-    "number": "1",
-    "name": "",
-    "x": 89.72,
-    "y": 1.18
-  },
-  {
-    "reference": "#PWR24",
-    "number": "1",
-    "name": "",
-    "x": 102.42,
-    "y": -19.14
-  },
-  {
-    "reference": "#PWR30",
-    "number": "1",
-    "name": "",
-    "x": 178.62,
-    "y": -19.14
-  },
-  {
-    "reference": "#PWR25",
-    "number": "1",
-    "name": "",
-    "x": 132.9,
-    "y": 27.85
-  },
-  {
-    "reference": "J3",
-    "number": "1",
-    "name": "Pin_1",
-    "x": 162.11,
-    "y": 26.58
-  },
-  {
-    "reference": "J3",
-    "number": "2",
-    "name": "Pin_2",
-    "x": 177.35,
-    "y": 26.58
-  },
-  {
-    "reference": "J3",
-    "number": "3",
-    "name": "Pin_3",
-    "x": 162.11,
-    "y": 24.04
-  },
-  {
-    "reference": "J3",
-    "number": "4",
-    "name": "Pin_4",
-    "x": 177.35,
-    "y": 24.04
-  },
-  {
-    "reference": "J3",
-    "number": "5",
-    "name": "Pin_5",
-    "x": 162.11,
-    "y": 21.5
-  },
-  {
-    "reference": "J3",
-    "number": "6",
-    "name": "Pin_6",
-    "x": 177.35,
-    "y": 21.5
-  },
-  {
-    "reference": "J3",
-    "number": "7",
-    "name": "Pin_7",
-    "x": 162.11,
-    "y": 18.96
-  },
-  {
-    "reference": "J3",
-    "number": "8",
-    "name": "Pin_8",
-    "x": 177.35,
-    "y": 18.96
-  },
-  {
-    "reference": "J3",
-    "number": "9",
-    "name": "Pin_9",
-    "x": 162.11,
-    "y": 16.42
-  },
-  {
-    "reference": "J3",
-    "number": "10",
-    "name": "Pin_10",
-    "x": 177.35,
-    "y": 16.42
-  },
-  {
-    "reference": "J3",
-    "number": "11",
-    "name": "Pin_11",
-    "x": 162.11,
-    "y": 13.88
-  },
-  {
-    "reference": "J3",
-    "number": "12",
-    "name": "Pin_12",
-    "x": 177.35,
-    "y": 13.88
-  },
-  {
-    "reference": "J3",
-    "number": "13",
-    "name": "Pin_13",
-    "x": 162.11,
-    "y": 11.34
-  },
-  {
-    "reference": "J3",
-    "number": "14",
-    "name": "Pin_14",
-    "x": 177.35,
-    "y": 11.34
-  },
-  {
-    "reference": "J3",
-    "number": "15",
-    "name": "Pin_15",
-    "x": 162.11,
-    "y": 8.8
-  },
-  {
-    "reference": "J3",
-    "number": "16",
-    "name": "Pin_16",
-    "x": 177.35,
-    "y": 8.8
-  },
-  {
-    "reference": "J3",
-    "number": "17",
-    "name": "Pin_17",
-    "x": 162.11,
-    "y": 6.26
-  },
-  {
-    "reference": "J3",
-    "number": "18",
-    "name": "Pin_18",
-    "x": 177.35,
-    "y": 6.26
-  },
-  {
-    "reference": "J3",
-    "number": "19",
-    "name": "Pin_19",
-    "x": 162.11,
-    "y": 3.72
-  },
-  {
-    "reference": "J3",
-    "number": "20",
-    "name": "Pin_20",
-    "x": 177.35,
-    "y": 3.72
-  },
-  {
-    "reference": "J3",
-    "number": "21",
-    "name": "Pin_21",
-    "x": 162.11,
-    "y": 1.18
-  },
-  {
-    "reference": "J3",
-    "number": "22",
-    "name": "Pin_22",
-    "x": 177.35,
-    "y": 1.18
-  },
-  {
-    "reference": "J3",
-    "number": "23",
-    "name": "Pin_23",
-    "x": 162.11,
-    "y": -1.36
-  },
-  {
-    "reference": "J3",
-    "number": "24",
-    "name": "Pin_24",
-    "x": 177.35,
-    "y": -1.36
-  },
-  {
-    "reference": "J3",
-    "number": "25",
-    "name": "Pin_25",
-    "x": 162.11,
-    "y": -3.9
-  },
-  {
-    "reference": "J3",
-    "number": "26",
-    "name": "Pin_26",
-    "x": 177.35,
-    "y": -3.9
-  },
-  {
-    "reference": "J3",
-    "number": "27",
-    "name": "Pin_27",
-    "x": 162.11,
-    "y": -6.44
-  },
-  {
-    "reference": "J3",
-    "number": "28",
-    "name": "Pin_28",
-    "x": 177.35,
-    "y": -6.44
-  },
-  {
-    "reference": "J3",
-    "number": "29",
-    "name": "Pin_29",
-    "x": 162.11,
-    "y": -8.98
-  },
-  {
-    "reference": "J3",
-    "number": "30",
-    "name": "Pin_30",
-    "x": 177.35,
-    "y": -8.98
-  },
-  {
-    "reference": "J3",
-    "number": "31",
-    "name": "Pin_31",
-    "x": 162.11,
-    "y": -11.52
-  },
-  {
-    "reference": "J3",
-    "number": "32",
-    "name": "Pin_32",
-    "x": 177.35,
-    "y": -11.52
-  },
-  {
-    "reference": "J3",
-    "number": "33",
-    "name": "Pin_33",
-    "x": 162.11,
-    "y": -14.06
-  },
-  {
-    "reference": "J3",
-    "number": "34",
-    "name": "Pin_34",
-    "x": 177.35,
-    "y": -14.06
-  },
-  {
-    "reference": "J3",
-    "number": "35",
-    "name": "Pin_35",
-    "x": 162.11,
-    "y": -16.6
-  },
-  {
-    "reference": "J3",
-    "number": "36",
-    "name": "Pin_36",
-    "x": 177.35,
-    "y": -16.6
-  },
-  {
-    "reference": "J2",
-    "number": "1",
-    "name": "Pin_1",
-    "x": 103.69,
-    "y": 26.58
-  },
-  {
-    "reference": "J2",
-    "number": "2",
-    "name": "Pin_2",
-    "x": 118.93,
-    "y": 26.58
-  },
-  {
-    "reference": "J2",
-    "number": "3",
-    "name": "Pin_3",
-    "x": 103.69,
-    "y": 24.04
-  },
-  {
-    "reference": "J2",
-    "number": "4",
-    "name": "Pin_4",
-    "x": 118.93,
-    "y": 24.04
-  },
-  {
-    "reference": "J2",
-    "number": "5",
-    "name": "Pin_5",
-    "x": 103.69,
-    "y": 21.5
-  },
-  {
-    "reference": "J2",
-    "number": "6",
-    "name": "Pin_6",
-    "x": 118.93,
-    "y": 21.5
-  },
-  {
-    "reference": "J2",
-    "number": "7",
-    "name": "Pin_7",
-    "x": 103.69,
-    "y": 18.96
-  },
-  {
-    "reference": "J2",
-    "number": "8",
-    "name": "Pin_8",
-    "x": 118.93,
-    "y": 18.96
-  },
-  {
-    "reference": "J2",
-    "number": "9",
-    "name": "Pin_9",
-    "x": 103.69,
-    "y": 16.42
-  },
-  {
-    "reference": "J2",
-    "number": "10",
-    "name": "Pin_10",
-    "x": 118.93,
-    "y": 16.42
-  },
-  {
-    "reference": "J2",
-    "number": "11",
-    "name": "Pin_11",
-    "x": 103.69,
-    "y": 13.88
-  },
-  {
-    "reference": "J2",
-    "number": "12",
-    "name": "Pin_12",
-    "x": 118.93,
-    "y": 13.88
-  },
-  {
-    "reference": "J2",
-    "number": "13",
-    "name": "Pin_13",
-    "x": 103.69,
-    "y": 11.34
-  },
-  {
-    "reference": "J2",
-    "number": "14",
-    "name": "Pin_14",
-    "x": 118.93,
-    "y": 11.34
-  },
-  {
-    "reference": "J2",
-    "number": "15",
-    "name": "Pin_15",
-    "x": 103.69,
-    "y": 8.8
-  },
-  {
-    "reference": "J2",
-    "number": "16",
-    "name": "Pin_16",
-    "x": 118.93,
-    "y": 8.8
-  },
-  {
-    "reference": "J2",
-    "number": "17",
-    "name": "Pin_17",
-    "x": 103.69,
-    "y": 6.26
-  },
-  {
-    "reference": "J2",
-    "number": "18",
-    "name": "Pin_18",
-    "x": 118.93,
-    "y": 6.26
-  },
-  {
-    "reference": "J2",
-    "number": "19",
-    "name": "Pin_19",
-    "x": 103.69,
-    "y": 3.72
-  },
-  {
-    "reference": "J2",
-    "number": "20",
-    "name": "Pin_20",
-    "x": 118.93,
-    "y": 3.72
-  },
-  {
-    "reference": "J2",
-    "number": "21",
-    "name": "Pin_21",
-    "x": 103.69,
-    "y": 1.18
-  },
-  {
-    "reference": "J2",
-    "number": "22",
-    "name": "Pin_22",
-    "x": 118.93,
-    "y": 1.18
-  },
-  {
-    "reference": "J2",
-    "number": "23",
-    "name": "Pin_23",
-    "x": 103.69,
-    "y": -1.36
-  },
-  {
-    "reference": "J2",
-    "number": "24",
-    "name": "Pin_24",
-    "x": 118.93,
-    "y": -1.36
-  },
-  {
-    "reference": "J2",
-    "number": "25",
-    "name": "Pin_25",
-    "x": 103.69,
-    "y": -3.9
-  },
-  {
-    "reference": "J2",
-    "number": "26",
-    "name": "Pin_26",
-    "x": 118.93,
-    "y": -3.9
-  },
-  {
-    "reference": "J2",
-    "number": "27",
-    "name": "Pin_27",
-    "x": 103.69,
-    "y": -6.44
-  },
-  {
-    "reference": "J2",
-    "number": "28",
-    "name": "Pin_28",
-    "x": 118.93,
-    "y": -6.44
-  },
-  {
-    "reference": "J2",
-    "number": "29",
-    "name": "Pin_29",
-    "x": 103.69,
-    "y": -8.98
-  },
-  {
-    "reference": "J2",
-    "number": "30",
-    "name": "Pin_30",
-    "x": 118.93,
-    "y": -8.98
-  },
-  {
-    "reference": "J2",
-    "number": "31",
-    "name": "Pin_31",
-    "x": 103.69,
-    "y": -11.52
-  },
-  {
-    "reference": "J2",
-    "number": "32",
-    "name": "Pin_32",
-    "x": 118.93,
-    "y": -11.52
-  },
-  {
-    "reference": "J2",
-    "number": "33",
-    "name": "Pin_33",
-    "x": 103.69,
-    "y": -14.06
-  },
-  {
-    "reference": "J2",
-    "number": "34",
-    "name": "Pin_34",
-    "x": 118.93,
-    "y": -14.06
-  },
-  {
-    "reference": "J2",
-    "number": "35",
-    "name": "Pin_35",
-    "x": 103.69,
-    "y": -16.6
-  },
-  {
-    "reference": "J2",
-    "number": "36",
-    "name": "Pin_36",
-    "x": 118.93,
-    "y": -16.6
-  },
-  {
-    "reference": "#PWR13",
-    "number": "1",
-    "name": "",
-    "x": 63.05,
-    "y": 45.63
-  },
-  {
-    "reference": "C11",
-    "number": "1",
-    "name": "",
-    "x": 18.6,
-    "y": 114.21
-  },
-  {
-    "reference": "C11",
-    "number": "2",
-    "name": "",
-    "x": 18.6,
-    "y": 109.13
-  },
-  {
-    "reference": "R4",
-    "number": "1",
-    "name": "",
-    "x": 71.94,
-    "y": -67.4
-  },
-  {
-    "reference": "R4",
-    "number": "2",
-    "name": "",
-    "x": 66.86,
-    "y": -67.4
-  },
-  {
-    "reference": "#PWR17",
-    "number": "1",
-    "name": "",
-    "x": -182.06,
-    "y": -24.22
-  },
-  {
-    "reference": "#PWR19",
-    "number": "1",
-    "name": "",
-    "x": 63.05,
-    "y": 20.23
-  },
-  {
-    "reference": "U1",
-    "number": "1",
-    "name": "IOVDD",
-    "x": -34.74,
-    "y": 12.61
-  },
-  {
-    "reference": "U1",
-    "number": "2",
-    "name": "GPIO0",
-    "x": -34.74,
-    "y": 10.07
-  },
-  {
-    "reference": "U1",
-    "number": "3",
-    "name": "GPIO1",
-    "x": -34.74,
-    "y": 7.53
-  },
-  {
-    "reference": "U1",
-    "number": "4",
-    "name": "GPIO2",
-    "x": -34.74,
-    "y": 4.99
-  },
-  {
-    "reference": "U1",
-    "number": "5",
-    "name": "GPIO3",
-    "x": -34.74,
-    "y": 2.45
-  },
-  {
-    "reference": "U1",
-    "number": "6",
-    "name": "DVDD",
-    "x": -34.74,
-    "y": -0.09
-  },
-  {
-    "reference": "U1",
-    "number": "7",
-    "name": "GPIO4",
-    "x": -34.74,
-    "y": -2.63
-  },
-  {
-    "reference": "U1",
-    "number": "8",
-    "name": "GPIO5",
-    "x": -34.74,
-    "y": -5.17
-  },
-  {
-    "reference": "U1",
-    "number": "9",
-    "name": "GPIO6",
-    "x": -34.74,
-    "y": -7.71
-  },
-  {
-    "reference": "U1",
-    "number": "10",
-    "name": "GPIO7",
-    "x": -34.74,
-    "y": -10.25
-  },
-  {
-    "reference": "U1",
-    "number": "11",
-    "name": "IOVDD",
-    "x": -34.74,
-    "y": -12.79
-  },
-  {
-    "reference": "U1",
-    "number": "12",
-    "name": "GPIO8",
-    "x": -34.74,
-    "y": -15.33
-  },
-  {
-    "reference": "U1",
-    "number": "13",
-    "name": "GPIO9",
-    "x": -34.74,
-    "y": -17.87
-  },
-  {
-    "reference": "U1",
-    "number": "14",
-    "name": "GPIO10",
-    "x": -34.74,
-    "y": -20.41
-  },
-  {
-    "reference": "U1",
-    "number": "15",
-    "name": "GPIO11",
-    "x": -34.74,
-    "y": -22.95
-  },
-  {
-    "reference": "U1",
-    "number": "16",
-    "name": "GPIO12",
-    "x": -18.23,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "17",
-    "name": "GPIO13",
-    "x": -15.69,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "18",
-    "name": "GPIO14",
-    "x": -13.15,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "19",
-    "name": "GPIO15",
-    "x": -10.61,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "20",
-    "name": "IOVDD",
-    "x": -8.07,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "21",
-    "name": "XIN",
-    "x": -5.53,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "22",
-    "name": "XOUT",
-    "x": -2.99,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "23",
-    "name": "DVDD",
-    "x": -0.45,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "24",
-    "name": "SWCLK",
-    "x": 2.09,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "25",
-    "name": "SWDIO",
-    "x": 4.63,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "26",
-    "name": "RUN",
-    "x": 7.17,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "27",
-    "name": "GPIO16",
-    "x": 9.71,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "28",
-    "name": "GPIO17",
-    "x": 12.25,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "29",
-    "name": "GPIO18",
-    "x": 14.79,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "30",
-    "name": "IOVDD",
-    "x": 17.33,
-    "y": -36.92
-  },
-  {
-    "reference": "U1",
-    "number": "31",
-    "name": "GPIO19",
-    "x": 33.84,
-    "y": -22.95
-  },
-  {
-    "reference": "U1",
-    "number": "32",
-    "name": "GPIO20",
-    "x": 33.84,
-    "y": -20.41
-  },
-  {
-    "reference": "U1",
-    "number": "33",
-    "name": "GPIO21",
-    "x": 33.84,
-    "y": -17.87
-  },
-  {
-    "reference": "U1",
-    "number": "34",
-    "name": "GPIO22",
-    "x": 33.84,
-    "y": -15.33
-  },
-  {
-    "reference": "U1",
-    "number": "35",
-    "name": "GPIO23",
-    "x": 33.84,
-    "y": -12.79
-  },
-  {
-    "reference": "U1",
-    "number": "36",
-    "name": "GPIO24",
-    "x": 33.84,
-    "y": -10.25
-  },
-  {
-    "reference": "U1",
-    "number": "37",
-    "name": "GPIO25",
-    "x": 33.84,
-    "y": -7.71
-  },
-  {
-    "reference": "U1",
-    "number": "38",
-    "name": "IOVDD",
-    "x": 33.84,
-    "y": -5.17
-  },
-  {
-    "reference": "U1",
-    "number": "39",
-    "name": "DVDD",
-    "x": 33.84,
-    "y": -2.63
-  },
-  {
-    "reference": "U1",
-    "number": "40",
-    "name": "GPIO26_ADC0",
-    "x": 33.84,
-    "y": -0.09
-  },
-  {
-    "reference": "U1",
-    "number": "41",
-    "name": "GPIO27_ADC1",
-    "x": 33.84,
-    "y": 2.45
-  },
-  {
-    "reference": "U1",
-    "number": "42",
-    "name": "GPIO28_ADC2",
-    "x": 33.84,
-    "y": 4.99
-  },
-  {
-    "reference": "U1",
-    "number": "43",
-    "name": "GPIO29_ADC3",
-    "x": 33.84,
-    "y": 7.53
-  },
-  {
-    "reference": "U1",
-    "number": "44",
-    "name": "ADC_AVDD",
-    "x": 33.84,
-    "y": 10.07
-  },
-  {
-    "reference": "U1",
-    "number": "45",
-    "name": "IOVDD",
-    "x": 33.84,
-    "y": 12.61
-  },
-  {
-    "reference": "U1",
-    "number": "46",
-    "name": "VREG_AVDD",
-    "x": 21.14,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "47",
-    "name": "VREG_PGND",
-    "x": 18.6,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "48",
-    "name": "VREG_LX",
-    "x": 16.06,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "49",
-    "name": "VREG_VIN",
-    "x": 13.52,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "50",
-    "name": "VREG_FB",
-    "x": 10.98,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "51",
-    "name": "USB_DM",
-    "x": 5.9,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "52",
-    "name": "USB_DP",
-    "x": 3.36,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "53",
-    "name": "USB_OTP_VDD",
-    "x": 0.82,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "54",
-    "name": "QSPI_IOVDD",
-    "x": -4.26,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "55",
-    "name": "QSPI_SD3",
-    "x": -9.34,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "56",
-    "name": "QSPI_SCLK",
-    "x": -11.88,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "57",
-    "name": "QSPI_SD0",
-    "x": -14.42,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "58",
-    "name": "QSPI_SD2",
-    "x": -16.96,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "59",
-    "name": "QSPI_SD1",
-    "x": -19.5,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "60",
-    "name": "QSPI_~{SS}",
-    "x": -22.04,
-    "y": 26.58
-  },
-  {
-    "reference": "U1",
-    "number": "61",
-    "name": "GND",
-    "x": -34.74,
-    "y": -28.03
-  },
-  {
-    "reference": "C18",
-    "number": "1",
-    "name": "",
-    "x": 144.33,
-    "y": 114.21
-  },
-  {
-    "reference": "C18",
-    "number": "2",
-    "name": "",
-    "x": 144.33,
-    "y": 109.13
-  },
-  {
-    "reference": "#PWR7",
-    "number": "1",
-    "name": "",
-    "x": -114.75,
-    "y": -78.83
-  },
-  {
-    "reference": "SW2",
-    "number": "1",
-    "name": "1",
-    "x": 60.51,
-    "y": -67.4
-  },
-  {
-    "reference": "SW2",
-    "number": "2",
-    "name": "2",
-    "x": 60.51,
-    "y": -69.94
-  },
-  {
-    "reference": "SW2",
-    "number": "3",
-    "name": "3",
-    "x": 47.81,
-    "y": -67.4
-  },
-  {
-    "reference": "SW2",
-    "number": "4",
-    "name": "4",
-    "x": 47.81,
-    "y": -69.94
-  },
-  {
-    "reference": "R6",
-    "number": "1",
-    "name": "",
-    "x": -182.06,
-    "y": 12.61
-  },
-  {
-    "reference": "R6",
-    "number": "2",
-    "name": "",
-    "x": -182.06,
-    "y": 7.53
-  },
-  {
-    "reference": "C10",
-    "number": "1",
-    "name": "",
-    "x": 7.17,
-    "y": 114.21
-  },
-  {
-    "reference": "C10",
-    "number": "2",
-    "name": "",
-    "x": 7.17,
-    "y": 109.13
-  },
-  {
-    "reference": "#PWR034",
-    "number": "1",
-    "name": "",
-    "x": -4.26,
-    "y": 40.55
-  },
-  {
-    "reference": "R3",
-    "number": "1",
-    "name": "",
-    "x": 63.05,
-    "y": 41.82
-  },
-  {
-    "reference": "R3",
-    "number": "2",
-    "name": "",
-    "x": 63.05,
-    "y": 36.74
-  },
-  {
-    "reference": "#PWR035",
-    "number": "1",
-    "name": "",
-    "x": -57.6,
-    "y": 12.61
-  },
-  {
-    "reference": "C6",
-    "number": "1",
-    "name": "",
-    "x": 36.38,
-    "y": 49.44
-  },
-  {
-    "reference": "C6",
-    "number": "2",
-    "name": "",
-    "x": 36.38,
-    "y": 44.36
-  },
-  {
-    "reference": "#PWR31",
-    "number": "1",
-    "name": "",
-    "x": 122.74,
-    "y": -63.59
-  },
-  {
-    "reference": "#PWR038",
-    "number": "1",
-    "name": "",
-    "x": 61.78,
-    "y": -5.17
-  },
-  {
-    "reference": "#PWR18",
-    "number": "1",
-    "name": "",
-    "x": -4.26,
-    "y": 101.51
-  },
-  {
-    "reference": "C4",
-    "number": "1",
-    "name": "",
-    "x": -100.78,
-    "y": -76.29
-  },
-  {
-    "reference": "C4",
-    "number": "2",
-    "name": "",
-    "x": -105.86,
-    "y": -76.29
-  },
-  {
-    "reference": "C7",
-    "number": "1",
-    "name": "",
-    "x": 24.95,
-    "y": 49.44
-  },
-  {
-    "reference": "C7",
-    "number": "2",
-    "name": "",
-    "x": 24.95,
-    "y": 44.36
-  },
-  {
-    "reference": "#PWR040",
-    "number": "1",
-    "name": "",
-    "x": 56.7,
-    "y": 12.61
-  },
-  {
-    "reference": "C9",
-    "number": "1",
-    "name": "",
-    "x": 63.05,
-    "y": 26.58
-  },
-  {
-    "reference": "C9",
-    "number": "2",
-    "name": "",
-    "x": 63.05,
-    "y": 21.5
-  },
-  {
-    "reference": "#PWR039",
-    "number": "1",
-    "name": "",
-    "x": 56.7,
-    "y": -2.63
-  },
-  {
-    "reference": "#PWR20",
-    "number": "1",
-    "name": "",
-    "x": 27.49,
-    "y": 120.56
-  },
-  {
-    "reference": "J4",
-    "number": "1",
-    "name": "P1",
-    "x": 125.28,
-    "y": -48.35
-  },
-  {
-    "reference": "J4",
-    "number": "2",
-    "name": "P2",
-    "x": 125.28,
-    "y": -50.89
-  },
-  {
-    "reference": "J4",
-    "number": "3",
-    "name": "P3",
-    "x": 125.28,
-    "y": -53.43
-  },
-  {
-    "reference": "J4",
-    "number": "4",
-    "name": "SH1",
-    "x": 125.28,
-    "y": -58.51
-  },
-  {
-    "reference": "J4",
-    "number": "5",
-    "name": "SH2",
-    "x": 125.28,
-    "y": -61.05
-  },
-  {
-    "reference": "R2",
-    "number": "1",
-    "name": "",
-    "x": -72.84,
-    "y": -76.29
-  },
-  {
-    "reference": "R2",
-    "number": "2",
-    "name": "",
-    "x": -77.92,
-    "y": -76.29
-  },
-  {
-    "reference": "#PWR037",
-    "number": "1",
-    "name": "",
-    "x": -57.6,
-    "y": -0.09
-  },
-  {
-    "reference": "#PWR036",
-    "number": "1",
-    "name": "",
-    "x": -57.6,
-    "y": -12.79
-  },
-  {
-    "reference": "C8",
-    "number": "1",
-    "name": "",
-    "x": -4.26,
-    "y": 114.21
-  },
-  {
-    "reference": "C8",
-    "number": "2",
-    "name": "",
-    "x": -4.26,
-    "y": 109.13
-  },
-  {
-    "reference": "#PWR032",
-    "number": "1",
-    "name": "",
-    "x": -183.33,
-    "y": 115.48
-  },
-  {
-    "reference": "SW1",
-    "number": "1",
-    "name": "1",
-    "x": -182.06,
-    "y": -21.68
-  },
-  {
-    "reference": "SW1",
-    "number": "2",
-    "name": "2",
-    "x": -179.52,
-    "y": -21.68
-  },
-  {
-    "reference": "SW1",
-    "number": "3",
-    "name": "3",
-    "x": -182.06,
-    "y": -8.98
-  },
-  {
-    "reference": "SW1",
-    "number": "4",
-    "name": "4",
-    "x": -179.52,
-    "y": -8.98
-  },
-  {
-    "reference": "#PWR033",
-    "number": "1",
-    "name": "",
-    "x": 36.38,
-    "y": 60.87
-  },
-  {
-    "reference": "R10",
-    "number": "1",
-    "name": "",
-    "x": -169.36,
-    "y": 20.23
-  },
-  {
-    "reference": "R10",
-    "number": "2",
-    "name": "",
-    "x": -174.44,
-    "y": 20.23
-  },
-  {
-    "reference": "R9",
-    "number": "1",
-    "name": "",
-    "x": -174.44,
-    "y": 29.12
-  },
-  {
-    "reference": "R9",
-    "number": "2",
-    "name": "",
-    "x": -169.36,
-    "y": 29.12
-  },
-  {
-    "reference": "#PWR042",
-    "number": "1",
-    "name": "",
-    "x": 4.63,
-    "y": -59.78
-  },
-  {
-    "reference": "#PWR23",
-    "number": "1",
-    "name": "",
-    "x": 144.33,
-    "y": 103.415
-  },
-  {
-    "reference": "#PWR09",
-    "number": "1",
-    "name": "",
-    "x": 22.41,
-    "y": -59.78
-  },
-  {
-    "reference": "L1",
-    "number": "1",
-    "name": "",
-    "x": 16.06,
-    "y": 49.44
-  },
-  {
-    "reference": "L1",
-    "number": "2",
-    "name": "",
-    "x": 16.06,
-    "y": 44.36
-  },
-  {
-    "reference": "X1",
-    "number": "1",
-    "name": "1",
-    "x": -93.16,
-    "y": -62.32
-  },
-  {
-    "reference": "X1",
-    "number": "2",
-    "name": "2",
-    "x": -99.51,
-    "y": -66.13
-  },
-  {
-    "reference": "X1",
-    "number": "3",
-    "name": "3",
-    "x": -93.16,
-    "y": -75.02
-  },
-  {
-    "reference": "X1",
-    "number": "4",
-    "name": "4",
-    "x": -99.51,
-    "y": -71.21
-  },
-  {
-    "reference": "#PWR041",
-    "number": "1",
-    "name": "",
-    "x": -13.15,
-    "y": -59.78
-  },
-  {
-    "reference": "#PWR15",
-    "number": "1",
-    "name": "",
-    "x": 79.56,
-    "y": -68.67
-  },
-  {
-    "reference": "#PWR14",
-    "number": "1",
-    "name": "",
-    "x": 36.38,
-    "y": 38.01
-  },
-  {
-    "reference": "C3",
-    "number": "1",
-    "name": "",
-    "x": -105.86,
-    "y": -61.05
-  },
-  {
-    "reference": "C3",
-    "number": "2",
-    "name": "",
-    "x": -100.78,
-    "y": -61.05
-  },
-  {
-    "reference": "#PWR16",
-    "number": "1",
-    "name": "",
-    "x": 24.95,
-    "y": 60.87
-  }
+	{
+		"reference": "U3",
+		"number": "1",
+		"name": "~{CS}",
+		"x": -149.04,
+		"y": 20.23
+	},
+	{
+		"reference": "U3",
+		"number": "2",
+		"name": "DO_IO1",
+		"x": -149.04,
+		"y": 11.34
+	},
+	{
+		"reference": "U3",
+		"number": "3",
+		"name": "~{WP}_IO2",
+		"x": -149.04,
+		"y": 7.53
+	},
+	{
+		"reference": "U3",
+		"number": "4",
+		"name": "GND",
+		"x": -128.72,
+		"y": 3.72
+	},
+	{
+		"reference": "U3",
+		"number": "5",
+		"name": "DI_IO0",
+		"x": -149.04,
+		"y": 13.88
+	},
+	{
+		"reference": "U3",
+		"number": "6",
+		"name": "CLK",
+		"x": -149.04,
+		"y": 17.69
+	},
+	{
+		"reference": "U3",
+		"number": "7",
+		"name": "~{HOLD}_IO3",
+		"x": -149.04,
+		"y": 3.72
+	},
+	{
+		"reference": "U3",
+		"number": "8",
+		"name": "VCC",
+		"x": -128.72,
+		"y": 20.23
+	},
+	{
+		"reference": "#PWR4",
+		"number": "1",
+		"name": "",
+		"x": -126.18,
+		"y": 36.74
+	},
+	{
+		"reference": "#PWR5",
+		"number": "1",
+		"name": "",
+		"x": -127.45,
+		"y": 1.18
+	},
+	{
+		"reference": "R1",
+		"number": "1",
+		"name": "",
+		"x": -151.58,
+		"y": 31.66
+	},
+	{
+		"reference": "R1",
+		"number": "2",
+		"name": "",
+		"x": -151.58,
+		"y": 26.58
+	},
+	{
+		"reference": "C2",
+		"number": "1",
+		"name": "",
+		"x": -119.83,
+		"y": 17.69
+	},
+	{
+		"reference": "C2",
+		"number": "2",
+		"name": "",
+		"x": -119.83,
+		"y": 12.61
+	},
+	{
+		"reference": "#PWR6",
+		"number": "1",
+		"name": "",
+		"x": -119.83,
+		"y": 10.07
+	},
+	{
+		"reference": "J1",
+		"number": "1",
+		"name": "VCC",
+		"x": -169.36,
+		"y": 104.05
+	},
+	{
+		"reference": "J1",
+		"number": "2",
+		"name": "D-",
+		"x": -169.36,
+		"y": 101.51
+	},
+	{
+		"reference": "J1",
+		"number": "3",
+		"name": "D+",
+		"x": -169.36,
+		"y": 98.97
+	},
+	{
+		"reference": "J1",
+		"number": "4",
+		"name": "ID",
+		"x": -169.36,
+		"y": 96.43
+	},
+	{
+		"reference": "J1",
+		"number": "5",
+		"name": "GND",
+		"x": -169.36,
+		"y": 93.89
+	},
+	{
+		"reference": "J1",
+		"number": "6",
+		"name": "SH",
+		"x": -178.25,
+		"y": 111.67
+	},
+	{
+		"reference": "J1",
+		"number": "7",
+		"name": "SH",
+		"x": -175.71,
+		"y": 111.67
+	},
+	{
+		"reference": "J1",
+		"number": "8",
+		"name": "SH",
+		"x": -173.17,
+		"y": 111.67
+	},
+	{
+		"reference": "J1",
+		"number": "9",
+		"name": "SH",
+		"x": -178.25,
+		"y": 86.27
+	},
+	{
+		"reference": "J1",
+		"number": "10",
+		"name": "SH",
+		"x": -175.71,
+		"y": 86.27
+	},
+	{
+		"reference": "J1",
+		"number": "11",
+		"name": "SH",
+		"x": -173.17,
+		"y": 86.27
+	},
+	{
+		"reference": "#PWR21",
+		"number": "1",
+		"name": "",
+		"x": -37.28,
+		"y": -30.57
+	},
+	{
+		"reference": "R7",
+		"number": "1",
+		"name": "",
+		"x": 61.78,
+		"y": 82.46
+	},
+	{
+		"reference": "R7",
+		"number": "2",
+		"name": "",
+		"x": 56.7,
+		"y": 82.46
+	},
+	{
+		"reference": "R8",
+		"number": "1",
+		"name": "",
+		"x": 61.78,
+		"y": 73.57
+	},
+	{
+		"reference": "R8",
+		"number": "2",
+		"name": "",
+		"x": 56.7,
+		"y": 73.57
+	},
+	{
+		"reference": "#PWR1",
+		"number": "1",
+		"name": "",
+		"x": -168.09,
+		"y": 82.46
+	},
+	{
+		"reference": "#PWR26",
+		"number": "1",
+		"name": "",
+		"x": 132.9,
+		"y": -17.87
+	},
+	{
+		"reference": "#PWR29",
+		"number": "1",
+		"name": "",
+		"x": 148.14,
+		"y": -17.87
+	},
+	{
+		"reference": "#PWR22",
+		"number": "1",
+		"name": "",
+		"x": 66.86,
+		"y": 120.56
+	},
+	{
+		"reference": "C12",
+		"number": "1",
+		"name": "",
+		"x": 75.75,
+		"y": 114.21
+	},
+	{
+		"reference": "C12",
+		"number": "2",
+		"name": "",
+		"x": 75.75,
+		"y": 109.13
+	},
+	{
+		"reference": "C13",
+		"number": "1",
+		"name": "",
+		"x": 87.18,
+		"y": 114.21
+	},
+	{
+		"reference": "C13",
+		"number": "2",
+		"name": "",
+		"x": 87.18,
+		"y": 109.13
+	},
+	{
+		"reference": "C14",
+		"number": "1",
+		"name": "",
+		"x": 98.61,
+		"y": 114.21
+	},
+	{
+		"reference": "C14",
+		"number": "2",
+		"name": "",
+		"x": 98.61,
+		"y": 109.13
+	},
+	{
+		"reference": "C15",
+		"number": "1",
+		"name": "",
+		"x": 110.04,
+		"y": 114.21
+	},
+	{
+		"reference": "C15",
+		"number": "2",
+		"name": "",
+		"x": 110.04,
+		"y": 109.13
+	},
+	{
+		"reference": "C16",
+		"number": "1",
+		"name": "",
+		"x": 121.47,
+		"y": 114.21
+	},
+	{
+		"reference": "C16",
+		"number": "2",
+		"name": "",
+		"x": 121.47,
+		"y": 109.13
+	},
+	{
+		"reference": "C17",
+		"number": "1",
+		"name": "",
+		"x": 132.9,
+		"y": 114.21
+	},
+	{
+		"reference": "C17",
+		"number": "2",
+		"name": "",
+		"x": 132.9,
+		"y": 109.13
+	},
+	{
+		"reference": "U2",
+		"number": "1",
+		"name": "GND",
+		"x": -133.8,
+		"y": 97.7
+	},
+	{
+		"reference": "U2",
+		"number": "2",
+		"name": "OUT",
+		"x": -124.91,
+		"y": 102.78
+	},
+	{
+		"reference": "U2",
+		"number": "3",
+		"name": "IN",
+		"x": -142.69,
+		"y": 104.05
+	},
+	{
+		"reference": "U2",
+		"number": "4",
+		"name": "OUT",
+		"x": -124.91,
+		"y": 105.32
+	},
+	{
+		"reference": "#PWR2",
+		"number": "1",
+		"name": "",
+		"x": -161.74,
+		"y": 105.32
+	},
+	{
+		"reference": "#PWR8",
+		"number": "1",
+		"name": "",
+		"x": -133.8,
+		"y": 95.16
+	},
+	{
+		"reference": "#PWR10",
+		"number": "1",
+		"name": "",
+		"x": -116.02,
+		"y": 105.32
+	},
+	{
+		"reference": "C1",
+		"number": "1",
+		"name": "",
+		"x": -151.58,
+		"y": 98.97
+	},
+	{
+		"reference": "C1",
+		"number": "2",
+		"name": "",
+		"x": -151.58,
+		"y": 93.89
+	},
+	{
+		"reference": "C5",
+		"number": "1",
+		"name": "",
+		"x": -116.02,
+		"y": 98.97
+	},
+	{
+		"reference": "C5",
+		"number": "2",
+		"name": "",
+		"x": -116.02,
+		"y": 93.89
+	},
+	{
+		"reference": "#PWR3",
+		"number": "1",
+		"name": "",
+		"x": -151.58,
+		"y": 91.35
+	},
+	{
+		"reference": "#PWR11",
+		"number": "1",
+		"name": "",
+		"x": -116.02,
+		"y": 91.35
+	},
+	{
+		"reference": "#PWR27",
+		"number": "1",
+		"name": "",
+		"x": 89.72,
+		"y": 12.61
+	},
+	{
+		"reference": "C19",
+		"number": "1",
+		"name": "",
+		"x": 89.72,
+		"y": 8.8
+	},
+	{
+		"reference": "C19",
+		"number": "2",
+		"name": "",
+		"x": 89.72,
+		"y": 3.72
+	},
+	{
+		"reference": "#PWR28",
+		"number": "1",
+		"name": "",
+		"x": 89.72,
+		"y": 1.18
+	},
+	{
+		"reference": "#PWR24",
+		"number": "1",
+		"name": "",
+		"x": 102.42,
+		"y": -19.14
+	},
+	{
+		"reference": "#PWR30",
+		"number": "1",
+		"name": "",
+		"x": 178.62,
+		"y": -19.14
+	},
+	{
+		"reference": "#PWR25",
+		"number": "1",
+		"name": "",
+		"x": 132.9,
+		"y": 27.85
+	},
+	{
+		"reference": "J3",
+		"number": "1",
+		"name": "Pin_1",
+		"x": 162.11,
+		"y": 26.58
+	},
+	{
+		"reference": "J3",
+		"number": "2",
+		"name": "Pin_2",
+		"x": 177.35,
+		"y": 26.58
+	},
+	{
+		"reference": "J3",
+		"number": "3",
+		"name": "Pin_3",
+		"x": 162.11,
+		"y": 24.04
+	},
+	{
+		"reference": "J3",
+		"number": "4",
+		"name": "Pin_4",
+		"x": 177.35,
+		"y": 24.04
+	},
+	{
+		"reference": "J3",
+		"number": "5",
+		"name": "Pin_5",
+		"x": 162.11,
+		"y": 21.5
+	},
+	{
+		"reference": "J3",
+		"number": "6",
+		"name": "Pin_6",
+		"x": 177.35,
+		"y": 21.5
+	},
+	{
+		"reference": "J3",
+		"number": "7",
+		"name": "Pin_7",
+		"x": 162.11,
+		"y": 18.96
+	},
+	{
+		"reference": "J3",
+		"number": "8",
+		"name": "Pin_8",
+		"x": 177.35,
+		"y": 18.96
+	},
+	{
+		"reference": "J3",
+		"number": "9",
+		"name": "Pin_9",
+		"x": 162.11,
+		"y": 16.42
+	},
+	{
+		"reference": "J3",
+		"number": "10",
+		"name": "Pin_10",
+		"x": 177.35,
+		"y": 16.42
+	},
+	{
+		"reference": "J3",
+		"number": "11",
+		"name": "Pin_11",
+		"x": 162.11,
+		"y": 13.88
+	},
+	{
+		"reference": "J3",
+		"number": "12",
+		"name": "Pin_12",
+		"x": 177.35,
+		"y": 13.88
+	},
+	{
+		"reference": "J3",
+		"number": "13",
+		"name": "Pin_13",
+		"x": 162.11,
+		"y": 11.34
+	},
+	{
+		"reference": "J3",
+		"number": "14",
+		"name": "Pin_14",
+		"x": 177.35,
+		"y": 11.34
+	},
+	{
+		"reference": "J3",
+		"number": "15",
+		"name": "Pin_15",
+		"x": 162.11,
+		"y": 8.8
+	},
+	{
+		"reference": "J3",
+		"number": "16",
+		"name": "Pin_16",
+		"x": 177.35,
+		"y": 8.8
+	},
+	{
+		"reference": "J3",
+		"number": "17",
+		"name": "Pin_17",
+		"x": 162.11,
+		"y": 6.26
+	},
+	{
+		"reference": "J3",
+		"number": "18",
+		"name": "Pin_18",
+		"x": 177.35,
+		"y": 6.26
+	},
+	{
+		"reference": "J3",
+		"number": "19",
+		"name": "Pin_19",
+		"x": 162.11,
+		"y": 3.72
+	},
+	{
+		"reference": "J3",
+		"number": "20",
+		"name": "Pin_20",
+		"x": 177.35,
+		"y": 3.72
+	},
+	{
+		"reference": "J3",
+		"number": "21",
+		"name": "Pin_21",
+		"x": 162.11,
+		"y": 1.18
+	},
+	{
+		"reference": "J3",
+		"number": "22",
+		"name": "Pin_22",
+		"x": 177.35,
+		"y": 1.18
+	},
+	{
+		"reference": "J3",
+		"number": "23",
+		"name": "Pin_23",
+		"x": 162.11,
+		"y": -1.36
+	},
+	{
+		"reference": "J3",
+		"number": "24",
+		"name": "Pin_24",
+		"x": 177.35,
+		"y": -1.36
+	},
+	{
+		"reference": "J3",
+		"number": "25",
+		"name": "Pin_25",
+		"x": 162.11,
+		"y": -3.9
+	},
+	{
+		"reference": "J3",
+		"number": "26",
+		"name": "Pin_26",
+		"x": 177.35,
+		"y": -3.9
+	},
+	{
+		"reference": "J3",
+		"number": "27",
+		"name": "Pin_27",
+		"x": 162.11,
+		"y": -6.44
+	},
+	{
+		"reference": "J3",
+		"number": "28",
+		"name": "Pin_28",
+		"x": 177.35,
+		"y": -6.44
+	},
+	{
+		"reference": "J3",
+		"number": "29",
+		"name": "Pin_29",
+		"x": 162.11,
+		"y": -8.98
+	},
+	{
+		"reference": "J3",
+		"number": "30",
+		"name": "Pin_30",
+		"x": 177.35,
+		"y": -8.98
+	},
+	{
+		"reference": "J3",
+		"number": "31",
+		"name": "Pin_31",
+		"x": 162.11,
+		"y": -11.52
+	},
+	{
+		"reference": "J3",
+		"number": "32",
+		"name": "Pin_32",
+		"x": 177.35,
+		"y": -11.52
+	},
+	{
+		"reference": "J3",
+		"number": "33",
+		"name": "Pin_33",
+		"x": 162.11,
+		"y": -14.06
+	},
+	{
+		"reference": "J3",
+		"number": "34",
+		"name": "Pin_34",
+		"x": 177.35,
+		"y": -14.06
+	},
+	{
+		"reference": "J3",
+		"number": "35",
+		"name": "Pin_35",
+		"x": 162.11,
+		"y": -16.6
+	},
+	{
+		"reference": "J3",
+		"number": "36",
+		"name": "Pin_36",
+		"x": 177.35,
+		"y": -16.6
+	},
+	{
+		"reference": "J2",
+		"number": "1",
+		"name": "Pin_1",
+		"x": 103.69,
+		"y": 26.58
+	},
+	{
+		"reference": "J2",
+		"number": "2",
+		"name": "Pin_2",
+		"x": 118.93,
+		"y": 26.58
+	},
+	{
+		"reference": "J2",
+		"number": "3",
+		"name": "Pin_3",
+		"x": 103.69,
+		"y": 24.04
+	},
+	{
+		"reference": "J2",
+		"number": "4",
+		"name": "Pin_4",
+		"x": 118.93,
+		"y": 24.04
+	},
+	{
+		"reference": "J2",
+		"number": "5",
+		"name": "Pin_5",
+		"x": 103.69,
+		"y": 21.5
+	},
+	{
+		"reference": "J2",
+		"number": "6",
+		"name": "Pin_6",
+		"x": 118.93,
+		"y": 21.5
+	},
+	{
+		"reference": "J2",
+		"number": "7",
+		"name": "Pin_7",
+		"x": 103.69,
+		"y": 18.96
+	},
+	{
+		"reference": "J2",
+		"number": "8",
+		"name": "Pin_8",
+		"x": 118.93,
+		"y": 18.96
+	},
+	{
+		"reference": "J2",
+		"number": "9",
+		"name": "Pin_9",
+		"x": 103.69,
+		"y": 16.42
+	},
+	{
+		"reference": "J2",
+		"number": "10",
+		"name": "Pin_10",
+		"x": 118.93,
+		"y": 16.42
+	},
+	{
+		"reference": "J2",
+		"number": "11",
+		"name": "Pin_11",
+		"x": 103.69,
+		"y": 13.88
+	},
+	{
+		"reference": "J2",
+		"number": "12",
+		"name": "Pin_12",
+		"x": 118.93,
+		"y": 13.88
+	},
+	{
+		"reference": "J2",
+		"number": "13",
+		"name": "Pin_13",
+		"x": 103.69,
+		"y": 11.34
+	},
+	{
+		"reference": "J2",
+		"number": "14",
+		"name": "Pin_14",
+		"x": 118.93,
+		"y": 11.34
+	},
+	{
+		"reference": "J2",
+		"number": "15",
+		"name": "Pin_15",
+		"x": 103.69,
+		"y": 8.8
+	},
+	{
+		"reference": "J2",
+		"number": "16",
+		"name": "Pin_16",
+		"x": 118.93,
+		"y": 8.8
+	},
+	{
+		"reference": "J2",
+		"number": "17",
+		"name": "Pin_17",
+		"x": 103.69,
+		"y": 6.26
+	},
+	{
+		"reference": "J2",
+		"number": "18",
+		"name": "Pin_18",
+		"x": 118.93,
+		"y": 6.26
+	},
+	{
+		"reference": "J2",
+		"number": "19",
+		"name": "Pin_19",
+		"x": 103.69,
+		"y": 3.72
+	},
+	{
+		"reference": "J2",
+		"number": "20",
+		"name": "Pin_20",
+		"x": 118.93,
+		"y": 3.72
+	},
+	{
+		"reference": "J2",
+		"number": "21",
+		"name": "Pin_21",
+		"x": 103.69,
+		"y": 1.18
+	},
+	{
+		"reference": "J2",
+		"number": "22",
+		"name": "Pin_22",
+		"x": 118.93,
+		"y": 1.18
+	},
+	{
+		"reference": "J2",
+		"number": "23",
+		"name": "Pin_23",
+		"x": 103.69,
+		"y": -1.36
+	},
+	{
+		"reference": "J2",
+		"number": "24",
+		"name": "Pin_24",
+		"x": 118.93,
+		"y": -1.36
+	},
+	{
+		"reference": "J2",
+		"number": "25",
+		"name": "Pin_25",
+		"x": 103.69,
+		"y": -3.9
+	},
+	{
+		"reference": "J2",
+		"number": "26",
+		"name": "Pin_26",
+		"x": 118.93,
+		"y": -3.9
+	},
+	{
+		"reference": "J2",
+		"number": "27",
+		"name": "Pin_27",
+		"x": 103.69,
+		"y": -6.44
+	},
+	{
+		"reference": "J2",
+		"number": "28",
+		"name": "Pin_28",
+		"x": 118.93,
+		"y": -6.44
+	},
+	{
+		"reference": "J2",
+		"number": "29",
+		"name": "Pin_29",
+		"x": 103.69,
+		"y": -8.98
+	},
+	{
+		"reference": "J2",
+		"number": "30",
+		"name": "Pin_30",
+		"x": 118.93,
+		"y": -8.98
+	},
+	{
+		"reference": "J2",
+		"number": "31",
+		"name": "Pin_31",
+		"x": 103.69,
+		"y": -11.52
+	},
+	{
+		"reference": "J2",
+		"number": "32",
+		"name": "Pin_32",
+		"x": 118.93,
+		"y": -11.52
+	},
+	{
+		"reference": "J2",
+		"number": "33",
+		"name": "Pin_33",
+		"x": 103.69,
+		"y": -14.06
+	},
+	{
+		"reference": "J2",
+		"number": "34",
+		"name": "Pin_34",
+		"x": 118.93,
+		"y": -14.06
+	},
+	{
+		"reference": "J2",
+		"number": "35",
+		"name": "Pin_35",
+		"x": 103.69,
+		"y": -16.6
+	},
+	{
+		"reference": "J2",
+		"number": "36",
+		"name": "Pin_36",
+		"x": 118.93,
+		"y": -16.6
+	},
+	{
+		"reference": "#PWR13",
+		"number": "1",
+		"name": "",
+		"x": 63.05,
+		"y": 45.63
+	},
+	{
+		"reference": "C11",
+		"number": "1",
+		"name": "",
+		"x": 18.6,
+		"y": 114.21
+	},
+	{
+		"reference": "C11",
+		"number": "2",
+		"name": "",
+		"x": 18.6,
+		"y": 109.13
+	},
+	{
+		"reference": "R4",
+		"number": "1",
+		"name": "",
+		"x": 71.94,
+		"y": -67.4
+	},
+	{
+		"reference": "R4",
+		"number": "2",
+		"name": "",
+		"x": 66.86,
+		"y": -67.4
+	},
+	{
+		"reference": "#PWR17",
+		"number": "1",
+		"name": "",
+		"x": -182.06,
+		"y": -24.22
+	},
+	{
+		"reference": "#PWR19",
+		"number": "1",
+		"name": "",
+		"x": 63.05,
+		"y": 20.23
+	},
+	{
+		"reference": "U1",
+		"number": "1",
+		"name": "IOVDD",
+		"x": -34.74,
+		"y": 12.61
+	},
+	{
+		"reference": "U1",
+		"number": "2",
+		"name": "GPIO0",
+		"x": -34.74,
+		"y": 10.07
+	},
+	{
+		"reference": "U1",
+		"number": "3",
+		"name": "GPIO1",
+		"x": -34.74,
+		"y": 7.53
+	},
+	{
+		"reference": "U1",
+		"number": "4",
+		"name": "GPIO2",
+		"x": -34.74,
+		"y": 4.99
+	},
+	{
+		"reference": "U1",
+		"number": "5",
+		"name": "GPIO3",
+		"x": -34.74,
+		"y": 2.45
+	},
+	{
+		"reference": "U1",
+		"number": "6",
+		"name": "DVDD",
+		"x": -34.74,
+		"y": -0.09
+	},
+	{
+		"reference": "U1",
+		"number": "7",
+		"name": "GPIO4",
+		"x": -34.74,
+		"y": -2.63
+	},
+	{
+		"reference": "U1",
+		"number": "8",
+		"name": "GPIO5",
+		"x": -34.74,
+		"y": -5.17
+	},
+	{
+		"reference": "U1",
+		"number": "9",
+		"name": "GPIO6",
+		"x": -34.74,
+		"y": -7.71
+	},
+	{
+		"reference": "U1",
+		"number": "10",
+		"name": "GPIO7",
+		"x": -34.74,
+		"y": -10.25
+	},
+	{
+		"reference": "U1",
+		"number": "11",
+		"name": "IOVDD",
+		"x": -34.74,
+		"y": -12.79
+	},
+	{
+		"reference": "U1",
+		"number": "12",
+		"name": "GPIO8",
+		"x": -34.74,
+		"y": -15.33
+	},
+	{
+		"reference": "U1",
+		"number": "13",
+		"name": "GPIO9",
+		"x": -34.74,
+		"y": -17.87
+	},
+	{
+		"reference": "U1",
+		"number": "14",
+		"name": "GPIO10",
+		"x": -34.74,
+		"y": -20.41
+	},
+	{
+		"reference": "U1",
+		"number": "15",
+		"name": "GPIO11",
+		"x": -34.74,
+		"y": -22.95
+	},
+	{
+		"reference": "U1",
+		"number": "16",
+		"name": "GPIO12",
+		"x": -18.23,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "17",
+		"name": "GPIO13",
+		"x": -15.69,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "18",
+		"name": "GPIO14",
+		"x": -13.15,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "19",
+		"name": "GPIO15",
+		"x": -10.61,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "20",
+		"name": "IOVDD",
+		"x": -8.07,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "21",
+		"name": "XIN",
+		"x": -5.53,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "22",
+		"name": "XOUT",
+		"x": -2.99,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "23",
+		"name": "DVDD",
+		"x": -0.45,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "24",
+		"name": "SWCLK",
+		"x": 2.09,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "25",
+		"name": "SWDIO",
+		"x": 4.63,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "26",
+		"name": "RUN",
+		"x": 7.17,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "27",
+		"name": "GPIO16",
+		"x": 9.71,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "28",
+		"name": "GPIO17",
+		"x": 12.25,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "29",
+		"name": "GPIO18",
+		"x": 14.79,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "30",
+		"name": "IOVDD",
+		"x": 17.33,
+		"y": -36.92
+	},
+	{
+		"reference": "U1",
+		"number": "31",
+		"name": "GPIO19",
+		"x": 33.84,
+		"y": -22.95
+	},
+	{
+		"reference": "U1",
+		"number": "32",
+		"name": "GPIO20",
+		"x": 33.84,
+		"y": -20.41
+	},
+	{
+		"reference": "U1",
+		"number": "33",
+		"name": "GPIO21",
+		"x": 33.84,
+		"y": -17.87
+	},
+	{
+		"reference": "U1",
+		"number": "34",
+		"name": "GPIO22",
+		"x": 33.84,
+		"y": -15.33
+	},
+	{
+		"reference": "U1",
+		"number": "35",
+		"name": "GPIO23",
+		"x": 33.84,
+		"y": -12.79
+	},
+	{
+		"reference": "U1",
+		"number": "36",
+		"name": "GPIO24",
+		"x": 33.84,
+		"y": -10.25
+	},
+	{
+		"reference": "U1",
+		"number": "37",
+		"name": "GPIO25",
+		"x": 33.84,
+		"y": -7.71
+	},
+	{
+		"reference": "U1",
+		"number": "38",
+		"name": "IOVDD",
+		"x": 33.84,
+		"y": -5.17
+	},
+	{
+		"reference": "U1",
+		"number": "39",
+		"name": "DVDD",
+		"x": 33.84,
+		"y": -2.63
+	},
+	{
+		"reference": "U1",
+		"number": "40",
+		"name": "GPIO26_ADC0",
+		"x": 33.84,
+		"y": -0.09
+	},
+	{
+		"reference": "U1",
+		"number": "41",
+		"name": "GPIO27_ADC1",
+		"x": 33.84,
+		"y": 2.45
+	},
+	{
+		"reference": "U1",
+		"number": "42",
+		"name": "GPIO28_ADC2",
+		"x": 33.84,
+		"y": 4.99
+	},
+	{
+		"reference": "U1",
+		"number": "43",
+		"name": "GPIO29_ADC3",
+		"x": 33.84,
+		"y": 7.53
+	},
+	{
+		"reference": "U1",
+		"number": "44",
+		"name": "ADC_AVDD",
+		"x": 33.84,
+		"y": 10.07
+	},
+	{
+		"reference": "U1",
+		"number": "45",
+		"name": "IOVDD",
+		"x": 33.84,
+		"y": 12.61
+	},
+	{
+		"reference": "U1",
+		"number": "46",
+		"name": "VREG_AVDD",
+		"x": 21.14,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "47",
+		"name": "VREG_PGND",
+		"x": 18.6,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "48",
+		"name": "VREG_LX",
+		"x": 16.06,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "49",
+		"name": "VREG_VIN",
+		"x": 13.52,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "50",
+		"name": "VREG_FB",
+		"x": 10.98,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "51",
+		"name": "USB_DM",
+		"x": 5.9,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "52",
+		"name": "USB_DP",
+		"x": 3.36,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "53",
+		"name": "USB_OTP_VDD",
+		"x": 0.82,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "54",
+		"name": "QSPI_IOVDD",
+		"x": -4.26,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "55",
+		"name": "QSPI_SD3",
+		"x": -9.34,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "56",
+		"name": "QSPI_SCLK",
+		"x": -11.88,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "57",
+		"name": "QSPI_SD0",
+		"x": -14.42,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "58",
+		"name": "QSPI_SD2",
+		"x": -16.96,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "59",
+		"name": "QSPI_SD1",
+		"x": -19.5,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "60",
+		"name": "QSPI_~{SS}",
+		"x": -22.04,
+		"y": 26.58
+	},
+	{
+		"reference": "U1",
+		"number": "61",
+		"name": "GND",
+		"x": -34.74,
+		"y": -28.03
+	},
+	{
+		"reference": "C18",
+		"number": "1",
+		"name": "",
+		"x": 144.33,
+		"y": 114.21
+	},
+	{
+		"reference": "C18",
+		"number": "2",
+		"name": "",
+		"x": 144.33,
+		"y": 109.13
+	},
+	{
+		"reference": "#PWR7",
+		"number": "1",
+		"name": "",
+		"x": -114.75,
+		"y": -78.83
+	},
+	{
+		"reference": "SW2",
+		"number": "1",
+		"name": "1",
+		"x": 60.51,
+		"y": -67.4
+	},
+	{
+		"reference": "SW2",
+		"number": "2",
+		"name": "2",
+		"x": 60.51,
+		"y": -69.94
+	},
+	{
+		"reference": "SW2",
+		"number": "3",
+		"name": "3",
+		"x": 47.81,
+		"y": -67.4
+	},
+	{
+		"reference": "SW2",
+		"number": "4",
+		"name": "4",
+		"x": 47.81,
+		"y": -69.94
+	},
+	{
+		"reference": "R6",
+		"number": "1",
+		"name": "",
+		"x": -182.06,
+		"y": 12.61
+	},
+	{
+		"reference": "R6",
+		"number": "2",
+		"name": "",
+		"x": -182.06,
+		"y": 7.53
+	},
+	{
+		"reference": "C10",
+		"number": "1",
+		"name": "",
+		"x": 7.17,
+		"y": 114.21
+	},
+	{
+		"reference": "C10",
+		"number": "2",
+		"name": "",
+		"x": 7.17,
+		"y": 109.13
+	},
+	{
+		"reference": "#PWR034",
+		"number": "1",
+		"name": "",
+		"x": -4.26,
+		"y": 40.55
+	},
+	{
+		"reference": "R3",
+		"number": "1",
+		"name": "",
+		"x": 63.05,
+		"y": 41.82
+	},
+	{
+		"reference": "R3",
+		"number": "2",
+		"name": "",
+		"x": 63.05,
+		"y": 36.74
+	},
+	{
+		"reference": "#PWR035",
+		"number": "1",
+		"name": "",
+		"x": -57.6,
+		"y": 12.61
+	},
+	{
+		"reference": "C6",
+		"number": "1",
+		"name": "",
+		"x": 36.38,
+		"y": 49.44
+	},
+	{
+		"reference": "C6",
+		"number": "2",
+		"name": "",
+		"x": 36.38,
+		"y": 44.36
+	},
+	{
+		"reference": "#PWR31",
+		"number": "1",
+		"name": "",
+		"x": 122.74,
+		"y": -63.59
+	},
+	{
+		"reference": "#PWR038",
+		"number": "1",
+		"name": "",
+		"x": 61.78,
+		"y": -5.17
+	},
+	{
+		"reference": "#PWR18",
+		"number": "1",
+		"name": "",
+		"x": -4.26,
+		"y": 101.51
+	},
+	{
+		"reference": "C4",
+		"number": "1",
+		"name": "",
+		"x": -100.78,
+		"y": -76.29
+	},
+	{
+		"reference": "C4",
+		"number": "2",
+		"name": "",
+		"x": -105.86,
+		"y": -76.29
+	},
+	{
+		"reference": "C7",
+		"number": "1",
+		"name": "",
+		"x": 24.95,
+		"y": 49.44
+	},
+	{
+		"reference": "C7",
+		"number": "2",
+		"name": "",
+		"x": 24.95,
+		"y": 44.36
+	},
+	{
+		"reference": "#PWR040",
+		"number": "1",
+		"name": "",
+		"x": 56.7,
+		"y": 12.61
+	},
+	{
+		"reference": "C9",
+		"number": "1",
+		"name": "",
+		"x": 63.05,
+		"y": 26.58
+	},
+	{
+		"reference": "C9",
+		"number": "2",
+		"name": "",
+		"x": 63.05,
+		"y": 21.5
+	},
+	{
+		"reference": "#PWR039",
+		"number": "1",
+		"name": "",
+		"x": 56.7,
+		"y": -2.63
+	},
+	{
+		"reference": "#PWR20",
+		"number": "1",
+		"name": "",
+		"x": 27.49,
+		"y": 120.56
+	},
+	{
+		"reference": "J4",
+		"number": "1",
+		"name": "P1",
+		"x": 125.28,
+		"y": -48.35
+	},
+	{
+		"reference": "J4",
+		"number": "2",
+		"name": "P2",
+		"x": 125.28,
+		"y": -50.89
+	},
+	{
+		"reference": "J4",
+		"number": "3",
+		"name": "P3",
+		"x": 125.28,
+		"y": -53.43
+	},
+	{
+		"reference": "J4",
+		"number": "4",
+		"name": "SH1",
+		"x": 125.28,
+		"y": -58.51
+	},
+	{
+		"reference": "J4",
+		"number": "5",
+		"name": "SH2",
+		"x": 125.28,
+		"y": -61.05
+	},
+	{
+		"reference": "R2",
+		"number": "1",
+		"name": "",
+		"x": -72.84,
+		"y": -76.29
+	},
+	{
+		"reference": "R2",
+		"number": "2",
+		"name": "",
+		"x": -77.92,
+		"y": -76.29
+	},
+	{
+		"reference": "#PWR037",
+		"number": "1",
+		"name": "",
+		"x": -57.6,
+		"y": -0.09
+	},
+	{
+		"reference": "#PWR036",
+		"number": "1",
+		"name": "",
+		"x": -57.6,
+		"y": -12.79
+	},
+	{
+		"reference": "C8",
+		"number": "1",
+		"name": "",
+		"x": -4.26,
+		"y": 114.21
+	},
+	{
+		"reference": "C8",
+		"number": "2",
+		"name": "",
+		"x": -4.26,
+		"y": 109.13
+	},
+	{
+		"reference": "#PWR032",
+		"number": "1",
+		"name": "",
+		"x": -183.33,
+		"y": 115.48
+	},
+	{
+		"reference": "SW1",
+		"number": "1",
+		"name": "1",
+		"x": -182.06,
+		"y": -21.68
+	},
+	{
+		"reference": "SW1",
+		"number": "2",
+		"name": "2",
+		"x": -179.52,
+		"y": -21.68
+	},
+	{
+		"reference": "SW1",
+		"number": "3",
+		"name": "3",
+		"x": -182.06,
+		"y": -8.98
+	},
+	{
+		"reference": "SW1",
+		"number": "4",
+		"name": "4",
+		"x": -179.52,
+		"y": -8.98
+	},
+	{
+		"reference": "#PWR033",
+		"number": "1",
+		"name": "",
+		"x": 36.38,
+		"y": 60.87
+	},
+	{
+		"reference": "R10",
+		"number": "1",
+		"name": "",
+		"x": -169.36,
+		"y": 20.23
+	},
+	{
+		"reference": "R10",
+		"number": "2",
+		"name": "",
+		"x": -174.44,
+		"y": 20.23
+	},
+	{
+		"reference": "R9",
+		"number": "1",
+		"name": "",
+		"x": -174.44,
+		"y": 29.12
+	},
+	{
+		"reference": "R9",
+		"number": "2",
+		"name": "",
+		"x": -169.36,
+		"y": 29.12
+	},
+	{
+		"reference": "#PWR042",
+		"number": "1",
+		"name": "",
+		"x": 4.63,
+		"y": -59.78
+	},
+	{
+		"reference": "#PWR23",
+		"number": "1",
+		"name": "",
+		"x": 144.33,
+		"y": 103.415
+	},
+	{
+		"reference": "#PWR09",
+		"number": "1",
+		"name": "",
+		"x": 22.41,
+		"y": -59.78
+	},
+	{
+		"reference": "L1",
+		"number": "1",
+		"name": "",
+		"x": 16.06,
+		"y": 49.44
+	},
+	{
+		"reference": "L1",
+		"number": "2",
+		"name": "",
+		"x": 16.06,
+		"y": 44.36
+	},
+	{
+		"reference": "X1",
+		"number": "1",
+		"name": "1",
+		"x": -93.16,
+		"y": -62.32
+	},
+	{
+		"reference": "X1",
+		"number": "2",
+		"name": "2",
+		"x": -99.51,
+		"y": -66.13
+	},
+	{
+		"reference": "X1",
+		"number": "3",
+		"name": "3",
+		"x": -93.16,
+		"y": -75.02
+	},
+	{
+		"reference": "X1",
+		"number": "4",
+		"name": "4",
+		"x": -99.51,
+		"y": -71.21
+	},
+	{
+		"reference": "#PWR041",
+		"number": "1",
+		"name": "",
+		"x": -13.15,
+		"y": -59.78
+	},
+	{
+		"reference": "#PWR15",
+		"number": "1",
+		"name": "",
+		"x": 79.56,
+		"y": -68.67
+	},
+	{
+		"reference": "#PWR14",
+		"number": "1",
+		"name": "",
+		"x": 36.38,
+		"y": 38.01
+	},
+	{
+		"reference": "C3",
+		"number": "1",
+		"name": "",
+		"x": -105.86,
+		"y": -61.05
+	},
+	{
+		"reference": "C3",
+		"number": "2",
+		"name": "",
+		"x": -100.78,
+		"y": -61.05
+	},
+	{
+		"reference": "#PWR16",
+		"number": "1",
+		"name": "",
+		"x": 24.95,
+		"y": 60.87
+	}
 ]

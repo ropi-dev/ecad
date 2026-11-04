@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { drawingPoint } from "../browser/symbol-items";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -91,6 +92,6 @@ test("editor-physical-zoom", async ({ page }, testInfo) => {
 	).toBeEnabled();
 	const value = await report(page);
 	await finish(page, testInfo, "editor-physical-zoom", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

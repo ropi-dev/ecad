@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, metric, ready, report } from "./app-helpers.ts";
 
@@ -53,7 +54,7 @@ test("schematic-export", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "schematic-export", {
-		exportSvgMs: metric(value, "drawing.export-svg")!,
-		exportPngMs: metric(value, "drawing.export")!,
+		exportSvgMs: required(metric(value, "drawing.export-svg")),
+		exportPngMs: required(metric(value, "drawing.export")),
 	});
 });

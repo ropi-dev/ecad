@@ -9,8 +9,8 @@ import {
 	ProjectAssetNotFound,
 	ProjectClosed,
 	ProjectConflict,
-	ProjectExists,
 	type ProjectError,
+	ProjectExists,
 	ProjectRollbackFailed,
 	ProjectStorageUnavailable,
 	projectErrorData,
@@ -26,6 +26,7 @@ import {
 	type ProjectDirectory,
 	ProjectRepository,
 } from "#/projects/repository.ts";
+import { required } from "./helpers/required.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -91,7 +92,10 @@ for (const layout of ["files", "revisions"] as const)
 		assert.equal(conflict._tag, "ProjectConflict");
 		assert.equal(conflict.path, PROJECT_FILE);
 		assert.match(conflict.message, /changed on disk/);
-		await rejection(repository.save({ shapes: [], symbols: [] }), ProjectConflict);
+		await rejection(
+			repository.save({ shapes: [], symbols: [] }),
+			ProjectConflict,
+		);
 		await rejection(
 			repository.importAssets([
 				{ name: "board.step", kind: "step", bytes: new Uint8Array([1]) },
@@ -109,15 +113,23 @@ test("a changed or deleted project file names that file in ProjectConflict", asy
 	const saved = await repository.save({ shapes: [rectangle(1)], symbols: [] });
 	edit(saved.manifest.drawing, (content) => content.replace('"x":0', '"x":5'));
 	assert.equal(
-		(await rejection(repository.save({ shapes: [], symbols: [] }), ProjectConflict))
-			.path,
+		(
+			await rejection(
+				repository.save({ shapes: [], symbols: [] }),
+				ProjectConflict,
+			)
+		).path,
 		saved.manifest.drawing,
 	);
 	await repository.load();
 	files.delete(saved.manifest.drawing);
 	assert.equal(
-		(await rejection(repository.save({ shapes: [], symbols: [] }), ProjectConflict))
-			.path,
+		(
+			await rejection(
+				repository.save({ shapes: [], symbols: [] }),
+				ProjectConflict,
+			)
+		).path,
 		saved.manifest.drawing,
 	);
 });
@@ -135,7 +147,10 @@ test("saving before a project is loaded rejects with ProjectClosed", async () =>
 test("creating a project over an existing one rejects with ProjectExists", async () => {
 	const { directory } = memoryDirectory();
 	await new ProjectRepository(directory).create("Project");
-	await rejection(new ProjectRepository(directory).create("Other"), ProjectExists);
+	await rejection(
+		new ProjectRepository(directory).create("Other"),
+		ProjectExists,
+	);
 	await rejection(
 		new ProjectRepository(memoryDirectory().directory).create("a/b"),
 		InvalidProjectName,
@@ -144,7 +159,10 @@ test("creating a project over an existing one rejects with ProjectExists", async
 
 test("invalid project files reject with InvalidProjectFile naming the file and a readable reason", async () => {
 	const load = async (
-		change: (project: ReturnType<typeof memoryDirectory>, drawing: string) => void,
+		change: (
+			project: ReturnType<typeof memoryDirectory>,
+			drawing: string,
+		) => void,
 	) => {
 		const project = memoryDirectory();
 		const repository = new ProjectRepository(project.directory, {
@@ -218,17 +236,21 @@ test("an invalid symbol, drawing or circuit file is reported against that file",
 			new ProjectRepository(project.directory, { layout: "files" }).load(),
 			InvalidProjectFile,
 		);
-	const drawing = saved.manifest.drawings![0];
+	const drawing = required(saved.manifest.drawings)[0];
 	const original = project.text(drawing);
-	project.edit(drawing, (content) => content.replace('"id":"control"', '"id":"Bad ID"'));
+	project.edit(drawing, (content) =>
+		content.replace('"id":"control"', '"id":"Bad ID"'),
+	);
 	const invalidDrawing = await reload();
 	assert.equal(invalidDrawing.path, drawing);
 	assert.match(invalidDrawing.reason, /^id: /);
 	project.files.set(drawing, encoder.encode(original));
 
-	const circuit = saved.manifest.circuits!.find(
-		(paths) => paths.circuit === drawing,
-	)!.circuit;
+	const circuit = required(
+		required(saved.manifest.circuits).find(
+			(paths) => paths.circuit === drawing,
+		),
+	).circuit;
 	project.edit(circuit, (content) =>
 		content.replace('"circuitId":"', '"circuitId":"other-'),
 	);
@@ -325,10 +347,10 @@ test("readAsset returns a rejected promise instead of throwing", async () => {
 		outside = repository.readAsset("../secret");
 		unknown = repository.readAsset("assets/other.step");
 	});
-	const path = await rejection(outside!, InvalidProjectPath);
+	const path = await rejection(required(outside), InvalidProjectPath);
 	assert.equal(path.path, "../secret");
 	assert.equal(
-		(await rejection(unknown!, ProjectAssetNotFound)).path,
+		(await rejection(required(unknown), ProjectAssetNotFound)).path,
 		"assets/other.step",
 	);
 	assert.deepEqual(

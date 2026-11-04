@@ -2,6 +2,7 @@ import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -16,9 +17,9 @@ test("net-symbol-reconcile", async ({ page }, testInfo) => {
 		"#/drawing/shapes.ts"
 	);
 	const original = createCircuit("Reconcile", "pcb-main");
-	const resistor = symbolDefinitions.find(
-		(definition) => definition.id === "resistor",
-	)!;
+	const resistor = required(
+		symbolDefinitions.find((definition) => definition.id === "resistor"),
+	);
 	const definition = { ...resistor, id: "custom-supply", library: undefined };
 	const supplies = Array.from({ length: 32 }, (_, index) => {
 		const symbol = createSymbol(
@@ -45,7 +46,7 @@ test("net-symbol-reconcile", async ({ page }, testInfo) => {
 			`R${index + 1}`,
 		);
 		const target = pinTerminals(symbol)[0],
-			terminal = pinTerminals(part).at(-1)!;
+			terminal = required(pinTerminals(part).at(-1));
 		return { ...part, x: target.x - terminal.x, y: target.y - terminal.y };
 	});
 	const stale = synchronizePcb(
@@ -100,7 +101,7 @@ test("net-symbol-reconcile", async ({ page }, testInfo) => {
 	await closeProjectFiles(page);
 	await finish(page, testInfo, "net-symbol-reconcile", {
 		openMs,
-		syncP95Ms: metric(await report(page), "pcb.synchronize")!,
+		syncP95Ms: required(metric(await report(page), "pcb.synchronize")),
 	});
 	const circuitUrl = page.url();
 	await expect

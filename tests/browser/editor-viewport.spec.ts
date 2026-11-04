@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
+import { expect, type Page, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
 
 const schematicCamera = async (page: Page) => {
@@ -40,7 +41,7 @@ async function moveCamera(
 		view === "schematic"
 			? page.locator("canvas")
 			: page.getByLabel("Circuit connections graph", { exact: true });
-	const box = (await canvas.boundingBox())!;
+	const box = required(await canvas.boundingBox());
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 	await page.mouse.down({ button: "middle" });
 	await page.mouse.move(

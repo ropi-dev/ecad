@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -54,7 +55,7 @@ test("editor-pin-heavy", async ({ page }, testInfo) => {
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	for (let repeat = 0; repeat < 5; repeat++) {
 		await interaction(page, "pin-heavy.empty-click", async () => {
 			await canvas.click({
@@ -73,6 +74,6 @@ test("editor-pin-heavy", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-pin-heavy", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

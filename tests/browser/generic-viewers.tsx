@@ -3,20 +3,21 @@ import { createRoot } from "react-dom/client";
 import {
 	BoxGeometry,
 	Group,
-	Scene,
-	Vector3,
 	Mesh,
 	MeshStandardMaterial,
 	type Object3D,
+	Scene,
+	Vector3,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { SceneLayer } from "#/engine/types.ts";
-import { createPlanarObject } from "#/engine/scene.ts";
+import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
+import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
+import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
 import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
 import { Viewer3D } from "#/components/viewer/Viewer3D.tsx";
-import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
-import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
-import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
+import { createPlanarObject } from "#/engine/scene.ts";
+import type { SceneLayer } from "#/engine/types.ts";
+import { required } from "../helpers/required.ts";
 import "#/styles.css";
 
 const layer: SceneLayer = {
@@ -43,8 +44,8 @@ OrbitControls.prototype.update = function (...args) {
 	cameraTargets.set(this.object, this.target.toArray());
 	return changed;
 };
-Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
-	document.querySelector("#camera")!.textContent = JSON.stringify({
+Scene.prototype.onAfterRender = (_renderer, _scene, camera) => {
+	required(document.querySelector("#camera")).textContent = JSON.stringify({
 		type: camera.type,
 		projectionY: camera.projectionMatrix.elements[5],
 		target: cameraTargets.get(camera),
@@ -54,7 +55,8 @@ Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
 	});
 };
 const snapshot = (value: Viewer2DSnapshot) => {
-	document.querySelector("#snapshot")!.textContent = JSON.stringify(value);
+	required(document.querySelector("#snapshot")).textContent =
+		JSON.stringify(value);
 };
 
 function Drawing() {
@@ -81,7 +83,8 @@ const lifetime = {
 	materialsDisposed: 0,
 };
 const publishLifetime = () => {
-	document.querySelector("#lifetime")!.textContent = JSON.stringify(lifetime);
+	required(document.querySelector("#lifetime")).textContent =
+		JSON.stringify(lifetime);
 };
 
 function Model() {
@@ -109,8 +112,7 @@ function Model() {
 			},
 		};
 	}, [revision, empty]);
-	const [scene, setScene] =
-		useState<import("#/engine/scene.ts").ViewerScene>();
+	const [scene, setScene] = useState<import("#/engine/scene.ts").ViewerScene>();
 	useEffect(() => {
 		const result = createScene();
 		setScene([{ type: "spatial", object: result.object }]);
@@ -159,7 +161,7 @@ function Model() {
 	);
 }
 
-createRoot(document.getElementById("root")!).render(
+createRoot(required(document.getElementById("root"))).render(
 	<StrictMode>
 		{location.search.includes("3d") ? <Model /> : <Drawing />}
 	</StrictMode>,

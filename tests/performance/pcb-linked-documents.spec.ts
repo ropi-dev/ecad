@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -53,6 +54,6 @@ test("pcb-linked-documents", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "pcb-linked-documents", {
 		interactionP95Ms: percentile(times),
-		syncP95Ms: metric(value, "pcb.synchronize")!,
+		syncP95Ms: required(metric(value, "pcb.synchronize")),
 	});
 });

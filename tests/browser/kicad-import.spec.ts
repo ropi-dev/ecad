@@ -1,15 +1,16 @@
-import { captureArtifacts } from "./artifacts";
+import { mkdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
-import { readFileSync, mkdirSync } from "node:fs";
+import type { EditorShape } from "#/drawing/shapes.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import {
 	referenceNetGroups,
 	sortNetGroups,
 } from "../fixtures/kicad/reference-nets";
-import { toolbarButton } from "./toolbar";
-import { resolve } from "node:path";
-import type { EditorShape } from "#/drawing/shapes.ts";
-import { importKiCadSchematic } from "#/formats/kicad/import.ts";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { toolbarButton } from "./toolbar";
 
 const fixture = resolve(
 	"tests/fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch",
@@ -33,7 +34,9 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 	test.setTimeout(120000);
 	await page.goto("/tests/browser/projects.html");
 	await closeProjectFiles(page);
-	await expect(page.getByLabel("Workspace instructions", { exact: true })).toBeVisible();
+	await expect(
+		page.getByLabel("Workspace instructions", { exact: true }),
+	).toBeVisible();
 	await (await openProjectFiles(page))
 		.getByLabel("Add KiCad schematic files")
 		.setInputFiles(fixture);
@@ -47,7 +50,7 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 	const file = await download;
 	const path = await file.path();
 	expect(path).not.toBeNull();
-	const report = JSON.parse(readFileSync(path!, "utf8"));
+	const report = JSON.parse(readFileSync(required(path), "utf8"));
 	expect(report.components).toEqual(expected.report.components);
 	expect(report.metadata).toEqual(expected.report.metadata);
 	expect(report.supplies).toEqual(expected.report.supplies);
@@ -128,7 +131,7 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 		const path = await download.path();
 		expect(path).not.toBeNull();
 		await download.saveAs(`${exports}/rp2350a-imported.${format}`);
-		const bytes = readFileSync(path!);
+		const bytes = readFileSync(required(path));
 		if (format === "svg") {
 			const coverage = await page.evaluate((svg) => {
 				const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
@@ -158,7 +161,11 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 				const canvas = document.createElement("canvas");
 				canvas.width = 2400;
 				canvas.height = 1600;
-				const ctx = canvas.getContext("2d")!;
+				const ctx =
+					canvas.getContext("2d") ??
+					(() => {
+						throw new Error("Expected a value");
+					})();
 				ctx.drawImage(image, 0, 0);
 				const data = ctx.getImageData(0, 0, 2400, 1600).data;
 				let ink = 0;
@@ -202,7 +209,9 @@ test("a KiCad schematic with one broken symbol imports the rest and names the sk
 	).toHaveText(
 		"Symbol U2 (Lib:Missing): Its library symbol is not embedded in the schematic.",
 	);
-	await expect(page.getByText("Skipped 1 item that could not be converted:")).toBeVisible();
+	await expect(
+		page.getByText("Skipped 1 item that could not be converted:"),
+	).toBeVisible();
 	await expect
 		.poll(async () =>
 			(
@@ -210,7 +219,9 @@ test("a KiCad schematic with one broken symbol imports the rest and names the sk
 					(await page.locator("#project-document").textContent()) ?? "{}",
 				).editorShapes as EditorShape[] | undefined
 			)?.map((shape) =>
-				shape.kind === "symbol" ? `symbol ${shape.attributes.reference}` : shape.kind,
+				shape.kind === "symbol"
+					? `symbol ${shape.attributes.reference}`
+					: shape.kind,
 			),
 		)
 		.toEqual(["symbol U1", "wire", "text"]);
@@ -223,7 +234,7 @@ test("a KiCad schematic with one broken symbol imports the rest and names the sk
 		.getByRole("button", { name: "Download import report", exact: true })
 		.click();
 	const path = await (await download).path();
-	const report = JSON.parse(readFileSync(path!, "utf8"));
+	const report = JSON.parse(readFileSync(required(path), "utf8"));
 	expect(report.skipped).toEqual([
 		{
 			item: "symbol U2 (Lib:Missing)",

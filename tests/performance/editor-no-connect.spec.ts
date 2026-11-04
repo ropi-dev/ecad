@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -13,7 +14,7 @@ test("editor-no-connect", async ({ page }, testInfo) => {
 	).toBeEnabled();
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	const pin = { x: bounds.width * 0.45, y: bounds.height / 2 };
 	await (await toolbarButton(page, "Pin")).click();
 	await canvas.click({ position: pin });
@@ -41,6 +42,6 @@ test("editor-no-connect", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-no-connect", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

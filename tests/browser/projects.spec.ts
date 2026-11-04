@@ -1,17 +1,25 @@
-import { openProjectActions, openProjectFiles, closeProjectFiles } from "./project-files";
+import { expect, type Page, test } from "@playwright/test";
+import {
+	closeProjectFiles,
+	openProjectActions,
+	openProjectFiles,
+} from "./project-files";
 import { toolbarButton } from "./toolbar";
-import { expect, test, type Page } from "@playwright/test";
 
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 async function projectsPage(page: Page) {
-	await (await openProjectFiles(page)).getByRole("link", { name: "Workspace home", exact: true }).click();
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Workspace home", exact: true })
+		.click();
 	await expect(page.locator("main")).toBeVisible();
 	await closeProjectFiles(page);
 }
 async function createProject(page: Page, _name: string) {
 	await projectsPage(page);
-	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
 	await openProjectFiles(page);
 }
 async function drawRectangle(page: Page) {
@@ -78,7 +86,9 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
 	await projectsPage(page);
 	await openProjectActions(page);
-	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
+	await page
+		.getByRole("menuitem", { name: "Save project", exact: true })
+		.click();
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).symbols[0].shapes).toHaveLength(2);
 	await page.reload();
@@ -153,7 +163,12 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 		.poll(async () => (await documentState(page)).drawings[0].shapes.length)
 		.toBe(1);
 	await createDrawing();
-	await expect((await openProjectFiles(page)).getByRole("link", { name: "Open Power stage 2.ecaddraw", exact: true })).toBeVisible();
+	await expect(
+		(await openProjectFiles(page)).getByRole("link", {
+			name: "Open Power stage 2.ecaddraw",
+			exact: true,
+		}),
+	).toBeVisible();
 	expect(
 		(await documentState(page)).drawings.map((file: { id: string }) => file.id),
 	).toEqual(["power-stage", "power-stage-2"]);

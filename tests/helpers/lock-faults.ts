@@ -12,10 +12,13 @@ import { basename } from "node:path";
 
 const pattern = process.env.ECAD_TEST_CRASH_PATTERN;
 let dropCopy = !!process.env.ECAD_TEST_DROP_COPY;
-let signalOnRelease = process.env.ECAD_TEST_SIGNAL_ON_RELEASE as NodeJS.Signals | undefined;
+let signalOnRelease = process.env.ECAD_TEST_SIGNAL_ON_RELEASE as
+	| NodeJS.Signals
+	| undefined;
 const { link, open, rm } = fs.promises;
 const crash = (path: fs.PathLike) => {
-	if (pattern && new RegExp(pattern).test(basename(String(path)))) process.kill(process.pid, "SIGKILL");
+	if (pattern && new RegExp(pattern).test(basename(String(path))))
+		process.kill(process.pid, "SIGKILL");
 };
 fs.promises.link = async (existing, path) => {
 	if (dropCopy) {

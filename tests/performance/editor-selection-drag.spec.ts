@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { drawingPoint } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -19,8 +20,8 @@ test("editor-selection-drag", async ({ page }, testInfo) => {
 		"#/drawing/symbols.ts"
 	);
 	const { drawShape, pinTerminals } = await import("#/drawing/shapes.ts");
-	const parts = ["resistor", "capacitor", "led"].map(
-		(id) => symbolDefinitions.find((definition) => definition.id === id)!,
+	const parts = ["resistor", "capacitor", "led"].map((id) =>
+		required(symbolDefinitions.find((definition) => definition.id === id)),
 	);
 	// Each lead runs to a bus outside its row, so a window selects only symbols.
 	const columns = 32;
@@ -116,13 +117,15 @@ test("editor-selection-drag", async ({ page }, testInfo) => {
 	const fitted = await zoom.textContent();
 	for (let step = 0; step < 2; step++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await expect(zoom).not.toHaveText(fitted!);
-	const canvasBounds = (await page.locator("canvas").boundingBox())!;
+	await expect(zoom).not.toHaveText(required(fitted));
+	const canvasBounds = required(await page.locator("canvas").boundingBox());
 	const first = Math.floor(columns / 2) - 6;
 	// Grab a resistor body, which fills the symbol center.
 	const grabbed =
 		first +
-		[0, 1, 2].find((offset) => (row + first + offset) % parts.length === 0)! +
+		required(
+			[0, 1, 2].find((offset) => (row + first + offset) % parts.length === 0),
+		) +
 		3;
 	const anchor = await drawingPoint(page, {
 		x: left + grabbed * pitch,

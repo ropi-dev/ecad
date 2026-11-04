@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -56,7 +57,7 @@ test("kicad-import", async ({ page }, testInfo) => {
 	});
 	const value = await report(page);
 	await finish(page, testInfo, "kicad-import", {
-		importMs: metric(value, "import.kicad")!,
+		importMs: required(metric(value, "import.kicad")),
 		interactionP95Ms: elapsed,
 	});
 	await page.reload();

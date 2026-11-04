@@ -1,28 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	createEmptySymbolFile,
+	parseSymbolFile,
+} from "#/components/editor/symbolFormat.ts";
+import {
 	parseSelection,
 	pasteSelection,
 	selectionFileText,
 	serializeSelection,
 } from "#/drawing/clipboard.ts";
 import {
-	createEmptySymbolFile,
-	parseSymbolFile,
-} from "#/components/editor/symbolFormat.ts";
-import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
-import {
 	drawShape,
 	type EditorShape,
 	symbolShapes,
 	symbolTextShapes,
 } from "#/drawing/shapes.ts";
+import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { required } from "./helpers/required.ts";
 
 const resistor = () =>
 	createSymbol(
 		1,
-		symbolDefinitions.find((symbol) => symbol.prefix === "R")!,
+		required(symbolDefinitions.find((symbol) => symbol.prefix === "R")),
 		{ x: 0, y: 0 },
 		"R1",
 	);
@@ -32,7 +33,7 @@ test("clipboard round trips mixed shapes without sharing mutable symbol attribut
 		resistor(),
 		drawShape(2, "wire", { x: 0, y: 0 }, { x: 10, y: 0 }),
 	];
-	const source = parseSelection(serializeSelection(original))!;
+	const source = required(parseSelection(serializeSelection(original)));
 	assert.equal(source.length, 2);
 	const pasted = pasteSelection(source, original, 3, { x: 20, y: -10 });
 	assert.deepEqual(
@@ -72,7 +73,7 @@ test("project symbols travel as independent inline definitions", () => {
 		...resistor(),
 		library: { scope: "project" as const, id: "project-symbols" },
 	};
-	const [copy] = parseSelection(serializeSelection([symbol]))!;
+	const [copy] = required(parseSelection(serializeSelection([symbol])));
 	assert.equal(copy.kind, "symbol");
 	if (copy.kind !== "symbol") return;
 	assert.equal(copy.library, undefined);
@@ -122,7 +123,7 @@ test("single symbols have importable save-file text, including built-in definiti
 	assert.equal(parsed.format, "ecad-symbol");
 	assert.equal(parsed.units, "mm");
 	assert.notEqual(parsed.id, "resistor");
-	const restored = parseSelection(file)!;
+	const restored = required(parseSelection(file));
 	assert.equal(restored[0].kind, "symbol");
 	assert.ok(restored[0].kind === "symbol" && restored[0].children.length > 0);
 });
@@ -143,7 +144,7 @@ test("net symbol files preserve electrical identity", () => {
 		netSymbol: true,
 		attributes: { name: "Ground", reference: "", value: "GND" },
 	};
-	const restored = parseSelection(selectionFileText([symbol]))!;
+	const restored = required(parseSelection(selectionFileText([symbol])));
 	assert.equal(restored[0].kind, "symbol");
 	assert.ok(restored[0].kind === "symbol" && restored[0].netSymbol);
 });
@@ -155,7 +156,7 @@ test("custom symbols pasted into definitions flatten to saveable geometry with u
 		rotation: Math.PI / 2,
 		locked: true,
 	};
-	const source = parseSelection(serializeSelection([original]))!;
+	const source = required(parseSelection(serializeSelection([original])));
 	const before = structuredClone(source);
 	const existing = [
 		drawShape(1, "rectangle", { x: -30, y: -30 }, { x: -20, y: -20 }),

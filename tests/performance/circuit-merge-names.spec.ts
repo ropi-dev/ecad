@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeProjectFiles } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
 	finish,
@@ -49,6 +50,6 @@ test("circuit-merge-names", async ({ page }, testInfo) => {
 	const value = await report(page);
 	await finish(page, testInfo, "circuit-merge-names", {
 		interactionP95Ms: percentile(times),
-		syncP95Ms: metric(value, "pcb.synchronize")!,
+		syncP95Ms: required(metric(value, "pcb.synchronize")),
 	});
 });

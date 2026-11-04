@@ -10,13 +10,13 @@ import type {
 	Point,
 	SceneObject,
 } from "#/engine/types.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import {
 	GERBER_EXTENSIONS,
 	hasGerberExtension,
 	hasGerberSignature,
 	MAX_GERBER_SOURCE_LENGTH,
 } from "#/formats/gerber/detect.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import {
 	apertureMatrix,
 	circle,
@@ -56,16 +56,10 @@ interface Token {
 	extended: boolean;
 	line: number;
 }
-interface Block {
-	kind: "AB" | "SR";
-	objects: SceneObject[];
-	aperture?: number;
-	attributes?: Attributes;
-	x?: number;
-	y?: number;
-	i?: number;
-	j?: number;
-}
+type Block = { objects: SceneObject[] } & (
+	| { kind: "AB"; aperture: number; attributes: Attributes }
+	| { kind: "SR"; x: number; y: number; i: number; j: number }
+);
 interface Contour {
 	d: string;
 	bounds: Bounds;
@@ -473,24 +467,24 @@ export function parseGerber(
 			throw new Error(`${kind} close command has no matching open command`);
 		if (region) throw new Error(`Cannot close ${kind} inside a region`);
 		blocks.pop();
-		if (kind === "AB")
-			apertures.set(block.aperture!, {
+		if (block.kind === "AB")
+			apertures.set(block.aperture, {
 				block: block.objects,
 				template: "AB",
 				parameters: [],
-				attributes: block.attributes!,
+				attributes: block.attributes,
 				unit,
 			});
 		else {
-			const count = block.x! * block.y! * block.objects.length;
+			const count = block.x * block.y * block.objects.length;
 			if (count + objectCount > MAX_OBJECTS)
 				throw new FatalGerberError(
 					`Step and repeat exceeds the ${MAX_OBJECTS.toLocaleString()} object limit`,
 				);
 			// Repeat complete blocks in Y first, then X. Polarity makes this order significant.
-			for (let x = 0; x < block.x!; x++)
-				for (let y = 0; y < block.y!; y++) {
-					const m = translation(x * block.i!, y * block.j!);
+			for (let x = 0; x < block.x; x++)
+				for (let y = 0; y < block.y; y++) {
+					const m = translation(x * block.i, y * block.j);
 					for (const object of block.objects)
 						emit({
 							...object,
@@ -503,7 +497,8 @@ export function parseGerber(
 		position = undefined;
 	}
 	function flash(point: Point) {
-		const aperture = apertures.get(selected!);
+		const aperture =
+			selected === undefined ? undefined : apertures.get(selected);
 		if (!aperture)
 			throw new Error(
 				selected === undefined
@@ -529,7 +524,10 @@ export function parseGerber(
 					bounds: transformBounds(child.bounds, m),
 					attributes: cloneAttributes({ ...child.attributes, ...attributes }),
 				});
-		} else emitShape(aperture.shape!, attributes, polarity, m);
+		} else {
+			if (!aperture.shape) throw new Error("Aperture has no shape");
+			emitShape(aperture.shape, attributes, polarity, m);
+		}
 	}
 	function arc(
 		start: Point,
@@ -647,7 +645,8 @@ export function parseGerber(
 			region.active.segments++;
 			return;
 		}
-		const aperture = apertures.get(selected!);
+		const aperture =
+			selected === undefined ? undefined : apertures.get(selected);
 		if (!aperture)
 			throw new Error(
 				selected === undefined
@@ -781,7 +780,7 @@ export function parseGerber(
 			if (
 				id < 10 ||
 				apertures.has(id) ||
-				blocks.some((block) => block.aperture === id)
+				blocks.some((block) => block.kind === "AB" && block.aperture === id)
 			)
 				throw new Error(`Invalid or duplicate block aperture D${id}`);
 			blocks.push({
@@ -939,8 +938,9 @@ export function parseGerber(
 				"Both X and Y are required when the current point is undefined",
 			);
 		const old = position;
-		const x = fields.X === undefined ? old!.x : coordinate(fields.X, "x"),
-			y = fields.Y === undefined ? old!.y : coordinate(fields.Y, "y");
+		const current = position ?? { x: 0, y: 0 };
+		const x = fields.X === undefined ? current.x : coordinate(fields.X, "x"),
+			y = fields.Y === undefined ? current.y : coordinate(fields.Y, "y");
 		const next = {
 			x: format?.mode === "I" && fields.X !== undefined ? x + (old?.x ?? 0) : x,
 			y: format?.mode === "I" && fields.Y !== undefined ? y + (old?.y ?? 0) : y,

@@ -6,7 +6,13 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
-import { DEFAULT_LINE_WIDTH, drawShape, pinTerminals, replaceSymbolChild, symbolChildren } from "#/drawing/shapes.ts";
+import {
+	DEFAULT_LINE_WIDTH,
+	drawShape,
+	pinTerminals,
+	replaceSymbolChild,
+	symbolChildren,
+} from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import {
 	createSymbol,
@@ -14,6 +20,7 @@ import {
 	symbolDefinitions,
 } from "#/drawing/symbols.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
+import { required } from "./helpers/required.ts";
 
 test("hidden pin labels preserve terminals in standalone pins, rotated symbols and previews", () => {
 	const pin = {
@@ -140,7 +147,6 @@ test("built-in ground and supply symbols hide pin labels while other parts use n
 			assert.ok(pins[0].name);
 			assert.equal(pins[0].showLabels, false);
 			assert.deepEqual(labels, []);
-
 		} else {
 			assert.deepEqual(
 				labels.map((label) => label.text),
@@ -152,7 +158,14 @@ test("built-in ground and supply symbols hide pin labels while other parts use n
 
 test("native pin names align with leads while numbers stay above them and survive saves", () => {
 	for (const labelOffset of [-2.5, 2.5]) {
-		const pin = { ...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }), kind: "pin" as const, name: "SWCLK", number: "24", length: undefined, labelOffset };
+		const pin = {
+			...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }),
+			kind: "pin" as const,
+			name: "SWCLK",
+			number: "24",
+			length: undefined,
+			labelOffset,
+		};
 		delete pin.length;
 		const symbol = createSymbolFromShapes(2, [pin]);
 		const file = parseSymbolFile(JSON.stringify(symbolFileFromSymbol(symbol)));
@@ -160,38 +173,87 @@ test("native pin names align with leads while numbers stay above them and surviv
 		assert.equal(restored.kind, "pin");
 		if (restored.kind !== "pin") throw new Error("Expected a pin");
 		assert.equal(restored.labelOffset, labelOffset);
-		assert.deepEqual(pinTerminals(restored), pinTerminals({ ...restored, labelOffset: undefined }));
+		assert.deepEqual(
+			pinTerminals(restored),
+			pinTerminals({ ...restored, labelOffset: undefined }),
+		);
 		const [display] = buildDrawingDisplay([pin], new Set()).shapes;
-		const [name, number] = display.children!;
-		const edge = name.x * display.width + (labelOffset < 0 ? name.width * display.width / 2 : -name.width * display.width / 2);
+		const [name, number] = required(display.children);
+		const edge =
+			name.x * display.width +
+			(labelOffset < 0
+				? (name.width * display.width) / 2
+				: (-name.width * display.width) / 2);
 		assert.ok(Math.abs(edge - labelOffset) < 1e-9);
 		assert.equal(name.y, 0);
 		assert.equal(Math.sign(number.x), Math.sign(labelOffset));
-		assert.ok(Math.abs(number.x * display.width) + number.width * display.width / 2 < Math.abs(labelOffset) - 0.5);
+		assert.ok(
+			Math.abs(number.x * display.width) + (number.width * display.width) / 2 <
+				Math.abs(labelOffset) - 0.5,
+		);
 		assert.ok(number.y * display.height > 0);
 		assert.ok((number.y + number.height / 2) * display.height < 2);
 		assert.equal(drawingShapeSchema.safeParse(restored).success, true);
-		assert.equal(drawingShapeSchema.safeParse({ ...restored, labelOffset: Infinity }).success, false);
-		assert.equal(drawingShapeSchema.safeParse({ ...restored, labelOffset: 1001 }).success, false);
-		assert.deepEqual(validateProjectDocument(JSON.parse(JSON.stringify({ shapes: [symbol], symbols: [file] }))), { shapes: [symbol], symbols: [file] });
+		assert.equal(
+			drawingShapeSchema.safeParse({ ...restored, labelOffset: Infinity })
+				.success,
+			false,
+		);
+		assert.equal(
+			drawingShapeSchema.safeParse({ ...restored, labelOffset: 1001 }).success,
+			false,
+		);
+		assert.deepEqual(
+			validateProjectDocument(
+				JSON.parse(JSON.stringify({ shapes: [symbol], symbols: [file] })),
+			),
+			{ shapes: [symbol], symbols: [file] },
+		);
 	}
 });
 
 test("independent visibility overrides the legacy fallback without moving either label", () => {
 	for (const length of [undefined, 0, 4]) {
 		for (const rotation of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-			const pin = { ...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }), kind: "pin" as const, length, rotation, name: "RUN", number: "01" };
+			const pin = {
+				...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }),
+				kind: "pin" as const,
+				length,
+				rotation,
+				name: "RUN",
+				number: "01",
+			};
 			const full = buildDrawingDisplay([pin], new Set([1])).shapes[0];
 			for (const showLabels of [undefined, false, true]) {
 				for (const showName of [undefined, false, true]) {
 					for (const showNumber of [undefined, false, true]) {
 						const variant = { ...pin, showLabels, showName, showNumber };
-						const symbol = { ...createSymbolFromShapes(2, [variant]), rotation: Math.PI / 2 };
-						const visible = [showName ?? showLabels ?? true, showNumber ?? showLabels ?? true];
-						const display = buildDrawingDisplay([variant, symbol], new Set([1, 2]), [variant, symbol]);
-						assert.deepEqual(display.shapes[0].children, full.children!.filter((_, index) => visible[index]));
-						for (const item of [display.connections[0], display.previews[0], display.previews[2]]) {
-							assert.deepEqual(item.children?.map(label => label.text), ["RUN", "01"].filter((_, index) => visible[index]));
+						const symbol = {
+							...createSymbolFromShapes(2, [variant]),
+							rotation: Math.PI / 2,
+						};
+						const visible = [
+							showName ?? showLabels ?? true,
+							showNumber ?? showLabels ?? true,
+						];
+						const display = buildDrawingDisplay(
+							[variant, symbol],
+							new Set([1, 2]),
+							[variant, symbol],
+						);
+						assert.deepEqual(
+							display.shapes[0].children,
+							required(full.children).filter((_, index) => visible[index]),
+						);
+						for (const item of [
+							display.connections[0],
+							display.previews[0],
+							display.previews[2],
+						]) {
+							assert.deepEqual(
+								item.children?.map((label) => label.text),
+								["RUN", "01"].filter((_, index) => visible[index]),
+							);
 						}
 						assert.deepEqual(pinTerminals(variant), pinTerminals(pin));
 					}
@@ -206,37 +268,123 @@ test("independent pin visibility survives symbol, drawing, and child override pe
 		for (const showName of [undefined, false, true]) {
 			for (const showNumber of [undefined, false, true]) {
 				const visibility = { showLabels, showName, showNumber };
-				const file = parseSymbolFile(JSON.stringify({ format: "ecad-symbol", version: 1, units: "mm", id: "custom.pin", name: "Pin", description: "", prefix: "U", value: "", shapes: [{ kind: "pin", name: "RUN", number: "01", x: 0, y: 0, ...visibility }] }));
-				const symbol = createSymbol(2, libraryDefinitions([file])[0], { x: 10, y: 20 });
-				const saved = parseSymbolFile(JSON.stringify(symbolFileFromSymbol(symbol)));
-				assert.deepEqual(saved.shapes, file.shapes.map(shape => ({ ...shape, lineWidth: DEFAULT_LINE_WIDTH })));
+				const file = parseSymbolFile(
+					JSON.stringify({
+						format: "ecad-symbol",
+						version: 1,
+						units: "mm",
+						id: "custom.pin",
+						name: "Pin",
+						description: "",
+						prefix: "U",
+						value: "",
+						shapes: [
+							{
+								kind: "pin",
+								name: "RUN",
+								number: "01",
+								x: 0,
+								y: 0,
+								...visibility,
+							},
+						],
+					}),
+				);
+				const symbol = createSymbol(2, libraryDefinitions([file])[0], {
+					x: 10,
+					y: 20,
+				});
+				const saved = parseSymbolFile(
+					JSON.stringify(symbolFileFromSymbol(symbol)),
+				);
+				assert.deepEqual(
+					saved.shapes,
+					file.shapes.map((shape) => ({
+						...shape,
+						lineWidth: DEFAULT_LINE_WIDTH,
+					})),
+				);
 				const pin = symbol.children[0];
-				const placed = { ...symbol, childOverrides: { [`shape:${pin.id}`]: visibility } };
+				const placed = {
+					...symbol,
+					childOverrides: { [`shape:${pin.id}`]: visibility },
+				};
 				const document = { shapes: [pin, placed], symbols: [saved] };
-				assert.deepEqual(validateProjectDocument(JSON.parse(JSON.stringify(document))), JSON.parse(JSON.stringify(document)));
+				assert.deepEqual(
+					validateProjectDocument(JSON.parse(JSON.stringify(document))),
+					JSON.parse(JSON.stringify(document)),
+				);
 				for (const field of ["showName", "showNumber"]) {
-					assert.equal(drawingShapeSchema.safeParse({ ...pin, [field]: "false" }).success, false);
-					assert.throws(() => parseSymbolFile(JSON.stringify({ ...file, shapes: [{ ...file.shapes[0], [field]: "false" }] })), new RegExp(field));
-					assert.throws(() => validateProjectDocument({ ...document, shapes: [{ ...placed, childOverrides: { [`shape:${pin.id}`]: { [field]: 1 } } }] }), new RegExp(field));
+					assert.equal(
+						drawingShapeSchema.safeParse({ ...pin, [field]: "false" }).success,
+						false,
+					);
+					assert.throws(
+						() =>
+							parseSymbolFile(
+								JSON.stringify({
+									...file,
+									shapes: [{ ...file.shapes[0], [field]: "false" }],
+								}),
+							),
+						new RegExp(field),
+					);
+					assert.throws(
+						() =>
+							validateProjectDocument({
+								...document,
+								shapes: [
+									{
+										...placed,
+										childOverrides: { [`shape:${pin.id}`]: { [field]: 1 } },
+									},
+								],
+							}),
+						new RegExp(field),
+					);
 				}
 			}
 		}
 	}
 });
 
-
 test("symbol child visibility overrides render independently and export into reusable definitions", () => {
-	const pin = { ...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }), kind: "pin" as const, name: "RUN", number: "26", showLabels: false };
+	const pin = {
+		...drawShape(1, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }),
+		kind: "pin" as const,
+		name: "RUN",
+		number: "26",
+		showLabels: false,
+	};
 	const original = createSymbolFromShapes(2, [pin]);
 	const child = symbolChildren(original)[0];
 	assert.equal(child.shape.kind, "pin");
 	if (child.shape.kind !== "pin") throw new Error("Expected pin child");
-	const changed = replaceSymbolChild(original, child.key, { ...child.shape, showNumber: true });
+	const changed = replaceSymbolChild(original, child.key, {
+		...child.shape,
+		showNumber: true,
+	});
 	assert.equal(changed.childOverrides?.[child.key].showNumber, true);
-	assert.deepEqual(buildDrawingDisplay([original], new Set()).connections[0].children, []);
-	assert.deepEqual(buildDrawingDisplay([changed], new Set()).connections[0].children?.map(label => label.text), ["26"]);
+	assert.deepEqual(
+		buildDrawingDisplay([original], new Set()).connections[0].children,
+		[],
+	);
+	assert.deepEqual(
+		buildDrawingDisplay([changed], new Set()).connections[0].children?.map(
+			(label) => label.text,
+		),
+		["26"],
+	);
 	const saved = parseSymbolFile(JSON.stringify(symbolFileFromSymbol(changed)));
-	const restored = createSymbol(3, libraryDefinitions([saved])[0], { x: 0, y: 0 });
-	assert.deepEqual(buildDrawingDisplay([restored], new Set()).connections[0].children?.map(label => label.text), ["26"]);
+	const restored = createSymbol(3, libraryDefinitions([saved])[0], {
+		x: 0,
+		y: 0,
+	});
+	assert.deepEqual(
+		buildDrawingDisplay([restored], new Set()).connections[0].children?.map(
+			(label) => label.text,
+		),
+		["26"],
+	);
 	assert.deepEqual(pinTerminals(changed), pinTerminals(original));
 });

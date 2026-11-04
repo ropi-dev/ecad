@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
@@ -16,7 +17,7 @@ test("editor-symbol-duplicate", async ({ page }, testInfo) => {
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
 	const canvas = page.locator("canvas");
-	const bounds = (await canvas.boundingBox())!;
+	const bounds = required(await canvas.boundingBox());
 	const source = {
 		x: bounds.x + bounds.width * 0.35,
 		y: bounds.y + bounds.height * 0.5,
@@ -47,6 +48,6 @@ test("editor-symbol-duplicate", async ({ page }, testInfo) => {
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "editor-symbol-duplicate", {
-		interactionP95Ms: metric(value, "scenario.interaction")!,
+		interactionP95Ms: required(metric(value, "scenario.interaction")),
 	});
 });

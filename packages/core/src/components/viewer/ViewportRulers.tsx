@@ -1,8 +1,7 @@
 import { type Ref, useId, useImperativeHandle, useState } from "react";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import type { Camera } from "#/engine/types.ts";
 import { gridLayers, rulerTicks } from "#/engine/ruler.ts";
-import type { Bounds } from "#/engine/types.ts";
+import type { Bounds, Camera } from "#/engine/types.ts";
 
 interface RulerView {
 	camera: Camera;

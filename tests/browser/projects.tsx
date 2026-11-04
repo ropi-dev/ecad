@@ -4,9 +4,9 @@ import { Scene } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "#/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "#/components/step/StepWorkspace.tsx";
+import { ProjectProvider, useProject } from "#/projects/ProjectProvider.tsx";
 import { ProjectShell } from "#/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
-import { ProjectProvider, useProject } from "#/projects/ProjectProvider.tsx";
 import { createWebProjectStorage } from "#web/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import "#/styles.css";
@@ -27,14 +27,22 @@ Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
 };
 
 function CircuitDocumentState() {
- const project = useProject();
- const store = project?.editorCircuit?.store;
- if (!store) return null;
- return <CircuitSnapshot store={store} />;
+	const project = useProject();
+	const store = project?.editorCircuit?.store;
+	if (!store) return null;
+	return <CircuitSnapshot store={store} />;
 }
-function CircuitSnapshot({store}: {store: import("@ecad/drawing-core/circuit/store.ts").CircuitStore}) {
- const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
- return <output id="circuit-document" hidden>{JSON.stringify({circuit: snapshot.circuit, graph: snapshot.graph})}</output>;
+function CircuitSnapshot({
+	store,
+}: {
+	store: import("@ecad/drawing-core/circuit/store.ts").CircuitStore;
+}) {
+	const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+	return (
+		<output id="circuit-document" hidden>
+			{JSON.stringify({ circuit: snapshot.circuit, graph: snapshot.graph })}
+		</output>
+	);
 }
 function ProjectDocument() {
 	const project = useProject();

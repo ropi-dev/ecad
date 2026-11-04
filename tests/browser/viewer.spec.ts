@@ -1,7 +1,8 @@
-import { captureArtifacts } from "./artifacts";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { demoFiles } from "../fixtures/demo-gerbers";
+import { required } from "../helpers/required.ts";
+import { captureArtifacts } from "./artifacts";
 
 test("reorders layers and preserves focus, visibility and camera", async ({
 	page,
@@ -29,22 +30,45 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 		page.getByRole("button", { name: "Zoom in", exact: true }),
 	).toBeEnabled();
 	await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await expect.poll(() => page.getByTestId("viewport-grid").evaluate((grid) => {
-		const patterns = [...grid.querySelectorAll("pattern")];
-		const ticks = [...document.querySelectorAll<SVGGElement>('[aria-label="Drawing rulers in millimetres"] g')];
-		return patterns.length > 0 && ticks.length > 0 &&
-			patterns.every((pattern) => pattern.querySelector("circle")?.getAttribute("r") === "1") &&
-			ticks.every((tick) => {
-				const horizontal = tick.dataset.axis === "x";
-				const position = Number(tick.querySelector("line")!.getAttribute(horizontal ? "x1" : "y1"));
-				return patterns.some((pattern) => {
-					const spacing = Number(pattern.getAttribute("width"));
-					const origin = Number(pattern.getAttribute(horizontal ? "x" : "y")) + spacing / 2;
-					const offset = (position - origin) / spacing;
-					return Math.abs(offset - Math.round(offset)) < 0.001;
-				});
-			});
-	})).toBe(true);
+	await expect
+		.poll(() =>
+			page.getByTestId("viewport-grid").evaluate((grid) => {
+				const patterns = [...grid.querySelectorAll("pattern")];
+				const ticks = [
+					...document.querySelectorAll<SVGGElement>(
+						'[aria-label="Drawing rulers in millimetres"] g',
+					),
+				];
+				return (
+					patterns.length > 0 &&
+					ticks.length > 0 &&
+					patterns.every(
+						(pattern) =>
+							pattern.querySelector("circle")?.getAttribute("r") === "1",
+					) &&
+					ticks.every((tick) => {
+						const horizontal = tick.dataset.axis === "x";
+						const position = Number(
+							(
+								tick.querySelector("line") ??
+								(() => {
+									throw new Error("Expected a value");
+								})()
+							).getAttribute(horizontal ? "x1" : "y1"),
+						);
+						return patterns.some((pattern) => {
+							const spacing = Number(pattern.getAttribute("width"));
+							const origin =
+								Number(pattern.getAttribute(horizontal ? "x" : "y")) +
+								spacing / 2;
+							const offset = (position - origin) / spacing;
+							return Math.abs(offset - Math.round(offset)) < 0.001;
+						});
+					})
+				);
+			}),
+		)
+		.toBe(true);
 	const canvasHandle = await page.locator("canvas").elementHandle();
 	const capture = async () => {
 		await page.mouse.move(0, 0);
@@ -83,7 +107,7 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 	await handle.dragTo(rows.last(), { targetPosition: { x: 80, y: 40 } });
 	await expect(names.last()).toHaveText(focused);
 	expect(
-		await canvasHandle!.evaluate(
+		await required(canvasHandle).evaluate(
 			(element) => element === document.querySelector("canvas"),
 		),
 	).toBe(true);
@@ -171,14 +195,16 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 		mimeType: "text/plain",
 		buffer: Buffer.from(source),
 	});
-	await page.locator("input[type=file]").setInputFiles([
-		file("truncated.gbr", `${header}X0Y0D03*\nX2000000Y0D03*\n`),
-		file(
-			"region.gbr",
-			`${header}G99*\nG36*\nX0Y0D02*\nX1000000Y0D01*\nX1000000Y1000000D01*\nG37*\nM02*\n`,
-		),
-		file("negative.gbr", `${header}%IPNEG*%\nX0Y0D03*\nM02*\n`),
-	]);
+	await page
+		.locator("input[type=file]")
+		.setInputFiles([
+			file("truncated.gbr", `${header}X0Y0D03*\nX2000000Y0D03*\n`),
+			file(
+				"region.gbr",
+				`${header}G99*\nG36*\nX0Y0D02*\nX1000000Y0D01*\nX1000000Y1000000D01*\nG37*\nM02*\n`,
+			),
+			file("negative.gbr", `${header}%IPNEG*%\nX0Y0D03*\nM02*\n`),
+		]);
 	await expect(page.locator("[data-testid=layer-name]")).toHaveText([
 		"region.gbr",
 		"truncated.gbr",
@@ -187,11 +213,13 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 		"negative.gbr: Line 5: Legacy negative image polarity IPNEG is unsupported; the image would render inverted.",
 	);
 	await expect
-		.poll(async () =>
-			JSON.parse(
-				(await page.locator("#scene-state").textContent()) || '{"objects":[]}',
-			).objects.filter((object: { visible: boolean }) => object.visible)
-				.length,
+		.poll(
+			async () =>
+				JSON.parse(
+					(await page.locator("#scene-state").textContent()) ||
+						'{"objects":[]}',
+				).objects.filter((object: { visible: boolean }) => object.visible)
+					.length,
 		)
 		.toBe(2);
 	const truncated = page.getByRole("button", {
@@ -209,7 +237,9 @@ test("Gerber layers with recoverable problems render and list their diagnostics"
 	await expect(region).toHaveAttribute("aria-expanded", "true");
 	await expect(region).toHaveAttribute(
 		"aria-controls",
-		(await page.getByTestId("layer-diagnostics-list").getAttribute("id"))!,
+		required(
+			await page.getByTestId("layer-diagnostics-list").getAttribute("id"),
+		),
 	);
 	const list = page.getByRole("list", {
 		name: "Diagnostics for region.gbr",

@@ -1,7 +1,9 @@
 import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+
 setupAppTests();
 for (const [scenario, names] of [
 	[
@@ -66,7 +68,7 @@ for (const [scenario, names] of [
 				await page
 					.getByRole("button", { name: `Insert ${name}`, exact: true })
 					.click();
-				const bounds = (await canvas.boundingBox())!;
+				const bounds = required(await canvas.boundingBox());
 				await canvas.click({
 					position: {
 						x: bounds.width * (0.25 + (index % 3) * 0.2),
@@ -81,8 +83,8 @@ for (const [scenario, names] of [
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();
 		const value = await report(page);
 		await finish(page, testInfo, scenario, {
-			interactionP95Ms: metric(value, "scenario.interaction")!,
-			thumbnailP95Ms: metric(value, "symbol.thumbnail")!,
+			interactionP95Ms: required(metric(value, "scenario.interaction")),
+			thumbnailP95Ms: required(metric(value, "symbol.thumbnail")),
 		});
 	});
 }

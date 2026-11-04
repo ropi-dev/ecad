@@ -197,13 +197,13 @@ export function ProjectFilesSidebar() {
 			manifest
 				? [
 						{ path: PROJECT_FILE, name: PROJECT_FILE, type: "Project" },
-						...((snapshot?.circuits?.length ?? 0)
-							? snapshot!.circuits!.flatMap((file, index) => {
+						...(snapshot?.circuits?.length
+							? snapshot.circuits.flatMap((file, index) => {
 									const paths = manifest.circuits?.[index];
 									if (!paths) return [];
 									const name = file.circuit.name;
 									const drawingIndex =
-										snapshot!.drawings?.findIndex(
+										snapshot.drawings?.findIndex(
 											(drawing) => drawing.circuitId === file.circuit.id,
 										) ?? -1;
 									const drawingPath =
@@ -740,9 +740,11 @@ export function ProjectFilesSidebar() {
 																			onClick={() =>
 																				setCollapsed((current) => {
 																					const next = new Set(current);
-																					if (next.has(file.group!))
-																						next.delete(file.group!);
-																					else next.add(file.group!);
+																					const group = file.group;
+																					if (group === undefined) return next;
+																					if (next.has(group))
+																						next.delete(group);
+																					else next.add(group);
 																					return next;
 																				})
 																			}

@@ -1,15 +1,23 @@
-import type { AppPerformance } from "#/performance/browser.ts";
 import { arrangeCircuitGraph } from "@ecad/drawing-core/circuit/graph.ts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { expect, type Page, type TestInfo } from "@playwright/test";
+import type { AppPerformance } from "#/performance/browser.ts";
 import { openProjectFiles } from "../browser/project-files";
 import { createTestComponent } from "../fixtures/circuit.ts";
+import { required } from "../helpers/required.ts";
 import { budgets, type Scenario } from "./budgets.ts";
 
 export type Report = ReturnType<AppPerformance["snapshot"]>;
 
 export const report = (page: Page) =>
-	page.evaluate(() => window.__ecadPerformance!.snapshot());
+	page.evaluate(() =>
+		(
+			window.__ecadPerformance ??
+			(() => {
+				throw new Error("Expected a value");
+			})()
+		).snapshot(),
+	);
 
 export const percentile = (values: number[], percent = 0.95) =>
 	[...values].sort((a, b) => a - b)[
@@ -43,19 +51,24 @@ export async function interaction(
 	action: () => Promise<void>,
 ) {
 	await page.evaluate((name) => {
-		window.__ecadPerformance!.record("scenario.start", 0, { name });
+		(
+			window.__ecadPerformance ??
+			(() => {
+				throw new Error("Expected a value");
+			})()
+		).record("scenario.start", 0, { name });
 	}, name);
 	const start = await page.evaluate(() => performance.now());
 	await action();
 	return page.evaluate(
 		({ start, name }) => {
 			const duration = performance.now() - start;
-			window.__ecadPerformance!.record(
-				"scenario.interaction",
-				duration,
-				{ name },
-				start,
-			);
+			(
+				window.__ecadPerformance ??
+				(() => {
+					throw new Error("Expected a value");
+				})()
+			).record("scenario.interaction", duration, { name }, start);
 			return duration;
 		},
 		{ start, name },
@@ -71,7 +84,7 @@ export async function finish(
 	await page.waitForTimeout(750);
 	const value = await report(page);
 	const metrics: Record<string, number> = {
-		startupMs: metric(value, "app.ready")!,
+		startupMs: required(metric(value, "app.ready")),
 		scriptBytes: value.resources.scriptBytes,
 		domNodes: value.domNodes,
 		...(value.heapBytes === null ? {} : { heapBytes: value.heapBytes }),
@@ -80,19 +93,21 @@ export async function finish(
 			: {}),
 		...(metric(value, "browser.event-loop-delay") === undefined
 			? {}
-			: { eventLoopP95Ms: metric(value, "browser.event-loop-delay")! }),
+			: {
+					eventLoopP95Ms: required(metric(value, "browser.event-loop-delay")),
+				}),
 		...(metric(value, "navigation.ready") === undefined
 			? {}
-			: { navigationP95Ms: metric(value, "navigation.ready")! }),
+			: { navigationP95Ms: required(metric(value, "navigation.ready")) }),
 		...(metric(value, "renderer.frame") === undefined
 			? {}
-			: { frameP95Ms: metric(value, "renderer.frame")! }),
+			: { frameP95Ms: required(metric(value, "renderer.frame")) }),
 		...(metric(value, "import.gerber") === undefined
 			? {}
-			: { importGerberMs: metric(value, "import.gerber")! }),
+			: { importGerberMs: required(metric(value, "import.gerber")) }),
 		...(metric(value, "import.step") === undefined
 			? {}
-			: { importStepMs: metric(value, "import.step")! }),
+			: { importStepMs: required(metric(value, "import.step")) }),
 		...extra,
 	};
 	await testInfo.attach("performance", {
