@@ -27,4 +27,6 @@ Screenshots used by pixel assertions always run. Tests also capture a screenshot
 ECAD_BROWSER_ARTIFACTS=1 pnpm run test:browser tests/browser/projects-design.spec.ts
 ```
 
+Images saved with `testInfo.outputPath()` go to Playwright's output directory, `test-results/` by default. Add `--output=/tmp/ecad-browser-results` to keep them under `/tmp`.
+
 Keep workload timing and allocation budgets in the separate local performance suite described in [performance.md](performance.md). `pnpm run perf` retains its single-worker configuration.
