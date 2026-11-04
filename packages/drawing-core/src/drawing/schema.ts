@@ -145,7 +145,8 @@ const wireShapeSchema = z
 	.refine(orthogonalWire, orthogonalWireError);
 /**
  * Only drawing wires form nets, and those must be horizontal or vertical.
- * Symbol wires are artwork: symbol files may draw them at any angle.
+ * Symbol wires are artwork: symbol files may draw them at any angle. Saved
+ * drawings may also hold legacy diagonal wires (`legacyDrawingShapeSchema`).
  */
 const symbolWireSchema = z.strictObject({ ...wireShapeFields, id: shapeId });
 const pinInputSchema = z.strictObject(savedPinFields);
@@ -409,6 +410,29 @@ export const drawingShapeSchema = z
 		shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
 	);
 
+/**
+ * Reads saved drawings, which may hold diagonal wires from before wires had to
+ * be horizontal or vertical, such as KiCad imports from older versions. The
+ * editor redraws them when it opens the drawing. Everything that creates or
+ * edits shapes uses the strict schemas above.
+ */
+export const legacyDrawingShapeSchema = z
+	.discriminatedUnion(
+		"kind",
+		[
+			fillableShapeSchema,
+			lineShapeSchema,
+			symbolWireSchema,
+			savedPinSchema,
+			textShapeSchema,
+			savedSymbolSchema,
+		],
+		unknownKind,
+	)
+	.overwrite((shape) =>
+		shape.kind === "symbol" ? normalizeNetSymbol(shape) : shape,
+	);
+
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
@@ -432,3 +456,4 @@ export type Same<A, B> = [A] extends [B]
 // The named unions must list every member, and every variant must agree.
 true satisfies Same<z.output<typeof editorShapeSchema>, EditorShape>;
 true satisfies Same<z.output<typeof drawingShapeSchema>, EditorShape>;
+true satisfies Same<z.output<typeof legacyDrawingShapeSchema>, EditorShape>;

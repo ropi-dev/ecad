@@ -7,14 +7,17 @@ import {
 	InvalidDrawingCommand,
 	placeRectangleEffect,
 	placeShapesEffect,
+	replaceAndPlaceShapesEffect,
 	replaceShapesEffect,
 	type ShapeInput,
 } from "#/commands/drawing-commands.ts";
 import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { selectionPasteError } from "#/drawing/clipboard.ts";
+import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import {
 	drawingShapeSchema,
 	editorShapeSchema,
+	legacyDrawingShapeSchema,
 	symbolChildOverridesSchema,
 } from "#/drawing/schema.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
@@ -720,4 +723,76 @@ test("pasting the plain shapes form explains a rejected shape too", () => {
 		),
 		"A circle must have equal width and height.",
 	);
+});
+
+test("projects with diagonal wires saved before the wire rule still open", () => {
+	// KiCad import on earlier versions saved diagonal wires as they were.
+	const legacy = { ...box, id: 1, kind: "wire", width: 10, rotation: Math.PI / 4 };
+	assert.equal(drawingShapeSchema.safeParse(legacy).success, false);
+	assert.equal(legacyDrawingShapeSchema.safeParse(legacy).success, true);
+	assert.equal(
+		validateProjectDocument({ shapes: [legacy] as EditorShape[], symbols: [] })
+			.shapes.length,
+		1,
+	);
+	// New diagonal wires stay rejected everywhere shapes are created or edited.
+	assert.equal(place({ ...legacy, id: undefined }).accepted, false);
+	assert.equal(selectionPasteError(JSON.stringify({ shapes: [legacy] })), "Wire segments must be horizontal or vertical.");
+});
+
+test("the editor redraws legacy diagonal wires without changing their nets", () => {
+	const label = (id: number, name: string, x: number, y: number) =>
+		({ ...text({}), id, text: name, x, y, electrical: "net" }) as EditorShape;
+	const diagonal = (id: number, x: number, y: number, dx: number, dy: number) =>
+		({
+			...box,
+			id,
+			kind: "wire",
+			x: x + dx / 2,
+			y: y + dy / 2,
+			width: Math.hypot(dx, dy),
+			rotation: Math.atan2(dy, dx),
+			lineWidth: 0.3,
+		}) as EditorShape;
+	const shapes = [
+		diagonal(1, 0, 0, 6, 8),
+		label(2, "A", 0, 0),
+		label(3, "B", 6, 8),
+		// Both corners of this one touch other nets, so it becomes a line.
+		diagonal(4, 20, 0, 6, 8),
+		{ ...box, id: 5, kind: "wire", x: 28, y: 0, width: 4, rotation: 0 } as EditorShape,
+		{ ...box, id: 6, kind: "wire", x: 18, y: 8, width: 4, rotation: 0 } as EditorShape,
+		label(7, "C", 30, 0),
+		label(8, "D", 16, 8),
+	];
+	const nets = (list: readonly EditorShape[]) =>
+		electricalNets(list)
+			.flatMap((net) => (net.names.length ? [net.names.join("+")] : []))
+			.sort();
+	const reroute = rerouteLegacyWires(shapes);
+	assert.ok(reroute);
+	assert.equal(
+		reroute.notice,
+		"Redrew 1 diagonal wire from an older version as horizontal and vertical wires. 1 diagonal wire is now a graphic line, because redrawing it would change connections. Draw it again as wires to reconnect.",
+	);
+	const store = createDrawingStore(shapes);
+	Effect.runSync(
+		replaceAndPlaceShapesEffect(
+			reroute.replacements,
+			reroute.additions,
+			"Redraw diagonal wires",
+		).pipe(Effect.provideService(DrawingStore, store)),
+	);
+	const redrawn = store.getSnapshot().shapes;
+	assert.equal(redrawn.find(({ id }) => id === 4)?.kind, "line");
+	assert.ok(
+		redrawn.every(
+			(shape) =>
+				shape.kind !== "wire" ||
+				(Math.abs(Math.sin(2 * shape.rotation)) <= 1e-9 && shape.lineWidth > 0),
+		),
+	);
+	assert.equal(redrawn.find(({ id }) => id === 1)?.lineWidth, 0.3);
+	assert.deepEqual(nets(redrawn), ["A+B", "C", "D"]);
+	assert.equal(rerouteLegacyWires(redrawn), undefined);
 });

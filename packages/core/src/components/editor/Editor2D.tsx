@@ -76,6 +76,7 @@ import {
 	clipboardSelectionText,
 	writeSelectionClipboard,
 } from "#/drawing/clipboard-browser.ts";
+import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import type { LineStyle } from "#/drawing/line-style.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
@@ -213,6 +214,9 @@ const cameraStates = new WeakMap<
 	object,
 	{ camera?: Viewer2DSnapshot["camera"] }
 >();
+
+/** Drawing stores whose legacy diagonal wires were already redrawn. */
+const reroutedStores = new WeakSet<object>();
 
 export function Editor2D(props: Editor2DProps = {}) {
 	const project = useProject();
@@ -353,8 +357,10 @@ function EditorCanvas({
 	const [ready, setReady] = useState(false);
 	const [commandError, setCommandError] = useState("");
 	const [viewerError, setViewerError] = useState("");
+	const [rerouteNotice, setRerouteNotice] = useState("");
 	const issues = editorIssues([
 		viewerError,
+		rerouteNotice,
 		...(symbolLibrary.loading ? [] : resolved.errors),
 		project?.error,
 	]);
@@ -603,6 +609,31 @@ function EditorCanvas({
 			executingCommand.current = false;
 		}
 	};
+	// Drawings saved before wires had to be horizontal or vertical can hold
+	// diagonal wires. Redraw them once, after every symbol resolves, so that
+	// the router sees every pin.
+	useEffect(() => {
+		if (
+			isSymbol ||
+			symbolLibrary.loading ||
+			resolved.errors.length ||
+			reroutedStores.has(store)
+		)
+			return;
+		reroutedStores.add(store);
+		const reroute = rerouteLegacyWires(resolved.shapes);
+		if (
+			reroute &&
+			execute(
+				replaceAndPlaceShapesEffect(
+					reroute.replacements,
+					reroute.additions,
+					"Redraw diagonal wires",
+				),
+			)
+		)
+			setRerouteNotice(reroute.notice);
+	});
 	const acceptEdit = (
 		result: CommandResult,
 		previousHistoryId: number,

@@ -8,7 +8,7 @@ import {
 	parseSavedSymbolLibrary,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { legacyDrawingShapeSchema } from "#/drawing/schema.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import {
 	type ConfiguredSymbolLibrary,
@@ -72,7 +72,7 @@ export const drawingFileSchema = z
 		id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
 		name: projectNameSchema,
 		circuitId: z.string().min(1).optional(),
-		shapes: z.array(drawingShapeSchema),
+		shapes: z.array(legacyDrawingShapeSchema),
 	})
 	.refine(
 		(file) =>
@@ -102,7 +102,7 @@ export function serializeProjectManifest(manifest: ProjectManifest): string {
 export function validateProjectDocument(
 	document: ProjectDocument,
 ): ProjectDocument {
-	const shapes = z.array(drawingShapeSchema).parse(document.shapes);
+	const shapes = z.array(legacyDrawingShapeSchema).parse(document.shapes);
 	if (new Set(shapes.map((shape) => shape.id)).size !== shapes.length) {
 		throw new Error("The project drawing contains duplicate shape IDs.");
 	}

@@ -19,6 +19,7 @@ import {
 import { electricalNets } from "#/drawing/named-nets.ts";
 import {
 	drawingShapeSchema,
+	legacyDrawingShapeSchema,
 	rectangleInputSchema,
 	shapeId,
 	shapeInputSchema,
@@ -99,7 +100,8 @@ export const drawingEnvelopeSchema = z.strictObject({
 export type DrawingEnvelope = z.infer<typeof drawingEnvelopeSchema>;
 
 const drawingStateSchema = z.strictObject({
-	shapes: z.array(drawingShapeSchema),
+	// A drawing may still hold legacy diagonal wires; edits use the strict schemas.
+	shapes: z.array(legacyDrawingShapeSchema),
 	nets: z
 		.array(
 			z.strictObject({
