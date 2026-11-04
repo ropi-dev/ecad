@@ -336,13 +336,168 @@ function junctionDisplay(
 	};
 }
 
-/** Resolve document, selection, and temporary previews without a renderer or UI. */
-export function buildDrawingDisplay(
+interface DrawingAnalysis {
+	junctions: ReturnType<typeof wireJunctions>;
+	crossings: Map<number, WireCrossings>;
+	openEnds: ReturnType<typeof openWireEnds>;
+	openPins: ReturnType<typeof openPins>;
+}
+
+// Connectivity depends only on the shapes, so selection changes reuse it.
+const analysisCache = new WeakMap<EditorShape[], DrawingAnalysis>();
+
+function analyzeDrawing(shapes: EditorShape[]): DrawingAnalysis {
+	let analysis = analysisCache.get(shapes);
+	if (!analysis) {
+		const junctions = wireJunctions(shapes);
+		analysis = {
+			junctions,
+			crossings: measurePerformance(
+				"editor.wire-crossings",
+				() =>
+					buildWireCrossings(
+						shapes,
+						junctions.map(({ point }) => point),
+					),
+				{ shapes: shapes.length },
+			),
+			openEnds: openWireEnds(shapes),
+			openPins: openPins(shapes),
+		};
+		analysisCache.set(shapes, analysis);
+	}
+	return analysis;
+}
+
+function sameCrossings(
+	first: WireCrossings | undefined,
+	second: WireCrossings | undefined,
+) {
+	if (first === second) return true;
+	if (!first || !second) return false;
+	return (
+		first.bridges.length === second.bridges.length &&
+		first.gaps.length === second.gaps.length &&
+		first.bridges.every(
+			(bridge, index) =>
+				bridge.offset === second.bridges[index].offset &&
+				bridge.radius === second.bridges[index].radius &&
+				bridge.side === second.bridges[index].side,
+		) &&
+		first.gaps.every(
+			(gap, index) =>
+				gap.start === second.gaps[index].start &&
+				gap.end === second.gaps[index].end,
+		)
+	);
+}
+
+/**
+ * Display objects for unchanged shapes keep their identity between builds, so a
+ * renderer can skip them. A drag replaces only the moved shapes.
+ */
+const shapeDisplays = new WeakMap<
+	EditorShape,
+	{
+		appearance: DrawingAppearance;
+		renderOrder: number;
+		measure: MeasureText;
+		crossing: WireCrossings | undefined;
+		display: DisplayShape;
+	}
+>();
+const connectionDisplays = new WeakMap<
+	EditorShape,
+	{
+		selected: boolean;
+		renderOrder: number;
+		measure: MeasureText;
+		displays: DisplayShape[];
+	}
+>();
+
+function documentShapeDisplay(
+	shape: EditorShape,
+	appearance: DrawingAppearance,
+	renderOrder: number,
+	measure: MeasureText,
+	crossing: WireCrossings | undefined,
+) {
+	const cached = shapeDisplays.get(shape);
+	if (
+		cached?.appearance === appearance &&
+		cached.renderOrder === renderOrder &&
+		cached.measure === measure &&
+		sameCrossings(cached.crossing, crossing)
+	)
+		return cached.display;
+	const display = displayShape(
+		shape,
+		`shape:${shape.id}`,
+		`${shape.kind} ${shape.id}`,
+		appearance,
+		renderOrder,
+		measure,
+	);
+	if (display.geometry.kind === "wire" && crossing)
+		display.geometry = { ...display.geometry, ...crossing };
+	shapeDisplays.set(shape, {
+		appearance,
+		renderOrder,
+		measure,
+		crossing,
+		display,
+	});
+	return display;
+}
+
+function symbolConnectionDisplays(
+	shape: EditorShape,
+	selected: boolean,
+	renderOrder: number,
+	measure: MeasureText,
+): DisplayShape[] {
+	if (shape.kind !== "symbol") return [];
+	const cached = connectionDisplays.get(shape);
+	if (
+		cached?.selected === selected &&
+		cached.renderOrder === renderOrder &&
+		cached.measure === measure
+	)
+		return cached.displays;
+	const displays = symbolShapes(shape).flatMap((child) =>
+		child.kind === "pin" || child.kind === "wire" || child.kind === "text"
+			? [
+					displayShape(
+						child,
+						`shape:${shape.id}:connection:${child.id}`,
+						`${child.kind} ${shape.id}:${child.id}`,
+						selected
+							? "selected"
+							: child.kind === "pin"
+								? "pin"
+								: isBoxSymbol(shape)
+									? "note"
+									: "stroke",
+						renderOrder,
+						measure,
+					),
+				]
+			: [],
+	);
+	connectionDisplays.set(shape, { selected, renderOrder, measure, displays });
+	return displays;
+}
+
+/** The document and selection part of a drawing display, without previews. */
+export type StaticDrawingDisplay = Omit<DrawingDisplay, "previews">;
+
+/** Resolve the document and selection without a renderer or UI. */
+export function buildStaticDisplay(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
-	previews: EditorShape[] = [],
 	measure: MeasureText = estimateText,
-): DrawingDisplay {
+): StaticDrawingDisplay {
 	const highlightedWires = new Set<number>();
 	const netSelections = new Set(
 		shapes
@@ -375,22 +530,11 @@ export function buildDrawingDisplay(
 		...drawShape(0, "pin", { x: 0, y: 0 }, { x: 0, y: 0 }),
 		length: 0,
 	};
-	const junctions = wireJunctions(shapes);
-	const crossings = measurePerformance(
-		"editor.wire-crossings",
-		() =>
-			buildWireCrossings(
-				shapes,
-				junctions.map(({ point }) => point),
-			),
-		{ shapes: shapes.length },
-	);
+	const { junctions, crossings, openEnds, openPins } = analyzeDrawing(shapes);
 	return {
-		shapes: shapes.map((shape, index) => {
-			const display = displayShape(
+		shapes: shapes.map((shape, index) =>
+			documentShapeDisplay(
 				shape,
-				`shape:${shape.id}`,
-				`${shape.kind} ${shape.id}`,
 				selectedIds.has(shape.id)
 					? "selected"
 					: highlightedWires.has(shape.id)
@@ -403,12 +547,9 @@ export function buildDrawingDisplay(
 								: "stroke",
 				index + 1,
 				measure,
-			);
-			const crossing = crossings.get(shape.id);
-			if (display.geometry.kind === "wire" && crossing)
-				display.geometry = { ...display.geometry, ...crossing };
-			return display;
-		}),
+				crossings.get(shape.id),
+			),
+		),
 		selections: shapes
 			.filter((shape) => selectedIds.has(shape.id))
 			.map((shape) => ({
@@ -428,7 +569,7 @@ export function buildDrawingDisplay(
 					: {}),
 				renderOrder: shapes.length + 1,
 			})),
-		terminals: openWireEnds(shapes).map(({ shape, point }) =>
+		terminals: openEnds.map(({ shape, point }) =>
 			junctionDisplay(
 				{ ...terminal, ...point },
 				"wire-terminal",
@@ -459,32 +600,14 @@ export function buildDrawingDisplay(
 			),
 		),
 		connections: shapes.flatMap((shape, index) =>
-			shape.kind === "symbol"
-				? symbolShapes(shape).flatMap((child) =>
-						child.kind === "pin" ||
-						child.kind === "wire" ||
-						child.kind === "text"
-							? [
-									displayShape(
-										child,
-										`shape:${shape.id}:connection:${child.id}`,
-										`${child.kind} ${shape.id}:${child.id}`,
-										selectedIds.has(shape.id)
-											? "selected"
-											: child.kind === "pin"
-												? "pin"
-												: isBoxSymbol(shape)
-													? "note"
-													: "stroke",
-										index + 1,
-										measure,
-									),
-								]
-							: [],
-					)
-				: [],
+			symbolConnectionDisplays(
+				shape,
+				selectedIds.has(shape.id),
+				index + 1,
+				measure,
+			),
 		),
-		halos: openPins(shapes).map(({ shape, point }, index) => ({
+		halos: openPins.map(({ shape, point }, index) => ({
 			...displayShape(
 				{ ...terminal, ...point },
 				`pin-halo:${shape.id}:${index}`,
@@ -502,44 +625,65 @@ export function buildDrawingDisplay(
 				lineWidth: 0.1,
 			},
 		})),
-		previews: previews.flatMap((preview, index) => {
-			if (preview.width <= 0) return [];
-			const name =
-				preview.kind === "symbol"
-					? "editor-symbol-preview"
-					: preview.kind === "wire"
-						? index === 0
-							? "editor-wire-preview"
-							: "editor-wire-tail-preview"
-						: "editor-shape-preview";
-			return [
-				displayShape(
-					preview,
-					`preview:${preview.id}`,
-					name,
-					"selected",
-					shapes.length + 2,
-					measure,
-				),
-				...(preview.kind === "symbol"
-					? symbolShapes(preview).flatMap((child) =>
-							child.kind === "pin" ||
-							child.kind === "wire" ||
-							child.kind === "text"
-								? [
-										displayShape(
-											child,
-											`preview:${preview.id}:connection:${child.id}`,
-											"editor-connection-preview",
-											"selected",
-											shapes.length + 2,
-											measure,
-										),
-									]
-								: [],
-						)
-					: []),
-			];
-		}),
+	};
+}
+
+/** Resolve temporary previews, which draw above a document of `shapeCount` shapes. */
+export function buildPreviewDisplay(
+	previews: EditorShape[],
+	shapeCount: number,
+	measure: MeasureText = estimateText,
+): DisplayShape[] {
+	return previews.flatMap((preview, index) => {
+		if (preview.width <= 0) return [];
+		const name =
+			preview.kind === "symbol"
+				? "editor-symbol-preview"
+				: preview.kind === "wire"
+					? index === 0
+						? "editor-wire-preview"
+						: "editor-wire-tail-preview"
+					: "editor-shape-preview";
+		return [
+			displayShape(
+				preview,
+				`preview:${preview.id}`,
+				name,
+				"selected",
+				shapeCount + 2,
+				measure,
+			),
+			...(preview.kind === "symbol"
+				? symbolShapes(preview).flatMap((child) =>
+						child.kind === "pin" ||
+						child.kind === "wire" ||
+						child.kind === "text"
+							? [
+									displayShape(
+										child,
+										`preview:${preview.id}:connection:${child.id}`,
+										"editor-connection-preview",
+										"selected",
+										shapeCount + 2,
+										measure,
+									),
+								]
+							: [],
+					)
+				: []),
+		];
+	});
+}
+
+/** Resolve document, selection, and temporary previews without a renderer or UI. */
+export function buildDrawingDisplay(
+	shapes: EditorShape[],
+	selectedIds: ReadonlySet<number>,
+	previews: EditorShape[] = [],
+	measure: MeasureText = estimateText,
+): DrawingDisplay {
+	return {
+		...buildStaticDisplay(shapes, selectedIds, measure),
+		previews: buildPreviewDisplay(previews, shapes.length, measure),
 	};
 }
