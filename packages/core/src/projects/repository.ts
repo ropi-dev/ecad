@@ -263,10 +263,15 @@ export class ProjectRepository {
 		return this.snapshot;
 	}
 
-	private async publish(snapshot: ProjectSnapshot): Promise<ProjectSnapshot> {
-		const document = validateProjectDocument(
-			pairPcbDocuments(snapshot, snapshot.manifest.name),
-		);
+	private async publish(
+		snapshot: ProjectSnapshot,
+		validated?: ProjectDocument,
+	): Promise<ProjectSnapshot> {
+		const document =
+			validated ??
+			validateProjectDocument(
+				pairPcbDocuments(snapshot, snapshot.manifest.name),
+			);
 		snapshot = { ...snapshot, ...document };
 		if (this.options.layout === "files")
 			return this.publishFiles({ ...snapshot, ...document });
@@ -551,7 +556,11 @@ export class ProjectRepository {
 									(file) => file.circuit.id === drawing.circuitId,
 								),
 						));
-			return this.publish({ ...current, ...validated, drawings });
+			const snapshot = { ...current, ...validated, drawings };
+			return this.publish(
+				snapshot,
+				pairPcbDocuments(snapshot, current.manifest.name),
+			);
 		});
 	}
 

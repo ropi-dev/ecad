@@ -47,7 +47,9 @@ export function assembleProjectSave({
 				}),
 		symbols: savedSymbols,
 		symbolLibraries: libraries.map((library) =>
-			library.id === "project-symbols" && library.source.kind === "embedded"
+			library.id === "project-symbols" &&
+			library.source.kind === "embedded" &&
+			library.source.symbols !== savedSymbols
 				? {
 						...library,
 						source: {

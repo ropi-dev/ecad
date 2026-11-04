@@ -13,20 +13,36 @@ function decoded<Args extends unknown[], Result>(
 export function createDesktopSymbolLibraryStorage(
 	bridge: DesktopSymbolLibraryBridge,
 ): SymbolLibraryStorage {
+	const listeners = new Set<() => void>();
+	const notify = <Args extends unknown[], Result>(
+		call: ((...args: Args) => Promise<Result>) | undefined,
+	) =>
+		call &&
+		(async (...args: Args) => {
+			const result = await call(...args);
+			for (const listener of listeners) listener();
+			return result;
+		});
 	return {
 		mode: "desktop",
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 		load: decodeIpcErrors(() => bridge.load()),
-		save: decodeIpcErrors((symbols, additions) =>
-			bridge.save(symbols, additions),
-		),
+		save: notify(
+			decodeIpcErrors((symbols, additions) => bridge.save(symbols, additions)),
+		)!,
 		openDirectory: decodeIpcErrors(() => bridge.openDirectory()),
 		loadConfiguration: decoded(bridge, bridge.loadConfiguration),
-		saveConfiguration: decoded(bridge, bridge.saveConfiguration),
+		saveConfiguration: notify(decoded(bridge, bridge.saveConfiguration)),
 		openLibraryDirectory: decoded(bridge, bridge.openLibraryDirectory),
 		loadDirectory: decoded(bridge, bridge.loadDirectory),
 		canWriteConfiguration: decoded(bridge, bridge.canWriteConfiguration),
 		inspectDirectorySymbol: decoded(bridge, bridge.inspectDirectorySymbol),
-		saveDirectorySymbol: decoded(bridge, bridge.saveDirectorySymbol),
+		saveDirectorySymbol: notify(decoded(bridge, bridge.saveDirectorySymbol)),
 	};
 }
 

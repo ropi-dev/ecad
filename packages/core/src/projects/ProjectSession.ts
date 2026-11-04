@@ -1,6 +1,7 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import { createDocumentRegistry } from "#/projects/document-registry.ts";
+import { createLinkedPcbAssembler } from "#/projects/linked-pcb.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import { createProjectSymbolStorage } from "#/projects/project-symbol-storage.ts";
@@ -179,6 +180,10 @@ export function createProjectSession(
 		publish();
 	};
 	let needsSave = false;
+	let savedMainShapes = store.getSnapshot().shapes;
+	let synchronizing = false;
+	let libraryRevision = 0;
+	let autosavePending: Promise<void> | undefined;
 	let error = "";
 	const setError = (next: string) => {
 		if (Object.is(next, error)) return;
@@ -237,6 +242,7 @@ export function createProjectSession(
 	let mounted = true;
 
 	const enqueue = createSerialQueue();
+	const linkedAssembler = createLinkedPcbAssembler();
 	const noteConflict = (cause: unknown) => {
 		if (!isProjectError(cause, "ProjectConflict")) return;
 		conflict = cause;
@@ -252,6 +258,7 @@ export function createProjectSession(
 	};
 	const adopt = (snapshot: ProjectSnapshot) => {
 		editorSelection++;
+		linkedAssembler.invalidate();
 		documents.clear();
 		setEditorCircuit(null);
 		setEditorSymbol(null);
@@ -267,6 +274,7 @@ export function createProjectSession(
 		);
 
 		setStore(next);
+		savedMainShapes = next.getSnapshot().shapes;
 		subscribeMain();
 		setDirty(false);
 		needsSave = false;
@@ -309,6 +317,7 @@ export function createProjectSession(
 		nextCircuits?: CircuitFile[],
 	) => {
 		const previous = active;
+		const savingLibraryRevision = libraryRevision;
 		if (!previous) return;
 		if (conflict) throw conflict;
 		const edits = [...symbolDocuments.values()].filter(
@@ -356,8 +365,7 @@ export function createProjectSession(
 			savedCircuits,
 		});
 
-		const { assembleLinkedPcbs } = await import("#/projects/linked-pcb.ts");
-		const linked = await assembleLinkedPcbs(
+		const linked = await linkedAssembler.assemble(
 			document,
 			previous,
 			symbolStorage,
@@ -386,10 +394,7 @@ export function createProjectSession(
 			shapes: EditorShape[],
 			external: boolean,
 		) => {
-			if (
-				JSON.stringify(target.getSnapshot().shapes) === JSON.stringify(shapes)
-			)
-				return;
+			if (target.getSnapshot().shapes === shapes) return;
 			target.transact((current) => [
 				undefined,
 				{
@@ -414,6 +419,7 @@ export function createProjectSession(
 				},
 			]);
 		};
+		synchronizing = true;
 		if (store.getSnapshot().shapes === mainShapes)
 			refreshDrawing(
 				store,
@@ -432,23 +438,28 @@ export function createProjectSession(
 					externalDrawings.has(drawing.id),
 				);
 		}
+		const synchronizedCircuits = new Map<string, CircuitFile>();
 		for (const file of document.circuits ?? []) {
 			const target = circuitDocuments.get(file.circuit.id);
 			if (
 				target &&
 				target.store.getSnapshot().circuit ===
 					circuitInputs.get(file.circuit.id) &&
-				JSON.stringify(target.store.getSnapshot().circuit) !==
-					JSON.stringify(file.circuit)
-			)
+				target.store.getSnapshot().circuit !== file.circuit
+			) {
 				target.store.synchronize(file, {
 					preserveHistory: circuitSources.get(file.circuit.id) === "circuit",
 				});
+				synchronizedCircuits.set(file.circuit.id, target.store.getSnapshot());
+			}
 		}
 
+		synchronizing = false;
+		savedMainShapes = document.shapes;
 		for (const file of document.circuits ?? []) {
 			const edit = circuitDocuments.get(file.circuit.id);
-			if (edit) edit.savedFile = file;
+			if (edit)
+				edit.savedFile = synchronizedCircuits.get(file.circuit.id) ?? file;
 		}
 		for (const edit of edits) {
 			const shapes = pending.get(edit.file.id);
@@ -460,48 +471,54 @@ export function createProjectSession(
 		}
 		symbols = document.symbols;
 		libraries = document.symbolLibraries;
+		linkedAssembler.accept(
+			next,
+			new Map(
+				[...circuitDocuments].map(([id, entry]) => [id, entry.savedFile]),
+			),
+		);
 		update(next);
 		if (mounted) {
 			needsSave =
-				JSON.stringify(store.getSnapshot().shapes) !==
-					JSON.stringify(document.shapes) ||
-				[...circuitDocuments.values()].some((entry) => {
-					const snapshot = entry.store.getSnapshot();
-					return (
-						JSON.stringify(snapshot.circuit) !==
-						JSON.stringify(entry.savedFile.circuit)
-					);
-				}) ||
-				[...symbolDocuments.values()].some(
+				libraryRevision !== savingLibraryRevision ||
+				store.getSnapshot().shapes !== savedMainShapes ||
+				[...circuitDocuments.values()].some(
 					(entry) =>
-						JSON.stringify(entry.store.getSnapshot().shapes) !==
-						JSON.stringify(entry.savedShapes),
+						entry.store.getSnapshot().circuit !== entry.savedFile.circuit,
+				) ||
+				[...symbolDocuments.values()].some(
+					(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
 				) ||
 				[...drawingDocuments.values()].some(
-					(entry) =>
-						JSON.stringify(entry.store.getSnapshot().shapes) !==
-						JSON.stringify(entry.savedShapes),
+					(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
 				);
 			setDirty(needsSave);
 			setError("");
 		}
 	};
-	const autosave = async (onlyIfDirty = false) => {
-		if (conflict && onlyIfDirty) return;
-		try {
-			await enqueue(async () => {
-				if (onlyIfDirty && (!needsSave || conflict)) return;
+	const autosave = (onlyIfDirty = false): Promise<void> => {
+		if (onlyIfDirty && (conflict || synchronizing)) return Promise.resolve();
+		if (autosavePending) return autosavePending;
+		const pending = enqueue(async () => {
+			if (onlyIfDirty && (!needsSave || conflict)) return;
+			do {
 				await persist();
 				await transferAssets([]);
+			} while (needsSave && !conflict && mounted);
+		});
+		autosavePending = pending
+			.catch((cause) => {
+				if (mounted && !isProjectError(cause, "ProjectConflict")) {
+					needsSave = true;
+					setDirty(true);
+					showError(cause, "Unable to save the project.");
+				}
+				throw cause;
+			})
+			.finally(() => {
+				autosavePending = undefined;
 			});
-		} catch (cause) {
-			if (mounted && !isProjectError(cause, "ProjectConflict")) {
-				needsSave = true;
-				setDirty(true);
-				showError(cause, "Unable to save the project.");
-			}
-			throw cause;
-		}
+		return autosavePending;
 	};
 	const save = async () => {
 		if (!storage.saveProject) {
@@ -575,17 +592,16 @@ export function createProjectSession(
 					),
 				{ components: file.circuit.components.length },
 			);
-			let lastCircuit = JSON.stringify(circuitStore.getSnapshot().circuit);
+			let lastCircuit = circuitStore.getSnapshot().circuit;
 			return {
 				file,
 				store: circuitStore,
 				savedFile: circuitStore.getSnapshot(),
 				unsubscribe: circuitStore.subscribe(() => {
-					const nextCircuit = JSON.stringify(
-						circuitStore.getSnapshot().circuit,
-					);
+					const nextCircuit = circuitStore.getSnapshot().circuit;
 					if (nextCircuit === lastCircuit) return;
 					lastCircuit = nextCircuit;
+					if (synchronizing) return;
 					needsSave = true;
 					setDirty(true);
 					void autosave(true).catch(() => undefined);
@@ -646,6 +662,20 @@ export function createProjectSession(
 		}
 	};
 
+	const subscribeDrawing = (
+		drawingStore: ReturnType<typeof createDrawingStore>,
+	) => {
+		let lastShapes = drawingStore.getSnapshot().shapes;
+		return drawingStore.subscribe(() => {
+			const shapes = drawingStore.getSnapshot().shapes;
+			if (shapes === lastShapes) return;
+			lastShapes = shapes;
+			if (synchronizing) return;
+			needsSave = true;
+			setDirty(true);
+			void autosave(true).catch(() => undefined);
+		});
+	};
 	const selectEditorFile = (path?: string): boolean | Promise<boolean> => {
 		const selectedSnapshot = active;
 		const selectedDrawing = selectedSnapshot
@@ -712,11 +742,7 @@ export function createProjectSession(
 					file: drawing,
 					store: drawingStore,
 					savedShapes: drawingStore.getSnapshot().shapes,
-					unsubscribe: drawingStore.subscribe(() => {
-						needsSave = true;
-						setDirty(true);
-						void autosave(true).catch(() => undefined);
-					}),
+					unsubscribe: subscribeDrawing(drawingStore),
 				};
 			});
 			setEditorSymbol(null);
@@ -735,11 +761,7 @@ export function createProjectSession(
 				file,
 				store: symbolStore,
 				savedShapes: symbolStore.getSnapshot().shapes,
-				unsubscribe: symbolStore.subscribe(() => {
-					needsSave = true;
-					setDirty(true);
-					void autosave(true).catch(() => undefined);
-				}),
+				unsubscribe: subscribeDrawing(symbolStore),
 			};
 		});
 		setEditorDrawing(null);
@@ -1028,8 +1050,12 @@ export function createProjectSession(
 	let stopMain = () => {};
 	const subscribeMain = () => {
 		stopMain();
+		let lastShapes = store.getSnapshot().shapes;
 		stopMain = store.subscribe(() => {
-			if (!active) return;
+			const shapes = store.getSnapshot().shapes;
+			if (shapes === lastShapes) return;
+			lastShapes = shapes;
+			if (!active || synchronizing) return;
 			needsSave = true;
 			setDirty(true);
 			void autosave(true).catch(() => undefined);
@@ -1081,6 +1107,14 @@ export function createProjectSession(
 		getProjectSymbols: createProjectSymbols,
 		connect() {
 			mounted = true;
+			const stopLibraries = symbolStorage.subscribe?.(() => {
+				linkedAssembler.invalidate();
+				libraryRevision++;
+				if (!active) return;
+				needsSave = true;
+				setDirty(true);
+				void autosave(true).catch(() => undefined);
+			});
 			let cancelled = false;
 			const warn = (event: BeforeUnloadEvent) => {
 				if (dirty || project?.inMemory) event.preventDefault();
@@ -1106,6 +1140,8 @@ export function createProjectSession(
 			});
 			return () => {
 				cancelled = true;
+				stopLibraries?.();
+				linkedAssembler.invalidate();
 				mounted = false;
 				stopMain();
 				documents.clear();
