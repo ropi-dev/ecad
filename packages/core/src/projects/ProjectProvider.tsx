@@ -398,9 +398,26 @@ export function ProjectProvider({
 				"#/symbol-library/config.ts"
 			);
 			const userConfig = await symbolStorage.loadConfiguration?.();
+			// Resolve standalone project symbols as the editor does, so their
+			// nested references are checked even without a configured entry.
+			const projectLibraries: readonly ConfiguredSymbolLibrary[] =
+				savedSymbols.length &&
+				!document.symbolLibraries.some(
+					(library) => library.id === "project-symbols",
+				)
+					? [
+							{
+								id: "project-symbols",
+								name: "Project symbols",
+								enabled: true,
+								source: { kind: "embedded", symbols: savedSymbols },
+							},
+							...document.symbolLibraries,
+						]
+					: document.symbolLibraries;
 			const resolvedLibraries = await resolveSymbolLibraries(
 				userConfig?.symbolLibraries ?? [],
-				document.symbolLibraries,
+				projectLibraries,
 				symbolStorage.loadDirectory
 					? (path, scope) =>
 							symbolStorage.loadDirectory!(path, scope, previous.directory)
