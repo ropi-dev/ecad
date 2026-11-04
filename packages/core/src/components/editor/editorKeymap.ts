@@ -23,14 +23,14 @@ export function editorShortcut(
 	event: EditorKey,
 	context: {
 		readonly dialogOpen: boolean;
-		readonly placingSymbol: boolean;
+		readonly placing: boolean;
 
 		readonly editable: boolean;
 		readonly canRotate: boolean;
 	},
 ): EditorShortcut | undefined {
 	if (context.dialogOpen) return undefined;
-	if (event.key === "Escape" && context.placingSymbol)
+	if (event.key === "Escape" && context.placing)
 		return { kind: "cancel-placement" };
 	if (event.altKey || context.editable) return undefined;
 	if (!(event.ctrlKey || event.metaKey)) {

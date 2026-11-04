@@ -12,6 +12,7 @@ const [selected, highlighted, wire] = (
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface State {
+	placement: { x: number; y: number; rotation: number } | null;
 	pinTexts: { name: string; texture?: string; rotation: number }[];
 	symbolTexts: {
 		symbol: string;
@@ -485,4 +486,147 @@ test("placement ruler guide clears on Escape and appears while drawing a shape",
 	await expect(crosshair).toBeVisible();
 	await page.mouse.up();
 	await expect(crosshair).toHaveCount(0);
+});
+
+for (const item of [
+	"Resistor",
+	"Pin",
+	"Text",
+	"Net label",
+	"Supply label",
+	"No connect",
+]) {
+	test(`rotates ${item} during placement without changing the drawing`, async ({
+		page,
+	}) => {
+		if (item === "Resistor") {
+			await page.getByRole("button", { name: "Symbols", exact: true }).click();
+			await page
+				.getByRole("button", { name: "Insert Resistor", exact: true })
+				.click();
+		} else {
+			await (await toolbarButton(page, item)).click();
+		}
+		await moveAt(page, 120, 120);
+		await page.locator("canvas").focus();
+		await expect
+			.poll(async () => (await state(page)).placement?.rotation)
+			.toBe(0);
+		const before = await page.locator("#editor-document").textContent();
+		const initial = required((await state(page)).placement);
+		for (const [key, angle] of [
+			["r", Math.PI / 2],
+			["Shift+r", 0],
+			["r", Math.PI / 2],
+		] as const) {
+			await page.keyboard.press(key);
+			await expect
+				.poll(async () => (await state(page)).placement?.rotation)
+				.toBeCloseTo(angle, 4);
+		}
+		expect(await page.locator("#editor-document").textContent()).toBe(before);
+		if (item === "Resistor" || item === "Pin" || item === "No connect") {
+			expect((await state(page)).placement?.x).toBeCloseTo(initial.x, 4);
+			expect((await state(page)).placement?.y).toBeCloseTo(initial.y, 4);
+		}
+		const rotated = required((await state(page)).placement);
+		await moveAt(page, 160, 150);
+		await expect
+			.poll(async () => (await state(page)).placement?.x)
+			.toBeCloseTo(rotated.x + 40, 4);
+		await expect
+			.poll(async () => (await state(page)).placement?.y)
+			.toBeCloseTo(rotated.y + 30, 4);
+		const preview = required((await state(page)).placement);
+		await clickAt(page, 160, 150);
+		await expect
+			.poll(
+				async () =>
+					JSON.parse(
+						(await page.locator("#editor-document").textContent()) || "{}",
+					).shapes.length,
+			)
+			.toBe(1);
+		const placed = JSON.parse(
+			(await page.locator("#editor-document").textContent()) || "{}",
+		).shapes[0];
+		expect(placed.rotation).toBeCloseTo(Math.PI / 2, 4);
+		await expect
+			.poll(async () => (await state(page)).shapes[0]?.rotation)
+			.toBeCloseTo(Math.PI / 2, 4);
+		const rendered = (await state(page)).shapes[0];
+		expect(rendered.x).toBeCloseTo(preview.x, 4);
+		expect(rendered.y).toBeCloseTo(preview.y, 4);
+		await expect.poll(async () => (await state(page)).placement).toBeNull();
+		await page.locator("canvas").focus();
+		await page.keyboard.press("Control+z");
+		await expect
+			.poll(
+				async () =>
+					JSON.parse(
+						(await page.locator("#editor-document").textContent()) || "{}",
+					).shapes.length,
+			)
+			.toBe(0);
+	});
+}
+
+test("placement rotation leaves the selection untouched and resets after cancellation", async ({
+	page,
+}) => {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await clickAt(page, 100, 100);
+	const original = await page.locator("#editor-document").textContent();
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await page
+		.getByRole("button", { name: "Rotate clockwise", exact: true })
+		.click();
+	await moveAt(page, 150, 150);
+	await page.locator("canvas").focus();
+	await expect
+		.poll(async () => (await state(page)).placement?.rotation)
+		.toBeCloseTo(-Math.PI / 2, 4);
+	await page.keyboard.press("Escape");
+	await expect.poll(async () => (await state(page)).placement).toBeNull();
+	expect(await page.locator("#editor-document").textContent()).toBe(original);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await moveAt(page, 160, 150);
+	await expect
+		.poll(async () => (await state(page)).placement?.rotation)
+		.toBe(0);
+	await page.locator("canvas").focus();
+	for (let turn = 0; turn < 4; turn++) await page.keyboard.press("r");
+	await expect
+		.poll(async () => (await state(page)).placement?.rotation)
+		.toBe(0);
+	await page.keyboard.press("r");
+	await expect
+		.poll(async () => (await state(page)).placement?.rotation)
+		.toBeCloseTo(Math.PI / 2, 4);
+	await page.screenshot({ path: "/tmp/ecad-placement-rotated.png" });
+	await clickAt(page, 160, 150);
+	const shapes = JSON.parse(
+		(await page.locator("#editor-document").textContent()) || "{}",
+	).shapes;
+	expect(shapes.map((shape: { rotation: number }) => shape.rotation)).toEqual([
+		0,
+		Math.PI / 2,
+	]);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await moveAt(page, 200, 150);
+	await expect
+		.poll(async () => (await state(page)).placement?.rotation)
+		.toBe(0);
 });
