@@ -18,7 +18,8 @@ export function ProjectConflictNotice() {
 				</p>
 				<p className="m-0 mt-0.5 text-[#e2c3a3]">
 					Another program or window changed its files after you opened it.
-					Saving is paused so neither version is overwritten.
+					Saving, and opening other files or projects, is paused so neither
+					version is overwritten.
 				</p>
 				{project.dirty && (
 					<p className="m-0 mt-0.5 text-[#e2c3a3]">

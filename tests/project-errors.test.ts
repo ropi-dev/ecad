@@ -240,6 +240,14 @@ test("an invalid symbol, drawing or circuit file is reported against that file",
 	assert.match(identity.reason, /circuit identity/);
 	project.files.set(drawing, encoder.encode(original));
 
+	project.edit(drawing, (content) =>
+		content.replace('"format":"ecad-circuit"', '"format":"other"'),
+	);
+	const invalidCircuit = await reload();
+	assert.equal(invalidCircuit.path, drawing);
+	assert.match(invalidCircuit.reason, /^circuit\.format: /);
+	project.files.set(drawing, encoder.encode(original));
+
 	project.edit(PROJECT_FILE, (content) =>
 		content.replace("symbols = []", 'symbols = [ "symbols/broken.ecadsym" ]'),
 	);

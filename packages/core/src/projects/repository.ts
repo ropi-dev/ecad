@@ -167,7 +167,19 @@ export class ProjectRepository {
 								circuits: await Promise.all(
 									manifest.circuits.map((paths) =>
 										readJson(paths.circuit, (value) => {
-											const circuit = circuitSchema.parse(value.circuit);
+											const parsed = circuitSchema.safeParse(value.circuit);
+											if (!parsed.success)
+												throw new InvalidProjectFile({
+													path: paths.circuit,
+													reason: schemaReason(
+														parsed.error.issues.map((issue) => ({
+															...issue,
+															path: ["circuit", ...issue.path],
+														})),
+													),
+													cause: parsed.error,
+												});
+											const circuit = parsed.data;
 											if (value.circuitId && value.circuitId !== circuit.id)
 												throw new InvalidProjectFile({
 													path: paths.circuit,

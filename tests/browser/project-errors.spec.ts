@@ -140,6 +140,22 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	);
 	expect(await access()).toEqual(afterConflict);
 	await expect(notice).toBeVisible();
+	await expect(notice).toContainText(
+		"Saving, and opening other files or projects, is paused",
+	);
+
+	// Switching views stays put and does not repeat the conflict as an error.
+	const switchView = page.getByRole("button", {
+		name: "Switch to circuit view",
+		exact: true,
+	});
+	await switchView.click();
+	await expect(switchView).toBeEnabled();
+	await expect(
+		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+	).toHaveCount(0);
+	expect(await access()).toEqual(afterConflict);
+	expect((await documentState(page)).shapes).toHaveLength(3);
 
 	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
 	await expect(notice).toHaveCount(0);
@@ -156,6 +172,30 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	expect(await readProjectFile(page, ".ecadprj")).not.toContain(
 		"Edited in another tab",
 	);
+});
+
+test("a conflict found by an import alone does not claim unsaved changes", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	await (await openProjectFiles(page))
+		.getByLabel("Add STEP files", { exact: true })
+		.setInputFiles({
+			name: "board.step",
+			mimeType: "application/step",
+			buffer: Buffer.from("ISO-10303-21;"),
+		});
+	const notice = page.getByRole("alert").filter({
+		hasText: "This project changed on disk",
+	});
+	await expect(notice).toBeVisible();
+	await expect(notice).not.toContainText("Your unsaved changes");
+	expect((await documentState(page)).dirty).toBe(false);
+	expect((await documentState(page)).assets).toEqual([]);
+	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await expect(notice).toHaveCount(0);
 });
 
 const benchParts = {

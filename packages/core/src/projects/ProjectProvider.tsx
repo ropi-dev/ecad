@@ -168,16 +168,19 @@ export function ProjectProvider({
 	const mounted = useRef(true);
 
 	const [enqueue] = useState(createSerialQueue);
-	/** Records a conflict so automatic saves stop. Returns whether it was one. */
+	/**
+	 * Records a conflict so automatic saves stop. Unsaved edits keep their own
+	 * dirty state; a failed import alone leaves nothing unsaved.
+	 */
 	const noteConflict = useCallback((cause: unknown) => {
-		if (!isProjectError(cause, "ProjectConflict")) return false;
+		if (!isProjectError(cause, "ProjectConflict")) return;
 		conflict.current = cause;
-		needsSave.current = true;
-		if (mounted.current) {
-			setHasConflict(true);
-			setDirty(true);
-		}
-		return true;
+		if (mounted.current) setHasConflict(true);
+	}, []);
+	/** The conflict notice explains a conflict, so it is not repeated here. */
+	const showError = useCallback((cause: unknown, fallback: string) => {
+		if (!isProjectError(cause, "ProjectConflict"))
+			setError(errorMessage(cause, fallback));
 	}, []);
 	const update = useCallback((snapshot: ProjectSnapshot) => {
 		active.current = snapshot;
@@ -627,14 +630,12 @@ export function ProjectProvider({
 				if (mounted.current) {
 					needsSave.current = true;
 					setDirty(true);
-					// The conflict notice already explains a conflict.
-					if (!isProjectError(cause, "ProjectConflict"))
-						setError(errorMessage(cause, "Unable to save the project."));
+					showError(cause, "Unable to save the project.");
 				}
 				throw cause;
 			}
 		},
-		[enqueue, persist, transferAssets],
+		[enqueue, persist, transferAssets, showError],
 	);
 	const save = useCallback(async () => {
 		if (!storage.saveProject) {
@@ -656,12 +657,12 @@ export function ProjectProvider({
 				return saved !== null && saved !== undefined;
 			});
 		} catch (cause) {
-			setError(errorMessage(cause, "Unable to save the project."));
+			showError(cause, "Unable to save the project.");
 			throw cause;
 		} finally {
 			setBusy(false);
 		}
-	}, [storage, autosave, enqueue, persist, transferAssets, update]);
+	}, [storage, autosave, enqueue, persist, transferAssets, update, showError]);
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++editorSelection.current;
 		const before = active.current;
@@ -793,7 +794,7 @@ export function ProjectProvider({
 				if (path) selectEditorFile(path);
 			}
 		} catch (cause) {
-			setError(errorMessage(cause, "Unable to switch editor views."));
+			showError(cause, "Unable to switch editor views.");
 		}
 	};
 
@@ -978,12 +979,12 @@ export function ProjectProvider({
 					pendingAssets.current = [];
 				});
 			} catch (cause) {
-				setError(errorMessage(cause, "Unable to open the project."));
+				showError(cause, "Unable to open the project.");
 			} finally {
 				setBusy(false);
 			}
 		},
-		[storage, enqueue, persist, adopt, transferAssets, update],
+		[storage, enqueue, persist, adopt, transferAssets, update, showError],
 	);
 	const hasProject = project !== null;
 	const projectSymbols = useMemo<SymbolLibraryStorage | undefined>(
