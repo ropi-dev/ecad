@@ -1,81 +1,33 @@
 import { Effect } from "effect";
-import { type Unzipped, unzip } from "fflate";
+import type { GerberArchive } from "#/formats/gerber/archive.ts";
 import { runEffect } from "#/lib/effect.ts";
-import { gerberLayerOrder } from "./gerber/layer-order";
-import { ArchiveError, readFile } from "./import-effects";
+import { ArchiveError, requestWorker } from "./import-effects";
 
-const GERBER_EXTENSION =
-	/\.(gbr|ger|gerber|gbx|pho|art|cmp|sol|plc|stc|sts|g[bt][lspoa]|gko|gml|gm\d+|gl?\d+)$/i;
+const UNREADABLE = "Unable to read this ZIP archive.";
 
+/**
+ * Extracts ZIP archives in a worker, so inflating never blocks the page and
+ * aborting the import or the timeout stops it. The worker receives the File
+ * by reference and reads the archive itself.
+ */
 export function expandGerberFileEffect(file: File) {
 	return Effect.gen(function* () {
-		if (!/\.zip$/i.test(file.name)) return [file];
-		const buffer = yield* readFile(() => file.arrayBuffer());
-		const data = new Uint8Array(buffer);
-		const contents = yield* Effect.async<Unzipped, ArchiveError>((resume) => {
-			try {
-				const terminate = unzip(
-					data,
-					{
-						filter: ({ name }) =>
-							!name.endsWith("/") &&
-							!name
-								.split("/")
-								.some((part) => part.startsWith(".") || part === "__MACOSX"),
-					},
-					(cause, result) => {
-						resume(
-							cause
-								? Effect.fail(
-										new ArchiveError({
-											message: "Unable to read this ZIP archive.",
-											cause,
-										}),
-									)
-								: Effect.succeed(result),
-						);
-					},
-				);
-				return Effect.sync(terminate);
-			} catch (cause) {
-				resume(
-					Effect.fail(
-						new ArchiveError({
-							message: "Unable to read this ZIP archive.",
-							cause,
-						}),
-					),
-				);
-			}
+		if (!/\.zip$/i.test(file.name)) return { files: [file], messages: [] };
+		const archive = yield* requestWorker<GerberArchive>({
+			create: () =>
+				new Worker(new URL("./gerber/archive.worker.ts", import.meta.url), {
+					type: "module",
+				}),
+			message: { file },
+			timeout: 60_000,
+			timeoutMessage: "Extracting this ZIP archive timed out.",
+			parseMessage: UNREADABLE,
+			startMessage: UNREADABLE,
+			receiveMessage: UNREADABLE,
 		});
-		const decoder = new TextDecoder();
-		const files = Object.entries(contents)
-			.flatMap(([name, bytes]) => {
-				const source = decoder.decode(bytes);
-				if (
-					!GERBER_EXTENSION.test(name) &&
-					!/%(?:FS[LT][AI]X\d\dY\d\d|MO(?:IN|MM)|ADD\d|TF\.FileFunction)/.test(
-						source,
-					)
-				)
-					return [];
-				return [
-					{
-						file: new File([new Uint8Array(bytes)], name, {
-							type: "text/plain",
-						}),
-						order: gerberLayerOrder(name, source),
-					},
-				];
-			})
-			// The renderer stacks from bottom to top; the layer panel reverses this.
-			.sort((a, b) => b.order[0] - a.order[0] || b.order[1] - a.order[1])
-			.map(({ file }) => file);
-		if (!files.length)
-			return yield* new ArchiveError({
-				message: "This ZIP archive contains no Gerber files.",
-			});
-		return files;
+		if ("error" in archive)
+			return yield* new ArchiveError({ message: archive.error });
+		return archive;
 	});
 }
 
