@@ -371,6 +371,83 @@ test("a conflict found by a new project's first save shows the notice", async ({
 	await expect(notice).toHaveCount(0);
 });
 
+test("unsaved edits in the library symbol editor are named by the conflict notice", async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1440, height: 1000 });
+	await page.goto("/tests/browser/projects.html");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	const manifest = await readProjectFile(page, ".ecadprj");
+	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
+	if (!drawing) throw new Error("The project has no drawing.");
+	await editProjectFile(
+		page,
+		drawing,
+		JSON.stringify({
+			symbolLibraries: [
+				{
+					id: "qa",
+					name: "QA lib",
+					enabled: true,
+					source: {
+						kind: "embedded",
+						symbols: [
+							{
+								format: "ecad-symbol",
+								version: 1,
+								units: "mm",
+								id: "qa-part",
+								name: "QA part",
+								description: "",
+								prefix: "U",
+								value: "",
+								shapes: [
+									{ kind: "rectangle", x: 0, y: 0, width: 10, height: 6 },
+									{ kind: "pin", name: "Signal", x: -6, y: 0 },
+								],
+							},
+						],
+					},
+				},
+			],
+		}),
+		"json",
+	);
+	await page.reload();
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await openSchematic(page);
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page.getByRole("button", { name: "Insert QA part", exact: true }).click();
+	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+		"Symbol editor · QA part",
+	);
+	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
+
+	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
+	await (await toolbarButton(page, "Rectangle")).click();
+	await page.mouse.move(450, 350);
+	await page.mouse.down();
+	await page.mouse.move(650, 550);
+	await page.mouse.up();
+
+	const notice = page.getByRole("alert").filter({
+		hasText: "This project changed on disk",
+	});
+	await expect(notice).toBeVisible();
+	// The project documents are saved; only the library editor holds edits.
+	expect((await documentState(page)).dirty).toBe(false);
+	await expect(notice).toContainText(
+		"Your unsaved changes are still here. Reloading from disk discards them.",
+	);
+	await expect(
+		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+	).toHaveCount(0);
+	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
+	await expect(notice).toHaveCount(0);
+});
+
 const benchParts = {
 	id: "parts",
 	name: "Bench parts",

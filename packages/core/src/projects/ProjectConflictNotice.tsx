@@ -22,7 +22,7 @@ export function ProjectConflictNotice() {
 						? "Saving, and opening other files or projects, is paused so neither version is overwritten."
 						: "Saving is paused so neither version is overwritten."}
 				</p>
-				{project.dirty && (
+				{(project.dirty || project.otherUnsavedEdits) && (
 					<p className="m-0 mt-0.5 text-[#e2c3a3]">
 						Your unsaved changes are still here. Reloading from disk discards
 						them.

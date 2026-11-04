@@ -80,6 +80,13 @@ interface ProjectContextValue {
 	conflict: boolean;
 	/** Symbol libraries that failed to load during the last save. */
 	libraryErrors: readonly string[];
+	/**
+	 * True while an editor outside the project documents, such as the library
+	 * symbol editor, holds edits it could not save. Reloading discards them.
+	 */
+	otherUnsavedEdits: boolean;
+	/** Editors outside the project documents report unsaved edits by key. */
+	reportUnsavedEdits(key: string, unsaved: boolean): void;
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
 	createDrawing(name: string): Promise<string>;
@@ -160,6 +167,18 @@ export function ProjectProvider({
 	const needsSave = useRef(false);
 	const [error, setError] = useState("");
 	const [libraryErrors, setLibraryErrors] = useState<readonly string[]>([]);
+	const [unsavedEditors, setUnsavedEditors] = useState<ReadonlySet<string>>(
+		() => new Set(),
+	);
+	const reportUnsavedEdits = useCallback((key: string, unsaved: boolean) => {
+		setUnsavedEditors((current) => {
+			if (current.has(key) === unsaved) return current;
+			const next = new Set(current);
+			if (unsaved) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	}, []);
 	// Set by the first save that finds the project changed on disk. Later saves
 	// fail at once instead of reading the disk again; reloading clears it.
 	const conflict = useRef<ProjectConflict | null>(null);
@@ -1164,6 +1183,8 @@ export function ProjectProvider({
 		error,
 		conflict: hasConflict,
 		libraryErrors,
+		otherUnsavedEdits: unsavedEditors.size > 0,
+		reportUnsavedEdits,
 		create: (name) => switchProject(name, true),
 		importCircuit: (file) =>
 			enqueue(async () => {

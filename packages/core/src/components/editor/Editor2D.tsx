@@ -30,6 +30,7 @@ import {
 	useCallback,
 	useEffect,
 	useEffectEvent,
+	useId,
 	useMemo,
 	useRef,
 	useState,
@@ -138,6 +139,7 @@ import {
 } from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
+import { isProjectError } from "#/projects/errors.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
@@ -2375,6 +2377,17 @@ function LibrarySymbolEditor({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	const dirty = drawing.shapes !== savedShapes;
+	// Project reloads close this editor, so the conflict notice must know about
+	// its unsaved edits.
+	const reportUnsavedEdits = useProject()?.reportUnsavedEdits;
+	const editorKey = useId();
+	useEffect(() => {
+		reportUnsavedEdits?.(editorKey, dirty);
+	}, [reportUnsavedEdits, editorKey, dirty]);
+	useEffect(
+		() => () => reportUnsavedEdits?.(editorKey, false),
+		[reportUnsavedEdits, editorKey],
+	);
 	const save = useCallback(
 		async function persist(): Promise<void> {
 			while (pending.current) await pending.current;
@@ -2392,9 +2405,11 @@ function LibrarySymbolEditor({
 					setSavedShapes(shapes);
 					setError("");
 				} catch (cause) {
-					setError(
-						errorMessage(cause, "Unable to save the symbol definition."),
-					);
+					// The project's conflict notice already explains a conflict.
+					if (!isProjectError(cause, "ProjectConflict"))
+						setError(
+							errorMessage(cause, "Unable to save the symbol definition."),
+						);
 					throw cause;
 				} finally {
 					pending.current = null;
