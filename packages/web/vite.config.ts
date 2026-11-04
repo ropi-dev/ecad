@@ -14,6 +14,9 @@ const config = defineConfig({
 			? "../../node_modules/.vite-performance"
 			: undefined,
 	resolve: { tsconfigPaths: true },
+	// Only the Gerber archive worker imports fflate, and the dev dependency scan
+	// does not follow workers; without this the first ZIP import reloads the page.
+	optimizeDeps: { include: ["@ecad/core > fflate"] },
 	ssr: { noExternal: [/^@tanstack\//] },
 	plugins: [
 		tailwindcss(),
