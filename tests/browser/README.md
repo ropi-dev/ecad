@@ -5,7 +5,7 @@ Run `pnpm run test:browser` for the browser cases. CI runs the same suite across
 | Browser cases | Coverage that needs a browser |
 | --- | --- |
 | Editor, 3 | Canvas pointer coordinates, shape placement and deletion, orthogonal wire gestures, electrical label grid snapping and resize controls |
-| Circuit, 2 | Pin drag preview, connection and merge, undo and redo, reload, autosave completing during a gesture |
+| Circuit, 8 | Pin drag preview, connection and merge, undo and redo, reload, autosave completing during a gesture, component picker filtering, connection highlights, keyboard redo and input isolation, wide net label fitting, space-drag and middle-drag panning during placement |
 | Autosave, 3 | Schematic and user-library symbol edits reach storage with browser timers paused, opening legacy net labels does not save repeatedly |
 | Projects, 3 | Separate drawing histories and reload, failed symbol save and retry, save/discard/cancel when switching projects |
 | Linked PCB, 3 | Navigation between circuit and schematic, synchronization in both directions, pending autosaves and schematic undo, label movement and component rotation through autosave and reload |

@@ -1,3 +1,4 @@
+import { memoryDirectory } from "./helpers/project-directory.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseSymbolFile, type SymbolFile } from "#/components/editor/symbolFormat.ts";
@@ -8,7 +9,7 @@ import { persistDrawingShapes, persistProjectDrawingShapes, resolveDrawingSymbol
 import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
-import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
+import { ProjectRepository } from "#/projects/repository.ts";
 import { type ConfiguredSymbolLibrary, resolveSymbolLibraries } from "#/symbol-library/config.ts";
 
 const reference = { scope: "user", id: "parts" } as const;
@@ -104,13 +105,7 @@ test("cyclic and missing nested references report errors without discarding vali
 });
 
 for (const layout of ["files", "revisions"] as const) test(`project ${layout} storage writes references and reopens them`, async () => {
-	const entries = new Map<string, Uint8Array>();
-	const directory: ProjectDirectory = {
-		name: "References",
-		async read(path) { const value = entries.get(path); if (!value) throw new DOMException("Missing", "NotFoundError"); return value; },
-		async write(path, bytes) { entries.set(path, bytes); },
-		async remove(path) { for (const key of entries.keys()) if (key === path || key.startsWith(`${path}/`)) entries.delete(key); },
-	};
+	const { directory, files: entries } = memoryDirectory("References");
 	const resolved = await resolveSymbolLibraries([library([pin, nested])], []);
 	const repository = new ProjectRepository(directory, { layout });
 	await repository.create("References");

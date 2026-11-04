@@ -1,3 +1,4 @@
+import { memoryDirectory } from "./helpers/project-directory.ts";
 import { createTestCircuit, createTestComponent } from "./fixtures/circuit.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -7,7 +8,7 @@ import { circuitFileSchema, createCircuit, parseCircuit, parseGraphLayout, seria
 import { instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import { applyCircuitCommand, type CircuitCommand, CircuitCommandError, type CircuitCommandErrorReason, createCircuitStore, unknownCircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { createCircuitView, untangleCircuitGraph, circuitLayoutQuality } from "@ecad/drawing-core/circuit/untangle.ts";
-import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
+import { ProjectRepository } from "#/projects/repository.ts";
 
 test("circuit and graph formats round trip independently and reject broken references", () => {
 	const file = createTestCircuit();
@@ -297,18 +298,6 @@ test("collapse validation, empty compact components, and deletion preserve graph
 	assert.equal(store.getSnapshot().graph.collapsedComponentIds,undefined);
 	store.undo(); assert.deepEqual(store.getSnapshot().graph.collapsedComponentIds,[component.id]);
 });
-
-function memoryDirectory() {
-	const files = new Map<string, Uint8Array>();
-	let failPath = "";
-	const directory: ProjectDirectory = {
-		name: "Circuit project",
-		async read(path) { const bytes = files.get(path); if (!bytes) throw Object.assign(new Error("Missing file"), { code: "ENOENT" }); return bytes; },
-		async write(path, bytes) { if (path === failPath) throw new Error("Disk full"); files.set(path, bytes); },
-		async remove(path) { for (const key of files.keys()) if (key === path || key.startsWith(`${path}/`)) files.delete(key); },
-	};
-	return { directory, files, fail(path: string) { failPath = path; } };
-}
 
 for (const layout of ["files", "revisions"] as const) {
 	test(`only electrical circuit data is persisted with ${layout} storage`, async () => {

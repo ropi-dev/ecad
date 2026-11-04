@@ -1,9 +1,10 @@
+import { memoryDirectory } from "./helpers/project-directory.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { ProjectRepository, type ProjectDirectory } from "#/projects/repository.ts";
+import { ProjectRepository } from "#/projects/repository.ts";
 import { type ConfiguredSymbolLibrary, defaultSymbolConfig, parseSymbolConfig, resolveSymbolLibraries, serializeSymbolConfig, unavailableSymbols } from "#/symbol-library/config.ts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { MissingSymbolLibraryError, synchronizePcb } from "#/circuit/linked-schematic.ts";
@@ -50,13 +51,7 @@ test("enabled libraries resolve in order and project definitions take precedence
 });
 
 for (const layout of ["files", "revisions"] as const) test(`project libraries survive saves, reopening and source imports in the ${layout} layout`, async () => {
- const entries = new Map<string, Uint8Array>();
- const directory: ProjectDirectory = {
-  name: "Project",
-  async read(path) { const value = entries.get(path); if (!value) throw new DOMException("Missing", "NotFoundError"); return value; },
-  async write(path, bytes) { entries.set(path, bytes); },
-  async remove(path) { for (const key of entries.keys()) if (key === path || key.startsWith(`${path}/`)) entries.delete(key); },
- };
+ const { directory } = memoryDirectory("Project");
  const repository = new ProjectRepository(directory, { layout });
  await repository.create("Project");
  const libraries = [library("project", "Project point"), { id: "folder", name: "Local", enabled: false, source: { kind: "directory" as const, path: "libraries/local" } }];
