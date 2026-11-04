@@ -1,5 +1,6 @@
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
+	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	type EditorSymbol,
@@ -77,7 +78,6 @@ const line = (
 	),
 	kind,
 });
-const CONNECTION_TOLERANCE = 1e-4;
 type Segment = [XY, XY];
 
 function distance(point: XY, [a, b]: Segment) {
@@ -92,7 +92,7 @@ function distance(point: XY, [a, b]: Segment) {
 		: 0;
 	return Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy);
 }
-const near = (a: XY, b: XY) => distance(a, [b, b]) <= CONNECTION_TOLERANCE;
+const near = (a: XY, b: XY) => distance(a, [b, b]) <= connectionTolerance;
 
 function wireSegments(shape: EditorShape): Segment[] {
 	if (shape.kind !== "wire") return [];
@@ -133,10 +133,10 @@ function cornerRoute(
 			.filter((end) => !near(end, a) && !near(end, b));
 		if (
 			others.every((point) =>
-				segments.every((part) => distance(point, part) > CONNECTION_TOLERANCE),
+				segments.every((part) => distance(point, part) > connectionTolerance),
 			) &&
 			ends.every((end) =>
-				wires.every((wire) => distance(end, wire) > CONNECTION_TOLERANCE),
+				wires.every((wire) => distance(end, wire) > connectionTolerance),
 			)
 		)
 			return route;
@@ -171,7 +171,7 @@ function routeDiagonalWires(
 		for (const point of sourcePoints
 			.filter(
 				(point) =>
-					distance(point, [start, end]) <= CONNECTION_TOLERANCE &&
+					distance(point, [start, end]) <= connectionTolerance &&
 					!near(point, end),
 			)
 			.sort((first, second) => along(first) - along(second)))
