@@ -378,7 +378,7 @@ export function ProjectProvider({
 				import("#/drawing/symbol-reference.ts"),
 			]);
 			const paired = pairPcbDocuments(document, previous.manifest.name);
-			const definitions = [
+			let definitions = [
 				...symbolDefinitions,
 				...libraryDefinitions(savedSymbols).map((definition) => ({
 					...definition,
@@ -416,6 +416,14 @@ export function ProjectProvider({
 			definitions.push(
 				...resolvedLibraries.byReference.values(),
 				...resolvedLibraries.definitions,
+			);
+			// An embedded definition listed above does not resolve the symbols it
+			// places. When one of those comes from a failed library, saving through
+			// it would rebuild placed pins from an incomplete symbol.
+			definitions = definitions.filter(
+				(definition) =>
+					!definition.library ||
+					!isUnavailable(definition.library, definition.id),
 			);
 			const byReference = new Map(
 				definitions

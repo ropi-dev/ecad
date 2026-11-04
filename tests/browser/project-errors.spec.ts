@@ -1,5 +1,11 @@
 import { resolve } from "node:path";
+import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { expect, type Page, test } from "@playwright/test";
+import { synchronizePcb } from "#/circuit/linked-schematic.ts";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { libraryDefinitions } from "#/drawing/symbol-file.ts";
+import { persistDrawingShapes } from "#/drawing/symbol-persistence.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { captureArtifacts } from "./artifacts";
 import {
 	closeProjectFiles,
@@ -330,3 +336,84 @@ for (const { name, libraries, part } of [
 		expect(stored.circuit.components[0].schematicShapeId).toBeUndefined();
 		expect((await documentState(page)).shapes).toEqual([]);
 	});
+
+test("a placed part keeps its pins and connections when a library its symbol depends on fails to load", async ({
+	page,
+}) => {
+	const parts = { scope: "project" as const, id: "parts" };
+	const good = { scope: "project" as const, id: "good" };
+	const symbolFile = (id: string, shapes: unknown[]) =>
+		parseSymbolFile(
+			JSON.stringify({
+				format: "ecad-symbol",
+				version: 1,
+				units: "mm",
+				id,
+				name: id,
+				description: "",
+				prefix: "U",
+				value: "",
+				shapes,
+			}),
+		);
+	const core = symbolFile("core", [{ kind: "pin", name: "OUT", x: 5, y: 0 }]);
+	const amp = symbolFile("amp", [
+		{ kind: "pin", name: "IN", x: -5, y: 0 },
+		{ kind: "pin", name: "GND", x: 0, y: 5 },
+		{ kind: "symbol", library: parts, definitionId: "core", x: 0, y: 0 },
+	]);
+	// Link U1 while "parts" still loaded, so the circuit has all three pins.
+	const coreDefinition = { ...libraryDefinitions([core])[0], library: parts };
+	const ampDefinition = {
+		...libraryDefinitions([amp], (library, id) =>
+			library.id === parts.id && id === "core" ? coreDefinition : undefined,
+		)[0],
+		library: good,
+	};
+	const definitions = [...symbolDefinitions, coreDefinition, ampDefinition];
+	const linked = synchronizePcb(
+		createCircuit("Untitled", "pcb-main"),
+		[createSymbol(1, ampDefinition, { x: 0, y: 0 }, "U1")],
+		undefined,
+		definitions,
+	);
+	expect(linked.file.circuit.components[0].pins).toHaveLength(3);
+
+	await page.goto("/tests/browser/projects.html");
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	const manifest = await readProjectFile(page, ".ecadprj");
+	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
+	if (!drawing) throw new Error("The project has no drawing.");
+	// "parts" is a directory library, which cannot load in the browser.
+	await editProjectFile(
+		page,
+		drawing,
+		JSON.stringify({
+			shapes: persistDrawingShapes(linked.shapes, definitions),
+			circuit: linked.file.circuit,
+			symbolLibraries: [
+				{ ...benchParts, id: parts.id },
+				{
+					id: good.id,
+					name: "Good",
+					enabled: true,
+					source: { kind: "embedded", symbols: [amp] },
+				},
+			],
+		}),
+		"json",
+	);
+	const before = await readProjectFile(page, drawing);
+	await page.reload();
+	await expect.poll(async () => (await documentState(page)).name).toBe("Untitled");
+	await openSchematic(page);
+	await drawRectangle(page, 120);
+
+	const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });
+	await expect(banner).toContainText(
+		"Load the missing symbol library before saving the linked PCB.",
+	);
+	expect((await documentState(page)).dirty).toBe(true);
+	// Nothing was rebuilt from the incomplete symbol.
+	expect(await readProjectFile(page, drawing)).toBe(before);
+});
