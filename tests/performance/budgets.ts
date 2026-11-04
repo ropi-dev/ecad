@@ -23,6 +23,12 @@ export const budgets = {
  "kicad-import": { importMs: 1500, interactionP95Ms: 5000, domNodes: 2000, scriptBytes: 3_000_000, frameP95Ms: 500 },
 
 	"named-net-connectivity": { connectivityP95Ms: 150 },
+	"linked-schematic-sync": {
+		placeMs: 750,
+		saveP95Ms: 1000,
+		circuitEditP95Ms: 750,
+		schematicEditP95Ms: 1000,
+	},
 	"editor-named-nets": { interactionP95Ms: 750, domNodes: 1800, scriptBytes: 3_000_000, frameP95Ms: 500 },
 
 	"schematic-export": {

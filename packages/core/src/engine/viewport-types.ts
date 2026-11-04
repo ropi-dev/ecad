@@ -1,9 +1,6 @@
 import type { Camera } from "./types";
 
 export interface RenderDiagnostics {
-	fps: number;
-	averageMs: number;
-	peakMs: number;
 	width: number;
 	height: number;
 	drawCalls: number;

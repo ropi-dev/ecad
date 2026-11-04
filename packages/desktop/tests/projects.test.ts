@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,6 +8,7 @@ import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import { parseProjectManifest, PROJECT_FILE, projectNameSchema, projectPathSchema, serializeProjectManifest } from "@ecad/core/projects/format.ts";
 import { ProjectRepository } from "@ecad/core/projects/repository.ts";
+import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import { createDesktopProjectDirectory, DesktopProjects } from "#/main/projects.ts";
 
 const shape: EditorShape = { id: 7, kind: "rectangle", x: 0, y: 0, width: 5, height: 8, rotation: 0, lineWidth: 0.2 };
@@ -200,7 +201,8 @@ test("desktop saves retain drawing and symbol paths in user subdirectories", asy
 test("desktop project directory libraries resolve within their project and survive reopening", async t => {
  const parent = await mkdtemp(join(tmpdir(), "ecad-project-libraries-"));
  t.after(() => rm(parent, { recursive: true, force: true }));
- const projects = new DesktopProjects();
+ // Libraries inside the project never need approval.
+ const projects = new DesktopProjects(undefined, { approveExternalLibrary: async () => assert.fail("An in-project library needs no approval.") });
  const project = await projects.create("Library project", parent);
  const libraryPath = join(project.directory, "libraries");
  await mkdir(libraryPath);
@@ -212,11 +214,129 @@ test("desktop project directory libraries resolve within their project and survi
  const reopened = new DesktopProjects(project.directory);
  assert.deepEqual((await reopened.load())?.symbolLibraries, symbolLibraries);
  assert.deepEqual(await reopened.readSymbolLibrary(project.directory, "libraries"), [symbol]);
+ assert.deepEqual(await reopened.inspectLibrarySymbol(project.directory, "libraries", symbol.id), { file: symbol, writable: true });
+ const next = { ...symbol, name: "Edited test point" };
+ await reopened.saveLibrarySymbol(project.directory, "libraries", symbol, next);
+ assert.deepEqual(parseSymbolFile(await readFile(join(libraryPath, "test-point.ecadsym"), "utf8")), next);
 });
+
+/** A downloaded project whose manifest names directory libraries. */
+async function downloadedProject(parent: string, paths: string[]) {
+ const writer = new DesktopProjects();
+ const created = await writer.create("Downloaded", parent);
+ const symbolLibraries = paths.map((path, index) => ({ id: `library-${index}`, name: `Library ${index}`, enabled: true, source: { kind: "directory" as const, path } }));
+ await writer.save(created.directory, { shapes: [], symbols: [], symbolLibraries });
+ return created.directory;
+}
+
+test("project manifests cannot read or overwrite libraries outside the project without approval", async () => temporary(async (parent) => {
+ const home = join(parent, "home");
+ const outside = join(home, "outside");
+ await mkdir(outside, { recursive: true });
+ const filename = join(outside, "secret.ecadsym");
+ await writeFile(filename, JSON.stringify(symbol));
+ const paths = ["../home/outside", outside, "~/outside"];
+ const directory = await downloadedProject(parent, paths);
+ const next = { ...symbol, shapes: [] };
+
+ const unapproved = new DesktopProjects(undefined, { homeDirectory: home });
+ await unapproved.openDirectory(directory);
+ for (const path of paths) {
+  await assert.rejects(unapproved.readSymbolLibrary(directory, path), /outside the project directory/);
+  await assert.rejects(unapproved.inspectLibrarySymbol(directory, path, symbol.id), /outside the project directory/);
+  await assert.rejects(unapproved.saveLibrarySymbol(directory, path, symbol, next), /outside the project directory/);
+ }
+ assert.deepEqual(JSON.parse(await readFile(filename, "utf8")), symbol);
+
+ const asked: ExternalLibraryRequest[] = [];
+ const refusing = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: async (request, { prompt }) => { if (prompt) asked.push(request); return false; } });
+ await refusing.openDirectory(directory);
+ for (const path of paths) await assert.rejects(refusing.readSymbolLibrary(directory, path), /not allowed/);
+ await assert.rejects(refusing.saveLibrarySymbol(directory, paths[0], symbol, next), /not allowed/);
+ // All three paths name one real directory. A refusal holds until the project reopens.
+ assert.deepEqual(asked, [{ project: directory, directory: await realpath(outside) }]);
+ await refusing.openDirectory(directory);
+ await assert.rejects(refusing.readSymbolLibrary(directory, paths[1]), /not allowed/);
+ assert.equal(asked.length, 2);
+ assert.deepEqual(JSON.parse(await readFile(filename, "utf8")), symbol);
+
+ const approving = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: async () => true });
+ await approving.openDirectory(directory);
+ for (const path of paths) assert.deepEqual(await approving.readSymbolLibrary(directory, path), [symbol]);
+ await approving.saveLibrarySymbol(directory, "~/outside", symbol, next);
+ assert.deepEqual(JSON.parse(await readFile(filename, "utf8")), next);
+ // The approval was never written into the project.
+ assert.equal((await readFile(join(directory, PROJECT_FILE), "utf8")).includes("approved"), false);
+}));
+
+test("choosing a refused directory with Add library directory approves it without asking again", async () => temporary(async (parent) => {
+ const { ExternalLibraryApprovals } = await import("#/main/library-approvals.ts");
+ const { DesktopSymbolLibrary } = await import("#/main/symbol-library.ts");
+ const home = join(parent, "home");
+ const outside = join(parent, "outside");
+ await mkdir(home);
+ await mkdir(outside);
+ await writeFile(join(outside, "point.ecadsym"), JSON.stringify(symbol));
+ const directory = await downloadedProject(parent, ["../outside"]);
+ // These are wired as in main.ts.
+ const library = new DesktopSymbolLibrary(undefined, home);
+ let prompts = 0;
+ const approvals = new ExternalLibraryApprovals({ homeDirectory: home, chosen: (path) => library.isChosenDirectory(path), confirm: async () => { prompts++; return false; } });
+ const projects = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: (request, options) => approvals.approve(request, options) });
+ await projects.openDirectory(directory);
+ await assert.rejects(projects.readSymbolLibrary(directory, "../outside"), /not allowed/);
+ await assert.rejects(projects.readSymbolLibrary(directory, "../outside"), /not allowed/);
+ assert.equal(prompts, 1);
+ await library.openLibraryDirectory(outside, "Outside");
+ assert.deepEqual(await projects.readSymbolLibrary(directory, "../outside"), [symbol]);
+ assert.equal(prompts, 1);
+ // The picker approval is remembered for this project after a restart.
+ const restarted = new DesktopProjects(undefined, { homeDirectory: home, approveExternalLibrary: (request, options) => new ExternalLibraryApprovals({ homeDirectory: home }).approve(request, options) });
+ await restarted.openDirectory(directory);
+ assert.deepEqual(await restarted.readSymbolLibrary(directory, "../outside"), [symbol]);
+}));
+
+test("symbolic links cannot move a project library outside the project", async () => temporary(async (parent) => {
+ const outside = join(parent, "outside");
+ await mkdir(outside);
+ await writeFile(join(outside, "secret.ecadsym"), JSON.stringify(symbol));
+ const directory = await downloadedProject(parent, ["linked", "parts"]);
+ await symlink(outside, join(directory, "linked"), "dir");
+ await mkdir(join(directory, "parts"));
+ await symlink(outside, join(directory, "parts", "nested"), "dir");
+ const local = parseSymbolFile(JSON.stringify({ ...symbol, id: "local-point" }));
+ await writeFile(join(directory, "parts", "local.ecadsym"), JSON.stringify(local));
+ const asked: ExternalLibraryRequest[] = [];
+ const projects = new DesktopProjects(undefined, { approveExternalLibrary: async (request, { prompt }) => { if (prompt) asked.push(request); return false; } });
+ await projects.openDirectory(directory);
+ await assert.rejects(projects.readSymbolLibrary(directory, "linked"), /outside the project directory/);
+ await assert.rejects(projects.saveLibrarySymbol(directory, "linked", symbol, { ...symbol, shapes: [] }), /outside the project directory/);
+ // Approval names the real target, so the user sees where the link leads.
+ assert.deepEqual(asked, [{ project: directory, directory: await realpath(outside) }]);
+ // Nested links inside an in-project library are not followed.
+ assert.deepEqual(await projects.readSymbolLibrary(directory, "parts"), [local]);
+ assert.equal(asked.length, 1);
+ assert.deepEqual(JSON.parse(await readFile(join(outside, "secret.ecadsym"), "utf8")), symbol);
+}));
+
+test("untitled projects ask before using directory libraries and reject relative paths", async () => temporary(async (parent) => {
+ await writeFile(join(parent, "point.ecadsym"), JSON.stringify(symbol));
+ const asked: ExternalLibraryRequest[] = [];
+ const projects = new DesktopProjects(undefined, { approveExternalLibrary: async (request) => { asked.push(request); return true; } });
+ const created = await projects.createUntitled();
+ await projects.save(created.directory, { shapes: [], symbols: [], symbolLibraries: [
+  { id: "relative", name: "Relative", enabled: true, source: { kind: "directory", path: "parts" } },
+  { id: "chosen", name: "Chosen", enabled: true, source: { kind: "directory", path: parent } },
+ ] });
+ await assert.rejects(projects.readSymbolLibrary(created.directory, "parts"), /Save the project/);
+ assert.deepEqual(await projects.readSymbolLibrary(created.directory, parent), [symbol]);
+ assert.deepEqual(asked, [{ project: created.directory, directory: await realpath(parent) }]);
+}));
 
 test("edits writable relative project directory symbols and checks project file permissions", async () => temporary(async (parent) => {
  const { chmod } = await import("node:fs/promises");
- const projects = new DesktopProjects();
+ const approved: ExternalLibraryRequest[] = [];
+ const projects = new DesktopProjects(undefined, { approveExternalLibrary: async (request) => { approved.push(request); return true; } });
  const project = await projects.create("Editing", parent);
  await projects.save(project.directory, { shapes: [], symbols: [symbol], symbolLibraries: [{ id: "outside", name: "Outside", enabled: true, source: { kind: "directory", path: "../parts" } }] });
  const path = join(parent, "parts");
@@ -227,6 +347,7 @@ test("edits writable relative project directory symbols and checks project file 
  await projects.saveLibrarySymbol(project.directory, "../parts", symbol, next);
  assert.deepEqual(await projects.readSymbolLibrary(project.directory, "../parts"), [next]);
  await assert.rejects(projects.saveLibrarySymbol(project.directory, "..", symbol, next), /not configured/);
+ assert.deepEqual(approved, Array.from({ length: 3 }, () => ({ project: project.directory, directory: path })));
  const snapshot = (await projects.load())!;
  const symbolPath = snapshot.manifest.symbols[0];
  assert.equal(await projects.canWriteFile(project.directory, symbolPath), true);

@@ -1,6 +1,6 @@
 # Browser tests
 
-`pnpm run test:browser` runs the same 50 scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each. Renderer backend tests run one at a time.
+`pnpm run test:browser` runs the same scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each.
 
 | Browser coverage | Scenarios | Detailed lower-level coverage |
 | --- | ---: | --- |
@@ -10,7 +10,6 @@
 | Symbols, labels, attributes, locks, rotation, thumbnails, and reusable definitions | 13 | `tests/default-symbols.test.ts`, `tests/symbol-library-editing.test.ts`, `tests/symbol-children.test.ts`, `tests/item-locks.test.ts`, `tests/text-alignment.test.ts`, `tests/symbol-text-positions.test.ts`, `tests/pin-label-visibility.test.ts` |
 | Toolbar keyboard and touch input, and MCP commands | 3 | `tests/navigation.test.ts`, `tests/editor-mcp-connection.test.ts`, `tests/editor-mcp-server.test.ts`, `tests/mcp-drawing-tools.test.ts` |
 | STEP, Gerber and KiCad import, exports, layers, hover, cameras, and gestures | 12 | `tests/import-effect.test.ts`, `tests/drawing-export.test.ts`, `tests/gerber.test.ts`, `tests/step.test.ts`, `tests/kicad-import.test.ts`, `tests/scene-hover.test.ts` |
-| WebGPU, WebGL, and Canvas compositing | 3 | `packages/core/src/engine/engine.test.ts`, `tests/planar-geometry.test.ts`, `tests/scene.test.ts` |
 
 The browser suite samples user workflows. Node tests cover geometry, normalization, serialization, validation, and command combinations. Keep each browser scenario focused on one workflow and use representative inputs rather than repeating the same interaction for every model variant.
 

@@ -31,9 +31,7 @@ Imported scene objects have a different lifetime. `acquireImported` registers ro
 
 `createLifecycle` bridges Effect scopes to synchronous React setup and cleanup. Register each resource immediately after acquisition with `acquire`, `addFinalizer`, or `listen`. Call `dispose` on initialization failure and on unmount. Finalizers run in reverse order, including when another finalizer fails.
 
-Viewport renderers, scene displays, hover overlays, controls, listeners, diagnostics timers, and editor materials use this lifetime. Calculations inside render and pointer handlers do not execute an Effect for every frame.
-
-`createRendererEffect` and `ThreeRenderer.createEffect` use ordinary scoped ownership. Keep their scope open while drawing; closing it disposes the renderer. The Promise adapters preserve the existing explicit `dispose()` contract.
+Viewport renderers, scene displays, hover overlays, controls, listeners, and editor materials use this lifetime. Calculations inside render and pointer handlers do not execute an Effect for every frame.
 
 ## Browser services
 

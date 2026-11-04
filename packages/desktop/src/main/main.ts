@@ -1,20 +1,7 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type {
-	SymbolFile,
-	SymbolLibrary,
-} from "@ecad/core/components/editor/symbolFormat.ts";
-import type {
-	AssetKind,
-	ProjectDocument,
-	ProjectSnapshot,
-} from "@ecad/core/projects/format.ts";
-import type {
-	LibraryScope,
-	SymbolLibraryConfig,
-} from "@ecad/core/symbol-library/config.ts";
-import type { DirectorySymbolRequest } from "@ecad/core/symbol-library/storage.tsx";
+import type { ProjectSnapshot } from "@ecad/core/projects/format.ts";
 import {
 	app,
 	BrowserWindow,
@@ -25,8 +12,18 @@ import {
 	protocol,
 	screen,
 } from "electron";
-import { displayChannels, libraryChannels, projectChannels } from "#/bridge.ts";
+import {
+	displayChannels,
+	type InvokeChannel,
+	libraryChannels,
+	projectChannels,
+} from "#/bridge.ts";
 import { readDisplayCalibration } from "#/main/display-calibration.ts";
+import { type IpcArguments, parseIpcArguments } from "#/main/ipc.ts";
+import {
+	ExternalLibraryApprovals,
+	type ExternalLibraryRequest,
+} from "#/main/library-approvals.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
 
@@ -57,11 +54,44 @@ const directoryArgument = process.argv
 	.slice(2)
 	.find((argument) => !argument.startsWith("-"));
 const library = new DesktopSymbolLibrary();
+const approvals = new ExternalLibraryApprovals({
+	chosen: (directory) => library.isChosenDirectory(directory),
+	confirm: confirmExternalLibrary,
+});
 const projects = new DesktopProjects(
 	directoryArgument &&
 		resolve(process.env.INIT_CWD ?? process.cwd(), directoryArgument),
+	{
+		approveExternalLibrary: (request, options) =>
+			approvals.approve(request, options),
+	},
 );
 let window: BrowserWindow | null = null;
+
+async function confirmExternalLibrary({
+	project,
+	directory,
+}: ExternalLibraryRequest) {
+	if (!window) return false;
+	const saved = isAbsolute(project);
+	const { response } = await dialog.showMessageBox(window, {
+		type: "warning",
+		buttons: ["Don't allow", "Allow"],
+		defaultId: 0,
+		cancelId: 0,
+		message: "Allow this project to use a symbol library outside its folder?",
+		detail: [
+			`Library: ${directory}`,
+			`Project: ${saved ? project : "Untitled project"}`,
+			"",
+			"ECAD will read symbol files in this directory and save symbol edits there. Allow it only if you trust this project.",
+			saved
+				? "ECAD remembers an approval in your own settings, not in the project."
+				: "This approval lasts until ECAD closes.",
+		].join("\n"),
+	});
+	return response === 1;
+}
 
 function assertSender(event: IpcMainInvokeEvent) {
 	if (
@@ -74,100 +104,74 @@ function assertSender(event: IpcMainInvokeEvent) {
 	}
 }
 
+/** Every handler checks its sender, then validates the renderer's arguments. */
+function handle<Channel extends InvokeChannel>(
+	channel: Channel,
+	run: (...args: IpcArguments<Channel>) => unknown,
+) {
+	ipcMain.handle(channel, (event, ...args: unknown[]) => {
+		assertSender(event);
+		return run(...parseIpcArguments(channel, args));
+	});
+}
+
 function registerLibraryHandlers() {
-	ipcMain.handle(libraryChannels.canWriteConfiguration, (event) => {
-		assertSender(event);
-		return library.canWriteConfiguration();
-	});
-	ipcMain.handle(
-		libraryChannels.inspectDirectorySymbol,
-		(event, request: DirectorySymbolRequest) => {
-			assertSender(event);
-			if (request.scope === "user")
-				return library.inspectConfiguredSymbol(request.path, request.id);
-			if (request.scope !== "project" || !request.projectDirectory)
-				throw new Error(
-					"Open a project before editing project directory symbols.",
-				);
-			return projects.inspectLibrarySymbol(
-				request.projectDirectory,
-				request.path,
-				request.id,
+	handle(libraryChannels.canWriteConfiguration, () =>
+		library.canWriteConfiguration(),
+	);
+	handle(libraryChannels.inspectDirectorySymbol, (request) => {
+		if (request.scope === "user")
+			return library.inspectConfiguredSymbol(request.path, request.id);
+		if (!request.projectDirectory)
+			throw new Error(
+				"Open a project before editing project directory symbols.",
 			);
-		},
-	);
-	ipcMain.handle(
-		libraryChannels.saveDirectorySymbol,
-		(
-			event,
-			request: DirectorySymbolRequest,
-			original: SymbolFile,
-			next: SymbolFile,
-		) => {
-			assertSender(event);
-			if (request.id !== original.id)
-				throw new Error("The symbol ID does not match its source.");
-			if (request.scope === "user")
-				return library.saveConfiguredSymbol(request.path, original, next);
-			if (request.scope !== "project" || !request.projectDirectory)
-				throw new Error(
-					"Open a project before editing project directory symbols.",
-				);
-			return projects.saveLibrarySymbol(
-				request.projectDirectory,
-				request.path,
-				original,
-				next,
+		return projects.inspectLibrarySymbol(
+			request.projectDirectory,
+			request.path,
+			request.id,
+		);
+	});
+	handle(libraryChannels.saveDirectorySymbol, (request, original, next) => {
+		if (request.id !== original.id)
+			throw new Error("The symbol ID does not match its source.");
+		if (request.scope === "user")
+			return library.saveConfiguredSymbol(request.path, original, next);
+		if (!request.projectDirectory)
+			throw new Error(
+				"Open a project before editing project directory symbols.",
 			);
-		},
-	);
-	ipcMain.handle(libraryChannels.loadConfiguration, (event) => {
-		assertSender(event);
-		return library.loadConfiguration();
+		return projects.saveLibrarySymbol(
+			request.projectDirectory,
+			request.path,
+			original,
+			next,
+		);
 	});
-	ipcMain.handle(
-		libraryChannels.saveConfiguration,
-		(event, config: SymbolLibraryConfig) => {
-			assertSender(event);
-			return library.saveConfiguration(config);
-		},
+	handle(libraryChannels.loadConfiguration, () => library.loadConfiguration());
+	handle(libraryChannels.saveConfiguration, (config) =>
+		library.saveConfiguration(config),
 	);
-	ipcMain.handle(
-		libraryChannels.loadDirectory,
-		(event, path: string, scope: LibraryScope, projectDirectory?: string) => {
-			assertSender(event);
-			if (scope === "user") return library.loadConfiguredDirectory(path);
-			if (scope !== "project" || !projectDirectory)
-				throw new Error("Open a project before loading project directories.");
-			return projects.readSymbolLibrary(projectDirectory, path);
-		},
-	);
-	ipcMain.handle(
-		libraryChannels.openLibraryDirectory,
-		async (event, name: string) => {
-			assertSender(event);
-			if (!window) throw new Error("The desktop editor is closed.");
-			const selected = await dialog.showOpenDialog(window, {
-				title: "Add symbol library directory",
-				properties: ["openDirectory"],
-			});
-			if (selected.canceled || !selected.filePaths[0]) return null;
-			return library.openLibraryDirectory(selected.filePaths[0], name);
-		},
-	);
-	ipcMain.handle(libraryChannels.load, (event) => {
-		assertSender(event);
-		return library.load();
+	handle(libraryChannels.loadDirectory, (path, scope, projectDirectory) => {
+		if (scope === "user") return library.loadConfiguredDirectory(path);
+		if (!projectDirectory)
+			throw new Error("Open a project before loading project directories.");
+		return projects.readSymbolLibrary(projectDirectory, path);
 	});
-	ipcMain.handle(
-		libraryChannels.save,
-		(event, symbols: SymbolLibrary, additions: SymbolLibrary) => {
-			assertSender(event);
-			return library.save(symbols, additions);
-		},
+	handle(libraryChannels.openLibraryDirectory, async (name) => {
+		if (!window) throw new Error("The desktop editor is closed.");
+		const selected = await dialog.showOpenDialog(window, {
+			title: "Add symbol library directory",
+			properties: ["openDirectory"],
+		});
+		if (selected.canceled || !selected.filePaths[0]) return null;
+		return library.openLibraryDirectory(selected.filePaths[0], name);
+	});
+	handle(libraryChannels.load, () => library.load());
+	handle(libraryChannels.save, (symbols, additions) =>
+		library.save(symbols, additions),
 	);
-	ipcMain.handle(libraryChannels.openDirectory, async (event) => {
-		assertSender(event);
+	handle(libraryChannels.openDirectory, async () => {
 		const owner = window;
 		if (!owner) throw new Error("The desktop editor is closed.");
 		const selected = await dialog.showOpenDialog(owner, {
@@ -180,12 +184,8 @@ function registerLibraryHandlers() {
 }
 
 function registerProjectHandlers() {
-	ipcMain.handle(
-		projectChannels.canWriteFile,
-		(event, directory: string, path: string) => {
-			assertSender(event);
-			return projects.canWriteFile(directory, path);
-		},
+	handle(projectChannels.canWriteFile, (directory, path) =>
+		projects.canWriteFile(directory, path),
 	);
 	const selectionFile = join(app.getPath("userData"), "project-directory.json");
 	async function remember(snapshot: ProjectSnapshot | null) {
@@ -193,8 +193,7 @@ function registerProjectHandlers() {
 			await writeFile(selectionFile, JSON.stringify(snapshot.directory));
 		return snapshot;
 	}
-	ipcMain.handle(projectChannels.load, async (event) => {
-		assertSender(event);
+	handle(projectChannels.load, async () => {
 		const current = await projects.load();
 		if (current) return current;
 		if (!directoryArgument) {
@@ -214,8 +213,7 @@ function registerProjectHandlers() {
 		}
 		return projects.load();
 	});
-	ipcMain.handle(projectChannels.create, async (event, name: string) => {
-		assertSender(event);
+	handle(projectChannels.create, async (name) => {
 		if (name === "Untitled") {
 			const snapshot = await projects.createUntitled();
 			await rm(selectionFile, { force: true });
@@ -229,8 +227,7 @@ function registerProjectHandlers() {
 		if (selected.canceled || !selected.filePaths[0]) return null;
 		return remember(await projects.create(name, selected.filePaths[0]));
 	});
-	ipcMain.handle(projectChannels.open, async (event) => {
-		assertSender(event);
+	handle(projectChannels.open, async () => {
 		if (!window) throw new Error("The desktop editor is closed.");
 		const selected = await dialog.showOpenDialog(window, {
 			title: "Open ECAD project directory",
@@ -239,46 +236,26 @@ function registerProjectHandlers() {
 		if (selected.canceled || !selected.filePaths[0]) return null;
 		return remember(await projects.openDirectory(selected.filePaths[0]));
 	});
-	ipcMain.handle(
-		projectChannels.saveProject,
-		async (event, directory: string) => {
-			assertSender(event);
-			if (!projects.isInMemory(directory)) return projects.load();
-			if (!window) throw new Error("The desktop editor is closed.");
-			const selected = await dialog.showOpenDialog(window, {
-				title: "Choose parent folder for the project",
-				properties: ["openDirectory", "createDirectory"],
-			});
-			if (selected.canceled || !selected.filePaths[0]) return null;
-			return remember(
-				await projects.saveToDirectory(directory, selected.filePaths[0]),
-			);
-		},
+	handle(projectChannels.saveProject, async (directory) => {
+		if (!projects.isInMemory(directory)) return projects.load();
+		if (!window) throw new Error("The desktop editor is closed.");
+		const selected = await dialog.showOpenDialog(window, {
+			title: "Choose parent folder for the project",
+			properties: ["openDirectory", "createDirectory"],
+		});
+		if (selected.canceled || !selected.filePaths[0]) return null;
+		return remember(
+			await projects.saveToDirectory(directory, selected.filePaths[0]),
+		);
+	});
+	handle(projectChannels.save, (directory, document) =>
+		projects.save(directory, document),
 	);
-	ipcMain.handle(
-		projectChannels.save,
-		(event, directory: string, document: ProjectDocument) => {
-			assertSender(event);
-			return projects.save(directory, document);
-		},
+	handle(projectChannels.importAssets, (directory, assets) =>
+		projects.importAssets(directory, assets),
 	);
-	ipcMain.handle(
-		projectChannels.importAssets,
-		(
-			event,
-			directory: string,
-			assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
-		) => {
-			assertSender(event);
-			return projects.importAssets(directory, assets);
-		},
-	);
-	ipcMain.handle(
-		projectChannels.readAsset,
-		(event, directory: string, path: string) => {
-			assertSender(event);
-			return projects.readAsset(directory, path);
-		},
+	handle(projectChannels.readAsset, (directory, path) =>
+		projects.readAsset(directory, path),
 	);
 }
 
@@ -302,8 +279,7 @@ function registerDisplayHandlers() {
 	screen.on("display-added", invalidate);
 	screen.on("display-removed", invalidate);
 	screen.on("display-metrics-changed", invalidate);
-	ipcMain.handle(displayChannels.getCalibration, (event) => {
-		assertSender(event);
+	handle(displayChannels.getCalibration, () => {
 		if (!window) return null;
 		const display = screen.getDisplayMatching(window.getBounds());
 		const displays = screen.getAllDisplays();

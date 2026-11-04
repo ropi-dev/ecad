@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
@@ -68,8 +68,11 @@ test("desktop-storage", async ({}, testInfo) => {
 				await repository.readAsset(imported.manifest.assets[0].path),
 			).equals(Buffer.from(bytes)),
 		).toBe(true);
-		const library = new DesktopSymbolLibrary(undefined, directory);
 		const config = { version: 1 as const, symbolLibraries: [{ id: "parts", name: "Parts", enabled: true, source: { kind: "directory" as const, path: "symbols" } }] };
+		// Saves accept only directories the user already configured or picked.
+		await mkdir(join(directory, ".ecad"));
+		await writeFile(join(directory, ".ecad", "config.json"), JSON.stringify(config));
+		const library = new DesktopSymbolLibrary(undefined, directory);
 		await measure("symbolConfigSaveMs", () => library.saveConfiguration(config));
 		expect(await measure("symbolConfigLoadMs", () => library.loadConfiguration())).toEqual(config);
 		expect(await measure("libraryReadMs", () => library.loadConfiguredDirectory("symbols"))).toHaveLength(50);
