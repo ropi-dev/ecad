@@ -6,6 +6,7 @@ import {
 	MAX_GERBER_SOURCE_LENGTH,
 } from "#/formats/gerber/detect.ts";
 import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 
 const MiB = 1024 * 1024;
 /** Bytes one archive may extract; each entry is held to the parser limit. */
@@ -141,6 +142,6 @@ export async function archiveWorkerReply(file: File) {
 			result: extractGerberArchive(new Uint8Array(await file.arrayBuffer())),
 		};
 	} catch (error) {
-		return { error: error instanceof Error ? error.message : UNREADABLE };
+		return { error: errorMessage(error, UNREADABLE) };
 	}
 }
