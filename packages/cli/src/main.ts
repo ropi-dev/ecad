@@ -21,3 +21,6 @@ try {
 	process.off("SIGINT", interrupt);
 	process.off("SIGTERM", terminate);
 }
+// After a signal, exit at once as the default handler would, even while
+// output that nobody reads is still queued for stdout.
+if (signalExitCode !== undefined) process.exit(signalExitCode);

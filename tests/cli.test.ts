@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { chmod, mkdir, readFile, readdir, readlink, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, readlink, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -386,6 +386,20 @@ test("recovery removes leftovers of killed processes, and a process whose copy w
 	assert.deepEqual(new Set(await readdir(fixture.directory)), kept);
 });
 
+test("recovery skips FIFOs and symbolic links named like claims or lock copies", { skip: process.platform === "win32" }, async (context) => {
+	const fixture = await drawing(context);
+	const special = [`.ecad-claim-${randomUUID()}`, `.ecad-lock-${randomUUID()}.tmp`];
+	for (const name of special) await once(spawn("mkfifo", [join(fixture.directory, name)]), "exit");
+	const link = `.ecad-lock-${randomUUID()}.tmp`;
+	await symlink("/dev/zero", join(fixture.directory, link));
+	await writeFile(`${fixture.path}.lock`, lockContent({ pid: await exitedPid() }));
+	const work = startCli(["--timeout", "1000", "placeRectangle", JSON.stringify(rectangle)], fixture.env);
+	const result = await Promise.race([work.result, delay(30_000).then(() => undefined)]);
+	if (!result) work.child.kill("SIGKILL");
+	assert.equal(result?.code, 0, result ? result.stderr || result.stdout : "the command hung");
+	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set([...drawingFiles, ...special, link]));
+});
+
 test("local drawing module cancels a lock wait without removing another owner's lock", async (context) => {
 	const fixture = await drawing(context);
 	await writeFile(`${fixture.path}.lock`, "another owner");
@@ -624,6 +638,37 @@ test("stdio MCP exits on stdin EOF and SIGTERM without stdout diagnostics", asyn
 	assert.ok(transport.pid);
 	process.kill(transport.pid, "SIGTERM");
 	await closed;
+});
+
+test("stdio MCP exits promptly on SIGTERM while replies wait for a reader", { skip: process.platform === "win32" }, async (context) => {
+	const fixture = await drawing(context);
+	const shapes = Array.from({ length: 20_000 }, (_, index) => ({ ...rectangle, kind: "rectangle", id: index + 1 }));
+	await writeFile(fixture.path, JSON.stringify({ shapes }));
+	const child = spawn(process.execPath, ["--import", "tsx", cliMain, "mcp"], { env: { ...process.env, ...fixture.env }, stdio: ["pipe", "pipe", "ignore"] });
+	context.after(() => { child.kill("SIGKILL"); });
+	const exited = once(child, "exit");
+	const send = (message: unknown) => child.stdin.write(`${JSON.stringify(message)}\n`);
+	send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } });
+	send({ jsonrpc: "2.0", method: "notifications/initialized" });
+	for (const id of [2, 3]) send({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "getDrawing", arguments: {} } });
+	// Read into the first drawing reply, then stop reading, so megabytes of
+	// replies stay queued in the server.
+	await new Promise<void>((resolve) => {
+		let received = 0;
+		const onData = (chunk: Buffer) => {
+			received += chunk.length;
+			if (received < 100_000) return;
+			child.stdout.off("data", onData);
+			child.stdout.pause();
+			resolve();
+		};
+		child.stdout.on("data", onData);
+	});
+	child.stdin.end();
+	await delay(500);
+	child.kill("SIGTERM");
+	const [code] = await Promise.race([exited, delay(10_000).then(() => ["still running"])]);
+	assert.equal(code, 143);
 });
 
 test("stdio module releases input listeners when cancelled", async (context) => {

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
 	link,
 	lstat,
@@ -249,20 +250,45 @@ async function createLockOwner(): Promise<LockOwner> {
 	};
 }
 
-// Undefined means that the file is gone. Null means that its owner is unknown,
-// for example because another program wrote it.
-async function readLockOwner(path: string) {
-	let content: string;
+// Reads a lock, claim or staged copy. Undefined means that the file is gone.
+// Null means that it is not a small regular file this process can read. A FIFO
+// would block and a symbolic link could point anywhere, so neither is opened.
+const lockFileFlags =
+	fsConstants.O_RDONLY |
+	(fsConstants.O_NONBLOCK ?? 0) |
+	(fsConstants.O_NOFOLLOW ?? 0);
+
+async function readLockFile(path: string) {
+	let handle: Awaited<ReturnType<typeof open>>;
 	try {
-		content = await readFile(path, "utf8");
+		handle = await open(path, lockFileFlags);
 	} catch (error) {
 		return hasCode(error, "ENOENT") ? undefined : null;
 	}
+	try {
+		const info = await handle.stat();
+		if (!info.isFile() || info.size > 4096) return null;
+		return { content: await handle.readFile("utf8"), modified: info.mtimeMs };
+	} catch {
+		return null;
+	} finally {
+		await handle.close();
+	}
+}
+
+const parseLockOwner = (content: string) => {
 	try {
 		return lockOwnerSchema.parse(JSON.parse(content));
 	} catch {
 		return null;
 	}
+};
+
+// Undefined means that the file is gone. Null means that its owner is unknown,
+// for example because another program wrote it.
+async function readLockOwner(path: string) {
+	const file = await readLockFile(path);
+	return file && parseLockOwner(file.content);
 }
 
 // Returns true only when the owner certainly no longer runs. On Linux, a PID
@@ -401,19 +427,12 @@ async function removeLeftovers(directory: string, owner: LockOwner) {
 				return;
 			}
 			if (!lockCopyName.test(name)) return;
-			let content: string;
-			try {
-				content = await readFile(path, "utf8");
-			} catch {
-				return;
-			}
-			let copyOwner: LockOwner | undefined;
-			try {
-				copyOwner = lockOwnerSchema.parse(JSON.parse(content));
-			} catch {}
+			const file = await readLockFile(path);
+			if (!file) return;
+			const copyOwner = parseLockOwner(file.content);
 			const abandoned = copyOwner
 				? await hasExited(copyOwner)
-				: Date.now() - (await stat(path)).mtimeMs > 60_000;
+				: Date.now() - file.modified > 60_000;
 			if (abandoned) await rm(path, { force: true });
 		}),
 	);
