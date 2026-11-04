@@ -839,7 +839,11 @@ function convert(source: string): KiCadImportResult {
 				);
 			const [start, end] = pts;
 			const angle = Math.atan2(end[1] - start[1], end[0] - start[0]);
-			if (Math.abs(Math.sin(2 * angle)) <= 1e-9)
+			// The schema explains non-finite coordinates, so only real diagonals wait.
+			if (
+				!pts.flat().every(Number.isFinite) ||
+				Math.abs(Math.sin(2 * angle)) <= 1e-9
+			)
 				return { shapes: [line(start, end, "wire")] };
 			diagonalWires.push({ item, segment: [start, end] });
 			return { shapes: [] };
@@ -917,14 +921,16 @@ function convert(source: string): KiCadImportResult {
 	);
 	for (const [index, { item, segment }] of diagonalWires.entries()) {
 		const route = routes[index];
-		warnings.add(
-			route
-				? "Diagonal wires are imported as horizontal and vertical segments."
-				: "Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
-		);
-		attempt(item, () => ({
-			shapes: route ?? [line(segment[0], segment[1], "line")],
-		}));
+		if (
+			attempt(item, () => ({
+				shapes: route ?? [line(segment[0], segment[1], "line")],
+			}))
+		)
+			warnings.add(
+				route
+					? "Diagonal wires are imported as horizontal and vertical segments."
+					: "Diagonal wires that could not turn a corner without touching another connection are imported as graphic lines.",
+			);
 	}
 	if (!shapes.length && report.skipped.length) {
 		const [first] = report.skipped;

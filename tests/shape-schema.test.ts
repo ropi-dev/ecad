@@ -596,6 +596,15 @@ test("KiCad diagonal wires go through the same per-item import checks", () => {
 	assert.equal(result.report.skipped.length, 1);
 	assert.match(result.report.skipped[0].reason, /two endpoints/);
 	assert.ok(result.report.warnings.some((warning) => warning.includes("Diagonal")));
+	// A wire with a broken coordinate is skipped, and no diagonal warning claims it.
+	const broken = importKiCadSchematic(
+		kicad(`${kicadWire("bad 20", "16 28")} ${kicadWire("0 0", "5 0")}`),
+	);
+	assert.equal(broken.report.skipped.length, 1);
+	assert.equal(
+		broken.report.warnings.some((warning) => warning.includes("Diagonal")),
+		false,
+	);
 });
 
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
