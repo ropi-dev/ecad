@@ -6,6 +6,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useFileImport } from "#/components/viewer/useFileImport.ts";
 import { expandGerberFileEffect } from "#/formats/expandGerberFile.ts";
 import { ImportOwnership } from "#/formats/import-ownership.ts";
 import {
@@ -14,7 +15,6 @@ import {
 } from "#/formats/parseGerberFile.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
-import { useFileImport } from "../viewer/useFileImport";
 
 const COLORS = [
 	"#e8b77e",

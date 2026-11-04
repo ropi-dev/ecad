@@ -1,7 +1,7 @@
 import { Effect } from "effect";
+import { checkFileSize, requestWorker } from "#/formats/import-effects.ts";
+import type { KiCadImportResult } from "#/formats/kicad/import.ts";
 import { runEffect } from "#/lib/effect.ts";
-import { checkFileSize, requestWorker } from "./import-effects";
-import type { KiCadImportResult } from "./kicad/import.ts";
 
 export function parseKiCadFileEffect(file: File) {
 	return Effect.gen(function* () {

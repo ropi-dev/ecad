@@ -1,11 +1,11 @@
-import { errorMessage } from "#/lib/error-message.ts";
 import type {
 	Circuit,
 	CircuitComponent,
 	CircuitNet,
 	CircuitPin,
-} from "../circuit/model.ts";
-import { measurePerformance } from "../performance/runtime.ts";
+} from "#/circuit/model.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 type ReadonlyData<T> = T extends readonly (infer Item)[]
 	? readonly ReadonlyData<Item>[]

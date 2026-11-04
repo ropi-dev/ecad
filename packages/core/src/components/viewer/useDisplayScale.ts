@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { cssPixelsPerMm } from "#/components/viewer/displayScale.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
-import { cssPixelsPerMm } from "./displayScale.ts";
 
 export function useDisplayScale(enabled: boolean) {
 	const [scale, setScale] = useState<number | null>(null);

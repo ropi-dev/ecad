@@ -1,5 +1,5 @@
 import { Effect, Either, ExecutionStrategy, Exit, Scope } from "effect";
-import type { ImportError } from "./import-effects";
+import type { ImportError } from "#/formats/import-effects.ts";
 
 export interface ParsedFile<T> {
 	value: T;

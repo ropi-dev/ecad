@@ -1,4 +1,8 @@
 import { useState } from "react";
+import { GerberHeader } from "#/components/gerber/GerberHeader.tsx";
+import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
+import { LayerPanel } from "#/components/gerber/LayerPanel.tsx";
+import { useGerberFile } from "#/components/gerber/useGerberFile.ts";
 import {
 	describeDiagnostics,
 	summarizeDiagnostics,
@@ -7,10 +11,6 @@ import {
 	useProjectActions,
 	useProjectSelection,
 } from "#/projects/ProjectProvider.tsx";
-import { GerberHeader } from "./GerberHeader";
-import { GerberViewer } from "./GerberViewer";
-import { LayerPanel } from "./LayerPanel";
-import { useGerberFile } from "./useGerberFile";
 
 export function GerberWorkspace() {
 	const project = useProjectActions();

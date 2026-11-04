@@ -8,7 +8,7 @@ declare module "occt-import-js" {
 		): {
 			success: boolean;
 			meshes: Omit<
-				import("./types/StepModel").StepModel["meshes"][number],
+				import("#/formats/step/types/StepModel.ts").StepModel["meshes"][number],
 				"id"
 			>[];
 		};

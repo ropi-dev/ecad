@@ -1,4 +1,4 @@
-import { parseWorkerReply } from "./parse-reply";
+import { parseWorkerReply } from "#/formats/parse-reply.ts";
 
 self.onmessage = (
 	event: MessageEvent<{ id: number; source: string; filename: string }>,

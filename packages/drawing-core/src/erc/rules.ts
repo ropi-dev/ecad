@@ -1,4 +1,4 @@
-import type { ErcFinding, ErcPin, ErcRule, ErcSubject } from "./engine.ts";
+import type { ErcFinding, ErcPin, ErcRule, ErcSubject } from "#/erc/engine.ts";
 
 const pinSubject = ({ pin }: ErcPin): ErcSubject => ({
 	kind: "pin",

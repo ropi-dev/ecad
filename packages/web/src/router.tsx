@@ -1,8 +1,8 @@
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { AppProjects } from "./projects/AppProjects";
-import { createRouterProjectLink } from "./projects/RouterProjectLink";
-import { routeTree } from "./routeTree.gen";
+import { AppProjects } from "#/projects/AppProjects.tsx";
+import { createRouterProjectLink } from "#/projects/RouterProjectLink.tsx";
+import { routeTree } from "#/routeTree.gen.ts";
 
 export function getRouter() {
 	const router = createTanStackRouter({

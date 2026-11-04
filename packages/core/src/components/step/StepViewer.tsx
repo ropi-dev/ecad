@@ -1,8 +1,8 @@
 import { type ReactNode, type Ref, useCallback } from "react";
 import { Mesh, type Object3D } from "three";
+import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
+import { Viewer3D } from "#/components/viewer/Viewer3D.tsx";
 import type { ParsedStepFile } from "#/formats/parseStepFile.ts";
-import type { Viewer3DHandle } from "../viewer/types/Viewer3DHandle";
-import { Viewer3D } from "../viewer/Viewer3D";
 
 /** Applies part controls to the scene returned by the STEP parser. */
 export function StepViewer({

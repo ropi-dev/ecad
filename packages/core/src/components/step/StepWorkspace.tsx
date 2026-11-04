@@ -1,5 +1,9 @@
 import { Box, Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import { StepControls } from "#/components/step/StepControls.tsx";
+import { StepParts } from "#/components/step/StepParts.tsx";
+import { StepViewer } from "#/components/step/StepViewer.tsx";
+import { useStepFile } from "#/components/step/useStepFile.ts";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import {
@@ -7,10 +11,6 @@ import {
 	useProjectSelection,
 } from "#/projects/ProjectProvider.tsx";
 import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
-import { StepControls } from "./StepControls";
-import { StepParts } from "./StepParts";
-import { StepViewer } from "./StepViewer";
-import { useStepFile } from "./useStepFile";
 
 export function StepWorkspace() {
 	const project = useProjectActions();

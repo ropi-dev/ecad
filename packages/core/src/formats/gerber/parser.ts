@@ -16,7 +16,6 @@ import {
 	hasGerberSignature,
 	MAX_GERBER_SOURCE_LENGTH,
 } from "#/formats/gerber/detect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import {
 	apertureMatrix,
 	circle,
@@ -36,8 +35,9 @@ import {
 	transformPoint,
 	translation,
 	union,
-} from "./geometry";
-import { buildMacro } from "./macros";
+} from "#/formats/gerber/geometry.ts";
+import { buildMacro } from "#/formats/gerber/macros.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 
 // Ucamco Gerber Layer Format Specification, revision 2026.05.
 // https://www.ucamco.com/en/guest/downloads/gerber-format

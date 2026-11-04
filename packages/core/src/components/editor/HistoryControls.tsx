@@ -1,8 +1,8 @@
 import { History as HistoryIcon, Redo2, Undo2, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
+import { viewControlButtonClassName } from "#/components/viewer/ViewControls3D.tsx";
 import type { History } from "#/drawing/history.ts";
-import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 
 export function HistoryControls({
 	history,

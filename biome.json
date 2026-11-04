@@ -41,6 +41,89 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": ["packages/core/src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"electron": "packages/core must not depend on the web app or Electron.",
+									"@ecad/web": "packages/core must not depend on the web app or Electron."
+								},
+								"patterns": [
+									{
+										"group": ["./**", "../**", ".", ".."],
+										"message": "Import this package's own modules through its #/ alias (for example \"#/engine/scene.ts\") instead of a relative path."
+									},
+									{
+										"group": ["electron/**", "@ecad/web/**", "#web/**"],
+										"message": "packages/core must not depend on the web app or Electron."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["packages/web/src/**", "packages/desktop/src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["./**", "../**", ".", ".."],
+										"message": "Import this package's own modules through its #/ alias (for example \"#/engine/scene.ts\") instead of a relative path."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["packages/drawing-core/src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"react": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core.",
+									"react-dom": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core.",
+									"three": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core.",
+									"@ecad/core": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core."
+								},
+								"patterns": [
+									{
+										"group": ["./**", "../**", ".", ".."],
+										"message": "Import this package's own modules through its #/ alias (for example \"#/engine/scene.ts\") instead of a relative path."
+									},
+									{
+										"group": [
+											"react/**",
+											"react-dom/**",
+											"three/**",
+											"@ecad/core/**"
+										],
+										"message": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
 		}
 	]
 }

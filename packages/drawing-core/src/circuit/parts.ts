@@ -2,7 +2,7 @@ import {
 	type CircuitComponent,
 	type CircuitPin,
 	circuitComponentSchema,
-} from "./model.ts";
+} from "#/circuit/model.ts";
 
 export interface CircuitPartDefinition {
 	id: string;

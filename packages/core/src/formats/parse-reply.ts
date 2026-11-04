@@ -3,8 +3,8 @@ import {
 	type PlanarGeometry,
 } from "#/engine/planar-geometry.ts";
 import type { ParseResult } from "#/engine/types.ts";
+import { parsers } from "#/formats/registry.ts";
 import { errorMessage } from "#/lib/error-message.ts";
-import { parsers } from "./registry";
 
 export interface ParseWorkerResult extends ParseResult {
 	mesh?: PlanarGeometry;

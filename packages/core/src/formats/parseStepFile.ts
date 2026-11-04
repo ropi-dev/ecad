@@ -1,16 +1,16 @@
 import { Effect } from "effect";
 import type { ViewerScene } from "#/engine/scene.ts";
-import { runEffect } from "#/lib/effect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import {
 	acquireImported,
 	checkFileSize,
 	InvalidFile,
 	readFile,
 	requestWorker,
-} from "./import-effects";
-import { createStepGroup, disposeStepGroup } from "./step/scene";
-import type { StepModel } from "./step/types/StepModel";
+} from "#/formats/import-effects.ts";
+import { createStepGroup, disposeStepGroup } from "#/formats/step/scene.ts";
+import type { StepModel } from "#/formats/step/types/StepModel.ts";
+import { runEffect } from "#/lib/effect.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 
 export interface ParsedStepFile {
 	name: string;

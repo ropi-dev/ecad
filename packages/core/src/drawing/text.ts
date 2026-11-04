@@ -1,11 +1,11 @@
+import type { TextShape } from "#/drawing/shapes.ts";
+import type { Point } from "#/drawing/types.ts";
 import {
 	DEFAULT_STROKE_WIDTH,
 	DEFAULT_TEXT_SIZE,
 	PIN_NAME_SIZE,
 	PIN_NUMBER_SIZE,
 } from "#/drawing/units.ts";
-import type { TextShape } from "./shapes";
-import type { Point } from "./types";
 
 export const fontPixels = 96;
 export const padding = 12;

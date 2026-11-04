@@ -8,7 +8,7 @@ import {
 	regularPolygon,
 	type Shape,
 	transformPoint,
-} from "./geometry";
+} from "#/formats/gerber/geometry.ts";
 
 /** Recursive descent; Gerber expressions are data and are never evaluated as JavaScript. */
 export function evaluateExpression(

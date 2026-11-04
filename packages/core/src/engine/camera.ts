@@ -1,4 +1,10 @@
-import type { Bounds, Camera, Matrix, Point, SceneLayer } from "./types";
+import type {
+	Bounds,
+	Camera,
+	Matrix,
+	Point,
+	SceneLayer,
+} from "#/engine/types.ts";
 
 export function getSceneBounds(
 	layers: readonly SceneLayer[],

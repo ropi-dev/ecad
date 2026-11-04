@@ -1,13 +1,13 @@
-import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	buildCircuitGraph,
 	componentWidth,
 	connectionCurveOffset,
 	netNodeBox,
 	netNodeWidth,
-} from "./graph.ts";
-import { CIRCUIT_GRID_SPACING, snapCircuitPoint } from "./grid.ts";
-import type { Circuit, CircuitFile, GraphLayout } from "./model.ts";
+} from "#/circuit/graph.ts";
+import { CIRCUIT_GRID_SPACING, snapCircuitPoint } from "#/circuit/grid.ts";
+import type { Circuit, CircuitFile, GraphLayout } from "#/circuit/model.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 type Point = { x: number; y: number };
 type Box = Point & { width: number; height: number };

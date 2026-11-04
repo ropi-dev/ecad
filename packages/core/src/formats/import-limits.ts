@@ -1,4 +1,4 @@
-import { MAX_GERBER_SOURCE_LENGTH } from "./gerber/detect.ts";
+import { MAX_GERBER_SOURCE_LENGTH } from "#/formats/gerber/detect.ts";
 
 const MiB = 1024 * 1024;
 

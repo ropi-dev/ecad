@@ -2,8 +2,8 @@ import { Box3, type Camera, Matrix4, Vector4, type WebGLRenderer } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
-import { UNFOCUSED_OUTLINE_WIDTH_MM } from "./layer-style";
-import { simplifyPlanarEdges } from "./planar-geometry";
+import { UNFOCUSED_OUTLINE_WIDTH_MM } from "#/engine/layer-style.ts";
+import { simplifyPlanarEdges } from "#/engine/planar-geometry.ts";
 
 const viewBounds = new Box3();
 const modelView = new Matrix4();

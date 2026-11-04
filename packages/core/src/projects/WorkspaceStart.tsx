@@ -1,6 +1,6 @@
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
-import "./WorkspaceStart.css";
+import "#/projects/WorkspaceStart.css";
 
 export function WorkspaceStart() {
 	const project = useProjectSelection(({ busy, error, reload }) => ({

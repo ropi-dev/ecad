@@ -20,12 +20,12 @@ import type {
 } from "#/drawing/display.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
+import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
+import { createTextAtlas, createTextMaterial } from "#/engine/drawing/text.ts";
+import { createWorksheetFromDisplay } from "#/engine/drawing/worksheet.ts";
+import type { ViewerScene } from "#/engine/scene.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
-import type { ViewerScene } from "../scene";
-import { createShapeGeometry } from "./shapeGeometry";
-import { createTextAtlas, createTextMaterial } from "./text";
-import { createWorksheetFromDisplay } from "./worksheet";
 
 function applyTransform(
 	object: Object3D,

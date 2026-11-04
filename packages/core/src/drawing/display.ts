@@ -5,20 +5,6 @@ import {
 	isNetLabel,
 } from "#/drawing/named-nets.ts";
 import {
-	fontPixels,
-	type MeasureText,
-	pinNameFontSize,
-	pinNumberFontSize,
-	textLayout,
-} from "#/drawing/text.ts";
-import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
-import { PIN_LABEL_GAP, PIN_NUMBER_GAP } from "#/drawing/units.ts";
-import {
-	buildWireCrossings,
-	type WireCrossings,
-} from "#/drawing/wire-crossings.ts";
-import { measurePerformance } from "#/performance/runtime.ts";
-import {
 	drawShape,
 	type EditorShape,
 	isBasicShape,
@@ -36,7 +22,21 @@ import {
 	symbolTextPosition,
 	symbolTextShapes,
 	wireJunctions,
-} from "./shapes";
+} from "#/drawing/shapes.ts";
+import {
+	fontPixels,
+	type MeasureText,
+	pinNameFontSize,
+	pinNumberFontSize,
+	textLayout,
+} from "#/drawing/text.ts";
+import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
+import { PIN_LABEL_GAP, PIN_NUMBER_GAP } from "#/drawing/units.ts";
+import {
+	buildWireCrossings,
+	type WireCrossings,
+} from "#/drawing/wire-crossings.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 interface GeometrySize {
 	width: number;

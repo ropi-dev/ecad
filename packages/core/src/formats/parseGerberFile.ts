@@ -5,21 +5,21 @@ import {
 } from "#/engine/planar-object.ts";
 import type { PlanarObject, SpatialObject } from "#/engine/scene.ts";
 import type { Diagnostic, ParseResult } from "#/engine/types.ts";
-import { runEffect } from "#/lib/effect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import {
 	asSentence,
 	formatDiagnostic,
 	summarizeDiagnostics,
-} from "./diagnostics";
+} from "#/formats/diagnostics.ts";
 import {
 	acquireImported,
 	checkFileSize,
 	InvalidFile,
 	readFile,
 	requestWorker,
-} from "./import-effects";
-import type { ParseWorkerResult } from "./parse-reply";
+} from "#/formats/import-effects.ts";
+import type { ParseWorkerResult } from "#/formats/parse-reply.ts";
+import { runEffect } from "#/lib/effect.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 
 export interface ParsedGerberObject
 	extends Omit<PlanarObject, "type">,

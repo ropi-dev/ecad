@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { useCallback, useEffect, useState } from "react";
+import { useFileImport } from "#/components/viewer/useFileImport.ts";
 import { ImportOwnership } from "#/formats/import-ownership.ts";
 import {
 	type ParsedStepFile,
@@ -7,7 +8,6 @@ import {
 } from "#/formats/parseStepFile.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
-import { useFileImport } from "../viewer/useFileImport";
 
 function readStep(file: File) {
 	return Effect.map(parseStepFileEffect(file), (value) => ({ value }));

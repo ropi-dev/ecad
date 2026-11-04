@@ -7,7 +7,7 @@ import {
 	Vector3,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { wheelDelta } from "./navigation";
+import { wheelDelta } from "#/engine/navigation.ts";
 
 export function create3DControls(
 	camera: PerspectiveCamera | OrthographicCamera,

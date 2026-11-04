@@ -1,5 +1,5 @@
-import { A3 } from "./shapes";
-import type { Point } from "./types";
+import { A3 } from "#/drawing/shapes.ts";
+import type { Point } from "#/drawing/types.ts";
 
 export interface SheetSize {
 	width: number;

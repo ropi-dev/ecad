@@ -1,12 +1,12 @@
-import { transformPoint } from "./camera";
+import { transformPoint } from "#/engine/camera.ts";
 import {
 	combinePolygons,
 	GeometryCompiler,
 	type MultiPolygon,
 	triangulate,
-} from "./geometry";
-import { partitionOverlaps } from "./partition-overlaps";
-import type { Bounds, SceneObject } from "./types";
+} from "#/engine/geometry.ts";
+import { partitionOverlaps } from "#/engine/partition-overlaps.ts";
+import type { Bounds, SceneObject } from "#/engine/types.ts";
 
 export interface PlanarGeometry {
 	positions: Float32Array;
