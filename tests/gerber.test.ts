@@ -238,7 +238,7 @@ test('legacy rectangular draws sweep a fixed rectangle, including diagonal strok
 test('rejects unclosed regions, unmatched blocks, invalid holes and excessive repeats',()=> {
   for(const body of ['G36*X0Y0D02*X1000000Y0D01*','%AB*%','%ADD10C,1X2*%','%SRX999999999Y2I1J1*%']) {
     const result=parse(body)
-    assert.ok(result.diagnostics.some(d=>d.severity==='error'),body)
+    assert.ok(result.diagnostics.some(d=>d.severity===(body.startsWith('%SR')?'fatal':'error')),body)
   }
 })
 

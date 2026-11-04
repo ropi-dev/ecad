@@ -102,7 +102,7 @@ const samePoint = (a: Point, b: Point) =>
 
 function* tokenize(
 	source: string,
-	diagnostics: Diagnostic[],
+	report: (message: string, line: number) => void,
 ): Generator<Token> {
 	let index = source.charCodeAt(0) === 0xfeff ? 1 : 0,
 		line = 1;
@@ -117,13 +117,12 @@ function* tokenize(
 		if (extended) index++;
 		const end = source.indexOf(extended ? "%" : "*", index);
 		if (end === -1) {
-			diagnostics.push({
-				severity: "error",
-				message: extended
+			report(
+				extended
 					? "Unterminated extended command."
 					: "Command is missing its * terminator.",
-				line: startLine,
-			});
+				startLine,
+			);
 			return;
 		}
 		const text = source.slice(index, end);
@@ -131,11 +130,7 @@ function* tokenize(
 		index = end + 1;
 		if (extended) {
 			if (!text.trimEnd().endsWith("*"))
-				diagnostics.push({
-					severity: "error",
-					message: "Extended command is missing its * terminator.",
-					line: startLine,
-				});
+				report("Extended command is missing its * terminator.", startLine);
 			if (text.trimStart().startsWith("AM"))
 				yield { text: text.replace(/[\r\n]/g, ""), extended, line: startLine };
 			else {
@@ -157,6 +152,29 @@ function* tokenize(
 				line: startLine,
 			};
 	}
+}
+
+/**
+ * Whether a deprecated image transformation leaves the image unchanged, or
+ * undefined when the command is not one. Malformed values count as changes.
+ */
+function identityTransform(command: string): boolean | undefined {
+	const values = (pattern: string) =>
+		new RegExp(
+			`^${pattern}(?:A(${decimalPattern}))?(?:B(${decimalPattern}))?$`,
+		).exec(command);
+	const all = (match: RegExpExecArray | null, expected: number) =>
+		!!match &&
+		match
+			.slice(1)
+			.every((value) => value === undefined || Number(value) === expected);
+	if (command.startsWith("AS")) return command === "ASAXBY";
+	if (/^(?:OF|IO)/.test(command)) return all(values("(?:OF|IO)"), 0);
+	if (command.startsWith("SF")) return all(values("SF"), 1);
+	if (command.startsWith("MI")) return all(values("MI"), 0);
+	if (command.startsWith("IR"))
+		return /^IR\d+$/.test(command) && Number(command.slice(2)) % 360 === 0;
+	if (command.startsWith("IJ")) return false;
 }
 
 function decodeAttribute(value: string): string {
@@ -468,7 +486,7 @@ export function parseGerber(
 		else {
 			const count = block.x! * block.y! * block.objects.length;
 			if (count + objectCount > MAX_OBJECTS)
-				throw new Error(
+				throw new FatalGerberError(
 					`Step and repeat exceeds the ${MAX_OBJECTS.toLocaleString()} object limit`,
 				);
 			// Repeat complete blocks in Y first, then X. Polarity makes this order significant.
@@ -795,9 +813,12 @@ export function parseGerber(
 				y = Number(m[2]),
 				i = number(m[3]) * unit,
 				j = number(m[4]) * unit;
-			if (x < 1 || y < 1 || x * y > MAX_OBJECTS || i < 0 || j < 0)
-				throw new Error(
-					"Invalid or excessive step-and-repeat counts or distances",
+			if (x < 1 || y < 1 || i < 0 || j < 0)
+				throw new Error("Invalid step-and-repeat counts or distances");
+			// Drawing the block once instead would misrepresent the panel.
+			if (x * y > MAX_OBJECTS)
+				throw new FatalGerberError(
+					`Step and repeat exceeds the ${MAX_OBJECTS.toLocaleString()} object limit`,
 				);
 			blocks.push({ kind: "SR", objects: [], x, y, i, j });
 			return;
@@ -819,17 +840,13 @@ export function parseGerber(
 			throw new FatalGerberError(
 				"Legacy negative image polarity IPNEG is unsupported; the image would render inverted",
 			);
-		if (
-			compact === "ASAXBY" ||
-			/^OF(?:A[+-]?0(?:\.0*)?)?(?:B[+-]?0(?:\.0*)?)?$/.test(compact) ||
-			compact === "SFA1B1" ||
-			compact === "MIA0B0"
-		) {
+		const identity = identityTransform(compact);
+		if (identity) {
 			warn("Deprecated identity image transformation was accepted.");
 			return;
 		}
 		// Skipping these would draw the whole image moved, scaled or mirrored.
-		if (/^(?:AS|OF|SF|MI|IR|IJ|IO)/.test(compact))
+		if (identity === false)
 			throw new FatalGerberError(
 				`Image transformation '${compact.slice(0, 80)}' is unsupported; the image would render transformed incorrectly`,
 			);
@@ -962,7 +979,9 @@ export function parseGerber(
 			null,
 		);
 	else
-		for (const token of tokenize(source, diagnostics)) {
+		for (const token of tokenize(source, (message, at) =>
+			diagnostic("error", message, at),
+		)) {
 			line = token.line;
 			if (ended) {
 				diagnostic("error", "Data appears after the end-of-file command.");

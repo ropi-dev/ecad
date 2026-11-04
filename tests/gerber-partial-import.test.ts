@@ -74,6 +74,68 @@ test("unusable files are fatal and stop without follow-on noise", () => {
 	]);
 });
 
+test("step and repeat over the object limit is fatal, invalid parameters are skipped", () => {
+	const limit = "Step and repeat exceeds the 500,000 object limit";
+	assert.deepEqual(
+		severities(`${header}%SRX500001Y1I1J0*%\n${flash}%SR*%\nM02*`),
+		[`fatal: ${limit}`],
+	);
+	assert.deepEqual(
+		severities(
+			`${header}%SRX1000Y500I1J1*%\n${flash}X1000000Y0D03*\n%SR*%\n${flash}M02*`,
+		),
+		[`fatal: ${limit}`],
+	);
+	assert.deepEqual(
+		severities(`${header}%SRX2Y2I-1J1*%\n${flash}M02*`),
+		["error: Invalid step-and-repeat counts or distances"],
+	);
+});
+
+test("identity image transformations are accepted and others are fatal", () => {
+	for (const command of [
+		"ASAXBY",
+		"IR0",
+		"SFA1.0B1.0",
+		"SFA1",
+		"OFA0.000B-0",
+		"IOA0B0",
+		"MIA0B0",
+	])
+		assert.deepEqual(
+			severities(`${header}%${command}*%\n${flash}M02*`),
+			["warning: Deprecated identity image transformation was accepted."],
+			command,
+		);
+	for (const command of [
+		"ASAYBX",
+		"IR90",
+		"SFA2B1",
+		"OFA1B0",
+		"IOA0B0.5",
+		"MIA0B1",
+		"IJALBL",
+		"SFX",
+	])
+		assert.deepEqual(
+			severities(`${header}%${command}*%\n${flash}M02*`),
+			[
+				`fatal: Image transformation '${command}' is unsupported; the image would render transformed incorrectly`,
+			],
+			command,
+		);
+});
+
+test("malformed tokens count toward the diagnostic limit", () => {
+	const result = parseGerber(
+		`${header}${"%XYZ%\n".repeat(1000)}${flash}M02*`,
+		"tokens.gbr",
+	);
+	assert.equal(result.diagnostics.length, 201);
+	assert.equal(result.diagnostics.at(-1)?.message, "1,800 more problems are not listed.");
+	assert.equal(result.object.objects.length, 1);
+});
+
 test("a file with many bad commands keeps a bounded diagnostic list", () => {
 	const result = parseGerber(
 		`${header}${"G99*\n".repeat(1000)}${flash}M02*`,
