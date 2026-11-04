@@ -1,3 +1,4 @@
+import { unionFind } from "@ecad/drawing-core/lib/union-find.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import {
@@ -5,7 +6,6 @@ import {
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	type EditorSymbol,
-	normalizeWireSegments,
 	PIN_RADIUS,
 	pinTerminals,
 	type SymbolShape,
@@ -110,14 +110,19 @@ function wireSegments(shape: EditorShape): Segment[] {
 	];
 }
 
+const isVertical = ([a, b]: Segment) =>
+	Math.abs(b[0] - a[0]) < Math.abs(b[1] - a[1]);
+/** The coordinate across a wire, such as y for a horizontal wire. */
+const across = (segment: Segment) => segment[0][isVertical(segment) ? 0 : 1];
+
 /** Wires that wire normalization may merge: parallel, in line and overlapping. */
-function mayMerge([a, b]: Segment, [c, d]: Segment) {
-	const vertical = (start: XY, end: XY) =>
-		Math.abs(end[0] - start[0]) < Math.abs(end[1] - start[1]);
-	if (vertical(a, b) !== vertical(c, d)) return false;
-	const [along, across] = vertical(a, b) ? [1, 0] : [0, 1];
+function mayMerge(first: Segment, second: Segment) {
+	if (isVertical(first) !== isVertical(second)) return false;
+	const along = isVertical(first) ? 1 : 0;
+	const [a, b] = first;
+	const [c, d] = second;
 	return (
-		Math.abs(a[across] - c[across]) <= connectionTolerance &&
+		Math.abs(across(first) - across(second)) <= connectionTolerance &&
 		Math.min(a[along], b[along]) <=
 			Math.max(c[along], d[along]) + connectionTolerance &&
 		Math.min(c[along], d[along]) <=
@@ -125,125 +130,126 @@ function mayMerge([a, b]: Segment, [c, d]: Segment) {
 	);
 }
 
-/**
- * The shapes that can affect connectivity within 1 mm of `box`. The result
- * also holds every wire that normalization could merge with one of them, so
- * normalizing the subset picks the same survivors as normalizing the whole.
- */
-function nearby(shapes: readonly EditorShape[], box: Bounds): EditorShape[] {
-	const margin = 1;
-	const local = new Set(
-		shapes.filter((shape) => {
-			if (
-				shape.kind !== "wire" &&
-				shape.kind !== "pin" &&
-				shape.kind !== "symbol" &&
-				!(shape.kind === "text" && shape.electrical)
-			)
-				return false;
-			const bounds = shapeBounds(shape);
-			return (
-				bounds.minX <= box.maxX + margin &&
-				bounds.maxX >= box.minX - margin &&
-				bounds.minY <= box.maxY + margin &&
-				bounds.maxY >= box.minY - margin
-			);
-		}),
-	);
-	const wires = shapes.flatMap((shape) =>
-		wireSegments(shape).map((segment) => ({ shape, segment })),
-	);
-	const inside = wires.filter((wire) => local.has(wire.shape));
-	for (let grew = true; grew; ) {
-		grew = false;
-		for (const wire of wires)
-			if (
-				!local.has(wire.shape) &&
-				inside.some((other) => mayMerge(wire.segment, other.segment))
-			) {
-				local.add(wire.shape);
-				inside.push(wire);
-				grew = true;
-			}
-	}
-	return shapes.filter((shape) => local.has(shape));
-}
+const overlaps = (first: Bounds, second: Bounds) =>
+	first.minX <= second.maxX &&
+	first.maxX >= second.minX &&
+	first.minY <= second.maxY &&
+	first.maxY >= second.minY;
+const segmentBounds = (segments: readonly Segment[], margin = 0): Bounds => {
+	const points = segments.flat();
+	return {
+		minX: Math.min(...points.map((point) => point[0])) - margin,
+		minY: Math.min(...points.map((point) => point[1])) - margin,
+		maxX: Math.max(...points.map((point) => point[0])) + margin,
+		maxY: Math.max(...points.map((point) => point[1])) + margin,
+	};
+};
 
 /**
- * The net of each item: a pin, a label, or the wires that make up one source
- * wire or diagonal. Undefined when one item lands on two nets.
+ * Normalization merges a cluster of parallel wires onto the line of one of
+ * them, chosen by the command that runs it. A cluster whose wires are not
+ * exactly in line can therefore move by up to its spread. These are the areas
+ * such clusters can move through.
  */
-function itemNets(
-	shapes: readonly EditorShape[],
-	wireItems: (id: number) => readonly string[],
-): Map<string, number> | undefined {
-	const nets = new Map<string, number>();
-	for (const [index, net] of electricalNets(shapes).entries())
-		for (const item of [
-			...net.wires.flatMap(wireItems),
-			...net.pins.map((pin) => `pin ${pin.shapeId} ${pin.pinId}`),
-			...net.labels.map((label) => `label ${label}`),
-		]) {
-			if ((nets.get(item) ?? index) !== index) return;
-			nets.set(item, index);
-		}
+function driftAreas(wires: readonly Segment[]): Bounds[] {
+	const sets = unionFind(wires.length);
+	for (let first = 0; first < wires.length; first++)
+		for (let second = first + 1; second < wires.length; second++)
+			if (mayMerge(wires[first], wires[second])) sets.union(first, second);
+	const clusters = new Map<number, Segment[]>();
+	for (const [index, wire] of wires.entries())
+		clusters.set(sets.find(index), [
+			...(clusters.get(sets.find(index)) ?? []),
+			wire,
+		]);
+	return [...clusters.values()]
+		.filter((cluster) => {
+			const lines = cluster.map(across);
+			return Math.max(...lines) - Math.min(...lines) > 1e-9;
+		})
+		.map((cluster) => segmentBounds(cluster, connectionTolerance));
+}
+
+/** The net of each source wire, pin and label, counting joins by label name. */
+function sourceNets(shapes: readonly EditorShape[]) {
+	const nets = new Map<string, string>();
+	for (const [index, net] of electricalNets(shapes).entries()) {
+		for (const id of net.wires) nets.set(`wire ${id}`, `net ${index}`);
+		for (const pin of net.pins)
+			nets.set(`pin ${pin.shapeId} ${pin.pinId}`, `net ${index}`);
+		for (const label of net.labels) nets.set(`label ${label}`, `net ${index}`);
+	}
 	return nets;
 }
 
-/** True when both group the same items together. */
-function sameNets(
-	first: ReadonlyMap<string, number>,
-	second: ReadonlyMap<string, number> | undefined,
+/**
+ * What `wires` would connect to: source nets, and other diagonals as
+ * `diagonal <index>`. Only shapes near the wires can touch them.
+ */
+function joined(
+	drawing: readonly EditorShape[],
+	groups: ReadonlyMap<string, string>,
+	wires: readonly EditorShape[],
 ) {
-	if (!second || first.size !== second.size) return false;
-	const forward = new Map<number, number>();
-	const backward = new Map<number, number>();
-	for (const [item, net] of first) {
-		const other = second.get(item);
-		if (
-			other === undefined ||
-			(forward.get(net) ?? other) !== other ||
-			(backward.get(other) ?? net) !== net
-		)
-			return false;
-		forward.set(net, other);
-		backward.set(other, net);
-	}
-	return true;
+	const box = segmentBounds(wires.flatMap(wireSegments), 1);
+	const local = drawing.filter(
+		(shape) =>
+			(shape.kind === "wire" ||
+				shape.kind === "pin" ||
+				shape.kind === "symbol" ||
+				(shape.kind === "text" && shape.electrical)) &&
+			overlaps(shapeBounds(shape), box),
+	);
+	const ids = new Set(wires.map((wire) => wire.id));
+	const net = electricalNets([...local, ...wires]).find((net) =>
+		net.wires.some((id) => ids.has(id)),
+	);
+	return new Set(
+		[
+			...(net?.wires.filter((id) => !ids.has(id)).map((id) => `wire ${id}`) ??
+				[]),
+			...(net?.pins.map((pin) => `pin ${pin.shapeId} ${pin.pinId}`) ?? []),
+			...(net?.labels.map((label) => `label ${label}`) ?? []),
+		].map((item) => groups.get(item)),
+	);
 }
+
+const sameSet = <T>(first: ReadonlySet<T>, second: ReadonlySet<T>) =>
+	first.size === second.size && [...first].every((item) => second.has(item));
 
 /**
  * ecad wires are horizontal or vertical, so each diagonal wire turns a
  * corner. A diagonal first splits wherever something connects along it in
- * the source. Each piece then takes the first corner that leaves every pin,
- * label, wire and diagonal on the same nets as the diagonal did, both as
- * imported and after the wire normalization that the next command runs. A
- * diagonal with a piece that has no such corner stays a graphic line.
+ * the source, and each piece takes the first corner where:
+ * - the new wires join exactly the nets the diagonal joined, counting nets
+ *   joined by label name anywhere in the drawing; and
+ * - wire normalization, which every later command runs, cannot move or
+ *   delete the new wires or move another wire onto them. Each new wire is at
+ *   least 0.001 mm long, can merge only with wires exactly in line with it,
+ *   and stays clear of clusters that normalization could shift.
+ * A diagonal with a piece that has no such corner stays a graphic line.
  */
 function routeDiagonalWires(
 	diagonals: readonly Segment[],
 	shapes: readonly EditorShape[],
 ): { wires: EditorShape[]; lines: Segment[] } {
 	if (!diagonals.length) return { wires: [], lines: [] };
-	const itemOf = new Map<number, string>();
-	for (const shape of shapes)
-		if (shape.kind === "wire") itemOf.set(shape.id, `wire ${shape.id}`);
-	const items = (id: number) => {
-		const item = itemOf.get(id);
-		return item ? [item] : [];
-	};
 	let nextId = shapes.reduce(
 		(maximum, shape) => Math.max(maximum, shape.id),
 		0,
 	);
 	// `line` would stretch a very short wire, so set the exact length.
-	const wire = (a: XY, b: XY, item: string): EditorShape => {
-		const shape = {
-			...line(a, b, "wire"),
-			id: ++nextId,
-			width: Math.hypot(b[0] - a[0], b[1] - a[1]),
-		};
-		itemOf.set(shape.id, item);
+	const wire = (a: XY, b: XY): EditorShape => ({
+		...line(a, b, "wire"),
+		id: ++nextId,
+		width: Math.hypot(b[0] - a[0], b[1] - a[1]),
+	});
+	const sourceWires = shapes.flatMap(wireSegments);
+	const drift = driftAreas(sourceWires);
+	// Routes join exactly what their diagonals joined, so source nets stay valid.
+	const groups = new Map(sourceNets(shapes));
+	const diagonal = (index: number, shape: EditorShape) => {
+		groups.set(`wire ${shape.id}`, `diagonal ${index}`);
 		return shape;
 	};
 	const sourcePoints = [
@@ -252,7 +258,7 @@ function routeDiagonalWires(
 				? [[shape.x, shape.y]]
 				: pinTerminals(shape).map((pin): XY => [pin.x, pin.y]),
 		),
-		...shapes.flatMap(wireSegments).flat(),
+		...sourceWires.flat(),
 		...diagonals.flat(),
 	];
 	const chains = diagonals.map(([start, end]) => {
@@ -271,70 +277,42 @@ function routeDiagonalWires(
 		return [...chain, end];
 	});
 	const current = [...shapes];
+	const pending = diagonals.map(([a, b], index) => diagonal(index, wire(a, b)));
 	const routed: EditorShape[] = [];
 	const lines: Segment[] = [];
 	for (const [index, chain] of chains.entries()) {
-		const item = `diagonal ${index}`;
-		// Diagonals not routed yet still connect what they touch.
-		const later = diagonals
-			.slice(index + 1)
-			.map(([a, b], offset) => wire(a, b, `diagonal ${index + 1 + offset}`));
-		const end = diagonals[index][1];
+		// Every other diagonal, routed or not, as it stands now.
+		const drawing = [...current, ...pending.slice(index + 1)];
 		const pieces: EditorShape[] = [];
 		for (let stop = 1; stop < chain.length; stop++) {
 			const [from, to] = [chain[stop - 1], chain[stop]];
-			// Nets far from this piece are the same with either connection.
-			const local = (shapes: readonly EditorShape[]) =>
-				nearby(shapes, {
-					minX: Math.min(from[0], to[0]),
-					minY: Math.min(from[1], to[1]),
-					maxX: Math.max(from[0], to[0]),
-					maxY: Math.max(from[1], to[1]),
-				});
-			const rest = local([
-				...later,
-				...(stop < chain.length - 1 ? [wire(to, end, item)] : []),
-			]);
-			const drawing = local([...current, ...pieces]);
-			const expected = itemNets(
-				[...drawing, wire(from, to, item), ...rest],
-				items,
-			);
-			const route =
-				expected &&
-				(
-					[
-						[to[0], from[1]],
-						[from[0], to[1]],
-					] as XY[]
-				)
-					.map((corner) => [wire(from, corner, item), wire(corner, to, item)])
-					.find((route) => {
-						if (
-							!sameNets(
-								expected,
-								itemNets([...drawing, ...route, ...rest], items),
-							)
-						)
-							return false;
-						const normalized = normalizeWireSegments([...drawing, ...route]);
-						const sources = new Map<number, string[]>();
-						for (const [source, ids] of normalized.idsBySource)
-							for (const id of ids)
-								sources.set(id, [...(sources.get(id) ?? []), ...items(source)]);
-						return sameNets(
-							expected,
-							itemNets(
-								[...normalized.shapes, ...rest],
-								(id) => sources.get(id) ?? items(id),
-							),
-						);
-					});
+			const existing = [...current, ...pieces].flatMap(wireSegments);
+			const stable = (segment: Segment) =>
+				distance(segment[0], [segment[1], segment[1]]) >= 0.001 &&
+				existing.every(
+					(other) =>
+						!mayMerge(segment, other) ||
+						Math.abs(across(segment) - across(other)) <= 1e-9,
+				) &&
+				drift.every((area) => !overlaps(segmentBounds([segment]), area));
+			const expected = joined(drawing, groups, [wire(from, to)]);
+			const route = (
+				[
+					[to[0], from[1]],
+					[from[0], to[1]],
+				] as XY[]
+			)
+				.map((corner) => [wire(from, corner), wire(corner, to)])
+				.find(
+					(route) =>
+						route.flatMap(wireSegments).every(stable) &&
+						sameSet(joined(drawing, groups, route), expected),
+				);
 			if (!route) break;
 			pieces.push(...route);
 		}
 		if (pieces.length === 2 * (chain.length - 1)) {
-			routed.push(...pieces);
+			for (const piece of pieces) routed.push(diagonal(index, piece));
 			current.push(...pieces);
 		} else lines.push(diagonals[index]);
 	}

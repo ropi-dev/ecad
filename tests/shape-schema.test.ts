@@ -395,27 +395,31 @@ const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
 const kicadLabel = (name: string, at: string) =>
 	`(label "${name}" (at ${at} 0) (effects (font (size 1.27 1.27))))`;
 /**
- * Label names grouped by net. The groups must be the same right after import
- * and after a command normalizes the wires.
+ * Label names grouped by net. The groups must stay the same after any later
+ * command normalizes the wires: an unrelated edit, or an edit of each wire,
+ * which makes that wire the one normalization keeps.
  */
 function importedNets(...parts: string[]) {
 	const result = importKiCadSchematic(kicad(parts.join(" ")));
-	const store = createDrawingStore(result.shapes);
-	Effect.runSync(
-		placeRectangleEffect({ ...box, x: 500, y: 500 }).pipe(
-			Effect.provideService(DrawingStore, store),
-		),
-	);
 	const groups = (shapes: readonly EditorShape[]) =>
 		electricalNets(shapes)
 			.flatMap((net) => (net.names.length ? [net.names.join("+")] : []))
 			.sort();
 	const imported = groups(result.shapes);
-	assert.deepEqual(
-		groups(store.getSnapshot().shapes),
-		imported,
-		"a later command keeps the nets",
-	);
+	for (const command of [
+		placeRectangleEffect({ ...box, x: 500, y: 500 }),
+		...result.shapes.flatMap((shape) =>
+			shape.kind === "wire" ? [replaceShapesEffect([shape], "Edit wire")] : [],
+		),
+	]) {
+		const store = createDrawingStore(result.shapes);
+		Effect.runSync(command.pipe(Effect.provideService(DrawingStore, store)));
+		assert.deepEqual(
+			groups(store.getSnapshot().shapes),
+			imported,
+			"a later command keeps the nets",
+		);
+	}
 	return { ...result, nets: imported };
 }
 
@@ -470,27 +474,23 @@ test("KiCad diagonal wires keep every connection along their length", () => {
 });
 
 test("KiCad routes survive the wire normalization that the next command runs", () => {
-	// A 0.0002 mm leg next to another wire, kept at its exact length.
-	assert.deepEqual(
-		importedNets(
-			kicadWire("10 20", "10.0002 28"),
-			kicadWire("9 20", "9.9997 20"),
+	// A near-vertical diagonal needs a leg shorter than 0.001 mm at either
+	// corner. Normalization may delete such a leg, or a stretched one could
+	// reach the neighbor, so the diagonal stays a graphic line.
+	for (const [end, neighbor, nets] of [
+		["10.0002 28", "9.9997 20", ["A", "B", "C"]],
+		["10.00009 28", "9.99991 20", ["A+C", "B"]],
+	] as const) {
+		const short = importedNets(
+			kicadWire("10 20", end),
+			kicadWire("9 20", neighbor),
 			kicadLabel("A", "10 20"),
-			kicadLabel("B", "10.0002 28"),
+			kicadLabel("B", end),
 			kicadLabel("C", "9 20"),
-		).nets,
-		["A+B", "C"],
-	);
-	// Normalization deletes a 0.00009 mm leg, so only the other corner keeps A on B.
-	assert.deepEqual(
-		importedNets(
-			kicadWire("10 20", "10.00009 28"),
-			kicadWire("9 20", "9.99991 20"),
-			kicadLabel("A", "9 20"),
-			kicadLabel("B", "10.00009 28"),
-		).nets,
-		["A+B"],
-	);
+		);
+		assert.equal(short.shapes.filter((shape) => shape.kind === "line").length, 1);
+		assert.deepEqual(short.nets, nets);
+	}
 	// Normalization moves this cluster of near-parallel wires onto y = 20,
 	// through both corners, so the diagonal stays a graphic line.
 	const cluster = importedNets(
@@ -504,6 +504,46 @@ test("KiCad routes survive the wire normalization that the next command runs", (
 	);
 	assert.deepEqual(cluster.nets, ["B", "C"]);
 	assert.equal(cluster.shapes.filter((shape) => shape.kind === "line").length, 1);
+});
+
+test("KiCad routes find nets joined by label name anywhere in the drawing", () => {
+	const result = importedNets(
+		kicadWire("10 20", "16 28"),
+		kicadWire("16 20", "100 20"),
+		kicadWire("10 28", "0 28"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("A", "100 20"),
+		kicadLabel("A", "0 28"),
+	);
+	assert.equal(result.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(result.nets, ["A+B"]);
+});
+
+test("KiCad routes never join a wire that normalization could move", () => {
+	// Both corners need a 0.00009 mm leg, which would bridge the two wires
+	// into one cluster and move the right one, so the diagonal stays a line.
+	const bridge = importedNets(
+		kicadWire("10 20", "16 20.00009"),
+		kicadWire("0 20", "10 20"),
+		kicadWire("16 20.00009", "100 20.00009"),
+		kicadLabel("A", "10 20"),
+		kicadLabel("B", "16 20.00009"),
+		kicadLabel("C", "100 20.00018"),
+	);
+	assert.equal(bridge.shapes.filter((shape) => shape.kind === "line").length, 1);
+	assert.deepEqual(bridge.nets, ["A", "B+C"]);
+	// Running along the left wire 0.00009 mm off would let an edit of the new
+	// wire move the left wire away from C. The other corner is safe.
+	const offset = importedNets(
+		kicadWire("10 20.00009", "16 28"),
+		kicadWire("0 20", "10 20"),
+		kicadLabel("A", "10 20.00009"),
+		kicadLabel("B", "16 28"),
+		kicadLabel("C", "9 19.99991"),
+	);
+	assert.equal(offset.shapes.filter((shape) => shape.kind === "line").length, 0);
+	assert.deepEqual(offset.nets, ["A+B+C"]);
 });
 
 test("KiCad diagonal wires with no clear corner import as graphic lines", () => {
