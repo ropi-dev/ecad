@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { toastManager } from "#/components/ui/toast.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
@@ -98,6 +99,12 @@ export function DrawingExport({
 										},
 										{ shapes: shapes.length, width, height, format },
 									);
+									setOpen(false);
+									toastManager.add({
+										type: "success",
+										title: "Drawing exported",
+										description: `${format.toUpperCase()} download is ready.`,
+									});
 								} catch (cause) {
 									setError(errorMessage(cause, "Export failed."));
 								} finally {

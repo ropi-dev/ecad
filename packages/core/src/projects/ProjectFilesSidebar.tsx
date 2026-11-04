@@ -27,6 +27,7 @@ import {
 	useState,
 } from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { toastManager } from "#/components/ui/toast.ts";
 import {
 	formatShortcut,
 	hasShortcutModifier,
@@ -303,8 +304,11 @@ export function ProjectFilesSidebar() {
 	if (!project) return null;
 	const busy = project.busy || importing;
 	function showError(cause: unknown, fallback: string) {
-		if (!isProjectError(cause, "ProjectConflict"))
-			setError(errorMessage(cause, fallback));
+		if (!isProjectError(cause, "ProjectConflict")) {
+			const description = errorMessage(cause, fallback);
+			setError(description);
+			toastManager.add({ type: "error", title: fallback, description });
+		}
 	}
 	async function upload(files: File[], kind: AssetKind) {
 		if (!project || !files.length) return;
@@ -312,6 +316,11 @@ export function ProjectFilesSidebar() {
 		setError("");
 		try {
 			await project.importAssets(files, kind);
+			toastManager.add({
+				type: "success",
+				title: "Files added",
+				description: `${files.length} file${files.length === 1 ? "" : "s"} added to the project.`,
+			});
 		} catch (cause) {
 			showError(cause, "Unable to add project files.");
 		} finally {
@@ -326,6 +335,7 @@ export function ProjectFilesSidebar() {
 		try {
 			const { path, report } = await project.importSchematic(file);
 			setImportReport(report);
+			toastManager.add({ type: "success", title: "Schematic imported" });
 			project.selectEditorFile(path);
 			editorLink.current?.click();
 		} catch (cause) {

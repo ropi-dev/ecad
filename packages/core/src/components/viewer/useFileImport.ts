@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toastManager } from "#/components/ui/toast.ts";
 import {
 	type ExpandFile,
 	type ImportFile,
@@ -84,11 +85,34 @@ export function useFileImport<T>(
 					throw error;
 				}
 				setMessages(imported.messages);
+				if (persist || imported.messages.length)
+					toastManager.add({
+						type: imported.messages.length
+							? imported.values.length
+								? "warning"
+								: "error"
+							: "success",
+						title: imported.messages.length
+							? imported.values.length
+								? "Import completed with issues"
+								: "Import failed"
+							: "Files imported",
+						description: imported.messages.length
+							? imported.messages.join("\n")
+							: `${imported.values.length} item${imported.values.length === 1 ? "" : "s"} added.`,
+					});
 				return imported.values;
 			} catch (error) {
 				if (controller.signal.aborted) return null;
-				if (mounted.current)
-					setMessages([errorMessage(error, "Unable to import files.")]);
+				if (mounted.current) {
+					const description = errorMessage(error, "Unable to import files.");
+					setMessages([description]);
+					toastManager.add({
+						type: "error",
+						title: "Import failed",
+						description,
+					});
+				}
 				return null;
 			} finally {
 				if (request.current === controller) {

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Toaster } from "#/components/ui/Toaster.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
 import { ProjectConflictNotice } from "#/projects/ProjectConflictNotice.tsx";
 import { ProjectFilesSidebar } from "#/projects/ProjectFilesSidebar.tsx";
@@ -27,6 +28,7 @@ export function ProjectShell({
 				{children}
 			</div>
 			<ProjectConflictNotice />
+			<Toaster />
 		</div>
 	);
 }

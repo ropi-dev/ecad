@@ -68,6 +68,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 		expect(coverage.names).toContain(`${shape.kind} ${shape.id}`);
 	expect(coverage.texts).toContain("RP2350A");
 	expect(coverage.viewBox).toBe("-210 -148.5 420 297");
+	await button.click();
 	await dialog
 		.getByRole("combobox", { name: "Format", exact: true })
 		.selectOption("png");
@@ -120,7 +121,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	}, bytes.toString("base64"));
 	expect(pixels.corner).toEqual([255, 255, 255, 255]);
 	expect(pixels.ink).toBeGreaterThan(100000);
-	await dialog.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(dialog).not.toBeVisible();
 	if (captureArtifacts)
 		await page.screenshot({ path: `${artifacts}/rp2350a-editor.png` });
 });

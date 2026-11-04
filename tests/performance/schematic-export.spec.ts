@@ -39,18 +39,19 @@ test("schematic-export", async ({ page }, testInfo) => {
 		exact: true,
 	});
 	await expect(button).toBeEnabled();
-	await button.click();
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
 	for (const format of ["svg", "png"]) {
+		await button.click();
 		await dialog
 			.getByRole("combobox", { name: "Format", exact: true })
 			.selectOption(format);
 		const download = page.waitForEvent("download");
 		await dialog.getByRole("button", { name: "Download", exact: true }).click();
 		await download;
+		await expect(dialog).not.toBeVisible();
 		await expect(
-			dialog.getByRole("button", { name: "Download", exact: true }),
-		).toBeEnabled();
+			page.getByText("Drawing exported", { exact: true }).last(),
+		).toBeVisible();
 	}
 	const value = await report(page);
 	await finish(page, testInfo, "schematic-export", {
