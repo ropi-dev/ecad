@@ -13,6 +13,6 @@ __unconfig*
 test-results/
 playwright-report/
 
-perf-artifacts/
+perf-artifacts
 .vercel
 .idea/

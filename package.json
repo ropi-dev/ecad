@@ -45,6 +45,7 @@
     "#web/*": "./packages/web/src/*"
   },
   "scripts": {
+    "sandbox": "node scripts/development/sandbox.ts",
     "dev": "pnpm --filter @ecad/web run dev",
     "dev:web": "pnpm --filter @ecad/web run dev",
     "dev:desktop": "pnpm --filter @ecad/desktop run dev",
