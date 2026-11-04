@@ -10,6 +10,7 @@ import {
 	symbolReferenceKey,
 } from "#/drawing/symbol-reference.ts";
 import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 
 export const USER_SYMBOL_CONFIG_KEY = "ecad.user-config.v1";
 export const SYMBOL_CONFIG_LIMIT = 10 * 1024 * 1024;
@@ -169,7 +170,7 @@ export async function resolveSymbolLibraries(
 				}
 			} catch (cause) {
 				errors.push(
-					`${library.name}: ${cause instanceof Error ? cause.message : "Unable to load library."}`,
+					`${library.name}: ${errorMessage(cause, "Unable to load library.")}`,
 				);
 			}
 		}
@@ -226,11 +227,7 @@ export async function resolveSymbolLibraries(
 		try {
 			resolve(entry.library, entry.definition.id);
 		} catch (cause) {
-			errors.push(
-				cause instanceof Error
-					? cause.message
-					: "Unable to resolve symbol references.",
-			);
+			errors.push(errorMessage(cause, "Unable to resolve symbol references."));
 		}
 	}
 	for (const [id, key] of winners) {

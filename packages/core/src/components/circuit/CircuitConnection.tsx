@@ -1,3 +1,4 @@
+import { connectionCurveOffset } from "@ecad/drawing-core/circuit/graph.ts";
 import type { MouseEvent } from "react";
 import { GraphButton } from "./GraphButton.tsx";
 
@@ -20,7 +21,9 @@ export function CircuitConnection({
 }) {
 	const x = Math.min(pin.x, net.x) - 80;
 	const y = Math.min(pin.y, net.y) - 16;
-	const path = `M ${pin.x} ${pin.y} C ${pin.x + (pin.side === "left" ? -65 : 65)} ${pin.y}, ${net.x + (pin.side === "left" ? 65 : -65)} ${net.y}, ${net.x} ${net.y}`;
+	const offset =
+		pin.side === "left" ? -connectionCurveOffset : connectionCurveOffset;
+	const path = `M ${pin.x} ${pin.y} C ${pin.x + offset} ${pin.y}, ${net.x - offset} ${net.y}, ${net.x} ${net.y}`;
 	return (
 		<GraphButton
 			x={x}

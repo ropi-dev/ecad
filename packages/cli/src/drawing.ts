@@ -18,6 +18,7 @@ import {
 	restoreDrawingStore,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	type DrawingOperation,
 	executeDrawingOperation,
@@ -251,7 +252,7 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 						? error
 						: new LocalDrawingError({
 								code: "DrawingFileError",
-								message: error instanceof Error ? error.message : String(error),
+								message: errorMessage(error),
 							}),
 			});
 		},
