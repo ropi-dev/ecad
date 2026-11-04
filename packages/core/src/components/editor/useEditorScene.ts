@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
+import {
+	buildPreviewDisplay,
+	buildStaticDisplay,
+	type DrawingDisplay,
+} from "#/drawing/display.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import {
 	buildWorksheetDisplay,
@@ -8,6 +12,7 @@ import {
 } from "#/drawing/worksheet.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
 import { measureText } from "#/engine/drawing/text.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 type DrawingRenderer = ReturnType<typeof createDrawingRenderer>;
 
@@ -31,9 +36,24 @@ export function useEditorScene(
 		setRenderer(next);
 		return () => next.dispose();
 	}, [width, height, name]);
-	const display = useMemo(
-		() => buildDrawingDisplay(shapes, selectedIds, previews, measureText),
-		[shapes, selectedIds, previews],
+	// Wire and symbol previews change on every pointer move; the document does not.
+	const document = useMemo(
+		() =>
+			measurePerformance(
+				"editor.scene-display",
+				() => buildStaticDisplay(shapes, selectedIds, measureText),
+				{ shapes: shapes.length },
+			),
+		[shapes, selectedIds],
+	);
+	const shapeCount = shapes.length;
+	const preview = useMemo(
+		() => buildPreviewDisplay(previews, shapeCount, measureText),
+		[previews, shapeCount],
+	);
+	const display = useMemo<DrawingDisplay>(
+		() => ({ ...document, previews: preview }),
+		[document, preview],
 	);
 	const updateScene = useCallback(
 		(root: Parameters<DrawingRenderer["update"]>[0]) => {
