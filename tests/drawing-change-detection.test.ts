@@ -198,3 +198,24 @@ test("the drawing comparison covers fields it does not know about, symmetrically
 	assertSame(extended({ constructor: 1 }), extended({}), false);
 	assertSame(drawing({ constructor: "x" }), drawing(), false);
 });
+
+test("drawing history shares frozen shapes while later nested edits leave old states intact", () => {
+	const { store, run, before } = replaceOnly(symbol, editSymbol((shape) => { shape.children[0].x += 2; }));
+	const after = store.getSnapshot();
+	const saved = after.history.nodes[after.history.currentId].state.shapes;
+	assert.equal(saved, after.shapes);
+	assert.throws(() => { (saved[0] as EditorSymbol).children[0].x = 999; }, TypeError);
+	assert.notDeepEqual(after.shapes, before.shapes);
+	run(undoEffect);
+	assert.equal(store.getSnapshot().shapes, before.history.nodes[before.history.currentId].state.shapes);
+	const undone = store.getSnapshot();
+	const source = structuredClone(undone.shapes[0]) as EditorSymbol;
+	source.children[0].x += 10;
+	const command = replaceShapesEffect([source], "Branch edit");
+	source.children[0].x = 999;
+	run(command);
+	assert.equal(after.history.nodes[after.history.currentId].state.shapes, saved);
+	assert.notEqual((saved[0] as EditorSymbol).children[0].x, 999);
+	assert.notEqual((store.getSnapshot().shapes[0] as EditorSymbol).children[0].x, 999);
+	assert.deepEqual(undone.shapes, before.shapes);
+});

@@ -9,7 +9,6 @@ import {
 import { createSymbolFromShapes } from "#/drawing/group-symbol.ts";
 import {
 	commitHistory,
-	getHistoryState,
 	type History,
 	jumpHistory,
 	redoHistory,
@@ -29,6 +28,7 @@ import {
 	normalizeWireSegments,
 	pinTerminals,
 } from "#/drawing/shapes.ts";
+import { freeze } from "#/lib/freeze.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
@@ -116,11 +116,16 @@ function commit(
 			changedIds.flatMap((id) => normalized.idsBySource.get(id) ?? []),
 		),
 	];
-	const history = commitHistory(
-		current.history,
-		{ shapes: normalized.shapes },
-		label,
-		sameDrawing,
+	const history = measurePerformance(
+		"drawing.history-commit",
+		() =>
+			commitHistory(
+				current.history,
+				freeze({ shapes: normalized.shapes }),
+				label,
+				sameDrawing,
+			),
+		{ shapes: normalized.shapes.length },
 	);
 	return [
 		{ ids, idMap: normalized.idMap, idsBySource: normalized.idsBySource },
@@ -424,7 +429,7 @@ function navigate(
 				? current
 				: {
 						...current,
-						shapes: getHistoryState(history).shapes,
+						shapes: history.nodes[history.currentId].state.shapes,
 						history,
 					},
 		];

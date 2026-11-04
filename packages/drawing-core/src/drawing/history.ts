@@ -1,4 +1,40 @@
-/** History values must be structured-cloneable and treated as read-only. */
+export const DRAWING_HISTORY_LIMIT = 100;
+
+const immutableValues = new WeakSet<object>();
+
+function isImmutable(
+	value: unknown,
+	visiting = new WeakSet<object>(),
+): boolean {
+	if (typeof value === "function" || typeof value === "symbol") return false;
+	if (value === null || typeof value !== "object") return true;
+	if (immutableValues.has(value)) return true;
+	if (!Object.isFrozen(value) || visiting.has(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	if (
+		!Array.isArray(value) &&
+		prototype !== Object.prototype &&
+		prototype !== null
+	)
+		return false;
+	visiting.add(value);
+	const immutable = Reflect.ownKeys(value).every((key) => {
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		return (
+			descriptor !== undefined &&
+			"value" in descriptor &&
+			isImmutable(descriptor.value, visiting)
+		);
+	});
+	visiting.delete(value);
+	if (immutable) immutableValues.add(value);
+	return immutable;
+}
+
+function copyState<T>(state: T): T {
+	return isImmutable(state) ? state : structuredClone(state);
+}
+
 export interface HistoryNode<T> {
 	readonly id: number;
 	readonly parentId: number | null;
@@ -23,7 +59,7 @@ export function createHistory<T>(initial: T, label = "Start"): History<T> {
 				childIds: [],
 				preferredChildId: null,
 				label,
-				state: structuredClone(initial),
+				state: copyState(initial),
 			},
 		},
 		currentId: 0,
@@ -50,10 +86,9 @@ export function commitHistory<T>(
 	isEqual: (previous: Readonly<T>, next: Readonly<T>) => boolean,
 ): History<T> {
 	const parent = history.nodes[history.currentId];
-	// The comparison only reads the saved state, so it skips the restoration copy.
 	if (isEqual(parent.state, state)) return history;
 	const id = history.nextId;
-	return {
+	return pruneHistory({
 		nodes: {
 			...history.nodes,
 			[parent.id]: {
@@ -67,12 +102,12 @@ export function commitHistory<T>(
 				childIds: [],
 				preferredChildId: null,
 				label,
-				state: structuredClone(state),
+				state: copyState(state),
 			},
 		},
 		currentId: id,
 		nextId: id + 1,
-	};
+	});
 }
 
 /** Visiting a branch makes it the preferred redo route from each ancestor. */
@@ -115,4 +150,72 @@ export function redoHistory<T>(
 	if (target === undefined || !current.childIds.includes(target))
 		return history;
 	return jumpHistory(history, target);
+}
+
+export function pruneHistory<T>(history: History<T>): History<T> {
+	const entries = Object.values(history.nodes);
+	if (entries.length <= DRAWING_HISTORY_LIMIT) return history;
+	const nodes: Record<number, HistoryNode<T>> = { ...history.nodes };
+	const candidates: number[] = [];
+	const eligible = (node: HistoryNode<T>) =>
+		node.id !== history.currentId &&
+		(node.childIds.length === 0 ||
+			(node.parentId === null && node.childIds.length === 1));
+	const add = (id: number) => {
+		let index = candidates.length;
+		candidates.push(id);
+		while (index > 0) {
+			const parent = Math.floor((index - 1) / 2);
+			if (candidates[parent] <= id) break;
+			candidates[index] = candidates[parent];
+			index = parent;
+		}
+		candidates[index] = id;
+	};
+	const take = () => {
+		const first = candidates[0];
+		const last = candidates.pop();
+		if (last !== undefined && candidates.length) {
+			let index = 0;
+			while (index * 2 + 1 < candidates.length) {
+				let child = index * 2 + 1;
+				if (
+					child + 1 < candidates.length &&
+					candidates[child + 1] < candidates[child]
+				)
+					child++;
+				if (candidates[child] >= last) break;
+				candidates[index] = candidates[child];
+				index = child;
+			}
+			candidates[index] = last;
+		}
+		return first;
+	};
+	for (const node of entries) if (eligible(node)) add(node.id);
+	let size = entries.length;
+	while (size > DRAWING_HISTORY_LIMIT) {
+		const node = nodes[take()];
+		delete nodes[node.id];
+		size--;
+		if (node.parentId === null) {
+			const child = nodes[node.childIds[0]];
+			nodes[child.id] = { ...child, parentId: null };
+			if (eligible(nodes[child.id])) add(child.id);
+		} else {
+			const parent = nodes[node.parentId];
+			const wasEligible = eligible(parent);
+			const childIds = parent.childIds.filter((id) => id !== node.id);
+			nodes[parent.id] = {
+				...parent,
+				childIds,
+				preferredChildId:
+					parent.preferredChildId === node.id
+						? (childIds.at(-1) ?? null)
+						: parent.preferredChildId,
+			};
+			if (!wasEligible && eligible(nodes[parent.id])) add(parent.id);
+		}
+	}
+	return { ...history, nodes };
 }

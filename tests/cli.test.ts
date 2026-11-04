@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { chmod, mkdir, readFile, readdir, readlink, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
@@ -11,6 +11,7 @@ import { test, type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createLocalDrawing, runCli } from "@ecad/cli";
+import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
 import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -773,3 +774,63 @@ test("CLI module supports injected streams and local command execution", async (
 	assert.equal(JSON.parse(output).structuredContent.ok, true);
 	assert.equal((await fixture.read()).shapes.length, 1);
 });
+
+test("CLI keeps persisted edit history bounded across invocations and branches", async (context) => {
+	const fixture = await drawing(context);
+	const local = createLocalDrawing({ path: fixture.path });
+	await runEffect(local.execute({ type: "placeRectangle", input: rectangle }));
+	for (let i = 1; i <= 120; i++) {
+		assert.ok((await runEffect(local.execute({ type: "replaceShapes", shapes: [{ ...rectangle, kind: "rectangle", id: 1, x: i }] }))).ok);
+		const saved = JSON.parse(await readFile(`${fixture.path}.history.json`, "utf8"));
+		assert.ok(Object.keys(saved.snapshot.history.nodes).length <= 100);
+	}
+	const atTip = await call(fixture.env, "getDrawing");
+	assert.equal(atTip.drawing.history.nodes.length, 100);
+	await call(fixture.env, "undo");
+	const branch = await call(fixture.env, "replaceShapes", { shapes: [{ ...rectangle, kind: "rectangle", id: 1, x: -1 }] });
+	assert.equal(branch.drawing.history.nodes.length, 100);
+	assert.ok(branch.drawing.history.currentId > atTip.drawing.history.currentId);
+	assert.equal((await call(fixture.env, "jumpHistory", { id: atTip.drawing.history.currentId })).drawing.shapes[0].x, 120);
+	assert.equal((await call(fixture.env, "jumpHistory", { id: branch.drawing.history.currentId })).drawing.shapes[0].x, -1);
+	assert.equal((await call(fixture.env, "redo")).drawing.history.currentId, branch.drawing.history.currentId);
+	const saved = JSON.parse(await readFile(`${fixture.path}.history.json`, "utf8"));
+	assert.ok(drawingSnapshotSchema.safeParse(saved.snapshot).success);
+});
+
+for (const currentId of [0, 75, 250]) {
+	test(`CLI compacts legacy oversized history at node ${currentId} and reloads the saved tree`, async (context) => {
+		const fixture = await drawing(context);
+		const shapes = (id: number) => [{ ...rectangle, kind: "rectangle", id: 1, x: id }];
+		const content = JSON.stringify({ shapes: shapes(currentId), title: "Legacy drawing" });
+		const snapshot = {
+			shapes: shapes(currentId), nextShapeId: 2,
+			history: {
+				currentId, nextId: 251,
+				nodes: Object.fromEntries(Array.from({ length: 251 }, (_, id) => [id, {
+					id, parentId: id === 0 ? null : id - 1,
+					childIds: id === 250 ? [] : [id + 1], preferredChildId: id === 250 ? null : id + 1,
+					label: `Legacy ${id}`, state: { shapes: shapes(id) },
+				}])),
+			},
+		};
+		assert.ok(drawingSnapshotSchema.safeParse(snapshot).success);
+		await writeFile(fixture.path, content);
+		await writeFile(`${fixture.path}.history.json`, JSON.stringify({ version: 1, drawingHash: createHash("sha256").update(content).digest("hex"), snapshot }));
+		if (process.platform !== "win32") await chmod(`${fixture.path}.history.json`, 0o640);
+		const read = await call(fixture.env, "getDrawing");
+		assert.equal(read.drawing.history.nodes.length, 100);
+		assert.equal(read.drawing.history.currentId, currentId);
+		assert.equal(read.drawing.shapes[0].x, currentId);
+		const saved = JSON.parse(await readFile(`${fixture.path}.history.json`, "utf8"));
+		assert.equal(Object.keys(saved.snapshot.history.nodes).length, 100);
+		assert.equal(saved.version, 1);
+		assert.ok(drawingSnapshotSchema.safeParse(saved.snapshot).success);
+		assert.equal((await fixture.read()).title, "Legacy drawing");
+		if (process.platform !== "win32") assert.equal(await fileMode(`${fixture.path}.history.json`), 0o640);
+		assert.equal((await call(fixture.env, "getDrawing")).drawing.history.currentId, currentId);
+		const edit = await call(fixture.env, "replaceShapes", { shapes: shapes(-1) });
+		assert.equal(edit.drawing.history.currentId, 251);
+		assert.equal((await call(fixture.env, "undo")).drawing.history.currentId, currentId);
+		assert.equal((await call(fixture.env, "redo")).drawing.history.currentId, 251);
+	});
+}
