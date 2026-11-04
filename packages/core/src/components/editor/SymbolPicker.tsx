@@ -20,7 +20,7 @@ export function SymbolPicker({
 	disabled: boolean;
 	active: boolean;
 	onChoose: (definition: SymbolDefinition) => void;
-	library: ReturnType<typeof useSymbolLibrary>;
+	library: Pick<ReturnType<typeof useSymbolLibrary>, "definitions" | "error">;
 	mode?: "symbol" | "component";
 	allowNetSymbols?: boolean;
 	onOpen?: () => void;
