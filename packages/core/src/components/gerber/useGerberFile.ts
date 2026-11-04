@@ -25,10 +25,10 @@ const COLORS = [
 	"#d2cf7d",
 ];
 
+// Diagnostics stay on the layer, which shows them for as long as it exists.
 function readGerber(file: File) {
-	return Effect.map(parseGerberFileEffect(file), ({ object, diagnostics }) => ({
+	return Effect.map(parseGerberFileEffect(file), ({ object }) => ({
 		value: object,
-		messages: diagnostics.map((entry) => entry.message),
 	}));
 }
 const release = (object: ParsedGerberObject) => object.dispose();

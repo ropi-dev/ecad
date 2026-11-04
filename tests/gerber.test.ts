@@ -219,7 +219,7 @@ test('unsupported macro geometry and malformed files produce explicit errors',()
   const truncated=parseGerber(header+'%ADD10C,1*%D10*X0Y0D03*','truncated.gbr')
   assert.ok(truncated.diagnostics.some(d=>d.message.includes('Missing M02')))
   const unsupported=parse('%IPNEG*%')
-  assert.ok(unsupported.diagnostics.some(d=>d.severity==='error' && d.message.includes('IPNEG')))
+  assert.ok(unsupported.diagnostics.some(d=>d.severity==='fatal' && d.message.includes('IPNEG')))
 })
 
 test('rejects non-circular modern draws without approximating their aperture as a circle',()=> {

@@ -1,6 +1,5 @@
 import { Effect } from "effect";
-import type { ParseResult } from "#/engine/types.ts";
-import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
+import type { Diagnostic, ParseResult } from "#/engine/types.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
@@ -8,19 +7,20 @@ import {
 import type { PlanarObject, SpatialObject } from "#/engine/scene.ts";
 import { runEffect } from "#/lib/effect.ts";
 import { errorMessage } from "#/lib/error-message.ts";
+import { formatDiagnostic, summarizeDiagnostics } from "./diagnostics";
 import {
 	acquireImported,
 	InvalidFile,
 	readFile,
 	requestWorker,
 } from "./import-effects";
+import type { ParseWorkerResult } from "./parse-reply";
 
-interface WorkerResult extends ParseResult {
-	mesh?: PlanarGeometry;
-}
 export interface ParsedGerberObject
 	extends Omit<PlanarObject, "type">,
 		SpatialObject {
+	/** Recoverable problems; the layer renders everything else. */
+	diagnostics: readonly Diagnostic[];
 	dispose: () => void;
 }
 export interface ParsedGerberFile extends Omit<ParseResult, "object"> {
@@ -32,7 +32,7 @@ export interface ParsedGerberFile extends Omit<ParseResult, "object"> {
 export function parseGerberFileEffect(file: File) {
 	return Effect.gen(function* () {
 		const source = yield* readFile(() => file.text());
-		const parsed = yield* requestWorker<WorkerResult>({
+		const parsed = yield* requestWorker<ParseWorkerResult>({
 			create: () =>
 				new Worker(new URL("./parse.worker.ts", import.meta.url), {
 					type: "module",
@@ -44,17 +44,24 @@ export function parseGerberFileEffect(file: File) {
 			startMessage: "Unable to parse this file.",
 			receiveMessage: "Unable to receive the parsed file.",
 		});
-		const errors = parsed.diagnostics.filter(
-			(entry) => entry.severity === "error",
+		const fatal = parsed.diagnostics.filter(
+			(entry) => entry.severity === "fatal",
 		);
-		if (errors.length)
+		if (fatal.length)
 			return yield* new InvalidFile({
-				message: errors.map((entry) => entry.message).join("; "),
+				message: fatal.map(formatDiagnostic).join("; "),
 			});
-		if (!parsed.mesh?.positions.length)
+		if (!parsed.mesh?.positions.length) {
+			// Explain an empty result with the commands that were skipped.
+			const errors = parsed.diagnostics.filter(
+				(entry) => entry.severity === "error",
+			);
 			return yield* new InvalidFile({
-				message: "This file contains no drawable geometry.",
+				message: errors.length
+					? `This file contains no drawable geometry (${summarizeDiagnostics(errors)}).`
+					: "This file contains no drawable geometry.",
 			});
+		}
 		const geometry = parsed.mesh;
 		return yield* acquireImported(
 			Effect.try({
@@ -79,6 +86,7 @@ export function parseGerberFileEffect(file: File) {
 						...drawing,
 						type: "spatial",
 						object: mesh,
+						diagnostics: parsed.diagnostics,
 						dispose,
 					};
 					return {

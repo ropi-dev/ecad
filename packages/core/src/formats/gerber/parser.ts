@@ -2,6 +2,7 @@ import type {
 	Attributes,
 	Bounds,
 	Diagnostic,
+	DiagnosticSeverity,
 	FormatParser,
 	Geometry,
 	Matrix,
@@ -79,6 +80,10 @@ interface Region {
 	polarity: Polarity;
 }
 const MAX_OBJECTS = 500_000;
+// One malformed command per line could otherwise produce millions of entries.
+const MAX_DIAGNOSTICS = 200;
+/** A problem that makes the whole layer unusable, so parsing stops. */
+class FatalGerberError extends Error {}
 const decimalPattern = "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
 const number = (value: string): number => {
 	if (
@@ -206,8 +211,23 @@ export function parseGerber(
 		objectCount = 0,
 		isX3 = false;
 	const warned = new Set<string>();
-	const diagnostic = (severity: "warning" | "error", message: string) =>
-		diagnostics.push({ severity, message, line });
+	let omitted = 0,
+		omittedError = false;
+	/** `at` is null for problems with the whole file rather than one line. */
+	const diagnostic = (
+		severity: DiagnosticSeverity,
+		message: string,
+		at: number | null = line,
+	) => {
+		if (severity !== "fatal" && diagnostics.length >= MAX_DIAGNOSTICS) {
+			omitted++;
+			omittedError ||= severity === "error";
+			return;
+		}
+		diagnostics.push(
+			at === null ? { severity, message } : { severity, message, line: at },
+		);
+	};
 	const warn = (message: string) => {
 		if (!warned.has(message)) {
 			warned.add(message);
@@ -217,7 +237,7 @@ export function parseGerber(
 	const output = () => blocks.at(-1)?.objects ?? objects;
 	const emit = (object: Omit<SceneObject, "id">) => {
 		if (++objectCount > MAX_OBJECTS)
-			throw new Error(
+			throw new FatalGerberError(
 				`Object limit of ${MAX_OBJECTS.toLocaleString()} exceeded`,
 			);
 		output().push({ ...object, id: `gerber-${++sequence}` });
@@ -404,8 +424,8 @@ export function parseGerber(
 		if (contour.segments) {
 			if (!samePoint(contour.first, contour.last))
 				diagnostic(
-					"error",
-					"Region contour is not closed; a closing segment was added for preview.",
+					"warning",
+					"Region contour is not closed; a closing segment was added.",
 				);
 			contour.d += " Z";
 			region.contours.push(contour);
@@ -547,7 +567,7 @@ export function parseGerber(
 			radius = Math.max(r0, r1);
 		if (mismatch > Math.max(0.005, radius * 0.001))
 			warn(
-				`Arc radii differ by ${mismatch.toFixed(6)} mm; preview interpolates within the Gerber arc tolerance band.`,
+				`Arc radii differ by ${mismatch.toFixed(6)} mm; the arc is interpolated within the Gerber arc tolerance band.`,
 			);
 		const points = [start, end];
 		for (let q = 0; q < 4; q++) {
@@ -796,8 +816,8 @@ export function parseGerber(
 			return;
 		}
 		if (compact === "IPNEG")
-			throw new Error(
-				"Legacy negative image polarity IPNEG is unsupported; the preview is incomplete",
+			throw new FatalGerberError(
+				"Legacy negative image polarity IPNEG is unsupported; the image would render inverted",
 			);
 		if (
 			compact === "ASAXBY" ||
@@ -808,8 +828,13 @@ export function parseGerber(
 			warn("Deprecated identity image transformation was accepted.");
 			return;
 		}
+		// Skipping these would draw the whole image moved, scaled or mirrored.
+		if (/^(?:AS|OF|SF|MI|IR|IJ|IO)/.test(compact))
+			throw new FatalGerberError(
+				`Image transformation '${compact.slice(0, 80)}' is unsupported; the image would render transformed incorrectly`,
+			);
 		throw new Error(
-			`Unsupported or malformed extended command '${command.slice(0, 80)}'; preview may be incomplete`,
+			`Unsupported or malformed extended command '${command.slice(0, 80)}' was skipped`,
 		);
 	}
 	function standard(command: string) {
@@ -928,11 +953,14 @@ export function parseGerber(
 			plot(old, next, offsetI, offsetJ);
 		}
 	}
-	if (source.length > MAX_GERBER_SOURCE_LENGTH)
-		diagnostics.push({
-			severity: "error",
-			message: `Gerber file exceeds the ${MAX_GERBER_SOURCE_LENGTH / 1024 / 1024} MiB parser limit.`,
-		});
+	// A fatal problem rejects the layer, so later diagnostics would be noise.
+	let stopped = source.length > MAX_GERBER_SOURCE_LENGTH;
+	if (stopped)
+		diagnostic(
+			"fatal",
+			`Gerber file exceeds the ${MAX_GERBER_SOURCE_LENGTH / 1024 / 1024} MiB parser limit.`,
+			null,
+		);
 	else
 		for (const token of tokenize(source, diagnostics)) {
 			line = token.line;
@@ -943,23 +971,42 @@ export function parseGerber(
 			try {
 				token.extended ? extended(token.text) : standard(token.text);
 			} catch (error) {
-				diagnostic("error", errorMessage(error));
-				if (objectCount >= MAX_OBJECTS) break;
+				stopped = error instanceof FatalGerberError;
+				diagnostic(stopped ? "fatal" : "error", errorMessage(error));
+				if (stopped) break;
 			}
 		}
-	if (!ended)
-		diagnostic(
-			"error",
-			"Missing M02 end-of-file command; the file may be truncated.",
-		);
-	if (region) diagnostic("error", "Unclosed G36/G37 region was not rendered.");
-	if (blocks.length)
-		diagnostic(
-			"error",
-			`Unclosed ${blocks.map((block) => block.kind).join(", ")} block was not rendered.`,
-		);
-	if (!hasUnits) diagnostic("error", "Missing MO units declaration.");
-	if (!format) diagnostic("error", "Missing FS coordinate format declaration.");
+	if (!stopped) {
+		if (!ended)
+			diagnostic(
+				"warning",
+				"Missing M02 end-of-file command; the file may be truncated.",
+			);
+		if (region)
+			diagnostic("error", "Unclosed G36/G37 region was not rendered.");
+		if (blocks.length)
+			diagnostic(
+				"error",
+				`Unclosed ${blocks.map((block) => block.kind).join(", ")} block was not rendered.`,
+			);
+		if (!hasUnits)
+			diagnostic(
+				"fatal",
+				"Missing MO units declaration, so no coordinates can be read.",
+				null,
+			);
+		if (!format)
+			diagnostic(
+				"fatal",
+				"Missing FS coordinate format declaration, so no coordinates can be read.",
+				null,
+			);
+	}
+	if (omitted)
+		diagnostics.push({
+			severity: omittedError ? "error" : "warning",
+			message: `${omitted.toLocaleString()} more ${omitted === 1 ? "problem is" : "problems are"} not listed.`,
+		});
 	const bounds = finiteBounds(
 		objects
 			.filter((object) => object.polarity === "dark")

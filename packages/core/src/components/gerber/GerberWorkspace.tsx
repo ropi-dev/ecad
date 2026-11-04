@@ -1,4 +1,8 @@
 import { useState } from "react";
+import {
+	describeDiagnostics,
+	summarizeDiagnostics,
+} from "#/formats/diagnostics.ts";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 import { GerberHeader } from "./GerberHeader";
 import { GerberViewer } from "./GerberViewer";
@@ -16,7 +20,18 @@ export function GerberWorkspace() {
 	} = useGerberFile();
 	const [focusedLayerId, setFocusedLayerId] = useState<string>();
 	const [rendererError, setRendererError] = useState("");
-	const message = [fileMessage, rendererError].filter(Boolean).join("; ");
+	// Project workspaces have no layer panel, so the banner lists diagnostics.
+	const diagnostics = project
+		? layers
+				.filter((layer) => layer.diagnostics.length)
+				.map(
+					(layer) =>
+						`${layer.name}: ${describeDiagnostics(layer.diagnostics)} (${summarizeDiagnostics(layer.diagnostics, 10)})`,
+				)
+		: [];
+	const message = [fileMessage, ...diagnostics, rendererError]
+		.filter(Boolean)
+		.join("\n");
 	return (
 		<main className="relative flex h-dvh flex-col overflow-hidden">
 			<GerberHeader
@@ -29,7 +44,7 @@ export function GerberWorkspace() {
 			{message && (
 				<output
 					data-testid="viewer-message"
-					className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] text-[#edc49a]"
+					className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] whitespace-pre-line text-[#edc49a]"
 				>
 					{message}
 				</output>

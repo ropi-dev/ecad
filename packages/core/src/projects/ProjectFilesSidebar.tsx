@@ -32,6 +32,7 @@ import {
 	hasShortcutModifier,
 	shortcutModifier,
 } from "#/components/viewer/shortcutModifier.ts";
+import type { KiCadImportReport } from "#/formats/kicad/import.ts";
 import {
 	type AssetKind,
 	PROJECT_FILE,
@@ -101,7 +102,7 @@ export function ProjectFilesSidebar() {
 	const [page, setPage] = useState(0);
 	const [importing, setImporting] = useState(false);
 	const [error, setError] = useState("");
-	const [importReport, setImportReport] = useState("");
+	const [importReport, setImportReport] = useState<KiCadImportReport>();
 	const [creatingFile, setCreatingFile] = useState<
 		"drawing" | "symbol" | "circuit" | null
 	>(null);
@@ -292,10 +293,10 @@ export function ProjectFilesSidebar() {
 		if (!project) return;
 		setImporting(true);
 		setError("");
-		setImportReport("");
+		setImportReport(undefined);
 		try {
 			const { path, report } = await project.importSchematic(file);
-			setImportReport(JSON.stringify(report, null, 2));
+			setImportReport(report);
 			project.selectEditorFile(path);
 			editorLink.current?.click();
 		} catch (cause) {
@@ -355,12 +356,38 @@ export function ProjectFilesSidebar() {
 						Imported KiCad drawing with electrical net and supply names. Review
 						conversion limits and source metadata in the report.
 					</span>
+					{importReport.skipped.length > 0 && (
+						<>
+							<span className="mt-2 block font-medium text-amber-200">
+								Skipped {importReport.skipped.length}{" "}
+								{importReport.skipped.length === 1 ? "item" : "items"} that
+								could not be converted:
+							</span>
+							<ul
+								aria-label="Skipped KiCad items"
+								className="m-0 mt-1 max-h-32 list-disc overflow-y-auto pl-4"
+							>
+								{importReport.skipped.slice(0, 20).map(({ item, reason }) => (
+									<li key={`${item}: ${reason}`}>
+										{item.charAt(0).toUpperCase() + item.slice(1)}: {reason}
+									</li>
+								))}
+							</ul>
+							{importReport.skipped.length > 20 && (
+								<span className="block">
+									The report lists the other {importReport.skipped.length - 20}.
+								</span>
+							)}
+						</>
+					)}
 					<button
 						type="button"
 						className={button}
 						onClick={() => {
 							const url = URL.createObjectURL(
-								new Blob([importReport], { type: "application/json" }),
+								new Blob([JSON.stringify(importReport, null, 2)], {
+									type: "application/json",
+								}),
 							);
 							const link = document.createElement("a");
 							link.href = url;
@@ -375,7 +402,7 @@ export function ProjectFilesSidebar() {
 						type="button"
 						aria-label="Dismiss import report"
 						className={button}
-						onClick={() => setImportReport("")}
+						onClick={() => setImportReport(undefined)}
 					>
 						Dismiss
 					</button>

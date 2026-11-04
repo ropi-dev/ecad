@@ -46,7 +46,7 @@ test('rotation and mirrors preserve terminal positions and lead directions', () 
   assert.equal(p.kind==='pin'&&p.number,'01');
  }
 });
-test('unsupported constructs produce reports and broken documents fail without partial results', () => {
+test('unsupported constructs produce reports and documents with nothing importable fail', () => {
  assert.ok(importKiCadSchematic(fixture('(sheet (uuid "child"))')).report.warnings.some(w=>w.includes('sheet')));
  for(const s of ['(kicad_sch','(kicad_sch))','(other)','(kicad_sch) trailing',fixture('').replace('(lib_id "Test")','(lib_id "Missing")')]) assert.throws(()=>importKiCadSchematic(s));
  assert.equal(parseSExpr('(text "hello\\n\\\"world\\\"")')[1],'hello\n"world"');
@@ -160,4 +160,49 @@ test('named supplies show one name while power flags keep their normal visible V
  const svg=exportDrawingSvg(flag.shapes,{width:2400,height:1600,area:'sheet',background:'white',sheet:{width:420,height:297}});
  assert.match(svg,/>PWR_FLAG<\/text>/);
  assert.ok(!flag.shapes.some(shape=>shape.kind==='text'&&shape.electrical));
+});
+
+test('a schematic with one broken symbol imports everything else and reports one readable warning', () => {
+ const broken = source.replace('(lib_id "RPI_DB:Integrated_Circuits | Power | LDO/RP-01JWD9-7JRX6J")','(lib_id "RPI_DB:Missing LDO")');
+ assert.notEqual(broken, source);
+ const complete = importKiCadSchematic(source);
+ const result = importKiCadSchematic(broken);
+ const symbols = result.shapes.filter(s=>s.kind==='symbol');
+ assert.equal(symbols.length,86);
+ assert.equal(result.shapes.filter(s=>s.kind==='wire').length,346);
+ assert.equal(result.report.labels.length,94);
+ assert.equal(result.shapes.length,complete.shapes.length-1);
+ assert.deepEqual(result.report.skipped,[{item:'symbol U2 (RPI_DB:Missing LDO)',reason:'Its library symbol is not embedded in the schematic.'}]);
+ assert.deepEqual(result.report.warnings.filter(w=>!complete.report.warnings.includes(w)),['Skipped symbol U2 (RPI_DB:Missing LDO). Its library symbol is not embedded in the schematic.']);
+ // Report entries stay aligned with the imported symbols.
+ assert.deepEqual(result.report.components,complete.report.components.filter(c=>c.properties.Reference!=='U2'));
+ assert.equal(result.report.components.length,86);
+ assert.ok(result.shapes.every((s,index)=>s.id===index+1));
+ assert.equal(validateProjectDocument({shapes:result.shapes,symbols:[]}).shapes.length,result.shapes.length);
+});
+
+const twoSymbols = (definition: string, extra = '') => `(kicad_sch (version 20250114) (paper "A4") (lib_symbols (symbol "Good" (symbol "Good_1_1" (pin input line (at 2 3 0) (length 2) (name "IN") (number "1")))) ${definition}) (symbol (lib_id "Good") (at 10 20 0) (unit 1) (uuid "good") (property "Reference" "X1" (at 10 20 0) (effects hide))) (symbol (lib_id "Bad") (at 30 20 0) (unit 1) (uuid "bad") (property "Reference" "X2" (at 30 20 0) (effects hide))) (wire (pts (xy 0 0) (xy 10 0))) ${extra})`;
+test('a symbol whose converted geometry is invalid is skipped with a readable reason', () => {
+ const result = importKiCadSchematic(twoSymbols('(symbol "Bad" (symbol "Bad_1_1" (pin input line (at 0 0 0) (length 2) (name "A") (number "1")) (circle (center 0 0) (radius wide))))'));
+ assert.deepEqual(result.shapes.map(s=>s.kind),['symbol','wire']);
+ assert.deepEqual(result.report.skipped,[{item:'symbol X2 (Bad)',reason:'The width of child 2 (a circle) is invalid (expected number, received NaN).'}]);
+ assert.equal(result.report.components.length,1);
+});
+
+test('broken power symbols, wires, labels and markers are skipped one at a time', () => {
+ const result = importKiCadSchematic(twoSymbols(
+  '(symbol "Bad" (power) (symbol "Bad_1_1" (pin power_in line (at 0 0 0) (length 0) (name "A") (number "1")) (pin power_in line (at 1 0 0) (length 0) (name "B") (number "2"))))',
+  '(wire (pts (xy 0 0) (xy 5 0) (xy 5 5))) (label "SDA" (at 1 2 0)) (label "SCL") (global_label "VBUS" (at x 4 0)) (junction (at 7 8)) (no_connect (at 9)) (text "Note" (at 3 4 0))',
+ ).replace('(property "Reference" "X2" (at 30 20 0) (effects hide))','(property "Reference" "#PWR01" (at 30 20 0) (effects hide)) (property "Value" "+3V3" (at 30 20 0))'));
+ assert.deepEqual(result.report.skipped.map(({item,reason})=>`${item}: ${reason}`),[
+  'symbol #PWR01 (Bad): A power symbol needs exactly one pin, but this one has 2.',
+  'wire at (0, 0): A wire needs two endpoints, but this one has 3.',
+  'label "SCL": The position is missing.',
+  'global label "VBUS" at (x, 4): Invalid at coordinates.',
+  'no-connect marker: The position is missing.',
+ ]);
+ assert.deepEqual(result.shapes.map(s=>s.kind),['symbol','wire','circle','text','text']);
+ assert.deepEqual(result.report.labels.map(l=>l.text),['SDA']);
+ assert.deepEqual(result.report.supplies,[]);
+ assert.ok(result.report.warnings.slice(0,5).every(w=>w.startsWith('Skipped ')));
 });
