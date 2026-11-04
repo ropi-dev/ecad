@@ -22,6 +22,7 @@ import {
 	symbolFileShapes,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
 import {
@@ -230,11 +231,7 @@ export function ProjectProvider({
 				if (snapshot && !cancelled) adopt(snapshot);
 			} catch (cause) {
 				if (!cancelled)
-					setError(
-						cause instanceof Error
-							? cause.message
-							: "Unable to load the project.",
-					);
+					setError(errorMessage(cause, "Unable to load the project."));
 			} finally {
 				if (!cancelled) setBusy(false);
 			}
@@ -632,11 +629,7 @@ export function ProjectProvider({
 					setDirty(true);
 					// The conflict notice already explains a conflict.
 					if (!isProjectError(cause, "ProjectConflict"))
-						setError(
-							cause instanceof Error
-								? cause.message
-								: "Unable to save the project.",
-						);
+						setError(errorMessage(cause, "Unable to save the project."));
 				}
 				throw cause;
 			}
@@ -663,9 +656,7 @@ export function ProjectProvider({
 				return saved !== null && saved !== undefined;
 			});
 		} catch (cause) {
-			setError(
-				cause instanceof Error ? cause.message : "Unable to save the project.",
-			);
+			setError(errorMessage(cause, "Unable to save the project."));
 			throw cause;
 		} finally {
 			setBusy(false);
@@ -802,11 +793,7 @@ export function ProjectProvider({
 				if (path) selectEditorFile(path);
 			}
 		} catch (cause) {
-			setError(
-				cause instanceof Error
-					? cause.message
-					: "Unable to switch editor views.",
-			);
+			setError(errorMessage(cause, "Unable to switch editor views."));
 		}
 	};
 
@@ -991,11 +978,7 @@ export function ProjectProvider({
 					pendingAssets.current = [];
 				});
 			} catch (cause) {
-				setError(
-					cause instanceof Error
-						? cause.message
-						: "Unable to open the project.",
-				);
+				setError(errorMessage(cause, "Unable to open the project."));
 			} finally {
 				setBusy(false);
 			}
@@ -1302,11 +1285,7 @@ export function ProjectProvider({
 					setError("");
 				});
 			} catch (cause) {
-				setError(
-					cause instanceof Error
-						? cause.message
-						: "Unable to reload the project.",
-				);
+				setError(errorMessage(cause, "Unable to reload the project."));
 			} finally {
 				setBusy(false);
 			}

@@ -10,6 +10,7 @@ import {
 } from "#/components/editor/symbolFormat.ts";
 import { drawingShapeSchema } from "#/drawing/schema.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { errorMessage } from "#/lib/error-message.ts";
 import {
 	InvalidProjectDocument,
 	InvalidProjectFile,
@@ -235,9 +236,7 @@ export function validateProjectDocument(
 	} catch (cause) {
 		throw invalid(
 			files && PROJECT_FILE,
-			cause instanceof Error
-				? cause.message
-				: "The project symbols are invalid.",
+			errorMessage(cause, "The project symbols are invalid."),
 			cause,
 		);
 	}
@@ -250,9 +249,7 @@ export function validateProjectDocument(
 	} catch (cause) {
 		throw invalid(
 			files?.drawing,
-			cause instanceof Error
-				? cause.message
-				: "The project symbol libraries are invalid.",
+			errorMessage(cause, "The project symbol libraries are invalid."),
 			cause,
 		);
 	}

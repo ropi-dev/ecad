@@ -1,9 +1,11 @@
 import {
+	connectionTolerance,
 	type EditorShape,
 	symbolShapes,
 	type TextShape,
 } from "#/drawing/shapes.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import { unionFind } from "#/lib/union-find.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface ElectricalNet {
@@ -22,9 +24,8 @@ export function isNetLabel(
 	);
 }
 
-const tolerance = 1e-4;
 const samePoint = (a: Point, b: Point) =>
-	Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+	Math.hypot(a.x - b.x, a.y - b.y) <= connectionTolerance;
 function onSegment(point: Point, start: Point, end: Point) {
 	const dx = end.x - start.x,
 		dy = end.y - start.y;
@@ -93,19 +94,19 @@ function queryPoint(
 ): void {
 	if (
 		!tree ||
-		point.x < tree.minX - tolerance ||
-		point.x > tree.maxX + tolerance ||
-		point.y < tree.minY - tolerance ||
-		point.y > tree.maxY + tolerance
+		point.x < tree.minX - connectionTolerance ||
+		point.x > tree.maxX + connectionTolerance ||
+		point.y < tree.minY - connectionTolerance ||
+		point.y > tree.maxY + connectionTolerance
 	)
 		return;
 	if (tree.entries) {
 		for (const entry of tree.entries) {
 			if (
-				point.x >= entry.minX - tolerance &&
-				point.x <= entry.maxX + tolerance &&
-				point.y >= entry.minY - tolerance &&
-				point.y <= entry.maxY + tolerance
+				point.x >= entry.minX - connectionTolerance &&
+				point.x <= entry.maxX + connectionTolerance &&
+				point.y >= entry.minY - connectionTolerance &&
+				point.y <= entry.maxY + connectionTolerance
 			)
 				visit(entry.index);
 		}
@@ -160,22 +161,12 @@ export function electricalNets(
 					}
 				}
 			}
-			const parents = nodes.map((_, index) => index);
-			const root = (index: number): number => {
-				while (parents[index] !== index) {
-					parents[index] = parents[parents[index]];
-					index = parents[index];
-				}
-				return index;
-			};
-			const join = (a: number, b: number) => {
-				parents[root(a)] = root(b);
-			};
+			const sets = unionFind(nodes.length);
 			const names = new Map<string, number>();
 			for (const [index, node] of nodes.entries()) {
 				if (node.name) {
 					const previous = names.get(node.name);
-					if (previous !== undefined) join(index, previous);
+					if (previous !== undefined) sets.union(index, previous);
 					names.set(node.name, index);
 				}
 			}
@@ -198,13 +189,13 @@ export function electricalNets(
 								? onSegment(point, other.point, other.end)
 								: samePoint(point, other.point)
 						)
-							join(index, otherIndex);
+							sets.union(index, otherIndex);
 					});
 				}
 			}
 			const groups = new Map<number, ElectricalNet>();
 			for (const [index, node] of nodes.entries()) {
-				const key = root(index);
+				const key = sets.find(index);
 				const net = groups.get(key) ?? {
 					names: [],
 					wires: [],

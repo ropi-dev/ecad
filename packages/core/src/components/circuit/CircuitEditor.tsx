@@ -2,6 +2,8 @@ import {
 	buildCircuitGraph,
 	componentHeight,
 	componentWidth,
+	connectionCurveOffset,
+	netNodeBox,
 } from "@ecad/drawing-core/circuit/graph.ts";
 import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { GraphLayout } from "@ecad/drawing-core/circuit/model.ts";
@@ -23,6 +25,12 @@ import {
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { handleViewerKeyDown } from "#/engine/navigation.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import {
+	arrowDelta,
+	handleHistoryKeyDown,
+	isEditableTarget,
+} from "#/lib/keyboard.ts";
 import {
 	type CircuitDocument,
 	useProject,
@@ -435,9 +443,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			setError("");
 			return true;
 		} catch (cause) {
-			setError(
-				cause instanceof Error ? cause.message : "Unable to edit circuit.",
-			);
+			setError(errorMessage(cause, "Unable to edit circuit."));
 			return false;
 		}
 	}
@@ -506,9 +512,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				svg.current?.focus({ preventScroll: true });
 			}
 		} catch (cause) {
-			setError(
-				cause instanceof Error ? cause.message : "Unable to place component.",
-			);
+			setError(errorMessage(cause, "Unable to place component."));
 		}
 	}
 	function placementCenter(definition?: SymbolDefinition) {
@@ -602,12 +606,10 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				width: componentWidth,
 				height: component.height,
 			})),
-			...nextGraph.nets.map((net) => ({
-				x: net.x - 50,
-				y: net.y - 30,
-				width: 100,
-				height: 60,
-			})),
+			...nextGraph.nets.map((net) => {
+				const box = netNodeBox(net.label);
+				return { ...box, x: net.x + box.x, y: net.y + box.y };
+			}),
 		];
 		if (!points.length) {
 			setView({ x: 0, y: 0, ...viewport });
@@ -680,33 +682,21 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 					setEditing(null);
 					select(null);
 				}
-				if (
-					event.defaultPrevented ||
-					(event.target instanceof HTMLElement &&
-						(event.target.isContentEditable ||
-							event.target.closest("input, textarea, select")))
-				)
-					return;
+				if (event.defaultPrevented || isEditableTarget(event)) return;
 				if (
 					(tool === "net" || tool === "component") &&
 					event.target === svg.current
 				) {
-					const delta = {
-						ArrowLeft: [-1, 0],
-						ArrowRight: [1, 0],
-						ArrowUp: [0, -1],
-						ArrowDown: [0, 1],
-					}[event.key];
+					const delta = arrowDelta(
+						event.key,
+						gridStep * (event.shiftKey ? 10 : 1),
+					);
 					if (delta) {
 						event.preventDefault();
 						const position =
 							placementPoint ?? placementCenter(placement ?? undefined);
-						const step = gridStep * (event.shiftKey ? 10 : 1);
 						setPlacementPoint(
-							snap({
-								x: position.x + delta[0] * step,
-								y: position.y + delta[1] * step,
-							}),
+							snap({ x: position.x + delta.x, y: position.y + delta.y }),
 						);
 						return;
 					}
@@ -734,14 +724,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 					return;
 				}
 				handleViewerKeyDown(event, { fit, zoom, fitOnF6: true });
-				if (
-					(event.ctrlKey || event.metaKey) &&
-					event.key.toLowerCase() === "z"
-				) {
-					event.preventDefault();
-					if (event.shiftKey) store.redo();
-					else store.undo();
-				}
+				handleHistoryKeyDown(event, store);
 			}}
 		>
 			<h1 className="sr-only">{circuit.name}</h1>
@@ -999,12 +982,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 												event.preventDefault();
 												select({ kind: "component", id: component.id });
 											}
-											const delta = {
-												ArrowLeft: [-gridStep, 0],
-												ArrowRight: [gridStep, 0],
-												ArrowUp: [0, -gridStep],
-												ArrowDown: [0, gridStep],
-											}[event.key];
+											const delta = arrowDelta(event.key, gridStep);
 											if (delta) {
 												event.preventDefault();
 												run({
@@ -1013,7 +991,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 														{
 															id: component.id,
 															kind: "component",
-															...snap({ x: x + delta[0], y: y + delta[1] }),
+															...snap({ x: x + delta.x, y: y + delta.y }),
 														},
 													],
 												});
@@ -1192,10 +1170,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 						{graph.nets.map(({ net, x, y, label }) => (
 							<g key={net.id}>
 								<GraphButton
-									x={-Math.max(100, Math.min(360, label.length * 8 + 16)) / 2}
-									y={-40}
-									width={Math.max(100, Math.min(360, label.length * 8 + 16))}
-									height={60}
+									{...netNodeBox(label)}
 									key={net.id}
 									className={`circuit-net ${selectedNetId === net.id ? "is-selected" : ""} ${connectionDrag?.active && connectionDrag.target?.kind === "net" && connectionDrag.target.id === net.id ? "is-target" : ""}`}
 									aria-label={`Net ${label}`}
@@ -1221,12 +1196,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 											event.preventDefault();
 											selectNet(net.id);
 										}
-										const delta = {
-											ArrowLeft: [-gridStep, 0],
-											ArrowRight: [gridStep, 0],
-											ArrowUp: [0, -gridStep],
-											ArrowDown: [0, gridStep],
-										}[event.key];
+										const delta = arrowDelta(event.key, gridStep);
 										if (delta) {
 											event.preventDefault();
 											run({
@@ -1235,7 +1205,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 													{
 														id: net.id,
 														kind: "net",
-														...snap({ x: x + delta[0], y: y + delta[1] }),
+														...snap({ x: x + delta.x, y: y + delta.y }),
 													},
 												],
 											});
@@ -1298,7 +1268,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 							<path
 								data-connection-preview=""
 								className="circuit-connection-preview"
-								d={`M ${connectionStart.x} ${connectionStart.y} C ${connectionStart.x + (connectionStart.side === "left" ? -65 : 65)} ${connectionStart.y}, ${connectionEnd.x + (connectionTarget?.side === "right" ? 65 : -65)} ${connectionEnd.y}, ${connectionEnd.x} ${connectionEnd.y}`}
+								d={`M ${connectionStart.x} ${connectionStart.y} C ${connectionStart.x + (connectionStart.side === "left" ? -connectionCurveOffset : connectionCurveOffset)} ${connectionStart.y}, ${connectionEnd.x + (connectionTarget?.side === "right" ? connectionCurveOffset : -connectionCurveOffset)} ${connectionEnd.y}, ${connectionEnd.x} ${connectionEnd.y}`}
 							/>
 						)}
 						{tool === "component" && placement && placementPoint && (

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { type ElectricalNet, electricalNets } from "#/drawing/named-nets.ts";
 import {
+	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	type EditorSymbol,
@@ -33,7 +34,6 @@ import {
 import { measurePerformance } from "#/performance/runtime.ts";
 
 const fallbackPrefix = "circuit-fallback.";
-const terminalTolerance = 1e-4;
 
 export interface LinkedSchematicEnvironment {
 	measureText: MeasureText;
@@ -491,7 +491,7 @@ function reconcileSchematicNets(
 				disconnected.some(
 					(point) =>
 						Math.hypot(point.x - terminal.x, point.y - terminal.y) <=
-						terminalTolerance,
+						connectionTolerance,
 				);
 			if (detached && symbolNext?.schematicShapeIds) {
 				symbolNext.schematicShapeIds = symbolNext.schematicShapeIds.filter(
@@ -1286,7 +1286,8 @@ function labelPinId(
 	if (!pinIds.length) return;
 	for (const terminal of terminals) {
 		if (
-			Math.hypot(terminal.x - point.x, terminal.y - point.y) > terminalTolerance
+			Math.hypot(terminal.x - point.x, terminal.y - point.y) >
+			connectionTolerance
 		)
 			continue;
 		const pin = terminal.pins.find((pin) => pinIds.includes(pin.id));

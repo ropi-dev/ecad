@@ -1,4 +1,5 @@
 import {
+	connectionTolerance,
 	type EditorShape,
 	PIN_RADIUS,
 	resizeHandles,
@@ -11,7 +12,7 @@ export interface WireCrossings {
 }
 
 export function buildWireCrossings(shapes: EditorShape[], junctions: Point[]) {
-	const tolerance = 1e-4;
+	const tolerance = connectionTolerance;
 	const wires = shapes.flatMap((shape) => {
 		if (shape.kind !== "wire" || shape.width <= tolerance) return [];
 		const [start, end] = resizeHandles(shape);

@@ -2,6 +2,7 @@ import {
 	parseSavedSymbolLibrary,
 	parseSymbolFile,
 } from "@ecad/core/components/editor/symbolFormat.ts";
+import { errorMessage } from "@ecad/core/lib/error-message.ts";
 import {
 	type ProjectDocument,
 	projectNameSchema,
@@ -28,7 +29,7 @@ function parsedBy<T>(parse: (text: string) => T) {
 		} catch (cause) {
 			context.addIssue({
 				code: "custom",
-				message: cause instanceof Error ? cause.message : "Invalid value.",
+				message: errorMessage(cause, "Invalid value."),
 			});
 			return z.NEVER;
 		}
