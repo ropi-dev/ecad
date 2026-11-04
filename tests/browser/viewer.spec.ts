@@ -8,9 +8,6 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
-	await page.addInitScript(() =>
-		Object.defineProperty(navigator, "gpu", { value: undefined }),
-	);
 	await page.goto("/tests/browser/viewer.html");
 	await page.locator("input[type=file]").setInputFiles(
 		demoFiles.slice(0, 3).map((file) => ({

@@ -1,6 +1,6 @@
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import { createCircuitComponent, instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
+import { instantiateCircuitPart } from "@ecad/drawing-core/circuit/parts.ts";
 import { arrangeCircuitGraph } from "@ecad/drawing-core/circuit/graph.ts";
 import { readFile } from "node:fs/promises";
 import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
@@ -8,6 +8,7 @@ import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
 import type { AppPerformance } from "#/performance/browser.ts";
+import { createTestComponent } from "../fixtures/circuit.ts";
 import { pthGerber } from "../fixtures/pth-gerber";
 import { drawingPoint, selectSymbolAttribute, selectSymbolParent } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
@@ -1642,7 +1643,7 @@ test("schematic-export", async ({ page }, testInfo) => {
 
 async function openCircuitWorkload(page: Page, connected = true) {
  const file = createCircuit("Circuit workload");
- for (let index = 0; index < 32; index++) file.circuit.components.push(createCircuitComponent("resistor", file.circuit.components));
+ for (let index = 0; index < 32; index++) file.circuit.components.push(createTestComponent("resistor", file.circuit.components));
  file.circuit.nets.push({id:"ground", names:["GND"], pinIds: file.circuit.components.map(component => component.pins[0].id)});
  for (let index = 0; index < 32; index += 2) file.circuit.nets.push({id:`signal-${index}`, names:[`SIGNAL_${index}`], pinIds:[file.circuit.components[index].pins[1].id, file.circuit.components[index+1].pins[1].id]});
  if (!connected) file.circuit.nets = [];
@@ -1831,7 +1832,7 @@ test("circuit-collapse", async ({page}, testInfo) => {
  const file = createCircuit("Component workload");
  const device = instantiateCircuitPart({id:"device",name:"128-pin device",prefix:"U",value:"",pins:Array.from({length:128},(_,index)=>({number:String(index+1),name:`P${index+1}`}))},[]);
  file.circuit.components.push(device);
- for (let index=0;index<2;index++) file.circuit.components.push(createCircuitComponent("resistor",file.circuit.components));
+ for (let index=0;index<2;index++) file.circuit.components.push(createTestComponent("resistor",file.circuit.components));
  file.circuit.nets.push({id:"signal-a",names:["SIGNAL_A"],pinIds:[device.pins[0].id,file.circuit.components[1].pins[0].id]},{id:"signal-b",names:["SIGNAL_B"],pinIds:[device.pins[99].id,file.circuit.components[2].pins[0].id]});
  file.graph.positions = [{id:device.id,kind:"component",x:60,y:60},{id:file.circuit.components[1].id,kind:"component",x:500,y:60},{id:file.circuit.components[2].id,kind:"component",x:500,y:260},{id:"signal-a",kind:"net",x:360,y:140},{id:"signal-b",kind:"net",x:360,y:340}];
  await openComponentWorkload(page,file);

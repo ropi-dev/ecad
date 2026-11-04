@@ -28,6 +28,17 @@ test("mil rulers and grid share binary subdivisions of 50 mil", () => {
  }
 });
 
+test("mil grid never subdivides below 50 mil when zoomed in", () => {
+ for (const scale of [10, 50, 100, 1000, 100000]) {
+  assert.equal(rulerSpacing(scale, "mil").minor, 1.27);
+  assert.deepEqual(
+   gridLayers(scale, "mil").map(layer => layer.spacing.minor),
+   [1.27],
+  );
+ }
+ assert.equal(rulerSpacing(1, "mil").minor, 1.27 * 8);
+});
+
 test("new shapes and text use mil-sized defaults", async () => {
  const { drawShape, PIN_RADIUS } = await import("#/drawing/shapes.ts");
  const { createTextShape, pinNameFontSize, pinNumberFontSize } = await import("#/drawing/text.ts");

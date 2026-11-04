@@ -108,7 +108,7 @@ Manage the repository connection and automatic deployments in the project's [Git
 
 `pnpm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
 
-The editor, viewers, and browser project storage work without a Node server. MCP and server-backed demos require a running app server and are unavailable in this static deployment. Development and `pnpm run preview` still support those server features.
+The editor, viewers, and browser project storage work without a Node server. Editor MCP sessions require a running app server and are unavailable in this static deployment. Development and `pnpm run preview` still support those server features.
 
 From `/home/ropi/ecad`, install the site on this Ubuntu host:
 
@@ -132,7 +132,7 @@ Run `pnpm run build:web` again to publish changes from this checkout. nginx read
 
 GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web, desktop, and CLI builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
-Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `pnpm install --frozen-lockfile`, and cache the pnpm store. Browser jobs install the Mesa Vulkan libraries. Interaction tests use headless Chromium. The renderer spec runs in a separate Playwright project under Xvfb to support its software WebGPU swap chain on CI. Both projects use SwiftShader's Vulkan backend for WebGL and WebGPU. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
+Both workflows run on Blacksmith Ubuntu 24.04 x64 runners with 4 vCPUs and 16 GB RAM. The repository must belong to a GitHub organization with the Blacksmith GitHub App installed and granted access to this repository. See the [Blacksmith setup guide](https://docs.blacksmith.sh/introduction/quickstart). Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `pnpm install --frozen-lockfile`, and cache the pnpm store. Browser jobs install the Mesa Vulkan libraries. Browser tests use headless Chromium, with WebGL rendered through SwiftShader's Vulkan backend. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
 
 The 2D hover and selection tests check hover counts, selection attributes, and clearing behavior. They omit full-canvas image comparisons because software-renderer captures vary on hosted runners.
 
@@ -148,7 +148,7 @@ Core imports use `#/components/editor/Editor2D.tsx` and other `#/` paths within 
 
 Web routes live in `packages/web/src/routes`, with the root document in `__root.tsx`. TanStack generates `packages/web/src/routeTree.gen.ts`; run `pnpm run generate-routes` after changing routes when needed. Server functions and API routes belong to the web package. MCP access to an open drawing is available in the web app; the desktop editor hides that control.
 
-Tailwind styles live in `packages/core/src/styles.css`. The shared Shadcn configuration is `packages/core/components.json`. Web environment validation lives in `packages/web/src/env.ts`. Database commands such as `pnpm run db:migrate` run in the web workspace and use `DATABASE_URL`.
+Tailwind styles live in `packages/core/src/styles.css`.
 
 See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
 

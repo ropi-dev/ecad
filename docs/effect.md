@@ -1,12 +1,12 @@
 # Effect integration
 
-The project uses Effect 3 for drawing commands, file imports, browser requests, subscriptions, server operations, and resource cleanup. React owns transient UI state. Drawing commands own committed drawing data and history. TanStack owns routing and query caching. Geometry algorithms and frame rendering remain synchronous TypeScript.
+The project uses Effect 3 for drawing commands, file imports, browser requests, subscriptions, server operations, and resource cleanup. React owns transient UI state. Drawing commands own committed drawing data and history. TanStack owns routing. Geometry algorithms and frame rendering remain synchronous TypeScript.
 
 See [drawing architecture](architecture.md) for complete command inputs, the document store, gesture previews, and rendering boundaries. Synchronous drawing commands run at event boundaries after input is resolved, using `Effect.runSync`. React effects bind rendering resources and subscriptions; they do not trigger document edits.
 
 ## Running operations
 
-Compose operations with `Effect.gen`, and run them at a React hook, query function, server function, or HTTP handler using `runEffect` from `packages/core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
+Compose operations with `Effect.gen`, and run them at a React hook, server function, or HTTP handler using `runEffect` from `packages/core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
 
 ```ts
 const value = await runEffect(program, signal);
@@ -31,27 +31,15 @@ Imported scene objects have a different lifetime. `acquireImported` registers ro
 
 `createLifecycle` bridges Effect scopes to synchronous React setup and cleanup. Register each resource immediately after acquisition with `acquire`, `addFinalizer`, or `listen`. Call `dispose` on initialization failure and on unmount. Finalizers run in reverse order, including when another finalizer fails.
 
-Viewport renderers, scene displays, hover overlays, controls, listeners, diagnostics timers, and editor materials use this lifetime. Calculations inside render and pointer handlers do not execute an Effect for every frame.
-
-`createRendererEffect` and `ThreeRenderer.createEffect` use ordinary scoped ownership. Keep their scope open while drawing; closing it disposes the renderer. The Promise adapters preserve the existing explicit `dispose()` contract.
+Viewport renderers, scene displays, hover overlays, controls, listeners, and editor materials use this lifetime. Calculations inside render and pointer handlers do not execute an Effect for every frame.
 
 ## Browser services
 
 `HttpClient` is an injectable service in `packages/core/src/lib/http.ts`. `requestJson` checks HTTP status and decodes the response with Effect Schema. Its request scope remains open while the body is read, so aborting after headers still cancels the fetch. Use `HttpClientLive` in production and `makeHttpClient` with a test implementation in tests.
 
-`packages/web/src/services/todos-client.ts` uses a scoped Stream for EventSource updates. EventSource handles transient reconnects; the stream validates each snapshot and closes the connection when cancelled or when decoding fails. Its buffer keeps the latest snapshot because each message contains the complete list.
-
-TanStack Query query functions continue to return Promises. Pass their signal to `runEffect`; keep caching and retry policy in TanStack Query instead of duplicating it in the operation.
-
 ## Server services
 
-Web server services stay behind Start server functions and server routes. Desktop filesystem operations live in Electron's main process and are called through the preload bridge. Never import database or filesystem services into browser helpers or renderer components.
-
-- `Database` and `DatabaseLive` in `packages/web/src/db/index.ts` acquire SQLite lazily and close each request's connection through a scoped Layer. `DATABASE_URL` is required when a database operation runs.
-- `TodoRepository` in `packages/web/src/mcp-todos.ts` uses a `SubscriptionRef` to serialize file writes and publish successful updates. Failed writes preserve the previous state. The live repository initializes lazily and is shared by requests; tests can supply their own storage. A started write completes before cancellation so memory and disk remain consistent.
-- The todo HTTP adapter validates input and merges updates with heartbeat events. Cancelling its readable stream releases both the subscription and heartbeat.
-- `TrpcTodos` provides the in-memory tRPC demo state. The tRPC boundary maps domain failures into `TRPCError` values.
-- MCP creates a server for each request, waits for the response matching the JSON-RPC request ID, and applies a timeout. Transport resources are scoped to the request.
+Web server services stay behind Start server functions and server routes. The editor MCP session handlers in `packages/core/src/services/server/editor-mcp.ts` back the `/api/editor-mcp` and `/mcp/editor/<session-id>` routes; see the [MCP guide](mcp.md). Desktop filesystem operations live in Electron's main process and are called through the preload bridge. Never import filesystem services into browser helpers or renderer components.
 
 Keep Zod where the existing framework integration already uses it. Effect Schema validates new application data boundaries. A process-wide managed runtime is unnecessary for the current services; use one only when shared scoped resources need an explicit application shutdown lifecycle.
 
@@ -64,6 +52,6 @@ pnpm run test:browser
 pnpm run build
 ```
 
-Tests cover cancellation, worker failures and timeouts, import rollback and ownership, partial success, HTTP decoding and cancellation, subscription cleanup, server persistence, and viewer finalizers. Browser tests cover the existing rendering and editor behavior.
+Tests cover cancellation, worker failures and timeouts, import rollback and ownership, partial success, HTTP decoding and cancellation, and viewer finalizers. Browser tests cover the existing rendering and editor behavior.
 
-Use pnpm for this repository and commit changes to `pnpm-lock.yaml`. TanStack Table is constrained to major version 8 to match the existing demo's API.
+Use pnpm for this repository and commit changes to `pnpm-lock.yaml`.

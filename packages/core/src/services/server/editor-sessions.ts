@@ -24,7 +24,10 @@ interface Connection {
 }
 
 interface Session extends EditorSessionCredentials {
+	clientKey: string;
 	createdAt: number;
+	/** Last MCP use or editor connection; stream heartbeats do not count. */
+	lastActiveAt: number;
 	connection?: Connection;
 	pending: Map<
 		string,
@@ -54,23 +57,61 @@ function matchesToken(expected: string, actual: string | undefined) {
 	);
 }
 
+/** Sessions created without a client key share one bucket of the per-client cap. */
+export const unknownEditorClient = "unknown";
+
 /** Routes complete commands to one explicitly connected editor. It owns no drawing data. */
 export function makeEditorSessionHub({
 	timeoutMs = 15_000,
 	unconnectedTtlMs = 60_000,
+	idleTimeoutMs = 30 * 60_000,
+	maxLifetimeMs = 8 * 60 * 60_000,
 	maxSessions = 100,
+	maxSessionsPerClient = 4,
 	maxPending = 128,
+	sweepIntervalMs = 15_000,
 	now = Date.now,
 }: {
 	timeoutMs?: number;
+	/** A created session must open its editor stream within this time. */
 	unconnectedTtlMs?: number;
+	/** A connected session closes after this long without an MCP request. */
+	idleTimeoutMs?: number;
+	/** A session closes this long after creation, regardless of activity. */
+	maxLifetimeMs?: number;
 	maxSessions?: number;
+	/** Concurrent sessions for one client key, so one client cannot hold the whole pool. */
+	maxSessionsPerClient?: number;
 	maxPending?: number;
+	/** How often expired sessions are closed; 0 leaves expiry to lookups and `sweep`. */
+	sweepIntervalMs?: number;
 	now?: () => number;
 } = {}) {
 	const sessions = new Map<string, Session>();
+	let sweeper: ReturnType<typeof setInterval> | undefined;
+	const expired = (session: Session, time: number) =>
+		session.connection
+			? time - session.lastActiveAt >= idleTimeoutMs ||
+				time - session.createdAt >= maxLifetimeMs
+			: time - session.createdAt >= unconnectedTtlMs;
+	const sweep = () => {
+		const time = now();
+		for (const session of sessions.values())
+			if (expired(session, time)) remove(session);
+	};
+	// The timer only runs while sessions exist and never keeps the process alive.
+	const scheduleSweep = () => {
+		if (sessions.size === 0) {
+			clearInterval(sweeper);
+			sweeper = undefined;
+		} else if (!sweeper && sweepIntervalMs > 0) {
+			sweeper = setInterval(sweep, sweepIntervalMs);
+			(sweeper as { unref?: () => void }).unref?.();
+		}
+	};
 	const remove = (session: Session) => {
 		if (!sessions.delete(session.sessionId)) return;
+		scheduleSweep();
 		const connection = session.connection;
 		session.connection = undefined;
 		for (const pending of session.pending.values()) pending.fail(unavailable());
@@ -79,11 +120,7 @@ export function makeEditorSessionHub({
 	};
 	const lookup = (sessionId: string) => {
 		const session = sessions.get(sessionId);
-		if (
-			session &&
-			!session.connection &&
-			now() - session.createdAt >= unconnectedTtlMs
-		) {
+		if (session && expired(session, now())) {
 			remove(session);
 			return undefined;
 		}
@@ -108,11 +145,23 @@ export function makeEditorSessionHub({
 				status: 401,
 			});
 		}
+		if (role === "mcp") session.lastActiveAt = now();
 		return session;
 	};
 	return {
-		create(): EditorSessionCredentials {
-			for (const id of sessions.keys()) lookup(id);
+		/** `clientKey` identifies the requesting client; see `editorClientKey`. */
+		create(clientKey = unknownEditorClient): EditorSessionCredentials {
+			sweep();
+			let clientSessions = 0;
+			for (const session of sessions.values())
+				if (session.clientKey === clientKey) clientSessions++;
+			if (clientSessions >= maxSessionsPerClient)
+				throw new EditorSessionError({
+					code: "ClientSessionLimit",
+					message:
+						"Too many editor connections from this network. Disable MCP in another drawing and try again.",
+					status: 429,
+				});
 			if (sessions.size >= maxSessions)
 				throw new EditorSessionError({
 					code: "SessionLimit",
@@ -125,13 +174,19 @@ export function makeEditorSessionHub({
 				mcpToken: randomBytes(32).toString("base64url"),
 				editorToken: randomBytes(32).toString("base64url"),
 			};
+			const createdAt = now();
 			sessions.set(credentials.sessionId, {
 				...credentials,
-				createdAt: now(),
+				clientKey,
+				createdAt,
+				lastActiveAt: createdAt,
 				pending: new Map(),
 			});
+			scheduleSweep();
 			return credentials;
 		},
+		/** Close every expired session and its editor stream. */
+		sweep,
 		authorize(
 			sessionId: string,
 			token: string | undefined,
@@ -152,6 +207,7 @@ export function makeEditorSessionHub({
 					status: 409,
 				});
 			session.connection = connection;
+			session.lastActiveAt = now();
 			return () => remove(session);
 		},
 		disconnect(sessionId: string, token: string | undefined) {
@@ -196,6 +252,7 @@ export function makeEditorSessionHub({
 					);
 					return;
 				}
+				session.lastActiveAt = now();
 				const requestId = randomUUID();
 				const expiresAt = now() + timeoutMs;
 				session.pending.set(requestId, {
@@ -226,6 +283,8 @@ export function makeEditorSessionHub({
 		},
 		dispose() {
 			for (const session of sessions.values()) remove(session);
+			clearInterval(sweeper);
+			sweeper = undefined;
 		},
 	};
 }

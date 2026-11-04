@@ -165,6 +165,86 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	expect((await state(page)).circuit).toEqual(saved);
 });
 
+for (const tool of ["component", "net"] as const) {
+	test(`middle-drag pans the view while the ${tool} tool is placing`, async ({
+		page,
+	}) => {
+		await createCircuit(page);
+		const canvas = page.getByLabel("Circuit connections graph", {
+			exact: true,
+		});
+		if (tool === "component") {
+			await page.getByRole("button", { name: "Components", exact: true }).click();
+			await page
+				.getByRole("searchbox", { name: "Search components", exact: true })
+				.fill("Resistor");
+			await page
+				.getByRole("button", { name: "Place Resistor", exact: true })
+				.click();
+		} else {
+			await page.getByRole("button", { name: "Add net", exact: true }).click();
+		}
+		await expect(page.locator(".circuit-canvas")).toHaveClass(/is-placing/);
+		const preview = page.locator(".circuit-placement-preview");
+		const viewBox = async () =>
+			((await canvas.getAttribute("viewBox")) ?? "").split(" ").map(Number);
+		const previewAt = async () => {
+			const match = /translate\(([^,]+),([^)]+)\)/.exec(
+				(await preview.getAttribute("transform")) ?? "",
+			);
+			if (!match) throw new Error("Missing placement preview.");
+			return { x: Number(match[1]), y: Number(match[2]) };
+		};
+		const box = await canvas.boundingBox();
+		if (!box) throw new Error("Missing circuit canvas.");
+		const start = { x: box.x + box.width * 0.4, y: box.y + box.height * 0.45 };
+		const end = { x: start.x + 160, y: start.y + 90 };
+		await page.mouse.move(start.x - 20, start.y - 20);
+		await page.mouse.move(start.x, start.y);
+		await expect(preview).toBeVisible();
+		const placed = await previewAt();
+		const before = await viewBox();
+		const scale = Math.min(box.width / before[2], box.height / before[3]);
+
+		await page.mouse.down({ button: "middle" });
+		await page.mouse.move(end.x, end.y, { steps: 8 });
+		await page.mouse.up({ button: "middle" });
+
+		const after = await viewBox();
+		expect(after[0]).toBeCloseTo(before[0] - 160 / scale, 3);
+		expect(after[1]).toBeCloseTo(before[1] - 90 / scale, 3);
+		expect(after.slice(2)).toEqual(before.slice(2));
+		// Panning keeps the cursor over the same graph point, so the preview
+		// stays put during the pan and the next move does not make it jump.
+		await expect(page.locator(".circuit-canvas")).toHaveClass(/is-placing/);
+		expect(await previewAt()).toEqual(placed);
+		await page.mouse.move(end.x + 30, end.y + 20, { steps: 2 });
+		await page.mouse.move(end.x, end.y, { steps: 2 });
+		const gridStep =
+			Number.parseFloat(
+				await page
+					.locator(".circuit-canvas")
+					.evaluate((element) => getComputedStyle(element).backgroundSize),
+			) / scale;
+		const moved = await previewAt();
+		expect(Math.abs(moved.x - placed.x)).toBeLessThanOrEqual(gridStep);
+		expect(Math.abs(moved.y - placed.y)).toBeLessThanOrEqual(gridStep);
+		if (captureArtifacts)
+			await page.screenshot({
+				path: resolve(
+					"/tmp/ecad-browser-artifacts",
+					test.info().testId,
+					`circuit-${tool}-pan-while-placing.png`,
+				),
+			});
+
+		await page.mouse.click(end.x, end.y);
+		const positions = (await state(page)).graph.positions;
+		expect(positions).toHaveLength(1);
+		expect(positions[0]).toMatchObject({ kind: tool, ...moved });
+	});
+}
+
 test("component picker excludes net symbols while retaining ordinary components", async ({ page }) => {
  await createCircuit(page);
  await page.getByRole("button", { name: "Components", exact: true }).click();
