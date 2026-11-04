@@ -226,22 +226,3 @@ export function electricalNets(
 		{ shapes: shapes.length },
 	);
 }
-
-export function indexElectricalNets(
-	shapes: readonly EditorShape[],
-): Map<number, ReadonlySet<number>> {
-	const index = new Map<number, Set<number>>();
-	for (const net of electricalNets(shapes)) {
-		const ids = new Set([
-			...net.wires,
-			...net.labels,
-			...net.pins.map((pin) => pin.shapeId),
-		]);
-		for (const id of ids) {
-			const members = index.get(id) ?? new Set<number>();
-			for (const member of ids) members.add(member);
-			index.set(id, members);
-		}
-	}
-	return index;
-}

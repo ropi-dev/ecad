@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { ParseResult } from "#/engine/index.ts";
+import type { ParseResult } from "#/engine/types.ts";
 import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	createPlanarObject3D,

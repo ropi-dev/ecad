@@ -1,4 +1,4 @@
-import type { FormatParser, ParseResult } from "#/engine/index.ts";
+import type { FormatParser, ParseResult } from "#/engine/types.ts";
 import { gerberParser } from "./gerber";
 
 /** Adapters depend on the scene contract. Renderers never depend on adapters. */

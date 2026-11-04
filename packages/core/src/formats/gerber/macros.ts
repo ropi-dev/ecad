@@ -1,4 +1,4 @@
-import type { Point } from "#/engine/index.ts";
+import type { Point } from "#/engine/types.ts";
 import {
 	apertureMatrix,
 	circle,
