@@ -31,7 +31,10 @@ export function importFilesEffect<T>(
 			const scope = yield* Effect.scope;
 			const values: T[] = [];
 			const messages: string[] = [];
+			/** Inputs that produced at least one value; only these are kept. */
+			const accepted: File[] = [];
 			for (const file of files) {
+				const before = values.length;
 				const expanded = yield* Effect.either(
 					expand ? expand(file) : Effect.succeed({ files: [file] }),
 				);
@@ -70,8 +73,9 @@ export function importFilesEffect<T>(
 						),
 					);
 				}
+				if (values.length > before) accepted.push(file);
 			}
-			return { values, messages };
+			return { values, messages, accepted };
 		}),
 	);
 }

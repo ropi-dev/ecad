@@ -7,12 +7,17 @@ import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { drawShape } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import {
+	type DrawingOperation,
+	type DrawingReply,
 	drawingEnvelopeSchema,
 	drawingOperationSchema,
 	drawingReplySchema,
 	executeDrawingOperation,
 } from "#/mcp/drawing-protocol.ts";
-import { createDrawingMcpServer } from "#/mcp/drawing-server.ts";
+import {
+	createDrawingMcpServer,
+	drawingToolResult,
+} from "#/mcp/drawing-server.ts";
 import { required } from "./helpers/required.ts";
 
 const rectangle = {
@@ -42,15 +47,22 @@ async function session(context: TestContext) {
 		await client.close();
 		await server.close();
 	});
+	const call = async (name: string, args: Record<string, unknown> = {}) => {
+		const result = await client.callTool({ name, arguments: args });
+		return {
+			result,
+			reply: drawingReplySchema.parse(result.structuredContent),
+		};
+	};
 	return {
 		store,
 		client,
-		call: async (name: string, args: Record<string, unknown> = {}) => {
-			const result = await client.callTool({ name, arguments: args });
-			return {
-				result,
-				reply: drawingReplySchema.parse(result.structuredContent),
-			};
+		call,
+		/** Edits reply without the drawing, so tests read it back. */
+		read: async () => {
+			const { reply } = await call("getDrawing");
+			assert.ok(reply.ok && reply.drawing);
+			return reply.drawing;
 		},
 	};
 }
@@ -106,20 +118,23 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 });
 
 test("MCP placement commits exact complete geometry and returns JSON-safe IDs and history", async (context) => {
-	const { call, store } = await session(context);
+	const { call, read, store } = await session(context);
 	const { reply } = await call("placeRectangle", rectangle);
 	assert.ok(reply.ok);
-	assert.deepEqual(reply.result, { ids: [1], idMap: { "1": 1 } });
-	assert.deepEqual(reply.drawing.shapes, [
+	assert.deepEqual(reply, {
+		ok: true,
+		summary: { shapeCount: 1, nextShapeId: 2, historyId: 1 },
+		result: { ids: [1], idMap: { "1": 1 } },
+	});
+	assert.deepEqual(JSON.parse(JSON.stringify(reply)), reply);
+	const drawing = await read();
+	assert.deepEqual(drawing.shapes, [
 		{ ...rectangle, kind: "rectangle", id: 1 },
 	]);
-	assert.deepEqual(reply.drawing.shapes, store.getSnapshot().shapes);
-	assert.equal(reply.drawing.history.currentId, 1);
-	assert.equal("state" in reply.drawing.history.nodes[1], false);
-	assert.deepEqual(JSON.parse(JSON.stringify(reply)), reply);
-	const latest = await call("getDrawing");
-	assert.ok(latest.reply.ok);
-	assert.deepEqual(latest.reply.drawing, { ...reply.drawing, nets: [] });
+	assert.deepEqual(drawing.shapes, store.getSnapshot().shapes);
+	assert.equal(drawing.history.currentId, 1);
+	assert.equal("state" in drawing.history.nodes[1], false);
+	assert.deepEqual(drawing.nets, []);
 });
 
 test("MCP input schemas reject partial geometry and editor state before executing a command", async (context) => {
@@ -148,7 +163,7 @@ test("MCP input schemas reject partial geometry and editor state before executin
 });
 
 test("MCP places every shape kind including complete symbols and measured text in one transaction", async (context) => {
-	const { call } = await session(context);
+	const { call, read } = await session(context);
 	const symbol = createSymbol(99, symbolDefinitions[0], { x: 50, y: 40 });
 	const { id: _id, ...symbolInput } = symbol;
 	const shapes = [
@@ -177,26 +192,24 @@ test("MCP places every shape kind including complete symbols and measured text i
 	});
 	assert.ok(reply.ok);
 	assert.deepEqual(reply.result?.ids, [1, 2, 3, 4, 5, 6, 7]);
+	const drawing = await read();
 	assert.deepEqual(
-		reply.drawing.shapes.map((shape) => shape.kind),
+		drawing.shapes.map((shape) => shape.kind),
 		["rectangle", "circle", "triangle", "wire", "pin", "symbol", "text"],
 	);
-	assert.equal(reply.drawing.history.nodes.length, 2);
-	assert.equal(reply.drawing.history.nodes[1].label, "Import complete drawing");
-	assert.equal(reply.drawing.shapes[5].kind, "symbol");
-	assert.deepEqual(reply.drawing.shapes[5], { ...symbolInput, id: 6 });
+	assert.equal(drawing.history.nodes.length, 2);
+	assert.equal(drawing.history.nodes[1].label, "Import complete drawing");
+	assert.equal(drawing.shapes[5].kind, "symbol");
+	assert.deepEqual(drawing.shapes[5], { ...symbolInput, id: 6 });
 	assert.ok(symbolInput.texts.length > 0);
-	const latest = await call("getDrawing");
-	assert.ok(latest.reply.ok);
-	assert.deepEqual(latest.reply.drawing.shapes[5], { ...symbolInput, id: 6 });
 	const movedSymbol = { ...symbolInput, id: 6, x: 70 };
 	const replaced = await call("replaceShapes", { shapes: [movedSymbol] });
 	assert.ok(replaced.reply.ok);
-	assert.deepEqual(replaced.reply.drawing.shapes[5], movedSymbol);
+	assert.deepEqual((await read()).shapes[5], movedSymbol);
 });
 
 test("MCP preserves pin names and numbers through placement, replacement, reads and history", async (context) => {
-	const { call } = await session(context);
+	const { call, read } = await session(context);
 	const { id: _id, ...pin } = drawShape(
 		1,
 		"pin",
@@ -208,24 +221,21 @@ test("MCP preserves pin names and numbers through placement, replacement, reads 
 	});
 	assert.ok(placed.reply.ok);
 	const named = { ...pin, id: 1, name: "VCC", number: "01" };
-	assert.deepEqual(placed.reply.drawing.shapes, [named]);
+	assert.deepEqual((await read()).shapes, [named]);
 	const renamed = { ...named, name: "GND", number: "A1" };
 	const replaced = await call("replaceShapes", { shapes: [renamed] });
 	assert.ok(replaced.reply.ok);
-	assert.deepEqual(replaced.reply.drawing.shapes, [renamed]);
-	const read = await call("getDrawing");
-	assert.ok(read.reply.ok);
-	assert.deepEqual(read.reply.drawing.shapes, [renamed]);
+	assert.deepEqual((await read()).shapes, [renamed]);
 	const undone = await call("undo");
 	assert.ok(undone.reply.ok);
-	assert.deepEqual(undone.reply.drawing.shapes, [named]);
+	assert.deepEqual((await read()).shapes, [named]);
 	const redone = await call("redo");
 	assert.ok(redone.reply.ok);
-	assert.deepEqual(redone.reply.drawing.shapes, [renamed]);
+	assert.deepEqual((await read()).shapes, [renamed]);
 });
 
 test("MCP rotation uses explicit IDs and supports reverse rotation and history", async (context) => {
-	const { call, store, client } = await session(context);
+	const { call, read, store, client } = await session(context);
 	const { id: _id, ...symbol } = createSymbol(1, symbolDefinitions[0], {
 		x: 50,
 		y: 30,
@@ -236,23 +246,25 @@ test("MCP rotation uses explicit IDs and supports reverse rotation and history",
 	const before = store.getSnapshot();
 	const { reply } = await call("rotateShapes", { ids: [1] });
 	assert.ok(reply.ok);
-	assert.deepEqual(reply.drawing.shapes, [
+	const rotated = [
 		{ ...symbol, id: 1, rotation: Math.PI / 2 },
 		before.shapes[1],
-	]);
-	assert.deepEqual(reply.result, { ids: [1], idMap: { "1": 1, "2": 2 } });
+	];
+	assert.deepEqual((await read()).shapes, rotated);
+	// The unrotated rectangle keeps its ID, so the mapping leaves it out.
+	assert.deepEqual(reply.result, { ids: [1], idMap: { "1": 1 } });
 	const reversed = await call("rotateShapes", {
 		ids: [1],
 		angle: -Math.PI / 2,
 	});
 	assert.ok(reversed.reply.ok);
-	assert.deepEqual(reversed.reply.drawing.shapes, before.shapes);
+	assert.deepEqual((await read()).shapes, before.shapes);
 	const undone = await call("undo");
 	assert.ok(undone.reply.ok);
-	assert.deepEqual(undone.reply.drawing.shapes, reply.drawing.shapes);
+	assert.deepEqual((await read()).shapes, rotated);
 	const redone = await call("redo");
 	assert.ok(redone.reply.ok);
-	assert.deepEqual(redone.reply.drawing.shapes, before.shapes);
+	assert.deepEqual((await read()).shapes, before.shapes);
 	const snapshot = store.getSnapshot();
 	const missing = await call("rotateShapes", { ids: [1, 999] });
 	assert.equal(missing.result.isError, true);
@@ -267,7 +279,7 @@ test("MCP rotation uses explicit IDs and supports reverse rotation and history",
 });
 
 test("MCP replacement, deletion and history navigation use explicit IDs", async (context) => {
-	const { call } = await session(context);
+	const { call, read } = await session(context);
 	await call("placeRectangle", rectangle);
 	const moved = { ...rectangle, kind: "rectangle", id: 1, x: 70 };
 	const replaced = await call("replaceShapes", {
@@ -276,30 +288,35 @@ test("MCP replacement, deletion and history navigation use explicit IDs", async 
 		targetIds: [1],
 	});
 	assert.ok(replaced.reply.ok);
-	assert.equal(replaced.reply.drawing.shapes[0].x, 70);
+	assert.equal((await read()).shapes[0].x, 70);
 	assert.deepEqual(replaced.reply.result?.ids, [1]);
 	const removed = await call("removeShapes", { ids: [1] });
 	assert.ok(removed.reply.ok);
-	assert.deepEqual(removed.reply.drawing.shapes, []);
-	assert.deepEqual(removed.reply.result?.ids, []);
+	assert.deepEqual((await read()).shapes, []);
+	assert.deepEqual(removed.reply.result, { ids: [], idMap: {} });
+	assert.equal(removed.reply.summary.shapeCount, 0);
 	const undone = await call("undo");
-	assert.ok(undone.reply.ok);
-	assert.equal(undone.reply.drawing.shapes[0].x, 70);
+	assert.deepEqual(undone.reply, {
+		ok: true,
+		summary: { shapeCount: 1, nextShapeId: 2, historyId: 2 },
+	});
+	assert.equal((await read()).shapes[0].x, 70);
 	const redone = await call("redo");
 	assert.ok(redone.reply.ok);
-	assert.deepEqual(redone.reply.drawing.shapes, []);
+	assert.deepEqual((await read()).shapes, []);
 	await call("jumpHistory", { id: 1 });
 	const branch = await call("placeRectangle", { ...rectangle, x: -30 });
 	assert.ok(branch.reply.ok);
 	assert.deepEqual(branch.reply.result?.ids, [2]);
 	assert.deepEqual(
-		branch.reply.drawing.history.nodes.find((node) => node.id === 1)?.childIds,
+		(await read()).history.nodes.find((node) => node.id === 1)?.childIds,
 		[2, 4],
 	);
 	const restored = await call("jumpHistory", { id: 3 });
 	assert.ok(restored.reply.ok);
-	assert.deepEqual(restored.reply.drawing.shapes, []);
-	assert.equal(restored.reply.drawing.nextShapeId, 3);
+	assert.equal(restored.reply.summary.historyId, 3);
+	assert.deepEqual((await read()).shapes, []);
+	assert.equal(restored.reply.summary.nextShapeId, 3);
 });
 
 test("MCP surfaces command failures as structured tool errors without changing the drawing", async (context) => {
@@ -341,7 +358,7 @@ test("MCP surfaces command failures as structured tool errors without changing t
 });
 
 test("MCP serializes wire normalization mappings without losing merged IDs", async (context) => {
-	const { call } = await session(context);
+	const { call, read } = await session(context);
 	const shapes = [
 		drawShape(1, "wire", { x: 0, y: 0 }, { x: 10, y: 0 }),
 		drawShape(2, "wire", { x: 5, y: 0 }, { x: 20, y: 0 }),
@@ -349,8 +366,9 @@ test("MCP serializes wire normalization mappings without losing merged IDs", asy
 	const { reply } = await call("placeShapes", { shapes });
 	assert.ok(reply.ok);
 	assert.deepEqual(reply.result, { ids: [1], idMap: { "1": 1, "2": 1 } });
-	assert.equal(reply.drawing.shapes.length, 1);
-	assert.equal(reply.drawing.shapes[0].width, 20);
+	const drawing = await read();
+	assert.equal(drawing.shapes.length, 1);
+	assert.equal(drawing.shapes[0].width, 20);
 });
 
 test("MCP returns expected live-session failures through the tool error channel", async () => {
@@ -409,7 +427,11 @@ test("the shared protocol validates complete envelopes and acknowledgment data",
 		false,
 	);
 	assert.equal(
-		drawingReplySchema.safeParse({ ok: true, drawing: {} }).success,
+		drawingReplySchema.safeParse({
+			ok: true,
+			summary: { shapeCount: 0, nextShapeId: 1, historyId: 0 },
+			drawing: {},
+		}).success,
 		false,
 	);
 	assert.equal(
@@ -431,11 +453,11 @@ test("the shared protocol validates complete envelopes and acknowledgment data",
 		program.pipe(Effect.provideService(DrawingStore, store)),
 	);
 	assert.ok(reply.ok);
-	assert.equal(reply.drawing.shapes[0].width, rectangle.width);
+	assert.equal(store.getSnapshot().shapes[0].width, rectangle.width);
 });
 
 test("MCP replacement records edits that change only text style, circuit nets or KiCad sources", async (context) => {
-	const { call } = await session(context);
+	const { call, read } = await session(context);
 	const label = {
 		kind: "text",
 		text: "VCC",
@@ -464,9 +486,10 @@ test("MCP replacement records edits that change only text style, circuit nets or
 	});
 	assert.ok(replaced.reply.ok);
 	assert.deepEqual(replaced.reply.result?.ids, [1]);
-	assert.deepEqual(replaced.reply.drawing.shapes[0], styled);
+	const drawing = await read();
+	assert.deepEqual(drawing.shapes[0], styled);
 	assert.deepEqual(
-		replaced.reply.drawing.history.nodes.map((node) => node.label),
+		drawing.history.nodes.map((node) => node.label),
 		["Empty drawing", "Place shapes", "Style label"],
 	);
 	const sourced = {
@@ -479,15 +502,163 @@ test("MCP replacement records edits that change only text style, circuit nets or
 		label: "Link KiCad",
 	});
 	assert.ok(linked.reply.ok);
-	assert.deepEqual(linked.reply.drawing.shapes[1], sourced);
-	assert.equal(linked.reply.drawing.history.currentId, 3);
+	assert.deepEqual((await read()).shapes[1], sourced);
+	assert.equal(linked.reply.summary.historyId, 3);
 	const repeated = await call("replaceShapes", {
 		shapes: [sourced],
 		label: "Unchanged",
 	});
 	assert.ok(repeated.reply.ok);
-	assert.equal(repeated.reply.drawing.history.nodes.length, 4);
+	assert.equal((await read()).history.nodes.length, 4);
 	const undone = await call("undo");
 	assert.ok(undone.reply.ok);
-	assert.deepEqual(undone.reply.drawing.shapes, [styled, { ...symbol, id: 2 }]);
+	assert.deepEqual((await read()).shapes, [styled, { ...symbol, id: 2 }]);
+});
+
+test("getDrawing pages fit the serialized tool result exactly, including multibyte and escaped text", () => {
+	// Accents, quotes, backslashes, newlines and astral characters all serialize
+	// differently in the structured copy and the escaped text copy.
+	const texts = ["plain", 'é "quoted" \\ back', "€ line\nbreak", "🔌🔋 plug"];
+	const shapes = Array.from({ length: 60 }, (_, index) => ({
+		id: index + 1,
+		kind: "text" as const,
+		text: texts[index % texts.length].repeat(1 + (index % 7)),
+		x: index,
+		y: 0,
+		width: 8,
+		height: 2,
+		rotation: 0,
+		lineWidth: 0.2,
+		fontSize: 2,
+	}));
+	const store = createDrawingStore(shapes);
+	const run = (operation: DrawingOperation, byteLimit: number) =>
+		Effect.runSync(
+			executeDrawingOperation(operation, byteLimit).pipe(
+				Effect.provideService(DrawingStore, store),
+			),
+		);
+	const resultBytes = (reply: DrawingReply) =>
+		Buffer.byteLength(JSON.stringify(drawingToolResult(reply)));
+	const byteLimit = 4096;
+	const whole = run({ type: "getDrawing" }, byteLimit);
+	assert.ok(!whole.ok);
+	assert.equal(whole.error.code, "DrawingTooLarge");
+	assert.match(whole.error.message, /offset 0/);
+	const first = run({ type: "getDrawing", offset: 0 }, byteLimit);
+	assert.ok(first.ok && first.revision);
+	const revision = first.revision;
+	// Every page fits, and stops only where the next shape would not have fitted.
+	const read: unknown[] = [];
+	let pages = 0;
+	for (let offset: number | undefined = 0; offset !== undefined; pages++) {
+		const reply = run({ type: "getDrawing", offset, revision }, byteLimit);
+		assert.ok(reply.ok && reply.drawing && reply.page);
+		assert.equal(reply.revision, revision);
+		const bytes = resultBytes(reply);
+		assert.ok(bytes <= byteLimit, `${bytes} > ${byteLimit}`);
+		const next = reply.page.nextOffset;
+		if (next !== undefined) {
+			// The protocol reserves 256 bytes for the JSON-RPC envelope.
+			const withNext = {
+				...reply,
+				drawing: {
+					...reply.drawing,
+					shapes: [...reply.drawing.shapes, shapes[next]],
+				},
+			};
+			assert.ok(resultBytes(withNext) > byteLimit - 256);
+		}
+		assert.equal(reply.drawing.nets !== undefined, offset === 0);
+		assert.equal(reply.page.total, 60);
+		assert.equal(reply.page.count, reply.drawing.shapes.length);
+		read.push(...reply.drawing.shapes);
+		offset = reply.page.nextOffset;
+	}
+	assert.ok(pages > 2);
+	assert.deepEqual(read, shapes);
+	const limited = run(
+		{ type: "getDrawing", offset: 10, limit: 3, revision },
+		byteLimit,
+	);
+	assert.ok(limited.ok);
+	assert.deepEqual(
+		limited.drawing?.shapes.map((shape) => shape.id),
+		[11, 12, 13],
+	);
+	assert.deepEqual(limited.page, {
+		offset: 10,
+		count: 3,
+		total: 60,
+		nextOffset: 13,
+	});
+	const past = run({ type: "getDrawing", offset: 99, revision }, byteLimit);
+	assert.ok(past.ok);
+	assert.deepEqual(past.drawing?.shapes, []);
+	assert.deepEqual(past.page, { offset: 60, count: 0, total: 60 });
+	// An empty page still carries the history, so it must fit the limit too.
+	const emptyTooLarge = run(
+		{ type: "getDrawing", offset: 99, revision },
+		resultBytes(past),
+	);
+	assert.ok(!emptyTooLarge.ok);
+	assert.equal(emptyTooLarge.error.code, "DrawingTooLarge");
+	assert.match(emptyTooLarge.error.message, /history and nets alone/);
+	// Later pages need the first page's revision.
+	const missing = run({ type: "getDrawing", offset: 1 }, byteLimit);
+	assert.ok(!missing.ok);
+	assert.equal(missing.error.code, "RevisionRequired");
+	// A shape that cannot fit any page fails instead of stalling the caller.
+	const tooSmall = run(
+		{ type: "getDrawing", offset: 1, revision },
+		resultBytes(past) + 256 + 20,
+	);
+	assert.ok(!tooSmall.ok);
+	assert.equal(tooSmall.error.code, "DrawingTooLarge");
+	assert.match(tooSmall.error.message, /shape at offset 1/);
+	// Edits commit and reply with IDs, however small the limit.
+	const placed = run({ type: "placeRectangle", input: rectangle }, 1);
+	assert.deepEqual(placed, {
+		ok: true,
+		summary: { shapeCount: 61, nextShapeId: 62, historyId: 1 },
+		result: { ids: [61], idMap: { "61": 61 } },
+	});
+	assert.equal(store.getSnapshot().shapes.length, 61);
+	const stale = run({ type: "getDrawing", offset: 1, revision }, byteLimit);
+	assert.ok(!stale.ok);
+	assert.equal(stale.error.code, "DrawingChanged");
+	assert.deepEqual(run({ type: "undo" }, 1), {
+		ok: true,
+		summary: { shapeCount: 60, nextShapeId: 62, historyId: 0 },
+	});
+});
+
+test("the revision depends on drawing content, not on store identity or history", () => {
+	const shapes = [1, 2, 3].map((id) => ({
+		...rectangle,
+		kind: "rectangle" as const,
+		id,
+		x: id,
+	}));
+	const read = (store: ReturnType<typeof createDrawingStore>) => {
+		const reply = Effect.runSync(
+			executeDrawingOperation({ type: "getDrawing" }).pipe(
+				Effect.provideService(DrawingStore, store),
+			),
+		);
+		assert.ok(reply.ok && reply.revision);
+		return reply.revision;
+	};
+	const original = read(createDrawingStore(shapes));
+	// A separate process reading the same file agrees on the revision.
+	assert.equal(read(createDrawingStore(structuredClone(shapes))), original);
+	// Reordering, as an external edit can, changes it even with the same IDs.
+	assert.notEqual(
+		read(createDrawingStore([shapes[1], shapes[0], shapes[2]])),
+		original,
+	);
+	assert.notEqual(
+		read(createDrawingStore([{ ...shapes[0], x: 9 }, shapes[1], shapes[2]])),
+		original,
+	);
 });

@@ -33,6 +33,7 @@ import {
 	hasShortcutModifier,
 	shortcutModifier,
 } from "#/components/viewer/shortcutModifier.ts";
+import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
 import type { KiCadImportReport } from "#/formats/kicad/import.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { isProjectError } from "#/projects/errors.ts";
@@ -314,13 +315,32 @@ export function ProjectFilesSidebar() {
 		if (!project || !files.length) return;
 		setImporting(true);
 		setError("");
+		// Files over the size limit are reported without being read or stored.
+		const rejected: string[] = [];
+		const accepted = files.filter((file) => {
+			const reason = fileSizeProblem(assetFormat(file.name, kind), file.size);
+			if (reason) rejected.push(`${file.name}: ${reason}`);
+			return !reason;
+		});
 		try {
-			await project.importAssets(files, kind);
-			toastManager.add({
-				type: "success",
-				title: "Files added",
-				description: `${files.length} file${files.length === 1 ? "" : "s"} added to the project.`,
-			});
+			if (accepted.length) await project.importAssets(accepted, kind);
+			if (rejected.length) {
+				const description = rejected.join("\n");
+				setError(description);
+				toastManager.add({
+					type: accepted.length ? "warning" : "error",
+					title: accepted.length
+						? "Files added with issues"
+						: "Unable to add project files",
+					description,
+				});
+			} else if (accepted.length) {
+				toastManager.add({
+					type: "success",
+					title: "Files added",
+					description: `${accepted.length} file${accepted.length === 1 ? "" : "s"} added to the project.`,
+				});
+			}
 		} catch (cause) {
 			showError(cause, "Unable to add project files.");
 		} finally {

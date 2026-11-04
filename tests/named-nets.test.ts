@@ -451,7 +451,7 @@ test("getDrawing caches immutable nets by snapshot and invalidates after editing
 			),
 		);
 		assert.ok(reply.ok);
-		return required(reply.drawing.nets);
+		return required(reply.drawing?.nets);
 	};
 	const first = read();
 	assert.equal(first, read());

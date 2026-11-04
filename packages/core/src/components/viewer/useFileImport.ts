@@ -69,8 +69,9 @@ export function useFileImport<T>(
 					return null;
 				}
 				try {
-					if (kind && persist && imported.values.length)
-						await importAssets?.(files, kind);
+					// Rejected inputs, such as files over the size limit, are not stored.
+					if (kind && persist && imported.accepted.length)
+						await importAssets?.(imported.accepted, kind);
 					if (
 						controller.signal.aborted ||
 						request.current !== controller ||

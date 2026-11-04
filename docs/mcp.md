@@ -48,7 +48,7 @@ pnpm --silent cli undo
 
 All nine drawing tools are available by their MCP names. Arguments default to `{}`. `call <tool> [json|-]` handles tool names that conflict with CLI commands. `--timeout` sets the file lock wait in milliseconds, with a default of 30000. `--help` and `--version` run without loading drawing commands.
 
-Successful tool calls print one MCP result as JSON on stdout. The drawing reply is in `structuredContent` and in the text content. Tool failures preserve the MCP error result and return exit code 1. Argument errors use stderr and return exit code 1.
+Successful tool calls print one MCP result as JSON on stdout. The tool reply is in `structuredContent` and in the text content. See [Replies and paging](#replies-and-paging) for what each reply contains. Tool failures preserve the MCP error result and return exit code 1. Argument errors use stderr and return exit code 1.
 
 Build the executable once:
 
@@ -96,7 +96,7 @@ Coordinates and dimensions are millimetres. `x` and `y` specify the shape center
 
 | Tool | Arguments | Behavior |
 | --- | --- | --- |
-| `getDrawing` | `{}` | Read committed shapes, `nextShapeId`, and history entries. |
+| `getDrawing` | optional `offset`, `limit`, `revision` | Read committed shapes, nets, `nextShapeId`, and history entries. `offset` or `limit` reads one page of shapes; later pages need the first page's `revision`. |
 | `placeRectangle` | `x`, `y`, `width`, `height`, `rotation`, `lineWidth` | Place one rectangle and allocate its ID. |
 | `placeShapes` | `shapes`, optional `label` | Place complete shapes without top-level IDs in one history transaction. |
 | `replaceShapes` | `shapes`, optional `label`, optional `targetIds` | Replace complete geometry for explicit existing IDs. `targetIds` prefer IDs to retain when wires merge. |
@@ -126,7 +126,29 @@ All six fields are required. The command commits immediately as one undo step. T
 
 `placeShapes` supports rectangles, circles, triangles, orthogonal wires, pins, text, and symbols. Pins have a string `name`, which defaults to empty when omitted, including pins inside symbols. Text includes its content, font size, and already measured width and height. Symbol children use coordinates relative to the symbol center and IDs local to the symbol. Read `getDrawing` before replacing or removing shapes, and include every connected neighbor that a replacement needs to move. The commands validate geometry and normalize overlapping wires; they do not infer an editor gesture.
 
-Successful results include the current drawing in `structuredContent` and as JSON text. Mutations also return affected IDs and an ID mapping where applicable. `getDrawing` includes history entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state. Invalid input produces an MCP error and leaves drawing data and history unchanged. The tool schemas returned by `tools/list` describe the complete input and output formats.
+Invalid input produces an MCP error and leaves drawing data and history unchanged. The tool schemas returned by `tools/list` describe the complete input and output formats.
+
+### Replies and paging
+
+Each tool returns its reply in `structuredContent` and as JSON text. Every successful reply has `ok: true` and a `summary` with `shapeCount`, `nextShapeId`, and `historyId`, the current history entry.
+
+Edits do not return the drawing, so their replies stay small however large the drawing grows:
+
+- `placeRectangle`, `placeShapes`, `replaceShapes`, `rotateShapes`, and `removeShapes` also return `result.ids`, the committed IDs of the affected shapes. `removeShapes` returns no IDs. `result.idMap` maps source IDs to committed IDs for the shapes in `result.ids` and for wires that normalization merged or renumbered. IDs it leaves out are unchanged.
+- `undo`, `redo`, and `jumpHistory` return only the summary.
+
+Call `getDrawing` to read committed geometry after an edit. It returns `drawing` with `shapes`, `nets`, `nextShapeId`, and `history`. The history includes entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state.
+
+An MCP tool result carries its reply twice: once as `structuredContent` and once as escaped JSON text. `getDrawing` sizes its reply so the whole serialized result stays within 8 MiB. That keeps it under the 10 MiB message limit of the MCP SDK's stdio transport, and keeps the reply itself small enough for one editor acknowledgement. Without arguments, `getDrawing` returns the whole drawing, or fails with `DrawingTooLarge` when the result would not fit. To read a larger drawing, pass `offset: 0`. Then continue from `page.nextOffset`, passing the first page's `revision`, until a reply has no `nextOffset`:
+
+```text
+{ "name": "getDrawing", "arguments": { "offset": 0 } }
+{ "name": "getDrawing", "arguments": { "offset": 1840, "revision": "<revision from the first page>" } }
+```
+
+Every `getDrawing` reply contains a `revision` derived from the drawing's shapes and ID allocation. Readers of the same content, including separate CLI processes, get the same revision, and any change to the shapes produces a new one. That includes external edits to a CLI drawing, which reset its history. A page after offset 0 requires `revision`. When the drawing no longer matches it, the read fails with `DrawingChanged`; read again from offset 0. Without it, the read fails with `RevisionRequired`.
+
+A paged reply also contains `page` with `offset`, `count`, `total`, and `nextOffset`. Each page returns as many shapes as fit, up to `limit` when given. Only the page at offset 0 includes `nets`, which cover the whole drawing. Every page includes the history. A drawing whose history and nets alone exceed the limit, or a single shape over the limit, fails with `DrawingTooLarge`. As a last check, a tool result that would still exceed 8 MiB becomes a `ReplyTooLarge` error, and so does a web editor acknowledgement over the relay's limit. The connection stays open, but the command may have run, so read the drawing before retrying.
 
 Web editor UI edits and HTTP MCP edits share the same history. An external mutation cancels an unfinished gesture before its preview can overwrite the command.
 
@@ -153,6 +175,7 @@ The session endpoints need no login, so the relay limits what one client can hol
 - One client can hold 4 sessions at a time. A fifth **Enable MCP** fails with `ClientSessionLimit` (HTTP 429) until another drawing disables MCP or a session ends.
 - The server holds at most 100 sessions. When all are in use, new sessions fail with `SessionLimit` (HTTP 503).
 - Each session queues at most 128 commands for its editor.
+- While the editor is not reading its command stream, the relay holds at most 8 MiB of undelivered commands for it. Network and browser buffers can hold more data in transit. A command that would exceed that fails with `EditorBacklogged` (HTTP 429) and is not delivered. Commands that time out or are cancelled before delivery are dropped from the relay's queue and never reach the editor.
 
 The client key is the connecting IP address. All IPv6 addresses in one /64 network count as one client, because a single host can usually pick any address in its /64. IPv4-mapped IPv6 addresses count as their IPv4 address. Clients behind one NAT share a key and its 4 sessions.
 
@@ -172,7 +195,7 @@ Request bodies have size limits. The relay checks `Content-Length` and stops rea
 | Endpoint | Body limit |
 | --- | --- |
 | MCP requests | 1 MiB, below the editor's 2 MiB command limit |
-| Editor acknowledgements, which include the drawing | 8 MiB |
+| Editor acknowledgements, which include at most one drawing reply | 8 MiB |
 | Session creation, stream, and disconnect | 1 KiB |
 
 ## Web implementation and hosting
@@ -188,7 +211,7 @@ sequenceDiagram
     Client->>Relay: Tool call with complete geometry
     Relay->>Editor: Operation with request ID and expiry
     Editor->>Store: Execute Effect command
-    Store-->>Editor: Committed drawing and history
+    Store-->>Editor: Command result and drawing summary
     Editor-->>Relay: Acknowledge result
     Relay-->>Client: MCP tool result
 ```

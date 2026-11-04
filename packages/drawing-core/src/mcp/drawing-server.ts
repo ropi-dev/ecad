@@ -9,12 +9,15 @@ import {
 	drawingFailureReplySchema,
 	drawingReplySchema,
 	drawingSuccessReplySchema,
+	drawingToolResultByteLimit,
+	getDrawingInputSchema,
 	jumpHistoryInputSchema,
 	placeShapesInputSchema,
 	rectangleInputSchema,
 	removeShapesInputSchema,
 	replaceShapesInputSchema,
 	rotateShapesInputSchema,
+	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
 
 // MCP requires an object output schema. Clients validate structured errors too,
@@ -22,12 +25,29 @@ import {
 const drawingToolReplySchema = drawingSuccessReplySchema
 	.extend({
 		ok: z.boolean(),
-		drawing: drawingSuccessReplySchema.shape.drawing.optional(),
+		summary: drawingSuccessReplySchema.shape.summary.optional(),
 		error: drawingFailureReplySchema.shape.error.optional(),
 	})
 	.refine((value) => drawingReplySchema.safeParse(value).success, {
 		message: "Expected a complete drawing success or failure reply.",
 	});
+
+// Edit replies never carry the drawing, so their size does not grow with it.
+const replySummary =
+	"a summary with shapeCount, nextShapeId and historyId. It has no shapes; call getDrawing to read committed geometry.";
+const shapeEditReply = ` The reply has result.ids (the committed IDs of the affected shapes), result.idMap (source ID to committed ID for those shapes and for wires merged or renumbered; other IDs are unchanged) and ${replySummary}`;
+const removeReply = ` The reply has result.ids, which is empty because removed shapes have no committed IDs, result.idMap (wires merged or renumbered by the removal; other IDs are unchanged) and ${replySummary}`;
+const historyEditReply =
+	" The reply has a summary with shapeCount, nextShapeId and historyId but no shapes; call getDrawing to read the restored drawing.";
+
+/** The MCP result for a reply: structured content plus the same reply as JSON text. */
+export function drawingToolResult(reply: DrawingReply): CallToolResult {
+	return {
+		content: [{ type: "text", text: JSON.stringify(reply) }],
+		structuredContent: reply,
+		...(reply.ok ? {} : { isError: true }),
+	};
+}
 
 export interface DrawingMcpErrorLike {
 	readonly message: string;
@@ -58,11 +78,18 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			),
 			signal,
 		);
-		return {
-			content: [{ type: "text", text: JSON.stringify(reply) }],
-			structuredContent: reply,
-			...(reply.ok ? {} : { isError: true }),
-		};
+		const result = drawingToolResult(reply);
+		// Replies are sized to fit, but a larger result would close a stdio client.
+		if (utf8ByteLength(JSON.stringify(result)) <= drawingToolResultByteLimit)
+			return result;
+		return drawingToolResult({
+			ok: false,
+			error: {
+				code: "ReplyTooLarge",
+				message:
+					"The command ran, but its result was too large to return. Read the drawing with getDrawing before retrying.",
+			},
+		});
 	};
 	const readOnly = {
 		readOnlyHint: true,
@@ -87,19 +114,20 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Read drawing",
 			description:
-				"Read the drawing's committed shapes, allocated IDs and history branches. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews and selection are not drawing data.",
-			inputSchema: z.strictObject({}),
+				"Read the drawing's committed shapes, electrical nets, allocated IDs and history branches. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews and selection are not drawing data. Without arguments, a drawing too large for one tool result fails with DrawingTooLarge. Pass offset 0, and optionally limit, to read a page of drawing.shapes. Continue from page.nextOffset until it is absent, passing the revision from the first page with every later page. If the drawing changed in between, the call fails with DrawingChanged; read again from offset 0. Only the page at offset 0 includes nets.",
+			inputSchema: getDrawingInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: readOnly,
 		},
-		(_input, { signal }) => call({ type: "getDrawing" }, signal),
+		(input, { signal }) => call({ type: "getDrawing", ...input }, signal),
 	);
 	server.registerTool(
 		"placeRectangle",
 		{
 			title: "Place rectangle",
 			description:
-				"Place one rectangle with its complete final geometry in the drawing. Supply center x/y, width, height and lineWidth in millimetres and rotation in radians. Positive Y points up. This command commits immediately as one undo step; it does not activate a drawing tool or wait for pointer input.",
+				"Place one rectangle with its complete final geometry in the drawing. Supply center x/y, width, height and lineWidth in millimetres and rotation in radians. Positive Y points up. This command commits immediately as one undo step; it does not activate a drawing tool or wait for pointer input." +
+				shapeEditReply,
 			inputSchema: rectangleInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: placement,
@@ -111,7 +139,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Place shapes",
 			description:
-				"Place complete rectangles, circles, triangles, lines at any angle, orthogonal wires, pins, text or symbols as one undo step. Top-level IDs are allocated by the drawing. Supply final center coordinates and dimensions in millimetres and rotation in radians. Text dimensions must already be measured; symbol children use local coordinates and their own IDs. Wire overlaps normalize within this transaction.",
+				"Place complete rectangles, circles, triangles, lines at any angle, orthogonal wires, pins, text or symbols as one undo step. Top-level IDs are allocated by the drawing. Supply final center coordinates and dimensions in millimetres and rotation in radians. Text dimensions must already be measured; symbol children use local coordinates and their own IDs. Wire overlaps normalize within this transaction." +
+				shapeEditReply,
 			inputSchema: placeShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: placement,
@@ -123,7 +152,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Replace shape geometry",
 			description:
-				"Replace the complete data of explicit existing shape IDs in one undo step. Read getDrawing first to obtain IDs. All coordinates and dimensions are final millimetres; rotations are radians. Include every affected connected neighbor yourself. Optional targetIds choose which existing IDs survive wire merging. This command does not read editor selection.",
+				"Replace the complete data of explicit existing shape IDs in one undo step. Read getDrawing first to obtain IDs. All coordinates and dimensions are final millimetres; rotations are radians. Include every affected connected neighbor yourself. Optional targetIds choose which existing IDs survive wire merging. This command does not read editor selection." +
+				shapeEditReply,
 			inputSchema: replaceShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,
@@ -135,7 +165,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Rotate shapes",
 			description:
-				"Rotate explicit existing shape IDs around their own centers in one undo step. The angle is relative radians, positive counterclockwise, and defaults to pi/2. Wires require multiples of pi/2. Symbol geometry, pins and labels rotate together. Unselected wires stay in place. Read getDrawing to obtain IDs; editor selection is not consulted.",
+				"Rotate explicit existing shape IDs around their own centers in one undo step. The angle is relative radians, positive counterclockwise, and defaults to pi/2. Wires require multiples of pi/2. Symbol geometry, pins and labels rotate together. Unselected wires stay in place. Read getDrawing to obtain IDs; editor selection is not consulted." +
+				shapeEditReply,
 			inputSchema: rotateShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,
@@ -147,7 +178,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Remove shapes",
 			description:
-				"Remove explicit existing shape IDs from the drawing as one undo step. Read getDrawing to obtain IDs; editor selection is not consulted.",
+				"Remove explicit existing shape IDs from the drawing as one undo step. Read getDrawing to obtain IDs; editor selection is not consulted." +
+				removeReply,
 			inputSchema: removeShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,
@@ -159,7 +191,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Undo drawing edit",
 			description:
-				"Undo the drawing's latest committed edit. Preserves alternate history branches and allocated shape IDs. Does nothing at the initial history entry.",
+				"Undo the drawing's latest committed edit. Preserves alternate history branches and allocated shape IDs. Does nothing at the initial history entry." +
+				historyEditReply,
 			inputSchema: z.strictObject({}),
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,
@@ -171,7 +204,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Redo drawing edit",
 			description:
-				"Restore the drawing's preferred next history entry. Read getDrawing to inspect history branches. Does nothing when no redo entry exists.",
+				"Restore the drawing's preferred next history entry. Read getDrawing to inspect history branches. Does nothing when no redo entry exists." +
+				historyEditReply,
 			inputSchema: z.strictObject({}),
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,
@@ -183,7 +217,8 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Restore drawing history entry",
 			description:
-				"Restore an explicit existing history entry, including an alternate branch. Read getDrawing to obtain entry IDs. Shape ID allocation remains monotonic.",
+				"Restore an explicit existing history entry, including an alternate branch. Read getDrawing to obtain entry IDs. Shape ID allocation remains monotonic." +
+				historyEditReply,
 			inputSchema: jumpHistoryInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: edit,
