@@ -1,7 +1,6 @@
 import { RefreshCw, TriangleAlert } from "lucide-react";
 import { useProject } from "#/projects/ProjectProvider.tsx";
 
-/** Shown when saving stopped because the project changed on disk. */
 export function ProjectConflictNotice() {
 	const project = useProject();
 	if (!project?.conflict) return null;

@@ -38,11 +38,6 @@ const fallbackPrefix = "circuit-fallback.";
 export interface LinkedSchematicEnvironment {
 	measureText: MeasureText;
 	newId: () => string;
-	/**
-	 * True for a part whose symbol is missing or incomplete because its
-	 * library, or a library it depends on, failed to load. Synchronization
-	 * then fails instead of placing a placeholder or partial symbol.
-	 */
 	isSymbolUnavailable: (library: SymbolLibraryReference, id: string) => boolean;
 }
 
@@ -272,8 +267,6 @@ function placeComponentSymbols(
 			component.part.id,
 			component.part.library,
 		);
-		// Neither a placeholder nor a partly resolved symbol may stand in for
-		// one whose library is missing; placing it later links the real pins.
 		if (
 			component.part.library &&
 			context.isSymbolUnavailable(component.part.library, component.part.id)

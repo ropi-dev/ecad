@@ -206,7 +206,6 @@ export function useSymbolLibrary() {
 			completed = true;
 			return result;
 		} catch (cause) {
-			// The project's conflict notice already explains a conflict.
 			if (
 				!controller.signal.aborted &&
 				!isProjectError(cause, "ProjectConflict")

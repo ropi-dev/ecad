@@ -84,7 +84,6 @@ test("a part from a library that failed to load is not replaced by a placeholder
 	assert.equal(component.part.library?.id, "parts");
 	const isSymbolUnavailable = (reference: SymbolLibraryReference) =>
 		reference.scope === library.scope && reference.id === library.id;
-	// The library's definitions are missing because it failed to load.
 	assert.throws(
 		() =>
 			synchronizePcb(file, [], original, symbolDefinitions, {
@@ -92,7 +91,6 @@ test("a part from a library that failed to load is not replaced by a placeholder
 			}),
 		MissingSymbolLibraryError,
 	);
-	// A loaded library still places its own symbol.
 	const placed = synchronizePcb(
 		file,
 		[],
@@ -102,7 +100,6 @@ test("a part from a library that failed to load is not replaced by a placeholder
 	);
 	const symbol = placed.shapes.find((shape) => shape.kind === "symbol");
 	assert.equal(symbol?.kind === "symbol" && symbol.definitionId, "resistor");
-	// Without a failed library the existing placeholder for a missing part remains.
 	const fallback = synchronizePcb(file, [], original, symbolDefinitions);
 	const box = fallback.shapes.find((shape) => shape.kind === "symbol");
 	assert.match(

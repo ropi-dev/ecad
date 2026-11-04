@@ -30,7 +30,6 @@ export function createDesktopSymbolLibraryStorage(
 	};
 }
 
-/** Project errors cross IPC as messages; this restores their tags. */
 export function createDesktopProjectStorage(
 	bridge: ProjectStorage,
 ): ProjectStorage {

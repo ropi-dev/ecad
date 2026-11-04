@@ -1,8 +1,6 @@
 import { Data, Predicate } from "effect";
 
-/** A project file changed on disk after the open project read or wrote it. */
 export class ProjectConflict extends Data.TaggedError("ProjectConflict")<{
-	/** The project-relative path that differs from the loaded copy. */
 	readonly path: string;
 	readonly message: string;
 }> {
@@ -15,7 +13,6 @@ export class ProjectConflict extends Data.TaggedError("ProjectConflict")<{
 	}
 }
 
-/** The caller refers to a project that is not the one currently open. */
 export class ProjectClosed extends Data.TaggedError("ProjectClosed")<{
 	readonly message: string;
 }> {
@@ -25,7 +22,6 @@ export class ProjectClosed extends Data.TaggedError("ProjectClosed")<{
 }
 
 export class ProjectExists extends Data.TaggedError("ProjectExists")<{
-	// `name` would replace Error.name.
 	readonly projectName?: string;
 	readonly message: string;
 }> {
@@ -40,10 +36,8 @@ export class ProjectExists extends Data.TaggedError("ProjectExists")<{
 	}
 }
 
-/** A file listed by the project is missing, unreadable as JSON, or fails validation. */
 export class InvalidProjectFile extends Data.TaggedError("InvalidProjectFile")<{
 	readonly path: string;
-	/** A sentence for people, never raw schema output. */
 	readonly reason: string;
 	readonly message: string;
 	readonly cause?: unknown;
@@ -66,7 +60,6 @@ export class InvalidProjectFile extends Data.TaggedError("InvalidProjectFile")<{
 	}
 }
 
-/** The document passed to `save` breaks a project rule. Nothing was written. */
 export class InvalidProjectDocument extends Data.TaggedError(
 	"InvalidProjectDocument",
 )<{
@@ -83,7 +76,6 @@ export class InvalidProjectDocument extends Data.TaggedError(
 	}
 }
 
-/** A path is outside the project, a link, or not the expected kind of entry. */
 export class InvalidProjectPath extends Data.TaggedError("InvalidProjectPath")<{
 	readonly path: string;
 	readonly reason: string;
@@ -134,7 +126,6 @@ export class ProjectStorageUnavailable extends Data.TaggedError(
 	}
 }
 
-/** A save failed and undoing its partial writes failed too. */
 export class ProjectRollbackFailed extends Data.TaggedError(
 	"ProjectRollbackFailed",
 )<{
@@ -149,7 +140,6 @@ export class ProjectRollbackFailed extends Data.TaggedError(
 	}
 }
 
-/** The open project may not read or write this symbol library directory. */
 export class SymbolLibraryAccessDenied extends Data.TaggedError(
 	"SymbolLibraryAccessDenied",
 )<{
@@ -177,7 +167,6 @@ export type ProjectError =
 
 export type ProjectErrorTag = ProjectError["_tag"];
 
-/** Checks the tag, so errors rebuilt after crossing a process boundary match too. */
 export function isProjectError<Tag extends ProjectErrorTag>(
 	cause: unknown,
 	tag: Tag,
@@ -187,10 +176,6 @@ export function isProjectError<Tag extends ProjectErrorTag>(
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-/**
- * The tag and identifying fields of a project error, safe to send between
- * processes. Causes and stacks are left out. Other values return undefined.
- */
 export function projectErrorData(
 	cause: unknown,
 ): Record<string, string> | undefined {
@@ -202,7 +187,6 @@ export function projectErrorData(
 	return data;
 }
 
-/** Rebuilds a project error from its tag and fields, for example after IPC. */
 export function reviveProjectError(value: unknown): ProjectError | undefined {
 	if (!Predicate.hasProperty(value, "_tag")) return undefined;
 	const fields = value as Record<string, unknown>;
@@ -249,7 +233,6 @@ export function reviveProjectError(value: unknown): ProjectError | undefined {
 	return undefined;
 }
 
-/** One readable sentence from a schema failure, without Zod's JSON dump. */
 export function schemaReason(
 	issues: readonly { path: readonly PropertyKey[]; message: string }[],
 	limit = 3,

@@ -277,7 +277,6 @@ export function ProjectFilesSidebar() {
 	const first = currentPage * pageSize;
 	if (!project) return null;
 	const busy = project.busy || importing;
-	/** The conflict notice already explains a conflict. */
 	function showError(cause: unknown, fallback: string) {
 		if (!isProjectError(cause, "ProjectConflict"))
 			setError(errorMessage(cause, fallback));

@@ -109,8 +109,6 @@ test("a symbol that depends on a library that failed to load is unavailable and 
   return synchronizePcb(file, [], original, definitions, { isSymbolUnavailable });
  };
  assert.throws(() => place({ id: "divider", name: "Divider" }), MissingSymbolLibraryError);
- // The provider also lists embedded definitions without resolving references.
- // A partly resolved definition must not be placed either.
  const partial = [...definitions, { ...standaloneDefinition, id: "divider", library: kit }];
  const file = structuredClone(original);
  const component = componentFromSymbol(standaloneDefinition, []);
@@ -118,7 +116,6 @@ test("a symbol that depends on a library that failed to load is unavailable and 
  assert.throws(() => synchronizePcb(file, [], original, partial, { isSymbolUnavailable }), MissingSymbolLibraryError);
  const placed = place({ id: "standalone", name: "Standalone" }).shapes.find((shape) => shape.kind === "symbol");
  assert.equal(placed?.kind === "symbol" && placed.definitionId, "standalone");
- // A symbol missing from a library that did load keeps the existing placeholder.
  const missing = place({ id: "removed", name: "Removed" }).shapes.find((shape) => shape.kind === "symbol");
  assert.match(missing?.kind === "symbol" ? missing.definitionId : "", /^circuit-fallback\./);
 });
@@ -131,11 +128,8 @@ test("every symbol that fails to resolve is unavailable, whatever fails first", 
  const resolved = await resolveSymbolLibraries(
   [{ id: bench.id, name: "Bench", enabled: true, source: { kind: "directory", path: "bench" } }],
   [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [
-   // A deleted symbol stops resolution before the failed library is reached.
    file("divider", [{ library: kit, definitionId: "deleted" }, { library: bench, definitionId: "core" }]),
-   // Only reaches the failed library through another symbol.
    file("assembly", [{ library: kit, definitionId: "divider" }]),
-   // Reference cycles are rejected; one of them also needs the failed library.
    file("loop-a", [{ library: kit, definitionId: "loop-b" }]),
    file("loop-b", [{ library: kit, definitionId: "loop-a" }, { library: bench, definitionId: "core" }]),
    file("broken", [{ library: kit, definitionId: "deleted" }]),
@@ -146,9 +140,7 @@ test("every symbol that fails to resolve is unavailable, whatever fails first", 
  assert.deepEqual(new Set(resolved.unavailableSymbols), new Set(["divider", "assembly", "loop-a", "loop-b", "broken"].map((id) => symbolReferenceKey(kit, id))));
  const isSymbolUnavailable = unavailableSymbols(resolved);
  assert.equal(isSymbolUnavailable(kit, "plain"), false);
- // A library that is not configured at all leaves the symbol incomplete too.
  assert.deepEqual((await resolveSymbolLibraries([], [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [file("divider", [{ library: bench, definitionId: "core" }])] } }])).unavailableSymbols, [symbolReferenceKey(kit, "divider")]);
- // Symbols that resolve, including nested ones, stay available.
  const nested = await resolveSymbolLibraries([], [{ id: kit.id, name: "Kit", enabled: true, source: { kind: "embedded", symbols: [file("plain", []), file("wrapper", [{ library: kit, definitionId: "plain" }])] } }]);
  assert.deepEqual(nested.unavailableSymbols, []);
 });

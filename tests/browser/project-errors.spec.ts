@@ -42,7 +42,6 @@ async function drawRectangle(page: Page, offset = 0) {
 	await page.mouse.up();
 }
 
-/** Changes a file of the open browser project as another tab would. */
 async function editProjectFile(
 	page: Page,
 	path: string,
@@ -97,7 +96,6 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).shapes).toHaveLength(1);
 
-	// Another tab rewrites the project manifest.
 	await editProjectFile(page, ".ecadprj", "\n# Edited in another tab\n", "append");
 	await page.evaluate(() => {
 		const counts = { manifestReads: 0, writes: 0 };
@@ -134,13 +132,11 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	).toBeEnabled();
 	expect((await documentState(page)).dirty).toBe(true);
 	expect((await documentState(page)).shapes).toHaveLength(2);
-	// The editor banner does not repeat the conflict as a save error.
 	await expect(
 		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
 	await screenshot(page, "project-conflict.png");
 
-	// Further edits stay in memory without touching the changed files.
 	const afterConflict = await access();
 	expect(afterConflict.writes).toBe(0);
 	await drawRectangle(page, 80);
@@ -154,7 +150,6 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 		"Saving, and opening other files or projects, is paused",
 	);
 
-	// Switching views stays put and does not repeat the conflict as an error.
 	const switchView = page.getByRole("button", {
 		name: "Switch to circuit view",
 		exact: true,
@@ -166,7 +161,6 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	).toHaveCount(0);
 	expect(await access()).toEqual(afterConflict);
 	expect((await documentState(page)).shapes).toHaveLength(3);
-	// The sidebar's circuit link does not repeat it either.
 	await (await openProjectFiles(page))
 		.getByRole("link", {
 			name: "Open Untitled.ecaddraw in circuit view",
@@ -185,7 +179,6 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).shapes).toHaveLength(1);
 
-	// Saving works again after the reload.
 	await expect(
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled();
@@ -210,13 +203,11 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 		.getByRole("alert")
 		.filter({ hasText: "Reload it from disk before saving" });
 
-	// Save project on a clean project finds the conflict.
 	await openProjectActions(page);
 	await page.getByRole("menuitem", { name: "Save project", exact: true }).click();
 	await expect(notice).toBeVisible();
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
 	await expect(notice).not.toContainText("Your unsaved changes");
-	// With nothing unsaved, only saving is paused.
 	await expect(notice).toContainText(
 		"Saving is paused so neither version is overwritten.",
 	);
@@ -224,8 +215,6 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	await expect(repeated).toHaveCount(0);
 	expect((await documentState(page)).dirty).toBe(false);
 
-	// An import is refused, leaves nothing unsaved, and the notice alone
-	// explains why.
 	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files", { exact: true })
 		.setInputFiles({
@@ -246,7 +235,6 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	expect((await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).assets).toEqual([]);
 
-	// Adding a symbol file is refused the same way.
 	await (await openProjectFiles(page))
 		.getByLabel("Add symbol files", { exact: true })
 		.setInputFiles({
@@ -334,7 +322,6 @@ test("a conflict found by a new project's first save shows the notice", async ({
 	const original = await page.evaluate(() =>
 		localStorage.getItem("ecad.active-project"),
 	);
-	// Another window changes the new project right after it is created.
 	await page.evaluate((original) => {
 		const createWritable = FileSystemFileHandle.prototype.createWritable;
 		FileSystemFileHandle.prototype.createWritable = async function (...args) {
@@ -436,7 +423,6 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 		hasText: "This project changed on disk",
 	});
 	await expect(notice).toBeVisible();
-	// The project documents are saved; only the library editor holds edits.
 	expect((await documentState(page)).dirty).toBe(false);
 	await expect(notice).toContainText(
 		"Your unsaved changes are still here. Reloading from disk discards them.",
@@ -446,7 +432,6 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 	).toHaveCount(0);
 	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
 	await expect(notice).toHaveCount(0);
-	// Reloading closes the library editor and its discarded edits.
 	await expect(page.getByRole("heading", { level: 1 })).toContainText(
 		"Schematic editor",
 	);
@@ -461,7 +446,6 @@ const benchParts = {
 	enabled: true,
 	source: { kind: "directory", path: "parts" },
 };
-// An embedded library loads, but its symbol places one from Bench parts.
 const kit = {
 	id: "kit",
 	name: "Kit",
@@ -517,7 +501,6 @@ for (const { name, libraries, part } of [
 		const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
 		if (!drawing) throw new Error("The project has no drawing.");
 		const saved = JSON.parse(await readProjectFile(page, drawing));
-		// A directory library cannot load in the browser. The part is not placed yet.
 		await editProjectFile(
 			page,
 			drawing,
@@ -657,7 +640,6 @@ for (const {
 			{ kind: "pin", name: "GND", x: 0, y: 5 },
 			{ kind: "symbol", library: childLibrary, definitionId: "core", x: 0, y: 0 },
 		]);
-		// Link U1 while "core" still resolved, so the circuit has all three pins.
 		const coreDefinition = {
 			...libraryDefinitions([core])[0],
 			library: childLibrary,
@@ -685,7 +667,6 @@ for (const {
 		const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
 		if (!drawing) throw new Error("The project has no drawing.");
 		if (standalone) {
-			// Listed in the manifest as a standalone project symbol.
 			await writeProjectFile(page, "symbols/amp.ecadsym", JSON.stringify(amp));
 			await writeProjectFile(
 				page,
@@ -693,8 +674,6 @@ for (const {
 				manifest.replace("symbols = []", 'symbols = [ "symbols/amp.ecadsym" ]'),
 			);
 		}
-		// "parts" is a directory library, which cannot load in the browser.
-		// In the deleted case, "good" no longer contains "core".
 		await editProjectFile(
 			page,
 			drawing,
@@ -757,6 +736,5 @@ for (const {
 		await expect(banner).toBeVisible();
 		await expect(banner).toContainText(issue ?? "");
 		expect((await documentState(page)).dirty).toBe(true);
-		// Nothing was rebuilt from the incomplete symbol.
 		expect(await readProjectFile(page, drawing)).toBe(before);
 	});

@@ -102,7 +102,6 @@ export interface ProjectSnapshot extends ProjectDocument {
 	manifest: ProjectManifest;
 }
 
-/** @throws {InvalidProjectName} with a readable reason. */
 export function parseProjectName(name: string): string {
 	const result = projectNameSchema.safeParse(name);
 	if (result.success) return result.data;
@@ -112,7 +111,6 @@ export function parseProjectName(name: string): string {
 	});
 }
 
-/** @throws {InvalidProjectPath} when the path leaves the project directory. */
 export function parseProjectPath(path: string): string {
 	const result = projectPathSchema.safeParse(path);
 	if (result.success) return result.data;
@@ -122,7 +120,6 @@ export function parseProjectPath(path: string): string {
 	});
 }
 
-/** @throws {InvalidProjectFile} naming the project manifest. */
 export function parseProjectManifest(content: string): ProjectManifest {
 	let value: unknown;
 	try {
@@ -140,10 +137,6 @@ export function serializeProjectManifest(manifest: ProjectManifest): string {
 	return stringify(manifestSchema.parse(manifest));
 }
 
-/**
- * The files a loaded document came from. Validation errors then name the
- * file; without it they describe the document passed to `save`.
- */
 export interface ProjectDocumentFiles {
 	drawing: string;
 	drawings?: readonly string[];
@@ -156,10 +149,6 @@ function invalid(file: string | undefined, reason: string, cause?: unknown) {
 		: new InvalidProjectFile({ path: file, reason, cause });
 }
 
-/**
- * Parses with a readable error. With `items`, an issue in array element `n`
- * is reported against `items[n]`; otherwise against `file` and `field`.
- */
 function check<T>(
 	schema: z.ZodType<T>,
 	value: unknown,
@@ -186,10 +175,6 @@ function check<T>(
 	);
 }
 
-/**
- * @throws {InvalidProjectFile} when `files` is given and a file breaks a rule.
- * @throws {InvalidProjectDocument} when a document to be saved breaks a rule.
- */
 export function validateProjectDocument(
 	document: ProjectDocument,
 	files?: ProjectDocumentFiles,

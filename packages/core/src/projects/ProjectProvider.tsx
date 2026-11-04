@@ -73,19 +73,9 @@ interface ProjectContextValue {
 	busy: boolean;
 	dirty: boolean;
 	error: string;
-	/**
-	 * The project changed on disk after it was opened. Saving stops until it is
-	 * reloaded; edits stay in memory and `dirty` stays true.
-	 */
 	conflict: boolean;
-	/** Symbol libraries that failed to load during the last save. */
 	libraryErrors: readonly string[];
-	/**
-	 * True while an editor outside the project documents, such as the library
-	 * symbol editor, holds edits it could not save. Reloading discards them.
-	 */
 	otherUnsavedEdits: boolean;
-	/** Editors outside the project documents report unsaved edits by key. */
 	reportUnsavedEdits(key: string, unsaved: boolean): void;
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
@@ -179,28 +169,17 @@ export function ProjectProvider({
 			return next;
 		});
 	}, []);
-	// Set by the first save that finds the project changed on disk. Later saves
-	// fail at once instead of reading the disk again; reloading clears it.
 	const conflict = useRef<ProjectConflict | null>(null);
 	const [hasConflict, setHasConflict] = useState(false);
 	const pendingAssets = useRef<{ file: File; kind: AssetKind }[]>([]);
 	const mounted = useRef(true);
 
 	const [enqueue] = useState(createSerialQueue);
-	/**
-	 * Records a conflict so automatic saves stop. Unsaved edits keep their own
-	 * dirty state; a failed import alone leaves nothing unsaved.
-	 */
 	const noteConflict = useCallback((cause: unknown) => {
 		if (!isProjectError(cause, "ProjectConflict")) return;
 		conflict.current = cause;
 		if (mounted.current) setHasConflict(true);
 	}, []);
-	/** The conflict notice explains a conflict, so it is not repeated here. */
-	/**
-	 * Shows a failure of the open project. A conflict is recorded instead,
-	 * so the notice explains it even when the save did not go through persist.
-	 */
 	const showError = useCallback(
 		(cause: unknown, fallback: string) => {
 			if (isProjectError(cause, "ProjectConflict")) noteConflict(cause);
@@ -404,9 +383,6 @@ export function ProjectProvider({
 				import("#/drawing/symbol-reference.ts"),
 			]);
 			const paired = pairPcbDocuments(document, previous.manifest.name);
-			// Read without resolving references, a symbol that places other
-			// symbols lacks their shapes and pins. Only its resolved definition,
-			// added below, may be used; if it does not resolve, it is missing.
 			const flatDefinitions = (files: SymbolLibrary, id: string) =>
 				libraryDefinitions(files).flatMap((definition, index) =>
 					files[index]?.shapes.some((shape) => shape.kind === "symbol")
@@ -427,8 +403,6 @@ export function ProjectProvider({
 				"#/symbol-library/config.ts"
 			);
 			const userConfig = await symbolStorage.loadConfiguration?.();
-			// Resolve standalone project symbols as the editor does, so their
-			// nested references are checked even without a configured entry.
 			const projectLibraries: readonly ConfiguredSymbolLibrary[] =
 				savedSymbols.length &&
 				!document.symbolLibraries.some(
@@ -524,7 +498,6 @@ export function ProjectProvider({
 					{
 						measureText: measureLabelText,
 						newId: () => globalThis.crypto.randomUUID(),
-						// Placeholders would replace real symbols once the library loads again.
 						isSymbolUnavailable: isUnavailable,
 					},
 				);
@@ -664,7 +637,6 @@ export function ProjectProvider({
 	);
 	const autosave = useCallback(
 		async (onlyIfDirty = false) => {
-			// After a conflict, edits wait in memory until the user reloads.
 			if (conflict.current && onlyIfDirty) return;
 			try {
 				await enqueue(async () => {
@@ -673,8 +645,6 @@ export function ProjectProvider({
 					await transferAssets([]);
 				});
 			} catch (cause) {
-				// A conflict leaves the dirty state as it was: a clean project has
-				// nothing unsaved to warn about.
 				if (mounted.current && !isProjectError(cause, "ProjectConflict")) {
 					needsSave.current = true;
 					setDirty(true);
@@ -1015,7 +985,6 @@ export function ProjectProvider({
 					if (!next) return;
 					if (creating) {
 						update(next);
-						// A conflict belongs to the project that found it, not to the copy.
 						conflict.current = null;
 						setHasConflict(false);
 						pendingAssets.current = assets;

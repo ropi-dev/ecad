@@ -53,7 +53,6 @@ function memoryDirectory() {
 	return { files, directory, text, edit };
 }
 
-/** Asserts the rejection is the given class and returns it for further checks. */
 async function rejection<T extends ProjectError>(
 	promise: Promise<unknown>,
 	type: abstract new (...args: never[]) => T,
@@ -92,7 +91,6 @@ for (const layout of ["files", "revisions"] as const)
 		assert.equal(conflict._tag, "ProjectConflict");
 		assert.equal(conflict.path, PROJECT_FILE);
 		assert.match(conflict.message, /changed on disk/);
-		// The conflict is stable until the project is reloaded.
 		await rejection(repository.save({ shapes: [], symbols: [] }), ProjectConflict);
 		await rejection(
 			repository.importAssets([
@@ -188,7 +186,6 @@ test("invalid project files reject with InvalidProjectFile naming the file and a
 	);
 	assert.equal(shape.path, "Project/Project.ecaddraw");
 	assert.match(shape.reason, /^shapes\.0\b/);
-	// Readable text only: no serialized Zod issue list.
 	assert.doesNotMatch(shape.message, /[[{]\s*"/);
 	assert.match(
 		shape.message,

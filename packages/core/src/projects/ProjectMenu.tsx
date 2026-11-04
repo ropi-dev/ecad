@@ -82,7 +82,6 @@ export function ProjectMenu() {
 							onSelect={() => {
 								setSaveError("");
 								void project.save().catch((cause: unknown) => {
-									// The conflict notice explains a conflict.
 									if (!isProjectError(cause, "ProjectConflict"))
 										setSaveError(
 											errorMessage(cause, "Unable to save the project."),

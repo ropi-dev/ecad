@@ -49,7 +49,6 @@ function isMissing(cause: unknown) {
 	);
 }
 
-/** Rewraps format errors from one listed file so they name that file. */
 function invalidFile(path: string, cause: unknown): unknown {
 	if (cause instanceof InvalidProjectFile) return cause;
 	if (isMissing(cause))
@@ -119,7 +118,6 @@ export class ProjectRepository {
 				if (this.options.layout === "files") savedFiles.set(path, bytes);
 				return decoder.decode(bytes);
 			};
-			/** Reads one listed file; any failure names that file. */
 			const readJson = async <T = Record<string, unknown>>(
 				path: string,
 				parse: (value: Record<string, unknown>) => T = (value) => value as T,

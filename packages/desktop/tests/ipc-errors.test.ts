@@ -8,7 +8,6 @@ import {
 import { decodeIpcError, encodeIpcError } from "#/ipc-errors.ts";
 import { createDesktopProjectStorage } from "#/renderer/storage.ts";
 
-/** What the renderer receives: Electron keeps only `String(error)`. */
 function overIpc(channel: string, error: unknown) {
 	return new Error(
 		`Error invoking remote method '${channel}': ${String(encodeIpcError(error))}`,

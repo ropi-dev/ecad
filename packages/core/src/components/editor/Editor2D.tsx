@@ -236,8 +236,6 @@ export function Editor2D(props: Editor2DProps = {}) {
 	const drawing = props.store ? null : project?.editorDrawing;
 	return (
 		<EditorCanvas
-			// A reloaded or switched project starts a fresh editor, including any
-			// open library symbol editor, even where the shell is not keyed by it.
 			key={`${project?.session ?? 0}:${
 				symbol
 					? `symbol:${symbol.file.id}`
@@ -2170,8 +2168,6 @@ function LibrarySymbolEditor({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	const dirty = drawing.shapes !== savedShapes;
-	// Project reloads close this editor, so the conflict notice must know about
-	// its unsaved edits.
 	const reportUnsavedEdits = useProject()?.reportUnsavedEdits;
 	const editorKey = useId();
 	useEffect(() => {
@@ -2198,7 +2194,6 @@ function LibrarySymbolEditor({
 					setSavedShapes(shapes);
 					setError("");
 				} catch (cause) {
-					// The project's conflict notice already explains a conflict.
 					if (!isProjectError(cause, "ProjectConflict"))
 						setError(
 							errorMessage(cause, "Unable to save the symbol definition."),

@@ -110,10 +110,6 @@ export function serializeSymbolConfig(config: SymbolLibraryConfig): string {
 	return text;
 }
 
-/**
- * True when a library failed to load, or when one of its loaded symbols could
- * not resolve. Either way the symbol's full definition is unavailable.
- */
 export type SymbolAvailability = (
 	library: SymbolLibraryReference,
 	id: string,
@@ -143,13 +139,7 @@ export async function resolveSymbolLibraries(
 	byReference: Map<string, SymbolDefinition>;
 	referenceSources: Map<string, SymbolSource>;
 	errors: string[];
-	/** Enabled libraries that failed to load. Their symbols are missing. */
 	unavailable: SymbolLibraryReference[];
-	/**
-	 * `symbolReferenceKey`s of loaded symbols that failed to resolve, for
-	 * example because a symbol they place is missing, its library failed to
-	 * load, or the references form a cycle. Their definitions are incomplete.
-	 */
 	unavailableSymbols: string[];
 }> {
 	const definitions = new Map<string, SymbolDefinition>();
