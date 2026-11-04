@@ -166,6 +166,19 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	).toHaveCount(0);
 	expect(await access()).toEqual(afterConflict);
 	expect((await documentState(page)).shapes).toHaveLength(3);
+	// The sidebar's circuit link does not repeat it either.
+	await (await openProjectFiles(page))
+		.getByRole("link", {
+			name: "Open Untitled.ecaddraw in circuit view",
+			exact: true,
+		})
+		.click();
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+	await expect(
+		page.getByRole("alert").filter({ hasText: "Reload it from disk before saving" }),
+	).toHaveCount(0);
+	expect(await access()).toEqual(afterConflict);
+	await closeProjectFiles(page);
 
 	await notice.getByRole("button", { name: "Reload from disk", exact: true }).click();
 	await expect(notice).toHaveCount(0);
@@ -203,10 +216,16 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	await expect(notice).toBeVisible();
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
 	await expect(notice).not.toContainText("Your unsaved changes");
+	// With nothing unsaved, only saving is paused.
+	await expect(notice).toContainText(
+		"Saving is paused so neither version is overwritten.",
+	);
+	await expect(notice).not.toContainText("opening other files");
 	await expect(repeated).toHaveCount(0);
 	expect((await documentState(page)).dirty).toBe(false);
 
-	// An import is refused in the sidebar and leaves nothing unsaved.
+	// An import is refused, leaves nothing unsaved, and the notice alone
+	// explains why.
 	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files", { exact: true })
 		.setInputFiles({
@@ -214,7 +233,15 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 			mimeType: "application/step",
 			buffer: Buffer.from("ISO-10303-21;"),
 		});
-	await expect(repeated).toHaveCount(1);
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() => !document.querySelector('[aria-busy="true"]'),
+			),
+		)
+		.toBe(true);
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+	await expect(repeated).toHaveCount(0);
 	await expect(notice).not.toContainText("Your unsaved changes");
 	expect((await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).assets).toEqual([]);
