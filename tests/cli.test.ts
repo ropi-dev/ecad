@@ -671,13 +671,16 @@ test("stdio MCP exits promptly on SIGTERM while replies wait for a reader", { sk
 	assert.equal(code, 143);
 });
 
-test("CLI and stdio MCP finish releasing the lock before exiting on SIGTERM", async (context) => {
+test("CLI and stdio MCP finish releasing the lock before exiting on a signal", async (context) => {
 	const fixture = await drawing(context);
 	const lockFaults = fileURLToPath(new URL("./helpers/lock-faults.ts", import.meta.url));
-	const env = { ...fixture.env, ECAD_TEST_SIGTERM_ON_RELEASE: "1" };
-	const command = await startCli(["getDrawing"], env, "", { imports: [lockFaults] }).result;
-	assert.equal(command.code, 143, command.stderr);
-	assert.deepEqual(await readdir(fixture.directory), [], "the lock was released");
+	const env = { ...fixture.env, ECAD_TEST_SIGNAL_ON_RELEASE: "SIGTERM" };
+	const signals = process.platform === "win32" ? [["SIGTERM", 143]] as const : [["SIGTERM", 143], ["SIGINT", 130], ["SIGHUP", 129]] as const;
+	for (const [signal, exitCode] of signals) {
+		const command = await startCli(["getDrawing"], { ...env, ECAD_TEST_SIGNAL_ON_RELEASE: signal }, "", { imports: [lockFaults] }).result;
+		assert.equal(command.code, exitCode, `${signal}: ${command.stderr}`);
+		assert.deepEqual(await readdir(fixture.directory), [], `${signal}: the lock was released`);
+	}
 	const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } };
 	const call = { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "getDrawing", arguments: {} } };
 	// Stdin stays open, so only the signal stops the server.
