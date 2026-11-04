@@ -104,6 +104,8 @@ import {
 	routeWire,
 	type ShapeAttribute,
 	type ShapeKind,
+	setSymbolLabelPosition,
+	shapeAt,
 	shapeBounds,
 	snapPoint,
 	symbolChildren,
@@ -1236,13 +1238,9 @@ function EditorCanvas({
 						const point = pointAt(event, event.target);
 						const shape =
 							point &&
-							[...shapes]
-								.reverse()
-								.find(
-									(shape) =>
-										canSelectShape(shape, allowLocked) &&
-										hitShape(shape, point, 0),
-								);
+							shapeAt(shapes, point, 0, (shape) =>
+								canSelectShape(shape, allowLocked),
+							);
 						if (shape?.kind !== "text") return;
 						event.preventDefault();
 						event.stopPropagation();
@@ -1268,17 +1266,12 @@ function EditorCanvas({
 						if (!point) return;
 						const hit =
 							tool === "select"
-								? [...shapes]
-										.reverse()
-										.find(
-											(candidate) =>
-												canSelectShape(candidate, allowLocked) &&
-												hitShape(
-													candidate,
-													point,
-													6 / (snapshot.current?.camera.scale ?? 1),
-												),
-										)
+								? shapeAt(
+										shapes,
+										point,
+										6 / (snapshot.current?.camera.scale ?? 1),
+										(candidate) => canSelectShape(candidate, allowLocked),
+									)
 								: undefined;
 						const duplicate =
 							event.altKey && (hit?.kind === "symbol" || hit?.kind === "text")
@@ -2218,6 +2211,20 @@ function EditorCanvas({
 												normalizeNetSymbol({ ...shape, netSymbol }),
 											),
 										"Change net symbol",
+									);
+								}
+					}
+					onSymbolLabelPositionChange={
+						isSymbol
+							? undefined
+							: (position) => {
+									commitReplacements(
+										selected
+											.filter((shape) => shape.kind === "symbol")
+											.map((shape) =>
+												setSymbolLabelPosition(shape, "name", position),
+											),
+										"Position label",
 									);
 								}
 					}

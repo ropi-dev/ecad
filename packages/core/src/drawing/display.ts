@@ -29,6 +29,7 @@ import {
 	PIN_RADIUS,
 	type ShapeKind,
 	selectionSize,
+	symbolSelectionFrame,
 	shapeBounds,
 	shapeCenter,
 	symbolShapes,
@@ -554,9 +555,13 @@ export function buildStaticDisplay(
 			.filter((shape) => selectedIds.has(shape.id))
 			.map((shape) => ({
 				shapeKey: `shape:${shape.id}`,
-				...shapeCenter(shape),
-				...selectionSize(shape),
-				rotation: shape.rotation,
+				...(shape.kind === "symbol"
+					? symbolSelectionFrame(shape)
+					: {
+							...shapeCenter(shape),
+							...selectionSize(shape),
+							rotation: shape.rotation,
+						}),
 				...(shape.kind === "pin" && (shape.length ?? 0) > 0
 					? (() => {
 							const bounds = shapeBounds(shape);
