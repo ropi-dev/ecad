@@ -306,27 +306,33 @@ const claimPath = (lockPath: string, owner: LockOwner) =>
 // crash or power loss never leaves an empty lock. The copy is staged only when
 // the path looks free, so a waiting process holds no copy.
 async function createLockFile(path: string, owner: LockOwner) {
-	try {
-		await lstat(path);
-		return false;
-	} catch (error) {
-		if (!hasCode(error, "ENOENT")) throw error;
-	}
 	const content = JSON.stringify(owner);
-	const staged = await stageFile(
-		path,
-		content,
-		0o600,
-		join(dirname(path), `${lockCopyPrefix}${randomUUID()}.tmp`),
-	);
-	try {
-		await link(staged, path);
-		return true;
-	} catch (error) {
-		if (hasCode(error, "EEXIST")) return false;
-		if (!linkUnsupported.some((code) => hasCode(error, code))) throw error;
-	} finally {
-		await rm(staged, { force: true });
+	for (let attempt = 1; ; attempt++) {
+		try {
+			await lstat(path);
+			return false;
+		} catch (error) {
+			if (!hasCode(error, "ENOENT")) throw error;
+		}
+		const staged = await stageFile(
+			path,
+			content,
+			0o600,
+			join(dirname(path), `${lockCopyPrefix}${randomUUID()}.tmp`),
+		);
+		try {
+			await link(staged, path);
+			return true;
+		} catch (error) {
+			if (hasCode(error, "EEXIST")) return false;
+			// Recovery removes a copy that stayed incomplete for a minute, for
+			// example while this process was paused, so stage it again.
+			if (hasCode(error, "ENOENT") && attempt < 3) continue;
+			if (!linkUnsupported.some((code) => hasCode(error, code))) throw error;
+		} finally {
+			await rm(staged, { force: true });
+		}
+		break;
 	}
 	// Without hard links, a crash before the write leaves an empty lock.
 	let handle: Awaited<ReturnType<typeof open>>;
@@ -346,8 +352,8 @@ async function createLockFile(path: string, owner: LockOwner) {
 
 // A process killed while creating a lock or claim can leave its staged copy.
 // A complete copy names its owner, so it is removed once that owner has exited.
-// Only its creator links a copy, and staging takes moments, so an incomplete
-// copy older than a minute is abandoned too.
+// Staging takes moments, so an incomplete copy older than a minute is removed
+// too. If its creator was only paused, it stages a new copy.
 async function removeAbandonedCopies(directory: string) {
 	const names = await readdir(directory).catch(() => []);
 	await Promise.all(

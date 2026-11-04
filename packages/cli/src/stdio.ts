@@ -16,6 +16,22 @@ function describeMcpError(cause: Error) {
 	return message.length > 500 ? `${message.slice(0, 500)}…` : message;
 }
 
+// Waits until replies already handed to the output are written, so a failed
+// write still fails the command. An abort stops the wait.
+async function flushOutput(output: Writable, signal?: AbortSignal) {
+	if (output.destroyed || output.writableLength === 0 || signal?.aborted)
+		return;
+	const controller = new AbortController();
+	await new Promise<void>((resolve) => {
+		signal?.addEventListener("abort", () => resolve(), {
+			once: true,
+			signal: controller.signal,
+		});
+		output.write("", () => resolve());
+	});
+	controller.abort();
+}
+
 export async function serveStdioMcp(
 	options: LocalDrawingOptions & {
 		input: Readable;
@@ -68,6 +84,7 @@ export async function serveStdioMcp(
 		input.off("close", finish);
 		signal?.removeEventListener("abort", finish);
 		await server.close();
+		await flushOutput(output, signal);
 		input.off("error", fail);
 		output.off("error", fail);
 	}

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { chmod, mkdir, readFile, readdir, readlink, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, readlink, stat, utimes, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { PassThrough, Readable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
 import { test, type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -343,9 +343,9 @@ test("concurrent commands take over an abandoned lock one at a time", async (con
 
 test("CLI recovers after a process is killed right after creating its lock or claim", async (context) => {
 	const fixture = await drawing(context);
-	const crashOnLock = fileURLToPath(new URL("./helpers/crash-on-lock.ts", import.meta.url));
+	const lockFaults = fileURLToPath(new URL("./helpers/lock-faults.ts", import.meta.url));
 	const crashed = async (pattern: string) => {
-		const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_CRASH_PATTERN: pattern }, "", { imports: [crashOnLock] }).result;
+		const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_CRASH_PATTERN: pattern }, "", { imports: [lockFaults] }).result;
 		assert.equal(result.signal, "SIGKILL", result.stderr);
 	};
 	const visible = async () => (await readdir(fixture.directory)).filter((name) => !name.startsWith("."));
@@ -358,6 +358,24 @@ test("CLI recovers after a process is killed right after creating its lock or cl
 	await call(fixture.env, "placeRectangle", rectangle);
 	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles, "recovery removes the staged copies too");
 	assert.equal((await fixture.read()).shapes.length, 1);
+});
+
+test("recovery removes old incomplete lock copies, and a process whose copy was removed stages a new one", async (context) => {
+	const fixture = await drawing(context);
+	const old = join(fixture.directory, ".ecad-lock-old.tmp");
+	const fresh = join(fixture.directory, ".ecad-lock-fresh.tmp");
+	await writeFile(old, "");
+	await writeFile(fresh, "");
+	const twoMinutesAgo = new Date(Date.now() - 120_000);
+	await utimes(old, twoMinutesAgo, twoMinutesAgo);
+	await writeFile(`${fixture.path}.lock`, lockContent({ pid: await exitedPid() }));
+	assert.ok((await runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle }))).ok);
+	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set([...drawingFiles, ".ecad-lock-fresh.tmp"]));
+	const lockFaults = fileURLToPath(new URL("./helpers/lock-faults.ts", import.meta.url));
+	const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_DROP_COPY: "1" }, "", { imports: [lockFaults] }).result;
+	assert.equal(result.code, 0, result.stderr || result.stdout);
+	assert.equal((await fixture.read()).shapes.length, 2);
+	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set([...drawingFiles, ".ecad-lock-fresh.tmp"]));
 });
 
 test("local drawing module cancels a lock wait without removing another owner's lock", async (context) => {
@@ -465,6 +483,28 @@ test("stdio module reports an output failure that follows stdin EOF", async (con
 		assert.equal(await work, 1, `output fails first: ${outputFailsFirst}`);
 		assert.equal(error, "ecad: write failed\n");
 	}
+});
+
+test("stdio module reports a reply write that fails after stdin EOF", async (context) => {
+	const fixture = await drawing(context);
+	const input = new PassThrough();
+	let submitted!: () => void;
+	const replied = new Promise<void>((resolve) => { submitted = resolve; });
+	const output = new Writable({
+		write(_chunk, _encoding, callback) {
+			submitted();
+			setTimeout(() => callback(new Error("write failed")), 50);
+		},
+	});
+	let error = "";
+	const errors = new PassThrough();
+	errors.on("data", (chunk) => { error += chunk; });
+	const work = runCli(["mcp"], { env: fixture.env, input, output, error: errors });
+	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } })}\n`);
+	await replied;
+	input.end();
+	assert.equal(await work, 1);
+	assert.equal(error, "ecad: write failed\n");
 });
 
 test("stdio module shortens long errors and fails when the transport closes after an oversized message", async (context) => {
