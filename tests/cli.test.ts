@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { PassThrough, Readable } from "node:stream";
 import { test, type TestContext } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createLocalDrawing, runCli } from "@ecad/cli";
 import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
@@ -202,6 +203,16 @@ test("CLI recovers a lock left by an exited process", async (context) => {
 	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
 });
 
+test("CLI recovers a stale lock beside a drawing with a long file name", async (context) => {
+	const fixture = await drawing(context);
+	// 240 bytes, so the history name (253 bytes) still fits in 255.
+	const path = join(fixture.directory, `${"d".repeat(231)}.ecaddraw`);
+	await writeFile(`${path}.lock`, lockContent({ pid: await exitedPid() }));
+	const result = await startCli(["--drawing", path, "--timeout", "25", "getDrawing"]).result;
+	assert.equal(result.code, 0, result.stderr || result.stdout);
+	assert.deepEqual(await readdir(fixture.directory), []);
+});
+
 test("CLI keeps locks whose owner is running or cannot be checked", async (context) => {
 	const fixture = await drawing(context);
 	const lock = `${fixture.path}.lock`;
@@ -228,12 +239,17 @@ test("CLI keeps locks whose owner is running or cannot be checked", async (conte
 	}
 });
 
-test("CLI keeps a lock when neither side recorded a PID namespace or boot ID", { skip: !linux }, async (context) => {
+test("CLI keeps a lock when it cannot trust its own PID namespace, boot ID or /proc", { skip: !ownStartTime }, async (context) => {
 	const fixture = await drawing(context);
 	const lock = `${fixture.path}.lock`;
 	const hideIdentity = fileURLToPath(new URL("./helpers/hide-linux-identity.ts", import.meta.url));
-	for (const field of ["pidNamespace", "bootId"]) {
-		const content = lockContent({ pid: await exitedPid(), [field]: undefined });
+	const cases = [
+		["pidNamespace", lockContent({ pid: await exitedPid(), pidNamespace: undefined })],
+		["bootId", lockContent({ pid: await exitedPid(), bootId: undefined })],
+		// With its parent's /proc, a namespace would read another process's start time.
+		["ownProc", lockContent({ pid: process.pid, startTime: "-1" })],
+	];
+	for (const [field, content] of cases) {
 		await writeFile(lock, content);
 		const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_HIDE_IDENTITY: field }, "", { imports: [hideIdentity] }).result;
 		assert.equal(result.code, 1, `${field}: ${result.stderr || result.stdout}`);
@@ -260,10 +276,30 @@ test("CLI recovers a lock from an earlier boot even when its PID is now in use",
 
 test("local drawing module recovers a lock whose PID now belongs to a later process", { skip: !ownStartTime }, async (context) => {
 	const fixture = await drawing(context);
-	await writeFile(`${fixture.path}.lock`, lockContent({ pid: process.pid, startTime: "1" }));
+	// PID 1 usually belongs to another user, so signalling it fails with EPERM.
+	for (const pid of [process.pid, 1]) {
+		await writeFile(`${fixture.path}.lock`, lockContent({ pid, startTime: "-1" }));
+		const reply = await runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle }));
+		assert.ok(reply.ok, `PID ${pid}`);
+		assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
+	}
+});
+
+test("local drawing module recovers a lock whose owner is a zombie", { skip: !ownStartTime }, async (context) => {
+	const fixture = await drawing(context);
+	// The shell becomes sleep 60, which never collects its exited child.
+	const parent = spawn("sh", ["-c", "sleep 0.2 & echo $!; exec sleep 60"], { stdio: ["ignore", "pipe", "ignore"] });
+	context.after(() => { parent.kill(); });
+	const [line] = await once(createInterface({ input: parent.stdout }), "line");
+	let fields: string[] = [];
+	for (let attempt = 0; attempt < 500 && fields[0] !== "Z"; attempt++) {
+		await delay(10);
+		fields = (await readText(`/proc/${line}/stat`))?.split(") ")[1]?.split(" ") ?? [];
+	}
+	assert.equal(fields[0], "Z");
+	await writeFile(`${fixture.path}.lock`, lockContent({ pid: Number(line), startTime: fields[19] }));
 	const reply = await runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle }));
 	assert.ok(reply.ok);
-	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles);
 });
 
 test("CLI follows claims left by processes that exited while recovering a lock", async (context) => {
@@ -272,7 +308,7 @@ test("CLI follows claims left by processes that exited while recovering a lock",
 	await writeFile(`${fixture.path}.lock`, previous);
 	for (let level = 0; level < 4; level++) {
 		const claim = lockContent({ pid: await exitedPid() });
-		await writeFile(`${fixture.path}.lock.${JSON.parse(previous).id}.claim`, claim);
+		await writeFile(join(fixture.directory, `.ecad-claim-${JSON.parse(previous).id}`), claim);
 		previous = claim;
 	}
 	const result = await startCli(["--timeout", "25", "placeRectangle", JSON.stringify(rectangle)], fixture.env).result;
@@ -286,8 +322,8 @@ test("local drawing module stops at a cycle of claims", async (context) => {
 	const pid = await exitedPid();
 	const owner = (id: string) => JSON.stringify({ hostname: hostname(), ...system, pid, id });
 	await writeFile(`${fixture.path}.lock`, owner(first));
-	await writeFile(`${fixture.path}.lock.${first}.claim`, owner(second));
-	await writeFile(`${fixture.path}.lock.${second}.claim`, owner(first));
+	await writeFile(join(fixture.directory, `.ecad-claim-${first}`), owner(second));
+	await writeFile(join(fixture.directory, `.ecad-claim-${second}`), owner(first));
 	await assert.rejects(runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "placeRectangle", input: rectangle })), { code: "DrawingLocked" });
 	assert.equal((await readdir(fixture.directory)).length, 3);
 });
@@ -308,17 +344,17 @@ test("concurrent commands take over an abandoned lock one at a time", async (con
 test("CLI recovers after a process is killed right after creating its lock or claim", async (context) => {
 	const fixture = await drawing(context);
 	const crashOnLock = fileURLToPath(new URL("./helpers/crash-on-lock.ts", import.meta.url));
-	const crashed = async (suffix: string) => {
-		const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_CRASH_SUFFIX: suffix }, "", { imports: [crashOnLock] }).result;
+	const crashed = async (pattern: string) => {
+		const result = await startCli(["placeRectangle", JSON.stringify(rectangle)], { ...fixture.env, ECAD_TEST_CRASH_PATTERN: pattern }, "", { imports: [crashOnLock] }).result;
 		assert.equal(result.signal, "SIGKILL", result.stderr);
 	};
 	const visible = async () => (await readdir(fixture.directory)).filter((name) => !name.startsWith("."));
-	await crashed(".lock");
+	await crashed("\\.lock$");
 	assert.deepEqual(await visible(), ["drawing.ecaddraw.lock"]);
 	assert.equal(typeof JSON.parse(await readFile(`${fixture.path}.lock`, "utf8")).id, "string");
-	await crashed(".claim");
-	assert.equal((await visible()).filter((name) => name.endsWith(".claim")).length, 1);
-	assert.ok((await readdir(fixture.directory)).some((name) => name.startsWith(".drawing.ecaddraw.lock.") && name.endsWith(".tmp")), "the killed processes left staged copies");
+	await crashed("^\\.ecad-claim-");
+	assert.equal((await readdir(fixture.directory)).filter((name) => name.startsWith(".ecad-claim-")).length, 1);
+	assert.ok((await readdir(fixture.directory)).some((name) => name.startsWith(".ecad-lock-") && name.endsWith(".tmp")), "the killed processes left staged copies");
 	await call(fixture.env, "placeRectangle", rectangle);
 	assert.deepEqual(new Set(await readdir(fixture.directory)), drawingFiles, "recovery removes the staged copies too");
 	assert.equal((await fixture.read()).shapes.length, 1);
@@ -337,10 +373,10 @@ test("saving keeps the drawing and history file modes", { skip: process.platform
 	const historyPath = `${fixture.path}.history.json`;
 	const local = createLocalDrawing({ path: fixture.path });
 	await writeFile(fixture.path, JSON.stringify({ shapes: [] }));
-	await chmod(fixture.path, 0o600);
+	await chmod(fixture.path, 0o4700);
 	assert.ok((await runEffect(local.execute({ type: "placeRectangle", input: rectangle }))).ok);
-	assert.equal(await fileMode(fixture.path), 0o600);
-	assert.equal(await fileMode(historyPath), 0o600, "a new history is no more readable than its drawing");
+	assert.equal(await fileMode(fixture.path), 0o4700);
+	assert.equal(await fileMode(historyPath), 0o700, "a new history copies the drawing's permission bits");
 	await chmod(fixture.path, 0o664);
 	await chmod(historyPath, 0o640);
 	await call(fixture.env, "placeRectangle", rectangle);
@@ -438,14 +474,17 @@ test("stdio module shortens long errors and fails when the transport closes afte
 	const errors = new PassThrough();
 	errors.on("data", (chunk) => { error += chunk; });
 	const work = runCli(["mcp"], { env: fixture.env, input, output: new PassThrough(), error: errors });
+	input.write("\u001b]0;title\u0007\r\n");
 	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 99, result: { padding: "x".repeat(200_000) } })}\n`);
 	input.write("x".repeat(11 * 1024 * 1024));
 	assert.equal(await work, 1);
 	const lines = error.trimEnd().split("\n");
-	assert.equal(lines.length, 3, error.slice(0, 2000));
-	assert.ok(lines[0].startsWith("ecad: MCP error: Received a response for an unknown message ID") && lines[0].length < 600, lines[0].slice(0, 200));
-	assert.match(lines[1], /^ecad: MCP error: ReadBuffer exceeded maximum size/);
-	assert.equal(lines[2], "ecad: The MCP transport closed after an input error.");
+	assert.equal(lines.length, 4, error.slice(0, 2000));
+	assert.match(lines[0], /^ecad: MCP error: .*not valid JSON/);
+	assert.ok(lines.every((entry) => !/[\x00-\x1f\x7f]/.test(entry)), JSON.stringify(lines[0]));
+	assert.ok(lines[1].startsWith("ecad: MCP error: Received a response for an unknown message ID") && lines[1].length < 600, lines[1].slice(0, 200));
+	assert.match(lines[2], /^ecad: MCP error: ReadBuffer exceeded maximum size/);
+	assert.equal(lines[3], "ecad: The MCP transport closed after an input error.");
 	input.destroy();
 });
 

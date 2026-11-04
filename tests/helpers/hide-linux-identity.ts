@@ -1,6 +1,7 @@
 // Preload for CLI tests: makes the Linux identity files named in
-// ECAD_TEST_HIDE_IDENTITY (pidNamespace, bootId) unreadable, as in a
-// restricted container.
+// ECAD_TEST_HIDE_IDENTITY (pidNamespace, bootId, ownProc) unreadable, as in a
+// restricted container. Hiding /proc/self acts like a PID namespace that kept
+// its parent's /proc.
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 
@@ -8,6 +9,7 @@ const hidden = new Set((process.env.ECAD_TEST_HIDE_IDENTITY ?? "").split(","));
 const paths = new Map([
 	["/proc/self/ns/pid", "pidNamespace"],
 	["/proc/sys/kernel/random/boot_id", "bootId"],
+	["/proc/self", "ownProc"],
 ]);
 const blocked = (path: unknown) => hidden.has(paths.get(String(path)) ?? "");
 const denied = (path: unknown) =>

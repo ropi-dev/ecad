@@ -80,11 +80,12 @@ async function fileMode(path: string) {
 // A replacement keeps the replaced file's mode, which the umask could narrow.
 // A new file gets the default mode minus the umask. The mode is set after
 // writing because a write clears the set-user-ID and set-group-ID bits.
-async function stageFile(path: string, content: string, mode?: number) {
-	const temporary = join(
-		dirname(path),
-		`.${basename(path)}.${randomUUID()}.tmp`,
-	);
+async function stageFile(
+	path: string,
+	content: string,
+	mode?: number,
+	temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`),
+) {
 	try {
 		const handle = await open(temporary, "wx", mode ?? 0o666);
 		try {
@@ -130,7 +131,9 @@ async function publish(
 	});
 	const drawingMode = await fileMode(path);
 	// The history contains the drawing, so a new one is no more readable.
-	const historyMode = (await fileMode(historyPath)) ?? drawingMode;
+	const historyMode =
+		(await fileMode(historyPath)) ??
+		(drawingMode === undefined ? undefined : drawingMode & 0o777);
 	const staged: string[] = [];
 	let publishedHistory = false;
 	try {
@@ -191,14 +194,31 @@ const readText = (path: string) =>
 		() => undefined,
 	);
 
-// The process start time in clock ticks since boot, which tells a process
-// apart from a later one that reuses its PID. Linux only.
-async function processStartTime(pid: number | "self") {
-	if (process.platform !== "linux") return undefined;
+// Reports whether /proc describes this process's PID namespace. A namespace
+// that kept its parent's /proc numbers the processes there differently.
+let ownProc: Promise<boolean> | undefined;
+
+function hasOwnProc() {
+	ownProc ??=
+		process.platform === "linux"
+			? readlink("/proc/self").then(
+					(pid) => pid === String(process.pid),
+					() => false,
+				)
+			: Promise.resolve(false);
+	return ownProc;
+}
+
+// The state and start time, in clock ticks since boot, of a process. The start
+// time tells a process apart from a later one that reuses its PID.
+async function processStatus(pid: number | "self") {
+	if (!(await hasOwnProc())) return undefined;
 	const status = await readText(`/proc/${pid}/stat`);
-	// The command name in parentheses can contain spaces. Field 22 is the
-	// start time, and the fields after the name start at field 3.
-	return status?.slice(status.lastIndexOf(")") + 2).split(" ")[19];
+	if (!status) return undefined;
+	// The command name in parentheses can contain spaces. The fields after it
+	// start at field 3, the state, and field 22 is the start time.
+	const fields = status.slice(status.lastIndexOf(")") + 2).split(" ");
+	return { state: fields[0], startTime: fields[19] };
 }
 
 // Identifies this computer, boot and PID namespace where the system allows it.
@@ -209,13 +229,13 @@ let systemIdentity:
 function currentSystem() {
 	systemIdentity ??= (async () => {
 		if (process.platform !== "linux") return {};
-		const [machineId, bootId, pidNamespace, startTime] = await Promise.all([
+		const [machineId, bootId, pidNamespace, status] = await Promise.all([
 			readText("/etc/machine-id"),
 			readText("/proc/sys/kernel/random/boot_id"),
 			readlink("/proc/self/ns/pid").catch(() => undefined),
-			processStartTime("self"),
+			processStatus("self"),
 		]);
-		return { machineId, bootId, pidNamespace, startTime };
+		return { machineId, bootId, pidNamespace, startTime: status?.startTime };
 	})();
 	return systemIdentity;
 }
@@ -262,14 +282,24 @@ async function hasExited(owner: LockOwner) {
 	try {
 		process.kill(owner.pid, 0);
 	} catch (error) {
-		return hasCode(error, "ESRCH");
+		if (hasCode(error, "ESRCH")) return true;
+		// Another user's process can reuse the PID too.
+		if (!hasCode(error, "EPERM")) return false;
 	}
 	if (owner.startTime === undefined) return false;
-	const startTime = await processStartTime(owner.pid);
-	return startTime !== undefined && startTime !== owner.startTime;
+	const status = await processStatus(owner.pid);
+	if (!status) return false;
+	// A zombie has exited and only waits for its parent to collect it.
+	return status.state === "Z" || status.startTime !== owner.startTime;
 }
 
 const linkUnsupported = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
+
+// Staged lock copies and claims have short names, so a long drawing name
+// still fits. Owner IDs are unique, so drawings in one folder never collide.
+const lockCopyPrefix = ".ecad-lock-";
+const claimPath = (lockPath: string, owner: LockOwner) =>
+	join(dirname(lockPath), `.ecad-claim-${owner.id}`);
 
 // Creates the file at path with the owner's metadata unless the path exists.
 // Linking a complete, synced copy publishes the metadata with the file, so a
@@ -283,7 +313,12 @@ async function createLockFile(path: string, owner: LockOwner) {
 		if (!hasCode(error, "ENOENT")) throw error;
 	}
 	const content = JSON.stringify(owner);
-	const staged = await stageFile(path, content, 0o600);
+	const staged = await stageFile(
+		path,
+		content,
+		0o600,
+		join(dirname(path), `${lockCopyPrefix}${randomUUID()}.tmp`),
+	);
 	try {
 		await link(staged, path);
 		return true;
@@ -310,18 +345,24 @@ async function createLockFile(path: string, owner: LockOwner) {
 }
 
 // A process killed while creating a lock or claim can leave its staged copy.
-// The copy names its owner, so remove the copies whose owner has exited.
-async function removeAbandonedCopies(lockPath: string) {
-	const directory = dirname(lockPath);
-	const prefix = `.${basename(lockPath)}.`;
+// A complete copy names its owner, so it is removed once that owner has exited.
+// Only its creator links a copy, and staging takes moments, so an incomplete
+// copy older than a minute is abandoned too.
+async function removeAbandonedCopies(directory: string) {
 	const names = await readdir(directory).catch(() => []);
 	await Promise.all(
 		names
-			.filter((name) => name.startsWith(prefix) && name.endsWith(".tmp"))
+			.filter(
+				(name) => name.startsWith(lockCopyPrefix) && name.endsWith(".tmp"),
+			)
 			.map(async (name) => {
 				const path = join(directory, name);
 				const owner = await readLockOwner(path);
-				if (owner && (await hasExited(owner))) await rm(path, { force: true });
+				const abandoned =
+					owner === null
+						? Date.now() - (await stat(path)).mtimeMs > 60_000
+						: owner !== undefined && (await hasExited(owner));
+				if (abandoned) await rm(path, { force: true });
 			}),
 	);
 }
@@ -341,9 +382,9 @@ async function removeAbandonedLock(lockPath: string, owner: LockOwner) {
 		if (current === null || visited.has(current.id)) return false;
 		if (!(await hasExited(current))) return false;
 		visited.add(current.id);
-		const claimPath = `${lockPath}.${current.id}.claim`;
-		if (!(await createLockFile(claimPath, owner))) {
-			target = claimPath;
+		const claim = claimPath(lockPath, current);
+		if (!(await createLockFile(claim, owner))) {
+			target = claim;
 			continue;
 		}
 		try {
@@ -351,9 +392,9 @@ async function removeAbandonedLock(lockPath: string, owner: LockOwner) {
 			if (latest?.id !== current.id) return latest === undefined;
 			await rm(target, { force: true });
 		} finally {
-			await rm(claimPath, { force: true });
+			await rm(claim, { force: true });
 		}
-		await removeAbandonedCopies(lockPath);
+		await removeAbandonedCopies(dirname(lockPath)).catch(() => {});
 		return true;
 	}
 }

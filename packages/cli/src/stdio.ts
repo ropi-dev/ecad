@@ -6,11 +6,13 @@ import {
 } from "./drawing.ts";
 
 // Schema failures carry every union branch, so summarize them in one line.
-// Other messages can quote a whole input message, so shorten them.
+// Other messages can quote a whole input message, so shorten them and drop
+// control characters that a terminal would interpret.
 function describeMcpError(cause: Error) {
 	if (cause.name === "ZodError")
 		return "Ignored a message that is not valid JSON-RPC.";
-	const message = cause.message.replace(/\s*\n\s*/g, " ");
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: removes them.
+	const message = cause.message.replace(/[\s\x00-\x1f\x7f-\x9f]+/g, " ");
 	return message.length > 500 ? `${message.slice(0, 500)}…` : message;
 }
 
