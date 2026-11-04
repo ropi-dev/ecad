@@ -303,21 +303,27 @@ test("desktop windows saving one project take its lock file, so the second save 
 		const created = await first.create("Shared", parent);
 		const second = new DesktopProjects();
 		await second.openDirectory(created.directory);
-		const [kept, lost] = await Promise.allSettled([
+		const ids = [shape.id, 8];
+		const results = await Promise.allSettled([
 			first.save(created.directory, { shapes: [shape], symbols: [] }),
 			second.save(created.directory, {
-				shapes: [{ ...shape, id: 8 }],
+				shapes: [{ ...shape, id: ids[1] }],
 				symbols: [],
 			}),
 		]);
-		assert.equal(kept.status, "fulfilled");
-		assert.equal(lost.status, "rejected");
-		assert.ok(lost.reason instanceof ProjectConflict);
+		// Either window may take the lock first; exactly one save must win.
+		const winner = results.findIndex((result) => result.status === "fulfilled");
+		assert.notEqual(winner, -1);
+		const lost = results[1 - winner];
+		assert.equal(lost?.status, "rejected");
+		assert.ok(
+			lost?.status === "rejected" && lost.reason instanceof ProjectConflict,
+		);
 		assert.deepEqual(
 			(await new DesktopProjects().openDirectory(created.directory)).shapes.map(
 				(saved) => saved.id,
 			),
-			[shape.id],
+			[ids[winner]],
 		);
 		const directory = await createDesktopProjectDirectory(created.directory);
 		const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
