@@ -75,25 +75,32 @@ import {
 	clipboardSelectionText,
 	writeSelectionClipboard,
 } from "#/drawing/clipboard-browser.ts";
-import type { LineStyle } from "#/drawing/line-style.ts";
+import { placedSelection } from "#/drawing/command-selection.ts";
 import { isNetLabel } from "#/drawing/named-nets.ts";
+import {
+	createPlacementShape,
+	isPlacementTool,
+	type PlacementTool,
+	placementLabel,
+	placementSnapsToConnection,
+} from "#/drawing/placement.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import {
-	boxBorder,
+	applySelectionEdit,
+	type SelectionEdit,
+} from "#/drawing/selection-edit.ts";
+import {
 	canSelectShape,
 	canSelectSymbolChild,
 	constrainWireEndpoint,
 	containsSelection,
 	drawShape,
 	type EditorShape,
-	editShapeAttribute,
 	findWireConnection,
 	hitShape,
 	intersectsSelection,
-	isBasicShape,
 	moveShapes,
 	moveSymbolChild,
-	normalizeNetSymbol,
 	openPins,
 	type ResizeHandle,
 	replaceSymbolChild,
@@ -101,7 +108,6 @@ import {
 	resizeShape,
 	resizeSymbolChild,
 	routeWire,
-	type ShapeAttribute,
 	type ShapeKind,
 	shapeBounds,
 	snapPoint,
@@ -120,11 +126,11 @@ import {
 	createSymbolFromShapes,
 	type SymbolDefinition,
 } from "#/drawing/symbols.ts";
-import type { TextAlignment } from "#/drawing/text-alignment.ts";
 import type { Point } from "#/drawing/types.ts";
 import { formatInches, formatMils, SCHEMATIC_STEP } from "#/drawing/units.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { screenToWorld, worldToScreen } from "#/engine/camera.ts";
+import { measureText } from "#/engine/drawing/text.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { errorMessage } from "#/lib/error-message.ts";
@@ -145,7 +151,6 @@ import { viewControlButtonClassName } from "../viewer/ViewControls3D";
 import { HistoryControls } from "./HistoryControls";
 import { SelectionAttributes } from "./SelectionAttributes";
 import { SymbolPicker } from "./SymbolPicker";
-import { createTextShape, updateText } from "./text";
 import { useEditorScene } from "./useEditorScene";
 
 const tools = [
@@ -624,21 +629,13 @@ function EditorCanvas({
 	const placeShapes = (next: EditorShape[], label: string) => {
 		const previous = store.getSnapshot();
 		const result = execute(placeShapesEffect(next, label));
-		if (result) {
-			// A route's last leg can overlap the trunk. Its split pieces still belong
-			// to the existing wire, even when normalization gives one the new leg's ID.
-			const splitExistingWires = new Set(
-				previous.shapes.flatMap((shape) => {
-					const pieces = result.idsBySource.get(shape.id) ?? [];
-					return shape.kind === "wire" && pieces.length > 1 ? pieces : [];
-				}),
-			);
+		if (result)
 			acceptEdit(
 				result,
 				previous.history.currentId,
-				new Set(result.ids.filter((id) => !splitExistingWires.has(id))),
+				placedSelection(previous.shapes, result),
 			);
-		} else setPreviewShapes(null);
+		else setPreviewShapes(null);
 	};
 	const commitReplacements = (replacements: EditorShape[], label: string) => {
 		const previous = store.getSnapshot();
@@ -655,22 +652,20 @@ function EditorCanvas({
 		if (result) acceptEdit(result, previousHistoryId);
 		else setPreviewShapes(null);
 	};
-	const editChild = (child: EditorShape) => {
-		if (!selectedSymbol || !selectedChild || child.kind === "symbol") return;
-		commitReplacements(
-			[replaceSymbolChild(selectedSymbol, selectedChild.key, child)],
-			"Edit symbol child",
-		);
-	};
-	const changeSelectionLock = (locked: boolean) => {
-		if (selectedChild) {
-			editChild({ ...selectedChild.shape, locked });
-			setSelectedChildKey(null);
-		} else
-			commitReplacements(
-				selected.map((shape) => ({ ...shape, locked })),
-				locked ? "Lock selection" : "Unlock selection",
-			);
+	const editSelection = (edit: SelectionEdit) => {
+		const result = applySelectionEdit(edit, {
+			selection: selected,
+			child:
+				selectedSymbol && selectedChild
+					? { symbol: selectedSymbol, child: selectedChild }
+					: undefined,
+			shapes: currentShapes.current,
+			nextId: nextId.current,
+			allowLocked,
+			measureText,
+		});
+		if (result) commitReplacements(result.replacements, result.label);
+		if (edit.kind === "lock" && selectedChild) setSelectedChildKey(null);
 	};
 
 	const previewReplacements = (
@@ -684,6 +679,14 @@ function EditorCanvas({
 			...replacements.filter((shape) => !existing.has(shape.id)),
 		]);
 	};
+	const placementAnchor = (tool: PlacementTool, point: Point, start: Point) =>
+		placementSnapsToConnection(tool)
+			? (findWireConnection(
+					currentShapes.current,
+					point,
+					8 / (snapshot.current?.camera.scale ?? 1),
+				) ?? start)
+			: start;
 	const previewWire = (point: Point) => {
 		const active = wireChain.current;
 		if (!active) return null;
@@ -1351,33 +1354,16 @@ function EditorCanvas({
 								shape = connection.shape;
 							}
 						}
-						if (tool === "text" || tool === "net" || tool === "supply") {
-							const anchor =
-								tool === "text"
-									? start
-									: (findWireConnection(
-											currentShapes.current,
-											point,
-											8 / (snapshot.current?.camera.scale ?? 1),
-										) ?? start);
-							const text =
-								tool === "text"
-									? createTextShape(nextId.current, anchor)
-									: updateText(
-											{
-												...createTextShape(nextId.current, anchor),
-												electrical: tool,
-												horizontalAlign: "left",
-												verticalAlign: "bottom",
-											},
-											tool === "supply" ? "GND" : "NET",
-										);
-							placeShapes(
-								[text],
-								tool === "text" ? "Draw text" : "Place net label",
+						if (isPlacementTool(tool)) {
+							const placed = createPlacementShape(
+								tool,
+								nextId.current,
+								placementAnchor(tool, point, start),
+								measureText,
 							);
+							placeShapes([placed], placementLabel(tool));
 							setTool("select");
-							setTextFocusId(text.id);
+							if (placed.kind === "text") setTextFocusId(placed.id);
 							return;
 						}
 						if (tool === "symbol") {
@@ -1390,23 +1376,6 @@ function EditorCanvas({
 							);
 							placeShapes([symbol], `Insert ${symbol.attributes.name}`);
 							setSymbolPreview(null);
-							setTool("select");
-							return;
-						}
-						if (tool === "pin" || tool === "no-connect") {
-							const anchor =
-								tool === "no-connect"
-									? (findWireConnection(
-											currentShapes.current,
-											point,
-											8 / (snapshot.current?.camera.scale ?? 1),
-										) ?? start)
-									: start;
-							const pin = drawShape(nextId.current, tool, anchor, anchor);
-							placeShapes(
-								[pin],
-								tool === "pin" ? "Place pin" : "Place no connect",
-							);
 							setTool("select");
 							return;
 						}
@@ -1541,38 +1510,19 @@ function EditorCanvas({
 								: "not-allowed";
 							return;
 						}
-						if (
-							point &&
-							(tool === "pin" ||
-								tool === "no-connect" ||
-								tool === "text" ||
-								tool === "net" ||
-								tool === "supply")
-						) {
-							const start = snapPoint(point, snapEnabled ? gridStep : 0);
-							const anchor =
-								tool === "net" || tool === "supply" || tool === "no-connect"
-									? (findWireConnection(
-											currentShapes.current,
-											point,
-											8 / (snapshot.current?.camera.scale ?? 1),
-										) ?? start)
-									: start;
-							const shape =
-								tool === "pin" || tool === "no-connect"
-									? drawShape(nextId.current, tool, anchor, anchor)
-									: tool === "text"
-										? createTextShape(nextId.current, anchor)
-										: updateText(
-												{
-													...createTextShape(nextId.current, anchor),
-													electrical: tool,
-													horizontalAlign: "left",
-													verticalAlign: "bottom",
-												},
-												tool === "supply" ? "GND" : "NET",
-											);
-							const bounds = shapeBounds(shape);
+						if (point && isPlacementTool(tool)) {
+							const bounds = shapeBounds(
+								createPlacementShape(
+									tool,
+									nextId.current,
+									placementAnchor(
+										tool,
+										point,
+										snapPoint(point, snapEnabled ? gridStep : 0),
+									),
+									measureText,
+								),
+							);
 							setPlacementGuide({
 								tool,
 								center: {
@@ -1922,7 +1872,9 @@ function EditorCanvas({
 										tooltip={
 											selectionLocked ? "Unlock selection" : "Lock selection"
 										}
-										onClick={() => changeSelectionLock(!selectionLocked)}
+										onClick={() =>
+											editSelection({ kind: "lock", locked: !selectionLocked })
+										}
 									>
 										{selectionLocked ? (
 											<Unlock size={18} aria-hidden="true" />
@@ -2156,8 +2108,9 @@ function EditorCanvas({
 					)}
 				</div>
 				<SelectionAttributes
-					shapes={selected}
-					onLockChange={changeSelectionLock}
+					shapes={selectedChild ? [selectedChild.shape] : selected}
+					isSymbolChild={selectedChild !== undefined}
+					onEdit={editSelection}
 					onEditSymbol={
 						editTarget
 							? () => {
@@ -2172,164 +2125,17 @@ function EditorCanvas({
 							: undefined
 					}
 					onCreateSymbol={isSymbol ? undefined : () => setCreatingSymbol(true)}
-					onPinVisibilityChange={(attribute, value) => {
-						if (selected.length === 1 && selected[0].kind === "pin")
-							commitReplacements(
-								[{ ...selected[0], [attribute]: value }],
-								`Change pin ${attribute}`,
-							);
-					}}
-					onPinAttributeChange={(attribute, value) => {
-						if (selected.length === 1 && selected[0].kind === "pin")
-							commitReplacements(
-								[{ ...selected[0], [attribute]: value }],
-								`Change pin ${attribute}`,
-							);
-					}}
-					onSymbolAttributeChange={(attribute, value) => {
-						commitReplacements(
-							selected.map((shape) =>
-								shape.kind === "symbol"
-									? {
-											...shape,
-											attributes: { ...shape.attributes, [attribute]: value },
-										}
-									: shape,
-							),
-							`Change symbol ${attribute}`,
-						);
-					}}
-					onNetSymbolChange={
-						isSymbol
-							? undefined
-							: (netSymbol) => {
-									commitReplacements(
-										selected
-											.filter((shape) => shape.kind === "symbol")
-											.map((shape) =>
-												normalizeNetSymbol({ ...shape, netSymbol }),
-											),
-										"Change net symbol",
-									);
-								}
+					allowNetEdits={!isSymbol}
+					snapStep={
+						selectedChild
+							? snapEnabled
+								? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
+								: 0
+							: selectionSnapStep
 					}
-					snapStep={selectionSnapStep}
 					onClear={() => applySelection(new Set())}
 					textFocusId={textFocusId}
 					onTextFocus={() => setTextFocusId(null)}
-					onTextAlignmentChange={(alignment) => {
-						commitReplacements(
-							selected
-								.filter((shape) => shape.kind === "text")
-								.map((shape) => ({ ...shape, ...alignment })),
-							"Align text",
-						);
-					}}
-					onElectricalChange={
-						isSymbol
-							? undefined
-							: (electrical) => {
-									if (selected.length === 1 && selected[0].kind === "text")
-										commitReplacements(
-											[
-												{
-													...selected[0],
-													electrical,
-													...(electrical === "net"
-														? {}
-														: { circuitNet: undefined }),
-												},
-											],
-											"Change label role",
-										);
-								}
-					}
-					onTextChange={(text) => {
-						if (selected.length === 1 && selected[0].kind === "text")
-							commitReplacements([updateText(selected[0], text)], "Edit text");
-					}}
-					onLineStyleChange={(lineStyle) => {
-						commitReplacements(
-							selected.flatMap<EditorShape>((shape) => {
-								if (isBasicShape(shape)) return [{ ...shape, lineStyle }];
-								const border =
-									shape.kind === "symbol" ? boxBorder(shape) : undefined;
-								return border && shape.kind === "symbol"
-									? [
-											replaceSymbolChild(shape, border.key, {
-												...border.shape,
-												lineStyle,
-											}),
-										]
-									: [];
-							}),
-							"Change line style",
-						);
-					}}
-					onAttributeChange={(attribute, value) => {
-						if (!Number.isFinite(value)) return;
-						const replacements =
-							attribute === "x" || attribute === "y"
-								? moveShapes(
-										selected,
-										{
-											x: attribute === "x" ? value - selected[0].x : 0,
-											y: attribute === "y" ? value - selected[0].y : 0,
-										},
-										0,
-										selected[0],
-										currentShapes.current,
-										nextId.current,
-										allowLocked,
-									)
-								: selected.map((shape) =>
-										editShapeAttribute(shape, attribute, value),
-									);
-						commitReplacements(
-							replacements,
-							`Change ${attribute === "lineWidth" ? "line width" : attribute === "fontSize" ? "font size" : attribute}`,
-						);
-					}}
-					{...(selectedChild && selectedSymbol
-						? {
-								shapes: [selectedChild.shape],
-								isSymbolChild: true,
-								snapStep: snapEnabled
-									? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
-									: 0,
-								onClear: () => applySelection(new Set()),
-								onAttributeChange: (attribute: ShapeAttribute, value: number) =>
-									editChild(
-										editShapeAttribute(selectedChild.shape, attribute, value),
-									),
-								onLineStyleChange: (lineStyle: LineStyle) => {
-									if (isBasicShape(selectedChild.shape))
-										editChild({ ...selectedChild.shape, lineStyle });
-								},
-								onTextChange: (text: string) => {
-									if (selectedChild.shape.kind === "text")
-										editChild(updateText(selectedChild.shape, text));
-								},
-								onTextAlignmentChange: (alignment: TextAlignment) => {
-									if (selectedChild.shape.kind === "text")
-										editChild({ ...selectedChild.shape, ...alignment });
-								},
-								onPinVisibilityChange: (
-									attribute: "showName" | "showNumber",
-									value: boolean,
-								) => {
-									if (selectedChild.shape.kind === "pin")
-										editChild({ ...selectedChild.shape, [attribute]: value });
-								},
-								onPinAttributeChange: (
-									attribute: "name" | "number",
-									value: string,
-								) => {
-									if (selectedChild.shape.kind === "pin")
-										editChild({ ...selectedChild.shape, [attribute]: value });
-								},
-							}
-						: {})}
 				/>
 			</div>
 			{creatingSymbol && (
