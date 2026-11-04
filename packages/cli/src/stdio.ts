@@ -1,7 +1,7 @@
 import type { Readable, Writable } from "node:stream";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
-	createLocalDrawingMcpServer,
+	createLocalDrawingSession,
 	type LocalDrawingOptions,
 } from "./drawing.ts";
 
@@ -38,10 +38,13 @@ async function flushOutput(output: Writable, signal?: AbortSignal) {
 // Removes a stream's error listener once no writes are pending. Writes can
 // still be pending after an abort. Their failure no longer changes the result,
 // but must not become an unhandled stream error, so the listener stays until
-// they finish, or for good if they fail.
+// they finish, or for good if they fail. A destroyed stream can still emit its
+// error, so the listener stays until the stream closes.
 function releaseStream(stream: Writable, listener: (cause: Error) => void) {
-	if (stream.destroyed || stream.writableLength === 0)
-		stream.off("error", listener);
+	if (stream.destroyed) {
+		if (stream.closed) stream.off("error", listener);
+		else stream.once("close", () => stream.off("error", listener));
+	} else if (stream.writableLength === 0) stream.off("error", listener);
 	else if (!stream.writableEnded)
 		stream.write("", (failed) => {
 			if (!failed) stream.off("error", listener);
@@ -58,7 +61,7 @@ export async function serveStdioMcp(
 ) {
 	const { input, output, error = process.stderr, signal } = options;
 	signal?.throwIfAborted();
-	const server = createLocalDrawingMcpServer(options);
+	const { server, settled } = createLocalDrawingSession(options);
 	let stopping = false;
 	let failure: Error | undefined;
 	let resolve!: () => void;
@@ -104,6 +107,7 @@ export async function serveStdioMcp(
 		input.off("close", finish);
 		signal?.removeEventListener("abort", finish);
 		await server.close();
+		await settled();
 		await flushOutput(output, signal);
 		input.off("error", fail);
 		releaseStream(output, fail);

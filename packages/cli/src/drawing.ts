@@ -494,68 +494,85 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 		| undefined;
 	if (!Number.isSafeInteger(timeout) || timeout <= 0)
 		throw new Error("The timeout must be a positive integer in milliseconds.");
+	// Interrupting an operation aborts its signal without waiting for it, so the
+	// operations are tracked until they finish, including their lock release.
+	const running = new Set<Promise<unknown>>();
+	const track = <T>(work: Promise<T>) => {
+		running.add(work);
+		const forget = () => running.delete(work);
+		work.then(forget, forget);
+		return work;
+	};
 	return {
+		// Resolves once every started operation has finished.
+		async settled() {
+			while (running.size) await Promise.allSettled([...running]);
+		},
 		execute(operation: DrawingOperation) {
 			return Effect.tryPromise({
 				try: (signal) =>
-					measurePerformanceAsync("drawing.local-command", async () => {
-						const path = await realpath(filePath).catch((error) => {
-							if (!hasCode(error, "ENOENT")) throw error;
-							return realpath(dirname(filePath)).then((directory) =>
-								join(directory, basename(filePath)),
-							);
-						});
-						return withDrawingLock(path, timeout, signal, async () => {
-							const content = await readOptional(path);
-							const file = fileSchema.parse(
-								content === undefined ? { shapes: [] } : JSON.parse(content),
-							);
-							const historyContent = await readOptional(`${path}.history.json`);
-							const saved =
-								historyContent === undefined
-									? undefined
-									: savedHistorySchema.parse(JSON.parse(historyContent));
-							if (
-								saved?.drawingHash === hash(content) &&
-								JSON.stringify(saved.snapshot.shapes) !==
-									JSON.stringify(file.shapes)
-							) {
-								throw new LocalDrawingError({
-									code: "DrawingHistoryMismatch",
-									message: "The saved history does not match the drawing.",
-								});
-							}
-							if (operation.type !== "getDrawing") cachedRead = undefined;
-							const store =
-								cachedRead?.path === path &&
-								cachedRead.content === content &&
-								cachedRead.historyContent === historyContent
-									? cachedRead.store
-									: saved?.drawingHash === hash(content)
-										? restoreDrawingStore(saved.snapshot)
-										: createDrawingStore(file.shapes);
-							if (operation.type === "getDrawing")
-								cachedRead = { path, content, historyContent, store };
-							const before = store.getSnapshot();
-							signal.throwIfAborted();
-							const reply = Effect.runSync(
-								executeDrawingOperation(operation).pipe(
-									Effect.provideService(DrawingStore, store),
-								),
-							);
-							if (reply.ok && store.getSnapshot() !== before) {
-								signal.throwIfAborted();
-								await publish(
-									path,
-									content,
-									historyContent,
-									file,
-									store.getSnapshot(),
+					track(
+						measurePerformanceAsync("drawing.local-command", async () => {
+							const path = await realpath(filePath).catch((error) => {
+								if (!hasCode(error, "ENOENT")) throw error;
+								return realpath(dirname(filePath)).then((directory) =>
+									join(directory, basename(filePath)),
 								);
-							}
-							return reply;
-						});
-					}),
+							});
+							return withDrawingLock(path, timeout, signal, async () => {
+								const content = await readOptional(path);
+								const file = fileSchema.parse(
+									content === undefined ? { shapes: [] } : JSON.parse(content),
+								);
+								const historyContent = await readOptional(
+									`${path}.history.json`,
+								);
+								const saved =
+									historyContent === undefined
+										? undefined
+										: savedHistorySchema.parse(JSON.parse(historyContent));
+								if (
+									saved?.drawingHash === hash(content) &&
+									JSON.stringify(saved.snapshot.shapes) !==
+										JSON.stringify(file.shapes)
+								) {
+									throw new LocalDrawingError({
+										code: "DrawingHistoryMismatch",
+										message: "The saved history does not match the drawing.",
+									});
+								}
+								if (operation.type !== "getDrawing") cachedRead = undefined;
+								const store =
+									cachedRead?.path === path &&
+									cachedRead.content === content &&
+									cachedRead.historyContent === historyContent
+										? cachedRead.store
+										: saved?.drawingHash === hash(content)
+											? restoreDrawingStore(saved.snapshot)
+											: createDrawingStore(file.shapes);
+								if (operation.type === "getDrawing")
+									cachedRead = { path, content, historyContent, store };
+								const before = store.getSnapshot();
+								signal.throwIfAborted();
+								const reply = Effect.runSync(
+									executeDrawingOperation(operation).pipe(
+										Effect.provideService(DrawingStore, store),
+									),
+								);
+								if (reply.ok && store.getSnapshot() !== before) {
+									signal.throwIfAborted();
+									await publish(
+										path,
+										content,
+										historyContent,
+										file,
+										store.getSnapshot(),
+									);
+								}
+								return reply;
+							});
+						}),
+					),
 				catch: (error) =>
 					error instanceof LocalDrawingError
 						? error
@@ -568,6 +585,16 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 	};
 }
 
+// An MCP server for a local drawing, and a way to wait for its operations,
+// which closing the server interrupts without awaiting.
+export function createLocalDrawingSession(options: LocalDrawingOptions = {}) {
+	const drawing = createLocalDrawing(options);
+	return {
+		server: createDrawingMcpServer(drawing.execute),
+		settled: drawing.settled,
+	};
+}
+
 export function createLocalDrawingMcpServer(options: LocalDrawingOptions = {}) {
-	return createDrawingMcpServer(createLocalDrawing(options).execute);
+	return createLocalDrawingSession(options).server;
 }

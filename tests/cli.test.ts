@@ -671,6 +671,47 @@ test("stdio MCP exits promptly on SIGTERM while replies wait for a reader", { sk
 	assert.equal(code, 143);
 });
 
+test("CLI and stdio MCP finish releasing the lock before exiting on SIGTERM", async (context) => {
+	const fixture = await drawing(context);
+	const lockFaults = fileURLToPath(new URL("./helpers/lock-faults.ts", import.meta.url));
+	const env = { ...fixture.env, ECAD_TEST_SIGTERM_ON_RELEASE: "1" };
+	const command = await startCli(["getDrawing"], env, "", { imports: [lockFaults] }).result;
+	assert.equal(command.code, 143, command.stderr);
+	assert.deepEqual(await readdir(fixture.directory), [], "the lock was released");
+	const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } };
+	const call = { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "getDrawing", arguments: {} } };
+	// Stdin stays open, so only the signal stops the server.
+	const server = spawn(process.execPath, ["--import", "tsx", "--import", lockFaults, cliMain, "mcp"], { env: { ...process.env, ...env }, stdio: ["pipe", "ignore", "inherit"] });
+	context.after(() => { server.kill("SIGKILL"); });
+	server.stdin.write(`${JSON.stringify(initialize)}\n${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n${JSON.stringify(call)}\n`);
+	const [code] = await once(server, "exit");
+	assert.equal(code, 143);
+	assert.deepEqual(await readdir(fixture.directory), [], "the lock was released");
+});
+
+test("stdio module handles an output destroyed during abort cleanup", async (context) => {
+	const fixture = await drawing(context);
+	const input = new PassThrough();
+	let replied!: () => void;
+	const reply = new Promise<void>((resolve) => { replied = resolve; });
+	// Destruction finishes later, so the output is destroyed but has not yet
+	// emitted its error or closed when the server cleans up.
+	const output = new Writable({
+		write(_chunk, _encoding, callback) { replied(); callback(); },
+		destroy(error, callback) { setTimeout(() => callback(error), 20); },
+	});
+	const controller = new AbortController();
+	const work = runCli(["mcp"], { env: fixture.env, input, output, error: new PassThrough(), signal: controller.signal });
+	input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0.0" } } })}\n`);
+	await reply;
+	controller.abort();
+	output.destroy(new Error("destroyed"));
+	assert.equal(await work, 0);
+	await delay(50);
+	assert.ok(output.closed);
+	input.destroy();
+});
+
 test("stdio module releases input listeners when cancelled", async (context) => {
 	const fixture = await drawing(context);
 	const input = new PassThrough();

@@ -76,7 +76,7 @@ For an MCP client that launches stdio servers, use the absolute paths to the exe
 }
 ```
 
-`ecad mcp` starts a local MCP server with the same tool schemas, annotations, and results as the web MCP server. Stdout contains only MCP messages. The server logs an input line that is not JSON, or not a JSON-RPC message, to stderr and keeps serving. Closing stdin closes the server once replies already handed to stdout are written. SIGINT or SIGTERM closes it without waiting for them. A message over 10 MB, or a stdin or stdout failure, stops it with exit code 1.
+`ecad mcp` starts a local MCP server with the same tool schemas, annotations, and results as the web MCP server. Stdout contains only MCP messages. The server logs an input line that is not JSON, or not a JSON-RPC message, to stderr and keeps serving. Closing stdin closes the server once replies already handed to stdout are written. SIGINT or SIGTERM stops running commands, waits until they release the drawing lock, and exits without waiting for stdout. A message over 10 MB, or a stdin or stdout failure, stops it with exit code 1.
 
 Drawings use the app's JSON object format with a `shapes` array. Edits preserve other fields, including drawing IDs, names, and symbol library configuration. The adjacent `<drawing>.history.json` file stores undo branches and shape ID allocation across CLI calls and MCP restarts. Keep it with the drawing to retain history. An external change to the drawing starts a new history at that state.
 
