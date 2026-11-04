@@ -264,7 +264,15 @@ async function readLockFile(path: string) {
 	try {
 		handle = await open(path, lockFileFlags);
 	} catch (error) {
-		return hasCode(error, "ENOENT") ? undefined : null;
+		if (!hasCode(error, "ENOENT")) return null;
+		// A dangling symbolic link still occupies the path where O_NOFOLLOW is
+		// unavailable, so only a path that is really missing counts as gone.
+		return (await lstat(path).then(
+			() => true,
+			() => false,
+		))
+			? null
+			: undefined;
 	}
 	try {
 		const info = await handle.stat();
@@ -455,16 +463,19 @@ async function withDrawingLock<T>(
 			...owner,
 			id: randomUUID(),
 		});
-		if (recovery === "removed")
+		// After removing an abandoned file, try once more even past the deadline.
+		if (recovery === "removed") {
 			await removeLeftovers(dirname(lockPath), owner).catch(() => {});
-		if (recovery !== "kept") continue;
+			continue;
+		}
 		if (performance.now() >= deadline) {
 			throw new LocalDrawingError({
 				code: "DrawingLocked",
 				message: `The drawing is locked by another process. Lock file: ${lockPath}`,
 			});
 		}
-		await delay(25, undefined, { signal });
+		// A lock that vanished was just released, so retry at once.
+		if (recovery === "kept") await delay(25, undefined, { signal });
 	}
 	try {
 		signal.throwIfAborted();

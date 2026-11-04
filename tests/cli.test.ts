@@ -400,6 +400,15 @@ test("recovery skips FIFOs and symbolic links named like claims or lock copies",
 	assert.deepEqual(new Set(await readdir(fixture.directory)), new Set([...drawingFiles, ...special, link]));
 });
 
+test("a dangling symbolic link as the lock times out like a held lock", { skip: process.platform === "win32" }, async (context) => {
+	const fixture = await drawing(context);
+	await symlink(join(fixture.directory, "missing"), `${fixture.path}.lock`);
+	const started = performance.now();
+	await assert.rejects(runEffect(createLocalDrawing({ path: fixture.path, lockTimeout: 25 }).execute({ type: "getDrawing" }), AbortSignal.timeout(5_000)), { code: "DrawingLocked" });
+	assert.ok(performance.now() - started < 5_000);
+	assert.deepEqual(await readdir(fixture.directory), ["drawing.ecaddraw.lock"]);
+});
+
 test("local drawing module cancels a lock wait without removing another owner's lock", async (context) => {
 	const fixture = await drawing(context);
 	await writeFile(`${fixture.path}.lock`, "another owner");
@@ -521,6 +530,30 @@ test("stdio module keeps serving when stderr fails", async (context) => {
 	assert.equal(JSON.parse(String(reply)).id, 1);
 	input.end();
 	assert.equal(await work, 0);
+});
+
+test("stdio module keeps a diagnostic write that fails after stdin EOF handled", async (context) => {
+	const fixture = await drawing(context);
+	const input = new PassThrough();
+	let failWrite!: () => void;
+	let logged!: () => void;
+	const written = new Promise<void>((resolve) => { logged = resolve; });
+	const errors = new Writable({
+		write(_chunk, _encoding, callback) {
+			logged();
+			failWrite = () => callback(new Error("stderr closed"));
+		},
+	});
+	const work = runCli(["mcp"], { env: fixture.env, input, output: new PassThrough(), error: errors });
+	input.write("garbage\n");
+	await written;
+	input.end();
+	assert.equal(await work, 0);
+	// The pending diagnostic fails after shutdown. Stderr only carries
+	// diagnostics, so its failure must stay handled.
+	failWrite();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.ok(errors.destroyed);
 });
 
 test("stdio module reports a reply write that fails after stdin EOF", async (context) => {
