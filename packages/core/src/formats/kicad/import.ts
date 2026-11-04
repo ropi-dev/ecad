@@ -84,12 +84,15 @@ const line = (
 });
 const words = (key: string) =>
 	key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
-/** The KiCad source position, so the item can be found in KiCad. */
-const sourceAt = (n: SExpr) => {
-	const [x, y] = n.slice(1);
+/** The KiCad source position, or else the UUID, so the item can be found. */
+const locate = (item: SExpr, at: SExpr = node(item, "at")) => {
+	const [x, y] = at.slice(1);
+	const uuid = value(item, "uuid");
 	return typeof x === "string" && typeof y === "string"
 		? ` at (${x}, ${y})`
-		: "";
+		: uuid
+			? ` with UUID ${uuid}`
+			: "";
 };
 /**
  * Names one invalid field in words instead of listing schema issues. The
@@ -514,8 +517,11 @@ function convert(source: string): KiCadImportResult {
 			nodes(instance, "property").map((p) => [String(p[1]), String(p[2])]),
 		);
 		report.metadata.push(instance);
+		// Units of one multi-unit part share a reference.
+		const unit = value(instance, "unit", "1");
+		const name = `${props.Reference || libraryId}${unit === "1" ? "" : ` unit ${unit}`}`;
 		const converted = attempt(
-			`symbol ${props.Reference ? `${props.Reference} (${libraryId})` : libraryId}`,
+			`symbol ${props.Reference ? `${name} (${libraryId})` : name}`,
 			() => convertSymbol(instance, libraryId, props),
 		);
 		// Components and supplies stay aligned with the imported symbols.
@@ -526,7 +532,7 @@ function convert(source: string): KiCadImportResult {
 	}
 	for (const wire of nodes(root, "wire")) {
 		const points = nodes(node(wire, "pts"), "xy");
-		attempt(`wire${points[0] ? sourceAt(points[0]) : ""}`, () => {
+		attempt(`wire${locate(wire, points[0])}`, () => {
 			const pts = points.map((p) => world(p.slice(1).map(Number)));
 			if (pts.length !== 2)
 				throw new Error(
@@ -536,7 +542,7 @@ function convert(source: string): KiCadImportResult {
 		});
 	}
 	for (const junction of nodes(root, "junction"))
-		attempt(`junction${sourceAt(node(junction, "at"))}`, () => {
+		attempt(`junction${locate(junction)}`, () => {
 			const diameter = Number(value(junction, "diameter", "0")) || 0.6;
 			return {
 				shapes: [
@@ -564,21 +570,18 @@ function convert(source: string): KiCadImportResult {
 		for (const label of nodes(root, kind)) {
 			const content = String(label[1]);
 			const name = content.length > 40 ? `${content.slice(0, 40)}…` : content;
-			const converted = attempt(
-				`${kindName} "${name}"${sourceAt(node(label, "at"))}`,
-				() => {
-					const at = world(numbers(label, "at"));
-					return {
-						shapes: [
-							{
-								...text(label, at, content),
-								...(kind === "text" ? {} : { electrical: "net" as const }),
-							},
-						],
-						at,
-					};
-				},
-			);
+			const converted = attempt(`${kindName} "${name}"${locate(label)}`, () => {
+				const at = world(numbers(label, "at"));
+				return {
+					shapes: [
+						{
+							...text(label, at, content),
+							...(kind === "text" ? {} : { electrical: "net" as const }),
+						},
+					],
+					at,
+				};
+			});
 			if (converted && kind !== "text")
 				report.labels.push({
 					kind,
@@ -588,7 +591,7 @@ function convert(source: string): KiCadImportResult {
 				});
 		}
 	for (const nc of nodes(root, "no_connect"))
-		attempt(`no-connect marker${sourceAt(node(nc, "at"))}`, () => {
+		attempt(`no-connect marker${locate(nc)}`, () => {
 			const [x, y] = world(numbers(nc, "at"));
 			return {
 				shapes: [

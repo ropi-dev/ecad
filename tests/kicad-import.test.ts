@@ -192,17 +192,23 @@ test('a symbol whose converted geometry is invalid is skipped with a readable re
 test('broken power symbols, wires, labels and markers are skipped one at a time', () => {
  const result = importKiCadSchematic(twoSymbols(
   '(symbol "Bad" (power) (symbol "Bad_1_1" (pin power_in line (at 0 0 0) (length 0) (name "A") (number "1")) (pin power_in line (at 1 0 0) (length 0) (name "B") (number "2"))))',
-  '(wire (pts (xy 0 0) (xy 5 0) (xy 5 5))) (label "SDA" (at 1 2 0)) (label "SCL") (global_label "VBUS" (at x 4 0)) (junction (at 7 8)) (no_connect (at 9)) (text "Note" (at 3 4 0))',
+  '(wire (pts (xy 0 0) (xy 5 0) (xy 5 5))) (label "SDA" (at 1 2 0)) (label "SCL") (global_label "VBUS" (at x 4 0)) (junction (at 7 8)) (no_connect (at 9) (uuid "nc-1")) (text "Note" (at 3 4 0))',
  ).replace('(property "Reference" "X2" (at 30 20 0) (effects hide))','(property "Reference" "#PWR01" (at 30 20 0) (effects hide)) (property "Value" "+3V3" (at 30 20 0))'));
  assert.deepEqual(result.report.skipped.map(({item,reason})=>`${item}: ${reason}`),[
   'symbol #PWR01 (Bad): A power symbol needs exactly one pin, but this one has 2.',
   'wire at (0, 0): A wire needs two endpoints, but this one has 3.',
   'label "SCL": The position is missing.',
   'global label "VBUS" at (x, 4): Invalid at coordinates.',
-  'no-connect marker: The position is missing.',
+  'no-connect marker with UUID nc-1: The position is missing.',
  ]);
  assert.deepEqual(result.shapes.map(s=>s.kind),['symbol','wire','circle','text','text']);
  assert.deepEqual(result.report.labels.map(l=>l.text),['SDA']);
  assert.deepEqual(result.report.supplies,[]);
  assert.ok(result.report.warnings.slice(0,5).every(w=>w.startsWith('Skipped ')));
+});
+
+test('skipped units of one multi-unit part are named by unit', () => {
+ const unit = (n: number) => `(symbol (lib_id "Lib:Missing") (at ${10*n} 20 0) (unit ${n}) (uuid "u${n}") (property "Reference" "U3" (at 0 0 0)))`;
+ const result = importKiCadSchematic(`(kicad_sch (version 20250114) (paper "A4") (lib_symbols) ${unit(1)} ${unit(2)} (wire (pts (xy 0 0) (xy 10 0))))`);
+ assert.deepEqual(result.report.skipped.map(s=>s.item),['symbol U3 (Lib:Missing)','symbol U3 unit 2 (Lib:Missing)']);
 });
