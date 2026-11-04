@@ -49,8 +49,9 @@ export function commitHistory<T>(
 	label: string,
 	isEqual: (previous: Readonly<T>, next: Readonly<T>) => boolean,
 ): History<T> {
-	if (isEqual(getHistoryState(history), state)) return history;
 	const parent = history.nodes[history.currentId];
+	// The comparison only reads the saved state, so it skips the restoration copy.
+	if (isEqual(parent.state, state)) return history;
 	const id = history.nextId;
 	return {
 		nodes: {

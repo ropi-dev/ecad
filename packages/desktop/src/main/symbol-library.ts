@@ -35,14 +35,24 @@ import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.ts
 
 const symbolExtension = /\.(ecadsym|json)$/i;
 
+/**
+ * Checks the real path of a library directory before it is read or written.
+ * It runs after symbolic links resolve, so a link cannot redirect an approved path.
+ */
+export type DirectoryAuthorization = (directory: string) => Promise<void>;
+
 /** Resolve a directory once. Nested symlinks are never followed. */
-async function readDirectoryData(selectedDirectory: string): Promise<{
+async function readDirectoryData(
+	selectedDirectory: string,
+	authorize?: DirectoryAuthorization,
+): Promise<{
 	directory: string;
 	symbols: SymbolLibrary;
 	totalBytes: number;
 	files: Map<string, { path: string; bytes: number }>;
 }> {
 	const directory = await realpath(resolve(selectedDirectory));
+	await authorize?.(directory);
 	if (!(await lstat(directory)).isDirectory()) {
 		throw new Error("Choose a directory containing symbol files.");
 	}
@@ -132,8 +142,12 @@ export async function canWriteSymbolPath(
 	}
 }
 
-export async function inspectDirectorySymbol(directory: string, id: string) {
-	const current = await readDirectoryData(directory);
+export async function inspectDirectorySymbol(
+	directory: string,
+	id: string,
+	authorize?: DirectoryAuthorization,
+) {
+	const current = await readDirectoryData(directory, authorize);
 	const file = current.symbols.find((symbol) => symbol.id === id);
 	const entry = current.files.get(id);
 	if (!file || !entry)
@@ -146,12 +160,13 @@ export async function saveDirectorySymbol(
 	directory: string,
 	original: SymbolFile,
 	next: SymbolFile,
+	authorize?: DirectoryAuthorization,
 ) {
 	original = parseSymbolFile(JSON.stringify(original));
 	next = parseSymbolFile(JSON.stringify(next));
 	if (next.id !== original.id)
 		throw new Error("Editing cannot change a symbol's ID.");
-	const current = await readDirectoryData(directory);
+	const current = await readDirectoryData(directory, authorize);
 	const entry = current.files.get(original.id);
 	const file = current.symbols.find((symbol) => symbol.id === original.id);
 	if (!entry || JSON.stringify(file) !== JSON.stringify(original))
@@ -195,8 +210,12 @@ export async function saveDirectorySymbol(
 
 export async function readSymbolDirectory(
 	selectedDirectory: string,
+	authorize?: DirectoryAuthorization,
 ): Promise<SymbolLibrarySnapshot & { directory: string }> {
-	const { directory, symbols } = await readDirectoryData(selectedDirectory);
+	const { directory, symbols } = await readDirectoryData(
+		selectedDirectory,
+		authorize,
+	);
 	return { directory, symbols };
 }
 
@@ -206,7 +225,11 @@ function orderedLibrary(symbols: SymbolLibrary): string {
 	);
 }
 
-/** Only the main process chooses paths. Renderer requests contain symbol data. */
+/**
+ * Only the main process chooses paths. A directory reaches the user
+ * configuration only after the user picks it in a native dialog or adds it to
+ * ~/.ecad/config.json themselves.
+ */
 export class DesktopSymbolLibrary {
 	private snapshot: SymbolLibrarySnapshot;
 	private operation: Promise<unknown> = Promise.resolve();
@@ -243,9 +266,31 @@ export class DesktopSymbolLibrary {
 		);
 	}
 
+	/** Directories the user chose with a native dialog during this session. */
+	isChosenDirectory(directory: string) {
+		return this.approvedDirectories.has(directory);
+	}
+
 	saveConfiguration(config: SymbolLibraryConfig): Promise<string> {
 		return this.sequential(async () => {
 			const contents = serializeSymbolConfig(config);
+			const trusted = new Set(this.approvedDirectories);
+			try {
+				for (const library of (await this.readConfiguration()).symbolLibraries)
+					if (library.source.kind === "directory")
+						trusted.add(library.source.path);
+			} catch {
+				// A damaged configuration trusts no directories. Saving replaces it.
+			}
+			// serializeSymbolConfig validated these entries.
+			for (const library of config.symbolLibraries)
+				if (
+					library.source.kind === "directory" &&
+					!trusted.has(library.source.path)
+				)
+					throw new Error(
+						`Add "${library.name}" with Add library directory before saving it.`,
+					);
 			if (!(await canWriteSymbolPath(this.configurationPath, true)))
 				throw new Error("The symbol library configuration file is read-only.");
 			await mkdir(dirname(this.configurationPath), { recursive: true });
