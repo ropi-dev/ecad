@@ -338,6 +338,17 @@ function edgeCost(
 		};
 		index.wires.query(bounds, (wire) => {
 			const own = options.nets.has(wire.net);
+			// A slanted lead or segment: test the real geometry. Only the route's
+			// own ends may touch it.
+			if (
+				Math.abs(wire.end.x - wire.start.x) > connectionTolerance &&
+				Math.abs(wire.end.y - wire.start.y) > connectionTolerance
+			) {
+				if (own && wire.net !== LEAD_NET) return false;
+				const touch = segmentContact(a, b, wire.start, wire.end);
+				if (!touch || allowed(touch)) return false;
+				return block();
+			}
 			const wireHorizontal =
 				Math.abs(wire.end.y - wire.start.y) <=
 				Math.abs(wire.end.x - wire.start.x);
@@ -429,6 +440,39 @@ function edgeCost(
 		cost -= Math.min(length, reused) * (1 - MEMORY);
 	}
 	return { cost, straight };
+}
+
+/** A point where two segments meet, or undefined when they do not. */
+function segmentContact(
+	a: Point,
+	b: Point,
+	c: Point,
+	d: Point,
+): Point | undefined {
+	const cross = (o: Point, p: Point, q: Point) =>
+		(p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+	const denominator = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+	if (Math.abs(denominator) <= 1e-12) {
+		// Parallel: report a shared end point, if any lies on the other segment.
+		for (const point of [a, b])
+			if (
+				Math.abs(cross(c, d, point)) <= 1e-9 &&
+				point.x >= Math.min(c.x, d.x) - connectionTolerance &&
+				point.x <= Math.max(c.x, d.x) + connectionTolerance &&
+				point.y >= Math.min(c.y, d.y) - connectionTolerance &&
+				point.y <= Math.max(c.y, d.y) + connectionTolerance
+			)
+				return point;
+		return undefined;
+	}
+	const t =
+		((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / denominator;
+	const u =
+		((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / denominator;
+	const slack = 1e-9;
+	if (t < -slack || t > 1 + slack || u < -slack || u > 1 + slack)
+		return undefined;
+	return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
 /**

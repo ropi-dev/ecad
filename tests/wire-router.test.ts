@@ -560,3 +560,24 @@ test("a route goes as far around an obstacle as it needs to", () => {
 	assert.ok(clear);
 	assert.ok(points.some(({ y }) => Math.abs(y) > 90));
 });
+
+test("routes do not cross a slanted pin lead", async () => {
+	const { createRoutingIndex, LEAD_NET, routeOrthogonal } = await import(
+		"@ecad/drawing-core/drawing/wire-router.ts"
+	);
+	const index = createRoutingIndex({
+		bodies: [],
+		points: [],
+		wires: [{ start: { x: 10, y: -10 }, end: { x: 20, y: 10 }, net: LEAD_NET }],
+	});
+	const points = required(
+		routeOrthogonal(
+			[index],
+			{ point: { x: 0, y: 0 } },
+			{ point: { x: 30.48, y: 0 } },
+			{ pitch: 1.27, nets: new Set() },
+		),
+	);
+	// Any path past the lead has to go round one of its ends.
+	assert.ok(points.some(({ y }) => Math.abs(y) >= 10));
+});
