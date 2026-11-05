@@ -104,6 +104,11 @@ export function judgeMetric(
 	base: readonly number[],
 	head: readonly number[],
 	options = defaultDecision,
+	/**
+	 * The scenario has all its pairs, so a metric missing from some of them
+	 * gets a final verdict with fewer.
+	 */
+	final = false,
 ): MetricJudgement {
 	if (base.length !== head.length)
 		throw new Error(`${metric}: ${base.length} base and ${head.length} head`);
@@ -121,15 +126,20 @@ export function judgeMetric(
 	const threshold =
 		baseMedian > 0 ? regressionRatio + floor / baseMedian : Infinity;
 	const band = options.margin / Math.sqrt(Math.max(pairs, 1));
+	// A regression always needs this many of the metric's own pairs, so a
+	// metric reported in one pair cannot fail a scenario alone.
+	const needed = Math.min(options.minRegressionPairs, options.maxPairs);
 	const verdict: Verdict = !pairs
 		? "undecided"
-		: pairs >= options.maxPairs
-			? score > 1
-				? "regression"
-				: "pass"
+		: final || pairs >= options.maxPairs
+			? score <= 1
+				? "pass"
+				: pairs >= needed
+					? "regression"
+					: "undecided"
 			: score <= 1 - band
 				? "pass"
-				: score >= 1 + band && pairs >= options.minRegressionPairs
+				: score >= 1 + band && pairs >= needed
 					? "regression"
 					: "undecided";
 	return {
@@ -151,6 +161,15 @@ export function judgeMetric(
  * main-thread stalls.
  */
 export const advisoryMetrics: ReadonlySet<string> = new Set(["eventLoopP95Ms"]);
+
+/**
+ * Rounds an A/B run may take. A round can lose a pair, for example when the
+ * base fails once, so one spare round lets every compared scenario still
+ * reach `maxPairs` pairs.
+ */
+export function maxRounds(options = defaultDecision): number {
+	return options.maxPairs + 1;
+}
 
 export interface Pair {
 	base: Record<string, number>;
@@ -183,10 +202,8 @@ export function judgeScenario(
 			name,
 			usable.map((pair) => pair.base[name]),
 			usable.map((pair) => pair.head[name]),
-			// A metric missing from some pairs still stops at the scenario's limit.
-			pairs.length >= options.maxPairs
-				? { ...options, maxPairs: usable.length }
-				: options,
+			options,
+			pairs.length >= options.maxPairs,
 		);
 	});
 	const deciding = metrics.filter(

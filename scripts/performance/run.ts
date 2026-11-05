@@ -1,15 +1,15 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareArtifacts } from "../development/artifacts.ts";
 import { run, runLocked } from "../development/common.ts";
 import { decisionFromEnv } from "./ab.ts";
-import { prepareBase, resolveBase } from "./base-build.ts";
+import { markInUse } from "./base-build.ts";
 import { type Plan, parseRun } from "./options.ts";
 import { plan as selectScenarios } from "./select.ts";
 
-// Builds run before the host benchmark lock, so the lock covers measurement
-// only. The worker then measures under the lock.
+// Builds run under shared access to the host benchmark lock; the worker then
+// measures under exclusive access.
 const started = Date.now();
 prepareArtifacts();
 const parsed = parseRun(process.argv.slice(2), process.env);
@@ -46,46 +46,35 @@ if (parsed.mode === "budgets") {
 }
 planned.updateBaseline = parsed.updateBaseline;
 
+const alreadyLocked = process.env.ECAD_PERF_LOCK_HELD === "1";
+const queued = !alreadyLocked && process.platform === "linux";
+if (!queued && !alreadyLocked)
+	console.warn(
+		"[ecad] The host benchmark queue is Linux-only. Running native perf without the shared queue.",
+	);
+// Builds hold shared access to the benchmark lock, so they can overlap other
+// builds and tests but never a benchmark's measurement.
 mkdirSync("perf-artifacts", { recursive: true });
-const targets =
-	parsed.mode === "development" ? ["build:cli"] : ["build:web", "build:cli"];
-for (const target of targets) {
-	console.log(
-		`[perf] Running ${target}. Build output goes to perf-artifacts/build.log.`,
-	);
-	const build = spawnSync(
-		process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-		["run", target],
-		{ encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
-	);
-	writeFileSync(
-		"perf-artifacts/build.log",
-		(build.stdout ?? "") + (build.stderr ?? ""),
-		{ flag: target === targets[0] ? "w" : "a" },
-	);
-	if (build.status !== 0) {
-		console.error(build.error ?? "Build failed. See perf-artifacts/build.log.");
-		process.exit(build.status ?? 1);
-	}
-}
-if (parsed.mode === "ab") {
-	try {
-		const sha = process.env.ECAD_PERF_BASE_SHA ?? resolveBase(parsed.baseRef);
-		const base = await prepareBase(sha, {
-			archive: process.env.ECAD_PERF_BASE_ARCHIVE,
-		});
-		console.log(
-			`[perf] Base ${sha.slice(0, 12)} (merge base of ${parsed.baseRef} and HEAD): ${base.built ? `built in ${(base.durationMs / 1000).toFixed(1)} s` : "cached build"}.`,
-		);
-		planned.base = { ref: parsed.baseRef, ...base };
-	} catch (error) {
-		console.error(
-			`[perf] ${error instanceof Error ? error.message : String(error)}`,
-		);
-		process.exit(1);
-	}
-}
-planned.built = Date.now();
+const result = resolve("perf-artifacts/plan.json");
+rmSync(result, { force: true });
+const builder = [
+	"--import",
+	"tsx",
+	fileURLToPath(new URL("./build.ts", import.meta.url)),
+	result,
+];
+const buildEnv = {
+	...process.env,
+	ECAD_PERF_PLAN: JSON.stringify(planned),
+	ECAD_PERF_BASE_REF: parsed.baseRef,
+};
+const built = await (queued
+	? runLocked("perf", process.execPath, builder, buildEnv, true)
+	: run(process.execPath, builder, buildEnv));
+if (built !== 0 || !existsSync(result)) process.exit(built || 1);
+Object.assign(planned, JSON.parse(readFileSync(result, "utf8")));
+// Pruning skips a base build while this run uses it.
+if (planned.base) markInUse(planned.base.directory);
 
 const args = [
 	"--import",
@@ -97,11 +86,6 @@ const env = {
 	ECAD_PERF_PLAN: JSON.stringify(planned),
 	ECAD_PERF_LOCK_HELD: "1",
 };
-const alreadyLocked = process.env.ECAD_PERF_LOCK_HELD === "1";
-if (process.platform !== "linux" && !alreadyLocked)
-	console.warn(
-		"[ecad] The host benchmark queue is Linux-only. Running native perf without the shared queue.",
-	);
-process.exitCode = await (alreadyLocked || process.platform !== "linux"
-	? run(process.execPath, args, env)
-	: runLocked("perf", process.execPath, args, env));
+process.exitCode = await (queued
+	? runLocked("perf", process.execPath, args, env)
+	: run(process.execPath, args, env));

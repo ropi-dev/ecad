@@ -26,7 +26,8 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 ## Performance
 
 - Keep performance validation local. Compare before and after on the same machine; do not use hosted-runner timing budgets as CI gates.
-- After changing startup, project storage, imports, or rendering, run `pnpm run perf`. It compares the scenarios your change affects, as printed at the start of the run, against the merge base with `origin/main` in one interleaved session, so do not run `perf:baseline` first. Pass `--base <ref>` for a stacked branch. Inspect `perf-artifacts/latest.json` and include each scenario's verdict, head/base ratio and pair count, and the test environment, in the completion report. Do not claim a performance fix is verified without measurements.
+- After changing startup, project storage, imports, or rendering, run `pnpm run perf`. It compares the scenarios your change affects, as printed at the start of the run, against the merge base with `origin/main` in one interleaved session, so do not run `perf:baseline` first. Pass `--base <ref>` for a stacked branch. It takes about 2–15 minutes, so run it in the background. Inspect `perf-artifacts/latest.json` and include in the completion report each scenario's verdict, head/base ratio and pair count; the numbers of compared, head-only and undecided scenarios; and the test environment. Do not claim a performance fix is verified without measurements.
+- A regression verdict means "investigate", not proof. A pass is not assurance against slowdowns below about 75% on short interactions (under about 150 ms), which unthrottled A/B runs do not reliably catch; see "A/B sensitivity" in `docs/performance.md`.
 - Once per merged batch, run the absolute budget run, `pnpm run perf:budgets`, and an A/B run of every scenario against the main commit before the batch, `pnpm run perf --all --base <pre-batch-main>`.
 - Add a realistic scenario and explicit budgets in `tests/performance` when a feature adds a new user flow or materially larger workload. Keep startup scenarios free of editor and renderer dependencies.
 - Tag every new scenario with its area from `tests/performance/tags.ts`. If it covers a new area, add the tag and a mapping row in `scripts/performance/select.ts`.
@@ -37,6 +38,6 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 ## Parallel development
 
 - Prefer `pnpm sandbox <command>` for dev servers, tests, typechecks, and performance checks when multiple threads share this machine. Run `pnpm sandbox build-image` first if the image is missing.
-- Run timing checks through `pnpm sandbox perf`, `pnpm sandbox perf:baseline`, or the native `pnpm perf` scripts. These share a host benchmark lock. Sandbox tests and typechecks share access while benchmarks need exclusive access. Do not bypass the lock with direct Playwright performance invocations or set `ECAD_PERF_LOCK_HELD` yourself.
+- Run timing checks through `pnpm sandbox perf`, `pnpm sandbox perf:budgets`, or the native `pnpm perf` scripts. These share a host benchmark lock. Sandbox tests and typechecks share access while benchmarks need exclusive access. Do not bypass the lock with direct Playwright performance invocations or set `ECAD_PERF_LOCK_HELD` yourself.
 - Capture baselines and comparisons in the same environment. Native and sandbox baselines are separate.
 - See `docs/parallel-development.md` for resource allocations, artifacts, overrides, and cleanup.

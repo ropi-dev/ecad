@@ -7,6 +7,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
+import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -18,10 +19,17 @@ import {
 	grepForTitles,
 	judgeMetric,
 	judgeScenario,
+	maxRounds,
 	median,
 } from "../scripts/performance/ab.ts";
-import { prune, withDirectoryLock } from "../scripts/performance/base-build.ts";
+import {
+	inUse,
+	markInUse,
+	prune,
+	withDirectoryLock,
+} from "../scripts/performance/base-build.ts";
 import { parseRun, withoutGrep } from "../scripts/performance/options.ts";
+import { portAvailable } from "../scripts/performance/ports.ts";
 
 const repeat = (value: number, count: number) =>
 	Array.from({ length: count }, () => value);
@@ -336,4 +344,85 @@ test("the portable build lock serializes builds of one commit", async () => {
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+test("a lost pair leaves a regression undecided, and the spare round decides it", () => {
+	const regressed = {
+		base: { interactionP95Ms: 200 },
+		head: { interactionP95Ms: 600 },
+	};
+	// The base failed once, so five rounds produced four pairs.
+	assert.equal(
+		judgeScenario(repeat(0, 4).map(() => regressed)).verdict,
+		"undecided",
+	);
+	assert.equal(maxRounds(), 6);
+	assert.equal(maxRounds({ ...defaultDecision, maxPairs: 3 }), 4);
+	assert.equal(
+		judgeScenario(repeat(0, 5).map(() => regressed)).verdict,
+		"regression",
+	);
+});
+
+test("a metric reported in too few pairs cannot regress on its own", () => {
+	const pairs = Array.from({ length: 5 }, (_, index) => ({
+		base: { interactionP95Ms: 200, ...(index === 0 ? { sparseMs: 100 } : {}) },
+		head: { interactionP95Ms: 200, ...(index === 0 ? { sparseMs: 900 } : {}) },
+	}));
+	const result = judgeScenario(pairs);
+	const sparse = result.metrics.find((metric) => metric.metric === "sparseMs");
+	assert.equal(sparse?.pairs, 1);
+	assert.equal(sparse?.verdict, "undecided");
+	assert.equal(result.verdict, "undecided");
+	// With a lower pair limit, the needed pairs follow it, so regressions stay
+	// possible.
+	assert.equal(
+		judgeMetric("interactionP95Ms", repeat(200, 3), repeat(600, 3), {
+			...defaultDecision,
+			maxPairs: 3,
+		}).verdict,
+		"regression",
+	);
+});
+
+test("pruning skips a base build that a live run marks as in use", () => {
+	const root = mkdtempSync(join(tmpdir(), "ecad-perf-in-use-"));
+	const sha = (index: number) => index.toString(16).padStart(40, "0");
+	const old = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000);
+	try {
+		for (const index of [1, 2]) {
+			mkdirSync(join(root, sha(index)));
+			writeFileSync(join(root, sha(index), ".ecad-perf-ready"), "{}");
+			utimesSync(join(root, sha(index), ".ecad-perf-ready"), old, old);
+		}
+		const release = markInUse(join(root, sha(1)));
+		// A marker from a process that is gone does not protect its entry.
+		mkdirSync(join(root, `${sha(2)}.in-use`));
+		writeFileSync(join(root, `${sha(2)}.in-use`, "999999999"), "1");
+		assert.equal(inUse(root, sha(1)), true);
+		assert.equal(inUse(root, sha(2)), false);
+		prune(root, "none");
+		assert.deepEqual(
+			readdirSync(root).filter((name) => /^[0-9a-f]{40}$/.test(name)),
+			[sha(1)],
+		);
+		release();
+		assert.equal(inUse(root, sha(1)), false);
+		prune(root, "none");
+		assert.deepEqual(readdirSync(root), []);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("an occupied preview port is detected before a server starts", async () => {
+	const server = createServer();
+	await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+	const { port } = server.address() as AddressInfo;
+	try {
+		assert.equal(await portAvailable(port), false);
+	} finally {
+		await new Promise((done) => server.close(done));
+	}
+	assert.equal(await portAvailable(port), true);
 });

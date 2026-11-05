@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
+	readFileSync,
 	renameSync,
 	rmSync,
 	statSync,
@@ -12,7 +13,7 @@ import {
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { run } from "../development/common.ts";
+import { processStart, run } from "../development/common.ts";
 
 /**
  * Built base checkouts for A/B runs, one per commit. The cache lives outside
@@ -27,6 +28,8 @@ export function cacheRoot(env = process.env): string {
 }
 
 const readyFile = ".ecad-perf-ready";
+/** The build process's exit code when the lock's previous holder built it. */
+const alreadyBuilt = 10;
 const keep = 5;
 const maxAgeMs = 14 * 24 * 60 * 60 * 1000;
 /** An entry used this recently may be serving another thread's run. */
@@ -108,6 +111,11 @@ export async function prepareBase(
 			: withDirectoryLock(join(root, `${sha}.lock.d`), () =>
 					run(process.execPath, args, env),
 				));
+		// Another run may have built it while this one waited for the lock.
+		if (status === alreadyBuilt) {
+			touch(directory);
+			return { sha, directory, built: false, durationMs: Date.now() - start };
+		}
 		if (status !== 0)
 			throw new Error(
 				`Building base ${sha.slice(0, 12)} failed. See ${join(directory, "build.log")}.`,
@@ -165,6 +173,32 @@ export function touch(directory: string): void {
  * entries unused for two weeks. Entries used in the last six hours stay, since
  * another thread's run may be serving them.
  */
+/**
+ * Marks a base build as used by this process until it exits, so another
+ * thread's pruning leaves it alone however long the run waits or measures.
+ */
+export function markInUse(directory: string, pid = process.pid): () => void {
+	const markers = `${directory}.in-use`;
+	mkdirSync(markers, { recursive: true });
+	const marker = join(markers, String(pid));
+	writeFileSync(marker, processStart(pid) ?? "");
+	const release = () => rmSync(marker, { force: true });
+	if (pid === process.pid) process.once("exit", release);
+	return release;
+}
+
+/** Whether a live process still marks the entry as in use. */
+export function inUse(root: string, name: string): boolean {
+	const markers = join(root, `${name}.in-use`);
+	if (!existsSync(markers)) return false;
+	return readdirSync(markers).some((pid) => {
+		const start = processStart(Number(pid));
+		return (
+			start !== undefined && start === readFileSync(join(markers, pid), "utf8")
+		);
+	});
+}
+
 export function prune(root: string, current: string, now = Date.now()): void {
 	const entries = readdirSync(root, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory() && /^[0-9a-f]{40}$/.test(entry.name))
@@ -177,15 +211,21 @@ export function prune(root: string, current: string, now = Date.now()): void {
 		})
 		.sort((a, b) => b.used - a.used);
 	entries.forEach((entry, index) => {
-		if (entry.name === current || now - entry.used < inUseMs) return;
+		if (
+			entry.name === current ||
+			now - entry.used < inUseMs ||
+			inUse(root, entry.name)
+		)
+			return;
 		if (index >= keep || now - entry.used > maxAgeMs) {
 			rmSync(join(root, entry.name), { recursive: true, force: true });
 			rmSync(join(root, "archives", `${entry.name}.tar`), { force: true });
 			rmSync(join(root, `${entry.name}.lock`), { force: true });
-			rmSync(join(root, `${entry.name}.lock.d`), {
-				recursive: true,
-				force: true,
-			});
+			for (const suffix of [".lock.d", ".in-use"])
+				rmSync(join(root, `${entry.name}${suffix}`), {
+					recursive: true,
+					force: true,
+				});
 		}
 	});
 }
@@ -219,10 +259,10 @@ function step(
 	}
 }
 
-/** Runs under the per-commit lock: extracts, installs and builds the base. */
-function build(sha: string, archive: string): void {
+/** Runs under the per-commit lock; returns false if it was already built. */
+function build(sha: string, archive: string): boolean {
 	const directory = join(cacheRoot(), sha);
-	if (existsSync(join(directory, readyFile))) return;
+	if (existsSync(join(directory, readyFile))) return false;
 	const start = Date.now();
 	rmSync(directory, { recursive: true, force: true });
 	mkdirSync(directory, { recursive: true });
@@ -247,6 +287,7 @@ function build(sha: string, archive: string): void {
 			ms: Date.now() - start,
 		}),
 	);
+	return true;
 }
 
 if (
@@ -254,5 +295,5 @@ if (
 	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
 	const [sha, archive] = process.argv.slice(2);
-	build(sha, archive);
+	if (!build(sha, archive)) process.exitCode = alreadyBuilt;
 }

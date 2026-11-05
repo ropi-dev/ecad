@@ -21,6 +21,7 @@ import {
 	describeJudgement,
 	grepForTitles,
 	judgeScenario,
+	maxRounds,
 	nodeVariantScenarios,
 	type Pair,
 	type ScenarioJudgement,
@@ -28,6 +29,7 @@ import {
 import { touch } from "./base-build.ts";
 import type { Plan } from "./options.ts";
 import { withoutGrep } from "./options.ts";
+import { portAvailable, ServerRecord } from "./ports.ts";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const config = "tests/performance/playwright.config.ts";
@@ -41,8 +43,7 @@ async function single(plan: Plan): Promise<number> {
 		...process.env,
 		ECAD_PERF_MODE: development ? "development" : "production",
 		ECAD_PERF_UPDATE_BASELINE: plan.updateBaseline ? "1" : "0",
-		ECAD_PERF_RUNS:
-			process.env.ECAD_PERF_RUNS ?? (plan.mode === "budgets" ? "1" : "3"),
+		ECAD_PERF_RUNS: process.env.ECAD_PERF_RUNS ?? "3",
 		ECAD_PERF_BASELINE_PATH:
 			process.env.ECAD_PERF_BASELINE_PATH ??
 			(development
@@ -138,7 +139,14 @@ async function startServer(
 	directory: string,
 	port: number,
 	log: string,
+	record: ServerRecord,
 ): Promise<ChildProcess> {
+	// A server left on the port would answer the readiness check while ours
+	// exits on --strictPort, and the run would measure another build.
+	if (!(await portAvailable(port)))
+		throw new Error(
+			`Port ${port} is already in use, so the preview server for ${directory} cannot start there. Stop whatever listens on it, or set ECAD_PERF_PORT and ECAD_PERF_BASE_PORT to free ports.`,
+		);
 	const output = openSync(log, "w");
 	const server = spawn(
 		pnpm,
@@ -153,6 +161,7 @@ async function startServer(
 		],
 		{ cwd: directory, detached: true, stdio: ["ignore", output, output] },
 	);
+	if (server.pid) record.add(server.pid, port);
 	const url = `http://127.0.0.1:${port}/projects`;
 	const deadline = Date.now() + 60_000;
 	while (Date.now() < deadline) {
@@ -160,11 +169,16 @@ async function startServer(
 			throw new Error(
 				`The preview server for ${directory} exited (${server.exitCode}). Is port ${port} in use? Set ECAD_PERF_PORT and ECAD_PERF_BASE_PORT. See ${log}.`,
 			);
-		try {
-			const response = await fetch(url);
-			if (response.ok) return server;
-		} catch {
-			// Not listening yet.
+		const ok = await fetch(url).then(
+			(response) => response.ok,
+			() => false,
+		);
+		if (ok) {
+			if (server.exitCode !== null)
+				throw new Error(
+					`The preview server for ${directory} exited (${server.exitCode}), but something else answered on port ${port}. See ${log}.`,
+				);
+			return server;
 		}
 		await new Promise((done) => setTimeout(done, 250));
 	}
@@ -215,8 +229,12 @@ async function compare(plan: Plan): Promise<number> {
 	const warnings: string[] = [];
 	const states = new Map<string, ScenarioState>();
 	const servers: ChildProcess[] = [];
+	const record = new ServerRecord(
+		resolve("perf-artifacts/preview-servers.json"),
+	);
 	const cleanup = () => {
 		for (const server of servers) stop(server);
+		record.clear();
 	};
 	for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
 		process.once(signal, () => {
@@ -246,6 +264,16 @@ async function compare(plan: Plan): Promise<number> {
 	const rest = withoutGrep(plan.args);
 	let rounds = 0;
 	try {
+		// A killed run of this checkout can leave its detached servers behind.
+		const leftovers = record.stopLeftovers();
+		if (leftovers.length) {
+			console.log(
+				`[perf] Stopped preview servers left by an earlier run on port${leftovers.length === 1 ? "" : "s"} ${leftovers.join(", ")}.`,
+			);
+			for (const port of leftovers)
+				for (let wait = 0; wait < 40 && !(await portAvailable(port)); wait++)
+					await new Promise((done) => setTimeout(done, 250));
+		}
 		// Track each server as soon as it starts, so cleanup stops the head
 		// server when the base server fails.
 		servers.push(
@@ -253,6 +281,7 @@ async function compare(plan: Plan): Promise<number> {
 				process.cwd(),
 				headPort,
 				join(directory, "server-head.log"),
+				record,
 			),
 		);
 		servers.push(
@@ -260,6 +289,7 @@ async function compare(plan: Plan): Promise<number> {
 				base.directory,
 				basePort,
 				join(directory, "server-base.log"),
+				record,
 			),
 		);
 		const titles = listTests(plan.args, environment("head"));
@@ -271,7 +301,7 @@ async function compare(plan: Plan): Promise<number> {
 		);
 		let pending = new Set(titles);
 		const finished = new Set<string>();
-		while (pending.size && rounds < options.maxPairs) {
+		while (pending.size && rounds < maxRounds(options)) {
 			rounds++;
 			const order: ("base" | "head")[] =
 				rounds % 2 ? ["base", "head"] : ["head", "base"];
@@ -479,6 +509,16 @@ async function compare(plan: Plan): Promise<number> {
 	);
 	const count = (verdict: string) =>
 		verdicts.filter((value) => value === verdict).length;
+	// Scenarios without a verdict were measured but not compared; say so as
+	// loudly as the verdicts.
+	const counts = {
+		scenarios: states.size,
+		compared: count("pass") + count("regression"),
+		pass: count("pass"),
+		regression: count("regression"),
+		headOnly: count("head-only"),
+		undecided: count("undecided"),
+	};
 	const artifact = {
 		version: 2,
 		kind: "ab",
@@ -498,6 +538,7 @@ async function compare(plan: Plan): Promise<number> {
 		head: { revision, dirty },
 		decision: options,
 		rounds,
+		counts,
 		durations,
 		failures,
 		warnings,
@@ -562,11 +603,24 @@ async function compare(plan: Plan): Promise<number> {
 			}`,
 		);
 	console.log(
-		`[perf] ${states.size} scenarios: ${count("pass")} pass, ${count("regression")} regression, ${count("head-only")} head-only${count("undecided") ? `, ${count("undecided")} undecided` : ""}. ${rounds} round${rounds === 1 ? "" : "s"}. Total ${seconds(durations.totalMs)} (builds ${seconds(durations.buildMs)}, lock wait ${seconds(durations.lockWaitMs)}, measurement ${seconds(durations.measureMs)}).`,
+		`[perf] ${counts.compared} of ${counts.scenarios} scenarios compared, ${counts.headOnly} head-only, ${counts.undecided} undecided. Verdicts: ${counts.pass} pass, ${counts.regression} regression. ${rounds} round${rounds === 1 ? "" : "s"}. Total ${seconds(durations.totalMs)} (builds ${seconds(durations.buildMs)}, lock wait ${seconds(durations.lockWaitMs)}, measurement ${seconds(durations.measureMs)}).`,
 	);
 	console.log("[perf] Report: perf-artifacts/latest.json");
 	for (const warning of warnings) console.warn(`[perf] Warning: ${warning}`);
 	for (const failure of failures) console.error(`[perf] ${failure}`);
+	const undecided = [...states]
+		.filter(
+			([, state]) =>
+				!state.headOnly && state.judgement?.verdict === "undecided",
+		)
+		.map(
+			([scenario, state]) =>
+				`${scenario} (${state.pairs.length} pair${state.pairs.length === 1 ? "" : "s"})`,
+		);
+	if (undecided.length)
+		console.warn(
+			`[perf] UNDECIDED, not compared: ${undecided.join(", ")}. These have no verdict; rerun them with --grep before reporting.`,
+		);
 	return failures.length ? 1 : 0;
 }
 
