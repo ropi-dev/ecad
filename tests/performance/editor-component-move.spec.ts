@@ -7,6 +7,8 @@ import {
 	metric,
 	ready,
 	report,
+	saveCount,
+	saved,
 	savedShapeCount,
 	undo,
 } from "./app-helpers.ts";
@@ -81,6 +83,7 @@ test(
 			y: bounds.y + bounds.height / 2,
 		};
 		for (let repeat = 0; repeat < 3; repeat++) {
+			let saves = await saveCount(page);
 			await interaction(page, "component.move-connected", async () => {
 				await page.mouse.move(source.x, source.y);
 				await page.mouse.down();
@@ -97,7 +100,14 @@ test(
 					{ polling: "raf" },
 				);
 			});
-			if (repeat < 2) await undo(page);
+			if (repeat < 2) {
+				// A save that lands mid-drag cancels the drag, so let the move and
+				// its undo save before the next drag.
+				await saved(page, saves);
+				saves = await saveCount(page);
+				await undo(page);
+				await saved(page, saves);
+			}
 		}
 		// 203 fixture shapes plus the segments added when the moved part's wire is rerouted.
 		await expect

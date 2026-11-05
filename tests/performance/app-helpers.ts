@@ -87,18 +87,12 @@ export async function savedShapeCount(page: Page, project: string) {
 	return (await savedShapes(page, project))?.length ?? null;
 }
 
-/** Undoes the last edit from the history popover, then closes the popover so it cannot swallow the next canvas press. */
+/** Undoes the last edit with the toolbar's Undo button. */
 export async function undo(page: Page) {
 	await (await toolbarButton(page, "Undo")).click();
 	await expect(
 		page.getByRole("button", { name: "Redo", exact: true }),
 	).toBeEnabled();
-	const history = page.getByRole("button", {
-		name: "History tools",
-		exact: true,
-	});
-	await history.click();
-	await expect(history).toHaveAttribute("aria-expanded", "false");
 }
 
 export const saveCount = async (page: Page) =>
