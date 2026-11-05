@@ -14,7 +14,7 @@ Run `pnpm run test:browser` for the browser cases. CI runs the same suite across
 | Gerber, 3 | ZIP upload and layer creation, layer ordering, visibility, focus and camera, partial layers and their diagnostics |
 | STEP, 1 | WASM import, rendered model, view controls, visibility and reopening |
 | Export, 2 | Browser SVG and PNG downloads for schematic and Gerber output |
-| Sidebar and toolbar, 4 | Hover, focus, touch dismissal and pinning, keyboard navigation, mobile touch scrolling |
+| Sidebar and toolbar, 5 | Hover, focus, touch dismissal and pinning, keyboard navigation, symbol picker search and arrow-key choice, mobile touch scrolling |
 | MCP, 1 | Browser connection lifecycle and SDK edits of the mounted editor |
 
 Removed browser checks retain unit coverage in `tests/editor-*.test.ts`, `tests/linked-schematic.test.ts`, `tests/circuit*.test.ts`, `tests/symbol-*.test.ts`, `tests/default-symbols.test.ts`, `tests/item-locks.test.ts`, `tests/pin-label-visibility.test.ts`, `tests/text-alignment.test.ts`, `tests/viewer-lifecycle.test.ts`, and the web and desktop storage suites. Performance workloads remain in `tests/performance`; they run locally.

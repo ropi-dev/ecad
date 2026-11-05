@@ -24,13 +24,20 @@ test("circuit-keyboard-placement", async ({ page }, testInfo) => {
 				await page
 					.getByRole("button", { name: "Components", exact: true })
 					.press("Enter");
-				await page
-					.getByRole("searchbox", { name: "Search components", exact: true })
-					.fill("Resistor");
-				await page.keyboard.press("Tab");
-				await page
-					.getByRole("button", { name: "Place Resistor", exact: true })
-					.press("Enter");
+				const search = page.getByRole("searchbox", {
+					name: "Search components",
+					exact: true,
+				});
+				await search.fill("Resistor");
+				await expect(search).toHaveAttribute(
+					"aria-activedescendant",
+					required(
+						await page
+							.getByRole("button", { name: "Place Resistor", exact: true })
+							.getAttribute("id"),
+					),
+				);
+				await search.press("Enter");
 				await expect(canvas).toBeFocused();
 				await page.keyboard.press("ArrowRight");
 				await page.keyboard.press("Enter");

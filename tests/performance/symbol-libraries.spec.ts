@@ -104,6 +104,26 @@ test("symbol-libraries", async ({ page }, testInfo) => {
 			380 + generateDefaultSymbols().length,
 		);
 	});
+	const search = page.getByRole("searchbox", { name: "Search symbols" });
+	await expect(search).toBeFocused();
+	const keyboardTarget = required(
+		await page
+			.getByRole("button", { name: /^Insert / })
+			.nth(10)
+			.getAttribute("id"),
+	);
+	await interaction(page, "library.keyboard", async () => {
+		for (let index = 0; index < 10; index++)
+			await page.keyboard.press("ArrowDown");
+		await expect(search).toHaveAttribute(
+			"aria-activedescendant",
+			keyboardTarget,
+		);
+		await page.keyboard.press("Enter");
+		await expect(
+			page.getByRole("button", { name: "Symbols", exact: true }),
+		).toHaveAttribute("aria-pressed", "true");
+	});
 	const value = await report(page);
 	await finish(page, testInfo, "symbol-libraries", {
 		libraryLoadMs: required(metric(value, "symbol-library.load")),

@@ -32,6 +32,50 @@ test("keyboard opening, tool navigation, and Escape restore focus", async ({
 	await expect(shapes).toHaveAttribute("aria-expanded", "false");
 });
 
+test("symbol picker search, arrow keys, and Enter choose a symbol", async ({
+	page,
+}) => {
+	const symbols = page.getByRole("button", { name: "Symbols", exact: true });
+	await symbols.click();
+	const search = page.getByRole("searchbox", {
+		name: "Search symbols",
+		exact: true,
+	});
+	await expect(search).toBeFocused();
+	const expectHighlighted = async (name: string) =>
+		expect(search).toHaveAttribute(
+			"aria-activedescendant",
+			required(
+				await page
+					.getByRole("button", { name, exact: true })
+					.getAttribute("id"),
+			),
+		);
+	await page.keyboard.press("Tab");
+	await page.keyboard.press("Tab");
+	await expect(
+		page.getByRole("button", { name: "Insert Capacitor", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await expect(search).toBeFocused();
+	await expectHighlighted("Insert Resistor, US");
+	await page.keyboard.press("Tab");
+	await page.keyboard.type("cap");
+	await expect(search).toBeFocused();
+	await expect(search).toHaveValue("cap");
+	await expectHighlighted("Insert Capacitor");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowUp");
+	await expectHighlighted("Insert Polarized capacitor");
+	await page.keyboard.press("Enter");
+	await expect(symbols).toHaveAttribute("aria-pressed", "true");
+	await page.locator("canvas").click({ position: { x: 600, y: 300 } });
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveValue("Polarized capacitor");
+});
+
 test.describe("mobile touch scrolling", () => {
 	test.use({
 		hasTouch: true,
