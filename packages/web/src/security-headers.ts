@@ -1,5 +1,5 @@
-// Response headers for the hosted web app. deploy/nginx/ecad.conf repeats these
-// values and tests/security-headers.test.ts keeps the two in sync.
+// Response headers for the hosted web app. The Nitro route rules in
+// vite.config.ts send them on Vercel.
 
 const sharedDirectives = [
 	"style-src 'self' 'unsafe-inline'",
