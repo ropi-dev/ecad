@@ -109,6 +109,10 @@ export default function DevStats() {
 					tasks.shift();
 			}
 		};
+		renderTimes.current = [];
+		frameDurations.current = [];
+		longTasks.current = [];
+		latest.current = {};
 		const recorder = getAppPerformance();
 		for (const sample of recorder?.snapshot().events ?? []) receive(sample);
 		const unsubscribe = recorder?.subscribe(receive);
@@ -177,6 +181,7 @@ export default function DevStats() {
 		return () => {
 			cancelAnimationFrame(frame);
 			clearInterval(timer);
+			setStats(null);
 		};
 	}, [visible]);
 
@@ -210,7 +215,7 @@ export default function DevStats() {
 		<section
 			aria-label="Development stats"
 			data-shortcut-scope="none"
-			className="pointer-events-none fixed right-7 bottom-[4.5rem] z-[1000] min-w-48 rounded-md border border-white/10 bg-black/75 px-2.5 py-2 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-lg backdrop-blur-sm"
+			className="pointer-events-none fixed right-7 bottom-[4.5rem] z-[90] min-w-48 rounded-md border border-white/10 bg-black/75 px-2.5 py-2 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-lg backdrop-blur-sm"
 		>
 			<header className="mb-1 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-white/50">
 				<span>Dev stats · Ctrl+Shift+D</span>
