@@ -51,6 +51,7 @@ import { useLegacyWireReroute } from "#/components/editor/useLegacyWireReroute.t
 import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.ts";
 import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
@@ -499,9 +500,16 @@ function EditorCanvas({
 					{ercOpen && !isSymbol && (
 						<Suspense
 							fallback={
-								<output className="absolute top-10 left-10 z-20 bg-slate-900 p-4">
-									Loading electrical checks...
-								</output>
+								<FloatingPanel
+									label="Electrical rules check"
+									as="section"
+									position="top-left"
+									raised
+								>
+									<output className="p-2.5 text-[12px] text-[#9ba7b8]">
+										Loading electrical checks...
+									</output>
+								</FloatingPanel>
 							}
 						>
 							<SchematicErcPanel

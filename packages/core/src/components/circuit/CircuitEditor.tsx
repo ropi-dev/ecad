@@ -59,6 +59,7 @@ import {
 	type CircuitView,
 	useCircuitNavigation,
 } from "#/components/circuit/useCircuitNavigation.ts";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 
 const ErcPanel = lazy(() =>
 	import("#/components/circuit/ErcPanel.tsx").then((module) => ({
@@ -538,9 +539,11 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			{ercOpen && (
 				<Suspense
 					fallback={
-						<output className="absolute right-3 top-14 z-20 bg-slate-900 p-4">
-							Loading electrical checks...
-						</output>
+						<FloatingPanel label="Electrical rules check" as="section" raised>
+							<output className="p-2.5 text-[12px] text-[#9ba7b8]">
+								Loading electrical checks...
+							</output>
+						</FloatingPanel>
 					}
 				>
 					<ErcPanel
