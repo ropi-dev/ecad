@@ -13,7 +13,7 @@ import {
 
 setupAppTests();
 
-test("circuit-connect", async ({ page }, testInfo) => {
+test("circuit-connect", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 	await openCircuitWorkload(page);
 	await closeProjectFiles(page);
 	const times: number[] = [];

@@ -14,7 +14,7 @@ import {
 
 setupAppTests();
 
-test("editor-pin-wire", async ({ page }, testInfo) => {
+test("editor-pin-wire", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	await expect(

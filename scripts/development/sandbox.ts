@@ -14,7 +14,8 @@ import {
 
 const root = realpathSync(fileURLToPath(new URL("../../", import.meta.url)));
 process.chdir(root);
-const [command, ...forwarded] = process.argv.slice(2);
+const [command, ...requested] = process.argv.slice(2);
+let forwarded = requested;
 const commands = [
 	"dev",
 	"test",
@@ -73,6 +74,27 @@ if (command === "build-image") {
 		);
 	}
 	const perf = command.startsWith("perf");
+	if (perf) {
+		// The container copies the checkout without .git, so the host selects
+		// the affected scenarios and passes the result as --grep or --all.
+		const { plan } = await import("../performance/select.ts");
+		const baseline =
+			command === "perf:baseline" || requested.includes("--baseline");
+		const selection = plan(
+			requested.filter((arg) => arg !== "--baseline"),
+			{
+				baseline,
+				smoke: process.env.ECAD_PERF_SMOKE === "1",
+				base: process.env.ECAD_PERF_BASE,
+			},
+		);
+		for (const message of selection.messages) console.log(message);
+		forwarded = [
+			...(requested.includes("--baseline") ? ["--baseline"] : []),
+			...selection.args,
+			...(selection.all ? ["--all"] : []),
+		];
+	}
 	const role = perf ? "perf" : "dev";
 	const workspace = perf ? "/workspace" : root;
 	const topology = capture("lscpu", ["--parse=CPU,CORE,SOCKET,ONLINE"])

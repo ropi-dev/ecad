@@ -6,7 +6,7 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("editor-named-nets", async ({ page }, testInfo) => {
+test("editor-named-nets", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await page.evaluate(async () => {

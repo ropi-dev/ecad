@@ -16,7 +16,7 @@ import {
 
 setupAppTests();
 
-test("circuit-collapse", async ({ page }, testInfo) => {
+test("circuit-collapse", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 	const file = createCircuit("Component workload");
 	const device = instantiateCircuitPart(
 		{

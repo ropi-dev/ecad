@@ -9,12 +9,20 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
+	FullConfig,
 	FullResult,
 	Reporter,
+	Suite,
 	TestCase,
 	TestResult,
 } from "@playwright/test/reporter";
-import { checkBudgets, compareBaseline, type Summary } from "./comparison.ts";
+import {
+	checkBudgets,
+	compareBaseline,
+	missingFromBaseline,
+	type Summary,
+} from "./comparison.ts";
+import { areas, isArea } from "./tags.ts";
 
 interface Result {
 	scenario: string;
@@ -27,6 +35,19 @@ const smoke = process.env.ECAD_PERF_SMOKE === "1";
 export default class PerformanceReporter implements Reporter {
 	private runs: Result[] = [];
 	private failures: string[] = [];
+	private warnings: string[] = [];
+	onBegin(_config: FullConfig, suite: Suite) {
+		const titles = new Set<string>();
+		for (const test of suite.allTests()) {
+			const unknown = test.tags.filter((tag) => !isArea(tag));
+			if (!test.tags.some(isArea) || unknown.length) titles.add(test.title);
+		}
+		for (const title of titles) {
+			const failure = `${title}: tag it with at least one of ${Object.keys(areas).join(", ")} and no other tags (see tests/performance/tags.ts).`;
+			console.error(`[perf] ${failure}`);
+			this.failures.push(failure);
+		}
+	}
 	onTestEnd(test: TestCase, result: TestResult) {
 		if (result.status !== "passed" && result.status !== "skipped")
 			this.failures.push(`${test.title}: ${result.status}`);
@@ -80,10 +101,18 @@ export default class PerformanceReporter implements Reporter {
 		if (
 			!smoke &&
 			process.env.ECAD_PERF_UPDATE_BASELINE !== "1" &&
-			existsSync(baselinePath)
+			this.runs.length
 		) {
-			const baseline: Summary = JSON.parse(readFileSync(baselinePath, "utf8"));
-			this.failures.push(...compareBaseline(baseline, summary));
+			if (existsSync(baselinePath)) {
+				const baseline: Summary = JSON.parse(
+					readFileSync(baselinePath, "utf8"),
+				);
+				this.failures.push(...compareBaseline(baseline, summary));
+				this.warnings.push(...missingFromBaseline(baseline, summary));
+			} else
+				this.warnings.push(
+					`No baseline at ${process.env.ECAD_PERF_BASELINE_PATH ?? "perf-artifacts/baseline.json"}, so scenarios were checked against their budgets only. Run pnpm run perf:baseline before the change.`,
+				);
 		}
 		let revision = "unknown";
 		try {
@@ -101,6 +130,7 @@ export default class PerformanceReporter implements Reporter {
 			revision,
 			status: this.failures.length ? "failed" : result.status,
 			failures: this.failures,
+			warnings: this.warnings,
 			runs: this.runs,
 		};
 		writeFileSync(
@@ -133,6 +163,8 @@ export default class PerformanceReporter implements Reporter {
 					.join(", ")}`,
 			);
 		console.log("[perf] Report: perf-artifacts/latest.json");
+		for (const warning of this.warnings)
+			console.warn(`[perf] Warning: ${warning}`);
 		for (const failure of this.failures) console.error(`[perf] ${failure}`);
 		if (this.failures.length) return { status: "failed" as const };
 	}

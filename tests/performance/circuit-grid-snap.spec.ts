@@ -13,7 +13,7 @@ import {
 
 setupAppTests();
 
-test("circuit-grid-snap", async ({ page }, testInfo) => {
+test("circuit-grid-snap", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 	await openCircuitWorkload(page);
 	await closeProjectFiles(page);
 	const header = page.getByRole("button", {

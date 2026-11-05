@@ -3,10 +3,15 @@
 Run these commands from the repository root after `pnpm install --frozen-lockfile` and `pnpm exec playwright install chromium`:
 
 ```bash
+# Before the change, capture every scenario:
 pnpm run perf:baseline
-# Make the feature change, then compare against the saved baseline:
+# Make the change, then benchmark the scenarios it affects against that baseline:
 pnpm run perf
+# Benchmark every scenario instead:
+pnpm run perf --all
 ```
+
+`pnpm run perf` selects scenarios from the change; see [Scenario selection](#scenario-selection). `pnpm run perf:baseline` runs the full suite unless you pass `--grep`.
 
 For parallel threads, use the [container setup](parallel-development.md). Native and sandbox performance commands share a host-wide benchmark lock. Artifacts live under `/tmp`, with `perf-artifacts` linking to the native checkout's artifact directory. Sandbox artifacts have a separate location and baseline.
 
@@ -102,7 +107,7 @@ Event-loop baseline comparisons allow 100 ms of sampling noise. The collector sa
 
 Performance benchmarks run locally, following `AGENTS.md`. Hosted-runner variation made the absolute timing budgets unreliable as CI gates. A run that passed all symbol budgets failed an unrelated empty-project event-loop budget. Compare before and after on the same machine with a matching baseline, and inspect `perf-artifacts/latest.json` before reporting a performance change.
 
-GitHub Actions runs the scenarios only as a functional smoke test. The `Performance scenarios (smoke)` job in `browser-tests.yml` runs every scenario once, without CPU throttling, on three workers. It sets `ECAD_PERF_SMOKE=1`. In that mode the reporter still fails a scenario that errors or misses a required measurement, and still enforces the DOM node and script size budgets. It skips every `…Ms` timing budget and never reads or writes a baseline. The job keeps scenarios working as the UI changes; it says nothing about speed. Run the same check locally with:
+GitHub Actions runs the scenarios only as a functional smoke test. The `Performance scenarios (smoke)` job in `browser-tests.yml` runs every scenario once, without CPU throttling, on three workers. It sets `ECAD_PERF_SMOKE=1`. In that mode the reporter still fails a scenario that errors or misses a required measurement, and still enforces the DOM node and script size budgets. It skips every `…Ms` timing budget, never reads or writes a baseline, and always runs every scenario rather than the affected selection. The job keeps scenarios working as the UI changes; it says nothing about speed. Run the same check locally with:
 
 ```bash
 ECAD_PERF_SMOKE=1 ECAD_PERF_CPU=1 ECAD_PERF_RUNS=1 pnpm run perf --workers=3
@@ -128,6 +133,36 @@ pnpm run perf --grep projects-large
 ```
 
 Set `ECAD_PERF_BASELINE_PATH` to use another comparison file. Development and production have separate default baselines.
+
+## Scenario selection
+
+Every test in `tests/performance` has one or more area tags, listed in `tests/performance/tags.ts`: `@startup`, `@projects`, `@editor`, `@symbols`, `@circuit`, `@import`, `@storage` and `@cli`. Three cheap, broad scenarios also carry `@core`: `projects-empty`, `projects-large` and `editor-toolbar`. The reporter fails a run that contains a test without a known tag, and `tests/performance-selection.test.ts` checks every listed test.
+
+`pnpm run perf` collects the changed paths: `git diff --name-only` between `HEAD` and its merge base with `origin/main`, plus staged, unstaged and untracked files. The table in `scripts/performance/select.ts` maps each path to areas; the first matching row wins. The run then passes `--grep` with `@core` and those areas to Playwright. It prints each path, the areas it selects and the matching row, so the selection can be audited:
+
+```text
+[perf] 1 changed path since origin/main (merge base 4bd3609c3210):
+[perf]   packages/core/src/components/editor/Editor2D.tsx → @editor (packages/core/src/components/editor/**)
+[perf] Running @core @editor. Pass --all for every scenario.
+```
+
+- Documentation, Markdown, `.github`, licenses and unit or browser tests select nothing beyond `@core`.
+- A changed performance spec selects the tags written in that spec.
+- The lockfile, `package.json` files, TypeScript and Vite configuration, the app shell and routes under `packages/web/src`, `scripts/`, the performance fixture, helpers, budgets, reporter and config, the test helpers and fixtures they import, shared project session and storage code, `packages/core/src/lib`, `packages/core/src/performance` and any path no row matches run every scenario.
+- `--all` runs every scenario. An explicit `--grep` replaces the selection; `--grep-invert` and other Playwright options still apply to it. `pnpm run perf:baseline` and smoke runs (`ECAD_PERF_SMOKE=1`) always run every scenario unless you pass `--grep`.
+- If the changed paths cannot be listed, for example without an `origin/main` ref, the run uses every scenario and says why. Set `ECAD_PERF_BASE` to compare against another ref, such as the base branch of a stacked pull request.
+- `pnpm sandbox perf` selects on the host, because the container copy has no `.git`, and passes the result to the container as `--grep` or `--all`.
+
+Preview a selection without running anything:
+
+```bash
+pnpm exec tsx scripts/performance/select.ts                      # the current change
+pnpm exec tsx scripts/performance/select.ts docs/erc.md pnpm-lock.yaml   # given paths
+```
+
+A selected run compares only the scenarios it ran against the baseline. A scenario that ran but is missing from the baseline is printed as a warning and listed under `warnings` in `latest.json`; it was checked against its budgets only. A run without any baseline file prints the same kind of warning. `pnpm run perf:baseline --grep …` writes a baseline that contains only the matching scenarios.
+
+Give every new scenario at least one area tag, `test(name, { tag: ["@editor"] }, fn)`. If it covers an area that no tag describes, add the tag to `tests/performance/tags.ts` and mapping rows for its source paths to `scripts/performance/select.ts`.
 
 ## Live diagnostics
 

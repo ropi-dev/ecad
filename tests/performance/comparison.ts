@@ -77,3 +77,19 @@ export function compareBaseline(baseline: Summary, current: Summary): string[] {
 	}
 	return failures;
 }
+
+/**
+ * Scenarios in the current run that the baseline lacks. A selected scenario
+ * missing from the baseline is checked against its budgets only.
+ */
+export function missingFromBaseline(
+	baseline: Summary,
+	current: Summary,
+): string[] {
+	return Object.keys(current.scenarios)
+		.filter((scenario) => !baseline.scenarios[scenario])
+		.map(
+			(scenario) =>
+				`${scenario} is not in the baseline, so it was checked against its budgets only. Capture a baseline that includes it to compare it.`,
+		);
+}
