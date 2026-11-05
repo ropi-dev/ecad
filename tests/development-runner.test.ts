@@ -73,6 +73,20 @@ test("sandbox forwards perf settings and confines custom baselines to persistent
 			"ECAD_PERF_BASELINE_PATH=/tmp/ecad-artifacts/custom/baseline.json",
 		])
 			assert.ok(args.includes(setting), setting);
+		// The fixture git reports an unknown changed path, so the host selects
+		// every scenario and tells the container, which has no .git.
+		assert.deepEqual(args.slice(-3), ["perf", "--list", "--all"]);
+		const grep = spawnSync(
+			process.execPath,
+			[sandbox, "perf", "--grep", "@core|@editor"],
+			{ env, encoding: "utf8" },
+		);
+		assert.equal(grep.status, 0, grep.stderr);
+		assert.deepEqual(JSON.parse(readFileSync(output, "utf8")).slice(-3), [
+			"perf",
+			"--grep",
+			"@core|@editor",
+		]);
 		for (const invalid of ["../outside.json", "/tmp/outside.json"]) {
 			rmSync(output);
 			const invalidResult = spawnSync(process.execPath, [sandbox, "perf"], {

@@ -1,14 +1,22 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { prepareArtifacts } from "../development/artifacts.ts";
+import { plan } from "./select.ts";
 
 prepareArtifacts();
 const args = process.argv.slice(2);
 const development = args.includes("--development");
 const baseline = args.includes("--baseline");
-const forwarded = args.filter(
-	(arg) => arg !== "--development" && arg !== "--baseline",
+const selection = plan(
+	args.filter((arg) => arg !== "--development" && arg !== "--baseline"),
+	{
+		baseline,
+		smoke: process.env.ECAD_PERF_SMOKE === "1",
+		base: process.env.ECAD_PERF_BASE,
+	},
 );
+for (const message of selection.messages) console.log(message);
+const forwarded = selection.args;
 const env = {
 	...process.env,
 	ECAD_PERF_MODE: development ? "development" : "production",

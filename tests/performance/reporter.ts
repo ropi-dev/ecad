@@ -7,14 +7,24 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import type {
+	FullConfig,
 	FullResult,
 	Reporter,
+	Suite,
 	TestCase,
 	TestResult,
 } from "@playwright/test/reporter";
-import { checkBudgets, compareBaseline, type Summary } from "./comparison.ts";
+import {
+	checkBudgets,
+	compareBaseline,
+	missingFromBaseline,
+	profileBrowser,
+	type Summary,
+} from "./comparison.ts";
+import { areas, isArea } from "./tags.ts";
 
 interface Result {
 	scenario: string;
@@ -27,9 +37,26 @@ const smoke = process.env.ECAD_PERF_SMOKE === "1";
 export default class PerformanceReporter implements Reporter {
 	private runs: Result[] = [];
 	private failures: string[] = [];
+	private warnings: string[] = [];
+	onBegin(_config: FullConfig, suite: Suite) {
+		const titles = new Set<string>();
+		for (const test of suite.allTests()) {
+			const unknown = test.tags.filter((tag) => !isArea(tag));
+			if (!test.tags.some(isArea) || unknown.length) titles.add(test.title);
+		}
+		for (const title of titles) {
+			const failure = `${title}: tag it with at least one of ${Object.keys(areas).join(", ")} and no other tags (see tests/performance/tags.ts).`;
+			console.error(`[perf] ${failure}`);
+			this.failures.push(failure);
+		}
+	}
+	private tests = new Set<TestCase>();
 	onTestEnd(test: TestCase, result: TestResult) {
-		if (result.status !== "passed" && result.status !== "skipped")
-			this.failures.push(`${test.title}: ${result.status}`);
+		// Judge each test by its final outcome in onEnd, so a smoke-mode retry
+		// that passes is flaky rather than failed. Only passing attempts report
+		// measurements.
+		this.tests.add(test);
+		if (result.status !== "passed") return;
 		for (const attachment of result.attachments.filter(
 			(item) => item.name === "performance",
 		)) {
@@ -40,6 +67,22 @@ export default class PerformanceReporter implements Reporter {
 		}
 	}
 	async onEnd(result: FullResult) {
+		for (const test of this.tests) {
+			const outcome = test.outcome();
+			const last = test.results.at(-1);
+			if (outcome === "unexpected")
+				this.failures.push(`${test.title}: ${last?.status ?? "failed"}`);
+			else if (outcome === "flaky") {
+				const first = test.results.find((item) => item.status !== "passed");
+				const message =
+					`${test.title} is flaky: it ${first?.status ?? "failed"} on attempt 1 and passed on retry. ${stripVTControlCharacters(first?.error?.message ?? "").split("\n")[0]}`.trim();
+				this.warnings.push(message);
+				if (process.env.GITHUB_ACTIONS === "true")
+					console.log(
+						`::warning file=${relative(process.cwd(), test.location.file)},line=${test.location.line},title=Flaky performance scenario::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`,
+					);
+			}
+		}
 		const directory = resolve("perf-artifacts");
 		mkdirSync(directory, { recursive: true });
 		const baselinePath = resolve(
@@ -51,7 +94,7 @@ export default class PerformanceReporter implements Reporter {
 				mode: process.env.ECAD_PERF_MODE ?? "production",
 				cpu: Number(process.env.ECAD_PERF_CPU ?? 4),
 				platform: process.platform,
-				browser: this.runs[0]?.report.environment.userAgent ?? "unavailable",
+				browser: profileBrowser(this.runs),
 				...(process.env.ECAD_PERF_ENVIRONMENT
 					? { environment: process.env.ECAD_PERF_ENVIRONMENT }
 					: {}),
@@ -80,10 +123,18 @@ export default class PerformanceReporter implements Reporter {
 		if (
 			!smoke &&
 			process.env.ECAD_PERF_UPDATE_BASELINE !== "1" &&
-			existsSync(baselinePath)
+			this.runs.length
 		) {
-			const baseline: Summary = JSON.parse(readFileSync(baselinePath, "utf8"));
-			this.failures.push(...compareBaseline(baseline, summary));
+			if (existsSync(baselinePath)) {
+				const baseline: Summary = JSON.parse(
+					readFileSync(baselinePath, "utf8"),
+				);
+				this.failures.push(...compareBaseline(baseline, summary));
+				this.warnings.push(...missingFromBaseline(baseline, summary));
+			} else
+				this.warnings.push(
+					`No baseline at ${process.env.ECAD_PERF_BASELINE_PATH ?? "perf-artifacts/baseline.json"}, so scenarios were checked against their budgets only. Run pnpm run perf:baseline before the change.`,
+				);
 		}
 		let revision = "unknown";
 		try {
@@ -101,6 +152,7 @@ export default class PerformanceReporter implements Reporter {
 			revision,
 			status: this.failures.length ? "failed" : result.status,
 			failures: this.failures,
+			warnings: this.warnings,
 			runs: this.runs,
 		};
 		writeFileSync(
@@ -133,6 +185,8 @@ export default class PerformanceReporter implements Reporter {
 					.join(", ")}`,
 			);
 		console.log("[perf] Report: perf-artifacts/latest.json");
+		for (const warning of this.warnings)
+			console.warn(`[perf] Warning: ${warning}`);
 		for (const failure of this.failures) console.error(`[perf] ${failure}`);
 		if (this.failures.length) return { status: "failed" as const };
 	}

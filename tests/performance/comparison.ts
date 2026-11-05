@@ -77,3 +77,35 @@ export function compareBaseline(baseline: Summary, current: Summary): string[] {
 	}
 	return failures;
 }
+
+/**
+ * Scenarios in the current run that the baseline lacks. A selected scenario
+ * missing from the baseline is checked against its budgets only.
+ */
+export function missingFromBaseline(
+	baseline: Summary,
+	current: Summary,
+): string[] {
+	return Object.keys(current.scenarios)
+		.filter((scenario) => !baseline.scenarios[scenario])
+		.map(
+			(scenario) =>
+				`${scenario} is not in the baseline, so it was checked against its budgets only. Capture a baseline that includes it to compare it.`,
+		);
+}
+
+/**
+ * The browser for a summary profile. Node-only scenarios report a `Node/…`
+ * user agent, so the first browser report is used whatever order the selected
+ * scenarios ran in.
+ */
+export function profileBrowser(
+	runs: readonly { report: { environment: { userAgent: string } } }[],
+): string {
+	const agents = runs.map((run) => run.report.environment.userAgent);
+	return (
+		agents.find((agent) => !agent.startsWith("Node/")) ??
+		agents[0] ??
+		"unavailable"
+	);
+}

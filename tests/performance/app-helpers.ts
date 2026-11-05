@@ -47,7 +47,14 @@ export async function editorReady(page: Page, title: string) {
 }
 
 /** Counts the shapes in a project's saved drawing, or returns null while a save is replacing it. */
-export function savedShapeCount(page: Page, project: string) {
+/**
+ * Reads the project's saved drawing shapes from OPFS. Returns `null` when the
+ * read races an autosave that replaces or removes the file.
+ */
+export function savedShapes<Shape = Record<string, unknown>>(
+	page: Page,
+	project: string,
+) {
 	return page.evaluate(async (project) => {
 		try {
 			let directory = await (
@@ -64,7 +71,7 @@ export function savedShapeCount(page: Page, project: string) {
 			for (const part of path)
 				directory = await directory.getDirectoryHandle(part);
 			const file = await (await directory.getFileHandle(name)).getFile();
-			return JSON.parse(await file.text()).shapes.length as number;
+			return JSON.parse(await file.text()).shapes as Shape[];
 		} catch (error) {
 			if (
 				error instanceof DOMException &&
@@ -76,18 +83,16 @@ export function savedShapeCount(page: Page, project: string) {
 	}, project);
 }
 
-/** Undoes the last edit from the history popover, then closes the popover so it cannot swallow the next canvas press. */
+export async function savedShapeCount(page: Page, project: string) {
+	return (await savedShapes(page, project))?.length ?? null;
+}
+
+/** Undoes the last edit with the toolbar's Undo button. */
 export async function undo(page: Page) {
 	await (await toolbarButton(page, "Undo")).click();
 	await expect(
 		page.getByRole("button", { name: "Redo", exact: true }),
 	).toBeEnabled();
-	const history = page.getByRole("button", {
-		name: "History tools",
-		exact: true,
-	});
-	await history.click();
-	await expect(history).toHaveAttribute("aria-expanded", "false");
 }
 
 export const saveCount = async (page: Page) =>

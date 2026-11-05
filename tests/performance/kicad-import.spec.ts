@@ -7,7 +7,7 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("kicad-import", async ({ page }, testInfo) => {
+test("kicad-import", { tag: ["@import"] }, async ({ page }, testInfo) => {
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await expect(

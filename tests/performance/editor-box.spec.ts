@@ -17,7 +17,7 @@ import {
 
 setupAppTests();
 
-test("editor-box", async ({ page }, testInfo) => {
+test("editor-box", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();

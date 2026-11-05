@@ -7,7 +7,7 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("editor-pin-leads", async ({ page }, testInfo) => {
+test("editor-pin-leads", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	await (await toolbarButton(page, "Pin")).click();

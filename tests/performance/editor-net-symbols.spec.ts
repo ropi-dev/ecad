@@ -5,7 +5,7 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("editor-net-symbols", async ({ page }, testInfo) => {
+test("editor-net-symbols", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	for (const name of ["Ground", "VDD"]) {

@@ -93,7 +93,7 @@ jobs:
       - name: Install software graphics dependencies
         run: sudo apt-get install --no-install-recommends -y libvulkan1 mesa-vulkan-drivers
       - name: Run performance scenarios
-        run: pnpm run perf --forbid-only --workers=3
+        run: pnpm run perf --all --forbid-only --workers=3
       - name: Upload performance report and failures
         if: ${{ !cancelled() }}
         # Report storage limits must not change the test result.

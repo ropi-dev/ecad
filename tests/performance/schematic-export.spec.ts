@@ -7,7 +7,7 @@ import { finish, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("schematic-export", async ({ page }, testInfo) => {
+test("schematic-export", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	const content = await readFile(
 		"tests/fixtures/rp2350a-reference/drawing.ecaddraw",
 		"utf8",

@@ -6,6 +6,10 @@ const development = process.env.ECAD_PERF_MODE === "development";
 // Traces and the HTML report add work to every timed test, so they are opt-in.
 const trace = process.env.ECAD_PERF_TRACE === "1";
 const html = process.env.ECAD_PERF_HTML === "1";
+// Smoke runs check that scenarios still work, so they retry once: a timing
+// race such as an autosave landing mid-gesture is reported as flaky, while a
+// broken spec fails both attempts. Benchmarks never retry.
+const smoke = process.env.ECAD_PERF_SMOKE === "1";
 export default defineConfig({
 	testDir: ".",
 	testMatch: "*.spec.ts",
@@ -13,7 +17,7 @@ export default defineConfig({
 	workers: 1,
 	fullyParallel: false,
 	repeatEach: Number(process.env.ECAD_PERF_RUNS ?? 3),
-	retries: 0,
+	retries: smoke ? 1 : 0,
 	// Fail fast: a stale locator should fail in seconds, not at the test timeout.
 	// Long scenarios such as editor-selection-drag set their own test timeout.
 	timeout: 60_000,

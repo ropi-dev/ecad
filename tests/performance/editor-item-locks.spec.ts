@@ -5,7 +5,7 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("editor-item-locks", async ({ page }, testInfo) => {
+test("editor-item-locks", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.addInitScript(() => {
 		const file = {
 			format: "ecad-symbol",

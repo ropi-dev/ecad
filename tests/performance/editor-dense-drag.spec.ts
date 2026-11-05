@@ -15,7 +15,7 @@ import {
 
 setupAppTests();
 
-test("editor-dense-drag", async ({ page }, testInfo) => {
+test("editor-dense-drag", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	test.setTimeout(240_000);
 	const { createSymbol, symbolDefinitions } = await import(
 		"#/drawing/symbols.ts"

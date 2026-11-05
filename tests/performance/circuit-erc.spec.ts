@@ -13,7 +13,7 @@ import {
 
 setupAppTests();
 
-test("circuit-erc", async ({ page }, testInfo) => {
+test("circuit-erc", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 	await openCircuitWorkload(page, false);
 	await closeProjectFiles(page);
 	await page

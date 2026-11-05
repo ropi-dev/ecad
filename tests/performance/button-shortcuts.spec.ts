@@ -5,7 +5,7 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
-test("button-shortcuts", async ({ page }, testInfo) => {
+test("button-shortcuts", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	for (let repeat = 0; repeat < 3; repeat++) {

@@ -12,7 +12,7 @@ import {
 
 setupAppTests();
 
-test("circuit-graph", async ({ page }, testInfo) => {
+test("circuit-graph", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 	const openMs = await openCircuitWorkload(page);
 	const times: number[] = [];
 	const component = page.getByRole("button", {
