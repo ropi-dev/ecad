@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	drawShape,
+	PIN_RADIUS,
+	pinTerminals,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
 	type BufferGeometry,
 	Group,
 	LineLoop,
@@ -12,7 +17,6 @@ import {
 import type { DrawingAppearance } from "#/drawing/display.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import { drawShape, PIN_RADIUS, pinTerminals } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";

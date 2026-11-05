@@ -1,6 +1,6 @@
+import { SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, type Page, test } from "@playwright/test";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import { SCHEMATIC_STEP } from "#/drawing/units.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
@@ -261,9 +261,9 @@ test("selected schematic wires keep a distinct color from related net wires", as
 	await expect(page.locator("canvas")).toBeVisible();
 	await page.evaluate(async () => {
 		const fixturePath = "/tests/browser/editor.tsx";
-		const shapesPath = "/packages/core/src/drawing/shapes.ts";
+		const shapesPath = "/packages/drawing-core/src/drawing/shapes.ts";
 		const { drawingStore } = await import(fixturePath);
-		const storePath = "/packages/core/src/commands/drawing-store.ts";
+		const storePath = "/packages/drawing-core/src/commands/drawing-store.ts";
 		const { createDrawingStore } = await import(storePath);
 		const { drawShape } = await import(shapesPath);
 		const wire = (
@@ -442,7 +442,7 @@ for (const item of ["Resistor", "Pin", "Text", "Net label", "Supply label"]) {
 		await clickAt(page, 100, 100);
 		await expect(crosshair).toHaveCount(0);
 		const center = await page.evaluate(async () => {
-			const shapesPath = "/packages/core/src/drawing/shapes.ts";
+			const shapesPath = "/packages/drawing-core/src/drawing/shapes.ts";
 			const { shapeBounds } = await import(shapesPath);
 			const documentState = JSON.parse(
 				(

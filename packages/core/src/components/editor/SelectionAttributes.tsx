@@ -1,16 +1,9 @@
-import { ChevronDown, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
-import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
-import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
-import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import {
 	type LineStyle,
 	lineStyleLabels,
 	lineStyles,
-} from "#/drawing/line-style.ts";
-import { isNetLabel } from "#/drawing/named-nets.ts";
-import type { LabelRole } from "#/drawing/placement.ts";
-import type { SelectionEdit } from "#/drawing/selection-edit.ts";
+} from "@ecad/drawing-core/drawing/line-style.ts";
+import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	boxBorder,
 	boxText,
@@ -22,18 +15,25 @@ import {
 	shapeBounds,
 	symbolLabelPosition,
 	symbolShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	horizontalAlignments,
 	type TextAlignment,
 	verticalAlignments,
-} from "#/drawing/text-alignment.ts";
+} from "@ecad/drawing-core/drawing/text-alignment.ts";
 import {
 	formatMils,
 	fromMils,
 	SCHEMATIC_STEP,
 	toMils,
-} from "#/drawing/units.ts";
+} from "@ecad/drawing-core/drawing/units.ts";
+import { ChevronDown, X } from "lucide-react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
+import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
+import type { LabelRole } from "#/drawing/placement.ts";
+import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 
 function AttributeInput({
 	label,

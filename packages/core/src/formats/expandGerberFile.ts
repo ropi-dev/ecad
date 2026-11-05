@@ -1,3 +1,4 @@
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { Effect } from "effect";
 import type { GerberArchive } from "#/formats/gerber/archive.ts";
 import {
@@ -5,7 +6,6 @@ import {
 	checkFileSize,
 	requestWorker,
 } from "#/formats/import-effects.ts";
-import { runEffect } from "#/lib/effect.ts";
 
 const UNREADABLE = "Unable to read this ZIP archive.";
 

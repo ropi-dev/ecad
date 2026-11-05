@@ -1,8 +1,8 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { FolderOpen } from "lucide-react";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { lazy, Suspense, useState } from "react";
 import { toastManager } from "#/components/ui/toast.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";

@@ -1,3 +1,13 @@
+import {
+	drawingShapeSchema,
+	legacyDrawingShapeSchema,
+} from "@ecad/drawing-core/drawing/schema.ts";
+import {
+	type EditorShape,
+	symbolShapes,
+	symbolTextShapes,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import { z } from "zod";
 import {
 	createEmptySymbolFile,
@@ -5,20 +15,10 @@ import {
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
 import {
-	drawingShapeSchema,
-	legacyDrawingShapeSchema,
-} from "#/drawing/schema.ts";
-import {
-	type EditorShape,
-	symbolShapes,
-	symbolTextShapes,
-} from "#/drawing/shapes.ts";
-import {
 	libraryDefinitions,
 	symbolFileWithShapes,
 } from "#/drawing/symbol-file.ts";
 import { createSymbol, duplicateSymbol } from "#/drawing/symbols.ts";
-import type { Point } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export const drawingClipboardType = "application/x-ecad-shapes+json";

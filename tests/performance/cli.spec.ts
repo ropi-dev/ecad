@@ -106,8 +106,10 @@ test("cli-drawing", async ({ browserName: _browserName }, testInfo) => {
 test("named-net-connectivity", async ({
 	browserName: _browserName,
 }, testInfo) => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
-	const { drawShape } = await import("#/drawing/shapes.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
+	const { drawShape } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const shapes = [
 		...Array.from({ length: 346 }, (_, index) =>
 			drawShape(

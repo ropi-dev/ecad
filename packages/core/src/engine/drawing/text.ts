@@ -1,3 +1,4 @@
+import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import {
 	CanvasTexture,
 	LinearFilter,
@@ -11,7 +12,6 @@ import {
 	padding,
 	textLayout,
 } from "#/drawing/text.ts";
-import type { TextAlignment } from "#/drawing/text-alignment.ts";
 
 let measureContext: CanvasRenderingContext2D | null = null;
 const atlasGutter = 8;

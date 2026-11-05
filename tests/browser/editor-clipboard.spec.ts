@@ -1,5 +1,5 @@
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { required } from "../helpers/required.ts";
 import { selectSymbolAttribute } from "./symbol-items";
 

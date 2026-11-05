@@ -1,26 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect, Either } from "effect";
 import {
 	placeShapesEffect,
 	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	type EditorSymbol,
 	moveSymbolText,
 	pinTerminals,
 	symbolTextShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { Effect, Either } from "effect";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 

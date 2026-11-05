@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	Box3,
 	DirectionalLight,
@@ -30,7 +31,6 @@ import type {
 	Viewer2DSnapshot,
 	Viewer3DHandle,
 } from "#/engine/viewport-types.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { getAppPerformance } from "#/performance/runtime.ts";
 

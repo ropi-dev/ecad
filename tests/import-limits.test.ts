@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { Effect } from "effect";
 import { expandGerberFile } from "#/formats/expandGerberFile.ts";
 import { MAX_GERBER_ARCHIVE_LENGTH } from "#/formats/gerber/archive.ts";
@@ -17,7 +18,6 @@ import { parseGerberFile } from "#/formats/parseGerberFile.ts";
 import { parseKiCadFile } from "#/formats/parseKiCadFile.ts";
 import { parseStepFile, parseStepFileEffect } from "#/formats/parseStepFile.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
-import { runEffect } from "#/lib/effect.ts";
 import { installKiCadWorker } from "./helpers/kicad-worker.ts";
 
 const fixturePath = new URL(

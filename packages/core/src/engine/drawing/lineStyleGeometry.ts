@@ -1,5 +1,5 @@
+import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import { BufferGeometry, Float32BufferAttribute, Vector2 } from "three";
-import type { LineStyle } from "#/drawing/line-style.ts";
 
 const patterns: Record<Exclude<LineStyle, "solid">, readonly number[]> = {
 	dashed: [6, 3],

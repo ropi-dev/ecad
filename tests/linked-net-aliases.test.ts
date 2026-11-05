@@ -4,17 +4,17 @@ import {
 	circuitFileSchema,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
-import { synchronizePcb } from "#/circuit/linked-schematic.ts";
-import { componentFromSymbol } from "#/circuit/symbol-components.ts";
-import { electricalNets } from "#/drawing/named-nets.ts";
+import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	type EditorShape,
 	type EditorSymbol,
 	symbolShapes,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import { synchronizePcb } from "#/circuit/linked-schematic.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import type { Point } from "#/drawing/types.ts";
 import { required } from "./helpers/required.ts";
 
 const connector = required(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { Effect, Schema } from "effect";
-import { runEffect } from "#/lib/effect.ts";
 import {
 	HttpClient,
 	HttpError,

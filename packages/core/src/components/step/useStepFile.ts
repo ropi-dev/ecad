@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Effect } from "effect";
 import { useCallback, useEffect, useState } from "react";
 import { useFileImport } from "#/components/viewer/useFileImport.ts";
@@ -6,7 +7,6 @@ import {
 	type ParsedStepFile,
 	parseStepFileEffect,
 } from "#/formats/parseStepFile.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 
 function readStep(file: File) {

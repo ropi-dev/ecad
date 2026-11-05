@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
 import {
 	createDesktopProjectDirectory,

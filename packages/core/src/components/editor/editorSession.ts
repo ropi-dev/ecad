@@ -1,16 +1,19 @@
-import { Effect, Either } from "effect";
 import {
 	type CommandResult,
 	type InvalidDrawingCommand,
 	placeShapesEffect,
 	replaceAndPlaceShapesEffect,
-} from "#/commands/drawing-commands.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
 	type createDrawingStore,
 	DrawingStore,
-} from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import {
+	canSelectShape,
+	type EditorShape,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect, Either } from "effect";
 import { placedSelection } from "#/drawing/command-selection.ts";
-import { canSelectShape, type EditorShape } from "#/drawing/shapes.ts";
 
 type Store = ReturnType<typeof createDrawingStore>;
 export type DrawingCommand<A> = Effect.Effect<

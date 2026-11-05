@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	hitShape,
 	symbolShapes,
 	symbolTextShapes,
 	type TextShape,
-} from "#/drawing/shapes.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	horizontalAlignments,
 	textCenter,
 	verticalAlignments,
-} from "#/drawing/text-alignment.ts";
+} from "@ecad/drawing-core/drawing/text-alignment.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
 const text: TextShape = {

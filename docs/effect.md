@@ -6,7 +6,7 @@ See [drawing architecture](architecture.md) for complete command inputs, the doc
 
 ## Running operations
 
-Compose operations with `Effect.gen`, and run them at a React hook, server function, or HTTP handler using `runEffect` from `packages/core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
+Compose operations with `Effect.gen`, and run them at a React hook, server function, or HTTP handler using `runEffect` from `packages/drawing-core/src/lib/effect.ts`. Pass the framework's `AbortSignal` when one is available.
 
 ```ts
 const value = await runEffect(program, signal);

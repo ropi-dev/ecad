@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect } from "effect";
 import {
 	placeShapesEffect,
 	redoEffect,
 	removeShapesEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import {
+	drawShape,
+	type EditorShape,
+	routeWire,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect } from "effect";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
-import { drawShape, type EditorShape, routeWire } from "#/drawing/shapes.ts";
 
 const rectangle = (id: number, x = 0) =>
 	drawShape(id, "rectangle", { x, y: 0 }, { x: x + 10, y: 10 });

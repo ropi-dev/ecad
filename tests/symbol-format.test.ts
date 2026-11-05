@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { hitShape, symbolShapes } from "@ecad/drawing-core/drawing/shapes.ts";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { createShapeGeometry } from "#/components/editor/shapeGeometry.ts";
-import { hitShape, symbolShapes } from "#/components/editor/shapes.ts";
 import {
 	createEmptySymbolFile,
 	importSymbolFile,
@@ -15,7 +16,6 @@ import {
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
 import { createSymbol } from "#/components/editor/symbols.ts";
-import { runEffect } from "#/lib/effect.ts";
 
 const example = readFileSync(
 	new URL(

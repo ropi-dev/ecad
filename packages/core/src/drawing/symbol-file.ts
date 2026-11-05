@@ -1,8 +1,4 @@
-import type {
-	SymbolFile,
-	SymbolLibrary,
-} from "#/components/editor/symbolFormat.ts";
-import { fittingChildOverrides } from "#/drawing/schema.ts";
+import { fittingChildOverrides } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
@@ -12,8 +8,12 @@ import {
 	normalizeNetSymbol,
 	PIN_RADIUS,
 	symbolShapes,
-} from "#/drawing/shapes.ts";
-import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import type {
+	SymbolFile,
+	SymbolLibrary,
+} from "#/components/editor/symbolFormat.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 
 export type SymbolResolver = (

@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { exportDrawingSvg } from "#/drawing/export.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	drawShape,
 	hitShape,
@@ -10,7 +8,9 @@ import {
 	openPins,
 	pinTerminals,
 	symbolShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { exportDrawingSvg } from "#/drawing/export.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { required } from "./helpers/required.ts";

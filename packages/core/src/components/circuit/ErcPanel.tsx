@@ -5,8 +5,8 @@ import {
 	runErc,
 } from "@ecad/drawing-core/erc/engine.ts";
 import { defaultErcRules } from "@ecad/drawing-core/erc/rules.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { useMemo, useState } from "react";
-import { errorMessage } from "#/lib/error-message.ts";
 
 export function ErcPanel({
 	circuit,

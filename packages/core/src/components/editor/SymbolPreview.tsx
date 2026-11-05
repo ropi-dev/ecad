@@ -1,7 +1,7 @@
+import { PIN_RADIUS, shapeBounds } from "@ecad/drawing-core/drawing/shapes.ts";
+import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import { memo } from "react";
-import { PIN_RADIUS, shapeBounds } from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
-import { textCenter } from "#/drawing/text-alignment.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export default memo(function SymbolPreview({

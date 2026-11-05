@@ -6,7 +6,7 @@ import {
 	intersectsSelection,
 	shapeBounds,
 	symbolTextShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 
 test("window selection requires the whole shape, with inclusive edges", () => {

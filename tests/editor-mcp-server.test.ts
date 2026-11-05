@@ -1,18 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Effect } from "effect";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
-import { runEffect } from "#/lib/effect.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import {
 	type DrawingEnvelope,
 	type DrawingReply,
 	drawingReplySchema,
 	executeDrawingOperation,
 	utf8ByteLength,
-} from "#/mcp/drawing-protocol.ts";
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Effect } from "effect";
 import {
 	connectEditorMcp,
 	type EditorMcpState,

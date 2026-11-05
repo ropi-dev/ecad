@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import {
 	MAX_GERBER_ARCHIVE_BYTES,
 	MAX_STEP_FILE_BYTES,
@@ -10,6 +9,7 @@ import {
 	PROJECT_FILE,
 	parseProjectManifest,
 } from "@ecad/core/projects/format.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type BrowserDirectory,
 	createWebProjectStorage,

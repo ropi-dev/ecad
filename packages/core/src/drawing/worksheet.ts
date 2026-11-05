@@ -1,5 +1,5 @@
-import { A3 } from "#/drawing/shapes.ts";
-import type { Point } from "#/drawing/types.ts";
+import { A3 } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 
 export interface SheetSize {
 	width: number;

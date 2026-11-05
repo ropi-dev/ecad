@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { Effect } from "effect";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { drawShape } from "#/drawing/shapes.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { drawShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type DrawingOperation,
 	type DrawingReply,
@@ -13,11 +12,15 @@ import {
 	drawingOperationSchema,
 	drawingReplySchema,
 	executeDrawingOperation,
-} from "#/mcp/drawing-protocol.ts";
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import {
 	createDrawingMcpServer,
 	drawingToolResult,
-} from "#/mcp/drawing-server.ts";
+} from "@ecad/drawing-core/mcp/drawing-server.ts";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Effect } from "effect";
+import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
 const rectangle = {

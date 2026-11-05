@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect } from "effect";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	type DrawingEnvelope,
 	type DrawingReply,
 	executeDrawingOperation,
-} from "#/mcp/drawing-protocol.ts";
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
+import { Effect } from "effect";
 import {
 	connectEditorMcp,
 	type EditorMcpState,

@@ -1,3 +1,5 @@
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toastManager } from "#/components/ui/toast.ts";
 import {
@@ -5,8 +7,6 @@ import {
 	type ImportFile,
 	importFilesEffect,
 } from "#/formats/importFiles.ts";
-import { runEffect } from "#/lib/effect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import type { AssetKind } from "#/projects/format.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";

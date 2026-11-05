@@ -1,9 +1,9 @@
+import type { RectangleInput } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, type Page, test } from "@playwright/test";
-import type { RectangleInput } from "#/commands/drawing-commands.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import { drawingReplySchema } from "#/mcp/drawing-protocol.ts";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 900 } });

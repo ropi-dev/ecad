@@ -1,13 +1,13 @@
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { toastManager } from "#/components/ui/toast.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { captureSvgPng } from "#/engine/capture-png.ts";
 import { measureText } from "#/engine/drawing/text.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 export function DrawingExport({

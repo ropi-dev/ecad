@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	containsSelection,
 	type EditorSymbol,
@@ -12,7 +12,7 @@ import {
 	symbolSelectionFrame,
 	symbolShapes,
 	symbolTextShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,

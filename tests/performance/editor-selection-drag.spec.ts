@@ -19,7 +19,9 @@ test("editor-selection-drag", async ({ page }, testInfo) => {
 	const { createSymbol, symbolDefinitions } = await import(
 		"#/drawing/symbols.ts"
 	);
-	const { drawShape, pinTerminals } = await import("#/drawing/shapes.ts");
+	const { drawShape, pinTerminals } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
 	const parts = ["resistor", "capacitor", "led"].map((id) =>
 		required(symbolDefinitions.find((definition) => definition.id === id)),
 	);

@@ -11,10 +11,10 @@ import {
 	type SymbolShape,
 	type SymbolText,
 	shapeBounds,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
-import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
-import type { Point } from "#/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface SymbolDefinition {

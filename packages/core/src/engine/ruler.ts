@@ -1,4 +1,7 @@
-import { MM_PER_MIL, SCHEMATIC_STEP } from "#/drawing/units.ts";
+import {
+	MM_PER_MIL,
+	SCHEMATIC_STEP,
+} from "@ecad/drawing-core/drawing/units.ts";
 
 export interface RulerTick {
 	position: number;

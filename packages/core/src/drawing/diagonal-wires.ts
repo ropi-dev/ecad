@@ -1,14 +1,14 @@
-import { unionFind } from "@ecad/drawing-core/lib/union-find.ts";
-import type { ShapeInput } from "#/commands/drawing-commands.ts";
-import { electricalNets } from "#/drawing/named-nets.ts";
+import type { ShapeInput } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
 	pinTerminals,
 	shapeBounds,
-} from "#/drawing/shapes.ts";
-import type { Bounds } from "#/drawing/types.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Bounds } from "@ecad/drawing-core/drawing/types.ts";
+import { unionFind } from "@ecad/drawing-core/lib/union-find.ts";
 
 /**
  * Routing for diagonal drawing wires. Drawing wires must be horizontal or

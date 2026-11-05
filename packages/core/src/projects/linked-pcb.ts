@@ -1,6 +1,6 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { ProjectDocument, ProjectSnapshot } from "#/projects/format.ts";
 import { projectIndex } from "#/projects/project-index.ts";
@@ -97,7 +97,7 @@ export async function assembleLinkedPcbs(
 		import("#/drawing/symbols.ts"),
 		import("#/drawing/symbol-file.ts"),
 		import("#/drawing/symbol-persistence.ts"),
-		import("#/drawing/symbol-reference.ts"),
+		import("@ecad/drawing-core/drawing/symbol-reference.ts"),
 	]);
 	const savedSymbols = document.symbols;
 	const paired = pairPcbDocuments(document, previous.manifest.name);

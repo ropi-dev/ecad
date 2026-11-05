@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	Box,
 	ChevronLeft,
@@ -35,7 +36,6 @@ import {
 } from "#/components/viewer/shortcutModifier.ts";
 import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
 import type { KiCadImportReport } from "#/formats/kicad/import.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import {
 	type AssetKind,

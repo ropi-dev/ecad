@@ -1,21 +1,24 @@
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as ParseResult from "effect/ParseResult";
-import * as Schema from "effect/Schema";
-import { lineStyles } from "#/drawing/line-style.ts";
+import { lineStyles } from "@ecad/drawing-core/drawing/line-style.ts";
 import {
 	type SymbolChildOverride,
 	symbolChildOverridesSchema,
 	upgradeChildOverrides,
-} from "#/drawing/schema.ts";
-import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
-import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
-import { symbolLibraryScopes } from "#/drawing/symbol-reference.ts";
-import { symbolDefinitions } from "#/drawing/symbols.ts";
+} from "@ecad/drawing-core/drawing/schema.ts";
+import {
+	type EditorSymbol,
+	symbolShapes,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolLibraryScopes } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import {
 	horizontalAlignments,
 	verticalAlignments,
-} from "#/drawing/text-alignment.ts";
+} from "@ecad/drawing-core/drawing/text-alignment.ts";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as ParseResult from "effect/ParseResult";
+import * as Schema from "effect/Schema";
+import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
+import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { readFile } from "#/formats/import-effects.ts";
 
 export const SYMBOL_FILE_LIMIT = 1024 * 1024;

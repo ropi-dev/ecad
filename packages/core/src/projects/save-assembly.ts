@@ -2,11 +2,11 @@ import type {
 	CircuitFile,
 	GraphLayout,
 } from "@ecad/drawing-core/circuit/model.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	parseSymbolFile,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import type { ProjectDrawing } from "#/projects/format.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";

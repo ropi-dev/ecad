@@ -1,16 +1,16 @@
-import { Effect } from "effect";
-import { z } from "zod";
 import {
 	type createDrawingStore,
 	DrawingStore,
-} from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	type DrawingReply,
 	drawingAcknowledgementByteLimit,
 	drawingEnvelopeSchema,
 	executeDrawingOperation,
 	utf8ByteLength,
-} from "#/mcp/drawing-protocol.ts";
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
+import { Effect } from "effect";
+import { z } from "zod";
 
 export type EditorMcpState =
 	| { status: "connecting" }

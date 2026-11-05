@@ -10,7 +10,7 @@ import {
 	pruneHistory,
 	redoHistory,
 	undoHistory,
-} from "#/components/editor/history.ts";
+} from "@ecad/drawing-core/drawing/history.ts";
 
 test("creation and restoration isolate nested snapshots from caller edits", () => {
 	const initial = { shapes: [{ id: 1, x: 10 }], selectedIds: new Set([1]) };

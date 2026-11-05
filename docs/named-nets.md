@@ -26,7 +26,7 @@ Matching names join disconnected sections throughout one drawing. Names ignore s
 
 Ordinary text omits `electrical` and has no electrical effect, even if it says `GND` or `+3V3`. Existing drawings retain that behavior. Importers must opt each source label into electrical naming. A pin's displayed name alone does not declare a drawing-wide net.
 
-`electricalNets(shapes)` in `#/drawing/named-nets.ts` returns nets with `names`, `wires`, `labels`, and `pins`. Wire and label entries are drawing shape IDs. Each pin entry contains a `shapeId` and `pinId`. A standalone pin uses its own ID for both values. A symbol terminal uses the symbol instance ID and the child's pin ID. Separate pins on ordinary components remain separate electrical terminals.
+`electricalNets(shapes)` in `@ecad/drawing-core/drawing/named-nets.ts` returns nets with `names`, `wires`, `labels`, and `pins`. Wire and label entries are drawing shape IDs. Each pin entry contains a `shapeId` and `pinId`. A standalone pin uses its own ID for both values. A symbol terminal uses the symbol instance ID and the child's pin ID. Separate pins on ordinary components remain separate electrical terminals.
 
 Symbols with `netSymbol: true` name the nets at their pin terminals. The instance Name attribute defines the net name, with surrounding whitespace removed. An empty name does not declare a net. Matching symbol and label names connect across the drawing. Symbol position, rotation, and pin overrides determine the terminal coordinates. Net symbols have one name label and no reference ID. Older saved net-symbol values migrate into Name when loaded.
 

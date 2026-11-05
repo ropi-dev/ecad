@@ -1,6 +1,5 @@
-import type { ShapeInput } from "#/commands/drawing-commands.ts";
-import { routeDiagonalWires, type Segment } from "#/drawing/diagonal-wires.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import type { ShapeInput } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
 	type EditorShape,
@@ -8,7 +7,9 @@ import {
 	PIN_RADIUS,
 	type SymbolShape,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { routeDiagonalWires, type Segment } from "#/drawing/diagonal-wires.ts";
 import { asSentence as sentence } from "#/formats/diagnostics.ts";
 import {
 	node,
@@ -18,7 +19,6 @@ import {
 	type SExpr,
 	value,
 } from "#/formats/kicad/sexpr.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 type XY = [number, number];

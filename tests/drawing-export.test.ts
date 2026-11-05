@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { exportDrawingSvg } from "#/drawing/export.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 
 const options = {
@@ -114,7 +114,7 @@ test("zero-width geometry does not prevent later drawing objects from exporting"
 test("native pin name and number visibility survive standalone and symbol override export", () => {
 	for (const showName of [true, false])
 		for (const showNumber of [true, false]) {
-			const pin: import("#/drawing/shapes.ts").PinShape = {
+			const pin: import("@ecad/drawing-core/drawing/shapes.ts").PinShape = {
 				id: 1,
 				kind: "pin",
 				x: 0,

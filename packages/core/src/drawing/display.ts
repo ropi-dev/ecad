@@ -1,9 +1,9 @@
-import type { LineStyle } from "#/drawing/line-style.ts";
+import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import {
 	type ElectricalNet,
 	electricalNets,
 	isNetLabel,
-} from "#/drawing/named-nets.ts";
+} from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	drawShape,
 	type EditorShape,
@@ -22,7 +22,15 @@ import {
 	symbolTextPosition,
 	symbolTextShapes,
 	wireJunctions,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	type TextAlignment,
+	textCenter,
+} from "@ecad/drawing-core/drawing/text-alignment.ts";
+import {
+	PIN_LABEL_GAP,
+	PIN_NUMBER_GAP,
+} from "@ecad/drawing-core/drawing/units.ts";
 import {
 	fontPixels,
 	type MeasureText,
@@ -30,8 +38,6 @@ import {
 	pinNumberFontSize,
 	textLayout,
 } from "#/drawing/text.ts";
-import { type TextAlignment, textCenter } from "#/drawing/text-alignment.ts";
-import { PIN_LABEL_GAP, PIN_NUMBER_GAP } from "#/drawing/units.ts";
 import {
 	buildWireCrossings,
 	type WireCrossings,

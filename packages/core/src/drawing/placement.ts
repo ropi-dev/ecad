@@ -2,13 +2,13 @@ import {
 	drawShape,
 	type EditorShape,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	createTextShape,
 	type MeasureText,
 	updateText,
 } from "#/drawing/text.ts";
-import type { Point } from "#/drawing/types.ts";
 
 /** Tools that place one item per click instead of dragging out a shape. */
 export type PlacementTool = "pin" | "no-connect" | "text" | "net" | "supply";

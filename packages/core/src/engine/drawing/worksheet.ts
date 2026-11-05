@@ -1,3 +1,4 @@
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	BufferGeometry,
 	Group,
@@ -9,7 +10,6 @@ import {
 } from "three";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { updateText } from "#/drawing/text.ts";
-import type { Point } from "#/drawing/types.ts";
 import {
 	buildWorksheetDisplay,
 	defaultSheet,

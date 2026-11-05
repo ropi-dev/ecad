@@ -1,4 +1,4 @@
-import type { Point } from "#/drawing/types.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 
 /**
  * Whether a key event comes from a control the user is typing in, so editor

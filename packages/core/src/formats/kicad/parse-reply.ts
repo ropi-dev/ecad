@@ -1,8 +1,8 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	importKiCadSchematic,
 	type KiCadImportResult,
 } from "#/formats/kicad/import.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 /** The KiCad worker's reply, kept free of worker globals so tests can run it inline. */
 export async function kicadWorkerReply(

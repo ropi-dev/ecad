@@ -1,3 +1,23 @@
+import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
+import {
+	canSelectShape,
+	canSelectSymbolChild,
+	constrainWireEndpoint,
+	drawShape,
+	type EditorShape,
+	type EditorSymbol,
+	findWireConnection,
+	hitShape,
+	openPins,
+	type ResizeHandle,
+	routeWire,
+	type ShapeKind,
+	shapeAt,
+	snapPoint,
+	symbolChildren,
+	symbolChildWorld,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	type Dispatch,
 	type DOMAttributes,
@@ -8,10 +28,14 @@ import {
 	useRef,
 	useState,
 } from "react";
+import {
+	type CanvasDrag,
+	type CanvasMarquee,
+	canvasDragStep,
+} from "#/components/editor/canvasDrag.ts";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
-import { isNetLabel } from "#/drawing/named-nets.ts";
 import {
 	createPlacementShape,
 	isPlacementTool,
@@ -19,32 +43,7 @@ import {
 	placementLabel,
 	placementSnapsToConnection,
 } from "#/drawing/placement.ts";
-import {
-	canSelectShape,
-	canSelectSymbolChild,
-	constrainWireEndpoint,
-	containsSelection,
-	drawShape,
-	type EditorShape,
-	type EditorSymbol,
-	findWireConnection,
-	hitShape,
-	intersectsSelection,
-	moveShapes,
-	moveSymbolChild,
-	openPins,
-	type ResizeHandle,
-	resizeShape,
-	resizeSymbolChild,
-	routeWire,
-	type ShapeKind,
-	shapeAt,
-	snapPoint,
-	symbolChildren,
-	symbolChildWorld,
-} from "#/drawing/shapes.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
-import type { Point } from "#/drawing/types.ts";
 import { screenToWorld } from "#/engine/camera.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -56,31 +55,7 @@ export type CanvasTool =
 	| "select"
 	| "pan"
 	| "symbol";
-interface Drag {
-	pointerId: number;
-	canvas: HTMLCanvasElement;
-	start: Point;
-	startScreen: Point;
-	previousSelection: ReadonlySet<number>;
-	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-child";
-	childKey?: string;
-	previousChild: string | null;
-	handle?: ResizeHandle;
-	anchorShape?: EditorShape;
-	gridStep: number;
-	moved: boolean;
-	originals: EditorShape[];
-	initialShapes: EditorShape[];
-	created: boolean;
-	valid: boolean;
-	additive: boolean;
-	wireStart?: Point;
-}
-interface Marquee {
-	start: Point;
-	end: Point;
-	mode: "window" | "crossing";
-}
+type Drag = CanvasDrag;
 interface WireChain {
 	start: Point;
 	pointerId: number;
@@ -145,7 +120,7 @@ export function useCanvasGestures({
 	isSymbol,
 	setTextFocusId,
 }: CanvasGesturesOptions) {
-	const [marquee, setMarquee] = useState<Marquee | null>(null);
+	const [marquee, setMarquee] = useState<CanvasMarquee | null>(null);
 	const [placement, setPlacement] = useState({
 		tool,
 		symbolDefinition,
@@ -296,125 +271,26 @@ export function useCanvasGestures({
 		if (!point) return;
 		const rect = active.canvas.getBoundingClientRect();
 		const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-		active.moved ||=
-			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) >=
-			3;
-		if (active.wireStart && !active.moved) return;
-		if (active.mode === "duplicate") {
-			if (!active.moved) return;
-			active.valid = true;
-		}
-
-		if (active.gridStep > 0 && !active.moved && active.mode !== "marquee")
-			return;
-		if (active.mode === "symbol-child") {
-			const original = active.originals[0];
-			if (
-				!active.moved ||
-				original.kind !== "symbol" ||
-				active.childKey === undefined
-			)
-				return;
-			const delta = {
-				x: point.x - active.start.x,
-				y: point.y - active.start.y,
-			};
-			previewReplacements([
-				active.handle
-					? resizeSymbolChild(
-							original,
-							active.childKey,
-							active.handle,
-							delta,
-							active.gridStep,
-							allowLocked,
-						)
-					: moveSymbolChild(
-							original,
-							active.childKey,
-							delta,
-							active.gridStep,
-							allowLocked,
-						),
-			]);
-			return;
-		}
-		if (active.mode === "resize" && active.handle) {
-			previewReplacements([
-				resizeShape(
-					active.originals[0],
-					active.handle,
-					{
-						x: point.x - active.start.x,
-						y: point.y - active.start.y,
-					},
-					active.gridStep,
-				),
-			]);
-			return;
-		}
-		if (active.mode === "draw") {
-			const original = active.originals[0];
-			if (original.kind === "symbol" || original.kind === "text") return;
-			const draft = drawShape(
-				original.id,
-				original.kind,
-				active.start,
-				point,
-				active.gridStep,
-			);
-			const scale = cameraView.getSnapshot()?.camera.scale ?? 1;
-			active.valid =
-				draft.width > 0 &&
-				draft.height > 0 &&
-				(draft.kind === "line"
-					? draft.width
-					: Math.min(draft.width, draft.height)) *
-					scale >=
-					3;
-			setMovingShapeId(draft.id);
-			previewReplacements([draft]);
-			return;
-		}
-		if (active.mode === "move" || active.mode === "duplicate") {
-			if (!active.moved) return;
-			setMovingShapeId(active.anchorShape?.id ?? active.originals[0].id);
-			previewReplacements(
-				moveShapes(
-					active.originals,
-					{
-						x: point.x - active.start.x,
-						y: point.y - active.start.y,
-					},
-					active.gridStep,
-					active.anchorShape,
-					active.mode === "duplicate" ? active.originals : active.initialShapes,
-					session.nextId(),
-					allowLocked,
-				),
-				active.initialShapes,
-			);
-			return;
-		}
-		if (
-			Math.hypot(end.x - active.startScreen.x, end.y - active.startScreen.y) < 3
-		) {
+		const step = canvasDragStep(active, point, end, {
+			shapes,
+			allowLocked,
+			cameraScale: () => cameraView.getSnapshot()?.camera.scale ?? 1,
+			nextId: session.nextId,
+		});
+		active.moved = step.moved;
+		active.valid = step.valid;
+		const { effect } = step;
+		if (effect.kind === "preview") {
+			if (effect.movingShapeId !== undefined)
+				setMovingShapeId(effect.movingShapeId);
+			previewReplacements(effect.replacements, effect.base);
+		} else if (effect.kind === "marquee-cancel") {
 			setMarquee(null);
-			session.select(active.additive ? active.previousSelection : new Set());
-			return;
+			session.select(effect.selection);
+		} else if (effect.kind === "marquee") {
+			setMarquee(effect.marquee);
+			session.select(effect.selection);
 		}
-		const mode = end.x < active.startScreen.x ? "crossing" : "window";
-		setMarquee({ start: active.startScreen, end, mode });
-		const bounds = {
-			minX: Math.min(active.start.x, point.x),
-			maxX: Math.max(active.start.x, point.x),
-			minY: Math.min(active.start.y, point.y),
-			maxY: Math.max(active.start.y, point.y),
-		};
-		const ids = new Set(active.additive ? active.previousSelection : []);
-		const matches = mode === "window" ? containsSelection : intersectsSelection;
-		for (const shape of shapes) if (matches(shape, bounds)) ids.add(shape.id);
-		session.select(ids);
 	};
 	const finishDrag = useCallback(
 		(cancel = false) => {

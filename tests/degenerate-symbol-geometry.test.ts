@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import { symbolShapes } from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import {
 	BufferGeometry,
 	CircleGeometry,
@@ -11,13 +14,10 @@ import {
 	Vector3,
 } from "three";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
-import { symbolShapes } from "#/drawing/shapes.ts";
 import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import {
 	createShapeGeometry,

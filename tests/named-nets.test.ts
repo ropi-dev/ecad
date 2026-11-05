@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
-import { Effect } from "effect";
 import {
 	placeShapesEffect,
 	replaceShapesEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { drawingSnapshotSchema } from "@ecad/drawing-core/commands/drawing-snapshot.ts";
 import {
 	createDrawingStore,
 	DrawingStore,
 	restoreDrawingStore,
-} from "#/commands/drawing-store.ts";
-import { electricalNets } from "#/drawing/named-nets.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	drawShape,
 	type EditorShape,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect } from "effect";
 import { validateProjectDocument } from "#/projects/format.ts";
 import { required } from "./helpers/required.ts";
 
@@ -239,7 +239,7 @@ test("surrounding name whitespace does not split a named net", () => {
 
 test("wire tools use electrical anchors while ordinary text stays inert", async () => {
 	const { findWireConnection, openWireEnds, wireConnectionPoints } =
-		await import("#/drawing/shapes.ts");
+		await import("@ecad/drawing-core/drawing/shapes.ts");
 	const shapes = [
 		wire(1, 0, 0, 10),
 		label(2, "GND", 0, 0),
@@ -265,7 +265,7 @@ test("wire tools use electrical anchors while ordinary text stays inert", async 
 
 test("grouping cannot hide electrical labels inside symbol definitions", async () => {
 	const { createSymbolFromSelectionEffect } = await import(
-		"#/commands/drawing-commands.ts"
+		"@ecad/drawing-core/commands/drawing-commands.ts"
 	);
 	const store = createDrawingStore([label(1, "GND", 0, 0), wire(2, 0, 0, 10)]);
 	const before = store.getSnapshot();
@@ -303,8 +303,12 @@ const symbolWithElectricalChild = (): Extract<
 });
 
 test("direct symbol payloads reject electrical children in schemas, commands and drawing import", async () => {
-	const { shapeInputSchema } = await import("#/drawing/schema.ts");
-	const { drawingOperationSchema } = await import("#/mcp/drawing-protocol.ts");
+	const { shapeInputSchema } = await import(
+		"@ecad/drawing-core/drawing/schema.ts"
+	);
+	const { drawingOperationSchema } = await import(
+		"@ecad/drawing-core/mcp/drawing-protocol.ts"
+	);
 	const symbol = symbolWithElectricalChild();
 	const { id: _id, ...input } = symbol;
 	assert.equal(shapeInputSchema.safeParse(input).success, false);
@@ -437,7 +441,9 @@ test("5000 disconnected wires remain separate in the spatial index", () => {
 });
 
 test("getDrawing caches immutable nets by snapshot and invalidates after editing and undo", async () => {
-	const { executeDrawingOperation } = await import("#/mcp/drawing-protocol.ts");
+	const { executeDrawingOperation } = await import(
+		"@ecad/drawing-core/mcp/drawing-protocol.ts"
+	);
 	const store = createDrawingStore([
 		wire(1, 0, 0, 10),
 		wire(2, 30, 0, 40),
@@ -481,7 +487,7 @@ test("net symbols name terminal nets, merge aliases, and follow instance names",
 	const { createSymbol, symbolDefinitions } = await import(
 		"#/drawing/symbols.ts"
 	);
-	const { symbolShapes } = await import("#/drawing/shapes.ts");
+	const { symbolShapes } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	for (const id of [
 		"ground",
 		"signal-ground",
@@ -576,7 +582,7 @@ test("net symbols have one editable name label and no reference on duplication o
 		"#/drawing/symbols.ts"
 	);
 	const { symbolChildren, replaceSymbolChild, symbolTextShapes } = await import(
-		"#/drawing/shapes.ts"
+		"@ecad/drawing-core/drawing/shapes.ts"
 	);
 	const symbol = createSymbol(
 		1,
@@ -638,7 +644,7 @@ test("direct placement canonicalizes conflicting net-symbol attributes before sa
 		"#/drawing/symbols.ts"
 	);
 	const { replaceAndPlaceShapesEffect } = await import(
-		"#/commands/drawing-commands.ts"
+		"@ecad/drawing-core/commands/drawing-commands.ts"
 	);
 	const symbol = createSymbol(
 		1,

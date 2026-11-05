@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { type UnzipFileInfo, type Unzipped, unzipSync } from "fflate";
 import {
 	fileExtension,
@@ -7,7 +8,6 @@ import {
 } from "#/formats/gerber/detect.ts";
 import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
 import { MAX_GERBER_ARCHIVE_BYTES } from "#/formats/import-limits.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 const MiB = 1024 * 1024;
 /** Bytes one archive may extract; each entry is held to the parser limit. */

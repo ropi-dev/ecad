@@ -62,6 +62,28 @@
 									{
 										"group": ["electron/**", "@ecad/web/**", "#web/**"],
 										"message": "packages/core must not depend on the web app or Electron."
+									},
+									{
+										"group": [
+											"#/lib/error-message.ts",
+											"#/lib/effect.ts",
+											"#/mcp/drawing-server.ts",
+											"#/mcp/drawing-protocol.ts",
+											"#/commands/drawing-commands.ts",
+											"#/commands/drawing-store.ts",
+											"#/drawing/line-style.ts",
+											"#/drawing/text-alignment.ts",
+											"#/drawing/shapes.ts",
+											"#/drawing/history.ts",
+											"#/drawing/named-nets.ts",
+											"#/drawing/units.ts",
+											"#/drawing/schema.ts",
+											"#/drawing/symbol-reference.ts",
+											"#/drawing/types.ts",
+											"#/components/editor/shapes.ts",
+											"#/components/editor/history.ts"
+										],
+										"message": "This module lives in @ecad/drawing-core. Import it from \"@ecad/drawing-core/...\" directly; packages/core no longer re-exports it."
 									}
 								]
 							}
@@ -82,6 +104,28 @@
 									{
 										"group": ["./**", "../**", ".", ".."],
 										"message": "Import this package's own modules through its #/ alias (for example \"#/engine/scene.ts\") instead of a relative path."
+									},
+									{
+										"group": [
+											"@ecad/core/lib/error-message.ts",
+											"@ecad/core/lib/effect.ts",
+											"@ecad/core/mcp/drawing-server.ts",
+											"@ecad/core/mcp/drawing-protocol.ts",
+											"@ecad/core/commands/drawing-commands.ts",
+											"@ecad/core/commands/drawing-store.ts",
+											"@ecad/core/drawing/line-style.ts",
+											"@ecad/core/drawing/text-alignment.ts",
+											"@ecad/core/drawing/shapes.ts",
+											"@ecad/core/drawing/history.ts",
+											"@ecad/core/drawing/named-nets.ts",
+											"@ecad/core/drawing/units.ts",
+											"@ecad/core/drawing/schema.ts",
+											"@ecad/core/drawing/symbol-reference.ts",
+											"@ecad/core/drawing/types.ts",
+											"@ecad/core/components/editor/shapes.ts",
+											"@ecad/core/components/editor/history.ts"
+										],
+										"message": "This module lives in @ecad/drawing-core. Import it from \"@ecad/drawing-core/...\" directly; packages/core no longer re-exports it."
 									}
 								]
 							}
@@ -117,6 +161,72 @@
 											"@ecad/core/**"
 										],
 										"message": "packages/drawing-core is UI- and app-independent: it must not import React, three.js or @ecad/core."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": [
+				"tests/**",
+				"scripts/**",
+				"packages/web/tests/**",
+				"packages/desktop/tests/**",
+				"packages/cli/**"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"#/lib/error-message.ts",
+											"#/lib/effect.ts",
+											"#/mcp/drawing-server.ts",
+											"#/mcp/drawing-protocol.ts",
+											"#/commands/drawing-commands.ts",
+											"#/commands/drawing-store.ts",
+											"#/drawing/line-style.ts",
+											"#/drawing/text-alignment.ts",
+											"#/drawing/shapes.ts",
+											"#/drawing/history.ts",
+											"#/drawing/named-nets.ts",
+											"#/drawing/units.ts",
+											"#/drawing/schema.ts",
+											"#/drawing/symbol-reference.ts",
+											"#/drawing/types.ts",
+											"#/components/editor/shapes.ts",
+											"#/components/editor/history.ts"
+										],
+										"message": "This module lives in @ecad/drawing-core. Import it from \"@ecad/drawing-core/...\" directly; packages/core no longer re-exports it."
+									},
+									{
+										"group": [
+											"@ecad/core/lib/error-message.ts",
+											"@ecad/core/lib/effect.ts",
+											"@ecad/core/mcp/drawing-server.ts",
+											"@ecad/core/mcp/drawing-protocol.ts",
+											"@ecad/core/commands/drawing-commands.ts",
+											"@ecad/core/commands/drawing-store.ts",
+											"@ecad/core/drawing/line-style.ts",
+											"@ecad/core/drawing/text-alignment.ts",
+											"@ecad/core/drawing/shapes.ts",
+											"@ecad/core/drawing/history.ts",
+											"@ecad/core/drawing/named-nets.ts",
+											"@ecad/core/drawing/units.ts",
+											"@ecad/core/drawing/schema.ts",
+											"@ecad/core/drawing/symbol-reference.ts",
+											"@ecad/core/drawing/types.ts",
+											"@ecad/core/components/editor/shapes.ts",
+											"@ecad/core/components/editor/history.ts"
+										],
+										"message": "This module lives in @ecad/drawing-core. Import it from \"@ecad/drawing-core/...\" directly; packages/core no longer re-exports it."
 									}
 								]
 							}

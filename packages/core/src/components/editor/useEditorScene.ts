@@ -1,10 +1,10 @@
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildPreviewDisplay,
 	buildStaticDisplay,
 	type DrawingDisplay,
 } from "#/drawing/display.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import {
 	buildWorksheetDisplay,
 	defaultSheet,

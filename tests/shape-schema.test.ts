@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect, Either } from "effect";
 import {
 	createSymbolFromSelectionEffect,
 	InvalidDrawingCommand,
@@ -9,8 +8,29 @@ import {
 	replaceAndPlaceShapesEffect,
 	replaceShapesEffect,
 	type ShapeInput,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
+import {
+	drawingShapeSchema,
+	editorShapeSchema,
+	fittingChildOverrides,
+	legacyDrawingShapeSchema,
+	savedDrawingShapesSchema,
+	symbolChildOverridesSchema,
+} from "@ecad/drawing-core/drawing/schema.ts";
+import {
+	type EditorShape,
+	type LineShape,
+	type PinShape,
+	symbolShapes,
+	type WireShape,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { Effect, Either } from "effect";
 import {
 	parseSavedSymbolLibrary,
 	parseSymbolFile,
@@ -22,28 +42,11 @@ import {
 	serializeSelection,
 } from "#/drawing/clipboard.ts";
 import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
-import { electricalNets } from "#/drawing/named-nets.ts";
-import {
-	drawingShapeSchema,
-	editorShapeSchema,
-	fittingChildOverrides,
-	legacyDrawingShapeSchema,
-	savedDrawingShapesSchema,
-	symbolChildOverridesSchema,
-} from "#/drawing/schema.ts";
-import {
-	type EditorShape,
-	type LineShape,
-	type PinShape,
-	symbolShapes,
-	type WireShape,
-} from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import {

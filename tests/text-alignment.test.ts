@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect, Either } from "effect";
 import {
 	createSymbolFromSelectionEffect,
 	placeShapesEffect,
 	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	containsSelection,
 	type EditorSymbol,
@@ -22,7 +22,15 @@ import {
 	symbolShapes,
 	symbolTextShapes,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	horizontalAlignments,
+	textCenter,
+	verticalAlignments,
+} from "@ecad/drawing-core/drawing/text-alignment.ts";
+import { Effect, Either } from "effect";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	libraryDefinitions,
 	symbolFileShapes,
@@ -33,11 +41,6 @@ import {
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import {
-	horizontalAlignments,
-	textCenter,
-	verticalAlignments,
-} from "#/drawing/text-alignment.ts";
 import { required } from "./helpers/required.ts";
 
 const text: TextShape = {

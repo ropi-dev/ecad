@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { generateDefaultSymbols } from "@ecad/default-symbols";
+import type {
+	EditorSymbol,
+	TextShape,
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import type { EditorSymbol, TextShape } from "#/drawing/shapes.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
@@ -88,12 +91,16 @@ test("portable net symbols place one visible name label and retain its edits aft
 		replaceSymbolChild,
 		symbolChildren,
 		normalizeNetSymbol,
-	} = await import("#/drawing/shapes.ts");
+	} = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const { persistDrawingShapes, resolveDrawingSymbols } = await import(
 		"#/drawing/symbol-persistence.ts"
 	);
-	const { drawingShapeSchema } = await import("#/drawing/schema.ts");
-	const { symbolReferenceKey } = await import("#/drawing/symbol-reference.ts");
+	const { drawingShapeSchema } = await import(
+		"@ecad/drawing-core/drawing/schema.ts"
+	);
+	const { symbolReferenceKey } = await import(
+		"@ecad/drawing-core/drawing/symbol-reference.ts"
+	);
 	const original = required(
 		generateDefaultSymbols().find(({ file }) => file.id === "vdd"),
 	).file;
@@ -115,9 +122,11 @@ test("portable net symbols place one visible name label and retain its edits aft
 	);
 	const { Effect } = await import("effect");
 	const { createDrawingStore, DrawingStore } = await import(
-		"#/commands/drawing-store.ts"
+		"@ecad/drawing-core/commands/drawing-store.ts"
 	);
-	const { placeShapesEffect } = await import("#/commands/drawing-commands.ts");
+	const { placeShapesEffect } = await import(
+		"@ecad/drawing-core/commands/drawing-commands.ts"
+	);
 	for (const instance of [
 		symbol,
 		normalizeNetSymbol({ ...symbol, textPositions: {}, textAlignments: {} }),
