@@ -34,7 +34,7 @@ const config = defineConfig(({ mode }) => ({
 		...(process.env.VERCEL
 			? [
 					nitro({
-						// Same headers as deploy/nginx/ecad.conf. A CSP header only
+						// A CSP header only
 						// governs documents and workers, so under /assets it reaches
 						// just the bundled workers.
 						routeRules: {
