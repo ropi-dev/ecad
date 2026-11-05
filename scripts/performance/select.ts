@@ -300,7 +300,8 @@ export function plan(
 		baseline?: boolean;
 		smoke?: boolean;
 		base?: string;
-		changes?: (base: string) => { mergeBase: string; paths: string[] };
+		/** Lists changed paths; `mergeBase` is unset for paths given directly. */
+		changes?: (base: string) => { mergeBase?: string; paths: string[] };
 		readSpec?: (path: string) => string | undefined;
 	} = {},
 ): Plan {
@@ -321,7 +322,7 @@ export function plan(
 	if (options.baseline)
 		return full("a baseline covers the whole suite (pass --grep to narrow it)");
 	const base = options.base ?? "origin/main";
-	let changes: { mergeBase: string; paths: string[] };
+	let changes: { mergeBase?: string; paths: string[] };
 	try {
 		changes = (options.changes ?? changedPaths)(base);
 	} catch (error) {
@@ -331,7 +332,7 @@ export function plan(
 	}
 	const selection = select(changes.paths, options.readSpec);
 	const messages = [
-		`[perf] ${changes.paths.length} changed path${changes.paths.length === 1 ? "" : "s"} since ${base} (merge base ${changes.mergeBase.slice(0, 12)}):`,
+		`[perf] ${changes.paths.length} changed path${changes.paths.length === 1 ? "" : "s"}${changes.mergeBase ? ` since ${base} (merge base ${changes.mergeBase.slice(0, 12)})` : ""}:`,
 		...selection.reasons
 			.slice(0, 60)
 			.map(
@@ -370,9 +371,7 @@ if (
 	const paths = process.argv.slice(2);
 	const result = plan([], {
 		base: process.env.ECAD_PERF_BASE,
-		...(paths.length
-			? { changes: () => ({ mergeBase: "(paths given)", paths }) }
-			: {}),
+		...(paths.length ? { changes: () => ({ paths }) } : {}),
 	});
 	for (const message of result.messages) console.log(message);
 	const grep = result.args.indexOf("--grep");
