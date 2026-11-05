@@ -245,3 +245,51 @@ export function describeJudgement(
 export const nodeVariantScenarios: ReadonlySet<string> = new Set([
 	"cli-drawing",
 ]);
+
+/**
+ * The CPU throttle and decision options for an A/B run, from
+ * `ECAD_PERF_CPU`, `ECAD_PERF_MAX_PAIRS` and `ECAD_PERF_FLOOR_SCALE`. Invalid
+ * values throw instead of silently measuring nothing or scoring `NaN`.
+ */
+export function decisionFromEnv(env: NodeJS.ProcessEnv): {
+	cpu: number;
+	options: DecisionOptions;
+} {
+	const read = (
+		name: string,
+		fallback: number,
+		valid: (value: number) => boolean,
+		expected: string,
+	) => {
+		const raw = env[name];
+		if (raw === undefined || raw.trim() === "") return fallback;
+		const value = Number(raw);
+		if (!valid(value))
+			throw new Error(`${name} must be ${expected}, not "${raw}".`);
+		return value;
+	};
+	const cpu = read(
+		"ECAD_PERF_CPU",
+		1,
+		(value) => Number.isFinite(value) && value >= 1,
+		"a number of at least 1",
+	);
+	return {
+		cpu,
+		options: {
+			...defaultDecision,
+			maxPairs: read(
+				"ECAD_PERF_MAX_PAIRS",
+				defaultDecision.maxPairs,
+				(value) => Number.isInteger(value) && value >= 1,
+				"a positive integer",
+			),
+			floorScale: read(
+				"ECAD_PERF_FLOOR_SCALE",
+				floorScaleFor(cpu),
+				(value) => Number.isFinite(value) && value >= 0,
+				"a finite number of at least 0",
+			),
+		},
+	};
+}

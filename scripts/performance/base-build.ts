@@ -105,7 +105,9 @@ export async function prepareBase(
 					["--exclusive", join(root, `${sha}.lock`), process.execPath, ...args],
 					env,
 				)
-			: run(process.execPath, args, env));
+			: withDirectoryLock(join(root, `${sha}.lock.d`), () =>
+					run(process.execPath, args, env),
+				));
 		if (status !== 0)
 			throw new Error(
 				`Building base ${sha.slice(0, 12)} failed. See ${join(directory, "build.log")}.`,
@@ -115,6 +117,37 @@ export async function prepareBase(
 	}
 	touch(directory);
 	return { sha, directory, built: false, durationMs: Date.now() - start };
+}
+
+/**
+ * A portable lock for hosts without `flock`: creating a directory is atomic.
+ * A lock older than an hour belongs to a build that died, so it is taken over.
+ */
+export async function withDirectoryLock<T>(
+	path: string,
+	task: () => Promise<T>,
+	staleMs = 60 * 60 * 1000,
+): Promise<T> {
+	for (;;) {
+		try {
+			mkdirSync(path);
+			break;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			try {
+				if (Date.now() - statSync(path).mtimeMs > staleMs)
+					rmSync(path, { recursive: true, force: true });
+			} catch {
+				// Released between the two calls.
+			}
+			await new Promise((done) => setTimeout(done, 1000));
+		}
+	}
+	try {
+		return await task();
+	} finally {
+		rmSync(path, { recursive: true, force: true });
+	}
 }
 
 /** Marks an entry as used, so pruning keeps it. */
@@ -149,6 +182,10 @@ export function prune(root: string, current: string, now = Date.now()): void {
 			rmSync(join(root, entry.name), { recursive: true, force: true });
 			rmSync(join(root, "archives", `${entry.name}.tar`), { force: true });
 			rmSync(join(root, `${entry.name}.lock`), { force: true });
+			rmSync(join(root, `${entry.name}.lock.d`), {
+				recursive: true,
+				force: true,
+			});
 		}
 	});
 }

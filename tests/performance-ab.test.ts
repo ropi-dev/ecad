@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+	decisionFromEnv,
 	defaultDecision,
 	floorFor,
 	floorScaleFor,
@@ -19,7 +20,7 @@ import {
 	judgeScenario,
 	median,
 } from "../scripts/performance/ab.ts";
-import { prune } from "../scripts/performance/base-build.ts";
+import { prune, withDirectoryLock } from "../scripts/performance/base-build.ts";
 import { parseRun, withoutGrep } from "../scripts/performance/options.ts";
 
 const repeat = (value: number, count: number) =>
@@ -284,5 +285,55 @@ test("the base cache keeps recent entries and prunes old or surplus ones", () =>
 		assert.equal(readdirSync(join(root, "archives")).length, 6);
 	} finally {
 		rmSync(root, { recursive: true });
+	}
+});
+
+test("decision overrides must be valid numbers", () => {
+	const defaults = decisionFromEnv({});
+	assert.equal(defaults.cpu, 1);
+	assert.equal(defaults.options.maxPairs, 5);
+	assert.equal(defaults.options.floorScale, 0.25);
+	const set = decisionFromEnv({
+		ECAD_PERF_CPU: "2",
+		ECAD_PERF_MAX_PAIRS: "9",
+		ECAD_PERF_FLOOR_SCALE: "",
+	});
+	assert.equal(set.options.maxPairs, 9);
+	assert.equal(set.options.floorScale, 0.5);
+	for (const [name, value] of [
+		["ECAD_PERF_MAX_PAIRS", "0"],
+		["ECAD_PERF_MAX_PAIRS", "2.5"],
+		["ECAD_PERF_MAX_PAIRS", "many"],
+		["ECAD_PERF_FLOOR_SCALE", "abc"],
+		["ECAD_PERF_FLOOR_SCALE", "-1"],
+		["ECAD_PERF_CPU", "0"],
+	])
+		assert.throws(() => decisionFromEnv({ [name]: value }), new RegExp(name));
+});
+
+test("the portable build lock serializes builds of one commit", async () => {
+	const root = mkdtempSync(join(tmpdir(), "ecad-perf-lock-"));
+	const lock = join(root, "sha.lock.d");
+	const events: string[] = [];
+	const task = (id: string) => async () => {
+		events.push(`${id} start`);
+		await new Promise((done) => setTimeout(done, 50));
+		events.push(`${id} end`);
+	};
+	try {
+		await Promise.all([
+			withDirectoryLock(lock, task("a")),
+			withDirectoryLock(lock, task("b")),
+		]);
+		assert.deepEqual(events, ["a start", "a end", "b start", "b end"]);
+		// A lock left by a build that died is taken over.
+		mkdirSync(lock);
+		const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+		utimesSync(lock, old, old);
+		await withDirectoryLock(lock, task("c"));
+		assert.deepEqual(events.slice(-2), ["c start", "c end"]);
+		assert.deepEqual(readdirSync(root), []);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 });

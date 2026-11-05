@@ -17,10 +17,8 @@ import {
 } from "../../tests/performance/comparison.ts";
 import { run } from "../development/common.ts";
 import {
-	type DecisionOptions,
-	defaultDecision,
+	decisionFromEnv,
 	describeJudgement,
-	floorScaleFor,
 	grepForTitles,
 	judgeScenario,
 	nodeVariantScenarios,
@@ -195,16 +193,9 @@ async function compare(plan: Plan): Promise<number> {
 	const base = plan.base;
 	if (!base) throw new Error("The A/B plan has no base build.");
 	touch(base.directory);
-	const cpu = process.env.ECAD_PERF_CPU ?? "1";
-	const options: DecisionOptions = {
-		...defaultDecision,
-		maxPairs: Number(
-			process.env.ECAD_PERF_MAX_PAIRS ?? defaultDecision.maxPairs,
-		),
-		floorScale: process.env.ECAD_PERF_FLOOR_SCALE
-			? Number(process.env.ECAD_PERF_FLOOR_SCALE)
-			: floorScaleFor(Number(cpu)),
-	};
+	const decision = decisionFromEnv(process.env);
+	const options = decision.options;
+	const cpu = String(decision.cpu);
 	const headPort = Number(process.env.ECAD_PERF_PORT ?? 4175);
 	const basePort = Number(process.env.ECAD_PERF_BASE_PORT ?? headPort + 1);
 	const directory = resolve("perf-artifacts/ab");
@@ -216,7 +207,7 @@ async function compare(plan: Plan): Promise<number> {
 	const dirty =
 		!process.env.ECAD_REVISION &&
 		Boolean(
-			spawnSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+			spawnSync("git", ["status", "--porcelain"], {
 				encoding: "utf8",
 			}).stdout.trim(),
 		);
@@ -255,12 +246,16 @@ async function compare(plan: Plan): Promise<number> {
 	const rest = withoutGrep(plan.args);
 	let rounds = 0;
 	try {
+		// Track each server as soon as it starts, so cleanup stops the head
+		// server when the base server fails.
 		servers.push(
 			await startServer(
 				process.cwd(),
 				headPort,
 				join(directory, "server-head.log"),
 			),
+		);
+		servers.push(
 			await startServer(
 				base.directory,
 				basePort,
@@ -328,6 +323,11 @@ async function compare(plan: Plan): Promise<number> {
 				else if (test.status !== "passed") {
 					failures.push(
 						`${test.test}: head ${test.status}${test.error ? `: ${test.error}` : ""}`,
+					);
+					finished.add(test.test);
+				} else if (!head.runs.some((run) => run.test === test.test)) {
+					failures.push(
+						`${test.test}: head passed without a performance report.`,
 					);
 					finished.add(test.test);
 				}

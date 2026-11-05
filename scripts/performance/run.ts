@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { prepareArtifacts } from "../development/artifacts.ts";
 import { run, runLocked } from "../development/common.ts";
+import { decisionFromEnv } from "./ab.ts";
 import { prepareBase, resolveBase } from "./base-build.ts";
 import { type Plan, parseRun } from "./options.ts";
 import { plan as selectScenarios } from "./select.ts";
@@ -19,6 +20,16 @@ if (parsed.mode === "deprecated-baseline") {
 	process.exit(0);
 }
 const planned: Plan = { mode: parsed.mode, args: parsed.args, started };
+if (parsed.mode === "ab") {
+	try {
+		decisionFromEnv(process.env);
+	} catch (error) {
+		console.error(
+			`[perf] ${error instanceof Error ? error.message : String(error)}`,
+		);
+		process.exit(1);
+	}
+}
 if (parsed.mode === "budgets") {
 	if (!parsed.grep)
 		console.log(
