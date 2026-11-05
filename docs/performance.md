@@ -139,7 +139,9 @@ Event-loop comparisons allow 100 ms of sampling noise. The collector samples eve
 
 Performance benchmarks run locally, following `AGENTS.md`. Hosted-runner variation made the absolute timing budgets unreliable as CI gates. A run that passed all symbol budgets failed an unrelated empty-project event-loop budget. Compare before and after on the same machine with an A/B run, and inspect `perf-artifacts/latest.json` before reporting a performance change.
 
-GitHub Actions runs the scenarios only as a functional smoke test. The `Performance scenarios (smoke)` job in `browser-tests.yml` runs every scenario once, without CPU throttling, on three workers. It sets `ECAD_PERF_SMOKE=1`. In that mode the reporter still fails a scenario that errors or misses a required measurement, and still enforces the DOM node and script size budgets. It skips every `…Ms` timing budget, never reads or writes a baseline, and always runs every scenario rather than the affected selection. The job keeps scenarios working as the UI changes; it says nothing about speed. Run the same check locally with:
+GitHub Actions runs the scenarios only as a functional smoke test. The `Performance scenarios (smoke)` job in `browser-tests.yml` runs every scenario once, without CPU throttling, on three workers. It sets `ECAD_PERF_SMOKE=1`. In that mode the reporter still fails a scenario that errors or misses a required measurement, and still enforces the DOM node and script size budgets. It skips every `…Ms` timing budget, never reads or writes a baseline, and always runs every scenario rather than the affected selection. The job keeps scenarios working as the UI changes; it says nothing about speed.
+
+Smoke runs retry a failed test once; benchmark runs never retry. A spec that the UI broke fails both attempts and fails the job. A test that fails and then passes is reported as flaky: Playwright lists it in its summary, the reporter prints `[perf] Warning: … is flaky` with the first attempt's error and records it under `warnings` in `latest.json`, and on GitHub Actions it adds a warning annotation on the spec. Most flakes come from the known product bug where a save that lands during a canvas gesture cancels it, so treat a recurring flaky scenario as a bug to fix, not noise. Only passing attempts contribute measurements. Run the same check locally with:
 
 ```bash
 ECAD_PERF_SMOKE=1 ECAD_PERF_CPU=1 ECAD_PERF_RUNS=1 pnpm run perf --workers=3
@@ -186,6 +188,8 @@ Every test in `tests/performance` has one or more area tags, listed in `tests/pe
 - `--all` runs every scenario. An explicit `--grep` replaces the selection; `--grep-invert` and other Playwright options still apply to it. `pnpm run perf:budgets` and smoke runs (`ECAD_PERF_SMOKE=1`) always run every scenario unless you pass `--grep`.
 - If the changed paths cannot be listed, for example without an `origin/main` ref, the run uses every scenario and says why. `--base <ref>` or `ECAD_PERF_BASE` lists changes against another ref, such as the base branch of a stacked pull request, and makes its merge base the A/B base.
 - `pnpm sandbox perf` selects on the host, because the container copy has no `.git`, and passes the result to the container as `--grep` or `--all`.
+
+`tests/performance-selection.test.ts` follows the static and dynamic imports of the Node-only scenarios (`desktop-storage`, `desktop-untitled`, `cli-drawing`, `named-net-connectivity`, `linked-schematic-sync`) through the workspace and fails if a file they reach does not select them. Browser scenarios load the whole app bundle, so their rows are maintained by hand.
 
 Preview a selection without running anything:
 

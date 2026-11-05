@@ -85,8 +85,18 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		["@editor", "@circuit"],
 	],
 	["packages/core/src/projects/linked-pcb.ts", ["@circuit"]],
-	["packages/core/src/projects/pcb.ts", ["@circuit"]],
+	["packages/core/src/projects/pcb.ts", ["@circuit", "@storage"]],
 	["packages/core/src/projects/project-symbol-storage.ts", ["@symbols"]],
+	// Import, editor and symbol scenarios open and add files in the sidebar.
+	[
+		"packages/core/src/projects/ProjectFilesSidebar.tsx",
+		["@projects", "@import", "@editor", "@symbols"],
+	],
+	[
+		"packages/core/src/projects/project-file-actions.ts",
+		["@projects", "@import", "@editor", "@symbols"],
+	],
+	["packages/core/src/projects/errors.ts", ["@projects", "@storage"]],
 	["packages/core/src/projects/SymbolLibrarySettings.tsx", ["@symbols"]],
 	["packages/core/src/projects/fonts/**", ["@editor"]],
 	["packages/core/src/projects/**", ["@projects"]],
@@ -99,8 +109,12 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	],
 	["packages/core/src/components/editor/CreateSymbolDialog.tsx", ["@symbols"]],
 	[
+		"packages/core/src/components/editor/CreateFileDialog.tsx",
+		["@editor", "@projects", "@symbols"],
+	],
+	[
 		"packages/core/src/components/editor/symbol*",
-		["@editor", "@symbols", "@circuit"],
+		["@editor", "@symbols", "@circuit", "@storage"],
 	],
 	[
 		"packages/core/src/components/editor/use*Symbol*",
@@ -115,36 +129,61 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		["@editor", "@circuit", "@import"],
 	],
 	["packages/core/src/engine/**", ["@editor", "@circuit", "@import"]],
-	["packages/core/src/drawing/symbol*", ["@editor", "@symbols", "@circuit"]],
+	// Project storage parses, persists and resolves symbols.
+	[
+		"packages/core/src/drawing/symbol*",
+		["@editor", "@symbols", "@circuit", "@storage"],
+	],
 	["packages/core/src/drawing/text.ts", ["@editor", "@circuit"]],
 	["packages/core/src/drawing/diagonal-wires.ts", ["@editor", "@import"]],
 	["packages/core/src/drawing/**", ["@editor"]],
 	["packages/core/src/circuit/symbol-components.ts", ["@circuit", "@symbols"]],
 	["packages/core/src/circuit/**", ["@circuit"]],
+	// Project storage and linked documents check imported asset formats.
+	[
+		"packages/core/src/formats/import-limits.ts",
+		["@import", "@storage", "@circuit"],
+	],
+	[
+		"packages/core/src/formats/import-effects.ts",
+		["@import", "@storage", "@circuit"],
+	],
+	[
+		"packages/core/src/formats/gerber/detect.ts",
+		["@import", "@storage", "@circuit"],
+	],
 	["packages/core/src/formats/**", ["@import"]],
 	["packages/core/src/mcp/**", ["@editor"]],
 	["packages/core/src/services/**", ["@editor"]],
-	["packages/core/src/symbol-library/**", ["@symbols"]],
+	["packages/core/src/symbol-library/**", ["@symbols", "@storage"]],
 
-	// Drawing core is shared by the editor, symbols, the circuit, imports and
-	// the CLI.
+	// Drawing core is shared by the editor, symbols, the circuit, imports,
+	// project storage and the CLI.
 	["packages/drawing-core/src/lib/**", "all"],
 	["packages/drawing-core/src/performance/**", "all"],
+	["packages/drawing-core/src/circuit/model.ts", ["@circuit", "@storage"]],
 	["packages/drawing-core/src/circuit/**", ["@circuit"]],
 	["packages/drawing-core/src/erc/**", ["@circuit"]],
 	["packages/drawing-core/src/mcp/**", ["@editor", "@cli"]],
 	[
 		"packages/drawing-core/src/commands/**",
-		["@editor", "@symbols", "@circuit", "@import", "@cli"],
+		["@editor", "@symbols", "@circuit", "@import", "@storage", "@cli"],
 	],
 	[
 		"packages/drawing-core/src/drawing/**",
-		["@editor", "@symbols", "@circuit", "@import", "@cli"],
+		["@editor", "@symbols", "@circuit", "@import", "@storage", "@cli"],
 	],
 
-	// Built-in symbols appear in editor and circuit placement scenarios.
-	["packages/default-symbols/src/**", ["@symbols", "@editor", "@circuit"]],
-	["packages/default-symbols/scripts/**", ["@symbols", "@editor", "@circuit"]],
+	// Built-in symbols appear in editor and circuit placement scenarios and in
+	// project storage.
+	[
+		"packages/default-symbols/src/**",
+		["@symbols", "@editor", "@circuit", "@storage"],
+	],
+	[
+		"packages/default-symbols/scripts/**",
+		["@symbols", "@editor", "@circuit", "@storage"],
+	],
 	["packages/cli/src/**", ["@cli"]],
 	["packages/cli/bin/**", ["@cli"]],
 	["packages/cli/scripts/**", ["@cli"]],

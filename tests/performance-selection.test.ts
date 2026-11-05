@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -101,19 +101,31 @@ test("feature paths map to their areas", () => {
 			"packages/core/src/components/editor/SymbolPicker.tsx",
 			["@editor", "@symbols", "@circuit"],
 		],
-		["packages/core/src/symbol-library/config.ts", ["@symbols"]],
+		["packages/core/src/symbol-library/config.ts", ["@symbols", "@storage"]],
 		["packages/core/src/formats/kicad/convert.ts", ["@import"]],
-		["packages/core/src/projects/ProjectFilesSidebar.tsx", ["@projects"]],
+		["packages/core/src/projects/WorkspaceStart.tsx", ["@projects"]],
 		["packages/web/src/routes/projects.tsx", ["@startup", "@projects"]],
 		["packages/desktop/src/main/projects.ts", ["@storage"]],
 		["packages/cli/src/cli.ts", ["@cli"]],
+		[
+			"packages/core/src/projects/ProjectFilesSidebar.tsx",
+			["@projects", "@import", "@editor", "@symbols"],
+		],
+		[
+			"packages/core/src/components/editor/CreateFileDialog.tsx",
+			["@editor", "@projects", "@symbols"],
+		],
+		[
+			"packages/core/src/formats/import-limits.ts",
+			["@import", "@storage", "@circuit"],
+		],
 		[
 			"packages/core/src/components/viewer/ToolbarGroup.tsx",
 			["@editor", "@circuit", "@import"],
 		],
 		[
 			"packages/core/src/drawing/symbols.ts",
-			["@editor", "@symbols", "@circuit"],
+			["@editor", "@symbols", "@circuit", "@storage"],
 		],
 		[
 			"packages/core/src/projects/project-editor-files.ts",
@@ -121,11 +133,11 @@ test("feature paths map to their areas", () => {
 		],
 		[
 			"packages/drawing-core/src/drawing/schema.ts",
-			["@editor", "@symbols", "@circuit", "@import", "@cli"],
+			["@editor", "@symbols", "@circuit", "@import", "@storage", "@cli"],
 		],
 		[
 			"packages/drawing-core/src/drawing/wire-router.ts",
-			["@editor", "@symbols", "@circuit", "@import", "@cli"],
+			["@editor", "@symbols", "@circuit", "@import", "@storage", "@cli"],
 		],
 	];
 	for (const [path, expected] of cases)
@@ -370,4 +382,74 @@ test("the profile browser ignores Node-only scenarios that ran first", () => {
 	);
 	assert.equal(profileBrowser([run("Node/24.22.1")]), "Node/24.22.1");
 	assert.equal(profileBrowser([]), "unavailable");
+});
+
+/** Workspace files reachable from `entries` through static and dynamic imports. */
+function importClosure(entries: string[]): Set<string> {
+	const seen = new Set<string>();
+	const resolveSpecifier = (from: string, specifier: string) => {
+		let base: string | undefined;
+		const owner = from.match(/^packages\/([^/]+)\//)?.[1];
+		if (specifier.startsWith(".")) base = join(dirname(from), specifier);
+		else if (specifier.startsWith("#web/"))
+			base = `packages/web/src/${specifier.slice(5)}`;
+		else if (specifier.startsWith("#/"))
+			base = `packages/${owner ?? "core"}/src/${specifier.slice(2)}`;
+		else if (specifier.startsWith("@ecad/")) {
+			const [, name, ...rest] = specifier.split("/");
+			base = rest.length
+				? `packages/${name}/src/${rest.join("/")}`
+				: `packages/${name}/src/index.ts`;
+		}
+		if (!base) return undefined;
+		base = relative(root, resolve(root, base));
+		for (const candidate of [
+			base,
+			`${base}.ts`,
+			`${base}.tsx`,
+			`${base}/index.ts`,
+		])
+			if (/\.tsx?$/.test(candidate) && existsSync(join(root, candidate)))
+				return candidate;
+		return undefined;
+	};
+	const queue = [...entries];
+	while (queue.length) {
+		const file = queue.pop() as string;
+		if (seen.has(file)) continue;
+		seen.add(file);
+		const source = readFileSync(join(root, file), "utf8");
+		for (const [, a, b] of source.matchAll(
+			/(?:from|import)\s+"([^"]+)"|import\(\s*"([^"]+)"\s*\)/g,
+		)) {
+			const target = resolveSpecifier(file, a ?? b);
+			if (target) queue.push(target);
+		}
+	}
+	return seen;
+}
+
+test("Node scenarios' imports select those scenarios", () => {
+	// Node scenarios have no browser bundle, so their import graphs show exactly
+	// which source files they measure.
+	const scenarios: [entries: string[], tags: Area[]][] = [
+		[["tests/performance/desktop-storage.spec.ts"], ["@storage"]],
+		[["tests/performance/linked-schematic.spec.ts"], ["@circuit"]],
+		// cli-drawing runs the built CLI; named-net-connectivity is tagged @cli too.
+		[["tests/performance/cli.spec.ts", "packages/cli/src/main.ts"], ["@cli"]],
+	];
+	const missed: string[] = [];
+	for (const [entries, tags] of scenarios)
+		for (const file of importClosure(entries)) {
+			if (!file.startsWith("packages/")) continue;
+			const { target } = classify(file);
+			if (
+				target !== "all" &&
+				!(Array.isArray(target) && target.some((tag) => tags.includes(tag)))
+			)
+				missed.push(
+					`${file} → ${JSON.stringify(target)}, needs ${tags.join(" or ")}`,
+				);
+		}
+	assert.deepEqual(missed, []);
 });
