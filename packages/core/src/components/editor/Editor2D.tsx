@@ -513,7 +513,20 @@ function EditorCanvas({
 										?.querySelector("canvas")
 										?.focus({ preventScroll: true });
 								}}
-								onSelect={(ids) => session.select(ids)}
+								onSelect={(ids) => {
+									// A finding can point at a locked symbol. Allow selecting
+									// locked items, as the toolbar toggle does, so it shows.
+									if (
+										!allowLocked &&
+										resolved.shapes.some(
+											(shape) => ids.has(shape.id) && shape.locked,
+										)
+									) {
+										finishDrag(true);
+										session.setAllowLocked(true);
+									}
+									session.select(ids);
+								}}
 							/>
 						</Suspense>
 					)}

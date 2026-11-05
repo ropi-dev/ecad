@@ -59,6 +59,8 @@ A lone input or power input produces an unconnected warning, rather than a secon
 
 `pnpm exec tsx --test tests/erc.test.ts` checks built-in behavior and the rule contract. The `circuit-erc` performance scenario runs checks repeatedly on 64 unconnected pins, exercises result pagination, moves and collapses a component without invalidating results, selects a hidden pin to expand its component, and marks a pin no-connect to verify stale results and rerunning. It budgets 100 ms for `circuit.erc`, 1 second for panel interactions, 2,800 DOM nodes, and 3 MB of scripts under local Chromium with 4x CPU throttling. The existing `circuit-graph` scenario compares normal circuit editing before and after.
 
+The `schematic-erc` scenario imports the RP2350A KiCad reference schematic (39 components, 231 pins, one no-connect marker), which checks clean, adds an unwired resistor, runs the schematic check three times, and selects a finding. Under the same conditions it budgets 1 second for each run including rendering the results, 100 ms for `circuit.erc`, 50 ms for `schematic.no-connect` (matching pins to no-connect markers), fewer than 1,500 DOM nodes, at most 3 MB of scripts, and frame p95 below 500 ms. When it was added, those measured 389 ms, 2.9 ms, 10.3 ms and 904 nodes.
+
 
 ## Alternative designs
 

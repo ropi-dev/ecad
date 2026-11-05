@@ -41,6 +41,41 @@ test("schematic ERC checks the drawing and selects a finding", async ({
 		page.getByRole("textbox", { name: "Name", exact: true }),
 	).toHaveValue("Capacitor");
 
+	// A finding on a locked symbol still selects it, without unlocking it.
+	await toolbar
+		.getByRole("button", { name: "Lock selection", exact: true })
+		.click();
+	await expect(panel.getByRole("status")).toContainText("Schematic changed");
+	await panel.getByRole("button", { name: "Run ERC", exact: true }).click();
+	await expect(panel.getByRole("status")).toHaveText("0 errors, 2 warnings");
+	await page.locator("canvas").click({ position: { x: 200, y: 600 } });
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveCount(0);
+	const selectLocked = toolbar.getByRole("button", {
+		name: "Select locked items",
+		exact: true,
+	});
+	await expect(selectLocked).toHaveAttribute("aria-pressed", "false");
+	await panel.getByRole("listitem").first().getByRole("button").click();
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveValue("Capacitor");
+	await expect(selectLocked).toHaveAttribute("aria-pressed", "true");
+	await expect(
+		toolbar.getByRole("button", { name: "Unlock selection", exact: true }),
+	).toBeEnabled();
+	await selectLocked.click();
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveCount(0);
+	await panel.getByRole("listitem").first().getByRole("button").click();
+	await toolbar
+		.getByRole("button", { name: "Unlock selection", exact: true })
+		.click();
+	await panel.getByRole("button", { name: "Run ERC", exact: true }).click();
+	await expect(panel.getByRole("status")).toHaveText("0 errors, 2 warnings");
+
 	// Keys pressed inside the panel stay out of the canvas.
 	await page.keyboard.press("Delete");
 	await expect(panel.getByRole("status")).toHaveText("0 errors, 2 warnings");
