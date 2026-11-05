@@ -518,3 +518,45 @@ test("a committed move routes past the preview budget instead of refusing", () =
 	assert.equal(isUnsafeMove(commit), false);
 	assert.deepEqual(pinGroups(applyMove(shapes, commit)), pinGroups(shapes));
 });
+
+test("rerouted wires keep their width and line pattern", () => {
+	const first = resistor(1, 0, 0);
+	const second = resistor(2, 25.4, 0);
+	const [, start] = pinTerminals(first);
+	const [end] = pinTerminals(second);
+	const styled = {
+		...wire(3, start.x, start.y, end.x, end.y),
+		lineWidth: 0.4,
+		lineStyle: "dashed" as const,
+	};
+	const moved = moveShapes(
+		[second],
+		{ x: 0, y: 12.7 },
+		1.27,
+		second,
+		[first, second, styled],
+		4,
+	);
+	const wires = visible(moved);
+	assert.ok(wires.length > 1);
+	for (const shape of wires) {
+		assert.equal(shape.lineWidth, 0.4);
+		assert.equal((shape as typeof styled).lineStyle, "dashed");
+	}
+});
+
+test("a route goes as far around an obstacle as it needs to", () => {
+	// A long foreign-pin wall leaves only a detour far outside the end bounds.
+	const wall = Array.from({ length: 160 }, (_, index) =>
+		pin(10 + index, 10.16, -101.6 + 1.27 * index),
+	);
+	const context = createWireRoutingContext(wall);
+	const { points, clear } = routeWireConnection(
+		context,
+		{ x: 0, y: 0 },
+		{ x: 20.32, y: 0 },
+		{ pitch: 1.27 },
+	);
+	assert.ok(clear);
+	assert.ok(points.some(({ y }) => Math.abs(y) > 90));
+});

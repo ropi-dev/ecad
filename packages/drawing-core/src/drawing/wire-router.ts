@@ -513,12 +513,19 @@ export function routeOrthogonal(
 	)
 		return undefined;
 	const shared = options.budget;
-	// Every search keeps a small slice, so an earlier route cannot starve it.
-	let budget = Math.min(
-		options.maxExpansions ?? 40_000,
-		Math.max(shared?.remaining ?? Number.POSITIVE_INFINITY, MIN_BUDGET),
-	);
-	for (const steps of [8, 24, 64]) {
+	const limit = options.maxExpansions ?? 40_000;
+	// The windows of one route share twice the per-search limit, so the widest
+	// window still gets room after the smaller ones fail. The shared budget
+	// bounds a whole drag step, and each search keeps a small slice so earlier
+	// routes cannot starve it. Search state is sparse, so wider windows only add
+	// lattice lines.
+	let total = limit * 2;
+	for (const steps of [8, 24, 64, 256]) {
+		const budget = Math.min(
+			limit,
+			total,
+			Math.max(shared?.remaining ?? Number.POSITIVE_INFINITY, MIN_BUDGET),
+		);
 		if (budget <= 0) return undefined;
 		const result = search(
 			indexes,
@@ -529,9 +536,12 @@ export function routeOrthogonal(
 			steps * pitch,
 			budget,
 		);
-		budget -= result.expanded;
+		total -= result.expanded;
 		if (shared) shared.remaining -= result.expanded;
 		if (result.points) return result.points;
+		// A search that ran out of room before reaching its window's edge is
+		// enclosed; a wider window cannot help.
+		if (!result.reachedEdge && result.expanded <= budget) return undefined;
 	}
 	return undefined;
 }
@@ -544,21 +554,21 @@ function search(
 	pitch: number,
 	pad: number,
 	budget: number,
-): { points?: Point[]; expanded: number } {
+): { points?: Point[]; expanded: number; reachedEdge?: boolean } {
 	const xs = lattice(from.point.x, to.point.x, pad, pitch);
 	const ys = lattice(from.point.y, to.point.y, pad, pitch);
 	const width = xs.length;
-	const count = width * ys.length * 4;
 	const find = (values: number[], value: number) =>
 		values.findIndex((item) => Math.abs(item - value) <= connectionTolerance);
 	const startX = find(xs, from.point.x);
 	const startY = find(ys, from.point.y);
 	const goalX = find(xs, to.point.x);
 	const goalY = find(ys, to.point.y);
-	const scores = new Float64Array(count).fill(Number.POSITIVE_INFINITY);
-	const parents = new Int32Array(count).fill(-1);
-	const straightOnly = new Uint8Array(count);
-	const closed = new Uint8Array(count);
+	// Sparse state: memory follows the expansions made, not the lattice area.
+	const scores = new Map<number, number>();
+	const parents = new Map<number, number>();
+	const straightOnly = new Set<number>();
+	const closed = new Set<number>();
 	const open = new Heap();
 	const scale = options.memory?.length ? MEMORY : 1;
 	const estimate = (x: number, y: number, heading: number) => {
@@ -570,7 +580,7 @@ function search(
 		);
 	};
 	const state = (x: number, y: number, heading: number) =>
-		((y * width + x) << 2) | heading;
+		(y * width + x) * 4 + heading;
 	const startHeadings: [number, number][] =
 		from.heading === undefined
 			? [0, 1, 2, 3].map((heading) => [heading, 0])
@@ -584,16 +594,17 @@ function search(
 						]);
 	for (const [heading, cost] of startHeadings) {
 		const id = state(startX, startY, heading);
-		scores[id] = cost;
+		scores.set(id, cost);
 		open.push(id, cost + estimate(startX, startY, heading));
 	}
 	let expanded = 0;
+	let reachedEdge = false;
 	while (open.size) {
 		const id = open.pop();
-		if (closed[id]) continue;
-		closed[id] = 1;
-		const heading = id & 3;
-		const node = id >> 2;
+		if (closed.has(id)) continue;
+		closed.add(id);
+		const heading = id % 4;
+		const node = (id - heading) / 4;
 		const x = node % width;
 		const y = (node - x) / width;
 		const atStart = x === startX && y === startY;
@@ -602,13 +613,15 @@ function search(
 				return { points: corners(id, parents, xs, ys, width), expanded };
 			continue;
 		}
-		if (++expanded > budget) return { expanded };
+		if (++expanded > budget) return { expanded, reachedEdge: true };
+		if (x === 0 || y === 0 || x === width - 1 || y === ys.length - 1)
+			reachedEdge = true;
 		const point = { x: xs[x], y: ys[y] };
 		for (let next = 0; next < 4; next++) {
 			// Starting states already chose the first step's direction.
-			if (atStart && next !== heading && parents[id] < 0) continue;
+			if (atStart && next !== heading && !parents.has(id)) continue;
 			if (next === opposite(heading) && !atStart) continue;
-			if (straightOnly[id] && next !== heading) continue;
+			if (straightOnly.has(id) && next !== heading) continue;
 			const nx = x + stepX[next];
 			const ny = y + stepY[next];
 			if (nx < 0 || ny < 0 || nx >= width || ny >= ys.length) continue;
@@ -624,29 +637,37 @@ function search(
 			);
 			if (!edge) continue;
 			const nextId = state(nx, ny, next);
-			if (closed[nextId]) continue;
+			if (closed.has(nextId)) continue;
 			const score =
-				scores[id] + edge.cost + (next === heading ? 0 : BEND * pitch);
-			if (score >= scores[nextId] - 1e-9) continue;
-			scores[nextId] = score;
-			parents[nextId] = id;
-			straightOnly[nextId] = edge.straight ? 1 : 0;
+				(scores.get(id) ?? 0) +
+				edge.cost +
+				(next === heading ? 0 : BEND * pitch);
+			if (score >= (scores.get(nextId) ?? Number.POSITIVE_INFINITY) - 1e-9)
+				continue;
+			scores.set(nextId, score);
+			parents.set(nextId, id);
+			if (edge.straight) straightOnly.add(nextId);
+			else straightOnly.delete(nextId);
 			open.push(nextId, score + estimate(nx, ny, next));
 		}
 	}
-	return { expanded };
+	return { expanded, reachedEdge };
 }
 
 function corners(
 	id: number,
-	parents: Int32Array,
+	parents: ReadonlyMap<number, number>,
 	xs: number[],
 	ys: number[],
 	width: number,
 ): Point[] {
 	const path: Point[] = [];
-	for (let current = id; current >= 0; current = parents[current]) {
-		const node = current >> 2;
+	for (
+		let current: number | undefined = id;
+		current !== undefined;
+		current = parents.get(current)
+	) {
+		const node = (current - (current % 4)) / 4;
 		const x = node % width;
 		path.push({ x: xs[x], y: ys[(node - x) / width] });
 	}

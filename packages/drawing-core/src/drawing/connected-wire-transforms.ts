@@ -706,7 +706,8 @@ function rerouteSelection(
 		net: number;
 		wires: number[];
 		points: Point[];
-		lineWidth?: number;
+		/** The wire whose style new segments copy. */
+		style?: EditorShape;
 	}
 	const routes: Route[] = [];
 	const route = (
@@ -715,7 +716,7 @@ function rerouteSelection(
 		to: { point: Point; pin?: PinEnd },
 		memory: (readonly [Point, Point])[],
 		wires: number[],
-		lineWidth?: number,
+		style?: EditorShape,
 	) => {
 		if (samePoint(from.point, to.point)) return;
 		// A move is refused once any route is unsafe, so stop searching: commits
@@ -733,7 +734,7 @@ function rerouteSelection(
 			? fallbackPath(indexes, request)
 			: routePath(indexes, request);
 		if (!clear) unsafe = true;
-		routes.push({ net, wires, points, lineWidth });
+		routes.push({ net, wires, points, style });
 		addRouteWires(
 			dynamicIndex,
 			points.slice(1).map((end, index) => ({ start: points[index], end, net })),
@@ -763,7 +764,7 @@ function rerouteSelection(
 			target(trace.moved),
 			memory,
 			wires,
-			pieces[trace.pieces[0]]?.wire.lineWidth,
+			pieces[trace.pieces[0]]?.wire,
 		);
 	}
 	for (const nodeId of context.stubs) {
@@ -821,9 +822,24 @@ function rerouteSelection(
 		}
 	}
 	// Reuse the IDs of deleted wires for their own trace's new segments.
-	for (const { wires, points, lineWidth } of routes) {
+	for (const { wires, points, style } of routes) {
 		const reusable = wires.filter((id) => freed.includes(id));
-		for (const segment of pathWires(0, points, lineWidth)) {
+		// New segments keep the rerouted wire's width and line pattern.
+		const {
+			id: _id,
+			kind: _kind,
+			x: _x,
+			y: _y,
+			width: _width,
+			height: _height,
+			rotation: _rotation,
+			...look
+		} = style ?? ({} as Partial<EditorShape>);
+		for (const segment of pathWires(0, points).map((wire) => ({
+			...look,
+			...wire,
+			...(style ? { lineWidth: style.lineWidth } : {}),
+		}))) {
 			const reused = reusable.shift();
 			if (reused !== undefined) {
 				freed.splice(freed.indexOf(reused), 1);
