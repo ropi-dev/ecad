@@ -1,6 +1,7 @@
 import {
 	type EditorShape,
 	type EditorSymbol,
+	isUnsafeMove,
 	moveShapes,
 	moveSymbolChild,
 	type symbolChildren,
@@ -17,6 +18,9 @@ import type {
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
+
+export const UNSAFE_MOVE =
+	"No wire route here avoids other nets, so the move was not applied.";
 
 type Gestures = ReturnType<typeof useCanvasGestures>;
 
@@ -145,8 +149,8 @@ export function handleCanvasKeyDown(
 				finishWire();
 				setTool("select");
 			}
-			session.replace(
-				moveShapes(
+			{
+				const moved = moveShapes(
 					selected,
 					command.delta,
 					selectionSnapStep,
@@ -154,9 +158,10 @@ export function handleCanvasKeyDown(
 					session.shapes(),
 					session.nextId(),
 					allowLocked,
-				),
-				"Move selection",
-			);
+				);
+				if (isUnsafeMove(moved)) session.setError(UNSAFE_MOVE);
+				else session.replace(moved, "Move selection");
+			}
 			break;
 	}
 	event.preventDefault();

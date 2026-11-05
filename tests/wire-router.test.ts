@@ -4,6 +4,7 @@ import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	drawShape,
 	type EditorShape,
+	isUnsafeMove,
 	moveShapes,
 	pinTerminals,
 	resizeHandles,
@@ -379,4 +380,89 @@ test("a fallback L prefers the orientation that touches no other pin", () => {
 	assert.equal(routed, false);
 	assert.ok(clear);
 	assert.deepEqual(points[1], { x: 0, y: 10 });
+});
+
+const netLabel = (id: number, point: Point) => ({
+	id,
+	kind: "text" as const,
+	x: point.x,
+	y: point.y,
+	width: 5,
+	height: 2,
+	fontSize: 1.27,
+	rotation: 0,
+	lineWidth: 0.2,
+	text: "SIG",
+	electrical: "net" as const,
+});
+
+test("a net label on a moved pin keeps one branch and the pin's wire follows", () => {
+	const first = resistor(1, 0, 0);
+	const second = resistor(2, 30.48, 10.16);
+	const [, start] = pinTerminals(first);
+	const [end] = pinTerminals(second);
+	const shapes: EditorShape[] = [
+		first,
+		second,
+		wire(3, start.x, start.y, 15.24, start.y),
+		wire(4, 15.24, start.y, 15.24, end.y),
+		wire(5, 15.24, end.y, end.x, end.y),
+		netLabel(6, end),
+	];
+	const delta = { x: -17.78, y: 0 };
+	const moved = moveShapes([second], delta, 1.27, second, shapes, 7);
+	const after = applyMove(shapes, moved);
+	assert.deepEqual(pinGroups(after), pinGroups(shapes));
+	// The old Z is gone: nothing still runs along its last leg past the moved pin.
+	for (const shape of after) {
+		if (shape.kind !== "wire") continue;
+		const [a, b] = resizeHandles(shape);
+		assert.ok(
+			Math.abs(a.y - end.y) > 1e-6 ||
+				Math.abs(b.y - end.y) > 1e-6 ||
+				Math.max(a.x, b.x) <= end.x + delta.x + 1e-6,
+			`stale run ${JSON.stringify([a, b])}`,
+		);
+	}
+});
+
+test("a moved end without a lead never doubles back over its old wire", () => {
+	const fixed = pin(1, 0, 0);
+	const moving = pin(2, 10, 5);
+	const shapes: EditorShape[] = [
+		fixed,
+		moving,
+		wire(3, 0, 0, 5, 0),
+		wire(4, 5, 0, 5, 5),
+		wire(5, 5, 5, 10, 5),
+	];
+	const moved = moveShapes([moving], { x: -8, y: 0 }, 0, moving, shapes, 6);
+	const after = applyMove(shapes, moved).filter(
+		(shape) => shape.kind === "wire",
+	);
+	for (const shape of after) {
+		const [a, b] = resizeHandles(shape);
+		assert.ok(
+			Math.max(a.x, b.x) <= 2 + 1e-6 || Math.abs(a.y - b.y) > 1e-6,
+			`no horizontal run reaches past the pin: ${JSON.stringify([a, b])}`,
+		);
+	}
+	assert.deepEqual(pinGroups(applyMove(shapes, moved)), pinGroups(shapes));
+});
+
+test("dropping a wired pin onto another net's wire is the user's connection, not an unsafe route", () => {
+	const fixed = pin(1, 0, 0);
+	const moving = pin(2, 10, 0);
+	const shapes: EditorShape[] = [
+		fixed,
+		moving,
+		wire(3, 0, 0, 10, 0),
+		wire(4, 20, -10, 20, 10),
+	];
+	const moved = moveShapes([moving], { x: 10, y: 5 }, 0, moving, shapes, 5);
+	assert.equal(isUnsafeMove(moved), false);
+	assert.equal(
+		isUnsafeMove(moveShapes([moving], { x: 0, y: 5 }, 0, moving, shapes, 5)),
+		false,
+	);
 });

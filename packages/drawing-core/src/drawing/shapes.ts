@@ -1,5 +1,6 @@
 export {
 	connectTransformedTerminals,
+	isUnsafeMove,
 	moveShapes,
 } from "#/drawing/connected-wire-transforms.ts";
 export { connectionTolerance } from "#/drawing/connection-geometry.ts";

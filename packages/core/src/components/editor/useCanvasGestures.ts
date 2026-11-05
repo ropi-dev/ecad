@@ -2,13 +2,13 @@ import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	canSelectShape,
 	canSelectSymbolChild,
-	connectionTolerance,
 	constrainWireEndpoint,
 	drawShape,
 	type EditorShape,
 	type EditorSymbol,
 	findWireConnection,
 	hitShape,
+	isUnsafeMove,
 	openPins,
 	type ResizeHandle,
 	routeWire,
@@ -45,6 +45,7 @@ import {
 	canvasDragStep,
 } from "#/components/editor/canvasDrag.ts";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
+import { UNSAFE_MOVE } from "#/components/editor/editorKeyHandlers.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import {
@@ -228,14 +229,10 @@ export function useCanvasGestures({
 	) => {
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
 		const existing = new Set(base.map((shape) => shape.id));
+		// Rerouting deletes a wire by collapsing it to zero length. The preview
+		// keeps it so the release commits it, and committing drops it.
 		session.preview([
-			// Rerouting deletes a wire by collapsing it; committing drops it.
-			...base.flatMap((shape) => {
-				const next = byId.get(shape.id);
-				return next?.kind === "wire" && next.width <= connectionTolerance
-					? []
-					: [next ?? shape];
-			}),
+			...base.map((shape) => byId.get(shape.id) ?? shape),
 			...replacements.filter((shape) => !existing.has(shape.id)),
 		]);
 	};
@@ -353,6 +350,7 @@ export function useCanvasGestures({
 		if (effect.kind === "preview") {
 			if (effect.movingShapeId !== undefined)
 				setMovingShapeId(effect.movingShapeId);
+			active.unsafe = isUnsafeMove(effect.replacements);
 			previewReplacements(effect.replacements, effect.base);
 		} else if (effect.kind === "marquee-cancel") {
 			setMarquee(null);
@@ -370,7 +368,14 @@ export function useCanvasGestures({
 			setMovingShapeId(null);
 			active.canvas.style.cursor = "";
 			setMarquee(null);
-			if (cancel || (active.created && !active.valid)) {
+			// Releasing where a wire could only cross another net restores the drag.
+			if (active.mode === "move" && active.unsafe && !cancel)
+				session.setError(UNSAFE_MOVE);
+			if (
+				cancel ||
+				(active.created && !active.valid) ||
+				(active.mode === "move" && active.unsafe)
+			) {
 				session.preview(null);
 				session.select(active.previousSelection);
 				session.selectChild(active.previousChild);

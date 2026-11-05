@@ -369,6 +369,8 @@ function createSelectionContext(
 			const node = graph.nodeAt(point);
 			if (!node) continue;
 			const end = ends[index];
+			// A pin's entry, with its lead direction, wins over a label on it.
+			if (!end && moved.has(node.id)) continue;
 			moved.set(node.id, {
 				terminal: { shape: shapeIndex, index },
 				net: end ? nets.pin(shape.id, end.pinId) : nets.label(shape.id),
@@ -384,14 +386,18 @@ function createSelectionContext(
 	const visited = new Set<number>();
 	const traces: Trace[] = [];
 	const stubs: number[] = [];
+
 	for (const nodeId of moved.keys()) {
 		const node = nodes[nodeId];
-		let stub =
-			node.pins.some(({ shape }) => !selectedIds.has(shape.id)) ||
-			node.labels.some((shape) => !selectedIds.has(shape.id));
+		// A stationary label stays and gets a new branch, while the pin's wires
+		// still follow the pin.
+		let stub = node.labels.some((shape) => !selectedIds.has(shape.id));
 		// A label only drags the wire it ends. Elsewhere it gets a new branch, as
 		// does a terminal on a stationary pin: that pin's wires are its own.
-		if (stub || (moved.get(nodeId)?.label && node.pieces.length > 1)) {
+		if (
+			node.pins.some(({ shape }) => !selectedIds.has(shape.id)) ||
+			(moved.get(nodeId)?.label && node.pieces.length > 1)
+		) {
 			stubs.push(nodeId);
 			continue;
 		}
@@ -602,19 +608,25 @@ function rerouteSelection(
 		samePoint(at, far)
 			? undefined
 			: headingOf(Math.atan2(far.y - at.y, far.x - at.x));
-	// A pin left along its lead before the move must still be left that way.
+	// A pin left along its lead before the move must still be left that way,
+	// and a moved end without a lead must not double back over its old wire.
 	const keepsLead = (
 		pieceId: number,
 		nodeId: number,
 		geometry: ReadonlyMap<number, readonly [Point, Point]>,
 	) => {
+		const original = direction(endAt(pieceId, nodeId));
+		const now = direction(endAt(pieceId, nodeId, geometry));
 		const before = outwardBefore(nodeId);
-		if (before === undefined || direction(endAt(pieceId, nodeId)) !== before)
-			return true;
-		const after = outwardAfter(nodeId);
+		if (before !== undefined && original === before) {
+			const after = outwardAfter(nodeId);
+			return after === undefined || now === after;
+		}
 		return (
-			after === undefined ||
-			direction(endAt(pieceId, nodeId, geometry)) === after
+			!context.moved.get(nodeId)?.terminal ||
+			now === undefined ||
+			original === undefined ||
+			now === original
 		);
 	};
 	/**
@@ -682,6 +694,7 @@ function rerouteSelection(
 			})),
 		);
 	}
+	let unsafe = false;
 	// One budget per step keeps a drag over crowded parts responsive.
 	const budget = { remaining: 30_000 };
 
@@ -701,7 +714,7 @@ function rerouteSelection(
 		lineWidth?: number,
 	) => {
 		if (samePoint(from.point, to.point)) return;
-		const { points } = routePath(indexes, {
+		const { points, clear } = routePath(indexes, {
 			from: { point: from.point, heading: from.heading, strict: true },
 			to: { point: to.point, arrive: reverseHeading(to.pin?.outward) },
 			nets: new Set([net]),
@@ -709,6 +722,7 @@ function rerouteSelection(
 			memory,
 			budget,
 		});
+		if (!clear) unsafe = true;
 		routes.push({ net, wires, points, lineWidth });
 		addRouteWires(
 			dynamicIndex,
@@ -813,14 +827,25 @@ function rerouteSelection(
 		}
 	}
 	const order = new Map(allShapes.map((shape, index) => [shape.id, index]));
-	return [
+	const result = [
 		...replacements,
 		...[...changed.values()].sort(
 			(a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
 		),
 		...additions,
 	];
+	if (unsafe) unsafeMoves.add(result);
+	return result;
 }
+
+const unsafeMoves = new WeakSet<readonly EditorShape[]>();
+
+/**
+ * Whether a move result routes a wire through another net because no safe
+ * route was found. Previews may show it; committing it would join the nets.
+ */
+export const isUnsafeMove = (result: readonly EditorShape[]) =>
+	unsafeMoves.has(result);
 
 /**
  * Moves stretched nodes along shared axes: a horizontal segment's ends share

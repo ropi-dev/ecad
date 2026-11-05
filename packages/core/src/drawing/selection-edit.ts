@@ -5,6 +5,7 @@ import {
 	type EditorSymbol,
 	editShapeAttribute,
 	isBasicShape,
+	isUnsafeMove,
 	moveShapes,
 	normalizeNetSymbol,
 	replaceSymbolChild,
@@ -129,24 +130,30 @@ export function applySelectionEdit(
 		case "attribute": {
 			const { attribute, value } = edit;
 			if (!Number.isFinite(value)) return undefined;
+			if (attribute === "x" || attribute === "y") {
+				const moved = moveShapes(
+					selection,
+					{
+						x: attribute === "x" ? value - selection[0].x : 0,
+						y: attribute === "y" ? value - selection[0].y : 0,
+					},
+					0,
+					selection[0],
+					context.shapes,
+					context.nextId,
+					context.allowLocked,
+				);
+				// Refuse a position whose wires could only reach it through other nets.
+				if (isUnsafeMove(moved)) return undefined;
+				return {
+					replacements: moved,
+					label: `Change ${attributeLabels[attribute] ?? attribute}`,
+				};
+			}
 			return {
-				replacements:
-					attribute === "x" || attribute === "y"
-						? moveShapes(
-								selection,
-								{
-									x: attribute === "x" ? value - selection[0].x : 0,
-									y: attribute === "y" ? value - selection[0].y : 0,
-								},
-								0,
-								selection[0],
-								context.shapes,
-								context.nextId,
-								context.allowLocked,
-							)
-						: selection.map((shape) =>
-								editShapeAttribute(shape, attribute, value),
-							),
+				replacements: selection.map((shape) =>
+					editShapeAttribute(shape, attribute, value),
+				),
 				label: `Change ${attributeLabels[attribute] ?? attribute}`,
 			};
 		}

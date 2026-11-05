@@ -24,6 +24,7 @@ import {
 import {
 	connectionTolerance,
 	connectTransformedTerminals,
+	isUnsafeMove,
 	normalizeNetSymbol,
 	normalizeWireSegments,
 	pinTerminals,
@@ -319,6 +320,10 @@ export function rotateShapesEffect(
 				current.shapes,
 				current.nextShapeId,
 			);
+			if (isUnsafeMove(connected))
+				invalid(
+					"No wire route avoids other nets after this rotation, so it was not applied.",
+				);
 			const updates = new Map(connected.map((shape) => [shape.id, shape]));
 			const additions = connected.filter((shape) => !existing.has(shape.id));
 			return commit(

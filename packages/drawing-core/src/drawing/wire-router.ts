@@ -362,7 +362,7 @@ function edgeCost(
 				const point = horizontal
 					? { x: touch, y: across }
 					: { x: across, y: touch };
-				if (wire.net === LEAD_NET && allowed(point)) return false;
+				if (allowed(point)) return false;
 				return block();
 			}
 			// Perpendicular wire: find where it meets this edge's line.
@@ -389,22 +389,19 @@ function edgeCost(
 			const atWireEnd =
 				Math.abs(across - wireLo) <= connectionTolerance ||
 				Math.abs(across - wireHi) <= connectionTolerance;
-			if (atWireEnd) return block();
+			if (atWireEnd) return allowed(point) ? false : block();
 			const atStart =
 				Math.abs(at - (horizontal ? a.x : a.y)) <= connectionTolerance;
-			// An existing segment must not end on a foreign wire, which would join it.
-			if (
-				strictEnds &&
-				(atStart ||
-					Math.abs(at - (horizontal ? b.x : b.y)) <= connectionTolerance)
-			)
-				return block();
+			const atEnd =
+				Math.abs(at - (horizontal ? b.x : b.y)) <= connectionTolerance;
+			// A route end that already sits on this wire was placed there by the
+			// user, so reaching it joins nothing the user did not join.
+			if ((atStart && allowed(a)) || (atEnd && allowed(b))) return false;
+			// Otherwise ending on a foreign wire would join it.
+			if (strictEnds && (atStart || atEnd)) return block();
 			// The crossing at the edge's start was charged when entering that node.
 			if (atStart) return false;
-			if (Math.abs(at - (horizontal ? b.x : b.y)) <= connectionTolerance) {
-				if (allowed(b)) return block();
-				straight = true;
-			}
+			if (atEnd) straight = true;
 			cost += CROSSING * pitch;
 			return false;
 		});
