@@ -1,147 +1,43 @@
-import {
-	connectionTolerance,
-	pointOnWire,
-} from "#/drawing/connection-geometry.ts";
-import { electricalNets } from "#/drawing/named-nets.ts";
+import { connectionTolerance } from "#/drawing/connection-geometry.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import {
 	drawShape,
 	localToWorld,
 	snapPoint,
 } from "#/drawing/shape-geometry.ts";
-import { symbolShapes } from "#/drawing/symbol-instances.ts";
-import { pinTerminals, routeWire } from "#/drawing/terminals.ts";
+import { pinTerminals } from "#/drawing/terminals.ts";
 import type { Point } from "#/drawing/types.ts";
-
-function moveConnectedWires(
-	selected: EditorShape[],
-	delta: Point,
-	allShapes: EditorShape[],
-): EditorShape[] {
-	const selectedIds = new Set(selected.map((shape) => shape.id));
-	const originals = new Map(allShapes.map((shape) => [shape.id, shape]));
-	for (const shape of selected) originals.set(shape.id, shape);
-	const wires = [...originals.values()]
-		.filter((shape) => shape.kind === "wire")
-		.map((shape) => ({
-			shape,
-			start: localToWorld(shape, -shape.width / 2, 0),
-			end: localToWorld(shape, shape.width / 2, 0),
-		}));
-	const points = wires.flatMap(({ start, end }) => [start, end]);
-	const connections = {
-		x: points.map(() => new Set<number>()),
-		y: points.map(() => new Set<number>()),
-	};
-	const connect = (axis: "x" | "y", first: number, second: number) => {
-		connections[axis][first].add(second);
-		connections[axis][second].add(first);
-	};
-	const seeds = new Set<number>();
-	const attachments: { point: number; wire: number }[] = [];
-	for (let first = 0; first < points.length; first++) {
-		for (let second = first + 1; second < points.length; second++) {
-			if (
-				Math.hypot(
-					points[first].x - points[second].x,
-					points[first].y - points[second].y,
-				) <= connectionTolerance
-			) {
-				connect("x", first, second);
-				connect("y", first, second);
-			}
-		}
-	}
-	for (const [index, wire] of wires.entries()) {
-		const first = index * 2;
-		const second = first + 1;
-		const axis =
-			Math.abs(wire.end.x - wire.start.x) < Math.abs(wire.end.y - wire.start.y)
-				? "x"
-				: "y";
-		connect(axis, first, second);
-		const selectedWire = selectedIds.has(wire.shape.id);
-		if (selectedWire) {
-			seeds.add(first);
-			seeds.add(second);
-		}
-		for (const [pointIndex, point] of points.entries()) {
-			if (Math.floor(pointIndex / 2) === index) continue;
-			if (!pointOnWire(point, wire.start, wire.end)) continue;
-			attachments.push({ point: pointIndex, wire: index });
-			// A T junction shares the coordinate perpendicular to the wire.
-			connect(axis, first, pointIndex);
-			connect(axis, second, pointIndex);
-			// Attachments on a translated selected segment follow it in both axes.
-			if (selectedWire) seeds.add(pointIndex);
-		}
-	}
-	const reachable = (axis: "x" | "y") => {
-		const reached = new Set(seeds);
-		const pending = [...seeds];
-		for (let index = 0; index < pending.length; index++) {
-			for (const next of connections[axis][pending[index]]) {
-				if (reached.has(next)) continue;
-				reached.add(next);
-				pending.push(next);
-			}
-		}
-		return reached;
-	};
-	const moveX = reachable("x");
-	const moveY = reachable("y");
-	const affected = wires.filter((_, index) =>
-		[index * 2, index * 2 + 1].some(
-			(point) => moveX.has(point) || moveY.has(point),
-		),
-	);
-	const replacements = [
-		...selected,
-		...affected
-			.filter(({ shape }) => !selectedIds.has(shape.id))
-			.map(({ shape }) => shape),
-	];
-	// Include unchanged neighbors so reversing a drag restores their original ends.
-	if (delta.x === 0 && delta.y === 0) return replacements;
-	const moved = points.map((point, index) => ({
-		x: point.x + (moveX.has(index) ? delta.x : 0),
-		y: point.y + (moveY.has(index) ? delta.y : 0),
-	}));
-	// Sliding a T junction is allowed while it remains on its attached segment.
-	if (
-		attachments.some(
-			({ point, wire }) =>
-				!pointOnWire(moved[point], moved[wire * 2], moved[wire * 2 + 1]),
-		)
-	)
-		return replacements;
-	const updated = new Map<number, EditorShape>();
-	for (const [index, wire] of wires.entries()) {
-		const start = moved[index * 2];
-		const end = moved[index * 2 + 1];
-		if (
-			start.x === wire.start.x &&
-			start.y === wire.start.y &&
-			end.x === wire.end.x &&
-			end.y === wire.end.y
-		)
-			continue;
-		updated.set(wire.shape.id, {
-			...drawShape(wire.shape.id, "wire", start, end),
-			lineWidth: wire.shape.lineWidth,
-		});
-	}
-	return replacements.map((shape) =>
-		shape.kind === "wire"
-			? (updated.get(shape.id) ?? shape)
-			: { ...shape, x: shape.x + delta.x, y: shape.y + delta.y },
-	);
-}
+import {
+	createRoutingIndex,
+	type Heading,
+	type RoutingIndex,
+	reverseHeading,
+	segmentClear,
+} from "#/drawing/wire-router.ts";
+import {
+	addShapeObstacles,
+	emptyObstacles,
+	isElectricalLabel,
+	type NetLookup,
+	netLookup,
+	type PinEnd,
+	pathWires,
+	pinEnds,
+	routePath,
+	routingPitch,
+	wireEnds,
+} from "#/drawing/wire-routing.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 function movementTerminals(shape: EditorShape): readonly Point[] {
-	if (shape.kind === "text" && shape.electrical && shape.text.trim())
-		return [{ x: shape.x, y: shape.y }];
+	if (isElectricalLabel(shape)) return [{ x: shape.x, y: shape.y }];
 	return pinTerminals(shape);
+}
+
+/** Pin ends aligned with `movementTerminals`; labels have no lead. */
+function movementEnds(shape: EditorShape): (PinEnd | undefined)[] {
+	if (isElectricalLabel(shape)) return [undefined];
+	return pinEnds(shape);
 }
 
 export function moveShapes(
@@ -179,356 +75,677 @@ export function moveShapes(
 		);
 		delta = { x: target.x - anchor.x, y: target.y - anchor.y };
 	}
-	const moved = shapes.some((shape) => shape.kind === "wire")
-		? moveConnectedWires(shapes, delta, allShapes)
-		: shapes.map((shape) => ({
-				...shape,
-				x: shape.x + delta.x,
-				y: shape.y + delta.y,
-			}));
-	if (!allowLocked && allShapes.some((shape) => shape.locked)) {
-		const originals = new Map(allShapes.map((shape) => [shape.id, shape]));
-		if (
-			moved.some((shape) => {
-				const original = originals.get(shape.id);
-				return (
-					original?.locked &&
-					["x", "y", "width", "height", "rotation"].some(
-						(key) =>
-							original[key as keyof EditorShape] !==
-							shape[key as keyof EditorShape],
-					)
-				);
-			})
-		)
-			return moved.map((shape) => originals.get(shape.id) ?? shape);
-	}
-
+	const moved = shapes.map((shape) => ({
+		...shape,
+		x: shape.x + delta.x,
+		y: shape.y + delta.y,
+	}));
 	if (delta.x === 0 && delta.y === 0) return moved;
-	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId);
+	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId, {
+		pitch: gridStep,
+		delta,
+	});
 }
 
+interface GraphNode {
+	readonly id: number;
+	readonly point: Point;
+	readonly pieces: number[];
+	readonly pins: PinEnd[];
+	readonly labels: EditorShape[];
+}
+
+/** A wire between two consecutive connection points along it. */
+interface Piece {
+	readonly id: number;
+	readonly wire: EditorShape;
+	readonly start: number;
+	readonly end: number;
+	/** Whether each end is one of the wire's own endpoints, rather than a split point. */
+	readonly startIsEnd: boolean;
+	readonly endIsEnd: boolean;
+	/** The wire's own coordinates at each end, so untouched ends keep exact values. */
+	readonly from: Point;
+	readonly to: Point;
+}
+
+interface WireGraph {
+	readonly nodes: GraphNode[];
+	readonly pieces: Piece[];
+	/** Pieces of each wire in order from its start. */
+	readonly byWire: Map<number, number[]>;
+	readonly nodeAt: (point: Point) => GraphNode | undefined;
+	readonly nets: NetLookup;
+}
+
+const samePoint = (a: Point, b: Point) =>
+	Math.abs(a.x - b.x) <= connectionTolerance &&
+	Math.abs(a.y - b.y) <= connectionTolerance;
+
+const keyOf = (value: number) => Math.round(value * 1000);
+
+function buildGraph(allShapes: readonly EditorShape[]): WireGraph {
+	const nodes: GraphNode[] = [];
+	const cells = new Map<string, GraphNode[]>();
+	const find = (point: Point) => {
+		const x = keyOf(point.x);
+		const y = keyOf(point.y);
+		for (let dx = -1; dx <= 1; dx++)
+			for (let dy = -1; dy <= 1; dy++)
+				for (const node of cells.get(`${x + dx},${y + dy}`) ?? [])
+					if (samePoint(node.point, point)) return node;
+		return undefined;
+	};
+	const nodeFor = (point: Point) => {
+		const existing = find(point);
+		if (existing) return existing;
+		const node: GraphNode = {
+			id: nodes.length,
+			point,
+			pieces: [],
+			pins: [],
+			labels: [],
+		};
+		nodes.push(node);
+		const key = `${keyOf(point.x)},${keyOf(point.y)}`;
+		const cell = cells.get(key);
+		if (cell) cell.push(node);
+		else cells.set(key, [node]);
+		return node;
+	};
+	for (const shape of allShapes) {
+		for (const end of pinEnds(shape)) nodeFor(end.point).pins.push(end);
+		if (isElectricalLabel(shape))
+			nodeFor({ x: shape.x, y: shape.y }).labels.push(shape);
+	}
+	const wires = allShapes.flatMap((shape) => {
+		if (shape.kind !== "wire" || shape.width <= connectionTolerance) return [];
+		const [start, end] = wireEnds(shape);
+		nodeFor(start);
+		nodeFor(end);
+		return [{ shape, start, end }];
+	});
+	// Points sorted per row and column, to find the ones on each wire's interior.
+	const rows = new Map<number, GraphNode[]>();
+	const columns = new Map<number, GraphNode[]>();
+	for (const node of nodes) {
+		for (const [index, value] of [
+			[rows, node.point.y],
+			[columns, node.point.x],
+		] as const) {
+			const key = keyOf(value);
+			const entries = index.get(key);
+			if (entries) entries.push(node);
+			else index.set(key, [node]);
+		}
+	}
+	const pieces: Piece[] = [];
+	const byWire = new Map<number, number[]>();
+	for (const { shape, start, end } of wires) {
+		const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
+		const along = vertical ? "y" : "x";
+		const across = vertical ? "x" : "y";
+		const index = vertical ? columns : rows;
+		const lo = Math.min(start[along], end[along]) + connectionTolerance;
+		const hi = Math.max(start[along], end[along]) - connectionTolerance;
+		const interior: GraphNode[] = [];
+		const key = keyOf(start[across]);
+		for (let offset = -1; offset <= 1; offset++)
+			for (const node of index.get(key + offset) ?? [])
+				if (
+					Math.abs(node.point[across] - start[across]) <= connectionTolerance &&
+					node.point[along] > lo &&
+					node.point[along] < hi
+				)
+					interior.push(node);
+		const direction = end[along] >= start[along] ? 1 : -1;
+		interior.sort((a, b) => (a.point[along] - b.point[along]) * direction);
+		const chain = [
+			nodeFor(start),
+			...interior.filter(
+				(node, position) => position === 0 || interior[position - 1] !== node,
+			),
+			nodeFor(end),
+		];
+		const ids: number[] = [];
+		const ownPoint = (node: GraphNode, position: number) =>
+			position === 0
+				? start
+				: position === chain.length - 1
+					? end
+					: vertical
+						? { x: start.x, y: node.point.y }
+						: { x: node.point.x, y: start.y };
+		for (let position = 1; position < chain.length; position++) {
+			const piece: Piece = {
+				from: ownPoint(chain[position - 1], position - 1),
+				to: ownPoint(chain[position], position),
+				id: pieces.length,
+				wire: shape,
+				start: chain[position - 1].id,
+				end: chain[position].id,
+				startIsEnd: position === 1,
+				endIsEnd: position === chain.length - 1,
+			};
+			pieces.push(piece);
+			ids.push(piece.id);
+			nodes[piece.start].pieces.push(piece.id);
+			nodes[piece.end].pieces.push(piece.id);
+		}
+		byWire.set(shape.id, ids);
+	}
+	return { nodes, pieces, byWire, nodeAt: find, nets: netLookup(allShapes) };
+}
+
+interface MovedNode {
+	/** Index into the selected shapes and their terminals, or the selected wire. */
+	readonly terminal?: { shape: number; index: number };
+	readonly wire?: { shape: number; t: number };
+	readonly net: number;
+	readonly label?: boolean;
+}
+
+type TraceKind = "rip" | "move" | "internal";
+
+interface Trace {
+	readonly kind: TraceKind;
+	readonly moved: number;
+	/** The other end node. For a ripped trace this is the fixed node it reroutes from. */
+	readonly other: number;
+	readonly pieces: number[];
+	readonly net: number;
+}
+
+interface SelectionContext {
+	readonly moved: Map<number, MovedNode>;
+	readonly traces: Trace[];
+	/** Moved nodes that keep the wire or pin they touch and get a new connection to it. */
+	readonly stubs: number[];
+	readonly index: RoutingIndex;
+}
+
+interface GraphCache {
+	graph: WireGraph;
+	selections: Map<string, SelectionContext>;
+}
+
+const graphs = new WeakMap<readonly EditorShape[], GraphCache>();
+
+function selectionContext(
+	shapes: readonly EditorShape[],
+	allShapes: readonly EditorShape[],
+): { graph: WireGraph; context: SelectionContext } {
+	let cache = graphs.get(allShapes);
+	if (!cache) {
+		cache = { graph: buildGraph(allShapes), selections: new Map() };
+		graphs.set(allShapes, cache);
+	}
+	const { graph } = cache;
+	const key = shapes.map((shape) => shape.id).join(",");
+	let context = cache.selections.get(key);
+	if (!context) {
+		context = createSelectionContext(graph, shapes, allShapes);
+		// Drags reuse one selection, so a small cache is enough.
+		if (cache.selections.size > 4) cache.selections.clear();
+		cache.selections.set(key, context);
+	}
+	return { graph, context };
+}
+
+function createSelectionContext(
+	graph: WireGraph,
+	shapes: readonly EditorShape[],
+	allShapes: readonly EditorShape[],
+): SelectionContext {
+	const { nodes, pieces, nets } = graph;
+	const selectedIds = new Set(shapes.map((shape) => shape.id));
+	const moved = new Map<number, MovedNode>();
+	for (const [shapeIndex, shape] of shapes.entries()) {
+		if (shape.kind === "wire") {
+			const [start, end] = wireEnds(shape);
+			const length = Math.hypot(end.x - start.x, end.y - start.y);
+			for (const pieceId of graph.byWire.get(shape.id) ?? [])
+				for (const nodeId of [pieces[pieceId].start, pieces[pieceId].end]) {
+					if (moved.has(nodeId)) continue;
+					const { point } = nodes[nodeId];
+					moved.set(nodeId, {
+						wire: {
+							shape: shapeIndex,
+							t: length
+								? Math.hypot(point.x - start.x, point.y - start.y) / length
+								: 0,
+						},
+						net: nets.wire(shape.id),
+					});
+				}
+			continue;
+		}
+		const ends = movementEnds(shape);
+		for (const [index, point] of movementTerminals(shape).entries()) {
+			const node = graph.nodeAt(point);
+			if (!node) continue;
+			const end = ends[index];
+			moved.set(node.id, {
+				terminal: { shape: shapeIndex, index },
+				net: end ? nets.pin(shape.id, end.pinId) : nets.label(shape.id),
+				label: !end,
+			});
+		}
+	}
+	const selectedPiece = (piece: Piece) => selectedIds.has(piece.wire.id);
+	const fixed = (node: GraphNode) =>
+		node.pieces.length !== 2 ||
+		node.pins.some(({ shape }) => !selectedIds.has(shape.id)) ||
+		node.labels.some((shape) => !selectedIds.has(shape.id));
+	const visited = new Set<number>();
+	const traces: Trace[] = [];
+	const stubs: number[] = [];
+	for (const nodeId of moved.keys()) {
+		const node = nodes[nodeId];
+		let stub =
+			node.pins.some(({ shape }) => !selectedIds.has(shape.id)) ||
+			node.labels.some((shape) => !selectedIds.has(shape.id));
+		// A label only drags the wire it ends. Elsewhere it gets a new branch.
+		if (moved.get(nodeId)?.label && node.pieces.length > 1) {
+			stubs.push(nodeId);
+			continue;
+		}
+		for (const first of node.pieces) {
+			const firstPiece = pieces[first];
+			if (selectedPiece(firstPiece) || visited.has(first)) continue;
+			// A wire running through the terminal stays; the terminal gets a new branch to it.
+			const throughWire =
+				(firstPiece.start === nodeId && !firstPiece.startIsEnd) ||
+				(firstPiece.end === nodeId && !firstPiece.endIsEnd);
+			if (throughWire || firstPiece.wire.locked) {
+				stub = true;
+				continue;
+			}
+			const trace: number[] = [];
+			let current = nodeId;
+			let pieceId = first;
+			let kind: TraceKind = "rip";
+			for (;;) {
+				const piece = pieces[pieceId];
+				if (piece.wire.locked || selectedPiece(piece)) break;
+				trace.push(pieceId);
+				visited.add(pieceId);
+				current = piece.start === current ? piece.end : piece.start;
+				const next = nodes[current];
+				if (moved.has(current)) {
+					kind = "internal";
+					break;
+				}
+				if (fixed(next)) {
+					if (
+						next.pieces.length === 1 &&
+						!next.pins.length &&
+						!next.labels.length
+					)
+						kind = "move";
+					break;
+				}
+				const following = next.pieces.find((id) => id !== pieceId);
+				if (following === undefined || visited.has(following)) break;
+				pieceId = following;
+			}
+			traces.push({
+				kind,
+				moved: nodeId,
+				other: current,
+				pieces: trace,
+				net: nets.wire(firstPiece.wire.id),
+			});
+		}
+		if (stub) stubs.push(nodeId);
+	}
+	// Everything that stays put is a static obstacle. Pieces of traces move or reroute.
+	const tracePieces = new Set(traces.flatMap((trace) => trace.pieces));
+	const obstacles = emptyObstacles();
+	for (const shape of allShapes) {
+		if (selectedIds.has(shape.id)) continue;
+		if (shape.kind !== "wire") {
+			addShapeObstacles(obstacles, shape, nets);
+			continue;
+		}
+		for (const pieceId of graph.byWire.get(shape.id) ?? []) {
+			if (tracePieces.has(pieceId)) continue;
+			const piece = pieces[pieceId];
+			obstacles.wires.push({
+				start: piece.from,
+				end: piece.to,
+				net: nets.wire(shape.id),
+			});
+		}
+	}
+	return { moved, traces, stubs, index: createRoutingIndex(obstacles) };
+}
+
+type PieceState = { kind: "rip"; at: Point } | { kind: "move" };
+
+/**
+ * Rubber-bands wires after selected shapes move or rotate. Each wire stretch
+ * from a moved terminal back to its first fixed node is deleted and routed
+ * again, so no stale segment remains. Stubs that end in the open move along.
+ * Returns the transformed selection, changed wires, and new wire segments.
+ * A deleted wire is returned with zero length; committing drops it.
+ */
 export function connectTransformedTerminals(
 	shapes: EditorShape[],
 	replacements: EditorShape[],
 	allShapes: EditorShape[],
 	nextShapeId: number,
-	{ rerouteWireEnds = false }: { rerouteWireEnds?: boolean } = {},
+	options: { pitch?: number; delta?: Point } = {},
 ): EditorShape[] {
-	const moved = [...replacements];
-	const terminals = shapes.flatMap((shape) =>
-		movementTerminals(shape).map((point) => ({ shape, point })),
+	if (shapes.length === 0) return replacements;
+	return measurePerformance(
+		"editor.rubber-band",
+		() => rubberBand(shapes, replacements, allShapes, nextShapeId, options),
+		{ shapes: allShapes.length, selected: shapes.length },
 	);
-	if (terminals.length === 0) return moved;
-	const selectedIds = new Set(shapes.map((shape) => shape.id));
-	const byId = new Map(moved.map((shape) => [shape.id, shape]));
-	const stationaryTerminals = allShapes
-		.filter((shape) => !selectedIds.has(shape.id))
-		.flatMap((shape) =>
-			movementTerminals(shape).map((point) => ({ shape, point })),
+}
+
+function rubberBand(
+	shapes: EditorShape[],
+	replacements: EditorShape[],
+	allShapes: EditorShape[],
+	nextShapeId: number,
+	{ pitch = 0, delta }: { pitch?: number; delta?: Point },
+): EditorShape[] {
+	const { graph, context } = selectionContext(shapes, allShapes);
+	if (!context.traces.length && !context.stubs.length) return replacements;
+	const { nodes, pieces, nets } = graph;
+	const transformedEnds = replacements.map((shape) => movementEnds(shape));
+	const transformedTerminals = replacements.map((shape) =>
+		movementTerminals(shape),
+	);
+	const target = (nodeId: number): { point: Point; pin?: PinEnd } => {
+		const info = context.moved.get(nodeId);
+		const pin = info?.terminal
+			? transformedEnds[info.terminal.shape][info.terminal.index]
+			: undefined;
+		// A translation moves every node by exactly the delta, without rounding.
+		if (info && delta)
+			return { point: offset(nodes[nodeId].point, delta), pin };
+		if (info?.terminal) {
+			const { shape, index } = info.terminal;
+			return {
+				point: transformedTerminals[shape][index] ?? nodes[nodeId].point,
+				pin: transformedEnds[shape][index],
+			};
+		}
+		if (info?.wire) {
+			const [start, end] = wireEnds(replacements[info.wire.shape]);
+			return {
+				point: {
+					x: start.x + (end.x - start.x) * info.wire.t,
+					y: start.y + (end.y - start.y) * info.wire.t,
+				},
+			};
+		}
+		return { point: nodes[nodeId].point };
+	};
+	const displacement = (nodeId: number) => {
+		const { point } = target(nodeId);
+		const original = nodes[nodeId].point;
+		return { x: point.x - original.x, y: point.y - original.y };
+	};
+	const stationaryPin = (node: GraphNode) =>
+		node.pins.find(
+			({ shape }) => !shapes.some((selected) => selected.id === shape.id),
 		);
-	const stationaryPins = stationaryTerminals.map(({ point }) => point);
-	const wires = allShapes.filter((shape) => shape.kind === "wire");
-	const targets = shapes.flatMap((shape) =>
-		movementTerminals(byId.get(shape.id) ?? shape),
+
+	const dynamic = emptyObstacles();
+	for (const shape of replacements) addShapeObstacles(dynamic, shape, nets);
+	const states = new Map<number, PieceState>();
+	// Free stubs and wiring between moved shapes stretch: each node follows a moved
+	// node along the axes its segments share, as when dragging one segment.
+	const candidates = context.traces.filter(
+		(trace) =>
+			trace.kind === "move" ||
+			(trace.kind === "internal" &&
+				samePoint(displacement(trace.moved), displacement(trace.other))),
 	);
-	const wireJunctions = rerouteWireEnds
-		? wires.flatMap((wire) => [
-				localToWorld(wire, -wire.width / 2, 0),
-				localToWorld(wire, wire.width / 2, 0),
-			])
-		: [];
-	const connections: {
-		shape: EditorShape;
-		terminal: Point;
-		target: Point;
-		anchor: Point;
-	}[] = [];
-	for (const [index, { shape, point: terminal }] of terminals.entries()) {
-		const target = targets[index];
-		if (
-			Math.hypot(target.x - terminal.x, target.y - terminal.y) <=
-			connectionTolerance
-		)
+	const shift = stretchNodes(
+		graph,
+		candidates.flatMap((trace) => trace.pieces),
+		context.moved.keys(),
+		displacement,
+	);
+	const shiftedFrom = (piece: Piece) =>
+		offset(piece.from, shift.get(piece.start) ?? { x: 0, y: 0 });
+	const shiftedTo = (piece: Piece) =>
+		offset(piece.to, shift.get(piece.end) ?? { x: 0, y: 0 });
+	const baseIndexes = [context.index, createRoutingIndex(dynamic)];
+	const reroute: Trace[] = [];
+	for (const trace of context.traces) {
+		if (!candidates.includes(trace)) {
+			reroute.push(trace);
 			continue;
-		const anchors: Point[] = [];
-		if (
-			stationaryPins.some(
-				(pin) =>
-					Math.hypot(pin.x - terminal.x, pin.y - terminal.y) <=
-					connectionTolerance,
-			)
-		)
-			anchors.push(terminal);
-		for (const original of wires) {
-			const wire = rerouteWireEnds
-				? (byId.get(original.id) ?? original)
-				: original;
-			if (wire.width <= connectionTolerance) continue;
-			const start = localToWorld(wire, -wire.width / 2, 0);
-			const end = localToWorld(wire, wire.width / 2, 0);
-			if (!pointOnWire(terminal, start, end)) continue;
-			if (
-				rerouteWireEnds &&
-				!wire.locked &&
-				!selectedIds.has(wire.id) &&
-				[start, end].some(
-					(point) =>
-						Math.hypot(point.x - terminal.x, point.y - terminal.y) <=
-						connectionTolerance,
-				)
-			) {
-				const endpoint =
-					Math.hypot(start.x - terminal.x, start.y - terminal.y) <=
-					connectionTolerance
-						? end
-						: start;
-				const junction = [
-					...stationaryPins,
-					...terminals.map(({ point }) => point),
-					...wireJunctions,
-				].reduce((nearest, point) => {
-					const distance = Math.hypot(
-						point.x - terminal.x,
-						point.y - terminal.y,
-					);
-					return distance > connectionTolerance &&
-						distance <
-							Math.hypot(nearest.x - terminal.x, nearest.y - terminal.y) &&
-						pointOnWire(point, start, end)
-						? point
-						: nearest;
-				}, endpoint);
-				const other = terminals.findIndex(
-					({ point }) =>
-						Math.hypot(point.x - junction.x, point.y - junction.y) <=
-						connectionTolerance,
-				);
-				const anchor = other < 0 ? junction : targets[other];
-				const retained = {
-					...wire,
-					...drawShape(wire.id, "wire", junction, endpoint),
-					lineWidth: wire.lineWidth,
-				};
-				const index = moved.findIndex((shape) => shape.id === wire.id);
-				if (index < 0) moved.push(retained);
-				else moved[index] = retained;
-				byId.set(wire.id, retained);
-				anchors.push(anchor);
-				continue;
-			}
-			const replacement = byId.get(wire.id) ?? wire;
-			const movedStart = localToWorld(replacement, -replacement.width / 2, 0);
-			const movedEnd = localToWorld(replacement, replacement.width / 2, 0);
-			if (pointOnWire(target, movedStart, movedEnd)) continue;
-			const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
-			const across = vertical ? "x" : "y";
-			const along = vertical ? "y" : "x";
-			const anchor = { ...terminal };
-			anchor[across] = replacement[across];
-			anchor[along] = Math.max(
-				Math.min(movedStart[along], movedEnd[along]),
-				Math.min(terminal[along], Math.max(movedStart[along], movedEnd[along])),
+		}
+		const ends = [target(trace.moved).point, target(trace.other).point];
+		const clear = trace.pieces.every((pieceId) => {
+			const piece = pieces[pieceId];
+			return segmentClear(
+				baseIndexes,
+				shiftedFrom(piece),
+				shiftedTo(piece),
+				new Set([trace.net]),
+				ends,
 			);
-			anchors.push(anchor);
+		});
+		// A stretch that would touch another net or cross a body is routed instead.
+		if (!clear) {
+			reroute.push(trace);
+			continue;
 		}
-		const unique = anchors.filter(
-			(anchor, index) =>
-				!anchors
-					.slice(0, index)
-					.some(
-						(other) =>
-							Math.hypot(anchor.x - other.x, anchor.y - other.y) <=
-							connectionTolerance,
-					),
-		);
-		for (const anchor of unique) {
-			if (
-				Math.hypot(target.x - anchor.x, target.y - anchor.y) >
-				connectionTolerance
-			)
-				connections.push({ shape, terminal, target, anchor });
+		for (const pieceId of trace.pieces) {
+			states.set(pieceId, { kind: "move" });
+			const piece = pieces[pieceId];
+			dynamic.wires.push({
+				start: shiftedFrom(piece),
+				end: shiftedTo(piece),
+				net: trace.net,
+			});
 		}
 	}
-	const obstacles = wires
-		.map((wire) => byId.get(wire.id) ?? wire)
-		.filter((wire) => wire.width > connectionTolerance);
-	const nets =
-		connections.length &&
-		(rerouteWireEnds ||
-			allShapes.some(
-				(shape) =>
-					(shape.kind === "text" && shape.electrical) ||
-					(shape.kind === "symbol" && shape.netSymbol),
-			))
-			? electricalNets(allShapes)
-			: [];
-	const wireNets = new Map(
-		nets.flatMap((net) => net.wires.map((id) => [id, net] as const)),
-	);
-	const labelNets = new Map(
-		nets.flatMap((net) => net.labels.map((id) => [id, net] as const)),
-	);
-	const pinNets = new Map(
-		nets.flatMap((net) =>
-			net.pins.map((pin) => [`${pin.shapeId}:${pin.pinId}`, net] as const),
-		),
-	);
-	const symbolPins = new Map(
-		allShapes.flatMap((shape) =>
-			shape.kind === "symbol"
-				? [
-						[
-							shape.id,
-							symbolShapes(shape).filter((child) => child.kind === "pin"),
-						] as const,
-					]
-				: [],
-		),
-	);
-	const memberships = new Map(
-		[...terminals, ...stationaryTerminals].map(({ shape, point }) => {
-			if (shape.kind === "text")
-				return [point, labelNets.get(shape.id)] as const;
-			const pinId =
-				shape.kind === "pin"
-					? shape.id
-					: symbolPins
-							.get(shape.id)
-							?.find(
-								(pin) =>
-									Math.hypot(pin.x - point.x, pin.y - point.y) <=
-									connectionTolerance,
-							)?.id;
-			return [
-				point,
-				pinId === undefined ? undefined : pinNets.get(`${shape.id}:${pinId}`),
-			] as const;
-		}),
-	);
-	const preserveLabeledNets = connections.some(
-		({ terminal }) => memberships.get(terminal)?.names.length,
-	);
-	for (const { shape, terminal, target, anchor } of connections) {
-		const net = memberships.get(terminal);
-		const horizontalFirst =
-			shape.kind !== "symbol"
-				? undefined
-				: Math.abs(terminal.x - shape.x) >= Math.abs(terminal.y - shape.y)
-					? (terminal.x - shape.x) * (target.x - terminal.x) >= 0
-					: (terminal.y - shape.y) * (target.y - terminal.y) < 0;
-		const segments =
-			rerouteWireEnds || preserveLabeledNets
-				? routeTransformedConnection(
-						nextShapeId,
-						anchor,
-						target,
-						Math.max(shape.width, shape.height) + 1,
-						horizontalFirst,
-						[
-							...stationaryPins.filter(
-								(point) => !net || memberships.get(point) !== net,
-							),
-							...targets.filter(
-								(_, index) =>
-									!net || memberships.get(terminals[index].point) !== net,
-							),
-						],
-						obstacles.filter((wire) => !net || wireNets.get(wire.id) !== net),
-					)
-				: routeWire(nextShapeId, anchor, target, horizontalFirst);
-		if (!segments) return shapes;
-		obstacles.push(...segments);
-		if (net) for (const segment of segments) wireNets.set(segment.id, net);
+	const indexes: RoutingIndex[] = [context.index, createRoutingIndex(dynamic)];
 
-		moved.push(...segments);
-		nextShapeId += segments.length;
+	interface Route {
+		net: number;
+		wires: number[];
+		points: Point[];
+		lineWidth?: number;
 	}
-	return moved;
+	const routes: Route[] = [];
+	const route = (
+		net: number,
+		from: { point: Point; heading?: Heading },
+		to: { point: Point; pin?: PinEnd },
+		memory: (readonly [Point, Point])[],
+		wires: number[],
+		lineWidth?: number,
+	) => {
+		if (samePoint(from.point, to.point)) return;
+		const { points } = routePath(indexes, {
+			from: { point: from.point, heading: from.heading, strict: true },
+			to: { point: to.point, arrive: reverseHeading(to.pin?.outward) },
+			nets: new Set([net]),
+			pitch: routingPitch(pitch),
+			memory,
+		});
+		routes.push({ net, wires, points, lineWidth });
+		const added = emptyObstacles();
+		for (let index = 1; index < points.length; index++)
+			added.wires.push({ start: points[index - 1], end: points[index], net });
+		indexes.push(createRoutingIndex(added));
+	};
+	for (const trace of reroute) {
+		const internal = trace.kind === "internal";
+		const fixedNode = nodes[trace.other];
+		const from = internal
+			? (() => {
+					const end = target(trace.other);
+					return { point: end.point, heading: end.pin?.outward };
+				})()
+			: { point: fixedNode.point, heading: stationaryPin(fixedNode)?.outward };
+		const memory = trace.pieces.map((pieceId) => {
+			const piece = pieces[pieceId];
+			return [piece.from, piece.to] as const;
+		});
+		for (const pieceId of trace.pieces)
+			states.set(pieceId, { kind: "rip", at: fixedNode.point });
+		const wires = [
+			...new Set(trace.pieces.map((pieceId) => pieces[pieceId].wire.id)),
+		];
+		route(
+			trace.net,
+			from,
+			target(trace.moved),
+			memory,
+			wires,
+			pieces[trace.pieces[0]]?.wire.lineWidth,
+		);
+	}
+	for (const nodeId of context.stubs) {
+		const node = nodes[nodeId];
+		route(
+			context.moved.get(nodeId)?.net ?? -1,
+			{ point: node.point, heading: stationaryPin(node)?.outward },
+			target(nodeId),
+			[],
+			[],
+		);
+	}
+
+	// Rebuild every wire that lost or moved pieces.
+	const changed = new Map<number, EditorShape>();
+	const additions: EditorShape[] = [];
+	const freed: number[] = [];
+	for (const [wireId, pieceIds] of graph.byWire) {
+		if (!pieceIds.some((pieceId) => states.has(pieceId))) continue;
+		const wire = pieces[pieceIds[0]].wire;
+		const groups: { first: number; last: number; moved: boolean }[] = [];
+		for (const pieceId of pieceIds) {
+			const state = states.get(pieceId);
+			if (state?.kind === "rip") continue;
+			const moved = state?.kind === "move";
+			const last = groups.at(-1);
+			if (last && last.last === pieceId - 1 && last.moved === moved)
+				last.last = pieceId;
+			else groups.push({ first: pieceId, last: pieceId, moved });
+		}
+		const segments = groups.map(({ first, last, moved }) =>
+			drawShape(
+				0,
+				"wire",
+				moved ? shiftedFrom(pieces[first]) : pieces[first].from,
+				moved ? shiftedTo(pieces[last]) : pieces[last].to,
+			),
+		);
+		if (!segments.length) {
+			const state = states.get(pieceIds[0]);
+			const at = state?.kind === "rip" ? state.at : wireEnds(wire)[0];
+			changed.set(wireId, {
+				...wire,
+				...drawShape(wireId, "wire", at, at),
+				lineWidth: wire.lineWidth,
+			});
+			freed.push(wireId);
+			continue;
+		}
+		for (const [index, segment] of segments.entries()) {
+			const id = index === 0 ? wireId : nextShapeId++;
+			const shape = { ...wire, ...segment, id, lineWidth: wire.lineWidth };
+			if (index === 0) changed.set(wireId, shape);
+			else additions.push(shape);
+		}
+	}
+	// Reuse the IDs of deleted wires for their own trace's new segments.
+	for (const { wires, points, lineWidth } of routes) {
+		const reusable = wires.filter((id) => freed.includes(id));
+		for (const segment of pathWires(0, points, lineWidth)) {
+			const reused = reusable.shift();
+			if (reused !== undefined) {
+				freed.splice(freed.indexOf(reused), 1);
+				const original = changed.get(reused);
+				changed.set(reused, {
+					...original,
+					...segment,
+					id: reused,
+				} as EditorShape);
+			} else additions.push({ ...segment, id: nextShapeId++ });
+		}
+	}
+	const order = new Map(allShapes.map((shape, index) => [shape.id, index]));
+	return [
+		...replacements,
+		...[...changed.values()].sort(
+			(a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+		),
+		...additions,
+	];
 }
 
-function routeTransformedConnection(
-	id: number,
-	anchor: Point,
-	target: Point,
-	spacing: number,
-	horizontalFirst: boolean | undefined,
-	terminals: Point[],
-	obstacles: EditorShape[],
-): EditorShape[] | undefined {
-	const allowed = (point: Point) =>
-		[anchor, target].some(
-			(end) =>
-				Math.hypot(point.x - end.x, point.y - end.y) <= connectionTolerance,
-		);
-	const endpoints = (wire: EditorShape) => [
-		localToWorld(wire, -wire.width / 2, 0),
-		localToWorld(wire, wire.width / 2, 0),
-	];
-	const edges = obstacles.map(endpoints);
-	const clear = (segments: EditorShape[]) =>
-		segments.every((segment) => {
-			const [start, end] = endpoints(segment);
-			if (
-				terminals.some(
-					(point) => !allowed(point) && pointOnWire(point, start, end),
-				)
-			)
-				return false;
-			return edges.every(([a, b]) => {
-				if (
-					[a, b].some(
-						(point) => !allowed(point) && pointOnWire(point, start, end),
-					)
-				)
-					return false;
-				if (
-					[start, end].some(
-						(point) => !allowed(point) && pointOnWire(point, a, b),
-					)
-				)
-					return false;
-				const vertical = Math.abs(end.x - start.x) < Math.abs(end.y - start.y);
-				const across = vertical ? "x" : "y",
-					along = vertical ? "y" : "x";
-				return (
-					Math.abs(a[across] - start[across]) > connectionTolerance ||
-					Math.abs(b[across] - start[across]) > connectionTolerance ||
-					Math.min(
-						Math.max(start[along], end[along]),
-						Math.max(a[along], b[along]),
-					) -
-						Math.max(
-							Math.min(start[along], end[along]),
-							Math.min(a[along], b[along]),
-						) <=
-						connectionTolerance
-				);
-			});
-		});
-	for (const horizontal of [horizontalFirst, !horizontalFirst]) {
-		const direct = routeWire(id, anchor, target, horizontal);
-		if (clear(direct)) return direct;
+/**
+ * Moves stretched nodes along shared axes: a horizontal segment's ends share
+ * vertical movement, a vertical segment's ends share horizontal movement.
+ */
+function stretchNodes(
+	graph: WireGraph,
+	pieceIds: readonly number[],
+	seeds: Iterable<number>,
+	displacement: (nodeId: number) => Point,
+): Map<number, Point> {
+	const { nodes, pieces } = graph;
+	const links = [new Map<number, number[]>(), new Map<number, number[]>()];
+	const link = (axis: number, a: number, b: number) => {
+		for (const [from, to] of [
+			[a, b],
+			[b, a],
+		]) {
+			const list = links[axis].get(from);
+			if (list) list.push(to);
+			else links[axis].set(from, [to]);
+		}
+	};
+	for (const pieceId of pieceIds) {
+		const { start, end } = pieces[pieceId];
+		const a = nodes[start].point;
+		const b = nodes[end].point;
+		// Axis 0 shares x movement (vertical segment), axis 1 shares y movement.
+		link(Math.abs(b.x - a.x) < Math.abs(b.y - a.y) ? 0 : 1, start, end);
 	}
-	for (let lane = 1; lane <= 32; lane++)
-		for (const sign of [1, -1]) {
-			const y = target.y + sign * spacing * lane;
-			const x = target.x + sign * spacing * lane;
-			for (const points of [
-				[anchor, { x: anchor.x, y }, { x: target.x, y }, target],
-				[anchor, { x, y: anchor.y }, { x, y: target.y }, target],
-			]) {
-				const segments = points
-					.slice(1)
-					.map((point, index) =>
-						drawShape(id + index, "wire", points[index], point),
-					)
-					.filter((wire) => wire.width > connectionTolerance);
-				if (clear(segments))
-					return segments.map((segment, index) => ({
-						...segment,
-						id: id + index,
-					}));
+	const shift = new Map<number, Point>();
+	const seedIds = [...seeds];
+	for (const axis of [0, 1]) {
+		const reached = new Map<number, number>();
+		const pending: number[] = [];
+		for (const seed of seedIds) {
+			const value = axis === 0 ? displacement(seed).x : displacement(seed).y;
+			reached.set(seed, value);
+			pending.push(seed);
+		}
+		for (let index = 0; index < pending.length; index++) {
+			const node = pending[index];
+			for (const next of links[axis].get(node) ?? []) {
+				if (reached.has(next)) continue;
+				reached.set(next, reached.get(node) ?? 0);
+				pending.push(next);
 			}
 		}
+		for (const [node, value] of reached) {
+			const current = shift.get(node) ?? { x: 0, y: 0 };
+			shift.set(
+				node,
+				axis === 0 ? { ...current, x: value } : { ...current, y: value },
+			);
+		}
+	}
+	return shift;
 }
+
+const offset = (point: Point, by: Point) => ({
+	x: point.x + by.x,
+	y: point.y + by.y,
+});

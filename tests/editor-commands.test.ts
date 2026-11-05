@@ -798,20 +798,26 @@ test("moving an attached component and adding wires commits once and restores th
 	);
 	let publications = 0;
 	store.subscribe(() => publications++);
+	const existing = new Set(initial.shapes.map(({ id }) => id));
 	const result = run(
-		replaceAndPlaceShapesEffect([moved[0]], moved.slice(1), "Move selection", [
-			symbol.id,
-		]),
+		replaceAndPlaceShapesEffect(
+			moved.filter(({ id }) => existing.has(id)),
+			moved.filter(({ id }) => !existing.has(id)),
+			"Move selection",
+			[symbol.id],
+		),
 	);
 	const committed = store.getSnapshot();
 	assert.equal(publications, 1);
-	assert.equal(committed.shapes.length, 4);
-	assert.equal(committed.nextShapeId, 5);
-	assert.deepEqual(committed.shapes[1], wire);
 	assert.deepEqual(pinTerminals(committed.shapes[0])[0], {
 		x: terminal.x + 10,
 		y: terminal.y + 20,
 	});
+	// The open wire end stays at x = 20 and the wire follows the pin.
+	assert.deepEqual(
+		committed.shapes.slice(1).map((shape) => [shape.id, shape.x, shape.y]),
+		[[wire.id, (20 + terminal.x + 10) / 2, terminal.y + 20]],
+	);
 	assert.deepEqual(result.idsBySource.get(symbol.id), [symbol.id]);
 	run(undoEffect);
 	assert.deepEqual(store.getSnapshot().shapes, initial.shapes);
@@ -828,8 +834,8 @@ test("moving an attached component and adding wires commits once and restores th
 	);
 	run(
 		replaceAndPlaceShapesEffect(
-			[branch[0]],
-			branch.slice(1),
+			branch.filter(({ id }) => existing.has(id)),
+			branch.filter(({ id }) => !existing.has(id)),
 			"Move selection",
 			[symbol.id],
 		),
@@ -838,7 +844,6 @@ test("moving an attached component and adding wires commits once and restores th
 		new Set(store.getSnapshot().shapes.map(({ id }) => id)).size,
 		store.getSnapshot().shapes.length,
 	);
-	assert.ok(store.getSnapshot().nextShapeId >= 7);
 });
 
 test("rotating both ends of a shared wire reconnects the new pin positions", async () => {

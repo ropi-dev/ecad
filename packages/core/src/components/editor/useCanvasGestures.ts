@@ -2,6 +2,7 @@ import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	canSelectShape,
 	canSelectSymbolChild,
+	connectionTolerance,
 	constrainWireEndpoint,
 	drawShape,
 	type EditorShape,
@@ -18,6 +19,16 @@ import {
 	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { Heading } from "@ecad/drawing-core/drawing/wire-router.ts";
+import {
+	createWireRoutingContext,
+	finalHeading,
+	pathWires,
+	routeWireConnection,
+	routingPitch,
+	type WireRoutingContext,
+	wireEnds,
+} from "@ecad/drawing-core/drawing/wire-routing.ts";
 import {
 	type Dispatch,
 	type DOMAttributes,
@@ -59,6 +70,10 @@ type Drag = CanvasDrag;
 interface WireChain {
 	start: Point;
 	pointerId: number;
+	/** Whether `start` is the pin the wire began at, so its lead sets the first direction. */
+	fromPin: boolean;
+	/** Direction of the last placed segment, preferred for the next one. */
+	heading?: Heading;
 }
 
 type CanvasGesture =
@@ -214,7 +229,13 @@ export function useCanvasGestures({
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
 		const existing = new Set(base.map((shape) => shape.id));
 		session.preview([
-			...base.map((shape) => byId.get(shape.id) ?? shape),
+			// Rerouting deletes a wire by collapsing it; committing drops it.
+			...base.flatMap((shape) => {
+				const next = byId.get(shape.id);
+				return next?.kind === "wire" && next.width <= connectionTolerance
+					? []
+					: [next ?? shape];
+			}),
 			...replacements.filter((shape) => !existing.has(shape.id)),
 		]);
 	};
@@ -226,22 +247,56 @@ export function useCanvasGestures({
 					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 				) ?? start)
 			: start;
+	// Routing obstacles are rebuilt only after the drawing changes.
+	const routing = useRef<WireRoutingContext | null>(null);
+	const routed = useRef<{
+		key: string;
+		start: Point;
+		points: Point[];
+	} | null>(null);
 	const previewWire = useCallback(
 		(point: Point) => {
 			const active = getWire();
 			if (!active) return null;
 			const snapStep = snapEnabled ? cameraView.getGridStep() : 0;
+			const shapes = session.shapes();
 			const connection = findWireConnection(
-				session.shapes(),
+				shapes,
 				point,
 				8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 				active.start,
 			);
-			const end =
-				connection ?? constrainWireEndpoint(active.start, point, snapStep);
 			setConnectionHover(connection ?? null);
-
-			const segments = routeWire(session.nextId(), active.start, end);
+			let segments: EditorShape[];
+			let end: Point;
+			if (connection) {
+				// Ending on a connection routes the rest of the wire around obstacles.
+				const key = `${connection.x},${connection.y},${active.fromPin},${active.heading}`;
+				if (
+					routed.current?.key !== key ||
+					routed.current.start !== active.start
+				) {
+					if (routing.current?.shapes !== shapes)
+						routing.current = createWireRoutingContext(shapes);
+					const context = routing.current;
+					const points = measurePerformance(
+						"editor.wire-route",
+						() =>
+							routeWireConnection(context, active.start, connection, {
+								pitch: routingPitch(snapStep),
+								heading: active.heading,
+								fromPin: active.fromPin,
+							}),
+						{ shapes: shapes.length },
+					);
+					routed.current = { key, start: active.start, points };
+				}
+				end = connection;
+				segments = pathWires(session.nextId(), routed.current.points);
+			} else {
+				end = constrainWireEndpoint(active.start, point, snapStep);
+				segments = routeWire(session.nextId(), active.start, end);
+			}
 			setWirePreview(segments);
 			return { segments, end, connected: !!connection };
 		},
@@ -257,7 +312,7 @@ export function useCanvasGestures({
 		(connection: Point, pointerId: number) => {
 			gesture.current = {
 				kind: "wire",
-				wire: { start: connection, pointerId },
+				wire: { start: connection, pointerId, fromPin: true },
 			};
 			previewWire(connection);
 		},
@@ -458,7 +513,11 @@ export function useCanvasGestures({
 					setTool("select");
 					return;
 				}
+				active.heading = finalHeading(
+					next.segments.flatMap((segment) => wireEnds(segment)),
+				);
 				active.start = next.end;
+				active.fromPin = false;
 				active.pointerId = event.pointerId;
 				setWirePreview(null);
 				return;

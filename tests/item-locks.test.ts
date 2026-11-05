@@ -326,5 +326,15 @@ test("primitive locks round-trip and wire normalization preserves their lock sta
 		shapes[1],
 		shapes,
 	);
-	assert.equal(required(connected.find((shape) => shape.id === 1)).y, 0);
+	// The locked wire stays, and the moved wire gets a new link to its end.
+	assert.equal(
+		connected.some((shape) => shape.id === 1),
+		false,
+	);
+	assert.ok(
+		connected.some(
+			(shape) =>
+				shape.kind === "wire" && shape.id > 2 && Math.abs(shape.x - 10) < 1e-9,
+		),
+	);
 });

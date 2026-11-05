@@ -313,7 +313,7 @@ test("moving a segment stretches attached ends while keeping separate shapes and
 	assert.deepEqual(all, before);
 });
 
-test("axis constraints propagate through branches while body crossings stay independent", () => {
+test("a junction stays put and the dragged side reroutes to it, ignoring body crossings", () => {
 	const trunk = segment(1, 0, 0, 0, 40);
 	const branch = segment(2, 0, 40, 30, 40);
 	const continuation = segment(3, 30, 40, 60, 40);
@@ -327,34 +327,38 @@ test("axis constraints propagate through branches while body crossings stay inde
 		crossing,
 	]);
 	assertSegment(moved, 1, -10, 10, -10, 50);
-	assertSegment(moved, 2, -10, 50, 30, 50);
-	assertSegment(moved, 3, 30, 50, 60, 50);
-	assertSegment(moved, 4, 30, 50, 30, 70);
-	assert.equal(
-		moved.some(({ id }) => id === crossing.id),
-		false,
-	);
+	// The branch is routed again from the junction, which keeps its other branches.
+	assertSegment(moved, 2, 30, 40, -10, 40);
+	assertSegment(moved, 6, -10, 40, -10, 50);
+	for (const id of [continuation.id, branchUp.id, crossing.id])
+		assert.equal(
+			moved.some((shape) => shape.id === id),
+			false,
+		);
 });
 
-test("T junction ends follow a selected segment in both axes and constrain a selected branch symmetrically", () => {
+test("T junction ends follow a selected segment, and a dragged branch reconnects to the trunk", () => {
 	const trunk = segment(1, 0, 0, 100, 0);
 	const branch = segment(2, 50, 0, 50, 40);
 	const all = [trunk, branch];
 	const movedTrunk = moveShapes([trunk], { x: 20, y: 10 }, 0, trunk, all);
 	assertSegment(movedTrunk, 1, 20, 10, 120, 10);
 	assertSegment(movedTrunk, 2, 70, 10, 70, 40);
-	const movedBranch = moveShapes([branch], { x: 20, y: 10 }, 0, branch, all);
-	assertSegment(movedBranch, 1, 0, 10, 100, 10);
-	assertSegment(movedBranch, 2, 70, 10, 70, 50);
-	const detached = moveShapes([branch], { x: 60, y: 10 }, 0, branch, all);
-	assert.equal(
-		detached.find(({ id }) => id === trunk.id),
-		trunk,
-	);
-	assert.equal(
-		detached.find(({ id }) => id === branch.id),
-		branch,
-	);
+	// The trunk stays where it is; the moved branch gets a new link to it.
+	for (const delta of [
+		{ x: 20, y: 10 },
+		{ x: 60, y: 10 },
+	]) {
+		const movedBranch = moveShapes([branch], delta, 0, branch, all);
+		assertSegment(movedBranch, 2, 50 + delta.x, 10, 50 + delta.x, 50);
+		assert.equal(
+			movedBranch.some(({ id }) => id === trunk.id),
+			false,
+		);
+		assertSegment(movedBranch, 3, 50, 0, 50, 10);
+		assertSegment(movedBranch, 4, 50, 10, 50 + delta.x, 10);
+		assert.equal(movedBranch.length, 3);
+	}
 });
 
 test("snapped multi-selection uses one rigid delta for selected shapes and adjusts connected neighbors", () => {
@@ -416,13 +420,10 @@ test("zero-axis reversals restore originals while raw movement can pass through 
 	assertSegment(reversed, 1, 0, 10, 40, 10);
 	assertSegment(reversed, 2, 40, 10, 40, 40);
 	assertSegment(reversed, 3, 40, 40, 0, 40);
-	const restored = moveShapes([middle], { x: 0, y: 0 }, 0, middle, all);
-	assert.equal(restored.length, 3);
-	for (const original of all)
-		assert.equal(
-			restored.find(({ id }) => id === original.id),
-			original,
-		);
+	// A zero delta changes nothing; previews start again from the original shapes.
+	assert.deepEqual(moveShapes([middle], { x: 0, y: 0 }, 0, middle, all), [
+		middle,
+	]);
 	const collapsed = moveShapes([middle], { x: -40, y: 10 }, 0, middle, all);
 	assertSegment(collapsed, 1, 0, 10, 0, 10);
 	assertSegment(collapsed, 2, 0, 10, 0, 40);
@@ -571,12 +572,7 @@ test("collapsing a loop commits as one preferred line and maps only surviving so
 		],
 	);
 	assert.deepEqual(all, original);
-	const restored = moveShapes([right], { x: 0, y: 0 }, 0, right, all);
-	for (const shape of all)
-		assert.equal(
-			restored.find(({ id }) => id === shape.id),
-			shape,
-		);
+	assert.deepEqual(moveShapes([right], { x: 0, y: 0 }, 0, right, all), [right]);
 });
 
 test("normalization chooses the first preferred source and preserves intervening nonline order", () => {
