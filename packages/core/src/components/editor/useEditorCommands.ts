@@ -6,6 +6,7 @@ import {
 	undoEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
+	canInspectSymbolChild,
 	canSelectShape,
 	canSelectSymbolChild,
 	replaceSymbolChild,
@@ -83,14 +84,22 @@ export function useEditorCommands({
 				selection.length === 1 && selection[0].kind === "symbol"
 					? selection[0]
 					: undefined;
-			const child =
+			const selectedChild =
 				symbol && current.childKey
 					? symbolChildren(symbol).find(
 							(child) =>
 								child.key === current.childKey &&
-								canSelectSymbolChild(symbol, child, current.allowLocked),
+								canInspectSymbolChild(symbol, child, current.allowLocked),
 						)
 					: undefined;
+			const child =
+				symbol &&
+				selectedChild &&
+				canSelectSymbolChild(symbol, selectedChild, current.allowLocked)
+					? selectedChild
+					: undefined;
+			// A pin stays fixed to its symbol, so it takes no edits.
+			if (selectedChild && !child) return;
 			const result = applySelectionEdit(edit, {
 				selection,
 				child: symbol && child ? { symbol, child } : undefined,
@@ -131,13 +140,15 @@ export function useEditorCommands({
 			finishWire();
 			setTool("select");
 
-			const { selection } = session.getState();
+			const { selection, allowLocked } = session.getState();
 			const parent = session.shapes().find((shape) => selection.has(shape.id));
 			if (childKey && parent?.kind === "symbol") {
 				const child = symbolChildren(parent).find(
 					(item) => item.key === childKey,
 				);
-				if (child)
+				if (!child) return;
+				// A pin stays fixed to its symbol, so rotating it turns the symbol.
+				if (canSelectSymbolChild(parent, child, allowLocked)) {
 					session.replace(
 						[
 							replaceSymbolChild(parent, childKey, {
@@ -147,7 +158,8 @@ export function useEditorCommands({
 						],
 						"Rotate symbol child",
 					);
-				return;
+					return;
+				}
 			}
 
 			session.commit(rotateShapesEffect([...selection], angle));

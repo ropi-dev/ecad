@@ -27,7 +27,7 @@ import {
 	SCHEMATIC_STEP,
 	toMils,
 } from "@ecad/drawing-core/drawing/units.ts";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, Lock, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
@@ -99,6 +99,8 @@ function AttributeInput({
 
 interface SelectionAttributesProps {
 	isSymbolChild?: boolean;
+	/** Shows the attributes without inputs, for a pin fixed to its symbol. */
+	readOnly?: boolean;
 	shapes: EditorShape[];
 	snapStep?: number;
 	onClear: () => void;
@@ -113,6 +115,14 @@ interface SelectionAttributesProps {
 
 export function SelectionAttributes(props: SelectionAttributesProps) {
 	const symbol = props.shapes.length === 1 ? props.shapes[0] : undefined;
+	if (props.readOnly && symbol)
+		return (
+			<FixedChildAttributes
+				shape={symbol}
+				onClear={props.onClear}
+				onEditSymbol={props.onEditSymbol}
+			/>
+		);
 	if (symbol?.kind === "symbol")
 		return (
 			<SymbolInstanceAttributeForm key={symbol.id} symbol={symbol}>
@@ -670,6 +680,96 @@ function SelectionAttributesPanel({
 					Arrow keys move {formatMils(snapStep || SCHEMATIC_STEP)}; Shift +
 					arrows move {formatMils((snapStep || SCHEMATIC_STEP) * 10)} when the
 					drawing is focused.
+				</p>
+			</div>
+		</FloatingPanel>
+	);
+}
+
+const showLabel = (shown: boolean) => (shown ? "Shown" : "Hidden");
+
+/** The attributes of a symbol child that only the symbol definition changes. */
+function FixedChildAttributes({
+	shape,
+	onClear,
+	onEditSymbol,
+}: {
+	shape: EditorShape;
+	onClear: () => void;
+	onEditSymbol?: () => void;
+}) {
+	const degrees = (((shape.rotation * 180) / Math.PI) % 360) + 360;
+	const angle = `${Number((degrees % 360).toFixed(2))}°`;
+	const attributes: [string, string][] =
+		shape.kind === "pin"
+			? [
+					["Type", "pin"],
+					["Number", shape.number || "—"],
+					["Name", shape.name || "—"],
+					[
+						"Number label",
+						showLabel(shape.showNumber ?? shape.showLabels ?? true),
+					],
+					["Name label", showLabel(shape.showName ?? shape.showLabels ?? true)],
+					["Center X", formatMils(shape.x)],
+					["Center Y", formatMils(shape.y)],
+					["Lead length", formatMils(shape.length ?? 0)],
+					["Angle", angle],
+				]
+			: [
+					["Type", shape.kind],
+					["Center X", formatMils(shape.x)],
+					["Center Y", formatMils(shape.y)],
+					["Angle", angle],
+				];
+	return (
+		<FloatingPanel label="Selection attributes" position="top-right">
+			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5">
+				<header className="flex items-center justify-end gap-3">
+					<button
+						type="button"
+						className="relative z-1 grid h-[30px] w-7 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-[#98a4b6] hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e]"
+						onClick={onClear}
+						aria-label="Clear selection"
+						title="Clear selection"
+					>
+						<X size={17} />
+					</button>
+				</header>
+				<p className="mt-3 flex items-center gap-2 text-[14px] leading-[1.7] text-[#e8b77e]">
+					{shape.kind === "pin"
+						? `Pin ${[shape.number, shape.name].filter(Boolean).join(" · ")}`
+						: `${shape.kind} ${shape.id}`}
+					<Lock size={13} aria-label="Fixed" className="text-[#9ba7b8]" />
+				</p>
+				<button
+					type="button"
+					onClick={onEditSymbol}
+					disabled={!onEditSymbol}
+					title={
+						onEditSymbol
+							? "Open the library definition"
+							: "This symbol's definition is read-only or unavailable."
+					}
+					className="mt-3 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
+				>
+					Edit symbol
+				</button>
+				<dl className="my-4 text-[12px]">
+					{attributes.map(([label, value]) => (
+						<div
+							key={label}
+							className="flex items-center justify-between gap-3 border-b border-[#ffffff0a] py-2"
+						>
+							<dt className="text-[#9ba7b8]">{label}</dt>
+							<dd className="m-0 text-[#f0f3f8] tabular-nums">{value}</dd>
+						</div>
+					))}
+				</dl>
+				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
+					Pins are fixed by the symbol definition. Edit the symbol to change
+					them. Positions are relative to the symbol center. Dragging, arrow
+					keys and rotation act on the whole symbol.
 				</p>
 			</div>
 		</FloatingPanel>

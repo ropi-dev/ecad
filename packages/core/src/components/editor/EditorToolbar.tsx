@@ -107,6 +107,8 @@ interface EditorToolbarProps {
 	hasSelection: boolean;
 	rotateItems: (angle: number) => void;
 	selectionLocked: boolean;
+	/** The selected item is fixed to its symbol, such as a pin. */
+	lockDisabled?: boolean;
 	editSelection: (edit: SelectionEdit) => void;
 	removeSelected: () => void;
 	ercOpen: boolean;
@@ -140,6 +142,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 	hasSelection,
 	rotateItems,
 	selectionLocked,
+	lockDisabled = false,
 	editSelection,
 	removeSelected,
 	ercOpen,
@@ -268,9 +271,13 @@ export const EditorToolbar = memo(function EditorToolbar({
 				),
 			)}
 			{toggle({
-				disabled: !ready || !hasSelection,
+				disabled: !ready || !hasSelection || lockDisabled,
 				"aria-label": selectionLocked ? "Unlock selection" : "Lock selection",
-				tooltip: selectionLocked ? "Unlock selection" : "Lock selection",
+				tooltip: lockDisabled
+					? "Pins are fixed to their symbol"
+					: selectionLocked
+						? "Unlock selection"
+						: "Lock selection",
 				onClick: () =>
 					editSelection({ kind: "lock", locked: !selectionLocked }),
 				children: selectionLocked ? (

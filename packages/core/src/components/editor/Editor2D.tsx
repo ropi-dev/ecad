@@ -165,6 +165,7 @@ function EditorCanvas({
 		selected,
 		selectedSymbol,
 		selectedChild,
+		selectedChildFixed,
 		selectionLocked,
 		selectionSnapStep,
 		handles,
@@ -306,6 +307,7 @@ function EditorCanvas({
 			<SelectionAttributes
 				shapes={selectedChild ? [selectedChild.shape] : selected}
 				isSymbolChild={selectedChild !== undefined}
+				readOnly={selectedChildFixed}
 				onEdit={editSelection}
 				onEditSymbol={
 					editTarget
@@ -336,6 +338,7 @@ function EditorCanvas({
 		),
 		[
 			selectedChild,
+			selectedChildFixed,
 			selected,
 			editSelection,
 			editTarget,
@@ -409,6 +412,7 @@ function EditorCanvas({
 							selected,
 							selectedSymbol,
 							selectedChild,
+							selectedChildFixed,
 							snapEnabled,
 							gridStep,
 							selectionSnapStep,
@@ -472,6 +476,7 @@ function EditorCanvas({
 									hasSelection={hasSelection}
 									rotateItems={rotateItems}
 									selectionLocked={selectionLocked}
+									lockDisabled={selectedChildFixed}
 									editSelection={editSelection}
 									removeSelected={removeSelected}
 									ercOpen={ercOpen}

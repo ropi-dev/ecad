@@ -1,5 +1,6 @@
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
+	canInspectSymbolChild,
 	canSelectShape,
 	canSelectSymbolChild,
 	type EditorShape,
@@ -50,11 +51,16 @@ export function useEditorSelection({
 				? symbolChildren(selectedSymbol).find(
 						(child) =>
 							child.key === selectedChildKey &&
-							canSelectSymbolChild(selectedSymbol, child, allowLocked),
+							canInspectSymbolChild(selectedSymbol, child, allowLocked),
 					)
 				: undefined,
 		[selectedSymbol, selectedChildKey, allowLocked],
 	);
+	// A pin is selectable to show its attributes but stays fixed to its symbol.
+	const selectedChildFixed =
+		!!selectedSymbol &&
+		!!selectedChild &&
+		!canSelectSymbolChild(selectedSymbol, selectedChild, allowLocked);
 
 	const selectionLocked = selectedChild
 		? selectedChild.shape.locked === true
@@ -70,13 +76,15 @@ export function useEditorSelection({
 		() =>
 			tool === "select"
 				? selectedSymbol && selectedChild
-					? resizeHandles(
-							symbolChildWorld(selectedSymbol, selectedChild.shape),
-						).map((handle) => ({
-							shape: selectedSymbol,
-							handle,
-							childKey: selectedChild.key,
-						}))
+					? selectedChildFixed
+						? []
+						: resizeHandles(
+								symbolChildWorld(selectedSymbol, selectedChild.shape),
+							).map((handle) => ({
+								shape: selectedSymbol,
+								handle,
+								childKey: selectedChild.key,
+							}))
 					: selected.flatMap((shape) =>
 							resizeHandles(shape).map((handle) => ({
 								shape,
@@ -85,12 +93,13 @@ export function useEditorSelection({
 							})),
 						)
 				: [],
-		[tool, selectedSymbol, selectedChild, selected],
+		[tool, selectedSymbol, selectedChild, selectedChildFixed, selected],
 	);
 	return {
 		selected,
 		selectedSymbol,
 		selectedChild,
+		selectedChildFixed,
 		selectionLocked,
 		selectionSnapStep,
 		handles,
