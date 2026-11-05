@@ -26,17 +26,28 @@ import {
 import { areas, isArea } from "./tags.ts";
 
 interface Result {
+	/** The Playwright test title, which A/B runs use to rerun a scenario. */
+	test: string;
 	scenario: string;
 	metrics: Record<string, number>;
 	report: { mode: string; environment: { userAgent: string } };
 }
 /** Functional smoke runs, such as CI, skip timing budgets and baselines. */
 const smoke = process.env.ECAD_PERF_SMOKE === "1";
+/**
+ * One variant of one A/B round. The runner judges the round, so the reporter
+ * only writes the measurements and failures to this file.
+ */
+const variantOutput = process.env.ECAD_PERF_AB_OUTPUT;
+/** Only development runs compare against a stored baseline. */
+const compareStored = process.env.ECAD_PERF_MODE === "development";
 
 export default class PerformanceReporter implements Reporter {
 	private runs: Result[] = [];
 	private failures: string[] = [];
 	private warnings: string[] = [];
+	private tests: { test: string; status: string; error?: string }[] = [];
+	private tagFailures: string[] = [];
 	onBegin(_config: FullConfig, suite: Suite) {
 		const titles = new Set<string>();
 		for (const test of suite.allTests()) {
@@ -47,21 +58,43 @@ export default class PerformanceReporter implements Reporter {
 			const failure = `${title}: tag it with at least one of ${Object.keys(areas).join(", ")} and no other tags (see tests/performance/tags.ts).`;
 			console.error(`[perf] ${failure}`);
 			this.failures.push(failure);
+			this.tagFailures.push(failure);
 		}
 	}
 	onTestEnd(test: TestCase, result: TestResult) {
 		if (result.status !== "passed" && result.status !== "skipped")
 			this.failures.push(`${test.title}: ${result.status}`);
+		this.tests.push({
+			test: test.title,
+			status: result.status,
+			...(result.error?.message
+				? { error: result.error.message.split("\n")[0].slice(0, 500) }
+				: {}),
+		});
 		for (const attachment of result.attachments.filter(
 			(item) => item.name === "performance",
 		)) {
 			const content =
 				attachment.body?.toString("utf8") ??
 				(attachment.path ? readFileSync(attachment.path, "utf8") : undefined);
-			if (content) this.runs.push(JSON.parse(content));
+			if (content) this.runs.push({ ...JSON.parse(content), test: test.title });
 		}
 	}
 	async onEnd(result: FullResult) {
+		if (variantOutput) {
+			mkdirSync(dirname(resolve(variantOutput)), { recursive: true });
+			writeFileSync(
+				resolve(variantOutput),
+				JSON.stringify({
+					variant: process.env.ECAD_PERF_VARIANT,
+					status: result.status,
+					tagFailures: this.tagFailures,
+					tests: this.tests,
+					runs: this.runs,
+				}),
+			);
+			return;
+		}
 		const directory = resolve("perf-artifacts");
 		mkdirSync(directory, { recursive: true });
 		const baselinePath = resolve(
@@ -100,6 +133,7 @@ export default class PerformanceReporter implements Reporter {
 			this.failures.push("No performance reports were captured.");
 		this.failures.push(...checkBudgets(summary, smoke));
 		if (
+			compareStored &&
 			!smoke &&
 			process.env.ECAD_PERF_UPDATE_BASELINE !== "1" &&
 			this.runs.length
@@ -112,7 +146,7 @@ export default class PerformanceReporter implements Reporter {
 				this.warnings.push(...missingFromBaseline(baseline, summary));
 			} else
 				this.warnings.push(
-					`No baseline at ${process.env.ECAD_PERF_BASELINE_PATH ?? "perf-artifacts/baseline.json"}, so scenarios were checked against their budgets only. Run pnpm run perf:baseline before the change.`,
+					`No baseline at ${process.env.ECAD_PERF_BASELINE_PATH ?? "perf-artifacts/baseline.json"}, so scenarios were checked against their budgets only. Run pnpm run perf:dev --baseline before the change.`,
 				);
 		}
 		let revision = "unknown";
@@ -149,6 +183,7 @@ export default class PerformanceReporter implements Reporter {
 			.slice(20))
 			unlinkSync(resolve(directory, old));
 		if (
+			compareStored &&
 			!smoke &&
 			process.env.ECAD_PERF_UPDATE_BASELINE === "1" &&
 			result.status === "passed" &&

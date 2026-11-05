@@ -6,6 +6,9 @@ const development = process.env.ECAD_PERF_MODE === "development";
 // Traces and the HTML report add work to every timed test, so they are opt-in.
 const trace = process.env.ECAD_PERF_TRACE === "1";
 const html = process.env.ECAD_PERF_HTML === "1";
+// A/B runs start the base and head preview servers once and point each
+// Playwright invocation at one of them.
+const url = process.env.ECAD_PERF_URL;
 export default defineConfig({
 	testDir: ".",
 	testMatch: "*.spec.ts",
@@ -28,7 +31,7 @@ export default defineConfig({
 			: []),
 	],
 	use: {
-		baseURL: `http://127.0.0.1:${port}`,
+		baseURL: url ?? `http://127.0.0.1:${port}`,
 		viewport: { width: 1280, height: 800 },
 		actionTimeout: 10_000,
 		navigationTimeout: 15_000,
@@ -42,13 +45,15 @@ export default defineConfig({
 			],
 		},
 	},
-	webServer: {
-		cwd: fileURLToPath(new URL("../../", import.meta.url)),
-		command: development
-			? `pnpm run dev:web --host 127.0.0.1 --port ${port} --strictPort`
-			: `pnpm run preview --host 127.0.0.1 --port ${port} --strictPort`,
-		url: `http://127.0.0.1:${port}/projects`,
-		reuseExistingServer: false,
-		timeout: 60_000,
-	},
+	webServer: url
+		? undefined
+		: {
+				cwd: fileURLToPath(new URL("../../", import.meta.url)),
+				command: development
+					? `pnpm run dev:web --host 127.0.0.1 --port ${port} --strictPort`
+					: `pnpm run preview --host 127.0.0.1 --port ${port} --strictPort`,
+				url: `http://127.0.0.1:${port}/projects`,
+				reuseExistingServer: false,
+				timeout: 60_000,
+			},
 });

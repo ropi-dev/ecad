@@ -3,19 +3,39 @@
 Run these commands from the repository root after `pnpm install --frozen-lockfile` and `pnpm exec playwright install chromium`:
 
 ```bash
-# Before the change, capture every scenario:
-pnpm run perf:baseline
-# Make the change, then benchmark the scenarios it affects against that baseline:
+# After the change, compare the affected scenarios against the merge base:
 pnpm run perf
-# Benchmark every scenario instead:
+# Compare against another ref, such as the base branch of a stacked pull request:
+pnpm run perf --base origin/my-base-branch
+# Compare every scenario:
 pnpm run perf --all
+# Once per merged batch: every scenario against the absolute budgets, 4× throttled:
+pnpm run perf:budgets
 ```
 
-`pnpm run perf` selects scenarios from the change; see [Scenario selection](#scenario-selection). `pnpm run perf:baseline` runs the full suite unless you pass `--grep`.
+`pnpm run perf` selects scenarios from the change; see [Scenario selection](#scenario-selection). It needs no baseline: it builds the merge base itself and measures base and head in one session. See [A/B runs](#ab-runs). `pnpm run perf:budgets` runs the full suite unless you pass `--grep`. `pnpm run perf:baseline` is deprecated: it prints that it is no longer needed and runs nothing.
 
-For parallel threads, use the [container setup](parallel-development.md). Native and sandbox performance commands share a host-wide benchmark lock. Artifacts live under `/tmp`, with `perf-artifacts` linking to the native checkout's artifact directory. Sandbox artifacts have a separate location and baseline.
+For parallel threads, use the [container setup](parallel-development.md). Native and sandbox performance commands share a host-wide benchmark lock. Builds run before the lock is taken, so the lock covers only measurement. Artifacts live under `/tmp`, with `perf-artifacts` linking to the native checkout's artifact directory. Sandbox artifacts have a separate location.
 
-Both commands build the web app and run Chromium against a fresh preview server on port 4175. Each browser scenario runs three times, with one worker, an empty browser context, HTTP cache disabled, a 1280 × 800 viewport, and 4× CPU throttling. The large-project test seeds browser storage and reloads; this models opening an existing project. GPU tests use Chromium's software renderer. These numbers describe that test environment, rather than a user's GPU performance.
+Browser scenarios run with one worker, an empty browser context, HTTP cache disabled and a 1280 × 800 viewport. A/B runs measure without CPU throttling. The budget run uses 4× CPU throttling and runs each scenario once. The large-project test seeds browser storage and reloads; this models opening an existing project. GPU tests use Chromium's software renderer. These numbers describe that test environment, rather than a user's GPU performance.
+
+## A/B runs
+
+`pnpm run perf` compares the working tree (head) against a base commit, by default `git merge-base origin/main HEAD`. `--base <ref>` or `ECAD_PERF_BASE` uses the merge base of another ref instead.
+
+1. **Builds.** The head web app and CLI build in the checkout, as before. The base commit is exported with `git archive`, installed with `pnpm install --frozen-lockfile --prefer-offline` and built once, in `~/.cache/ecad-perf/<sha>` (`ECAD_PERF_CACHE_DIR` overrides it). Later runs against the same base reuse that build. pnpm hard-links dependencies from its store, so a cold base build takes seconds. The cache keeps the five most recently used builds, removes builds unused for two weeks, and never removes one used in the last six hours. Parallel builds of the same commit queue on a per-commit lock. Both builds finish before the run takes the benchmark lock.
+2. **Servers.** Head and base preview servers start on ports 4175 and 4176 (`ECAD_PERF_PORT`, `ECAD_PERF_BASE_PORT`). Both use the head checkout's scenarios, so a base comparison measures the base app with the same steps.
+3. **Rounds.** Each round runs the undecided scenarios once against each variant, alternating the order: base then head, then head then base. Every round adds one pair per scenario. CPU throttling is off (`ECAD_PERF_CPU=1` unless set).
+4. **Decisions.** After each round, every metric both variants report is compared pair by pair against the limit the old baseline comparison used: `base × 1.25 + floor`, where the floor is the metric's noise allowance in `regressionFloors` in `tests/performance/budgets.ts`. The score is the median across pairs of `head / limit`, so a score above 1 is a regression. A metric passes as soon as its score is at most `1 − 0.2/√pairs`, and regresses at `1 + 0.2/√pairs` or more once it has at least 3 pairs. Otherwise it stays undecided. The fifth pair (`ECAD_PERF_MAX_PAIRS`) decides every metric: above 1 regresses. A scenario regresses when any metric regresses, passes when all pass, and otherwise runs another round.
+5. **Report.** The console lists each scenario's verdict, its worst metric's median head/base ratio, the ratio at the limit (`1.25 + floor / base`), its score and the number of pairs. `perf-artifacts/latest.json` has every pair, the base commit, the load average and the time spent building, waiting for the lock and measuring. Each round's raw reports are in `perf-artifacts/ab`.
+
+A/B runs do not enforce the absolute timing budgets in `budgets.ts`: they are calibrated for 4× throttling. Head still has to provide every required measurement and stay within its DOM node and script size budgets. A head test that fails, or misses a measurement, fails the run. A base failure, for example a scenario that needs a feature the base lacks, leaves that scenario head-only with a warning.
+
+Node scenarios run unthrottled in every mode. `cli-drawing` runs the base commit's built CLI for the base variant (`ECAD_CLI_EXECUTABLE`). `desktop-storage`, `desktop-untitled`, `linked-schematic-sync` and `named-net-connectivity` import the head checkout's source directly, so they run head-only and keep their timing budgets.
+
+`pnpm sandbox perf` runs the same comparison in the benchmark container. The host exports the base source, and the container builds it into the `ecad-perf-base-cache` volume. In the container, builds run inside the benchmark lock.
+
+The budget run, `pnpm run perf:budgets`, is the previous single-variant run with one repeat and no baseline: every scenario, 4× CPU throttling, and the absolute budgets. `ECAD_PERF_RUNS` sets more repeats. Run it, and an A/B run of every scenario against the main commit before the batch (`pnpm run perf --all --base <pre-batch-main>`), once per merged batch.
 
 The scenarios cover startup without a project, restoring 10,000 project assets and interacting with the paginated list, and creating/editing/saving a drawing followed by a 2,000-hole Gerber import and a STEP import. The `symbol-libraries` scenario restores 400 symbols across 10 user and 10 project libraries, disables one user library, opens the picker, searches the combined library, then moves the highlight ten rows with the arrow keys and chooses a symbol with Enter. It requires library loading and resolution below 1.2 seconds, interaction p95 below 2 seconds, fewer than 4,000 DOM nodes, and less than 2.5 MB of decoded scripts in this environment. Add scenarios for new flows and larger representative inputs as features grow.
 
@@ -37,7 +57,7 @@ The `project-new-symbol` scenario creates an empty symbol through the project pa
 
 The timed user-symbol and new-symbol interactions check readiness each animation frame. This includes the lazy dialog, file creation, an enabled editor, and the saved shape count and status for autosave. Assertion retry backoff can add hundreds of milliseconds after those conditions are met, so these measurements use browser predicates with a 30-second timeout instead.
 
-The symbol timing limits were set about 30% above the repeated-run medians recorded in [the October 21 CI run](https://github.com/rolaca11/ecad/actions/runs/39650112518). Node 24.14.0 recorded 2,267.6 ms for creation and 1,526.2 ms for user-symbol interaction p95. The creation measurement includes loading the dialog and editor, entering the name, and saving the file. The user-symbol measurement includes choosing a tool, drawing, and the 400 ms autosave debounce. The previous 2-second and 1.5-second limits failed on these existing workflows. These allowances came from hosted-runner measurements. Local baseline comparisons retain their existing regression limits. DOM, script-size, and frame budgets are unchanged.
+The symbol timing limits were set about 30% above the repeated-run medians recorded in [the October 21 CI run](https://github.com/rolaca11/ecad/actions/runs/39650112518). Node 24.14.0 recorded 2,267.6 ms for creation and 1,526.2 ms for user-symbol interaction p95. The creation measurement includes loading the dialog and editor, entering the name, and saving the file. The user-symbol measurement includes choosing a tool, drawing, and the 400 ms autosave debounce. The previous 2-second and 1.5-second limits failed on these existing workflows. These allowances came from hosted-runner measurements. Local A/B comparisons keep their relative regression limits. DOM, script-size, and frame budgets are unchanged.
 
 The `editor-text-alignment` scenario places two reusable connectors with twelve text boxes each, then changes both alignment axes on a resistor reference and a multiline text box through left/top, center/middle, and right/bottom. It checks that the symbol stays fixed. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
 
@@ -97,15 +117,15 @@ The absolute timing budgets were calibrated with 4× CPU throttling and software
 | Import CPU frame submission p95 | 362 ms | 500 ms |
 | Import event-loop p95 | 1,007 ms | 1,500 ms |
 
-These limits are reference points for this test environment, not responsiveness targets. Use the import and frame measurements to guide further optimization. Local baseline comparisons retain their tighter relative limits.
+These limits are reference points for this test environment, not responsiveness targets. Use the import and frame measurements to guide further optimization. Local A/B comparisons keep their tighter relative limits.
 
-`perf-artifacts/latest.json` contains individual reports and per-scenario medians and p95 values across runs. `perf-artifacts/baseline.json` stores the local comparison baseline. Artifacts are ignored by Git. Explicit budgets live in `tests/performance/budgets.ts`. Every run must provide finite required measurements and stay within DOM limits. Timing budgets apply to the median across repeated runs, so a single timing spike does not fail the comparison. Individual outliers remain in the JSON report. A focused run with one sample still enforces its timing budgets.
+For a budget run, `perf-artifacts/latest.json` contains individual reports and per-scenario medians and p95 values across runs. Artifacts are ignored by Git. Explicit budgets live in `tests/performance/budgets.ts`. Every run must provide finite required measurements and stay within DOM limits. Timing budgets apply to the median across repeated runs, so a single timing spike does not fail the comparison. Individual outliers remain in the JSON report. A focused run with one sample still enforces its timing budgets.
 
-With a baseline, the reporter also fails if a median exceeds the old median by 25% plus the metric's noise allowance. A baseline must match the mode, CPU throttle, platform, and browser version. Recapture it explicitly after an environment change. Baseline capture only succeeds when all executed tests and budgets pass.
+Development runs (`pnpm run perf:dev`) still compare against a stored baseline, `perf-artifacts/development-baseline.json`: the reporter fails if a median exceeds the old median by 25% plus the metric's noise allowance. A baseline must match the mode, CPU throttle, platform, and browser version. Recapture it explicitly after an environment change. Baseline capture only succeeds when all executed tests and budgets pass. Production runs no longer read or write `perf-artifacts/baseline.json`; A/B runs replace it.
 
-Event-loop baseline comparisons allow 100 ms of sampling noise. The collector samples every 250 ms, so short scenarios vary with the timer's alignment to import tasks. Repeated local measurements of the same app build produced median event-loop p95 values between 156 and 258 ms while CPU frame submission stayed around 200 ms. Import duration, blocking time, and frame time retain their separate regression checks.
+Event-loop comparisons allow 100 ms of sampling noise. The collector samples every 250 ms, so short scenarios vary with the timer's alignment to import tasks. Repeated local measurements of the same app build produced median event-loop p95 values between 156 and 258 ms while CPU frame submission stayed around 200 ms. Import duration, blocking time, and frame time retain their separate regression checks.
 
-Performance benchmarks run locally, following `AGENTS.md`. Hosted-runner variation made the absolute timing budgets unreliable as CI gates. A run that passed all symbol budgets failed an unrelated empty-project event-loop budget. Compare before and after on the same machine with a matching baseline, and inspect `perf-artifacts/latest.json` before reporting a performance change.
+Performance benchmarks run locally, following `AGENTS.md`. Hosted-runner variation made the absolute timing budgets unreliable as CI gates. A run that passed all symbol budgets failed an unrelated empty-project event-loop budget. Compare before and after on the same machine with an A/B run, and inspect `perf-artifacts/latest.json` before reporting a performance change.
 
 GitHub Actions runs the scenarios only as a functional smoke test. The `Performance scenarios (smoke)` job in `browser-tests.yml` runs every scenario once, without CPU throttling, on three workers. It sets `ECAD_PERF_SMOKE=1`. In that mode the reporter still fails a scenario that errors or misses a required measurement, and still enforces the DOM node and script size budgets. It skips every `…Ms` timing budget, never reads or writes a baseline, and always runs every scenario rather than the affected selection. The job keeps scenarios working as the UI changes; it says nothing about speed. Run the same check locally with:
 
@@ -115,7 +135,7 @@ ECAD_PERF_SMOKE=1 ECAD_PERF_CPU=1 ECAD_PERF_RUNS=1 pnpm run perf --workers=3
 
 A failing scenario fails fast. Actions and `waitForFunction` calls time out after 10 seconds, navigations after 15 seconds, assertions after 15 seconds, and a test after 60 seconds. Scenarios that legitimately take longer, such as `editor-selection-drag` and `editor-dense-drag`, raise their own limits with `test.setTimeout` or a per-call `timeout`. Do not raise the shared limits to hide a stale locator.
 
-Playwright traces and the HTML report are off by default because recording a trace adds work to the timed test. Set `ECAD_PERF_TRACE=1` to keep traces of failing tests in `perf-artifacts/results`, and `ECAD_PERF_HTML=1` to write the HTML report to `perf-artifacts/html`. The CI smoke job enables traces, since it does not measure timing. Scenarios marked `test.fixme` are reported as skipped and do not block a baseline.
+Playwright traces and the HTML report are off by default because recording a trace adds work to the timed test. Set `ECAD_PERF_TRACE=1` to keep traces of failing tests in `perf-artifacts/results`, and `ECAD_PERF_HTML=1` to write the HTML report to `perf-artifacts/html`. The CI smoke job enables traces, since it does not measure timing. Scenarios marked `test.fixme` are reported as skipped and do not fail a run.
 
 Development profiling uses a separate Vite dependency cache and warms the server's routes and parser workers before measurements, preventing dependency discovery from reloading the app halfway through a scenario. Browser contexts and their HTTP caches still start empty. Development runs require the same measurements, enforce DOM limits, and compare against their development baseline; shipped time and byte budgets apply to production builds.
 
@@ -124,15 +144,16 @@ Development profiling uses a separate Vite dependency cache and warms the server
 pnpm run perf:dev --baseline
 pnpm run perf:dev
 
-# Change the environment deliberately, using the same values for both runs:
-ECAD_PERF_CPU=4 ECAD_PERF_RUNS=5 pnpm run perf:baseline
-ECAD_PERF_CPU=4 ECAD_PERF_RUNS=5 pnpm run perf
+# Compare with 2× throttling, or allow up to 9 pairs:
+ECAD_PERF_CPU=2 pnpm run perf
+ECAD_PERF_MAX_PAIRS=9 pnpm run perf
 
 # Focus on one scenario during investigation:
 pnpm run perf --grep projects-large
+pnpm run perf:budgets --grep projects-large
 ```
 
-Set `ECAD_PERF_BASELINE_PATH` to use another comparison file. Development and production have separate default baselines.
+Set `ECAD_PERF_BASELINE_PATH` to use another development comparison file.
 
 ## Scenario selection
 
@@ -150,8 +171,8 @@ Every test in `tests/performance` has one or more area tags, listed in `tests/pe
 - Performance harness files that do not change the app being measured select only `@core`: `budgets.ts`, the fixture and helpers in `tests/performance`, and the `tests/browser`, `tests/helpers` and `tests/fixtures` files they import. The CI smoke job runs every scenario against them.
 - A changed or added performance spec runs its own tests, matched by file name in `--grep`.
 - The lockfile, `package.json` files, TypeScript and Vite configuration, the app shell and routes under `packages/web/src`, the project shell and shared toaster (`components/ui`), `scripts/` (including the selector and runner), the reporter, `comparison.ts` and `playwright.config.ts`, shared project session and storage code, `packages/core/src/lib`, `packages/core/src/performance` and any path no row matches run every scenario. The `packages/core/src/performance` collector, recorder and boundaries produce every browser scenario's metrics, and its storage wrapper is on every save.
-- `--all` runs every scenario. An explicit `--grep` replaces the selection; `--grep-invert` and other Playwright options still apply to it. `pnpm run perf:baseline` and smoke runs (`ECAD_PERF_SMOKE=1`) always run every scenario unless you pass `--grep`.
-- If the changed paths cannot be listed, for example without an `origin/main` ref, the run uses every scenario and says why. Set `ECAD_PERF_BASE` to compare against another ref, such as the base branch of a stacked pull request.
+- `--all` runs every scenario. An explicit `--grep` replaces the selection; `--grep-invert` and other Playwright options still apply to it. `pnpm run perf:budgets` and smoke runs (`ECAD_PERF_SMOKE=1`) always run every scenario unless you pass `--grep`.
+- If the changed paths cannot be listed, for example without an `origin/main` ref, the run uses every scenario and says why. `--base <ref>` or `ECAD_PERF_BASE` lists changes against another ref, such as the base branch of a stacked pull request, and makes its merge base the A/B base.
 - `pnpm sandbox perf` selects on the host, because the container copy has no `.git`, and passes the result to the container as `--grep` or `--all`.
 
 Preview a selection without running anything:
@@ -161,7 +182,7 @@ pnpm exec tsx scripts/performance/select.ts                      # the current c
 pnpm exec tsx scripts/performance/select.ts docs/erc.md pnpm-lock.yaml   # given paths
 ```
 
-A selected run compares only the scenarios it ran against the baseline. A scenario that ran but is missing from the baseline is printed as a warning and listed under `warnings` in `latest.json`; it was checked against its budgets only. A run without any baseline file prints the same kind of warning. `pnpm run perf:baseline --grep …` writes a baseline that contains only the matching scenarios.
+An A/B run measures only the selected scenarios, in both variants. A selected scenario that fails on the base is listed under `warnings` in `latest.json` and checked against head's non-timing budgets only.
 
 Give every new scenario at least one area tag, `test(name, { tag: ["@editor"] }, fn)`. If it covers an area that no tag describes, add the tag to `tests/performance/tags.ts` and mapping rows for its source paths to `scripts/performance/select.ts`.
 

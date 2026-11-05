@@ -8,9 +8,10 @@ import { fileURLToPath } from "node:url";
 export const cliMain = fileURLToPath(
 	new URL("../../packages/cli/src/main.ts", import.meta.url),
 );
-export const cliExecutable = fileURLToPath(
-	new URL("../../packages/cli/bin/ecad.mjs", import.meta.url),
-);
+/** A/B performance runs point the base variant at the base commit's CLI. */
+export const cliExecutable =
+	process.env.ECAD_CLI_EXECUTABLE ??
+	fileURLToPath(new URL("../../packages/cli/bin/ecad.mjs", import.meta.url));
 const tsxLoader = fileURLToPath(import.meta.resolve("tsx"));
 
 export function startCli(

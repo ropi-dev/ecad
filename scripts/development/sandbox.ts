@@ -22,6 +22,7 @@ const commands = [
 	"test:browser",
 	"perf",
 	"perf:baseline",
+	"perf:budgets",
 	"perf:dev",
 	"check",
 	"typecheck",
@@ -74,26 +75,66 @@ if (command === "build-image") {
 		);
 	}
 	const perf = command.startsWith("perf");
+	const baseArgs: string[] = [];
 	if (perf) {
 		// The container copies the checkout without .git, so the host selects
-		// the affected scenarios and passes the result as --grep or --all.
+		// the affected scenarios and passes the result as --grep or --all. For
+		// an A/B run it also exports the base commit's source.
+		const { parseRun } = await import("../performance/options.ts");
 		const { plan } = await import("../performance/select.ts");
-		const baseline =
-			command === "perf:baseline" || requested.includes("--baseline");
-		const selection = plan(
-			requested.filter((arg) => arg !== "--baseline"),
-			{
-				baseline,
-				smoke: process.env.ECAD_PERF_SMOKE === "1",
-				base: process.env.ECAD_PERF_BASE,
-			},
+		const flag = {
+			"perf:baseline": "--baseline",
+			"perf:budgets": "--budgets",
+			"perf:dev": "--development",
+		}[command];
+		const parsed = parseRun(
+			flag ? [flag, ...requested] : requested,
+			process.env,
 		);
-		for (const message of selection.messages) console.log(message);
-		forwarded = [
-			...(requested.includes("--baseline") ? ["--baseline"] : []),
-			...selection.args,
-			...(selection.all ? ["--all"] : []),
-		];
+		if (parsed.mode === "deprecated-baseline") {
+			console.log(
+				"[perf] perf:baseline is no longer needed: pnpm sandbox perf compares the affected scenarios against the merge base in one session. Nothing was run. Use pnpm sandbox perf:budgets for the absolute budget run.",
+			);
+			process.exit(0);
+		}
+		if (parsed.mode === "budgets") forwarded = parsed.args;
+		else {
+			const selection = plan(parsed.args, {
+				baseline: parsed.updateBaseline,
+				smoke: parsed.mode === "smoke",
+				base: parsed.baseRef,
+			});
+			for (const message of selection.messages) console.log(message);
+			forwarded = [
+				...(parsed.updateBaseline ? ["--baseline"] : []),
+				...selection.args,
+				...(selection.all ? ["--all"] : []),
+			];
+		}
+		if (parsed.mode === "ab") {
+			const { archiveCommit, cacheRoot, resolveBase } = await import(
+				"../performance/base-build.ts"
+			);
+			const sha = resolveBase(parsed.baseRef);
+			const archive = join(cacheRoot(), "archives", `${sha}.tar`);
+			archiveCommit(sha, archive);
+			baseArgs.push(
+				"--volume",
+				`${archive}:/base-source.tar:ro`,
+				"--volume",
+				"ecad-perf-base-cache:/cache",
+				"--env",
+				`ECAD_PERF_BASE_SHA=${sha}`,
+				"--env",
+				"ECAD_PERF_BASE_ARCHIVE=/base-source.tar",
+				"--env",
+				`ECAD_PERF_BASE=${parsed.baseRef}`,
+				"--env",
+				"ECAD_PERF_CACHE_DIR=/cache",
+				"--env",
+				"ECAD_PERF_PNPM_STORE=/pnpm/store",
+			);
+		}
 	}
 	const role = perf ? "perf" : "dev";
 	const workspace = perf ? "/workspace" : root;
@@ -178,6 +219,9 @@ if (command === "build-image") {
 		"ECAD_PERF_RUNS",
 		"ECAD_PERF_SMOKE",
 		"ECAD_PERF_PORT",
+		"ECAD_PERF_BASE_PORT",
+		"ECAD_PERF_MAX_PAIRS",
+		"ECAD_PERF_FLOOR_SCALE",
 		"ECAD_BROWSER_PORT",
 	]) {
 		if (process.env[key] !== undefined)
@@ -199,6 +243,7 @@ if (command === "build-image") {
 		args.push("--env", `ECAD_PERF_BASELINE_PATH=${baseline}`);
 	}
 	if (perf) {
+		args.push(...baseArgs);
 		args.push("--tmpfs", "/workspace:rw,size=1g,mode=1777");
 		mkdirSync(`/tmp/ecad/${id}/container-perf`, { recursive: true });
 		args.push(

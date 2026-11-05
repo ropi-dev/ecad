@@ -1,0 +1,220 @@
+import { spawnSync } from "node:child_process";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+	statSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { run } from "../development/common.ts";
+
+/**
+ * Built base checkouts for A/B runs, one per commit. The cache lives outside
+ * the quota-limited /tmp; pnpm hard-links dependencies from its store when the
+ * cache shares its filesystem, so an entry mostly costs its build output.
+ */
+export function cacheRoot(env = process.env): string {
+	return resolve(
+		env.ECAD_PERF_CACHE_DIR ??
+			join(env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "ecad-perf"),
+	);
+}
+
+const readyFile = ".ecad-perf-ready";
+const keep = 5;
+const maxAgeMs = 14 * 24 * 60 * 60 * 1000;
+/** An entry used this recently may be serving another thread's run. */
+const inUseMs = 6 * 60 * 60 * 1000;
+
+const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+/** The base commit: the merge base of `ref` and HEAD. */
+export function resolveBase(ref: string): string {
+	const result = spawnSync("git", ["merge-base", ref, "HEAD"], {
+		encoding: "utf8",
+	});
+	if (result.status !== 0 || !result.stdout.trim())
+		throw new Error(
+			`cannot find the merge base of ${ref} and HEAD (${(result.stderr || result.error?.message || "no output").trim().split("\n")[0]}). Pass --base <ref>, or run pnpm run perf:budgets for a run without a comparison.`,
+		);
+	return result.stdout.trim();
+}
+
+/** Writes `git archive` of a commit to `file`. */
+export function archiveCommit(sha: string, file: string): void {
+	if (existsSync(file)) return;
+	mkdirSync(resolve(file, ".."), { recursive: true });
+	const partial = `${file}.${process.pid}.partial`;
+	const result = spawnSync(
+		"git",
+		["archive", "--format=tar", `--output=${partial}`, sha],
+		{ encoding: "utf8" },
+	);
+	if (result.status !== 0) {
+		rmSync(partial, { force: true });
+		throw new Error(`git archive ${sha} failed: ${result.stderr.trim()}`);
+	}
+	renameSync(partial, file);
+}
+
+export interface BaseBuild {
+	sha: string;
+	directory: string;
+	/** Whether this run built it, rather than reusing the cache. */
+	built: boolean;
+	durationMs: number;
+}
+
+/**
+ * Returns a built checkout of `sha`, building it on a cache miss. Builds of
+ * the same commit from parallel threads queue on a per-commit lock. `archive`
+ * supplies the source as a tar file when there is no Git repository, as in
+ * the sandbox.
+ */
+export async function prepareBase(
+	sha: string,
+	options: { archive?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<BaseBuild> {
+	const env = options.env ?? process.env;
+	const root = cacheRoot(env);
+	const directory = join(root, sha);
+	const start = Date.now();
+	mkdirSync(root, { recursive: true });
+	if (!existsSync(join(directory, readyFile))) {
+		const archive = options.archive ?? join(root, "archives", `${sha}.tar`);
+		if (!options.archive) archiveCommit(sha, archive);
+		const args = [
+			"--import",
+			"tsx",
+			fileURLToPath(import.meta.url),
+			sha,
+			archive,
+		];
+		console.log(
+			`[perf] Building base ${sha.slice(0, 12)} in ${directory}. Output goes to ${join(directory, "build.log")}.`,
+		);
+		const status = await (process.platform === "linux"
+			? run(
+					"flock",
+					["--exclusive", join(root, `${sha}.lock`), process.execPath, ...args],
+					env,
+				)
+			: run(process.execPath, args, env));
+		if (status !== 0)
+			throw new Error(
+				`Building base ${sha.slice(0, 12)} failed. See ${join(directory, "build.log")}.`,
+			);
+		prune(root, sha);
+		return { sha, directory, built: true, durationMs: Date.now() - start };
+	}
+	touch(directory);
+	return { sha, directory, built: false, durationMs: Date.now() - start };
+}
+
+/** Marks an entry as used, so pruning keeps it. */
+export function touch(directory: string): void {
+	const now = new Date();
+	try {
+		utimesSync(join(directory, readyFile), now, now);
+	} catch {
+		// A missing marker means the entry is being rebuilt.
+	}
+}
+
+/**
+ * Keeps the most recently used entries and removes the rest, along with
+ * entries unused for two weeks. Entries used in the last six hours stay, since
+ * another thread's run may be serving them.
+ */
+export function prune(root: string, current: string, now = Date.now()): void {
+	const entries = readdirSync(root, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory() && /^[0-9a-f]{40}$/.test(entry.name))
+		.map((entry) => {
+			const marker = join(root, entry.name, readyFile);
+			const used = existsSync(marker)
+				? statSync(marker).mtimeMs
+				: statSync(join(root, entry.name)).mtimeMs;
+			return { name: entry.name, used };
+		})
+		.sort((a, b) => b.used - a.used);
+	entries.forEach((entry, index) => {
+		if (entry.name === current || now - entry.used < inUseMs) return;
+		if (index >= keep || now - entry.used > maxAgeMs) {
+			rmSync(join(root, entry.name), { recursive: true, force: true });
+			rmSync(join(root, "archives", `${entry.name}.tar`), { force: true });
+		}
+	});
+}
+
+function step(
+	directory: string,
+	log: string,
+	command: string,
+	args: string[],
+): void {
+	writeFileSync(log, `$ ${command} ${args.join(" ")}\n`, { flag: "a" });
+	const result = spawnSync(command, args, {
+		cwd: directory,
+		encoding: "utf8",
+		env: {
+			...process.env,
+			ELECTRON_SKIP_BINARY_DOWNLOAD: "1",
+			PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+			CI: "1",
+		},
+		maxBuffer: 256 * 1024 * 1024,
+	});
+	writeFileSync(log, (result.stdout ?? "") + (result.stderr ?? ""), {
+		flag: "a",
+	});
+	if (result.status !== 0) {
+		console.error(
+			`[perf] Base build step failed: ${command} ${args.join(" ")}. See ${log}.`,
+		);
+		process.exit(result.status ?? 1);
+	}
+}
+
+/** Runs under the per-commit lock: extracts, installs and builds the base. */
+function build(sha: string, archive: string): void {
+	const directory = join(cacheRoot(), sha);
+	if (existsSync(join(directory, readyFile))) return;
+	const start = Date.now();
+	rmSync(directory, { recursive: true, force: true });
+	mkdirSync(directory, { recursive: true });
+	const log = join(directory, "build.log");
+	writeFileSync(log, "");
+	step(directory, log, "tar", ["-xf", archive, "-C", directory]);
+	step(directory, log, pnpm, [
+		"install",
+		"--frozen-lockfile",
+		"--prefer-offline",
+		...(process.env.ECAD_PERF_PNPM_STORE
+			? ["--store-dir", process.env.ECAD_PERF_PNPM_STORE]
+			: []),
+	]);
+	step(directory, log, pnpm, ["run", "build:web"]);
+	step(directory, log, pnpm, ["run", "build:cli"]);
+	writeFileSync(
+		join(directory, readyFile),
+		JSON.stringify({
+			sha,
+			builtAt: new Date().toISOString(),
+			ms: Date.now() - start,
+		}),
+	);
+}
+
+if (
+	process.argv[1] &&
+	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+	const [sha, archive] = process.argv.slice(2);
+	build(sha, archive);
+}
