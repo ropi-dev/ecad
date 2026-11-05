@@ -1,5 +1,6 @@
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
+	canInspectSymbolChild,
 	canSelectShape,
 	canSelectSymbolChild,
 	constrainWireEndpoint,
@@ -7,7 +8,6 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	findWireConnection,
-	hitShape,
 	isUnsafeMove,
 	openPins,
 	type ResizeHandle,
@@ -15,8 +15,7 @@ import {
 	type ShapeKind,
 	shapeAt,
 	snapPoint,
-	symbolChildren,
-	symbolChildWorld,
+	symbolChildAt,
 	UNSAFE_MOVE_MESSAGE,
 	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
@@ -634,15 +633,12 @@ export function useCanvasGestures({
 				!event.shiftKey &&
 				selectedSymbol &&
 				hit?.id === selectedSymbol.id
-					? [...symbolChildren(selectedSymbol)]
-							.reverse()
-							.find((child) =>
-								hitShape(
-									symbolChildWorld(selectedSymbol, child.shape),
-									point,
-									0,
-								),
-							)
+					? symbolChildAt(
+							selectedSymbol,
+							point,
+							2 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+							allowLocked,
+						)
 					: undefined;
 			if (childHit) shape = selectedSymbol;
 			const editableChild =
@@ -651,6 +647,14 @@ export function useCanvasGestures({
 				canSelectSymbolChild(selectedSymbol, childHit, allowLocked)
 					? childHit
 					: undefined;
+			// Pressing a fixed pin selects it, and dragging still moves the symbol.
+			const inspectedChild =
+				editableChild ??
+				(childHit &&
+				selectedSymbol &&
+				canInspectSymbolChild(selectedSymbol, childHit, allowLocked)
+					? childHit
+					: undefined);
 
 			if (
 				tool === "select" &&
@@ -728,7 +732,7 @@ export function useCanvasGestures({
 							? selectedIds
 							: new Set(),
 			);
-			session.selectChild(childKey ?? null);
+			session.selectChild(childKey ?? inspectedChild?.key ?? null);
 			const rect = canvas.getBoundingClientRect();
 			gesture.current = {
 				kind: "drag",

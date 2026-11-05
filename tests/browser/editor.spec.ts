@@ -1,4 +1,4 @@
-import { SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
+import { fromMils, SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, type Page, test } from "@playwright/test";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { required } from "../helpers/required.ts";
@@ -629,4 +629,63 @@ test("placement rotation leaves the selection untouched and resets after cancell
 	await expect
 		.poll(async () => (await state(page)).placement?.rotation)
 		.toBe(0);
+});
+
+test("schematic pins are selectable but stay fixed to their symbol", async ({
+	page,
+}) => {
+	const documentSymbol = async () =>
+		JSON.parse((await page.locator("#editor-document").textContent()) || "{}")
+			.shapes[0];
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor, US", exact: true })
+		.click();
+	await clickAt(page, 100, 100);
+	const placed = await documentSymbol();
+	// Zoom to the symbol so the lead is far enough from the wire terminal.
+	await page.locator("canvas").focus();
+	await page.keyboard.press("F6");
+	// Pin 1 is a zero-length terminal at 150 mil with a lead line toward the body.
+	const lead = { x: placed.x + fromMils(125), y: placed.y };
+	await expect
+		.poll(async () => {
+			const end = await screen(page, placed.x + fromMils(150), placed.y);
+			const middle = await screen(page, lead.x, lead.y);
+			return Math.hypot(end.x - middle.x, end.y - middle.y);
+		})
+		.toBeGreaterThan(12);
+	await clickAt(page, lead.x, lead.y);
+
+	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+	const panel = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	await expect(panel.getByText("Pin 1", { exact: true })).toBeVisible();
+	await expect(panel.getByRole("textbox")).toHaveCount(0);
+	await expect(panel.getByRole("spinbutton")).toHaveCount(0);
+	await expect(panel.getByRole("checkbox")).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "Unlock selection", exact: true }),
+	).toBeDisabled();
+	await page.screenshot({ path: "/tmp/ecad-selected-schematic-pin.png" });
+
+	// Dragging, arrows and rotation act on the whole symbol, never the pin.
+	await dragTo(page, [lead.x, lead.y], [lead.x - 5, lead.y]);
+	await expect
+		.poll(async () => (await documentSymbol()).x)
+		.toBeCloseTo(placed.x - 5, 3);
+	await expect(panel.getByText("Pin 1", { exact: true })).toBeVisible();
+	await page.keyboard.press("ArrowUp");
+	await expect
+		.poll(async () => (await documentSymbol()).y)
+		.toBeGreaterThan(placed.y);
+	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+	await page.keyboard.press("r");
+	await expect
+		.poll(async () => (await documentSymbol()).rotation)
+		.not.toBe(placed.rotation);
+	const symbol = await documentSymbol();
+	expect(symbol.childOverrides ?? {}).toEqual({});
+	await expect(panel.getByText("Pin 1", { exact: true })).toBeVisible();
 });

@@ -46,6 +46,7 @@ export {
 	intersectsSelection,
 	selectionSize,
 	shapeAt,
+	symbolChildAt,
 	symbolSelectionFrame,
 } from "#/drawing/shape-selection.ts";
 export {
@@ -61,6 +62,7 @@ export {
 export {
 	boxBorder,
 	boxText,
+	canInspectSymbolChild,
 	canSelectSymbolChild,
 	fitBoxToBorder,
 	replaceSymbolChild,

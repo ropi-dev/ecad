@@ -5,9 +5,10 @@ import {
 	shapeBounds,
 	shapeCenter,
 } from "#/drawing/shape-geometry.ts";
-import { isBoxSymbol } from "#/drawing/shape-types.ts";
+import { isBoxSymbol, type SymbolChild } from "#/drawing/shape-types.ts";
 import {
 	boxBorder,
+	canSelectSymbolChild,
 	symbolChildren,
 	symbolChildWorld,
 	symbolShapes,
@@ -77,6 +78,46 @@ function hitSymbolContent(
 ): boolean {
 	return [...symbolTextShapes(symbol), ...symbolShapes(symbol)].some((child) =>
 		hitShape(child, point, tolerance),
+	);
+}
+
+/**
+ * The topmost symbol child under a world point. Some symbols draw a pin as a
+ * zero-length terminal with a separate locked lead line, so a press on that
+ * line picks the pin it ends at.
+ */
+export function symbolChildAt(
+	symbol: EditorSymbol,
+	point: Point,
+	tolerance = 0,
+	allowLocked = false,
+): SymbolChild | undefined {
+	const children = symbolChildren(symbol);
+	const hit = [...children]
+		.reverse()
+		.find((child) =>
+			hitShape(symbolChildWorld(symbol, child.shape), point, tolerance),
+		);
+	if (
+		hit?.shape.kind !== "line" ||
+		canSelectSymbolChild(symbol, hit, allowLocked)
+	)
+		return hit;
+	const { width } = hit.shape;
+	const ends = [
+		localToWorld(hit.shape, -width / 2, 0),
+		localToWorld(hit.shape, width / 2, 0),
+	];
+	return (
+		children.find(
+			(child) =>
+				child.shape.kind === "pin" &&
+				!child.shape.length &&
+				ends.some(
+					(end) =>
+						Math.hypot(end.x - child.shape.x, end.y - child.shape.y) < 1e-6,
+				),
+		) ?? hit
 	);
 }
 

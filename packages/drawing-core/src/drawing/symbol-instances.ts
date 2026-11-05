@@ -88,6 +88,22 @@ export function canSelectSymbolChild(
 	);
 }
 
+/**
+ * Pins stay fixed to their symbol definition, but they can still be selected
+ * on the schematic so their attributes are visible. Editing goes through
+ * {@link canSelectSymbolChild}.
+ */
+export function canInspectSymbolChild(
+	symbol: EditorSymbol,
+	child: SymbolChild,
+	allowLocked = false,
+): boolean {
+	return (
+		canSelectSymbolChild(symbol, child, allowLocked) ||
+		(child.shape.kind === "pin" && canSelectShape(symbol, allowLocked))
+	);
+}
+
 export function symbolChildren(symbol: EditorSymbol): SymbolChild[] {
 	return [
 		...symbol.children.map((shape) => ({

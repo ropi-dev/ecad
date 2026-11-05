@@ -81,6 +81,8 @@ export function canvasKeyCommand(
 		readonly dragging: boolean;
 		readonly hasSelection: boolean;
 		readonly childSelected: boolean;
+		/** The selected child is fixed to its symbol, so arrows move the symbol. */
+		readonly childFixed: boolean;
 
 		readonly childStep: number;
 
@@ -100,7 +102,7 @@ export function canvasKeyCommand(
 		return { kind: "delete" };
 	if (!isArrowKey(key)) return undefined;
 	const multiplier = event.shiftKey ? 10 : 1;
-	if (context.childSelected && !context.dragging)
+	if (context.childSelected && !context.childFixed && !context.dragging)
 		return {
 			kind: "move-child",
 			delta: arrowDelta(key, context.childStep * multiplier, "up"),

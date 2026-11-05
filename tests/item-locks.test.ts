@@ -12,6 +12,7 @@ import {
 } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
+	canInspectSymbolChild,
 	canSelectShape,
 	canSelectSymbolChild,
 	drawShape,
@@ -19,7 +20,9 @@ import {
 	moveSymbolChild,
 	normalizeWireSegments,
 	replaceSymbolChild,
+	symbolChildAt,
 	symbolChildren,
+	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import { Effect, Either } from "effect";
@@ -80,6 +83,64 @@ test("non-text symbol children default to locked while text and standalone shape
 	const moved = moveShapes([placed], { x: 10, y: 20 })[0];
 	assert.equal(moved.x, 10);
 	assert.equal(moved.y, 20);
+});
+
+test("schematic pins are selectable for inspection but stay fixed to their symbol", () => {
+	const placed = createSymbol(9, definition, { x: 0, y: 0 });
+	const pins = symbolChildren(placed).filter(
+		(child) => child.shape.kind === "pin",
+	);
+	assert.ok(pins.length > 0);
+	for (const child of symbolChildren(placed))
+		assert.equal(
+			canInspectSymbolChild(placed, child),
+			child.shape.kind === "pin" || child.shape.kind === "text",
+		);
+	for (const pin of pins) {
+		assert.equal(canSelectSymbolChild(placed, pin), false);
+		assert.strictEqual(
+			moveSymbolChild(placed, pin.key, { x: 5, y: 3 }),
+			placed,
+		);
+	}
+	// A locked symbol keeps its pins unselectable until locked items are allowed.
+	const locked = { ...placed, locked: true };
+	const pin = required(pins[0]);
+	assert.equal(canInspectSymbolChild(locked, pin), false);
+	assert.equal(canInspectSymbolChild(locked, pin, true), true);
+	assert.equal(canSelectSymbolChild(locked, pin, true), false);
+});
+
+test("a press on a locked lead line picks the zero-length pin it ends at", () => {
+	const resistor = required(
+		symbolDefinitions.find((item) => item.id === "resistor-us"),
+	);
+	const placed = createSymbol(9, resistor, { x: 10, y: 20 });
+	const children = symbolChildren(placed);
+	const pin = required(
+		children.find((child) => child.shape.kind === "pin" && !child.shape.length),
+	);
+	const lead = required(
+		children.find(
+			(child) =>
+				child.shape.kind === "line" &&
+				[-1, 1].some(
+					(side) =>
+						Math.hypot(
+							child.shape.x + (side * child.shape.width) / 2 - pin.shape.x,
+							child.shape.y - pin.shape.y,
+						) < 1e-6,
+				),
+		),
+	);
+	const middle = symbolChildWorld(placed, lead.shape);
+	assert.equal(symbolChildAt(placed, middle)?.key, pin.key);
+	// An unlocked lead stays its own editable child.
+	const unlocked = replaceSymbolChild(placed, lead.key, {
+		...lead.shape,
+		locked: false,
+	});
+	assert.equal(symbolChildAt(unlocked, middle)?.key, lead.key);
 });
 
 test("explicit child unlocks and text locks override the defaults and survive saving", () => {
