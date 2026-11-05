@@ -280,26 +280,35 @@ export function routePath(
 		routed[routed.length - 1] = request.to.point;
 		return { points: routed, routed: true, clear: true };
 	}
+	return fallbackPath(indexes, request);
+}
+
+/** A plain L between the ends, preferring an orientation that touches nothing foreign. */
+export function fallbackPath(
+	indexes: readonly RoutingIndex[],
+	request: Pick<RouteRequest, "from" | "to" | "nets">,
+): { points: Point[]; routed: false; clear: boolean } {
 	const { point: start } = request.from;
 	const { point: end } = request.to;
-	const horizontalFirst =
+	const preferHorizontal =
 		request.from.heading === undefined
 			? Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
 			: request.from.heading % 2 === 0;
-	const points = simplifyPath([
-		start,
-		horizontalFirst ? { x: end.x, y: start.y } : { x: start.x, y: end.y },
-		end,
-	]);
-	return {
-		points,
-		routed: false,
-		clear: points
+	// Prefer whichever L touches no other net or pin.
+	const candidates = [preferHorizontal, !preferHorizontal].map((horizontal) => {
+		const points = simplifyPath([
+			start,
+			horizontal ? { x: end.x, y: start.y } : { x: start.x, y: end.y },
+			end,
+		]);
+		const clear = points
 			.slice(1)
 			.every((point, index) =>
 				segmentClear(indexes, points[index], point, request.nets, [start, end]),
-			),
-	};
+			);
+		return { points, routed: false as const, clear };
+	});
+	return candidates.find(({ clear }) => clear) ?? candidates[0];
 }
 
 /** Wire segments along a corner path, numbered from `id`. */

@@ -192,6 +192,7 @@ const CROSSING = 4;
 const OVERLAP = 0.1;
 const MEMORY = 0.6;
 const BODY_INSET = 0.25;
+const MIN_BUDGET = 3_000;
 
 const samePoint = (a: Point, b: Point) =>
 	Math.abs(a.x - b.x) <= connectionTolerance &&
@@ -515,9 +516,10 @@ export function routeOrthogonal(
 	)
 		return undefined;
 	const shared = options.budget;
+	// Every search keeps a small slice, so an earlier route cannot starve it.
 	let budget = Math.min(
 		options.maxExpansions ?? 40_000,
-		shared?.remaining ?? Number.POSITIVE_INFINITY,
+		Math.max(shared?.remaining ?? Number.POSITIVE_INFINITY, MIN_BUDGET),
 	);
 	for (const steps of [8, 24, 64]) {
 		if (budget <= 0) return undefined;

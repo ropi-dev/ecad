@@ -745,7 +745,7 @@ function rerouteSelection(
 	for (const nodeId of context.stubs) {
 		const node = nodes[nodeId];
 		route(
-			context.moved.get(nodeId)?.net ?? -1,
+			context.moved.get(nodeId)?.net ?? Number.MAX_SAFE_INTEGER,
 			{ point: node.point, heading: stationaryPin(node)?.outward },
 			target(nodeId),
 			[],

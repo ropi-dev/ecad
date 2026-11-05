@@ -11,6 +11,7 @@ import {
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	createWireRoutingContext,
+	fallbackPath,
 	pinEnds,
 	routeWireConnection,
 } from "@ecad/drawing-core/drawing/wire-routing.ts";
@@ -336,4 +337,46 @@ test("a drag over other parts stays within its search budget", () => {
 		moveShapes(row, { x: 1.27 * step, y: 1.27 }, 1.27, row[0], shapes, id);
 	const perStep = (performance.now() - started) / 11;
 	assert.ok(perStep < 400, `took ${perStep.toFixed(0)} ms per step`);
+});
+
+test("random moves across a dense block never join or split nets", () => {
+	const { shapes, nextId } = resistorGrid(8, 8, 10.16, 5.08);
+	const before = pinGroups(shapes);
+	const parts = shapes.filter((shape) => shape.kind === "symbol");
+	// A fixed seed keeps the sweep repeatable.
+	let seed = 7;
+	const random = () => {
+		seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+		return seed / 2_147_483_648;
+	};
+	for (let move = 0; move < 40; move++) {
+		const count = 1 + Math.floor(random() * 3);
+		const start = Math.floor(random() * (parts.length - count));
+		const selection = parts.slice(start, start + count);
+		// Half-pitch offsets keep moved pins off existing pins and wires, so
+		// only routing could join nets.
+		const delta = {
+			x: (Math.floor(random() * 30) - 15) * 1.27 + 0.635,
+			y: (Math.floor(random() * 20) - 10) * 1.27 + 0.635,
+		};
+		const moved = moveShapes(selection, delta, 0, selection[0], shapes, nextId);
+		assert.deepEqual(
+			pinGroups(applyMove(shapes, moved)),
+			before,
+			`move ${move}: ${selection.map(({ id }) => id)} by ${delta.x},${delta.y}`,
+		);
+	}
+});
+
+test("a fallback L prefers the orientation that touches no other pin", () => {
+	const blocker = pin(9, 10, 0);
+	const index = createWireRoutingContext([blocker]).index;
+	const { points, routed, clear } = fallbackPath([index], {
+		from: { point: { x: 0, y: 0 } },
+		to: { point: { x: 20, y: 10 } },
+		nets: new Set(),
+	});
+	assert.equal(routed, false);
+	assert.ok(clear);
+	assert.deepEqual(points[1], { x: 0, y: 10 });
 });
