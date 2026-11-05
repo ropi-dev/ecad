@@ -13,7 +13,11 @@ const defaultFloor = 50;
 export interface DecisionOptions {
 	/** Pairs after which every metric gets a final verdict. */
 	maxPairs: number;
-	/** A regression needs this many pairs, so one slow pair cannot fail a run. */
+	/**
+	 * A regression needs this many pairs. Interaction p95 over a handful of
+	 * interactions is close to their maximum, so one slow interaction in two
+	 * of three runs failed identical code; regressions wait for all pairs.
+	 */
 	minRegressionPairs: number;
 	/**
 	 * How far the score must sit from the limit to stop early, at one pair.
@@ -30,7 +34,7 @@ export interface DecisionOptions {
 
 export const defaultDecision: DecisionOptions = {
 	maxPairs: 5,
-	minRegressionPairs: 3,
+	minRegressionPairs: 5,
 	margin: 0.2,
 	floorScale: 1,
 };
@@ -140,6 +144,14 @@ export function judgeMetric(
 	};
 }
 
+/**
+ * Reported but not part of a scenario's verdict. Event-loop p95 comes from a
+ * 250 ms sampling timer, and its alignment makes it bimodal: identical builds
+ * measured 10 ms and 600 ms. Blocking time and frame metrics still catch
+ * main-thread stalls.
+ */
+export const advisoryMetrics: ReadonlySet<string> = new Set(["eventLoopP95Ms"]);
+
 export interface Pair {
 	base: Record<string, number>;
 	head: Record<string, number>;
@@ -148,7 +160,7 @@ export interface Pair {
 /**
  * Judges a scenario from its pairs. Every finite metric both variants report
  * is compared. One regressed metric decides the scenario; a pass needs every
- * metric to pass.
+ * metric to pass. Advisory metrics are judged and reported but do not count.
  */
 export function judgeScenario(
 	pairs: readonly Pair[],
@@ -177,16 +189,19 @@ export function judgeScenario(
 				: options,
 		);
 	});
-	const worst = metrics.reduce<MetricJudgement | undefined>(
+	const deciding = metrics.filter(
+		(metric) => !advisoryMetrics.has(metric.metric),
+	);
+	const worst = deciding.reduce<MetricJudgement | undefined>(
 		(current, metric) =>
 			!current || metric.score > current.score ? metric : current,
 		undefined,
 	);
 	const verdict: Verdict = !pairs.length
 		? "undecided"
-		: metrics.some((metric) => metric.verdict === "regression")
+		: deciding.some((metric) => metric.verdict === "regression")
 			? "regression"
-			: metrics.every((metric) => metric.verdict === "pass")
+			: deciding.every((metric) => metric.verdict === "pass")
 				? "pass"
 				: "undecided";
 	return { verdict, pairs: pairs.length, metrics, worst };

@@ -79,45 +79,59 @@ test("one clearly fast pair passes; a borderline pair stays undecided", () => {
 	);
 });
 
-test("a regression needs three pairs, however large the first one is", () => {
-	const options = defaultDecision;
+test("a regression needs all five pairs, however large the first ones are", () => {
+	for (const pairs of [1, 2, 3, 4])
+		assert.equal(
+			judgeMetric("interactionP95Ms", repeat(200, pairs), repeat(600, pairs))
+				.verdict,
+			"undecided",
+		);
+	const five = judgeMetric("interactionP95Ms", repeat(200, 5), repeat(600, 5));
+	assert.equal(five.verdict, "regression");
+	assert.equal(five.ratio, 3);
+	// With an earlier minimum, a clear regression stops early.
 	assert.equal(
-		judgeMetric("interactionP95Ms", [200], [600], options).verdict,
-		"undecided",
-	);
-	assert.equal(
-		judgeMetric("interactionP95Ms", [200, 200], [600, 600], options).verdict,
-		"undecided",
-	);
-	const three = judgeMetric(
-		"interactionP95Ms",
-		repeat(200, 3),
-		repeat(600, 3),
-		options,
-	);
-	assert.equal(three.verdict, "regression");
-	assert.equal(three.ratio, 3);
-});
-
-test("the band narrows with more pairs and the last pair forces a verdict", () => {
-	// Score 1.1 is undecided at three pairs (band 0.115) and four (band 0.1 →
-	// exactly at the edge counts as a regression), and the fifth pair decides.
-	assert.equal(
-		judgeMetric("interactionP95Ms", repeat(200, 3), repeat(330, 3)).verdict,
-		"undecided",
-	);
-	assert.equal(
-		judgeMetric("interactionP95Ms", repeat(200, 4), repeat(320, 4)).verdict,
-		"undecided",
-	);
-	assert.equal(
-		judgeMetric("interactionP95Ms", repeat(200, 5), repeat(301, 5)).verdict,
+		judgeMetric("interactionP95Ms", repeat(200, 3), repeat(600, 3), {
+			...defaultDecision,
+			minRegressionPairs: 3,
+		}).verdict,
 		"regression",
 	);
-	assert.equal(
-		judgeMetric("interactionP95Ms", repeat(200, 5), repeat(299, 5)).verdict,
-		"pass",
+});
+
+test("one slow interaction in two of three runs no longer fails identical code", () => {
+	// editor-symbol-text in an A == A run: p50 stayed at 57–73 ms, but one
+	// interaction in some head runs took 170–210 ms.
+	const unthrottled = { ...defaultDecision, floorScale: 0.25 };
+	const three = judgeMetric(
+		"interactionP95Ms",
+		[70, 69, 80],
+		[174, 66, 214],
+		unthrottled,
 	);
+	assert.equal(three.verdict, "undecided");
+	const five = judgeMetric(
+		"interactionP95Ms",
+		[70, 69, 80, 78, 87],
+		[174, 66, 214, 67, 70],
+		unthrottled,
+	);
+	assert.equal(five.verdict, "pass");
+});
+
+test("event-loop p95 is reported but does not decide a scenario", () => {
+	const pairs = repeat(0, 5).map(() => ({
+		base: { interactionP95Ms: 100, eventLoopP95Ms: 10 },
+		head: { interactionP95Ms: 100, eventLoopP95Ms: 600 },
+	}));
+	const result = judgeScenario(pairs);
+	assert.equal(result.verdict, "pass");
+	assert.equal(
+		result.metrics.find((metric) => metric.metric === "eventLoopP95Ms")
+			?.verdict,
+		"regression",
+	);
+	assert.equal(result.worst?.metric, "interactionP95Ms");
 });
 
 test("the median pair ignores one outlier", () => {
@@ -135,7 +149,7 @@ test("a zero base does not divide by zero", () => {
 	assert.equal(zero.ratio, 1);
 	assert.equal(zero.threshold, Infinity);
 	assert.equal(zero.verdict, "pass");
-	const appeared = judgeMetric("blockingMs", repeat(0, 3), repeat(400, 3));
+	const appeared = judgeMetric("blockingMs", repeat(0, 5), repeat(400, 5));
 	assert.equal(appeared.ratio, Infinity);
 	assert.equal(appeared.verdict, "regression");
 });
@@ -146,7 +160,7 @@ test("a scenario regresses on any metric and passes only when all pass", () => {
 		head: { interactionP95Ms: 200, domNodes: head },
 	});
 	assert.equal(judgeScenario([pair(1000, 1000)]).verdict, "pass");
-	const grown = judgeScenario(repeat(0, 3).map(() => pair(1000, 2000)));
+	const grown = judgeScenario(repeat(0, 5).map(() => pair(1000, 2000)));
 	assert.equal(grown.verdict, "regression");
 	assert.equal(grown.worst?.metric, "domNodes");
 	assert.equal(judgeScenario([pair(1000, 1200)]).verdict, "undecided");
