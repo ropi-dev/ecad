@@ -241,7 +241,9 @@ export function createEditorSession(
 				if (!isSavedRefresh(store.getSnapshot())) onExternalEdit();
 				retainExisting();
 			};
-			reconcile();
+			// A gesture started on another store must never commit to this one.
+			onExternalEdit();
+			retainExisting();
 			return store.subscribe(reconcile);
 		},
 	};

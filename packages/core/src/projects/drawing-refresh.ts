@@ -1,3 +1,4 @@
+import { sameDrawing } from "@ecad/drawing-core/commands/drawing-equality.ts";
 import {
 	createDrawingStore,
 	type DrawingSnapshot,
@@ -7,9 +8,9 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 const savedRefreshes = new WeakSet<DrawingSnapshot>();
 
 /**
- * Whether a snapshot came from swapping in the store's own saved shapes. The
- * content is what the store already held, so an editor can keep a gesture
- * that is in progress instead of treating the change as an external edit.
+ * Whether a snapshot came from swapping in the store's own saved shapes with
+ * the same content, so an editor can keep a gesture that is in progress
+ * instead of treating the change as an external edit.
  */
 export function isSavedRefresh(snapshot: DrawingSnapshot) {
 	return savedRefreshes.has(snapshot);
@@ -48,7 +49,10 @@ export function replaceDrawingShapes(
 				shapes.reduce((max, shape) => Math.max(max, shape.id), 0) + 1,
 			),
 		};
-		if (!external) savedRefreshes.add(next);
+		// Linked assembly can also change a schematic it saves, for example by
+		// dropping a stale net label. Only an unchanged drawing keeps gestures.
+		if (!external && sameDrawing({ shapes: current.shapes }, { shapes }))
+			savedRefreshes.add(next);
 		return [undefined, next];
 	});
 }

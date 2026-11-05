@@ -231,6 +231,33 @@ test("an external refresh still cancels gestures and drops removed shapes", () =
 	assert.deepEqual([...session.getState().selection], [1]);
 });
 
+test("a refresh that changes the saved drawing still cancels gestures", () => {
+	const { session, store } = setup([rectangle(1), rectangle(2, 20)]);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	session.select(new Set([1, 2]));
+	// Linked assembly dropped a shape while saving: a drag on it would be lost.
+	replaceDrawingShapes(store, [rectangle(1)], false);
+	assert.equal(cancelled, 1);
+	assert.deepEqual([...session.getState().selection], [1]);
+});
+
+test("connecting a store whose last change was a saved refresh still cancels gestures", () => {
+	const { session, store } = setup([rectangle(1)]);
+	const other = createDrawingStore([rectangle(1)]);
+	replaceDrawingShapes(
+		other,
+		structuredClone(other.getSnapshot().shapes),
+		false,
+	);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	session.connect(other, () => cancelled++);
+	assert.equal(cancelled, 1);
+});
+
 test("connecting another store resets saved history selections", () => {
 	const { session, store } = setup();
 	session.connect(store, () => {})();
