@@ -22,7 +22,8 @@ export interface DecisionOptions {
 	margin: number;
 	/**
 	 * Multiplies the noise floors of timing (`…Ms`) metrics. The floors are
-	 * absolute milliseconds calibrated under 4× CPU throttling.
+	 * absolute milliseconds calibrated under 4× CPU throttling, so runs use
+	 * `throttle / 4` (see `floorScaleFor`).
 	 */
 	floorScale: number;
 }
@@ -67,9 +68,30 @@ export function median(values: readonly number[]): number {
 		: (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+/** The throttle the noise floors in `regressionFloors` were calibrated for. */
+export const floorThrottle = 4;
+
+/**
+ * The floor scale for a CPU throttle. Unthrottled timings are several times
+ * shorter than throttled ones, while a fixed floor stays the same, so at 1×
+ * the 50 ms interaction floor alone allowed +40% to +150% on 40–500 ms
+ * interactions and an injected 40% regression passed.
+ */
+export function floorScaleFor(cpu: number): number {
+	return Math.min(1, cpu / floorThrottle);
+}
+
+/**
+ * Event-loop p95 noise comes from the 250 ms sampling timer's alignment, not
+ * from CPU speed, so its floor never scales.
+ */
+const unscaledFloors: ReadonlySet<string> = new Set(["eventLoopP95Ms"]);
+
 export function floorFor(metric: string, options = defaultDecision): number {
 	const floor = regressionFloors[metric] ?? defaultFloor;
-	return metric.endsWith("Ms") ? floor * options.floorScale : floor;
+	return metric.endsWith("Ms") && !unscaledFloors.has(metric)
+		? floor * options.floorScale
+		: floor;
 }
 
 /** Judges one metric from paired samples; `base[i]` and `head[i]` are a pair. */

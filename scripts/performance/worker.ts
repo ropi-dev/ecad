@@ -20,6 +20,7 @@ import {
 	type DecisionOptions,
 	defaultDecision,
 	describeJudgement,
+	floorScaleFor,
 	grepForTitles,
 	judgeScenario,
 	nodeVariantScenarios,
@@ -176,16 +177,16 @@ async function compare(plan: Plan): Promise<number> {
 	const base = plan.base;
 	if (!base) throw new Error("The A/B plan has no base build.");
 	touch(base.directory);
+	const cpu = process.env.ECAD_PERF_CPU ?? "1";
 	const options: DecisionOptions = {
 		...defaultDecision,
 		maxPairs: Number(
 			process.env.ECAD_PERF_MAX_PAIRS ?? defaultDecision.maxPairs,
 		),
-		floorScale: Number(
-			process.env.ECAD_PERF_FLOOR_SCALE ?? defaultDecision.floorScale,
-		),
+		floorScale: process.env.ECAD_PERF_FLOOR_SCALE
+			? Number(process.env.ECAD_PERF_FLOOR_SCALE)
+			: floorScaleFor(Number(cpu)),
 	};
-	const cpu = process.env.ECAD_PERF_CPU ?? "1";
 	const headPort = Number(process.env.ECAD_PERF_PORT ?? 4175);
 	const basePort = Number(process.env.ECAD_PERF_BASE_PORT ?? headPort + 1);
 	const directory = resolve("perf-artifacts/ab");
@@ -253,7 +254,7 @@ async function compare(plan: Plan): Promise<number> {
 			failures.push("No scenarios match the selection.");
 		}
 		console.log(
-			`[perf] A/B: base ${base.sha.slice(0, 12)} on :${basePort} vs head ${revision.slice(0, 12)}${dirty ? " with uncommitted changes" : ""} on :${headPort}. ${titles.length} test${titles.length === 1 ? "" : "s"}, CPU throttle ${cpu}×, up to ${options.maxPairs} pairs.`,
+			`[perf] A/B: base ${base.sha.slice(0, 12)} on :${basePort} vs head ${revision.slice(0, 12)}${dirty ? " with uncommitted changes" : ""} on :${headPort}. ${titles.length} test${titles.length === 1 ? "" : "s"}, CPU throttle ${cpu}×, timing noise floors ×${options.floorScale}, up to ${options.maxPairs} pairs.`,
 		);
 		let pending = new Set(titles);
 		const finished = new Set<string>();

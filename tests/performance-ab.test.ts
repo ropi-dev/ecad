@@ -13,6 +13,7 @@ import { test } from "node:test";
 import {
 	defaultDecision,
 	floorFor,
+	floorScaleFor,
 	grepForTitles,
 	judgeMetric,
 	judgeScenario,
@@ -45,6 +46,26 @@ test("the limit is the baseline rule: 25% plus the metric's noise floor", () => 
 	assert.equal(
 		floorFor("domNodes", { ...defaultDecision, floorScale: 0.25 }),
 		50,
+	);
+});
+
+test("unthrottled runs scale timing floors, except event-loop sampling noise", () => {
+	assert.equal(floorScaleFor(1), 0.25);
+	assert.equal(floorScaleFor(2), 0.5);
+	assert.equal(floorScaleFor(4), 1);
+	assert.equal(floorScaleFor(6), 1);
+	const unthrottled = { ...defaultDecision, floorScale: floorScaleFor(1) };
+	assert.equal(floorFor("interactionP95Ms", unthrottled), 12.5);
+	assert.equal(floorFor("eventLoopP95Ms", unthrottled), 100);
+	// A 40% regression on a 120 ms interaction over five pairs: the full
+	// 50 ms floor puts the limit at ×1.67 and passes it; the scaled floor's
+	// limit is ×1.35.
+	const base = repeat(120, 5);
+	const head = repeat(168, 5);
+	assert.equal(judgeMetric("interactionP95Ms", base, head).verdict, "pass");
+	assert.equal(
+		judgeMetric("interactionP95Ms", base, head, unthrottled).verdict,
+		"regression",
 	);
 });
 
