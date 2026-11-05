@@ -11,7 +11,7 @@ const LONG_TASK_WINDOW_MS = 10_000;
 const FRAME_HISTORY = 120;
 
 interface Stats {
-	fps: number;
+	fps: number | null;
 	renders: number;
 	frameMs: number | null;
 	frameP95: number | null;
@@ -29,11 +29,12 @@ interface Stats {
 }
 
 const readVisible = () => {
+	if (navigator.webdriver) return false;
 	try {
-		const stored = localStorage.getItem(STORAGE_KEY);
-		if (stored !== null) return stored === "1";
-	} catch {}
-	return !navigator.webdriver;
+		return localStorage.getItem(STORAGE_KEY) !== "0";
+	} catch {
+		return true;
+	}
 };
 
 const storeVisible = (visible: boolean) => {
@@ -64,18 +65,20 @@ export default function DevStats() {
 		shapes?: number;
 		sceneUpdateMs?: number;
 	}>({});
+	const subscribed = useRef(false);
 
 	useEffect(() => {
 		setVisible(readVisible());
 		const onKeyDown = (event: KeyboardEvent) => {
-			const toggle =
-				event.key === "F8" ||
-				(event.ctrlKey &&
-					event.shiftKey &&
-					!event.altKey &&
-					!event.metaKey &&
-					event.key.toLowerCase() === "d");
-			if (!toggle || event.defaultPrevented) return;
+			if (
+				!event.ctrlKey ||
+				!event.shiftKey ||
+				event.altKey ||
+				event.metaKey ||
+				event.key.toLowerCase() !== "d" ||
+				event.defaultPrevented
+			)
+				return;
 			event.preventDefault();
 			if (event.repeat) return;
 			setVisible((current) => {
@@ -83,21 +86,14 @@ export default function DevStats() {
 				return !current;
 			});
 		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, []);
-
-	useEffect(() => {
-		if (!visible) return;
-		frameTimes.current = [];
-		renderTimes.current = [];
-		frameDurations.current = [];
-		longTasks.current = [];
-		latest.current = {};
+		const since = (times: number[], at: number, window: number) => {
+			while (times.length && times[0] < at - window) times.shift();
+		};
 		const receive = (sample: PerformanceSample) => {
 			const at = sample.startTime + sample.duration;
 			if (sample.name === "renderer.frame") {
 				renderTimes.current.push(at);
+				since(renderTimes.current, at, WINDOW_MS);
 				const durations = frameDurations.current;
 				durations.push(sample.duration);
 				if (durations.length > FRAME_HISTORY) durations.shift();
@@ -106,12 +102,28 @@ export default function DevStats() {
 			} else if (sample.name === "editor.scene-update") {
 				latest.current.shapes = number(sample.data?.shapes) ?? undefined;
 				latest.current.sceneUpdateMs = sample.duration;
-			} else if (sample.name === "browser.long-task")
-				longTasks.current.push({ at, duration: sample.duration });
+			} else if (sample.name === "browser.long-task") {
+				const tasks = longTasks.current;
+				tasks.push({ at, duration: sample.duration });
+				while (tasks.length && tasks[0].at < at - LONG_TASK_WINDOW_MS)
+					tasks.shift();
+			}
 		};
 		const recorder = getAppPerformance();
 		for (const sample of recorder?.snapshot().events ?? []) receive(sample);
 		const unsubscribe = recorder?.subscribe(receive);
+		subscribed.current = unsubscribe !== undefined;
+		window.addEventListener("keydown", onKeyDown);
+		return () => {
+			unsubscribe?.();
+			window.removeEventListener("keydown", onKeyDown);
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!visible) return;
+		frameTimes.current = [];
+		const opened = performance.now();
 		let frame = requestAnimationFrame(function tick(now) {
 			frameTimes.current.push(now);
 			frame = requestAnimationFrame(tick);
@@ -128,8 +140,15 @@ export default function DevStats() {
 			);
 			const sorted = [...frameDurations.current].sort((a, b) => a - b);
 			const { frame: data, frameMs, shapes, sceneUpdateMs } = latest.current;
+			const frames = prune(frameTimes.current);
+			const elapsed = now - opened;
 			setStats({
-				fps: prune(frameTimes.current),
+				fps:
+					elapsed >= WINDOW_MS
+						? frames
+						: elapsed >= 250
+							? Math.round((frames * WINDOW_MS) / elapsed)
+							: null,
 				renders: prune(renderTimes.current),
 				frameMs: frameMs ?? null,
 				frameP95: sorted.length
@@ -150,13 +169,12 @@ export default function DevStats() {
 					(performance as Performance & { memory?: { usedJSHeapSize: number } })
 						.memory?.usedJSHeapSize ?? null,
 				domNodes: document.getElementsByTagName("*").length,
-				recorder: unsubscribe !== undefined,
+				recorder: subscribed.current,
 			});
 		};
 		const timer = setInterval(update, 500);
 		update();
 		return () => {
-			unsubscribe?.();
 			cancelAnimationFrame(frame);
 			clearInterval(timer);
 		};
@@ -164,7 +182,7 @@ export default function DevStats() {
 
 	if (!visible || !stats) return null;
 	const rows: [string, string][] = [
-		["FPS", String(stats.fps)],
+		["FPS", count(stats.fps)],
 		["Renders/s", stats.recorder ? String(stats.renders) : "–"],
 		["Frame", ms(stats.frameMs)],
 		["Frame p95", ms(stats.frameP95)],
@@ -192,7 +210,7 @@ export default function DevStats() {
 		<section
 			aria-label="Development stats"
 			data-shortcut-scope="none"
-			className="pointer-events-none fixed top-7 right-7 z-[1000] min-w-48 rounded-md border border-white/10 bg-black/75 px-2.5 py-2 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-lg backdrop-blur-sm"
+			className="pointer-events-none fixed right-7 bottom-[4.5rem] z-[1000] min-w-48 rounded-md border border-white/10 bg-black/75 px-2.5 py-2 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-lg backdrop-blur-sm"
 		>
 			<header className="mb-1 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-white/50">
 				<span>Dev stats · Ctrl+Shift+D</span>
