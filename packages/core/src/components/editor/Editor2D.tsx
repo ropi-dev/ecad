@@ -415,6 +415,8 @@ function EditorCanvas({
 								selectionFitBounds(selected, selectedSymbol, selectedChild)
 							}
 							groupedControls
+							trailingControls={viewSwitch}
+							controlsLabel={isSymbol ? "Symbol tools" : "Schematic tools"}
 							gridBounds={
 								isSymbol
 									? undefined
@@ -459,7 +461,6 @@ function EditorCanvas({
 									selectionLocked={selectionLocked}
 									editSelection={editSelection}
 									removeSelected={removeSelected}
-									viewSwitch={viewSwitch}
 								/>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}

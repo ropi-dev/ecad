@@ -193,9 +193,6 @@ test("Undo and Redo follow the key labels on a QWERTZ layout", async ({
 		JSON.parse(required(await page.locator("#editor-document").textContent()))
 			.shapes;
 	await expect.poll(async () => (await shapes()).length).toBe(1);
-	await page
-		.getByRole("button", { name: "History tools", exact: true })
-		.click();
 	await expect(
 		page.getByRole("button", { name: "Undo", exact: true }),
 	).toBeEnabled();
@@ -362,13 +359,13 @@ test("macOS reserves Quit, Hide and Minimize in preferred and fallback assignmen
 		"data-shortcut",
 		"2",
 	);
-	await expect(page.locator(`${hints}[title="History tools"]`)).toHaveAttribute(
+	await expect(page.locator(`${hints}[title="Export"]`)).toHaveAttribute(
 		"data-shortcut",
-		"8",
+		"B",
 	);
-	await page.keyboard.press("8");
+	await page.keyboard.press("b");
 	await expect(
-		page.getByRole("toolbar", { name: "History tools toolbar", exact: true }),
+		page.getByRole("toolbar", { name: "Export toolbar", exact: true }),
 	).toBeVisible();
 	await page.keyboard.press("2");
 	await expect(

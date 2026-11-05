@@ -114,18 +114,13 @@ test("imported RP2350A drawing reopens with its components, terminals, wires and
 	).toHaveLength(0);
 	const exports = resolve("perf-artifacts/kicad-exports");
 	mkdirSync(exports, { recursive: true });
-	await (await toolbarButton(page, "View tools")).click();
-	await page
-		.getByRole("button", { name: "Export drawing", exact: true })
-		.click();
+	await (await toolbarButton(page, "Export drawing")).click();
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
 	await dialog.getByLabel("Width in pixels").fill("2400");
 	await dialog.getByLabel("Height in pixels").fill("1600");
 	for (const format of ["svg", "png"]) {
 		if (format === "png")
-			await page
-				.getByRole("button", { name: "Export drawing", exact: true })
-				.click();
+			await (await toolbarButton(page, "Export drawing")).click();
 		await dialog
 			.getByRole("combobox", { name: "Format", exact: true })
 			.selectOption(format);

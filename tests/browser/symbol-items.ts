@@ -84,7 +84,7 @@ export async function drawingPoint(
 export async function selectSymbolParent(page: Page) {
 	if (await page.getByTestId("symbol-child-selection").count()) {
 		const expanded = page
-			.getByRole("toolbar", { name: "View controls" })
+			.getByRole("toolbar", { name: /^(Schematic|Symbol) tools$/ })
 			.getByRole("button", { expanded: true });
 		if (await expanded.count()) await expanded.click();
 		await page.locator("canvas").focus();

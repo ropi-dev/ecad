@@ -127,7 +127,7 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 	});
 	await expect(
 		page
-			.getByRole("toolbar", { name: "View controls" })
+			.getByRole("toolbar", { name: "Schematic tools" })
 			.getByRole("button")
 			.last(),
 	).toHaveAttribute("aria-label", "Switch to circuit view");

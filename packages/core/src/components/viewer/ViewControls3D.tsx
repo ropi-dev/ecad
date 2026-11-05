@@ -1,8 +1,8 @@
 import { Box, Download, Scan, Square } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import {
-	ToolbarGroup,
-	ToolbarGroups,
+	ToolbarDock,
+	ToolbarSeparator,
 } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
@@ -17,10 +17,24 @@ export { viewControlButtonClassName } from "#/components/viewer/viewControlStyle
 
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
+const ViewExportContext = createContext<{
+	exportPng?: () => void;
+	exporting: boolean;
+	enabled: boolean;
+}>({ exporting: false, enabled: false });
+
+/**
+ * Grouped toolbars leave PNG export to their tools, so an editor can list it
+ * beside its own export actions.
+ */
+export const useViewExport = () => useContext(ViewExportContext);
+
 export function ViewControls3D({
 	enabled,
 	grouped = false,
 	children,
+	trailing,
+	label: controlsLabel,
 	fitLabel = "Fit model",
 	fit,
 	zoom,
@@ -34,50 +48,59 @@ export function ViewControls3D({
 }: Pick<Viewer3DHandle, "fit" | "zoom"> & {
 	view?: Viewer3DHandle["view"];
 	enabled: boolean;
+	/**
+	 * Editor layout for the 2D canvas: tools first, then zoom, then `trailing`,
+	 * in one scrolling row. Camera and view buttons are not shown.
+	 */
 	grouped?: boolean;
+	label?: string;
 	zoomLevel: number;
 	actualSize?: () => void;
 	projection: "perspective" | "orthographic";
 	toggleProjection?: () => void;
 	children?: ReactNode;
+	trailing?: ReactNode;
 	fitLabel?: string;
 	exportPng?: () => void;
 	exporting?: boolean;
 }) {
-	const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
 	const button = viewControlButtonClassName;
+	const viewExport = useMemo(
+		() => ({ exportPng, exporting, enabled }),
+		[exportPng, exporting, enabled],
+	);
 	const zoomControls = (
-		<>
-			<ZoomControls
-				zoom={zoom}
-				fit={fit}
-				enabled={enabled}
-				canZoomIn={zoomLevel < (actualSize ? MAX_PHYSICAL_ZOOM : MAX_ZOOM)}
-				canZoomOut={zoomLevel > (actualSize ? MIN_PHYSICAL_ZOOM : MIN_ZOOM)}
-				buttonClassName={button}
-				fitClassName={`${button} min-w-14 tabular-nums`}
-				fitLabel={fitLabel}
-				fitTitle={fitLabel}
-			>
-				{actualSize ? (
-					<Scan size={16} aria-hidden="true" />
-				) : (
-					`${Math.round(zoomLevel * 100)}%`
-				)}
-			</ZoomControls>
-			{actualSize && (
-				<TooltipButton
-					type="button"
-					className={`${button} min-w-14 tabular-nums`}
-					disabled={!enabled}
-					tooltip="Actual size, based on reported display dimensions"
-					aria-label="Actual size"
-					onClick={actualSize}
-				>
-					{Math.round(zoomLevel * 100)}%
-				</TooltipButton>
+		<ZoomControls
+			zoom={zoom}
+			fit={fit}
+			enabled={enabled}
+			canZoomIn={zoomLevel < (actualSize ? MAX_PHYSICAL_ZOOM : MAX_ZOOM)}
+			canZoomOut={zoomLevel > (actualSize ? MIN_PHYSICAL_ZOOM : MIN_ZOOM)}
+			buttonClassName={button}
+			fitClassName={`${button} min-w-14 tabular-nums`}
+			fitLabel={fitLabel}
+			fitTitle={fitLabel}
+			extra={
+				actualSize && (
+					<TooltipButton
+						type="button"
+						className={`${button} min-w-14 tabular-nums`}
+						disabled={!enabled}
+						tooltip="Actual size, based on reported display dimensions"
+						aria-label="Actual size"
+						onClick={actualSize}
+					>
+						{Math.round(zoomLevel * 100)}%
+					</TooltipButton>
+				)
+			}
+		>
+			{actualSize ? (
+				<Scan size={16} aria-hidden="true" />
+			) : (
+				`${Math.round(zoomLevel * 100)}%`
 			)}
-		</>
+		</ZoomControls>
 	);
 	const viewControls = (
 		<>
@@ -133,44 +156,42 @@ export function ViewControls3D({
 					</TooltipButton>
 				</>
 			)}
-			{exportPng && (
-				<TooltipButton
-					type="button"
-					className={`${button} gap-1.5`}
-					disabled={!enabled || exporting}
-					aria-label="Export PNG"
-					aria-busy={exporting}
-					tooltip="Export PNG"
-					onClick={exportPng}
-				>
-					<Download size={18} aria-hidden="true" />
-					{exporting ? "Exporting…" : "PNG"}
-				</TooltipButton>
-			)}
 		</>
 	);
-	return (
-		<ToolbarGroups panelHost={panelHost}>
-			<div
-				ref={setPanelHost}
-				role="toolbar"
-				aria-label={view ? "3D view controls" : "View controls"}
-				className="absolute bottom-4 left-1/2 z-10 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-lg border border-white/20 bg-slate-900/95 p-1 shadow-lg"
-			>
-				<div
-					className={`flex gap-0.5 sm:gap-1 ${grouped ? "touch-pan-x flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:thin] [&_button]:shrink-0" : "flex-wrap justify-center"}`}
-				>
-					{zoomControls}
-					{grouped ? (
-						<ToolbarGroup label="View tools" icon={Scan} disabled={!enabled}>
-							{viewControls}
-						</ToolbarGroup>
-					) : (
-						viewControls
-					)}
+	const pngButton = exportPng && (
+		<TooltipButton
+			type="button"
+			className={button}
+			disabled={!enabled || exporting}
+			aria-label="Export PNG"
+			aria-busy={exporting}
+			tooltip="Export PNG"
+			onClick={exportPng}
+		>
+			<Download size={18} aria-hidden="true" />
+			{exporting ? "Exporting…" : "PNG"}
+		</TooltipButton>
+	);
+	const label = controlsLabel ?? (view ? "3D view controls" : "View controls");
+	if (grouped)
+		return (
+			<ViewExportContext value={viewExport}>
+				<ToolbarDock label={label}>
 					{children}
-				</div>
-			</div>
-		</ToolbarGroups>
+					<ToolbarSeparator />
+					{zoomControls}
+					{trailing}
+				</ToolbarDock>
+			</ViewExportContext>
+		);
+	return (
+		<ToolbarDock label={label} scrollable={false}>
+			{zoomControls}
+			{(toggleProjection || view || pngButton) && <ToolbarSeparator />}
+			{viewControls}
+			{pngButton}
+			{children && <ToolbarSeparator />}
+			{children}
+		</ToolbarDock>
 	);
 }

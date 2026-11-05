@@ -14,6 +14,7 @@ export function ZoomControls({
 	fitLabel,
 	fitTitle,
 	children,
+	extra,
 }: {
 	zoom: (factor: number) => void;
 	fit: () => void;
@@ -25,6 +26,8 @@ export function ZoomControls({
 	fitLabel: string;
 	fitTitle: string;
 	children: ReactNode;
+	/** Rendered between Fit and Zoom in. */
+	extra?: ReactNode;
 }) {
 	return (
 		<>
@@ -41,17 +44,6 @@ export function ZoomControls({
 			</TooltipButton>
 			<TooltipButton
 				type="button"
-				className={buttonClassName}
-				disabled={!enabled || !canZoomIn}
-				tooltip="Zoom in"
-				shortcut="+"
-				aria-label="Zoom in"
-				onClick={() => zoom(ZOOM_FACTOR)}
-			>
-				<Plus size={16} />
-			</TooltipButton>
-			<TooltipButton
-				type="button"
 				className={fitClassName ?? buttonClassName}
 				disabled={!enabled}
 				tooltip={fitTitle}
@@ -60,6 +52,18 @@ export function ZoomControls({
 				onClick={fit}
 			>
 				{children}
+			</TooltipButton>
+			{extra}
+			<TooltipButton
+				type="button"
+				className={buttonClassName}
+				disabled={!enabled || !canZoomIn}
+				tooltip="Zoom in"
+				shortcut="+"
+				aria-label="Zoom in"
+				onClick={() => zoom(ZOOM_FACTOR)}
+			>
+				<Plus size={16} />
 			</TooltipButton>
 		</>
 	);

@@ -18,12 +18,7 @@ test("editor-toolbar", async ({ page }, testInfo) => {
 		page.getByRole("button", { name: "Shapes", exact: true }),
 	).toBeEnabled();
 	for (let repeat = 0; repeat < 3; repeat++) {
-		for (const label of [
-			"Shapes",
-			"Connections",
-			"History tools",
-			"View tools",
-		]) {
+		for (const label of ["Shapes", "Connections", "Export"]) {
 			await interaction(page, "toolbar.open", async () => {
 				await page.getByRole("button", { name: label, exact: true }).click();
 				await expect(

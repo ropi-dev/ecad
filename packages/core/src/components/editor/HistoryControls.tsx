@@ -1,6 +1,7 @@
 import type { History } from "@ecad/drawing-core/drawing/history.ts";
 import { History as HistoryIcon, Redo2, Undo2, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/ViewControls3D.tsx";
 
@@ -37,9 +38,19 @@ export function HistoryControls({
 			)
 				setOpen(false);
 		};
+		const closeOnEscape = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			event.stopPropagation();
+			setOpen(false);
+			quietFocus(toggle.current);
+		};
 		document.addEventListener("pointerdown", closeOutside, true);
-		return () =>
+		document.addEventListener("keydown", closeOnEscape, true);
+		return () => {
 			document.removeEventListener("pointerdown", closeOutside, true);
+			document.removeEventListener("keydown", closeOnEscape, true);
+		};
 	}, [open]);
 	useEffect(() => {
 		if (open)
@@ -85,6 +96,7 @@ export function HistoryControls({
 				className={viewControlButtonClassName}
 				disabled={disabled || current.parentId === null}
 				aria-label="Undo"
+				data-shortcut-keeps-focus
 				tooltip="Undo"
 				shortcut="Ctrl/Cmd + Z"
 				onClick={onUndo}
@@ -96,6 +108,7 @@ export function HistoryControls({
 				className={viewControlButtonClassName}
 				disabled={disabled || !redo}
 				aria-label="Redo"
+				data-shortcut-keeps-focus
 				tooltip="Redo"
 				shortcut="Ctrl/Cmd + Shift + Z"
 				onClick={onRedo}
@@ -122,14 +135,17 @@ export function HistoryControls({
 					aria-label="Drawing history"
 					className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+0.5rem)] z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] flex-col rounded-lg border border-[#414955] bg-[#191c22] p-2 shadow-[0_8px_32px_#0008]"
 				>
-					<header className="flex items-center justify-end gap-3 px-1 pb-2">
+					<header className="flex items-center justify-between gap-3 pb-1 pl-2">
+						<h2 className="m-0 text-[11px] font-semibold text-[#98a4b6]">
+							Drawing history
+						</h2>
 						<button
 							type="button"
 							aria-label="Close drawing history"
 							className="grid size-7 cursor-pointer place-items-center rounded text-[#98a4b6] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 							onClick={() => {
 								setOpen(false);
-								toggle.current?.focus();
+								quietFocus(toggle.current);
 							}}
 						>
 							<X size={16} aria-hidden="true" />

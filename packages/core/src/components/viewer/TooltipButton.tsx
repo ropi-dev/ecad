@@ -1,5 +1,5 @@
 import { Tooltip } from "radix-ui";
-import type { ComponentProps } from "react";
+import { type ComponentProps, useState } from "react";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 
 export function TooltipButton({
@@ -10,8 +10,21 @@ export function TooltipButton({
 	tooltip: string;
 	shortcut?: string;
 }) {
+	const [open, setOpen] = useState(false);
 	return (
-		<Tooltip.Root>
+		<Tooltip.Root
+			open={open}
+			onOpenChange={(next) => {
+				// Focus moved back here by code, not by the user: skip the tooltip.
+				if (
+					next &&
+					document.activeElement instanceof HTMLElement &&
+					document.activeElement.dataset.quietFocus === "true"
+				)
+					return;
+				setOpen(next);
+			}}
+		>
 			<Tooltip.Trigger asChild>
 				<button type="button" {...props} />
 			</Tooltip.Trigger>

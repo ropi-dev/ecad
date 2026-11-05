@@ -145,6 +145,8 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
+	// Leave the sidebar overlay so it no longer covers the toolbar.
+	await page.mouse.move(900, 450);
 	await (await toolbarButton(page, "Undo")).click();
 	await expect
 		.poll(async () => (await documentState(page)).shapes.length)
@@ -153,6 +155,8 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Open Power stage.ecaddraw", exact: true })
 		.click();
+	// Leave the sidebar overlay so it no longer covers the toolbar.
+	await page.mouse.move(900, 450);
 	await (await toolbarButton(page, "Undo")).click();
 	await expect
 		.poll(async () => (await documentState(page)).editorShapes.length)
