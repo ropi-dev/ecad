@@ -164,10 +164,15 @@ export function circuitLayoutQuality(file: CircuitFile) {
 	return score(buildCircuitGraph(file));
 }
 
+/**
+ * Lays the graph out on the base circuit grid. It takes no grid step: the
+ * editor's step coarsens as the view zooms out, and a layout snapped to that
+ * step can no longer separate the nodes.
+ */
 export function untangleCircuitGraph(
 	file: CircuitFile,
-	step = CIRCUIT_GRID_SPACING,
 ): GraphLayout["positions"] {
+	const step = CIRCUIT_GRID_SPACING;
 	return measurePerformance(
 		"circuit.untangle",
 		() => {
