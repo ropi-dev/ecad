@@ -43,6 +43,10 @@ test("sandbox forwards perf settings and confines custom baselines to persistent
 	const output = join(directory, "args.json");
 	fixtureCommands(directory);
 	mkdirSync(join(directory, "locks"));
+	// The fixture git names every commit fixture-revision; an existing export
+	// of it stands in for git archive.
+	mkdirSync(join(directory, "cache/archives"), { recursive: true });
+	writeFileSync(join(directory, "cache/archives/fixture-revision.tar"), "");
 	writeFileSync(
 		engine,
 		`#!/usr/bin/env node\nconst fs=require('node:fs'); if(process.argv[2]==='image') console.log('fixture-image'); else fs.writeFileSync(process.env.ECAD_TEST_ARGS,JSON.stringify(process.argv.slice(2)));\n`,
@@ -58,6 +62,7 @@ test("sandbox forwards perf settings and confines custom baselines to persistent
 		ECAD_PERF_RUNS: "5",
 		ECAD_PERF_PORT: "4888",
 		ECAD_PERF_BASELINE_PATH: "custom/baseline.json",
+		ECAD_PERF_CACHE_DIR: join(directory, "cache"),
 	};
 	try {
 		const result = spawnSync(process.execPath, [sandbox, "perf", "--list"], {
@@ -71,6 +76,10 @@ test("sandbox forwards perf settings and confines custom baselines to persistent
 			"ECAD_PERF_RUNS=5",
 			"ECAD_PERF_PORT=4888",
 			"ECAD_PERF_BASELINE_PATH=/tmp/ecad-artifacts/custom/baseline.json",
+			// A/B runs build the base from the host's export of its source.
+			"ECAD_PERF_BASE_SHA=fixture-revision",
+			"ECAD_PERF_BASE_ARCHIVE=/base-source.tar",
+			`${join(directory, "cache/archives/fixture-revision.tar")}:/base-source.tar:ro`,
 		])
 			assert.ok(args.includes(setting), setting);
 		// The fixture git reports an unknown changed path, so the host selects
@@ -87,6 +96,28 @@ test("sandbox forwards perf settings and confines custom baselines to persistent
 			"--grep",
 			"@core|@editor",
 		]);
+		const budgets = spawnSync(
+			process.execPath,
+			[sandbox, "perf:budgets", "--grep", "projects-empty"],
+			{ env, encoding: "utf8" },
+		);
+		assert.equal(budgets.status, 0, budgets.stderr);
+		const budgetArgs: string[] = JSON.parse(readFileSync(output, "utf8"));
+		assert.deepEqual(budgetArgs.slice(-3), [
+			"perf:budgets",
+			"--grep",
+			"projects-empty",
+		]);
+		assert.ok(!budgetArgs.some((arg) => arg.startsWith("ECAD_PERF_BASE_SHA=")));
+		rmSync(output);
+		const deprecated = spawnSync(process.execPath, [sandbox, "perf:baseline"], {
+			env,
+			encoding: "utf8",
+		});
+		assert.equal(deprecated.status, 0, deprecated.stderr);
+		assert.match(deprecated.stdout, /perf:baseline is no longer needed/);
+		assert.equal(existsSync(output), false);
+		writeFileSync(output, "");
 		for (const invalid of ["../outside.json", "/tmp/outside.json"]) {
 			rmSync(output);
 			const invalidResult = spawnSync(process.execPath, [sandbox, "perf"], {
@@ -117,6 +148,9 @@ test("native perf executes its worker on simulated non-Linux hosts", {
 		`#!/usr/bin/env node\nrequire('node:fs').appendFileSync(process.env.ECAD_TEST_CALLS,JSON.stringify(process.argv.slice(2))+'\\n');\n`,
 	);
 	chmodSync(pnpm, 0o755);
+	// Builds run in the launcher, which sees the simulated platform.
+	copyFileSync(pnpm, `${pnpm}.cmd`);
+	chmodSync(`${pnpm}.cmd`, 0o755);
 	symlinkSync(
 		join(root, "node_modules"),
 		join(directory, "node_modules"),
@@ -125,7 +159,7 @@ test("native perf executes its worker on simulated non-Linux hosts", {
 	try {
 		for (const platform of ["darwin", "win32"]) {
 			writeFileSync(calls, "");
-			const program = `import 'node:path'; import 'node:os'; Object.defineProperty(process,'platform',{value:${JSON.stringify(platform)}}); await import(${JSON.stringify(new URL("../scripts/performance/run.ts", import.meta.url).href)});`;
+			const program = `import 'node:path'; import 'node:os'; Object.defineProperty(process,'platform',{value:${JSON.stringify(platform)}}); process.argv.splice(1, Infinity, 'run.ts', '--budgets'); await import(${JSON.stringify(new URL("../scripts/performance/run.ts", import.meta.url).href)});`;
 			const env: NodeJS.ProcessEnv = {
 				...process.env,
 				PATH: `${directory}${delimiter}${process.env.PATH}`,

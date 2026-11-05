@@ -66,6 +66,7 @@
 		"perf": "tsx scripts/performance/run.ts",
 		"perf:dev": "tsx scripts/performance/run.ts --development",
 		"perf:baseline": "tsx scripts/performance/run.ts --baseline",
+		"perf:budgets": "tsx scripts/performance/run.ts --budgets",
 		"symbols:generate": "pnpm --filter @ecad/default-symbols run generate",
 		"sandbox": "node scripts/development/sandbox.ts"
 	},
