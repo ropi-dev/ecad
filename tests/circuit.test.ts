@@ -5,6 +5,10 @@ import {
 	buildCircuitGraph,
 } from "@ecad/drawing-core/circuit/graph.ts";
 import {
+	CIRCUIT_GRID_SPACING,
+	circuitGridStep,
+} from "@ecad/drawing-core/circuit/grid.ts";
+import {
 	circuitFileSchema,
 	createCircuit,
 	parseCircuit,
@@ -679,6 +683,55 @@ test("collapse validation, empty compact components, and deletion preserve graph
 	assert.deepEqual(store.getSnapshot().graph.collapsedComponentIds, [
 		component.id,
 	]);
+});
+
+test("untangling lays out on the base grid however far the view is zoomed out", () => {
+	// The circuit-untangle performance workload: 32 resistors on one ground net
+	// and 16 paired signal nets.
+	const file = createCircuit("Zoomed out");
+	for (let index = 0; index < 32; index++)
+		file.circuit.components.push(
+			createTestComponent("resistor", file.circuit.components),
+		);
+	const components = file.circuit.components;
+	file.circuit.nets.push({
+		id: "ground",
+		names: ["GND"],
+		pinIds: components.map((component) => component.pins[0].id),
+	});
+	for (let index = 0; index < 32; index += 2)
+		file.circuit.nets.push({
+			id: `signal-${index}`,
+			names: [`SIGNAL_${index}`],
+			pinIds: [components[index].pins[1].id, components[index + 1].pins[1].id],
+		});
+	file.graph.positions = arrangeCircuitGraph(file);
+	// Fitting the untangled layout, about 5,000 units tall, zooms the view out
+	// until its grid step is 160. Snapping the layout to that step left
+	// 11 overlapping nodes.
+	const viewStep = circuitGridStep(0.14);
+	assert.equal(viewStep, 160);
+	for (let round = 0; round < 3; round++) {
+		const [source, target] = file.graph.positions
+			.filter((position) => position.kind === "component")
+			.sort((a, b) => a.y - b.y || a.x - b.x);
+		file.graph.positions = file.graph.positions.map((position) =>
+			position.id === source.id
+				? { ...position, x: target.x, y: target.y }
+				: position,
+		);
+		assert.ok(circuitLayoutQuality(file).overlaps > 0);
+		// @ts-expect-error Untangle takes no grid step, so the view's cannot reach it.
+		file.graph.positions = untangleCircuitGraph(file, viewStep);
+		assert.equal(circuitLayoutQuality(file).overlaps, 0);
+		assert.ok(
+			file.graph.positions.every(
+				(position) =>
+					position.x % CIRCUIT_GRID_SPACING === 0 &&
+					position.y % CIRCUIT_GRID_SPACING === 0,
+			),
+		);
+	}
 });
 
 for (const layout of ["files", "revisions"] as const) {

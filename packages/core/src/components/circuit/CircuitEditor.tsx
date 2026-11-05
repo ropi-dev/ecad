@@ -590,10 +590,10 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 					if (
 						run({
 							type: "move",
-							positions: untangleCircuitGraph(
-								{ circuit, graph: snapshot.graph },
-								gridStep,
-							),
+							positions: untangleCircuitGraph({
+								circuit,
+								graph: snapshot.graph,
+							}),
 						})
 					)
 						fit(buildCircuitGraph(store.getSnapshot()), false);
