@@ -2,10 +2,12 @@
 // Copyright KiCad library contributors. See ../LICENSE.md and ../NOTICE.md.
 // Coordinates and radii are in mils. Arcs use degrees, counterclockwise.
 import { microcontrollers } from "./microcontrollers.ts";
+import { nordicMicrocontrollers, nordicPowerManagement } from "./nordic.ts";
 import type { SourceSymbol } from "./types.ts";
 
 export const catalog: readonly SourceSymbol[] = [
 	...microcontrollers,
+	...nordicMicrocontrollers,
 	{
 		id: "resistor-us",
 		category: "Passives",
@@ -801,6 +803,7 @@ export const catalog: readonly SourceSymbol[] = [
 			["pin", "+5V", 0.0, 0.0, 0.0, "U"],
 		],
 	},
+	...nordicPowerManagement,
 	{
 		id: "connector-2",
 		category: "Connectors",

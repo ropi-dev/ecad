@@ -68,3 +68,23 @@ https://gitlab.com/kicad/libraries/kicad-symbols/-/tree/c2457f8bcea241d7b85c34ab
 These definitions preserve package pin numbers and exposed ground pads. ECAD
 separates stacked supply pins, arranges GPIO and other pins in two columns,
 and preserves native pin names and numbers. QSPI_SS_N denotes active-low QSPI_SS.
+
+The nRF54L15, nRF54L10, nRF54L05, and nPM2100 definitions are not adapted from
+the KiCad libraries, which have no symbols for these parts. ECAD drew them from
+the pin assignment tables in Nordic Semiconductor's datasheets:
+
+- nRF54L15, nRF54L10, and nRF54L05 Wireless SoCs Datasheet v1.0 (4503_018),
+  section 10.1, QFN40 (QDAA), QFN48 (QFAA), QFN52 (QGAA), and CSP47 (CAAA)
+  package pin assignments, and section 14.4 order codes:
+  https://docs.nordicsemi.com/bundle/ps_nrf54l15/page/chapters/pin.html
+- nPM2100 Power Management IC Datasheet v1.0, QFN (QEAA) and WLCSP (CAAA)
+  pin assignments:
+  https://docs.nordicsemi.com/bundle/ps_npm2100/page/about.html
+
+Each package has its own symbol because pin numbering differs between packages.
+All three nRF54L parts are sold in QDAA, QFAA, and QGAA. Only the nRF54L15 is
+sold in CAAA. Packages with the same code share one layout. The QFN exposed pad
+is VSS, numbered 41, 49, or 53. The nPM2100 QFN exposed pad is AVSS1, numbered
+17. Ball-grid packages use ball names as pin numbers, and CSP47 has no B2 or C1
+ball. GPIO names carry the crystal, NFC, analog input, and external reference
+functions from the datasheet. nRESET denotes active-low reset.

@@ -10,7 +10,7 @@ import { generateDefaultSymbols, symbolCategories } from "../src/index.ts";
 test("default generation is deterministic and returns independent geometry and labels", () => {
 	const first = generateDefaultSymbols();
 	const second = generateDefaultSymbols();
-	assert.equal(first.length, 49);
+	assert.equal(first.length, 61);
 	assert.deepEqual(first, second);
 	assert.equal(new Set(first.map(({ file }) => file.id)).size, first.length);
 	assert.deepEqual(
@@ -109,7 +109,7 @@ test("CLI writes one portable file per symbol with attribution and refuses overw
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
 		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 49);
+		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 61);
 		for (const { file } of generateDefaultSymbols()) {
 			assert.deepEqual(
 				JSON.parse(await readFile(join(output, `${file.id}.ecadsym`), "utf8")),
@@ -225,6 +225,217 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 		assert.deepEqual(
 			gpios,
 			Array.from({ length: gpioCount }, (_, i) => i),
+		);
+	}
+});
+
+test("Nordic chips have one symbol per package with that package's pin numbers", () => {
+	const symbols = generateDefaultSymbols();
+	const qfn = (count: number) =>
+		Array.from({ length: count }, (_, i) => String(i + 1));
+	const grid = (rows: string, columns: number, missing: string[] = []) =>
+		[...rows]
+			.flatMap((row) =>
+				Array.from({ length: columns }, (_, i) => `${row}${i + 1}`),
+			)
+			.filter((ball) => !missing.includes(ball));
+	const packages = {
+		QDAA: {
+			numbers: qfn(41),
+			gpios: 24,
+			expected: {
+				1: "P1.00/XL1",
+				8: "P1.08/EXTREF",
+				9: "VDD",
+				20: "P0.00",
+				22: "SWDIO",
+				23: "SWDCLK",
+				24: "P0.04",
+				25: "nRESET",
+				26: "ANT",
+				27: "VSS_PA",
+				29: "XC1",
+				32: "P1.11/AIN4",
+				37: "VSS",
+				39: "DCC",
+				41: "VSS",
+			},
+		},
+		QFAA: {
+			numbers: qfn(49),
+			gpios: 31,
+			expected: {
+				1: "P1.00/XL1",
+				3: "P1.02/NFC1",
+				9: "P1.08/EXTREF",
+				10: "VDD",
+				21: "P2.10",
+				25: "SWDIO",
+				26: "SWDCLK",
+				30: "nRESET",
+				31: "ANT",
+				32: "VSS_PA",
+				33: "DECRF",
+				42: "P1.14/AIN7",
+				44: "VSS",
+				46: "DCC",
+				49: "VSS",
+			},
+		},
+		QGAA: {
+			numbers: qfn(53),
+			gpios: 35,
+			expected: {
+				6: "P1.16",
+				10: "P1.08/EXTREF",
+				11: "VDD",
+				24: "P0.06",
+				27: "SWDIO",
+				28: "SWDCLK",
+				32: "P0.05",
+				33: "nRESET",
+				34: "ANT",
+				46: "P1.15",
+				48: "VSS",
+				50: "DCC",
+				53: "VSS",
+			},
+		},
+		CAAA: {
+			numbers: grid("ABCDEFG", 7, ["B2", "C1"]),
+			gpios: 32,
+			expected: {
+				A1: "XC1",
+				A3: "P1.12/AIN5",
+				A6: "VSS",
+				A7: "DCC",
+				B1: "DECRF",
+				B7: "VDD",
+				C2: "VSS_PA",
+				C5: "P1.00/XL1",
+				D1: "ANT",
+				D2: "nRESET",
+				E3: "SWDCLK",
+				F2: "SWDIO",
+				F7: "P1.08/EXTREF",
+				G2: "P2.10",
+				G3: "VDD",
+				G4: "VSS",
+			},
+		},
+	};
+	const npm2100 = {
+		QEAA: {
+			numbers: qfn(17),
+			expected: {
+				1: "VSET",
+				2: "SW",
+				3: "VBAT",
+				4: "SHPHLD",
+				5: "GPIO0",
+				6: "SDA",
+				7: "SCL",
+				8: "SYSGDEN",
+				9: "GPIO1",
+				10: "PG/RESET",
+				11: "AVSS2",
+				12: "LSOUT/VOUTLDO",
+				13: "VOUT",
+				14: "VINT",
+				15: "VINT",
+				16: "PVSS",
+				17: "AVSS1",
+			},
+		},
+		CAAA: {
+			numbers: grid("ABCD", 4),
+			expected: {
+				A1: "LSOUT/VOUTLDO",
+				A2: "VOUT",
+				A3: "VINT",
+				A4: "PVSS",
+				B1: "AVSS1",
+				B2: "AVSS2",
+				B3: "VSET",
+				B4: "SW",
+				C1: "PG/RESET",
+				C2: "SYSGDEN",
+				C3: "GPIO0",
+				C4: "VBAT",
+				D1: "GPIO1",
+				D2: "SCL",
+				D3: "SDA",
+				D4: "SHPHLD",
+			},
+		},
+	};
+	const cases = [
+		...["nRF54L15", "nRF54L10", "nRF54L05"].flatMap((part) =>
+			(["QDAA", "QFAA", "QGAA"] as const).map(
+				(code) =>
+					[`${part}-${code}`, "Microcontrollers", packages[code]] as const,
+			),
+		),
+		["nRF54L15-CAAA", "Microcontrollers", packages.CAAA] as const,
+		["nPM2100-QEAA", "Power", { ...npm2100.QEAA, gpios: 2 }] as const,
+		["nPM2100-CAAA", "Power", { ...npm2100.CAAA, gpios: 2 }] as const,
+	];
+	assert.deepEqual(
+		symbols
+			.filter(({ file }) => /^(nrf54|npm)/.test(file.id))
+			.map(({ file }) => file.name)
+			.sort(),
+		cases.map(([name]) => name).sort(),
+	);
+	const shapes = new Map<string, unknown>();
+	for (const [name, category, { numbers, gpios, expected }] of cases) {
+		const symbol = required(symbols.find(({ file }) => file.name === name));
+		assert.equal(symbol.file.id, name.toLowerCase());
+		assert.equal(symbol.file.value, name);
+		assert.equal(symbol.category, category);
+		assert.equal(symbol.file.prefix, "U");
+		const pins = symbol.file.shapes.filter((shape) => shape.kind === "pin");
+		assert.equal(symbol.file.shapes.length, pins.length + 1);
+		assert.ok(pins.every((pin) => pin.length === 2.54));
+		assert.equal(
+			new Set(pins.map((pin) => `${pin.x},${pin.y}`)).size,
+			pins.length,
+		);
+		for (const side of [-1, 1]) {
+			const ys = pins
+				.filter((pin) => Math.sign(pin.x) === side)
+				.map((pin) => pin.y)
+				.sort((a, b) => a - b);
+			assert.ok(
+				ys.slice(1).every((y, index) => Math.abs(y - ys[index] - 2.54) < 1e-8),
+			);
+		}
+		assert.deepEqual(
+			pins.map((pin) => pin.number).sort(),
+			[...numbers].sort(),
+			name,
+		);
+		const names = new Map(pins.map((pin) => [pin.number, pin.name]));
+		for (const [number, pinName] of Object.entries(expected))
+			assert.equal(names.get(number), pinName, `${name} pin ${number}`);
+		assert.equal(
+			pins.filter((pin) => /^(P\d\.\d\d|GPIO\d)/.test(pin.name)).length,
+			gpios,
+			name,
+		);
+		const code = name.slice(-4);
+		const sibling = shapes.get(`${category}:${code}`);
+		if (sibling) assert.deepEqual(symbol.file.shapes, sibling, name);
+		else shapes.set(`${category}:${code}`, symbol.file.shapes);
+		assert.deepEqual(
+			symbols
+				.filter(({ file }) =>
+					[file.id, file.name, file.description, file.value].some((text) =>
+						text.toLowerCase().includes(name.toLowerCase()),
+					),
+				)
+				.map(({ file }) => file.name),
+			[name],
 		);
 	}
 });
