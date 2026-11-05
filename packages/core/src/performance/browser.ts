@@ -1,12 +1,17 @@
-import { PerformanceRecorder } from "#/performance/recorder.ts";
+import {
+	PerformanceRecorder,
+	type PerformanceSample,
+} from "#/performance/recorder.ts";
 
 export function createBrowserPerformance(development: boolean) {
+	const listeners = new Set<(sample: PerformanceSample) => void>();
 	const recorder = new PerformanceRecorder(
 		() => performance.now(),
 		512,
 		120,
 		128,
 		(sample) => {
+			for (const listener of listeners) listener(sample);
 			if (
 				sample.name.startsWith("browser.") ||
 				sample.name === "renderer.frame" ||
@@ -155,6 +160,12 @@ export function createBrowserPerformance(development: boolean) {
 		start: recorder.start.bind(recorder),
 		measure: recorder.measure.bind(recorder),
 		measureAsync: recorder.measureAsync.bind(recorder),
+		subscribe(listener: (sample: PerformanceSample) => void) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 		appReady() {
 			if (ready) return;
 			ready = true;
@@ -246,6 +257,7 @@ export function createBrowserPerformance(development: boolean) {
 			clearTimeout(timer);
 			flush();
 			for (const { observer } of observers) observer.disconnect();
+			listeners.clear();
 			document.removeEventListener("click", onClick, true);
 			document.removeEventListener("visibilitychange", sampleLoop);
 		},

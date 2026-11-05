@@ -42,6 +42,7 @@ const sidebarKeys: Record<string, string> = {
 	"Show project files": "B",
 	"Add file": "N",
 };
+const devSidebarKeys = new Set(import.meta.env?.DEV ? ["D"] : []);
 const labelFor = (button: HTMLButtonElement) =>
 	button.getAttribute("aria-label") ??
 	button.getAttribute("title") ??
@@ -93,7 +94,9 @@ function listen() {
 				visibilityProperty: true,
 				opacityProperty: true,
 			}) ||
-			button.closest('[inert], [aria-hidden="true"]')
+			button.closest(
+				'[inert], [aria-hidden="true"], [data-shortcut-scope="none"]',
+			)
 		)
 			return false;
 		const rect = button.getBoundingClientRect();
@@ -169,6 +172,7 @@ function listen() {
 							(candidate) =>
 								candidate &&
 								!nativeKeys.has(candidate) &&
+								!(sidebar && devSidebarKeys.has(candidate)) &&
 								available(candidate) &&
 								(candidate === preferred[label] || !reserved.has(candidate)) &&
 								(sidebar ||
