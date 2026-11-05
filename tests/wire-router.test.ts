@@ -8,6 +8,7 @@ import {
 	moveShapes,
 	pinTerminals,
 	resizeHandles,
+	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
@@ -465,4 +466,48 @@ test("dropping a wired pin onto another net's wire is the user's connection, not
 		isUnsafeMove(moveShapes([moving], { x: 0, y: 5 }, 0, moving, shapes, 5)),
 		false,
 	);
+});
+
+test("a move whose only route crosses other pins is marked unsafe", () => {
+	const fixed = pin(1, 0, 0);
+	const moving = pin(2, 25.4, 0);
+	const target = { x: 25.4, y: 12.7 };
+	const fence = [
+		[1.27, 0],
+		[-1.27, 0],
+		[0, 1.27],
+		[0, -1.27],
+	].map(([dx, dy], index) => pin(10 + index, target.x + dx, target.y + dy));
+	const shapes: EditorShape[] = [
+		fixed,
+		moving,
+		wire(3, 0, 0, 25.4, 0),
+		...fence,
+	];
+	const moved = withFullRouting(() =>
+		moveShapes([moving], { x: 0, y: 12.7 }, 1.27, moving, shapes, 20),
+	);
+	assert.equal(isUnsafeMove(moved), true);
+});
+
+test("a committed move routes past the preview budget instead of refusing", () => {
+	const shapes: EditorShape[] = [];
+	const moving: EditorShape[] = [];
+	for (let index = 0; index < 16; index++) {
+		const y = 2.54 * index;
+		const free = pin(1 + index, 0, y);
+		moving.push(free);
+		shapes.push(
+			free,
+			pin(100 + index, 101.6, y),
+			wire(200 + index, 0, y, 101.6, y),
+		);
+	}
+	for (let index = 0; index < 30; index++)
+		shapes.push(pin(300 + index, 50.8, -2.54 * (index + 1)));
+	const commit = withFullRouting(() =>
+		moveShapes(moving, { x: 0, y: -20.32 }, 1.27, moving[0], shapes, 400),
+	);
+	assert.equal(isUnsafeMove(commit), false);
+	assert.deepEqual(pinGroups(applyMove(shapes, commit)), pinGroups(shapes));
 });

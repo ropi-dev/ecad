@@ -28,6 +28,7 @@ import {
 	normalizeNetSymbol,
 	normalizeWireSegments,
 	pinTerminals,
+	withFullRouting,
 } from "#/drawing/shapes.ts";
 import { freeze } from "#/lib/freeze.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -314,11 +315,13 @@ export function rotateShapesEffect(
 			const originals = current.shapes.filter((shape) =>
 				selectedIds.has(shape.id),
 			);
-			const connected = connectTransformedTerminals(
-				originals,
-				originals.map((shape) => transformed.get(shape.id) ?? shape),
-				current.shapes,
-				current.nextShapeId,
+			const connected = withFullRouting(() =>
+				connectTransformedTerminals(
+					originals,
+					originals.map((shape) => transformed.get(shape.id) ?? shape),
+					current.shapes,
+					current.nextShapeId,
+				),
 			);
 			if (isUnsafeMove(connected))
 				invalid(

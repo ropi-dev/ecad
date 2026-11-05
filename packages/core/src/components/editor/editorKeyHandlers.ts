@@ -5,6 +5,8 @@ import {
 	moveShapes,
 	moveSymbolChild,
 	type symbolChildren,
+	UNSAFE_MOVE_MESSAGE,
+	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
@@ -18,9 +20,6 @@ import type {
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
-
-export const UNSAFE_MOVE =
-	"No wire route here avoids other nets, so the move was not applied.";
 
 type Gestures = ReturnType<typeof useCanvasGestures>;
 
@@ -150,16 +149,18 @@ export function handleCanvasKeyDown(
 				setTool("select");
 			}
 			{
-				const moved = moveShapes(
-					selected,
-					command.delta,
-					selectionSnapStep,
-					selected[0],
-					session.shapes(),
-					session.nextId(),
-					allowLocked,
+				const moved = withFullRouting(() =>
+					moveShapes(
+						selected,
+						command.delta,
+						selectionSnapStep,
+						selected[0],
+						session.shapes(),
+						session.nextId(),
+						allowLocked,
+					),
 				);
-				if (isUnsafeMove(moved)) session.setError(UNSAFE_MOVE);
+				if (isUnsafeMove(moved)) session.setError(UNSAFE_MOVE_MESSAGE);
 				else session.replace(moved, "Move selection");
 			}
 			break;

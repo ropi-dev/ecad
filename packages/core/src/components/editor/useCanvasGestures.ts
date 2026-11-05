@@ -17,6 +17,8 @@ import {
 	snapPoint,
 	symbolChildren,
 	symbolChildWorld,
+	UNSAFE_MOVE_MESSAGE,
+	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { Heading } from "@ecad/drawing-core/drawing/wire-router.ts";
@@ -45,7 +47,6 @@ import {
 	canvasDragStep,
 } from "#/components/editor/canvasDrag.ts";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
-import { UNSAFE_MOVE } from "#/components/editor/editorKeyHandlers.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import {
@@ -370,7 +371,7 @@ export function useCanvasGestures({
 			setMarquee(null);
 			// Releasing where a wire could only cross another net restores the drag.
 			if (active.mode === "move" && active.unsafe && !cancel)
-				session.setError(UNSAFE_MOVE);
+				session.setError(UNSAFE_MOVE_MESSAGE);
 			if (
 				cancel ||
 				(active.created && !active.valid) ||
@@ -802,7 +803,9 @@ export function useCanvasGestures({
 		},
 		onPointerUpCapture: (event) => {
 			if (getDrag()?.pointerId !== event.pointerId) return;
-			updateDrag(event);
+			// The release routes without the preview budget, so a move is refused
+			// only when no safe route exists.
+			withFullRouting(() => updateDrag(event));
 			finishDrag();
 		},
 		onPointerCancelCapture: (event) => {

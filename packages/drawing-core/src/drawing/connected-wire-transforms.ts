@@ -507,7 +507,8 @@ function rubberBand(
 ): EditorShape[] {
 	const { graph, context } = selectionContext(shapes, allShapes);
 	if (!context.traces.length && !context.stubs.length) return replacements;
-	const key = delta && `${delta.x},${delta.y},${pitch},${nextShapeId}`;
+	const key =
+		delta && `${delta.x},${delta.y},${pitch},${nextShapeId},${fullRouting}`;
 	if (key && context.last?.key === key) return context.last.result;
 	const result = rerouteSelection(
 		graph,
@@ -696,7 +697,9 @@ function rerouteSelection(
 	}
 	let unsafe = false;
 	// One budget per step keeps a drag over crowded parts responsive.
-	const budget = { remaining: 30_000 };
+	const budget = {
+		remaining: fullRouting ? Number.POSITIVE_INFINITY : 30_000,
+	};
 
 	interface Route {
 		net: number;
@@ -839,6 +842,26 @@ function rerouteSelection(
 }
 
 const unsafeMoves = new WeakSet<readonly EditorShape[]>();
+
+export const UNSAFE_MOVE_MESSAGE =
+	"No wire route here avoids other nets, so the move was not applied.";
+
+let fullRouting = false;
+
+/**
+ * Runs moves without the per-step search budget that keeps drag previews
+ * responsive. Committing paths use it, so a move is refused only when no safe
+ * route exists, not when a preview ran out of time.
+ */
+export function withFullRouting<T>(work: () => T): T {
+	const previous = fullRouting;
+	fullRouting = true;
+	try {
+		return work();
+	} finally {
+		fullRouting = previous;
+	}
+}
 
 /**
  * Whether a move result routes a wire through another net because no safe

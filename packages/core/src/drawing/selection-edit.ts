@@ -14,6 +14,8 @@ import {
 	type SymbolLabelPosition,
 	setSymbolLabelPosition,
 	type TextShape,
+	UNSAFE_MOVE_MESSAGE,
+	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import type { LabelRole } from "#/drawing/placement.ts";
@@ -71,6 +73,8 @@ export interface SelectionEditResult {
 	readonly replacements: EditorShape[];
 	/** The history label. */
 	readonly label: string;
+	/** Why the edit was refused; nothing is replaced. */
+	readonly error?: string;
 }
 
 /** Changing a label away from a net drops its link to a circuit net. */
@@ -131,20 +135,27 @@ export function applySelectionEdit(
 			const { attribute, value } = edit;
 			if (!Number.isFinite(value)) return undefined;
 			if (attribute === "x" || attribute === "y") {
-				const moved = moveShapes(
-					selection,
-					{
-						x: attribute === "x" ? value - selection[0].x : 0,
-						y: attribute === "y" ? value - selection[0].y : 0,
-					},
-					0,
-					selection[0],
-					context.shapes,
-					context.nextId,
-					context.allowLocked,
+				const moved = withFullRouting(() =>
+					moveShapes(
+						selection,
+						{
+							x: attribute === "x" ? value - selection[0].x : 0,
+							y: attribute === "y" ? value - selection[0].y : 0,
+						},
+						0,
+						selection[0],
+						context.shapes,
+						context.nextId,
+						context.allowLocked,
+					),
 				);
 				// Refuse a position whose wires could only reach it through other nets.
-				if (isUnsafeMove(moved)) return undefined;
+				if (isUnsafeMove(moved))
+					return {
+						replacements: [],
+						label: "",
+						error: UNSAFE_MOVE_MESSAGE,
+					};
 				return {
 					replacements: moved,
 					label: `Change ${attributeLabels[attribute] ?? attribute}`,
