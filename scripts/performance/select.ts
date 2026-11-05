@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Area, areas, isArea } from "../../tests/performance/tags.ts";
+import { type Area, areas } from "../../tests/performance/tags.ts";
 
 /**
  * What a changed path selects: performance areas, every scenario (`"all"`),
@@ -30,19 +30,16 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["biome.json", "none"],
 	["packages/*/tests/**", "none"],
 
-	// The performance harness itself: specs run their own tags, everything
-	// else (fixture, helpers, budgets, reporter, config) runs every scenario.
-	["tests/performance/*.spec.ts", "spec"],
-	["tests/performance/**", "all"],
+	// The performance harness. Code that decides how runs are measured,
+	// summarized and compared runs every scenario. A spec runs its own tags.
+	// Budgets, the fixture, helpers and the test fixtures and helpers they
+	// import do not change the app being measured, so they select only the
+	// core set; the CI smoke job runs every scenario against them.
+	["tests/performance/reporter.ts", "all"],
+	["tests/performance/comparison.ts", "all"],
+	["tests/performance/playwright.config.ts", "all"],
 	["scripts/performance/**", "all"],
-	// Shared test helpers and fixtures that performance specs import.
-	["tests/browser/project-files.ts", "all"],
-	["tests/browser/symbol-items.ts", "all"],
-	["tests/browser/toolbar.ts", "all"],
-	["tests/helpers/cli-mcp.ts", "all"],
-	["tests/helpers/required.ts", "all"],
-	["tests/fixtures/**", "all"],
-	// Other tests do not run in the performance suite.
+	["tests/performance/*.spec.ts", "spec"],
 	["tests/**", "none"],
 
 	// Web app shell, routes and storage.
@@ -60,7 +57,10 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/web/src/symbol-library/**", ["@symbols"]],
 	["packages/web/public/examples/symbols/**", ["@symbols"]],
 
-	// Core: shared project session, storage and measurement code.
+	// Core: shared project session, storage and measurement code. The
+	// collector, recorder and boundaries produce every browser scenario's
+	// metrics, and the storage wrapper is on every save, so they run every
+	// scenario.
 	["packages/core/src/performance/**", "all"],
 	["packages/core/src/lib/**", "all"],
 	["packages/core/src/styles.css", "all"],
@@ -194,33 +194,27 @@ function glob(pattern: string): RegExp {
 	return expression;
 }
 
-/** Reads the `@area` tags written in a performance spec. */
-export function specTags(source: string): Area[] {
-	return [...new Set(source.match(/"@[a-z]+"/g) ?? [])]
-		.map((tag) => tag.slice(1, -1))
-		.filter(isArea);
-}
-
 export interface Reason {
 	path: string;
 	/** The matching rule pattern, or `undefined` when no rule matched. */
 	rule?: string;
-	target: readonly Area[] | "all" | "none";
+	/** `"itself"`: a changed performance spec runs its own tests. */
+	target: readonly Area[] | "all" | "none" | "itself";
 }
+
+const root = fileURLToPath(new URL("../../", import.meta.url));
+const present = (path: string) => existsSync(resolve(root, path));
 
 export function classify(
 	path: string,
-	readSpec: (path: string) => string | undefined = readIfPresent,
+	exists: (path: string) => boolean = present,
 ): Reason {
 	const rule = rules.find(([pattern]) => glob(pattern).test(path));
 	if (!rule) return { path, target: "all" };
 	const [pattern, target] = rule;
 	if (target !== "spec") return { path, rule: pattern, target };
-	const source = readSpec(path);
 	// A deleted spec leaves nothing to run.
-	if (source === undefined) return { path, rule: pattern, target: "none" };
-	const tags = specTags(source).filter((tag) => tag !== coreTag);
-	return { path, rule: pattern, target: tags.length ? tags : "all" };
+	return { path, rule: pattern, target: exists(path) ? "itself" : "none" };
 }
 
 export interface Selection {
@@ -228,16 +222,18 @@ export interface Selection {
 	full?: string;
 	/** Tags to run, always including `@core`, when `full` is unset. */
 	tags: Area[];
+	/** File names of changed performance specs, whose tests all run. */
+	specs: string[];
 	reasons: Reason[];
 }
 
 export function select(
 	paths: readonly string[],
-	readSpec?: (path: string) => string | undefined,
+	exists?: (path: string) => boolean,
 ): Selection {
 	const reasons = [...new Set(paths)]
 		.sort()
-		.map((path) => classify(path, readSpec));
+		.map((path) => classify(path, exists));
 	const broad = reasons.find((reason) => reason.target === "all");
 	const tags = new Set<Area>([coreTag]);
 	for (const reason of reasons)
@@ -250,19 +246,24 @@ export function select(
 				}
 			: {}),
 		tags: (Object.keys(areas) as Area[]).filter((tag) => tags.has(tag)),
+		specs: reasons
+			.filter((reason) => reason.target === "itself")
+			.map((reason) => basename(reason.path)),
 		reasons,
 	};
 }
 
-/** A Playwright `--grep` pattern for the selected tags. */
-export const grepFor = (tags: readonly Area[]) => tags.join("|");
-
-const root = fileURLToPath(new URL("../../", import.meta.url));
-
-function readIfPresent(path: string) {
-	const file = resolve(root, path);
-	return existsSync(file) ? readFileSync(file, "utf8") : undefined;
-}
+/**
+ * A Playwright `--grep` pattern for the selected tags and spec files.
+ * Playwright matches it against each test's file path, titles and tags.
+ */
+export const grepFor = (tags: readonly Area[], specs: readonly string[] = []) =>
+	[
+		...tags,
+		...specs.map(
+			(spec) => `(?<![\\w-])${spec.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+		),
+	].join("|");
 
 const git = (args: string[]) =>
 	execFileSync("git", args, {
@@ -297,7 +298,9 @@ const describe = (target: Reason["target"]) =>
 		? "every scenario"
 		: target === "none"
 			? "no scenarios"
-			: target.join(" ");
+			: target === "itself"
+				? "this spec"
+				: target.join(" ");
 
 export interface Plan {
 	/** Arguments for Playwright. */
@@ -324,7 +327,8 @@ export function plan(
 		base?: string;
 		/** Lists changed paths; `mergeBase` is unset for paths given directly. */
 		changes?: (base: string) => { mergeBase?: string; paths: string[] };
-		readSpec?: (path: string) => string | undefined;
+		/** Whether a changed path still exists; a deleted spec runs nothing. */
+		exists?: (path: string) => boolean;
 	} = {},
 ): Plan {
 	const forwarded = args.filter((arg) => arg !== "--all");
@@ -352,7 +356,7 @@ export function plan(
 			`cannot list changes against ${base} (${error instanceof Error ? error.message.split("\n")[0] : String(error)})`,
 		);
 	}
-	const selection = select(changes.paths, options.readSpec);
+	const selection = select(changes.paths, options.exists);
 	const messages = [
 		`[perf] ${changes.paths.length} changed path${changes.paths.length === 1 ? "" : "s"}${changes.mergeBase ? ` since ${base} (merge base ${changes.mergeBase.slice(0, 12)})` : ""}:`,
 		...selection.reasons
@@ -375,11 +379,11 @@ export function plan(
 			],
 		};
 	return {
-		args: [...forwarded, "--grep", grepFor(selection.tags)],
+		args: [...forwarded, "--grep", grepFor(selection.tags, selection.specs)],
 		all: false,
 		messages: [
 			...messages,
-			`[perf] Running ${selection.tags.join(" ")}. Pass --all for every scenario.`,
+			`[perf] Running ${[...selection.tags, ...selection.specs].join(" ")}. Pass --all for every scenario.`,
 		],
 	};
 }

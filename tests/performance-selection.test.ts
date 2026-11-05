@@ -65,11 +65,8 @@ test("shared, build and unknown paths fall back to the full suite", () => {
 		"packages/web/vite.config.ts",
 		"packages/web/src/routes/__root.tsx",
 		"tsconfig.base.json",
-		"tests/performance/app-helpers.ts",
-		"tests/performance/app-fixture.ts",
 		"tests/performance/reporter.ts",
 		"tests/performance/playwright.config.ts",
-		"tests/performance/budgets.ts",
 		"scripts/performance/select.ts",
 		"scripts/development/common.ts",
 		"packages/core/src/lib/keyboard.ts",
@@ -137,16 +134,29 @@ test("feature paths map to their areas", () => {
 	);
 });
 
-test("a changed performance spec selects its own tags", () => {
-	const spec = `test("editor-box", { tag: ["@editor", "@symbols"] }, async () => {});`;
+test("a changed performance spec selects only its own tests", () => {
 	const result = plan([], {
-		changes: changes("tests/performance/editor-box.spec.ts"),
-		readSpec: () => spec,
+		changes: changes(
+			"tests/performance/editor-box.spec.ts",
+			"tests/performance/budgets.ts",
+		),
+		exists: () => true,
 	});
-	assert.equal(grep(result.args), "@core|@editor|@symbols");
+	assert.equal(
+		grep(result.args),
+		String.raw`@core|(?<![\w-])editor-box\.spec\.ts`,
+	);
+	assert.match(
+		result.messages.at(-1) ?? "",
+		/Running @core editor-box\.spec\.ts\./,
+	);
+	const pattern = new RegExp(grep(result.args) ?? "");
+	assert.ok(pattern.test("editor-box.spec.ts editor-box"));
+	assert.ok(!pattern.test("other-editor-box.spec.ts other"));
+	assert.ok(!pattern.test("editor-boxXspec.ts"));
 	const removed = plan([], {
 		changes: changes("tests/performance/removed.spec.ts"),
-		readSpec: () => undefined,
+		exists: () => false,
 	});
 	assert.equal(grep(removed.args), "@core");
 });
@@ -220,29 +230,49 @@ test("mapping rules only name known areas and every area is selectable", () => {
 			assert.ok(a === b || !b.startsWith(a), `${a} prefixes ${b}`);
 });
 
-test("test helpers and fixtures the performance suite imports run every scenario", () => {
+test("harness files select only the core set unless they change measurement", () => {
+	const helpers = new Set<string>();
 	for (const file of readdirSync(performance).filter((name) =>
 		name.endsWith(".ts"),
 	)) {
+		if (!file.endsWith(".spec.ts")) helpers.add(`tests/performance/${file}`);
 		for (const [, specifier] of readFileSync(
 			join(performance, file),
 			"utf8",
-		).matchAll(/from\s+"(\.\.?\/[^"]+)"|import\(\s*"(\.\.?\/[^"]+)"\s*\)/g)) {
-			if (!specifier) continue;
+		).matchAll(/from\s+"(\.\.?\/[^"]+)"/g)) {
 			let target = relative(
 				root,
 				resolve(dirname(join(performance, file)), specifier),
 			);
 			// Product code under packages/ has its own mapping rows.
-			if (!target.startsWith("tests/")) continue;
+			if (!target.startsWith("tests/") || target.endsWith(".spec.ts")) continue;
 			if (!/\.[a-z]+$/.test(target)) target += ".ts";
-			const reason = classify(target);
-			assert.ok(
-				reason.target === "all" || target.endsWith(".spec.ts"),
-				`${file} imports ${target}, which maps to ${JSON.stringify(reason.target)}`,
-			);
+			helpers.add(target);
 		}
 	}
+	const measurement = new Set([
+		"tests/performance/reporter.ts",
+		"tests/performance/comparison.ts",
+		"tests/performance/playwright.config.ts",
+	]);
+	assert.ok(helpers.has("tests/browser/toolbar.ts"));
+	assert.ok(helpers.has("tests/performance/budgets.ts"));
+	for (const path of helpers)
+		assert.deepEqual(
+			classify(path).target,
+			measurement.has(path) ? "all" : "none",
+			path,
+		);
+	for (const path of [
+		"tests/fixtures/circuit.ts",
+		"tests/fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch",
+		"tests/helpers/required.ts",
+	])
+		assert.equal(classify(path).target, "none", path);
+	assert.equal(
+		grep(plan([], { changes: changes("tests/performance/budgets.ts") }).args),
+		"@core",
+	);
 });
 
 test("every performance test has a known area tag and the core set stays small", () => {

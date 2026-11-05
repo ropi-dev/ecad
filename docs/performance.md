@@ -147,8 +147,9 @@ Every test in `tests/performance` has one or more area tags, listed in `tests/pe
 ```
 
 - Documentation, Markdown, `.github`, licenses and unit or browser tests select nothing beyond `@core`.
-- A changed performance spec selects the tags written in that spec.
-- The lockfile, `package.json` files, TypeScript and Vite configuration, the app shell and routes under `packages/web/src`, `scripts/`, the performance fixture, helpers, budgets, reporter and config, the test helpers and fixtures they import, shared project session and storage code, `packages/core/src/lib`, `packages/core/src/performance` and any path no row matches run every scenario.
+- Performance harness files that do not change the app being measured select only `@core`: `budgets.ts`, the fixture and helpers in `tests/performance`, and the `tests/browser`, `tests/helpers` and `tests/fixtures` files they import. The CI smoke job runs every scenario against them.
+- A changed or added performance spec runs its own tests, matched by file name in `--grep`.
+- The lockfile, `package.json` files, TypeScript and Vite configuration, the app shell and routes under `packages/web/src`, `scripts/` (including the selector and runner), the reporter, `comparison.ts` and `playwright.config.ts`, shared project session and storage code, `packages/core/src/lib`, `packages/core/src/performance` and any path no row matches run every scenario. The `packages/core/src/performance` collector, recorder and boundaries produce every browser scenario's metrics, and its storage wrapper is on every save.
 - `--all` runs every scenario. An explicit `--grep` replaces the selection; `--grep-invert` and other Playwright options still apply to it. `pnpm run perf:baseline` and smoke runs (`ECAD_PERF_SMOKE=1`) always run every scenario unless you pass `--grep`.
 - If the changed paths cannot be listed, for example without an `origin/main` ref, the run uses every scenario and says why. Set `ECAD_PERF_BASE` to compare against another ref, such as the base branch of a stacked pull request.
 - `pnpm sandbox perf` selects on the host, because the container copy has no `.git`, and passes the result to the container as `--grep` or `--all`.
