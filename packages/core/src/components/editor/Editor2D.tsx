@@ -8,12 +8,15 @@ import {
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
 import {
+	lazy,
 	type ReactNode,
+	Suspense,
 	useCallback,
 	useEffect,
 	useEffectEvent,
 	useLayoutEffect,
 	useMemo,
+	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
@@ -48,6 +51,7 @@ import { useLegacyWireReroute } from "#/components/editor/useLegacyWireReroute.t
 import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.ts";
 import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
@@ -58,6 +62,12 @@ import { EditorHeader } from "#/projects/EditorHeader.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
+
+const SchematicErcPanel = lazy(() =>
+	import("#/components/editor/SchematicErcPanel.tsx").then((module) => ({
+		default: module.SchematicErcPanel,
+	})),
+);
 
 export interface Editor2DProps {
 	sheet?: SheetSize;
@@ -148,6 +158,8 @@ function EditorCanvas({
 		useState<SymbolDefinition | null>(null);
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
+	const [ercOpen, setErcOpen] = useState(false);
+	const canvasArea = useRef<HTMLDivElement>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const {
 		selected,
@@ -380,6 +392,7 @@ function EditorCanvas({
 			/>
 			<div className="relative flex min-h-0 flex-1">
 				<div
+					ref={canvasArea}
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					style={{
 						backgroundColor: isSymbol
@@ -461,6 +474,10 @@ function EditorCanvas({
 									selectionLocked={selectionLocked}
 									editSelection={editSelection}
 									removeSelected={removeSelected}
+									ercOpen={ercOpen}
+									onErc={
+										isSymbol ? undefined : () => setErcOpen((open) => !open)
+									}
 								/>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
@@ -480,6 +497,47 @@ function EditorCanvas({
 						marquee={marquee}
 					/>
 					<EditorMessages {...messages} />
+					{ercOpen && !isSymbol && (
+						<Suspense
+							fallback={
+								<FloatingPanel
+									label="Electrical rules check"
+									as="section"
+									position="top-left"
+									raised
+								>
+									<output className="p-2.5 text-[12px] text-[#9ba7b8]">
+										Loading electrical checks...
+									</output>
+								</FloatingPanel>
+							}
+						>
+							<SchematicErcPanel
+								shapes={resolved.shapes}
+								definitions={definitions}
+								onClose={() => {
+									setErcOpen(false);
+									canvasArea.current
+										?.querySelector("canvas")
+										?.focus({ preventScroll: true });
+								}}
+								onSelect={(ids) => {
+									// A finding can point at a locked symbol. Allow selecting
+									// locked items, as the toolbar toggle does, so it shows.
+									if (
+										!allowLocked &&
+										resolved.shapes.some(
+											(shape) => ids.has(shape.id) && shape.locked,
+										)
+									) {
+										finishDrag(true);
+										session.setAllowLocked(true);
+									}
+									session.select(ids);
+								}}
+							/>
+						</Suspense>
+					)}
 				</div>
 				{selectionAttributes}
 			</div>

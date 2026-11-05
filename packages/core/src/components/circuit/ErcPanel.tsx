@@ -14,7 +14,10 @@ import {
 	X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
+import {
+	FloatingPanel,
+	type FloatingPanelPosition,
+} from "#/components/viewer/FloatingPanel.tsx";
 
 const pageSize = 50;
 
@@ -29,24 +32,56 @@ const iconButton =
 const count = (value: number, noun: string) =>
 	`${value.toLocaleString()} ${noun}${value === 1 ? "" : "s"}`;
 
-export function ErcPanel({
+/** Electrical rules check for the circuit editor. */
+export function CircuitErcPanel({
 	circuit,
-	onClose,
-	onSelect,
+	...props
 }: {
 	circuit: Circuit;
 	onClose(): void;
 	onSelect(subject: ErcSubject): void;
 }) {
+	// Layout-only changes, such as moving or collapsing a component, keep the
+	// results current.
+	const revision = useMemo(() => JSON.stringify(circuit), [circuit]);
+	return (
+		<ErcPanel
+			{...props}
+			source="circuit"
+			revision={revision}
+			check={() => runErc(circuit, defaultErcRules)}
+		/>
+	);
+}
+
+/**
+ * Runs the default electrical rules on demand and lists the findings. Results
+ * go stale when `revision` changes.
+ */
+export function ErcPanel({
+	source,
+	revision,
+	check,
+	position = "top-right",
+	onClose,
+	onSelect,
+}: {
+	source: "circuit" | "schematic";
+	/** Where the panel floats, clear of the editor's other panels. */
+	position?: FloatingPanelPosition;
+	revision: unknown;
+	check(): ErcDiagnostic[];
+	onClose(): void;
+	onSelect(subject: ErcSubject): void;
+}) {
 	const [result, setResult] = useState<{
-		circuitKey: string;
+		revision: unknown;
 		diagnostics: ErcDiagnostic[];
 	} | null>(null);
 	const [error, setError] = useState("");
 	const [page, setPage] = useState(0);
 	const [activeId, setActiveId] = useState<string | null>(null);
-	const circuitKey = useMemo(() => JSON.stringify(circuit), [circuit]);
-	const stale = result !== null && result.circuitKey !== circuitKey;
+	const stale = result !== null && result.revision !== revision;
 	const diagnostics = result?.diagnostics ?? [];
 	const errors = diagnostics.filter((item) => item.severity === "error").length;
 	const warnings = diagnostics.length - errors;
@@ -57,6 +92,8 @@ export function ErcPanel({
 		<FloatingPanel
 			label="Electrical rules check"
 			as="section"
+			position={position}
+			raised
 			onKeyDown={(event) => {
 				event.stopPropagation();
 				if (event.key === "Escape") onClose();
@@ -82,10 +119,7 @@ export function ErcPanel({
 					className="mt-2 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 					onClick={() => {
 						try {
-							setResult({
-								circuitKey,
-								diagnostics: runErc(circuit, defaultErcRules),
-							});
+							setResult({ revision, diagnostics: check() });
 							setError("");
 							setPage(0);
 							setActiveId(null);
@@ -102,9 +136,9 @@ export function ErcPanel({
 					{error ? (
 						`Check failed: ${error}`
 					) : !result ? (
-						"Run checks on this circuit's pin types and connections."
+						`Run checks on this ${source}'s pin types and connections.`
 					) : stale ? (
-						"Circuit changed. Run ERC again to update results."
+						`${source === "circuit" ? "Circuit" : "Schematic"} changed. Run ERC again to update results.`
 					) : (
 						<>
 							<span

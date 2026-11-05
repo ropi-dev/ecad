@@ -63,7 +63,7 @@ import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 
 const ErcPanel = lazy(() =>
 	import("#/components/circuit/ErcPanel.tsx").then((module) => ({
-		default: module.ErcPanel,
+		default: module.CircuitErcPanel,
 	})),
 );
 
@@ -539,7 +539,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			{ercOpen && (
 				<Suspense
 					fallback={
-						<FloatingPanel label="Electrical rules check" as="section">
+						<FloatingPanel label="Electrical rules check" as="section" raised>
 							<output className="p-2.5 text-[12px] text-[#9ba7b8]">
 								Loading electrical checks...
 							</output>
@@ -583,13 +583,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				zoomLevel={scale}
 				onZoom={zoom}
 				onFit={() => fit()}
-				onPan={(x, y) =>
-					setView((current) => ({
-						...current,
-						x: current.x + current.width * x,
-						y: current.y + current.height * y,
-					}))
-				}
 				onUntangle={() => {
 					cancelConnectionDrag();
 					setDrag(null);

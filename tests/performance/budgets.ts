@@ -16,6 +16,14 @@ export const budgets = {
 		domNodes: 2800,
 		scriptBytes: 3_000_000,
 	},
+	"schematic-erc": {
+		interactionP95Ms: 1000,
+		ercP95Ms: 100,
+		noConnectP95Ms: 50,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-no-connect": {
 		interactionP95Ms: 750,
 		domNodes: 1500,

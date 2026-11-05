@@ -2,7 +2,9 @@
 
 Open a circuit and choose Electrical rules check in the bottom toolbar, then Run ERC. Select a result to select and center its pin or net. Results become outdated after electrical edits. Moving or collapsing a component preserves the report. Undo restores the report when the circuit matches the checked contents. The panel displays 50 results per page.
 
-The checker runs on the circuit model, so schematic wiring uses the existing schematic-to-circuit synchronization. It does not inspect drawing geometry. The UI currently lives in circuit view.
+The schematic editor has the same button. It checks the circuit that the current drawing describes, including unsaved edits: symbols become components, and wires, net labels and supply symbols become nets. A no-connect marker on a pin's terminal marks that pin no-connect. Select a result to select the symbols involved. The schematic report becomes outdated after any drawing edit. The symbol editor has no ERC.
+
+The checker runs on the circuit model. In the schematic editor, `schematicCircuit` in `packages/core/src/circuit/linked-schematic.ts` builds that model with the same schematic-to-circuit synchronization that linked circuits use. Apart from no-connect markers, the rules do not inspect drawing geometry.
 
 ## Add a rule
 
@@ -56,6 +58,8 @@ A lone input or power input produces an unconnected warning, rather than a secon
 ## Validation
 
 `pnpm exec tsx --test tests/erc.test.ts` checks built-in behavior and the rule contract. The `circuit-erc` performance scenario runs checks repeatedly on 64 unconnected pins, exercises result pagination, moves and collapses a component without invalidating results, selects a hidden pin to expand its component, and marks a pin no-connect to verify stale results and rerunning. It budgets 100 ms for `circuit.erc`, 1 second for panel interactions, 2,800 DOM nodes, and 3 MB of scripts under local Chromium with 4x CPU throttling. The existing `circuit-graph` scenario compares normal circuit editing before and after.
+
+The `schematic-erc` scenario imports the RP2350A KiCad reference schematic (39 components, 231 pins, one no-connect marker), which checks clean, adds an unwired resistor, runs the schematic check three times, and selects a finding. Under the same conditions it budgets 1 second for each run including rendering the results, 100 ms for `circuit.erc`, 50 ms for `schematic.no-connect` (matching pins to no-connect markers), fewer than 1,500 DOM nodes, at most 3 MB of scripts, and frame p95 below 500 ms. When it was added, those measured 389 ms, 2.9 ms, 10.3 ms and 904 nodes.
 
 
 ## Alternative designs

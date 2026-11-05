@@ -1,26 +1,19 @@
 import {
-	ArrowDown,
-	ArrowLeft,
-	ArrowRight,
-	ArrowUp,
 	Cable,
 	CirclePlus,
-	Component,
 	Hand,
 	type LucideIcon,
+	Microchip,
 	MousePointer2,
-	Move,
 	Redo2,
-	ShieldCheck,
 	Shuffle,
 	Trash2,
 	Undo2,
 } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { ErcButton } from "#/components/editor/ErcButton.tsx";
 import {
 	ToolbarDock,
-	ToolbarGroup,
-	ToolbarMenuItem,
 	ToolbarSeparator,
 } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
@@ -47,7 +40,6 @@ export function CircuitToolbar({
 	zoomLevel,
 	onZoom,
 	onFit,
-	onPan,
 	onUntangle,
 	ercOpen,
 	onErc,
@@ -64,7 +56,6 @@ export function CircuitToolbar({
 	zoomLevel: number;
 	onZoom(factor: number): void;
 	onFit(): void;
-	onPan(x: number, y: number): void;
 	onUntangle(): void;
 	ercOpen: boolean;
 	onErc(): void;
@@ -126,7 +117,7 @@ export function CircuitToolbar({
 						aria-label="Components"
 						disabled
 					>
-						<Component size={18} aria-hidden="true" />
+						<Microchip size={18} aria-hidden="true" />
 					</button>
 				}
 			>
@@ -140,16 +131,6 @@ export function CircuitToolbar({
 			<ToolbarSeparator />
 			<TooltipButton
 				className={button}
-				tooltip="Delete selection"
-				aria-label="Delete selection"
-				shortcut="Delete"
-				disabled={!canDelete}
-				onClick={onDelete}
-			>
-				<Trash2 size={18} aria-hidden="true" />
-			</TooltipButton>
-			<TooltipButton
-				className={button}
 				tooltip="Untangle"
 				aria-label="Untangle"
 				onClick={onUntangle}
@@ -158,13 +139,16 @@ export function CircuitToolbar({
 			</TooltipButton>
 			<TooltipButton
 				className={button}
-				tooltip="Electrical rules check"
-				aria-label="Electrical rules check"
-				aria-pressed={ercOpen}
-				onClick={onErc}
+				tooltip="Delete selection"
+				aria-label="Delete"
+				shortcut="Delete"
+				disabled={!canDelete}
+				onClick={onDelete}
 			>
-				<ShieldCheck size={18} aria-hidden="true" />
+				<Trash2 size={18} aria-hidden="true" />
 			</TooltipButton>
+			<ToolbarSeparator />
+			<ErcButton open={ercOpen} onClick={onErc} />
 			<ToolbarSeparator />
 			<ZoomControls
 				zoom={onZoom}
@@ -178,21 +162,6 @@ export function CircuitToolbar({
 			>
 				{Math.round(zoomLevel * 100)}%
 			</ZoomControls>
-			<ToolbarGroup label="Pan view" icon={Move} closeOnChoose={false}>
-				{[
-					{ label: "Pan left", icon: ArrowLeft, x: -0.2, y: 0 },
-					{ label: "Pan right", icon: ArrowRight, x: 0.2, y: 0 },
-					{ label: "Pan up", icon: ArrowUp, x: 0, y: -0.2 },
-					{ label: "Pan down", icon: ArrowDown, x: 0, y: 0.2 },
-				].map(({ label, icon, x, y }) => (
-					<ToolbarMenuItem
-						key={label}
-						icon={icon}
-						label={label}
-						onClick={() => onPan(x, y)}
-					/>
-				))}
-			</ToolbarGroup>
 			<EditorViewSwitch view="circuit" />
 		</ToolbarDock>
 	);
