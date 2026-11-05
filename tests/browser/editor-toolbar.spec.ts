@@ -52,6 +52,14 @@ test("symbol picker search, arrow keys, and Enter choose a symbol", async ({
 			),
 		);
 	await page.keyboard.press("Tab");
+	await page.keyboard.press("Tab");
+	await expect(
+		page.getByRole("button", { name: "Insert Capacitor", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await expect(search).toBeFocused();
+	await expectHighlighted("Insert Resistor, US");
+	await page.keyboard.press("Tab");
 	await page.keyboard.type("cap");
 	await expect(search).toBeFocused();
 	await expect(search).toHaveValue("cap");

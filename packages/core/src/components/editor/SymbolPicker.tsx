@@ -54,6 +54,9 @@ const SymbolOption = memo(function SymbolOption({
 			onPointerMove={() => {
 				if (!reason && !highlighted) onHighlight(definition.id);
 			}}
+			onFocus={() => {
+				if (!reason) onHighlight(definition.id);
+			}}
 			onClick={() => onChoose(definition)}
 		>
 			<SymbolThumbnail definition={definition} />
@@ -191,7 +194,10 @@ export function SymbolPicker({
 						searchInput.current?.focus();
 					}}
 					onKeyDown={(event) => {
-						if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+						if (
+							(event.key === "ArrowDown" || event.key === "ArrowUp") &&
+							!event.nativeEvent.isComposing
+						) {
 							event.preventDefault();
 							searchInput.current?.focus({ preventScroll: true });
 							if (!highlighted) return;
