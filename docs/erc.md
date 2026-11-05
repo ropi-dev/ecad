@@ -2,7 +2,9 @@
 
 Open a circuit and choose Electrical rules check in the bottom toolbar, then Run ERC. Select a result to select and center its pin or net. Results become outdated after electrical edits. Moving or collapsing a component preserves the report. Undo restores the report when the circuit matches the checked contents. The panel displays 50 results per page.
 
-The checker runs on the circuit model, so schematic wiring uses the existing schematic-to-circuit synchronization. It does not inspect drawing geometry. The UI currently lives in circuit view.
+The schematic editor has the same button. It checks the circuit that the current drawing describes, including unsaved edits: symbols become components, and wires, net labels and supply symbols become nets. A no-connect marker on a pin's terminal marks that pin no-connect. Select a result to select the symbols involved. The schematic report becomes outdated after any drawing edit. The symbol editor has no ERC.
+
+The checker runs on the circuit model. In the schematic editor, `schematicCircuit` in `packages/core/src/circuit/linked-schematic.ts` builds that model with the same schematic-to-circuit synchronization that linked circuits use. Apart from no-connect markers, the rules do not inspect drawing geometry.
 
 ## Add a rule
 

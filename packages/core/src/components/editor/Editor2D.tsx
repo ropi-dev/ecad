@@ -8,12 +8,15 @@ import {
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
 import {
+	lazy,
 	type ReactNode,
+	Suspense,
 	useCallback,
 	useEffect,
 	useEffectEvent,
 	useLayoutEffect,
 	useMemo,
+	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
@@ -58,6 +61,12 @@ import { EditorHeader } from "#/projects/EditorHeader.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
+
+const SchematicErcPanel = lazy(() =>
+	import("#/components/editor/SchematicErcPanel.tsx").then((module) => ({
+		default: module.SchematicErcPanel,
+	})),
+);
 
 export interface Editor2DProps {
 	sheet?: SheetSize;
@@ -148,6 +157,8 @@ function EditorCanvas({
 		useState<SymbolDefinition | null>(null);
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
+	const [ercOpen, setErcOpen] = useState(false);
+	const canvasArea = useRef<HTMLDivElement>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
 	const {
 		selected,
@@ -380,6 +391,7 @@ function EditorCanvas({
 			/>
 			<div className="relative flex min-h-0 flex-1">
 				<div
+					ref={canvasArea}
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					style={{
 						backgroundColor: isSymbol
@@ -461,6 +473,10 @@ function EditorCanvas({
 									selectionLocked={selectionLocked}
 									editSelection={editSelection}
 									removeSelected={removeSelected}
+									ercOpen={ercOpen}
+									onErc={
+										isSymbol ? undefined : () => setErcOpen((open) => !open)
+									}
 								/>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
@@ -480,6 +496,27 @@ function EditorCanvas({
 						marquee={marquee}
 					/>
 					<EditorMessages {...messages} />
+					{ercOpen && !isSymbol && (
+						<Suspense
+							fallback={
+								<output className="absolute top-10 left-10 z-20 bg-slate-900 p-4">
+									Loading electrical checks...
+								</output>
+							}
+						>
+							<SchematicErcPanel
+								shapes={resolved.shapes}
+								definitions={definitions}
+								onClose={() => {
+									setErcOpen(false);
+									canvasArea.current
+										?.querySelector("canvas")
+										?.focus({ preventScroll: true });
+								}}
+								onSelect={(ids) => session.select(ids)}
+							/>
+						</Suspense>
+					)}
 				</div>
 				{selectionAttributes}
 			</div>

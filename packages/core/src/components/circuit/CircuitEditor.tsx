@@ -62,7 +62,7 @@ import {
 
 const ErcPanel = lazy(() =>
 	import("#/components/circuit/ErcPanel.tsx").then((module) => ({
-		default: module.ErcPanel,
+		default: module.CircuitErcPanel,
 	})),
 );
 
@@ -562,6 +562,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				</Suspense>
 			)}
 			<CircuitToolbar
+				ercOpen={ercOpen}
 				onErc={() => setErcOpen((open) => !open)}
 				tool={tool}
 				onToolChange={(next) => {
@@ -579,13 +580,6 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				zoomLevel={scale}
 				onZoom={zoom}
 				onFit={() => fit()}
-				onPan={(x, y) =>
-					setView((current) => ({
-						...current,
-						x: current.x + current.width * x,
-						y: current.y + current.height * y,
-					}))
-				}
 				onUntangle={() => {
 					cancelConnectionDrag();
 					setDrag(null);
