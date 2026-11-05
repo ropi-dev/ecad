@@ -154,6 +154,8 @@ Every test in `tests/performance` has one or more area tags, listed in `tests/pe
 - If the changed paths cannot be listed, for example without an `origin/main` ref, the run uses every scenario and says why. Set `ECAD_PERF_BASE` to compare against another ref, such as the base branch of a stacked pull request.
 - `pnpm sandbox perf` selects on the host, because the container copy has no `.git`, and passes the result to the container as `--grep` or `--all`.
 
+`tests/performance-selection.test.ts` follows the static and dynamic imports of the Node-only scenarios (`desktop-storage`, `desktop-untitled`, `cli-drawing`, `named-net-connectivity`, `linked-schematic-sync`) through the workspace and fails if a file they reach does not select them. Browser scenarios load the whole app bundle, so their rows are maintained by hand.
+
 Preview a selection without running anything:
 
 ```bash
