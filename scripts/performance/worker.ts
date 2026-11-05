@@ -68,8 +68,26 @@ interface VariantOutput {
 		test: string;
 		scenario: string;
 		metrics: Record<string, number>;
-		report: { environment: { userAgent: string } };
+		report: {
+			environment: { userAgent: string };
+			metrics?: Record<string, { p50?: number }>;
+		};
 	}[];
+}
+
+/**
+ * Adds `interactionP50Ms`, the median of a run's timed interactions. Each
+ * scenario times only three to six interactions, so `interactionP95Ms` is
+ * close to their maximum, often a cold first interaction. A 40% slower
+ * rotation moved the median clearly while that maximum hid it.
+ */
+function withDerivedMetrics(output: VariantOutput): VariantOutput {
+	for (const run of output.runs) {
+		const median = run.report.metrics?.["scenario.interaction"]?.p50;
+		if (Number.isFinite(median))
+			run.metrics.interactionP50Ms = median as number;
+	}
+	return output;
 }
 
 interface ScenarioState {
@@ -297,7 +315,9 @@ async function compare(plan: Plan): Promise<number> {
 					pending = new Set();
 					break;
 				}
-				outputs[variant] = JSON.parse(readFileSync(file, "utf8"));
+				outputs[variant] = withDerivedMetrics(
+					JSON.parse(readFileSync(file, "utf8")),
+				);
 			}
 			const head = outputs.head;
 			const baseOutput = outputs.base;
