@@ -17,6 +17,7 @@ import {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { Effect } from "effect";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
+import { replaceDrawingShapes } from "#/projects/drawing-refresh.ts";
 
 const rectangle = (id: number, x = 0) =>
 	drawShape(id, "rectangle", { x, y: 0 }, { x: x + 10, y: 10 });
@@ -148,6 +149,113 @@ test("external edits cancel gestures and drop deleted shapes; the session's own 
 	disconnect();
 	external(placeShapesEffect([rectangle(5, 60)], "After disconnect"));
 	assert.equal(cancelled, 2);
+});
+
+test("a refresh with the store's own saved shapes keeps a drag, which then commits and undoes", () => {
+	const { session, store } = setup([rectangle(1), rectangle(2, 20)]);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	session.select(new Set([1, 2]));
+	const initial = session.shapes();
+	const moved = { ...rectangle(1), x: rectangle(1).x + 7 };
+	session.preview(initial.map((shape) => (shape.id === 1 ? moved : shape)));
+
+	// The save hands back equal shapes with new identities.
+	replaceDrawingShapes(
+		store,
+		structuredClone(store.getSnapshot().shapes),
+		false,
+	);
+	assert.equal(cancelled, 0);
+	assert.notEqual(session.getState().draft, null);
+	assert.deepEqual([...session.getState().selection], [1, 2]);
+
+	// Committing like a finished move: only the shapes the drag changed.
+	const before = new Map(initial.map((shape) => [shape.id, shape]));
+	session.replace(
+		session.shapes().filter((shape) => shape !== before.get(shape.id)),
+		"Move selection",
+	);
+	assert.deepEqual(store.getSnapshot().shapes, [moved, rectangle(2, 20)]);
+	assert.equal(
+		store.getSnapshot().history.nodes[store.getSnapshot().history.currentId]
+			.label,
+		"Move selection",
+	);
+	session.restore(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [
+		rectangle(1),
+		rectangle(2, 20),
+	]);
+	session.restore(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [moved, rectangle(2, 20)]);
+	assert.equal(cancelled, 0);
+});
+
+test("a refresh with the store's own saved shapes does not cancel, and a wire placed after it undoes", () => {
+	const { session, store } = setup([rectangle(1)]);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	replaceDrawingShapes(
+		store,
+		structuredClone(store.getSnapshot().shapes),
+		false,
+	);
+	assert.equal(cancelled, 0);
+	session.place(
+		[drawShape(session.nextId(), "wire", { x: 0, y: 40 }, { x: 30, y: 40 })],
+		"Draw wire",
+	);
+	assert.equal(store.getSnapshot().shapes.length, 2);
+	session.restore(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [rectangle(1)]);
+});
+
+test("an external refresh still cancels gestures and drops removed shapes", () => {
+	const { session, store } = setup([rectangle(1), rectangle(2, 20)]);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	session.select(new Set([1, 2]));
+	// Equal content still counts: another program wrote the file.
+	replaceDrawingShapes(
+		store,
+		structuredClone(store.getSnapshot().shapes),
+		true,
+	);
+	assert.equal(cancelled, 1);
+	replaceDrawingShapes(store, [rectangle(1)], true);
+	assert.equal(cancelled, 2);
+	assert.deepEqual([...session.getState().selection], [1]);
+});
+
+test("a refresh that changes the saved drawing still cancels gestures", () => {
+	const { session, store } = setup([rectangle(1), rectangle(2, 20)]);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	session.select(new Set([1, 2]));
+	// Linked assembly dropped a shape while saving: a drag on it would be lost.
+	replaceDrawingShapes(store, [rectangle(1)], false);
+	assert.equal(cancelled, 1);
+	assert.deepEqual([...session.getState().selection], [1]);
+});
+
+test("connecting a store whose last change was a saved refresh still cancels gestures", () => {
+	const { session, store } = setup([rectangle(1)]);
+	const other = createDrawingStore([rectangle(1)]);
+	replaceDrawingShapes(
+		other,
+		structuredClone(other.getSnapshot().shapes),
+		false,
+	);
+	let cancelled = 0;
+	session.connect(store, () => cancelled++);
+	cancelled = 0;
+	session.connect(other, () => cancelled++);
+	assert.equal(cancelled, 1);
 });
 
 test("connecting another store resets saved history selections", () => {

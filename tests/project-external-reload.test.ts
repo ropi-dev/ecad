@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { toastManager } from "#/components/ui/toast.ts";
 import { ProjectConflict } from "#/projects/errors.ts";
@@ -165,6 +166,29 @@ test("an external change replaces only the changed document and keeps the other 
 	await new Promise((resolve) => setTimeout(resolve, 20));
 	assert.equal(f.calls.saves, 1);
 	assert.match(reloadToast()?.description ?? "", /Extra/);
+	stop();
+});
+
+test("an external change during a drag cancels the drag", async () => {
+	const f = fixture();
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const main = f.session.getSnapshot().store;
+	const editor = createEditorSession(main);
+	let cancelled = 0;
+	const disconnect = editor.connect(main, () => cancelled++);
+	cancelled = 0;
+	editor.place([rectangle], "Draw rectangle");
+	await until(() => f.calls.saves === 1 && !f.session.getSnapshot().dirty);
+	assert.equal(cancelled, 0, "the editor's own save does not cancel");
+	editor.preview([{ ...rectangle, x: 7 }]);
+
+	const next = snapshot();
+	next.shapes = [{ ...rectangle, y: 20 }];
+	f.changeOnDisk(next, ["main.ecaddraw"]);
+	await until(() => main.getSnapshot().shapes[0]?.y === 20);
+	assert.equal(cancelled, 1);
+	disconnect();
 	stop();
 });
 

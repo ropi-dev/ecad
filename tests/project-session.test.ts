@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import {
+	redoEffect,
+	undoEffect,
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
+import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { InvalidFile } from "#/formats/import-effects.ts";
@@ -266,6 +271,56 @@ test("conflict pauses autosave and reload discards edits without writing them", 
 	assert.equal(f.session.getSnapshot().dirty, false);
 	assert.equal(f.session.getSnapshot().conflict, false);
 	assert.deepEqual(f.session.getSnapshot().store.getSnapshot().shapes, []);
+	stop();
+});
+
+test("a save that lands during a drag keeps it, and the drag commits with working undo", async () => {
+	const f = fixture();
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const store = f.session.getSnapshot().store;
+	const editor = createEditorSession(store);
+	let cancelled = 0;
+	const disconnect = editor.connect(store, () => cancelled++);
+	cancelled = 0;
+	editor.place([rectangle], "Draw rectangle");
+	await f.session.getSnapshot().save();
+	const placed = store.getSnapshot().shapes;
+
+	// The drag starts while this edit's save is still running.
+	editor.place([{ ...rectangle, id: 2, x: 30 }], "Draw second rectangle");
+	const saving = f.session.getSnapshot().save();
+	const initial = editor.shapes();
+	const moved = { ...initial[0], x: initial[0].x + 7 };
+	editor.select(new Set([moved.id]));
+	editor.preview(
+		initial.map((shape) => (shape.id === moved.id ? moved : shape)),
+	);
+	await saving;
+	assert.notEqual(
+		store.getSnapshot().shapes,
+		initial,
+		"the save swapped in its own copy of the shapes",
+	);
+	assert.equal(cancelled, 0);
+	assert.notEqual(editor.getState().draft, null);
+
+	const before = new Map(initial.map((shape) => [shape.id, shape]));
+	editor.replace(
+		editor.shapes().filter((shape) => shape !== before.get(shape.id)),
+		"Move selection",
+	);
+	assert.deepEqual(store.getSnapshot().shapes, [moved, initial[1]]);
+	editor.restore(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, initial);
+	editor.restore(undoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, placed);
+	editor.restore(redoEffect);
+	editor.restore(redoEffect);
+	assert.deepEqual(store.getSnapshot().shapes, [moved, initial[1]]);
+	assert.equal(cancelled, 0);
+	await f.session.getSnapshot().save();
+	disconnect();
 	stop();
 });
 
