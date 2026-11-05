@@ -49,6 +49,7 @@ export function CircuitToolbar({
 	onFit,
 	onPan,
 	onUntangle,
+	ercOpen,
 	onErc,
 	onChooseComponent,
 	onUndo,
@@ -65,6 +66,7 @@ export function CircuitToolbar({
 	onFit(): void;
 	onPan(x: number, y: number): void;
 	onUntangle(): void;
+	ercOpen: boolean;
 	onErc(): void;
 	onChooseComponent(definition: SymbolDefinition): void;
 	onUndo(): void;
@@ -158,6 +160,7 @@ export function CircuitToolbar({
 				className={button}
 				tooltip="Electrical rules check"
 				aria-label="Electrical rules check"
+				aria-pressed={ercOpen}
 				onClick={onErc}
 			>
 				<ShieldCheck size={18} aria-hidden="true" />
