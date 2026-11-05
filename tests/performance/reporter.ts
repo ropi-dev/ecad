@@ -8,6 +8,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import type {
 	FullConfig,
 	FullResult,
@@ -74,7 +75,7 @@ export default class PerformanceReporter implements Reporter {
 			else if (outcome === "flaky") {
 				const first = test.results.find((item) => item.status !== "passed");
 				const message =
-					`${test.title} is flaky: it ${first?.status ?? "failed"} on attempt 1 and passed on retry. ${first?.error?.message?.split("\n")[0] ?? ""}`.trim();
+					`${test.title} is flaky: it ${first?.status ?? "failed"} on attempt 1 and passed on retry. ${stripVTControlCharacters(first?.error?.message ?? "").split("\n")[0]}`.trim();
 				this.warnings.push(message);
 				if (process.env.GITHUB_ACTIONS === "true")
 					console.log(
