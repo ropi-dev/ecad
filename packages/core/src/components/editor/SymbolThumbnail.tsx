@@ -56,7 +56,7 @@ function ThumbnailSkeleton() {
 		<span
 			aria-hidden="true"
 			data-thumbnail-skeleton=""
-			className="block h-10 w-16 shrink-0 animate-pulse rounded bg-white/10 motion-reduce:animate-none"
+			className="block h-7 w-11 shrink-0 animate-pulse rounded bg-white/10 motion-reduce:animate-none"
 		/>
 	);
 }
@@ -74,7 +74,7 @@ export function SymbolThumbnail({
 		return observe(element, () => startTransition(() => setReady(true)));
 	}, [ready]);
 	return (
-		<span ref={ref} className="block h-10 w-16 shrink-0" aria-hidden="true">
+		<span ref={ref} className="block h-7 w-11 shrink-0" aria-hidden="true">
 			<Suspense fallback={<ThumbnailSkeleton />}>
 				{ready ? (
 					<SymbolPreview definition={definition} />

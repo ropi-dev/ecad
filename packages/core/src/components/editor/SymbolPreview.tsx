@@ -20,7 +20,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 	if (!definition.children.length)
 		return (
 			<span
-				className="grid h-10 w-16 shrink-0 place-items-center text-xs text-[#9ba7b8]"
+				className="grid h-7 w-11 shrink-0 place-items-center text-[11px] text-[#9ba7b8]"
 				aria-hidden="true"
 			>
 				Empty
@@ -31,8 +31,8 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 	const bounds = shapeBounds(symbol);
 	const padding = Math.max(0.5, Math.max(width, height) * 0.1);
 	const previewScale = Math.min(
-		64 / (width + 2 * padding),
-		40 / (height + 2 * padding),
+		44 / (width + 2 * padding),
+		28 / (height + 2 * padding),
 	);
 	const lines = definition.children
 		.flatMap((child) => {
@@ -52,7 +52,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 	return (
 		<svg
 			viewBox={`${bounds.minX - padding} ${-bounds.maxY - padding} ${width + 2 * padding} ${height + 2 * padding}`}
-			className="h-10 w-16 shrink-0 text-[#76c4c0]"
+			className="h-7 w-11 shrink-0 text-[#76c4c0]"
 			aria-hidden="true"
 		>
 			{lines && (
