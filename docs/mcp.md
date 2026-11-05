@@ -234,7 +234,7 @@ The Vercel deployment does not meet these conditions, so web editor MCP is unrel
 - Vercel runs the app as Vercel Functions through the Nitro adapter. Each function instance has its own copy of the relay. Nothing routes a session's MCP requests to the instance that holds its editor stream. A request that reaches another instance gets HTTP 401, as if the token were wrong.
 - The editor stream is one long function invocation. Vercel stops invocations at the maximum function duration, 300 seconds by default. The stream then closes and the session ends, so the editor needs **Enable MCP** again at least every 5 minutes.
 
-Use `pnpm run dev`, `pnpm run preview`, or another single Node process for web editor MCP. The static nginx deployment has no server endpoints, so MCP is unavailable there.
+Use `pnpm run dev`, `pnpm run preview`, or another single Node process for web editor MCP.
 
 Keep the browser response stream open through any reverse proxy and disable response buffering for that endpoint. Idle streams send a heartbeat every 15 seconds. Drawing commands currently have a 15-second acknowledgement timeout.
 

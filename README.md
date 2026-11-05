@@ -104,37 +104,11 @@ Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format
 
 ### Deploy with the Vercel GitHub app
 
-The `ecad` project in the `ropis-projects` Vercel team connects to `ropi-dev/ecad` through the Vercel GitHub app. Pushes to `main` deploy to production. Other branches and pull requests get preview deployments.
+The `ecad` project in the `ropis-projects` Vercel team connects to `ropi-dev/ecad` through the Vercel GitHub app. Pushes to `main` deploy to production at `app.ecad.ropi.dev`, and `ecad.ropi.dev` redirects there. Other branches and pull requests get preview deployments.
 
 Use the TanStack Start framework preset, Node.js 24, and `packages/web` as the project root. Keep the default install, build, and output settings, and allow the build to include files outside the root directory so it can use the shared workspace packages. Vercel sets `VERCEL`, which enables the Nitro adapter in the web Vite config.
 
 Manage the repository connection and automatic deployments in the project's [Git settings](https://vercel.com/ropis-projects/ecad/settings/git). Builds and deployment status appear in Vercel and on GitHub pull requests. Deployment does not use a GitHub Actions workflow or require `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID` in GitHub.
-
-### Serve the web build with nginx
-
-`pnpm run build:web` generates a static SPA shell at `packages/web/dist/client/_shell.html`. The [nginx site config](deploy/nginx/ecad.conf) serves that directory at `ecad.ropi.dev` and falls back to the shell for direct visits to routes such as `/editor`, `/projects`, and `/step`. It returns 404 for missing assets and server API endpoints. Hashed assets cache for one year; browsers revalidate the HTML shell.
-
-The editor, viewers, and browser project storage work without a Node server. Editor MCP sessions require a running app server and are unavailable in this static deployment. Development and `pnpm run preview` still support those server features.
-
-From `/home/ropi/ecad`, install the site on this Ubuntu host:
-
-```bash
-pnpm install --frozen-lockfile
-pnpm run build:web
-sudo apt-get install acl
-sudo setfacl -m u:www-data:--x /home/ropi
-sudo install -m 644 deploy/nginx/ecad.conf /etc/nginx/sites-available/ecad.ropi.dev
-sudo ln -s /etc/nginx/sites-available/ecad.ropi.dev /etc/nginx/sites-enabled/ecad.ropi.dev
-sudo nginx -t
-sudo systemctl reload nginx
-sudo certbot --nginx -d ecad.ropi.dev --redirect
-```
-
-The ACL lets nginx traverse the home directory to reach the build. Keep the build files readable by `www-data`. Adjust the config's absolute root if the checkout moves. Certbot adds the HTTPS configuration to the installed site file. HTTPS is required for browser project storage on this domain.
-
-Point the deployment domain's DNS records at the host before requesting its HTTPS certificate.
-
-Run `pnpm run build:web` again to publish changes from this checkout. nginx reads the rebuilt files directly and needs no reload when only the build changes. Each build replaces the client output, so requests during a build and tabs running an older build may need a refresh. The live site has no worktree routing.
 
 GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web, desktop, and CLI builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
