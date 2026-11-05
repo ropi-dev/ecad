@@ -2,6 +2,9 @@ import {
 	type CircuitFile,
 	circuitFileSchema,
 } from "@ecad/drawing-core/circuit/model.ts";
+import { savedDrawingShapesSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { ParseResult } from "effect";
 import { parse, stringify } from "smol-toml";
 import { z } from "zod";
@@ -9,9 +12,6 @@ import {
 	parseSavedSymbolLibrary,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import { savedDrawingShapesSchema } from "#/drawing/schema.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import {
 	InvalidProjectDocument,
 	InvalidProjectFile,

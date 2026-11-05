@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatInches, formatMils, fromMils, toMils } from "#/drawing/units.ts";
+import {
+	formatInches,
+	formatMils,
+	fromMils,
+	toMils,
+} from "@ecad/drawing-core/drawing/units.ts";
 import { gridLayers, rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
 import { required } from "./helpers/required.ts";
 
@@ -44,7 +49,9 @@ test("mil grid never subdivides below 50 mil when zoomed in", () => {
 });
 
 test("new shapes and text use mil-sized defaults", async () => {
-	const { drawShape, PIN_RADIUS } = await import("#/drawing/shapes.ts");
+	const { drawShape, PIN_RADIUS } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
 	const { createTextShape, pinNameFontSize, pinNumberFontSize } = await import(
 		"#/drawing/text.ts"
 	);

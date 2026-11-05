@@ -1,5 +1,10 @@
+import { removeShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	canSelectShape,
+	type EditorShape,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { type ClipboardEvent as ReactClipboardEvent, useRef } from "react";
-import { removeShapesEffect } from "#/commands/drawing-commands.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import {
 	drawingClipboardType,
@@ -13,8 +18,6 @@ import {
 	clipboardSelectionText,
 	writeSelectionClipboard,
 } from "#/drawing/clipboard-browser.ts";
-import { canSelectShape, type EditorShape } from "#/drawing/shapes.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
 
 export interface DrawingClipboardOptions {

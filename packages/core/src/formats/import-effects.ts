@@ -1,8 +1,8 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { fileSizeProblem, type ImportFormat } from "#/formats/import-limits.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 export class FileReadError extends Data.TaggedError("FileReadError")<{
 	readonly message: string;

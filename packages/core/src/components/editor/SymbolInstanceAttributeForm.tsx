@@ -1,9 +1,12 @@
+import {
+	type EditorSymbol,
+	symbolShapes,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { toMils } from "@ecad/drawing-core/drawing/units.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ReactNode, useMemo } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { z } from "zod";
-import { type EditorSymbol, symbolShapes } from "#/drawing/shapes.ts";
-import { toMils } from "#/drawing/units.ts";
 
 const number = z.number({ error: "Enter a finite number." });
 const schema = z.object({

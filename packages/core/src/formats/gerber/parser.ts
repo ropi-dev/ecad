@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type {
 	Attributes,
 	Bounds,
@@ -37,7 +38,6 @@ import {
 	union,
 } from "#/formats/gerber/geometry.ts";
 import { buildMacro } from "#/formats/gerber/macros.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 // Ucamco Gerber Layer Format Specification, revision 2026.05.
 // https://www.ucamco.com/en/guest/downloads/gerber-format

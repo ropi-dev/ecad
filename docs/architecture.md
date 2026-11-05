@@ -25,7 +25,7 @@ flowchart LR
 | React adapters | `packages/core/src/components/editor/useEditorScene.ts`, `packages/core/src/components/viewer/SceneViewport.tsx` | Bind rendering resource lifetimes and engine events to React. |
 | Editor | `packages/core/src/components/editor/Editor2D.tsx` | Choose tools, collect pointer input, resolve snapping and text measurements, maintain selection and temporary geometry, and execute completed commands. |
 
-The former core drawing, command, and MCP paths re-export their headless implementations for existing consumers. App-specific symbol catalogs, file conversion, text measurement, worksheet layout, and display descriptions remain in `packages/core/src/drawing/`.
+Import the headless drawing, command, and MCP modules directly from `@ecad/drawing-core/...`. `packages/core` no longer re-exports them, and lint rejects the former `#/drawing/shapes.ts`-style paths. App-specific symbol catalogs, file conversion, text measurement, worksheet layout, and display descriptions remain in `packages/core/src/drawing/`.
 
 ## Running a command without an editor
 

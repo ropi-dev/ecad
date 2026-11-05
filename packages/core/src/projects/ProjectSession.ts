@@ -6,16 +6,16 @@ import { primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import { createProjectSymbolStorage } from "#/projects/project-symbol-storage.ts";
 import "#/performance/initialize.ts";
+import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { ComponentType } from "react";
-import { createDrawingStore } from "#/commands/drawing-store.ts";
 import type {
 	SymbolFile,
 	SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
 import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
 import {

@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import {
 	referenceNetGroups,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { symbolTextShapes } from "#/drawing/shapes.ts";
+import { symbolTextShapes } from "@ecad/drawing-core/drawing/shapes.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import { node, nodes, parseSExpr } from "#/formats/kicad/sexpr.ts";
 import { validateProjectDocument } from "#/projects/format.ts";

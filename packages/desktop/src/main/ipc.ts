@@ -2,13 +2,13 @@ import {
 	parseSavedSymbolLibrary,
 	parseSymbolFile,
 } from "@ecad/core/components/editor/symbolFormat.ts";
-import { errorMessage } from "@ecad/core/lib/error-message.ts";
 import {
 	type ProjectDocument,
 	projectNameSchema,
 	projectPathSchema,
 } from "@ecad/core/projects/format.ts";
 import { parseSymbolConfig } from "@ecad/core/symbol-library/config.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { z } from "zod";
 import {
 	displayChannels,

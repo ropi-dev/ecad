@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect, Either } from "effect";
 import {
 	createSymbolFromSelectionEffect,
 	InvalidDrawingCommand,
@@ -14,8 +13,11 @@ import {
 	rotateShapesEffect,
 	type ShapeInput,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	drawShape,
 	editShapeAttribute,
@@ -23,7 +25,8 @@ import {
 	pinTerminals,
 	symbolShapes,
 	symbolTextShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect, Either } from "effect";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
@@ -839,7 +842,9 @@ test("moving an attached component and adding wires commits once and restores th
 });
 
 test("rotating both ends of a shared wire reconnects the new pin positions", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	const { store, run } = session();
 	const first = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
 	const second = createSymbol(2, symbolDefinitions[0], { x: 30, y: 0 });
@@ -860,7 +865,9 @@ test("rotating both ends of a shared wire reconnects the new pin positions", asy
 });
 
 test("rotation preserves wire interior junctions for pins, labels and branches", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	for (const kind of ["pin", "label", "branch"] as const) {
 		const { store, run } = session();
 		const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
@@ -903,7 +910,9 @@ test("rotation preserves wire interior junctions for pins, labels and branches",
 });
 
 test("rotating a component extends its connection without rewriting a locked wire", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	for (const angle of [Math.PI / 2, -Math.PI / 2]) {
 		const { store, run } = session();
 		const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
@@ -933,7 +942,9 @@ test("rotating a component extends its connection without rewriting a locked wir
 });
 
 test("rotation keeps the two wired terminals of a component on distinct nets", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	for (const rotation of [0, Math.PI / 2])
 		for (const angle of [Math.PI / 2, -Math.PI / 2, Math.PI]) {
 			const { store, run } = session();
@@ -990,7 +1001,9 @@ test("rotation keeps the two wired terminals of a component on distinct nets", a
 });
 
 test("rotation reconnects both ends of a wire with an interior label or branch", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	for (const selectLabel of [false, true])
 		for (const branch of [false, true]) {
 			const { store, run } = session();
@@ -1048,7 +1061,9 @@ test("rotation reconnects both ends of a wire with an interior label or branch",
 });
 
 test("moving an electrical label preserves unrelated nets along both direct routes", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	for (const electrical of ["net", "supply"] as const) {
 		const { store, run } = session();
 		const point = { x: -10, y: 0 };
@@ -1110,7 +1125,9 @@ test("moving an electrical label preserves unrelated nets along both direct rout
 });
 
 test("electrical labels can leave four-way junctions without joining unrelated pins", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	for (const electrical of ["net", "supply"] as const)
 		for (const delta of [
 			{ x: 10, y: 10 },
@@ -1176,7 +1193,9 @@ test("electrical labels can leave four-way junctions without joining unrelated p
 });
 
 test("moving a component preserves its generated label net without capturing unrelated pins", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	const { store, run } = session();
 	const symbol = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
 	const point = pinTerminals(symbol)[0];

@@ -1,3 +1,9 @@
+import {
+	type SymbolLibraryReference,
+	symbolReferenceKey,
+} from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { useEffect, useRef, useState } from "react";
 import {
 	importSymbolFiles,
@@ -5,13 +11,7 @@ import {
 	type SymbolFile,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import {
-	type SymbolLibraryReference,
-	symbolReferenceKey,
-} from "#/drawing/symbol-reference.ts";
 import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
-import { runEffect } from "#/lib/effect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import {

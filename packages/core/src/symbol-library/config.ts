@@ -1,3 +1,8 @@
+import {
+	type SymbolLibraryReference,
+	symbolReferenceKey,
+} from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import * as Schema from "effect/Schema";
 import {
 	libraryDefinitions,
@@ -5,12 +10,7 @@ import {
 	type SymbolLibrary,
 	savedLibrarySchema,
 } from "#/components/editor/symbolFormat.ts";
-import {
-	type SymbolLibraryReference,
-	symbolReferenceKey,
-} from "#/drawing/symbol-reference.ts";
 import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 export const USER_SYMBOL_CONFIG_KEY = "ecad.user-config.v1";
 export const SYMBOL_CONFIG_LIMIT = 10 * 1024 * 1024;

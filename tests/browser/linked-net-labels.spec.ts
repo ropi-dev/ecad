@@ -1,8 +1,8 @@
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
@@ -224,7 +224,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await page.waitForFunction(() => (window as LabelWindow).labelView);
 	const view = await page.evaluate(() => (window as LabelWindow).labelView);
-	const { shapeBounds } = await import("#/drawing/shapes.ts");
+	const { shapeBounds } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const bounds = shapeBounds(label);
 	const canvas = required(await page.locator("canvas").boundingBox());
 	const scale = (view.scale * canvas.width) / 2;

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	drawShape,
+	type EditorShape,
+	symbolShapes,
+	symbolTextShapes,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
 	createEmptySymbolFile,
 	parseSymbolFile,
 } from "#/components/editor/symbolFormat.ts";
@@ -10,12 +16,6 @@ import {
 	selectionFileText,
 	serializeSelection,
 } from "#/drawing/clipboard.ts";
-import {
-	drawShape,
-	type EditorShape,
-	symbolShapes,
-	symbolTextShapes,
-} from "#/drawing/shapes.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";

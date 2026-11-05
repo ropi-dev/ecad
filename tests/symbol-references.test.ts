@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-	parseSymbolFile,
-	type SymbolFile,
-} from "#/components/editor/symbolFormat.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	type EditorSymbol,
 	editShapeAttribute,
 	pinTerminals,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import {
+	parseSymbolFile,
+	type SymbolFile,
+} from "#/components/editor/symbolFormat.ts";
 import {
 	libraryDefinitions,
 	symbolFileShapes,
@@ -20,7 +21,6 @@ import {
 	persistProjectDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
@@ -301,7 +301,7 @@ test("reference depth stays bounded when child definitions are already cached", 
 test("legacy net-symbol label edits survive reference-only save, migration, and resolution", async () => {
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
 	const { symbolTextShapes, normalizeNetSymbol } = await import(
-		"#/drawing/shapes.ts"
+		"@ecad/drawing-core/drawing/shapes.ts"
 	);
 	const definition = required(
 		symbolDefinitions.find((definition) => definition.id === "vdd"),
@@ -352,7 +352,9 @@ test("legacy net-symbol label edits survive reference-only save, migration, and 
 
 test("legacy supply instances retain their value labels until explicitly converted", async () => {
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
-	const { symbolTextShapes } = await import("#/drawing/shapes.ts");
+	const { symbolTextShapes } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
 	const definition = required(
 		symbolDefinitions.find((definition) => definition.id === "power-3v3"),
 	);
@@ -391,7 +393,9 @@ test("legacy supply instances retain their value labels until explicitly convert
 
 test("nested legacy supplies preserve their labels and overrides", async () => {
 	const { symbolDefinitions } = await import("#/drawing/symbols.ts");
-	const { symbolTextShapes } = await import("#/drawing/shapes.ts");
+	const { symbolTextShapes } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
 	const definition = required(
 		symbolDefinitions.find((definition) => definition.id === "power-3v3"),
 	);

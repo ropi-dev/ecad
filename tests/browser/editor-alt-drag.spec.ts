@@ -1,5 +1,8 @@
+import {
+	type EditorShape,
+	snapPoint,
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, type Page, test } from "@playwright/test";
-import { type EditorShape, snapPoint } from "#/drawing/shapes.ts";
 import { required } from "../helpers/required.ts";
 import { drawingGridStep, drawingPoint } from "./symbol-items";
 
@@ -12,7 +15,7 @@ const documentState = async (
 async function shapePoint(page: Page, id: number) {
 	const center = await page.evaluate(async (id) => {
 		const fixturePath = "/tests/browser/editor.tsx";
-		const shapesPath = "/packages/core/src/drawing/shapes.ts";
+		const shapesPath = "/packages/drawing-core/src/drawing/shapes.ts";
 		const { drawingStore } = await import(fixturePath);
 		const { shapeBounds } = await import(shapesPath);
 		const bounds = shapeBounds(
@@ -49,9 +52,9 @@ test.beforeEach(async ({ page }) => {
 	).toBeEnabled();
 	await page.evaluate(async () => {
 		const fixturePath = "/tests/browser/editor.tsx";
-		const storePath = "/packages/core/src/commands/drawing-store.ts";
+		const storePath = "/packages/drawing-core/src/commands/drawing-store.ts";
 		const textPath = "/packages/core/src/components/editor/text.ts";
-		const shapesPath = "/packages/core/src/drawing/shapes.ts";
+		const shapesPath = "/packages/drawing-core/src/drawing/shapes.ts";
 		const { drawingStore } = await import(fixturePath);
 		const { createDrawingStore } = await import(storePath);
 		const { createTextShape, updateText } = await import(textPath);
@@ -120,7 +123,7 @@ test("Alt-drag copies topmost text instead of a symbol behind it", async ({
 }) => {
 	await page.evaluate(async () => {
 		const fixturePath = "/tests/browser/editor.tsx";
-		const storePath = "/packages/core/src/commands/drawing-store.ts";
+		const storePath = "/packages/drawing-core/src/commands/drawing-store.ts";
 		const symbolsPath = "/packages/core/src/drawing/symbols.ts";
 		const { drawingStore } = await import(fixturePath);
 		const { createDrawingStore } = await import(storePath);

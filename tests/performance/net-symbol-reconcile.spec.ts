@@ -14,7 +14,7 @@ test("net-symbol-reconcile", async ({ page }, testInfo) => {
 		"#/drawing/symbols.ts"
 	);
 	const { normalizeNetSymbol, pinTerminals } = await import(
-		"#/drawing/shapes.ts"
+		"@ecad/drawing-core/drawing/shapes.ts"
 	);
 	const original = createCircuit("Reconcile", "pcb-main");
 	const resistor = required(

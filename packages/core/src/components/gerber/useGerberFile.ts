@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Effect } from "effect";
 import {
 	type SetStateAction,
@@ -13,7 +14,6 @@ import {
 	type ParsedGerberObject,
 	parseGerberFileEffect,
 } from "#/formats/parseGerberFile.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 
 const COLORS = [

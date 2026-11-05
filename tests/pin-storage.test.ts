@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { drawShape } from "#/drawing/shapes.ts";
+import { drawShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
 

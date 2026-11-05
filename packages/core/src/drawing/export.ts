@@ -1,10 +1,10 @@
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { Matrix4, Vector3 } from "three";
 import { buildDrawingDisplay, type DisplayShape } from "#/drawing/display.ts";
 import {
 	darkSchematicTheme,
 	lightSchematicTheme,
 } from "#/drawing/schematic-theme.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import {
 	fontPixels,
 	lineHeight,

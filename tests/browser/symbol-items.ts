@@ -1,11 +1,11 @@
-import { expect, type Page } from "@playwright/test";
 import {
 	type EditorSymbol,
 	isBoxSymbol,
 	shapeBounds,
 	symbolChildren,
 	symbolChildWorld,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { expect, type Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles } from "./project-files";
 

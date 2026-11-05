@@ -1,10 +1,10 @@
-import { isNetLabel } from "#/drawing/named-nets.ts";
+import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	type EditorShape,
 	symbolShapes,
 	symbolTextShapes,
-} from "#/drawing/shapes.ts";
-import type { Point } from "#/drawing/types.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface TextAnchor extends Point {

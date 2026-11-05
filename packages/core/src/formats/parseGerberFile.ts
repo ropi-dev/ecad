@@ -1,3 +1,5 @@
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Effect } from "effect";
 import {
 	createPlanarObject3D,
@@ -18,8 +20,6 @@ import {
 	requestWorker,
 } from "#/formats/import-effects.ts";
 import type { ParseWorkerResult } from "#/formats/parse-reply.ts";
-import { runEffect } from "#/lib/effect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 export interface ParsedGerberObject
 	extends Omit<PlanarObject, "type">,

@@ -1,6 +1,6 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import createImporter from "occt-import-js";
 import wasmUrl from "occt-import-js/dist/occt-import-js.wasm?url";
-import { errorMessage } from "#/lib/error-message.ts";
 
 self.onmessage = async (
 	event: MessageEvent<{ buffer: ArrayBuffer; name: string }>,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { drawShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	Group,
 	type Mesh,
@@ -12,7 +13,6 @@ import {
 	symbolFileFromSymbol,
 } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawShape } from "#/drawing/shapes.ts";
 import {
 	libraryDefinitions,
 	symbolFileShapes,

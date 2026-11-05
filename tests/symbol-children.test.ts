@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	moveSymbolChild,
 	pinTerminals,
@@ -9,7 +8,9 @@ import {
 	symbolChildren,
 	symbolShapes,
 	symbolTextShapes,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,
@@ -18,7 +19,6 @@ import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
@@ -130,17 +130,17 @@ test("child customization survives reference-only persistence, nested files, and
 test("child overrides create undoable commands and invalid edits leave history unchanged", async () => {
 	const { Effect, Either } = await import("effect");
 	const { createDrawingStore, DrawingStore } = await import(
-		"#/commands/drawing-store.ts"
+		"@ecad/drawing-core/commands/drawing-store.ts"
 	);
 	const { placeShapesEffect, replaceShapesEffect, undoEffect, redoEffect } =
-		await import("#/commands/drawing-commands.ts");
+		await import("@ecad/drawing-core/commands/drawing-commands.ts");
 	const symbol = createSymbol(1, definition, { x: 10, y: 20 });
 	const store = createDrawingStore();
 	const run = <A, E>(
 		program: import("effect").Effect.Effect<
 			A,
 			E,
-			import("#/commands/drawing-store.ts").DrawingStore
+			import("@ecad/drawing-core/commands/drawing-store.ts").DrawingStore
 		>,
 	) => Effect.runSync(program.pipe(Effect.provideService(DrawingStore, store)));
 	run(placeShapesEffect([symbol], "Place symbol"));
@@ -191,7 +191,7 @@ test("resizing a Box symbol follows rotated axes and preserves sibling text and 
 		resizeShape,
 		resizeSymbolChild,
 		canSelectSymbolChild,
-	} = await import("#/drawing/shapes.ts");
+	} = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const box = required(symbolDefinitions.find(({ id }) => id === "box"));
 	for (const rotation of [0, Math.PI / 2, Math.PI]) {
 		const symbol = { ...createSymbol(1, box, { x: 20, y: 30 }), rotation };

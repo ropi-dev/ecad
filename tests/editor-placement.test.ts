@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { placeShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { drawShape, routeWire } from "@ecad/drawing-core/drawing/shapes.ts";
 import { Effect } from "effect";
-import { placeShapesEffect } from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
 import { placedSelection } from "#/drawing/command-selection.ts";
 import {
 	createLabelShape,
@@ -12,7 +16,6 @@ import {
 	placementLabel,
 	placementSnapsToConnection,
 } from "#/drawing/placement.ts";
-import { drawShape, routeWire } from "#/drawing/shapes.ts";
 import { createTextShape } from "#/drawing/text.ts";
 
 const measureText = (value: string) => value.length * 48;

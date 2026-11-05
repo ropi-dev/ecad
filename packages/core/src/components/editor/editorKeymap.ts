@@ -1,4 +1,4 @@
-import type { Point } from "#/drawing/types.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	arrowDelta,
 	handleHistoryKeyDown,

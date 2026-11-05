@@ -12,7 +12,7 @@ import {
 	resizeHandles,
 	routeWire,
 	wireConnectionPoints,
-} from "#/components/editor/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	createSymbol,
 	symbolDefinitions,
@@ -451,7 +451,9 @@ for (const electrical of ["net", "supply"] as const) {
 }
 
 test("moving a named net symbol avoids connecting an unrelated pin", async () => {
-	const { electricalNets } = await import("#/drawing/named-nets.ts");
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
 	const symbol = createSymbol(
 		1,
 		required(symbolDefinitions.find((definition) => definition.id === "vdd")),

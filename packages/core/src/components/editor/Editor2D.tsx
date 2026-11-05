@@ -1,3 +1,30 @@
+import {
+	createSymbolFromSelectionEffect,
+	redoEffect,
+	removeShapesEffect,
+	replaceAndPlaceShapesEffect,
+	rotateShapesEffect,
+	undoEffect,
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
+import {
+	canSelectShape,
+	canSelectSymbolChild,
+	type EditorShape,
+	moveShapes,
+	moveSymbolChild,
+	replaceSymbolChild,
+	resizeHandles,
+	shapeBounds,
+	symbolChildren,
+	symbolChildWorld,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	formatInches,
+	SCHEMATIC_STEP,
+} from "@ecad/drawing-core/drawing/units.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { TriangleAlert, X } from "lucide-react";
 import {
 	type ReactNode,
@@ -11,15 +38,6 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import {
-	createSymbolFromSelectionEffect,
-	redoEffect,
-	removeShapesEffect,
-	replaceAndPlaceShapesEffect,
-	rotateShapesEffect,
-	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore } from "#/commands/drawing-store.ts";
 import { CanvasOverlay } from "#/components/editor/CanvasOverlay.tsx";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { createCanvasView } from "#/components/editor/canvasView.ts";
@@ -52,24 +70,11 @@ import { useEditorScene } from "#/components/editor/useEditorScene.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
 import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
-import { isNetLabel } from "#/drawing/named-nets.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import {
 	applySelectionEdit,
 	type SelectionEdit,
 } from "#/drawing/selection-edit.ts";
-import {
-	canSelectShape,
-	canSelectSymbolChild,
-	type EditorShape,
-	moveShapes,
-	moveSymbolChild,
-	replaceSymbolChild,
-	resizeHandles,
-	shapeBounds,
-	symbolChildren,
-	symbolChildWorld,
-} from "#/drawing/shapes.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,
@@ -79,11 +84,9 @@ import {
 	createSymbolFromShapes,
 	type SymbolDefinition,
 } from "#/drawing/symbols.ts";
-import { formatInches, SCHEMATIC_STEP } from "#/drawing/units.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";

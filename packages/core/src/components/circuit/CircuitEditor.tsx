@@ -9,6 +9,7 @@ import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { GraphLayout } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { untangleCircuitGraph } from "@ecad/drawing-core/circuit/untangle.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import {
 	lazy,
@@ -29,7 +30,6 @@ import {
 } from "#/components/circuit/CircuitToolbar.tsx";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { handleViewerKeyDown } from "#/engine/navigation.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import {
 	arrowDelta,
 	handleHistoryKeyDown,

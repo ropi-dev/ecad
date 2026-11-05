@@ -6,12 +6,11 @@ import { drawShape } from "@ecad/drawing-core/drawing/shape-geometry.ts";
 import * as publicShapes from "@ecad/drawing-core/drawing/shapes.ts";
 import { normalizeWireSegments } from "@ecad/drawing-core/drawing/wire-normalization.ts";
 import { build } from "esbuild";
-import * as editorShapes from "#/components/editor/shapes.ts";
 
 test("package and editor shape imports expose the same routing API", () => {
 	assert.equal(publicShapes.drawShape, drawShape);
 	assert.equal(
-		editorShapes.connectTransformedTerminals,
+		publicShapes.connectTransformedTerminals,
 		connectTransformedTerminals,
 	);
 	assert.equal(publicShapes.normalizeWireSegments, normalizeWireSegments);

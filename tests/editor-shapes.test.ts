@@ -10,7 +10,7 @@ import {
 	resizeHandles,
 	resizeShape,
 	snapPoint,
-} from "#/components/editor/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import { rulerSpacing, rulerTicks } from "#/engine/ruler.ts";
 import { required } from "./helpers/required.ts";
 

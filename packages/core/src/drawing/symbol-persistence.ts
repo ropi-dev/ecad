@@ -1,12 +1,12 @@
-import { fittingChildOverrides } from "#/drawing/schema.ts";
+import { fittingChildOverrides } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	type EditorShape,
 	type EditorSymbol,
 	fitBoxToBorder,
 	normalizeNetSymbol,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import {
 	createSymbol,
 	type SymbolDefinition,

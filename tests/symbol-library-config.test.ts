@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import {
 	MissingSymbolLibraryError,
 	synchronizePcb,
 } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
 import {

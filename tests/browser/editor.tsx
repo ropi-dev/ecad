@@ -1,13 +1,16 @@
-import { Effect } from "effect";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import {
 	placeRectangleEffect,
 	removeShapesEffect,
 	replaceShapesEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { Effect } from "effect";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";

@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	boxBorder,
 	type EditorShape,
@@ -17,7 +15,11 @@ import {
 	shapeBounds,
 	symbolChildren,
 	symbolChildWorld,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,
@@ -26,9 +28,7 @@ import {
 	persistDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { symbolReferenceKey } from "#/drawing/symbol-reference.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import { fromMils } from "#/drawing/units.ts";
 import { required } from "./helpers/required.ts";
 
 const definition = required(symbolDefinitions.find(({ id }) => id === "box"));
@@ -219,7 +219,7 @@ test("the Box border cannot be selected, moved or resized as a child", async () 
 		moveShapes,
 		resizeSymbolChild,
 		canSelectSymbolChild,
-	} = await import("#/drawing/shapes.ts");
+	} = await import("@ecad/drawing-core/drawing/shapes.ts");
 	for (const rotation of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
 		const symbol = {
 			...createSymbol(1, definition, { x: 20, y: 30 }),

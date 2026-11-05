@@ -1,5 +1,5 @@
-import type { CommandResult } from "#/commands/drawing-commands.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
+import type { CommandResult } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 
 /**
  * The shapes to select after placing new ones. A route's last leg can overlap

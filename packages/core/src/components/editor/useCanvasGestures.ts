@@ -1,24 +1,4 @@
-import {
-	type Dispatch,
-	type DOMAttributes,
-	type PointerEvent as ReactPointerEvent,
-	type SetStateAction,
-	useCallback,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import type { CanvasView } from "#/components/editor/canvasView.ts";
-import type { EditorSession } from "#/components/editor/editorSession.ts";
-import { pasteSelection } from "#/drawing/clipboard.ts";
-import { isNetLabel } from "#/drawing/named-nets.ts";
-import {
-	createPlacementShape,
-	isPlacementTool,
-	type PlacementTool,
-	placementLabel,
-	placementSnapsToConnection,
-} from "#/drawing/placement.ts";
+import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	canSelectShape,
 	canSelectSymbolChild,
@@ -42,9 +22,29 @@ import {
 	snapPoint,
 	symbolChildren,
 	symbolChildWorld,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import {
+	type Dispatch,
+	type DOMAttributes,
+	type PointerEvent as ReactPointerEvent,
+	type SetStateAction,
+	useCallback,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import type { CanvasView } from "#/components/editor/canvasView.ts";
+import type { EditorSession } from "#/components/editor/editorSession.ts";
+import { pasteSelection } from "#/drawing/clipboard.ts";
+import {
+	createPlacementShape,
+	isPlacementTool,
+	type PlacementTool,
+	placementLabel,
+	placementSnapsToConnection,
+} from "#/drawing/placement.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
-import type { Point } from "#/drawing/types.ts";
 import { screenToWorld } from "#/engine/camera.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";

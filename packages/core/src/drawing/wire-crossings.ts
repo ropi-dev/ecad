@@ -3,8 +3,8 @@ import {
 	type EditorShape,
 	PIN_RADIUS,
 	resizeHandles,
-} from "#/drawing/shapes.ts";
-import type { Point } from "#/drawing/types.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 
 export interface WireCrossings {
 	bridges: { offset: number; radius: number; side: number }[];

@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect } from "effect";
-import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import {
 	placeShapesEffect,
 	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { lineStyles } from "#/drawing/line-style.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import { lineStyles } from "@ecad/drawing-core/drawing/line-style.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	type BasicShape,
 	drawShape,
@@ -20,7 +19,11 @@ import {
 	moveShapes,
 	resizeHandles,
 	resizeShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect } from "effect";
+import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,

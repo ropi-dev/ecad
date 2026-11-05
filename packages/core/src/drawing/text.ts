@@ -1,11 +1,11 @@
-import type { TextShape } from "#/drawing/shapes.ts";
-import type { Point } from "#/drawing/types.ts";
+import type { TextShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	DEFAULT_STROKE_WIDTH,
 	DEFAULT_TEXT_SIZE,
 	PIN_NAME_SIZE,
 	PIN_NUMBER_SIZE,
-} from "#/drawing/units.ts";
+} from "@ecad/drawing-core/drawing/units.ts";
 
 export const fontPixels = 96;
 export const padding = 12;

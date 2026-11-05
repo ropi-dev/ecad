@@ -1,5 +1,4 @@
-import type { LineStyle } from "#/drawing/line-style.ts";
-import type { LabelRole } from "#/drawing/placement.ts";
+import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import {
 	boxBorder,
 	type EditorShape,
@@ -14,9 +13,10 @@ import {
 	type SymbolLabelPosition,
 	setSymbolLabelPosition,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts";
+import type { LabelRole } from "#/drawing/placement.ts";
 import { type MeasureText, updateText } from "#/drawing/text.ts";
-import type { TextAlignment } from "#/drawing/text-alignment.ts";
 
 /** One change made in the Attributes panel. */
 export type SelectionEdit =

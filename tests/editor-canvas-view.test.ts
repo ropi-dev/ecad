@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { drawShape, moveShapes } from "@ecad/drawing-core/drawing/shapes.ts";
 import { createCanvasView } from "#/components/editor/canvasView.ts";
 import { createTextAnchorReader } from "#/components/editor/textAnchors.ts";
 import { createPlacementShape } from "#/drawing/placement.ts";
-import { drawShape, moveShapes } from "#/drawing/shapes.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 
 const snapshot = (scale = 3): Viewer2DSnapshot => ({

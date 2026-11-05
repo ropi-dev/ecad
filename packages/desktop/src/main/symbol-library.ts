@@ -22,7 +22,6 @@ import {
 	type SymbolFile,
 	type SymbolLibrary,
 } from "@ecad/core/components/editor/symbolFormat.ts";
-import { errorMessage } from "@ecad/core/lib/error-message.ts";
 import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
 	type ConfiguredSymbolLibrary,
@@ -34,6 +33,7 @@ import {
 	validateSymbolLibraries,
 } from "@ecad/core/symbol-library/config.ts";
 import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.tsx";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 
 const symbolExtension = /\.(ecadsym|json)$/i;
 

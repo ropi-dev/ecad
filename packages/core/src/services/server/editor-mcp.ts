@@ -1,12 +1,12 @@
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { Effect } from "effect";
-import { z } from "zod";
-import { runEffect } from "#/lib/effect.ts";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import {
 	drawingAcknowledgementByteLimit,
 	drawingReplySchema,
-} from "#/mcp/drawing-protocol.ts";
-import { createDrawingMcpServer } from "#/mcp/drawing-server.ts";
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
+import { createDrawingMcpServer } from "@ecad/drawing-core/mcp/drawing-server.ts";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { Effect } from "effect";
+import { z } from "zod";
 import {
 	editorClientAddress,
 	editorClientKey,

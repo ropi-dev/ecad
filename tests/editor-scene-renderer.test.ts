@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	drawShape,
+	type EditorShape,
+	moveShapes,
+	type TextShape,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
 	BufferGeometry,
 	Group,
 	LineLoop,
@@ -15,12 +21,6 @@ import {
 	buildStaticDisplay,
 	type DrawingDisplay,
 } from "#/drawing/display.ts";
-import {
-	drawShape,
-	type EditorShape,
-	moveShapes,
-	type TextShape,
-} from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
 import { required } from "./helpers/required.ts";

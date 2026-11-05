@@ -18,9 +18,7 @@ import {
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createDrawingStore } from "@ecad/core/commands/drawing-store.ts";
 import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
-import type { EditorShape } from "@ecad/core/drawing/shapes.ts";
 import {
 	MAX_GERBER_FILE_BYTES,
 	MAX_STEP_FILE_BYTES,
@@ -43,6 +41,8 @@ import {
 	serializeProjectManifest,
 } from "@ecad/core/projects/format.ts";
 import { ProjectRepository } from "@ecad/core/projects/repository.ts";
+import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
 	createDesktopProjectDirectory,

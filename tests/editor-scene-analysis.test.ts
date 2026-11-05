@@ -11,9 +11,9 @@ import {
 	resizeHandles,
 	symbolShapes,
 	wireJunctions,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import type { Point } from "#/drawing/types.ts";
 import {
 	buildWireCrossings,
 	type WireCrossings,

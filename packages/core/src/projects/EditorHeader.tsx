@@ -1,5 +1,5 @@
+import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { ReactNode } from "react";
-import type { createDrawingStore } from "#/commands/drawing-store.ts";
 import { McpControls } from "#/components/editor/McpControls.tsx";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 export function EditorHeader({

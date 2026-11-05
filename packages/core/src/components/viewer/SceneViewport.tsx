@@ -1,3 +1,4 @@
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	type ReactNode,
 	type Ref,
@@ -29,7 +30,6 @@ import {
 	type SceneViewportRuntime,
 } from "#/engine/scene-viewport.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export interface SceneViewportHandle extends Viewer3DHandle {

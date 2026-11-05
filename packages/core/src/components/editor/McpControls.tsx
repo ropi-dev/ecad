@@ -1,7 +1,7 @@
+import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { PlugZap } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
-import type { createDrawingStore } from "#/commands/drawing-store.ts";
 import {
 	connectEditorMcp,
 	type EditorMcpState,

@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Effect } from "effect";
-import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import {
 	redoEffect,
 	replaceShapesEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
-	parseSymbolFile,
-	symbolFileFromSymbol,
-} from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	containsSelection,
 	drawShape,
@@ -22,7 +18,14 @@ import {
 	type PinShape,
 	pinTerminals,
 	shapeBounds,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect } from "effect";
+import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
+import {
+	parseSymbolFile,
+	symbolFileFromSymbol,
+} from "#/components/editor/symbolFormat.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";

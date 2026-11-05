@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { Cause, Effect, Exit, Fiber, TestClock, TestContext } from "effect";
 import { BufferGeometry, Mesh } from "three";
 import { expandGerberFile } from "#/formats/expandGerberFile.ts";
@@ -15,7 +16,6 @@ import { ImportOwnership } from "#/formats/import-ownership.ts";
 import { type ImportFile, importFilesEffect } from "#/formats/importFiles.ts";
 import { parseStepFile } from "#/formats/parseStepFile.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
-import { runEffect } from "#/lib/effect.ts";
 import { installArchiveWorker } from "./helpers/archive-worker";
 
 function deferred() {

@@ -1,7 +1,7 @@
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
 import { Effect } from "effect";
 import { checkFileSize, requestWorker } from "#/formats/import-effects.ts";
 import type { KiCadImportResult } from "#/formats/kicad/import.ts";
-import { runEffect } from "#/lib/effect.ts";
 
 export function parseKiCadFileEffect(file: File) {
 	return Effect.gen(function* () {

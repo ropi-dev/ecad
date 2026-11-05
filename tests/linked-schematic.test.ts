@@ -164,7 +164,7 @@ test("standalone named and unnamed nets retain their identities", () => {
 });
 
 test("placing a circuit component keeps existing schematic wire geometry", async () => {
-	const { drawShape } = await import("#/drawing/shapes.ts");
+	const { drawShape } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const original = createCircuit("Board");
 	const wire = drawShape(3, "wire", { x: 3, y: 0 }, { x: 7, y: 0 });
 	const first = synchronizePcb(
@@ -566,7 +566,7 @@ test("repeated PCB names allocate distinct file names without changing existing 
 });
 
 test("generated labels move independently with wires and survive synchronization and reopen", async () => {
-	const { moveShapes } = await import("#/drawing/shapes.ts");
+	const { moveShapes } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const original = createCircuit("Move");
 	const file = structuredClone(original);
 	const a = componentFromSymbol(resistor, []),
@@ -875,7 +875,7 @@ test("generated symbols avoid occupied positions after deletion and do not creat
 });
 
 test("generated symbols avoid existing wire geometry as well as symbol centers", async () => {
-	const { drawShape } = await import("#/drawing/shapes.ts");
+	const { drawShape } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const original = createCircuit("Wire placement");
 	const file = structuredClone(original);
 	file.circuit.components = [componentFromSymbol(resistor, [])];
@@ -1190,11 +1190,11 @@ test("net labels attach to the source pin when an earlier pin repeats its number
 test("rotating generated components preserves attached and independently moved labels", async () => {
 	const { Effect } = await import("effect");
 	const { createDrawingStore, DrawingStore } = await import(
-		"#/commands/drawing-store.ts"
+		"@ecad/drawing-core/commands/drawing-store.ts"
 	);
 	const { placeShapesEffect, rotateShapesEffect, undoEffect, redoEffect } =
-		await import("#/commands/drawing-commands.ts");
-	const { moveShapes } = await import("#/drawing/shapes.ts");
+		await import("@ecad/drawing-core/commands/drawing-commands.ts");
+	const { moveShapes } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const original = createCircuit("Rotate labels");
 	const file = structuredClone(original);
 	const a = componentFromSymbol(resistor, []),
@@ -1242,7 +1242,7 @@ test("rotating generated components preserves attached and independently moved l
 					effect: import("effect").Effect.Effect<
 						A,
 						E,
-						import("#/commands/drawing-store.ts").DrawingStore
+						import("@ecad/drawing-core/commands/drawing-store.ts").DrawingStore
 					>,
 				) =>
 					Effect.runSync(
@@ -1396,7 +1396,9 @@ test("circuit renames and deletions update net-symbol declarations without resur
 });
 
 test("circuit membership removals survive direct and rotated net-symbol contacts", async () => {
-	const { pinTerminals, drawShape } = await import("#/drawing/shapes.ts");
+	const { pinTerminals, drawShape } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
 	for (const contact of ["direct", "rotated", "wire", "multi"] as const)
 		for (const operation of [
 			"disconnect",
@@ -1556,7 +1558,7 @@ test("undo and redo of a net-name merge restore every symbol declaration and mem
 	const { createCircuitStore } = await import(
 		"@ecad/drawing-core/circuit/store.ts"
 	);
-	const { pinTerminals } = await import("#/drawing/shapes.ts");
+	const { pinTerminals } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const { drawingFileSchema } = await import("#/projects/format.ts");
 	for (const connected of [0, 1, 2]) {
 		const original = createCircuit("Undo rails");

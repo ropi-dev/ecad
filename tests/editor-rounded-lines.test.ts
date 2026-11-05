@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { drawShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawShape } from "#/drawing/shapes.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 

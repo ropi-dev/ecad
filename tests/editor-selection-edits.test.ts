@@ -1,12 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLabelShape } from "#/drawing/placement.ts";
-import {
-	applyLineStyle,
-	applySelectionEdit,
-	changeLabelRole,
-	type SelectionEditContext,
-} from "#/drawing/selection-edit.ts";
 import {
 	boxBorder,
 	drawShape,
@@ -20,7 +13,14 @@ import {
 	symbolChildren,
 	symbolLabelPosition,
 	type TextShape,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { createLabelShape } from "#/drawing/placement.ts";
+import {
+	applyLineStyle,
+	applySelectionEdit,
+	changeLabelRole,
+	type SelectionEditContext,
+} from "#/drawing/selection-edit.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createTextShape, updateText } from "#/drawing/text.ts";
 

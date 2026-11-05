@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-	parseSymbolFile,
-	symbolFileFromSymbol,
-} from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
-import { drawingShapeSchema } from "#/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
 	drawShape,
 	pinTerminals,
 	replaceSymbolChild,
 	symbolChildren,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	parseSymbolFile,
+	symbolFileFromSymbol,
+} from "#/components/editor/symbolFormat.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import {
 	createSymbol,

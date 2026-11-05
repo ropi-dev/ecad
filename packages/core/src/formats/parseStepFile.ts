@@ -1,3 +1,5 @@
+import { runEffect } from "@ecad/drawing-core/lib/effect.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Effect } from "effect";
 import type { ViewerScene } from "#/engine/scene.ts";
 import {
@@ -9,8 +11,6 @@ import {
 } from "#/formats/import-effects.ts";
 import { createStepGroup, disposeStepGroup } from "#/formats/step/scene.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
-import { runEffect } from "#/lib/effect.ts";
-import { errorMessage } from "#/lib/error-message.ts";
 
 export interface ParsedStepFile {
 	name: string;

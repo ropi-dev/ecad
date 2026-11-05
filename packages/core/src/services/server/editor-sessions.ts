@@ -1,10 +1,10 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { Data, Effect } from "effect";
 import type {
 	DrawingEnvelope,
 	DrawingOperation,
 	DrawingReply,
-} from "#/mcp/drawing-protocol.ts";
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
+import { Data, Effect } from "effect";
 
 export class EditorSessionError extends Data.TaggedError("EditorSessionError")<{
 	code: string;

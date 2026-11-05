@@ -1,3 +1,4 @@
+import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	createContext,
 	type ReactNode,
@@ -5,7 +6,6 @@ import {
 	useContext,
 	useState,
 } from "react";
-import type { createDrawingStore } from "#/commands/drawing-store.ts";
 
 interface EditorControls {
 	id: symbol;

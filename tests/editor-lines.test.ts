@@ -1,19 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Effect, Either } from "effect";
 import {
 	createSymbolFromSelectionEffect,
 	placeShapesEffect,
 	redoEffect,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
-import { createDrawingStore, DrawingStore } from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
-	libraryDefinitions,
-	parseSymbolFile,
-	symbolFileFromSymbol,
-} from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
+	createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	drawShape,
 	editShapeAttribute,
@@ -25,10 +21,17 @@ import {
 	resizeShape,
 	symbolShapes,
 	wireConnectionPoints,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
+import { Effect, Either } from "effect";
+import {
+	libraryDefinitions,
+	parseSymbolFile,
+	symbolFileFromSymbol,
+} from "#/components/editor/symbolFormat.ts";
+import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { createSymbol, createSymbolFromShapes } from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
-import { drawingShapeSchema } from "#/mcp/drawing-protocol.ts";
 import { required } from "./helpers/required.ts";
 
 const close = (actual: number, expected: number) =>

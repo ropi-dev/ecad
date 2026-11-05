@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sameDrawing } from "@ecad/drawing-core/commands/drawing-equality.ts";
-import { Effect } from "effect";
 import {
 	placeShapesEffect,
 	replaceShapesEffect,
 	type ShapeInput,
 	undoEffect,
-} from "#/commands/drawing-commands.ts";
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { sameDrawing } from "@ecad/drawing-core/commands/drawing-equality.ts";
 import {
 	createDrawingStore,
 	type DrawingDocument,
 	DrawingStore,
-} from "#/commands/drawing-store.ts";
+} from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	canSelectSymbolChild,
 	type EditorShape,
 	type EditorSymbol,
 	symbolChildren,
-} from "#/drawing/shapes.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import { Effect } from "effect";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 

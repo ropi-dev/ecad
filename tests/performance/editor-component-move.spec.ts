@@ -10,7 +10,9 @@ test("editor-component-move", async ({ page }, testInfo) => {
 	const { createSymbol, symbolDefinitions } = await import(
 		"#/drawing/symbols.ts"
 	);
-	const { drawShape, pinTerminals } = await import("#/drawing/shapes.ts");
+	const { drawShape, pinTerminals } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
 	const symbol = createSymbol(
 		201,
 		required(

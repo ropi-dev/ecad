@@ -1,5 +1,5 @@
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { drawingClipboardType } from "#/drawing/clipboard.ts";
-import type { EditorShape } from "#/drawing/shapes.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 export const webDrawingClipboardType = `web ${drawingClipboardType}`;

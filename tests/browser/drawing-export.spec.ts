@@ -22,10 +22,10 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	await page.evaluate(async (shapes) => {
 		const editorUrl = "/tests/browser/editor.tsx";
 		const editor = (await import(editorUrl)) as typeof import("./editor.tsx");
-		const storeUrl = "/packages/core/src/commands/drawing-store.ts";
+		const storeUrl = "/packages/drawing-core/src/commands/drawing-store.ts";
 		const { createDrawingStore } = (await import(
 			storeUrl
-		)) as typeof import("#/commands/drawing-store.ts");
+		)) as typeof import("@ecad/drawing-core/commands/drawing-store.ts");
 		editor.drawingStore.transact(() => [
 			undefined,
 			createDrawingStore(shapes).getSnapshot(),

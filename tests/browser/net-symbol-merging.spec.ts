@@ -1,8 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
+import { pinTerminals } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
-import { pinTerminals } from "#/drawing/shapes.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
@@ -336,7 +336,9 @@ for (const kind of ["built-in", "custom"] as const)
 	test(`opening an existing schematic rebuilds stale circuit nets from matching ${kind} net symbols`, async ({
 		page,
 	}) => {
-		const { normalizeNetSymbol } = await import("#/drawing/shapes.ts");
+		const { normalizeNetSymbol } = await import(
+			"@ecad/drawing-core/drawing/shapes.ts"
+		);
 		const original = createCircuit("Untitled", "pcb-main");
 		const resistor = required(
 			symbolDefinitions.find((definition) => definition.id === "resistor"),

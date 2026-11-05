@@ -8,9 +8,10 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 import { invalidCircuit } from "@ecad/drawing-core/circuit/store.ts";
-import { z } from "zod";
-import { componentFromSymbol } from "#/circuit/symbol-components.ts";
-import { type ElectricalNet, electricalNets } from "#/drawing/named-nets.ts";
+import {
+	type ElectricalNet,
+	electricalNets,
+} from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
@@ -20,17 +21,19 @@ import {
 	shapeBounds,
 	symbolShapes,
 	type TextShape,
-} from "#/drawing/shapes.ts";
-import type { SymbolLibraryReference } from "#/drawing/symbol-reference.ts";
-import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
-import { fontPixels, type MeasureText, updateText } from "#/drawing/text.ts";
-import type { Bounds, Point } from "#/drawing/types.ts";
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	DEFAULT_PIN_LENGTH,
 	DEFAULT_TEXT_SIZE,
 	fromMils,
 	SYMBOL_TEXT_SIZE,
-} from "#/drawing/units.ts";
+} from "@ecad/drawing-core/drawing/units.ts";
+import { z } from "zod";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
+import { fontPixels, type MeasureText, updateText } from "#/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 const fallbackPrefix = "circuit-fallback.";

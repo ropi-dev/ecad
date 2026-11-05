@@ -1,3 +1,14 @@
+import type {
+	EditorSymbol,
+	ResizeHandle,
+	SymbolChild,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	type EditorShape,
+	shapeBounds,
+	symbolChildWorld,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import { memo, useMemo, useState, useSyncExternalStore } from "react";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
 import { createTextAnchorReader } from "#/components/editor/textAnchors.ts";
@@ -5,17 +16,6 @@ import type {
 	CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
-import type {
-	EditorSymbol,
-	ResizeHandle,
-	SymbolChild,
-} from "#/drawing/shapes.ts";
-import {
-	type EditorShape,
-	shapeBounds,
-	symbolChildWorld,
-} from "#/drawing/shapes.ts";
-import type { Point } from "#/drawing/types.ts";
 import { worldToScreen } from "#/engine/camera.ts";
 
 interface CanvasOverlayProps {
