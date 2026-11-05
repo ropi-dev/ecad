@@ -76,6 +76,8 @@ interface ScenarioState {
 	/** Why the scenario has no base comparison. */
 	headOnly?: string;
 	node: boolean;
+	/** Base failures so far; a second one makes the scenario head-only. */
+	baseFailures: number;
 	pairs: Pair[];
 	/** Every head sample, for the head budget checks. */
 	head: Record<string, number>[];
@@ -313,6 +315,7 @@ async function compare(plan: Plan): Promise<number> {
 				const state = states.get(result.scenario) ?? {
 					test: result.test,
 					node: result.report.environment.userAgent.startsWith("Node/"),
+					baseFailures: 0,
 					pairs: [],
 					head: [],
 				};
@@ -329,15 +332,22 @@ async function compare(plan: Plan): Promise<number> {
 				const baseResult = baseOutput?.runs.find(
 					(run) => run.scenario === result.scenario,
 				);
+				const failed = baseTest && baseTest.status !== "passed";
 				if (baseResult) {
 					state.pairs.push({ base: baseResult.metrics, head: result.metrics });
-				} else if (rounds === 1 || !state.pairs.length) {
-					state.headOnly = baseTest
-						? `base ${baseTest.status}${baseTest.error ? `: ${baseTest.error}` : ""}`
+				} else if (failed && state.baseFailures < 1) {
+					// A base flake costs a round, not the comparison.
+					state.baseFailures++;
+					warnings.push(
+						`${result.scenario}: base ${baseTest.status} in round ${rounds}${baseTest.error ? ` (${baseTest.error})` : ""}; it runs again.`,
+					);
+				} else if (failed || !state.pairs.length) {
+					state.headOnly = failed
+						? `base ${baseTest.status} twice${baseTest.error ? `: ${baseTest.error}` : ""}`
 						: "base did not report it";
 				} else
 					warnings.push(
-						`${result.scenario}: round ${rounds} has no base result (${baseTest?.status ?? "missing"}); the pair was dropped.`,
+						`${result.scenario}: round ${rounds} has no base result; the pair was dropped.`,
 					);
 			}
 			for (const state of states.values())

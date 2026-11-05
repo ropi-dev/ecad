@@ -68,7 +68,13 @@ export default class PerformanceReporter implements Reporter {
 			test: test.title,
 			status: result.status,
 			...(result.error?.message
-				? { error: result.error.message.split("\n")[0].slice(0, 500) }
+				? {
+						error: result.error.message
+							// biome-ignore lint/suspicious/noControlCharactersInRegex: strips terminal colours
+							.replace(/\u001b\[[0-9;]*m/g, "")
+							.split("\n")[0]
+							.slice(0, 500),
+					}
 				: {}),
 		});
 		for (const attachment of result.attachments.filter(
