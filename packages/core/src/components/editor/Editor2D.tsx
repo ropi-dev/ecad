@@ -1,102 +1,61 @@
-import {
-	createSymbolFromSelectionEffect,
-	redoEffect,
-	removeShapesEffect,
-	replaceAndPlaceShapesEffect,
-	rotateShapesEffect,
-	undoEffect,
-} from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
-import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
-	canSelectShape,
-	canSelectSymbolChild,
 	type EditorShape,
-	moveShapes,
-	moveSymbolChild,
-	replaceSymbolChild,
-	resizeHandles,
 	shapeBounds,
-	symbolChildren,
-	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	formatInches,
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
-import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { TriangleAlert, X } from "lucide-react";
 import {
 	type ReactNode,
 	useCallback,
 	useEffect,
 	useEffectEvent,
-	useId,
 	useLayoutEffect,
 	useMemo,
-	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
 import { CanvasOverlay } from "#/components/editor/CanvasOverlay.tsx";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
-import { createCanvasView } from "#/components/editor/canvasView.ts";
+import {
+	EditorMessages,
+	useEditorMessages,
+} from "#/components/editor/EditorMessages.tsx";
 import { EditorToolbar } from "#/components/editor/EditorToolbar.tsx";
+import { editorInteractionHint } from "#/components/editor/editorInteractionHint.ts";
 import {
-	canvasKeyCommand,
-	editorShortcut,
-} from "#/components/editor/editorKeymap.ts";
-import {
-	dismissEditorIssues,
-	editorIssues,
-	retainDismissedIssues,
-	visibleEditorMessages,
-} from "#/components/editor/editorMessages.ts";
-import {
-	createEditorSession,
-	type DrawingCommand,
-} from "#/components/editor/editorSession.ts";
+	handleCanvasKeyDown,
+	handleEditorShortcut,
+} from "#/components/editor/editorKeyHandlers.ts";
+import { editorIssues } from "#/components/editor/editorMessages.ts";
+import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { SelectionAttributes } from "#/components/editor/SelectionAttributes.tsx";
-import {
-	parseSymbolFile,
-	symbolFileFromSymbol,
-} from "#/components/editor/symbolFormat.ts";
 import {
 	type CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
 import { useDrawingClipboard } from "#/components/editor/useDrawingClipboard.ts";
+import { useEditorCommands } from "#/components/editor/useEditorCommands.ts";
 import { useEditorScene } from "#/components/editor/useEditorScene.ts";
+import {
+	selectionFitBounds,
+	useEditorSelection,
+} from "#/components/editor/useEditorSelection.ts";
+import { useEditorViewport } from "#/components/editor/useEditorViewport.ts";
+import { useLegacyWireReroute } from "#/components/editor/useLegacyWireReroute.ts";
+import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.ts";
+import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
-import { rerouteLegacyWires } from "#/drawing/diagonal-wires.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import {
-	applySelectionEdit,
-	type SelectionEdit,
-} from "#/drawing/selection-edit.ts";
-import {
-	symbolFileShapes,
-	symbolFileWithShapes,
-} from "#/drawing/symbol-file.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
-import {
-	createSymbolFromShapes,
-	type SymbolDefinition,
-} from "#/drawing/symbols.ts";
+import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
-import { measureText } from "#/engine/drawing/text.ts";
-import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
-import { isEditableTarget } from "#/lib/keyboard.ts";
-import { measurePerformance } from "#/performance/runtime.ts";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
-import { isProjectError } from "#/projects/errors.ts";
-import {
-	useProjectActions,
-	useProjectSelection,
-} from "#/projects/ProjectProvider.tsx";
-import { projectIndex } from "#/projects/project-index.ts";
+import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
 
@@ -108,13 +67,6 @@ export interface Editor2DProps {
 	enableMcp?: boolean;
 }
 
-const cameraStates = new WeakMap<
-	object,
-	{ camera?: Viewer2DSnapshot["camera"] }
->();
-
-const reroutedStores = new WeakSet<object>();
-
 export type EditorCanvasProps = Editor2DProps & {
 	symbolName?: string;
 	drawingName?: string;
@@ -124,25 +76,6 @@ export type EditorCanvasProps = Editor2DProps & {
 
 export function Editor2D(props: Editor2DProps = {}) {
 	return <EditorDocument {...props} Canvas={EditorCanvas} />;
-}
-
-function messageButtonRef(target: { current: HTMLButtonElement | null }) {
-	return (button: HTMLButtonElement) => {
-		target.current = button;
-		return () => {
-			if (target.current === button) target.current = null;
-			const owner = button.ownerDocument;
-			if (owner.activeElement !== button) return;
-			const canvas = button.closest("main")?.querySelector("canvas");
-			queueMicrotask(() => {
-				if (
-					!button.isConnected &&
-					(!owner.activeElement || owner.activeElement === owner.body)
-				)
-					canvas?.focus({ preventScroll: true });
-			});
-		};
-	};
 }
 
 function EditorCanvas({
@@ -165,11 +98,8 @@ function EditorCanvas({
 		}),
 	);
 	const store = suppliedStore ?? project?.store ?? ownedStore;
-	let cameraState = cameraStates.get(store);
-	if (!cameraState) {
-		cameraState = {};
-		cameraStates.set(store, cameraState);
-	}
+	const viewport = useEditorViewport(store);
+	const { cameraView, gridStep, ready } = viewport;
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
 		() => registerEditor?.(store, enableMcp),
@@ -218,162 +148,31 @@ function EditorCanvas({
 		useState<SymbolDefinition | null>(null);
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
-	const [editTarget, setEditTarget] = useState<SymbolEditTarget | null>(null);
-	const [editingDefinition, setEditingDefinition] =
-		useState<SymbolEditTarget | null>(null);
 	const [snapEnabled, setSnapEnabled] = useState(true);
-	const [ready, setReady] = useState(false);
-	const [viewerError, setViewerError] = useState("");
-	const [rerouteNotice, setRerouteNotice] = useState<{
-		text: string;
-		historyId: number;
-	} | null>(null);
-	const issues = editorIssues([
-		viewerError,
-		rerouteNotice?.historyId === drawing.history.currentId
-			? rerouteNotice.text
-			: "",
-		...(symbolLibrary.loading ? [] : resolved.errors),
-		project?.error,
-		...(project?.libraryErrors ?? []),
-	]);
-	const [dismissedIssues, setDismissedIssues] = useState<ReadonlySet<string>>(
-		() => new Set(),
-	);
-	if (!symbolLibrary.loading) {
-		const retained = retainDismissedIssues(dismissedIssues, issues);
-		if (retained !== dismissedIssues) setDismissedIssues(retained);
-	}
-	const hiddenIssues = issues.filter((issue) => dismissedIssues.has(issue));
-	const messages = visibleEditorMessages(commandError, issues, dismissedIssues);
-	const dismissMessages = () => {
-		session.setError("");
-		setDismissedIssues((dismissed) => dismissEditorIssues(dismissed, issues));
-	};
-	const dismissButton = useRef<HTMLButtonElement>(null);
-	const issuesButton = useRef<HTMLButtonElement>(null);
-	const [dismissButtonRef] = useState(() => messageButtonRef(dismissButton));
-	const [issuesButtonRef] = useState(() => messageButtonRef(issuesButton));
-	const pendingFocus = useRef<"issues" | "messages" | null>(null);
-	useEffect(() => {
-		const target = pendingFocus.current;
-		if (!target) return;
-		pendingFocus.current = null;
-		(target === "issues" ? issuesButton : dismissButton).current?.focus({
-			preventScroll: true,
-		});
-	});
-	const [cameraView] = useState(createCanvasView);
-	const gridStep = useSyncExternalStore(
-		cameraView.subscribe,
-		cameraView.getGridStep,
-		cameraView.getGridStep,
-	);
-	const selected = useMemo(
-		() =>
-			shapes.filter(
-				(shape) =>
-					selectedIds.has(shape.id) && canSelectShape(shape, allowLocked),
-			),
-		[shapes, selectedIds, allowLocked],
-	);
-	const selectedSymbol =
-		selected.length === 1 && selected[0].kind === "symbol"
-			? selected[0]
-			: undefined;
-	const selectedChild = useMemo(
-		() =>
-			selectedSymbol && selectedChildKey
-				? symbolChildren(selectedSymbol).find(
-						(child) =>
-							child.key === selectedChildKey &&
-							canSelectSymbolChild(selectedSymbol, child, allowLocked),
-					)
-				: undefined,
-		[selectedSymbol, selectedChildKey, allowLocked],
-	);
-
-	const selectionLocked = selectedChild
-		? selectedChild.shape.locked === true
-		: selected.length > 0 && selected.every((shape) => shape.locked === true);
-
-	const symbolPath = useProjectSelection(({ project }) => {
-		if (!project || !selectedSymbol) return undefined;
-		if (
-			selectedSymbol.library &&
-			(selectedSymbol.library.scope !== "project" ||
-				selectedSymbol.library.id !== "project-symbols")
-		)
-			return undefined;
-		return projectIndex(project).symbolsById.get(selectedSymbol.definitionId)
-			?.path;
-	});
-
-	const definitionId = selectedSymbol?.definitionId;
-	const definitionLibrary = selectedSymbol?.library;
-	const prepareEdit = useEffectEvent(symbolLibrary.prepareEdit);
-	useEffect(() => {
-		let active = true;
-		setEditTarget(null);
-		if (definitionId && !symbolLibrary.loading) {
-			void prepareEdit(definitionId, definitionLibrary).then(
-				(target) => {
-					if (active) setEditTarget(target);
-				},
-				(cause) => {
-					if (active)
-						session.setError(
-							errorMessage(cause, "Unable to open the symbol definition."),
-						);
-				},
-			);
-		}
-		return () => {
-			active = false;
-		};
-	}, [session, definitionId, definitionLibrary, symbolLibrary.loading]);
-	const selectionSnapStep = snapEnabled
-		? selected.length > 0 &&
-			selected.every((shape) => shape.kind === "text" && !isNetLabel(shape))
-			? gridStep / 10
-			: gridStep
-		: 0;
-	const handles = useMemo(
-		() =>
-			tool === "select"
-				? selectedSymbol && selectedChild
-					? resizeHandles(
-							symbolChildWorld(selectedSymbol, selectedChild.shape),
-						).map((handle) => ({
-							shape: selectedSymbol,
-							handle,
-							childKey: selectedChild.key,
-						}))
-					: selected.flatMap((shape) =>
-							resizeHandles(shape).map((handle) => ({
-								shape,
-								handle,
-								childKey: undefined,
-							})),
-						)
-				: [],
-		[tool, selectedSymbol, selectedChild, selected],
-	);
 	const {
-		getDrag,
-		getWire,
-		marquee,
-		movingShapeId,
-		wirePreview,
-		placementPreview,
-		clearPlacementPreview,
-		canRotatePlacement,
-		rotatePlacement,
-		connectionHover,
-		finishDrag,
-		finishWire,
-		pointerHandlers,
-	} = useCanvasGestures({
+		selected,
+		selectedSymbol,
+		selectedChild,
+		selectionLocked,
+		selectionSnapStep,
+		handles,
+	} = useEditorSelection({
+		shapes,
+		selectedIds,
+		selectedChildKey,
+		allowLocked,
+		tool,
+		snapEnabled,
+		gridStep,
+	});
+	const {
+		definitionId,
+		editTarget,
+		editingDefinition,
+		setEditingDefinition,
+		symbolPath,
+	} = useSymbolDefinitionEditing({ session, selectedSymbol, symbolLibrary });
+	const gestures = useCanvasGestures({
 		session,
 		cameraView,
 		tool,
@@ -392,6 +191,20 @@ function EditorCanvas({
 		isSymbol,
 		setTextFocusId,
 	});
+	const {
+		getDrag,
+		getWire,
+		marquee,
+		movingShapeId,
+		wirePreview,
+		placementPreview,
+		clearPlacementPreview,
+		canRotatePlacement,
+		connectionHover,
+		finishDrag,
+		finishWire,
+		pointerHandlers,
+	} = gestures;
 	const previews = useMemo(
 		() => wirePreview ?? (placementPreview ? [placementPreview] : []),
 		[wirePreview, placementPreview],
@@ -411,151 +224,24 @@ function EditorCanvas({
 				y: (guideBounds.minY + guideBounds.maxY) / 2,
 			}
 		: null;
-	const editSelection = useCallback(
-		(edit: SelectionEdit) => {
-			const current = session.getState();
-			const shapes = session.shapes();
-			const selection = shapes.filter(
-				(shape) =>
-					current.selection.has(shape.id) &&
-					canSelectShape(shape, current.allowLocked),
-			);
-			const symbol =
-				selection.length === 1 && selection[0].kind === "symbol"
-					? selection[0]
-					: undefined;
-			const child =
-				symbol && current.childKey
-					? symbolChildren(symbol).find(
-							(child) =>
-								child.key === current.childKey &&
-								canSelectSymbolChild(symbol, child, current.allowLocked),
-						)
-					: undefined;
-			const result = applySelectionEdit(edit, {
-				selection,
-				child: symbol && child ? { symbol, child } : undefined,
-				shapes,
-				nextId: session.nextId(),
-				allowLocked: current.allowLocked,
-				measureText,
-			});
-			if (result) session.replace(result.replacements, result.label);
-			if (edit.kind === "lock" && child) session.selectChild(null);
-		},
-		[session],
-	);
-
-	const restoreHistory = useCallback(
-		(program: DrawingCommand<unknown>) => {
-			finishDrag(true);
-			finishWire();
-			if (tool === "symbol") setTool("select");
-			session.restore(program);
-		},
-		[finishDrag, finishWire, tool, session],
-	);
-	const undo = useCallback(() => restoreHistory(undoEffect), [restoreHistory]);
-	const redo = useCallback(() => restoreHistory(redoEffect), [restoreHistory]);
-	const rotateItems = useCallback(
-		(angle: number) => {
-			if (!ready) return;
-			if (canRotatePlacement) {
-				rotatePlacement(angle);
-				return;
-			}
-			if (!session.getState().selection.size) return;
-			const active = getDrag();
-			const childKey = active ? active.previousChild : selectedChildKey;
-			finishDrag(true);
-			finishWire();
-			setTool("select");
-
-			const { selection } = session.getState();
-			const parent = session.shapes().find((shape) => selection.has(shape.id));
-			if (childKey && parent?.kind === "symbol") {
-				const child = symbolChildren(parent).find(
-					(item) => item.key === childKey,
-				);
-				if (child)
-					session.replace(
-						[
-							replaceSymbolChild(parent, childKey, {
-								...child.shape,
-								rotation: child.shape.rotation + angle,
-							}),
-						],
-						"Rotate symbol child",
-					);
-				return;
-			}
-
-			session.commit(rotateShapesEffect([...selection], angle));
-		},
-		[
-			ready,
-			canRotatePlacement,
-			rotatePlacement,
-			session,
-			getDrag,
-			selectedChildKey,
-			finishDrag,
-			finishWire,
-		],
-	);
-	const removeSelected = useCallback(() => {
-		finishDrag();
-		if (getWire()) {
-			finishWire();
-			setTool("select");
-		}
-		session.commit(
-			removeShapesEffect([...session.getState().selection]),
-			new Set(),
-		);
-	}, [finishDrag, getWire, finishWire, session]);
-	const createSelectionSymbol = async (
-		name: string,
-	): Promise<string | undefined> => {
-		finishDrag();
-		finishWire();
-		const originalDrawing = session.drawing();
-		const previousHistoryId = originalDrawing.history.currentId;
-		const { selection } = session.getState();
-		const ids = [...selection];
-		const primitives = originalDrawing.shapes
-			.filter((shape) => selection.has(shape.id))
-			.filter((shape) => shape.kind !== "symbol");
-		if (primitives.length !== ids.length || ids.length < 2)
-			return "Select at least two drawing shapes to create a symbol.";
-		try {
-			const options: Parameters<typeof createSymbolFromShapes>[2] = {
-				name,
-				definitionId: `custom.${crypto.randomUUID()}`,
-			};
-			const draft = createSymbolFromShapes(
-				session.nextId(),
-				primitives,
-				options,
-			);
-			const saveSymbol = symbolLibrary.prepareAddition(
-				symbolFileFromSymbol(draft),
-			);
-			const library = await saveSymbol();
-			options.library = library;
-			if (session.drawing() !== originalDrawing)
-				return "The drawing changed while saving. The symbol is in your library; select the shapes and try again.";
-			const result = session.commit(
-				createSymbolFromSelectionEffect(ids, options),
-			);
-			if (!result) return "Unable to create a symbol from this selection.";
-			session.rememberSelection(previousHistoryId, ids);
-			setTool("select");
-			setCreatingSymbol(false);
-		} catch (cause) {
-			return errorMessage(cause, "Unable to save this symbol.");
-		}
-	};
+	const {
+		editSelection,
+		restoreHistory,
+		undo,
+		redo,
+		rotateItems,
+		removeSelected,
+		createSelectionSymbol,
+	} = useEditorCommands({
+		session,
+		gestures,
+		tool,
+		setTool,
+		ready,
+		selectedChildKey,
+		symbolLibrary,
+		setCreatingSymbol,
+	});
 
 	const cancelGestures = useEffectEvent(() => {
 		finishDrag(true);
@@ -563,30 +249,27 @@ function EditorCanvas({
 	});
 	useEffect(() => session.connect(store, cancelGestures), [session, store]);
 
-	useEffect(() => {
-		if (
-			isSymbol ||
-			!symbolLibrary.ready ||
-			resolved.errors.length ||
-			reroutedStores.has(store)
-		)
-			return;
-		reroutedStores.add(store);
-		const reroute = rerouteLegacyWires(resolved.shapes);
-		if (
-			reroute &&
-			session.execute(
-				replaceAndPlaceShapesEffect(
-					reroute.replacements,
-					reroute.additions,
-					"Redraw diagonal wires",
-				),
-			)
-		)
-			setRerouteNotice({
-				text: reroute.notice,
-				historyId: store.getSnapshot().history.currentId,
-			});
+	const rerouteNotice = useLegacyWireReroute({
+		store,
+		session,
+		isSymbol,
+		ready: symbolLibrary.ready,
+		resolved,
+	});
+	const issues = editorIssues([
+		viewport.viewerError,
+		rerouteNotice?.historyId === drawing.history.currentId
+			? rerouteNotice.text
+			: "",
+		...(symbolLibrary.loading ? [] : resolved.errors),
+		project?.error,
+		...(project?.libraryErrors ?? []),
+	]);
+	const messages = useEditorMessages({
+		session,
+		commandError,
+		issues,
+		loading: symbolLibrary.loading,
 	});
 
 	const hasSelection = selected.length > 0;
@@ -654,6 +337,7 @@ function EditorCanvas({
 			selectionSnapStep,
 			session,
 			textFocusId,
+			setEditingDefinition,
 		],
 	);
 	if (editingDefinition) {
@@ -669,25 +353,19 @@ function EditorCanvas({
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
 			{...clipboard}
-			onKeyDownCapture={(event) => {
-				const shortcut = editorShortcut(event, {
+			onKeyDownCapture={(event) =>
+				handleEditorShortcut(event, {
 					dialogOpen: creatingSymbol,
-					placing: canRotatePlacement,
-					editable: isEditableTarget(event),
-					canRotate:
-						ready &&
-						(canRotatePlacement || session.getState().selection.size > 0),
-				});
-				if (!shortcut) return;
-				if (shortcut.kind === "cancel-placement") {
-					clearPlacementPreview();
-					setTool("select");
-				} else if (shortcut.kind === "rotate") rotateItems(shortcut.angle);
-				else if (shortcut.kind === "undo") undo();
-				else redo();
-				event.preventDefault();
-				event.stopPropagation();
-			}}
+					ready,
+					session,
+					canRotatePlacement,
+					clearPlacementPreview,
+					setTool,
+					rotateItems,
+					undo,
+					redo,
+				})
+			}
 		>
 			<h1 className="sr-only">
 				{isSymbol
@@ -710,96 +388,32 @@ function EditorCanvas({
 					}}
 					data-tool={tool}
 					{...pointerHandlers}
-					onKeyDownCapture={(event) => {
-						if (!(event.target instanceof HTMLCanvasElement)) return;
-						const command = canvasKeyCommand(event, {
-							wiring: !!getWire(),
-							dragging: !!getDrag(),
-							hasSelection: selected.length > 0,
-							childSelected: selectedChild !== undefined,
-							childStep: snapEnabled
-								? gridStep / (selectedChild?.shape.kind === "text" ? 10 : 1)
-								: SCHEMATIC_STEP,
-							selectionStep: selectionSnapStep || SCHEMATIC_STEP,
-						});
-						if (!command) return;
-						switch (command.kind) {
-							case "end-wire":
-								finishWire();
-								setTool("select");
-								break;
-							case "cancel-drag":
-								finishDrag(true);
-								break;
-							case "deselect-child":
-								session.selectChild(null);
-								break;
-							case "deselect":
-								session.select(new Set());
-								break;
-							case "delete":
-								finishDrag();
-								removeSelected();
-								break;
-							case "move-child":
-								if (selectedSymbol && selectedChild)
-									session.replace(
-										[
-											moveSymbolChild(
-												selectedSymbol,
-												selectedChild.key,
-												command.delta,
-												0,
-												allowLocked,
-											),
-										],
-										"Move symbol child",
-									);
-								break;
-							case "move-selection":
-								if (command.endWire) {
-									finishWire();
-									setTool("select");
-								}
-								session.replace(
-									moveShapes(
-										selected,
-										command.delta,
-										selectionSnapStep,
-										selected[0],
-										session.shapes(),
-										session.nextId(),
-										allowLocked,
-									),
-									"Move selection",
-								);
-								break;
-						}
-						event.preventDefault();
-						event.stopPropagation();
-					}}
+					onKeyDownCapture={(event) =>
+						handleCanvasKeyDown(event, {
+							session,
+							gestures,
+							setTool,
+							selected,
+							selectedSymbol,
+							selectedChild,
+							snapEnabled,
+							gridStep,
+							selectionSnapStep,
+							allowLocked,
+							removeSelected,
+						})
+					}
 				>
 					{scene && (
 						<OrthographicViewer2D
 							rulerUnit="mil"
 							scene={scene}
-							cameraState={cameraState}
+							cameraState={viewport.cameraState}
 							fitZoom={1.1}
 							physicalSizeZoom
-							getFitBounds={() => {
-								const targets =
-									selectedSymbol && selectedChild
-										? [symbolChildWorld(selectedSymbol, selectedChild.shape)]
-										: selected;
-								if (!targets.length) return null;
-								const bounds = targets.map(shapeBounds);
-								return {
-									minX: Math.min(...bounds.map((box) => box.minX)),
-									minY: Math.min(...bounds.map((box) => box.minY)),
-									maxX: Math.max(...bounds.map((box) => box.maxX)),
-									maxY: Math.max(...bounds.map((box) => box.maxY)),
-								};
-							}}
+							getFitBounds={() =>
+								selectionFitBounds(selected, selectedSymbol, selectedChild)
+							}
 							groupedControls
 							gridBounds={
 								isSymbol
@@ -813,11 +427,8 @@ function EditorCanvas({
 							}
 							updateScene={updateScene}
 							selectionEnabled={false}
-							onReady={(value) => {
-								setReady(value);
-								if (value) setViewerError("");
-							}}
-							onError={setViewerError}
+							onReady={viewport.onReady}
+							onError={viewport.onError}
 							onChange={cameraView.update}
 							extraControls={
 								<EditorToolbar
@@ -852,7 +463,7 @@ function EditorCanvas({
 								/>
 							}
 							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint="Open Shapes for rectangles, circles, triangles, lines and text. Open Connections for wires, pins, no-connect markers, net labels and supply labels. Choose No connect and click a pin to mark it with an X. Matching label names connect across the drawing. The cross marks the electrical anchor. Edit the net name in Attributes. Open History tools for undo and redo, or View tools for PNG export. Zoom and fit controls are in the main toolbar. Choose Symbols in the toolbar, pick a symbol, then click to place it. Escape cancels placement. Drag any item on an unselected symbol to move the whole symbol. Select a symbol first, then drag a child to customize it. Select a child on the canvas to edit its position, size or content in Attributes relative to the symbol center. Locked items cannot be selected or moved. Select locked items allows selecting and moving locked symbols and standalone items while keeping locked symbol children unselectable. Press R to rotate an item being placed or the selection 90 degrees counterclockwise, or Shift + R clockwise. The rotation buttons do the same. Delete removes the whole selected symbol. Hold Alt and drag a symbol, net label, supply label or text to duplicate it. Dragging a symbol label duplicates the whole symbol. Release to place the copy or press Escape to cancel. Drag to draw rectangles, triangles, circles and lines. Lines use two endpoints at any angle and stay independent of wire connections. Rectangles and triangles use two opposite corners; circles use a center and radius. Release to finish or press Escape to cancel. For text, choose Text and click to place it, then type in the Attributes panel. Double-click text to edit it again. Text handles resize proportionally. Click an unconnected pin to start a wire. Shift-click selects the pin instead. With the Wire tool, start at any pin or an open wire endpoint, then click to place each corner. Click another pin or open wire endpoint to connect and finish. Choose Pin and click to place a pin with a 100 mil lead. Edit its name, number, lead length and angle in Attributes. Labels follow the lead, and wires connect to the exposed terminal. Each click places a horizontal or vertical segment. Press Escape or Enter to end the chain and keep placed segments. Moving a symbol or pin keeps existing wires in place and adds horizontal or vertical segments from each original connection to the moved pin. Diagonal moves add a right-angle bend. Moving a segment also moves attached endpoints and keeps neighboring segments horizontal or vertical. When you finish an edit, zero-length segments are removed and touching or overlapping segments on the same straight line merge. Segments meeting at corners remain separate objects. Drag selected shapes' handles to resize; circle handles change the radius; line and wire handles move endpoints. Enable Snap to grid to align placement and resizing with the visible grid; net and supply labels use the visible grid spacing. Ordinary text moves at one-tenth of the visible grid spacing. Arrow keys move by one snapping step, or ten with Shift. Drag empty space to select shapes. Shift + drag adds to the selection. Use the Pan tool or middle-drag to pan; pinch or Ctrl + scroll to zoom. With snapping off, arrow keys move selected shapes by 50 mil, Shift + arrows by 500 mil. Delete removes the selection. Copy with Ctrl or Cmd + C, cut with Ctrl or Cmd + X, and paste with Ctrl or Cmd + V. Each paste offsets the group by one grid step and assigns new component references. Copy and cut act on whole selected items, including a selected symbol child's parent symbol. Undo with Ctrl or Cmd + Z; redo with Ctrl or Cmd + Shift + Z, or Ctrl + Y. Open History to return to any saved edit, including alternate branches. Selection, tools, snapping and navigation do not add history steps. F6 fits the selection, or the drawing when nothing is selected."
+							interactionHint={editorInteractionHint}
 						/>
 					)}
 					<CanvasOverlay
@@ -867,56 +478,7 @@ function EditorCanvas({
 						connectionHover={connectionHover}
 						marquee={marquee}
 					/>
-					{(messages.length > 0 || hiddenIssues.length > 0) && (
-						<div className="pointer-events-none absolute top-22 left-10 z-3 flex max-w-[min(560px,calc(100%-56px))] flex-col items-start gap-2 *:pointer-events-auto">
-							{messages.length > 0 && (
-								<div className="flex max-w-full items-start gap-1 rounded-lg border border-[#72543a] bg-[#392e25f5] py-1.5 pr-1.5 pl-3 text-[13px] text-[#edc49a]">
-									<div
-										role="alert"
-										className="max-h-25 min-w-0 flex-1 overflow-auto py-1 break-words"
-									>
-										{messages.map((message) => (
-											<p key={message} className="m-0">
-												{message}
-											</p>
-										))}
-									</div>
-									<button
-										ref={dismissButtonRef}
-										type="button"
-										aria-label="Dismiss editor messages"
-										title="Dismiss"
-										className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-[#edc49a] hover:bg-[#edc49a1f] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-										onClick={(event) => {
-											const canvas = event.currentTarget
-												.closest("main")
-												?.querySelector("canvas");
-											dismissMessages();
-											if (issues.length) pendingFocus.current = "issues";
-											else canvas?.focus({ preventScroll: true });
-										}}
-									>
-										<X size={15} aria-hidden="true" />
-									</button>
-								</div>
-							)}
-							{hiddenIssues.length > 0 && (
-								<button
-									ref={issuesButtonRef}
-									type="button"
-									className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#72543a] bg-[#392e25f5] px-2.5 py-1.5 text-[12px] text-[#edc49a] hover:bg-[#4a3b2ff5] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-									onClick={() => {
-										pendingFocus.current = "messages";
-										setDismissedIssues(new Set());
-									}}
-								>
-									<TriangleAlert size={14} aria-hidden="true" />
-									Show {hiddenIssues.length}{" "}
-									{hiddenIssues.length === 1 ? "issue" : "issues"}
-								</button>
-							)}
-						</div>
-					)}
+					<EditorMessages {...messages} />
 				</div>
 				{selectionAttributes}
 			</div>
@@ -937,76 +499,7 @@ function LibrarySymbolEditor({
 	target: SymbolEditTarget;
 	onClose: () => void;
 }) {
-	const [store] = useState(() =>
-		measurePerformance(
-			"editor.open-library-symbol",
-			() => createDrawingStore(symbolFileShapes(target.file)),
-			{ shapes: target.file.shapes.length },
-		),
-	);
-	const drawing = useSyncExternalStore(
-		store.subscribe,
-		store.getSnapshot,
-		store.getSnapshot,
-	);
-	const saved = useRef(drawing.shapes);
-	const [savedShapes, setSavedShapes] = useState(drawing.shapes);
-	const pending = useRef<Promise<void> | null>(null);
-	const [saving, setSaving] = useState(false);
-	const [error, setError] = useState("");
-	const dirty = drawing.shapes !== savedShapes;
-	const reportUnsavedEdits = useProjectActions()?.reportUnsavedEdits;
-	const editorKey = useId();
-	useEffect(() => {
-		reportUnsavedEdits?.(editorKey, dirty);
-	}, [reportUnsavedEdits, editorKey, dirty]);
-	useEffect(
-		() => () => reportUnsavedEdits?.(editorKey, false),
-		[reportUnsavedEdits, editorKey],
-	);
-	const save = useCallback(
-		async function persist(): Promise<void> {
-			while (pending.current) await pending.current;
-			const shapes = store.getSnapshot().shapes;
-			if (shapes === saved.current) return;
-			setSaving(true);
-			const work = Promise.resolve().then(async () => {
-				try {
-					await target.save(
-						parseSymbolFile(
-							JSON.stringify(symbolFileWithShapes(target.file, shapes)),
-						),
-					);
-					saved.current = shapes;
-					setSavedShapes(shapes);
-					setError("");
-				} catch (cause) {
-					if (!isProjectError(cause, "ProjectConflict"))
-						setError(
-							errorMessage(cause, "Unable to save the symbol definition."),
-						);
-					throw cause;
-				} finally {
-					pending.current = null;
-					setSaving(false);
-				}
-			});
-			pending.current = work;
-			await work;
-			if (store.getSnapshot().shapes !== saved.current) await persist();
-		},
-		[store, target],
-	);
-	useEffect(() => {
-		if (drawing.shapes === saved.current) return;
-		void save().catch(() => undefined);
-	}, [drawing.shapes, save]);
-	useEffect(() => {
-		if (!dirty) return;
-		const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-		window.addEventListener("beforeunload", warn);
-		return () => window.removeEventListener("beforeunload", warn);
-	}, [dirty]);
+	const { store, save, saving, error } = useLibrarySymbolSave(target);
 	const buttonClass =
 		"cursor-pointer rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white disabled:cursor-default disabled:opacity-50";
 	return (
