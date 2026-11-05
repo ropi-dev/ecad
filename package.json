@@ -62,6 +62,7 @@
 		"test": "tsx --test tests/*.test.ts && pnpm -r --if-present run test",
 		"typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
 		"test:browser": "playwright test --config tests/browser/playwright.config.ts",
+		"test:smoke": "playwright test --config tests/smoke/playwright.config.ts",
 		"perf": "tsx scripts/performance/run.ts",
 		"perf:dev": "tsx scripts/performance/run.ts --development",
 		"perf:baseline": "tsx scripts/performance/run.ts --baseline",
