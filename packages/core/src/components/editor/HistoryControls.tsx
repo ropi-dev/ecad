@@ -135,23 +135,18 @@ export function HistoryControls({
 					aria-label="Drawing history"
 					className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+0.5rem)] z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] flex-col rounded-lg border border-[#414955] bg-[#191c22] p-2 shadow-[0_8px_32px_#0008]"
 				>
-					<header className="flex items-center justify-between gap-3 pb-1 pl-2">
-						<h2 className="m-0 text-[11px] font-semibold text-[#98a4b6]">
-							Drawing history
-						</h2>
-						<button
-							type="button"
-							aria-label="Close drawing history"
-							className="grid size-7 cursor-pointer place-items-center rounded text-[#98a4b6] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-							onClick={() => {
-								setOpen(false);
-								quietFocus(toggle.current);
-							}}
-						>
-							<X size={16} aria-hidden="true" />
-						</button>
-					</header>
-					<div className="min-h-0 overflow-auto overscroll-contain">
+					<button
+						type="button"
+						aria-label="Close drawing history"
+						className="absolute top-2 right-2 z-10 grid size-7 cursor-pointer place-items-center rounded text-[#98a4b6] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+						onClick={() => {
+							setOpen(false);
+							quietFocus(toggle.current);
+						}}
+					>
+						<X size={16} aria-hidden="true" />
+					</button>
+					<div className="mr-8 min-h-0 overflow-auto overscroll-contain">
 						<ol className="m-0 min-w-max list-none p-0">
 							{roots.map((node) => renderNode(node.id))}
 						</ol>

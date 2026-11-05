@@ -23,9 +23,6 @@ test(
 		await expect(
 			page.getByRole("button", { name: "Select", exact: true }),
 		).toBeEnabled();
-		await page
-			.getByRole("button", { name: "Snap to grid", exact: true })
-			.click();
 		await page.getByRole("button", { name: "Symbols", exact: true }).click();
 		await page
 			.getByRole("button", { name: "Insert Resistor", exact: true })

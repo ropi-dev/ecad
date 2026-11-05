@@ -47,6 +47,26 @@ test("keyboard opening, tool navigation, and Escape restore focus", async ({
 	await expect(tools).toBeVisible();
 	await page.keyboard.press("Shift+Tab");
 	await expect(tools).toBeHidden();
+	await shapes.focus();
+	await page.keyboard.press("ArrowUp");
+	await page.keyboard.press("End");
+	await expect(
+		tools.getByRole("button", { name: "Text", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("Tab");
+	await expect(tools).toBeHidden();
+});
+
+test("clicking a submenu's padding keeps it open", async ({ page }) => {
+	await page.getByRole("button", { name: "Shapes", exact: true }).click();
+	const tools = page.getByRole("toolbar", {
+		name: "Shapes toolbar",
+		exact: true,
+	});
+	await expect(tools).toBeVisible();
+	await tools.click({ position: { x: 2, y: 2 } });
+	await expect(tools).toBeFocused();
+	await expect(tools).toBeVisible();
 });
 
 test("symbol picker search, arrow keys, and Enter choose a symbol", async ({

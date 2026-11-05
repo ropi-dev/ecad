@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
+import { rulerSpacing } from "#/engine/ruler.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
@@ -221,7 +222,12 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	});
 	for (let index = 0; index < 7; index++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
+	await page.evaluate(
+		() =>
+			new Promise((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(resolve)),
+			),
+	);
 	await page.waitForFunction(() => (window as LabelWindow).labelView);
 	const view = await page.evaluate(() => (window as LabelWindow).labelView);
 	const { shapeBounds } = await import("@ecad/drawing-core/drawing/shapes.ts");
@@ -238,6 +244,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		((bounds.minY + bounds.maxY) / 2) * scale;
 	const document = async () =>
 		JSON.parse(required(await page.locator("#project-document").textContent()));
+	const step = rulerSpacing(scale, "mil").minor;
 	await page.mouse.move(x, y);
 	await page.mouse.down();
 	await page.mouse.move(x + 12 * scale, y + 10 * scale, { steps: 8 });
@@ -249,7 +256,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 					(shape: EditorShape) => shape.id === label.id,
 				)?.x,
 		)
-		.toBeCloseTo(label.x + 12, 4);
+		.toBeCloseTo(Math.round((label.x + 12) / step) * step, 4);
 	await expect.poll(async () => (await document()).dirty).toBe(false);
 	expect(
 		(await document()).shapes.filter(

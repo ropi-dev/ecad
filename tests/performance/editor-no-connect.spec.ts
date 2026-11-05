@@ -12,7 +12,6 @@ test("editor-no-connect", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await expect(
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled();
-	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	const canvas = page.locator("canvas");
 	const bounds = required(await canvas.boundingBox());
 	const pin = { x: bounds.width * 0.45, y: bounds.height / 2 };

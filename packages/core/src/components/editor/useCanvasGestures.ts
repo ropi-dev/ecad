@@ -110,7 +110,6 @@ interface CanvasGesturesOptions {
 		childKey: string | undefined;
 	}[];
 	ready: boolean;
-	snapEnabled: boolean;
 	gridStep: number;
 	symbolDefinition: SymbolDefinition | null;
 	isSymbol: boolean;
@@ -130,7 +129,6 @@ export function useCanvasGestures({
 	allowLocked,
 	handles,
 	ready,
-	snapEnabled,
 	gridStep,
 	symbolDefinition,
 	isSymbol,
@@ -257,7 +255,7 @@ export function useCanvasGestures({
 		(point: Point) => {
 			const active = getWire();
 			if (!active) return null;
-			const snapStep = snapEnabled ? cameraView.getGridStep() : 0;
+			const snapStep = cameraView.getGridStep();
 			const shapes = session.shapes();
 			const connection = findWireConnection(
 				shapes,
@@ -312,7 +310,7 @@ export function useCanvasGestures({
 			setWirePreview(segments);
 			return { segments, end, connected: !!connection, blocked: false };
 		},
-		[getWire, snapEnabled, cameraView, session],
+		[getWire, cameraView, session],
 	);
 	const finishWire = useCallback(() => {
 		if (gesture.current.kind === "wire") gesture.current = { kind: "idle" };
@@ -450,11 +448,7 @@ export function useCanvasGestures({
 				shape: createPlacementShape(
 					kind,
 					session.nextId(),
-					placementAnchor(
-						kind,
-						point,
-						snapPoint(point, snapEnabled ? gridStep : 0),
-					),
+					placementAnchor(kind, point, snapPoint(point, gridStep)),
 					measureText,
 				),
 			});
@@ -500,7 +494,7 @@ export function useCanvasGestures({
 					shape: createSymbol(
 						session.nextId(),
 						symbolDefinition,
-						snapPoint(point, snapEnabled ? gridStep : 0),
+						snapPoint(point, gridStep),
 					),
 				});
 				return true;
@@ -623,7 +617,7 @@ export function useCanvasGestures({
 			canvas.style.cursor = resize?.handle.cursor ?? "";
 			let shape: EditorShape | undefined;
 			const created = tool !== "select";
-			const snapStep = snapEnabled ? cameraView.getGridStep() : 0;
+			const snapStep = cameraView.getGridStep();
 			const start = created ? snapPoint(point, snapStep) : point;
 			let wireStart: Point | undefined;
 			const childHit =

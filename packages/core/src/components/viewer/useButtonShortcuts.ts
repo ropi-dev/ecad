@@ -23,7 +23,6 @@ const editorKeys: Record<string, string> = {
 	Pin: "4",
 	"Net label": "5",
 	"Supply label": "6",
-	"Snap to grid": "G",
 	"Select locked items": "K",
 	Undo: "Z",
 	Redo: "Y",
