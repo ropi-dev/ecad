@@ -1,17 +1,32 @@
 import { expect, test } from "@playwright/test";
+import { drawingPoint } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+	saveCount,
+	saved,
+	savedShapeCount,
+	undo,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
 for (const connectionKind of ["wire", "pin"] as const)
 	test(`editor-${connectionKind}-junction`, async ({ page }, testInfo) => {
-		await page.goto("/projects?perf=1");
-		await ready(page);
-		await page.evaluate(async () => {
-			const shapes = Array.from({ length: 200 }, (_, index) => ({
+		const { drawShape } = await import("@ecad/drawing-core/drawing/shapes.ts");
+		// Drawing coordinates in millimetres. The trunk runs left to right below
+		// the centre; the wire variant also has a pin above it to branch from.
+		const start = { x: -101.6, y: -25.4 };
+		const end = { x: 12.7, y: -25.4 };
+		const branch = { x: -38.1, y: 25.4 };
+		const shapes = [
+			...Array.from({ length: 200 }, (_, index) => ({
 				id: index + 1,
 				kind: "wire",
 				x: 80 + (index % 10) * 6,
@@ -20,7 +35,16 @@ for (const connectionKind of ["wire", "pin"] as const)
 				height: 0.254,
 				lineWidth: 0.254,
 				rotation: 0,
-			}));
+			})),
+			drawShape(201, "pin", start, start),
+			drawShape(202, "wire", start, end),
+			...(connectionKind === "wire"
+				? [drawShape(203, "pin", branch, branch)]
+				: []),
+		];
+		await page.goto("/projects?perf=1");
+		await ready(page);
+		await page.evaluate(async (shapes) => {
 			const root = await navigator.storage.getDirectory();
 			const directory = await root.getDirectoryHandle("Junction fixture", {
 				create: true,
@@ -39,7 +63,7 @@ for (const connectionKind of ["wire", "pin"] as const)
 				await writer.close();
 			}
 			localStorage.setItem("ecad.active-project", "Junction fixture");
-		});
+		}, shapes);
 		await page.goto("/editor?perf=1");
 		await ready(page);
 		await expect(
@@ -48,59 +72,32 @@ for (const connectionKind of ["wire", "pin"] as const)
 		await page
 			.getByRole("button", { name: "Snap to grid", exact: true })
 			.click();
-		const canvas = page.locator("canvas");
-		const bounds = required(await canvas.boundingBox());
-		const start = { x: bounds.width * 0.25, y: bounds.height * 0.6 };
-		const end = { x: bounds.width * 0.55, y: start.y };
-		const branch = { x: bounds.width * 0.4, y: bounds.height * 0.4 };
-		await (await toolbarButton(page, "Pin")).click();
-		await canvas.click({ position: start });
-		await canvas.click({ position: start });
-		await canvas.click({ position: end });
-		await page.keyboard.press("Enter");
-		if (connectionKind === "wire") {
-			await (await toolbarButton(page, "Pin")).click();
-			await canvas.click({ position: branch });
-		}
+		const branchPoint = await drawingPoint(page, branch);
+		const joinPoint = await drawingPoint(page, { x: branch.x, y: start.y });
+		const tool = (name: string) =>
+			expect(page.locator(`[data-tool="${name}"]`)).toBeAttached();
+		// A save that lands while a wire is being drawn ends the wire, so let
+		// any save from opening the fixture, and later each undo, finish first.
+		let saves = -1;
 		for (let repeat = 0; repeat < 3; repeat++) {
+			await saved(page, saves);
 			if (connectionKind === "wire") {
-				await canvas.click({ position: branch });
-				await expect(page.locator('[data-tool="wire"]')).toBeAttached();
+				await page.mouse.click(branchPoint.x, branchPoint.y);
+				await tool("wire");
 			} else await (await toolbarButton(page, "Pin")).click();
 			await interaction(page, `${connectionKind}.join-segment`, async () => {
-				await canvas.click({ position: { x: branch.x, y: start.y } });
+				await page.mouse.click(joinPoint.x, joinPoint.y);
 				await page.waitForFunction(() =>
 					document.querySelector('[data-tool="select"]'),
 				);
 			});
-			if (repeat < 2) await (await toolbarButton(page, "Undo")).click();
+			if (repeat < 2) {
+				saves = await saveCount(page);
+				await undo(page);
+			}
 		}
 		await expect
-			.poll(async () =>
-				page.evaluate(async () => {
-					let directory = await (
-						await navigator.storage.getDirectory()
-					).getDirectoryHandle("Junction fixture");
-					const manifest = await (
-						await directory.getFileHandle(".ecadprj")
-					).getFile();
-					const path = ((await manifest.text()).match(
-						/^drawing\s*=\s*"([^"]+)"/m,
-					) ??
-						(() => {
-							throw new Error("Expected a value");
-						})())[1].split("/");
-					const name =
-						path.pop() ??
-						(() => {
-							throw new Error("Expected a value");
-						})();
-					for (const part of path)
-						directory = await directory.getDirectoryHandle(part);
-					const file = await (await directory.getFileHandle(name)).getFile();
-					return JSON.parse(await file.text()).shapes.length;
-				}),
-			)
+			.poll(() => savedShapeCount(page, "Junction fixture"))
 			.toBe(connectionKind === "wire" ? 205 : 204);
 		const value = await report(page);
 		await finish(page, testInfo, `editor-${connectionKind}-junction`, {

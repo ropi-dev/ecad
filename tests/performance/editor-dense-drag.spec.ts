@@ -8,6 +8,7 @@ import {
 	interaction,
 	metric,
 	percentile,
+	pointAt,
 	ready,
 	report,
 } from "./app-helpers.ts";
@@ -85,11 +86,6 @@ test("editor-dense-drag", async ({ page }, testInfo) => {
 		x: left + Math.floor(columns / 2) * dx,
 		y: bottom + Math.floor(rows / 2) * dy,
 	};
-	const anchor = await drawingPoint(page, grabbed);
-	const across = await drawingPoint(page, {
-		x: grabbed.x + 2.5 * dx,
-		y: grabbed.y + 1.5 * dy,
-	});
 	const nextFrame = () =>
 		page.evaluate(
 			() =>
@@ -99,9 +95,24 @@ test("editor-dense-drag", async ({ page }, testInfo) => {
 					),
 				),
 		);
+	// Zooming animates, so read screen points only once the rulers stop moving.
+	await expect
+		.poll(async () => {
+			const before = await drawingPoint(page, grabbed);
+			await nextFrame();
+			const after = await drawingPoint(page, grabbed);
+			return before.x === after.x && before.y === after.y;
+		})
+		.toBe(true);
+	const anchor = await drawingPoint(page, grabbed);
+	const across = await drawingPoint(page, {
+		x: grabbed.x + 2.5 * dx,
+		y: grabbed.y + 1.5 * dy,
+	});
 	const gestures: number[] = [];
 	const steps: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
+		await pointAt(page, anchor);
 		gestures.push(
 			await interaction(page, "dense-drag.gesture", async () => {
 				await page.mouse.move(anchor.x, anchor.y);

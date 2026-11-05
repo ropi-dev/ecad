@@ -2,7 +2,15 @@ import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+	saveCount,
+	saved,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -17,9 +25,12 @@ test("editor-pin-wire", async ({ page }, testInfo) => {
 	const canvas = page.locator("canvas");
 	const bounds = required(await canvas.boundingBox());
 	const pin = { x: bounds.width * 0.4, y: bounds.height / 2 };
+	let saves = await saveCount(page);
 	await canvas.click({ position: pin });
 	await expect(page.locator('[data-tool="select"]')).toBeAttached();
 	for (let repeat = 0; repeat < 3; repeat++) {
+		// A save that lands while a wire is being drawn ends the wire.
+		await saved(page, saves);
 		await interaction(page, "pin.start-wire", async () => {
 			await canvas.click({ position: pin });
 			await page.waitForFunction(() =>
@@ -32,6 +43,7 @@ test("editor-pin-wire", async ({ page }, testInfo) => {
 		await expect(
 			page.getByRole("spinbutton", { name: "Length", exact: true }),
 		).toBeVisible();
+		saves = await saveCount(page);
 		await (await toolbarButton(page, "Undo")).click();
 	}
 	const value = await report(page);

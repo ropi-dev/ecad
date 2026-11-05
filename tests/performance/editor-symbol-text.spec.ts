@@ -1,3 +1,4 @@
+import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, test } from "@playwright/test";
 import {
 	selectSymbolAttribute,
@@ -5,7 +6,14 @@ import {
 } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	committed,
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -34,14 +42,7 @@ test("editor-symbol-text", async ({ page }, testInfo) => {
 				});
 				await input.fill(String(10 + repeat * 5));
 				await input.press("Tab");
-				await page.waitForFunction(
-					({ expected }) =>
-						document
-							.querySelector<HTMLInputElement>('input[aria-label="Anchor X"]')
-							?.getAttribute("data-committed-value") === String(expected),
-					{ attribute, expected: 10 + repeat * 5 },
-					{ polling: "raf" },
-				);
+				await committed(page, "Anchor X", fromMils(10 + repeat * 5));
 				await page.evaluate(
 					() =>
 						new Promise<void>((resolve) =>

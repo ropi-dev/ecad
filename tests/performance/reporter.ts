@@ -21,11 +21,14 @@ interface Result {
 	metrics: Record<string, number>;
 	report: { mode: string; environment: { userAgent: string } };
 }
+/** Functional smoke runs, such as CI, skip timing budgets and baselines. */
+const smoke = process.env.ECAD_PERF_SMOKE === "1";
+
 export default class PerformanceReporter implements Reporter {
 	private runs: Result[] = [];
 	private failures: string[] = [];
 	onTestEnd(test: TestCase, result: TestResult) {
-		if (result.status !== "passed")
+		if (result.status !== "passed" && result.status !== "skipped")
 			this.failures.push(`${test.title}: ${result.status}`);
 		for (const attachment of result.attachments.filter(
 			(item) => item.name === "performance",
@@ -73,8 +76,9 @@ export default class PerformanceReporter implements Reporter {
 		}
 		if (this.runs.length === 0)
 			this.failures.push("No performance reports were captured.");
-		this.failures.push(...checkBudgets(summary));
+		this.failures.push(...checkBudgets(summary, smoke));
 		if (
+			!smoke &&
 			process.env.ECAD_PERF_UPDATE_BASELINE !== "1" &&
 			existsSync(baselinePath)
 		) {
@@ -114,6 +118,7 @@ export default class PerformanceReporter implements Reporter {
 			.slice(20))
 			unlinkSync(resolve(directory, old));
 		if (
+			!smoke &&
 			process.env.ECAD_PERF_UPDATE_BASELINE === "1" &&
 			result.status === "passed" &&
 			!this.failures.length

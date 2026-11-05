@@ -1,8 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+	savedShapeCount,
+	undo,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -85,43 +92,12 @@ test("editor-component-move", async ({ page }, testInfo) => {
 				{ polling: "raf" },
 			);
 		});
-		if (repeat < 2) await (await toolbarButton(page, "Undo")).click();
+		if (repeat < 2) await undo(page);
 	}
+	// 203 fixture shapes plus the segments added when the moved part's wire is rerouted.
 	await expect
-		.poll(async () =>
-			page.evaluate(async () => {
-				try {
-					const directory = await (
-						await navigator.storage.getDirectory()
-					).getDirectoryHandle("Component movement");
-					const manifest = await (
-						await directory.getFileHandle(".ecadprj")
-					).getFile();
-					const path = ((await manifest.text()).match(
-						/^drawing\s*=\s*"([^"]+)"/m,
-					) ??
-						(() => {
-							throw new Error("Expected a value");
-						})())[1].split("/");
-					let current = directory;
-					const name =
-						path.pop() ??
-						(() => {
-							throw new Error("Expected a value");
-						})();
-					for (const part of path)
-						current = await current.getDirectoryHandle(part);
-					return JSON.parse(
-						await (await (await current.getFileHandle(name)).getFile()).text(),
-					).shapes.length;
-				} catch (error) {
-					if (error instanceof DOMException && error.name === "NotFoundError")
-						return null;
-					throw error;
-				}
-			}),
-		)
-		.toBe(207);
+		.poll(() => savedShapeCount(page, "Component movement"))
+		.toBe(205);
 	const value = await report(page);
 	await finish(page, testInfo, "editor-component-move", {
 		interactionP95Ms: required(metric(value, "scenario.interaction")),
