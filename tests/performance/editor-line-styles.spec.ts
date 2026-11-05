@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+	savedShapes,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -86,32 +93,9 @@ test("editor-line-styles", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	}
 	await expect
 		.poll(async () =>
-			page.evaluate(async () => {
-				const directory = await (
-					await navigator.storage.getDirectory()
-				).getDirectoryHandle("Line style fixture");
-				const manifest = await (
-					await directory.getFileHandle(".ecadprj")
-				).getFile();
-				const path = ((await manifest.text()).match(
-					/^drawing\s*=\s*"([^"]+)"/m,
-				) ??
-					(() => {
-						throw new Error("Expected a value");
-					})())[1].split("/");
-				const name =
-					path.pop() ??
-					(() => {
-						throw new Error("Expected a value");
-					})();
-				let folder = directory;
-				for (const segment of path)
-					folder = await folder.getDirectoryHandle(segment);
-				const file = await (await folder.getFileHandle(name)).getFile();
-				return JSON.parse(await file.text()).shapes.every(
-					(shape: { lineStyle: string }) => shape.lineStyle === "dash-dot-dot",
-				);
-			}),
+			(
+				await savedShapes<{ lineStyle: string }>(page, "Line style fixture")
+			)?.every((shape) => shape.lineStyle === "dash-dot-dot"),
 		)
 		.toBe(true);
 	const interactionP95Ms = required(
