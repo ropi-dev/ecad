@@ -104,6 +104,7 @@ export const ipcArguments = {
 	[projectChannels.importAssets]: z.tuple([projectDirectory, projectAssets]),
 	[projectChannels.readAsset]: z.tuple([projectDirectory, projectPath]),
 	[projectChannels.canWriteFile]: z.tuple([projectDirectory, projectPath]),
+	[projectChannels.refresh]: z.tuple([projectDirectory]),
 	[displayChannels.getCalibration]: z.tuple([]),
 } satisfies Record<InvokeChannel, z.ZodTuple>;
 

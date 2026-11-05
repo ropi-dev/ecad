@@ -1,8 +1,7 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
-import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
-import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
+import { replaceDrawingShapes } from "#/projects/drawing-refresh.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import type { ProjectDrawing, ProjectSnapshot } from "#/projects/format.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
@@ -120,39 +119,9 @@ export function createProjectAutosave(
 			noteConflict(cause);
 			throw cause;
 		}
-		const refreshDrawing = (
-			target: ReturnType<typeof createDrawingStore>,
-			shapes: EditorShape[],
-			external: boolean,
-		) => {
-			if (target.getSnapshot().shapes === shapes) return;
-			target.transact((current) => [
-				undefined,
-				{
-					...current,
-					shapes,
-					history: external
-						? createDrawingStore(shapes).getSnapshot().history
-						: {
-								...current.history,
-								nodes: {
-									...current.history.nodes,
-									[current.history.currentId]: {
-										...current.history.nodes[current.history.currentId],
-										state: { shapes },
-									},
-								},
-							},
-					nextShapeId: Math.max(
-						current.nextShapeId,
-						shapes.reduce((max, shape) => Math.max(max, shape.id), 0) + 1,
-					),
-				},
-			]);
-		};
 		state.synchronizing = true;
 		if (state.store.getSnapshot().shapes === mainShapes)
-			refreshDrawing(
+			replaceDrawingShapes(
 				state.store,
 				document.shapes,
 				externalDrawings.has(primaryPcbId),
@@ -163,7 +132,7 @@ export function createProjectAutosave(
 				target &&
 				target.store.getSnapshot().shapes === drawingEdits.get(drawing.id)
 			)
-				refreshDrawing(
+				replaceDrawingShapes(
 					target.store,
 					drawing.shapes,
 					externalDrawings.has(drawing.id),

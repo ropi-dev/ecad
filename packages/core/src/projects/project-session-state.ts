@@ -71,6 +71,8 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		conflict: null as ProjectConflict | null,
 		hasConflict: false,
 		pendingAssets: [] as { file: File; kind: AssetKind }[],
+		/** Notified when project symbols or libraries change on disk. */
+		symbolListeners: new Set<() => void>(),
 		mounted: true,
 		enqueue: createSerialQueue(),
 		linkedAssembler: createLinkedPcbAssembler(),

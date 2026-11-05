@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -162,6 +162,73 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 		await expect(
 			page.getByRole("button", { name: "Clear selection", exact: true }),
 		).toBeVisible();
+	} finally {
+		await app.close();
+	}
+});
+
+test("the desktop app reloads a drawing another program changed and keeps saving it", async ({
+	browserName: _browserName,
+}, testInfo) => {
+	const home = testInfo.outputPath("home");
+	const parent = testInfo.outputPath("projects");
+	await mkdir(home, { recursive: true });
+	await mkdir(parent, { recursive: true });
+
+	const { app, page } = await launch(home);
+	try {
+		await (await openProjectFiles(page))
+			.getByRole("link", { name: /^Open .+\.ecaddraw$/ })
+			.first()
+			.click();
+		await editorReady(page);
+		await (await toolbarButton(page, "Rectangle")).click();
+		await page.mouse.move(600, 300);
+		await page.mouse.down();
+		await page.mouse.move(710, 400, { steps: 4 });
+		await page.mouse.up();
+		await chooseFolder(app, parent);
+		await projectAction(page, "Save project");
+		await expect(
+			page.getByText("Project saved", { exact: true }),
+		).toBeVisible();
+
+		const [saved] = await readdir(parent);
+		const directory = join(parent, saved);
+		const [drawing] = (await readdir(directory, { recursive: true })).filter(
+			(file) => file.endsWith(".ecaddraw"),
+		);
+		const path = join(directory, drawing);
+		const file = JSON.parse(await readFile(path, "utf8"));
+		const [rectangle] = file.shapes;
+		await page.screenshot({ path: testInfo.outputPath("before.png") });
+		// Another program adds a rectangle beside the one drawn here.
+		await writeFile(
+			path,
+			JSON.stringify({
+				...file,
+				shapes: [
+					...file.shapes,
+					{ ...rectangle, id: 99, x: rectangle.x + rectangle.width + 10 },
+				],
+			}),
+		);
+		await expect(
+			page.getByText("Reloaded changes from disk", { exact: true }),
+		).toBeVisible();
+		await page.screenshot({ path: testInfo.outputPath("reloaded.png") });
+
+		// The next local edit saves over the reloaded file without a conflict.
+		await (await toolbarButton(page, "Rectangle")).click();
+		await page.mouse.move(600, 450);
+		await page.mouse.down();
+		await page.mouse.move(680, 520, { steps: 4 });
+		await page.mouse.up();
+		await expect
+			.poll(async () => JSON.parse(await readFile(path, "utf8")).shapes.length)
+			.toBe(3);
+		await expect(page.getByText("This project changed on disk")).toHaveCount(0);
+		await page.screenshot({ path: testInfo.outputPath("edited.png") });
 	} finally {
 		await app.close();
 	}

@@ -17,6 +17,7 @@ import {
 	type InvokeChannel,
 	libraryChannels,
 	projectChannels,
+	projectEvents,
 } from "#/bridge.ts";
 import { encodeIpcError } from "#/ipc-errors.ts";
 import { readDisplayCalibration } from "#/main/display-calibration.ts";
@@ -65,6 +66,10 @@ const projects = new DesktopProjects(
 	{
 		approveExternalLibrary: (request, options) =>
 			approvals.approve(request, options),
+		onExternalChange: (directory) => {
+			if (window && !window.isDestroyed())
+				window.webContents.send(projectEvents.changed, directory);
+		},
 	},
 );
 let window: BrowserWindow | null = null;
@@ -262,6 +267,7 @@ function registerProjectHandlers() {
 	handle(projectChannels.readAsset, (directory, path) =>
 		projects.readAsset(directory, path),
 	);
+	handle(projectChannels.refresh, (directory) => projects.refresh(directory));
 }
 
 function registerDisplayHandlers() {
@@ -340,6 +346,8 @@ function createWindow() {
 	window.webContents.session.setPermissionRequestHandler(
 		(_contents, _permission, reply) => reply(false),
 	);
+	// Watcher events can be missed, for example on network filesystems.
+	window.on("focus", () => void projects.checkExternalChanges());
 	window.on("closed", () => {
 		window = null;
 	});
@@ -382,6 +390,7 @@ void app.whenReady().then(() => {
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();
 	});
+	app.on("will-quit", () => projects.close());
 	app.on("window-all-closed", () => {
 		if (process.platform !== "darwin") app.quit();
 	});

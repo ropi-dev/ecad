@@ -188,11 +188,15 @@ export function useSymbolLibrary() {
 		const unsubscribe = storage.subscribe?.(() => {
 			if (active) void load();
 		});
+		const unsubscribeProject = projectStorage?.subscribe?.(() => {
+			if (active) void load();
+		});
 		return () => {
 			active = false;
 			request.current?.abort();
 			request.current = null;
 			unsubscribe?.();
+			unsubscribeProject?.();
 			unsubscribeUpdates?.();
 		};
 	}, [storage, projectStorage, updates]);
