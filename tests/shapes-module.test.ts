@@ -7,7 +7,7 @@ import * as publicShapes from "@ecad/drawing-core/drawing/shapes.ts";
 import { normalizeWireSegments } from "@ecad/drawing-core/drawing/wire-normalization.ts";
 import { build } from "esbuild";
 
-test("package and editor shape imports expose the same routing API", () => {
+test("the shapes module re-exports the drawing-core routing API", () => {
 	assert.equal(publicShapes.drawShape, drawShape);
 	assert.equal(
 		publicShapes.connectTransformedTerminals,

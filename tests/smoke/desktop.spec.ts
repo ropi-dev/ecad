@@ -66,8 +66,13 @@ async function launch(home: string) {
 			XDG_CONFIG_HOME: join(home, ".config"),
 		},
 	});
-	const page = await app.firstWindow();
-	return { app, page };
+	try {
+		return { app, page: await app.firstWindow() };
+	} catch (error) {
+		// The caller only cleans up an app it received, so close it here.
+		await app.close().catch(() => {});
+		throw error;
+	}
 }
 
 /** Replaces the native folder picker, which a test cannot operate. */
