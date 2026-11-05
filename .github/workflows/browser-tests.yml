@@ -38,8 +38,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Chromium and system dependencies
-        run: pnpm exec playwright install --with-deps chromium
+      # Tests run headless only, and the runner image already has Chromium's
+      # libraries. --with-deps would only add CJK and X fonts through apt.
+      - name: Install Chromium headless shell
+        run: pnpm exec playwright install --only-shell chromium
       - name: Run browser tests
         run: >-
           pnpm run test:browser
@@ -86,8 +88,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Chromium and system dependencies
-        run: pnpm exec playwright install --with-deps chromium
+      # Tests run headless only, and the runner image already has Chromium's
+      # libraries. --with-deps would only add CJK and X fonts through apt.
+      - name: Install Chromium headless shell
+        run: pnpm exec playwright install --only-shell chromium
       - name: Run performance scenarios
         run: pnpm run perf --all --forbid-only --workers=3
       - name: Upload performance report and failures
