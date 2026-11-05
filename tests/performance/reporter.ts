@@ -7,7 +7,7 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import type {
 	FullConfig,
 	FullResult,
@@ -49,9 +49,13 @@ export default class PerformanceReporter implements Reporter {
 			this.failures.push(failure);
 		}
 	}
+	private tests = new Set<TestCase>();
 	onTestEnd(test: TestCase, result: TestResult) {
-		if (result.status !== "passed" && result.status !== "skipped")
-			this.failures.push(`${test.title}: ${result.status}`);
+		// Judge each test by its final outcome in onEnd, so a smoke-mode retry
+		// that passes is flaky rather than failed. Only passing attempts report
+		// measurements.
+		this.tests.add(test);
+		if (result.status !== "passed") return;
 		for (const attachment of result.attachments.filter(
 			(item) => item.name === "performance",
 		)) {
@@ -62,6 +66,22 @@ export default class PerformanceReporter implements Reporter {
 		}
 	}
 	async onEnd(result: FullResult) {
+		for (const test of this.tests) {
+			const outcome = test.outcome();
+			const last = test.results.at(-1);
+			if (outcome === "unexpected")
+				this.failures.push(`${test.title}: ${last?.status ?? "failed"}`);
+			else if (outcome === "flaky") {
+				const first = test.results.find((item) => item.status !== "passed");
+				const message =
+					`${test.title} is flaky: it ${first?.status ?? "failed"} on attempt 1 and passed on retry. ${first?.error?.message?.split("\n")[0] ?? ""}`.trim();
+				this.warnings.push(message);
+				if (process.env.GITHUB_ACTIONS === "true")
+					console.log(
+						`::warning file=${relative(process.cwd(), test.location.file)},line=${test.location.line},title=Flaky performance scenario::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`,
+					);
+			}
+		}
 		const directory = resolve("perf-artifacts");
 		mkdirSync(directory, { recursive: true });
 		const baselinePath = resolve(
