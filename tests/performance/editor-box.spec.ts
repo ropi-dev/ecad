@@ -77,8 +77,13 @@ test("editor-box", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 				name: "Line width",
 				exact: true,
 			});
-			await input.fill(String(0.4 + repeat * 0.1));
+			// A symbol's Line width is entered in mils: 16, 20 and 24 mil are
+			// about 0.41, 0.51 and 0.61 mm. Entering millimeters here would draw
+			// a hairline whose dash pattern hits the cycle cap.
+			const width = 16 + repeat * 4;
+			await input.fill(String(width));
 			await input.press("Tab");
+			await committed(page, "Line width", fromMils(width));
 			await page.evaluate(
 				() =>
 					new Promise<void>((resolve) =>

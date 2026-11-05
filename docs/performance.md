@@ -38,7 +38,7 @@ Node scenarios run unthrottled in every mode. `cli-drawing` runs the base commit
 
 `pnpm sandbox perf` runs the same comparison in the benchmark container. The host exports the base source, and the container builds it into the `ecad-perf-base-cache` volume. In the container, builds run inside the benchmark lock.
 
-The budget run, `pnpm run perf:budgets`, is the previous single-variant run with no baseline: every scenario three times, 4× CPU throttling, and the absolute budgets on the medians. `ECAD_PERF_RUNS` changes the repeats. `editor-box` is known to exceed its `interactionP95Ms` budget (a median of about 830–910 ms against 750 ms; see #111). The overrun predates the A/B work, so a budget run that fails only there is not a new regression. Run it, and an A/B run of every scenario against the main commit before the batch (`pnpm run perf --all --base <pre-batch-main>`), once per merged batch.
+The budget run, `pnpm run perf:budgets`, is the previous single-variant run with no baseline: every scenario three times, 4× CPU throttling, and the absolute budgets on the medians. `ECAD_PERF_RUNS` changes the repeats. Run it, and an A/B run of every scenario against the main commit before the batch (`pnpm run perf --all --base <pre-batch-main>`), once per merged batch.
 
 ## A/B sensitivity
 
@@ -53,7 +53,7 @@ The scenarios cover startup without a project, restoring 10,000 project assets a
 
 The `default-symbols` scenario opens the 61-symbol built-in picker repeatedly and places an inductor, LED, NPN transistor, P-channel MOSFET, transformer, and 8-pin connector. The `microcontroller-symbols` scenario separately searches for and places RP2040, RP2350A, and RP2350B with the same budgets. It includes the coil and transformer arc approximations, searches by component name, and measures opening the picker through its first loaded thumbnail. Offscreen items keep skeletons until they approach the scroll viewport. Both symbol scenarios require thumbnail generation p95 below 100 ms. Under the same 4× CPU throttle, it allows interaction p95 below 1.5 seconds, fewer than 2,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
 
-The `editor-box` scenario places a Box, edits the Box font size, drags a Box resize handle, changes its line style and width, and edits multiline text three times. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
+The `editor-box` scenario places a Box, then three times edits its font size, drags a resize handle, changes its line style and line width, and edits multiline text. The style alternates between dashed and dotted, and the widths are 16, 20 and 24 mil (about 0.41, 0.51 and 0.61 mm), because the symbol Attributes panel takes line width in mils. Under the same 4× CPU throttle, interaction p95 must stay below 750 ms, with fewer than 1,500 DOM nodes, at most 3 MB of decoded scripts, and frame p95 below 500 ms.
 
 The large-project scenario also searches for the last of 10,000 files and filters the list by file type. Both interactions must finish within 750 ms. Search and filter results keep pagination, so the page renders at most 50 file rows.
 
