@@ -11,17 +11,15 @@ const groups: Record<string, string> = {
 	"Supply label": "Connections",
 	Pin: "Connections",
 	"No connect": "Connections",
-	Undo: "History tools",
-	Redo: "History tools",
-	History: "History tools",
-	"Export PNG": "View tools",
+	"Export drawing": "Export",
+	"Export PNG": "Export",
 };
 
 /** Open a tool's group when testing the schematic editor. Viewer controls stay direct. */
 export async function toolbarButton(page: Page, name: string) {
 	await page
 		.getByRole("toolbar", {
-			name: /^(View controls|3D view controls|Circuit tools)$/,
+			name: /^(View controls|3D view controls|Circuit tools|Schematic tools|Symbol tools)$/,
 		})
 		.waitFor();
 	const group = groups[name];

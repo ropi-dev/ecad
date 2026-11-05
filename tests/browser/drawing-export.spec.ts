@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
+import { toolbarButton } from "./toolbar";
 
 const fixture = JSON.parse(
 	await readFile("tests/fixtures/rp2350a-reference/drawing.ecaddraw", "utf8"),
@@ -31,10 +32,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 			createDrawingStore(shapes).getSnapshot(),
 		]);
 	}, fixture.shapes);
-	const button = page.getByRole("button", {
-		name: "Export drawing",
-		exact: true,
-	});
+	const button = await toolbarButton(page, "Export drawing");
 	await expect(button).toBeEnabled();
 	await button.click();
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
@@ -68,7 +66,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 		expect(coverage.names).toContain(`${shape.kind} ${shape.id}`);
 	expect(coverage.texts).toContain("RP2350A");
 	expect(coverage.viewBox).toBe("-210 -148.5 420 297");
-	await button.click();
+	await (await toolbarButton(page, "Export drawing")).click();
 	await dialog
 		.getByRole("combobox", { name: "Format", exact: true })
 		.selectOption("png");

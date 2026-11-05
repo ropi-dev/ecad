@@ -1,18 +1,26 @@
 import { ChevronUp, type LucideIcon } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import {
+	type ComponentProps,
 	createContext,
 	type ReactNode,
 	useContext,
 	useEffect,
 	useId,
+	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
-import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
+import {
+	toolbarMenuItemClassName,
+	toolbarSurfaceClassName,
+	viewControlButtonClassName,
+} from "#/components/viewer/viewControlStyles.ts";
 
 const GroupContext = createContext<{
 	openId: string | null;
@@ -29,26 +37,121 @@ export function ToolbarGroups({
 }) {
 	useButtonShortcuts();
 	const [openId, setOpenId] = useState<string | null>(null);
+	const groups = useMemo(
+		() => ({ openId, setOpenId, panelHost }),
+		[openId, panelHost],
+	);
 	return (
 		<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
-			<GroupContext value={{ openId, setOpenId, panelHost }}>
-				{children}
-			</GroupContext>
+			<GroupContext value={groups}>{children}</GroupContext>
 		</Tooltip.Provider>
 	);
 }
 
+/** Floating toolbar at the bottom centre of a canvas. */
+export function ToolbarDock({
+	label,
+	scrollable = true,
+	children,
+}: {
+	label: string;
+	scrollable?: boolean;
+	children: ReactNode;
+}) {
+	const [host, setHost] = useState<HTMLDivElement | null>(null);
+	const row = useRef<HTMLDivElement>(null);
+	const updateFade = useRef<() => void>(undefined);
+	// Content can widen without resizing the capped row, such as a longer
+	// zoom label, so recheck after every render.
+	useEffect(() => updateFade.current?.());
+	useEffect(() => {
+		const element = row.current;
+		if (!scrollable || !element) return;
+		// Fade the clipped edge so a narrow screen shows the row scrolls.
+		const update = () => {
+			const start = element.scrollLeft > 1;
+			const end =
+				element.scrollLeft + element.clientWidth < element.scrollWidth - 1;
+			const fade = start && end ? "both" : start ? "start" : end ? "end" : "";
+			if (element.dataset.fade !== fade) element.dataset.fade = fade;
+		};
+		update();
+		updateFade.current = update;
+		const observer = new ResizeObserver(update);
+		observer.observe(element);
+		element.addEventListener("scroll", update, { passive: true });
+		return () => {
+			updateFade.current = undefined;
+			observer.disconnect();
+			element.removeEventListener("scroll", update);
+		};
+	}, [scrollable]);
+	return (
+		<ToolbarGroups panelHost={host}>
+			<div
+				ref={setHost}
+				role="toolbar"
+				aria-label={label}
+				className={`absolute bottom-4 left-1/2 z-10 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 p-1 ${toolbarSurfaceClassName}`}
+			>
+				<div
+					ref={row}
+					className={`flex items-center gap-0.5 ${scrollable ? "touch-pan-x flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:thin] data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_2rem,black_calc(100%-2rem),transparent)] data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] data-[fade=start]:[mask-image:linear-gradient(to_right,transparent,black_2rem)]" : "flex-wrap justify-center"}`}
+				>
+					{children}
+				</div>
+			</div>
+		</ToolbarGroups>
+	);
+}
+
+export function ToolbarSeparator() {
+	return (
+		<hr
+			aria-orientation="vertical"
+			className="mx-1 my-0 h-5 w-px shrink-0 self-center border-0 bg-[#414955]"
+		/>
+	);
+}
+
+/** Focus the chosen item in a panel, or its first enabled item. */
+function focusChoice(panel: HTMLElement | null) {
+	(
+		panel?.querySelector<HTMLButtonElement>(
+			'button[aria-pressed="true"]:not(:disabled)',
+		) ?? panel?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+	)?.focus();
+}
+
+/** Move focus back to a trigger without opening its tooltip. */
+export function quietFocus(button: HTMLElement | null) {
+	if (!button) return;
+	button.dataset.quietFocus = "true";
+	button.focus({ preventScroll: true });
+	delete button.dataset.quietFocus;
+}
+
+/**
+ * A toolbar button that opens a labeled panel above itself. The panel closes
+ * after a choice unless `closeOnChoose` is false, which suits repeated actions
+ * such as panning.
+ */
 export function ToolbarGroup({
 	label,
 	icon: Icon,
 	active = false,
+	activeLabel,
 	disabled = false,
+	closeOnChoose = true,
 	children,
 }: {
 	label: string;
 	icon: LucideIcon;
 	active?: boolean;
+	/** Name of the chosen item, shown in the trigger's tooltip. */
+	activeLabel?: string;
 	disabled?: boolean;
+	closeOnChoose?: boolean;
 	children: ReactNode;
 }) {
 	const groups = useContext(GroupContext);
@@ -59,12 +162,46 @@ export function ToolbarGroup({
 	const root = useRef<HTMLDivElement>(null);
 	const trigger = useRef<HTMLButtonElement>(null);
 	const panel = useRef<HTMLDivElement>(null);
+	const [left, setLeft] = useState<number | null>(null);
+
+	useLayoutEffect(() => {
+		if (!open || !panelHost) {
+			setLeft(null);
+			return;
+		}
+		const place = () => {
+			const button = trigger.current?.getBoundingClientRect();
+			const box = panel.current?.getBoundingClientRect();
+			if (!button || !box) return;
+			const host = panelHost.getBoundingClientRect();
+			const margin = 12;
+			const centered = button.left + button.width / 2 - box.width / 2;
+			const clamped = Math.max(
+				margin,
+				Math.min(centered, innerWidth - margin - box.width),
+			);
+			setLeft(clamped - host.left);
+		};
+		place();
+		const row = panelHost.firstElementChild;
+		row?.addEventListener("scroll", place, { passive: true });
+		addEventListener("resize", place);
+		return () => {
+			row?.removeEventListener("scroll", place);
+			removeEventListener("resize", place);
+		};
+	}, [open, panelHost]);
+
+	const focusPanel = () => focusChoice(panel.current);
+	const focusTrigger = () => quietFocus(trigger.current);
+	const placed = left !== null;
+	useEffect(() => {
+		// The panel stays hidden, and so unfocusable, until it has been placed.
+		if (open && placed) focusChoice(panel.current);
+	}, [open, placed]);
 
 	useEffect(() => {
 		if (!open) return;
-		panel.current
-			?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-			?.focus();
 		const closeOutside = (event: PointerEvent) => {
 			if (
 				event.target instanceof Node &&
@@ -78,7 +215,7 @@ export function ToolbarGroup({
 			event.preventDefault();
 			event.stopPropagation();
 			setOpenId(null);
-			trigger.current?.focus();
+			quietFocus(trigger.current);
 		};
 		document.addEventListener("pointerdown", closeOutside, true);
 		document.addEventListener("keydown", closeOnEscape, true);
@@ -96,26 +233,24 @@ export function ToolbarGroup({
 				aria-label={label}
 				aria-expanded={open}
 				aria-controls={id}
-				data-active={active || open}
+				data-active={active}
 				disabled={disabled}
-				tooltip={label}
-				className={`${viewControlButtonClassName} relative data-[active=true]:border-[#b88f61] data-[active=true]:bg-[#e8b77e12] data-[active=true]:text-[#e8b77e]`}
+				tooltip={activeLabel ? `${label}: ${activeLabel}` : label}
+				className={`${viewControlButtonClassName} relative`}
 				onClick={() => setOpenId(open ? null : id)}
 				onKeyDown={(event) => {
 					if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 					event.preventDefault();
-					if (open)
-						panel.current
-							?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-							?.focus();
+					if (open) focusPanel();
 					else setOpenId(id);
 				}}
 			>
 				<Icon size={18} aria-hidden="true" />
 				<ChevronUp
-					size={9}
+					size={8}
+					strokeWidth={3}
 					aria-hidden="true"
-					className="absolute right-0.5 bottom-0.5"
+					className="absolute top-0.5 right-0.5 opacity-60"
 				/>
 			</TooltipButton>
 			{open &&
@@ -123,15 +258,46 @@ export function ToolbarGroup({
 				createPortal(
 					<div
 						ref={panel}
+						onBlur={(event) => {
+							// Tabbing out of the panel closes it.
+							const next = event.relatedTarget;
+							if (
+								next instanceof Node &&
+								!panel.current?.contains(next) &&
+								!root.current?.contains(next)
+							)
+								setOpenId(null);
+						}}
 						id={id}
 						role="toolbar"
 						aria-label={`${label} toolbar`}
-						className="absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 flex w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-[#414955] bg-slate-900/95 p-1.5 shadow-lg"
-						onKeyDown={(event) => {
+						aria-orientation="vertical"
+						style={{
+							left: left ?? 0,
+							visibility: left === null ? "hidden" : undefined,
+						}}
+						className={`absolute bottom-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-6rem)] w-max min-w-40 max-w-[calc(100vw-1.5rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain p-1 ${toolbarSurfaceClassName}`}
+						onClick={(event) => {
 							if (
-								!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+								!closeOnChoose ||
+								!(event.target instanceof Element) ||
+								!event.target.closest("button:not(:disabled)")
 							)
 								return;
+							setOpenId(null);
+							// Keep focus inside the editor so its shortcuts keep working.
+							focusTrigger();
+						}}
+						onKeyDown={(event) => {
+							const keys = [
+								"ArrowLeft",
+								"ArrowRight",
+								"ArrowUp",
+								"ArrowDown",
+								"Home",
+								"End",
+							];
+							if (!keys.includes(event.key)) return;
 							const buttons = [
 								...(panel.current?.querySelectorAll<HTMLButtonElement>(
 									"button:not(:disabled)",
@@ -142,22 +308,58 @@ export function ToolbarGroup({
 							);
 							if (index < 0) return;
 							event.preventDefault();
+							const forward =
+								event.key === "ArrowRight" || event.key === "ArrowDown";
 							const next =
 								event.key === "Home"
 									? 0
 									: event.key === "End"
 										? buttons.length - 1
-										: (index +
-												(event.key === "ArrowRight" ? 1 : -1) +
-												buttons.length) %
+										: (index + (forward ? 1 : -1) + buttons.length) %
 											buttons.length;
 							buttons[next]?.focus();
 						}}
 					>
+						<div
+							className="px-2 pt-1 pb-1.5 text-[11px] font-semibold text-[#98a4b6]"
+							aria-hidden="true"
+						>
+							{label}
+						</div>
 						{children}
 					</div>,
 					panelHost,
 				)}
 		</div>
+	);
+}
+
+/** Labeled row in a toolbar group panel. */
+export function ToolbarMenuItem({
+	icon: Icon,
+	label,
+	shortcut,
+	...props
+}: Omit<ComponentProps<"button">, "children"> & {
+	icon?: LucideIcon;
+	label: string;
+	shortcut?: string;
+}) {
+	return (
+		<button
+			type="button"
+			aria-label={label}
+			aria-keyshortcuts={shortcut}
+			className={toolbarMenuItemClassName}
+			{...props}
+		>
+			{Icon && <Icon size={16} aria-hidden="true" className="shrink-0" />}
+			<span className="flex-1">{label}</span>
+			{shortcut && (
+				<kbd className="shrink-0 font-sans text-[10px] text-[#7c8696]">
+					{formatShortcut(shortcut)}
+				</kbd>
+			)}
+		</button>
 	);
 }

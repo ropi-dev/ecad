@@ -5,30 +5,34 @@ import { formatMils } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	Cable,
 	Circle,
+	Download,
+	FileImage,
 	Hand,
-	History as HistoryIcon,
+	ImageDown,
 	Lock,
-	LockKeyhole,
+	LockOpen,
 	Magnet,
 	MapPin,
 	Minus,
 	MousePointer2,
-	RotateCcw,
-	RotateCw,
+	RotateCcwSquare,
+	RotateCwSquare,
 	Shapes,
 	Square,
+	SquareDashedMousePointer,
+	Tag,
 	Trash2,
 	Triangle,
 	Type,
-	Unlock,
 	X,
+	Zap,
 } from "lucide-react";
 import {
 	type ComponentProps,
 	type Dispatch,
 	memo,
-	type ReactNode,
 	type SetStateAction,
+	useState,
 	useSyncExternalStore,
 } from "react";
 import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
@@ -42,9 +46,16 @@ import type {
 	CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
-import { ToolbarGroup } from "#/components/viewer/ToolbarGroup.tsx";
+import {
+	ToolbarGroup,
+	ToolbarMenuItem,
+	ToolbarSeparator,
+} from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
-import { viewControlButtonClassName } from "#/components/viewer/ViewControls3D.tsx";
+import {
+	useViewExport,
+	viewControlButtonClassName,
+} from "#/components/viewer/ViewControls3D.tsx";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
@@ -56,13 +67,15 @@ const tools = [
 	{ group: "shapes", kind: "circle", label: "Circle", icon: Circle },
 	{ group: "shapes", kind: "triangle", label: "Triangle", icon: Triangle },
 	{ group: "shapes", kind: "line", label: "Line", icon: Minus },
+	{ group: "shapes", kind: "text", label: "Text", icon: Type },
 	{ group: "connections", kind: "wire", label: "Wire", icon: Cable },
 	{ group: "connections", kind: "pin", label: "Pin", icon: MapPin },
 	{ group: "connections", kind: "no-connect", label: "No connect", icon: X },
-	{ group: "connections", kind: "net", label: "Net label", icon: Type },
-	{ group: "connections", kind: "supply", label: "Supply label", icon: Type },
-	{ group: "shapes", kind: "text", label: "Text", icon: Type },
+	{ group: "connections", kind: "net", label: "Net label", icon: Tag },
+	{ group: "connections", kind: "supply", label: "Supply label", icon: Zap },
 ] as const;
+type ToolItem = (typeof tools)[number];
+
 interface EditorToolbarProps {
 	shapes: EditorShape[];
 	sheet: SheetSize;
@@ -95,7 +108,6 @@ interface EditorToolbarProps {
 	selectionLocked: boolean;
 	editSelection: (edit: SelectionEdit) => void;
 	removeSelected: () => void;
-	viewSwitch?: ReactNode;
 }
 
 export const EditorToolbar = memo(function EditorToolbar({
@@ -126,72 +138,88 @@ export const EditorToolbar = memo(function EditorToolbar({
 	selectionLocked,
 	editSelection,
 	removeSelected,
-	viewSwitch,
 }: EditorToolbarProps) {
-	const renderTool = ({ kind, label, icon: Icon }: (typeof tools)[number]) => (
+	const [exportOpen, setExportOpen] = useState(false);
+	const viewExport = useViewExport();
+	const chooseTool = (kind: ToolItem["kind"]) => {
+		finishWire();
+		clearPlacementPreview();
+		setTool(kind);
+	};
+	const toolGroup = (group: "shapes" | "connections") =>
+		tools.filter(
+			(item) =>
+				item.group === group &&
+				!(isSymbol && (item.kind === "net" || item.kind === "supply")),
+		);
+	const renderGroup = (
+		group: "shapes" | "connections",
+		label: string,
+		fallback: ToolItem["icon"],
+	) => {
+		const items = toolGroup(group);
+		const current = items.find((item) => item.kind === tool);
+		return (
+			<ToolbarGroup
+				label={label}
+				icon={current?.icon ?? fallback}
+				activeLabel={current?.label}
+				disabled={!ready}
+				active={!!current}
+			>
+				{items.map(({ kind, label, icon }) => (
+					<ToolbarMenuItem
+						key={kind}
+						icon={icon}
+						label={label}
+						disabled={!ready}
+						aria-pressed={tool === kind}
+						onClick={() => chooseTool(kind)}
+					/>
+				))}
+			</ToolbarGroup>
+		);
+	};
+	const toggle = (
+		props: ComponentProps<typeof TooltipButton>,
+		key?: string,
+	) => (
 		<TooltipButton
-			key={kind}
+			key={key}
 			type="button"
-			className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
-			disabled={!ready}
-			aria-label={label}
-			tooltip={label}
-			aria-pressed={tool === kind}
-			onClick={() => {
-				finishWire();
-				clearPlacementPreview();
-				setTool(kind);
-			}}
-		>
-			<Icon size={18} aria-hidden="true" />
-		</TooltipButton>
+			className={viewControlButtonClassName}
+			{...props}
+		/>
 	);
 
 	return (
 		<fieldset aria-label="Drawing tools" className="contents">
-			<LiveDrawingExport
-				session={session}
-				shapes={shapes}
-				sheet={sheet}
-				label={drawingName || "Schematic drawing"}
+			<HistoryControls
+				history={history}
 				disabled={!ready}
+				onUndo={undo}
+				onRedo={redo}
+				onRestore={(id) => restoreHistory(jumpHistoryEffect(id))}
 			/>
-			<ToolbarGroup label="History tools" icon={HistoryIcon} disabled={!ready}>
-				<HistoryControls
-					history={history}
-					disabled={!ready}
-					onUndo={undo}
-					onRedo={redo}
-					onRestore={(id) => restoreHistory(jumpHistoryEffect(id))}
-				/>
-			</ToolbarGroup>
-			{tools.filter(({ group }) => group === "navigation").map(renderTool)}
-			<ToolbarGroup
-				label="Shapes"
-				icon={Shapes}
-				disabled={!ready}
-				active={tools.some(
-					(item) => item.group === "shapes" && item.kind === tool,
+			<ToolbarSeparator />
+			{tools
+				.filter(({ group }) => group === "navigation")
+				.map(({ kind, label, icon: Icon }) =>
+					toggle(
+						{
+							disabled: !ready,
+							"aria-label": label,
+							tooltip: label,
+							"aria-pressed": tool === kind,
+							onClick: () => chooseTool(kind),
+							children: <Icon size={18} aria-hidden="true" />,
+						},
+						kind,
+					),
 				)}
-			>
-				{tools.filter(({ group }) => group === "shapes").map(renderTool)}
-			</ToolbarGroup>
-			<ToolbarGroup
-				label="Connections"
-				icon={Cable}
-				disabled={!ready}
-				active={tools.some(
-					(item) => item.group === "connections" && item.kind === tool,
-				)}
-			>
-				{tools
-					.filter(
-						({ kind, group }) =>
-							group === "connections" &&
-							(!isSymbol || (kind !== "net" && kind !== "supply")),
-					)
-					.map(renderTool)}
-			</ToolbarGroup>
+			<ToolbarSeparator />
+			{renderGroup("shapes", "Shapes", Shapes)}
+			{renderGroup("connections", "Connections", Cable)}
 			<SymbolPicker
 				library={symbolLibrary}
 				allowNetSymbols={!isSymbol}
@@ -205,89 +233,99 @@ export const EditorToolbar = memo(function EditorToolbar({
 					setTool("symbol");
 				}}
 			/>
-			<TooltipButton
-				type="button"
-				className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
-				disabled={!ready}
-				aria-label="Snap to grid"
-				aria-pressed={snapEnabled}
-				tooltip={`Snap to grid, ${formatMils(gridStep)}`}
-				onClick={() => setSnapEnabled((enabled) => !enabled)}
-			>
-				<Magnet size={18} aria-hidden="true" />
-			</TooltipButton>
-			<TooltipButton
-				type="button"
-				aria-label="Select locked items"
-				aria-pressed={allowLocked}
-				tooltip="Select locked items"
-				disabled={!ready}
-				className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:bg-[#e8b77e12] aria-pressed:text-[#e8b77e]`}
-				onClick={() => {
-					finishDrag(true);
-					session.setAllowLocked(!allowLocked);
-				}}
-			>
-				<LockKeyhole size={18} aria-hidden="true" />
-			</TooltipButton>
-
+			<ToolbarSeparator />
 			{[
 				{
 					label: "Rotate counterclockwise",
 					shortcut: "R",
 					angle: Math.PI / 2,
-					icon: RotateCcw,
+					icon: RotateCcwSquare,
 				},
 				{
 					label: "Rotate clockwise",
 					shortcut: "Shift+R",
 					angle: -Math.PI / 2,
-					icon: RotateCw,
+					icon: RotateCwSquare,
 				},
-			].map(({ label, shortcut, angle, icon: Icon }) => (
-				<TooltipButton
-					key={label}
-					type="button"
-					className={viewControlButtonClassName}
-					disabled={!ready || (!hasSelection && !canRotatePlacement)}
-					aria-label={label}
-					aria-keyshortcuts={shortcut}
-					tooltip={`${label} 90°`}
-					shortcut={shortcut}
-					onClick={() => rotateItems(angle)}
-				>
-					<Icon size={18} aria-hidden="true" />
-				</TooltipButton>
-			))}
-			<TooltipButton
-				type="button"
-				className={viewControlButtonClassName}
-				disabled={!ready || !hasSelection}
-				aria-label={selectionLocked ? "Unlock selection" : "Lock selection"}
-				tooltip={selectionLocked ? "Unlock selection" : "Lock selection"}
-				onClick={() =>
-					editSelection({ kind: "lock", locked: !selectionLocked })
-				}
-			>
-				{selectionLocked ? (
-					<Unlock size={18} aria-hidden="true" />
+			].map(({ label, shortcut, angle, icon: Icon }) =>
+				toggle(
+					{
+						disabled: !ready || (!hasSelection && !canRotatePlacement),
+						"aria-label": label,
+						"aria-keyshortcuts": shortcut,
+						tooltip: `${label} 90°`,
+						shortcut,
+						onClick: () => rotateItems(angle),
+						children: <Icon size={18} aria-hidden="true" />,
+					},
+					label,
+				),
+			)}
+			{toggle({
+				disabled: !ready || !hasSelection,
+				"aria-label": selectionLocked ? "Unlock selection" : "Lock selection",
+				tooltip: selectionLocked ? "Unlock selection" : "Lock selection",
+				onClick: () =>
+					editSelection({ kind: "lock", locked: !selectionLocked }),
+				children: selectionLocked ? (
+					<LockOpen size={18} aria-hidden="true" />
 				) : (
 					<Lock size={18} aria-hidden="true" />
+				),
+			})}
+			{toggle({
+				disabled: !hasSelection,
+				"aria-label": "Delete",
+				tooltip: "Delete selected shapes",
+				shortcut: "Delete",
+				onClick: removeSelected,
+				children: <Trash2 size={18} aria-hidden="true" />,
+			})}
+			<ToolbarSeparator />
+			{toggle({
+				disabled: !ready,
+				"aria-label": "Snap to grid",
+				"aria-pressed": snapEnabled,
+				tooltip: `Snap to grid, ${formatMils(gridStep)}`,
+				onClick: () => setSnapEnabled((enabled) => !enabled),
+				children: <Magnet size={18} aria-hidden="true" />,
+			})}
+			{toggle({
+				disabled: !ready,
+				"aria-label": "Select locked items",
+				"aria-pressed": allowLocked,
+				tooltip: "Select locked items",
+				onClick: () => {
+					finishDrag(true);
+					session.setAllowLocked(!allowLocked);
+				},
+				children: <SquareDashedMousePointer size={18} aria-hidden="true" />,
+			})}
+			<ToolbarSeparator />
+			<ToolbarGroup label="Export" icon={Download} disabled={!ready}>
+				<ToolbarMenuItem
+					icon={FileImage}
+					label="Export drawing"
+					onClick={() => setExportOpen(true)}
+				/>
+				{viewExport.exportPng && (
+					<ToolbarMenuItem
+						icon={ImageDown}
+						label="Export PNG"
+						disabled={!viewExport.enabled || viewExport.exporting}
+						aria-busy={viewExport.exporting}
+						onClick={viewExport.exportPng}
+					/>
 				)}
-			</TooltipButton>
-
-			<TooltipButton
-				type="button"
-				className={viewControlButtonClassName}
-				disabled={!hasSelection}
-				aria-label="Delete"
-				tooltip="Delete selected shapes"
-				shortcut="Delete"
-				onClick={removeSelected}
-			>
-				<Trash2 size={18} aria-hidden="true" />
-			</TooltipButton>
-			{viewSwitch}
+			</ToolbarGroup>
+			<LiveDrawingExport
+				session={session}
+				shapes={shapes}
+				sheet={sheet}
+				label={drawingName || "Schematic drawing"}
+				open={exportOpen}
+				onClose={() => setExportOpen(false)}
+			/>
 		</fieldset>
 	);
 });

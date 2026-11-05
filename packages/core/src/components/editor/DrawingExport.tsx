@@ -10,18 +10,20 @@ import { captureSvgPng } from "#/engine/capture-png.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
+/** Export dialog. It stays mounted while closed to keep the chosen settings. */
 export function DrawingExport({
 	shapes,
 	sheet,
 	label,
-	disabled,
+	open,
+	onClose,
 }: {
 	shapes: EditorShape[];
 	sheet: SheetSize;
 	label: string;
-	disabled: boolean;
+	open: boolean;
+	onClose: () => void;
 }) {
-	const [open, setOpen] = useState(false);
 	const [width, setWidth] = useState(9600);
 	const [height, setHeight] = useState(6400);
 	const [area, setArea] = useState<"sheet" | "drawing">("sheet");
@@ -34,14 +36,6 @@ export function DrawingExport({
 	const field = "rounded border border-white/30 bg-slate-800 p-2 text-white";
 	return (
 		<>
-			<button
-				type="button"
-				disabled={disabled}
-				className="rounded px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-40"
-				onClick={() => setOpen(true)}
-			>
-				Export drawing
-			</button>
 			{open &&
 				createPortal(
 					<dialog
@@ -51,13 +45,13 @@ export function DrawingExport({
 						aria-label="Export drawing"
 						onCancel={(event) => {
 							event.preventDefault();
-							if (!busy) setOpen(false);
+							if (!busy) onClose();
 						}}
 						className="fixed inset-0 m-auto max-h-[calc(100%-2rem)] overflow-y-auto bg-transparent p-0 backdrop:bg-black/60"
 						onPointerDown={(event) => event.stopPropagation()}
 						onKeyDown={(event) => {
 							event.stopPropagation();
-							if (event.key === "Escape" && !busy) setOpen(false);
+							if (event.key === "Escape" && !busy) onClose();
 						}}
 					>
 						<form
@@ -99,7 +93,7 @@ export function DrawingExport({
 										},
 										{ shapes: shapes.length, width, height, format },
 									);
-									setOpen(false);
+									onClose();
 									toastManager.add({
 										type: "success",
 										title: "Drawing exported",
@@ -184,11 +178,7 @@ export function DrawingExport({
 								</p>
 							)}
 							<div className="flex justify-end gap-3">
-								<button
-									type="button"
-									disabled={busy}
-									onClick={() => setOpen(false)}
-								>
+								<button type="button" disabled={busy} onClick={() => onClose()}>
 									Close
 								</button>
 								<button

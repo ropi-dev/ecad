@@ -1,5 +1,5 @@
 import { symbolCategories } from "@ecad/default-symbols";
-import { Shapes } from "lucide-react";
+import { Component } from "lucide-react";
 import { Popover } from "radix-ui";
 import {
 	memo,
@@ -172,9 +172,9 @@ export function SymbolPicker({
 					aria-label={label}
 					tooltip={components ? "Components" : "Insert a symbol"}
 					aria-pressed={active}
-					className={`${viewControlButtonClassName} aria-pressed:border-[#b88f61] aria-pressed:text-[#e8b77e]`}
+					className={viewControlButtonClassName}
 				>
-					<Shapes size={18} aria-hidden="true" />
+					<Component size={18} aria-hidden="true" />
 				</TooltipButton>
 			</Popover.Trigger>
 			<Popover.Portal>

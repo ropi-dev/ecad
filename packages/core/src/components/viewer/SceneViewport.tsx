@@ -2,6 +2,7 @@ import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	type ReactNode,
 	type Ref,
+	useCallback,
 	useEffect,
 	useEffectEvent,
 	useImperativeHandle,
@@ -59,7 +60,11 @@ export interface SceneViewportProps {
 	onError?: (message: string) => void;
 	ariaLabel?: string;
 	extraControls?: ReactNode;
+	/** Grouped toolbars place these after the zoom controls. */
+	trailingControls?: ReactNode;
 	groupedControls?: boolean;
+	/** Accessible name of the bottom toolbar. */
+	controlsLabel?: string;
 }
 
 export function SceneViewport({
@@ -82,7 +87,9 @@ export function SceneViewport({
 	onError,
 	ariaLabel = "3D model",
 	extraControls,
+	trailingControls,
 	groupedControls = false,
+	controlsLabel,
 }: SceneViewportProps) {
 	const [selectionInfo, setSelectionInfo] = useState<SceneSelection | null>(
 		null,
@@ -198,8 +205,11 @@ export function SceneViewport({
 	useEffect(() => {
 		runtime.current?.resize(size.width, size.height);
 	}, [size]);
-	const exportPng = async () => {
-		if (!runtime.current || exporting) return;
+	const exportingRef = useRef(false);
+	// Stable, so toolbars reading it through context don't re-render on zoom.
+	const exportPng = useCallback(async () => {
+		if (!runtime.current || exportingRef.current) return;
+		exportingRef.current = true;
 		setExporting(true);
 		setExportError("");
 		try {
@@ -210,9 +220,10 @@ export function SceneViewport({
 				`PNG export failed: ${errorMessage(error, "Please try again.")}`,
 			);
 		} finally {
+			exportingRef.current = false;
 			setExporting(false);
 		}
-	};
+	}, [ariaLabel]);
 	return (
 		<>
 			<div ref={host} className="absolute inset-0 z-1 overflow-hidden" />
@@ -264,6 +275,8 @@ export function SceneViewport({
 			{controlsReady && (
 				<ViewControls3D
 					grouped={groupedControls}
+					trailing={trailingControls}
+					label={controlsLabel}
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
 					actualSize={

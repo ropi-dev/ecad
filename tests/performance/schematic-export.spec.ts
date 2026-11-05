@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, metric, ready, report } from "./app-helpers.ts";
@@ -34,14 +35,12 @@ test("schematic-export", async ({ page }, testInfo) => {
 	}, content);
 	await page.reload();
 	await ready(page);
-	const button = page.getByRole("button", {
-		name: "Export drawing",
-		exact: true,
-	});
-	await expect(button).toBeEnabled();
+	await expect(
+		page.getByRole("button", { name: "Export", exact: true }),
+	).toBeEnabled();
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
 	for (const format of ["svg", "png"]) {
-		await button.click();
+		await (await toolbarButton(page, "Export drawing")).click();
 		await dialog
 			.getByRole("combobox", { name: "Format", exact: true })
 			.selectOption(format);

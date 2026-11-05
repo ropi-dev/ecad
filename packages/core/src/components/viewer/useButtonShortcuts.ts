@@ -10,8 +10,8 @@ import { measurePerformance } from "#/performance/runtime.ts";
 const editorKeys: Record<string, string> = {
 	Shapes: "S",
 	Connections: "J",
-	"History tools": "H",
-	"View tools": "B",
+	"Pan view": "B",
+	Export: "B",
 	Select: "Q",
 	Pan: "P",
 	Rectangle: "R",
@@ -66,9 +66,7 @@ let dispose: (() => void) | undefined;
 function listen() {
 	const shortcut = shortcutModifier();
 	const preferredEditorKeys =
-		shortcut.key === "Meta"
-			? { ...editorKeys, Select: "2", "History tools": "8" }
-			: editorKeys;
+		shortcut.key === "Meta" ? { ...editorKeys, Select: "2" } : editorKeys;
 	const nativeKeys = new Set(shortcut.key === "Meta" ? ["Q", "H", "M"] : []);
 	const overlay = document.createElement("div");
 	overlay.className = "button-shortcuts";
@@ -264,7 +262,9 @@ function listen() {
 			!target.disabled &&
 			target.getAttribute("aria-disabled") !== "true"
 		) {
-			target.focus({ preventScroll: true });
+			// Undo and Redo leave focus where the user was working, usually the canvas.
+			if (!target.hasAttribute("data-shortcut-keeps-focus"))
+				target.focus({ preventScroll: true });
 			if (target.getAttribute("aria-haspopup") === "menu") {
 				target.dispatchEvent(
 					new KeyboardEvent("keydown", {

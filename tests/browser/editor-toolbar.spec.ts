@@ -21,15 +21,32 @@ test("keyboard opening, tool navigation, and Escape restore focus", async ({
 	});
 	await expectKeyboardNavigation(
 		tools.getByRole("button", { disabled: false }),
-		"ArrowRight",
-		"ArrowLeft",
+		"ArrowDown",
+		"ArrowUp",
 	);
 	await tools.getByRole("button", { name: "Rectangle", exact: true }).focus();
 	await page.keyboard.press("Enter");
 	await expect(page.locator('[data-tool="rectangle"]')).toBeAttached();
+	// Choosing a tool closes the panel and keeps keyboard focus on its group.
+	await expect(tools).toBeHidden();
+	await expect(shapes).toBeFocused();
+	// Focus returns quietly: no tooltip pops up over the canvas, including
+	// after the 350 ms tooltip delay.
+	await page.waitForTimeout(500);
+	await expect(page.locator('[data-slot="toolbar-tooltip"]')).toHaveCount(0);
+	await expect(shapes).toHaveAttribute("data-active", "true");
+	await page.keyboard.press("ArrowUp");
+	await expect(
+		tools.getByRole("button", { name: "Rectangle", exact: true }),
+	).toBeFocused();
 	await page.keyboard.press("Escape");
 	await expect(shapes).toBeFocused();
 	await expect(shapes).toHaveAttribute("aria-expanded", "false");
+	// Tabbing out of an open panel closes it.
+	await page.keyboard.press("ArrowUp");
+	await expect(tools).toBeVisible();
+	await page.keyboard.press("Shift+Tab");
+	await expect(tools).toBeHidden();
 });
 
 test("symbol picker search, arrow keys, and Enter choose a symbol", async ({
@@ -86,7 +103,7 @@ test.describe("mobile touch scrolling", () => {
 		page,
 	}) => {
 		const main = page.getByRole("toolbar", {
-			name: "View controls",
+			name: "Schematic tools",
 			exact: true,
 		});
 		const row = main.locator(":scope > div").first();
@@ -124,13 +141,13 @@ test.describe("mobile touch scrolling", () => {
 		expect(await page.locator("#editor-scene").textContent()).toBe(camera);
 		// Focus scrolling must start after touch momentum has finished.
 		await expect(row).toHaveAttribute("data-scroll-ended", "true");
-		await main.getByRole("button", { name: "Zoom out", exact: true }).focus();
+		await main.getByRole("button", { name: "History", exact: true }).focus();
 		await expect
 			.poll(() => row.evaluate((element) => element.scrollLeft))
 			.toBe(0);
 		await page.keyboard.press("Tab");
 		await expect(
-			main.getByRole("button", { name: "Zoom in", exact: true }),
+			main.getByRole("button", { name: "Select", exact: true }),
 		).toBeFocused();
 		await session.detach();
 	});
