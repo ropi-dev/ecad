@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 	utimesSync,
 	writeFileSync,
@@ -29,7 +33,7 @@ import {
 	withDirectoryLock,
 } from "../scripts/performance/base-build.ts";
 import { parseRun, withoutGrep } from "../scripts/performance/options.ts";
-import { portAvailable } from "../scripts/performance/ports.ts";
+import { portAvailable, ServerRecords } from "../scripts/performance/ports.ts";
 
 const repeat = (value: number, count: number) =>
 	Array.from({ length: count }, () => value);
@@ -425,4 +429,66 @@ test("an occupied preview port is detected before a server starts", async () => 
 		await new Promise((done) => server.close(done));
 	}
 	assert.equal(await portAvailable(port), true);
+});
+
+test("any run stops a leftover preview server once its owner run is gone", {
+	skip: process.platform !== "linux",
+}, async () => {
+	const directory = mkdtempSync(join(tmpdir(), "ecad-perf-servers-"));
+	const server = spawn(
+		process.execPath,
+		["-e", "setInterval(() => {}, 1000)"],
+		{
+			detached: true,
+			stdio: "ignore",
+		},
+	);
+	const exited = once(server, "exit");
+	try {
+		assert.ok(server.pid);
+		const port = 4999;
+		const current = new ServerRecords(directory);
+		// Its owner is alive (this process), so another run leaves it alone.
+		current.add(server.pid, port);
+		assert.equal(new ServerRecords(directory).stopLeftover(port), false);
+		// A record from another PID namespace, such as a sandbox container,
+		// names PIDs this host cannot match.
+		const file = join(directory, `${port}.json`);
+		const record = JSON.parse(readFileSync(file, "utf8"));
+		writeFileSync(file, JSON.stringify({ ...record, namespace: "pid:[1]" }));
+		assert.equal(current.stopLeftover(port), false);
+		// The owning run is gone, so the server is stopped and forgotten.
+		new ServerRecords(directory, { pid: 999_999_999, start: "gone" }).add(
+			server.pid,
+			port,
+		);
+		assert.equal(current.stopLeftover(port), true);
+		await exited;
+		assert.equal(existsSync(file), false);
+		// A record whose server already exited is just removed.
+		new ServerRecords(directory, { pid: 999_999_999, start: "gone" }).add(
+			process.pid,
+			port,
+		);
+		writeFileSync(
+			file,
+			JSON.stringify({
+				...JSON.parse(readFileSync(file, "utf8")),
+				server: { pid: server.pid, start: "reused" },
+			}),
+		);
+		assert.equal(current.stopLeftover(port), false);
+		assert.equal(existsSync(file), false);
+		// A run forgets only its own record.
+		current.add(process.pid, port);
+		new ServerRecords(directory, { pid: 999_999_999, start: "gone" }).release(
+			port,
+		);
+		assert.equal(existsSync(file), true);
+		current.release(port);
+		assert.equal(existsSync(file), false);
+	} finally {
+		if (server.exitCode === null && server.signalCode === null) server.kill();
+		rmSync(directory, { recursive: true, force: true });
+	}
 });

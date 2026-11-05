@@ -39,5 +39,5 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 
 - Prefer `pnpm sandbox <command>` for dev servers, tests, typechecks, and performance checks when multiple threads share this machine. Run `pnpm sandbox build-image` first if the image is missing.
 - Run timing checks through `pnpm sandbox perf`, `pnpm sandbox perf:budgets`, or the native `pnpm perf` scripts. These share a host benchmark lock. Sandbox tests and typechecks share access while benchmarks need exclusive access. Do not bypass the lock with direct Playwright performance invocations or set `ECAD_PERF_LOCK_HELD` yourself.
-- Capture baselines and comparisons in the same environment. Native and sandbox baselines are separate.
+- An A/B run measures base and head in the same environment by itself. Don't compare a native run's numbers with a sandbox run's.
 - See `docs/parallel-development.md` for resource allocations, artifacts, overrides, and cleanup.

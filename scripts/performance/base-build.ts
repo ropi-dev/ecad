@@ -169,11 +169,6 @@ export function touch(directory: string): void {
 }
 
 /**
- * Keeps the most recently used entries and removes the rest, along with
- * entries unused for two weeks. Entries used in the last six hours stay, since
- * another thread's run may be serving them.
- */
-/**
  * Marks a base build as used by this process until it exits, so another
  * thread's pruning leaves it alone however long the run waits or measures.
  */
@@ -199,6 +194,12 @@ export function inUse(root: string, name: string): boolean {
 	});
 }
 
+/**
+ * Keeps the most recently used entries and removes the rest, along with
+ * entries unused for two weeks. Entries used in the last six hours stay, since
+ * another thread's run may be serving them, and so do entries a live run marks
+ * with `markInUse`.
+ */
 export function prune(root: string, current: string, now = Date.now()): void {
 	const entries = readdirSync(root, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory() && /^[0-9a-f]{40}$/.test(entry.name))

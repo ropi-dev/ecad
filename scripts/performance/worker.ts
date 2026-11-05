@@ -29,7 +29,7 @@ import {
 import { touch } from "./base-build.ts";
 import type { Plan } from "./options.ts";
 import { withoutGrep } from "./options.ts";
-import { portAvailable, ServerRecord } from "./ports.ts";
+import { portAvailable, ServerRecords } from "./ports.ts";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const config = "tests/performance/playwright.config.ts";
@@ -139,7 +139,7 @@ async function startServer(
 	directory: string,
 	port: number,
 	log: string,
-	record: ServerRecord,
+	records: ServerRecords,
 ): Promise<ChildProcess> {
 	// A server left on the port would answer the readiness check while ours
 	// exits on --strictPort, and the run would measure another build.
@@ -161,7 +161,7 @@ async function startServer(
 		],
 		{ cwd: directory, detached: true, stdio: ["ignore", output, output] },
 	);
-	if (server.pid) record.add(server.pid, port);
+	if (server.pid) records.add(server.pid, port);
 	const url = `http://127.0.0.1:${port}/projects`;
 	const deadline = Date.now() + 60_000;
 	while (Date.now() < deadline) {
@@ -229,12 +229,10 @@ async function compare(plan: Plan): Promise<number> {
 	const warnings: string[] = [];
 	const states = new Map<string, ScenarioState>();
 	const servers: ChildProcess[] = [];
-	const record = new ServerRecord(
-		resolve("perf-artifacts/preview-servers.json"),
-	);
+	const records = new ServerRecords();
 	const cleanup = () => {
 		for (const server of servers) stop(server);
-		record.clear();
+		for (const port of [headPort, basePort]) records.release(port);
 	};
 	for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
 		process.once(signal, () => {
@@ -264,11 +262,15 @@ async function compare(plan: Plan): Promise<number> {
 	const rest = withoutGrep(plan.args);
 	let rounds = 0;
 	try {
-		// A killed run of this checkout can leave its detached servers behind.
-		const leftovers = record.stopLeftovers();
+		// A run killed outright, in any checkout, can leave its detached
+		// servers on these ports. This run holds the exclusive lock, so a
+		// recorded server whose owner is gone is stopped.
+		const leftovers = [headPort, basePort].filter((port) =>
+			records.stopLeftover(port),
+		);
 		if (leftovers.length) {
 			console.log(
-				`[perf] Stopped preview servers left by an earlier run on port${leftovers.length === 1 ? "" : "s"} ${leftovers.join(", ")}.`,
+				`[perf] Stopped preview servers left by a run that is gone, on port${leftovers.length === 1 ? "" : "s"} ${leftovers.join(", ")}.`,
 			);
 			for (const port of leftovers)
 				for (let wait = 0; wait < 40 && !(await portAvailable(port)); wait++)
@@ -281,7 +283,7 @@ async function compare(plan: Plan): Promise<number> {
 				process.cwd(),
 				headPort,
 				join(directory, "server-head.log"),
-				record,
+				records,
 			),
 		);
 		servers.push(
@@ -289,7 +291,7 @@ async function compare(plan: Plan): Promise<number> {
 				base.directory,
 				basePort,
 				join(directory, "server-base.log"),
-				record,
+				records,
 			),
 		);
 		const titles = listTests(plan.args, environment("head"));

@@ -55,8 +55,10 @@ if (!queued && !alreadyLocked)
 // Builds hold shared access to the benchmark lock, so they can overlap other
 // builds and tests but never a benchmark's measurement.
 mkdirSync("perf-artifacts", { recursive: true });
-const result = resolve("perf-artifacts/plan.json");
+// One file per run: concurrent runs in a checkout must not swap plans.
+const result = resolve(`perf-artifacts/plan-${process.pid}.json`);
 rmSync(result, { force: true });
+process.once("exit", () => rmSync(result, { force: true }));
 const builder = [
 	"--import",
 	"tsx",
@@ -73,6 +75,7 @@ const built = await (queued
 	: run(process.execPath, builder, buildEnv));
 if (built !== 0 || !existsSync(result)) process.exit(built || 1);
 Object.assign(planned, JSON.parse(readFileSync(result, "utf8")));
+rmSync(result, { force: true });
 // Pruning skips a base build while this run uses it.
 if (planned.base) markInUse(planned.base.directory);
 
