@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { drawShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { drawShape, resizeHandles } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type CanvasDrag,
 	canvasDragStep,
@@ -78,6 +78,23 @@ test("a snapped move waits for the 3 px threshold, then previews against the ini
 	assert.equal(moved.y, box.y);
 	assert.equal(ctx.calls.nextId, 1);
 	assert.equal(ctx.calls.scale, 0);
+});
+
+test("a resize previews against the initial shapes, not the store's current copies", () => {
+	const handle = resizeHandles(box)[0];
+	assert.ok(handle);
+	const active = drag({ mode: "resize", handle, start: handle });
+	const step = canvasDragStep(
+		active,
+		{ x: handle.x + 2, y: handle.y + 2 },
+		{ x: 110, y: 110 },
+		context(),
+	);
+	assert.equal(step.effect.kind, "preview");
+	if (step.effect.kind !== "preview") return;
+	// A save can swap in equal shapes mid-drag; release compares against these.
+	assert.equal(step.effect.base, active.initialShapes);
+	assert.notDeepEqual(step.effect.replacements[0], box);
 });
 
 test("an earlier move stays moved after the pointer returns to its start", () => {

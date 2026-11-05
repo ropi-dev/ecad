@@ -193,7 +193,7 @@ test("a refresh with the store's own saved shapes keeps a drag, which then commi
 	assert.equal(cancelled, 0);
 });
 
-test("a refresh with the store's own saved shapes keeps a wire in progress", () => {
+test("a refresh with the store's own saved shapes does not cancel, and a wire placed after it undoes", () => {
 	const { session, store } = setup([rectangle(1)]);
 	let cancelled = 0;
 	session.connect(store, () => cancelled++);

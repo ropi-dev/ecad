@@ -238,6 +238,8 @@ export function createEditorSession(
 				if (executing) return;
 				// A refresh after this project's own save keeps the same content,
 				// so a drag or wire in progress can still commit on top of it.
+				// The circuit view (CircuitEditor and CircuitStore) has no cancel
+				// path on store changes; one added there needs this exemption too.
 				if (!isSavedRefresh(store.getSnapshot())) onExternalEdit();
 				retainExisting();
 			};

@@ -117,6 +117,7 @@ export function canvasDragStep(
 							context.allowLocked,
 						),
 			],
+			base: drag.initialShapes,
 		});
 	}
 	if (drag.mode === "resize" && drag.handle) {
@@ -125,6 +126,7 @@ export function canvasDragStep(
 			replacements: [
 				resizeShape(drag.originals[0], drag.handle, delta, drag.gridStep),
 			],
+			base: drag.initialShapes,
 		});
 	}
 	if (drag.mode === "draw") {
