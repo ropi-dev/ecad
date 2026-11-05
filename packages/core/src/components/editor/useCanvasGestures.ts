@@ -8,6 +8,7 @@ import {
 	type EditorSymbol,
 	findWireConnection,
 	hitShape,
+	isUnsafeMove,
 	openPins,
 	type ResizeHandle,
 	routeWire,
@@ -16,8 +17,20 @@ import {
 	snapPoint,
 	symbolChildren,
 	symbolChildWorld,
+	UNSAFE_MOVE_MESSAGE,
+	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { Heading } from "@ecad/drawing-core/drawing/wire-router.ts";
+import {
+	createWireRoutingContext,
+	finalHeading,
+	pathWires,
+	routeWireConnection,
+	routingPitch,
+	type WireRoutingContext,
+	wireEnds,
+} from "@ecad/drawing-core/drawing/wire-routing.ts";
 import {
 	type Dispatch,
 	type DOMAttributes,
@@ -59,6 +72,10 @@ type Drag = CanvasDrag;
 interface WireChain {
 	start: Point;
 	pointerId: number;
+	/** Whether `start` is the pin the wire began at, so its lead sets the first direction. */
+	fromPin: boolean;
+	/** Direction of the last placed segment, preferred for the next one. */
+	heading?: Heading;
 }
 
 type CanvasGesture =
@@ -213,6 +230,8 @@ export function useCanvasGestures({
 	) => {
 		const byId = new Map(replacements.map((shape) => [shape.id, shape]));
 		const existing = new Set(base.map((shape) => shape.id));
+		// Rerouting deletes a wire by collapsing it to zero length. The preview
+		// keeps it so the release commits it, and committing drops it.
 		session.preview([
 			...base.map((shape) => byId.get(shape.id) ?? shape),
 			...replacements.filter((shape) => !existing.has(shape.id)),
@@ -226,24 +245,73 @@ export function useCanvasGestures({
 					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 				) ?? start)
 			: start;
+	// Routing obstacles are rebuilt only after the drawing changes.
+	const routing = useRef<WireRoutingContext | null>(null);
+	const routed = useRef<{
+		key: string;
+		start: Point;
+		shapes: readonly EditorShape[];
+		points: Point[];
+		clear: boolean;
+	} | null>(null);
 	const previewWire = useCallback(
 		(point: Point) => {
 			const active = getWire();
 			if (!active) return null;
 			const snapStep = snapEnabled ? cameraView.getGridStep() : 0;
+			const shapes = session.shapes();
 			const connection = findWireConnection(
-				session.shapes(),
+				shapes,
 				point,
 				8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
 				active.start,
 			);
-			const end =
-				connection ?? constrainWireEndpoint(active.start, point, snapStep);
 			setConnectionHover(connection ?? null);
-
-			const segments = routeWire(session.nextId(), active.start, end);
+			let segments: EditorShape[];
+			let end: Point;
+			if (connection) {
+				// Ending on a connection routes the rest of the wire around obstacles.
+				const pitch = routingPitch(snapStep);
+				const key = `${connection.x},${connection.y},${active.fromPin},${active.heading},${pitch}`;
+				if (
+					routed.current?.key !== key ||
+					routed.current.start !== active.start ||
+					routed.current.shapes !== shapes
+				) {
+					if (routing.current?.shapes !== shapes)
+						routing.current = createWireRoutingContext(shapes);
+					const context = routing.current;
+					const { points, clear } = measurePerformance(
+						"editor.wire-route",
+						() =>
+							routeWireConnection(context, active.start, connection, {
+								pitch,
+								heading: active.heading,
+								fromPin: active.fromPin,
+							}),
+						{ shapes: shapes.length },
+					);
+					routed.current = {
+						key,
+						start: active.start,
+						shapes,
+						points,
+						clear,
+					};
+				}
+				end = connection;
+				segments = pathWires(session.nextId(), routed.current.points);
+				// No safe route: show the fallback, but never connect through it.
+				if (!routed.current.clear) {
+					setWirePreview(segments);
+					return { segments, end, connected: true, blocked: true };
+				}
+			} else {
+				end = constrainWireEndpoint(active.start, point, snapStep);
+				segments = routeWire(session.nextId(), active.start, end);
+			}
 			setWirePreview(segments);
-			return { segments, end, connected: !!connection };
+			return { segments, end, connected: !!connection, blocked: false };
 		},
 		[getWire, snapEnabled, cameraView, session],
 	);
@@ -257,7 +325,7 @@ export function useCanvasGestures({
 		(connection: Point, pointerId: number) => {
 			gesture.current = {
 				kind: "wire",
-				wire: { start: connection, pointerId },
+				wire: { start: connection, pointerId, fromPin: true },
 			};
 			previewWire(connection);
 		},
@@ -283,6 +351,7 @@ export function useCanvasGestures({
 		if (effect.kind === "preview") {
 			if (effect.movingShapeId !== undefined)
 				setMovingShapeId(effect.movingShapeId);
+			active.unsafe = isUnsafeMove(effect.replacements);
 			previewReplacements(effect.replacements, effect.base);
 		} else if (effect.kind === "marquee-cancel") {
 			setMarquee(null);
@@ -300,7 +369,14 @@ export function useCanvasGestures({
 			setMovingShapeId(null);
 			active.canvas.style.cursor = "";
 			setMarquee(null);
-			if (cancel || (active.created && !active.valid)) {
+			// Releasing where a wire could only cross another net restores the drag.
+			if (active.mode === "move" && active.unsafe && !cancel)
+				session.setError(UNSAFE_MOVE_MESSAGE);
+			if (
+				cancel ||
+				(active.created && !active.valid) ||
+				(active.mode === "move" && active.unsafe)
+			) {
 				session.preview(null);
 				session.select(active.previousSelection);
 				session.selectChild(active.previousChild);
@@ -447,6 +523,7 @@ export function useCanvasGestures({
 				const next = previewWire(point);
 				if (
 					!next ||
+					next.blocked ||
 					next.segments.reduce((sum, segment) => sum + segment.width, 0) *
 						(cameraView.getSnapshot()?.camera.scale ?? 1) <
 						3
@@ -458,7 +535,11 @@ export function useCanvasGestures({
 					setTool("select");
 					return;
 				}
+				active.heading = finalHeading(
+					next.segments.flatMap((segment) => wireEnds(segment)),
+				);
 				active.start = next.end;
+				active.fromPin = false;
 				active.pointerId = event.pointerId;
 				setWirePreview(null);
 				return;
@@ -722,7 +803,9 @@ export function useCanvasGestures({
 		},
 		onPointerUpCapture: (event) => {
 			if (getDrag()?.pointerId !== event.pointerId) return;
-			updateDrag(event);
+			// The release routes without the preview budget, so a move is refused
+			// only when no safe route exists.
+			withFullRouting(() => updateDrag(event));
 			finishDrag();
 		},
 		onPointerCancelCapture: (event) => {

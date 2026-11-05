@@ -1,9 +1,12 @@
 import {
 	type EditorShape,
 	type EditorSymbol,
+	isUnsafeMove,
 	moveShapes,
 	moveSymbolChild,
 	type symbolChildren,
+	UNSAFE_MOVE_MESSAGE,
+	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
@@ -145,18 +148,21 @@ export function handleCanvasKeyDown(
 				finishWire();
 				setTool("select");
 			}
-			session.replace(
-				moveShapes(
-					selected,
-					command.delta,
-					selectionSnapStep,
-					selected[0],
-					session.shapes(),
-					session.nextId(),
-					allowLocked,
-				),
-				"Move selection",
-			);
+			{
+				const moved = withFullRouting(() =>
+					moveShapes(
+						selected,
+						command.delta,
+						selectionSnapStep,
+						selected[0],
+						session.shapes(),
+						session.nextId(),
+						allowLocked,
+					),
+				);
+				if (isUnsafeMove(moved)) session.setError(UNSAFE_MOVE_MESSAGE);
+				else session.replace(moved, "Move selection");
+			}
 			break;
 	}
 	event.preventDefault();

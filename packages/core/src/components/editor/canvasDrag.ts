@@ -31,6 +31,8 @@ export interface CanvasDrag {
 	valid: boolean;
 	additive: boolean;
 	wireStart?: Point;
+	/** The latest move preview would route a wire through another net. */
+	unsafe?: boolean;
 }
 
 export interface CanvasMarquee {

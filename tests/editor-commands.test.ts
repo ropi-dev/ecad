@@ -798,20 +798,26 @@ test("moving an attached component and adding wires commits once and restores th
 	);
 	let publications = 0;
 	store.subscribe(() => publications++);
+	const existing = new Set(initial.shapes.map(({ id }) => id));
 	const result = run(
-		replaceAndPlaceShapesEffect([moved[0]], moved.slice(1), "Move selection", [
-			symbol.id,
-		]),
+		replaceAndPlaceShapesEffect(
+			moved.filter(({ id }) => existing.has(id)),
+			moved.filter(({ id }) => !existing.has(id)),
+			"Move selection",
+			[symbol.id],
+		),
 	);
 	const committed = store.getSnapshot();
 	assert.equal(publications, 1);
-	assert.equal(committed.shapes.length, 4);
-	assert.equal(committed.nextShapeId, 5);
-	assert.deepEqual(committed.shapes[1], wire);
 	assert.deepEqual(pinTerminals(committed.shapes[0])[0], {
 		x: terminal.x + 10,
 		y: terminal.y + 20,
 	});
+	// The open wire end stays at x = 20 and the wire follows the pin.
+	assert.deepEqual(
+		committed.shapes.slice(1).map((shape) => [shape.id, shape.x, shape.y]),
+		[[wire.id, (20 + terminal.x + 10) / 2, terminal.y + 20]],
+	);
 	assert.deepEqual(result.idsBySource.get(symbol.id), [symbol.id]);
 	run(undoEffect);
 	assert.deepEqual(store.getSnapshot().shapes, initial.shapes);
@@ -828,8 +834,8 @@ test("moving an attached component and adding wires commits once and restores th
 	);
 	run(
 		replaceAndPlaceShapesEffect(
-			[branch[0]],
-			branch.slice(1),
+			branch.filter(({ id }) => existing.has(id)),
+			branch.filter(({ id }) => !existing.has(id)),
 			"Move selection",
 			[symbol.id],
 		),
@@ -838,7 +844,6 @@ test("moving an attached component and adding wires commits once and restores th
 		new Set(store.getSnapshot().shapes.map(({ id }) => id)).size,
 		store.getSnapshot().shapes.length,
 	);
-	assert.ok(store.getSnapshot().nextShapeId >= 7);
 });
 
 test("rotating both ends of a shared wire reconnects the new pin positions", async () => {
@@ -1249,4 +1254,60 @@ test("moving a component preserves its generated label net without capturing unr
 	assert.deepEqual(membership(shapes), membership(before.shapes));
 	run(undoEffect);
 	assert.deepEqual(store.getSnapshot().shapes, before.shapes);
+});
+
+test("committing a move removes the wires its reroute collapsed and keeps the nets", async () => {
+	const { electricalNets } = await import(
+		"@ecad/drawing-core/drawing/named-nets.ts"
+	);
+	const { store, run } = session();
+	const first = createSymbol(1, symbolDefinitions[0], { x: 0, y: 0 });
+	const second = createSymbol(2, symbolDefinitions[0], { x: 25.4, y: -10.16 });
+	const [, start] = pinTerminals(first);
+	const [end] = pinTerminals(second);
+	run(
+		placeShapesEffect(
+			[
+				first,
+				second,
+				drawShape(3, "wire", start, { x: 15.24, y: start.y }),
+				drawShape(4, "wire", { x: 15.24, y: start.y }, { x: 15.24, y: end.y }),
+				drawShape(5, "wire", { x: 15.24, y: end.y }, end),
+			],
+			"L wire",
+		),
+	);
+	const before = store.getSnapshot();
+	const nets = (shapes: typeof before.shapes) =>
+		electricalNets(shapes)
+			.map((net) => net.pins.length)
+			.sort();
+	const moving = required(before.shapes.find(({ id }) => id === second.id));
+	const moved = moveShapes(
+		[moving],
+		{ x: 0, y: 10.16 },
+		1.27,
+		moving,
+		before.shapes,
+		before.nextShapeId,
+	);
+	// The reroute is a straight wire, so at least one old piece collapses.
+	assert.ok(
+		moved.some((shape) => shape.kind === "wire" && shape.width <= 1e-4),
+	);
+	const existing = new Set(before.shapes.map(({ id }) => id));
+	run(
+		replaceAndPlaceShapesEffect(
+			moved.filter(({ id }) => existing.has(id)),
+			moved.filter(({ id }) => !existing.has(id)),
+			"Move selection",
+			[second.id],
+		),
+	);
+	const wires = store
+		.getSnapshot()
+		.shapes.filter((shape) => shape.kind === "wire");
+	assert.equal(wires.length, 1);
+	assert.ok(wires.every((shape) => shape.width > 1e-4));
+	assert.deepEqual(nets(store.getSnapshot().shapes), nets(before.shapes));
 });

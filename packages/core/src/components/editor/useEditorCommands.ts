@@ -99,7 +99,8 @@ export function useEditorCommands({
 				allowLocked: current.allowLocked,
 				measureText,
 			});
-			if (result) session.replace(result.replacements, result.label);
+			if (result?.error) session.setError(result.error);
+			else if (result) session.replace(result.replacements, result.label);
 			if (edit.kind === "lock" && child) session.selectChild(null);
 		},
 		[session],

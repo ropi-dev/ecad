@@ -19,7 +19,7 @@ test("the shapes module re-exports the drawing-core routing API", () => {
 	const neighbor = drawShape(3, "pin", { x: 10, y: 0 }, { x: 10, y: 0 });
 	const original = [terminal, wire, neighbor];
 	const replacement = { ...terminal, x: -5, y: 5 };
-	for (const options of [undefined, {}, { rerouteWireEnds: true }]) {
+	for (const options of [undefined, {}, { pitch: 1.27 }]) {
 		const transformed = connectTransformedTerminals(
 			[terminal],
 			[replacement],

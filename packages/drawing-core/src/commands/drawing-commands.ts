@@ -24,9 +24,11 @@ import {
 import {
 	connectionTolerance,
 	connectTransformedTerminals,
+	isUnsafeMove,
 	normalizeNetSymbol,
 	normalizeWireSegments,
 	pinTerminals,
+	withFullRouting,
 } from "#/drawing/shapes.ts";
 import { freeze } from "#/lib/freeze.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -313,13 +315,18 @@ export function rotateShapesEffect(
 			const originals = current.shapes.filter((shape) =>
 				selectedIds.has(shape.id),
 			);
-			const connected = connectTransformedTerminals(
-				originals,
-				originals.map((shape) => transformed.get(shape.id) ?? shape),
-				current.shapes,
-				current.nextShapeId,
-				{ rerouteWireEnds: true },
+			const connected = withFullRouting(() =>
+				connectTransformedTerminals(
+					originals,
+					originals.map((shape) => transformed.get(shape.id) ?? shape),
+					current.shapes,
+					current.nextShapeId,
+				),
 			);
+			if (isUnsafeMove(connected))
+				invalid(
+					"No wire route avoids other nets after this rotation, so it was not applied.",
+				);
 			const updates = new Map(connected.map((shape) => [shape.id, shape]));
 			const additions = connected.filter((shape) => !existing.has(shape.id));
 			return commit(
