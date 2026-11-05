@@ -505,6 +505,13 @@ test("a committed move routes past the preview budget instead of refusing", () =
 	}
 	for (let index = 0; index < 30; index++)
 		shapes.push(pin(300 + index, 50.8, -2.54 * (index + 1)));
+	// The preview budget cannot find every route, which is why commits lift it.
+	assert.equal(
+		isUnsafeMove(
+			moveShapes(moving, { x: 0, y: -20.32 }, 1.27, moving[0], shapes, 400),
+		),
+		true,
+	);
 	const commit = withFullRouting(() =>
 		moveShapes(moving, { x: 0, y: -20.32 }, 1.27, moving[0], shapes, 400),
 	);

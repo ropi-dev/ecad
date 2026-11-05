@@ -19,6 +19,7 @@ import {
 import {
 	addShapeObstacles,
 	emptyObstacles,
+	fallbackPath,
 	isElectricalLabel,
 	type NetLookup,
 	type PinEnd,
@@ -717,14 +718,20 @@ function rerouteSelection(
 		lineWidth?: number,
 	) => {
 		if (samePoint(from.point, to.point)) return;
-		const { points, clear } = routePath(indexes, {
+		// A move is refused once any route is unsafe, so stop searching: commits
+		// skip the rest, and a preview draws plain fallbacks for them.
+		if (unsafe && fullRouting) return;
+		const request = {
 			from: { point: from.point, heading: from.heading, strict: true },
 			to: { point: to.point, arrive: reverseHeading(to.pin?.outward) },
 			nets: new Set([net]),
 			pitch: routingPitch(pitch),
 			memory,
 			budget,
-		});
+		};
+		const { points, clear } = unsafe
+			? fallbackPath(indexes, request)
+			: routePath(indexes, request);
 		if (!clear) unsafe = true;
 		routes.push({ net, wires, points, lineWidth });
 		addRouteWires(
