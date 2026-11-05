@@ -10,6 +10,8 @@ import {
 	metric,
 	ready,
 	report,
+	saveCount,
+	saved,
 } from "./app-helpers.ts";
 
 setupAppTests();
@@ -79,6 +81,7 @@ test(
 			.click();
 		const canvas = page.locator("canvas");
 		const box = required(await canvas.boundingBox());
+		let saves = await saveCount(page);
 		await canvas.click({
 			position: { x: box.width * 0.45, y: box.height * 0.5 },
 		});
@@ -103,6 +106,10 @@ test(
 		];
 		for (let repeat = 0; repeat < 3; repeat++) {
 			for (const child of children) {
+				// The previous edit saves; a save that lands mid-press cancels the
+				// press, so let it finish before the next child is selected.
+				await saved(page, saves);
+				saves = await saveCount(page);
 				await interaction(page, "symbol.child-edit", async () => {
 					const point = await drawingPoint(page, {
 						x: parent.x + child.x + (child.kind === "rectangle" ? 10 : 0),
