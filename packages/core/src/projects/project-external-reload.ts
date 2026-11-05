@@ -142,6 +142,12 @@ export function createProjectExternalReload(
 		state.libraries = snapshot.symbolLibraries ?? [];
 		linkedAssembler.invalidate();
 		update(snapshot);
+		state.selectionHandoff = null;
+		state.selectionOrigins = new WeakSet();
+		if (state.viewSelection?.origin) {
+			const { origin: _origin, ...current } = state.viewSelection;
+			state.viewSelection = current;
+		}
 		if (
 			changed.has(snapshot.manifest.drawing) ||
 			changed.has(PROJECT_FILE) ||

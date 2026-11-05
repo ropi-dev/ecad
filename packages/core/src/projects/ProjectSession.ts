@@ -6,6 +6,7 @@ import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { ComponentType } from "react";
+import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import type { SymbolFile } from "#/components/editor/symbolFormat.ts";
 import {
 	getAppPerformance,
@@ -46,6 +47,8 @@ export interface ProjectContextValue {
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
 	openCircuit(path: string): Promise<boolean>;
 	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
+	rememberViewSelection(selection: ViewSelection): void;
+	takeSelectionHandoff(view: ViewSelection["view"]): ViewSelection | null;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
 	mode: ProjectStorage["mode"];
@@ -129,6 +132,8 @@ export function createProjectSession(
 	const {
 		openCircuit,
 		switchEditorView,
+		rememberViewSelection,
+		takeSelectionHandoff,
 		selectEditorFile,
 		subscribeMain,
 		stopMain,
@@ -137,6 +142,9 @@ export function createProjectSession(
 	const reloadExternalChanges = createProjectExternalReload(state, autosave);
 	const adopt = (snapshot: ProjectSnapshot) => {
 		state.editorSelection++;
+		state.viewSelection = null;
+		state.selectionHandoff = null;
+		state.selectionOrigins = new WeakSet();
 		linkedAssembler.invalidate();
 		documents.clear();
 		setEditorCircuit(null);
@@ -273,6 +281,8 @@ export function createProjectSession(
 		editorCircuit: state.editorCircuit,
 		openCircuit,
 		switchEditorView,
+		rememberViewSelection,
+		takeSelectionHandoff,
 		selectEditorFile,
 		mode: storage.mode,
 		busy: state.busy,

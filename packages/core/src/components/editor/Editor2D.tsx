@@ -49,6 +49,7 @@ import {
 import { useEditorViewport } from "#/components/editor/useEditorViewport.ts";
 import { useLegacyWireReroute } from "#/components/editor/useLegacyWireReroute.ts";
 import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.ts";
+import { useSchematicSelectionSync } from "#/components/editor/useSchematicSelectionSync.ts";
 import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
@@ -82,6 +83,7 @@ export type EditorCanvasProps = Editor2DProps & {
 	drawingName?: string;
 	headerControls?: ReactNode;
 	viewSwitch?: ReactNode;
+	syncSelection?: boolean;
 };
 
 export function Editor2D(props: Editor2DProps = {}) {
@@ -96,6 +98,7 @@ function EditorCanvas({
 	drawingName,
 	headerControls,
 	viewSwitch,
+	syncSelection = false,
 }: EditorCanvasProps) {
 	const isSymbol = symbolName !== undefined;
 	const [ownedStore] = useState(() => createDrawingStore());
@@ -261,6 +264,13 @@ function EditorCanvas({
 		finishWire();
 	});
 	useEffect(() => session.connect(store, cancelGestures), [session, store]);
+	useSchematicSelectionSync({
+		enabled: syncSelection,
+		store,
+		session,
+		selection: selectedIds,
+		childKey: selectedChildKey,
+	});
 
 	const rerouteNotice = useLegacyWireReroute({
 		store,

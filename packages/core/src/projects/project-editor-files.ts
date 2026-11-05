@@ -1,4 +1,5 @@
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
@@ -134,13 +135,62 @@ export function createProjectEditorFiles(
 					: selectedCircuitId === primaryPcbId
 						? current.manifest.drawing
 						: index.drawingsByCircuit.get(selectedCircuitId)?.path;
-			if (path) {
-				if (view === "circuit") await openCircuit(path);
-				else selectEditorFile(path);
-			}
+			if (!path) return;
+			const remembered = state.viewSelection;
+			const handoff =
+				remembered &&
+				remembered.store ===
+					(state.editorCircuit?.store ??
+						state.editorDrawing?.store ??
+						state.store)
+					? {
+							view,
+							circuitId: selectedCircuitId,
+							generation: state.generation,
+							source: remembered.origin ?? remembered,
+						}
+					: null;
+			state.selectionHandoff = handoff;
+			const opened =
+				view === "circuit"
+					? await openCircuit(path)
+					: await selectEditorFile(path);
+			if (!opened && state.selectionHandoff === handoff)
+				state.selectionHandoff = null;
 		} catch (cause) {
+			state.selectionHandoff = null;
 			showError(cause, "Unable to switch editor views.");
 		}
+	};
+	const rememberViewSelection = (selection: ViewSelection) => {
+		const { origin, ...current } = selection;
+		state.viewSelection =
+			!origin || state.selectionOrigins.has(origin) ? selection : current;
+	};
+	const takeSelectionHandoff = (view: ViewSelection["view"]) => {
+		const handoff = state.selectionHandoff;
+		state.selectionHandoff = null;
+		const snapshot = state.active;
+		if (
+			!handoff ||
+			!snapshot ||
+			handoff.view !== view ||
+			handoff.generation !== state.generation
+		)
+			return null;
+		const circuitId =
+			view === "circuit"
+				? state.editorCircuit?.file.circuit.id
+				: state.editorCircuit || state.editorSymbol
+					? undefined
+					: state.editorDrawing
+						? projectIndex(snapshot).drawingsById.get(
+								state.editorDrawing.file.id,
+							)?.file.circuitId
+						: primaryPcbId;
+		if (circuitId !== handoff.circuitId) return null;
+		state.selectionOrigins.add(handoff.source);
+		return handoff.source;
 	};
 
 	const subscribeDrawing = (
@@ -266,9 +316,17 @@ export function createProjectEditorFiles(
 	};
 
 	return {
-		openCircuit,
+		openCircuit: (path: string) => {
+			state.selectionHandoff = null;
+			return openCircuit(path);
+		},
 		switchEditorView,
-		selectEditorFile,
+		rememberViewSelection,
+		takeSelectionHandoff,
+		selectEditorFile: (path?: string) => {
+			state.selectionHandoff = null;
+			return selectEditorFile(path);
+		},
 		subscribeMain,
 		stopMain: () => stopMain(),
 	};

@@ -11,11 +11,9 @@ import {
 	type SetStateAction,
 	useEffect,
 } from "react";
+import type { CircuitSelectionItem } from "#/circuit/selection-sync.ts";
 
-export type CircuitSelection = {
-	kind: "component" | "pin" | "net" | "connection";
-	id: string;
-} | null;
+export type CircuitSelection = CircuitSelectionItem | null;
 export type CircuitPosition = GraphLayout["positions"][number];
 export type CircuitGraph = ReturnType<typeof buildCircuitGraph>;
 export type CircuitDrag = {

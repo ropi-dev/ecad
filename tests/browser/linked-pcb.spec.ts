@@ -216,3 +216,102 @@ test("toolbar switches keep an additional schematic selected with pending edits"
 			.circuit.components[0].id,
 	).toBe(component.id);
 });
+
+test("view switches carry the selected component between circuit and schematic", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await openProjectFiles(page);
+	await page
+		.getByRole("link", {
+			name: "Open Untitled.ecaddraw in circuit view",
+			exact: true,
+		})
+		.click();
+	await closeProjectFiles(page);
+	await page.getByRole("button", { name: "Components", exact: true }).click();
+	await page
+		.getByRole("searchbox", { name: "Search components", exact: true })
+		.fill("Resistor");
+	await page
+		.getByRole("button", { name: "Place Resistor", exact: true })
+		.click();
+	await page
+		.getByLabel("Circuit connections graph", { exact: true })
+		.click({ position: { x: 350, y: 250 } });
+	await page
+		.getByRole("button", { name: "Select component R1", exact: true })
+		.click();
+	const selectedComponent = page.locator(".circuit-component.is-selected");
+	await expect(selectedComponent).toHaveCount(1);
+	await page
+		.getByRole("button", { name: "Switch to schematic view", exact: true })
+		.click();
+	const panel = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	await expect(panel.getByText("Resistor · R1", { exact: true })).toBeVisible();
+	if (captureArtifacts) {
+		await mkdir("/tmp/ecad-selection-sync", { recursive: true });
+		await page.screenshot({ path: "/tmp/ecad-selection-sync/schematic.png" });
+	}
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("searchbox", { name: "Search symbols" })
+		.fill("Resistor");
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await page.locator("canvas").click({ position: { x: 650, y: 350 } });
+	await expect(panel.getByText("Resistor · R2", { exact: true })).toBeVisible();
+	await page
+		.getByRole("button", { name: "Switch to circuit view", exact: true })
+		.click();
+	await expect(
+		selectedComponent.getByRole("button", {
+			name: "Select component R2",
+			exact: true,
+		}),
+	).toBeAttached();
+	if (captureArtifacts)
+		await page.screenshot({ path: "/tmp/ecad-selection-sync/circuit.png" });
+	await page
+		.getByRole("button", { name: "Switch to schematic view", exact: true })
+		.click();
+	await expect(panel.getByText("Resistor · R2", { exact: true })).toBeVisible();
+	const canvas = required(await page.locator("canvas").boundingBox());
+	await page.mouse.move(canvas.x + 230, canvas.y + 90);
+	await page.mouse.down();
+	await page.mouse.move(canvas.x + 900, canvas.y + 620, { steps: 6 });
+	await page.mouse.up();
+	await expect(
+		panel.getByText("Selected shapes", { exact: true }),
+	).toBeVisible();
+	await page
+		.getByRole("button", { name: "Switch to circuit view", exact: true })
+		.click();
+	await expect(
+		page.getByRole("button", { name: "Select component R1", exact: true }),
+	).toBeAttached();
+	await expect(selectedComponent).toHaveCount(0);
+	await page
+		.getByRole("button", { name: "Switch to schematic view", exact: true })
+		.click();
+	await expect(
+		panel.getByText("Selected shapes", { exact: true }),
+	).toBeVisible();
+	await page
+		.getByRole("button", { name: "Switch to circuit view", exact: true })
+		.click();
+	await page
+		.getByRole("button", { name: "Select component R1", exact: true })
+		.click();
+	await expect(selectedComponent).toHaveCount(1);
+	await page.keyboard.press("Escape");
+	await expect(selectedComponent).toHaveCount(0);
+	await page
+		.getByRole("button", { name: "Switch to schematic view", exact: true })
+		.click();
+	await expect(page.locator("canvas")).toBeVisible();
+	await expect(panel).toBeHidden();
+});

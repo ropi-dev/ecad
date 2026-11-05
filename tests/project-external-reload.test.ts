@@ -418,3 +418,39 @@ test("notifications during a refresh share one more refresh", async () => {
 	assert.equal(f.calls.refreshes, 2);
 	stop();
 });
+
+test("an external change drops the selection a view switch would restore", async () => {
+	const initial = snapshot();
+	const linked = {
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Board", primaryPcbId)],
+	};
+	const f = fixture(linked);
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const project = () => f.session.getSnapshot();
+	const main = project().store;
+	const schematic = {
+		view: "schematic" as const,
+		store: main,
+		selection: { shapeIds: [1], childKey: null },
+	};
+	project().rememberViewSelection(schematic);
+	await project().switchEditorView("circuit");
+	const origin = project().takeSelectionHandoff("circuit");
+	const circuit = project().editorCircuit;
+	assert.ok(origin && circuit);
+	const derived = {
+		view: "circuit" as const,
+		store: circuit.store,
+		selection: { item: null, checkedPins: [] },
+	};
+	project().rememberViewSelection({ ...derived, origin });
+	f.changeOnDisk({ ...linked, shapes: [rectangle] }, ["main.ecaddraw"]);
+	await until(() => main.getSnapshot().shapes.length === 1);
+	project().rememberViewSelection({ ...derived, origin });
+	await project().switchEditorView("schematic");
+	assert.deepEqual(project().takeSelectionHandoff("schematic"), derived);
+	stop();
+});

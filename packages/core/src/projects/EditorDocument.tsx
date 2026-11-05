@@ -48,6 +48,7 @@ export function EditorDocument({
 					<EditorViewSwitch view="schematic" />
 				) : undefined
 			}
+			syncSelection={!props.store && !symbol}
 		/>
 	);
 }
