@@ -3,6 +3,7 @@ import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import type { AppPerformance } from "#/performance/browser.ts";
 import { openProjectFiles } from "../browser/project-files";
+import { toolbarButton } from "../browser/toolbar";
 import { createTestComponent } from "../fixtures/circuit.ts";
 import { required } from "../helpers/required.ts";
 import { budgets, type Scenario } from "./budgets.ts";
@@ -42,6 +43,107 @@ export async function editorReady(page: Page, title: string) {
 				?.disabled === false,
 		title,
 		{ polling: "raf", timeout: 30_000 },
+	);
+}
+
+/** Counts the shapes in a project's saved drawing, or returns null while a save is replacing it. */
+export function savedShapeCount(page: Page, project: string) {
+	return page.evaluate(async (project) => {
+		try {
+			let directory = await (
+				await navigator.storage.getDirectory()
+			).getDirectoryHandle(project);
+			const manifest = await (
+				await directory.getFileHandle(".ecadprj")
+			).getFile();
+			const path = (await manifest.text())
+				.match(/^drawing\s*=\s*"([^"]+)"/m)?.[1]
+				.split("/");
+			const name = path?.pop();
+			if (!path || !name) return null;
+			for (const part of path)
+				directory = await directory.getDirectoryHandle(part);
+			const file = await (await directory.getFileHandle(name)).getFile();
+			return JSON.parse(await file.text()).shapes.length as number;
+		} catch (error) {
+			if (
+				error instanceof DOMException &&
+				(error.name === "NotFoundError" || error.name === "NotReadableError")
+			)
+				return null;
+			throw error;
+		}
+	}, project);
+}
+
+/** Undoes the last edit from the history popover, then closes the popover so it cannot swallow the next canvas press. */
+export async function undo(page: Page) {
+	await (await toolbarButton(page, "Undo")).click();
+	await expect(
+		page.getByRole("button", { name: "Redo", exact: true }),
+	).toBeEnabled();
+	const history = page.getByRole("button", {
+		name: "History tools",
+		exact: true,
+	});
+	await history.click();
+	await expect(history).toHaveAttribute("aria-expanded", "false");
+}
+
+export const saveCount = async (page: Page) =>
+	(await report(page)).metrics["project.save"]?.count ?? 0;
+
+/**
+ * Waits until autosave has written the edits made after `before` (a
+ * `saveCount` reading) and no further save follows. A save that lands during
+ * a canvas drag cancels the drag, so let saves finish between gestures.
+ */
+export async function saved(page: Page, before: number) {
+	await expect
+		.poll(
+			async () => {
+				const count = await saveCount(page);
+				if (count <= before) return false;
+				await page.waitForTimeout(500);
+				return (await saveCount(page)) === count;
+			},
+			{ timeout: 30_000 },
+		)
+		.toBe(true);
+}
+
+/**
+ * Moves the pointer onto the canvas and waits for the page to go idle, as a
+ * user pointing before a gesture would. Canvas hit tests use the shapes from
+ * the last render, so a press that beats a pending render misses its target.
+ */
+export async function pointAt(page: Page, point: { x: number; y: number }) {
+	await page.mouse.move(point.x, point.y);
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() =>
+					requestAnimationFrame(() =>
+						requestIdleCallback(() => resolve(), { timeout: 2000 }),
+					),
+				),
+			),
+	);
+}
+
+/** Waits until an attribute input commits a number. Distances commit in millimetres. */
+export async function committed(page: Page, label: string, expected: number) {
+	await page.waitForFunction(
+		({ label, expected }) =>
+			Math.abs(
+				Number(
+					document
+						.querySelector(`input[aria-label="${label}"]`)
+						?.getAttribute("data-committed-value") ?? Number.NaN,
+				) - expected,
+			) < 1e-6,
+		{ label, expected },
+		{ polling: "raf" },
 	);
 }
 
@@ -242,12 +344,14 @@ export async function openComponentWorkload(
 		}));
 		await write(
 			".ecadprj",
-			'format = "ecad-project"\nversion = 1\nname = "Component fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\nassets = []\n[[circuits]]\ncircuit = "circuit.ecadcircuit"\ngraph = "layout.ecadgraph"\n',
+			'format = "ecad-project"\nversion = 1\nname = "Component fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\nassets = []\n[[circuits]]\ncircuit = "drawing.ecaddraw"\n',
 		);
 		await write(
 			"drawing.ecaddraw",
 			JSON.stringify({
 				shapes: [],
+				circuit: file.circuit,
+				circuitId: file.circuit.id,
 				symbolLibraries: [
 					{
 						id: "components",
@@ -258,14 +362,15 @@ export async function openComponentWorkload(
 				],
 			}),
 		);
-		await write("circuit.ecadcircuit", JSON.stringify(file.circuit));
-		await write("layout.ecadgraph", JSON.stringify(file.graph));
 		localStorage.setItem("ecad.active-project", "Component fixture");
 	}, file);
 	await page.reload();
 	await ready(page);
 	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open Component workload", exact: true })
+		.getByRole("link", {
+			name: "Open Component workload.ecaddraw in circuit view",
+			exact: true,
+		})
 		.click();
 	await expect(
 		page.getByRole("button", { name: "Components", exact: true }),

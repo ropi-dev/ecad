@@ -173,6 +173,8 @@ test("project-file-sidebar", async ({ page }, testInfo) => {
 	}
 	const pinTimes: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
+		// Closing the menu lets the compact sidebar collapse, so hover it open again.
+		await openProjectFiles(page);
 		pinTimes.push(
 			await interaction(page, "sidebar.pin", async () => {
 				await sidebar

@@ -19,6 +19,11 @@ test("circuit-keyboard-placement", async ({ page }, testInfo) => {
 	const canvas = page.getByLabel("Circuit connections graph", { exact: true });
 	const times: number[] = [];
 	for (let index = 1; index <= 3; index++) {
+		// Let the previous undo save before the next keyboard placement starts.
+		await expect(page.locator(".circuit-editor")).toHaveAttribute(
+			"data-pending-changes",
+			"false",
+		);
 		times.push(
 			await interaction(page, "circuit.keyboard-placement", async () => {
 				await page

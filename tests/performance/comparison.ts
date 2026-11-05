@@ -15,7 +15,7 @@ export interface Summary {
 	>;
 }
 
-export function checkBudgets(summary: Summary): string[] {
+export function checkBudgets(summary: Summary, smoke = false): string[] {
 	const failures: string[] = [];
 	for (const [scenario, metrics] of Object.entries(summary.scenarios)) {
 		const limits = budgets[scenario as Scenario];
@@ -33,6 +33,8 @@ export function checkBudgets(summary: Summary): string[] {
 			}
 			if (summary.profile.mode === "development" && metric !== "domNodes")
 				continue;
+			// Smoke runs check that scenarios still measure, never their timing.
+			if (smoke && metric.endsWith("Ms")) continue;
 			if (value > maximum)
 				failures.push(
 					`${scenario}.${metric}: median ${value.toFixed(1)} exceeds budget ${maximum}.`,

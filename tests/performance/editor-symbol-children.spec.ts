@@ -1,8 +1,16 @@
+import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, test } from "@playwright/test";
 import { drawingPoint, selectSymbolParent } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	committed,
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -74,12 +82,15 @@ test("editor-symbol-children", async ({ page }, testInfo) => {
 	const center = await page
 		.getByRole("spinbutton", { name: "Center X", exact: true })
 		.inputValue();
+	// Attribute fields show mils. Drawing points and the symbol file use millimetres.
 	const parent = {
-		x: Number(center),
-		y: Number(
-			await page
-				.getByRole("spinbutton", { name: "Center Y", exact: true })
-				.inputValue(),
+		x: fromMils(Number(center)),
+		y: fromMils(
+			Number(
+				await page
+					.getByRole("spinbutton", { name: "Center Y", exact: true })
+					.inputValue(),
+			),
 		),
 	};
 	const children = [
@@ -107,18 +118,12 @@ test("editor-symbol-children", async ({ page }, testInfo) => {
 					name: label,
 					exact: true,
 				});
-				const value = child.kind === "pin" ? -20 + repeat : 5 + repeat;
+				const value =
+					child.kind === "pin" ? -780 + repeat * 10 : 200 + repeat * 50;
 				await input.fill(String(value));
 				await input.press("Tab");
-				child.x = value;
-				await page.waitForFunction(
-					({ label, value }) =>
-						document
-							.querySelector(`input[aria-label="${label}"]`)
-							?.getAttribute("data-committed-value") === String(value),
-					{ label, value },
-					{ polling: "raf" },
-				);
+				child.x = fromMils(value);
+				await committed(page, label, fromMils(value));
 				await page.evaluate(
 					() =>
 						new Promise<void>((resolve) =>

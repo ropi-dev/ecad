@@ -2,7 +2,16 @@ import { expect, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	finish,
+	interaction,
+	metric,
+	pointAt,
+	ready,
+	report,
+	saveCount,
+	saved,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -21,6 +30,8 @@ test("editor-text-duplicate", async ({ page }, testInfo) => {
 			text: "SIGNAL",
 			x: bounds.x + bounds.width * 0.3,
 			y: bounds.y + bounds.height * 0.45,
+			// A net label extends up and right from its anchor, so grab its text.
+			grab: { x: 12, y: -4 },
 		},
 		{
 			kind: "Text",
@@ -28,8 +39,10 @@ test("editor-text-duplicate", async ({ page }, testInfo) => {
 			text: "Board notes",
 			x: bounds.x + bounds.width * 0.5,
 			y: bounds.y + bounds.height * 0.45,
+			grab: { x: 0, y: 0 },
 		},
 	];
+	let saves = await saveCount(page);
 	for (const source of sources) {
 		await (await toolbarButton(page, source.kind)).click();
 		await page.mouse.click(source.x, source.y);
@@ -40,14 +53,22 @@ test("editor-text-duplicate", async ({ page }, testInfo) => {
 		await field.fill(source.text);
 		await field.press("Tab");
 	}
+	await expect(page.locator('[data-tool="select"]')).toBeAttached();
+	await saved(page, saves);
 	let expectedId = 3;
 	for (const source of sources) {
 		for (let repeat = 0; repeat < 3; repeat++) {
+			const grab = {
+				x: source.x + source.grab.x,
+				y: source.y + source.grab.y,
+			};
+			await pointAt(page, grab);
+			saves = await saveCount(page);
 			await interaction(page, "text.duplicate", async () => {
 				await page.keyboard.down("Alt");
-				await page.mouse.move(source.x, source.y);
+				await page.mouse.move(grab.x, grab.y);
 				await page.mouse.down();
-				await page.mouse.move(source.x + 80 + repeat * 40, source.y + 60, {
+				await page.mouse.move(grab.x + 80 + repeat * 40, grab.y + 60, {
 					steps: 4,
 				});
 				await page.mouse.up();
@@ -68,6 +89,7 @@ test("editor-text-duplicate", async ({ page }, testInfo) => {
 					{ field: source.field, text: source.text, id: expectedId++ },
 				);
 			});
+			await saved(page, saves);
 		}
 	}
 	const value = await report(page);

@@ -48,13 +48,6 @@ test("circuit-collapse", async ({ page }, testInfo) => {
 			pinIds: [device.pins[99].id, file.circuit.components[2].pins[0].id],
 		},
 	);
-	file.graph.positions = [
-		{ id: device.id, kind: "component", x: 60, y: 60 },
-		{ id: file.circuit.components[1].id, kind: "component", x: 500, y: 60 },
-		{ id: file.circuit.components[2].id, kind: "component", x: 500, y: 260 },
-		{ id: "signal-a", kind: "net", x: 360, y: 140 },
-		{ id: "signal-b", kind: "net", x: 360, y: 340 },
-	];
 	await openComponentWorkload(page, file);
 	await closeProjectFiles(page);
 	const times: number[] = [];

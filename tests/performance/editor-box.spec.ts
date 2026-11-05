@@ -1,8 +1,19 @@
+import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, test } from "@playwright/test";
 import { selectSymbolParent } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	committed,
+	finish,
+	interaction,
+	metric,
+	pointAt,
+	ready,
+	report,
+	saveCount,
+	saved,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -19,52 +30,42 @@ test("editor-box", async ({ page }, testInfo) => {
 	const selectParent = () => selectSymbolParent(page);
 	for (let repeat = 0; repeat < 3; repeat++) {
 		await selectParent();
-		await interaction(page, "box.dimensions", async () => {
-			for (const [name, value] of [
-				["Width", 32 + repeat * 4],
-				["Height", 20 + repeat * 2],
-			] as const) {
-				const input = page.getByRole("spinbutton", { name, exact: true });
-				await input.fill(String(value));
-				await input.press("Tab");
-				await page.waitForFunction(
-					({ name, value }) =>
-						document
-							.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`)
-							?.getAttribute("data-committed-value") === String(value),
-					{ name, value },
-					{ polling: "raf" },
-				);
-			}
+		const saves = await saveCount(page);
+		await interaction(page, "box.font-size", async () => {
+			const value = 120 + repeat * 20;
+			const input = page.getByRole("spinbutton", {
+				name: "Font size",
+				exact: true,
+			});
+			await input.fill(String(value));
+			await input.press("Tab");
+			await committed(page, "Font size", fromMils(value));
 		});
+		await saved(page, saves);
 		await selectParent();
 		await expect(page.getByTestId("resize-handle")).toHaveCount(8);
-		const handle = required(
-			await page
-				.locator('[data-testid="resize-handle"][data-handle="1,1"]')
-				.boundingBox(),
+		const corner = page.locator(
+			'[data-testid="resize-handle"][data-handle="1,1"]',
 		);
-		const before = Number(
-			await page
-				.getByRole("spinbutton", { name: "Width", exact: true })
-				.inputValue(),
-		);
+		const handle = required(await corner.boundingBox());
+		const grab = {
+			x: handle.x + handle.width / 2,
+			y: handle.y + handle.height / 2,
+		};
+		await pointAt(page, grab);
 		await interaction(page, "box.resize", async () => {
-			await page.mouse.move(
-				handle.x + handle.width / 2,
-				handle.y + handle.height / 2,
-			);
+			await page.mouse.move(grab.x, grab.y);
 			await page.mouse.down();
 			await page.mouse.move(handle.x + 25, handle.y - 15, { steps: 3 });
 			await page.mouse.up();
 			await page.waitForFunction(
-				(before) =>
-					Number(
-						document
-							.querySelector<HTMLInputElement>('input[aria-label="Width"]')
-							?.getAttribute("data-committed-value"),
-					) > before,
-				before,
+				(before) => {
+					const box = document
+						.querySelector('[data-testid="resize-handle"][data-handle="1,1"]')
+						?.getBoundingClientRect();
+					return box !== undefined && box.x > before.x + 10;
+				},
+				handle,
 				{ polling: "raf" },
 			);
 		});
