@@ -596,3 +596,58 @@ test("restoring assets loads every asset within the limit and names the oversize
 		/disk unavailable/,
 	);
 });
+
+test("view switches hand the remembered selection only to the paired destination", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	const schematic = {
+		view: "schematic" as const,
+		store: project().store,
+		selection: { shapeIds: [1], childKey: null },
+	};
+	project().rememberViewSelection(schematic);
+	await project().switchEditorView("circuit");
+	const circuit = required(project().editorCircuit);
+	assert.deepEqual(project().takeSelectionHandoff("schematic"), null);
+	project().rememberViewSelection(schematic);
+	await project().switchEditorView("schematic");
+	await project().switchEditorView("circuit");
+	assert.equal(project().takeSelectionHandoff("circuit"), schematic);
+	assert.equal(project().takeSelectionHandoff("circuit"), null);
+
+	const derived = {
+		view: "circuit" as const,
+		store: circuit.store,
+		selection: { item: { kind: "net" as const, id: "net" }, checkedPins: [] },
+	};
+	project().rememberViewSelection({ ...derived, origin: { ...schematic } });
+	await project().switchEditorView("schematic");
+	assert.deepEqual(project().takeSelectionHandoff("schematic"), derived);
+
+	project().rememberViewSelection({ ...derived, origin: schematic });
+	await project().switchEditorView("circuit");
+	assert.equal(project().takeSelectionHandoff("circuit"), null);
+
+	project().rememberViewSelection({ ...derived, origin: schematic });
+	await project().switchEditorView("schematic");
+	assert.equal(project().takeSelectionHandoff("schematic"), schematic);
+
+	project().rememberViewSelection(schematic);
+	await project().switchEditorView("circuit");
+	await project().openCircuit("main.ecaddraw");
+	assert.equal(project().takeSelectionHandoff("circuit"), null);
+
+	await project().switchEditorView("schematic");
+	project().rememberViewSelection(schematic);
+	await project().switchEditorView("circuit");
+	await project().reload();
+	assert.equal(project().takeSelectionHandoff("circuit"), null);
+	stop();
+});

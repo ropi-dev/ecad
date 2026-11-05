@@ -8,7 +8,7 @@ Run `pnpm run test:browser` for the browser cases. CI runs the same suite across
 | Circuit, 8 | Pin drag preview, connection and merge, undo and redo, reload, autosave completing during a gesture, component picker filtering, connection highlights, keyboard redo and input isolation, wide net label fitting, space-drag and middle-drag panning during placement |
 | Autosave, 3 | Schematic and user-library symbol edits reach storage with browser timers paused, opening legacy net labels does not save repeatedly |
 | Projects, 3 | Separate drawing histories and reload, failed symbol save and retry, save/discard/cancel when switching projects |
-| Linked PCB, 3 | Navigation between circuit and schematic, synchronization in both directions, pending autosaves and schematic undo, label movement and component rotation through autosave and reload |
+| Linked PCB, 4 | Navigation between circuit and schematic, selection carried across view switches, synchronization in both directions, pending autosaves and schematic undo, label movement and component rotation through autosave and reload |
 | Symbols, 2 | File upload, cross-tab library refresh, lazy thumbnails, placement, reusable definition editing |
 | KiCad import, 2 | Imported drawing survives browser storage and reopening, skipped symbols are named in the notice and report |
 | Gerber, 3 | ZIP upload and layer creation, layer ordering, visibility, focus and camera, partial layers and their diagnostics |

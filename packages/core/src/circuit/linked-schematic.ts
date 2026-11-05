@@ -1394,7 +1394,7 @@ function labelPinId(
 	}
 }
 
-function componentShapeIds(component: CircuitComponent): number[] {
+export function componentShapeIds(component: CircuitComponent): number[] {
 	return (
 		component.schematicShapeIds ??
 		(component.schematicShapeId === undefined
@@ -1403,7 +1403,7 @@ function componentShapeIds(component: CircuitComponent): number[] {
 	);
 }
 
-function componentsByShapeId(
+export function componentsByShapeId(
 	components: readonly CircuitComponent[],
 ): Map<number, CircuitComponent> {
 	const owners = new Map<number, CircuitComponent>();
@@ -1413,7 +1413,7 @@ function componentsByShapeId(
 	return owners;
 }
 
-function schematicPinLookup(
+export function schematicPinLookup(
 	components: readonly CircuitComponent[],
 ): (shapeId: number, sourceId: number) => string | undefined {
 	const owners = componentsByShapeId(components);

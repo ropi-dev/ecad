@@ -1,6 +1,7 @@
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
 import { createSerialQueue } from "#/lib/serial-queue.ts";
 import { instrumentProjectStorage } from "#/performance/project-storage.ts";
@@ -58,6 +59,14 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		epoch: 0,
 		generation: 0,
 		editorSelection: 0,
+		viewSelection: null as ViewSelection | null,
+		selectionOrigins: new WeakSet<object>(),
+		selectionHandoff: null as {
+			view: ViewSelection["view"];
+			circuitId: string;
+			generation: number;
+			source: ViewSelection;
+		} | null,
 		busy: true,
 		dirty: false,
 		needsSave: false,

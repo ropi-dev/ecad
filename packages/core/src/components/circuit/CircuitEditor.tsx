@@ -59,6 +59,7 @@ import {
 	type CircuitView,
 	useCircuitNavigation,
 } from "#/components/circuit/useCircuitNavigation.ts";
+import { useCircuitSelectionSync } from "#/components/circuit/useCircuitSelectionSync.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 
 const ErcPanel = lazy(() =>
@@ -183,6 +184,13 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 		setSelection,
 		setEditing,
 		setPendingPin,
+	});
+	useCircuitSelectionSync({
+		store,
+		selection,
+		checkedPins,
+		setSelection,
+		setCheckedPins,
 	});
 	function select(next: Selection) {
 		setSelection(next);
