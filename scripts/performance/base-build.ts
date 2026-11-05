@@ -148,6 +148,7 @@ export function prune(root: string, current: string, now = Date.now()): void {
 		if (index >= keep || now - entry.used > maxAgeMs) {
 			rmSync(join(root, entry.name), { recursive: true, force: true });
 			rmSync(join(root, "archives", `${entry.name}.tar`), { force: true });
+			rmSync(join(root, `${entry.name}.lock`), { force: true });
 		}
 	});
 }

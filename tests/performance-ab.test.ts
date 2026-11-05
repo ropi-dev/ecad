@@ -257,6 +257,7 @@ test("the base cache keeps recent entries and prunes old or surplus ones", () =>
 			mkdirSync(directory);
 			writeFileSync(join(directory, ".ecad-perf-ready"), "{}");
 			writeFileSync(join(root, "archives", `${sha(index)}.tar`), "");
+			writeFileSync(join(root, `${sha(index)}.lock`), "");
 			// Entry 0 is newest. 0–2 were used within six hours, 3–7 a day or
 			// more ago, and 8 three weeks ago.
 			const used = new Date(
@@ -273,8 +274,13 @@ test("the base cache keeps recent entries and prunes old or surplus ones", () =>
 		const left = readdirSync(root)
 			.filter((name) => name !== "archives")
 			.sort();
-		// Keeps the five newest, plus the current entry; drops 5, 6 and 8.
-		assert.deepEqual(left, [0, 1, 2, 3, 4, 7].map(sha));
+		// Keeps the five newest, plus the current entry; drops 5, 6 and 8
+		// with their locks.
+		const kept = [0, 1, 2, 3, 4, 7].map(sha);
+		assert.deepEqual(
+			left,
+			kept.flatMap((name) => [name, `${name}.lock`]),
+		);
 		assert.equal(readdirSync(join(root, "archives")).length, 6);
 	} finally {
 		rmSync(root, { recursive: true });
