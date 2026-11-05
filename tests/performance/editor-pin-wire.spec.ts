@@ -39,6 +39,11 @@ test("editor-pin-wire", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		});
 		await canvas.click({ position: { x: pin.x + 80, y: pin.y } });
 		await page.keyboard.press("Enter");
+		// Enter ends the wire and returns to Select. If a save reaches the store
+		// first, the session ends the wire itself but leaves the Wire tool on
+		// (see #111), and Enter then does nothing. This teardown is not timed,
+		// so choose Select explicitly.
+		await page.getByRole("button", { name: "Select", exact: true }).click();
 		await expect(page.locator('[data-tool="select"]')).toBeAttached();
 		await expect(
 			page.getByRole("spinbutton", { name: "Length", exact: true }),
