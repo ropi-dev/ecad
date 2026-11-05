@@ -8,23 +8,55 @@ import { defaultErcRules } from "@ecad/drawing-core/erc/rules.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { useMemo, useState } from "react";
 
-export function ErcPanel({
+/** Electrical rules check for the circuit editor. */
+export function CircuitErcPanel({
 	circuit,
-	onClose,
-	onSelect,
+	...props
 }: {
 	circuit: Circuit;
 	onClose(): void;
 	onSelect(subject: ErcSubject): void;
 }) {
+	// Layout-only changes, such as moving or collapsing a component, keep the
+	// results current.
+	const revision = useMemo(() => JSON.stringify(circuit), [circuit]);
+	return (
+		<ErcPanel
+			{...props}
+			source="circuit"
+			revision={revision}
+			check={() => runErc(circuit, defaultErcRules)}
+		/>
+	);
+}
+
+/**
+ * Runs the default electrical rules on demand and lists the findings. Results
+ * go stale when `revision` changes.
+ */
+export function ErcPanel({
+	source,
+	revision,
+	check,
+	className = "top-14 right-3 max-h-[calc(100%-9rem)]",
+	onClose,
+	onSelect,
+}: {
+	source: "circuit" | "schematic";
+	/** Position classes for the floating panel. */
+	className?: string;
+	revision: unknown;
+	check(): ErcDiagnostic[];
+	onClose(): void;
+	onSelect(subject: ErcSubject): void;
+}) {
 	const [result, setResult] = useState<{
-		circuitKey: string;
+		revision: unknown;
 		diagnostics: ErcDiagnostic[];
 	} | null>(null);
 	const [error, setError] = useState("");
 	const [page, setPage] = useState(0);
-	const circuitKey = useMemo(() => JSON.stringify(circuit), [circuit]);
-	const stale = result !== null && result.circuitKey !== circuitKey;
+	const stale = result !== null && result.revision !== revision;
 	const diagnostics = result?.diagnostics ?? [];
 	const errors = diagnostics.filter((item) => item.severity === "error").length;
 	const button =
@@ -32,7 +64,7 @@ export function ErcPanel({
 	return (
 		<section
 			aria-label="Electrical rules check"
-			className="absolute right-3 top-14 z-20 flex max-h-[calc(100%-9rem)] w-96 max-w-[calc(100%-1.5rem)] flex-col gap-3 rounded-lg border border-white/20 bg-slate-900 p-4 text-sm text-slate-100 shadow-xl"
+			className={`absolute z-20 flex ${className} w-96 max-w-[calc(100%-1.5rem)] flex-col gap-3 rounded-lg border border-white/20 bg-slate-900 p-4 text-sm text-slate-100 shadow-xl`}
 			onKeyDown={(event) => {
 				event.stopPropagation();
 				if (event.key === "Escape") onClose();
@@ -54,10 +86,7 @@ export function ErcPanel({
 				className={button}
 				onClick={() => {
 					try {
-						setResult({
-							circuitKey,
-							diagnostics: runErc(circuit, defaultErcRules),
-						});
+						setResult({ revision, diagnostics: check() });
 						setError("");
 						setPage(0);
 					} catch (cause) {
@@ -71,9 +100,9 @@ export function ErcPanel({
 				{error
 					? `Check failed: ${error}`
 					: !result
-						? "Run checks on this circuit's pin types and connections."
+						? `Run checks on this ${source}'s pin types and connections.`
 						: stale
-							? "Circuit changed. Run ERC again to update results."
+							? `${source === "circuit" ? "Circuit" : "Schematic"} changed. Run ERC again to update results.`
 							: `${errors} errors, ${diagnostics.length - errors} warnings`}
 			</output>
 			{result && !stale && !error && diagnostics.length === 0 && (

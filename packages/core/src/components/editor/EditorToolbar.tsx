@@ -36,6 +36,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { DrawingExport } from "#/components/editor/DrawingExport.tsx";
+import { ErcButton } from "#/components/editor/ErcButton.tsx";
 import type {
 	createEditorSession,
 	DrawingCommand,
@@ -108,6 +109,9 @@ interface EditorToolbarProps {
 	selectionLocked: boolean;
 	editSelection: (edit: SelectionEdit) => void;
 	removeSelected: () => void;
+	ercOpen: boolean;
+	/** Toggles the electrical rules check. Symbol drawings have none. */
+	onErc?: () => void;
 }
 
 export const EditorToolbar = memo(function EditorToolbar({
@@ -138,6 +142,8 @@ export const EditorToolbar = memo(function EditorToolbar({
 	selectionLocked,
 	editSelection,
 	removeSelected,
+	ercOpen,
+	onErc,
 }: EditorToolbarProps) {
 	const [exportOpen, setExportOpen] = useState(false);
 	const viewExport = useViewExport();
@@ -218,8 +224,6 @@ export const EditorToolbar = memo(function EditorToolbar({
 					),
 				)}
 			<ToolbarSeparator />
-			{renderGroup("shapes", "Shapes", Shapes)}
-			{renderGroup("connections", "Connections", Cable)}
 			<SymbolPicker
 				library={symbolLibrary}
 				allowNetSymbols={!isSymbol}
@@ -233,6 +237,8 @@ export const EditorToolbar = memo(function EditorToolbar({
 					setTool("symbol");
 				}}
 			/>
+			{renderGroup("connections", "Connections", Cable)}
+			{renderGroup("shapes", "Shapes", Shapes)}
 			<ToolbarSeparator />
 			{[
 				{
@@ -276,7 +282,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 			{toggle({
 				disabled: !hasSelection,
 				"aria-label": "Delete",
-				tooltip: "Delete selected shapes",
+				tooltip: "Delete selection",
 				shortcut: "Delete",
 				onClick: removeSelected,
 				children: <Trash2 size={18} aria-hidden="true" />,
@@ -302,6 +308,12 @@ export const EditorToolbar = memo(function EditorToolbar({
 				children: <SquareDashedMousePointer size={18} aria-hidden="true" />,
 			})}
 			<ToolbarSeparator />
+			{onErc && (
+				<>
+					<ErcButton open={ercOpen} disabled={!ready} onClick={onErc} />
+					<ToolbarSeparator />
+				</>
+			)}
 			<ToolbarGroup label="Export" icon={Download} disabled={!ready}>
 				<ToolbarMenuItem
 					icon={FileImage}

@@ -5,9 +5,11 @@ import {
 	type CircuitNet,
 	type CircuitPin,
 	circuitFileSchema,
+	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 import { invalidCircuit } from "@ecad/drawing-core/circuit/store.ts";
+import { createPointIndex } from "@ecad/drawing-core/drawing/connection-geometry.ts";
 import {
 	type ElectricalNet,
 	electricalNets,
@@ -83,6 +85,104 @@ export function synchronizePcb(
 		},
 		{ components: file.circuit.components.length, shapes: shapes.length },
 	);
+}
+
+/**
+ * The circuit that a schematic's current shapes describe, so electrical checks
+ * can run before the drawing is saved. A pin under a no-connect marker counts
+ * as no-connect, even when it is also wired, so checks can report the clash.
+ */
+export function schematicCircuit(
+	shapes: EditorShape[],
+	definitions: readonly SymbolDefinition[],
+): {
+	circuit: Circuit;
+	/** Schematic shapes that show a checked component, pin or net. */
+	shapeIds(subject: {
+		kind: "pin" | "net" | "component";
+		id: string;
+	}): number[];
+} {
+	const empty = createCircuit("Schematic", "schematic");
+	let next = 0;
+	const { circuit } = synchronizePcb(empty, shapes, empty, definitions, {
+		newId: () => `net-${++next}`,
+	}).file;
+	const pinShapes = new Map<string, number>();
+	const marked = measurePerformance(
+		"schematic.no-connect",
+		() => {
+			const nearMarker = createPointIndex(
+				shapes.flatMap((shape) =>
+					shape.kind === "no-connect"
+						? [shape]
+						: shape.kind === "symbol"
+							? symbolShapes(shape).filter(
+									(child) => child.kind === "no-connect",
+								)
+							: [],
+				),
+				(marker) => marker,
+			);
+			const terminals = new Map<number, Map<string, Point>>();
+			for (const shape of shapes)
+				if (shape.kind === "symbol")
+					terminals.set(
+						shape.id,
+						new Map(
+							symbolShapes(shape).flatMap((child) =>
+								child.kind === "pin"
+									? [[String(child.id), child] as const]
+									: [],
+							),
+						),
+					);
+			const marked = new Set(circuit.noConnectPinIds);
+			for (const component of circuit.components)
+				for (const pin of component.pins) {
+					const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
+					if (shapeId === undefined) continue;
+					pinShapes.set(pin.id, shapeId);
+					const terminal =
+						pin.sourcePinId === undefined
+							? undefined
+							: terminals.get(shapeId)?.get(pin.sourcePinId);
+					if (
+						terminal &&
+						nearMarker(
+							terminal,
+							(marker) =>
+								Math.hypot(marker.x - terminal.x, marker.y - terminal.y) <=
+								connectionTolerance,
+						)
+					)
+						marked.add(pin.id);
+				}
+			return marked;
+		},
+		{ shapes: shapes.length },
+	);
+	circuit.noConnectPinIds = [...marked];
+	return {
+		circuit,
+		shapeIds({ kind, id }) {
+			if (kind === "pin") {
+				const shapeId = pinShapes.get(id);
+				return shapeId === undefined ? [] : [shapeId];
+			}
+			if (kind === "component") {
+				const component = circuit.components.find((item) => item.id === id);
+				return component ? componentShapeIds(component) : [];
+			}
+			const net = circuit.nets.find((candidate) => candidate.id === id);
+			return [
+				...new Set([
+					...(net?.pinIds.flatMap((pinId) => pinShapes.get(pinId) ?? []) ?? []),
+					...(net?.schematicShapeIds ?? []),
+				]),
+			];
+		},
+	};
 }
 
 interface LinkedSchematic {
