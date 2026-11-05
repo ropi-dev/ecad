@@ -22,6 +22,7 @@ import type { ProjectLinkProps } from "#/projects/ProjectLink.tsx";
 import { createProjectAssets } from "#/projects/project-assets.ts";
 import { createProjectAutosave } from "#/projects/project-autosave.ts";
 import { createProjectEditorFiles } from "#/projects/project-editor-files.ts";
+import { createProjectExternalReload } from "#/projects/project-external-reload.ts";
 import { createProjectFileActions } from "#/projects/project-file-actions.ts";
 import { createProjectSessionState } from "#/projects/project-session-state.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
@@ -133,6 +134,7 @@ export function createProjectSession(
 		stopMain,
 	} = createProjectEditorFiles(state, autosave);
 	const fileActions = createProjectFileActions(state, persist);
+	const reloadExternalChanges = createProjectExternalReload(state, autosave);
 	const adopt = (snapshot: ProjectSnapshot) => {
 		state.editorSelection++;
 		linkedAssembler.invalidate();
@@ -247,6 +249,12 @@ export function createProjectSession(
 			getGeneration: () => state.generation,
 			getSymbols: () => state.symbols,
 			getLibraries: () => state.libraries,
+			subscribe(listener) {
+				state.symbolListeners.add(listener);
+				return () => {
+					state.symbolListeners.delete(listener);
+				};
+			},
 		});
 
 	const list = () => storage.list();
@@ -354,6 +362,9 @@ export function createProjectSession(
 				setDirty(true);
 				void autosave(true).catch(() => undefined);
 			});
+			const stopExternalChanges = storage.subscribeExternalChanges?.(
+				(directory) => void reloadExternalChanges(directory),
+			);
 			let cancelled = false;
 			const warn = (event: BeforeUnloadEvent) => {
 				if (state.dirty || state.project?.inMemory) event.preventDefault();
@@ -380,6 +391,7 @@ export function createProjectSession(
 			return () => {
 				cancelled = true;
 				stopLibraries?.();
+				stopExternalChanges?.();
 				linkedAssembler.invalidate();
 				state.mounted = false;
 				stopMain();

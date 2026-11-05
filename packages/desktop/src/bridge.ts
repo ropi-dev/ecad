@@ -50,6 +50,12 @@ export const projectChannels = {
 	importAssets: "projects:import-assets",
 	readAsset: "projects:read-asset",
 	canWriteFile: "projects:can-write-file",
+	refresh: "projects:refresh",
+} as const;
+
+/** Main-to-renderer notifications about the open project. */
+export const projectEvents = {
+	changed: "projects:changed",
 } as const;
 
 declare global {

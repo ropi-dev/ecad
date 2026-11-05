@@ -123,10 +123,10 @@ function invalidFile(path: string, cause: unknown): unknown {
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array) {
-	return (
-		left.length === right.length &&
-		left.every((byte, index) => byte === right[index])
-	);
+	if (left.length !== right.length) return false;
+	for (let index = 0; index < left.length; index++)
+		if (left[index] !== right[index]) return false;
+	return true;
 }
 
 export class ProjectRepository {
@@ -170,6 +170,63 @@ export class ProjectRepository {
 			this.savedManifest = loaded.content;
 			this.savedFiles = loaded.savedFiles;
 			return loaded.snapshot;
+		});
+	}
+
+	/** The project files this repository last read or wrote, without the manifest. */
+	savedPaths(): string[] {
+		return [...this.savedFiles.keys()];
+	}
+
+	/**
+	 * Lists the manifest and saved files whose bytes on disk differ from
+	 * those this repository last read or wrote. It reads without the project
+	 * lock, because taking the lock writes into the project directory, so the
+	 * result only tells whether a refresh is worth running. It waits for this
+	 * repository's own saves, so their files never count as changes.
+	 */
+	changedPaths(): Promise<string[]> {
+		return this.sequential(async () => {
+			if (!this.snapshot) return [];
+			const changed: string[] = [];
+			const differs = async (path: string, saved: Uint8Array) => {
+				try {
+					return !sameBytes(await this.directory.read(path), saved);
+				} catch (cause) {
+					if (isMissing(cause)) return true;
+					throw cause;
+				}
+			};
+			if (await differs(PROJECT_FILE, encoder.encode(this.savedManifest)))
+				changed.push(PROJECT_FILE);
+			for (const [path, saved] of this.savedFiles)
+				if (await differs(path, saved)) changed.push(path);
+			return changed;
+		});
+	}
+
+	/**
+	 * Loads the project like `load` and reports which files changed since this
+	 * repository last read or wrote them. Resolves to null, keeping the
+	 * current state, when nothing changed.
+	 */
+	refresh(): Promise<{ snapshot: ProjectSnapshot; changed: string[] } | null> {
+		return this.sequential(async () => {
+			if (!this.snapshot) throw new ProjectClosed();
+			const loaded = await this.withLock("shared", () => this.read());
+			const changed =
+				loaded.content === this.savedManifest ? [] : [PROJECT_FILE];
+			for (const [path, bytes] of loaded.savedFiles) {
+				const saved = this.savedFiles.get(path);
+				if (!saved || !sameBytes(saved, bytes)) changed.push(path);
+			}
+			for (const path of this.savedFiles.keys())
+				if (!loaded.savedFiles.has(path)) changed.push(path);
+			if (!changed.length) return null;
+			this.snapshot = loaded.snapshot;
+			this.savedManifest = loaded.content;
+			this.savedFiles = loaded.savedFiles;
+			return { snapshot: loaded.snapshot, changed };
 		});
 	}
 

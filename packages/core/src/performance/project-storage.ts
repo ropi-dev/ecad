@@ -8,6 +8,15 @@ export function instrumentProjectStorage(
 		mode: storage.mode,
 		canWriteFile: storage.canWriteFile?.bind(storage),
 		saveProject: storage.saveProject?.bind(storage),
+		subscribeExternalChanges: storage.subscribeExternalChanges?.bind(storage),
+		refresh:
+			storage.refresh &&
+			((directory) =>
+				measurePerformanceAsync("project.external-refresh", () =>
+					(storage.refresh as NonNullable<ProjectStorage["refresh"]>)(
+						directory,
+					),
+				)),
 		load: () => measurePerformanceAsync("project.load", () => storage.load()),
 		list: () => measurePerformanceAsync("project.list", () => storage.list()),
 		create: (name) =>

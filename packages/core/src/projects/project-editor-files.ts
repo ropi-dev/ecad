@@ -45,12 +45,6 @@ export function createProjectEditorFiles(
 			openedGeneration !== state.generation
 		)
 			return false;
-		const snapshot = state.active;
-		const file =
-			snapshot && circuitId
-				? projectIndex(snapshot).circuitsById.get(circuitId)?.file
-				: undefined;
-		if (!file) throw new Error("Circuit file no longer exists.");
 		const [{ createCircuitStore }, { createCircuitView }] = await Promise.all([
 			import("@ecad/drawing-core/circuit/store.ts"),
 			import("@ecad/drawing-core/circuit/untangle.ts"),
@@ -61,6 +55,13 @@ export function createProjectEditorFiles(
 			!state.mounted
 		)
 			return false;
+		// Read the file after the import, which a reload from disk may span.
+		const snapshot = state.active;
+		const file =
+			snapshot && circuitId
+				? projectIndex(snapshot).circuitsById.get(circuitId)?.file
+				: undefined;
+		if (!file) throw new Error("Circuit file no longer exists.");
 		const document = documents.openDocument("circuit", file.circuit.id, () => {
 			const circuitStore = measurePerformance(
 				"editor.open-circuit",

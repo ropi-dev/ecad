@@ -6,6 +6,7 @@ import {
 	displayChannels,
 	libraryChannels,
 	projectChannels,
+	projectEvents,
 } from "#/bridge.ts";
 
 const bridge: DesktopSymbolLibraryBridge = {
@@ -52,6 +53,17 @@ const projects: ProjectStorage = {
 		ipcRenderer.invoke(projectChannels.readAsset, directory, path),
 	canWriteFile: (directory, path) =>
 		ipcRenderer.invoke(projectChannels.canWriteFile, directory, path),
+	refresh: (directory) =>
+		ipcRenderer.invoke(projectChannels.refresh, directory),
+	subscribeExternalChanges: (listener) => {
+		const handle = (_event: unknown, directory: unknown) => {
+			if (typeof directory === "string") listener(directory);
+		};
+		ipcRenderer.on(projectEvents.changed, handle);
+		return () => {
+			ipcRenderer.removeListener(projectEvents.changed, handle);
+		};
+	},
 };
 contextBridge.exposeInMainWorld("ecadProjects", projects);
 

@@ -75,5 +75,7 @@ export function createDesktopProjectStorage(
 			bridge.readAsset(directory, path),
 		),
 		canWriteFile: decoded(bridge, bridge.canWriteFile),
+		refresh: decoded(bridge, bridge.refresh),
+		subscribeExternalChanges: bridge.subscribeExternalChanges?.bind(bridge),
 	};
 }

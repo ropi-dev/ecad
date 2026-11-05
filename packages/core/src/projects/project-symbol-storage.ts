@@ -21,6 +21,7 @@ export function createProjectSymbolStorage(
 		getGeneration,
 		getSymbols,
 		getLibraries,
+		subscribe,
 	}: {
 		storage: ProjectStorage;
 		enqueue: SerialQueue;
@@ -34,11 +35,13 @@ export function createProjectSymbolStorage(
 		getGeneration(): number;
 		getSymbols(): SymbolLibrary;
 		getLibraries(): readonly ConfiguredSymbolLibrary[];
+		subscribe?(listener: () => void): () => void;
 	},
 ): SymbolLibraryStorage | undefined {
 	return getSnapshot() !== null
 		? {
 				mode: storage.mode,
+				subscribe,
 				async canWriteConfiguration() {
 					const snapshot = getSnapshot();
 					if (!snapshot || getGeneration() !== epoch) return false;

@@ -4,6 +4,12 @@ import type {
 	ProjectSnapshot,
 } from "#/projects/format.ts";
 
+/** The project as it is now on disk, and the project paths that changed. */
+export interface ProjectRefresh {
+	snapshot: ProjectSnapshot;
+	changed: string[];
+}
+
 export interface ProjectStorage {
 	mode: "desktop" | "web";
 	load(): Promise<ProjectSnapshot | null>;
@@ -18,4 +24,15 @@ export interface ProjectStorage {
 	): Promise<ProjectSnapshot>;
 	readAsset(directory: string, path: string): Promise<Uint8Array>;
 	canWriteFile?(directory: string, path: string): Promise<boolean>;
+	/**
+	 * Calls the listener with the open project's directory when another
+	 * program may have changed its files. Storage without a file watcher
+	 * leaves this out.
+	 */
+	subscribeExternalChanges?(listener: (directory: string) => void): () => void;
+	/**
+	 * Re-reads the open project and makes the files on disk its saved state.
+	 * Resolves to null when no project file changed.
+	 */
+	refresh?(directory: string): Promise<ProjectRefresh | null>;
 }

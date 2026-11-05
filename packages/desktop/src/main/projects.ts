@@ -32,6 +32,11 @@ import {
 } from "@ecad/drawing-core/lib/file-lock.ts";
 import type { ExternalLibraryRequest } from "#/main/library-approvals.ts";
 import {
+	createProjectWatcher,
+	type ProjectWatcher,
+	type ProjectWatcherOptions,
+} from "#/main/project-watcher.ts";
+import {
 	canWriteSymbolPath,
 	type DirectoryAuthorization,
 	inspectDirectorySymbol,
@@ -264,6 +269,13 @@ export interface DesktopProjectsOptions {
 		request: ExternalLibraryRequest,
 		options: { prompt: boolean },
 	): Promise<boolean>;
+	/**
+	 * Called with the open project's directory when files it lists may have
+	 * been changed by another program or window.
+	 */
+	onExternalChange?(directory: string): void;
+	/** Overrides the file watcher's settings, for tests. */
+	watcher?: Pick<ProjectWatcherOptions, "watch" | "delay" | "maxDelay">;
 }
 
 function isInside(parent: string, path: string) {
@@ -274,14 +286,69 @@ function isInside(parent: string, path: string) {
 	);
 }
 
+interface ActiveProject {
+	directory: string;
+	repository: ProjectRepository;
+	files?: Map<string, Uint8Array>;
+	/** Outside libraries the user refused. Reopening the project asks again. */
+	refused?: Set<string>;
+	watcher?: ProjectWatcher;
+}
+
 export class DesktopProjects {
-	private active: {
-		directory: string;
-		repository: ProjectRepository;
-		files?: Map<string, Uint8Array>;
-		/** Outside libraries the user refused. Reopening the project asks again. */
-		refused?: Set<string>;
-	} | null = null;
+	private active: ActiveProject | null = null;
+	/** Projects in memory have no directory to watch. */
+	private activate(active: ActiveProject) {
+		this.active?.watcher?.close();
+		this.active = active;
+		if (active.files || !this.options.onExternalChange) return;
+		active.watcher = createProjectWatcher({
+			...this.options.watcher,
+			directory: active.directory,
+			paths: () => active.repository.savedPaths(),
+			onChange: () => void this.checkExternalChanges(),
+		});
+	}
+	private checking: Promise<void> | undefined;
+	private recheck = false;
+	/**
+	 * Tells the renderer when the open project's files differ from those it
+	 * last read or wrote. Saves from this window never count. Checks read
+	 * every listed file, so requests during a check share one more check.
+	 */
+	checkExternalChanges(): Promise<void> {
+		if (this.checking) {
+			this.recheck = true;
+			return this.checking;
+		}
+		const run = async () => {
+			do {
+				this.recheck = false;
+				await this.compareWithDisk();
+			} while (this.recheck);
+		};
+		this.checking = run().finally(() => {
+			this.checking = undefined;
+		});
+		return this.checking;
+	}
+	private async compareWithDisk() {
+		const active = this.active;
+		if (!active?.watcher) return;
+		let changed: string[];
+		try {
+			changed = await active.repository.changedPaths();
+		} catch {
+			// An unreadable file is reported by the refresh or the next save.
+			changed = [PROJECT_FILE];
+		}
+		if (changed.length && this.active === active)
+			this.options.onExternalChange?.(active.directory);
+	}
+
+	close() {
+		this.active?.watcher?.close();
+	}
 	private snapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
 		return this.active?.files ? { ...snapshot, inMemory: true } : snapshot;
 	}
@@ -307,13 +374,16 @@ export class DesktopProjects {
 		const directory = await createDesktopProjectDirectory(selected);
 		const repository = new ProjectRepository(directory, { layout: "files" });
 		const snapshot = await repository.load();
-		this.active = { directory: directory.name, repository };
+		this.activate({ directory: directory.name, repository });
 		return snapshot;
 	}
 	load() {
 		return this.sequential(async () => {
-			if (this.active)
-				return this.snapshot(await this.active.repository.load());
+			if (this.active) {
+				const snapshot = await this.active.repository.load();
+				this.active.watcher?.sync();
+				return this.snapshot(snapshot);
+			}
 			if (!this.initialPath) return null;
 			if (!this.initialPath.endsWith(PROJECT_FILE)) {
 				try {
@@ -358,7 +428,7 @@ export class DesktopProjects {
 			};
 			const repository = new ProjectRepository(directory, { layout: "files" });
 			const snapshot = await repository.create("Untitled");
-			this.active = { directory: directory.name, repository, files };
+			this.activate({ directory: directory.name, repository, files });
 			return this.snapshot(snapshot);
 		});
 	}
@@ -390,7 +460,7 @@ export class DesktopProjects {
 				for (const [path, bytes] of files) await disk.write(path, bytes);
 				const repository = new ProjectRepository(disk, { layout: "files" });
 				const saved = await repository.load();
-				this.active = { directory: disk.name, repository };
+				this.activate({ directory: disk.name, repository });
 				return saved;
 			} catch (cause) {
 				await rm(selected, { recursive: true, force: true });
@@ -409,7 +479,7 @@ export class DesktopProjects {
 					layout: "files",
 				});
 				const snapshot = await repository.create(name);
-				this.active = { directory: directory.name, repository };
+				this.activate({ directory: directory.name, repository });
 				return snapshot;
 			} catch (cause) {
 				await rm(selected, { recursive: true, force: true });
@@ -418,9 +488,27 @@ export class DesktopProjects {
 		});
 	}
 	save(directory: string, document: ProjectDocument) {
-		return this.sequential(async () =>
-			this.snapshot(await this.current(directory).save(document)),
-		);
+		return this.sequential(async () => {
+			const snapshot = await this.current(directory).save(document);
+			this.active?.watcher?.sync();
+			return this.snapshot(snapshot);
+		});
+	}
+	refresh(directory: string) {
+		return this.sequential(async () => {
+			const watcher = this.active?.watcher;
+			// A failed read keeps the saved paths, so the watched directories
+			// stay the same. The focus check covers files that appear later in a
+			// new directory.
+			const refreshed = await this.current(directory).refresh();
+			watcher?.sync();
+			return (
+				refreshed && {
+					...refreshed,
+					snapshot: this.snapshot(refreshed.snapshot),
+				}
+			);
+		});
 	}
 	importAssets(
 		directory: string,
