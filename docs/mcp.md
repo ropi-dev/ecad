@@ -92,7 +92,7 @@ The package exports `runCli`, `createLocalDrawing`, `createLocalDrawingMcpServer
 
 ## Tools and coordinates
 
-Coordinates and dimensions are millimetres. `x` and `y` specify the shape center, positive Y points upward, and `rotation` is in radians. Width, height, rotation, and line width must be resolved before sending a placement command. Commands do not consult the active tool, pointer, selection, or snap setting.
+Coordinates and dimensions are millimetres. `x` and `y` specify the shape center, positive Y points upward, and `rotation` is in radians. Width, height, rotation, and line width must be resolved before sending a placement command. Commands do not consult the active tool, pointer, or selection, and the editor does not snap their coordinates to the grid.
 
 | Tool | Arguments | Behavior |
 | --- | --- | --- |

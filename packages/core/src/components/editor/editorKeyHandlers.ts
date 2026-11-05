@@ -77,7 +77,6 @@ export function handleCanvasKeyDown(
 		selectedSymbol,
 		selectedChild,
 		selectedChildFixed,
-		snapEnabled,
 		gridStep,
 		selectionSnapStep,
 		allowLocked,
@@ -93,7 +92,6 @@ export function handleCanvasKeyDown(
 		selectedSymbol: EditorSymbol | undefined;
 		selectedChild: ReturnType<typeof symbolChildren>[number] | undefined;
 		selectedChildFixed: boolean;
-		snapEnabled: boolean;
 		gridStep: number;
 		selectionSnapStep: number;
 		allowLocked: boolean;
@@ -107,9 +105,7 @@ export function handleCanvasKeyDown(
 		hasSelection: selected.length > 0,
 		childSelected: selectedChild !== undefined,
 		childFixed: selectedChildFixed,
-		childStep: snapEnabled
-			? gridStep / (selectedChild?.shape.kind === "text" ? 10 : 1)
-			: SCHEMATIC_STEP,
+		childStep: gridStep / (selectedChild?.shape.kind === "text" ? 10 : 1),
 		selectionStep: selectionSnapStep || SCHEMATIC_STEP,
 	});
 	if (!command) return;

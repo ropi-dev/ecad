@@ -1,7 +1,6 @@
 import { jumpHistoryEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import { formatMils } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	Cable,
 	Circle,
@@ -11,7 +10,6 @@ import {
 	ImageDown,
 	Lock,
 	LockOpen,
-	Magnet,
 	MapPin,
 	Minus,
 	MousePointer2,
@@ -99,9 +97,6 @@ interface EditorToolbarProps {
 		typeof useCanvasGestures
 	>["clearPlacementPreview"];
 	canRotatePlacement: boolean;
-	snapEnabled: boolean;
-	setSnapEnabled: Dispatch<SetStateAction<boolean>>;
-	gridStep: number;
 	allowLocked: boolean;
 	session: ReturnType<typeof createEditorSession>;
 	hasSelection: boolean;
@@ -134,9 +129,6 @@ export const EditorToolbar = memo(function EditorToolbar({
 	setTool,
 	clearPlacementPreview,
 	canRotatePlacement,
-	snapEnabled,
-	setSnapEnabled,
-	gridStep,
 	allowLocked,
 	session,
 	hasSelection,
@@ -295,14 +287,6 @@ export const EditorToolbar = memo(function EditorToolbar({
 				children: <Trash2 size={18} aria-hidden="true" />,
 			})}
 			<ToolbarSeparator />
-			{toggle({
-				disabled: !ready,
-				"aria-label": "Snap to grid",
-				"aria-pressed": snapEnabled,
-				tooltip: `Snap to grid, ${formatMils(gridStep)}`,
-				onClick: () => setSnapEnabled((enabled) => !enabled),
-				children: <Magnet size={18} aria-hidden="true" />,
-			})}
 			{toggle({
 				disabled: !ready,
 				"aria-label": "Select locked items",

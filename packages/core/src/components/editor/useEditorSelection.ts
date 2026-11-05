@@ -22,7 +22,6 @@ export function useEditorSelection({
 	selectedChildKey,
 	allowLocked,
 	tool,
-	snapEnabled,
 	gridStep,
 }: {
 	shapes: EditorShape[];
@@ -30,7 +29,6 @@ export function useEditorSelection({
 	selectedChildKey: string | null;
 	allowLocked: boolean;
 	tool: CanvasTool;
-	snapEnabled: boolean;
 	gridStep: number;
 }) {
 	const selected = useMemo(
@@ -66,12 +64,11 @@ export function useEditorSelection({
 		? selectedChild.shape.locked === true
 		: selected.length > 0 && selected.every((shape) => shape.locked === true);
 
-	const selectionSnapStep = snapEnabled
-		? selected.length > 0 &&
-			selected.every((shape) => shape.kind === "text" && !isNetLabel(shape))
+	const selectionSnapStep =
+		selected.length > 0 &&
+		selected.every((shape) => shape.kind === "text" && !isNetLabel(shape))
 			? gridStep / 10
-			: gridStep
-		: 0;
+			: gridStep;
 	const handles = useMemo(
 		() =>
 			tool === "select"

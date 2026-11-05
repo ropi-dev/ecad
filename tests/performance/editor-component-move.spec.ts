@@ -73,9 +73,6 @@ test(
 		await expect(
 			page.getByRole("button", { name: "Select", exact: true }),
 		).toBeEnabled();
-		await page
-			.getByRole("button", { name: "Snap to grid", exact: true })
-			.click();
 		const canvas = page.locator("canvas");
 		const bounds = required(await canvas.boundingBox());
 		const source = {

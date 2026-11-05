@@ -3,7 +3,9 @@ import { Tooltip } from "radix-ui";
 import {
 	type ComponentProps,
 	createContext,
+	type Dispatch,
 	type ReactNode,
+	type SetStateAction,
 	useContext,
 	useEffect,
 	useId,
@@ -24,7 +26,7 @@ import {
 
 const GroupContext = createContext<{
 	openId: string | null;
-	setOpenId: (id: string | null) => void;
+	setOpenId: Dispatch<SetStateAction<string | null>>;
 	panelHost: HTMLElement | null;
 } | null>(null);
 
@@ -132,7 +134,7 @@ export function quietFocus(button: HTMLElement | null) {
 }
 
 /**
- * A toolbar button that opens a labeled panel above itself. The panel closes
+ * A toolbar button that opens a panel above itself. The panel closes
  * after a choice unless `closeOnChoose` is false, which suits repeated actions
  * such as panning.
  */
@@ -259,15 +261,21 @@ export function ToolbarGroup({
 					<div
 						ref={panel}
 						onBlur={(event) => {
-							// Tabbing out of the panel closes it.
+							const outside = (node: Node | null) =>
+								!!node &&
+								!panel.current?.contains(node) &&
+								!root.current?.contains(node);
 							const next = event.relatedTarget;
-							if (
-								next instanceof Node &&
-								!panel.current?.contains(next) &&
-								!root.current?.contains(next)
-							)
-								setOpenId(null);
+							if (next instanceof Node) {
+								if (outside(next)) setOpenId(null);
+								return;
+							}
+							setTimeout(() => {
+								if (outside(document.activeElement))
+									setOpenId((current) => (current === id ? null : current));
+							});
 						}}
+						tabIndex={-1}
 						id={id}
 						role="toolbar"
 						aria-label={`${label} toolbar`}
@@ -276,7 +284,7 @@ export function ToolbarGroup({
 							left: left ?? 0,
 							visibility: left === null ? "hidden" : undefined,
 						}}
-						className={`absolute bottom-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-6rem)] w-max min-w-40 max-w-[calc(100vw-1.5rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain p-1 ${toolbarSurfaceClassName}`}
+						className={`absolute bottom-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-6rem)] w-max min-w-40 max-w-[calc(100vw-1.5rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain p-1 outline-none ${toolbarSurfaceClassName}`}
 						onClick={(event) => {
 							if (
 								!closeOnChoose ||
@@ -320,12 +328,6 @@ export function ToolbarGroup({
 							buttons[next]?.focus();
 						}}
 					>
-						<div
-							className="px-2 pt-1 pb-1.5 text-[11px] font-semibold text-[#98a4b6]"
-							aria-hidden="true"
-						>
-							{label}
-						</div>
 						{children}
 					</div>,
 					panelHost,

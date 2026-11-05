@@ -160,7 +160,6 @@ function EditorCanvas({
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
 	const [ercOpen, setErcOpen] = useState(false);
 	const canvasArea = useRef<HTMLDivElement>(null);
-	const [snapEnabled, setSnapEnabled] = useState(true);
 	const {
 		selected,
 		selectedSymbol,
@@ -175,7 +174,6 @@ function EditorCanvas({
 		selectedChildKey,
 		allowLocked,
 		tool,
-		snapEnabled,
 		gridStep,
 	});
 	const {
@@ -198,7 +196,6 @@ function EditorCanvas({
 		allowLocked,
 		handles,
 		ready,
-		snapEnabled,
 		gridStep,
 		symbolDefinition,
 		isSymbol,
@@ -294,7 +291,7 @@ function EditorCanvas({
 		session,
 		enabled: () => ready && !creatingSymbol && !getDrag() && !getWire(),
 		target: isSymbol ? "symbol" : "drawing",
-		pasteStep: snapEnabled ? gridStep || SCHEMATIC_STEP : SCHEMATIC_STEP,
+		pasteStep: gridStep || SCHEMATIC_STEP,
 		beforePaste: () => {
 			finishWire();
 			setTool("select");
@@ -326,9 +323,7 @@ function EditorCanvas({
 				allowNetEdits={!isSymbol}
 				snapStep={
 					selectedChild
-						? snapEnabled
-							? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
-							: 0
+						? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
 						: selectionSnapStep
 				}
 				onClear={() => session.select(new Set())}
@@ -347,7 +342,6 @@ function EditorCanvas({
 			definitionId,
 			project,
 			isSymbol,
-			snapEnabled,
 			gridStep,
 			selectionSnapStep,
 			session,
@@ -413,7 +407,6 @@ function EditorCanvas({
 							selectedSymbol,
 							selectedChild,
 							selectedChildFixed,
-							snapEnabled,
 							gridStep,
 							selectionSnapStep,
 							allowLocked,
@@ -468,9 +461,6 @@ function EditorCanvas({
 									setTool={setTool}
 									clearPlacementPreview={clearPlacementPreview}
 									canRotatePlacement={canRotatePlacement}
-									snapEnabled={snapEnabled}
-									setSnapEnabled={setSnapEnabled}
-									gridStep={gridStep}
 									allowLocked={allowLocked}
 									session={session}
 									hasSelection={hasSelection}

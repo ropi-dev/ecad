@@ -20,7 +20,6 @@ test("editor-pin-wire", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await expect(
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled();
-	await page.getByRole("button", { name: "Snap to grid", exact: true }).click();
 	await (await toolbarButton(page, "Pin")).click();
 	const canvas = page.locator("canvas");
 	const bounds = required(await canvas.boundingBox());

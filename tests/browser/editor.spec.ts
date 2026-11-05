@@ -1,6 +1,7 @@
-import { fromMils, SCHEMATIC_STEP } from "@ecad/drawing-core/drawing/units.ts";
+import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, type Page, test } from "@playwright/test";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { rulerSpacing } from "#/engine/ruler.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { toolbarButton } from "./toolbar";
@@ -10,6 +11,8 @@ const [selected, highlighted, wire] = (
 ).map((appearance) => darkSchematicTheme.appearance[appearance].slice(1));
 
 test.use({ viewport: { width: 1440, height: 900 } });
+
+const g = (steps: number) => steps * fromMils(100);
 
 interface State {
 	placement: { x: number; y: number; rotation: number } | null;
@@ -78,6 +81,14 @@ async function screen(page: Page, x: number, y: number) {
 				2,
 	};
 }
+async function gridStep(page: Page) {
+	const view = await state(page);
+	const box = required(await page.locator("canvas").boundingBox());
+	return rulerSpacing(
+		((view.corner[0] - view.origin[0]) * box.width) / 840,
+		"mil",
+	).minor;
+}
 async function clickAt(page: Page, x: number, y: number) {
 	const point = await screen(page, x, y);
 	await page.mouse.click(point.x, point.y);
@@ -100,19 +111,20 @@ async function dragTo(
 }
 async function createShape(page: Page, kind: string, x: number, y: number) {
 	await (await toolbarButton(page, kind)).click();
-	if (kind === "Circle") await dragTo(page, [x, y], [x + 15, y]);
+	if (kind === "Circle") await dragTo(page, [x, y], [x + g(6), y]);
 	else if (kind === "Wire") {
-		await placePin(page, x - 27.5, y);
+		await placePin(page, x - g(12), y);
 		// Keep the attributes panel from covering the wire's far endpoint.
 		await page
 			.getByRole("button", { name: "Clear selection", exact: true })
 			.click();
 		await (await toolbarButton(page, "Wire")).click();
-		await clickAt(page, x - 27.5, y);
-		await clickAt(page, x + 27.5, y);
+		await clickAt(page, x - g(12), y);
+		await clickAt(page, x + g(12), y);
 		await page.keyboard.press("Enter");
 	} else {
-		const [width, height] = kind === "Rectangle" ? [50, 30] : [40, 35];
+		const [width, height] =
+			kind === "Rectangle" ? [g(20), g(12)] : [g(16), g(12)];
 		await dragTo(
 			page,
 			[x - width / 2, y - height / 2],
@@ -123,10 +135,6 @@ async function createShape(page: Page, kind: string, x: number, y: number) {
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
 	await expect(await toolbarButton(page, "Rectangle")).toBeEnabled();
-	const snap = page.getByRole("button", { name: "Snap to grid", exact: true });
-	await expect(snap).toHaveAttribute("aria-pressed", "true");
-	// Free-placement fixtures opt out of the default; snapping tests enable it explicitly.
-	await snap.click();
 	await expect
 		.poll(async () => (await state(page)).origin.slice(0, 2))
 		.toEqual([0, 0]);
@@ -148,36 +156,37 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 		"Triangle",
 		"Wire",
 	].entries()) {
-		await createShape(page, kind, 70 + index * 85, 150);
+		await createShape(page, kind, g(28 + index * 34), g(60));
 		await expect
 			.poll(async () => (await nonPinState(page)).shapes.length)
 			.toBe(index + 1);
 	}
-	await dragTo(page, [70, 150], [100, 180]);
+	await dragTo(page, [g(28), g(60)], [g(40), g(72)]);
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes[0].x)
-		.toBeCloseTo(100, 1);
-	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(180, 1);
+		.toBeCloseTo(g(40), 4);
+	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(g(72), 4);
 	expect((await nonPinState(page)).origin).toEqual(before.origin);
-	await dragTo(page, [100, 180], [-30, 330]);
+	await dragTo(page, [g(40), g(72)], [g(-12), g(130)]);
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes[0].x)
-		.toBeCloseTo(-30, 4);
-	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(330, 4);
+		.toBeCloseTo(g(-12), 4);
+	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(g(130), 4);
+	const step = await gridStep(page);
 	await page.keyboard.press("ArrowRight");
 	await page.keyboard.press("Shift+ArrowDown");
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes[0].x)
-		.toBeCloseTo(-30 + SCHEMATIC_STEP, 4);
+		.toBeCloseTo(g(-12) + step, 4);
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes[0].y)
-		.toBeCloseTo(330 - 10 * SCHEMATIC_STEP, 4);
+		.toBeCloseTo(g(130) - 10 * step, 4);
 	await page.keyboard.press("Delete");
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes.length)
 		.toBe(3);
 	await (await toolbarButton(page, "Rectangle")).click();
-	await clickAt(page, -25, 150);
+	await clickAt(page, g(-10), g(60));
 	expect((await nonPinState(page)).shapes.length).toBe(3);
 	expect(errors).toEqual([]);
 });
@@ -185,18 +194,18 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 test("wire clicks commit orthogonal segments and pointer release keeps the preview", async ({
 	page,
 }) => {
-	await placePin(page, 100, 100);
+	await placePin(page, g(40), g(40));
 	await (await toolbarButton(page, "Wire")).click();
-	await dragTo(page, [100, 100], [160, 120]);
+	await dragTo(page, [g(40), g(40)], [g(64), g(48)]);
 	await expect
 		.poll(async () => (await nonPinState(page)).preview?.width)
-		.toBeCloseTo(60, 4);
+		.toBeCloseTo(g(24), 4);
 	let view = await nonPinState(page);
 	expect(view.shapes).toEqual([]);
-	expect(view.preview?.x).toBeCloseTo(130, 4);
-	expect(view.preview?.y).toBeCloseTo(100, 4);
+	expect(view.preview?.x).toBeCloseTo(g(52), 4);
+	expect(view.preview?.y).toBeCloseTo(g(40), 4);
 	expect(view.preview?.rotation).toBeCloseTo(0, 4);
-	await clickAt(page, 160, 120);
+	await clickAt(page, g(64), g(48));
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes.length)
 		.toBe(1);
@@ -204,17 +213,17 @@ test("wire clicks commit orthogonal segments and pointer release keeps the previ
 		"aria-pressed",
 		"true",
 	);
-	await moveAt(page, 172, 165);
+	await moveAt(page, g(69), g(66));
 	await expect
 		.poll(async () => (await nonPinState(page)).preview?.width)
-		.toBeCloseTo(65, 4);
+		.toBeCloseTo(g(26), 4);
 	view = await nonPinState(page);
 	expect(view.shapes).toHaveLength(1);
-	expect(view.preview?.x).toBeCloseTo(160, 4);
-	expect(view.preview?.y).toBeCloseTo(132.5, 4);
+	expect(view.preview?.x).toBeCloseTo(g(64), 4);
+	expect(view.preview?.y).toBeCloseTo(g(53), 4);
 	expect(view.preview?.rotation).toBeCloseTo(Math.PI / 2, 4);
-	await clickAt(page, 172, 165);
-	await clickAt(page, 105, 174);
+	await clickAt(page, g(69), g(66));
+	await clickAt(page, g(42), g(70));
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes.length)
 		.toBe(3);
@@ -225,28 +234,28 @@ test("wire clicks commit orthogonal segments and pointer release keeps the previ
 		"wire 4",
 	]);
 	const [first, second, third] = view.shapes;
-	expect(first.x).toBeCloseTo(130, 4);
-	expect(first.y).toBeCloseTo(100, 4);
-	expect(first.width).toBeCloseTo(60, 4);
+	expect(first.x).toBeCloseTo(g(52), 4);
+	expect(first.y).toBeCloseTo(g(40), 4);
+	expect(first.width).toBeCloseTo(g(24), 4);
 	expect(first.rotation).toBeCloseTo(0, 4);
-	expect(second.x).toBeCloseTo(160, 4);
-	expect(second.y).toBeCloseTo(132.5, 4);
-	expect(second.width).toBeCloseTo(65, 4);
+	expect(second.x).toBeCloseTo(g(64), 4);
+	expect(second.y).toBeCloseTo(g(53), 4);
+	expect(second.width).toBeCloseTo(g(26), 4);
 	expect(second.rotation).toBeCloseTo(Math.PI / 2, 4);
-	expect(third.x).toBeCloseTo(132.5, 4);
-	expect(third.y).toBeCloseTo(165, 4);
-	expect(third.width).toBeCloseTo(55, 4);
+	expect(third.x).toBeCloseTo(g(53), 4);
+	expect(third.y).toBeCloseTo(g(66), 4);
+	expect(third.width).toBeCloseTo(g(22), 4);
 	expect(Math.abs(third.rotation)).toBeCloseTo(Math.PI, 4);
-	await moveAt(page, 115, 210);
+	await moveAt(page, g(46), g(84));
 	await expect
 		.poll(async () => (await nonPinState(page)).preview?.width)
-		.toBeCloseTo(45, 4);
+		.toBeCloseTo(g(18), 4);
 	if (captureArtifacts)
 		await page.screenshot({
 			path: test.info().outputPath("drawing-line-chain.png"),
 		});
-	await clickAt(page, 105, 165);
-	await clickAt(page, 105, 165);
+	await clickAt(page, g(42), g(66));
+	await clickAt(page, g(42), g(66));
 	await expect
 		.poll(async () => (await nonPinState(page)).shapes.length)
 		.toBe(3);
@@ -331,17 +340,17 @@ test("selected schematic wires keep a distinct color from related net wires", as
 test("ruler position guide follows the object center through release and cancellation", async ({
 	page,
 }) => {
-	await createShape(page, "Rectangle", 100, 100);
+	await createShape(page, "Rectangle", g(40), g(40));
 	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
-	const start = await screen(page, 80, 100);
-	const end = await screen(page, 130, 140);
+	const start = await screen(page, g(32), g(40));
+	const end = await screen(page, g(52), g(56));
 	await page.mouse.move(start.x, start.y);
 	await page.mouse.down();
 	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
 	await page.mouse.move(end.x, end.y, { steps: 4 });
 	const crosshair = page.getByTestId("ruler-position-guide");
 	await expect(crosshair).toBeVisible();
-	const center = await screen(page, 150, 140);
+	const center = await screen(page, g(60), g(56));
 	const box = required(await crosshair.boundingBox());
 	await expect
 		.poll(async () =>
@@ -374,8 +383,8 @@ test("ruler position guide follows the object center through release and cancell
 	await expect(crosshair).toHaveCount(0);
 	await page.mouse.up();
 	const restored = (await state(page)).shapes[0];
-	expect(restored.x).toBeCloseTo(150, 0);
-	expect(restored.y).toBeCloseTo(140, 0);
+	expect(restored.x).toBeCloseTo(g(60), 4);
+	expect(restored.y).toBeCloseTo(g(56), 4);
 });
 
 test("moving a symbol child does not show the ruler position guide", async ({
@@ -507,7 +516,7 @@ for (const item of [
 		} else {
 			await (await toolbarButton(page, item)).click();
 		}
-		await moveAt(page, 120, 120);
+		await moveAt(page, g(48), g(48));
 		await page.locator("canvas").focus();
 		await expect
 			.poll(async () => (await state(page)).placement?.rotation)
@@ -530,15 +539,15 @@ for (const item of [
 			expect((await state(page)).placement?.y).toBeCloseTo(initial.y, 4);
 		}
 		const rotated = required((await state(page)).placement);
-		await moveAt(page, 160, 150);
+		await moveAt(page, g(64), g(60));
 		await expect
 			.poll(async () => (await state(page)).placement?.x)
-			.toBeCloseTo(rotated.x + 40, 4);
+			.toBeCloseTo(rotated.x + g(16), 4);
 		await expect
 			.poll(async () => (await state(page)).placement?.y)
-			.toBeCloseTo(rotated.y + 30, 4);
+			.toBeCloseTo(rotated.y + g(12), 4);
 		const preview = required((await state(page)).placement);
-		await clickAt(page, 160, 150);
+		await clickAt(page, g(64), g(60));
 		await expect
 			.poll(
 				async () =>
@@ -671,10 +680,10 @@ test("schematic pins are selectable but stay fixed to their symbol", async ({
 	await page.screenshot({ path: "/tmp/ecad-selected-schematic-pin.png" });
 
 	// Dragging, arrows and rotation act on the whole symbol, never the pin.
-	await dragTo(page, [lead.x, lead.y], [lead.x - 5, lead.y]);
+	await dragTo(page, [lead.x, lead.y], [lead.x - g(2), lead.y]);
 	await expect
 		.poll(async () => (await documentSymbol()).x)
-		.toBeCloseTo(placed.x - 5, 3);
+		.toBeCloseTo(placed.x - g(2), 3);
 	await expect(panel.getByText("Pin 1", { exact: true })).toBeVisible();
 	await page.keyboard.press("ArrowUp");
 	await expect
