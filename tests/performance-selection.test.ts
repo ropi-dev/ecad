@@ -73,6 +73,8 @@ test("shared, build and unknown paths fall back to the full suite", () => {
 		"packages/core/src/performance/runtime.ts",
 		"packages/core/src/projects/ProjectSession.ts",
 		"packages/core/src/projects/ProjectShell.tsx",
+		"packages/core/src/components/ui/Toaster.tsx",
+		"packages/core/src/components/ui/toast.ts",
 		"packages/web/src/projects/AppProjects.tsx",
 		"packages/drawing-core/src/lib/union-find.ts",
 		"packages/new-package/src/index.ts",

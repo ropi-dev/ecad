@@ -66,6 +66,9 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/styles.css", "all"],
 	["packages/core/src/projects/ProjectProvider.tsx", "all"],
 	["packages/core/src/projects/ProjectShell.tsx", "all"],
+	// ProjectShell mounts the toaster on every route, and editor export,
+	// imports and project actions raise toasts.
+	["packages/core/src/components/ui/**", "all"],
 	["packages/core/src/projects/ProjectSession.ts", "all"],
 	["packages/core/src/projects/project-session-state.ts", "all"],
 	["packages/core/src/projects/project-autosave.ts", "all"],
@@ -111,7 +114,6 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		"packages/core/src/components/viewer/**",
 		["@editor", "@circuit", "@import"],
 	],
-	["packages/core/src/components/ui/**", ["@startup", "@projects"]],
 	["packages/core/src/engine/**", ["@editor", "@circuit", "@import"]],
 	["packages/core/src/drawing/symbol*", ["@editor", "@symbols", "@circuit"]],
 	["packages/core/src/drawing/text.ts", ["@editor", "@circuit"]],
