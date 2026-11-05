@@ -20,6 +20,7 @@ import {
 	checkBudgets,
 	compareBaseline,
 	missingFromBaseline,
+	profileBrowser,
 	type Summary,
 } from "./comparison.ts";
 import { areas, isArea } from "./tags.ts";
@@ -72,7 +73,7 @@ export default class PerformanceReporter implements Reporter {
 				mode: process.env.ECAD_PERF_MODE ?? "production",
 				cpu: Number(process.env.ECAD_PERF_CPU ?? 4),
 				platform: process.platform,
-				browser: this.runs[0]?.report.environment.userAgent ?? "unavailable",
+				browser: profileBrowser(this.runs),
 				...(process.env.ECAD_PERF_ENVIRONMENT
 					? { environment: process.env.ECAD_PERF_ENVIRONMENT }
 					: {}),

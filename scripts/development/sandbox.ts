@@ -176,6 +176,7 @@ if (command === "build-image") {
 	for (const key of [
 		"ECAD_PERF_CPU",
 		"ECAD_PERF_RUNS",
+		"ECAD_PERF_SMOKE",
 		"ECAD_PERF_PORT",
 		"ECAD_BROWSER_PORT",
 	]) {

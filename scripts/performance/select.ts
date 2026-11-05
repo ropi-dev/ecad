@@ -54,6 +54,8 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/web/src/routes/api.*", ["@editor"]],
 	["packages/web/src/routes/mcp.*", ["@editor"]],
 	["packages/web/src/projects/storage.ts", "all"],
+	// Mounted around every route.
+	["packages/web/src/projects/AppProjects.tsx", "all"],
 	["packages/web/src/projects/**", ["@projects"]],
 	["packages/web/src/symbol-library/**", ["@symbols"]],
 	["packages/web/public/examples/symbols/**", ["@symbols"]],
@@ -63,6 +65,7 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/lib/**", "all"],
 	["packages/core/src/styles.css", "all"],
 	["packages/core/src/projects/ProjectProvider.tsx", "all"],
+	["packages/core/src/projects/ProjectShell.tsx", "all"],
 	["packages/core/src/projects/ProjectSession.ts", "all"],
 	["packages/core/src/projects/project-session-state.ts", "all"],
 	["packages/core/src/projects/project-autosave.ts", "all"],
@@ -74,7 +77,10 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/projects/EditorDocument.tsx", ["@editor", "@circuit"]],
 	["packages/core/src/projects/EditorHeader.tsx", ["@editor", "@circuit"]],
 	["packages/core/src/projects/EditorViewSwitch.tsx", ["@editor", "@circuit"]],
-	["packages/core/src/projects/project-editor-files.ts", ["@editor"]],
+	[
+		"packages/core/src/projects/project-editor-files.ts",
+		["@editor", "@circuit"],
+	],
 	["packages/core/src/projects/linked-pcb.ts", ["@circuit"]],
 	["packages/core/src/projects/pcb.ts", ["@circuit"]],
 	["packages/core/src/projects/project-symbol-storage.ts", ["@symbols"]],
@@ -83,18 +89,33 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/projects/**", ["@projects"]],
 
 	// Core: feature areas.
-	["packages/core/src/components/editor/Symbol*", ["@editor", "@symbols"]],
+	// The circuit editor reuses the symbol picker and library hooks.
+	[
+		"packages/core/src/components/editor/Symbol*",
+		["@editor", "@symbols", "@circuit"],
+	],
 	["packages/core/src/components/editor/CreateSymbolDialog.tsx", ["@symbols"]],
-	["packages/core/src/components/editor/symbol*", ["@editor", "@symbols"]],
-	["packages/core/src/components/editor/use*Symbol*", ["@editor", "@symbols"]],
+	[
+		"packages/core/src/components/editor/symbol*",
+		["@editor", "@symbols", "@circuit"],
+	],
+	[
+		"packages/core/src/components/editor/use*Symbol*",
+		["@editor", "@symbols", "@circuit"],
+	],
 	["packages/core/src/components/editor/**", ["@editor"]],
 	["packages/core/src/components/circuit/**", ["@circuit"]],
 	["packages/core/src/components/gerber/**", ["@import"]],
 	["packages/core/src/components/step/**", ["@import"]],
-	["packages/core/src/components/viewer/**", ["@editor", "@import"]],
+	[
+		"packages/core/src/components/viewer/**",
+		["@editor", "@circuit", "@import"],
+	],
 	["packages/core/src/components/ui/**", ["@startup", "@projects"]],
 	["packages/core/src/engine/**", ["@editor", "@circuit", "@import"]],
-	["packages/core/src/drawing/symbol*", ["@editor", "@symbols"]],
+	["packages/core/src/drawing/symbol*", ["@editor", "@symbols", "@circuit"]],
+	["packages/core/src/drawing/text.ts", ["@editor", "@circuit"]],
+	["packages/core/src/drawing/diagonal-wires.ts", ["@editor", "@import"]],
 	["packages/core/src/drawing/**", ["@editor"]],
 	["packages/core/src/circuit/symbol-components.ts", ["@circuit", "@symbols"]],
 	["packages/core/src/circuit/**", ["@circuit"]],
@@ -103,7 +124,8 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/services/**", ["@editor"]],
 	["packages/core/src/symbol-library/**", ["@symbols"]],
 
-	// Drawing core is shared by the editor, symbols, the circuit and the CLI.
+	// Drawing core is shared by the editor, symbols, the circuit, imports and
+	// the CLI.
 	["packages/drawing-core/src/lib/**", "all"],
 	["packages/drawing-core/src/performance/**", "all"],
 	["packages/drawing-core/src/circuit/**", ["@circuit"]],
@@ -111,11 +133,11 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/drawing-core/src/mcp/**", ["@editor", "@cli"]],
 	[
 		"packages/drawing-core/src/commands/**",
-		["@editor", "@symbols", "@circuit", "@cli"],
+		["@editor", "@symbols", "@circuit", "@import", "@cli"],
 	],
 	[
 		"packages/drawing-core/src/drawing/**",
-		["@editor", "@symbols", "@circuit", "@cli"],
+		["@editor", "@symbols", "@circuit", "@import", "@cli"],
 	],
 
 	// Built-in symbols appear in editor and circuit placement scenarios.

@@ -10,7 +10,11 @@ import {
 	rules,
 	select,
 } from "../scripts/performance/select.ts";
-import { missingFromBaseline, type Summary } from "./performance/comparison.ts";
+import {
+	missingFromBaseline,
+	profileBrowser,
+	type Summary,
+} from "./performance/comparison.ts";
 import { type Area, areas, isArea } from "./performance/tags.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -71,6 +75,8 @@ test("shared, build and unknown paths fall back to the full suite", () => {
 		"packages/core/src/lib/keyboard.ts",
 		"packages/core/src/performance/runtime.ts",
 		"packages/core/src/projects/ProjectSession.ts",
+		"packages/core/src/projects/ProjectShell.tsx",
+		"packages/web/src/projects/AppProjects.tsx",
 		"packages/drawing-core/src/lib/union-find.ts",
 		"packages/new-package/src/index.ts",
 		"something-new.ts",
@@ -94,7 +100,7 @@ test("feature paths map to their areas", () => {
 		["packages/drawing-core/src/erc/rules.ts", ["@circuit"]],
 		[
 			"packages/core/src/components/editor/SymbolPicker.tsx",
-			["@editor", "@symbols"],
+			["@editor", "@symbols", "@circuit"],
 		],
 		["packages/core/src/symbol-library/config.ts", ["@symbols"]],
 		["packages/core/src/formats/kicad/convert.ts", ["@import"]],
@@ -103,8 +109,24 @@ test("feature paths map to their areas", () => {
 		["packages/desktop/src/main/projects.ts", ["@storage"]],
 		["packages/cli/src/cli.ts", ["@cli"]],
 		[
+			"packages/core/src/components/viewer/ToolbarGroup.tsx",
+			["@editor", "@circuit", "@import"],
+		],
+		[
+			"packages/core/src/drawing/symbols.ts",
+			["@editor", "@symbols", "@circuit"],
+		],
+		[
+			"packages/core/src/projects/project-editor-files.ts",
+			["@editor", "@circuit"],
+		],
+		[
+			"packages/drawing-core/src/drawing/schema.ts",
+			["@editor", "@symbols", "@circuit", "@import", "@cli"],
+		],
+		[
 			"packages/drawing-core/src/drawing/wire-router.ts",
-			["@editor", "@symbols", "@circuit", "@cli"],
+			["@editor", "@symbols", "@circuit", "@import", "@cli"],
 		],
 	];
 	for (const [path, expected] of cases)
@@ -300,4 +322,20 @@ test("a scenario missing from the baseline is reported", () => {
 	);
 	assert.equal(warnings.length, 1);
 	assert.match(warnings[0], /^editor-box is not in the baseline/);
+});
+
+test("the profile browser ignores Node-only scenarios that ran first", () => {
+	const run = (userAgent: string) => ({
+		report: { environment: { userAgent } },
+	});
+	assert.equal(
+		profileBrowser([
+			run("Node/24.22.1"),
+			run("HeadlessChrome/153"),
+			run("Node/24.22.1"),
+		]),
+		"HeadlessChrome/153",
+	);
+	assert.equal(profileBrowser([run("Node/24.22.1")]), "Node/24.22.1");
+	assert.equal(profileBrowser([]), "unavailable");
 });

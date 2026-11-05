@@ -93,3 +93,19 @@ export function missingFromBaseline(
 				`${scenario} is not in the baseline, so it was checked against its budgets only. Capture a baseline that includes it to compare it.`,
 		);
 }
+
+/**
+ * The browser for a summary profile. Node-only scenarios report a `Node/…`
+ * user agent, so the first browser report is used whatever order the selected
+ * scenarios ran in.
+ */
+export function profileBrowser(
+	runs: readonly { report: { environment: { userAgent: string } } }[],
+): string {
+	const agents = runs.map((run) => run.report.environment.userAgent);
+	return (
+		agents.find((agent) => !agent.startsWith("Node/")) ??
+		agents[0] ??
+		"unavailable"
+	);
+}
