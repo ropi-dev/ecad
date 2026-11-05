@@ -1,11 +1,11 @@
 import { type Ref, useImperativeHandle, useRef } from "react";
-import type { ViewerScene } from "#/engine/scene.ts";
 import {
 	SceneViewport,
 	type SceneViewportHandle,
 	type SceneViewportProps,
-} from "./SceneViewport";
-import type { Viewer3DHandle } from "./types/Viewer3DHandle";
+} from "#/components/viewer/SceneViewport.tsx";
+import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
+import type { ViewerScene } from "#/engine/scene.ts";
 
 export interface Viewer3DProps
 	extends Omit<SceneViewportProps, "cameraMode" | "ref" | "onChange"> {

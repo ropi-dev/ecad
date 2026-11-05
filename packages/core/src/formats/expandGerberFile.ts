@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 import type { GerberArchive } from "#/formats/gerber/archive.ts";
+import {
+	ArchiveError,
+	checkFileSize,
+	requestWorker,
+} from "#/formats/import-effects.ts";
 import { runEffect } from "#/lib/effect.ts";
-import { ArchiveError, checkFileSize, requestWorker } from "./import-effects";
 
 const UNREADABLE = "Unable to read this ZIP archive.";
 

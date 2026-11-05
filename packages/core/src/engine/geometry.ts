@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import libtess from "libtess";
 import svgParser from "svg-path-parser";
-import type { Geometry, Point } from "./types";
+import type { Geometry, Point } from "#/engine/types.ts";
 
 type Pair = [number, number];
 type Ring = Pair[];

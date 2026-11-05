@@ -8,7 +8,20 @@ import {
 	useState,
 } from "react";
 import type { Object3D } from "three";
+import { AxisIndicator } from "#/components/viewer/AxisIndicator.tsx";
+import { downloadPng } from "#/components/viewer/exportPng.ts";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
+import type { AxisIndicatorHandle } from "#/components/viewer/types/AxisIndicatorHandle.ts";
+import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
+import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
+import { useDisplayScale } from "#/components/viewer/useDisplayScale.ts";
+import { useViewportSize } from "#/components/viewer/useViewportSize.ts";
+import { ViewControls3D } from "#/components/viewer/ViewControls3D.tsx";
+import {
+	ViewportRulers,
+	type ViewportRulersHandle,
+} from "#/components/viewer/ViewportRulers.tsx";
 import type { ViewerScene } from "#/engine/scene.ts";
 import {
 	createSceneViewport,
@@ -18,16 +31,6 @@ import {
 import type { Bounds, Camera } from "#/engine/types.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
-import { AxisIndicator } from "./AxisIndicator";
-import { downloadPng } from "./exportPng";
-import { FloatingPanel } from "./FloatingPanel";
-import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
-import type { Viewer2DSnapshot } from "./types/Viewer2DSnapshot";
-import type { Viewer3DHandle } from "./types/Viewer3DHandle";
-import { useDisplayScale } from "./useDisplayScale.ts";
-import { useViewportSize } from "./useViewportSize";
-import { ViewControls3D } from "./ViewControls3D";
-import { ViewportRulers, type ViewportRulersHandle } from "./ViewportRulers";
 
 export interface SceneViewportHandle extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;

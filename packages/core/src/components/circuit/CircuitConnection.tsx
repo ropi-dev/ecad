@@ -1,6 +1,6 @@
 import { connectionCurveOffset } from "@ecad/drawing-core/circuit/graph.ts";
 import type { MouseEvent } from "react";
-import { GraphButton } from "./GraphButton.tsx";
+import { GraphButton } from "#/components/circuit/GraphButton.tsx";
 
 export function CircuitConnection({
 	pin,

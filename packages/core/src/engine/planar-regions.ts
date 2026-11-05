@@ -1,5 +1,5 @@
-import type { PlanarGeometry } from "./planar-geometry";
-import type { Point } from "./types";
+import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
+import type { Point } from "#/engine/types.ts";
 
 /** Pick resolved coverage, so cutouts break connections and holes remain empty. */
 export function pickPlanarRegion(

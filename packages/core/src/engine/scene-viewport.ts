@@ -14,22 +14,25 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
-import { errorMessage } from "#/lib/error-message.ts";
-import { createLifecycle } from "#/lib/lifecycle.ts";
-import { getAppPerformance } from "#/performance/runtime.ts";
-import { getSceneBounds } from "./camera";
-import { capturePng } from "./capture-png";
-import { create3DControls } from "./controls3d";
+import { getSceneBounds } from "#/engine/camera.ts";
+import { capturePng } from "#/engine/capture-png.ts";
+import { create3DControls } from "#/engine/controls3d.ts";
 import {
 	handleViewerKeyDown,
 	MAX_ZOOM,
 	MIN_ZOOM,
 	viewerPixelRatio,
-} from "./navigation";
-import { createSceneDisplay, type ViewerScene } from "./scene";
-import { createSceneHover, type SceneTarget } from "./scene-hover";
-import type { Bounds, Camera } from "./types";
-import type { Viewer2DSnapshot, Viewer3DHandle } from "./viewport-types";
+} from "#/engine/navigation.ts";
+import { createSceneDisplay, type ViewerScene } from "#/engine/scene.ts";
+import { createSceneHover, type SceneTarget } from "#/engine/scene-hover.ts";
+import type { Bounds, Camera } from "#/engine/types.ts";
+import type {
+	Viewer2DSnapshot,
+	Viewer3DHandle,
+} from "#/engine/viewport-types.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import { createLifecycle } from "#/lib/lifecycle.ts";
+import { getAppPerformance } from "#/performance/runtime.ts";
 
 export const MIN_PHYSICAL_ZOOM = 0.01;
 export const MAX_PHYSICAL_ZOOM = 100;

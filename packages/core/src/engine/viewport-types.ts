@@ -1,4 +1,4 @@
-import type { Camera } from "./types";
+import type { Camera } from "#/engine/types.ts";
 
 export interface RenderDiagnostics {
 	width: number;

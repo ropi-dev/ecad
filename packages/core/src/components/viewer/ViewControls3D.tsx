@@ -1,18 +1,21 @@
 import { Box, Download, Scan, Square } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import {
+	ToolbarGroup,
+	ToolbarGroups,
+} from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
+import type { Viewer3DHandle } from "#/components/viewer/types/Viewer3DHandle.ts";
+import { ZoomControls } from "#/components/viewer/ZoomControls.tsx";
 import { MAX_ZOOM, MIN_ZOOM } from "#/engine/navigation.ts";
 import {
 	MAX_PHYSICAL_ZOOM,
 	MIN_PHYSICAL_ZOOM,
 } from "#/engine/scene-viewport.ts";
-import { ToolbarGroup, ToolbarGroups } from "./ToolbarGroup";
-import type { Viewer3DHandle } from "./types/Viewer3DHandle";
-import { ZoomControls } from "./ZoomControls";
 
-export { viewControlButtonClassName } from "./viewControlStyles";
+export { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
-import { viewControlButtonClassName } from "./viewControlStyles";
+import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 export function ViewControls3D({
 	enabled,

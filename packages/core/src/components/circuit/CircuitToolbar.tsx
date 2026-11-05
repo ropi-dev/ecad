@@ -27,7 +27,7 @@ import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 
 const CircuitComponentPicker = lazy(() =>
-	import("./CircuitComponentPicker.tsx").then((module) => ({
+	import("#/components/circuit/CircuitComponentPicker.tsx").then((module) => ({
 		default: module.CircuitComponentPicker,
 	})),
 );

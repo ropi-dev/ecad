@@ -10,8 +10,6 @@ import {
 	type TextShape,
 } from "#/drawing/shapes.ts";
 import { asSentence as sentence } from "#/formats/diagnostics.ts";
-import { errorMessage } from "#/lib/error-message.ts";
-import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	node,
 	nodes,
@@ -19,7 +17,9 @@ import {
 	parseSExpr,
 	type SExpr,
 	value,
-} from "./sexpr.ts";
+} from "#/formats/kicad/sexpr.ts";
+import { errorMessage } from "#/lib/error-message.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 type XY = [number, number];
 export interface KiCadImportReport {

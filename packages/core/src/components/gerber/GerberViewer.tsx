@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 import { Box3, type Object3D, Vector3 } from "three";
+import { Viewer2D, type Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import { stylePlanarObject3D } from "#/engine/planar-object.ts";
 import type { PlanarObject } from "#/engine/types.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
-import { Viewer2D, type Viewer2DProps } from "../viewer/Viewer2D";
 
 // Display spacing in millimetres, independent of physical PCB thickness.
 const LAYER_SPACING = 0.1;

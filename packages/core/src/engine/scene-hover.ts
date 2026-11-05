@@ -11,9 +11,12 @@ import {
 	Raycaster,
 	Vector3,
 } from "three";
-import { hoverLayerColor } from "./layer-style";
-import { pickPlanarRegion, planarRegionPositions } from "./planar-regions";
-import type { SceneDisplayEntry } from "./scene";
+import { hoverLayerColor } from "#/engine/layer-style.ts";
+import {
+	pickPlanarRegion,
+	planarRegionPositions,
+} from "#/engine/planar-regions.ts";
+import type { SceneDisplayEntry } from "#/engine/scene.ts";
 
 export interface SceneHover {
 	object: Object3D;

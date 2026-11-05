@@ -23,6 +23,10 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import {
+	type CircuitTool,
+	CircuitToolbar,
+} from "#/components/circuit/CircuitToolbar.tsx";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { handleViewerKeyDown } from "#/engine/navigation.ts";
 import { errorMessage } from "#/lib/error-message.ts";
@@ -35,16 +39,15 @@ import {
 	type CircuitDocument,
 	useProjectSelection,
 } from "#/projects/ProjectProvider.tsx";
-import { type CircuitTool, CircuitToolbar } from "./CircuitToolbar.tsx";
-import "./CircuitEditor.css";
-import { CircuitConnection } from "./CircuitConnection.tsx";
-import { CircuitContextMenu } from "./CircuitContextMenu.tsx";
-import { CircuitInlineFields } from "./CircuitInlineFields.tsx";
-import { GraphButton } from "./GraphButton.tsx";
+import "#/components/circuit/CircuitEditor.css";
+import { CircuitConnection } from "#/components/circuit/CircuitConnection.tsx";
+import { CircuitContextMenu } from "#/components/circuit/CircuitContextMenu.tsx";
+import { CircuitInlineFields } from "#/components/circuit/CircuitInlineFields.tsx";
+import { GraphButton } from "#/components/circuit/GraphButton.tsx";
 import {
 	type CircuitView,
 	useCircuitNavigation,
-} from "./useCircuitNavigation.ts";
+} from "#/components/circuit/useCircuitNavigation.ts";
 
 const ErcPanel = lazy(() =>
 	import("#/components/circuit/ErcPanel.tsx").then((module) => ({

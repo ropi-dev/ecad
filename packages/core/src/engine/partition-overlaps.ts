@@ -1,4 +1,4 @@
-import type { Bounds } from "./types";
+import type { Bounds } from "#/engine/types.ts";
 
 interface Node extends Bounds {
 	index?: number;

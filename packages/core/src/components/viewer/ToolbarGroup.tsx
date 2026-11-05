@@ -12,7 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
-import { viewControlButtonClassName } from "./viewControlStyles";
+import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 const GroupContext = createContext<{
 	openId: string | null;

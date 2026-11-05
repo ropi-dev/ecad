@@ -1,7 +1,7 @@
+import { snapCircuitPoint } from "#/circuit/grid.ts";
+import type { CircuitFile, GraphLayout } from "#/circuit/model.ts";
+import { circuitNetLabels } from "#/circuit/net-labels.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
-import { snapCircuitPoint } from "./grid.ts";
-import type { CircuitFile, GraphLayout } from "./model.ts";
-import { circuitNetLabels } from "./net-labels.ts";
 
 export const componentWidth = 200;
 export const componentHeight = (pinCount: number) => 116 + pinCount * 30;

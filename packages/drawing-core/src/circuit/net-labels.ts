@@ -1,4 +1,4 @@
-import type { Circuit } from "./model.ts";
+import type { Circuit } from "#/circuit/model.ts";
 
 export function circuitNetLabels(circuit: Circuit): Map<string, string> {
 	const labels = new Map(

@@ -1,6 +1,6 @@
 import { type Ref, useImperativeHandle, useRef, useState } from "react";
 import { Quaternion, Vector3 } from "three";
-import type { AxisIndicatorHandle } from "./types/AxisIndicatorHandle";
+import type { AxisIndicatorHandle } from "#/components/viewer/types/AxisIndicatorHandle.ts";
 
 function projectAxes(rotation: Quaternion) {
 	const inverse = rotation.clone().invert();

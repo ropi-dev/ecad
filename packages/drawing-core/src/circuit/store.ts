@@ -1,7 +1,5 @@
 import { Data } from "effect";
 import { z } from "zod";
-import { freeze } from "#/lib/freeze.ts";
-import { measurePerformance } from "#/performance/runtime.ts";
 import {
 	type CircuitComponent,
 	type CircuitFile,
@@ -10,7 +8,9 @@ import {
 	circuitNetSchema,
 	createCircuit,
 	type GraphLayout,
-} from "./model.ts";
+} from "#/circuit/model.ts";
+import { freeze } from "#/lib/freeze.ts";
+import { measurePerformance } from "#/performance/runtime.ts";
 
 export type CircuitCommand =
 	| {

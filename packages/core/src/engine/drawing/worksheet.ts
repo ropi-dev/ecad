@@ -16,8 +16,8 @@ import {
 	type SheetSize,
 	type WorksheetDisplay,
 } from "#/drawing/worksheet.ts";
+import { createTextMaterial, measureText } from "#/engine/drawing/text.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
-import { createTextMaterial, measureText } from "./text";
 
 export function createWorksheet(sheet: SheetSize = defaultSheet) {
 	return createWorksheetFromDisplay(buildWorksheetDisplay(sheet));

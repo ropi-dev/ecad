@@ -3,8 +3,8 @@ import {
 	SceneViewport,
 	type SceneViewportHandle,
 	type SceneViewportProps,
-} from "./SceneViewport";
-import type { Viewer2DHandle } from "./types/Viewer2DHandle";
+} from "#/components/viewer/SceneViewport.tsx";
+import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
 
 export interface Viewer2DProps
 	extends Omit<SceneViewportProps, "cameraMode" | "projection" | "ref"> {

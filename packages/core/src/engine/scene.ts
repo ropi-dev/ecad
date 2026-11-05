@@ -6,16 +6,16 @@ import {
 	type Object3D,
 	type WebGLRenderer,
 } from "three";
-import type { PlanarGeometry } from "./planar-geometry";
+import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
 	getPlanarGeometry,
-} from "./planar-object";
-import { PlanarOutline } from "./planar-outline";
-import type { PlanarObject, SceneLayer } from "./types";
+} from "#/engine/planar-object.ts";
+import { PlanarOutline } from "#/engine/planar-outline.ts";
+import type { PlanarObject, SceneLayer } from "#/engine/types.ts";
 
-export type { PlanarObject } from "./types";
+export type { PlanarObject } from "#/engine/types.ts";
 export interface SpatialObject {
 	type: "spatial";
 	object: Object3D;

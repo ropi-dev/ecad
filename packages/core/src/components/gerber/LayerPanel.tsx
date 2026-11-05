@@ -7,12 +7,12 @@ import {
 	X,
 } from "lucide-react";
 import { useId, useState } from "react";
+import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import type { Diagnostic, SceneLayer } from "#/engine/types.ts";
 import {
 	countDiagnostics,
 	describeDiagnostics,
 } from "#/formats/diagnostics.ts";
-import { FloatingPanel } from "../viewer/FloatingPanel";
 
 const severityStyle = {
 	warning: { label: "Warning", className: "text-amber-200" },

@@ -23,10 +23,13 @@ import {
 	UNFOCUSED_OUTLINE_WIDTH,
 	UNFOCUSED_OUTLINE_WIDTH_MM,
 	UNFOCUSED_XRAY_COLOR,
-} from "./layer-style";
-import { compilePlanarGeometry, type PlanarGeometry } from "./planar-geometry";
-import { PlanarOutline } from "./planar-outline";
-import type { PlanarObject } from "./types";
+} from "#/engine/layer-style.ts";
+import {
+	compilePlanarGeometry,
+	type PlanarGeometry,
+} from "#/engine/planar-geometry.ts";
+import { PlanarOutline } from "#/engine/planar-outline.ts";
+import type { PlanarObject } from "#/engine/types.ts";
 
 const geometries = new WeakMap<Object3D, PlanarGeometry>();
 
