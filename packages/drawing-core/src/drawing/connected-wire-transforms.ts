@@ -8,8 +8,10 @@ import {
 import { pinTerminals } from "#/drawing/terminals.ts";
 import type { Point } from "#/drawing/types.ts";
 import {
+	addRouteWires,
 	createRoutingIndex,
 	type Heading,
+	headingOf,
 	type RoutingIndex,
 	reverseHeading,
 	segmentClear,
@@ -19,7 +21,6 @@ import {
 	emptyObstacles,
 	isElectricalLabel,
 	type NetLookup,
-	netLookup,
 	type PinEnd,
 	pathWires,
 	pinEnds,
@@ -27,6 +28,7 @@ import {
 	routingPitch,
 	wireEnds,
 } from "#/drawing/wire-routing.ts";
+import { unionFind } from "#/lib/union-find.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 function movementTerminals(shape: EditorShape): readonly Point[] {
@@ -234,7 +236,47 @@ function buildGraph(allShapes: readonly EditorShape[]): WireGraph {
 		}
 		byWire.set(shape.id, ids);
 	}
-	return { nodes, pieces, byWire, nodeAt: find, nets: netLookup(allShapes) };
+	return {
+		nodes,
+		pieces,
+		byWire,
+		nodeAt: find,
+		nets: graphNets(nodes, pieces, byWire),
+	};
+}
+
+/**
+ * Nets from wire geometry alone. Unlike `electricalNets`, nets that share only
+ * a label name stay apart, so routes keep clear of them too. That is cheaper and
+ * never joins nets.
+ */
+function graphNets(
+	nodes: readonly GraphNode[],
+	pieces: readonly Piece[],
+	byWire: ReadonlyMap<number, number[]>,
+): NetLookup {
+	const sets = unionFind(nodes.length);
+	for (const piece of pieces) sets.union(piece.end, piece.start);
+	const pins = new Map<string, number>();
+	const labels = new Map<number, number>();
+	for (const node of nodes) {
+		for (const pin of node.pins)
+			pins.set(`${pin.shape.id}:${pin.pinId}`, sets.find(node.id));
+		for (const label of node.labels) labels.set(label.id, sets.find(node.id));
+	}
+	// Items without a node or wire piece are isolated, clear of node indexes.
+	const isolated = 1 << 28;
+	return {
+		wire: (id) => {
+			const first = byWire.get(id)?.[0];
+			return first === undefined
+				? isolated + id * 2
+				: sets.find(pieces[first].start);
+		},
+		pin: (shapeId, pinId) =>
+			pins.get(`${shapeId}:${pinId}`) ?? isolated + shapeId * 2 + 1,
+		label: (id) => labels.get(id) ?? isolated + id * 2,
+	};
 }
 
 interface MovedNode {
@@ -262,6 +304,8 @@ interface SelectionContext {
 	/** Moved nodes that keep the wire or pin they touch and get a new connection to it. */
 	readonly stubs: number[];
 	readonly index: RoutingIndex;
+	/** The last result, reused while a drag stays on the same snapped delta. */
+	last?: { key: string; result: EditorShape[] };
 }
 
 interface GraphCache {
@@ -345,8 +389,9 @@ function createSelectionContext(
 		let stub =
 			node.pins.some(({ shape }) => !selectedIds.has(shape.id)) ||
 			node.labels.some((shape) => !selectedIds.has(shape.id));
-		// A label only drags the wire it ends. Elsewhere it gets a new branch.
-		if (moved.get(nodeId)?.label && node.pieces.length > 1) {
+		// A label only drags the wire it ends. Elsewhere it gets a new branch, as
+		// does a terminal on a stationary pin: that pin's wires are its own.
+		if (stub || (moved.get(nodeId)?.label && node.pieces.length > 1)) {
 			stubs.push(nodeId);
 			continue;
 		}
@@ -421,7 +466,9 @@ function createSelectionContext(
 	return { moved, traces, stubs, index: createRoutingIndex(obstacles) };
 }
 
-type PieceState = { kind: "rip"; at: Point } | { kind: "move" };
+type PieceState =
+	| { kind: "rip"; at: Point }
+	| { kind: "move"; from: Point; to: Point };
 
 /**
  * Rubber-bands wires after selected shapes move or rotate. Each wire stretch
@@ -454,6 +501,32 @@ function rubberBand(
 ): EditorShape[] {
 	const { graph, context } = selectionContext(shapes, allShapes);
 	if (!context.traces.length && !context.stubs.length) return replacements;
+	const key = delta && `${delta.x},${delta.y},${pitch},${nextShapeId}`;
+	if (key && context.last?.key === key) return context.last.result;
+	const result = rerouteSelection(
+		graph,
+		context,
+		shapes,
+		replacements,
+		allShapes,
+		nextShapeId,
+		pitch,
+		delta,
+	);
+	if (key) context.last = { key, result };
+	return result;
+}
+
+function rerouteSelection(
+	graph: WireGraph,
+	context: SelectionContext,
+	shapes: EditorShape[],
+	replacements: EditorShape[],
+	allShapes: EditorShape[],
+	nextShapeId: number,
+	pitch: number,
+	delta: Point | undefined,
+): EditorShape[] {
 	const { nodes, pieces, nets } = graph;
 	const transformedEnds = replacements.map((shape) => movementEnds(shape));
 	const transformedTerminals = replacements.map((shape) =>
@@ -495,61 +568,122 @@ function rubberBand(
 			({ shape }) => !shapes.some((selected) => selected.id === shape.id),
 		);
 
+	const originalEnds = shapes.map((shape) => movementEnds(shape));
+	const outwardBefore = (nodeId: number) => {
+		const terminal = context.moved.get(nodeId)?.terminal;
+		return terminal
+			? originalEnds[terminal.shape][terminal.index]?.outward
+			: stationaryPin(nodes[nodeId])?.outward;
+	};
+	const outwardAfter = (nodeId: number) =>
+		context.moved.has(nodeId)
+			? target(nodeId).pin?.outward
+			: stationaryPin(nodes[nodeId])?.outward;
+
 	const dynamic = emptyObstacles();
 	for (const shape of replacements) addShapeObstacles(dynamic, shape, nets);
+	const dynamicIndex = createRoutingIndex(dynamic);
+	const indexes: RoutingIndex[] = [context.index, dynamicIndex];
 	const states = new Map<number, PieceState>();
-	// Free stubs and wiring between moved shapes stretch: each node follows a moved
-	// node along the axes its segments share, as when dragging one segment.
-	const candidates = context.traces.filter(
-		(trace) =>
-			trace.kind === "move" ||
-			(trace.kind === "internal" &&
-				samePoint(displacement(trace.moved), displacement(trace.other))),
-	);
-	const shift = stretchNodes(
-		graph,
-		candidates.flatMap((trace) => trace.pieces),
-		context.moved.keys(),
-		displacement,
-	);
-	const shiftedFrom = (piece: Piece) =>
-		offset(piece.from, shift.get(piece.start) ?? { x: 0, y: 0 });
-	const shiftedTo = (piece: Piece) =>
-		offset(piece.to, shift.get(piece.end) ?? { x: 0, y: 0 });
-	const baseIndexes = [context.index, createRoutingIndex(dynamic)];
-	const reroute: Trace[] = [];
-	for (const trace of context.traces) {
-		if (!candidates.includes(trace)) {
-			reroute.push(trace);
-			continue;
+	const zero = { x: 0, y: 0 };
+	/** The trace's end at `nodeId`, then its far end, in old or new geometry. */
+	const endAt = (
+		pieceId: number,
+		nodeId: number,
+		geometry?: ReadonlyMap<number, readonly [Point, Point]>,
+	) => {
+		const piece = pieces[pieceId];
+		const [from, to] = geometry?.get(pieceId) ?? [piece.from, piece.to];
+		return piece.start === nodeId
+			? ([from, to] as const)
+			: ([to, from] as const);
+	};
+	const direction = ([at, far]: readonly [Point, Point]) =>
+		samePoint(at, far)
+			? undefined
+			: headingOf(Math.atan2(far.y - at.y, far.x - at.x));
+	// A pin left along its lead before the move must still be left that way.
+	const keepsLead = (
+		pieceId: number,
+		nodeId: number,
+		geometry: ReadonlyMap<number, readonly [Point, Point]>,
+	) => {
+		const before = outwardBefore(nodeId);
+		if (before === undefined || direction(endAt(pieceId, nodeId)) !== before)
+			return true;
+		const after = outwardAfter(nodeId);
+		return (
+			after === undefined ||
+			direction(endAt(pieceId, nodeId, geometry)) === after
+		);
+	};
+	/**
+	 * Stretches a trace the way dragging a segment does: each node follows a
+	 * moved node along the axes its segments share. Wiring between two parts
+	 * moved together translates. Returns undefined when the stretch would move
+	 * a fixed node, touch another net or pin, cross a body, or leave a pin
+	 * sideways; the trace is routed again instead.
+	 */
+	const stretchTrace = (trace: Trace) => {
+		const moved = displacement(trace.moved);
+		const internal = trace.kind === "internal";
+		if (internal && !samePoint(moved, displacement(trace.other))) return;
+		const rigid =
+			internal &&
+			!!context.moved.get(trace.moved)?.terminal &&
+			!!context.moved.get(trace.other)?.terminal;
+		const shift = rigid
+			? undefined
+			: stretchNodes(
+					graph,
+					trace.pieces,
+					internal ? [trace.moved, trace.other] : [trace.moved],
+					displacement,
+				);
+		const shiftOf = (nodeId: number) =>
+			shift ? (shift.get(nodeId) ?? zero) : moved;
+		if (trace.kind === "rip" && !samePoint(shiftOf(trace.other), zero)) return;
+		const geometry = new Map<number, readonly [Point, Point]>();
+		for (const pieceId of trace.pieces) {
+			const piece = pieces[pieceId];
+			geometry.set(pieceId, [
+				offset(piece.from, shiftOf(piece.start)),
+				offset(piece.to, shiftOf(piece.end)),
+			]);
 		}
 		const ends = [target(trace.moved).point, target(trace.other).point];
-		const clear = trace.pieces.every((pieceId) => {
-			const piece = pieces[pieceId];
-			return segmentClear(
-				baseIndexes,
-				shiftedFrom(piece),
-				shiftedTo(piece),
-				new Set([trace.net]),
-				ends,
-			);
-		});
-		// A stretch that would touch another net or cross a body is routed instead.
-		if (!clear) {
+		const own = new Set([trace.net]);
+		for (const [start, end] of geometry.values())
+			if (!segmentClear(indexes, start, end, own, ends)) return;
+		const first = trace.pieces[0];
+		const last = trace.pieces[trace.pieces.length - 1];
+		if (
+			!keepsLead(first, trace.moved, geometry) ||
+			!keepsLead(last, trace.other, geometry)
+		)
+			return;
+		return geometry;
+	};
+	const reroute: Trace[] = [];
+	for (const trace of context.traces) {
+		const geometry = stretchTrace(trace);
+		if (!geometry) {
 			reroute.push(trace);
 			continue;
 		}
-		for (const pieceId of trace.pieces) {
-			states.set(pieceId, { kind: "move" });
-			const piece = pieces[pieceId];
-			dynamic.wires.push({
-				start: shiftedFrom(piece),
-				end: shiftedTo(piece),
+		for (const [pieceId, [from, to]] of geometry)
+			states.set(pieceId, { kind: "move", from, to });
+		addRouteWires(
+			dynamicIndex,
+			[...geometry.values()].map(([start, end]) => ({
+				start,
+				end,
 				net: trace.net,
-			});
-		}
+			})),
+		);
 	}
-	const indexes: RoutingIndex[] = [context.index, createRoutingIndex(dynamic)];
+	// One budget per step keeps a drag over crowded parts responsive.
+	const budget = { remaining: 30_000 };
 
 	interface Route {
 		net: number;
@@ -573,12 +707,13 @@ function rubberBand(
 			nets: new Set([net]),
 			pitch: routingPitch(pitch),
 			memory,
+			budget,
 		});
 		routes.push({ net, wires, points, lineWidth });
-		const added = emptyObstacles();
-		for (let index = 1; index < points.length; index++)
-			added.wires.push({ start: points[index - 1], end: points[index], net });
-		indexes.push(createRoutingIndex(added));
+		addRouteWires(
+			dynamicIndex,
+			points.slice(1).map((end, index) => ({ start: points[index], end, net })),
+		);
 	};
 	for (const trace of reroute) {
 		const internal = trace.kind === "internal";
@@ -625,23 +760,23 @@ function rubberBand(
 	for (const [wireId, pieceIds] of graph.byWire) {
 		if (!pieceIds.some((pieceId) => states.has(pieceId))) continue;
 		const wire = pieces[pieceIds[0]].wire;
-		const groups: { first: number; last: number; moved: boolean }[] = [];
+		// Consecutive pieces that still meet end to end stay one wire.
+		const groups: { last: number; from: Point; to: Point }[] = [];
 		for (const pieceId of pieceIds) {
 			const state = states.get(pieceId);
 			if (state?.kind === "rip") continue;
-			const moved = state?.kind === "move";
+			const [from, to] =
+				state?.kind === "move"
+					? [state.from, state.to]
+					: [pieces[pieceId].from, pieces[pieceId].to];
 			const last = groups.at(-1);
-			if (last && last.last === pieceId - 1 && last.moved === moved)
+			if (last && last.last === pieceId - 1 && samePoint(last.to, from)) {
 				last.last = pieceId;
-			else groups.push({ first: pieceId, last: pieceId, moved });
+				last.to = to;
+			} else groups.push({ last: pieceId, from, to });
 		}
-		const segments = groups.map(({ first, last, moved }) =>
-			drawShape(
-				0,
-				"wire",
-				moved ? shiftedFrom(pieces[first]) : pieces[first].from,
-				moved ? shiftedTo(pieces[last]) : pieces[last].to,
-			),
+		const segments = groups.map(({ from, to }) =>
+			drawShape(0, "wire", from, to),
 		);
 		if (!segments.length) {
 			const state = states.get(pieceIds[0]);

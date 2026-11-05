@@ -133,6 +133,34 @@ export function createRoutingIndex(
 	return index;
 }
 
+/** Adds wires to an existing index, such as routes placed earlier in one gesture. */
+export function addRouteWires(
+	index: RoutingIndex,
+	wires: readonly RouteWire[],
+) {
+	for (const wire of wires)
+		if (!samePoint(wire.start, wire.end))
+			index.wires.insert(segmentBounds(wire.start, wire.end), wire);
+}
+
+/** Whether a point lies inside a symbol body, where no route can reach it. */
+export function insideBody(
+	indexes: readonly RoutingIndex[],
+	point: Point,
+): boolean {
+	const bounds = segmentBounds(point, point);
+	return indexes.some((index) =>
+		index.bodies.query(
+			bounds,
+			(body) =>
+				point.x > body.minX + BODY_INSET &&
+				point.x < body.maxX - BODY_INSET &&
+				point.y > body.minY + BODY_INSET &&
+				point.y < body.maxY - BODY_INSET,
+		),
+	);
+}
+
 export interface RouteStart {
 	readonly point: Point;
 	/** Direction of the first step. Strict ends must leave this way. */
@@ -155,6 +183,8 @@ export interface RouteOptions {
 	readonly memory?: readonly (readonly [Point, Point])[];
 	readonly ignoreBodies?: boolean;
 	readonly maxExpansions?: number;
+	/** Expansions left for a whole gesture step; each search spends from it. */
+	readonly budget?: { remaining: number };
 }
 
 const BEND = 3;
@@ -460,8 +490,37 @@ export function routeOrthogonal(
 ): Point[] | undefined {
 	if (samePoint(from.point, to.point)) return [from.point, to.point];
 	const pitch = options.pitch > 0 ? options.pitch : 1.27;
-	let budget = options.maxExpansions ?? 40_000;
+	// A walled-in end makes every search fail after its whole budget; check first.
+	const probe = (point: Point, heading: number, leaving: boolean) => {
+		const near = {
+			x: point.x + (stepX[heading] * pitch) / 2,
+			y: point.y + (stepY[heading] * pitch) / 2,
+		};
+		return !!edgeCost(
+			indexes,
+			leaving ? point : near,
+			leaving ? near : point,
+			from.point,
+			to.point,
+			options,
+			pitch,
+		);
+	};
+	const exits =
+		from.heading !== undefined && from.strict ? [from.heading] : [0, 1, 2, 3];
+	const entries = to.arrive === undefined ? [0, 1, 2, 3] : [to.arrive];
+	if (
+		!exits.some((heading) => probe(from.point, heading, true)) ||
+		!entries.some((heading) => probe(to.point, opposite(heading), false))
+	)
+		return undefined;
+	const shared = options.budget;
+	let budget = Math.min(
+		options.maxExpansions ?? 40_000,
+		shared?.remaining ?? Number.POSITIVE_INFINITY,
+	);
 	for (const steps of [8, 24, 64]) {
+		if (budget <= 0) return undefined;
 		const result = search(
 			indexes,
 			from,
@@ -471,9 +530,9 @@ export function routeOrthogonal(
 			steps * pitch,
 			budget,
 		);
-		if (Array.isArray(result)) return result;
-		budget -= result;
-		if (budget <= 0) return undefined;
+		budget -= result.expanded;
+		if (shared) shared.remaining -= result.expanded;
+		if (result.points) return result.points;
 	}
 	return undefined;
 }
@@ -486,7 +545,7 @@ function search(
 	pitch: number,
 	pad: number,
 	budget: number,
-): Point[] | number {
+): { points?: Point[]; expanded: number } {
 	const xs = lattice(from.point.x, to.point.x, pad, pitch);
 	const ys = lattice(from.point.y, to.point.y, pad, pitch);
 	const width = xs.length;
@@ -541,10 +600,10 @@ function search(
 		const atStart = x === startX && y === startY;
 		if (x === goalX && y === goalY) {
 			if (to.arrive === undefined || to.arrive === heading)
-				return corners(id, parents, xs, ys, width);
+				return { points: corners(id, parents, xs, ys, width), expanded };
 			continue;
 		}
-		if (++expanded > budget) return expanded;
+		if (++expanded > budget) return { expanded };
 		const point = { x: xs[x], y: ys[y] };
 		for (let next = 0; next < 4; next++) {
 			// Starting states already chose the first step's direction.
@@ -576,7 +635,7 @@ function search(
 			open.push(nextId, score + estimate(nx, ny, next));
 		}
 	}
-	return expanded;
+	return { expanded };
 }
 
 function corners(

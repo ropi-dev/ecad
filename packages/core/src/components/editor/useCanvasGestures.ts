@@ -252,7 +252,9 @@ export function useCanvasGestures({
 	const routed = useRef<{
 		key: string;
 		start: Point;
+		shapes: readonly EditorShape[];
 		points: Point[];
+		clear: boolean;
 	} | null>(null);
 	const previewWire = useCallback(
 		(point: Point) => {
@@ -271,34 +273,47 @@ export function useCanvasGestures({
 			let end: Point;
 			if (connection) {
 				// Ending on a connection routes the rest of the wire around obstacles.
-				const key = `${connection.x},${connection.y},${active.fromPin},${active.heading}`;
+				const pitch = routingPitch(snapStep);
+				const key = `${connection.x},${connection.y},${active.fromPin},${active.heading},${pitch}`;
 				if (
 					routed.current?.key !== key ||
-					routed.current.start !== active.start
+					routed.current.start !== active.start ||
+					routed.current.shapes !== shapes
 				) {
 					if (routing.current?.shapes !== shapes)
 						routing.current = createWireRoutingContext(shapes);
 					const context = routing.current;
-					const points = measurePerformance(
+					const { points, clear } = measurePerformance(
 						"editor.wire-route",
 						() =>
 							routeWireConnection(context, active.start, connection, {
-								pitch: routingPitch(snapStep),
+								pitch,
 								heading: active.heading,
 								fromPin: active.fromPin,
 							}),
 						{ shapes: shapes.length },
 					);
-					routed.current = { key, start: active.start, points };
+					routed.current = {
+						key,
+						start: active.start,
+						shapes,
+						points,
+						clear,
+					};
 				}
 				end = connection;
 				segments = pathWires(session.nextId(), routed.current.points);
+				// No safe route: show the fallback, but never connect through it.
+				if (!routed.current.clear) {
+					setWirePreview(segments);
+					return { segments, end, connected: true, blocked: true };
+				}
 			} else {
 				end = constrainWireEndpoint(active.start, point, snapStep);
 				segments = routeWire(session.nextId(), active.start, end);
 			}
 			setWirePreview(segments);
-			return { segments, end, connected: !!connection };
+			return { segments, end, connected: !!connection, blocked: false };
 		},
 		[getWire, snapEnabled, cameraView, session],
 	);
@@ -502,6 +517,7 @@ export function useCanvasGestures({
 				const next = previewWire(point);
 				if (
 					!next ||
+					next.blocked ||
 					next.segments.reduce((sum, segment) => sum + segment.width, 0) *
 						(cameraView.getSnapshot()?.camera.scale ?? 1) <
 						3

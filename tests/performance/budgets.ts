@@ -275,6 +275,14 @@ export const budgets = {
 		scriptBytes: 3_000_000,
 		frameP95Ms: 500,
 	},
+	"editor-dense-drag": {
+		interactionP95Ms: 6000,
+		dragStepP95Ms: 600,
+		rubberBandP95Ms: 100,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"editor-pin-junction": {
 		interactionP95Ms: 750,
 		normalizationP95Ms: 100,

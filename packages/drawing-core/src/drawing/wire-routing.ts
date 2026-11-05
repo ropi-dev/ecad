@@ -15,6 +15,7 @@ import {
 	createRoutingIndex,
 	type Heading,
 	headingOf,
+	insideBody,
 	LEAD_NET,
 	type RouteBody,
 	type RouteGoal,
@@ -23,6 +24,7 @@ import {
 	type RoutingIndex,
 	reverseHeading,
 	routeOrthogonal,
+	segmentClear,
 	simplifyPath,
 } from "#/drawing/wire-router.ts";
 
@@ -234,30 +236,40 @@ export interface RouteRequest {
 	readonly nets: ReadonlySet<number>;
 	readonly pitch: number;
 	readonly memory?: readonly (readonly [Point, Point])[];
+	readonly budget?: { remaining: number };
 }
 
 /**
  * Routes around obstacles, then retries without pin directions and through
- * symbol bodies, then falls back to a plain L so a gesture always has a result.
+ * symbol bodies, then falls back to a plain L so a gesture always has a
+ * result. `clear` reports whether the result touches no other net or pin.
  */
 export function routePath(
 	indexes: readonly RoutingIndex[],
 	request: RouteRequest,
-): { points: Point[]; routed: boolean } {
+): { points: Point[]; routed: boolean; clear: boolean } {
 	const options = {
 		pitch: request.pitch,
 		nets: request.nets,
 		memory: request.memory,
+		budget: request.budget,
 	};
 	const relaxedFrom = { ...request.from, strict: false };
 	const relaxedTo = { point: request.to.point };
+	// An end inside a body (a part dropped onto another) can only be reached
+	// through bodies, so skip the searches that cannot succeed.
+	const enclosed =
+		insideBody(indexes, request.from.point) ||
+		insideBody(indexes, request.to.point);
 	// Pin directions and bodies are preferences; touching another net never is.
 	const routed =
-		routeOrthogonal(indexes, request.from, request.to, options) ??
-		routeOrthogonal(indexes, relaxedFrom, relaxedTo, {
-			...options,
-			maxExpansions: 20_000,
-		}) ??
+		(enclosed
+			? undefined
+			: (routeOrthogonal(indexes, request.from, request.to, options) ??
+				routeOrthogonal(indexes, relaxedFrom, relaxedTo, {
+					...options,
+					maxExpansions: 20_000,
+				}))) ??
 		routeOrthogonal(indexes, relaxedFrom, relaxedTo, {
 			...options,
 			ignoreBodies: true,
@@ -266,7 +278,7 @@ export function routePath(
 	if (routed) {
 		routed[0] = request.from.point;
 		routed[routed.length - 1] = request.to.point;
-		return { points: routed, routed: true };
+		return { points: routed, routed: true, clear: true };
 	}
 	const { point: start } = request.from;
 	const { point: end } = request.to;
@@ -274,13 +286,19 @@ export function routePath(
 		request.from.heading === undefined
 			? Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
 			: request.from.heading % 2 === 0;
+	const points = simplifyPath([
+		start,
+		horizontalFirst ? { x: end.x, y: start.y } : { x: start.x, y: end.y },
+		end,
+	]);
 	return {
-		points: simplifyPath([
-			start,
-			horizontalFirst ? { x: end.x, y: start.y } : { x: start.x, y: end.y },
-			end,
-		]),
+		points,
 		routed: false,
+		clear: points
+			.slice(1)
+			.every((point, index) =>
+				segmentClear(indexes, points[index], point, request.nets, [start, end]),
+			),
 	};
 }
 
@@ -344,7 +362,7 @@ export function routeWireConnection(
 		heading,
 		fromPin = false,
 	}: { pitch: number; heading?: Heading; fromPin?: boolean },
-): Point[] {
+): { points: Point[]; clear: boolean } {
 	const origin = connectionAt(context.shapes, context.nets, start);
 	const target = connectionAt(context.shapes, context.nets, end);
 	const exit = fromPin ? origin.pin?.outward : undefined;
@@ -356,5 +374,5 @@ export function routeWireConnection(
 		to: { point: end, arrive: reverseHeading(target.pin?.outward) },
 		nets: new Set([...origin.nets, ...target.nets]),
 		pitch,
-	}).points;
+	});
 }
