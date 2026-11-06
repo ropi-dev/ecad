@@ -314,6 +314,18 @@ function registerDisplayHandlers() {
 	app.on("will-quit", () => clearTimeout(notification));
 }
 
+/** The removed View menu used to provide these. */
+function isDevToolsShortcut(input: Electron.Input) {
+	if (input.key === "F12") return !input.control && !input.alt && !input.meta;
+	return (
+		input.control &&
+		input.shift &&
+		!input.alt &&
+		!input.meta &&
+		input.key.toLowerCase() === "i"
+	);
+}
+
 function createWindow() {
 	window = new BrowserWindow({
 		width: 1400,
@@ -328,6 +340,15 @@ function createWindow() {
 			nodeIntegration: false,
 			sandbox: true,
 		},
+	});
+	// The sidebar holds the app's commands, so Linux and Windows drop the
+	// default File/Edit/View menu bar. macOS keeps its app menu at the top of
+	// the screen, which also provides the standard Cmd shortcuts.
+	window.removeMenu();
+	window.webContents.on("before-input-event", (event, input) => {
+		if (input.type !== "keyDown" || !isDevToolsShortcut(input)) return;
+		event.preventDefault();
+		window?.webContents.toggleDevTools();
 	});
 	window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 	window.webContents.on("will-prevent-unload", (event) => {
