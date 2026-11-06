@@ -68,9 +68,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"Symbol editor · Editable part",
 	);
-	await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(
-		0,
-	);
+	await expect(page.getByTestId("viewport-paper")).toHaveCount(0);
 	await expect(
 		page.getByRole("button", { name: "Edit symbol", exact: true }),
 	).toHaveCount(0);

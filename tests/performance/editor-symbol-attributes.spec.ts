@@ -69,9 +69,7 @@ test(
 				await expect(
 					page.getByRole("button", { name: "Select", exact: true }),
 				).toBeEnabled();
-				await expect(
-					page.getByTestId("viewport-grid").locator("mask"),
-				).toHaveCount(0);
+				await expect(page.getByTestId("viewport-paper")).toHaveCount(0);
 			});
 			if (repeat < 2)
 				await (await openProjectFiles(page))

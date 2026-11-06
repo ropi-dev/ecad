@@ -1,6 +1,14 @@
-import { type Ref, useId, useImperativeHandle, useState } from "react";
+import {
+	type Ref,
+	useCallback,
+	useId,
+	useImperativeHandle,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import { gridLayers, rulerTicks } from "#/engine/ruler.ts";
+import { rulerTicks } from "#/engine/ruler.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 
 interface RulerView {
@@ -12,6 +20,34 @@ export interface ViewportRulersHandle {
 	update: (view: RulerView) => void;
 }
 
+const BAND = 24;
+/** How long a pan rests before blurred labels are laid out at whole pixels. */
+const SETTLE_MS = 150;
+
+/**
+ * Ticks are laid out for the view at the last anchor, one viewport beyond
+ * each edge. A pan slides them with a compositor transform and lays them out
+ * again only when it nears the end of that range, so most frames repaint
+ * nothing here.
+ */
+function slide(anchor: RulerView, view: RulerView) {
+	if (
+		anchor.camera.scale !== view.camera.scale ||
+		anchor.viewport.width !== view.viewport.width ||
+		anchor.viewport.height !== view.viewport.height
+	)
+		return null;
+	const x = (anchor.camera.x - view.camera.x) * view.camera.scale;
+	const y = (view.camera.y - anchor.camera.y) * view.camera.scale;
+	if (Math.abs(x) > view.viewport.width || Math.abs(y) > view.viewport.height)
+		return null;
+	// Labels moved by part of a device pixel are resampled and look soft.
+	const ratio = window.devicePixelRatio || 1;
+	const whole = (value: number) =>
+		Math.abs(value * ratio - Math.round(value * ratio)) < 1e-3;
+	return { x, y, sharp: whole(x) && whole(y) };
+}
+
 export function ViewportRulers({
 	ref,
 	gridBounds,
@@ -21,180 +57,224 @@ export function ViewportRulers({
 	gridBounds?: Bounds;
 	unit?: "mm" | "mil";
 }) {
-	const gridMaskId = useId();
-	const gridPatternId = useId();
-	const [view, setView] = useState<RulerView>();
+	const descriptionId = useId();
+	const [anchor, setAnchor] = useState<RulerView>();
+	const latest = useRef<RulerView>(undefined);
+	const horizontalTicks = useRef<SVGSVGElement>(null);
+	const verticalTicks = useRef<SVGSVGElement>(null);
+	const paperElement = useRef<HTMLDivElement>(null);
+	const bounds = useRef(gridBounds);
+	bounds.current = gridBounds;
+	const settle = useRef<ReturnType<typeof setTimeout>>(undefined);
+	useLayoutEffect(() => () => clearTimeout(settle.current), []);
+	/** Moves the ticks and paper to the latest view; false when it needs a layout. */
+	const place = useCallback((base: RulerView | undefined) => {
+		const view = latest.current;
+		if (!view || !base) return false;
+		const offset = slide(base, view);
+		if (!offset) return false;
+		clearTimeout(settle.current);
+		if (!offset.sharp)
+			settle.current = setTimeout(() => setAnchor(latest.current), SETTLE_MS);
+		if (horizontalTicks.current)
+			horizontalTicks.current.style.transform = `translateX(${offset.x}px)`;
+		if (verticalTicks.current)
+			verticalTicks.current.style.transform = `translateY(${offset.y}px)`;
+		const paper = bounds.current;
+		if (paperElement.current && paper) {
+			const { camera, viewport } = view;
+			paperElement.current.style.transform = `translate(${
+				viewport.width / 2 + (paper.minX - camera.x) * camera.scale
+			}px, ${viewport.height / 2 + (camera.y - paper.maxY) * camera.scale}px)`;
+		}
+		return true;
+	}, []);
+	const anchored = useRef(anchor);
+	anchored.current = anchor;
 	useImperativeHandle(
 		ref,
 		() => ({
-			update: (next) =>
-				setView((previous) =>
-					previous?.camera.x === next.camera.x &&
-					previous.camera.y === next.camera.y &&
-					previous.camera.scale === next.camera.scale &&
-					previous.viewport.width === next.viewport.width &&
-					previous.viewport.height === next.viewport.height
-						? previous
-						: next,
-				),
+			update: (next) => {
+				latest.current = next;
+				if (!place(anchored.current)) setAnchor(next);
+			},
 		}),
-		[],
+		[place],
 	);
-	if (!view) return null;
+	useLayoutEffect(() => {
+		place(anchor);
+	});
+	if (!anchor) return null;
 	const {
 		camera,
 		viewport: { width, height },
-	} = view;
+	} = anchor;
 	const horizontal = rulerTicks(
 		camera.x,
 		camera.scale,
-		width,
+		width * 3,
 		false,
 		unit,
-	).filter((tick) => tick.position < width - 24);
+	).map((tick) => ({ ...tick, position: tick.position - width }));
 	const vertical = rulerTicks(
 		camera.y,
 		camera.scale,
-		height,
+		height * 3,
 		true,
 		unit,
-	).filter((tick) => tick.position >= 24);
-	const layers = gridLayers(camera.scale, unit);
+	).map((tick) => ({ ...tick, position: tick.position - height }));
+	const paper = gridBounds && {
+		width: (gridBounds.maxX - gridBounds.minX) * camera.scale,
+		height: (gridBounds.maxY - gridBounds.minY) * camera.scale,
+	};
+	// The viewport draws the grid dots. The paper and the ticks move on their
+	// own compositor layers; the bands and corner stay still.
 	return (
 		<>
-			<svg
-				data-testid="viewport-grid"
-				className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
-				width={width}
-				height={height}
-				aria-hidden="true"
-			>
-				<defs>
-					{layers.map(({ spacing }, index) => {
-						const pixels = spacing.minor * camera.scale;
-						return (
-							<pattern
-								key={spacing.minor}
-								id={`${gridPatternId}-${index}`}
-								patternUnits="userSpaceOnUse"
-								x={width / 2 - camera.x * camera.scale - pixels / 2}
-								y={height / 2 + camera.y * camera.scale - pixels / 2}
-								width={pixels}
-								height={pixels}
-							>
-								<circle
-									cx={pixels / 2}
-									cy={pixels / 2}
-									r={1}
-									fill={darkSchematicTheme.grid}
-								/>
-							</pattern>
-						);
-					})}
-				</defs>
-				{gridBounds && (
-					<defs>
-						<mask
-							id={gridMaskId}
-							maskUnits="userSpaceOnUse"
-							x="0"
-							y="0"
-							width={width}
-							height={height}
-							style={{ maskType: "alpha" }}
-						>
-							<rect width={width} height={height} fill="white" opacity={0.3} />
-							<rect
-								x={width / 2 + (gridBounds.minX - camera.x) * camera.scale}
-								y={height / 2 + (camera.y - gridBounds.maxY) * camera.scale}
-								width={(gridBounds.maxX - gridBounds.minX) * camera.scale}
-								height={(gridBounds.maxY - gridBounds.minY) * camera.scale}
-								fill="white"
-							/>
-						</mask>
-					</defs>
-				)}
-				{gridBounds && (
-					<rect
-						data-testid="viewport-paper"
-						x={width / 2 + (gridBounds.minX - camera.x) * camera.scale}
-						y={height / 2 + (camera.y - gridBounds.maxY) * camera.scale}
-						width={(gridBounds.maxX - gridBounds.minX) * camera.scale}
-						height={(gridBounds.maxY - gridBounds.minY) * camera.scale}
-						fill={darkSchematicTheme.paper}
-					/>
-				)}
-				<g mask={gridBounds ? `url(#${gridMaskId})` : undefined}>
-					{layers.map(({ spacing, opacity }, index) => (
-						<rect
-							key={spacing.minor}
-							width={width}
-							height={height}
-							fill={`url(#${gridPatternId}-${index})`}
-							opacity={opacity}
-						/>
-					))}
-				</g>
-			</svg>
-			<svg
-				className="pointer-events-none absolute inset-0 z-2 overflow-hidden [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955]"
-				width={width}
-				height={height}
+			{paper && (
+				<div
+					ref={paperElement}
+					data-testid="viewport-paper"
+					className="pointer-events-none absolute top-0 left-0 z-0 will-change-transform"
+					style={{
+						width: paper.width,
+						height: paper.height,
+						backgroundColor: darkSchematicTheme.paper,
+					}}
+					aria-hidden="true"
+				/>
+			)}
+			<div
+				className="pointer-events-none absolute inset-0 z-2 overflow-hidden [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955] [&_svg]:absolute"
 				role="img"
 				aria-label={`Drawing rulers in ${unit === "mil" ? "mils" : "millimetres"}`}
+				aria-describedby={descriptionId}
 			>
-				<title>
+				<span id={descriptionId} className="sr-only">
 					Coordinates in {unit === "mil" ? "mils" : "millimetres"}. X increases
 					to the right; Y increases upward.
-				</title>
-				<path
-					className="ruler-band"
-					d={`M0 0H${width}V${height}H${width - 24}V24H0Z`}
-				/>
-				<path
-					className="ruler-edge fill-none"
-					d={`M0 24H${width - 24}V${height}`}
-				/>
-				{horizontal.map((tick) => (
-					<g key={tick.value} data-axis="x" data-value={tick.value}>
-						<line
-							x1={tick.position}
-							x2={tick.position}
-							y1={tick.label === undefined ? 19 : 15}
-							y2="24"
+				</span>
+				<div
+					className="absolute top-0 left-0 overflow-hidden"
+					style={{ width: Math.max(width - BAND, 0), height: BAND + 1 }}
+				>
+					<svg
+						className="top-0 left-0"
+						width={width}
+						height={BAND + 1}
+						aria-hidden="true"
+					>
+						<path className="ruler-band" d={`M0 0H${width}V${BAND}H0Z`} />
+						<path className="ruler-edge fill-none" d={`M0 ${BAND}H${width}`} />
+					</svg>
+					<svg
+						ref={horizontalTicks}
+						className="top-0 will-change-transform"
+						style={{ left: -width }}
+						width={width * 3}
+						height={BAND}
+						viewBox={`${-width} 0 ${width * 3} ${BAND}`}
+						aria-hidden="true"
+					>
+						<path
+							className="fill-none stroke-[#657183] stroke-1"
+							d={horizontal
+								.filter((tick) => tick.label === undefined)
+								.map((tick) => `M${tick.position} 19V${BAND}`)
+								.join("")}
 						/>
-						{tick.label !== undefined && (
-							<text x={tick.position + 3} y="11">
-								{tick.label}
-							</text>
+						{horizontal.map(
+							(tick) =>
+								tick.label !== undefined && (
+									<g key={tick.value} data-axis="x" data-value={tick.value}>
+										<line
+											x1={tick.position}
+											x2={tick.position}
+											y1={15}
+											y2={BAND}
+										/>
+										<text x={tick.position + 3} y="11">
+											{tick.label}
+										</text>
+									</g>
+								),
 						)}
-					</g>
-				))}
-				{vertical.map((tick) => (
-					<g key={tick.value} data-axis="y" data-value={tick.value}>
-						<line
-							y1={tick.position}
-							y2={tick.position}
-							x1={width - 24}
-							x2={width - (tick.label === undefined ? 19 : 15)}
+					</svg>
+				</div>
+				<div
+					className="absolute top-0 overflow-hidden"
+					style={{ left: width - BAND - 1, width: BAND + 1, height }}
+				>
+					<svg
+						className="top-0 left-0"
+						width={BAND + 1}
+						height={height}
+						viewBox={`${width - BAND - 1} 0 ${BAND + 1} ${height}`}
+						aria-hidden="true"
+					>
+						<path
+							className="ruler-band"
+							d={`M${width - BAND} 0H${width}V${height}H${width - BAND}Z`}
 						/>
-						{tick.label !== undefined && (
-							<text
-								transform={`translate(${width - 11} ${tick.position + 3}) rotate(90)`}
-							>
-								{tick.label}
-							</text>
+						<path
+							className="ruler-edge fill-none"
+							d={`M${width - BAND} ${BAND}V${height}`}
+						/>
+					</svg>
+					<svg
+						ref={verticalTicks}
+						className="left-0 will-change-transform"
+						style={{ top: -height }}
+						width={BAND + 1}
+						height={height * 3}
+						viewBox={`${width - BAND - 1} ${-height} ${BAND + 1} ${height * 3}`}
+						aria-hidden="true"
+					>
+						<path
+							className="fill-none stroke-[#657183] stroke-1"
+							d={vertical
+								.filter((tick) => tick.label === undefined)
+								.map(
+									(tick) => `M${width - BAND} ${tick.position}H${width - 19}`,
+								)
+								.join("")}
+						/>
+						{vertical.map(
+							(tick) =>
+								tick.label !== undefined && (
+									<g key={tick.value} data-axis="y" data-value={tick.value}>
+										<line
+											y1={tick.position}
+											y2={tick.position}
+											x1={width - BAND}
+											x2={width - 15}
+										/>
+										<text
+											transform={`translate(${width - 11} ${tick.position + 3}) rotate(90)`}
+										>
+											{tick.label}
+										</text>
+									</g>
+								),
 						)}
-					</g>
-				))}
-				<path
-					className="ruler-band"
-					d={`M${width - 24} 0H${width}V24H${width - 24}Z`}
-				/>
-				<text x={width - 12} y="15" textAnchor="middle">
-					{unit}
-				</text>
-			</svg>
+					</svg>
+					<svg
+						className="top-0 left-0"
+						width={BAND + 1}
+						height={BAND}
+						viewBox={`${width - BAND - 1} 0 ${BAND + 1} ${BAND}`}
+						aria-hidden="true"
+					>
+						<path
+							className="ruler-band"
+							d={`M${width - BAND} 0H${width}V${BAND}H${width - BAND}Z`}
+						/>
+						<text x={width - 12} y="15" textAnchor="middle">
+							{unit}
+						</text>
+					</svg>
+				</div>
+			</div>
 		</>
 	);
 }
