@@ -91,7 +91,7 @@ test(
 				)
 				.at(-1)?.data?.files;
 		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Gerber viewer", exact: true })
+			.getByRole("link", { name: "Open all Gerber layers", exact: true })
 			.click();
 		await expect.poll(importedFiles).toBe(2);
 		await expect

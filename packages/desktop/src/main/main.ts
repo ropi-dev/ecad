@@ -13,6 +13,7 @@ import {
 	screen,
 } from "electron";
 import {
+	appChannels,
 	displayChannels,
 	type InvokeChannel,
 	libraryChannels,
@@ -387,6 +388,7 @@ void app.whenReady().then(() => {
 	registerLibraryHandlers();
 	registerProjectHandlers();
 	registerDisplayHandlers();
+	handle(appChannels.quit, () => app.quit());
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();

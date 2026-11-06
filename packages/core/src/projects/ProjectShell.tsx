@@ -11,9 +11,12 @@ const DevStats = import.meta.env?.DEV
 
 export function ProjectShell({
 	children,
-	sidebar = <ProjectFilesSidebar />,
+	onExit,
+	sidebar = <ProjectFilesSidebar onExit={onExit} />,
 }: {
 	children: ReactNode;
+	/** Quits the app. The sidebar shows an Exit button when it is given. */
+	onExit?: () => void;
 	sidebar?: ReactNode;
 }) {
 	useButtonShortcuts();

@@ -62,8 +62,19 @@ declare global {
 	interface Window {
 		ecadSymbolLibrary: DesktopSymbolLibraryBridge;
 		ecadProjects: ProjectStorage;
+		ecadApp: DesktopAppBridge;
 	}
 }
+
+/** Requests about the desktop app itself. */
+export interface DesktopAppBridge {
+	/** Quits the app. Unsaved changes still ask before the window closes. */
+	quit(): Promise<void>;
+}
+
+export const appChannels = {
+	quit: "app:quit",
+} as const;
 
 export const displayChannels = {
 	getCalibration: "display:calibration",
@@ -74,4 +85,5 @@ export const displayChannels = {
 export type InvokeChannel =
 	| (typeof libraryChannels)[keyof typeof libraryChannels]
 	| (typeof projectChannels)[keyof typeof projectChannels]
-	| typeof displayChannels.getCalibration;
+	| typeof displayChannels.getCalibration
+	| typeof appChannels.quit;

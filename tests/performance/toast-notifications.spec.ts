@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openProjectActions } from "../browser/project-files.ts";
+import { openProjectFiles } from "../browser/project-files.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, percentile, ready } from "./app-helpers.ts";
 
@@ -13,11 +13,11 @@ test(
 		await ready(page);
 		const times: number[] = [];
 		for (let index = 0; index < 3; index++) {
-			await openProjectActions(page);
+			const sidebar = await openProjectFiles(page);
 			times.push(
 				await interaction(page, "save-notification", async () => {
-					await page
-						.getByRole("menuitem", { name: "Save project", exact: true })
+					await sidebar
+						.getByRole("button", { name: "Save project", exact: true })
 						.click();
 					const dismiss = page.getByRole("button", {
 						name: "Dismiss Project saved",

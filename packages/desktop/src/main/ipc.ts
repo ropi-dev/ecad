@@ -11,6 +11,7 @@ import { parseSymbolConfig } from "@ecad/core/symbol-library/config.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { z } from "zod";
 import {
+	appChannels,
 	displayChannels,
 	type InvokeChannel,
 	libraryChannels,
@@ -106,6 +107,7 @@ export const ipcArguments = {
 	[projectChannels.canWriteFile]: z.tuple([projectDirectory, projectPath]),
 	[projectChannels.refresh]: z.tuple([projectDirectory]),
 	[displayChannels.getCalibration]: z.tuple([]),
+	[appChannels.quit]: z.tuple([]),
 } satisfies Record<InvokeChannel, z.ZodTuple>;
 
 export type IpcArguments<Channel extends InvokeChannel> = z.output<

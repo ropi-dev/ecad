@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseSymbolFile } from "@ecad/core/components/editor/symbolFormat.ts";
 import { defaultSymbolConfig } from "@ecad/core/symbol-library/config.ts";
-import { displayChannels, libraryChannels, projectChannels } from "#/bridge.ts";
+import {
+	appChannels,
+	displayChannels,
+	libraryChannels,
+	projectChannels,
+} from "#/bridge.ts";
 import { ipcArguments, parseIpcArguments } from "#/main/ipc.ts";
 
 const symbol = parseSymbolFile(
@@ -30,6 +35,7 @@ test("every invoke channel validates its arguments", () => {
 		...Object.values(libraryChannels),
 		...Object.values(projectChannels),
 		displayChannels.getCalibration,
+		appChannels.quit,
 	];
 	assert.deepEqual(Object.keys(ipcArguments).sort(), [...channels].sort());
 });

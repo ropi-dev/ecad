@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
 	openProjectActions,
@@ -85,9 +86,8 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	expect((await documentState(page)).dirty).toBe(true);
 	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
 	await projectsPage(page);
-	await openProjectActions(page);
-	await page
-		.getByRole("menuitem", { name: "Save project", exact: true })
+	await (await openProjectFiles(page))
+		.getByRole("button", { name: "Save project", exact: true })
 		.click();
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
 	expect((await documentState(page)).symbols[0].shapes).toHaveLength(2);
@@ -208,4 +208,52 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 	await expect
 		.poll(async () => (await documentState(page)).editorShapes.length)
 		.toBe(1);
+});
+
+test("the sidebar Open project button lists saved web projects and switches to one", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
+	const openMenu = async () => {
+		await (await openProjectFiles(page))
+			.getByRole("button", { name: "Open project", exact: true })
+			.click();
+		const menu = page.getByRole("menu", { name: "Open project", exact: true });
+		await expect(menu.getByRole("menuitem").first()).toBeVisible();
+		return menu;
+	};
+	// The web app cannot quit, so its sidebar has no Exit button.
+	await expect(
+		(await openProjectFiles(page)).getByRole("button", {
+			name: "Exit",
+			exact: true,
+		}),
+	).toHaveCount(0);
+	let menu = await openMenu();
+	await expect(menu.getByRole("menuitem")).toHaveCount(1);
+	const first = await menu
+		.locator('[role="menuitem"][aria-current="true"]')
+		.textContent();
+	await page.keyboard.press("Escape");
+
+	await openProjectActions(page);
+	await page
+		.getByRole("menuitem", { name: "New untitled project", exact: true })
+		.click();
+	menu = await openMenu();
+	await expect(menu.getByRole("menuitem")).toHaveCount(2);
+	const current = menu.locator('[role="menuitem"][aria-current="true"]');
+	await expect(current).toHaveCount(1);
+	await expect(current).not.toHaveText(required(first));
+
+	await menu
+		.getByRole("menuitem", { name: required(first), exact: true })
+		.click();
+	menu = await openMenu();
+	await expect(
+		menu.locator('[role="menuitem"][aria-current="true"]'),
+	).toHaveText(required(first));
 });

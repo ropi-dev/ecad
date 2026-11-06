@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openProjectActions } from "./project-files";
+import { openProjectFiles } from "./project-files";
 
 test("opening another project protects drafts through save, discard, errors and cancellation", async ({
 	page,
@@ -9,9 +9,8 @@ test("opening another project protects drafts through save, discard, errors and 
 		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
 	const open = async () => {
-		await openProjectActions(page);
-		await page
-			.getByRole("menuitem", { name: "Open project...", exact: true })
+		await (await openProjectFiles(page))
+			.getByRole("button", { name: "Open project", exact: true })
 			.click();
 		await expect(
 			page.getByRole("dialog", { name: "Save this project first?" }),
@@ -82,4 +81,16 @@ test("opening another project protects drafts through save, discard, errors and 
 		.click();
 	await expect(home).toHaveAttribute("title", "Existing project");
 	expect(await calls()).toEqual({ open: 1, save: 0 });
+});
+
+test("the sidebar Exit button calls the host's exit handler", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects-design.html");
+	await (await openProjectFiles(page))
+		.getByRole("button", { name: "Exit", exact: true })
+		.click();
+	await expect
+		.poll(() => page.evaluate(() => window.projectSwitchTest.exits))
+		.toBe(1);
 });

@@ -1,11 +1,8 @@
-import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { FolderOpen } from "lucide-react";
+import { FolderCog } from "lucide-react";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { lazy, Suspense, useState } from "react";
-import { toastManager } from "#/components/ui/toast.ts";
-import { isProjectError } from "#/projects/errors.ts";
-import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
 
 const SymbolLibrarySettings = lazy(() =>
 	import("#/projects/SymbolLibrarySettings.tsx").then((module) => ({
@@ -17,43 +14,21 @@ const item =
 	"cursor-pointer rounded px-3 py-2 text-xs outline-none data-[highlighted]:bg-white/10 data-[disabled]:opacity-40";
 
 export function ProjectMenu() {
-	const project = useProjectSelection(
-		({ busy, create, list, mode, open, project, save }) => ({
-			busy,
-			create,
-			list,
-			mode,
-			open,
-			project,
-			save,
-		}),
-	);
-	const [projects, setProjects] = useState<string[]>([]);
-	const [error, setError] = useState("");
+	const project = useProjectSelection(({ busy, create }) => ({ busy, create }));
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	const [saveError, setSaveError] = useState("");
-	const [confirmOpen, setConfirmOpen] = useState(false);
 	if (!project) return null;
 	return (
 		<>
-			<DropdownMenu.Root
-				onOpenChange={(open) => {
-					if (open && project.mode === "web")
-						void project
-							.list()
-							.then(setProjects)
-							.catch((cause: unknown) => setError(String(cause)));
-				}}
-			>
+			<DropdownMenu.Root>
 				<DropdownMenu.Trigger asChild>
 					<button
 						type="button"
 						aria-label="Project actions"
 						title="Project actions"
-						className="flex h-9 items-center justify-center rounded-md text-slate-400 hover:bg-white/10 focus-visible:outline-2"
+						className={`${workspaceActionClassName} text-[#98a4b6] data-[state=open]:bg-white/10`}
 						disabled={project.busy}
 					>
-						<FolderOpen size={20} aria-hidden="true" />
+						<FolderCog size={20} aria-hidden="true" />
 					</button>
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
@@ -70,106 +45,13 @@ export function ProjectMenu() {
 						</DropdownMenu.Item>
 						<DropdownMenu.Item
 							className={item}
-							onSelect={() => {
-								setSaveError("");
-								toastManager.close("project-save");
-								void project
-									.save()
-									.then((saved) => {
-										if (saved)
-											toastManager.add({
-												id: "project-save",
-												type: "success",
-												title: "Project saved",
-											});
-									})
-									.catch((cause: unknown) => {
-										if (!isProjectError(cause, "ProjectConflict"))
-											toastManager.add({
-												id: "project-save",
-												type: "error",
-												title: "Project save failed",
-												description: errorMessage(
-													cause,
-													"Unable to save the project.",
-												),
-											});
-									});
-							}}
-						>
-							Save project
-						</DropdownMenu.Item>
-						<DropdownMenu.Item
-							className={item}
 							onSelect={() => setSettingsOpen(true)}
 						>
 							Symbol libraries...
 						</DropdownMenu.Item>
-						<DropdownMenu.Separator className="my-1 h-px bg-white/10" />
-						{project.mode === "desktop" ? (
-							<DropdownMenu.Item
-								className={item}
-								onSelect={() => {
-									if (project.project?.inMemory) setConfirmOpen(true);
-									else void project.open();
-								}}
-							>
-								Open project...
-							</DropdownMenu.Item>
-						) : (
-							<>
-								<DropdownMenu.Label className="px-3 py-2 text-xs text-slate-500">
-									Open project
-								</DropdownMenu.Label>
-								{projects.map((name) => (
-									<DropdownMenu.Item
-										key={name}
-										className={item}
-										onSelect={() => void project.open(name)}
-									>
-										{name.startsWith("Untitled-")
-											? `Untitled · ${name.slice(9, 17)}`
-											: name}
-									</DropdownMenu.Item>
-								))}
-								{error && (
-									<p role="alert" className="px-3 py-2 text-xs">
-										{error}
-									</p>
-								)}
-							</>
-						)}
 					</DropdownMenu.Content>
 				</DropdownMenu.Portal>
 			</DropdownMenu.Root>
-			<OpenProjectDialog
-				open={confirmOpen}
-				busy={project.busy}
-				error={saveError}
-				onCancel={() => {
-					setConfirmOpen(false);
-					setSaveError("");
-				}}
-				onDiscard={() => {
-					setSaveError("");
-					setConfirmOpen(false);
-					void project.open();
-				}}
-				onSave={() => {
-					setSaveError("");
-					void (async () => {
-						if (!(await project.save())) return;
-						setConfirmOpen(false);
-						await project.open();
-					})().catch((cause: unknown) =>
-						setSaveError(
-							cause instanceof Error
-								? cause.message
-								: "Unable to save the project.",
-						),
-					);
-				}}
-			/>
 			<Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
 				<Dialog.Portal>
 					<Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />

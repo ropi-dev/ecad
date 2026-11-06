@@ -58,6 +58,7 @@ declare global {
 	interface Window {
 		projectSwitchTest: {
 			calls: { open: number; save: number };
+			exits: number;
 			cancelOpen: boolean;
 			cancelSave: boolean;
 			failSave: boolean;
@@ -66,6 +67,7 @@ declare global {
 }
 const switching = {
 	calls: { open: 0, save: 0 },
+	exits: 0,
 	cancelOpen: false,
 	cancelSave: false,
 	failSave: false,
@@ -116,7 +118,11 @@ createRoot(document.getElementById("root") as HTMLElement).render(
 		storage={storage}
 		symbolStorage={createMemorySymbolLibraryStorage()}
 	>
-		<ProjectShell>
+		<ProjectShell
+			onExit={() => {
+				switching.exits++;
+			}}
+		>
 			<WorkspaceStart />
 		</ProjectShell>
 	</ProjectProvider>,
