@@ -100,6 +100,17 @@ pnpm test
 pnpm run test:browser
 ```
 
+### Debian package
+
+`pnpm run package:deb` builds `dist/deb/ecad_<version>_<arch>.deb` on Linux. It needs `dpkg-deb`. The package installs the desktop app in `/usr/lib/ecad` and adds two commands. `ecad-desktop [project-directory]` starts the app, which also gets a launcher entry. `ecad` runs the CLI. The CLI runs on the Node.js runtime inside the app's Electron binary, so it doesn't need a separate Node.js install. Pass `--arch arm64` or `--arch armv7l` to build for another architecture. Pass `--version` to replace the default version, which is `<package version>+git<commit time>.<commit>`, so each build upgrades the one before it. Set `DEBFULLNAME` and `DEBEMAIL` to change the maintainer.
+
+```bash
+pnpm run package:deb
+sudo apt install ./dist/deb/ecad_*_amd64.deb
+```
+
+The package depends on the libraries Electron links, and lists both names of the libraries that Debian 13 and Ubuntu 24.04 renamed to `t64`. It installs on Debian 12 and Ubuntu 26.04. `chrome-sandbox` is installed setuid root, so Chromium's sandbox also works where unprivileged user namespaces are restricted. CI builds the package, installs it, runs the CLI, and uploads the `.deb` as the `ecad-deb` artifact for seven days.
+
 Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format`, `pnpm run lint`, and `pnpm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
 
 ### Deploy with the Vercel GitHub app
@@ -110,7 +121,7 @@ Use the TanStack Start framework preset, Node.js 24, and `packages/web` as the p
 
 Manage the repository connection and automatic deployments in the project's [Git settings](https://vercel.com/ropis-projects/ecad/settings/git). Builds and deployment status appear in Vercel and on GitHub pull requests. Deployment does not use a GitHub Actions workflow or require `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID` in GitHub.
 
-GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, and the web, desktop, and CLI builds as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
+GitHub Actions runs on pull requests, pushes to `main`, merge queues, and manual dispatches. The CI workflow runs lint, type checking, unit tests, the web, desktop, and CLI builds, and the Debian package build as separate checks. The browser workflow splits tests across four Chromium jobs, each with one worker and the existing software rendering settings. It prints per-test progress. Download `chromium-results-1` through `chromium-results-4` from the workflow run for each job's HTML report and failure traces. Reports expire after seven days. Report uploads are optional, so storage quota failures do not change the test result.
 
 Both workflows run on GitHub-hosted Ubuntu 26.04 LTS runners. Both workflows use Node 24 from `.nvmrc`, install the locked dependencies with `pnpm install --frozen-lockfile`, and cache the pnpm store. Browser tests use headless Chromium, with WebGL rendered through the SwiftShader Vulkan driver bundled with Chromium, so the jobs install no system graphics packages. They download only Chromium's headless shell and skip Playwright's `--with-deps` apt step: the runner image already has Chromium's libraries, and that step only added CJK and X fonts. CI skips downloading the Electron binary because these checks build the desktop app without launching it. Action revisions are pinned, and Dependabot checks for action updates weekly. The workflows need no repository secrets.
 
