@@ -24,6 +24,7 @@ import {
 import {
 	connectionTolerance,
 	connectTransformedTerminals,
+	cutWiresUnderSymbols,
 	isUnsafeMove,
 	normalizeNetSymbol,
 	normalizeWireSegments,
@@ -185,12 +186,17 @@ export function placeShapesEffect(
 				} as EditorShape);
 				return placed.kind === "symbol" ? normalizeNetSymbol(placed) : placed;
 			});
+			const cut = cutWiresUnderSymbols(
+				current.shapes,
+				shapes,
+				current.nextShapeId + shapes.length,
+			);
 			return commit(
 				current,
-				[...current.shapes, ...shapes],
+				[...cut.shapes, ...shapes],
 				shapes.map((shape) => shape.id),
 				label,
-				current.nextShapeId + shapes.length,
+				cut.nextShapeId,
 			);
 		}),
 	);

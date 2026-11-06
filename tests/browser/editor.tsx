@@ -1,5 +1,6 @@
 import {
 	placeRectangleEffect,
+	placeShapesEffect,
 	removeShapesEffect,
 	replaceShapesEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
@@ -161,6 +162,13 @@ export function placeRectangle(
 ) {
 	return Effect.runSync(
 		placeRectangleEffect(input).pipe(
+			Effect.provideService(DrawingStore, drawingStore),
+		),
+	);
+}
+export function placeShapes(shapes: Parameters<typeof placeShapesEffect>[0]) {
+	return Effect.runSync(
+		placeShapesEffect(shapes, "External place").pipe(
 			Effect.provideService(DrawingStore, drawingStore),
 		),
 	);

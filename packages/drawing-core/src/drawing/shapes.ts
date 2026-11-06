@@ -79,6 +79,7 @@ export {
 	symbolLabelAnchor,
 	symbolLabelPosition,
 } from "#/drawing/symbol-labels.ts";
+export { cutWiresUnderSymbols } from "#/drawing/symbol-wire-cuts.ts";
 export {
 	findWireConnection,
 	netLabelAnchors,
