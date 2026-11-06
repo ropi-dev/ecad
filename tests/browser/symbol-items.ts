@@ -50,7 +50,6 @@ export async function drawingPoint(
 	return page
 		.getByRole("img", { name: /^Drawing rulers in (mils|millimetres)$/ })
 		.evaluate((rulers, point) => {
-			const bounds = rulers.getBoundingClientRect();
 			const coordinate = (axis: "x" | "y", value: number) => {
 				const ticks = Array.from(
 					rulers.querySelectorAll(`[data-axis="${axis}"]`),
@@ -58,26 +57,23 @@ export async function drawingPoint(
 				const values = ticks.map((tick) =>
 					Number(tick.getAttribute("data-value")),
 				);
-				const positions = ticks.map((tick) =>
-					Number(
-						(
-							tick.querySelector("line") ??
-							(() => {
-								throw new Error("Expected a value");
-							})()
-						).getAttribute(`${axis}1`),
-					),
-				);
+				// Rendered positions, since the tick layer may be offset while panning.
+				const positions = ticks.map((tick) => {
+					const line = (
+						tick.querySelector("line") ??
+						(() => {
+							throw new Error("Expected a value");
+						})()
+					).getBoundingClientRect();
+					return axis === "x" ? line.x : line.y;
+				});
 				return (
 					positions[0] +
 					((value - values[0]) * (positions[1] - positions[0])) /
 						(values[1] - values[0])
 				);
 			};
-			return {
-				x: bounds.x + coordinate("x", point.x),
-				y: bounds.y + coordinate("y", point.y),
-			};
+			return { x: coordinate("x", point.x), y: coordinate("y", point.y) };
 		}, point);
 }
 
@@ -150,12 +146,14 @@ export async function drawingGridStep(page: Page) {
 	return page
 		.getByRole("img", { name: /^Drawing rulers in (mils|millimetres)$/ })
 		.evaluate((rulers) => {
+			// Ruler ticks are labelled every ten grid steps.
 			const ticks = Array.from(
 				rulers.querySelectorAll('[data-axis="x"]'),
 			).slice(0, 2);
 			return (
-				Number(ticks[1].getAttribute("data-value")) -
-				Number(ticks[0].getAttribute("data-value"))
+				(Number(ticks[1].getAttribute("data-value")) -
+					Number(ticks[0].getAttribute("data-value"))) /
+				10
 			);
 		});
 }

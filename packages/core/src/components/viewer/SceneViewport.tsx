@@ -6,6 +6,7 @@ import {
 	useEffect,
 	useEffectEvent,
 	useImperativeHandle,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -24,6 +25,7 @@ import {
 	ViewportRulers,
 	type ViewportRulersHandle,
 } from "#/components/viewer/ViewportRulers.tsx";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { ViewerScene } from "#/engine/scene.ts";
 import {
 	createSceneViewport,
@@ -110,8 +112,36 @@ export function SceneViewport({
 		if (cameraState) cameraState.camera = snapshot.camera;
 		onChange?.(snapshot);
 	});
+	const gridMinX = gridBounds?.minX;
+	const gridMaxX = gridBounds?.maxX;
+	const gridMinY = gridBounds?.minY;
+	const gridMaxY = gridBounds?.maxY;
+	// Callers pass new bounds objects on every render; key the grid on values.
+	const grid = useMemo(
+		() =>
+			cameraMode === "top"
+				? {
+						unit: rulerUnit ?? "mm",
+						color: darkSchematicTheme.grid,
+						bounds:
+							gridMinX === undefined ||
+							gridMaxX === undefined ||
+							gridMinY === undefined ||
+							gridMaxY === undefined
+								? undefined
+								: {
+										minX: gridMinX,
+										maxX: gridMaxX,
+										minY: gridMinY,
+										maxY: gridMaxY,
+									},
+					}
+				: null,
+		[cameraMode, rulerUnit, gridMinX, gridMaxX, gridMinY, gridMaxY],
+	);
 	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
 		viewport.setPhysicalScale(displayScale);
+		viewport.setGrid(grid);
 	});
 	const readFitBounds = useEffectEvent(() => getFitBounds?.() ?? null);
 	const reportReady = useEffectEvent((ready: boolean) => {
@@ -202,6 +232,9 @@ export function SceneViewport({
 	useEffect(() => {
 		runtime.current?.setPhysicalScale(displayScale);
 	}, [displayScale]);
+	useEffect(() => {
+		runtime.current?.setGrid(grid);
+	}, [grid]);
 	useEffect(() => {
 		runtime.current?.resize(size.width, size.height);
 	}, [size]);

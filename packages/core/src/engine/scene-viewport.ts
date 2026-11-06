@@ -24,9 +24,14 @@ import {
 	MIN_ZOOM,
 	viewerPixelRatio,
 } from "#/engine/navigation.ts";
+import { createPanCache } from "#/engine/pan-cache.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene.ts";
 import { createSceneHover, type SceneTarget } from "#/engine/scene-hover.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
+import {
+	createViewportGrid,
+	type ViewportGridOptions,
+} from "#/engine/viewport-grid.ts";
 import type {
 	Viewer2DSnapshot,
 	Viewer3DHandle,
@@ -69,6 +74,8 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	update: (update: (object: Object3D) => void) => void;
 	resize: (width: number, height: number) => void;
 	setPhysicalScale: (scale: number | null) => void;
+	/** Shows a dot grid under a top view, or hides it with null. */
+	setGrid: (grid: ViewportGridOptions | null) => void;
 	actualSize: () => void;
 	setProjection: (projection: "perspective" | "orthographic") => void;
 	dispose: () => void;
@@ -101,12 +108,18 @@ export function createSceneViewport(
 	let disposed = false;
 	let frame: number | null = null;
 	let draw = () => {};
-	const schedule = () => {
+	// Set when anything but the camera changed since the last full render.
+	let sceneChanged = true;
+	const requestFrame = () => {
 		if (disposed || frame !== null) return;
 		frame = requestAnimationFrame(() => {
 			frame = null;
 			draw();
 		});
+	};
+	const schedule = () => {
+		sceneChanged = true;
+		requestFrame();
 	};
 	const cancel = () => {
 		if (frame !== null) cancelAnimationFrame(frame);
@@ -139,11 +152,24 @@ export function createSceneViewport(
 			(display) => display.dispose(),
 		);
 		const group = content.object;
+		// Only a locked top view pans without changing scale or orientation.
+		const panCache =
+			cameraMode === "top" && !content.hasOutlines
+				? lifecycle.acquire(
+						() => createPanCache(output),
+						(cache) => cache.dispose(),
+					)
+				: null;
 		const scene = new Scene();
 		scene.add(group, new HemisphereLight("white", "#566173", 2.5));
 		const light = new DirectionalLight("white", 3);
 		light.position.set(1, -2, 3);
 		scene.add(light);
+		const grid =
+			cameraMode === "top"
+				? lifecycle.acquire(createViewportGrid, (grid) => grid.dispose())
+				: null;
+		if (grid) scene.add(grid.object);
 		const canvas = output.domElement;
 		canvas.tabIndex = 0;
 		canvas.setAttribute("aria-label", ariaLabel);
@@ -237,26 +263,90 @@ export function createSceneViewport(
 		);
 		scene.add(selection.object);
 		let selected: SceneTarget | null = null;
+		let highlighted = 0;
+		// A pan shows the camera at a whole pixel offset. Until the camera
+		// moves again, full renders keep that position, so the picture and
+		// overlays don't shift by a fraction of a pixel.
+		let held: {
+			x: number;
+			y: number;
+			zoom: number;
+			shown: { x: number; y: number };
+		} | null = null;
 		const clearSelection = () => {
 			selected = null;
 			onSelection?.(null);
 			schedule();
 		};
+		const placeGrid = (position: { x: number; y: number }) => {
+			if (!grid) return;
+			// A top view maps the drawing plane linearly in either projection.
+			const height = visibleHeight();
+			const width =
+				camera instanceof OrthographicCamera
+					? (camera.right - camera.left) / camera.zoom
+					: height * camera.aspect;
+			grid.update({
+				position,
+				width: canvas.width,
+				height: canvas.height,
+				scaleX: canvas.width / width,
+				scaleY: canvas.height / height,
+				ratio: output.getPixelRatio(),
+				rulerScale: Math.max(element.clientHeight, 1) / height,
+			});
+		};
 		draw = () => {
 			const recorder = getAppPerformance();
 			const started = recorder ? performance.now() : 0;
+			const changed = sceneChanged;
+			sceneChanged = false;
+			let shown: { x: number; y: number } | null = null;
+			let panCacheHit = false;
 			try {
 				camera.updateMatrixWorld();
-				if (pointer) raycaster.setFromCamera(pointer, camera);
-				const highlighted =
-					hover?.update(
-						pointer ? raycaster.ray : null,
-						visibleHeight() / Math.max(element.clientHeight, 1),
-					) ?? 0;
-				if (selection?.update(null, 0, selected) === 0 && selected)
-					clearSelection();
-				content.update(output, camera);
-				output.render(scene, camera);
+				// Hover depends on the pointer, so only a scene without one pans.
+				const panned =
+					panCache &&
+					!changed &&
+					!pointer &&
+					camera instanceof OrthographicCamera
+						? panCache.pan(scene, camera, placeGrid)
+						: null;
+				const { x, y } = camera.position;
+				panCacheHit = panned !== null;
+				if (panned) {
+					shown = panned;
+					held = { x, y, zoom: camera.zoom, shown: panned };
+				} else {
+					if (held?.x !== x || held.y !== y || held.zoom !== camera.zoom)
+						held = null;
+					shown = held?.shown ?? null;
+					if (pointer) raycaster.setFromCamera(pointer, camera);
+					highlighted =
+						hover?.update(
+							pointer ? raycaster.ray : null,
+							visibleHeight() / Math.max(element.clientHeight, 1),
+						) ?? 0;
+					if (selection?.update(null, 0, selected) === 0 && selected)
+						clearSelection();
+					if (shown) {
+						camera.position.setX(shown.x).setY(shown.y);
+						camera.updateMatrixWorld();
+					}
+					try {
+						content.update(output, camera);
+						placeGrid(camera.position);
+						output.render(scene, camera);
+						if (camera instanceof OrthographicCamera) panCache?.capture(camera);
+						else panCache?.invalidate();
+					} finally {
+						if (shown) {
+							camera.position.setX(x).setY(y);
+							camera.updateMatrixWorld();
+						}
+					}
+				}
 				onOrientation?.(camera.quaternion);
 				const currentZoom =
 					referenceDistance() / (visibleHeight() / (2 * halfFovTangent));
@@ -274,8 +364,8 @@ export function createSceneViewport(
 						backend: "WebGL 2 · Three.js",
 						message: "",
 						camera: {
-							x: camera.position.x,
-							y: camera.position.y,
+							x: shown?.x ?? camera.position.x,
+							y: shown?.y ?? camera.position.y,
 							scale: height / visibleHeight(),
 						},
 						zoom: currentZoom,
@@ -296,6 +386,7 @@ export function createSceneViewport(
 					onReady?.(true);
 				}
 			} catch (error) {
+				panCache?.invalidate();
 				cancel();
 				onReady?.(false);
 				onError?.(errorMessage(error, "Unable to draw this scene."));
@@ -304,6 +395,7 @@ export function createSceneViewport(
 					"renderer.frame",
 					performance.now() - started,
 					{
+						panned: panCacheHit,
 						calls: output.info.render.calls,
 						triangles: output.info.render.triangles,
 						geometries: output.info.memory.geometries,
@@ -592,9 +684,10 @@ export function createSceneViewport(
 		}
 		lifecycle.listen(canvas, "keydown", onKey);
 		lifecycle.listen(canvas, "webglcontextlost", onLost);
-		controls.addEventListener("change", schedule);
+		// Camera moves alone can reuse the last frame.
+		controls.addEventListener("change", requestFrame);
 		lifecycle.addFinalizer(() =>
-			controls.removeEventListener("change", schedule),
+			controls.removeEventListener("change", requestFrame),
 		);
 		const runtime: SceneViewportRuntime = {
 			dispose,
@@ -620,6 +713,10 @@ export function createSceneViewport(
 				if (next !== null && previous !== null) zoom(next / previous);
 				schedule();
 			},
+			setGrid: (options) => {
+				grid?.set(options);
+				schedule();
+			},
 			actualSize: () => {
 				if (physicalScale !== null)
 					zoom((physicalScale * visibleHeight()) / viewportHeight);
@@ -630,7 +727,16 @@ export function createSceneViewport(
 				// Render and copy in the same task; preserveDrawingBuffer stays disabled.
 				camera.updateMatrixWorld();
 				content.update(output, camera);
-				output.render(scene, camera);
+				// The grid is a view aid, not part of the exported picture.
+				const gridVisible = grid?.object.visible ?? false;
+				if (grid) grid.object.visible = false;
+				try {
+					output.render(scene, camera);
+				} finally {
+					if (grid) grid.object.visible = gridVisible;
+				}
+				// The canvas now lacks the grid, so the next frame redraws it.
+				schedule();
 				return capturePng(canvas);
 			},
 			update: (update) => {
@@ -641,6 +747,9 @@ export function createSceneViewport(
 		resize(Math.max(element.clientWidth, 1), Math.max(element.clientHeight, 1));
 		view(topView ? "top" : "iso");
 		setProjection(projection);
+		// Start compiling view aid shaders before the first frame needs them.
+		grid?.prepare(output, camera, scene);
+		panCache?.prepare();
 		if (topView && camera instanceof OrthographicCamera && initialCamera) {
 			const offset = camera.position.z - controls.target.z;
 			controls.target.set(initialCamera.x, initialCamera.y, controls.target.z);

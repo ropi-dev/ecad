@@ -59,9 +59,7 @@ test(
 		await expect(
 			page.getByRole("button", { name: "Select", exact: true }),
 		).toBeEnabled();
-		await expect(page.getByTestId("viewport-grid").locator("mask")).toHaveCount(
-			0,
-		);
+		await expect(page.getByTestId("viewport-paper")).toHaveCount(0);
 		const value = await report(page);
 		await finish(page, testInfo, "project-new-symbol", {
 			createMs: required(

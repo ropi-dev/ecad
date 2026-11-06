@@ -698,3 +698,195 @@ test("schematic pins are selectable but stay fixed to their symbol", async ({
 	expect(symbol.childOverrides ?? {}).toEqual({});
 	await expect(panel.getByText("Pin 1", { exact: true })).toBeVisible();
 });
+
+/**
+ * Decodes PNG screenshots in the page and runs `measure` on their RGBA pixels
+ * there, so only its result crosses back.
+ */
+async function inPixels<Arg, Result>(
+	page: Page,
+	pngs: Buffer[],
+	measure: (images: ImageData[], arg: Arg) => Result,
+	arg: Arg,
+): Promise<Result> {
+	return page.evaluate(
+		async ({ data, measure, arg }) => {
+			const images = await Promise.all(
+				data.map(async (png) => {
+					const image = new Image();
+					image.src = `data:image/png;base64,${png}`;
+					await image.decode();
+					const canvas = document.createElement("canvas");
+					canvas.width = image.width;
+					canvas.height = image.height;
+					const context = canvas.getContext("2d");
+					if (!context) throw new Error("Expected a 2D context");
+					context.drawImage(image, 0, 0);
+					return context.getImageData(0, 0, image.width, image.height);
+				}),
+			);
+			return new Function("images", "arg", `return (${measure})(images, arg)`)(
+				images,
+				arg,
+			) as Result;
+		},
+		{
+			data: pngs.map((png) => png.toString("base64")),
+			measure: measure.toString(),
+			arg,
+		},
+	);
+}
+
+test("panning shows the same picture as a full redraw", async ({ page }) => {
+	await page.evaluate(async () => {
+		const path = "/packages/core/src/performance/runtime.ts";
+		const runtime = (await import(
+			path
+		)) as typeof import("#/performance/runtime.ts");
+		runtime.initializePerformance();
+	});
+	await createShape(page, "Rectangle", g(40), g(40));
+	await createShape(page, "Wire", g(20), g(20));
+	const canvas = page.locator("canvas");
+	const panned = () =>
+		page.evaluate(
+			() =>
+				window.__ecadPerformance
+					?.snapshot()
+					.events.filter(
+						(event) =>
+							event.name === "renderer.frame" && event.data?.panned === true,
+					).length ?? 0,
+		);
+	const settle = () =>
+		page.evaluate(
+			() =>
+				new Promise((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(resolve)),
+				),
+		);
+	await page.keyboard.press("Escape");
+	await settle();
+	const before = await panned();
+	const box = required(await canvas.boundingBox());
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	for (const [x, y] of [
+		[37, 0],
+		[0, -23],
+		[-61.5, 45.25],
+		[12, 9],
+	]) {
+		await page.mouse.wheel(x, y);
+		await settle();
+	}
+	expect(await panned()).toBeGreaterThan(before);
+	// The drawing area inside the rulers, whose labels may still be settling.
+	const area = () =>
+		page.screenshot({
+			clip: {
+				x: box.x,
+				y: box.y + 25,
+				width: box.width - 25,
+				height: box.height - 25,
+			},
+		});
+	const shifted = await area();
+	// Selecting and clearing the rectangle redraws the whole scene in place.
+	const rectangle = await screen(page, g(40), g(40));
+	await page.mouse.click(rectangle.x, rectangle.y);
+	await expect(
+		page.getByRole("button", { name: "Clear selection", exact: true }),
+	).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(
+		page.getByRole("button", { name: "Clear selection", exact: true }),
+	).toHaveCount(0);
+	await settle();
+	// Grid dot coverage may round differently by a level.
+	expect(
+		await inPixels(
+			page,
+			[shifted, await area()],
+			([first, second]) =>
+				first.data.filter(
+					(value, index) => Math.abs(value - second.data[index]) > 2,
+				).length,
+			undefined,
+		),
+	).toBe(0);
+});
+
+test("grid dots sit on the ruler ticks", async ({ page }) => {
+	const rulers = page.getByRole("img", { name: "Drawing rulers in mils" });
+	// Labelled ticks have dots in every grid layer.
+	const ticks = (axis: "x" | "y") =>
+		rulers.locator(`[data-axis="${axis}"] line`).evaluateAll(
+			(lines, axis) =>
+				lines.map((line) => {
+					const box = line.getBoundingClientRect();
+					return axis === "x" ? box.x : box.y;
+				}),
+			axis,
+		);
+	const viewport = required(page.viewportSize());
+	const labelled = await ticks("x");
+	// Keep away from the rulers, the toolbar and the attributes panel.
+	const xs = labelled
+		.filter((x) => x > 100 && x < viewport.width - 400)
+		.slice(0, 4);
+	const ys = (await ticks("y"))
+		.filter((y) => y > 100 && y < viewport.height - 200)
+		.slice(0, 4);
+	expect(xs.length).toBeGreaterThan(1);
+	expect(ys.length).toBeGreaterThan(1);
+	// Labels mark every tenth ruler cell. A quarter cell is clear of dots in
+	// the finer grid layer too.
+	const offset = (labelled[1] - labelled[0]) / 40;
+	const contrast = await inPixels(
+		page,
+		// CSS pixels, so tick positions index the image at any pixel ratio.
+		[await page.screenshot({ scale: "css" })],
+		([image], { xs, ys, offset }) => {
+			const brightest = (x: number, y: number) => {
+				let value = 0;
+				for (let dx = -1; dx <= 1; dx++)
+					for (let dy = -1; dy <= 1; dy++) {
+						const index =
+							(Math.round(y + dy) * image.width + Math.round(x + dx)) * 4;
+						value = Math.max(
+							value,
+							image.data[index] + image.data[index + 1] + image.data[index + 2],
+						);
+					}
+				return value;
+			};
+			return xs.flatMap((x) =>
+				ys.map((y) => brightest(x, y) - brightest(x + offset, y + offset)),
+			);
+		},
+		{ xs, ys, offset },
+	);
+	for (const value of contrast) expect(value).toBeGreaterThan(20);
+});
+
+test("a sheet larger than the view does not make the editor scroll", async ({
+	page,
+}) => {
+	for (let step = 0; step < 8; step++)
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect
+		.poll(() =>
+			page.locator("main").evaluate((main) => {
+				main.scrollLeft = 500;
+				main.scrollTop = 500;
+				return [
+					main.scrollWidth - main.clientWidth,
+					main.scrollHeight - main.clientHeight,
+					main.scrollLeft,
+					main.scrollTop,
+				];
+			}),
+		)
+		.toEqual([0, 0, 0, 0]);
+});

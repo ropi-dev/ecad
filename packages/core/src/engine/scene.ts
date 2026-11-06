@@ -83,7 +83,7 @@ export function createSceneDisplay(source: ViewerScene) {
 				if (part instanceof PlanarOutline) part.updateDetail(renderer, camera);
 			});
 		};
-		return { object: group, entries, dispose, update };
+		return { object: group, entries, dispose, update, hasOutlines };
 	} catch (error) {
 		dispose();
 		throw error;
