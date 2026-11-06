@@ -6,6 +6,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.5",
+		"@electron/packager": "^20.3.0",
 		"@playwright/test": "^1.63.0",
 		"@tanstack/router-cli": "1.167.46",
 		"@types/earcut": "^3.0.0",
@@ -53,6 +54,7 @@
 		"build:web": "pnpm --filter @ecad/web run build",
 		"build:desktop": "pnpm --filter @ecad/desktop run build",
 		"build:cli": "pnpm --filter @ecad/cli run build",
+		"package:deb": "tsx scripts/packaging/deb.ts",
 		"cli": "tsx packages/cli/src/main.ts",
 		"preview": "pnpm --filter @ecad/web run preview",
 		"start:desktop": "pnpm --filter @ecad/desktop run start",

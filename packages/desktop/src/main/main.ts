@@ -52,8 +52,9 @@ function developmentRendererUrl(): string | undefined {
 }
 
 const rendererUrl = developmentRendererUrl() ?? "ecad://app/index.html";
+// `electron .` passes the app path before the arguments; a packaged app doesn't.
 const directoryArgument = process.argv
-	.slice(2)
+	.slice(process.defaultApp ? 2 : 1)
 	.find((argument) => !argument.startsWith("-"));
 const library = new DesktopSymbolLibrary();
 const approvals = new ExternalLibraryApprovals({
