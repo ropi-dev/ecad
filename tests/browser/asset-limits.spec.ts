@@ -55,9 +55,15 @@ test("an oversized stored STEP asset is named while valid assets still restore, 
 			.toContain(name);
 	}
 	const problem = "b.step: STEP files must be 256 MiB or smaller.";
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "STEP viewer", exact: true })
-		.click();
+	// The sidebar has no STEP viewer link, so this follows a plain /step link,
+	// which restores the last STEP model like opening /step in the app does.
+	await page.evaluate(() => {
+		const link = document.createElement("a");
+		link.href = "/step";
+		document.body.append(link);
+		link.click();
+		link.remove();
+	});
 	await closeProjectFiles(page);
 	await expect(page.getByRole("alert")).toContainText(problem);
 	await expect(

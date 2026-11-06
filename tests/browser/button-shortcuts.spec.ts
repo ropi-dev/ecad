@@ -253,7 +253,7 @@ test("Radix dialogs hide background hints and block background Delete", async ({
 	await page.keyboard.up("Control");
 });
 
-for (const label of ["Add file", "Project actions"]) {
+for (const label of ["Add file", "Project actions", "Open project"]) {
 	test(`sidebar shortcut opens the ${label} dropdown`, async ({ page }) => {
 		await page.goto("/tests/browser/projects.html");
 		const { openProjectFiles } = await import("./project-files");

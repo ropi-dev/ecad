@@ -98,13 +98,6 @@ async function editorReady(page: Page) {
 	);
 }
 
-async function projectAction(page: Page, name: string) {
-	await (await openProjectFiles(page))
-		.getByRole("button", { name: "Project actions", exact: true })
-		.click();
-	await page.getByRole("menuitem", { name, exact: true }).click();
-}
-
 test("the desktop app saves a project to disk and reopens it after a relaunch", async ({
 	browserName: _browserName,
 }, testInfo) => {
@@ -127,7 +120,9 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 		await page.mouse.up();
 
 		await chooseFolder(app, parent);
-		await projectAction(page, "Save project");
+		await (await openProjectFiles(page))
+			.getByRole("button", { name: "Save project", exact: true })
+			.click();
 		await expect(
 			page.getByText("Project saved", { exact: true }),
 		).toBeVisible();
@@ -146,7 +141,9 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 	({ app, page } = await launch(home));
 	try {
 		await chooseFolder(app, directory);
-		await projectAction(page, "Open project...");
+		await (await openProjectFiles(page))
+			.getByRole("button", { name: "Open project", exact: true })
+			.click();
 		// The relaunched app starts in an empty in-memory project.
 		await page
 			.getByRole("button", { name: "Discard and open", exact: true })
@@ -188,7 +185,9 @@ test("the desktop app reloads a drawing another program changed and keeps saving
 		await page.mouse.move(710, 400, { steps: 4 });
 		await page.mouse.up();
 		await chooseFolder(app, parent);
-		await projectAction(page, "Save project");
+		await (await openProjectFiles(page))
+			.getByRole("button", { name: "Save project", exact: true })
+			.click();
 		await expect(
 			page.getByText("Project saved", { exact: true }),
 		).toBeVisible();
@@ -231,5 +230,51 @@ test("the desktop app reloads a drawing another program changed and keeps saving
 		await page.screenshot({ path: testInfo.outputPath("edited.png") });
 	} finally {
 		await app.close();
+	}
+});
+
+test("the sidebar Exit button quits the desktop app after the unsaved-changes prompt", async ({
+	browserName: _browserName,
+}, testInfo) => {
+	const home = testInfo.outputPath("home");
+	await mkdir(home, { recursive: true });
+	const { app, page } = await launch(home);
+	try {
+		// The main process answers the beforeunload prompt itself. Listening
+		// stops Playwright from also trying to dismiss it.
+		page.on("dialog", () => {});
+		// The app starts in an in-memory project, so closing asks first. The
+		// first answer keeps working, the second discards and closes.
+		await app.evaluate(({ dialog }) => {
+			const answers = [0, 1];
+			const state = globalThis as { exitPrompts?: number };
+			state.exitPrompts = 0;
+			dialog.showMessageBoxSync = (() => {
+				state.exitPrompts = (state.exitPrompts ?? 0) + 1;
+				return answers.shift() ?? 1;
+			}) as typeof dialog.showMessageBoxSync;
+		});
+		const prompts = () =>
+			app.evaluate(() => (globalThis as { exitPrompts?: number }).exitPrompts);
+		const exit = async () =>
+			(await openProjectFiles(page))
+				.getByRole("button", { name: "Exit", exact: true })
+				.click();
+		await exit();
+		await expect.poll(prompts).toBe(1);
+		await expect(
+			page.getByRole("complementary", {
+				name: "Project files",
+				includeHidden: true,
+			}),
+		).toBeAttached();
+
+		const exited = new Promise<void>((resolve) =>
+			app.process().once("exit", () => resolve()),
+		);
+		await exit();
+		await exited;
+	} finally {
+		await app.close().catch(() => {});
 	}
 });

@@ -2,6 +2,8 @@ import type { DisplayBridge } from "@ecad/core/components/viewer/displayScale.ts
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
 import { contextBridge, ipcRenderer } from "electron";
 import {
+	appChannels,
+	type DesktopAppBridge,
 	type DesktopSymbolLibraryBridge,
 	displayChannels,
 	libraryChannels,
@@ -78,3 +80,8 @@ const display: DisplayBridge = {
 	},
 };
 contextBridge.exposeInMainWorld("ecadDisplay", display);
+
+const desktopApp: DesktopAppBridge = {
+	quit: () => ipcRenderer.invoke(appChannels.quit),
+};
+contextBridge.exposeInMainWorld("ecadApp", desktopApp);

@@ -231,9 +231,8 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 		.getByRole("alert")
 		.filter({ hasText: "Reload it from disk before saving" });
 
-	await openProjectActions(page);
-	await page
-		.getByRole("menuitem", { name: "Save project", exact: true })
+	await (await openProjectFiles(page))
+		.getByRole("button", { name: "Save project", exact: true })
 		.click();
 	await expect(notice).toBeVisible();
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
@@ -327,9 +326,8 @@ test("creating a project from one with a conflict carries its assets and leaves 
 	const notice = page.getByRole("alert").filter({
 		hasText: "This project changed on disk",
 	});
-	await openProjectActions(page);
-	await page
-		.getByRole("menuitem", { name: "Save project", exact: true })
+	await (await openProjectFiles(page))
+		.getByRole("button", { name: "Save project", exact: true })
 		.click();
 	await expect(notice).toBeVisible();
 

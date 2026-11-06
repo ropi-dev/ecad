@@ -8,6 +8,7 @@ import {
 	FolderOpen,
 	Layers,
 	ListTree,
+	LogOut,
 	Pin,
 	PinOff,
 	PlugZap,
@@ -42,10 +43,12 @@ import {
 	PROJECT_FILE,
 	type ProjectAsset,
 } from "#/projects/format.ts";
+import { OpenProjectButton } from "#/projects/OpenProjectButton.tsx";
 import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { primaryPcbId } from "#/projects/pcb.ts";
+import { SaveProjectButton } from "#/projects/SaveProjectButton.tsx";
 import {
 	useWorkspaceControls,
 	workspaceActionClassName,
@@ -89,9 +92,16 @@ interface ProjectFile {
 	asset?: ProjectAsset;
 	group?: string;
 	circuitPath?: string;
+	/** Opens the Gerber viewer with every layer instead of one file. */
+	allLayers?: boolean;
 }
 
-export function ProjectFilesSidebar() {
+export function ProjectFilesSidebar({
+	onExit,
+}: {
+	/** Quits the app. The Exit button shows only when it is given. */
+	onExit?: () => void;
+} = {}) {
 	const project = useProjectSelection(
 		({
 			busy,
@@ -273,6 +283,17 @@ export function ProjectFilesSidebar() {
 							type: "Symbol",
 							href: "/editor" as const,
 						})),
+						...(manifest.assets.some((asset) => asset.kind === "gerber")
+							? [
+									{
+										path: "gerber:all-layers",
+										name: "All Gerber layers",
+										type: "Gerber",
+										href: "/gerber" as const,
+										allLayers: true,
+									},
+								]
+							: []),
 						...manifest.assets.map((asset) => ({
 							path: asset.path,
 							name: asset.name,
@@ -539,22 +560,8 @@ export function ProjectFilesSidebar() {
 					aria-label="Workspaces"
 					className="grid shrink-0 grid-cols-4 gap-2 border-b border-white/10 p-3"
 				>
-					<ProjectLink
-						href="/gerber"
-						aria-label="Gerber viewer"
-						title="Gerber viewer"
-						className={`${workspaceActionClassName} text-[#90c8bc]`}
-					>
-						<Layers size={20} aria-hidden="true" />
-					</ProjectLink>
-					<ProjectLink
-						href="/step"
-						aria-label="STEP viewer"
-						title="STEP viewer"
-						className={`${workspaceActionClassName} text-[#a2b9e4]`}
-					>
-						<Box size={20} aria-hidden="true" />
-					</ProjectLink>
+					<OpenProjectButton />
+					<SaveProjectButton />
 					<ProjectMenu />
 					{workspaceControls?.editor ? (
 						workspaceControls.editor.enableMcp ? (
@@ -802,13 +809,19 @@ export function ProjectFilesSidebar() {
 																{file.href ? (
 																	<ProjectLink
 																		href={file.href}
-																		file={file.path}
+																		file={
+																			file.allLayers ? undefined : file.path
+																		}
 																		view={
 																			file.type === "Circuit"
 																				? "circuit"
 																				: undefined
 																		}
-																		aria-label={`Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`}
+																		aria-label={
+																			file.allLayers
+																				? "Open all Gerber layers"
+																				: `Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`
+																		}
 																		title={`${file.name} · ${file.type}`}
 																		className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
 																		onClick={() => {
@@ -827,6 +840,8 @@ export function ProjectFilesSidebar() {
 																			}
 																			if (file.asset)
 																				project.selectAsset(file.asset);
+																			else if (file.allLayers)
+																				project.selectAsset(null);
 																		}}
 																	>
 																		{content}
@@ -916,7 +931,7 @@ export function ProjectFilesSidebar() {
 				<ProjectLink href="/editor" ref={editorLink} hidden tabIndex={-1}>
 					Open new file
 				</ProjectLink>
-				<footer className="shrink-0 border-t border-white/10 p-1.5">
+				<footer className="flex shrink-0 gap-1 border-t border-white/10 p-1.5">
 					<button
 						type="button"
 						aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
@@ -924,7 +939,7 @@ export function ProjectFilesSidebar() {
 						aria-keyshortcuts={`${shortcutModifier().key}+Shift+S`}
 						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · ${formatShortcut("Ctrl+Shift+S")}`}
 						aria-controls={panelId}
-						className={`${button} h-9 w-full justify-start px-2`}
+						className={`${button} h-9 min-w-0 flex-1 justify-start px-2`}
 						onClick={togglePin}
 					>
 						{pinned ? (
@@ -937,6 +952,19 @@ export function ProjectFilesSidebar() {
 							{formatShortcut("Ctrl+Shift+S")}
 						</kbd>
 					</button>
+					{onExit && (
+						<button
+							type="button"
+							aria-label="Exit"
+							title="Exit ECAD"
+							// A held shortcut chord must not quit the app by accident.
+							data-shortcut-scope="none"
+							className={`${button} h-9 w-9 shrink-0`}
+							onClick={onExit}
+						>
+							<LogOut size={18} aria-hidden="true" />
+						</button>
+					)}
 				</footer>
 			</aside>
 			{creatingFile && (

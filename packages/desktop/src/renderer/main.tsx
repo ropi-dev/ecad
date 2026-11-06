@@ -43,7 +43,7 @@ function App() {
 	}, []);
 	return (
 		<ProjectProvider storage={projects} symbolStorage={storage}>
-			<ProjectShell>
+			<ProjectShell onExit={() => void window.ecadApp.quit()}>
 				<PerformanceBoundary
 					name={workspace}
 					path={workspace === "home" ? "/" : `/${workspace}`}

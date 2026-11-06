@@ -126,7 +126,7 @@ test(
 		for (let repeat = 0; repeat < 3; repeat++) {
 			await openProjectFiles(page);
 			await sidebar
-				.getByRole("link", { name: "STEP viewer", exact: true })
+				.getByRole("link", { name: "Workspace home", exact: true })
 				.click();
 			railNavigationTimes.push(
 				await interaction(page, "sidebar.rail-navigation", async () => {

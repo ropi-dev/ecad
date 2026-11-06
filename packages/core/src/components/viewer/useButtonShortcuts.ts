@@ -40,6 +40,7 @@ const sidebarKeys: Record<string, string> = {
 	"Compact sidebar": "S",
 	"Show project files": "B",
 	"Add file": "N",
+	"Open project": "O",
 };
 const devSidebarKeys = new Set(import.meta.env?.DEV ? ["D"] : []);
 const labelFor = (button: HTMLButtonElement) =>
