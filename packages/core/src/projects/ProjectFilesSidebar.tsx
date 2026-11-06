@@ -531,7 +531,6 @@ export function ProjectFilesSidebar({
 								<button
 									type="button"
 									aria-label="Add file"
-									title="Add file"
 									disabled={busy}
 									className={`${button} ml-auto w-7 data-[state=open]:bg-white/10 data-[state=open]:text-white`}
 								>
@@ -599,7 +598,6 @@ export function ProjectFilesSidebar({
 							<button
 								type="button"
 								aria-label="MCP unavailable"
-								title="MCP is unavailable in this editor"
 								disabled
 								className={workspaceActionClassName}
 							>
@@ -610,7 +608,6 @@ export function ProjectFilesSidebar({
 						<ProjectLink
 							href="/editor"
 							aria-label="Schematic editor"
-							title="Schematic editor"
 							onClick={() => project.selectEditorFile()}
 							className={`${workspaceActionClassName} text-[#c3abd8]`}
 						>
@@ -639,7 +636,6 @@ export function ProjectFilesSidebar({
 									{importTypes.map(([kind, label, Icon, accept]) => (
 										<label
 											key={kind}
-											title={`Add ${label} files`}
 											className={`${button} relative w-6 shrink-0 cursor-pointer px-0 focus-within:outline-2 focus-within:outline-[#e8b77e] has-[:disabled]:opacity-40`}
 										>
 											<Icon className="size-3.5 shrink-0" aria-hidden="true" />
@@ -950,7 +946,6 @@ export function ProjectFilesSidebar({
 						aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
 						aria-pressed={pinned}
 						aria-keyshortcuts={`${shortcutModifier().key}+Shift+S`}
-						title={`${pinned ? "Compact sidebar" : "Pin sidebar"} · ${formatShortcut("Ctrl+Shift+S")}`}
 						aria-controls={panelId}
 						className={`${button} h-9 min-w-0 flex-1 justify-start px-2`}
 						onClick={togglePin}
@@ -969,7 +964,6 @@ export function ProjectFilesSidebar({
 						<button
 							type="button"
 							aria-label="Exit"
-							title="Exit ECAD"
 							// A held shortcut chord must not quit the app by accident.
 							data-shortcut-scope="none"
 							className={`${button} h-9 w-9 shrink-0`}

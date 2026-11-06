@@ -71,7 +71,6 @@ export function OpenProjectButton({
 					<button
 						type="button"
 						aria-label="Open project"
-						title="Open project"
 						disabled={project.busy}
 						className={className}
 					>
@@ -134,7 +133,6 @@ export function OpenProjectButton({
 			<button
 				type="button"
 				aria-label="Open project"
-				title="Open project"
 				disabled={project.busy}
 				className={className}
 				onClick={() => {

@@ -20,9 +20,6 @@ export function SaveProjectButton() {
 		<button
 			type="button"
 			aria-label="Save project"
-			title={
-				project.unsaved ? "Save project · unsaved changes" : "Save project"
-			}
 			disabled={project.busy}
 			className={`${workspaceActionClassName} ${project.unsaved ? "text-[#e8b77e]" : "text-[#98a4b6]"}`}
 			onClick={() => {

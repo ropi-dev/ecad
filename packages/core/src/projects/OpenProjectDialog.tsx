@@ -27,10 +27,10 @@ export function OpenProjectDialog({
 			<Dialog.Portal>
 				<Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
 				<Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#414955] bg-[#191c22] p-5 text-[#e8edf5] shadow-xl">
-					<Dialog.Title className="m-0 text-base font-semibold">
+					<Dialog.Title className="sr-only">
 						Save this project first?
 					</Dialog.Title>
-					<Dialog.Description className="my-4 text-sm leading-6 text-[#9ba7b8]">
+					<Dialog.Description className="mb-4 text-sm leading-6 text-[#9ba7b8]">
 						This untitled project is stored in memory. Save it before opening
 						another project, or discard it.
 					</Dialog.Description>

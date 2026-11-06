@@ -37,7 +37,6 @@ export function ProjectMenu({
 					<button
 						type="button"
 						aria-label="Project actions"
-						title="Project actions"
 						className={`${workspaceActionClassName} text-[#98a4b6] data-[state=open]:bg-white/10`}
 						disabled={project.busy}
 					>
@@ -72,10 +71,8 @@ export function ProjectMenu({
 				<Dialog.Portal>
 					<Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
 					<Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-5 text-[#c7d0dc] shadow-xl">
-						<Dialog.Title className="m-0 text-base font-semibold text-[#e8edf5]">
-							Symbol libraries
-						</Dialog.Title>
-						<Dialog.Description className="mb-4 mt-2 text-sm text-[#9ba7b8]">
+						<Dialog.Title className="sr-only">Symbol libraries</Dialog.Title>
+						<Dialog.Description className="mb-4 text-sm text-[#9ba7b8]">
 							Manage user and project symbol libraries.
 						</Dialog.Description>
 						{settingsOpen && (
