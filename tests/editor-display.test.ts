@@ -459,13 +459,9 @@ test("renderer uses shape colors for pins and hollow halos while wires keep thei
 		assert.equal(color("line 3"), hex("stroke"));
 		assert.equal(color("editor-pin-halo"), color("line 3"));
 		const halo = root.getObjectByName("editor-pin-halo") as Mesh;
-		root.updateMatrixWorld(true);
-		const hit = (x: number) =>
-			new Raycaster(
-				new Vector3(x, 0, 10),
-				new Vector3(0, 0, -1),
-			).intersectObject(halo).length > 0;
-		assert.equal(hit(0), false);
+		// The round shader leaves everything inside the inner radius uncovered.
+		const [outer, inner] = halo.geometry.getAttribute("roundOutline").array;
+		assert.ok(inner > 0 && inner < outer, "the halo is a hollow ring");
 		assert.ok((halo.material as MeshBasicMaterial).opacity < 1);
 		let disposals = 0;
 		halo.geometry.addEventListener("dispose", () => disposals++);
