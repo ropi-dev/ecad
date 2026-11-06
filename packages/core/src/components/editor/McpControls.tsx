@@ -73,7 +73,6 @@ export function McpControls({
 				<button
 					type="button"
 					aria-label={label}
-					title={label}
 					aria-pressed={enabled}
 					aria-expanded={panelOpen}
 					aria-controls={`${fieldId}-panel`}
