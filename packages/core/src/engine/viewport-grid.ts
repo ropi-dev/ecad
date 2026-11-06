@@ -9,6 +9,7 @@ import {
 	Points,
 	type Scene,
 	ShaderMaterial,
+	Sphere,
 	SrcAlphaFactor,
 	Vector2,
 	Vector4,
@@ -112,6 +113,9 @@ export function createViewportGrid() {
 	});
 	const { uniforms } = material;
 	const geometry = new BufferGeometry();
+	// The vertex buffer holds no positions, so Three must not derive bounds
+	// from it when sorting.
+	geometry.boundingSphere = new Sphere();
 	const points = new Points(geometry, material);
 	points.name = "viewport-grid";
 	points.frustumCulled = false;
@@ -151,7 +155,8 @@ export function createViewportGrid() {
 		geometry.dispose();
 		geometry.setAttribute(
 			"position",
-			new BufferAttribute(new Float32Array(capacity * 3), 3),
+			// One byte per dot only sets the vertex count.
+			new BufferAttribute(new Uint8Array(capacity), 1),
 		);
 	};
 	let options: ViewportGridOptions | null = null;

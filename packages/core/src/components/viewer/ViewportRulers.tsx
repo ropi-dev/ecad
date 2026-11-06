@@ -132,20 +132,26 @@ export function ViewportRulers({
 	return (
 		<>
 			{paper && (
+				// Clip, not hide: a sheet larger than the view must not make any
+				// ancestor scrollable.
 				<div
-					ref={paperElement}
-					data-testid="viewport-paper"
-					className="pointer-events-none absolute top-0 left-0 z-0 will-change-transform"
-					style={{
-						width: paper.width,
-						height: paper.height,
-						backgroundColor: darkSchematicTheme.paper,
-					}}
+					className="pointer-events-none absolute inset-0 z-0 overflow-clip"
 					aria-hidden="true"
-				/>
+				>
+					<div
+						ref={paperElement}
+						data-testid="viewport-paper"
+						className="absolute top-0 left-0 will-change-transform"
+						style={{
+							width: paper.width,
+							height: paper.height,
+							backgroundColor: darkSchematicTheme.paper,
+						}}
+					/>
+				</div>
 			)}
 			<div
-				className="pointer-events-none absolute inset-0 z-2 overflow-hidden [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955] [&_svg]:absolute"
+				className="pointer-events-none absolute inset-0 z-2 overflow-clip [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955] [&_svg]:absolute"
 				role="img"
 				aria-label={`Drawing rulers in ${unit === "mil" ? "mils" : "millimetres"}`}
 				aria-describedby={descriptionId}
@@ -155,7 +161,7 @@ export function ViewportRulers({
 					to the right; Y increases upward.
 				</span>
 				<div
-					className="absolute top-0 left-0 overflow-hidden"
+					className="absolute top-0 left-0 overflow-clip"
 					style={{ width: Math.max(width - BAND, 0), height: BAND + 1 }}
 				>
 					<svg
@@ -202,7 +208,7 @@ export function ViewportRulers({
 					</svg>
 				</div>
 				<div
-					className="absolute top-0 overflow-hidden"
+					className="absolute top-0 overflow-clip"
 					style={{ left: width - BAND - 1, width: BAND + 1, height }}
 				>
 					<svg

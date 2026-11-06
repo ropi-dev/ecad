@@ -845,7 +845,8 @@ test("grid dots sit on the ruler ticks", async ({ page }) => {
 	const offset = (labelled[1] - labelled[0]) / 40;
 	const contrast = await inPixels(
 		page,
-		[await page.screenshot()],
+		// CSS pixels, so tick positions index the image at any pixel ratio.
+		[await page.screenshot({ scale: "css" })],
 		([image], { xs, ys, offset }) => {
 			const brightest = (x: number, y: number) => {
 				let value = 0;
@@ -867,4 +868,25 @@ test("grid dots sit on the ruler ticks", async ({ page }) => {
 		{ xs, ys, offset },
 	);
 	for (const value of contrast) expect(value).toBeGreaterThan(20);
+});
+
+test("a sheet larger than the view does not make the editor scroll", async ({
+	page,
+}) => {
+	for (let step = 0; step < 8; step++)
+		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+	await expect
+		.poll(() =>
+			page.locator("main").evaluate((main) => {
+				main.scrollLeft = 500;
+				main.scrollTop = 500;
+				return [
+					main.scrollWidth - main.clientWidth,
+					main.scrollHeight - main.clientHeight,
+					main.scrollLeft,
+					main.scrollTop,
+				];
+			}),
+		)
+		.toEqual([0, 0, 0, 0]);
 });

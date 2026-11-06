@@ -70,7 +70,11 @@ function boundedObjects(scene: Object3D) {
 	return found;
 }
 
-/** The hooks WebGLRenderer calls on the scene it renders. */
+/**
+ * The hooks WebGLRenderer calls on the scene it renders. The browser test
+ * pages read the camera from `Scene.prototype.onAfterRender`, so a pan frame
+ * reports one full view rather than the copy and each strip.
+ */
 interface SceneHooks {
 	onBeforeRender(
 		renderer: WebGLRenderer,
@@ -255,6 +259,11 @@ export function createPanCache(renderer: WebGLRenderer) {
 			if (moveX === 0 && moveY === 0) return position;
 			const { width, height } = next;
 			const autoUpdate = scene.matrixWorldAutoUpdate;
+			// Count every pass of this frame, as one full render would.
+			const { info } = renderer;
+			const autoReset = info.autoReset;
+			info.reset();
+			info.autoReset = false;
 			const scissorTest = renderer.getScissorTest();
 			renderer.getViewport(viewport);
 			renderer.getScissor(scissor);
@@ -325,6 +334,7 @@ export function createPanCache(renderer: WebGLRenderer) {
 			} finally {
 				restore(scene);
 				scene.matrixWorldAutoUpdate = autoUpdate;
+				info.autoReset = autoReset;
 				renderer.setScissorTest(scissorTest);
 				renderer.setViewport(viewport);
 				renderer.setScissor(scissor);
