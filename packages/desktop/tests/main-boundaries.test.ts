@@ -32,6 +32,7 @@ async function boot() {
 		webContents = contents;
 		on() {}
 		loadURL() {}
+		removeMenu() {}
 		static getAllWindows() {
 			return [Window];
 		}
