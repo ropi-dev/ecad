@@ -12,6 +12,7 @@ import {
 	useEffect,
 } from "react";
 import type { CircuitSelectionItem } from "#/circuit/selection-sync.ts";
+import type { SelectionMode } from "#/components/editor/selectionMode.ts";
 
 export type CircuitSelection = CircuitSelectionItem | null;
 export type CircuitPosition = GraphLayout["positions"][number];
@@ -45,7 +46,7 @@ export interface CircuitGraphActions {
 	): void;
 	selectPin(id: string): void;
 	selectNet(id: string): void;
-	selectConnection(id: string, additive: boolean): void;
+	selectConnection(id: string, mode: SelectionMode): void;
 	startDrag(
 		event: ReactPointerEvent<HTMLButtonElement>,
 		position: CircuitPosition,

@@ -18,6 +18,7 @@ import type {
 	CircuitSelection,
 	ConnectionDrag,
 } from "#/components/circuit/circuitEditorState.ts";
+import { selectionMode } from "#/components/editor/selectionMode.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
 /**
@@ -86,10 +87,7 @@ export function CircuitGraphLayer({
 					highlighted={selectedNetId === edge.netId}
 					onSelect={(event) => {
 						event.stopPropagation();
-						actions.selectConnection(
-							edge.pinId,
-							event.shiftKey || event.ctrlKey || event.metaKey,
-						);
+						actions.selectConnection(edge.pinId, selectionMode(event));
 					}}
 					onContextMenu={(event) =>
 						actions.openMenu(event, { kind: "connection", id: edge.pinId })

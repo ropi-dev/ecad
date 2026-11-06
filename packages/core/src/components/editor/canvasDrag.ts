@@ -10,6 +10,10 @@ import {
 	resizeSymbolChild,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import {
+	applySelection,
+	type SelectionMode,
+} from "#/components/editor/selectionMode.ts";
 
 /** A pointer drag on the editor canvas, from press to release. */
 export interface CanvasDrag {
@@ -29,7 +33,7 @@ export interface CanvasDrag {
 	initialShapes: EditorShape[];
 	created: boolean;
 	valid: boolean;
-	additive: boolean;
+	selectionMode: Exclude<SelectionMode, "toggle">;
 	wireStart?: Point;
 	/** The latest move preview would route a wire through another net. */
 	unsafe?: boolean;
@@ -176,7 +180,8 @@ export function canvasDragStep(
 	)
 		return result({
 			kind: "marquee-cancel",
-			selection: drag.additive ? drag.previousSelection : new Set(),
+			selection:
+				drag.selectionMode === "replace" ? new Set() : drag.previousSelection,
 		});
 	const mode = screen.x < drag.startScreen.x ? "crossing" : "window";
 	const bounds = {
@@ -185,13 +190,16 @@ export function canvasDragStep(
 		minY: Math.min(drag.start.y, point.y),
 		maxY: Math.max(drag.start.y, point.y),
 	};
-	const ids = new Set(drag.additive ? drag.previousSelection : []);
 	const matches = mode === "window" ? containsSelection : intersectsSelection;
-	for (const shape of context.shapes)
-		if (matches(shape, bounds)) ids.add(shape.id);
 	return result({
 		kind: "marquee",
 		marquee: { start: drag.startScreen, end: screen, mode },
-		selection: ids,
+		selection: applySelection(
+			drag.previousSelection,
+			context.shapes
+				.filter((shape) => matches(shape, bounds))
+				.map((shape) => shape.id),
+			drag.selectionMode,
+		),
 	});
 }

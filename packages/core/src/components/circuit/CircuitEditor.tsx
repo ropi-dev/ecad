@@ -60,6 +60,10 @@ import {
 	useCircuitNavigation,
 } from "#/components/circuit/useCircuitNavigation.ts";
 import { useCircuitSelectionSync } from "#/components/circuit/useCircuitSelectionSync.ts";
+import {
+	applySelection,
+	type SelectionMode,
+} from "#/components/editor/selectionMode.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 
 const ErcPanel = lazy(() =>
@@ -233,13 +237,9 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			svg.current?.focus({ preventScroll: true });
 		}
 	}
-	function selectConnection(id: string, additive: boolean) {
+	function selectConnection(id: string, mode: SelectionMode) {
 		if (tool !== "select") return;
-		const next = additive
-			? checkedPins.includes(id)
-				? checkedPins.filter((pinId) => pinId !== id)
-				: [...checkedPins, id]
-			: [id];
+		const next = [...applySelection(checkedPins, [id], mode)];
 		setSelection(
 			next.length
 				? {
@@ -258,7 +258,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (item.kind === "connection") {
-			if (!checkedPins.includes(item.id)) selectConnection(item.id, false);
+			if (!checkedPins.includes(item.id)) selectConnection(item.id, "replace");
 		} else select(item);
 		const bounds = svg.current?.getBoundingClientRect();
 		if (bounds)

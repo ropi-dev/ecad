@@ -47,6 +47,10 @@ import {
 } from "#/components/editor/canvasDrag.ts";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
+import {
+	applySelection,
+	selectionMode,
+} from "#/components/editor/selectionMode.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import {
 	createPlacementShape,
@@ -418,13 +422,6 @@ export function useCanvasGestures({
 		},
 		[getDrag, session, setTool, startWire],
 	);
-	const selectShape = (id: number, additive: boolean) => {
-		const ids = new Set(additive ? selectedIds : []);
-		if (additive && ids.has(id)) ids.delete(id);
-		else ids.add(id);
-		session.select(ids);
-	};
-
 	const placementHandler = (kind: PlacementTool): ToolHandler => ({
 		press: (_event, point, start) => {
 			const placed = {
@@ -587,12 +584,16 @@ export function useCanvasGestures({
 				stop(event);
 				return;
 			}
+			const mode = selectionMode(event);
 			if (
 				!event.isPrimary ||
 				event.button !== 0 ||
-				event.ctrlKey ||
-				event.metaKey ||
-				tool === "pan"
+				tool === "pan" ||
+				((event.ctrlKey || event.metaKey) &&
+					(tool !== "select" ||
+						event.altKey ||
+						mode === "replace" ||
+						mode === "toggle"))
 			)
 				return;
 			const point = pointAt(event, canvas);
@@ -624,7 +625,7 @@ export function useCanvasGestures({
 				!created &&
 				!resize &&
 				!duplicate &&
-				!event.shiftKey &&
+				mode === "replace" &&
 				selectedSymbol &&
 				hit?.id === selectedSymbol.id
 					? symbolChildAt(
@@ -652,7 +653,7 @@ export function useCanvasGestures({
 
 			if (
 				tool === "select" &&
-				!event.shiftKey &&
+				mode === "replace" &&
 				!resize &&
 				!duplicate &&
 				(!childHit || childHit.shape.kind === "pin")
@@ -702,8 +703,8 @@ export function useCanvasGestures({
 				session.preview([...session.shapes(), shape]);
 			} else if (resize) shape = resize.shape;
 			else if (!shape) shape = hit;
-			if (shape && event.shiftKey && !created && !resize && !duplicate) {
-				selectShape(shape.id, true);
+			if (shape && mode !== "replace" && !created && !resize && !duplicate) {
+				session.select(applySelection(selectedIds, [shape.id], mode));
 				return;
 			}
 			const childKey = resize?.childKey ?? editableChild?.key;
@@ -722,9 +723,9 @@ export function useCanvasGestures({
 					? selectedIds
 					: shape
 						? new Set(originals.map((item) => item.id))
-						: event.shiftKey
-							? selectedIds
-							: new Set(),
+						: mode === "replace"
+							? new Set()
+							: selectedIds,
 			);
 			session.selectChild(childKey ?? inspectedChild?.key ?? null);
 			const rect = canvas.getBoundingClientRect();
@@ -769,7 +770,7 @@ export function useCanvasGestures({
 					initialShapes: session.shapes(),
 					created: created || !!duplicate,
 					valid: false,
-					additive: event.shiftKey,
+					selectionMode: mode === "toggle" ? "add" : mode,
 					wireStart,
 				},
 			};

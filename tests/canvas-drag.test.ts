@@ -24,7 +24,7 @@ function drag(overrides: Partial<CanvasDrag>): CanvasDrag {
 		initialShapes: [box, far],
 		created: false,
 		valid: true,
-		additive: false,
+		selectionMode: "replace",
 		...overrides,
 	};
 }
@@ -204,11 +204,31 @@ test("dragging right selects enclosed shapes; dragging left selects crossed shap
 	assert.deepEqual(crossing.effect.selection, new Set([box.id, far.id]));
 });
 
+test("an adding marquee keeps the selection and a removing marquee subtracts from it", () => {
+	const selection = (selectionMode: CanvasDrag["selectionMode"]) => {
+		const step = canvasDragStep(
+			drag({
+				mode: "marquee",
+				start: { x: -5, y: -5 },
+				previousSelection: new Set([box.id, far.id]),
+				selectionMode,
+			}),
+			{ x: 15, y: 15 },
+			{ x: 300, y: 50 },
+			context(),
+		);
+		return step.effect.kind === "marquee" ? step.effect.selection : undefined;
+	};
+	assert.deepEqual(selection("add"), new Set([box.id, far.id]));
+	assert.deepEqual(selection("remove"), new Set([far.id]));
+	assert.deepEqual(selection("replace"), new Set([box.id]));
+});
+
 test("a marquee back under the threshold restores the selection it started with", () => {
 	const previousSelection = new Set([far.id]);
 	assert.deepEqual(
 		canvasDragStep(
-			drag({ mode: "marquee", additive: true, previousSelection }),
+			drag({ mode: "marquee", selectionMode: "add", previousSelection }),
 			{ x: 0, y: 0 },
 			{ x: 101, y: 101 },
 			context(),

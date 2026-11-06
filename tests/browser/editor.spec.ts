@@ -191,6 +191,46 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 	expect(errors).toEqual([]);
 });
 
+test("Ctrl adds to the selection and Ctrl + Shift removes from it", async ({
+	page,
+}) => {
+	const centers = [g(30), g(64), g(98)];
+	for (const [index, x] of centers.entries()) {
+		await createShape(page, "Rectangle", x, g(60));
+		await expect
+			.poll(async () => (await nonPinState(page)).shapes.length)
+			.toBe(index + 1);
+	}
+	const selection = async () =>
+		(await nonPinState(page)).shapes.map((shape) => shape.selected);
+
+	await clickAt(page, centers[0], g(60));
+	await page.keyboard.down("Control");
+	await clickAt(page, centers[2], g(60));
+	await expect.poll(selection).toEqual([true, false, true]);
+	await page.screenshot({ path: "/tmp/ecad-ctrl-selection.png" });
+	await clickAt(page, centers[2], g(60));
+	await expect.poll(selection).toEqual([true, false, true]);
+
+	await page.keyboard.down("Shift");
+	await clickAt(page, centers[0], g(60));
+	await expect.poll(selection).toEqual([false, false, true]);
+	await clickAt(page, centers[1], g(60));
+	await expect.poll(selection).toEqual([false, false, true]);
+	await page.keyboard.up("Shift");
+
+	await dragTo(page, [g(10), g(40)], [g(80), g(80)]);
+	await expect.poll(selection).toEqual([true, true, true]);
+	await page.keyboard.down("Shift");
+	await dragTo(page, [g(44), g(40)], [g(120), g(80)]);
+	await expect.poll(selection).toEqual([true, false, false]);
+	await page.keyboard.up("Shift");
+	await page.keyboard.up("Control");
+	expect((await nonPinState(page)).shapes.map((shape) => shape.x)).toEqual(
+		centers.map((x) => expect.closeTo(x, 4)),
+	);
+});
+
 test("wire clicks commit orthogonal segments and pointer release keeps the preview", async ({
 	page,
 }) => {
