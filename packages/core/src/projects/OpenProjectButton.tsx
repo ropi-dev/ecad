@@ -4,10 +4,14 @@ import { DropdownMenu } from "radix-ui";
 import { useState } from "react";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import {
+	sidebarMenuContent,
+	sidebarMenuItem,
+	sidebarMenuLabel,
+	useReportActive,
+} from "#/projects/sidebarMenu.ts";
 import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
 
-const item =
-	"flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-xs outline-none data-[highlighted]:bg-white/10 data-[highlighted]:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-40";
 const className = `${workspaceActionClassName} text-[#e8b77e] data-[state=open]:bg-white/10`;
 
 const projectLabel = (name: string) =>
@@ -18,7 +22,12 @@ const projectLabel = (name: string) =>
  * button opens the folder picker directly. The web app keeps its projects in
  * browser storage, so the button lists them in a menu.
  */
-export function OpenProjectButton() {
+export function OpenProjectButton({
+	onActiveChange,
+}: {
+	/** Reports whether the project menu or the save prompt is open. */
+	onActiveChange?: (active: boolean) => void;
+}) {
 	const project = useProjectSelection(
 		({ busy, list, mode, open, project, save }) => ({
 			busy,
@@ -34,12 +43,17 @@ export function OpenProjectButton() {
 	const [listError, setListError] = useState("");
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [saveError, setSaveError] = useState("");
+	const [menuOpen, setMenuOpen] = useState(false);
+	useReportActive(menuOpen || confirmOpen, onActiveChange);
 	if (!project) return null;
 
 	if (project.mode === "web")
 		return (
 			<DropdownMenu.Root
+				open={menuOpen}
+				modal={false}
 				onOpenChange={(open) => {
+					setMenuOpen(open);
 					if (!open) return;
 					setListError("");
 					void project
@@ -69,13 +83,13 @@ export function OpenProjectButton() {
 						aria-label="Open project"
 						sideOffset={6}
 						collisionPadding={12}
-						className="z-50 max-h-80 min-w-48 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-1 text-[#c7d0dc] shadow-[0_8px_32px_#0008]"
+						className={`${sidebarMenuContent} max-h-80`}
 					>
-						<DropdownMenu.Label className="px-3 py-2 text-xs text-[#98a4b6]">
+						<DropdownMenu.Label className={sidebarMenuLabel}>
 							Open project
 						</DropdownMenu.Label>
 						{projects === null ? (
-							<output className="block px-3 py-2 text-xs text-[#98a4b6]">
+							<output className="block px-2 py-2 text-xs text-[#98a4b6]">
 								Loading projects...
 							</output>
 						) : (
@@ -84,7 +98,7 @@ export function OpenProjectButton() {
 								return (
 									<DropdownMenu.Item
 										key={name}
-										className={item}
+										className={sidebarMenuItem}
 										aria-current={current || undefined}
 										onSelect={() => {
 											if (!current) void project.open(name);
@@ -101,12 +115,12 @@ export function OpenProjectButton() {
 							})
 						)}
 						{projects?.length === 0 && !listError && (
-							<p className="px-3 py-2 text-xs text-[#98a4b6]">
+							<p className="px-2 py-2 text-xs text-[#98a4b6]">
 								No saved projects
 							</p>
 						)}
 						{listError && (
-							<p role="alert" className="px-3 py-2 text-xs text-[#edc49a]">
+							<p role="alert" className="px-2 py-2 text-xs text-[#edc49a]">
 								{listError}
 							</p>
 						)}

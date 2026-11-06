@@ -49,6 +49,7 @@ import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import { SaveProjectButton } from "#/projects/SaveProjectButton.tsx";
+import { sidebarMenuContent, sidebarMenuItem } from "#/projects/sidebarMenu.ts";
 import {
 	useWorkspaceControls,
 	workspaceActionClassName,
@@ -67,8 +68,6 @@ const CreateFileDialog = lazy(() =>
 const focus =
 	"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#e8b77e]";
 const button = `inline-flex h-7 items-center justify-center gap-1.5 rounded text-[11px] text-[#98a4b6] hover:bg-white/10 hover:text-white disabled:opacity-40 ${focus}`;
-const menuItem =
-	"flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-xs outline-none data-[highlighted]:bg-white/10 data-[highlighted]:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-40";
 const importTypes = [
 	["kicad", "KiCad schematic", CircuitBoard, ".kicad_sch"],
 	["symbol", "symbol", CircuitBoard, ".ecadsym,.json"],
@@ -146,13 +145,27 @@ export function ProjectFilesSidebar({
 		"drawing" | "symbol" | "circuit" | null
 	>(null);
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
-	const open =
-		pinned ||
-		hovered ||
-		focused ||
-		touchOpen ||
-		addMenuOpen ||
-		creatingFile !== null;
+	const [openMenuActive, setOpenMenuActive] = useState(false);
+	const [projectMenuActive, setProjectMenuActive] = useState(false);
+	// Menus and dialogs opened from the sidebar are portaled outside of it.
+	const overlayOpen =
+		addMenuOpen || creatingFile !== null || openMenuActive || projectMenuActive;
+	const open = pinned || hovered || focused || touchOpen || overlayOpen;
+	useEffect(() => {
+		if (overlayOpen) return;
+		// A menu or dialog closing under the pointer leaves no pointerleave
+		// behind, so the next mouse move decides whether the sidebar is hovered.
+		const sync = (event: PointerEvent) => {
+			if (event.pointerType !== "mouse") return;
+			document.removeEventListener("pointermove", sync, true);
+			setHovered(
+				event.target instanceof Node &&
+					!!sidebarRef.current?.contains(event.target),
+			);
+		};
+		document.addEventListener("pointermove", sync, true);
+		return () => document.removeEventListener("pointermove", sync, true);
+	}, [overlayOpen]);
 	const togglePin = useCallback(() => {
 		if (
 			document.activeElement instanceof HTMLElement &&
@@ -182,7 +195,7 @@ export function ProjectFilesSidebar({
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [togglePin]);
 	useEffect(() => {
-		if (!touchOpen || pinned || addMenuOpen || creatingFile) return;
+		if (!touchOpen || pinned || overlayOpen) return;
 		const dismiss = (event: PointerEvent) => {
 			if (
 				!(event.target instanceof Node) ||
@@ -200,7 +213,7 @@ export function ProjectFilesSidebar({
 		};
 		document.addEventListener("pointerdown", dismiss, true);
 		return () => document.removeEventListener("pointerdown", dismiss, true);
-	}, [touchOpen, pinned, addMenuOpen, creatingFile]);
+	}, [touchOpen, pinned, overlayOpen]);
 	const editorLink = useRef<HTMLAnchorElement>(null);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
@@ -411,7 +424,7 @@ export function ProjectFilesSidebar({
 					setFocused(false);
 			}}
 			onKeyDown={(event) => {
-				if (event.key === "Escape" && !addMenuOpen && !creatingFile) {
+				if (event.key === "Escape" && !overlayOpen) {
 					(document.activeElement as HTMLElement)?.blur();
 					setFocused(false);
 					setHovered(false);
@@ -534,12 +547,12 @@ export function ProjectFilesSidebar({
 									onCloseAutoFocus={(event) => {
 										if (creatingFile) event.preventDefault();
 									}}
-									className="pointer-events-auto z-50 min-w-48 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-lg border border-[#414955] bg-[#191c22] p-1 text-[#c7d0dc] shadow-[0_8px_32px_#0008]"
+									className={sidebarMenuContent}
 								>
 									{(["drawing", "symbol", "circuit"] as const).map((kind) => (
 										<DropdownMenu.Item
 											key={kind}
-											className={menuItem}
+											className={sidebarMenuItem}
 											disabled={busy}
 											onSelect={() => setCreatingFile(kind)}
 										>
@@ -560,9 +573,9 @@ export function ProjectFilesSidebar({
 					aria-label="Workspaces"
 					className="grid shrink-0 grid-cols-4 gap-2 border-b border-white/10 p-3"
 				>
-					<OpenProjectButton />
+					<OpenProjectButton onActiveChange={setOpenMenuActive} />
 					<SaveProjectButton />
-					<ProjectMenu />
+					<ProjectMenu onActiveChange={setProjectMenuActive} />
 					{workspaceControls?.editor ? (
 						workspaceControls.editor.enableMcp ? (
 							<Suspense
