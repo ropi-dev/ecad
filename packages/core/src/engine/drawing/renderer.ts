@@ -20,6 +20,11 @@ import type {
 } from "#/drawing/display.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
+import {
+	createRoundGeometry,
+	createRoundMaterial,
+	isRoundGeometry,
+} from "#/engine/drawing/roundGeometry.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { createTextAtlas, createTextMaterial } from "#/engine/drawing/text.ts";
 import { createWorksheetFromDisplay } from "#/engine/drawing/worksheet.ts";
@@ -172,7 +177,9 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				cached.source = display.geometry;
 				return cached.value;
 			}
-			const geometry = createShapeGeometry(display.geometry);
+			const geometry =
+				(!uv && createRoundGeometry(display.geometry)) ||
+				createShapeGeometry(display.geometry);
 			if (uv) {
 				const coordinates = geometry.getAttribute("uv");
 				const [left, bottom, right, top] = uv;
@@ -193,31 +200,29 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			new Vector3(0.5, 0.5, 0),
 			new Vector3(-0.5, 0.5, 0),
 		]);
-		const colors = Object.fromEntries(
-			Object.entries(darkSchematicTheme.appearance).map(
-				([appearance, color]) => [
-					appearance,
-					own(() => new MeshBasicMaterial({ color, depthTest: false })),
-				],
-			),
-		) as Record<DrawingAppearance, MeshBasicMaterial>;
-		const halos = Object.fromEntries(
-			Object.entries(darkSchematicTheme.appearance).map(
-				([appearance, color]) => [
-					appearance,
-					own(
-						() =>
-							new MeshBasicMaterial({
-								color,
-								transparent: true,
-								opacity: 0.6,
-								depthTest: false,
-								depthWrite: false,
-							}),
-					),
-				],
-			),
-		) as Record<DrawingAppearance, MeshBasicMaterial>;
+		const palette = (create: (color: string) => MeshBasicMaterial) =>
+			Object.fromEntries(
+				Object.entries(darkSchematicTheme.appearance).map(
+					([appearance, color]) => [appearance, own(() => create(color))],
+				),
+			) as Record<DrawingAppearance, MeshBasicMaterial>;
+		const colors = palette(
+			(color) => new MeshBasicMaterial({ color, depthTest: false }),
+		);
+		const halos = palette(
+			(color) =>
+				new MeshBasicMaterial({
+					color,
+					transparent: true,
+					opacity: 0.6,
+					depthTest: false,
+					depthWrite: false,
+				}),
+		);
+		const rounds = palette((color) => createRoundMaterial({ color }));
+		const roundHalos = palette((color) =>
+			createRoundMaterial({ color, opacity: 0.6 }),
+		);
 		const selection = own(
 			() =>
 				new LineBasicMaterial({
@@ -228,6 +233,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const materialFor = (
 			display: DisplayShape,
 			entry: KeyResources,
+			round: boolean,
 		): Material => {
 			const color = colors[display.appearance];
 			if (display.text === undefined || display.pinLabel) {
@@ -235,7 +241,8 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				entry.text = undefined;
 			}
 			if (display.geometry.kind === "pin-halo")
-				return halos[display.appearance];
+				return (round ? roundHalos : halos)[display.appearance];
+			if (round) return rounds[display.appearance];
 			if (display.text === undefined) return color;
 			if (display.pinLabel) {
 				const atlasEntry = pinAtlas?.entries.get(display.text);
@@ -299,7 +306,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				? (resources.get(display.key) ?? retain(display.key))
 				: retain(display.key);
 			const geometry = geometryFor(display, entry);
-			const material = materialFor(display, entry);
+			const material = materialFor(display, entry, isRoundGeometry(geometry));
 			let object = node?.object;
 			if (!object || (material.transparent && object.id <= order.last))
 				object = new Mesh(geometry, material);

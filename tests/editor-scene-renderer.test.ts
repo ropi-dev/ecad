@@ -368,3 +368,29 @@ test("document displays keep identity for unchanged shapes and selections", () =
 	assert.notEqual(reselected.shapes[11], second.shapes[11]);
 	assert.equal(reselected.shapes[0], second.shapes[0]);
 });
+
+test("an nRF54L15 QFN-52 symbol with all 53 pins open draws in a few hundred triangles", () => {
+	const display = buildStaticDisplay(
+		[createSymbol(1, part("nrf54l15-qgaa"), { x: 0, y: 0 })],
+		new Set(),
+	);
+	assert.equal(display.halos.length, 53);
+	const renderer = createDrawingRenderer(null);
+	const root = new Group();
+	try {
+		renderer.update(root, { ...display, previews: [] });
+		let triangles = 0;
+		root.traverse((object) => {
+			if (!(object instanceof Mesh)) return;
+			const geometry = object.geometry as BufferGeometry;
+			triangles +=
+				(geometry.getIndex()?.count ??
+					geometry.getAttribute("position").count) / 3;
+		});
+		// One triangle for each pin with its lead, one for each halo, and two
+		// for each label. Tessellated circles and caps took about 7,800.
+		assert.ok(triangles < 400, `${triangles} triangles`);
+	} finally {
+		renderer.dispose();
+	}
+});
