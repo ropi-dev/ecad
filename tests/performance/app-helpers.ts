@@ -27,11 +27,13 @@ export const percentile = (values: number[], percent = 0.95) =>
 
 export const metric = (value: Report, name: string) => value.metrics[name]?.p95;
 
-export const ready = async (page: Page) => {
+export const ready = async (page: Page, timeout?: number) => {
 	await page.mouse.move(900, 50);
 	await page.waitForFunction(
 		() =>
 			window.__ecadPerformance?.snapshot().metrics["app.ready"]?.count === 1,
+		undefined,
+		{ timeout },
 	);
 };
 

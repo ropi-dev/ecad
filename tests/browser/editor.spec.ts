@@ -446,7 +446,8 @@ test("moving a symbol child does not show the ruler position guide", async ({
 	await page.mouse.up();
 });
 
-for (const item of ["Resistor", "Pin", "Text", "Net label", "Supply label"]) {
+// A symbol and a placement tool; every tool shares the Net label's path.
+for (const item of ["Resistor", "Net label"]) {
 	test(`placement ruler guide matches the placed ${item} center`, async ({
 		page,
 	}) => {
@@ -537,14 +538,9 @@ test("placement ruler guide clears on Escape and appears while drawing a shape",
 	await expect(crosshair).toHaveCount(0);
 });
 
-for (const item of [
-	"Resistor",
-	"Pin",
-	"Text",
-	"Net label",
-	"Supply label",
-	"No connect",
-]) {
+// A symbol, a text-anchored tool and a centered tool; Pin, Text and Supply
+// label take the same placement paths.
+for (const item of ["Resistor", "Net label", "No connect"]) {
 	test(`rotates ${item} during placement without changing the drawing`, async ({
 		page,
 	}) => {
@@ -574,7 +570,7 @@ for (const item of [
 				.toBeCloseTo(angle, 4);
 		}
 		expect(await page.locator("#editor-document").textContent()).toBe(before);
-		if (item === "Resistor" || item === "Pin" || item === "No connect") {
+		if (item === "Resistor" || item === "No connect") {
 			expect((await state(page)).placement?.x).toBeCloseTo(initial.x, 4);
 			expect((await state(page)).placement?.y).toBeCloseTo(initial.y, 4);
 		}

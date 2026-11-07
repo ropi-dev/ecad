@@ -182,6 +182,8 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 		net?.id ?? (selection ? pinNets.get(selection.id)?.id : undefined);
 
 	usePruneToSnapshot(snapshot, {
+		selection,
+		checkedPins,
 		setDrag,
 		setConnectionDrag,
 		setCheckedPins,

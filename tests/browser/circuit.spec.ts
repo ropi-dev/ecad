@@ -49,6 +49,33 @@ async function createCircuit(page: Page) {
 	await closeProjectFiles(page);
 }
 
+/** Holds the next project save open until `window.releaseSave()` is called. */
+async function holdNextSave(page: Page) {
+	await page.evaluate(() => {
+		const state = window as typeof window & {
+			savePending?: boolean;
+			releaseSave?: () => void;
+		};
+		state.savePending = false;
+		const original = FileSystemFileHandle.prototype.createWritable;
+		let hold = true;
+		FileSystemFileHandle.prototype.createWritable = async function (options) {
+			const writable = await original.call(this, options);
+			if (this.name === ".ecadprj" && hold) {
+				hold = false;
+				state.savePending = true;
+				await new Promise<void>((resolve) => {
+					state.releaseSave = () => {
+						FileSystemFileHandle.prototype.createWritable = original;
+						resolve();
+					};
+				});
+			}
+			return writable;
+		};
+	});
+}
+
 async function pinCenter(page: Page, name: string) {
 	const box = await page
 		.getByRole("button", { name: `Pin ${name}`, exact: true })
@@ -144,7 +171,7 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
 
-test("an autosave completing during a pin drag preserves the connection gesture", async ({
+test("an autosave completing during a pin drag preserves the connection gesture and selection", async ({
 	page,
 }) => {
 	await createCircuit(page);
@@ -158,28 +185,7 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 		"data-pending-changes",
 		"false",
 	);
-	await page.evaluate(() => {
-		const state = window as typeof window & {
-			savePending?: boolean;
-			releaseSave?: () => void;
-		};
-		const original = FileSystemFileHandle.prototype.createWritable;
-		let hold = true;
-		FileSystemFileHandle.prototype.createWritable = async function (options) {
-			const writable = await original.call(this, options);
-			if (this.name === ".ecadprj" && hold) {
-				hold = false;
-				state.savePending = true;
-				await new Promise<void>((resolve) => {
-					state.releaseSave = () => {
-						FileSystemFileHandle.prototype.createWritable = original;
-						resolve();
-					};
-				});
-			}
-			return writable;
-		};
-	});
+	await holdNextSave(page);
 	await placeComponent(page, "Resistor", { x: 650, y: 400 });
 	await page.waitForFunction(
 		() => (window as typeof window & { savePending?: boolean }).savePending,
@@ -198,11 +204,33 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	await expect
 		.poll(async () => (await state(page)).circuit.nets.length)
 		.toBe(1);
+	await holdNextSave(page);
 	await dragPins(page, "R1.2", "R2.2");
 	await page.mouse.up();
 	await expect
 		.poll(async () => (await state(page)).circuit.nets.length)
 		.toBe(2);
+	await page.waitForFunction(
+		() => (window as typeof window & { savePending?: boolean }).savePending,
+	);
+	// A connection selected while a save is held stays selected when the save
+	// lands, so Delete still disconnects it.
+	const connection = page.getByRole("button", {
+		name: "Connection R1.2",
+		exact: true,
+	});
+	await connection.press("Enter");
+	await expect(connection).toHaveAttribute("aria-pressed", "true");
+	await page.evaluate(() =>
+		(window as typeof window & { releaseSave: () => void }).releaseSave(),
+	);
+	await expect(page.locator(".circuit-editor")).toHaveAttribute(
+		"data-pending-changes",
+		"false",
+	);
+	await expect(connection).toHaveAttribute("aria-pressed", "true");
+	await page.keyboard.press("Delete");
+	await expect(connection).toHaveCount(0);
 	await expect(page.locator(".circuit-editor")).toHaveAttribute(
 		"data-pending-changes",
 		"false",
