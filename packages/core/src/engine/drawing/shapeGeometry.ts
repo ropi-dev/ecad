@@ -14,6 +14,35 @@ import type { DrawingGeometry } from "#/drawing/display.ts";
 import { createLineStyleGeometry } from "#/engine/drawing/lineStyleGeometry.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
+export interface Capsule {
+	ax: number;
+	ay: number;
+	bx: number;
+	by: number;
+	radius: number;
+	start: number;
+	count: number;
+}
+
+export interface CapsuleData {
+	capsules: Capsule[];
+	scaleX: number;
+	scaleY: number;
+}
+
+export const capsuleData = (geometry: BufferGeometry) =>
+	geometry.userData.capsules as CapsuleData | undefined;
+
+const isPlainStroke = (shape: DrawingGeometry) =>
+	(shape.kind === "wire" || shape.kind === "line") &&
+	(!shape.lineStyle || shape.lineStyle === "solid") &&
+	!(shape.kind === "wire" && (shape.bridges?.length || shape.gaps?.length)) &&
+	shape.width > 0 &&
+	shape.lineWidth > 0;
+
+const indexCount = (geometry: BufferGeometry) =>
+	geometry.getIndex()?.count ?? geometry.getAttribute("position").count;
+
 const hasVertices = (geometry: BufferGeometry) =>
 	(geometry.getAttribute("position")?.count ?? 0) > 0;
 
@@ -66,26 +95,53 @@ export function mergeShapeGeometries(
 /** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
-		const children = shape.children
-			.filter((child) => child.kind !== "text")
-			.map((child) =>
-				createShapeGeometry(child)
-					.scale(
-						child.width,
-						child.kind === "wire" || child.kind === "line"
-							? child.lineWidth
-							: child.height,
-						1,
-					)
-					.rotateZ(child.rotation)
-					.translate(child.x, child.y, 0),
-			);
+		const drawn = shape.children.filter((child) => child.kind !== "text");
+		const children = drawn.map((child) =>
+			createShapeGeometry(child)
+				.scale(
+					child.width,
+					child.kind === "wire" || child.kind === "line"
+						? child.lineWidth
+						: child.height,
+					1,
+				)
+				.rotateZ(child.rotation)
+				.translate(child.x, child.y, 0),
+		);
 		try {
-			return mergeShapeGeometries(children, shape.kind).scale(
+			const merged = mergeShapeGeometries(children, shape.kind).scale(
 				1 / shape.width,
 				1 / shape.height,
 				1,
 			);
+			const capsules: Capsule[] = [];
+			let start = 0;
+			for (const [index, child] of drawn.entries()) {
+				const geometry = children[index];
+				if (!hasVertices(geometry)) continue;
+				const count = indexCount(geometry);
+				if (isPlainStroke(child)) {
+					const dx = (Math.cos(child.rotation) * child.width) / 2;
+					const dy = (Math.sin(child.rotation) * child.width) / 2;
+					capsules.push({
+						ax: child.x - dx,
+						ay: child.y - dy,
+						bx: child.x + dx,
+						by: child.y + dy,
+						radius: child.lineWidth / 2,
+						start,
+						count,
+					});
+				}
+				start += count;
+			}
+			if (capsules.length && start === indexCount(merged))
+				merged.userData.capsules = {
+					capsules,
+					scaleX: 1 / shape.width,
+					scaleY: 1 / shape.height,
+				} satisfies CapsuleData;
+			return merged;
 		} finally {
 			for (const child of children) child.dispose();
 		}
@@ -204,7 +260,28 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		outline.absarc(-halfLength, 0, radius, Math.PI / 2, Math.PI * 1.5, false);
 		outline.closePath();
 		// Build caps in millimeters before normalizing to avoid stretching them.
-		return new ShapeGeometry(outline).scale(1 / width, 1 / lineWidth, 1);
+		const geometry = new ShapeGeometry(outline).scale(
+			1 / width,
+			1 / lineWidth,
+			1,
+		);
+		if (isPlainStroke(shape))
+			geometry.userData.capsules = {
+				capsules: [
+					{
+						ax: -halfLength,
+						ay: 0,
+						bx: halfLength,
+						by: 0,
+						radius,
+						start: 0,
+						count: indexCount(geometry),
+					},
+				],
+				scaleX: 1 / width,
+				scaleY: 1 / lineWidth,
+			} satisfies CapsuleData;
+		return geometry;
 	}
 	if (shape.kind === "no-connect") {
 		const { width, height, lineWidth } = shape;

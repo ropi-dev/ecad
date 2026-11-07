@@ -49,68 +49,45 @@ interface ElectricalNode {
 interface SpatialEntry extends Bounds {
 	index: number;
 }
-interface SpatialTree extends Bounds {
-	entries?: SpatialEntry[];
-	left?: SpatialTree;
-	right?: SpatialTree;
-}
 
-function spatialTree(entries: SpatialEntry[]): SpatialTree | undefined {
-	if (!entries.length) return;
-	const bounds = entries.reduce(
-		(bounds, entry) => ({
-			minX: Math.min(bounds.minX, entry.minX),
-			maxX: Math.max(bounds.maxX, entry.maxX),
-			minY: Math.min(bounds.minY, entry.minY),
-			maxY: Math.max(bounds.maxY, entry.maxY),
-		}),
-		{ minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity },
-	);
-	if (entries.length <= 8) return { ...bounds, entries };
-	const axis =
-		bounds.maxX - bounds.minX >= bounds.maxY - bounds.minY ? "X" : "Y";
-	entries.sort(
-		(a, b) =>
-			a[`min${axis}`] / 2 +
-			a[`max${axis}`] / 2 -
-			b[`min${axis}`] / 2 -
-			b[`max${axis}`] / 2,
-	);
-	const middle = Math.floor(entries.length / 2);
-	return {
-		...bounds,
-		left: spatialTree(entries.slice(0, middle)),
-		right: spatialTree(entries.slice(middle)),
-	};
-}
+const CELL = 5;
+const cellOf = (value: number) => Math.floor(value / CELL);
+const cellKey = (x: number, y: number) => x * 1e6 + y;
 
-function queryPoint(
-	tree: SpatialTree | undefined,
-	point: Point,
-	visit: (index: number) => void,
-): void {
-	if (
-		!tree ||
-		point.x < tree.minX - connectionTolerance ||
-		point.x > tree.maxX + connectionTolerance ||
-		point.y < tree.minY - connectionTolerance ||
-		point.y > tree.maxY + connectionTolerance
-	)
-		return;
-	if (tree.entries) {
-		for (const entry of tree.entries) {
-			if (
-				point.x >= entry.minX - connectionTolerance &&
-				point.x <= entry.maxX + connectionTolerance &&
-				point.y >= entry.minY - connectionTolerance &&
-				point.y <= entry.maxY + connectionTolerance
-			)
-				visit(entry.index);
+function spatialIndex(entries: readonly SpatialEntry[]) {
+	const cells = new Map<number, SpatialEntry[]>();
+	const wide: SpatialEntry[] = [];
+	for (const entry of entries) {
+		const left = cellOf(entry.minX - connectionTolerance);
+		const right = cellOf(entry.maxX + connectionTolerance);
+		const bottom = cellOf(entry.minY - connectionTolerance);
+		const top = cellOf(entry.maxY + connectionTolerance);
+		if (
+			!Number.isFinite(left + right + bottom + top) ||
+			(right - left + 1) * (top - bottom + 1) > 64
+		) {
+			wide.push(entry);
+			continue;
 		}
-	} else {
-		queryPoint(tree.left, point, visit);
-		queryPoint(tree.right, point, visit);
+		for (let x = left; x <= right; x++)
+			for (let y = bottom; y <= top; y++) {
+				const key = cellKey(x, y);
+				const cell = cells.get(key);
+				if (cell) cell.push(entry);
+				else cells.set(key, [entry]);
+			}
 	}
+	const contains = (entry: SpatialEntry, point: Point) =>
+		point.x >= entry.minX - connectionTolerance &&
+		point.x <= entry.maxX + connectionTolerance &&
+		point.y >= entry.minY - connectionTolerance &&
+		point.y <= entry.maxY + connectionTolerance;
+	return (point: Point, visit: (index: number) => void) => {
+		const cell = cells.get(cellKey(cellOf(point.x), cellOf(point.y)));
+		if (cell)
+			for (const entry of cell) if (contains(entry, point)) visit(entry.index);
+		for (const entry of wide) if (contains(entry, point)) visit(entry.index);
+	};
 }
 
 export function electricalNets(
@@ -167,7 +144,7 @@ export function electricalNets(
 					names.set(node.name, index);
 				}
 			}
-			const tree = spatialTree(
+			const query = spatialIndex(
 				nodes.map((node, index) => ({
 					index,
 					minX: Math.min(node.point.x, node.end?.x ?? node.point.x),
@@ -178,7 +155,7 @@ export function electricalNets(
 			);
 			for (const [index, node] of nodes.entries()) {
 				for (const point of node.end ? [node.point, node.end] : [node.point]) {
-					queryPoint(tree, point, (otherIndex) => {
+					query(point, (otherIndex) => {
 						if (otherIndex === index) return;
 						const other = nodes[otherIndex];
 						if (

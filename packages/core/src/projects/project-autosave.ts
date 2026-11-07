@@ -1,4 +1,5 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import { replaceDrawingShapes } from "#/projects/drawing-refresh.ts";
@@ -120,22 +121,28 @@ export function createProjectAutosave(
 			throw cause;
 		}
 		state.synchronizing = true;
-		if (state.store.getSnapshot().shapes === mainShapes)
-			replaceDrawingShapes(
-				state.store,
-				document.shapes,
-				externalDrawings.has(primaryPcbId),
-			);
+		const savedMainShapes =
+			state.store.getSnapshot().shapes === mainShapes
+				? replaceDrawingShapes(
+						state.store,
+						document.shapes,
+						externalDrawings.has(primaryPcbId),
+					)
+				: document.shapes;
+		const savedDrawingShapes = new Map<string, EditorShape[]>();
 		for (const drawing of document.drawings ?? []) {
 			const target = drawingDocuments.get(drawing.id);
 			if (
 				target &&
 				target.store.getSnapshot().shapes === drawingEdits.get(drawing.id)
 			)
-				replaceDrawingShapes(
-					target.store,
-					drawing.shapes,
-					externalDrawings.has(drawing.id),
+				savedDrawingShapes.set(
+					drawing.id,
+					replaceDrawingShapes(
+						target.store,
+						drawing.shapes,
+						externalDrawings.has(drawing.id),
+					),
 				);
 		}
 		const synchronizedCircuits = new Map<string, CircuitFile>();
@@ -158,7 +165,7 @@ export function createProjectAutosave(
 		}
 
 		state.synchronizing = false;
-		state.savedMainShapes = document.shapes;
+		state.savedMainShapes = savedMainShapes;
 		for (const file of document.circuits ?? []) {
 			const edit = circuitDocuments.get(file.circuit.id);
 			if (edit)
@@ -170,7 +177,8 @@ export function createProjectAutosave(
 		}
 		for (const file of document.drawings ?? []) {
 			const edit = drawingDocuments.get(file.id);
-			if (edit) edit.savedShapes = file.shapes;
+			if (edit)
+				edit.savedShapes = savedDrawingShapes.get(file.id) ?? file.shapes;
 		}
 		state.symbols = document.symbols;
 		state.libraries = document.symbolLibraries;

@@ -2,6 +2,7 @@ export {
 	connectTransformedTerminals,
 	isUnsafeMove,
 	moveShapes,
+	prepareMove,
 	UNSAFE_MOVE_MESSAGE,
 	withFullRouting,
 } from "#/drawing/connected-wire-transforms.ts";

@@ -291,6 +291,10 @@ export const budgets = {
 		scriptBytes: 3_000_000,
 		frameP95Ms: 50,
 	},
+	"editor-frame-rate": {
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+	},
 	"editor-dense-drag": {
 		interactionP95Ms: 6000,
 		dragStepP95Ms: 600,

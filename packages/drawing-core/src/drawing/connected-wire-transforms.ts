@@ -337,6 +337,13 @@ function selectionContext(
 	return { graph, context };
 }
 
+export function prepareMove(
+	shapes: readonly EditorShape[],
+	allShapes: readonly EditorShape[],
+) {
+	if (shapes.length) selectionContext(shapes, allShapes);
+}
+
 function createSelectionContext(
 	graph: WireGraph,
 	shapes: readonly EditorShape[],

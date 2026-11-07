@@ -1,9 +1,5 @@
 import * as Context from "effect/Context";
-import {
-	createHistory,
-	type History,
-	pruneHistory,
-} from "#/drawing/history.ts";
+import { type History, historyOf, pruneHistory } from "#/drawing/history.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
 import { freeze } from "#/lib/freeze.ts";
 
@@ -36,7 +32,7 @@ export function createDrawingStore(
 ): DrawingStoreService {
 	return restoreDrawingStore({
 		shapes,
-		history: createHistory<DrawingDocument>(
+		history: historyOf<DrawingDocument>(
 			{ shapes },
 			shapes.length ? "Loaded drawing" : "Empty drawing",
 		),

@@ -40,9 +40,26 @@ export function selectionSize(shape: EditorShape) {
 	};
 }
 
+type SelectionFrame = Point & {
+	width: number;
+	height: number;
+	rotation: number;
+};
+
+const selectionFrames = new WeakMap<EditorSymbol, Readonly<SelectionFrame>>();
+
 export function symbolSelectionFrame(
 	symbol: EditorSymbol,
-): Point & { width: number; height: number; rotation: number } {
+): Readonly<SelectionFrame> {
+	let frame = selectionFrames.get(symbol);
+	if (!frame) {
+		frame = Object.freeze(resolveSelectionFrame(symbol));
+		selectionFrames.set(symbol, frame);
+	}
+	return frame;
+}
+
+function resolveSelectionFrame(symbol: EditorSymbol): SelectionFrame {
 	if (isBoxSymbol(symbol))
 		return {
 			...shapeCenter(symbol),
@@ -76,8 +93,10 @@ function hitSymbolContent(
 	point: Point,
 	tolerance: number,
 ): boolean {
-	return [...symbolTextShapes(symbol), ...symbolShapes(symbol)].some((child) =>
-		hitShape(child, point, tolerance),
+	return (
+		symbolTextShapes(symbol).some((child) =>
+			hitShape(child, point, tolerance),
+		) || symbolShapes(symbol).some((child) => hitShape(child, point, tolerance))
 	);
 }
 

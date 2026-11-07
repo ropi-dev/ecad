@@ -32,6 +32,12 @@ import type { ViewerScene } from "#/engine/scene.ts";
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
+let batchVersions = 0;
+
+function touch(object: Object3D) {
+	object.userData.batchVersion = ++batchVersions;
+}
+
 function applyTransform(
 	object: Object3D,
 	display: DrawingTransform & { renderOrder: number },
@@ -40,6 +46,8 @@ function applyTransform(
 	object.scale.set(display.width, display.height, 1);
 	object.rotation.z = display.rotation;
 	object.renderOrder = display.renderOrder;
+	object.matrixAutoUpdate = false;
+	object.updateMatrix();
 }
 
 /** Plain display data is equal when every defined value matches. */
@@ -93,9 +101,6 @@ interface MeshNode {
 	atlas: number;
 	children: MeshNode[];
 	pinLabels: boolean;
-	/** Smallest and largest transparent object IDs in this subtree. */
-	first: number;
-	last: number;
 	outline?: LineLoop;
 }
 
@@ -293,10 +298,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const scale = new Matrix4();
 		const rotation = new Matrix4();
 		const size = new Matrix4();
-		// Three breaks transparent draw-order ties by object ID. Keeping those IDs
-		// increasing in traversal order reproduces the order of a full rebuild.
-		// Opaque ties share a material and color, so their order never shows.
-		const order = { last: -Infinity };
 		const updateNode = (
 			node: MeshNode | undefined,
 			display: DisplayShape,
@@ -308,13 +309,13 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			const geometry = geometryFor(display, entry);
 			const material = materialFor(display, entry, isRoundGeometry(geometry));
 			let object = node?.object;
-			if (!object || (material.transparent && object.id <= order.last))
-				object = new Mesh(geometry, material);
+			if (!object) object = new Mesh(geometry, material);
 			else {
 				object.geometry = geometry;
 				object.material = material;
 			}
 			object.name = display.name;
+			touch(object);
 			applyTransform(object, display);
 			if (parent?.geometry.kind === "symbol" && display.rotation !== 0) {
 				object.matrixAutoUpdate = false;
@@ -330,12 +331,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 						),
 					);
 				object.matrixWorldNeedsUpdate = true;
-			} else object.matrixAutoUpdate = true;
-			let first = Infinity;
-			let last = -Infinity;
-			if (material.transparent) {
-				first = last = object.id;
-				order.last = object.id;
 			}
 			const children = reconcile(
 				node?.children ?? [],
@@ -343,11 +338,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				display,
 			);
 			let pinLabels = display.pinLabel === true;
-			for (const child of children) {
-				first = Math.min(first, child.first);
-				last = Math.max(last, child.last);
-				pinLabels ||= child.pinLabels;
-			}
+			for (const child of children) pinLabels ||= child.pinLabels;
 			setChildren(
 				object,
 				children.map((child) => child.object),
@@ -360,8 +351,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				atlas: atlasVersion,
 				children,
 				pinLabels,
-				first,
-				last,
 				outline: node?.outline,
 			};
 		};
@@ -373,12 +362,9 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			if (
 				node?.display === display &&
 				node.parent === parent &&
-				(!node.pinLabels || node.atlas === atlasVersion) &&
-				node.first > order.last
-			) {
-				if (node.last > order.last) order.last = node.last;
+				(!node.pinLabels || node.atlas === atlasVersion)
+			)
 				return node;
-			}
 			return updateNode(node, display, parent);
 		};
 		/** Matches meshes to displays by key, reusing duplicate keys in order. */
@@ -424,6 +410,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			: [];
 		const drawing = new Group();
 		drawing.name = "editor-shapes";
+		drawing.matrixAutoUpdate = false;
 		const groups = (
 			[
 				["terminals", "editor-wire-terminals"],
@@ -434,14 +421,15 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		).map(([section, name]) => {
 			const group = new Group();
 			group.name = name;
+			group.matrixAutoUpdate = false;
 			return { section, group, nodes: [] as MeshNode[] };
 		});
 		const previewGroup = new Group();
 		previewGroup.name = "editor-previews";
+		previewGroup.matrixAutoUpdate = false;
 		let shapeNodes: MeshNode[] = [];
 		let previewNodes: MeshNode[] = [];
 		let rendered: DrawingDisplay | undefined;
-		let staticLast = -Infinity;
 		lifetime.addFinalizer(() => {
 			for (const node of [
 				...shapeNodes,
@@ -514,6 +502,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 					continue;
 				}
 				node.outline ??= new LineLoop(frame, selection);
+				touch(node.outline);
 				applyTransform(node.outline, outline);
 				children.push(node.outline);
 			}
@@ -543,11 +532,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 					const atlas = atlasVersion;
 					if (staticChanged || previewsChanged) updatePinAtlas(display);
 					const atlasChanged = atlas !== atlasVersion;
-					order.last = -Infinity;
-					if (staticChanged || atlasChanged) {
-						updateStatic(display);
-						staticLast = order.last;
-					} else order.last = staticLast;
+					if (staticChanged || atlasChanged) updateStatic(display);
 					if (staticChanged || previewsChanged || atlasChanged) {
 						previewNodes = reconcile(previewNodes, display.previews, undefined);
 						setChildren(

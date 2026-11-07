@@ -297,10 +297,10 @@ test("a save that lands during a drag keeps it, and the drag commits with workin
 		initial.map((shape) => (shape.id === moved.id ? moved : shape)),
 	);
 	await saving;
-	assert.notEqual(
+	assert.equal(
 		store.getSnapshot().shapes,
 		initial,
-		"the save swapped in its own copy of the shapes",
+		"the save kept the store's equal shapes",
 	);
 	assert.equal(cancelled, 0);
 	assert.notEqual(editor.getState().draft, null);

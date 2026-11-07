@@ -275,10 +275,12 @@ test("symbol text resolves reference and value from each instance", () => {
 		symbolTextShapes(first).map((label) => label.text),
 		["R1", "10 kΩ"],
 	);
-	first.attributes.reference = "R_INPUT";
-	first.attributes.value = "47 kΩ";
+	const edited = {
+		...first,
+		attributes: { ...first.attributes, reference: "R_INPUT", value: "47 kΩ" },
+	};
 	assert.deepEqual(
-		symbolTextShapes(first).map((label) => label.text),
+		symbolTextShapes(edited).map((label) => label.text),
 		["R_INPUT", "47 kΩ"],
 	);
 	assert.deepEqual(
@@ -311,9 +313,12 @@ test("symbol text resolves reference and value from each instance", () => {
 	const rotatedLabel = symbolTextShapes(rotated)[0];
 	assert.ok(Math.abs(rotatedLabel.x - (rotated.x - moved.texts[0].y)) < 1e-10);
 	assert.ok(Math.abs(rotatedLabel.y - (rotated.y + moved.texts[0].x)) < 1e-10);
-	first.attributes.reference = "";
+	const cleared = {
+		...edited,
+		attributes: { ...edited.attributes, reference: "" },
+	};
 	assert.deepEqual(
-		symbolTextShapes(first).map((text) => text.text),
+		symbolTextShapes(cleared).map((text) => text.text),
 		["47 kΩ"],
 	);
 });

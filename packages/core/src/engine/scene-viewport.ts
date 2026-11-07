@@ -18,6 +18,7 @@ import {
 import { getSceneBounds } from "#/engine/camera.ts";
 import { capturePng } from "#/engine/capture-png.ts";
 import { create3DControls } from "#/engine/controls3d.ts";
+import { createDrawBatcher } from "#/engine/draw-batch.ts";
 import {
 	handleViewerKeyDown,
 	MAX_ZOOM,
@@ -57,6 +58,7 @@ export interface SceneViewportOptions {
 	initialCamera?: Camera;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
+	antialias?: boolean;
 	ariaLabel?: string;
 	canvasClassName?: string;
 	updateScene?: (object: Object3D) => void;
@@ -93,6 +95,7 @@ export function createSceneViewport(
 		initialCamera,
 		getFitBounds,
 		selectionEnabled = true,
+		antialias = true,
 		ariaLabel = "3D model",
 		canvasClassName = "",
 		updateScene,
@@ -121,6 +124,11 @@ export function createSceneViewport(
 		sceneChanged = true;
 		requestFrame();
 	};
+	let drawingChanged = false;
+	const scheduleDrawing = () => {
+		drawingChanged = true;
+		requestFrame();
+	};
 	const cancel = () => {
 		if (frame !== null) cancelAnimationFrame(frame);
 		frame = null;
@@ -134,7 +142,7 @@ export function createSceneViewport(
 	};
 	try {
 		const output = lifecycle.acquire(
-			() => new WebGLRenderer({ antialias: true, alpha: true, stencil: true }),
+			() => new WebGLRenderer({ antialias, alpha: true, stencil: true }),
 			(renderer) => {
 				try {
 					renderer.dispose();
@@ -160,8 +168,31 @@ export function createSceneViewport(
 						(cache) => cache.dispose(),
 					)
 				: null;
+		const batcher =
+			cameraMode === "top" && !content.hasOutlines && !selectionEnabled
+				? lifecycle.acquire(createDrawBatcher, (batcher) => batcher.dispose())
+				: null;
+		if (batcher) {
+			group.matrixAutoUpdate = false;
+			output.setTransparentSort(
+				(a, b) =>
+					a.groupOrder - b.groupOrder ||
+					a.renderOrder - b.renderOrder ||
+					b.z - a.z,
+			);
+		}
+		let batched = false;
+		const syncBatches = () => {
+			if (!batcher) return null;
+			const result = batcher.sync(group, output);
+			batched = result.batched;
+			group.visible = !batched;
+			group.matrixWorldAutoUpdate = !batched;
+			return result.damage;
+		};
 		const scene = new Scene();
 		scene.add(group, new HemisphereLight("white", "#566173", 2.5));
+		if (batcher) scene.add(batcher.object);
 		const light = new DirectionalLight("white", 3);
 		light.position.set(1, -2, 3);
 		scene.add(light);
@@ -301,17 +332,22 @@ export function createSceneViewport(
 			const started = recorder ? performance.now() : 0;
 			const changed = sceneChanged;
 			sceneChanged = false;
+			const edited = drawingChanged;
+			drawingChanged = false;
 			let shown: { x: number; y: number } | null = null;
 			let panCacheHit = false;
 			try {
 				camera.updateMatrixWorld();
+				const synced = edited && !changed && batcher !== null;
+				const damage = synced ? syncBatches() : null;
 				// Hover depends on the pointer, so only a scene without one pans.
 				const panned =
 					panCache &&
 					!changed &&
+					(!edited || (batched && damage)) &&
 					!pointer &&
 					camera instanceof OrthographicCamera
-						? panCache.pan(scene, camera, placeGrid)
+						? panCache.pan(scene, camera, placeGrid, damage ?? undefined)
 						: null;
 				const { x, y } = camera.position;
 				panCacheHit = panned !== null;
@@ -337,6 +373,9 @@ export function createSceneViewport(
 					try {
 						content.update(output, camera);
 						placeGrid(camera.position);
+						if ((changed || edited) && !synced) syncBatches();
+						if (batched)
+							batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 						output.render(scene, camera);
 						if (camera instanceof OrthographicCamera) panCache?.capture(camera);
 						else panCache?.invalidate();
@@ -387,6 +426,10 @@ export function createSceneViewport(
 				}
 			} catch (error) {
 				panCache?.invalidate();
+				group.visible = true;
+				group.matrixWorldAutoUpdate = true;
+				batched = false;
+				if (batcher) batcher.object.visible = false;
 				cancel();
 				onReady?.(false);
 				onError?.(errorMessage(error, "Unable to draw this scene."));
@@ -727,6 +770,9 @@ export function createSceneViewport(
 				// Render and copy in the same task; preserveDrawingBuffer stays disabled.
 				camera.updateMatrixWorld();
 				content.update(output, camera);
+				syncBatches();
+				if (batched)
+					batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 				// The grid is a view aid, not part of the exported picture.
 				const gridVisible = grid?.object.visible ?? false;
 				if (grid) grid.object.visible = false;
@@ -741,7 +787,8 @@ export function createSceneViewport(
 			},
 			update: (update) => {
 				update(group);
-				schedule();
+				if (batcher) scheduleDrawing();
+				else schedule();
 			},
 		};
 		resize(Math.max(element.clientWidth, 1), Math.max(element.clientHeight, 1));
@@ -763,6 +810,19 @@ export function createSceneViewport(
 				camera,
 				Math.max(element.clientHeight, 1) / initialCamera.scale,
 			);
+			schedule();
+		} else if (topView && initialCamera) {
+			const distance =
+				Math.max(element.clientHeight, 1) /
+				initialCamera.scale /
+				(2 * halfFovTangent);
+			controls.target.set(initialCamera.x, initialCamera.y, controls.target.z);
+			camera.position.set(
+				initialCamera.x,
+				initialCamera.y,
+				controls.target.z + distance,
+			);
+			controls.update();
 			schedule();
 		}
 		return runtime;

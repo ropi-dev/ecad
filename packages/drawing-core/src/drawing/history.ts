@@ -2,7 +2,7 @@ export const DRAWING_HISTORY_LIMIT = 100;
 
 const immutableValues = new WeakSet<object>();
 
-function isImmutable(
+export function isImmutable(
 	value: unknown,
 	visiting = new WeakSet<object>(),
 ): boolean {
@@ -51,6 +51,10 @@ export interface History<T> {
 }
 
 export function createHistory<T>(initial: T, label = "Start"): History<T> {
+	return historyOf(copyState(initial), label);
+}
+
+export function historyOf<T>(state: T, label = "Start"): History<T> {
 	return {
 		nodes: {
 			0: {
@@ -59,7 +63,7 @@ export function createHistory<T>(initial: T, label = "Start"): History<T> {
 				childIds: [],
 				preferredChildId: null,
 				label,
-				state: copyState(initial),
+				state,
 			},
 		},
 		currentId: 0,

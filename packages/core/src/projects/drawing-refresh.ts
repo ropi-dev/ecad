@@ -1,20 +1,11 @@
-import { sameDrawing } from "@ecad/drawing-core/commands/drawing-equality.ts";
-import {
+import { sameShape } from "@ecad/drawing-core/commands/drawing-equality.ts";
+import type {
 	createDrawingStore,
-	type DrawingSnapshot,
+	DrawingDocument,
+	DrawingSnapshot,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
+import { historyOf } from "@ecad/drawing-core/drawing/history.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-
-const savedRefreshes = new WeakSet<DrawingSnapshot>();
-
-/**
- * Whether a snapshot came from swapping in the store's own saved shapes with
- * the same content, so an editor can keep a gesture that is in progress
- * instead of treating the change as an external edit.
- */
-export function isSavedRefresh(snapshot: DrawingSnapshot) {
-	return savedRefreshes.has(snapshot);
-}
 
 /**
  * Replaces a drawing store's shapes with saved shapes without recording an
@@ -24,16 +15,30 @@ export function isSavedRefresh(snapshot: DrawingSnapshot) {
  */
 export function replaceDrawingShapes(
 	target: ReturnType<typeof createDrawingStore>,
-	shapes: EditorShape[],
+	saved: EditorShape[],
 	external: boolean,
-) {
-	if (target.getSnapshot().shapes === shapes) return;
+): EditorShape[] {
+	const currentShapes = target.getSnapshot().shapes;
+	if (currentShapes === saved) return saved;
+	const byId = new Map(currentShapes.map((shape) => [shape.id, shape]));
+	let unchanged = saved.length === currentShapes.length;
+	const merged = saved.map((shape, index) => {
+		const previous = byId.get(shape.id);
+		const kept = previous && sameShape(previous, shape) ? previous : shape;
+		if (kept !== currentShapes[index]) unchanged = false;
+		return kept;
+	});
+	const shapes = unchanged ? currentShapes : merged;
+	if (shapes === currentShapes && !external) return shapes;
 	target.transact((current) => {
 		const next: DrawingSnapshot = {
 			...current,
 			shapes,
 			history: external
-				? createDrawingStore(shapes).getSnapshot().history
+				? historyOf<DrawingDocument>(
+						{ shapes },
+						shapes.length ? "Loaded drawing" : "Empty drawing",
+					)
 				: {
 						...current.history,
 						nodes: {
@@ -49,10 +54,7 @@ export function replaceDrawingShapes(
 				shapes.reduce((max, shape) => Math.max(max, shape.id), 0) + 1,
 			),
 		};
-		// Linked assembly can also change a schematic it saves, for example by
-		// dropping a stale net label. Only an unchanged drawing keeps gestures.
-		if (!external && sameDrawing({ shapes: current.shapes }, { shapes }))
-			savedRefreshes.add(next);
 		return [undefined, next];
 	});
+	return shapes;
 }
