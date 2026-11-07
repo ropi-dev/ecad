@@ -54,6 +54,11 @@ export function persistProjectDrawingShapes(document: ProjectDocument) {
 	return persistDrawingShapes(document.shapes, definitions);
 }
 
+const resolvedSymbols = new WeakMap<
+	SymbolDefinition,
+	WeakMap<EditorShape, EditorShape>
+>();
+
 /** Resolve a document for interaction without changing its history or saved data. */
 export function resolveDrawingSymbols(
 	shapes: EditorShape[],
@@ -82,6 +87,13 @@ export function resolveDrawingSymbols(
 						);
 						return { ...shape, children: [], texts: [] };
 					}
+					let cache = resolvedSymbols.get(definition);
+					if (!cache) {
+						cache = new WeakMap();
+						resolvedSymbols.set(definition, cache);
+					}
+					const cached = cache.get(shape);
+					if (cached) return cached;
 					const resolved = createSymbol(
 						shape.id,
 						{
@@ -100,7 +112,7 @@ export function resolveDrawingSymbols(
 									lineWidth:
 										child.kind === "text" ? child.lineWidth : strokeOverride,
 								}));
-					return fitBoxToBorder(
+					const result = fitBoxToBorder(
 						normalizeNetSymbol({
 							...shape,
 							library: definition.library,
@@ -121,6 +133,8 @@ export function resolveDrawingSymbols(
 						} satisfies EditorSymbol),
 						{ preserveChildWorldPositions: true },
 					);
+					cache.set(shape, result);
+					return result;
 				}),
 				errors: [...errors],
 			};

@@ -133,6 +133,23 @@ test(
 		for (let step = 0; step < 2; step++)
 			await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 		await expect(zoom).not.toHaveText(required(fitted));
+		const nextFrame = () =>
+			page.evaluate(
+				() =>
+					new Promise<void>((resolve) =>
+						requestAnimationFrame(() =>
+							setTimeout(() => requestAnimationFrame(() => resolve()), 0),
+						),
+					),
+			);
+		await expect
+			.poll(async () => {
+				const before = await drawingPoint(page, { x: left, y: rowY });
+				await nextFrame();
+				const after = await drawingPoint(page, { x: left, y: rowY });
+				return before.x === after.x && before.y === after.y;
+			})
+			.toBe(true);
 		const canvasBounds = required(await page.locator("canvas").boundingBox());
 		const first = Math.floor(columns / 2) - 6;
 		// Grab a resistor body, which fills the symbol center.
@@ -146,15 +163,6 @@ test(
 			x: left + grabbed * pitch,
 			y: rowY,
 		});
-		const nextFrame = () =>
-			page.evaluate(
-				() =>
-					new Promise<void>((resolve) =>
-						requestAnimationFrame(() =>
-							setTimeout(() => requestAnimationFrame(() => resolve()), 0),
-						),
-					),
-			);
 		const gestures: number[] = [];
 		const steps: number[] = [];
 		for (let repeat = 0; repeat < 3; repeat++) {

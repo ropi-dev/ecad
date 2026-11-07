@@ -10,8 +10,6 @@ import {
 	isBasicShape,
 	isBoxSymbol,
 	isFillableShape,
-	openPins,
-	openWireEnds,
 	PIN_RADIUS,
 	type ShapeKind,
 	selectionSize,
@@ -21,7 +19,6 @@ import {
 	symbolShapes,
 	symbolTextPosition,
 	symbolTextShapes,
-	wireJunctions,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type TextAlignment,
@@ -31,6 +28,7 @@ import {
 	PIN_LABEL_GAP,
 	PIN_NUMBER_GAP,
 } from "@ecad/drawing-core/drawing/units.ts";
+import { analyzeDrawing } from "#/drawing/drawing-analysis.ts";
 import {
 	fontPixels,
 	type MeasureText,
@@ -38,11 +36,7 @@ import {
 	pinNumberFontSize,
 	textLayout,
 } from "#/drawing/text.ts";
-import {
-	buildWireCrossings,
-	type WireCrossings,
-} from "#/drawing/wire-crossings.ts";
-import { measurePerformance } from "#/performance/runtime.ts";
+import type { WireCrossings } from "#/drawing/wire-crossings.ts";
 
 interface GeometrySize {
 	width: number;
@@ -341,39 +335,6 @@ function junctionDisplay(
 			lineWidth: 0,
 		},
 	};
-}
-
-interface DrawingAnalysis {
-	junctions: ReturnType<typeof wireJunctions>;
-	crossings: Map<number, WireCrossings>;
-	openEnds: ReturnType<typeof openWireEnds>;
-	openPins: ReturnType<typeof openPins>;
-}
-
-// Connectivity depends only on the shapes, so selection changes reuse it.
-const analysisCache = new WeakMap<EditorShape[], DrawingAnalysis>();
-
-function analyzeDrawing(shapes: EditorShape[]): DrawingAnalysis {
-	let analysis = analysisCache.get(shapes);
-	if (!analysis) {
-		const junctions = wireJunctions(shapes);
-		analysis = {
-			junctions,
-			crossings: measurePerformance(
-				"editor.wire-crossings",
-				() =>
-					buildWireCrossings(
-						shapes,
-						junctions.map(({ point }) => point),
-					),
-				{ shapes: shapes.length },
-			),
-			openEnds: openWireEnds(shapes),
-			openPins: openPins(shapes),
-		};
-		analysisCache.set(shapes, analysis);
-	}
-	return analysis;
 }
 
 function sameCrossings(

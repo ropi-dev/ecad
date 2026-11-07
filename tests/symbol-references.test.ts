@@ -124,6 +124,35 @@ test("definition edits refresh geometry while preserving instance attributes and
 	assert.deepEqual(pinTerminals(restored), [{ x: 10, y: 16 }]);
 });
 
+test("resolving the same instance against the same definition returns the same symbol", async () => {
+	const initial = await resolveSymbolLibraries([library([pin])], []);
+	const saved = drawingShapeSchema.parse(
+		persistDrawingShapes([
+			createSymbol(1, initial.definitions[0], { x: 10, y: 20 }),
+		])[0],
+	);
+	const resolve = (definitions: typeof initial) =>
+		resolveDrawingSymbols(
+			[saved],
+			definitions.definitions,
+			definitions.byReference,
+		).shapes[0];
+	const first = resolve(initial);
+	assert.equal(resolve(initial), first);
+	const updated = await resolveSymbolLibraries(
+		[
+			library([
+				{ ...pin, shapes: [{ kind: "pin", name: "Moved", x: -4, y: 0 }] },
+			]),
+		],
+		[],
+	);
+	const refreshed = resolve(updated) as EditorSymbol;
+	assert.notEqual(refreshed, first);
+	assert.equal(refreshed.children[0].x, -4);
+	assert.equal(resolve(initial), first);
+});
+
 test("nested symbol files save references and resolve transforms and terminals recursively", async () => {
 	const parsed = parseSymbolFile(JSON.stringify(nested));
 	const resolved = await resolveSymbolLibraries([library([pin, parsed])], []);

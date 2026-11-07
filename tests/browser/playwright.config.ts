@@ -14,6 +14,15 @@ export default defineConfig({
 	projects: [{ name: "chromium" }],
 	use: {
 		baseURL: `http://127.0.0.1:${port}`,
+		storageState: {
+			cookies: [],
+			origins: [
+				{
+					origin: new URL(`http://127.0.0.1:${port}`).origin,
+					localStorage: [{ name: "ecad.antialias", value: "0" }],
+				},
+			],
+		},
 		screenshot: "only-on-failure",
 		launchOptions: {
 			executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,

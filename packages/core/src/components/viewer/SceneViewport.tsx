@@ -12,6 +12,10 @@ import {
 } from "react";
 import type { Object3D } from "three";
 import { AxisIndicator } from "#/components/viewer/AxisIndicator.tsx";
+import {
+	setAntialiasing,
+	useAntialiasing,
+} from "#/components/viewer/antialiasing.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
@@ -103,6 +107,8 @@ export function SceneViewport({
 	const [activeProjection, setActiveProjection] = useState(projection);
 	useEffect(() => setActiveProjection(projection), [projection]);
 	const displayScale = useDisplayScale(physicalSizeZoom);
+	const antialias = useAntialiasing();
+	const ownCamera = useRef<{ camera?: Camera; scene?: ViewerScene }>({});
 	const host = useRef<HTMLDivElement>(null);
 	const size = useViewportSize(host);
 	const axes = useRef<AxisIndicatorHandle>(null);
@@ -186,9 +192,14 @@ export function SceneViewport({
 						projection: currentProjection.current,
 						lockProjection,
 						fitZoom,
-						initialCamera: cameraState?.camera,
+						initialCamera:
+							cameraState?.camera ??
+							(ownCamera.current.scene === sourceScene
+								? ownCamera.current.camera
+								: undefined),
 						getFitBounds: readFitBounds,
 						selectionEnabled,
+						antialias,
 						ariaLabel: formatShortcut(
 							interactionHint
 								? `${ariaLabel}. ${interactionHint}`
@@ -199,7 +210,13 @@ export function SceneViewport({
 						canvasClassName:
 							"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200",
 						updateScene: sceneUpdate.current,
-						onChange: reportChange,
+						onChange: (snapshot) => {
+							ownCamera.current = {
+								camera: snapshot.camera,
+								scene: sourceScene,
+							};
+							reportChange(snapshot);
+						},
 						onSelection: setSelectionInfo,
 						onOrientation: (rotation) => axes.current?.update(rotation),
 						onZoom: setZoomLevel,
@@ -228,6 +245,7 @@ export function SceneViewport({
 		lockProjection,
 		fitZoom,
 		cameraState,
+		antialias,
 	]);
 	useEffect(() => {
 		runtime.current?.setPhysicalScale(displayScale);
@@ -327,6 +345,10 @@ export function SceneViewport({
 									setActiveProjection((current) =>
 										current === "perspective" ? "orthographic" : "perspective",
 									)
+					}
+					antialias={antialias}
+					toggleAntialias={
+						cameraMode === "top" ? () => setAntialiasing(!antialias) : undefined
 					}
 					fit={() => runtime.current?.fit()}
 					zoom={(factor) => runtime.current?.zoom(factor)}

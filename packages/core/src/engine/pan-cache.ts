@@ -110,6 +110,51 @@ function restore(object: Object3D) {
 	}
 }
 
+const DAMAGE_MARGIN = 4;
+const MAX_DAMAGE_RECTS = 8;
+const DAMAGE_LIMIT = 0.5;
+
+function damageRects(
+	damage: readonly Box3[],
+	position: { x: number; y: number },
+	{ width, height, scaleX, scaleY }: PanFrame,
+) {
+	let rects: number[][] = [];
+	for (const { min, max } of damage) {
+		const left = Math.floor((min.x - position.x) * scaleX + width / 2);
+		const right = Math.ceil((max.x - position.x) * scaleX + width / 2);
+		const bottom = Math.floor((min.y - position.y) * scaleY + height / 2);
+		const top = Math.ceil((max.y - position.y) * scaleY + height / 2);
+		const rect = [
+			Math.max(0, left - DAMAGE_MARGIN),
+			Math.max(0, bottom - DAMAGE_MARGIN),
+			Math.min(width, right + DAMAGE_MARGIN),
+			Math.min(height, top + DAMAGE_MARGIN),
+		];
+		if (rect[2] > rect[0] && rect[3] > rect[1]) rects.push(rect);
+	}
+	if (rects.length > MAX_DAMAGE_RECTS)
+		rects = [
+			[
+				Math.min(...rects.map((rect) => rect[0])),
+				Math.min(...rects.map((rect) => rect[1])),
+				Math.max(...rects.map((rect) => rect[2])),
+				Math.max(...rects.map((rect) => rect[3])),
+			],
+		];
+	const area = rects.reduce(
+		(sum, [left, bottom, right, top]) => sum + (right - left) * (top - bottom),
+		0,
+	);
+	if (area > DAMAGE_LIMIT * width * height) return null;
+	return rects.map(([left, bottom, right, top]) => [
+		left,
+		bottom,
+		right - left,
+		top - bottom,
+	]);
+}
+
 /**
  * Reuses the last frame while an orthographic top view only translates.
  *
@@ -235,6 +280,7 @@ export function createPanCache(renderer: WebGLRenderer) {
 			scene: Scene,
 			camera: OrthographicCamera,
 			prepare?: (position: { x: number; y: number }) => void,
+			damage?: readonly Box3[],
 		) {
 			if (!texture || !cached) return null;
 			const next = frameOf(camera);
@@ -255,9 +301,12 @@ export function createPanCache(renderer: WebGLRenderer) {
 				x: cached.x + moveX / next.scaleX,
 				y: cached.y + moveY / next.scaleY,
 			};
-			// The canvas keeps its last frame when nothing is drawn.
-			if (moveX === 0 && moveY === 0) return position;
 			const { width, height } = next;
+			const repaint = damage?.length ? damageRects(damage, position, next) : [];
+			if (!repaint) return null;
+			// The canvas keeps its last frame when nothing is drawn.
+			if (moveX === 0 && moveY === 0 && !repaint.length) return position;
+			if (damage?.length) bounded = null;
 			const autoUpdate = scene.matrixWorldAutoUpdate;
 			// Count every pass of this frame, as one full render would.
 			const { info } = renderer;
@@ -298,6 +347,7 @@ export function createPanCache(renderer: WebGLRenderer) {
 						? [width - moveX, 0, moveX, height]
 						: [0, 0, -moveX, height],
 					moveY > 0 ? [0, height - moveY, width, moveY] : [0, 0, width, -moveY],
+					...repaint,
 				].filter(([, , stripWidth, stripHeight]) => stripWidth && stripHeight);
 				for (const [x, y, stripWidth, stripHeight] of strips) {
 					stripCamera.setViewOffset(

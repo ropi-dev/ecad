@@ -10,6 +10,7 @@ import { createSymbolFromShapes } from "#/drawing/group-symbol.ts";
 import {
 	commitHistory,
 	type History,
+	isImmutable,
 	jumpHistory,
 	redoHistory,
 	undoHistory,
@@ -155,13 +156,28 @@ function command<A>(
 	);
 }
 
+function capturedValue<T>(value: T): T {
+	if (isImmutable(value)) return value;
+	if (Array.isArray(value)) return Array.from(value, capturedValue) as T;
+	return structuredClone(value);
+}
+
 /** Capture inputs when constructing a command; replays cannot observe caller edits. */
 function capture<I, A>(
 	input: I,
 	build: (captured: I) => Effect.Effect<A, InvalidDrawingCommand, DrawingStore>,
 ) {
 	try {
-		return build(structuredClone(input));
+		return build(
+			input && Object.getPrototypeOf(input) === Object.prototype
+				? (Object.fromEntries(
+						Object.entries(input).map(([key, item]) => [
+							key,
+							capturedValue(item),
+						]),
+					) as I)
+				: capturedValue(input),
+		);
 	} catch {
 		return Effect.fail(
 			new InvalidDrawingCommand({

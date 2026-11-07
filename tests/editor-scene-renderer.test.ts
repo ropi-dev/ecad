@@ -165,8 +165,9 @@ function describe(root: Object3D) {
 			},
 		};
 	});
-	// Three sorts by render order, then material for opaque objects, then ID.
-	// Material IDs exist at runtime but are missing from the type declarations.
+	// The viewport sorts by render order, then material for opaque objects,
+	// and keeps scene order for ties. Material IDs exist at runtime but are
+	// missing from the type declarations.
 	const materialId = (object: Object3D) =>
 		(material(object) as unknown as { id: number }).id;
 	const drawn = objects.filter((object) => material(object));
@@ -179,9 +180,7 @@ function describe(root: Object3D) {
 				(a, b) =>
 					a.renderOrder - b.renderOrder ||
 					(transparent ? 0 : materialId(a) - materialId(b)) ||
-					(transparent
-						? a.id - b.id
-						: required(index.get(a)) - required(index.get(b))),
+					required(index.get(a)) - required(index.get(b)),
 			)
 			.map((object) => index.get(object));
 	return { description, transparent: sorted(true), opaque: sorted(false) };

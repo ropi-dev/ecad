@@ -80,6 +80,15 @@ function sameField(
 	return sameValue(value, other);
 }
 
+export function sameShape(first: unknown, second: unknown): boolean {
+	return (
+		first === second ||
+		(isPlainRecord(first) &&
+			isPlainRecord(second) &&
+			sameRecord(first, second, SHAPE_DEFAULTS))
+	);
+}
+
 /**
  * Whether two drawings are the same, so a transaction between them is a no-op.
  * Every field is compared, including fields added after this was written.
@@ -92,18 +101,7 @@ export function sameDrawing(
 	const { shapes: firstShapes, ...firstRest } = first;
 	const { shapes: secondShapes, ...secondRest } = second;
 	if (firstShapes.length !== secondShapes.length) return false;
-	for (let index = 0; index < firstShapes.length; index++) {
-		const shape = firstShapes[index];
-		const other = secondShapes[index];
-		if (
-			shape !== other &&
-			!(
-				isPlainRecord(shape) &&
-				isPlainRecord(other) &&
-				sameRecord(shape, other, SHAPE_DEFAULTS)
-			)
-		)
-			return false;
-	}
+	for (let index = 0; index < firstShapes.length; index++)
+		if (!sameShape(firstShapes[index], secondShapes[index])) return false;
 	return sameValue(firstRest, secondRest);
 }

@@ -127,16 +127,13 @@ const vertexOffset = /* glsl */ `
 }
 `;
 
-const fragmentDeclarations = /* glsl */ `
+export const roundFragmentDeclarations = /* glsl */ `
 varying vec2 vRoundPoint;
 varying vec4 vRoundOutline;
 `;
 
 // Signed distance in millimeters, converted to pixels for a one-pixel ramp.
-const fragmentCoverage = /* glsl */ `
-{
-	vec2 roundPoint = vRoundPoint;
-	float roundPixel = max(length(vec2(length(dFdx(roundPoint)), length(dFdy(roundPoint)))) * 0.70710678, 1e-6);
+export const roundCoverage = /* glsl */ `
 	float roundDistance = 1e6;
 	float roundLength = length(roundPoint);
 	if (vRoundOutline.x > 0.0) {
@@ -150,8 +147,14 @@ const fragmentCoverage = /* glsl */ `
 	float roundCoverage = clamp(0.5 - roundDistance / roundPixel, 0.0, 1.0);
 	if (roundCoverage <= 0.0) discard;
 	diffuseColor.a *= roundCoverage;
-}
 `;
+
+export const roundPixelSize = /* glsl */ `
+	vec2 roundPoint = vRoundPoint;
+	float roundPixel = max(length(vec2(length(dFdx(roundPoint)), length(dFdy(roundPoint)))) * 0.70710678, 1e-6);
+`;
+
+const fragmentCoverage = `{${roundPixelSize}${roundCoverage}}`;
 
 function injectRoundShader(shader: WebGLProgramParametersWithUniforms) {
 	shader.vertexShader = shader.vertexShader
@@ -161,7 +164,10 @@ function injectRoundShader(shader: WebGLProgramParametersWithUniforms) {
 			`#include <begin_vertex>\n${vertexOffset}`,
 		);
 	shader.fragmentShader = shader.fragmentShader
-		.replace("#include <common>", `#include <common>\n${fragmentDeclarations}`)
+		.replace(
+			"#include <common>",
+			`#include <common>\n${roundFragmentDeclarations}`,
+		)
 		.replace(
 			"#include <alphamap_fragment>",
 			`#include <alphamap_fragment>\n${fragmentCoverage}`,

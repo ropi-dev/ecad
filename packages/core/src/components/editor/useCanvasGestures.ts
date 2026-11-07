@@ -10,6 +10,7 @@ import {
 	findWireConnection,
 	isUnsafeMove,
 	openPins,
+	prepareMove,
 	type ResizeHandle,
 	routeWire,
 	type ShapeKind,
@@ -30,12 +31,14 @@ import {
 	type WireRoutingContext,
 	wireEnds,
 } from "@ecad/drawing-core/drawing/wire-routing.ts";
+import { freeze } from "@ecad/drawing-core/lib/freeze.ts";
 import {
 	type Dispatch,
 	type DOMAttributes,
 	type PointerEvent as ReactPointerEvent,
 	type SetStateAction,
 	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -194,6 +197,18 @@ export function useCanvasGestures({
 		const active = getGesture();
 		return active.kind === "wire" ? active.wire : null;
 	}, [getGesture]);
+	useEffect(() => {
+		if (tool !== "select" || !selected.length) return;
+		if (typeof requestIdleCallback !== "function") return;
+		let id = 0;
+		const prepare = (deadline: IdleDeadline) => {
+			if (deadline.timeRemaining() < 12 || gesture.current.kind !== "idle")
+				id = requestIdleCallback(prepare);
+			else prepareMove(selected, shapes);
+		};
+		id = requestIdleCallback(prepare);
+		return () => cancelIdleCallback(id);
+	}, [tool, selected, shapes]);
 	const [movingShapeId, setMovingShapeId] = useState<number | null>(null);
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
@@ -406,16 +421,21 @@ export function useCanvasGestures({
 				const initial = new Map(
 					active.initialShapes.map((shape) => [shape.id, shape]),
 				);
-				session.replace(
-					session.shapes().filter((shape) => shape !== initial.get(shape.id)),
-					active.mode === "symbol-child"
-						? active.handle
-							? "Resize symbol child"
-							: "Move symbol child"
-						: active.mode === "move"
-							? "Move selection"
-							: `Resize ${active.originals[0].kind}`,
-				);
+				const changed = session
+					.shapes()
+					.filter((shape) => shape !== initial.get(shape.id));
+				if (!changed.length) session.preview(null);
+				else
+					session.replace(
+						changed.map(freeze),
+						active.mode === "symbol-child"
+							? active.handle
+								? "Resize symbol child"
+								: "Move symbol child"
+							: active.mode === "move"
+								? "Move selection"
+								: `Resize ${active.originals[0].kind}`,
+					);
 			}
 			if (active.canvas.hasPointerCapture(active.pointerId))
 				active.canvas.releasePointerCapture(active.pointerId);

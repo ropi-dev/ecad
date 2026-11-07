@@ -213,6 +213,39 @@ test("a refresh with the store's own saved shapes does not cancel, and a wire pl
 	assert.deepEqual(store.getSnapshot().shapes, [rectangle(1)]);
 });
 
+test("a refresh keeps the store's objects for shapes the save left equal", () => {
+	const { store } = setup([rectangle(1), rectangle(2, 20)]);
+	const before = store.getSnapshot();
+	const same = replaceDrawingShapes(
+		store,
+		structuredClone(before.shapes),
+		false,
+	);
+	assert.equal(same, before.shapes);
+	assert.equal(store.getSnapshot(), before);
+	const changed = { ...rectangle(2, 20), x: 40 };
+	const installed = replaceDrawingShapes(
+		store,
+		[structuredClone(before.shapes[0]), changed],
+		false,
+	);
+	assert.equal(store.getSnapshot().shapes, installed);
+	assert.equal(installed[0], before.shapes[0]);
+	assert.deepEqual(installed[1], changed);
+});
+
+test("an external refresh starts a history that holds the installed shapes", () => {
+	const { store } = setup([rectangle(1)]);
+	const installed = replaceDrawingShapes(
+		store,
+		[rectangle(1), rectangle(2, 20)],
+		true,
+	);
+	const { history, shapes } = store.getSnapshot();
+	assert.equal(shapes, installed);
+	assert.equal(history.nodes[history.currentId].state.shapes, installed);
+});
+
 test("an external refresh still cancels gestures and drops removed shapes", () => {
 	const { session, store } = setup([rectangle(1), rectangle(2, 20)]);
 	let cancelled = 0;
