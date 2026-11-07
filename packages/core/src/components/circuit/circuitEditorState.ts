@@ -10,8 +10,13 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	type SetStateAction,
 	useEffect,
+	useEffectEvent,
 } from "react";
-import type { CircuitSelectionItem } from "#/circuit/selection-sync.ts";
+import {
+	type CircuitSelectionItem,
+	pruneCircuitSelection,
+	sameCircuitSelection,
+} from "#/circuit/selection-sync.ts";
 import type { SelectionMode } from "#/components/editor/selectionMode.ts";
 
 export type CircuitSelection = CircuitSelectionItem | null;
@@ -60,13 +65,16 @@ export interface CircuitGraphActions {
 }
 
 /**
- * Drops gestures, selections and edits whose component, pin or net no longer
- * exists after the circuit changes, for example after undo or a sync from the
- * schematic. Pins on collapsed components count as gone.
+ * Drops gestures, selections and edits whose component, pin, net or
+ * connection no longer exists after the circuit changes, for example after
+ * undo or a sync from the schematic. Pins on collapsed components count as
+ * gone.
  */
 export function usePruneToSnapshot(
 	snapshot: ReturnType<CircuitStore["getSnapshot"]>,
 	{
+		selection,
+		checkedPins,
 		setDrag,
 		setConnectionDrag,
 		setCheckedPins,
@@ -74,6 +82,8 @@ export function usePruneToSnapshot(
 		setEditing,
 		setPendingPin,
 	}: {
+		selection: CircuitSelection;
+		checkedPins: string[];
 		setDrag: Dispatch<SetStateAction<CircuitDrag | null>>;
 		setConnectionDrag: Dispatch<SetStateAction<ConnectionDrag | null>>;
 		setCheckedPins: Dispatch<SetStateAction<string[]>>;
@@ -82,7 +92,20 @@ export function usePruneToSnapshot(
 		setPendingPin: Dispatch<SetStateAction<string | null>>;
 	},
 ) {
+	// Saves and schematic syncs publish new snapshots without changing what the
+	// user picked, so keep the selection while it still exists. The selected
+	// connection and the checked pins are pruned together so they stay paired.
+	const pruneSelection = useEffectEvent(
+		(next: ReturnType<CircuitStore["getSnapshot"]>) => {
+			const current = { item: selection, checkedPins };
+			const valid = pruneCircuitSelection(next, current);
+			if (sameCircuitSelection(valid, current)) return;
+			setSelection(valid.item);
+			setCheckedPins([...valid.checkedPins]);
+		},
+	);
 	useEffect(() => {
+		pruneSelection(snapshot);
 		setDrag((current) =>
 			current &&
 			(current.position.kind === "component"
@@ -102,26 +125,6 @@ export function usePruneToSnapshot(
 				? current
 				: null,
 		);
-		setCheckedPins([]);
-		setSelection((current) => {
-			if (!current) return null;
-			if (current.kind === "connection") return null;
-			const exists =
-				current.kind === "net"
-					? snapshot.circuit.nets.some((net) => net.id === current.id)
-					: current.kind === "component"
-						? snapshot.circuit.components.some(
-								(component) => component.id === current.id,
-							)
-						: snapshot.circuit.components.some(
-								(component) =>
-									component.pins.some((pin) => pin.id === current.id) &&
-									!(snapshot.graph.collapsedComponentIds ?? []).includes(
-										component.id,
-									),
-							);
-			return exists ? current : null;
-		});
 		setEditing((current) =>
 			current &&
 			(current.kind === "net"
@@ -139,13 +142,5 @@ export function usePruneToSnapshot(
 				? id
 				: null,
 		);
-	}, [
-		snapshot,
-		setDrag,
-		setConnectionDrag,
-		setCheckedPins,
-		setSelection,
-		setEditing,
-		setPendingPin,
-	]);
+	}, [snapshot, setDrag, setConnectionDrag, setEditing, setPendingPin]);
 }

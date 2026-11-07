@@ -127,7 +127,15 @@ test.describe("mobile touch scrolling", () => {
 			exact: true,
 		});
 		const row = main.locator(":scope > div").first();
-		const camera = await page.locator("#editor-scene").textContent();
+		// The scene summary also counts GPU textures, which change as lazy
+		// resources load; only the camera shows whether the drawing moved.
+		const cameraState = async () => {
+			const { camera, direction, origin, corner } = JSON.parse(
+				required(await page.locator("#editor-scene").textContent()),
+			);
+			return { camera, direction, origin, corner };
+		};
+		const camera = await cameraState();
 		const box = required(await row.boundingBox());
 		const session = await page.context().newCDPSession(page);
 		const startX = box.x + box.width * 0.8;
@@ -158,7 +166,7 @@ test.describe("mobile touch scrolling", () => {
 		await expect
 			.poll(() => row.evaluate((element) => element.scrollLeft))
 			.toBeGreaterThan(0);
-		expect(await page.locator("#editor-scene").textContent()).toBe(camera);
+		expect(await cameraState()).toEqual(camera);
 		// Focus scrolling must start after touch momentum has finished.
 		await expect(row).toHaveAttribute("data-scroll-ended", "true");
 		await main.getByRole("button", { name: "History", exact: true }).focus();

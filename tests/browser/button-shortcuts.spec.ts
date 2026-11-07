@@ -282,7 +282,8 @@ for (const label of ["Add file", "Project actions", "Open project"]) {
 	});
 }
 
-for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
+// Every non-Mac platform takes the same branch as Win32.
+for (const platform of ["MacIntel", "Win32"]) {
 	test(`${platform} uses its primary modifier for hints and actions`, async ({
 		page,
 	}) => {

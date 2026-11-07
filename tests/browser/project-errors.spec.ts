@@ -538,90 +538,80 @@ const kit = {
 	},
 };
 
-for (const { name, libraries, part } of [
-	{
-		name: "its own library",
-		libraries: [benchParts],
-		part: { id: "resistor", library: "parts" },
-	},
-	{
-		name: "a library it depends on",
-		libraries: [benchParts, kit],
-		part: { id: "divider", library: "kit" },
-	},
-])
-	test(`a part whose symbol needs ${name} that fails to load is reported and never saved as a placeholder`, async ({
+// A part from the failed library itself takes the same unavailable-symbol
+// path; tests/symbol-library-config.test.ts covers both at unit level.
+test("a part whose symbol needs a library it depends on that fails to load is reported and never saved as a placeholder", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
+	const manifest = await readProjectFile(page, ".ecadprj");
+	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
+	if (!drawing) throw new Error("The project has no drawing.");
+	const saved = JSON.parse(await readProjectFile(page, drawing));
+	await editProjectFile(
 		page,
-	}) => {
-		await page.goto("/tests/browser/projects.html");
-		await expect
-			.poll(async () => (await documentState(page)).name)
-			.toBe("Untitled");
-		const manifest = await readProjectFile(page, ".ecadprj");
-		const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
-		if (!drawing) throw new Error("The project has no drawing.");
-		const saved = JSON.parse(await readProjectFile(page, drawing));
-		await editProjectFile(
-			page,
-			drawing,
-			JSON.stringify({
-				symbolLibraries: libraries,
-				circuit: {
-					...saved.circuit,
-					components: [
-						{
-							id: "r1",
-							reference: "R1",
-							value: "10k",
-							part: {
-								id: part.id,
-								name: "Resistor",
-								library: { scope: "project", id: part.library },
-							},
-							pins: [
-								{
-									id: "r1-1",
-									name: "1",
-									number: "1",
-									electricalType: "passive",
-								},
-								{
-									id: "r1-2",
-									name: "2",
-									number: "2",
-									electricalType: "passive",
-								},
-							],
+		drawing,
+		JSON.stringify({
+			symbolLibraries: [benchParts, kit],
+			circuit: {
+				...saved.circuit,
+				components: [
+					{
+						id: "r1",
+						reference: "R1",
+						value: "10k",
+						part: {
+							id: "divider",
+							name: "Resistor",
+							library: { scope: "project", id: "kit" },
 						},
-					],
-				},
-			}),
-			"json",
-		);
-		await page.reload();
-		await expect
-			.poll(async () => (await documentState(page)).name)
-			.toBe("Untitled");
-		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Schematic editor", exact: true })
-			.click();
-		await closeProjectFiles(page);
+						pins: [
+							{
+								id: "r1-1",
+								name: "1",
+								number: "1",
+								electricalType: "passive",
+							},
+							{
+								id: "r1-2",
+								name: "2",
+								number: "2",
+								electricalType: "passive",
+							},
+						],
+					},
+				],
+			},
+		}),
+		"json",
+	);
+	await page.reload();
+	await expect
+		.poll(async () => (await documentState(page)).name)
+		.toBe("Untitled");
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Schematic editor", exact: true })
+		.click();
+	await closeProjectFiles(page);
 
-		const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });
-		await expect(banner).toContainText(
-			"Bench parts: Directory paths require the desktop app.",
-		);
-		await expect(banner).toContainText(
-			"Load the missing symbol library before saving the linked PCB.",
-		);
-		await screenshot(page, "library-load-error.png");
+	const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });
+	await expect(banner).toContainText(
+		"Bench parts: Directory paths require the desktop app.",
+	);
+	await expect(banner).toContainText(
+		"Load the missing symbol library before saving the linked PCB.",
+	);
+	await screenshot(page, "library-load-error.png");
 
-		const stored = JSON.parse(await readProjectFile(page, drawing));
-		expect(stored.shapes).toEqual([]);
-		expect(JSON.stringify(stored)).not.toContain("circuit-fallback");
-		expect(stored.circuit.components[0].schematicShapeId).toBeUndefined();
-		expect((await documentState(page)).shapes).toEqual([]);
-	});
+	const stored = JSON.parse(await readProjectFile(page, drawing));
+	expect(stored.shapes).toEqual([]);
+	expect(JSON.stringify(stored)).not.toContain("circuit-fallback");
+	expect(stored.circuit.components[0].schematicShapeId).toBeUndefined();
+	expect((await documentState(page)).shapes).toEqual([]);
+});
 
 async function writeProjectFile(page: Page, path: string, content: string) {
 	await page.evaluate(
@@ -663,12 +653,6 @@ const placedPartCases = [
 		child: "parts",
 		disabled: true,
 		issue: "Bench parts: Directory paths require the desktop app.",
-	},
-	{
-		name: "an embedded symbol whose nested symbol was deleted",
-		owner: "good",
-		child: "good",
-		issue: 'Symbol "core" is unavailable in library "good".',
 	},
 	{
 		name: "a nested symbol that resolves, and saves normally",
