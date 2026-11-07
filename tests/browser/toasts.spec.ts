@@ -122,7 +122,9 @@ test("replacing a timed toast restarts its lifetime and announcement", async ({
 	await page.clock.runFor(750);
 	await expect(page.getByText("Second save", { exact: true })).toBeVisible();
 	await page.clock.runFor(800);
-	await expect(page.getByText("Second save", { exact: true })).not.toBeVisible();
+	await expect(
+		page.getByText("Second save", { exact: true }),
+	).not.toBeVisible();
 });
 
 test("a persistent error replacing a timed success survives the original timeout", async ({
