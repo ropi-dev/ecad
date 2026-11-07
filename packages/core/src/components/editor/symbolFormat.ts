@@ -321,7 +321,7 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 					value: symbol.attributes.value,
 					shapes: [],
 				},
-				symbolShapes({ ...symbol, x: 0, y: 0, rotation: 0 }),
+				[...symbolShapes({ ...symbol, x: 0, y: 0, rotation: 0 })],
 			),
 		),
 	);

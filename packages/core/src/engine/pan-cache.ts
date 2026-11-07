@@ -110,6 +110,91 @@ function restore(object: Object3D) {
 	}
 }
 
+const DAMAGE_MARGIN = 4;
+const MAX_DAMAGE_RECTS = 8;
+const DAMAGE_LIMIT = 0.5;
+
+function damageRects(
+	damage: readonly Box3[],
+	position: { x: number; y: number },
+	frame: PanFrame,
+) {
+	const { width, height, scaleX, scaleY } = frame;
+	let rects: [number, number, number, number][] = [];
+	for (const box of damage) {
+		if (box.isEmpty()) continue;
+		const left = Math.max(
+			0,
+			Math.floor((box.min.x - position.x) * scaleX + width / 2) - DAMAGE_MARGIN,
+		);
+		const right = Math.min(
+			width,
+			Math.ceil((box.max.x - position.x) * scaleX + width / 2) + DAMAGE_MARGIN,
+		);
+		const bottom = Math.max(
+			0,
+			Math.floor((box.min.y - position.y) * scaleY + height / 2) -
+				DAMAGE_MARGIN,
+		);
+		const top = Math.min(
+			height,
+			Math.ceil((box.max.y - position.y) * scaleY + height / 2) + DAMAGE_MARGIN,
+		);
+		if (right > left && top > bottom) rects.push([left, bottom, right, top]);
+	}
+	for (let merged = true; merged; ) {
+		merged = false;
+		rects.sort((a, b) => a[0] - b[0]);
+		const next: [number, number, number, number][] = [];
+		for (const rect of rects) {
+			let other: [number, number, number, number] | undefined;
+			for (let index = next.length - 1; index >= 0; index--) {
+				const candidate = next[index];
+				if (
+					candidate[0] <= rect[2] &&
+					rect[0] <= candidate[2] &&
+					candidate[1] <= rect[3] &&
+					rect[1] <= candidate[3]
+				) {
+					other = candidate;
+					break;
+				}
+			}
+			if (!other) {
+				next.push(rect);
+				continue;
+			}
+			other[0] = Math.min(other[0], rect[0]);
+			other[1] = Math.min(other[1], rect[1]);
+			other[2] = Math.max(other[2], rect[2]);
+			other[3] = Math.max(other[3], rect[3]);
+			merged = true;
+		}
+		rects = next;
+	}
+	if (rects.length > MAX_DAMAGE_RECTS)
+		rects = [
+			rects.reduce(
+				(bounds, rect) => [
+					Math.min(bounds[0], rect[0]),
+					Math.min(bounds[1], rect[1]),
+					Math.max(bounds[2], rect[2]),
+					Math.max(bounds[3], rect[3]),
+				],
+				[width, height, 0, 0],
+			),
+		];
+	const area = rects.reduce(
+		(sum, [left, bottom, right, top]) => sum + (right - left) * (top - bottom),
+		0,
+	);
+	if (area > DAMAGE_LIMIT * width * height) return null;
+	return rects.map(
+		([left, bottom, right, top]) =>
+			[left, bottom, right - left, top - bottom] as const,
+	);
+}
+
 /**
  * Reuses the last frame while an orthographic top view only translates.
  *
@@ -235,6 +320,7 @@ export function createPanCache(renderer: WebGLRenderer) {
 			scene: Scene,
 			camera: OrthographicCamera,
 			prepare?: (position: { x: number; y: number }) => void,
+			damage?: readonly Box3[],
 		) {
 			if (!texture || !cached) return null;
 			const next = frameOf(camera);
@@ -255,9 +341,12 @@ export function createPanCache(renderer: WebGLRenderer) {
 				x: cached.x + moveX / next.scaleX,
 				y: cached.y + moveY / next.scaleY,
 			};
-			// The canvas keeps its last frame when nothing is drawn.
-			if (moveX === 0 && moveY === 0) return position;
 			const { width, height } = next;
+			const repaint = damage?.length ? damageRects(damage, position, next) : [];
+			if (!repaint) return null;
+			// The canvas keeps its last frame when nothing is drawn.
+			if (moveX === 0 && moveY === 0 && !repaint.length) return position;
+			if (damage?.length) bounded = null;
 			const autoUpdate = scene.matrixWorldAutoUpdate;
 			// Count every pass of this frame, as one full render would.
 			const { info } = renderer;
@@ -298,6 +387,7 @@ export function createPanCache(renderer: WebGLRenderer) {
 						? [width - moveX, 0, moveX, height]
 						: [0, 0, -moveX, height],
 					moveY > 0 ? [0, height - moveY, width, moveY] : [0, 0, width, -moveY],
+					...repaint,
 				].filter(([, , stripWidth, stripHeight]) => stripWidth && stripHeight);
 				for (const [x, y, stripWidth, stripHeight] of strips) {
 					stripCamera.setViewOffset(

@@ -36,6 +36,20 @@ export default defineConfig({
 	],
 	use: {
 		baseURL: url ?? `http://127.0.0.1:${port}`,
+		storageState: {
+			cookies: [],
+			origins: [
+				{
+					origin: new URL(url ?? `http://127.0.0.1:${port}`).origin,
+					localStorage: [
+						{
+							name: "ecad.antialias",
+							value: process.env.ECAD_PERF_ANTIALIAS === "1" ? "1" : "0",
+						},
+					],
+				},
+			],
+		},
 		viewport: { width: 1280, height: 800 },
 		actionTimeout: 10_000,
 		navigationTimeout: 15_000,

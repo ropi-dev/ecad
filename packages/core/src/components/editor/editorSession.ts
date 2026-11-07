@@ -14,7 +14,6 @@ import {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { Effect, Either } from "effect";
 import { placedSelection } from "#/drawing/command-selection.ts";
-import { isSavedRefresh } from "#/projects/drawing-refresh.ts";
 
 type Store = ReturnType<typeof createDrawingStore>;
 export type DrawingCommand<A> = Effect.Effect<
@@ -236,11 +235,7 @@ export function createEditorSession(
 			historySelection = new Map([[0, []]]);
 			const reconcile = () => {
 				if (executing) return;
-				// A refresh after this project's own save keeps the same content,
-				// so a drag or wire in progress can still commit on top of it.
-				// The circuit view (CircuitEditor and CircuitStore) has no cancel
-				// path on store changes; one added there needs this exemption too.
-				if (!isSavedRefresh(store.getSnapshot())) onExternalEdit();
+				onExternalEdit();
 				retainExisting();
 			};
 			// A gesture started on another store must never commit to this one.

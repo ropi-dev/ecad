@@ -219,7 +219,19 @@ export function symbolTextPosition(
 	return symbol.textPositions?.[label.attribute] ?? label;
 }
 
-export function symbolShapes(symbol: EditorSymbol): SymbolShape[] {
+const resolvedChildren = new WeakMap<EditorSymbol, readonly SymbolShape[]>();
+
+export function symbolShapes(symbol: EditorSymbol): readonly SymbolShape[] {
+	const cached = resolvedChildren.get(symbol);
+	if (cached) return cached;
+	const resolved = Object.freeze(
+		resolveSymbolShapes(symbol).map((child) => Object.freeze(child)),
+	);
+	resolvedChildren.set(symbol, resolved);
+	return resolved;
+}
+
+function resolveSymbolShapes(symbol: EditorSymbol): SymbolShape[] {
 	return symbol.children.map((original) => {
 		const child = {
 			...original,
@@ -234,7 +246,19 @@ export function symbolShapes(symbol: EditorSymbol): SymbolShape[] {
 	});
 }
 
-export function symbolTextShapes(symbol: EditorSymbol): TextShape[] {
+const resolvedTexts = new WeakMap<EditorSymbol, readonly TextShape[]>();
+
+export function symbolTextShapes(symbol: EditorSymbol): readonly TextShape[] {
+	const cached = resolvedTexts.get(symbol);
+	if (cached) return cached;
+	const resolved = Object.freeze(
+		resolveSymbolTextShapes(symbol).map((text) => Object.freeze(text)),
+	);
+	resolvedTexts.set(symbol, resolved);
+	return resolved;
+}
+
+function resolveSymbolTextShapes(symbol: EditorSymbol): TextShape[] {
 	return symbol.texts.flatMap((label, index) => {
 		const override = symbol.childOverrides?.[`attribute:${label.attribute}`];
 		const fontSize = override?.fontSize ?? label.fontSize;
