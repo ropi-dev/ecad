@@ -11,7 +11,11 @@ import {
 	type SetStateAction,
 	useEffect,
 } from "react";
-import type { CircuitSelectionItem } from "#/circuit/selection-sync.ts";
+import {
+	type CircuitSelectionItem,
+	circuitConnectionFilter,
+	pruneCircuitSelection,
+} from "#/circuit/selection-sync.ts";
 import type { SelectionMode } from "#/components/editor/selectionMode.ts";
 
 export type CircuitSelection = CircuitSelectionItem | null;
@@ -60,9 +64,10 @@ export interface CircuitGraphActions {
 }
 
 /**
- * Drops gestures, selections and edits whose component, pin or net no longer
- * exists after the circuit changes, for example after undo or a sync from the
- * schematic. Pins on collapsed components count as gone.
+ * Drops gestures, selections and edits whose component, pin, net or
+ * connection no longer exists after the circuit changes, for example after
+ * undo or a sync from the schematic. Pins on collapsed components count as
+ * gone.
  */
 export function usePruneToSnapshot(
 	snapshot: ReturnType<CircuitStore["getSnapshot"]>,
@@ -102,26 +107,20 @@ export function usePruneToSnapshot(
 				? current
 				: null,
 		);
-		setCheckedPins([]);
-		setSelection((current) => {
-			if (!current) return null;
-			if (current.kind === "connection") return null;
-			const exists =
-				current.kind === "net"
-					? snapshot.circuit.nets.some((net) => net.id === current.id)
-					: current.kind === "component"
-						? snapshot.circuit.components.some(
-								(component) => component.id === current.id,
-							)
-						: snapshot.circuit.components.some(
-								(component) =>
-									component.pins.some((pin) => pin.id === current.id) &&
-									!(snapshot.graph.collapsedComponentIds ?? []).includes(
-										component.id,
-									),
-							);
-			return exists ? current : null;
+		// Saves and schematic syncs publish new snapshots without changing what
+		// the user picked, so keep every selection that still exists.
+		const isConnection = circuitConnectionFilter(snapshot);
+		setCheckedPins((current) => {
+			const next = current.filter(isConnection);
+			return next.length === current.length ? current : next;
 		});
+		setSelection(
+			(current) =>
+				pruneCircuitSelection(snapshot, {
+					item: current,
+					checkedPins: current?.kind === "connection" ? [current.id] : [],
+				}).item,
+		);
 		setEditing((current) =>
 			current &&
 			(current.kind === "net"

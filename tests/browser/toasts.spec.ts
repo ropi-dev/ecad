@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+/** Stops time once the fixture is ready, so only `clock.runFor` moves it. */
+async function pauseClock(page: import("@playwright/test").Page) {
+	await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+}
+
 async function notify(
 	page: import("@playwright/test").Page,
 	options: {
@@ -64,12 +69,13 @@ test("errors persist and the stack stays bounded on narrow screens", async ({
 	page,
 }) => {
 	await page.setViewportSize({ width: 375, height: 812 });
+	await page.clock.install();
 	await page.goto("/tests/browser/toasts.html");
 	await expect(
 		page.getByRole("textbox", { name: "Drawing name" }),
 	).toBeVisible();
 	await notify(page, { id: "save", type: "error", title: "Save failed" });
-	await page.waitForTimeout(5200);
+	await page.clock.runFor(5200);
 	await expect(page.getByText("Save failed", { exact: true })).toBeVisible();
 	await notify(page, { id: "save", type: "error", title: "Retry failed" });
 	await expect(
@@ -86,60 +92,68 @@ test("errors persist and the stack stays bounded on narrow screens", async ({
 test("replacing a timed toast restarts its lifetime and announcement", async ({
 	page,
 }) => {
+	await page.clock.install();
 	await page.goto("/tests/browser/toasts.html");
 	await expect(
 		page.getByRole("textbox", { name: "Drawing name" }),
 	).toBeVisible();
+	await pauseClock(page);
 	await notify(page, {
 		id: "save",
 		type: "success",
 		title: "First save",
 		duration: 1500,
 	});
-	await page.waitForTimeout(1000);
+	await page.clock.runFor(1000);
 	await notify(page, {
 		id: "save",
 		type: "success",
 		title: "Second save",
 		duration: 1500,
 	});
+	// Radix announces a toast on a later animation frame.
+	await page.clock.runFor(50);
 	await expect(
 		page
 			.locator('[role="status"][aria-live="polite"]')
 			.filter({ hasText: "Second save" }),
 	).toContainText("Second save");
-	await page.waitForTimeout(800);
+	// 1,800 ms after the first toast, but only 800 ms into the second's lifetime.
+	await page.clock.runFor(750);
 	await expect(page.getByText("Second save", { exact: true })).toBeVisible();
-	await expect(page.getByText("Second save", { exact: true })).not.toBeVisible({
-		timeout: 3000,
-	});
+	await page.clock.runFor(800);
+	await expect(page.getByText("Second save", { exact: true })).not.toBeVisible();
 });
 
 test("a persistent error replacing a timed success survives the original timeout", async ({
 	page,
 }) => {
+	await page.clock.install();
 	await page.goto("/tests/browser/toasts.html");
 	await expect(
 		page.getByRole("textbox", { name: "Drawing name" }),
 	).toBeVisible();
+	await pauseClock(page);
 	await notify(page, {
 		id: "save",
 		type: "success",
 		title: "Saved",
 		duration: 1500,
 	});
-	await page.waitForTimeout(1000);
+	await page.clock.runFor(1000);
 	await notify(page, { id: "save", type: "error", title: "Save failed" });
+	await page.clock.runFor(50);
 	await expect(
 		page.locator('[role="status"][aria-live="assertive"]'),
 	).toContainText("Save failed");
-	await page.waitForTimeout(1600);
+	await page.clock.runFor(1550);
 	await expect(page.getByText("Save failed", { exact: true })).toBeVisible();
 });
 
 test("all-invalid imports persist as errors and mixed imports report a warning", async ({
 	page,
 }) => {
+	await page.clock.install();
 	await page.goto("/tests/browser/toasts.html");
 	const input = page.getByLabel("Import test files");
 	await input.setInputFiles({
@@ -149,7 +163,7 @@ test("all-invalid imports persist as errors and mixed imports report a warning",
 	});
 	const failed = page.locator('.app-toast[data-type="error"]');
 	await expect(failed).toContainText("Import failed");
-	await page.waitForTimeout(5200);
+	await page.clock.runFor(5200);
 	await expect(failed).toBeVisible();
 	await page
 		.getByRole("button", { name: "Dismiss Import failed", exact: true })

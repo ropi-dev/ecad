@@ -123,7 +123,8 @@ test(
 			localStorage.setItem("ecad.active-project", "Selection drag");
 		}, shapes);
 		await page.goto("/editor?perf=1");
-		await ready(page);
+		// Opening 2,600 shapes on a two-core CI runner can exceed the 10 s action timeout.
+		await ready(page, 60_000);
 		await expect(
 			page.getByRole("button", { name: "Select", exact: true }),
 		).toBeEnabled({ timeout: 60_000 });
