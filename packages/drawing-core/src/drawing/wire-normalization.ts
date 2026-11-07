@@ -38,37 +38,38 @@ export function normalizeWireSegments(
 	});
 	const sets = unionFind(wires.length);
 	const junctions: Point[] = shapes.flatMap(pinTerminals);
-	const visit = (first: number, second: number) => {
-		const a = wires[first];
-		const b = wires[second];
-		if (a.vertical !== b.vertical) {
-			const horizontal = a.vertical ? b : a;
-			const vertical = a.vertical ? a : b;
-			const x = vertical.coordinate;
-			const y = horizontal.coordinate;
+	for (let first = 0; first < wires.length; first++) {
+		for (let second = first + 1; second < wires.length; second++) {
+			const a = wires[first];
+			const b = wires[second];
+			if (a.vertical !== b.vertical) {
+				const horizontal = a.vertical ? b : a;
+				const vertical = a.vertical ? a : b;
+				const x = vertical.coordinate;
+				const y = horizontal.coordinate;
+				if (
+					x >= horizontal.min - normalizationTolerance &&
+					x <= horizontal.max + normalizationTolerance &&
+					y >= vertical.min - normalizationTolerance &&
+					y <= vertical.max + normalizationTolerance &&
+					(Math.abs(x - horizontal.min) <= normalizationTolerance ||
+						Math.abs(x - horizontal.max) <= normalizationTolerance ||
+						Math.abs(y - vertical.min) <= normalizationTolerance ||
+						Math.abs(y - vertical.max) <= normalizationTolerance)
+				)
+					junctions.push({ x, y });
+			}
 			if (
-				x >= horizontal.min - normalizationTolerance &&
-				x <= horizontal.max + normalizationTolerance &&
-				y >= vertical.min - normalizationTolerance &&
-				y <= vertical.max + normalizationTolerance &&
-				(Math.abs(x - horizontal.min) <= normalizationTolerance ||
-					Math.abs(x - horizontal.max) <= normalizationTolerance ||
-					Math.abs(y - vertical.min) <= normalizationTolerance ||
-					Math.abs(y - vertical.max) <= normalizationTolerance)
+				a.vertical === b.vertical &&
+				a.shape.lineWidth === b.shape.lineWidth &&
+				(a.shape.locked ?? false) === (b.shape.locked ?? false) &&
+				Math.abs(a.coordinate - b.coordinate) <= normalizationTolerance &&
+				a.min <= b.max + normalizationTolerance &&
+				b.min <= a.max + normalizationTolerance
 			)
-				junctions.push({ x, y });
+				sets.union(second, first);
 		}
-		if (
-			a.vertical === b.vertical &&
-			a.shape.lineWidth === b.shape.lineWidth &&
-			(a.shape.locked ?? false) === (b.shape.locked ?? false) &&
-			Math.abs(a.coordinate - b.coordinate) <= normalizationTolerance &&
-			a.min <= b.max + normalizationTolerance &&
-			b.min <= a.max + normalizationTolerance
-		)
-			sets.union(second, first);
-	};
-	for (const [first, second] of candidatePairs(wires)) visit(first, second);
+	}
 	const clusters = new Map<number, typeof wires>();
 	for (const [index, wire] of wires.entries()) {
 		const key = sets.find(index);
@@ -76,8 +77,6 @@ export function normalizeWireSegments(
 		cluster.push(wire);
 		clusters.set(key, cluster);
 	}
-	const byX = sortedPoints(junctions, (point) => point.x);
-	const byY = sortedPoints(junctions, (point) => point.y);
 	const replacements = new Map<number, EditorShape[]>();
 	const idMap = new Map<number, number>();
 	const idsBySource = new Map<number, number[]>();
@@ -87,8 +86,7 @@ export function normalizeWireSegments(
 		const min = Math.min(...cluster.map((wire) => wire.min));
 		const max = Math.max(...cluster.map((wire) => wire.max));
 		// Pin terminals and wire endpoints create junctions. Bare crossings stay separate.
-		const cuts = (survivor.vertical ? byX : byY)
-			.near(survivor.coordinate)
+		const cuts = junctions
 			.flatMap((point) => {
 				const along = survivor.vertical ? point.y : point.x;
 				const across = survivor.vertical ? point.x : point.y;
@@ -172,104 +170,5 @@ export function normalizeWireSegments(
 		idMap,
 		idsBySource,
 		nextShapeId,
-	};
-}
-
-const CELL = 10;
-const MAX_CELLS = 256;
-
-interface WireExtent {
-	vertical: boolean;
-	coordinate: number;
-	min: number;
-	max: number;
-}
-
-function candidatePairs(wires: readonly WireExtent[]): [number, number][] {
-	const cells = new Map<string, number[]>();
-	const wide: number[] = [];
-	const ranges = wires.map((wire, index) => {
-		const low = Math.floor((wire.min - normalizationTolerance) / CELL);
-		const high = Math.floor((wire.max + normalizationTolerance) / CELL);
-		const acrossLow = Math.floor(
-			(wire.coordinate - normalizationTolerance) / CELL,
-		);
-		const acrossHigh = Math.floor(
-			(wire.coordinate + normalizationTolerance) / CELL,
-		);
-		const [minX, maxX, minY, maxY] = wire.vertical
-			? [acrossLow, acrossHigh, low, high]
-			: [low, high, acrossLow, acrossHigh];
-		const count = (maxX - minX + 1) * (maxY - minY + 1);
-		if (
-			![minX, maxX, minY, maxY].every(Number.isSafeInteger) ||
-			count > MAX_CELLS
-		) {
-			wide.push(index);
-			return undefined;
-		}
-		for (let x = minX; x <= maxX; x++)
-			for (let y = minY; y <= maxY; y++) {
-				const key = `${x},${y}`;
-				const members = cells.get(key);
-				if (members) members.push(index);
-				else cells.set(key, [index]);
-			}
-		return { minX, maxX, minY, maxY };
-	});
-	const pairs: [number, number][] = [];
-	for (const [key, members] of cells) {
-		const [x, y] = key.split(",").map(Number);
-		for (let i = 0; i < members.length; i++)
-			for (let j = i + 1; j < members.length; j++) {
-				const a = ranges[members[i]];
-				const b = ranges[members[j]];
-				if (
-					!a ||
-					!b ||
-					x !== Math.max(a.minX, b.minX) ||
-					y !== Math.max(a.minY, b.minY)
-				)
-					continue;
-				pairs.push(
-					members[i] < members[j]
-						? [members[i], members[j]]
-						: [members[j], members[i]],
-				);
-			}
-	}
-	const isWide = new Set(wide);
-	for (const index of wide)
-		for (let other = 0; other < wires.length; other++)
-			if (other !== index && (!isWide.has(other) || other > index))
-				pairs.push(index < other ? [index, other] : [other, index]);
-	return pairs;
-}
-
-function sortedPoints(points: readonly Point[], key: (point: Point) => number) {
-	const sorted = points
-		.filter((point) => Number.isFinite(key(point)))
-		.sort((a, b) => key(a) - key(b));
-	const values = sorted.map(key);
-	return {
-		near(value: number): Point[] {
-			const margin =
-				2 * normalizationTolerance + 4 * Number.EPSILON * Math.abs(value);
-			let low = 0;
-			let high = values.length;
-			while (low < high) {
-				const middle = (low + high) >> 1;
-				if (values[middle] < value - margin) low = middle + 1;
-				else high = middle;
-			}
-			const result: Point[] = [];
-			for (
-				let index = low;
-				index < values.length && values[index] <= value + margin;
-				index++
-			)
-				result.push(sorted[index]);
-			return result;
-		},
 	};
 }

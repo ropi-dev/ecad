@@ -317,8 +317,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			object.name = display.name;
 			touch(object);
 			applyTransform(object, display);
-			if (parent?.geometry.kind === "symbol" && display.rotation !== 0) {
-				object.matrixAutoUpdate = false;
+			if (parent?.geometry.kind === "symbol" && display.rotation !== 0)
 				object.matrix
 					.makeTranslation(display.x, display.y, 0)
 					.multiply(scale.makeScale(1 / parent.width, 1 / parent.height, 1))
@@ -330,8 +329,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 							1,
 						),
 					);
-				object.matrixWorldNeedsUpdate = true;
-			}
 			const children = reconcile(
 				node?.children ?? [],
 				display.children ?? [],

@@ -117,82 +117,42 @@ const DAMAGE_LIMIT = 0.5;
 function damageRects(
 	damage: readonly Box3[],
 	position: { x: number; y: number },
-	frame: PanFrame,
+	{ width, height, scaleX, scaleY }: PanFrame,
 ) {
-	const { width, height, scaleX, scaleY } = frame;
-	let rects: [number, number, number, number][] = [];
-	for (const box of damage) {
-		if (box.isEmpty()) continue;
-		const left = Math.max(
-			0,
-			Math.floor((box.min.x - position.x) * scaleX + width / 2) - DAMAGE_MARGIN,
-		);
-		const right = Math.min(
-			width,
-			Math.ceil((box.max.x - position.x) * scaleX + width / 2) + DAMAGE_MARGIN,
-		);
-		const bottom = Math.max(
-			0,
-			Math.floor((box.min.y - position.y) * scaleY + height / 2) -
-				DAMAGE_MARGIN,
-		);
-		const top = Math.min(
-			height,
-			Math.ceil((box.max.y - position.y) * scaleY + height / 2) + DAMAGE_MARGIN,
-		);
-		if (right > left && top > bottom) rects.push([left, bottom, right, top]);
-	}
-	for (let merged = true; merged; ) {
-		merged = false;
-		rects.sort((a, b) => a[0] - b[0]);
-		const next: [number, number, number, number][] = [];
-		for (const rect of rects) {
-			let other: [number, number, number, number] | undefined;
-			for (let index = next.length - 1; index >= 0; index--) {
-				const candidate = next[index];
-				if (
-					candidate[0] <= rect[2] &&
-					rect[0] <= candidate[2] &&
-					candidate[1] <= rect[3] &&
-					rect[1] <= candidate[3]
-				) {
-					other = candidate;
-					break;
-				}
-			}
-			if (!other) {
-				next.push(rect);
-				continue;
-			}
-			other[0] = Math.min(other[0], rect[0]);
-			other[1] = Math.min(other[1], rect[1]);
-			other[2] = Math.max(other[2], rect[2]);
-			other[3] = Math.max(other[3], rect[3]);
-			merged = true;
-		}
-		rects = next;
+	let rects: number[][] = [];
+	for (const { min, max } of damage) {
+		const left = Math.floor((min.x - position.x) * scaleX + width / 2);
+		const right = Math.ceil((max.x - position.x) * scaleX + width / 2);
+		const bottom = Math.floor((min.y - position.y) * scaleY + height / 2);
+		const top = Math.ceil((max.y - position.y) * scaleY + height / 2);
+		const rect = [
+			Math.max(0, left - DAMAGE_MARGIN),
+			Math.max(0, bottom - DAMAGE_MARGIN),
+			Math.min(width, right + DAMAGE_MARGIN),
+			Math.min(height, top + DAMAGE_MARGIN),
+		];
+		if (rect[2] > rect[0] && rect[3] > rect[1]) rects.push(rect);
 	}
 	if (rects.length > MAX_DAMAGE_RECTS)
 		rects = [
-			rects.reduce(
-				(bounds, rect) => [
-					Math.min(bounds[0], rect[0]),
-					Math.min(bounds[1], rect[1]),
-					Math.max(bounds[2], rect[2]),
-					Math.max(bounds[3], rect[3]),
-				],
-				[width, height, 0, 0],
-			),
+			[
+				Math.min(...rects.map((rect) => rect[0])),
+				Math.min(...rects.map((rect) => rect[1])),
+				Math.max(...rects.map((rect) => rect[2])),
+				Math.max(...rects.map((rect) => rect[3])),
+			],
 		];
 	const area = rects.reduce(
 		(sum, [left, bottom, right, top]) => sum + (right - left) * (top - bottom),
 		0,
 	);
 	if (area > DAMAGE_LIMIT * width * height) return null;
-	return rects.map(
-		([left, bottom, right, top]) =>
-			[left, bottom, right - left, top - bottom] as const,
-	);
+	return rects.map(([left, bottom, right, top]) => [
+		left,
+		bottom,
+		right - left,
+		top - bottom,
+	]);
 }
 
 /**

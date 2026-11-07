@@ -338,8 +338,7 @@ export function createSceneViewport(
 			let panCacheHit = false;
 			try {
 				camera.updateMatrixWorld();
-				const synced = edited && !changed && batcher !== null;
-				const damage = synced ? syncBatches() : null;
+				const damage = changed || edited ? syncBatches() : null;
 				// Hover depends on the pointer, so only a scene without one pans.
 				const panned =
 					panCache &&
@@ -373,7 +372,6 @@ export function createSceneViewport(
 					try {
 						content.update(output, camera);
 						placeGrid(camera.position);
-						if ((changed || edited) && !synced) syncBatches();
 						if (batched)
 							batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 						output.render(scene, camera);

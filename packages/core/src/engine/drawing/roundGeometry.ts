@@ -1,7 +1,6 @@
 import {
 	BufferGeometry,
 	Float32BufferAttribute,
-	type Material,
 	MeshBasicMaterial,
 	type MeshBasicMaterialParameters,
 	Vector2,
@@ -100,13 +99,8 @@ export function createRoundGeometry(
 	return geometry;
 }
 
-export const isRoundMaterial = (material: Material) =>
-	material.userData.roundShape === true;
-
 export const isRoundGeometry = (geometry: BufferGeometry) =>
 	geometry.hasAttribute("roundOutline");
-
-const roundProgramKey = "ecad-round-shape";
 
 const vertexDeclarations = /* glsl */ `
 attribute vec2 roundPoint;
@@ -199,8 +193,7 @@ export function createRoundMaterial(
 		shader.uniforms.roundViewport = viewport;
 		injectRoundShader(shader);
 	};
-	material.customProgramCacheKey = () => roundProgramKey;
-	material.userData.roundShape = true;
+	material.customProgramCacheKey = () => "ecad-round-shape";
 	material.onBeforeRender = (renderer) => {
 		renderer.getCurrentViewport(current);
 		viewport.value.set(current.z, current.w);

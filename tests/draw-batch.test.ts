@@ -3,14 +3,12 @@ import test from "node:test";
 import {
 	Box3,
 	BufferGeometry,
-	DoubleSide,
 	Group,
-	Line,
-	LineBasicMaterial,
 	Mesh,
 	MeshBasicMaterial,
 	PlaneGeometry,
-	Vector3,
+	Points,
+	PointsMaterial,
 	type WebGLRenderer,
 } from "three";
 import { createDrawBatcher } from "#/engine/draw-batch.ts";
@@ -42,7 +40,7 @@ test("a mesh whose geometry grows damages its new extent", () => {
 	}
 });
 
-test("a material changed in place rebuilds its batch", () => {
+test("a color changed in place rebuilds its batch", () => {
 	const batcher = createDrawBatcher();
 	const root = new Group();
 	const material = new MeshBasicMaterial({ depthTest: false });
@@ -51,31 +49,24 @@ test("a material changed in place rebuilds its batch", () => {
 	root.add(mesh);
 	try {
 		batcher.sync(root, renderer);
-		material.side = DoubleSide;
-		material.needsUpdate = true;
+		material.color.setRGB(0.25, 0.5, 0.75);
 		mesh.userData.batchVersion = 2;
 		batcher.sync(root, renderer);
 		const batch = required(batcher.object.children[0]) as Mesh;
-		assert.equal((batch.material as MeshBasicMaterial).side, DoubleSide);
+		const color = batch.geometry.getAttribute("color");
+		assert.deepEqual(
+			[color.getX(0), color.getY(0), color.getZ(0)],
+			[0.25, 0.5, 0.75],
+		);
 	} finally {
 		batcher.dispose();
 	}
 });
 
-test("a line with its own shader is not batched", () => {
+test("an object it cannot draw turns batching off", () => {
 	const batcher = createDrawBatcher();
 	const root = new Group();
-	const material = new LineBasicMaterial({ depthTest: false });
-	material.onBeforeCompile = () => {};
-	root.add(
-		new Line(
-			new BufferGeometry().setFromPoints([
-				new Vector3(0, 0, 0),
-				new Vector3(1, 0, 0),
-			]),
-			material,
-		),
-	);
+	root.add(new Points(new BufferGeometry(), new PointsMaterial()));
 	try {
 		assert.equal(batcher.sync(root, renderer).batched, false);
 	} finally {

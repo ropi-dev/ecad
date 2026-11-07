@@ -156,27 +156,9 @@ function command<A>(
 	);
 }
 
-function capturedValue<T>(value: T, top = false): T {
+function capturedValue<T>(value: T): T {
 	if (isImmutable(value)) return value;
-	if (
-		Array.isArray(value) &&
-		Object.getPrototypeOf(value) === Array.prototype &&
-		Reflect.ownKeys(value).length === value.length + 1
-	) {
-		const copy: unknown[] = [];
-		for (let index = 0; index < value.length; index++)
-			copy.push(capturedValue(value[index]));
-		return copy as T;
-	}
-	if (
-		top &&
-		value &&
-		typeof value === "object" &&
-		Object.getPrototypeOf(value) === Object.prototype
-	)
-		return Object.fromEntries(
-			Object.entries(value).map(([key, item]) => [key, capturedValue(item)]),
-		) as T;
+	if (Array.isArray(value)) return Array.from(value, capturedValue) as T;
 	return structuredClone(value);
 }
 
@@ -186,7 +168,16 @@ function capture<I, A>(
 	build: (captured: I) => Effect.Effect<A, InvalidDrawingCommand, DrawingStore>,
 ) {
 	try {
-		return build(capturedValue(input, true));
+		return build(
+			input && Object.getPrototypeOf(input) === Object.prototype
+				? (Object.fromEntries(
+						Object.entries(input).map(([key, item]) => [
+							key,
+							capturedValue(item),
+						]),
+					) as I)
+				: capturedValue(input),
+		);
 	} catch {
 		return Effect.fail(
 			new InvalidDrawingCommand({

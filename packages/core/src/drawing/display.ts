@@ -81,7 +81,6 @@ export type DrawingAppearance =
 const estimateText: MeasureText = (text) => text.length * fontPixels * 0.55;
 
 const netCache = new WeakMap<EditorShape[], ElectricalNet[]>();
-let lastNets: { shapes: EditorShape[]; nets: ElectricalNet[] } | undefined;
 
 export interface DisplayShape extends DrawingTransform, TextAlignment {
 	key: string;
@@ -458,16 +457,6 @@ function symbolConnectionDisplays(
 	return displays;
 }
 
-let markers = new Map<
-	string,
-	{
-		appearance: DrawingAppearance;
-		renderOrder: number;
-		measure: MeasureText;
-		display: DisplayShape;
-	}
->();
-
 /** The document and selection part of a drawing display, without previews. */
 export type StaticDrawingDisplay = Omit<DrawingDisplay, "previews">;
 
@@ -493,15 +482,9 @@ export function buildStaticDisplay(
 	if (netSelections.size) {
 		let nets = netCache.get(shapes);
 		if (!nets) {
-			nets =
-				lastNets &&
-				lastNets.shapes.length === shapes.length &&
-				lastNets.shapes.every((shape, index) => shape === shapes[index])
-					? lastNets.nets
-					: electricalNets(shapes);
+			nets = electricalNets(shapes);
 			netCache.set(shapes, nets);
 		}
-		lastNets = { shapes, nets };
 		for (const net of nets) {
 			if (
 				net.wires.some((id) => netSelections.has(id)) ||
@@ -516,24 +499,7 @@ export function buildStaticDisplay(
 		length: 0,
 	};
 	const { junctions, crossings, openEnds, openPins } = analyzeDrawing(shapes);
-	const renderOrder = shapes.length + 1;
-	const nextMarkers: typeof markers = new Map();
-	const marker = (
-		key: string,
-		appearance: DrawingAppearance,
-		build: () => DisplayShape,
-	) => {
-		const cached = markers.get(key);
-		const display =
-			cached?.appearance === appearance &&
-			cached.renderOrder === renderOrder &&
-			cached.measure === measure
-				? cached.display
-				: build();
-		nextMarkers.set(key, { appearance, renderOrder, measure, display });
-		return display;
-	};
-	const display: StaticDrawingDisplay = {
+	return {
 		shapes: shapes.map((shape, index) =>
 			documentShapeDisplay(
 				shape,
@@ -575,44 +541,36 @@ export function buildStaticDisplay(
 					: {}),
 				renderOrder: shapes.length + 1,
 			})),
-		terminals: openEnds.map(({ shape, point }) => {
-			const appearance = selectedIds.has(shape.id)
-				? "selected"
-				: highlightedWires.has(shape.id)
-					? "highlighted"
-					: "wire";
-			const key = `wire-terminal:${shape.id}:${point.x}:${point.y}`;
-			return marker(key, appearance, () =>
-				junctionDisplay(
-					{ ...terminal, ...point },
-					key,
-					"",
-					appearance,
-					renderOrder,
-					measure,
-				),
-			);
-		}),
-		junctions: junctions.map(({ point, shapes: connected }) => {
-			const appearance = connected.some((shape) => selectedIds.has(shape.id))
-				? "selected"
-				: connected.some((shape) => highlightedWires.has(shape.id))
-					? "highlighted"
-					: connected.some((shape) => shape.kind !== "wire")
-						? "pin"
-						: "wire";
-			const key = `wire-junction:${point.x}:${point.y}`;
-			return marker(key, appearance, () =>
-				junctionDisplay(
-					{ ...terminal, ...point },
-					key,
-					"editor-wire-junction",
-					appearance,
-					renderOrder,
-					measure,
-				),
-			);
-		}),
+		terminals: openEnds.map(({ shape, point }) =>
+			junctionDisplay(
+				{ ...terminal, ...point },
+				"wire-terminal",
+				"",
+				selectedIds.has(shape.id)
+					? "selected"
+					: highlightedWires.has(shape.id)
+						? "highlighted"
+						: "wire",
+				shapes.length + 1,
+				measure,
+			),
+		),
+		junctions: junctions.map(({ point, shapes: connected }, index) =>
+			junctionDisplay(
+				{ ...terminal, ...point },
+				`wire-junction:${index}`,
+				"editor-wire-junction",
+				connected.some((shape) => selectedIds.has(shape.id))
+					? "selected"
+					: connected.some((shape) => highlightedWires.has(shape.id))
+						? "highlighted"
+						: connected.some((shape) => shape.kind !== "wire")
+							? "pin"
+							: "wire",
+				shapes.length + 1,
+				measure,
+			),
+		),
 		connections: shapes.flatMap((shape, index) =>
 			symbolConnectionDisplays(
 				shape,
@@ -621,31 +579,25 @@ export function buildStaticDisplay(
 				measure,
 			),
 		),
-		halos: openPins.map(({ shape, point }) => {
-			const appearance = selectedIds.has(shape.id) ? "selected" : "pin";
-			const key = `pin-halo:${shape.id}:${point.x}:${point.y}`;
-			return marker(key, appearance, () => ({
-				...displayShape(
-					{ ...terminal, ...point },
-					key,
-					"editor-pin-halo",
-					appearance,
-					renderOrder,
-					measure,
-				),
+		halos: openPins.map(({ shape, point }, index) => ({
+			...displayShape(
+				{ ...terminal, ...point },
+				`pin-halo:${shape.id}:${index}`,
+				"editor-pin-halo",
+				selectedIds.has(shape.id) ? "selected" : "pin",
+				shapes.length + 1,
+				measure,
+			),
+			width: PIN_RADIUS * 3,
+			height: PIN_RADIUS * 3,
+			geometry: {
+				kind: "pin-halo",
 				width: PIN_RADIUS * 3,
 				height: PIN_RADIUS * 3,
-				geometry: {
-					kind: "pin-halo",
-					width: PIN_RADIUS * 3,
-					height: PIN_RADIUS * 3,
-					lineWidth: 0.1,
-				},
-			}));
-		}),
+				lineWidth: 0.1,
+			},
+		})),
 	};
-	markers = nextMarkers;
-	return display;
 }
 
 /** Resolve temporary previews, which draw above a document of `shapeCount` shapes. */

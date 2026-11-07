@@ -121,20 +121,6 @@ test("a frozen replacement is committed as is, an unfrozen one is copied", () =>
 	assert.deepEqual(store.getSnapshot().shapes[0], open);
 });
 
-test("an array with its own methods is still rejected, not kept", () => {
-	const { store, run } = session();
-	run(placeRectangleEffect(rectangle));
-	const ids = [store.getSnapshot().shapes[0].id];
-	Object.defineProperty(ids, "map", { value: () => ids, enumerable: true });
-	const result = Effect.runSync(
-		Effect.either(
-			Effect.provideService(removeShapesEffect(ids), DrawingStore, store),
-		),
-	);
-	assert.ok(Either.isLeft(result));
-	assert.equal(store.getSnapshot().shapes.length, 1);
-});
-
 test("rotation captures IDs and rotates current geometry on each execution with angle wrapping", () => {
 	const { store, run } = session();
 	const symbol = {
