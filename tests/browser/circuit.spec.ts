@@ -171,7 +171,7 @@ test("dragging between pins creates and merges nets with preview, undo, and auto
 	expect((await state(page)).circuit).toEqual(saved.circuit);
 });
 
-test("an autosave completing during a pin drag preserves the connection gesture", async ({
+test("an autosave completing during a pin drag preserves the connection gesture and selection", async ({
 	page,
 }) => {
 	await createCircuit(page);
@@ -213,7 +213,7 @@ test("an autosave completing during a pin drag preserves the connection gesture"
 	await page.waitForFunction(
 		() => (window as typeof window & { savePending?: boolean }).savePending,
 	);
-	// A connection selected while that save is in flight stays selected when it
+	// A connection selected while a save is held stays selected when the save
 	// lands, so Delete still disconnects it.
 	const connection = page.getByRole("button", {
 		name: "Connection R1.2",
