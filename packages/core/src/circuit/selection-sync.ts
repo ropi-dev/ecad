@@ -209,33 +209,19 @@ export function sameCircuitSelection(
 	);
 }
 
-function visibleCircuitItems(file: Pick<CircuitFile, "circuit" | "graph">) {
-	const collapsed = new Set(file.graph.collapsedComponentIds ?? []);
-	const visiblePins = new Set(
-		file.circuit.components.flatMap((component) =>
-			collapsed.has(component.id) ? [] : component.pins.map((pin) => pin.id),
-		),
-	);
-	const connected = new Set(file.circuit.nets.flatMap((net) => net.pinIds));
-	return {
-		visiblePins,
-		isConnection: (id: string) => visiblePins.has(id) && connected.has(id),
-	};
-}
-
-/** Returns whether a pin's connection is drawn: the pin is visible and on a net. */
-export function circuitConnectionFilter(
-	file: Pick<CircuitFile, "circuit" | "graph">,
-) {
-	return visibleCircuitItems(file).isConnection;
-}
-
 export function pruneCircuitSelection(
 	file: Pick<CircuitFile, "circuit" | "graph">,
 	selection: CircuitViewSelection,
 ): CircuitViewSelection {
 	const { circuit } = file;
-	const { visiblePins, isConnection } = visibleCircuitItems(file);
+	const collapsed = new Set(file.graph.collapsedComponentIds ?? []);
+	const visiblePins = new Set(
+		circuit.components.flatMap((component) =>
+			collapsed.has(component.id) ? [] : component.pins.map((pin) => pin.id),
+		),
+	);
+	const connected = new Set(circuit.nets.flatMap((net) => net.pinIds));
+	const isConnection = (id: string) => visiblePins.has(id) && connected.has(id);
 	const { item } = selection;
 	if (item?.kind === "connection") {
 		const checkedPins = selection.checkedPins.filter(isConnection);

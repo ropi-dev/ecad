@@ -10,11 +10,12 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	type SetStateAction,
 	useEffect,
+	useEffectEvent,
 } from "react";
 import {
 	type CircuitSelectionItem,
-	circuitConnectionFilter,
 	pruneCircuitSelection,
+	sameCircuitSelection,
 } from "#/circuit/selection-sync.ts";
 import type { SelectionMode } from "#/components/editor/selectionMode.ts";
 
@@ -72,6 +73,8 @@ export interface CircuitGraphActions {
 export function usePruneToSnapshot(
 	snapshot: ReturnType<CircuitStore["getSnapshot"]>,
 	{
+		selection,
+		checkedPins,
 		setDrag,
 		setConnectionDrag,
 		setCheckedPins,
@@ -79,6 +82,8 @@ export function usePruneToSnapshot(
 		setEditing,
 		setPendingPin,
 	}: {
+		selection: CircuitSelection;
+		checkedPins: string[];
 		setDrag: Dispatch<SetStateAction<CircuitDrag | null>>;
 		setConnectionDrag: Dispatch<SetStateAction<ConnectionDrag | null>>;
 		setCheckedPins: Dispatch<SetStateAction<string[]>>;
@@ -87,7 +92,20 @@ export function usePruneToSnapshot(
 		setPendingPin: Dispatch<SetStateAction<string | null>>;
 	},
 ) {
+	// Saves and schematic syncs publish new snapshots without changing what the
+	// user picked, so keep the selection while it still exists. The selected
+	// connection and the checked pins are pruned together so they stay paired.
+	const pruneSelection = useEffectEvent(
+		(next: ReturnType<CircuitStore["getSnapshot"]>) => {
+			const current = { item: selection, checkedPins };
+			const valid = pruneCircuitSelection(next, current);
+			if (sameCircuitSelection(valid, current)) return;
+			setSelection(valid.item);
+			setCheckedPins([...valid.checkedPins]);
+		},
+	);
 	useEffect(() => {
+		pruneSelection(snapshot);
 		setDrag((current) =>
 			current &&
 			(current.position.kind === "component"
@@ -107,20 +125,6 @@ export function usePruneToSnapshot(
 				? current
 				: null,
 		);
-		// Saves and schematic syncs publish new snapshots without changing what
-		// the user picked, so keep every selection that still exists.
-		const isConnection = circuitConnectionFilter(snapshot);
-		setCheckedPins((current) => {
-			const next = current.filter(isConnection);
-			return next.length === current.length ? current : next;
-		});
-		setSelection(
-			(current) =>
-				pruneCircuitSelection(snapshot, {
-					item: current,
-					checkedPins: current?.kind === "connection" ? [current.id] : [],
-				}).item,
-		);
 		setEditing((current) =>
 			current &&
 			(current.kind === "net"
@@ -138,13 +142,5 @@ export function usePruneToSnapshot(
 				? id
 				: null,
 		);
-	}, [
-		snapshot,
-		setDrag,
-		setConnectionDrag,
-		setCheckedPins,
-		setSelection,
-		setEditing,
-		setPendingPin,
-	]);
+	}, [snapshot, setDrag, setConnectionDrag, setEditing, setPendingPin]);
 }

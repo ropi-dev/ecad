@@ -64,7 +64,8 @@ test("circuit-erc", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 	await page.getByRole("menuitem", { name: "No connect", exact: true }).click();
 	await expect(panel.getByRole("status")).toContainText("Circuit changed");
 	await expect(panel.getByRole("listitem")).toHaveCount(0);
-	// The autosave replaces the circuit with its saved copy; run after it lands.
+	// The workload starts unlinked, so this first save adds schematic links to
+	// the circuit, which makes earlier ERC results stale. Run after it lands.
 	await expect(page.locator(".circuit-editor")).toHaveAttribute(
 		"data-pending-changes",
 		"false",
