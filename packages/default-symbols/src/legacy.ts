@@ -34,7 +34,7 @@ export function legacySymbols(): DefaultSymbol[] {
 				name: "Resistor",
 				description: "IEC resistor with two leads",
 				prefix: "R",
-				value: "10 kΩ",
+				value: "10k",
 				shapes: [
 					line(-150, 0, -100, 0),
 					{
@@ -74,7 +74,7 @@ export function legacySymbols(): DefaultSymbol[] {
 				name: "Capacitor",
 				description: "Two plates with connecting leads",
 				prefix: "C",
-				value: "100 nF",
+				value: "100n",
 				shapes: [
 					line(-150, 0, -30, 0),
 					line(-30, -80, -30, 80),

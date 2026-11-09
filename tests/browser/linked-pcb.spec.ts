@@ -279,6 +279,11 @@ test("view switches carry the selected component between circuit and schematic",
 		.getByRole("button", { name: "Switch to schematic view", exact: true })
 		.click();
 	await expect(panel.getByText("Resistor · R2", { exact: true })).toBeVisible();
+	// The view fits both resistors tightly; zoom out so the marquee encloses
+	// them with their labels.
+	const zoomOut = page.getByRole("button", { name: "Zoom out", exact: true });
+	await zoomOut.click();
+	await zoomOut.click();
 	const canvas = required(await page.locator("canvas").boundingBox());
 	await page.mouse.move(canvas.x + 230, canvas.y + 90);
 	await page.mouse.down();

@@ -2,6 +2,7 @@ import { PIN_RADIUS, shapeBounds } from "@ecad/drawing-core/drawing/shapes.ts";
 import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import { memo } from "react";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
+import { drawingFontStack } from "#/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export default memo(function SymbolPreview({
@@ -88,7 +89,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 							<text
 								fill="currentColor"
 								stroke="none"
-								fontFamily="Arial, sans-serif"
+								fontFamily={drawingFontStack}
 								fontSize={child.fontSize}
 								textAnchor={
 									child.horizontalAlign === "right"

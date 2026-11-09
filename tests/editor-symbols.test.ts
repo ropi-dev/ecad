@@ -261,9 +261,9 @@ test("rotation transforms symbol children and instances own their attributes", (
 		}),
 		true,
 	);
-	symbol.attributes.value = "22 kΩ";
+	symbol.attributes.value = "22k";
 	symbol.children[0].width = 999;
-	assert.equal(second.attributes.value, "10 kΩ");
+	assert.equal(second.attributes.value, "10k");
 	assert.ok(Math.abs(second.children[0].width - 1.27) < 1e-12);
 	assert.ok(Math.abs(symbolDefinitions[0].children[0].width - 1.27) < 1e-12);
 });
@@ -273,19 +273,19 @@ test("symbol text resolves reference and value from each instance", () => {
 	const second = createSymbol(2, symbolDefinitions[0], { x: 100, y: 60 });
 	assert.deepEqual(
 		symbolTextShapes(first).map((label) => label.text),
-		["R1", "10 kΩ"],
+		["R1", "10k"],
 	);
 	const edited = {
 		...first,
-		attributes: { ...first.attributes, reference: "R_INPUT", value: "47 kΩ" },
+		attributes: { ...first.attributes, reference: "R_INPUT", value: "47k" },
 	};
 	assert.deepEqual(
 		symbolTextShapes(edited).map((label) => label.text),
-		["R_INPUT", "47 kΩ"],
+		["R_INPUT", "47k"],
 	);
 	assert.deepEqual(
 		symbolTextShapes(second).map((label) => label.text),
-		["R2", "10 kΩ"],
+		["R2", "10k"],
 	);
 	const moved = moveShapes([first], { x: 10, y: 5 })[0];
 	assert.equal(moved.kind, "symbol");
@@ -319,7 +319,7 @@ test("symbol text resolves reference and value from each instance", () => {
 	};
 	assert.deepEqual(
 		symbolTextShapes(cleared).map((text) => text.text),
-		["47 kΩ"],
+		["47k"],
 	);
 });
 

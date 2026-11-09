@@ -10,7 +10,10 @@ import {
 export const fontPixels = 96;
 export const padding = 12;
 export const lineHeight = 120;
-export const font = `${fontPixels}px Arial, sans-serif`;
+/** Schematic text uses one bundled monospace face so widths match on every machine. */
+export const drawingFontFamily = "JetBrains Mono";
+export const drawingFontStack = `'${drawingFontFamily}', ui-monospace, monospace`;
+export const font = `${fontPixels}px ${drawingFontStack}`;
 export const boldFont = `bold ${font}`;
 export const pinNameFontSize = PIN_NAME_SIZE;
 export const pinNumberFontSize = PIN_NUMBER_SIZE;
@@ -41,6 +44,28 @@ export function updateText(
 		width: (layout.width * shape.fontSize) / fontPixels,
 		height: (layout.height * shape.fontSize) / fontPixels,
 	};
+}
+
+const fitted = new WeakMap<TextShape, TextShape>();
+
+/**
+ * Re-measures a text box for the current drawing font. Drawings saved with an
+ * earlier font keep their glyph proportions instead of stretching to the old box.
+ */
+export function fitTextShape(
+	shape: TextShape,
+	measureText: MeasureText,
+): TextShape {
+	const cached = fitted.get(shape);
+	if (cached) return cached;
+	const next = updateText(shape, shape.text, measureText);
+	const result =
+		Math.abs(next.width - shape.width) < 1e-6 &&
+		Math.abs(next.height - shape.height) < 1e-6
+			? shape
+			: next;
+	fitted.set(shape, result);
+	return result;
 }
 
 export function createTextShape(

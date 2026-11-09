@@ -6,6 +6,7 @@ import {
 	lightSchematicTheme,
 } from "#/drawing/schematic-theme.ts";
 import {
+	drawingFontStack,
 	fontPixels,
 	lineHeight,
 	type MeasureText,
@@ -57,7 +58,7 @@ export function exportDrawingSvg(
 				);
 			const measure =
 				options.measureText ??
-				((text: string) => text.length * fontPixels * 0.55);
+				((text: string) => text.length * fontPixels * 0.6);
 			const display = buildDrawingDisplay(shapes, new Set(), [], measure);
 			const dark = background === "dark";
 			const theme = dark ? darkSchematicTheme : lightSchematicTheme;
@@ -126,7 +127,7 @@ export function exportDrawingSvg(
 							(layout.lines.length - 1) * lineHeight +
 							fontPixels * 0.72) /
 						2;
-					svg = `<g transform="matrix(${[m[0], -m[1], m[4], -m[5], m[12], -m[13]].map(number).join(" ")})" fill="${color}" font-family="Arial, sans-serif" font-size="${fontPixels}"${shape.bold ? ' font-weight="bold"' : ""} text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${layout.lines.map((line, i) => `<text x="${x}" y="${baseline + i * lineHeight}"${line ? ` textLength="${measure(line, shape.bold)}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line)}</text>`).join("")}</g>`;
+					svg = `<g transform="matrix(${[m[0], -m[1], m[4], -m[5], m[12], -m[13]].map(number).join(" ")})" fill="${color}" font-family="${drawingFontStack}" font-size="${fontPixels}"${shape.bold ? ' font-weight="bold"' : ""} text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${layout.lines.map((line, i) => `<text x="${x}" y="${baseline + i * lineHeight}"${line ? ` textLength="${measure(line, shape.bold)}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line)}</text>`).join("")}</g>`;
 				} else {
 					const geometry = createShapeGeometry(shape.geometry);
 					try {
@@ -172,7 +173,7 @@ export function exportDrawingSvg(
 				maxX = Math.max(maxX, sheet.width / 2);
 				minY = Math.min(minY, -sheet.height / 2);
 				maxY = Math.max(maxY, sheet.height / 2);
-				worksheet = `<g fill="none" stroke="${theme.sheet}" stroke-width="0.15"><path d="${page.frame.map((p, i) => `${i % 2 ? "L" : "M"}${p.x} ${-p.y}`).join("")}"/></g><g fill="${theme.sheet}" font-family="Arial, sans-serif">${page.labels.map((label) => `<text x="${label.x}" y="${-label.y}" dominant-baseline="central" text-anchor="${label.align === "center" ? "middle" : "start"}" font-size="${label.fontSize}">${escapeXml(label.text)}</text>`).join("")}</g>`;
+				worksheet = `<g fill="none" stroke="${theme.sheet}" stroke-width="0.15"><path d="${page.frame.map((p, i) => `${i % 2 ? "L" : "M"}${p.x} ${-p.y}`).join("")}"/></g><g fill="${theme.sheet}" font-family="${drawingFontStack}">${page.labels.map((label) => `<text x="${label.x}" y="${-label.y}" dominant-baseline="central" text-anchor="${label.align === "center" ? "middle" : "start"}" font-size="${label.fontSize}">${escapeXml(label.text)}</text>`).join("")}</g>`;
 			}
 			if (!Number.isFinite(minX)) {
 				minX = -5;

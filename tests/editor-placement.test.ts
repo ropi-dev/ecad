@@ -10,6 +10,7 @@ import {
 	type EditorShape,
 	routeWire,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import { DEFAULT_TEXT_SIZE } from "@ecad/drawing-core/drawing/units.ts";
 import { wireEnds } from "@ecad/drawing-core/drawing/wire-routing.ts";
 import { Effect } from "effect";
 import { placedSelection } from "#/drawing/command-selection.ts";
@@ -39,6 +40,8 @@ test("new net and supply labels start as NET and GND, anchored at their bottom l
 		assert.equal(label.horizontalAlign, "left");
 		assert.equal(label.verticalAlign, "bottom");
 		assert.deepEqual({ x: label.x, y: label.y }, anchor);
+		// Labels use the default 75 mil text size.
+		assert.equal(label.fontSize, DEFAULT_TEXT_SIZE);
 		const plain = createTextShape(7, anchor, measureText);
 		// The text box is measured for the label's own name, not the "Text" placeholder.
 		assert.equal(label.height, plain.height);

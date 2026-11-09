@@ -78,7 +78,7 @@ export type DrawingAppearance =
 	| "note"
 	| "label";
 
-const estimateText: MeasureText = (text) => text.length * fontPixels * 0.55;
+const estimateText: MeasureText = (text) => text.length * fontPixels * 0.6;
 
 const netCache = new WeakMap<EditorShape[], ElectricalNet[]>();
 

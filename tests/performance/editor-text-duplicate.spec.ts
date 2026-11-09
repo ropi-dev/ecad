@@ -32,8 +32,9 @@ test(
 				text: "SIGNAL",
 				x: bounds.x + bounds.width * 0.3,
 				y: bounds.y + bounds.height * 0.45,
-				// A net label extends up and right from its anchor, so grab its text.
-				grab: { x: 12, y: -4 },
+				// A net label extends up and right from its anchor, so grab its
+				// 75 mil text, which is only a few pixels tall at this zoom.
+				grab: { x: 8, y: -1 },
 			},
 			{
 				kind: "Text",
