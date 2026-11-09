@@ -11,10 +11,10 @@ const modifiers = (ctrlKey: boolean, shiftKey: boolean) => ({
 	shiftKey,
 });
 
-test("Ctrl adds, Ctrl + Shift removes and Shift alone toggles", () => {
+test("Ctrl toggles, Shift adds and Ctrl + Shift removes", () => {
 	assert.equal(selectionMode(modifiers(false, false)), "replace");
-	assert.equal(selectionMode(modifiers(false, true)), "toggle");
-	assert.equal(selectionMode(modifiers(true, false)), "add");
+	assert.equal(selectionMode(modifiers(false, true)), "add");
+	assert.equal(selectionMode(modifiers(true, false)), "toggle");
 	assert.equal(selectionMode(modifiers(true, true)), "remove");
 });
 

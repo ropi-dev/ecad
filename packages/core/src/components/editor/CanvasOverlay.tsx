@@ -9,14 +9,22 @@ import {
 	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import { Diff, Minus, Plus } from "lucide-react";
 import { memo, useMemo, useState, useSyncExternalStore } from "react";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
+import type { SelectionMode } from "#/components/editor/selectionMode.ts";
 import { createTextAnchorReader } from "#/components/editor/textAnchors.ts";
 import type {
 	CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
 import { worldToScreen } from "#/engine/camera.ts";
+
+const selectionIcons: Record<Exclude<SelectionMode, "replace">, typeof Plus> = {
+	add: Plus,
+	remove: Minus,
+	toggle: Diff,
+};
 
 interface CanvasOverlayProps {
 	cameraView: CanvasView;
@@ -193,6 +201,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 					}`}
 					data-testid="selection-rectangle"
 					data-selection-mode={marquee.mode}
+					data-selection-action={marquee.selection}
 					aria-hidden="true"
 					style={{
 						left: Math.min(marquee.start.x, marquee.end.x),
@@ -202,6 +211,22 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 					}}
 				/>
 			)}
+			{marquee &&
+				marquee.selection !== "replace" &&
+				(() => {
+					const Icon = selectionIcons[marquee.selection];
+					return (
+						<span
+							data-testid="selection-action"
+							data-selection-action={marquee.selection}
+							aria-hidden="true"
+							className="pointer-events-none absolute z-3 rounded border border-white/15 bg-[#19212e]/90 p-0.5 text-gray-100 shadow-sm"
+							style={{ left: marquee.end.x + 14, top: marquee.end.y + 14 }}
+						>
+							<Icon className="size-3" strokeWidth={2.5} />
+						</span>
+					);
+				})()}
 		</>
 	);
 });

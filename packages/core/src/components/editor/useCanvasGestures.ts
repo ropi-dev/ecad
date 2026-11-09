@@ -39,6 +39,7 @@ import {
 	type SetStateAction,
 	useCallback,
 	useEffect,
+	useEffectEvent,
 	useMemo,
 	useRef,
 	useState,
@@ -54,6 +55,7 @@ import {
 	applySelection,
 	selectionMode,
 } from "#/components/editor/selectionMode.ts";
+import { shortcutModifier } from "#/components/viewer/shortcutModifier.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import {
 	createPlacementShape,
@@ -347,14 +349,7 @@ export function useCanvasGestures({
 		},
 		[previewWire],
 	);
-	const updateDrag = (event: ReactPointerEvent) => {
-		const active = getDrag();
-		if (!active || active.pointerId !== event.pointerId) return;
-		stop(event);
-		const point = pointAt(event, active.canvas);
-		if (!point) return;
-		const rect = active.canvas.getBoundingClientRect();
-		const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+	const stepDrag = (active: Drag, point: Point, end: Point) => {
 		const step = canvasDragStep(active, point, end, {
 			shapes,
 			allowLocked,
@@ -377,6 +372,36 @@ export function useCanvasGestures({
 			session.select(effect.selection);
 		}
 	};
+	const updateDrag = (event: ReactPointerEvent) => {
+		const active = getDrag();
+		if (!active || active.pointerId !== event.pointerId) return;
+		stop(event);
+		const point = pointAt(event, active.canvas);
+		if (!point) return;
+		const rect = active.canvas.getBoundingClientRect();
+		const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+		if (active.mode === "marquee") active.selectionMode = selectionMode(event);
+		active.pointer = { point, screen: end };
+		stepDrag(active, point, end);
+	};
+	const refreshMarqueeMode = useEffectEvent((event: KeyboardEvent) => {
+		const active = getDrag();
+		if (active?.mode !== "marquee" || !active.pointer) return;
+		const mode = selectionMode(event);
+		if (mode === active.selectionMode) return;
+		active.selectionMode = mode;
+		stepDrag(active, active.pointer.point, active.pointer.screen);
+	});
+	const marqueeActive = marquee !== null;
+	useEffect(() => {
+		if (!marqueeActive) return;
+		window.addEventListener("keydown", refreshMarqueeMode);
+		window.addEventListener("keyup", refreshMarqueeMode);
+		return () => {
+			window.removeEventListener("keydown", refreshMarqueeMode);
+			window.removeEventListener("keyup", refreshMarqueeMode);
+		};
+	}, [marqueeActive]);
 	const finishDrag = useCallback(
 		(cancel = false) => {
 			const active = getDrag();
@@ -612,8 +637,7 @@ export function useCanvasGestures({
 				((event.ctrlKey || event.metaKey) &&
 					(tool !== "select" ||
 						event.altKey ||
-						mode === "replace" ||
-						mode === "toggle"))
+						!event[shortcutModifier().flag]))
 			)
 				return;
 			const point = pointAt(event, canvas);
@@ -790,7 +814,7 @@ export function useCanvasGestures({
 					initialShapes: session.shapes(),
 					created: created || !!duplicate,
 					valid: false,
-					selectionMode: mode === "toggle" ? "add" : mode,
+					selectionMode: mode,
 					wireStart,
 				},
 			};
