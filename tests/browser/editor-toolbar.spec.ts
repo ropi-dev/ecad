@@ -138,6 +138,7 @@ test("chip packagings open in a submenu from their part", async ({ page }) => {
 for (const [width, height] of [
 	[390, 800],
 	[600, 800],
+	[390, 360],
 	[1400, 900],
 ]) {
 	test(`packaging submenu stays on screen at ${width}x${height}`, async ({
@@ -157,9 +158,12 @@ for (const [width, height] of [
 		expect(box.y).toBeGreaterThanOrEqual(0);
 		expect(box.x + box.width).toBeLessThanOrEqual(width);
 		expect(box.y + box.height).toBeLessThanOrEqual(height);
-		await expect(
-			page.getByRole("button", { name: "Insert nRF54L15-CAAA", exact: true }),
-		).toBeInViewport({ ratio: 1 });
+		const last = page.getByRole("button", {
+			name: "Insert nRF54L15-CAAA",
+			exact: true,
+		});
+		await last.scrollIntoViewIfNeeded();
+		await expect(last).toBeInViewport({ ratio: 1 });
 	});
 }
 
@@ -201,6 +205,62 @@ test("packaging submenu keeps its highlight and closes when its row scrolls away
 		list.scrollTop = 0;
 	});
 	await expect(packagings).toBeHidden();
+	await page.keyboard.press("Enter");
+	await expect(part).toBeInViewport({ ratio: 1 });
+	await expect(
+		page.getByRole("button", { name: "Insert nRF54L15-QDAA", exact: true }),
+	).toBeInViewport({ ratio: 1 });
+});
+
+test("packaging submenu closes when its row slides under the sticky category heading", async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1400, height: 900 });
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	const part = page.getByRole("button", {
+		name: "nRF54L15 packagings",
+		exact: true,
+	});
+	await part.click();
+	const packagings = page.getByRole("dialog", {
+		name: "nRF54L15 packagings",
+		exact: true,
+	});
+	await expect(packagings).toBeVisible();
+	await page.locator("[data-symbol-picker]").evaluate((list) => {
+		const row = list.querySelector('[aria-label="nRF54L15 packagings"]');
+		const heading = row?.closest("section")?.querySelector("h3");
+		if (!row || !heading) throw new Error("Missing picker row");
+		list.scrollTop +=
+			row.getBoundingClientRect().bottom -
+			list.getBoundingClientRect().top -
+			heading.getBoundingClientRect().height +
+			2;
+	});
+	await expect(packagings).toBeHidden();
+});
+
+test("packaging submenu moves back on screen after the window narrows", async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1400, height: 900 });
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "nRF54L15 packagings", exact: true })
+		.click();
+	const packagings = page.getByRole("dialog", {
+		name: "nRF54L15 packagings",
+		exact: true,
+	});
+	await expect(packagings).toBeVisible();
+	await page.setViewportSize({ width: 390, height: 800 });
+	for (const code of ["QDAA", "QFAA", "QGAA", "CAAA"])
+		await expect(
+			page.getByRole("button", {
+				name: `Insert nRF54L15-${code}`,
+				exact: true,
+			}),
+		).toBeInViewport({ ratio: 1 });
 });
 
 test("arrow keys, Enter, and Escape navigate packaging submenus", async ({

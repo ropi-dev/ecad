@@ -5,6 +5,7 @@ import {
 	type ComponentProps,
 	memo,
 	useCallback,
+	useEffect,
 	useId,
 	useLayoutEffect,
 	useMemo,
@@ -258,7 +259,7 @@ export function SymbolPicker({
 		packageChoices[0];
 	const pickerContent = useRef<HTMLDivElement>(null);
 	const [submenuSide, setSubmenuSide] = useState<"right" | "bottom">("right");
-	const openPackagings = (entry: PickerEntry) => {
+	const measureSubmenuSide = useCallback(() => {
 		const bounds = pickerContent.current?.getBoundingClientRect();
 		const needed = SUBMENU_WIDTH + SUBMENU_OFFSET + COLLISION_PADDING;
 		setSubmenuSide(
@@ -268,6 +269,25 @@ export function SymbolPicker({
 				? "right"
 				: "bottom",
 		);
+	}, []);
+	const submenuOpen = openPartId !== undefined;
+	useEffect(() => {
+		if (!submenuOpen) return;
+		let frame = 0;
+		const remeasure = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(measureSubmenuSide);
+		};
+		window.addEventListener("resize", remeasure);
+		return () => {
+			window.removeEventListener("resize", remeasure);
+			cancelAnimationFrame(frame);
+		};
+	}, [submenuOpen, measureSubmenuSide]);
+	const openPackagings = (entry: PickerEntry) => {
+		const id = optionIds.get(entry.id);
+		if (id) document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+		measureSubmenuSide();
 		setOpenPartId(entry.id);
 		setActiveId(entry.id);
 		setActivePackageId(undefined);
@@ -455,11 +475,14 @@ export function SymbolPicker({
 							);
 							const list = event.currentTarget.getBoundingClientRect();
 							const bounds = row?.getBoundingClientRect();
-							if (
-								!bounds ||
-								bounds.bottom <= list.top ||
-								bounds.top >= list.bottom
-							)
+							const top = Math.max(
+								list.top,
+								row
+									?.closest("section")
+									?.querySelector("h3")
+									?.getBoundingClientRect().bottom ?? list.top,
+							);
+							if (!bounds || bounds.bottom <= top || bounds.top >= list.bottom)
 								setOpenPartId(undefined);
 						}}
 						className="min-h-0 flex-1 overflow-auto px-2 pb-2"
@@ -560,7 +583,7 @@ export function SymbolPicker({
 																	preventScroll: true,
 																});
 															}}
-															className="z-50 flex w-64 max-w-[calc(100vw-2rem)] max-h-[min(22rem,calc(100dvh-6rem))] flex-col overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-2 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
+															className="z-50 flex w-64 max-w-[calc(100vw-2rem)] max-h-[min(22rem,var(--radix-popover-content-available-height))] flex-col overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-2 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
 														>
 															<h4 className="-mx-2 -mt-2 mb-1 border-b border-[#414955] px-2 py-1 text-[11px] font-semibold text-[#9ba7b8]">
 																{entry.part}
