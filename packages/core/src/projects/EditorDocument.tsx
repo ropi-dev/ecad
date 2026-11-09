@@ -3,6 +3,7 @@ import type {
 	Editor2DProps,
 	EditorCanvasProps,
 } from "#/components/editor/Editor2D.tsx";
+import { useDrawingFonts } from "#/components/editor/useDrawingFonts.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import { useProjectEditor } from "#/projects/ProjectProvider.tsx";
 
@@ -17,6 +18,9 @@ export function EditorDocument({
 	...props
 }: Editor2DProps & { Canvas: ComponentType<EditorCanvasProps> }) {
 	const project = useProjectEditor();
+	// Text sizes are measured with the schematic font, so wait for it to load.
+	const fontsReady = useDrawingFonts();
+	if (!fontsReady) return null;
 	if (!props.store && project?.editorCircuit)
 		return (
 			<Suspense

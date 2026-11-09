@@ -42,6 +42,7 @@ import { editorIssues } from "#/components/editor/editorMessages.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { PageBar, type PageEdit } from "#/components/editor/PageBar.tsx";
 import { SelectionAttributes } from "#/components/editor/SelectionAttributes.tsx";
+import { fitTextShapes } from "#/components/editor/text.ts";
 import {
 	type CanvasTool as Tool,
 	useCanvasGestures,
@@ -135,11 +136,17 @@ function EditorCanvas({
 	const { definitions, byReference } = symbolLibrary;
 	const resolveShapes = useCallback(
 		(shapes: EditorShape[]) =>
-			resolveDrawingSymbols(shapes, definitions, byReference).shapes,
+			resolveDrawingSymbols(fitTextShapes(shapes), definitions, byReference)
+				.shapes,
 		[definitions, byReference],
 	);
 	const resolved = useMemo(
-		() => resolveDrawingSymbols(drawing.shapes, definitions, byReference),
+		() =>
+			resolveDrawingSymbols(
+				fitTextShapes(drawing.shapes),
+				definitions,
+				byReference,
+			),
 		[drawing.shapes, definitions, byReference],
 	);
 	const [session] = useState(() => createEditorSession(store, resolveShapes));

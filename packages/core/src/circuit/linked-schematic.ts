@@ -29,8 +29,8 @@ import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-r
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	DEFAULT_PIN_LENGTH,
-	DEFAULT_TEXT_SIZE,
 	fromMils,
+	NET_LABEL_SIZE,
 	SYMBOL_TEXT_SIZE,
 } from "@ecad/drawing-core/drawing/units.ts";
 import { z } from "zod";
@@ -1344,7 +1344,7 @@ function createNetLabel(
 			rotation: 0,
 			width: 1,
 			height: 1,
-			fontSize: DEFAULT_TEXT_SIZE,
+			fontSize: NET_LABEL_SIZE,
 			lineWidth: DEFAULT_LINE_WIDTH,
 			text,
 			...alignmentAtPin(point, symbol),

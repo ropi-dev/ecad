@@ -8,6 +8,7 @@ export const DEFAULT_PIN_LENGTH = fromMils(100);
 export const DEFAULT_TEXT_SIZE = fromMils(100);
 export const SYMBOL_TEXT_SIZE = DEFAULT_TEXT_SIZE;
 export const PIN_NAME_SIZE = fromMils(75);
+export const NET_LABEL_SIZE = fromMils(75);
 export const PIN_LABEL_GAP = fromMils(20);
 export const PIN_NUMBER_GAP = fromMils(10);
 export const PIN_NUMBER_SIZE = fromMils(50);

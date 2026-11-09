@@ -4,6 +4,7 @@ import {
 	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import { NET_LABEL_SIZE } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	createTextShape,
 	type MeasureText,
@@ -47,6 +48,7 @@ export function createLabelShape(
 		{
 			...createTextShape(id, anchor, measureText),
 			electrical: role,
+			...(role === "net" ? { fontSize: NET_LABEL_SIZE } : {}),
 			horizontalAlign: "left",
 			verticalAlign: "bottom",
 		},

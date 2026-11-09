@@ -353,6 +353,9 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 		x: box.x + ((1 + view.origin[0]) * box.width) / 2 + x * scale,
 		y: box.y + ((1 - view.origin[1]) * box.height) / 2 - y * scale,
 	});
+	// "SIGNAL" at 2 mm measures about 7.7 mm wide; the editor refits stored
+	// text boxes to the drawing font, so grab the label at that box's center.
+	const center = 3.85;
 	const document = async () =>
 		JSON.parse(required(await page.locator("#editor-document").textContent()));
 	for (const electrical of ["net", "supply", undefined]) {
@@ -376,7 +379,7 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 					kind: "text",
 					x: 0,
 					y: 0,
-					width: 10,
+					width: 7.7,
 					height: 3,
 					rotation: 0,
 					lineWidth: 0.2,
@@ -388,7 +391,7 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 				},
 			]);
 		}, electrical);
-		const source = screen(5, 1.5);
+		const source = screen(center, 1.5);
 		await page.mouse.click(source.x, source.y);
 		await page.keyboard.press("ArrowRight");
 		await expect(page.getByTestId("resize-handle")).toHaveCount(
@@ -407,7 +410,7 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 		await expect
 			.poll(async () => (await document()).shapes[0].x)
 			.toBeCloseTo(snapStep, 6);
-		const start = screen(snapStep + 5, 1.5);
+		const start = screen(snapStep + center, 1.5);
 		await page.mouse.move(start.x, start.y);
 		await page.mouse.down();
 		await page.mouse.move(
