@@ -51,8 +51,8 @@ for (const [scenario, names, part] of [
 					await expect(
 						page
 							.getByRole("button", { name: "RP2350 packagings", exact: true })
-							.locator("svg"),
-					).toHaveCount(0);
+							.locator("[data-thumbnail-skeleton]"),
+					).toHaveCount(1);
 					await expect(
 						page
 							.getByRole("region", { name: "Diodes", exact: true })

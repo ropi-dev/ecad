@@ -27,6 +27,10 @@ function unavailableReason(definition: SymbolDefinition, components: boolean) {
 		: "Add shapes in the symbol editor before placing this symbol.";
 }
 
+const SUBMENU_WIDTH = 256;
+const SUBMENU_OFFSET = 10;
+const COLLISION_PADDING = 12;
+
 type PickerEntry =
 	| { kind: "symbol"; id: string; definition: SymbolDefinition }
 	| { kind: "part"; id: string; part: string; symbols: SymbolDefinition[] };
@@ -206,6 +210,7 @@ export function SymbolPicker({
 		});
 	}, [definitions, query, components, allowNetSymbols]);
 	const listId = useId();
+	const packagingListId = `${listId}-packagings`;
 	const [activeId, setActiveId] = useState<string>();
 	const [openPartId, setOpenPartId] = useState<string>();
 	const [activePackageId, setActivePackageId] = useState<string>();
@@ -251,15 +256,31 @@ export function SymbolPicker({
 	const highlightedPackage =
 		packageChoices.find((definition) => definition.id === activePackageId) ??
 		packageChoices[0];
+	const pickerContent = useRef<HTMLDivElement>(null);
+	const [submenuSide, setSubmenuSide] = useState<"right" | "bottom">("right");
 	const openPackagings = (entry: PickerEntry) => {
+		const bounds = pickerContent.current?.getBoundingClientRect();
+		const needed = SUBMENU_WIDTH + SUBMENU_OFFSET + COLLISION_PADDING;
+		setSubmenuSide(
+			!bounds ||
+				window.innerWidth - bounds.right >= needed ||
+				bounds.left >= needed
+				? "right"
+				: "bottom",
+		);
 		setOpenPartId(entry.id);
 		setActiveId(entry.id);
 		setActivePackageId(undefined);
 	};
 	const latestChoose = useRef(onChoose);
+	const latestOpenPartId = useRef(openPartId);
 	useLayoutEffect(() => {
 		latestChoose.current = onChoose;
+		latestOpenPartId.current = openPartId;
 	});
+	const highlightEntry = useCallback((id: string) => {
+		if (latestOpenPartId.current === undefined) setActiveId(id);
+	}, []);
 	const choose = useCallback(
 		(definition: SymbolDefinition) => {
 			if (components) chosenComponent.current = true;
@@ -295,6 +316,7 @@ export function SymbolPicker({
 			</Popover.Trigger>
 			<Popover.Portal>
 				<Popover.Content
+					ref={pickerContent}
 					onCloseAutoFocus={(event) => {
 						if (chosenComponent.current) {
 							event.preventDefault();
@@ -303,7 +325,7 @@ export function SymbolPicker({
 					}}
 					side="top"
 					sideOffset={8}
-					collisionPadding={12}
+					collisionPadding={COLLISION_PADDING}
 					aria-label={components ? "Component library" : "Symbol library"}
 					onOpenAutoFocus={(event) => {
 						event.preventDefault();
@@ -408,7 +430,7 @@ export function SymbolPicker({
 						aria-label={searchLabel}
 						placeholder={searchLabel}
 						autoComplete="off"
-						aria-controls={listId}
+						aria-controls={openPart ? packagingListId : listId}
 						aria-activedescendant={
 							openPart
 								? highlightedPackage &&
@@ -426,6 +448,20 @@ export function SymbolPicker({
 					<div
 						id={listId}
 						data-symbol-picker=""
+						onScroll={(event) => {
+							if (!openPart) return;
+							const row = document.getElementById(
+								optionIds.get(openPart.id) ?? "",
+							);
+							const list = event.currentTarget.getBoundingClientRect();
+							const bounds = row?.getBoundingClientRect();
+							if (
+								!bounds ||
+								bounds.bottom <= list.top ||
+								bounds.top >= list.bottom
+							)
+								setOpenPartId(undefined);
+						}}
 						className="min-h-0 flex-1 overflow-auto px-2 pb-2"
 					>
 						{library.error && (
@@ -476,7 +512,7 @@ export function SymbolPicker({
 														highlighted={entry === highlighted}
 														components={components}
 														onChoose={choose}
-														onHighlight={setActiveId}
+														onHighlight={highlightEntry}
 													/>
 												);
 											const expanded = entry === openPart;
@@ -496,19 +532,28 @@ export function SymbolPicker({
 															highlighted={entry === highlighted}
 															expanded={expanded}
 															available={optionIds.has(entry.id)}
-															onHighlight={setActiveId}
+															onHighlight={highlightEntry}
 														/>
 													</Popover.Trigger>
 													<Popover.Portal>
 														<Popover.Content
-															side="right"
-															align="start"
-															sideOffset={10}
-															collisionPadding={12}
-															aria-label={`${entry.part} packagings`}
-															onOpenAutoFocus={(event) =>
-																event.preventDefault()
+															side={submenuSide}
+															align={submenuSide === "right" ? "start" : "end"}
+															sideOffset={
+																submenuSide === "right" ? SUBMENU_OFFSET : 2
 															}
+															collisionPadding={COLLISION_PADDING}
+															aria-label={`${entry.part} packagings`}
+															onOpenAutoFocus={(event) => {
+																event.preventDefault();
+																searchInput.current?.focus({
+																	preventScroll: true,
+																});
+															}}
+															onFocusOutside={(event) => {
+																if (event.target === searchInput.current)
+																	event.preventDefault();
+															}}
 															onCloseAutoFocus={(event) => {
 																event.preventDefault();
 																searchInput.current?.focus({
@@ -520,19 +565,26 @@ export function SymbolPicker({
 															<h4 className="-mx-2 -mt-2 mb-1 border-b border-[#414955] px-2 py-1 text-[11px] font-semibold text-[#9ba7b8]">
 																{entry.part}
 															</h4>
-															{entry.symbols.map((definition) => (
-																<SymbolOption
-																	key={definition.id}
-																	definition={definition}
-																	optionId={packageOptionIds.get(definition.id)}
-																	highlighted={
-																		definition === highlightedPackage
-																	}
-																	components={components}
-																	onChoose={choose}
-																	onHighlight={setActivePackageId}
-																/>
-															))}
+															<div
+																id={expanded ? packagingListId : undefined}
+																className="flex flex-col"
+															>
+																{entry.symbols.map((definition) => (
+																	<SymbolOption
+																		key={definition.id}
+																		definition={definition}
+																		optionId={packageOptionIds.get(
+																			definition.id,
+																		)}
+																		highlighted={
+																			definition === highlightedPackage
+																		}
+																		components={components}
+																		onChoose={choose}
+																		onHighlight={setActivePackageId}
+																	/>
+																))}
+															</div>
 														</Popover.Content>
 													</Popover.Portal>
 												</Popover.Root>
