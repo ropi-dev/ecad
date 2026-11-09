@@ -1,7 +1,8 @@
 import { symbolCategories } from "@ecad/default-symbols";
-import { Microchip } from "lucide-react";
+import { ChevronRight, Microchip } from "lucide-react";
 import { Popover } from "radix-ui";
 import {
+	type ComponentProps,
 	memo,
 	useCallback,
 	useId,
@@ -25,6 +26,13 @@ function unavailableReason(definition: SymbolDefinition, components: boolean) {
 		? undefined
 		: "Add shapes in the symbol editor before placing this symbol.";
 }
+
+type PickerEntry =
+	| { kind: "symbol"; id: string; definition: SymbolDefinition }
+	| { kind: "part"; id: string; part: string; symbols: SymbolDefinition[] };
+
+const optionClassName =
+	"flex scroll-mt-8 cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50 data-highlighted:bg-white/10";
 
 const SymbolOption = memo(function SymbolOption({
 	definition,
@@ -50,7 +58,7 @@ const SymbolOption = memo(function SymbolOption({
 			data-highlighted={highlighted ? "" : undefined}
 			disabled={!!reason}
 			title={reason}
-			className="flex scroll-mt-8 cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50 data-highlighted:bg-white/10"
+			className={optionClassName}
 			onPointerMove={() => {
 				if (!reason && !highlighted) onHighlight(definition.id);
 			}}
@@ -62,17 +70,68 @@ const SymbolOption = memo(function SymbolOption({
 			<SymbolThumbnail definition={definition} />
 			<span className="min-w-0">
 				<span className="block truncate text-[13px] leading-tight">
-					{definition.name}
+					{definition.packaging?.name ?? definition.name}
 				</span>
-				{!components && (
+				{(!components || definition.packaging) && (
 					<span
-						title={definition.description}
+						title={definition.packaging?.description ?? definition.description}
 						className="block truncate text-[11px] leading-tight text-[#7c8696]"
 					>
-						{definition.description}
+						{definition.packaging?.description ?? definition.description}
 					</span>
 				)}
 			</span>
+		</button>
+	);
+});
+
+const PartOption = memo(function PartOption({
+	entry,
+	optionId,
+	highlighted,
+	expanded,
+	available,
+	onHighlight,
+	...trigger
+}: {
+	entry: Extract<PickerEntry, { kind: "part" }>;
+	optionId: string | undefined;
+	highlighted: boolean;
+	expanded: boolean;
+	available: boolean;
+	onHighlight: (id: string) => void;
+} & ComponentProps<"button">) {
+	const count = entry.symbols.length;
+	return (
+		<button
+			{...trigger}
+			type="button"
+			aria-label={`${entry.part} packagings`}
+			id={optionId}
+			data-highlighted={highlighted || expanded ? "" : undefined}
+			disabled={!available}
+			className={optionClassName}
+			onPointerMove={() => {
+				if (available && !highlighted) onHighlight(entry.id);
+			}}
+			onFocus={() => {
+				if (available) onHighlight(entry.id);
+			}}
+		>
+			<SymbolThumbnail definition={entry.symbols[0]} />
+			<span className="min-w-0 flex-1">
+				<span className="block truncate text-[13px] leading-tight">
+					{entry.part}
+				</span>
+				<span className="block truncate text-[11px] leading-tight text-[#7c8696]">
+					{count} {count === 1 ? "packaging" : "packagings"}
+				</span>
+			</span>
+			<ChevronRight
+				size={14}
+				aria-hidden="true"
+				className="shrink-0 text-[#9ba7b8]"
+			/>
 		</button>
 	);
 });
@@ -114,33 +173,89 @@ export function SymbolPicker({
 					definition.prefix,
 					definition.id,
 					definition.category ?? "Custom symbols",
+					definition.packaging?.part ?? "",
+					definition.packaging?.name ?? "",
+					definition.packaging?.description ?? "",
 				].some((value) => value.toLowerCase().includes(search)),
 		);
 		return [...symbolCategories, "Custom symbols"].flatMap((category) => {
-			const symbols = matches.filter(
-				(definition) => (definition.category ?? "Custom symbols") === category,
-			);
-			return symbols.length ? [{ category, symbols }] : [];
+			const parts = new Map<string, SymbolDefinition[]>();
+			const entries: PickerEntry[] = [];
+			for (const definition of matches) {
+				if ((definition.category ?? "Custom symbols") !== category) continue;
+				const part = definition.packaging?.part;
+				if (part === undefined) {
+					entries.push({ kind: "symbol", id: definition.id, definition });
+					continue;
+				}
+				const existing = parts.get(part);
+				if (existing) {
+					existing.push(definition);
+					continue;
+				}
+				const symbols = [definition];
+				parts.set(part, symbols);
+				entries.push({
+					kind: "part",
+					id: `part:${category}:${part}`,
+					part,
+					symbols,
+				});
+			}
+			return entries.length ? [{ category, entries }] : [];
 		});
 	}, [definitions, query, components, allowNetSymbols]);
 	const listId = useId();
 	const [activeId, setActiveId] = useState<string>();
+	const [openPartId, setOpenPartId] = useState<string>();
+	const [activePackageId, setActivePackageId] = useState<string>();
 	const { choices, optionIds } = useMemo(() => {
 		const choices = groups
-			.flatMap(({ symbols }) => symbols)
-			.filter((definition) => !unavailableReason(definition, components));
+			.flatMap(({ entries }) => entries)
+			.filter((entry) =>
+				entry.kind === "symbol"
+					? !unavailableReason(entry.definition, components)
+					: entry.symbols.some(
+							(definition) => !unavailableReason(definition, components),
+						),
+			);
 		return {
 			choices,
 			optionIds: new Map(
-				choices.map((definition, index) => [
-					definition.id,
-					`${listId}-option-${index}`,
-				]),
+				choices.map((entry, index) => [entry.id, `${listId}-option-${index}`]),
 			),
 		};
 	}, [groups, components, listId]);
 	const highlighted =
-		choices.find((definition) => definition.id === activeId) ?? choices[0];
+		choices.find((entry) => entry.id === activeId) ?? choices[0];
+	const openPart = choices.find(
+		(entry) => entry.kind === "part" && entry.id === openPartId,
+	);
+	const { packageChoices, packageOptionIds } = useMemo(() => {
+		const packageChoices =
+			openPart?.kind === "part"
+				? openPart.symbols.filter(
+						(definition) => !unavailableReason(definition, components),
+					)
+				: [];
+		return {
+			packageChoices,
+			packageOptionIds: new Map(
+				packageChoices.map((definition, index) => [
+					definition.id,
+					`${listId}-packaging-${index}`,
+				]),
+			),
+		};
+	}, [openPart, components, listId]);
+	const highlightedPackage =
+		packageChoices.find((definition) => definition.id === activePackageId) ??
+		packageChoices[0];
+	const openPackagings = (entry: PickerEntry) => {
+		setOpenPartId(entry.id);
+		setActiveId(entry.id);
+		setActivePackageId(undefined);
+	};
 	const latestChoose = useRef(onChoose);
 	useLayoutEffect(() => {
 		latestChoose.current = onChoose;
@@ -161,6 +276,7 @@ export function SymbolPicker({
 				if (nextOpen) {
 					setQuery("");
 					setActiveId(undefined);
+					setOpenPartId(undefined);
 					onOpen?.();
 				}
 			}}
@@ -194,10 +310,52 @@ export function SymbolPicker({
 						searchInput.current?.focus();
 					}}
 					onKeyDown={(event) => {
+						if (event.nativeEvent.isComposing) return;
 						if (
-							(event.key === "ArrowDown" || event.key === "ArrowUp") &&
-							!event.nativeEvent.isComposing
+							openPart &&
+							(event.key === "ArrowDown" || event.key === "ArrowUp")
 						) {
+							event.preventDefault();
+							searchInput.current?.focus({ preventScroll: true });
+							if (!highlightedPackage) return;
+							const next =
+								packageChoices[
+									Math.min(
+										Math.max(
+											packageChoices.indexOf(highlightedPackage) +
+												(event.key === "ArrowDown" ? 1 : -1),
+											0,
+										),
+										packageChoices.length - 1,
+									)
+								];
+							setActivePackageId(next.id);
+							const id = packageOptionIds.get(next.id);
+							if (id)
+								document
+									.getElementById(id)
+									?.scrollIntoView({ block: "nearest" });
+							return;
+						}
+						if (openPart && event.key === "ArrowLeft") {
+							event.preventDefault();
+							setOpenPartId(undefined);
+							searchInput.current?.focus({ preventScroll: true });
+							return;
+						}
+						if (
+							!openPart &&
+							event.key === "ArrowRight" &&
+							highlighted?.kind === "part" &&
+							(event.target !== searchInput.current ||
+								searchInput.current.selectionStart === query.length)
+						) {
+							event.preventDefault();
+							openPackagings(highlighted);
+							searchInput.current?.focus({ preventScroll: true });
+							return;
+						}
+						if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 							event.preventDefault();
 							searchInput.current?.focus({ preventScroll: true });
 							if (!highlighted) return;
@@ -221,13 +379,15 @@ export function SymbolPicker({
 							return;
 						}
 						if (event.target === searchInput.current) {
-							if (
-								event.key === "Enter" &&
-								!event.nativeEvent.isComposing &&
-								highlighted
-							) {
+							if (event.key !== "Enter") return;
+							if (openPart) {
+								if (!highlightedPackage) return;
 								event.preventDefault();
-								choose(highlighted);
+								choose(highlightedPackage);
+							} else if (highlighted) {
+								event.preventDefault();
+								if (highlighted.kind === "part") openPackagings(highlighted);
+								else choose(highlighted.definition);
 							}
 							return;
 						}
@@ -250,12 +410,16 @@ export function SymbolPicker({
 						autoComplete="off"
 						aria-controls={listId}
 						aria-activedescendant={
-							highlighted ? optionIds.get(highlighted.id) : undefined
+							openPart
+								? highlightedPackage &&
+									packageOptionIds.get(highlightedPackage.id)
+								: highlighted && optionIds.get(highlighted.id)
 						}
 						value={query}
 						onChange={(event) => {
 							setQuery(event.currentTarget.value);
 							setActiveId(undefined);
+							setOpenPartId(undefined);
 						}}
 						className="m-2 block shrink-0 rounded-md border border-[#414955] bg-[#191c22] px-2.5 py-1.5 text-[13px] text-[#e8edf5] placeholder:text-[#9ba7b8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
 					/>
@@ -287,7 +451,7 @@ export function SymbolPicker({
 							</output>
 						)}
 						<div className="space-y-2">
-							{groups.map(({ category, symbols }) => (
+							{groups.map(({ category, entries }) => (
 								<section
 									key={category}
 									aria-label={
@@ -302,17 +466,78 @@ export function SymbolPicker({
 											: category}
 									</h3>
 									<div className="flex flex-col">
-										{symbols.map((definition) => (
-											<SymbolOption
-												key={definition.id}
-												definition={definition}
-												optionId={optionIds.get(definition.id)}
-												highlighted={definition === highlighted}
-												components={components}
-												onChoose={choose}
-												onHighlight={setActiveId}
-											/>
-										))}
+										{entries.map((entry) => {
+											if (entry.kind === "symbol")
+												return (
+													<SymbolOption
+														key={entry.id}
+														definition={entry.definition}
+														optionId={optionIds.get(entry.id)}
+														highlighted={entry === highlighted}
+														components={components}
+														onChoose={choose}
+														onHighlight={setActiveId}
+													/>
+												);
+											const expanded = entry === openPart;
+											return (
+												<Popover.Root
+													key={entry.id}
+													open={expanded}
+													onOpenChange={(nextOpen) => {
+														if (nextOpen) openPackagings(entry);
+														else if (expanded) setOpenPartId(undefined);
+													}}
+												>
+													<Popover.Trigger asChild>
+														<PartOption
+															entry={entry}
+															optionId={optionIds.get(entry.id)}
+															highlighted={entry === highlighted}
+															expanded={expanded}
+															available={optionIds.has(entry.id)}
+															onHighlight={setActiveId}
+														/>
+													</Popover.Trigger>
+													<Popover.Portal>
+														<Popover.Content
+															side="right"
+															align="start"
+															sideOffset={10}
+															collisionPadding={12}
+															aria-label={`${entry.part} packagings`}
+															onOpenAutoFocus={(event) =>
+																event.preventDefault()
+															}
+															onCloseAutoFocus={(event) => {
+																event.preventDefault();
+																searchInput.current?.focus({
+																	preventScroll: true,
+																});
+															}}
+															className="z-50 flex w-64 max-w-[calc(100vw-2rem)] max-h-[min(22rem,calc(100dvh-6rem))] flex-col overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-2 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
+														>
+															<h4 className="-mx-2 -mt-2 mb-1 border-b border-[#414955] px-2 py-1 text-[11px] font-semibold text-[#9ba7b8]">
+																{entry.part}
+															</h4>
+															{entry.symbols.map((definition) => (
+																<SymbolOption
+																	key={definition.id}
+																	definition={definition}
+																	optionId={packageOptionIds.get(definition.id)}
+																	highlighted={
+																		definition === highlightedPackage
+																	}
+																	components={components}
+																	onChoose={choose}
+																	onHighlight={setActivePackageId}
+																/>
+															))}
+														</Popover.Content>
+													</Popover.Portal>
+												</Popover.Root>
+											);
+										})}
 									</div>
 								</section>
 							))}

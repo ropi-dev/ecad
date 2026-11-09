@@ -11,6 +11,7 @@ export type {
 	DefaultSymbol,
 	DefaultSymbolFile,
 	SymbolCategory,
+	SymbolPackaging,
 	SymbolPrimitive,
 } from "./types.ts";
 export { symbolCategories } from "./types.ts";
@@ -115,6 +116,7 @@ function generate(source: SourceSymbol): DefaultSymbol {
 	});
 	return {
 		category: source.category,
+		...(source.packaging ? { packaging: { ...source.packaging } } : {}),
 		file: {
 			format: "ecad-symbol",
 			version: 1,

@@ -342,6 +342,7 @@ const nrf54l = (
 ): SourceSymbol => ({
 	id: `${part}-${code}`.toLowerCase(),
 	category: "Microcontrollers",
+	packaging: { part, name: code, description: pkg },
 	name: `${part}-${code}`,
 	description: `Nordic Bluetooth LE and multiprotocol SoC, 128 MHz Cortex-M33, ${memory}, ${gpios} GPIO, ${pkg}`,
 	prefix: "U",
@@ -383,6 +384,7 @@ export const nordicMicrocontrollers: readonly SourceSymbol[] = [
 const npm2100 = (code: string, pins: PinTable, pkg: string): SourceSymbol => ({
 	id: `npm2100-${code}`.toLowerCase(),
 	category: "Power",
+	packaging: { part: "nPM2100", name: code, description: pkg },
 	name: `nPM2100-${code}`,
 	description: `Nordic primary-cell PMIC with boost regulator, load switch or LDO, fuel gauge and TWI, ${pkg}`,
 	prefix: "U",

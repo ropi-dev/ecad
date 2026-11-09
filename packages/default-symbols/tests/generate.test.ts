@@ -439,3 +439,35 @@ test("Nordic chips have one symbol per package with that package's pin numbers",
 		);
 	}
 });
+
+test("package-specific chips group their packages under one part", () => {
+	const parts = new Map<string, string[]>();
+	for (const { file, packaging } of generateDefaultSymbols()) {
+		const pinNumbers = file.shapes.some(
+			(shape) => shape.kind === "pin" && shape.number !== undefined,
+		);
+		assert.equal(packaging !== undefined, pinNumbers, file.id);
+		if (!packaging) continue;
+		assert.ok(packaging.name && packaging.description, file.id);
+		parts.set(packaging.part, [
+			...(parts.get(packaging.part) ?? []),
+			packaging.name,
+		]);
+	}
+	assert.deepEqual(Object.fromEntries(parts), {
+		RP2040: ["RP2040"],
+		RP2350: ["RP2350A", "RP2350B"],
+		nRF54L15: ["QDAA", "QFAA", "QGAA", "CAAA"],
+		nRF54L10: ["QDAA", "QFAA", "QGAA"],
+		nRF54L05: ["QDAA", "QFAA", "QGAA"],
+		nPM2100: ["QEAA", "CAAA"],
+	});
+	const first = generateDefaultSymbols();
+	const packaged = required(first.find(({ packaging }) => packaging));
+	required(packaged.packaging).name = "changed";
+	assert.notEqual(
+		generateDefaultSymbols().find(({ file }) => file.id === packaged.file.id)
+			?.packaging?.name,
+		"changed",
+	);
+});

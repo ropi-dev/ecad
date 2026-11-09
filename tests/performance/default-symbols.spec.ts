@@ -1,11 +1,11 @@
-import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test } from "@playwright/test";
+import { defaultSymbolRows } from "../helpers/default-symbol-rows.ts";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
-for (const [scenario, names] of [
+for (const [scenario, names, part] of [
 	[
 		"default-symbols",
 		[
@@ -16,8 +16,13 @@ for (const [scenario, names] of [
 			"Transformer",
 			"8-pin connector",
 		],
+		(_name: string) => undefined,
 	],
-	["microcontroller-symbols", ["RP2040", "RP2350A", "RP2350B"]],
+	[
+		"microcontroller-symbols",
+		["RP2040", "RP2350A", "RP2350B"],
+		(name: string) => (name === "RP2040" ? "RP2040" : "RP2350"),
+	],
 ] as const) {
 	test(
 		scenario,
@@ -34,7 +39,10 @@ for (const [scenario, names] of [
 						.click();
 					await expect(
 						page.getByRole("button", { name: /^Insert / }),
-					).toHaveCount(generateDefaultSymbols().length);
+					).toHaveCount(defaultSymbolRows().symbols);
+					await expect(
+						page.getByRole("button", { name: / packagings$/ }),
+					).toHaveCount(defaultSymbolRows().parts);
 					await expect(
 						page
 							.getByRole("button", { name: "Insert Resistor", exact: true })
@@ -42,7 +50,7 @@ for (const [scenario, names] of [
 					).toHaveCount(1);
 					await expect(
 						page
-							.getByRole("button", { name: "Insert RP2350B", exact: true })
+							.getByRole("button", { name: "RP2350 packagings", exact: true })
 							.locator("svg"),
 					).toHaveCount(0);
 					await expect(
@@ -66,10 +74,18 @@ for (const [scenario, names] of [
 					await expect(search).toBeFocused();
 					await search.fill(name);
 					await expect(
-						page.getByRole("button", { name: /^Insert / }),
+						page.getByRole("button", { name: /^Insert | packagings$/ }),
 					).toHaveCount(1);
 				});
 				await interaction(page, "symbol.place", async () => {
+					const chipPart = part(name);
+					if (chipPart)
+						await page
+							.getByRole("button", {
+								name: `${chipPart} packagings`,
+								exact: true,
+							})
+							.click();
 					await page
 						.getByRole("button", { name: `Insert ${name}`, exact: true })
 						.click();

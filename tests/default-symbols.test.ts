@@ -11,7 +11,7 @@ import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
 test("every generated default is valid portable geometry and has a reserved built-in ID", () => {
-	for (const { file, texts, category } of generateDefaultSymbols()) {
+	for (const { file, texts, category, packaging } of generateDefaultSymbols()) {
 		assert.throws(() => parseSymbolFile(JSON.stringify(file)), /reserved/);
 		const custom = { ...file, id: `custom.${file.id}` };
 		assert.deepEqual(parseSymbolFile(JSON.stringify(custom)), custom);
@@ -22,6 +22,7 @@ test("every generated default is valid portable geometry and has a reserved buil
 				...definition,
 				texts,
 				category,
+				...(packaging ? { packaging } : {}),
 				library: { scope: "user", id: "builtin" },
 			},
 		);

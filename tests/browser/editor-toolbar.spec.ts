@@ -69,6 +69,105 @@ test("clicking a submenu's padding keeps it open", async ({ page }) => {
 	await expect(tools).toBeVisible();
 });
 
+test("chip packagings open in a submenu from their part", async ({ page }) => {
+	const symbols = page.getByRole("button", { name: "Symbols", exact: true });
+	await symbols.click();
+	const part = page
+		.getByRole("region", { name: "Microcontrollers", exact: true })
+		.getByRole("button", { name: "nRF54L15 packagings", exact: true });
+	await expect(part).toHaveAttribute("aria-expanded", "false");
+	await expect(part).toContainText("nRF54L154 packagings");
+	await expect(
+		page.getByRole("button", { name: /^Insert nRF54L15-/ }),
+	).toHaveCount(0);
+	await part.click();
+	const packagings = page.getByRole("dialog", {
+		name: "nRF54L15 packagings",
+		exact: true,
+	});
+	await expect(part).toHaveAttribute("aria-expanded", "true");
+	expect(
+		await packagings
+			.getByRole("button")
+			.evaluateAll((buttons) =>
+				buttons.map((button) => button.getAttribute("aria-label")),
+			),
+	).toEqual([
+		"Insert nRF54L15-QDAA",
+		"Insert nRF54L15-QFAA",
+		"Insert nRF54L15-QGAA",
+		"Insert nRF54L15-CAAA",
+	]);
+	await expect(
+		packagings.getByRole("button", {
+			name: "Insert nRF54L15-CAAA",
+			exact: true,
+		}),
+	).toContainText("CAAA47-ball wafer-level CSP");
+	await packagings
+		.getByRole("button", { name: "Insert nRF54L15-CAAA", exact: true })
+		.click();
+	await expect(packagings).toBeHidden();
+	await expect(symbols).toHaveAttribute("aria-pressed", "true");
+	await page.locator("canvas").click({ position: { x: 600, y: 300 } });
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveValue("nRF54L15-CAAA");
+});
+
+test("arrow keys, Enter, and Escape navigate packaging submenus", async ({
+	page,
+}) => {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	const search = page.getByRole("searchbox", {
+		name: "Search symbols",
+		exact: true,
+	});
+	const expectHighlighted = async (name: string) =>
+		expect(search).toHaveAttribute(
+			"aria-activedescendant",
+			required(
+				await page
+					.getByRole("button", { name, exact: true })
+					.getAttribute("id"),
+			),
+		);
+	await search.fill("nRF54L");
+	await expectHighlighted("nRF54L15 packagings");
+	await page.keyboard.press("ArrowDown");
+	await expectHighlighted("nRF54L10 packagings");
+	await page.keyboard.press("ArrowRight");
+	const packagings = page.getByRole("dialog", {
+		name: "nRF54L10 packagings",
+		exact: true,
+	});
+	await expect(packagings.getByRole("button")).toHaveCount(3);
+	await expectHighlighted("Insert nRF54L10-QDAA");
+	await expect(search).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowDown");
+	await expectHighlighted("Insert nRF54L10-QGAA");
+	await page.keyboard.press("ArrowLeft");
+	await expect(packagings).toBeHidden();
+	await expectHighlighted("nRF54L10 packagings");
+	await page.keyboard.press("Enter");
+	await expect(packagings).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(packagings).toBeHidden();
+	await expect(search).toBeFocused();
+	await expect(search).toHaveValue("nRF54L");
+	await page.keyboard.press("Enter");
+	await page.keyboard.press("ArrowDown");
+	await expectHighlighted("Insert nRF54L10-QFAA");
+	await page.keyboard.press("Enter");
+	await expect(search).toBeHidden();
+	await page.locator("canvas").click({ position: { x: 600, y: 300 } });
+	await expect(
+		page.getByRole("textbox", { name: "Name", exact: true }),
+	).toHaveValue("nRF54L10-QFAA");
+});
+
 test("symbol picker search, arrow keys, and Enter choose a symbol", async ({
 	page,
 }) => {

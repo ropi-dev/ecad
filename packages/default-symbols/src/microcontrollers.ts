@@ -4,6 +4,11 @@ export const microcontrollers: readonly SourceSymbol[] = [
 	{
 		id: "rp2040",
 		category: "Microcontrollers",
+		packaging: {
+			part: "RP2040",
+			name: "RP2040",
+			description: "QFN-56 with exposed ground pad",
+		},
 		name: "RP2040",
 		description:
 			"Raspberry Pi dual-core Cortex-M0+ microcontroller, QFN-56 with exposed ground pad",
@@ -76,6 +81,11 @@ export const microcontrollers: readonly SourceSymbol[] = [
 	{
 		id: "rp2350a",
 		category: "Microcontrollers",
+		packaging: {
+			part: "RP2350",
+			name: "RP2350A",
+			description: "30 GPIO, QFN-60 with exposed ground pad",
+		},
 		name: "RP2350A",
 		description:
 			"Raspberry Pi dual-core Cortex-M33 or Hazard3 RISC-V microcontroller, 30 GPIO, QFN-60 with exposed ground pad",
@@ -152,6 +162,11 @@ export const microcontrollers: readonly SourceSymbol[] = [
 	{
 		id: "rp2350b",
 		category: "Microcontrollers",
+		packaging: {
+			part: "RP2350",
+			name: "RP2350B",
+			description: "48 GPIO, QFN-80 with exposed ground pad",
+		},
 		name: "RP2350B",
 		description:
 			"Raspberry Pi dual-core Cortex-M33 or Hazard3 RISC-V microcontroller, 48 GPIO, QFN-80 with exposed ground pad",

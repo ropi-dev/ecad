@@ -67,8 +67,15 @@ export const symbolCategories = [
 
 export type SymbolCategory = (typeof symbolCategories)[number];
 
+export interface SymbolPackaging {
+	part: string;
+	name: string;
+	description: string;
+}
+
 export interface DefaultSymbol {
 	category: SymbolCategory;
+	packaging?: SymbolPackaging;
 	file: DefaultSymbolFile;
 	/** Labels belong to editor instances. Version 1 portable files do not store them. */
 	texts: {
@@ -104,6 +111,7 @@ export type SourceShape =
 export interface SourceSymbol {
 	id: string;
 	category: SymbolCategory;
+	packaging?: SymbolPackaging;
 	name: string;
 	description: string;
 	prefix: string;
