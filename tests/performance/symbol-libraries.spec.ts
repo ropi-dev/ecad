@@ -1,6 +1,6 @@
-import { generateDefaultSymbols } from "@ecad/default-symbols";
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { defaultSymbolRows } from "../helpers/default-symbol-rows.ts";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
@@ -99,7 +99,7 @@ test(
 		await interaction(page, "library.picker", async () => {
 			await page.getByRole("button", { name: "Symbols", exact: true }).click();
 			await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(
-				380 + generateDefaultSymbols().length,
+				380 + defaultSymbolRows().symbols,
 			);
 		});
 		await interaction(page, "library.search", async () => {
@@ -111,7 +111,7 @@ test(
 			);
 			await search.fill("");
 			await expect(page.getByRole("button", { name: /^Insert / })).toHaveCount(
-				380 + generateDefaultSymbols().length,
+				380 + defaultSymbolRows().symbols,
 			);
 		});
 		const search = page.getByRole("searchbox", { name: "Search symbols" });

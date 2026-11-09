@@ -1,6 +1,7 @@
 import {
 	generateDefaultSymbols,
 	type SymbolCategory,
+	type SymbolPackaging,
 } from "@ecad/default-symbols";
 import {
 	type EditorShape,
@@ -21,6 +22,7 @@ export interface SymbolDefinition {
 	id: string;
 	library?: SymbolLibraryReference;
 	category?: SymbolCategory;
+	packaging?: SymbolPackaging;
 	name: string;
 	description: string;
 	prefix: string;
@@ -40,6 +42,9 @@ export const symbolDefinitions: SymbolDefinition[] = libraryDefinitions(
 	...definition,
 	library: { scope: "user", id: "builtin" },
 	category: generatedSymbols[index].category,
+	...(generatedSymbols[index].packaging
+		? { packaging: generatedSymbols[index].packaging }
+		: {}),
 	texts: generatedSymbols[index].texts,
 }));
 
