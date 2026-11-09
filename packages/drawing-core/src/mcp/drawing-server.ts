@@ -12,11 +12,13 @@ import {
 	drawingToolResultByteLimit,
 	getDrawingInputSchema,
 	jumpHistoryInputSchema,
+	moveShapesToPageInputSchema,
 	placeShapesInputSchema,
 	rectangleInputSchema,
 	removeShapesInputSchema,
 	replaceShapesInputSchema,
 	rotateShapesInputSchema,
+	setPagesInputSchema,
 	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
 
@@ -114,7 +116,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Read drawing",
 			description:
-				"Read the drawing's committed shapes, electrical nets, allocated IDs and history branches. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews and selection are not drawing data. Without arguments, a drawing too large for one tool result fails with DrawingTooLarge. Pass offset 0, and optionally limit, to read a page of drawing.shapes. Continue from page.nextOffset until it is absent, passing the revision from the first page with every later page. If the drawing changed in between, the call fails with DrawingChanged; read again from offset 0. Only the page at offset 0 includes nets.",
+				"Read the drawing's committed shapes, schematic pages, electrical nets, allocated IDs and history branches. drawing.pages lists the schematic pages in display order as { id, name }; a shape's page field names its page, and shapes on the first page omit it. Wires and pins connect only on their own page, while a net in drawing.nets can span pages through net and supply labels with the same name. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews, selection and the page open in the editor are not drawing data. Without arguments, a drawing too large for one tool result fails with DrawingTooLarge. Pass offset 0, and optionally limit, to read drawing.shapes in chunks; the reply's page field describes the chunk, not a schematic page. Continue from page.nextOffset until it is absent, passing the revision from the first chunk with every later chunk. If the drawing changed in between, the call fails with DrawingChanged; read again from offset 0. Only the chunk at offset 0 includes nets.",
 			inputSchema: getDrawingInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: readOnly,
@@ -126,7 +128,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Place rectangle",
 			description:
-				"Place one rectangle with its complete final geometry in the drawing. Supply center x/y, width, height and lineWidth in millimetres and rotation in radians. Positive Y points up. This command commits immediately as one undo step; it does not activate a drawing tool or wait for pointer input." +
+				"Place one rectangle with its complete final geometry in the drawing. Supply center x/y, width, height and lineWidth in millimetres and rotation in radians. Positive Y points up. Optional page is a schematic page ID from getDrawing; without it the rectangle goes on the first page. This command commits immediately as one undo step; it does not activate a drawing tool or wait for pointer input." +
 				shapeEditReply,
 			inputSchema: rectangleInputSchema,
 			outputSchema: drawingToolReplySchema,
@@ -139,7 +141,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Place shapes",
 			description:
-				"Place complete rectangles, circles, triangles, lines at any angle, orthogonal wires, pins, text or symbols as one undo step. Top-level IDs are allocated by the drawing. Supply final center coordinates and dimensions in millimetres and rotation in radians. Text dimensions must already be measured; symbol children use local coordinates and their own IDs. Wire overlaps normalize within this transaction." +
+				"Place complete rectangles, circles, triangles, lines at any angle, orthogonal wires, pins, text or symbols as one undo step. Top-level IDs are allocated by the drawing. Supply final center coordinates and dimensions in millimetres and rotation in radians. Text dimensions must already be measured; symbol children use local coordinates and their own IDs. Wire overlaps normalize within this transaction. Each shape goes on the schematic page its optional page field names, from drawing.pages, or on the first page without it; a symbol cuts wires only on its own page." +
 				shapeEditReply,
 			inputSchema: placeShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
@@ -152,7 +154,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Replace shape geometry",
 			description:
-				"Replace the complete data of explicit existing shape IDs in one undo step. Read getDrawing first to obtain IDs. All coordinates and dimensions are final millimetres; rotations are radians. Include every affected connected neighbor yourself. Optional targetIds choose which existing IDs survive wire merging. This command does not read editor selection." +
+				"Replace the complete data of explicit existing shape IDs in one undo step. Read getDrawing first to obtain IDs. All coordinates and dimensions are final millimetres; rotations are radians. Include every affected connected neighbor yourself. The page field is part of a shape's data: keep it from getDrawing, because a replacement without it puts the shape on the first page. To move shapes between pages, use moveShapesToPage, which also moves pinned circuit labels. Optional targetIds choose which existing IDs survive wire merging. This command does not read editor selection." +
 				shapeEditReply,
 			inputSchema: replaceShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
@@ -165,7 +167,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Rotate shapes",
 			description:
-				"Rotate explicit existing shape IDs around their own centers in one undo step. The angle is relative radians, positive counterclockwise, and defaults to pi/2. Wires require multiples of pi/2. Symbol geometry, pins and labels rotate together. Unselected wires stay in place. Read getDrawing to obtain IDs; editor selection is not consulted." +
+				"Rotate explicit existing shape IDs around their own centers in one undo step. The angle is relative radians, positive counterclockwise, and defaults to pi/2. Wires require multiples of pi/2. Symbol geometry, pins and labels rotate together. Unselected wires stay in place. All shapes must be on one schematic page. Read getDrawing to obtain IDs; editor selection is not consulted." +
 				shapeEditReply,
 			inputSchema: rotateShapesInputSchema,
 			outputSchema: drawingToolReplySchema,
@@ -185,6 +187,32 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			annotations: edit,
 		},
 		(input, { signal }) => call({ type: "removeShapes", ...input }, signal),
+	);
+	server.registerTool(
+		"setPages",
+		{
+			title: "Edit schematic pages",
+			description:
+				"Replace the drawing's page list in one undo step to add, rename, reorder or delete schematic pages. getDrawing returns drawing.pages. Each shape names its page with `page`; shapes without it are on the first page. Wires and pins connect only on their own page, while net and supply labels with the same name connect across pages. Deleting a page deletes its shapes." +
+				historyEditReply,
+			inputSchema: setPagesInputSchema,
+			outputSchema: drawingToolReplySchema,
+			annotations: edit,
+		},
+		(input, { signal }) => call({ type: "setPages", ...input }, signal),
+	);
+	server.registerTool(
+		"moveShapesToPage",
+		{
+			title: "Move shapes to page",
+			description:
+				"Move explicit existing shape IDs to another schematic page at the same coordinates, as one undo step. Move connected wires and labels together, because wires connect only on one page." +
+				shapeEditReply,
+			inputSchema: moveShapesToPageInputSchema,
+			outputSchema: drawingToolReplySchema,
+			annotations: edit,
+		},
+		(input, { signal }) => call({ type: "moveShapesToPage", ...input }, signal),
 	);
 	server.registerTool(
 		"undo",

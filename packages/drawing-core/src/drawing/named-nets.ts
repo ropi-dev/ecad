@@ -1,4 +1,5 @@
 import { connectionTolerance } from "#/drawing/connection-geometry.ts";
+import { pageKey } from "#/drawing/pages.ts";
 import type { EditorShape, TextShape } from "#/drawing/schema.ts";
 import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
@@ -39,6 +40,8 @@ function onSegment(point: Point, start: Point, end: Point) {
 }
 
 interface ElectricalNode {
+	/** Contacts join nodes on one page; names join nodes on every page. */
+	page: number;
 	point: Point;
 	end?: Point;
 	wire?: number;
@@ -98,8 +101,10 @@ export function electricalNets(
 		() => {
 			const nodes: ElectricalNode[] = [];
 			for (const shape of shapes) {
+				const page = pageKey(shape);
 				if (shape.kind === "wire")
 					nodes.push({
+						page,
 						point: {
 							x: shape.x - (Math.cos(shape.rotation) * shape.width) / 2,
 							y: shape.y - (Math.sin(shape.rotation) * shape.width) / 2,
@@ -112,12 +117,14 @@ export function electricalNets(
 					});
 				else if (isNetLabel(shape) && shape.text.trim())
 					nodes.push({
+						page,
 						point: shape,
 						label: shape.id,
 						name: shape.text.trim(),
 					});
 				else if (shape.kind === "pin")
 					nodes.push({
+						page,
 						point: shape,
 						pin: { shapeId: shape.id, pinId: shape.id },
 					});
@@ -128,6 +135,7 @@ export function electricalNets(
 					for (const child of symbolShapes(shape)) {
 						if (child.kind === "pin")
 							nodes.push({
+								page,
 								point: child,
 								pin: { shapeId: shape.id, pinId: child.id },
 								...(name ? { name } : {}),
@@ -158,6 +166,7 @@ export function electricalNets(
 					query(point, (otherIndex) => {
 						if (otherIndex === index) return;
 						const other = nodes[otherIndex];
+						if (other.page !== node.page) return;
 						if (
 							other.end
 								? onSegment(point, other.point, other.end)

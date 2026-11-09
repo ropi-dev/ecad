@@ -15,6 +15,10 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 
 - If the authenticated account belongs to a group authorized to bypass pull request approval requirements, you may always use that bypass without asking for additional confirmation.
 
+## CI failures
+
+- If a test fails on CI and seems unnecessary, you may remove it instead of fixing it. Say which test you removed and why in the pull request.
+
 ## Generated artifacts
 
 - Write generated artifacts, including screenshots, traces, and performance reports, under `/tmp/`. Do not commit or push them to the repository.

@@ -96,15 +96,17 @@ Coordinates and dimensions are millimetres. `x` and `y` specify the shape center
 
 | Tool | Arguments | Behavior |
 | --- | --- | --- |
-| `getDrawing` | optional `offset`, `limit`, `revision` | Read committed shapes, nets, `nextShapeId`, and history entries. `offset` or `limit` reads one page of shapes; later pages need the first page's `revision`. |
+| `getDrawing` | optional `offset`, `limit`, `revision` | Read committed shapes, schematic pages, nets, `nextShapeId`, and history entries. `offset` or `limit` reads one chunk of shapes; later chunks need the first chunk's `revision`. |
 | `placeRectangle` | `x`, `y`, `width`, `height`, `rotation`, `lineWidth` | Place one rectangle and allocate its ID. |
 | `placeShapes` | `shapes`, optional `label` | Place complete shapes without top-level IDs in one history transaction. |
-| `replaceShapes` | `shapes`, optional `label`, optional `targetIds` | Replace complete geometry for explicit existing IDs. `targetIds` prefer IDs to retain when wires merge. |
-| `rotateShapes` | `ids`, optional `angle` | Rotate each explicit ID around its own center in one undo step. Relative radians, positive counterclockwise, default `Math.PI / 2`. Wires require multiples of `Math.PI / 2`. Unselected wires stay in place. |
+| `replaceShapes` | `shapes`, optional `label`, optional `targetIds` | Replace complete geometry for explicit existing IDs. `targetIds` prefer IDs to retain when wires merge. A replacement without `page` puts the shape on the first page, so keep `page` from `getDrawing`. |
+| `rotateShapes` | `ids`, optional `angle` | Rotate each explicit ID around its own center in one undo step. Relative radians, positive counterclockwise, default `Math.PI / 2`. Wires require multiples of `Math.PI / 2`. Unselected wires stay in place. All IDs must be on one page. |
 | `removeShapes` | `ids`, optional `label` | Remove explicit existing IDs. |
 | `undo` | `{}` | Restore the previous history entry. |
 | `redo` | `{}` | Restore the preferred next history entry. |
 | `jumpHistory` | `id` | Restore an existing history entry, including another branch. |
+| `setPages` | `pages`, optional `label` | Replace the schematic page list to add, rename, reorder, or delete pages in one undo step. Shapes on a deleted page are deleted with it. |
+| `moveShapesToPage` | `ids`, `page`, optional `label` | Move explicit existing IDs to another page at the same coordinates. Circuit labels pinned to a moved symbol move with it. Move connected wires and labels together, because wires connect only on their own page. |
 
 For example, send this tool call to place a 40 × 15 mm rectangle centered at `(20, 30)`:
 
@@ -134,10 +136,10 @@ Each tool returns its reply in `structuredContent` and as JSON text. Every succe
 
 Edits do not return the drawing, so their replies stay small however large the drawing grows:
 
-- `placeRectangle`, `placeShapes`, `replaceShapes`, `rotateShapes`, and `removeShapes` also return `result.ids`, the committed IDs of the affected shapes. `removeShapes` returns no IDs. `result.idMap` maps source IDs to committed IDs for the shapes in `result.ids` and for wires that normalization merged or renumbered. IDs it leaves out are unchanged.
+- `placeRectangle`, `placeShapes`, `replaceShapes`, `rotateShapes`, `moveShapesToPage`, `setPages`, and `removeShapes` also return `result.ids`, the committed IDs of the affected shapes. `removeShapes` and `setPages` return no IDs. `result.idMap` maps source IDs to committed IDs for the shapes in `result.ids` and for wires that normalization merged or renumbered. IDs it leaves out are unchanged.
 - `undo`, `redo`, and `jumpHistory` return only the summary.
 
-Call `getDrawing` to read committed geometry after an edit. It returns `drawing` with `shapes`, `nets`, `nextShapeId`, and `history`. The history includes entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state.
+Call `getDrawing` to read committed geometry after an edit. It returns `drawing` with `shapes`, `pages`, `nets`, `nextShapeId`, and `history`. `pages` lists the schematic pages in order as `{ id, name }`. A shape's `page` field names its page; shapes on the first page omit it. Commands place a shape without `page` on the first page and reject a `page` the drawing does not have. Wires, pins, and symbol wire cuts connect only on one page; a net in `nets` spans pages when net or supply labels on them share a name. The page open in the editor is not drawing data, so placements do not follow it. The history includes entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state.
 
 An MCP tool result carries its reply twice: once as `structuredContent` and once as escaped JSON text. `getDrawing` sizes its reply so the whole serialized result stays within 8 MiB. That keeps it under the 10 MiB message limit of the MCP SDK's stdio transport, and keeps the reply itself small enough for one editor acknowledgement. Without arguments, `getDrawing` returns the whole drawing, or fails with `DrawingTooLarge` when the result would not fit. To read a larger drawing, pass `offset: 0`. Then continue from `page.nextOffset`, passing the first page's `revision`, until a reply has no `nextOffset`:
 
@@ -146,7 +148,7 @@ An MCP tool result carries its reply twice: once as `structuredContent` and once
 { "name": "getDrawing", "arguments": { "offset": 1840, "revision": "<revision from the first page>" } }
 ```
 
-Every `getDrawing` reply contains a `revision` derived from the drawing's shapes and ID allocation. Readers of the same content, including separate CLI processes, get the same revision, and any change to the shapes produces a new one. That includes external edits to a CLI drawing, which reset its history. A page after offset 0 requires `revision`. When the drawing no longer matches it, the read fails with `DrawingChanged`; read again from offset 0. Without it, the read fails with `RevisionRequired`.
+Every `getDrawing` reply contains a `revision` derived from the drawing's shapes, schematic pages and ID allocation. Readers of the same content, including separate CLI processes, get the same revision, and any change to the shapes or pages produces a new one. That includes external edits to a CLI drawing, which reset its history. A page after offset 0 requires `revision`. When the drawing no longer matches it, the read fails with `DrawingChanged`; read again from offset 0. Without it, the read fails with `RevisionRequired`.
 
 A paged reply also contains `page` with `offset`, `count`, `total`, and `nextOffset`. Each page returns as many shapes as fit, up to `limit` when given. Only the page at offset 0 includes `nets`, which cover the whole drawing. Every page includes the history. A drawing whose history and nets alone exceed the limit, or a single shape over the limit, fails with `DrawingTooLarge`. As a last check, a tool result that would still exceed 8 MiB becomes a `ReplyTooLarge` error, and so does a web editor acknowledgement over the relay's limit. The connection stays open, but the command may have run, so read the drawing before retrying.
 

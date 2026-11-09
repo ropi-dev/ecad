@@ -33,7 +33,8 @@ export function createSymbolFromShapes(
 		height: maxY - minY,
 		rotation: 0,
 		lineWidth: shapes[0].lineWidth,
-		children: shapes.map((shape, index) => ({
+		...(shapes[0].page === undefined ? {} : { page: shapes[0].page }),
+		children: shapes.map(({ page: _page, ...shape }, index) => ({
 			...shape,
 			id: index + 1,
 			x: shape.x - x,

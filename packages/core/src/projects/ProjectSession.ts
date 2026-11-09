@@ -156,7 +156,7 @@ export function createProjectSession(
 		state.libraries = snapshot.symbolLibraries ?? [];
 		const next = measurePerformance(
 			"project.adopt",
-			() => createDrawingStore(snapshot.shapes),
+			() => createDrawingStore(snapshot.shapes, snapshot.pages),
 			{ shapes: snapshot.shapes.length },
 		);
 
@@ -180,8 +180,10 @@ export function createProjectSession(
 		try {
 			await enqueue(async () => {
 				if (state.needsSave) await persist();
+				const { shapes, pages } = state.store.getSnapshot();
 				const document = {
-					shapes: state.store.getSnapshot().shapes,
+					shapes,
+					...(pages ? { pages } : {}),
 					...(state.active?.circuits === undefined
 						? {}
 						: { circuits: state.active.circuits }),

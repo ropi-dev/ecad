@@ -5,6 +5,15 @@ export interface SheetSize {
 	width: number;
 	height: number;
 	name?: string;
+	/** The schematic page the title block describes. */
+	page?: SheetPage;
+}
+
+export interface SheetPage {
+	name: string;
+	/** One-based position in the drawing's page list. */
+	number: number;
+	count: number;
 }
 
 export const defaultSheet: SheetSize = { ...A3, name: "A3" };
@@ -149,14 +158,20 @@ export function buildWorksheetDisplay(
 	titleLine(20, 3.5, 20, 6.5);
 	titleLine(84, 0, 84, 6.5);
 	for (const [text, x, y, size, maxWidth] of [
-		["Sheet: /", 1, 15, 1.5, 106],
+		[`Sheet: /${sheet.page?.name ?? ""}`, 1, 15, 1.5, 106],
 		["File:", 1, 12.3, 1.5, 106],
 		["Title:", 1, 8.7, 2, 106],
 		[`Size: ${sheet.name || `${width} × ${height} mm`}`, 1, 4.9, 1.5, 18],
 		["Date:", 23, 4.9, 1.5, 60],
 		["Rev:", 86, 4.9, 1.5, 21],
 		["ECAD", 1, 2.1, 1.5, 82],
-		["Id: 1/1", 86, 2.1, 1.5, 21],
+		[
+			`Id: ${sheet.page?.number ?? 1}/${sheet.page?.count ?? 1}`,
+			86,
+			2.1,
+			1.5,
+			21,
+		],
 	] as const)
 		label(
 			text,

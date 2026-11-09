@@ -1,4 +1,10 @@
+import { setPagesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import {
+	drawingPages,
+	resolvePage,
+	shapesOnPage,
+} from "@ecad/drawing-core/drawing/pages.ts";
 import {
 	type EditorShape,
 	shapeBounds,
@@ -34,6 +40,7 @@ import {
 } from "#/components/editor/editorKeyHandlers.ts";
 import { editorIssues } from "#/components/editor/editorMessages.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
+import { PageBar, type PageEdit } from "#/components/editor/PageBar.tsx";
 import { SelectionAttributes } from "#/components/editor/SelectionAttributes.tsx";
 import {
 	type CanvasTool as Tool,
@@ -155,7 +162,38 @@ function EditorCanvas({
 		error: commandError,
 		allowLocked,
 	} = editor;
-	const shapes = editor.draft ?? resolved.shapes;
+	const pages = drawingPages(drawing.pages);
+	const pageIndex = pages.findIndex(
+		(page) => page.id === resolvePage(drawing.pages, editor.page),
+	);
+	const page = pages[pageIndex];
+	const pageShapes = useMemo(
+		() => shapesOnPage(resolved.shapes, page.id, drawing.pages),
+		[resolved.shapes, page.id, drawing.pages],
+	);
+	const pageShapeCounts = useMemo(() => {
+		const counts = new Map<number, number>();
+		for (const shape of drawing.shapes) {
+			const id = shape.page ?? pages[0].id;
+			counts.set(id, (counts.get(id) ?? 0) + 1);
+		}
+		return counts;
+	}, [drawing.shapes, pages]);
+	const pageSheet = useMemo(
+		() =>
+			isSymbol
+				? sheet
+				: {
+						...sheet,
+						page: {
+							name: page.name,
+							number: pageIndex + 1,
+							count: pages.length,
+						},
+					},
+		[isSymbol, sheet, page.name, pageIndex, pages.length],
+	);
+	const shapes = editor.draft ?? pageShapes;
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
@@ -226,7 +264,7 @@ function EditorCanvas({
 		shapes,
 		selectedIds,
 		previews,
-		isSymbol ? null : sheet,
+		isSymbol ? null : pageSheet,
 	);
 	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
 	const guideShape = movingShape ?? placementPreview;
@@ -293,6 +331,25 @@ function EditorCanvas({
 	});
 
 	const hasSelection = selected.length > 0;
+	const editPages = useCallback<PageEdit>(
+		(next, label) => {
+			finishDrag(true);
+			finishWire();
+			clearPlacementPreview();
+			setTextFocusId(null);
+			return !!session.commit(setPagesEffect(next, label), new Set());
+		},
+		[session, finishDrag, finishWire, clearPlacementPreview],
+	);
+	const selectPage = useCallback(
+		(id: number) => {
+			session.setPage(id);
+			canvasArea.current
+				?.querySelector("canvas")
+				?.focus({ preventScroll: true });
+		},
+		[session],
+	);
 	const pickerLibrary = useMemo(
 		() => ({ definitions, error: symbolLibrary.error }),
 		[definitions, symbolLibrary.error],
@@ -389,7 +446,7 @@ function EditorCanvas({
 			<h1 className="sr-only">
 				{isSymbol
 					? `Symbol editor · ${symbolName}`
-					: `Schematic editor · ${drawingName ? `${drawingName} · ` : ""}${sheet.name ? `${sheet.name} · ` : ""}${formatInches(sheet.width)} × ${formatInches(sheet.height)} in`}
+					: `Schematic editor · ${drawingName ? `${drawingName} · ` : ""}${pages.length > 1 ? `${page.name} (page ${pageIndex + 1} of ${pages.length}) · ` : ""}${sheet.name ? `${sheet.name} · ` : ""}${formatInches(sheet.width)} × ${formatInches(sheet.height)} in`}
 			</h1>
 			<EditorHeader
 				headerControls={headerControls}
@@ -454,8 +511,8 @@ function EditorCanvas({
 							onChange={cameraView.update}
 							extraControls={
 								<EditorToolbar
-									shapes={resolved.shapes}
-									sheet={sheet}
+									shapes={isSymbol ? resolved.shapes : pageShapes}
+									sheet={pageSheet}
 									drawingName={drawingName}
 									ready={ready}
 									history={history}
@@ -502,6 +559,16 @@ function EditorCanvas({
 						marquee={marquee}
 					/>
 					<EditorMessages {...messages} />
+					{!isSymbol && scene && (
+						<PageBar
+							pages={pages}
+							current={page.id}
+							shapeCounts={pageShapeCounts}
+							disabled={!ready}
+							onSelect={selectPage}
+							onEdit={editPages}
+						/>
+					)}
 					{ercOpen && !isSymbol && (
 						<Suspense
 							fallback={
@@ -538,7 +605,7 @@ function EditorCanvas({
 										finishDrag(true);
 										session.setAllowLocked(true);
 									}
-									session.select(ids);
+									session.reveal(ids);
 								}}
 							/>
 						</Suspense>

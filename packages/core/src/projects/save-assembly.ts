@@ -2,6 +2,7 @@ import type {
 	CircuitFile,
 	GraphLayout,
 } from "@ecad/drawing-core/circuit/model.ts";
+import type { DrawingPage } from "@ecad/drawing-core/drawing/pages.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	parseSymbolFile,
@@ -16,6 +17,7 @@ export function assembleProjectSave({
 	libraries,
 	pending,
 	mainShapes,
+	mainPages,
 	drawings,
 	drawingEdits,
 	savedCircuits,
@@ -24,8 +26,13 @@ export function assembleProjectSave({
 	libraries: readonly ConfiguredSymbolLibrary[];
 	pending: ReadonlyMap<string, EditorShape[]>;
 	mainShapes: EditorShape[];
+	mainPages?: readonly DrawingPage[];
 	drawings?: ProjectDrawing[];
-	drawingEdits: ReadonlyMap<string, EditorShape[]>;
+	/** Open drawings' current shapes and pages by drawing ID. */
+	drawingEdits: ReadonlyMap<
+		string,
+		{ shapes: EditorShape[]; pages?: readonly DrawingPage[] }
+	>;
 	savedCircuits?: CircuitFile[];
 }) {
 	let savedSymbols = symbols;
@@ -40,13 +47,20 @@ export function assembleProjectSave({
 	return {
 		...(savedCircuits === undefined ? {} : { circuits: savedCircuits }),
 		shapes: mainShapes,
+		...(mainPages ? { pages: mainPages } : {}),
 		...(drawings === undefined
 			? {}
 			: {
-					drawings: drawings.map((file) => ({
-						...file,
-						shapes: drawingEdits.get(file.id) ?? file.shapes,
-					})),
+					drawings: drawings.map((file) => {
+						const edit = drawingEdits.get(file.id);
+						if (!edit) return file;
+						const { pages: _pages, ...rest } = file;
+						return {
+							...rest,
+							shapes: edit.shapes,
+							...(edit.pages ? { pages: [...edit.pages] } : {}),
+						};
+					}),
 				}),
 		symbols: savedSymbols,
 		symbolLibraries: libraries.map((library) =>

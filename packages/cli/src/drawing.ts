@@ -8,6 +8,10 @@ import {
 	DrawingStore,
 	restoreDrawingStore,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
+import {
+	drawingPagesSchema,
+	pagesReferenced,
+} from "@ecad/drawing-core/drawing/pages.ts";
 import { savedDrawingShapesSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
@@ -30,12 +34,19 @@ export class LocalDrawingError extends Data.TaggedError("LocalDrawingError")<{
 }> {}
 
 const fileSchema = z
-	.object({ shapes: savedDrawingShapesSchema })
+	.object({
+		shapes: savedDrawingShapesSchema,
+		pages: drawingPagesSchema.optional(),
+	})
 	.passthrough()
 	.refine(
 		(file) =>
 			new Set(file.shapes.map((shape) => shape.id)).size === file.shapes.length,
 		"The drawing contains duplicate shape IDs.",
+	)
+	.refine(
+		(file) => pagesReferenced(file.shapes, file.pages),
+		"A drawing shape is on a page that the drawing does not have.",
 	);
 const savedHistorySchema = z.strictObject({
 	version: z.literal(1),
@@ -90,7 +101,12 @@ async function publish(
 	file: z.infer<typeof fileSchema>,
 	snapshot: DrawingSnapshot,
 ) {
-	const content = `${JSON.stringify({ ...file, shapes: snapshot.shapes })}\n`;
+	const { pages: _pages, ...rest } = file;
+	const content = `${JSON.stringify({
+		...rest,
+		shapes: snapshot.shapes,
+		...(snapshot.pages ? { pages: snapshot.pages } : {}),
+	})}\n`;
 	const historyPath = `${path}.history.json`;
 	const history = JSON.stringify({
 		version: 1,
@@ -223,8 +239,10 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 										: savedHistorySchema.parse(JSON.parse(historyContent));
 								if (
 									saved?.drawingHash === hash(content) &&
-									JSON.stringify(saved.snapshot.shapes) !==
-										JSON.stringify(file.shapes)
+									(JSON.stringify(saved.snapshot.shapes) !==
+										JSON.stringify(file.shapes) ||
+										JSON.stringify(saved.snapshot.pages) !==
+											JSON.stringify(file.pages))
 								) {
 									throw new LocalDrawingError({
 										code: "DrawingHistoryMismatch",
@@ -239,7 +257,7 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 										? cachedRead.store
 										: saved?.drawingHash === hash(content)
 											? restoreDrawingStore(saved.snapshot)
-											: createDrawingStore(file.shapes);
+											: createDrawingStore(file.shapes, file.pages);
 								if (operation.type === "getDrawing")
 									cachedRead = { path, content, historyContent, store };
 								const before = store.getSnapshot();

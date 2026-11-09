@@ -1,4 +1,5 @@
 import { connectionTolerance } from "#/drawing/connection-geometry.ts";
+import { pageKey } from "#/drawing/pages.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import { drawShape, localToWorld } from "#/drawing/shape-geometry.ts";
 import { pinTerminals } from "#/drawing/terminals.ts";
@@ -37,13 +38,18 @@ export function cutWiresUnderSymbols(
 	placed: readonly EditorShape[],
 	nextShapeId: number,
 ): { shapes: EditorShape[]; nextShapeId: number } {
+	// Symbols cut wires on their own page only.
 	const spans = placed.flatMap((shape) =>
-		shape.kind === "symbol" ? terminalSpans(shape) : [],
+		shape.kind === "symbol"
+			? terminalSpans(shape).map((span) => ({ ...span, page: pageKey(shape) }))
+			: [],
 	);
 	if (!spans.length) return { shapes: [...shapes], nextShapeId };
+	const pages = new Set(spans.map((span) => span.page));
 	const result = shapes.flatMap((shape): EditorShape[] => {
 		if (
 			shape.kind !== "wire" ||
+			!pages.has(pageKey(shape)) ||
 			shape.locked ||
 			shape.width <= connectionTolerance
 		)
@@ -57,6 +63,7 @@ export function cutWiresUnderSymbols(
 		let pieces = [{ min: Math.min(from, to), max: Math.max(from, to) }];
 		for (const span of spans) {
 			if (
+				span.page !== pageKey(shape) ||
 				span.vertical !== vertical ||
 				Math.abs(span.coordinate - coordinate) > connectionTolerance
 			)
@@ -88,6 +95,7 @@ export function cutWiresUnderSymbols(
 				point(from <= to ? piece.max : piece.min),
 			),
 			lineWidth: shape.lineWidth,
+			...(shape.page === undefined ? {} : { page: shape.page }),
 		}));
 	});
 	return { shapes: result, nextShapeId };

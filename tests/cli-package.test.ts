@@ -87,7 +87,7 @@ globalThis.fetch = () => { throw new Error("Networking is unavailable"); };
 			cwd: fixture.directory,
 		}),
 	);
-	assert.equal((await client.listTools()).tools.length, 9);
+	assert.equal((await client.listTools()).tools.length, 11);
 	const result = await client.callTool({ name: "undo", arguments: {} });
 	assert.notEqual(result.isError, true);
 	assert.deepEqual(JSON.parse(await readFile(fixture.path, "utf8")).shapes, []);

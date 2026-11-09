@@ -40,6 +40,11 @@ function perAttribute<T extends z.ZodType>(value: T) {
 export const shapeId = z.number().int().positive().safe();
 const geometryFields = {
 	locked: z.boolean().optional(),
+	page: shapeId
+		.optional()
+		.describe(
+			"ID of the schematic page the shape is on. Omit it for the first page. Symbol children ignore it.",
+		),
 	x: z.number().describe("Shape center X in millimetres."),
 	y: z
 		.number()

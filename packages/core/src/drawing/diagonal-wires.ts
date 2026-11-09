@@ -1,5 +1,6 @@
 import type { ShapeInput } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
+import { pageKey } from "@ecad/drawing-core/drawing/pages.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
@@ -346,14 +347,22 @@ export const isLegacyDiagonalWire = (shape: EditorShape) =>
 export function rerouteLegacyWires(shapes: readonly EditorShape[]) {
 	const legacy = shapes.filter(isLegacyDiagonalWire);
 	if (!legacy.length) return;
-	const routes = routeDiagonalWires(
-		legacy.flatMap(wireSegments),
-		shapes.filter((shape) => !isLegacyDiagonalWire(shape)),
-	);
+	// Each page routes around its own shapes only.
+	const routes = new Map<EditorShape, EditorShape[] | undefined>();
+	for (const page of new Set(legacy.map(pageKey))) {
+		const onPage = shapes.filter((shape) => pageKey(shape) === page);
+		const wires = onPage.filter(isLegacyDiagonalWire);
+		const routed = routeDiagonalWires(
+			wires.flatMap(wireSegments),
+			onPage.filter((shape) => !isLegacyDiagonalWire(shape)),
+		);
+		for (const [index, wire] of wires.entries())
+			routes.set(wire, routed[index]);
+	}
 	const replacements: EditorShape[] = [];
 	const additions: ShapeInput[] = [];
-	for (const [index, wire] of legacy.entries()) {
-		const route = routes[index];
+	for (const wire of legacy) {
+		const route = routes.get(wire);
 		if (!route) {
 			replacements.push({ ...wire, kind: "line" });
 			continue;
@@ -362,11 +371,12 @@ export function rerouteLegacyWires(shapes: readonly EditorShape[]) {
 			...piece,
 			lineWidth: wire.lineWidth,
 			...(wire.locked === undefined ? {} : { locked: wire.locked }),
+			...(wire.page === undefined ? {} : { page: wire.page }),
 		}));
 		replacements.push({ ...first, id: wire.id } as EditorShape);
 		additions.push(...rest);
 	}
-	const lines = routes.filter((route) => !route).length;
+	const lines = legacy.filter((wire) => !routes.get(wire)).length;
 	return {
 		replacements,
 		additions,

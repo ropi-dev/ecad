@@ -63,6 +63,7 @@ const symbolLibrary = parsedBy(parseSavedSymbolLibrary);
 const projectDocument = z
 	.object({
 		shapes: z.array(z.unknown()),
+		pages: z.array(z.unknown()).optional(),
 		drawings: z.array(z.unknown()).optional(),
 		circuits: z.array(z.unknown()).optional(),
 		symbols: z.array(z.unknown()),

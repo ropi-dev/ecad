@@ -14,6 +14,7 @@ import {
 	type ElectricalNet,
 	electricalNets,
 } from "@ecad/drawing-core/drawing/named-nets.ts";
+import { pageKey } from "@ecad/drawing-core/drawing/pages.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
@@ -112,17 +113,26 @@ export function schematicCircuit(
 	const marked = measurePerformance(
 		"schematic.no-connect",
 		() => {
+			// Markers and terminals meet only on one page.
 			const nearMarker = createPointIndex(
 				shapes.flatMap((shape) =>
-					shape.kind === "no-connect"
+					(shape.kind === "no-connect"
 						? [shape]
 						: shape.kind === "symbol"
 							? symbolShapes(shape).filter(
 									(child) => child.kind === "no-connect",
 								)
-							: [],
+							: []
+					).map((marker) => ({
+						x: marker.x,
+						y: marker.y,
+						page: pageKey(shape),
+					})),
 				),
 				(marker) => marker,
+			);
+			const symbolPages = new Map(
+				shapes.map((shape) => [shape.id, pageKey(shape)]),
 			);
 			const terminals = new Map<number, Map<string, Point>>();
 			for (const shape of shapes)
@@ -152,8 +162,9 @@ export function schematicCircuit(
 						nearMarker(
 							terminal,
 							(marker) =>
+								marker.page === symbolPages.get(shapeId) &&
 								Math.hypot(marker.x - terminal.x, marker.y - terminal.y) <=
-								connectionTolerance,
+									connectionTolerance,
 						)
 					)
 						marked.add(pin.id);
@@ -1337,6 +1348,8 @@ function createNetLabel(
 			lineWidth: DEFAULT_LINE_WIDTH,
 			text,
 			...alignmentAtPin(point, symbol),
+			// A pin's label goes on the pin's schematic page.
+			...(symbol?.page === undefined ? {} : { page: symbol.page }),
 		},
 		text,
 		measureText,

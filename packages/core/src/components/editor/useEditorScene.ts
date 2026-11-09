@@ -27,15 +27,33 @@ export function useEditorScene(
 	const width = sheet?.width;
 	const height = sheet?.height;
 	const name = sheet?.name;
+	const pageName = sheet?.page?.name;
+	const pageNumber = sheet?.page?.number;
+	const pageCount = sheet?.page?.count;
 	useEffect(() => {
 		const next = createDrawingRenderer(
 			width !== undefined && height !== undefined
-				? buildWorksheetDisplay({ width, height, name })
+				? buildWorksheetDisplay({
+						width,
+						height,
+						name,
+						...(pageName !== undefined &&
+						pageNumber !== undefined &&
+						pageCount !== undefined
+							? {
+									page: {
+										name: pageName,
+										number: pageNumber,
+										count: pageCount,
+									},
+								}
+							: {}),
+					})
 				: null,
 		);
 		setRenderer(next);
 		return () => next.dispose();
-	}, [width, height, name]);
+	}, [width, height, name, pageName, pageNumber, pageCount]);
 	// Wire and symbol previews change on every pointer move; the document does not.
 	const document = useMemo(
 		() =>

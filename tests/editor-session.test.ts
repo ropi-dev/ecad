@@ -55,6 +55,7 @@ test("selection keeps only existing shapes the lock rule allows, and resets the 
 		draft: null,
 		error: "",
 		allowLocked: false,
+		page: null,
 	});
 });
 

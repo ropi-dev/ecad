@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	type PointerEvent as ReactPointerEvent,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import type {
 	PerformanceData,
 	PerformanceSample,
@@ -6,6 +13,10 @@ import type {
 import { getAppPerformance } from "#/performance/runtime.ts";
 
 const STORAGE_KEY = "ecad.dev-stats";
+const POSITION_KEY = "ecad.dev-stats-position";
+/** Space kept between the window and the viewport edges. */
+const MARGIN = 8;
+const KEY_STEP = 16;
 const WINDOW_MS = 1000;
 const LONG_TASK_WINDOW_MS = 10_000;
 const FRAME_HISTORY = 120;
@@ -42,6 +53,55 @@ const storeVisible = (visible: boolean) => {
 		localStorage.setItem(STORAGE_KEY, visible ? "1" : "0");
 	} catch {}
 };
+
+interface Position {
+	x: number;
+	y: number;
+}
+
+const readPosition = (): Position | null => {
+	try {
+		const value: unknown = JSON.parse(
+			localStorage.getItem(POSITION_KEY) ?? "null",
+		);
+		if (
+			value &&
+			typeof value === "object" &&
+			"x" in value &&
+			"y" in value &&
+			Number.isFinite(value.x) &&
+			Number.isFinite(value.y)
+		)
+			return { x: Number(value.x), y: Number(value.y) };
+	} catch {}
+	return null;
+};
+
+const storePosition = (position: Position) => {
+	try {
+		localStorage.setItem(POSITION_KEY, JSON.stringify(position));
+	} catch {}
+};
+
+/** Keeps the whole window on screen, or its top left when it cannot fit. */
+const clampPosition = (
+	position: Position,
+	size: { width: number; height: number },
+): Position => ({
+	x: Math.max(
+		MARGIN,
+		Math.min(position.x, window.innerWidth - size.width - MARGIN),
+	),
+	y: Math.max(
+		MARGIN,
+		Math.min(position.y, window.innerHeight - size.height - MARGIN),
+	),
+});
+
+const sizeOf = (element: HTMLElement | null) => ({
+	width: element?.offsetWidth ?? 0,
+	height: element?.offsetHeight ?? 0,
+});
 
 const number = (value: unknown) =>
 	typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -186,6 +246,98 @@ export default function DevStats() {
 	}, [visible]);
 
 	if (!visible || !stats) return null;
+	return (
+		<StatsWindow
+			stats={stats}
+			onHide={() => {
+				storeVisible(false);
+				setVisible(false);
+			}}
+		/>
+	);
+}
+
+/**
+ * A floating window that the header moves by dragging, or by the arrow keys
+ * while the move handle has focus. It remembers its place between sessions.
+ */
+function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
+	const element = useRef<HTMLElement>(null);
+	const drag = useRef<{
+		pointerId: number;
+		dx: number;
+		dy: number;
+		/** The latest position, saved when the drag ends. */
+		at: Position;
+	} | null>(null);
+	const [position, setPosition] = useState<Position | null>(readPosition);
+	// The first time, open at the bottom left of the canvas, clear of the
+	// sidebar and the toolbar.
+	useLayoutEffect(() => {
+		const { width, height } = sizeOf(element.current);
+		setPosition((current) =>
+			clampPosition(
+				current ?? { x: 272, y: window.innerHeight - height - 72 },
+				{ width, height },
+			),
+		);
+	}, []);
+	useEffect(() => {
+		const keepOnScreen = () =>
+			setPosition(
+				(current) => current && clampPosition(current, sizeOf(element.current)),
+			);
+		window.addEventListener("resize", keepOnScreen);
+		return () => window.removeEventListener("resize", keepOnScreen);
+	}, []);
+	const moveTo = (next: Position) => {
+		const clamped = clampPosition(next, sizeOf(element.current));
+		setPosition(clamped);
+		return clamped;
+	};
+	const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+		if (event.button !== 0 || !position) return;
+		if ((event.target as HTMLElement).closest("[data-no-drag]")) return;
+		event.preventDefault();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		drag.current = {
+			pointerId: event.pointerId,
+			dx: event.clientX - position.x,
+			dy: event.clientY - position.y,
+			at: position,
+		};
+	};
+	const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+		const current = drag.current;
+		if (!current || current.pointerId !== event.pointerId) return;
+		current.at = moveTo({
+			x: event.clientX - current.dx,
+			y: event.clientY - current.dy,
+		});
+	};
+	const endDrag = (event: ReactPointerEvent<HTMLElement>) => {
+		const current = drag.current;
+		if (current?.pointerId !== event.pointerId) return;
+		drag.current = null;
+		storePosition(current.at);
+	};
+	const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+		if (!position) return;
+		const step = event.shiftKey ? KEY_STEP * 4 : KEY_STEP;
+		const offsets: Record<string, Position> = {
+			ArrowLeft: { x: -step, y: 0 },
+			ArrowRight: { x: step, y: 0 },
+			ArrowUp: { x: 0, y: -step },
+			ArrowDown: { x: 0, y: step },
+		};
+		const offset = offsets[event.key];
+		if (!offset) return;
+		event.preventDefault();
+		event.stopPropagation();
+		storePosition(
+			moveTo({ x: position.x + offset.x, y: position.y + offset.y }),
+		);
+	};
 	const rows: [string, string][] = [
 		["FPS", count(stats.fps)],
 		["Renders/s", stats.recorder ? String(stats.renders) : "–"],
@@ -213,37 +365,59 @@ export default function DevStats() {
 	];
 	return (
 		<section
+			ref={element}
 			aria-label="Development stats"
 			data-shortcut-scope="none"
-			className="pointer-events-none fixed right-7 bottom-[4.5rem] z-[90] min-w-48 rounded-md border border-white/10 bg-black/75 px-2.5 py-2 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-lg backdrop-blur-sm"
+			className="fixed top-0 left-0 z-[90] min-w-48 rounded-md border border-white/15 bg-black/80 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-[0_8px_32px_#0008] backdrop-blur-sm"
+			style={{
+				transform: position
+					? `translate(${position.x}px, ${position.y}px)`
+					: undefined,
+				visibility: position ? undefined : "hidden",
+			}}
+			onPointerDown={(event) => event.stopPropagation()}
 		>
-			<header className="mb-1 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-white/50">
-				<span>Dev stats · Ctrl+Shift+D</span>
+			<header
+				className="flex cursor-grab touch-none items-center justify-between gap-3 rounded-t-md border-b border-white/10 bg-white/5 py-1 pr-1 pl-2.5 text-[10px] uppercase tracking-wide text-white/50 select-none active:cursor-grabbing"
+				onPointerDown={onPointerDown}
+				onPointerMove={onPointerMove}
+				onPointerUp={endDrag}
+				onPointerCancel={endDrag}
+			>
 				<button
 					type="button"
+					aria-label="Move development stats with the arrow keys"
+					title="Drag to move. Arrow keys move it too."
+					className="cursor-grab rounded px-0.5 text-left uppercase focus-visible:outline-1 focus-visible:outline-white/60"
+					onKeyDown={onKeyDown}
+				>
+					Dev stats · Ctrl+Shift+D
+				</button>
+				<button
+					type="button"
+					data-no-drag
 					aria-label="Hide development stats"
-					className="pointer-events-auto rounded px-1 text-white/60 hover:bg-white/10 hover:text-white"
-					onClick={() => {
-						storeVisible(false);
-						setVisible(false);
-					}}
+					className="rounded px-1 text-white/60 hover:bg-white/10 hover:text-white"
+					onClick={onHide}
 				>
 					×
 				</button>
 			</header>
-			<dl className="grid grid-cols-[auto_auto] gap-x-4">
-				{rows.map(([label, value]) => (
-					<div key={label} className="contents">
-						<dt className="text-white/55">{label}</dt>
-						<dd className="m-0 text-right tabular-nums">{value}</dd>
-					</div>
-				))}
-			</dl>
-			{!stats.recorder && (
-				<p className="mt-1 max-w-48 text-[10px] text-amber-300/80">
-					Recorder off (?perf=0), only FPS is live.
-				</p>
-			)}
+			<div className="px-2.5 pt-1 pb-2">
+				<dl className="grid grid-cols-[auto_auto] gap-x-4">
+					{rows.map(([label, value]) => (
+						<div key={label} className="contents">
+							<dt className="text-white/55">{label}</dt>
+							<dd className="m-0 text-right tabular-nums">{value}</dd>
+						</div>
+					))}
+				</dl>
+				{!stats.recorder && (
+					<p className="mt-1 max-w-48 text-[10px] text-amber-300/80">
+						Recorder off (?perf=0), only FPS is live.
+					</p>
+				)}
+			</div>
 		</section>
 	);
 }

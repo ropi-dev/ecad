@@ -5,6 +5,11 @@ import type {
 	DrawingSnapshot,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { historyOf } from "@ecad/drawing-core/drawing/history.ts";
+import {
+	canonicalShapePages,
+	type DrawingPage,
+	savedPages,
+} from "@ecad/drawing-core/drawing/pages.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 
 /**
@@ -15,11 +20,17 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
  */
 export function replaceDrawingShapes(
 	target: ReturnType<typeof createDrawingStore>,
-	saved: EditorShape[],
+	loaded: EditorShape[],
 	external: boolean,
+	savedPageList?: readonly DrawingPage[],
 ): EditorShape[] {
-	const currentShapes = target.getSnapshot().shapes;
-	if (currentShapes === saved) return saved;
+	const current = target.getSnapshot();
+	const currentShapes = current.shapes;
+	const pages = savedPages(savedPageList);
+	const saved = canonicalShapePages(loaded, pages);
+	const samePages =
+		JSON.stringify(pages) === JSON.stringify(savedPages(current.pages));
+	if (currentShapes === saved && samePages) return saved;
 	const byId = new Map(currentShapes.map((shape) => [shape.id, shape]));
 	let unchanged = saved.length === currentShapes.length;
 	const merged = saved.map((shape, index) => {
@@ -28,15 +39,18 @@ export function replaceDrawingShapes(
 		if (kept !== currentShapes[index]) unchanged = false;
 		return kept;
 	});
-	const shapes = unchanged ? currentShapes : merged;
+	// A page change alone still publishes new shapes, as commits do.
+	const shapes = unchanged && samePages ? currentShapes : merged;
 	if (shapes === currentShapes && !external) return shapes;
 	target.transact((current) => {
+		const { pages: _pages, ...rest } = current;
+		const document: DrawingDocument = pages ? { shapes, pages } : { shapes };
 		const next: DrawingSnapshot = {
-			...current,
-			shapes,
+			...rest,
+			...document,
 			history: external
 				? historyOf<DrawingDocument>(
-						{ shapes },
+						document,
 						shapes.length ? "Loaded drawing" : "Empty drawing",
 					)
 				: {
@@ -45,7 +59,7 @@ export function replaceDrawingShapes(
 							...current.history.nodes,
 							[current.history.currentId]: {
 								...current.history.nodes[current.history.currentId],
-								state: { shapes },
+								state: document,
 							},
 						},
 					},
