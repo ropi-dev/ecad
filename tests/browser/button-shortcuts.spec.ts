@@ -11,6 +11,31 @@ test.beforeEach(async ({ page }) => {
 	).toBeEnabled();
 });
 
+test("hints wait for Ctrl to be held for 1 second while shortcuts work at once", async ({
+	page,
+}) => {
+	await page.keyboard.down("Control");
+	const pressed = await page.evaluate(() => performance.now());
+	await page.keyboard.press("s");
+	await expect(
+		page.getByRole("toolbar", { name: "Shapes toolbar", exact: true }),
+	).toBeVisible();
+	await page.waitForTimeout(500);
+	await expect(page.locator(hints)).toHaveCount(0);
+	await expect(page.locator(`${hints}[title="Rectangle"]`)).toBeVisible();
+	const shown = await page.evaluate(() => performance.now());
+	expect(shown - pressed).toBeGreaterThanOrEqual(1_000);
+	await page.keyboard.up("Control");
+	await expect(page.locator(hints)).toHaveCount(0);
+	await page.keyboard.down("Control");
+	await page.waitForTimeout(700);
+	await page.keyboard.up("Control");
+	await page.keyboard.down("Control");
+	await page.waitForTimeout(700);
+	await expect(page.locator(hints)).toHaveCount(0);
+	await page.keyboard.up("Control");
+});
+
 test("Ctrl shows separate hints for every visible button and activates a group", async ({
 	page,
 }) => {
