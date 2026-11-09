@@ -42,6 +42,10 @@ const sidebarKeys: Record<string, string> = {
 	"Add file": "N",
 	"Open project": "O",
 };
+// Hints appear only after the modifier has been held this long, so quick
+// chords and Ctrl+click selection don't flash the overlay. Shortcuts work
+// as soon as the modifier goes down.
+const hintDelayMs = 1000;
 const devSidebarKeys = new Set(import.meta.env?.DEV ? ["D"] : []);
 const labelFor = (button: HTMLButtonElement) =>
 	button.getAttribute("aria-label") ??
@@ -75,11 +79,16 @@ function listen() {
 	overlay.setAttribute("aria-hidden", "true");
 	document.body.append(overlay);
 	let held = false;
+	let revealed = false;
+	let revealTimer: ReturnType<typeof setTimeout> | undefined;
 	let frame = 0;
 	const keys = new Map<HTMLButtonElement, string>();
 	let targets = new Map<string, HTMLButtonElement>();
 	const hide = () => {
 		held = false;
+		revealed = false;
+		clearTimeout(revealTimer);
+		revealTimer = undefined;
 		observer.disconnect();
 		keys.clear();
 		targets.clear();
@@ -184,6 +193,7 @@ function listen() {
 						keys.set(button, key);
 					}
 					targets.set(`${scope}:${key}`, button);
+					if (!revealed) continue;
 					const rect = button.getBoundingClientRect();
 					const hint = document.createElement("kbd");
 					hint.dataset.slot = "button-shortcut";
@@ -227,6 +237,7 @@ function listen() {
 					);
 					fragment.append(hint);
 				}
+				if (!revealed) return;
 				overlay.replaceChildren(fragment);
 				if (!overlay.matches(":popover-open")) overlay.showPopover();
 			},
@@ -241,6 +252,12 @@ function listen() {
 			held = true;
 			observer.observe(document.body, observation);
 			refresh();
+			revealTimer = setTimeout(() => {
+				revealTimer = undefined;
+				revealed = true;
+				cancelAnimationFrame(frame);
+				refresh();
+			}, hintDelayMs);
 			return;
 		}
 		if (!held || event.defaultPrevented) return;
