@@ -131,7 +131,6 @@ export function PageBar({
 	return (
 		<nav
 			aria-label="Schematic pages"
-			data-shortcut-scope="none"
 			className={`absolute top-10 left-1/2 z-3 flex max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 items-center gap-0.5 p-1 max-[600px]:top-22 ${toolbarSurfaceClassName}`}
 			onPointerDown={(event) => event.stopPropagation()}
 		>
