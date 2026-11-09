@@ -73,7 +73,7 @@ test("new shapes and text use mil-sized defaults", async () => {
 		if (shape.kind === "pin") assert.equal(toMils(required(shape.length)), 100);
 	}
 	const text = createTextShape(2, { x: 0, y: 0 }, (value) => value.length * 48);
-	assert.equal(toMils(text.fontSize), 100);
+	assert.equal(toMils(text.fontSize), 75);
 	assert.equal(toMils(text.lineWidth), 5);
 	assert.equal(toMils(PIN_RADIUS), 10);
 	assert.equal(toMils(pinNameFontSize), 75);
@@ -95,9 +95,9 @@ test("built-in annotation sizes and symbol labels use round mil dimensions", asy
 	const text = required(box.shapes.find((shape) => shape.kind === "text"));
 	assert.equal(text.kind, "text");
 	if (text.kind !== "text") throw new Error("Expected text");
-	assert.equal(toMils(text.fontSize), 100);
+	assert.equal(toMils(text.fontSize), 75);
 	for (const symbol of symbols) {
-		for (const label of symbol.texts) assert.equal(toMils(label.fontSize), 100);
+		for (const label of symbol.texts) assert.equal(toMils(label.fontSize), 75);
 		for (const shape of symbol.file.shapes) {
 			if (shape.kind === "pin") {
 				assert.ok(
