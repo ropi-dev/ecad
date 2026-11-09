@@ -270,7 +270,7 @@ export function SymbolPicker({
 				: "bottom",
 		);
 	}, []);
-	const submenuOpen = openPartId !== undefined;
+	const submenuOpen = open && openPart !== undefined;
 	useEffect(() => {
 		if (!submenuOpen) return;
 		let frame = 0;
