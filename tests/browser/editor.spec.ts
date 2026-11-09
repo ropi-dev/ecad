@@ -191,7 +191,7 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 	expect(errors).toEqual([]);
 });
 
-test("Ctrl adds to the selection and Ctrl + Shift removes from it", async ({
+test("Ctrl toggles, Shift adds and Ctrl + Shift removes from the selection", async ({
 	page,
 }) => {
 	const centers = [g(30), g(64), g(98)];
@@ -203,29 +203,59 @@ test("Ctrl adds to the selection and Ctrl + Shift removes from it", async ({
 	}
 	const selection = async () =>
 		(await nonPinState(page)).shapes.map((shape) => shape.selected);
+	const badge = page.getByTestId("selection-action");
 
 	await clickAt(page, centers[0], g(60));
 	await page.keyboard.down("Control");
 	await clickAt(page, centers[2], g(60));
 	await expect.poll(selection).toEqual([true, false, true]);
-	await page.screenshot({ path: "/tmp/ecad-ctrl-selection.png" });
 	await clickAt(page, centers[2], g(60));
-	await expect.poll(selection).toEqual([true, false, true]);
+	await expect.poll(selection).toEqual([true, false, false]);
+	await dragTo(page, [g(10), g(40)], [g(80), g(80)]);
+	await expect.poll(selection).toEqual([false, true, false]);
+
+	await page.keyboard.down("Shift");
+	await clickAt(page, centers[1], g(60));
+	await expect.poll(selection).toEqual([false, false, false]);
+	await page.keyboard.up("Shift");
+	await page.keyboard.up("Control");
 
 	await page.keyboard.down("Shift");
 	await clickAt(page, centers[0], g(60));
-	await expect.poll(selection).toEqual([false, false, true]);
-	await clickAt(page, centers[1], g(60));
-	await expect.poll(selection).toEqual([false, false, true]);
+	await expect.poll(selection).toEqual([true, false, false]);
+	await clickAt(page, centers[0], g(60));
+	await expect.poll(selection).toEqual([true, false, false]);
+	await dragTo(page, [g(44), g(40)], [g(120), g(80)]);
+	await expect.poll(selection).toEqual([true, true, true]);
 	await page.keyboard.up("Shift");
 
-	await dragTo(page, [g(10), g(40)], [g(80), g(80)]);
-	await expect.poll(selection).toEqual([true, true, true]);
+	const start = await screen(page, g(10), g(40));
+	const end = await screen(page, g(80), g(80));
+	await page.mouse.move(start.x, start.y);
+	await page.keyboard.down("Control");
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y, { steps: 4 });
+	await expect(badge).toHaveAttribute("data-selection-action", "toggle");
+	await expect(badge).toHaveAttribute("data-selection-action", "toggle");
+	await expect.poll(selection).toEqual([false, false, true]);
 	await page.keyboard.down("Shift");
-	await dragTo(page, [g(44), g(40)], [g(120), g(80)]);
-	await expect.poll(selection).toEqual([true, false, false]);
-	await page.keyboard.up("Shift");
+	await expect(badge).toHaveAttribute("data-selection-action", "remove");
+	await expect.poll(selection).toEqual([false, false, true]);
+	await page.screenshot({ path: "/tmp/ecad-remove-marquee.png" });
 	await page.keyboard.up("Control");
+	await expect(badge).toHaveAttribute("data-selection-action", "add");
+	await expect.poll(selection).toEqual([true, true, true]);
+	await page.screenshot({ path: "/tmp/ecad-add-marquee.png" });
+	await page.keyboard.up("Shift");
+	await expect(badge).toHaveCount(0);
+	await expect.poll(selection).toEqual([true, true, false]);
+	await page.keyboard.down("Control");
+	await expect(badge).toHaveAttribute("data-selection-action", "toggle");
+	await page.screenshot({ path: "/tmp/ecad-toggle-marquee.png" });
+	await page.mouse.up();
+	await page.keyboard.up("Control");
+	await expect(badge).toHaveCount(0);
+	await expect.poll(selection).toEqual([false, false, true]);
 	expect((await nonPinState(page)).shapes.map((shape) => shape.x)).toEqual(
 		centers.map((x) => expect.closeTo(x, 4)),
 	);

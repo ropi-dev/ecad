@@ -188,6 +188,7 @@ test("dragging right selects enclosed shapes; dragging left selects crossed shap
 			start: { x: 100, y: 100 },
 			end: { x: 300, y: 50 },
 			mode: "window",
+			selection: "replace",
 		},
 		selection: new Set([box.id]),
 	});
@@ -204,7 +205,7 @@ test("dragging right selects enclosed shapes; dragging left selects crossed shap
 	assert.deepEqual(crossing.effect.selection, new Set([box.id, far.id]));
 });
 
-test("an adding marquee keeps the selection and a removing marquee subtracts from it", () => {
+test("marquee modes add to, subtract from or toggle the selection", () => {
 	const selection = (selectionMode: CanvasDrag["selectionMode"]) => {
 		const step = canvasDragStep(
 			drag({
@@ -222,6 +223,7 @@ test("an adding marquee keeps the selection and a removing marquee subtracts fro
 	assert.deepEqual(selection("add"), new Set([box.id, far.id]));
 	assert.deepEqual(selection("remove"), new Set([far.id]));
 	assert.deepEqual(selection("replace"), new Set([box.id]));
+	assert.deepEqual(selection("toggle"), new Set([far.id]));
 });
 
 test("a marquee back under the threshold restores the selection it started with", () => {

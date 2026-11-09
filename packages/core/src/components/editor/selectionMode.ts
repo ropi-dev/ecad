@@ -5,8 +5,9 @@ export type SelectionMode = "replace" | "toggle" | "add" | "remove";
 export function selectionMode(
 	event: Pick<MouseEvent, "ctrlKey" | "metaKey" | "shiftKey">,
 ): SelectionMode {
-	if (event[shortcutModifier().flag]) return event.shiftKey ? "remove" : "add";
-	return event.shiftKey ? "toggle" : "replace";
+	if (event[shortcutModifier().flag])
+		return event.shiftKey ? "remove" : "toggle";
+	return event.shiftKey ? "add" : "replace";
 }
 
 export function applySelection<T>(

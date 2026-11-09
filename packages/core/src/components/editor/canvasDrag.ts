@@ -33,7 +33,8 @@ export interface CanvasDrag {
 	initialShapes: EditorShape[];
 	created: boolean;
 	valid: boolean;
-	selectionMode: Exclude<SelectionMode, "toggle">;
+	selectionMode: SelectionMode;
+	pointer?: { point: Point; screen: Point };
 	wireStart?: Point;
 	/** The latest move preview would route a wire through another net. */
 	unsafe?: boolean;
@@ -43,6 +44,7 @@ export interface CanvasMarquee {
 	start: Point;
 	end: Point;
 	mode: "window" | "crossing";
+	selection: SelectionMode;
 }
 
 /** What one pointer move does to the drawing while a drag is active. */
@@ -193,7 +195,12 @@ export function canvasDragStep(
 	const matches = mode === "window" ? containsSelection : intersectsSelection;
 	return result({
 		kind: "marquee",
-		marquee: { start: drag.startScreen, end: screen, mode },
+		marquee: {
+			start: drag.startScreen,
+			end: screen,
+			mode,
+			selection: drag.selectionMode,
+		},
 		selection: applySelection(
 			drag.previousSelection,
 			context.shapes
