@@ -128,6 +128,8 @@ test("MCP starts disabled and SDK tools read and edit the active drawing indepen
 				"undo",
 				"redo",
 				"jumpHistory",
+				"setPages",
+				"moveShapesToPage",
 			]),
 		);
 		expect(await shapesOf(client)).toEqual([]);

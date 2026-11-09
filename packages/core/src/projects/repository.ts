@@ -276,6 +276,9 @@ export class ProjectRepository {
 		const document = validateProjectDocument(
 			{
 				shapes: drawing.shapes as ProjectDocument["shapes"],
+				...(drawing.pages === undefined
+					? {}
+					: { pages: drawing.pages as ProjectDocument["pages"] }),
 				...(manifest.drawings === undefined
 					? {}
 					: {
@@ -419,6 +422,7 @@ export class ProjectRepository {
 				encoder.encode(
 					JSON.stringify({
 						shapes: persistProjectDrawingShapes(document),
+						...(document.pages ? { pages: document.pages } : {}),
 						circuit: document.circuits?.find(
 							(file) => file.circuit.id === primaryPcbId,
 						)?.circuit,
@@ -540,6 +544,7 @@ export class ProjectRepository {
 				encoder.encode(
 					JSON.stringify({
 						shapes: persistProjectDrawingShapes(snapshot),
+						...(snapshot.pages ? { pages: snapshot.pages } : {}),
 						circuit: snapshot.circuits?.find(
 							(file) => file.circuit.id === primaryPcbId,
 						)?.circuit,

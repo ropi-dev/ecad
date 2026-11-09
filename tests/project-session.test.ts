@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	redoEffect,
+	setPagesEffect,
 	undoEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
@@ -142,13 +143,17 @@ test("save assembly merges all editor inputs without mutating saved files or unr
 		pending: new Map([[symbol.id, [rectangle]]]),
 		mainShapes: [],
 		drawings: [drawing],
-		drawingEdits: new Map([[drawing.id, [rectangle]]]),
+		drawingEdits: new Map([
+			[drawing.id, { shapes: [rectangle], pages: [{ id: 4, name: "Power" }] }],
+		]),
 		savedCircuits: [circuit],
 	});
 	assert.equal(symbol.shapes.length, 0);
 	assert.equal(drawing.shapes.length, 0);
 	assert.equal(document.symbols[0].shapes.length, 1);
 	assert.deepEqual(document.drawings?.[0].shapes, [rectangle]);
+	assert.deepEqual(document.drawings?.[0].pages, [{ id: 4, name: "Power" }]);
+	assert.ok(!("pages" in document));
 	assert.equal(document.circuits?.[0], circuit);
 	assert.equal(document.symbolLibraries[1], unrelated);
 	const embedded = document.symbolLibraries[0].source;
@@ -649,5 +654,46 @@ test("view switches hand the remembered selection only to the paired destination
 	await project().switchEditorView("circuit");
 	await project().reload();
 	assert.equal(project().takeSelectionHandoff("circuit"), null);
+	stop();
+});
+
+test("a page-only edit marks the project dirty and saves the pages", async () => {
+	const f = fixture();
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const store = f.session.getSnapshot().store;
+	const editor = createEditorSession(store);
+	const disconnect = editor.connect(store, () => undefined);
+	editor.execute(
+		setPagesEffect(
+			[
+				{ id: 1, name: "Main" },
+				{ id: 2, name: "Power" },
+			],
+			"Add page",
+		),
+	);
+	assert.equal(f.session.getSnapshot().dirty, true);
+	await f.session.getSnapshot().save();
+	assert.equal(f.session.getSnapshot().dirty, false);
+	const saved = required(await f.storage.load());
+	assert.deepEqual(saved.pages, [
+		{ id: 1, name: "Main" },
+		{ id: 2, name: "Power" },
+	]);
+	// A rename alone also counts as an edit.
+	editor.execute(
+		setPagesEffect(
+			[
+				{ id: 1, name: "Inputs" },
+				{ id: 2, name: "Power" },
+			],
+			"Rename page",
+		),
+	);
+	assert.equal(f.session.getSnapshot().dirty, true);
+	await f.session.getSnapshot().save();
+	assert.equal(required(await f.storage.load()).pages?.[0].name, "Inputs");
+	disconnect();
 	stop();
 });

@@ -16,6 +16,15 @@ import {
 	undoHistory,
 } from "#/drawing/history.ts";
 import {
+	type DrawingPage,
+	drawingPages,
+	drawingPagesSchema,
+	pageId,
+	savedPages,
+	shapesOnPage,
+	withPage,
+} from "#/drawing/pages.ts";
+import {
 	type EditorShape,
 	editorShapeSchema,
 	type RectangleInput,
@@ -99,6 +108,44 @@ function validShape<T extends EditorShape>(shape: T): T {
 	invalid(path ? `${path}: ${issue.message}` : issue.message);
 }
 
+interface CommitOptions {
+	/** The page of new shapes that do not name one, such as routed wires. */
+	readonly page?: number;
+	/** The drawing's new page list, when the command changes it. */
+	readonly pages?: readonly DrawingPage[];
+}
+
+/**
+ * Shapes on the first page omit `page`, and every other shape names a page of
+ * the drawing. New shapes without a page go to the command's page.
+ */
+function canonicalPages(
+	current: DrawingSnapshot,
+	shapes: EditorShape[],
+	{ page, pages = current.pages }: CommitOptions,
+): EditorShape[] {
+	const list = drawingPages(pages);
+	const first = list[0].id;
+	const ids = new Set(list.map((item) => item.id));
+	let changed = false;
+	const result = shapes.map((shape) => {
+		let next = shape;
+		if (
+			next.page === undefined &&
+			page !== undefined &&
+			next.id >= current.nextShapeId
+		)
+			next = withPage(next, page, pages);
+		if (next.page !== undefined) {
+			if (!ids.has(next.page)) invalid(`Page ${next.page} does not exist.`);
+			if (next.page === first) next = withPage(next, first, pages);
+		}
+		if (next !== shape) changed = true;
+		return next;
+	});
+	return changed ? result : shapes;
+}
+
 function commit(
 	current: DrawingSnapshot,
 	shapes: EditorShape[],
@@ -106,11 +153,14 @@ function commit(
 	label: string,
 	nextShapeId = current.nextShapeId,
 	preferredIds: readonly number[] = changedIds,
+	options: CommitOptions = {},
 ): readonly [CommandResult, DrawingSnapshot] {
+	const pages = savedPages(options.pages ?? current.pages);
+	const paged = canonicalPages(current, shapes, options);
 	const normalized = measurePerformance(
 		"editor.wire-normalize",
-		() => normalizeWireSegments(shapes, new Set(preferredIds), nextShapeId),
-		{ shapes: shapes.length },
+		() => normalizeWireSegments(paged, new Set(preferredIds), nextShapeId),
+		{ shapes: paged.length },
 	);
 	nextShapeId = normalized.nextShapeId;
 	if (!Number.isSafeInteger(nextShapeId))
@@ -120,23 +170,60 @@ function commit(
 			changedIds.flatMap((id) => normalized.idsBySource.get(id) ?? []),
 		),
 	];
+	const document: DrawingDocument = pages
+		? { shapes: normalized.shapes, pages }
+		: { shapes: normalized.shapes };
 	const history = measurePerformance(
 		"drawing.history-commit",
-		() =>
-			commitHistory(
-				current.history,
-				freeze({ shapes: normalized.shapes }),
-				label,
-				sameDrawing,
-			),
+		() => commitHistory(current.history, freeze(document), label, sameDrawing),
 		{ shapes: normalized.shapes.length },
 	);
 	return [
 		{ ids, idMap: normalized.idMap, idsBySource: normalized.idsBySource },
 		history === current.history && nextShapeId === current.nextShapeId
 			? current
-			: { shapes: normalized.shapes, history, nextShapeId },
+			: { ...document, history, nextShapeId },
 	];
+}
+
+/**
+ * Circuit net labels at a pin of a selected symbol, which move with it. A
+ * locked label moves only when it is selected too.
+ */
+function pinnedLabels(
+	shapes: readonly EditorShape[],
+	selectedIds: ReadonlySet<number>,
+) {
+	const components = shapes.filter(
+		(shape) => selectedIds.has(shape.id) && shape.kind === "symbol",
+	);
+	return shapes.flatMap((label) => {
+		if (
+			label.kind !== "text" ||
+			!label.circuitNet?.pinId ||
+			(label.locked && !selectedIds.has(label.id))
+		)
+			return [];
+		const component = components.find((shape) =>
+			pinTerminals(shape).some(
+				(pin) =>
+					Math.hypot(pin.x - label.x, pin.y - label.y) <= connectionTolerance,
+			),
+		);
+		return component ? [{ label, component }] : [];
+	});
+}
+
+/** The one page that all of `shapes` are on. */
+function singlePage(
+	current: DrawingSnapshot,
+	shapes: readonly EditorShape[],
+	action: string,
+): number {
+	const first = drawingPages(current.pages)[0].id;
+	const pages = new Set(shapes.map((shape) => shape.page ?? first));
+	if (pages.size > 1) invalid(`${action} shapes on one page at a time.`);
+	return pages.values().next().value ?? first;
 }
 
 function command<A>(
@@ -296,6 +383,13 @@ export function rotateShapesEffect(
 			const existing = new Set(current.shapes.map((shape) => shape.id));
 			for (const id of captured.ids)
 				if (!existing.has(id)) invalid(`Shape ${id} does not exist.`);
+			const page = singlePage(
+				current,
+				current.shapes.filter((shape) => selectedIds.has(shape.id)),
+				"Rotate",
+			);
+			// Rotated items connect only to shapes on their own page.
+			const pageShapes = shapesOnPage(current.shapes, page, current.pages);
 			const turn = 2 * Math.PI;
 			const angle = captured.angle % turn;
 			const shapes = current.shapes.map((shape) => {
@@ -306,24 +400,10 @@ export function rotateShapesEffect(
 				});
 			});
 			const transformed = new Map(shapes.map((shape) => [shape.id, shape]));
-			const components = current.shapes.filter(
-				(shape) => selectedIds.has(shape.id) && shape.kind === "symbol",
-			);
-			for (const label of current.shapes) {
-				if (
-					label.kind !== "text" ||
-					!label.circuitNet?.pinId ||
-					(label.locked && !selectedIds.has(label.id))
-				)
-					continue;
-				const component = components.find((shape) =>
-					pinTerminals(shape).some(
-						(pin) =>
-							Math.hypot(pin.x - label.x, pin.y - label.y) <=
-							connectionTolerance,
-					),
-				);
-				if (!component) continue;
+			for (const { label, component } of pinnedLabels(
+				pageShapes,
+				selectedIds,
+			)) {
 				const x = label.x - component.x,
 					y = label.y - component.y;
 				transformed.set(label.id, {
@@ -334,14 +414,12 @@ export function rotateShapesEffect(
 				});
 				selectedIds.add(label.id);
 			}
-			const originals = current.shapes.filter((shape) =>
-				selectedIds.has(shape.id),
-			);
+			const originals = pageShapes.filter((shape) => selectedIds.has(shape.id));
 			const connected = withFullRouting(() =>
 				connectTransformedTerminals(
 					originals,
 					originals.map((shape) => transformed.get(shape.id) ?? shape),
-					current.shapes,
+					pageShapes,
 					current.nextShapeId,
 				),
 			);
@@ -360,6 +438,8 @@ export function rotateShapesEffect(
 				captured.ids,
 				"Rotate selection",
 				current.nextShapeId + additions.length,
+				undefined,
+				{ page },
 			);
 		}),
 	);
@@ -406,6 +486,7 @@ export function createSymbolFromSelectionEffect(
 				);
 				if (selected.length !== captured.length)
 					invalid("A selected shape no longer exists.");
+				singlePage(current, selected, "Group");
 				if (selected.some((shape) => shape.kind === "text" && shape.electrical))
 					invalid("Electrical labels must remain standalone drawing items.");
 				const primitives = selected.filter((shape) => shape.kind !== "symbol");
@@ -452,15 +533,12 @@ function navigate(
 ) {
 	return command<void>((current) => {
 		const history = next(current.history);
+		if (history === current.history) return [undefined, current];
+		const { pages: _pages, ...rest } = current;
+		const { shapes, pages } = history.nodes[history.currentId].state;
 		return [
 			undefined,
-			history === current.history
-				? current
-				: {
-						...current,
-						shapes: history.nodes[history.currentId].state.shapes,
-						history,
-					},
+			{ ...rest, shapes, ...(pages ? { pages } : {}), history },
 		];
 	});
 }
@@ -473,4 +551,81 @@ export function jumpHistoryEffect(id: number) {
 			invalid(`History entry ${id} does not exist.`);
 		return jumpHistory(history, id);
 	});
+}
+
+/**
+ * Replaces the page list: adds, renames, reorders and removes pages. Shapes on
+ * a removed page are deleted with it.
+ */
+export function setPagesEffect(
+	pages: readonly DrawingPage[],
+	label = "Edit pages",
+) {
+	return capture(pages, (captured) =>
+		command((current) => {
+			const parsed = drawingPagesSchema.safeParse(captured);
+			if (!parsed.success)
+				invalid(parsed.error.issues[0]?.message ?? "Invalid pages.");
+			const next = parsed.data;
+			const first = drawingPages(current.pages)[0].id;
+			const kept = new Set(next.map((page) => page.id));
+			const removed: number[] = [];
+			const shapes = current.shapes.flatMap((shape) => {
+				const page = shape.page ?? first;
+				if (!kept.has(page)) {
+					removed.push(shape.id);
+					return [];
+				}
+				return [withPage(shape, page, next)];
+			});
+			return commit(current, shapes, removed, label, current.nextShapeId, [], {
+				pages: next,
+			});
+		}),
+	);
+}
+
+/** Moves shapes to another page at the same coordinates. */
+export function moveShapesToPageEffect(
+	ids: readonly number[],
+	page: number,
+	label = "Move to page",
+) {
+	return capture({ ids, page }, (captured) =>
+		command((current) => {
+			validateIds(captured.ids);
+			if (!pageId.safeParse(captured.page).success)
+				invalid("Page IDs must be positive safe integers.");
+			if (
+				!drawingPages(current.pages).some((item) => item.id === captured.page)
+			)
+				invalid(`Page ${captured.page} does not exist.`);
+			const moved = new Set(captured.ids);
+			const existing = new Set(current.shapes.map((shape) => shape.id));
+			for (const id of captured.ids)
+				if (!existing.has(id)) invalid(`Shape ${id} does not exist.`);
+			// A symbol's circuit labels sit on its pins, so they go with it.
+			const first = drawingPages(current.pages)[0].id;
+			for (const page of new Set(
+				current.shapes
+					.filter((shape) => moved.has(shape.id))
+					.map((shape) => shape.page ?? first),
+			))
+				for (const pinned of pinnedLabels(
+					shapesOnPage(current.shapes, page, current.pages),
+					new Set(captured.ids),
+				))
+					moved.add(pinned.label.id);
+			return commit(
+				current,
+				current.shapes.map((shape) =>
+					moved.has(shape.id)
+						? withPage(shape, captured.page, current.pages)
+						: shape,
+				),
+				[...moved],
+				label,
+			);
+		}),
+	);
 }

@@ -39,7 +39,8 @@ export function useSchematicSelectionSync({
 				source.selection,
 			),
 		apply(next) {
-			session.select(new Set(next.shapeIds));
+			// A selection made in the circuit view can be on any page.
+			session.reveal(new Set(next.shapeIds));
 			const selected = session.getState().selection;
 			session.selectChild(
 				next.shapeIds.length === 1 &&

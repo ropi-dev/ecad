@@ -4,12 +4,14 @@ import {
 	type CommandResult,
 	type InvalidDrawingCommand,
 	jumpHistoryEffect,
+	moveShapesToPageEffect,
 	placeRectangleEffect,
 	placeShapesEffect,
 	redoEffect,
 	removeShapesEffect,
 	replaceShapesEffect,
 	rotateShapesEffect,
+	setPagesEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import {
@@ -17,6 +19,7 @@ import {
 	DrawingStore,
 } from "#/commands/drawing-store.ts";
 import { electricalNets } from "#/drawing/named-nets.ts";
+import { drawingPages, drawingPagesSchema, pageId } from "#/drawing/pages.ts";
 import {
 	drawingShapeSchema,
 	legacyDrawingShapeSchema,
@@ -74,6 +77,17 @@ export const rotateShapesInputSchema = z.strictObject({
 		),
 });
 export const jumpHistoryInputSchema = z.strictObject({ id: historyId });
+export const setPagesInputSchema = z.strictObject({
+	pages: drawingPagesSchema.describe(
+		"The complete page list in display order. Keep existing IDs to keep their shapes; a new ID adds an empty page. Shapes on pages left out are deleted. Shapes without `page` are on the first page.",
+	),
+	label: z.string().optional(),
+});
+export const moveShapesToPageInputSchema = z.strictObject({
+	ids: z.array(shapeId).describe("Explicit existing shape IDs to move."),
+	page: pageId.describe("ID of the destination page from drawing.pages."),
+	label: z.string().optional(),
+});
 export const getDrawingInputSchema = z.strictObject({
 	offset: z
 		.number()
@@ -128,6 +142,8 @@ export const drawingOperationSchema = z.discriminatedUnion("type", [
 	z.strictObject({ type: z.literal("undo") }),
 	z.strictObject({ type: z.literal("redo") }),
 	jumpHistoryInputSchema.extend({ type: z.literal("jumpHistory") }),
+	setPagesInputSchema.extend({ type: z.literal("setPages") }),
+	moveShapesToPageInputSchema.extend({ type: z.literal("moveShapesToPage") }),
 ]);
 export type DrawingOperation = z.infer<typeof drawingOperationSchema>;
 
@@ -141,6 +157,7 @@ export type DrawingEnvelope = z.infer<typeof drawingEnvelopeSchema>;
 const drawingStateSchema = z.strictObject({
 	// A drawing may still hold legacy diagonal wires; edits use the strict schemas.
 	shapes: z.array(legacyDrawingShapeSchema),
+	pages: drawingPagesSchema,
 	nets: z
 		.array(
 			z.strictObject({
@@ -240,6 +257,14 @@ function operationEffect(
 			return redoEffect.pipe(Effect.as(undefined));
 		case "jumpHistory":
 			return jumpHistoryEffect(operation.id).pipe(Effect.as(undefined));
+		case "setPages":
+			return setPagesEffect(operation.pages, operation.label ?? "Edit pages");
+		case "moveShapesToPage":
+			return moveShapesToPageEffect(
+				operation.ids,
+				operation.page,
+				operation.label ?? "Move to page",
+			);
 	}
 }
 
@@ -376,8 +401,15 @@ function readDrawing(
 	const paged = offset !== undefined || limit !== undefined;
 	const total = snapshot.shapes.length;
 	const measured = measureShapes(snapshot.shapes);
+	const pages = drawingPages(snapshot.pages);
 	// Content-derived, so separate processes and external file edits agree on it.
-	const revision = `${measured.hash}${snapshot.nextShapeId.toString(36)}`;
+	const revision = `${measured.hash}${snapshot.nextShapeId.toString(36)}${
+		snapshot.pages
+			? hashText(JSON.stringify(snapshot.pages))
+					.map((value) => value.toString(36))
+					.join("")
+			: ""
+	}`;
 	if (expected !== undefined && expected !== revision)
 		return failure(
 			"DrawingChanged",
@@ -396,6 +428,7 @@ function readDrawing(
 		revision,
 		drawing: {
 			shapes: [] as DrawingSnapshot["shapes"][number][],
+			pages: pages.map((page) => ({ ...page })),
 			nextShapeId: snapshot.nextShapeId,
 			history: {
 				currentId: snapshot.history.currentId,

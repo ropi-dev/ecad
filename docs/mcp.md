@@ -105,6 +105,8 @@ Coordinates and dimensions are millimetres. `x` and `y` specify the shape center
 | `undo` | `{}` | Restore the previous history entry. |
 | `redo` | `{}` | Restore the preferred next history entry. |
 | `jumpHistory` | `id` | Restore an existing history entry, including another branch. |
+| `setPages` | `pages`, optional `label` | Replace the schematic page list to add, rename, reorder, or delete pages in one undo step. Shapes on a deleted page are deleted with it. |
+| `moveShapesToPage` | `ids`, `page`, optional `label` | Move explicit existing IDs to another page at the same coordinates. |
 
 For example, send this tool call to place a 40 × 15 mm rectangle centered at `(20, 30)`:
 
@@ -134,10 +136,10 @@ Each tool returns its reply in `structuredContent` and as JSON text. Every succe
 
 Edits do not return the drawing, so their replies stay small however large the drawing grows:
 
-- `placeRectangle`, `placeShapes`, `replaceShapes`, `rotateShapes`, and `removeShapes` also return `result.ids`, the committed IDs of the affected shapes. `removeShapes` returns no IDs. `result.idMap` maps source IDs to committed IDs for the shapes in `result.ids` and for wires that normalization merged or renumbered. IDs it leaves out are unchanged.
+- `placeRectangle`, `placeShapes`, `replaceShapes`, `rotateShapes`, `moveShapesToPage`, `setPages`, and `removeShapes` also return `result.ids`, the committed IDs of the affected shapes. `removeShapes` and `setPages` return no IDs. `result.idMap` maps source IDs to committed IDs for the shapes in `result.ids` and for wires that normalization merged or renumbered. IDs it leaves out are unchanged.
 - `undo`, `redo`, and `jumpHistory` return only the summary.
 
-Call `getDrawing` to read committed geometry after an edit. It returns `drawing` with `shapes`, `nets`, `nextShapeId`, and `history`. The history includes entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state.
+Call `getDrawing` to read committed geometry after an edit. It returns `drawing` with `shapes`, `pages`, `nets`, `nextShapeId`, and `history`. `pages` lists the schematic pages in order as `{ id, name }`. A shape's `page` field names its page; shapes on the first page omit it. Commands place a shape without `page` on the first page and reject a `page` the drawing does not have. The history includes entry IDs, labels, parents, children, and preferred redo branches. It excludes temporary previews, selection, and camera state.
 
 An MCP tool result carries its reply twice: once as `structuredContent` and once as escaped JSON text. `getDrawing` sizes its reply so the whole serialized result stays within 8 MiB. That keeps it under the 10 MiB message limit of the MCP SDK's stdio transport, and keeps the reply itself small enough for one editor acknowledgement. Without arguments, `getDrawing` returns the whole drawing, or fails with `DrawingTooLarge` when the result would not fit. To read a larger drawing, pass `offset: 0`. Then continue from `page.nextOffset`, passing the first page's `revision`, until a reply has no `nextOffset`:
 

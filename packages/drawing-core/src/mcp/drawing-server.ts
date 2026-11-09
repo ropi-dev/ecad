@@ -12,11 +12,13 @@ import {
 	drawingToolResultByteLimit,
 	getDrawingInputSchema,
 	jumpHistoryInputSchema,
+	moveShapesToPageInputSchema,
 	placeShapesInputSchema,
 	rectangleInputSchema,
 	removeShapesInputSchema,
 	replaceShapesInputSchema,
 	rotateShapesInputSchema,
+	setPagesInputSchema,
 	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
 
@@ -185,6 +187,32 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			annotations: edit,
 		},
 		(input, { signal }) => call({ type: "removeShapes", ...input }, signal),
+	);
+	server.registerTool(
+		"setPages",
+		{
+			title: "Edit schematic pages",
+			description:
+				"Replace the drawing's page list in one undo step to add, rename, reorder or delete schematic pages. getDrawing returns drawing.pages. Each shape names its page with `page`; shapes without it are on the first page. Wires and pins connect only on their own page, while net and supply labels with the same name connect across pages. Deleting a page deletes its shapes." +
+				historyEditReply,
+			inputSchema: setPagesInputSchema,
+			outputSchema: drawingToolReplySchema,
+			annotations: edit,
+		},
+		(input, { signal }) => call({ type: "setPages", ...input }, signal),
+	);
+	server.registerTool(
+		"moveShapesToPage",
+		{
+			title: "Move shapes to page",
+			description:
+				"Move explicit existing shape IDs to another schematic page at the same coordinates, as one undo step. Move connected wires and labels together, because wires connect only on one page." +
+				shapeEditReply,
+			inputSchema: moveShapesToPageInputSchema,
+			outputSchema: drawingToolReplySchema,
+			annotations: edit,
+		},
+		(input, { signal }) => call({ type: "moveShapesToPage", ...input }, signal),
 	);
 	server.registerTool(
 		"undo",

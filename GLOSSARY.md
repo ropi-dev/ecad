@@ -27,3 +27,6 @@ A representation of electrical connectivity with pins as nodes and connections b
 
 **Schematic**:
 An editable document that presents a circuit through component symbols, wires, labels, and annotations.
+
+**Page**:
+One named sheet of a schematic. Wires and pins connect only within a page; net labels with the same name connect across pages.

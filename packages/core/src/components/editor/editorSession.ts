@@ -9,6 +9,12 @@ import {
 	DrawingStore,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
+	drawingPages,
+	resolvePage,
+	shapesOnPage,
+	withPage,
+} from "@ecad/drawing-core/drawing/pages.ts";
+import {
 	canSelectShape,
 	type EditorShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
@@ -34,6 +40,13 @@ export interface EditorSessionState {
 	readonly error: string;
 
 	readonly allowLocked: boolean;
+
+	/**
+	 * The schematic page the editor shows. Selection, gestures and new shapes
+	 * use this page only. `null`, or a page the drawing no longer has, shows
+	 * the first page; `currentPage` resolves it.
+	 */
+	readonly page: number | null;
 }
 
 export type EditorSession = ReturnType<typeof createEditorSession>;
@@ -49,23 +62,44 @@ export function createEditorSession(
 		draft: null,
 		error: "",
 		allowLocked: false,
+		page: null,
 	};
 	const listeners = new Set<() => void>();
 	let executing = false;
+	/** Cancels gestures, which belong to the page they started on. */
+	let onPageChange = () => {};
 
 	let historySelection = new Map<number, number[]>([[0, []]]);
 	let resolve = initialResolve;
 	let resolved: { input: EditorShape[]; output: EditorShape[] } | undefined;
+	let paged:
+		| { output: EditorShape[]; page: number; shapes: EditorShape[] }
+		| undefined;
 
 	const update = (next: Partial<EditorSessionState>) => {
 		state = { ...state, ...next };
 		for (const listener of listeners) listener();
 	};
-	const shapes = () => {
-		if (state.draft) return state.draft;
+	const currentPage = () => resolvePage(store.getSnapshot().pages, state.page);
+	/** Resolved shapes on the current page; a new page ID or input refilters. */
+	const pageShapes = () => {
 		const input = store.getSnapshot().shapes;
 		if (resolved?.input !== input) resolved = { input, output: resolve(input) };
-		return resolved.output;
+		const page = currentPage();
+		if (paged?.output !== resolved.output || paged.page !== page)
+			paged = {
+				output: resolved.output,
+				page,
+				shapes: shapesOnPage(resolved.output, page, store.getSnapshot().pages),
+			};
+		return paged.shapes;
+	};
+	const shapes = () => state.draft ?? pageShapes();
+	/** New shapes go to the current page, whatever page they were copied from. */
+	const onCurrentPage = (next: EditorShape[]) => {
+		const page = currentPage();
+		const { pages } = store.getSnapshot();
+		return next.map((shape) => withPage(shape, page, pages));
 	};
 	const preview = (draft: EditorShape[] | null) => {
 		if (draft !== state.draft) update({ draft });
@@ -85,6 +119,23 @@ export function createEditorSession(
 		)
 			return;
 		update({ selection: next, childKey: null });
+	};
+	/**
+	 * Shows a page that holds shapes in `ids`: the current page when it holds
+	 * any, or else the page of the first one.
+	 */
+	const reveal = (ids: ReadonlySet<number>) => {
+		const snapshot = store.getSnapshot();
+		const first = drawingPages(snapshot.pages)[0].id;
+		const pages = snapshot.shapes
+			.filter((item) => ids.has(item.id))
+			.map((item) => item.page ?? first);
+		const current = currentPage();
+		if (!pages.length || pages.includes(current)) return;
+		const page = pages[0];
+		onPageChange();
+		paged = undefined;
+		update({ page, selection: new Set(), childKey: null, draft: null });
 	};
 	const setError = (error: string | ((current: string) => string)) => {
 		const next = typeof error === "function" ? error(state.error) : error;
@@ -141,6 +192,21 @@ export function createEditorSession(
 		},
 
 		shapes,
+		pageShapes,
+		currentPage,
+
+		/** Shows another page; the selection and any preview stay behind. */
+		setPage(page: number) {
+			if (page === currentPage() && page === state.page) return;
+			onPageChange();
+			paged = undefined;
+			update({ page, selection: new Set(), childKey: null, draft: null });
+		},
+		/** Selects shapes on any page, showing the page of the first one. */
+		reveal(ids: ReadonlySet<number>) {
+			reveal(ids);
+			select(ids);
+		},
 
 		drawing: () => store.getSnapshot(),
 		nextId: () => store.getSnapshot().nextShapeId,
@@ -188,7 +254,7 @@ export function createEditorSession(
 
 		place(next: EditorShape[], label: string) {
 			const previous = store.getSnapshot();
-			const result = execute(placeShapesEffect(next, label));
+			const result = execute(placeShapesEffect(onCurrentPage(next), label));
 			if (result)
 				acceptEdit(
 					result,
@@ -204,7 +270,9 @@ export function createEditorSession(
 			const result = execute(
 				replaceAndPlaceShapesEffect(
 					replacements.filter((shape) => existing.has(shape.id)),
-					replacements.filter((shape) => !existing.has(shape.id)),
+					onCurrentPage(
+						replacements.filter((shape) => !existing.has(shape.id)),
+					),
 					label,
 					[...state.selection],
 				),
@@ -217,21 +285,27 @@ export function createEditorSession(
 			execute(program);
 			const restored = store.getSnapshot();
 			preview(null);
-			const existing = new Set(restored.shapes.map((shape) => shape.id));
-			select(
-				new Set(
-					(historySelection.get(restored.history.currentId) ?? []).filter(
-						(id) => existing.has(id),
-					),
-				),
+			const remembered = new Set(
+				historySelection.get(restored.history.currentId) ?? [],
 			);
+			// Show the page that the restored selection is on.
+			reveal(remembered);
+			const existing = new Set(restored.shapes.map((shape) => shape.id));
+			select(new Set([...remembered].filter((id) => existing.has(id))));
 		},
 		rememberSelection(historyId: number, ids: readonly number[]) {
 			historySelection.set(historyId, [...ids]);
 		},
 
 		connect(next: Store, onExternalEdit: () => void) {
+			onPageChange = onExternalEdit;
+			// Another document opens on its first page.
+			const reset = next !== store;
 			store = next;
+			if (reset) {
+				paged = undefined;
+				update({ page: null });
+			}
 			historySelection = new Map([[0, []]]);
 			const reconcile = () => {
 				if (executing) return;

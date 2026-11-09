@@ -76,12 +76,14 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 	assert.deepEqual(tools.map((tool) => tool.name).sort(), [
 		"getDrawing",
 		"jumpHistory",
+		"moveShapesToPage",
 		"placeRectangle",
 		"placeShapes",
 		"redo",
 		"removeShapes",
 		"replaceShapes",
 		"rotateShapes",
+		"setPages",
 		"undo",
 	]);
 	const place = required(tools.find((tool) => tool.name === "placeRectangle"));
@@ -101,6 +103,7 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 	assert.ok(reply.ok);
 	assert.deepEqual(reply.drawing, {
 		shapes: [],
+		pages: [{ id: 1, name: "Page 1" }],
 		nets: [],
 		nextShapeId: 1,
 		history: {

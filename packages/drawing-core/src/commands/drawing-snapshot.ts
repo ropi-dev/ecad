@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { drawingPagesSchema } from "#/drawing/pages.ts";
 import { savedDrawingShapesSchema, shapeId } from "#/drawing/schema.ts";
 
 const historyId = z.number().int().nonnegative().safe();
@@ -8,12 +9,16 @@ const nodeSchema = z.strictObject({
 	childIds: z.array(historyId),
 	preferredChildId: historyId.nullable(),
 	label: z.string(),
-	state: z.strictObject({ shapes: savedDrawingShapesSchema }),
+	state: z.strictObject({
+		shapes: savedDrawingShapesSchema,
+		pages: drawingPagesSchema.optional(),
+	}),
 });
 
 export const drawingSnapshotSchema = z
 	.strictObject({
 		shapes: savedDrawingShapesSchema,
+		pages: drawingPagesSchema.optional(),
 		nextShapeId: shapeId,
 		history: z.strictObject({
 			nodes: z.record(z.string(), nodeSchema),
@@ -59,7 +64,9 @@ export const drawingSnapshotSchema = z
 		if (visited.size !== Object.keys(nodes).length) return fail();
 		if (
 			JSON.stringify(snapshot.shapes) !==
-			JSON.stringify(nodes[currentId].state.shapes)
+				JSON.stringify(nodes[currentId].state.shapes) ||
+			JSON.stringify(snapshot.pages) !==
+				JSON.stringify(nodes[currentId].state.pages)
 		)
 			return fail();
 	});

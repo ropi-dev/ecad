@@ -150,12 +150,14 @@ test("CLI executes every drawing tool and preserves history between processes", 
 	assert.deepEqual(names, [
 		"getDrawing",
 		"jumpHistory",
+		"moveShapesToPage",
 		"placeRectangle",
 		"placeShapes",
 		"redo",
 		"removeShapes",
 		"replaceShapes",
 		"rotateShapes",
+		"setPages",
 		"undo",
 	]);
 	assert.deepEqual((await readDrawing(fixture.env)).shapes, []);

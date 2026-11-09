@@ -1,4 +1,5 @@
 import { normalizationTolerance } from "#/drawing/connection-geometry.ts";
+import { pageKey } from "#/drawing/pages.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import { drawShape, localToWorld } from "#/drawing/shape-geometry.ts";
 import { pinTerminals } from "#/drawing/terminals.ts";
@@ -28,6 +29,7 @@ export function normalizeWireSegments(
 			{
 				shape,
 				index,
+				page: pageKey(shape),
 				vertical,
 				coordinate: vertical ? shape.x : shape.y,
 				min: Math.min(vertical ? start.y : start.x, vertical ? end.y : end.x),
@@ -37,11 +39,16 @@ export function normalizeWireSegments(
 		];
 	});
 	const sets = unionFind(wires.length);
-	const junctions: Point[] = shapes.flatMap(pinTerminals);
+	// Wires on different pages never meet.
+	const junctions: (Point & { page: number })[] = shapes.flatMap((shape) => {
+		const page = pageKey(shape);
+		return pinTerminals(shape).map((point) => ({ ...point, page }));
+	});
 	for (let first = 0; first < wires.length; first++) {
 		for (let second = first + 1; second < wires.length; second++) {
 			const a = wires[first];
 			const b = wires[second];
+			if (a.page !== b.page) continue;
 			if (a.vertical !== b.vertical) {
 				const horizontal = a.vertical ? b : a;
 				const vertical = a.vertical ? a : b;
@@ -57,7 +64,7 @@ export function normalizeWireSegments(
 						Math.abs(y - vertical.min) <= normalizationTolerance ||
 						Math.abs(y - vertical.max) <= normalizationTolerance)
 				)
-					junctions.push({ x, y });
+					junctions.push({ x, y, page: a.page });
 			}
 			if (
 				a.vertical === b.vertical &&
@@ -88,6 +95,7 @@ export function normalizeWireSegments(
 		// Pin terminals and wire endpoints create junctions. Bare crossings stay separate.
 		const cuts = junctions
 			.flatMap((point) => {
+				if (point.page !== survivor.page) return [];
 				const along = survivor.vertical ? point.y : point.x;
 				const across = survivor.vertical ? point.x : point.y;
 				return Math.abs(across - survivor.coordinate) <=
@@ -149,6 +157,9 @@ export function normalizeWireSegments(
 				...(survivor.shape.locked === undefined
 					? {}
 					: { locked: survivor.shape.locked }),
+				...(survivor.shape.page === undefined
+					? {}
+					: { page: survivor.shape.page }),
 				lineWidth: survivor.shape.lineWidth,
 			};
 		});
