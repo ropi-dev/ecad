@@ -174,3 +174,55 @@ for (const [direction, steps] of [
 		});
 	});
 }
+
+test("the zoom label trails a continuous zoom and ends on its level", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/editor.html");
+	const fit = page.getByRole("button", { name: "Fit drawing", exact: true });
+	await expect(fit).toBeEnabled();
+	await expect(fit).toHaveText(/^\d+%$/);
+	const before = required(await fit.textContent());
+	// Zoom in for 30 frames, then back out by the same steps.
+	const { changes, elapsed } = await fit.evaluate(
+		(button) =>
+			new Promise<{ changes: number; elapsed: number }>((resolve) => {
+				const canvas = document.querySelector("canvas");
+				if (!canvas) throw new Error("Expected the canvas");
+				let changes = 0;
+				const observer = new MutationObserver(() => changes++);
+				observer.observe(button, {
+					characterData: true,
+					childList: true,
+					subtree: true,
+				});
+				const started = performance.now();
+				let frame = 0;
+				const tick = () => {
+					if (frame === 60) {
+						const elapsed = performance.now() - started;
+						observer.disconnect();
+						resolve({ changes, elapsed });
+						return;
+					}
+					canvas.dispatchEvent(
+						new WheelEvent("wheel", {
+							deltaY: frame < 30 ? -8 : 8,
+							ctrlKey: true,
+							clientX: innerWidth / 2,
+							clientY: innerHeight / 2,
+							bubbles: true,
+							cancelable: true,
+						}),
+					);
+					frame++;
+					requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			}),
+	);
+	// One update when the zoom starts, then at most one every 100 ms.
+	expect(changes).toBeGreaterThan(0);
+	expect(changes).toBeLessThanOrEqual(Math.floor(elapsed / 100) + 1);
+	await expect(fit).toHaveText(before);
+});

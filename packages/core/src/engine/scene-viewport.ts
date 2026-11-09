@@ -193,6 +193,26 @@ export function createSceneViewport(
 		const scene = new Scene();
 		scene.add(group, new HemisphereLight("white", "#566173", 2.5));
 		if (batcher) scene.add(batcher.object);
+		/**
+		 * Draws the whole view. Three recomputes every world matrix under the
+		 * scene on each render. Batches hold world positions, and the batcher
+		 * keeps the hidden meshes' matrices current, so a batched view updates
+		 * only the scene's other children.
+		 */
+		const renderScene = () => {
+			if (!batched) {
+				output.render(scene, camera);
+				return;
+			}
+			for (const child of scene.children)
+				if (child !== group) child.updateMatrixWorld();
+			scene.matrixWorldAutoUpdate = false;
+			try {
+				output.render(scene, camera);
+			} finally {
+				scene.matrixWorldAutoUpdate = true;
+			}
+		};
 		const light = new DirectionalLight("white", 3);
 		light.position.set(1, -2, 3);
 		scene.add(light);
@@ -374,7 +394,7 @@ export function createSceneViewport(
 						placeGrid(camera.position);
 						if (batched)
 							batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
-						output.render(scene, camera);
+						renderScene();
 						if (camera instanceof OrthographicCamera) panCache?.capture(camera);
 						else panCache?.invalidate();
 					} finally {
@@ -775,7 +795,7 @@ export function createSceneViewport(
 				const gridVisible = grid?.object.visible ?? false;
 				if (grid) grid.object.visible = false;
 				try {
-					output.render(scene, camera);
+					renderScene();
 				} finally {
 					if (grid) grid.object.visible = gridVisible;
 				}

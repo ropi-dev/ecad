@@ -39,6 +39,9 @@ import {
 import type { Bounds, Camera } from "#/engine/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
+/** The shortest time between two updates of the toolbar's zoom label. */
+const ZOOM_LABEL_MS = 100;
+
 export interface SceneViewportHandle extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;
 }
@@ -104,6 +107,42 @@ export function SceneViewport({
 	const [exporting, setExporting] = useState(false);
 	const [exportError, setExportError] = useState("");
 	const [zoomLevel, setZoomLevel] = useState(1);
+	const runtime = useRef<SceneViewportRuntime | null>(null);
+	// A continuous zoom changes the level on every frame, and each change
+	// re-renders and repaints the toolbar. The label follows a wheel or pinch
+	// at most every ZOOM_LABEL_MS and always shows the level the zoom ends on.
+	const zoomLabel = useRef<{
+		shown: number;
+		latest: number;
+		time: number;
+		timer?: ReturnType<typeof setTimeout>;
+	}>({ shown: 1, latest: 1, time: Number.NEGATIVE_INFINITY });
+	const showZoom = useCallback(() => {
+		const label = zoomLabel.current;
+		clearTimeout(label.timer);
+		label.timer = undefined;
+		label.time = performance.now();
+		label.shown = label.latest;
+		setZoomLevel(label.latest);
+	}, []);
+	const reportZoom = useEffectEvent((zoom: number) => {
+		const label = zoomLabel.current;
+		label.latest = zoom;
+		if (label.timer !== undefined || zoom === label.shown) return;
+		const wait = label.time + ZOOM_LABEL_MS - performance.now();
+		if (wait <= 0) showZoom();
+		else label.timer = setTimeout(showZoom, wait);
+	});
+	/** A zoom chosen in one step, such as a toolbar button, shows its level at once. */
+	const stepZoom = useCallback(
+		(step: (viewport: SceneViewportRuntime) => void) => {
+			showZoom();
+			zoomLabel.current.time = Number.NEGATIVE_INFINITY;
+			if (runtime.current) step(runtime.current);
+		},
+		[showZoom],
+	);
+	useEffect(() => () => clearTimeout(zoomLabel.current.timer), []);
 	const [activeProjection, setActiveProjection] = useState(projection);
 	useEffect(() => setActiveProjection(projection), [projection]);
 	const displayScale = useDisplayScale(physicalSizeZoom);
@@ -155,16 +194,15 @@ export function SceneViewport({
 		onReady?.(ready);
 	});
 	const reportError = useEffectEvent((message: string) => onError?.(message));
-	const runtime = useRef<SceneViewportRuntime | null>(null);
 	useImperativeHandle(
 		ref,
 		() => ({
-			fit: () => runtime.current?.fit(),
-			zoom: (factor) => runtime.current?.zoom(factor),
-			view: (direction) => runtime.current?.view(direction),
+			fit: () => stepZoom((viewport) => viewport.fit()),
+			zoom: (factor) => stepZoom((viewport) => viewport.zoom(factor)),
+			view: (direction) => stepZoom((viewport) => viewport.view(direction)),
 			pan: (x, y) => runtime.current?.pan(x, y),
 		}),
-		[],
+		[stepZoom],
 	);
 	const currentProjection = useRef(activeProjection);
 	useEffect(() => {
@@ -219,7 +257,7 @@ export function SceneViewport({
 						},
 						onSelection: setSelectionInfo,
 						onOrientation: (rotation) => axes.current?.update(rotation),
-						onZoom: setZoomLevel,
+						onZoom: reportZoom,
 						onReady: reportReady,
 						onError: reportError,
 					}),
@@ -332,7 +370,7 @@ export function SceneViewport({
 					zoomLevel={zoomLevel}
 					actualSize={
 						displayScale !== null
-							? () => runtime.current?.actualSize()
+							? () => stepZoom((viewport) => viewport.actualSize())
 							: undefined
 					}
 					exportPng={exportPng}
@@ -350,11 +388,11 @@ export function SceneViewport({
 					toggleAntialias={
 						cameraMode === "top" ? () => setAntialiasing(!antialias) : undefined
 					}
-					fit={() => runtime.current?.fit()}
-					zoom={(factor) => runtime.current?.zoom(factor)}
+					fit={() => stepZoom((viewport) => viewport.fit())}
+					zoom={(factor) => stepZoom((viewport) => viewport.zoom(factor))}
 					view={
 						cameraMode === "orbit"
-							? (direction) => runtime.current?.view(direction)
+							? (direction) => stepZoom((viewport) => viewport.view(direction))
 							: undefined
 					}
 					fitLabel={cameraMode === "top" ? "Fit drawing" : "Fit model"}
