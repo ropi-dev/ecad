@@ -9,13 +9,18 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import { circuitNetLabels } from "@ecad/drawing-core/circuit/net-labels.ts";
 import { invalidCircuit } from "@ecad/drawing-core/circuit/store.ts";
-import { createPointIndex } from "@ecad/drawing-core/drawing/connection-geometry.ts";
+import {
+	createPointIndex,
+	createWireIndex,
+	pointOnWire,
+} from "@ecad/drawing-core/drawing/connection-geometry.ts";
 import {
 	type ElectricalNet,
 	electricalNets,
 } from "@ecad/drawing-core/drawing/named-nets.ts";
 import { pageKey } from "@ecad/drawing-core/drawing/pages.ts";
 import { defaultPinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
+import { localToWorld } from "@ecad/drawing-core/drawing/shape-geometry.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
@@ -34,6 +39,7 @@ import {
 	fromMils,
 	SYMBOL_TEXT_SIZE,
 } from "@ecad/drawing-core/drawing/units.ts";
+import { symbolUnitGroups } from "@ecad/drawing-core/erc/schematic.ts";
 import { z } from "zod";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
@@ -101,13 +107,38 @@ export function schematicCircuit(
 	circuit: Circuit;
 	/** Schematic shapes that show a checked component, pin or net. */
 	shapeIds(subject: {
-		kind: "pin" | "net" | "component";
+		kind: "pin" | "net" | "component" | "shape";
 		id: string;
 	}): number[];
 } {
 	const empty = createCircuit("Schematic", "schematic");
 	let next = 0;
-	const { circuit } = synchronizePcb(empty, shapes, empty, definitions, {
+	const { duplicates } = symbolUnitGroups(shapes);
+	const used = new Set(
+		shapes.flatMap((shape) =>
+			shape.kind === "symbol" ? [shape.attributes.reference.trim()] : [],
+		),
+	);
+	const distinct = (reference: string) => {
+		let copy = 2;
+		while (used.has(`${reference} (${copy})`)) copy++;
+		used.add(`${reference} (${copy})`);
+		return `${reference} (${copy})`;
+	};
+	const extracted = duplicates.size
+		? shapes.map((shape) =>
+				shape.kind === "symbol" && duplicates.has(shape)
+					? {
+							...shape,
+							attributes: {
+								...shape.attributes,
+								reference: distinct(shape.attributes.reference.trim()),
+							},
+						}
+					: shape,
+			)
+		: shapes;
+	const { circuit } = synchronizePcb(empty, extracted, empty, definitions, {
 		newId: () => `net-${++next}`,
 	}).file;
 	const pinShapes = new Map<string, number>();
@@ -149,11 +180,13 @@ export function schematicCircuit(
 						),
 					);
 			const marked = new Set(circuit.noConnectPinIds);
+			const pinsByTerminal = new Map<string, string>();
 			for (const component of circuit.components)
 				for (const pin of component.pins) {
 					const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
 					if (shapeId === undefined) continue;
 					pinShapes.set(pin.id, shapeId);
+					pinsByTerminal.set(`${shapeId}:${pin.sourcePinId}`, pin.id);
 					const terminal =
 						pin.sourcePinId === undefined
 							? undefined
@@ -170,6 +203,42 @@ export function schematicCircuit(
 					)
 						marked.add(pin.id);
 				}
+			const wires = shapes.flatMap((shape) =>
+				shape.kind === "wire"
+					? [
+							{
+								id: shape.id,
+								page: pageKey(shape),
+								start: localToWorld(shape, -shape.width / 2, 0),
+								end: localToWorld(shape, shape.width / 2, 0),
+							},
+						]
+					: [],
+			);
+			const onWire = createWireIndex(wires);
+			const stubs = new Set<number>();
+			for (const marker of shapes)
+				if (marker.kind === "no-connect")
+					onWire(marker, (wire) => {
+						if (
+							wire.page === pageKey(marker) &&
+							pointOnWire(marker, wire.start, wire.end)
+						)
+							stubs.add(wire.id);
+						return false;
+					});
+			if (stubs.size) {
+				const connected = new Set(circuit.nets.flatMap((net) => net.pinIds));
+				for (const net of electricalNets(shapes)) {
+					if (net.pins.length !== 1 || !net.wires.some((id) => stubs.has(id)))
+						continue;
+					const [terminal] = net.pins;
+					const pinId = pinsByTerminal.get(
+						`${terminal.shapeId}:${terminal.pinId}`,
+					);
+					if (pinId && !connected.has(pinId)) marked.add(pinId);
+				}
+			}
 			return marked;
 		},
 		{ shapes: shapes.length },
@@ -178,6 +247,7 @@ export function schematicCircuit(
 	return {
 		circuit,
 		shapeIds({ kind, id }) {
+			if (kind === "shape") return [Number(id)];
 			if (kind === "pin") {
 				const shapeId = pinShapes.get(id);
 				return shapeId === undefined ? [] : [shapeId];

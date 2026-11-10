@@ -96,6 +96,7 @@ export function revealCircuitSubject(
 		setView: Dispatch<SetStateAction<CircuitView>>;
 	},
 ) {
+	if (subject.kind === "shape") return;
 	let targetGraph = graph;
 	if (subject.kind === "pin") {
 		const owner = graph.components.find((component) =>
@@ -113,7 +114,7 @@ export function revealCircuitSubject(
 			targetGraph = buildCircuitGraph(store.getSnapshot());
 		}
 	}
-	select(subject);
+	select({ kind: subject.kind, id: subject.id });
 	const point =
 		subject.kind === "pin"
 			? targetGraph.pinNodes.get(subject.id)
