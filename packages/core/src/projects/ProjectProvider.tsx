@@ -79,6 +79,8 @@ export const useProjectEditor = () =>
 	useProjectSelection(
 		({
 			session,
+			project,
+			busy,
 			store,
 			editorSymbol,
 			editorDrawing,
@@ -86,6 +88,8 @@ export const useProjectEditor = () =>
 			selectedAsset,
 		}) => ({
 			session,
+			/** True until the provider has loaded or created its first project. */
+			restoring: busy && project === null,
 			store,
 			editorSymbol,
 			editorDrawing,

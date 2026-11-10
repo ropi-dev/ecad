@@ -257,3 +257,70 @@ test("the sidebar Open project button lists saved web projects and switches to o
 		menu.locator('[role="menuitem"][aria-current="true"]'),
 	).toHaveText(required(first));
 });
+
+test("the editor waits for the first project before it builds its canvas", async ({
+	page,
+}) => {
+	// Hold browser storage, so the project is still loading when the editor
+	// route renders, and count canvases attached before it is released.
+	await page.addInitScript(() => {
+		const storage = navigator.storage;
+		const getDirectory = storage.getDirectory.bind(storage);
+		let release = () => {};
+		let released = false;
+		let early = 0;
+		const held = new Promise<void>((resolve) => {
+			release = () => {
+				released = true;
+				resolve();
+			};
+		});
+		storage.getDirectory = async () => {
+			await held;
+			return getDirectory();
+		};
+		new MutationObserver((records) => {
+			if (released) return;
+			for (const record of records)
+				for (const node of record.addedNodes)
+					if (
+						node instanceof Element &&
+						(node.matches("canvas") || node.querySelector("canvas"))
+					)
+						early++;
+		}).observe(document, { childList: true, subtree: true });
+		Object.assign(window, {
+			heldStorage: { release: () => release(), early: () => early },
+		});
+	});
+	type Held = { release(): void; early(): number };
+	const heldStorage = () =>
+		page.evaluateHandle(
+			() => (window as unknown as { heldStorage: Held }).heldStorage,
+		);
+	await page.goto("/tests/browser/projects.html#editor");
+	await expect(page.locator("#project-document")).toBeAttached();
+	// The editor would mount as soon as its font loads; let that work finish.
+	await page.waitForFunction(
+		() =>
+			document.fonts.status === "loaded" &&
+			[...document.fonts].some((font) => font.status === "loaded"),
+	);
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() =>
+					requestAnimationFrame(() =>
+						requestIdleCallback(() => resolve(), { timeout: 2000 }),
+					),
+				),
+			),
+	);
+	const storage = await heldStorage();
+	expect(await storage.evaluate((held) => held.early())).toBe(0);
+	await storage.evaluate((held) => held.release());
+	await expect(
+		page.getByRole("button", { name: "Select", exact: true }),
+	).toBeEnabled();
+	await expect(page.locator("canvas")).toHaveCount(1);
+});

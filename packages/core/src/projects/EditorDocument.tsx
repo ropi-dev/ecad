@@ -21,6 +21,9 @@ export function EditorDocument({
 	// Text sizes are measured with the schematic font, so wait for it to load.
 	const fontsReady = useDrawingFonts();
 	if (!fontsReady) return null;
+	// The first project replaces the provider's empty document. An editor
+	// mounted before then would build a canvas and renderer only to drop them.
+	if (!props.store && project?.restoring) return null;
 	if (!props.store && project?.editorCircuit)
 		return (
 			<Suspense

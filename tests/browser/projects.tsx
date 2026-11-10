@@ -80,7 +80,10 @@ const storage = createWebProjectStorage();
 const symbolStorage = createWebSymbolLibraryStorage();
 
 function App() {
-	const [workspace, setWorkspace] = useState("/");
+	// `#editor` opens the editor at once, as the app's /editor route does.
+	const [workspace, setWorkspace] = useState(() =>
+		location.hash === "#editor" ? "/editor" : "/",
+	);
 	useEffect(() => {
 		const navigate = (event: MouseEvent) => {
 			const target = event.target;
