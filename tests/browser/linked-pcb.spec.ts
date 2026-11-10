@@ -46,13 +46,13 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		name: "Switch to schematic view",
 		exact: true,
 	});
+	// The switch sits in the document bar, with the open view pressed.
+	const views = page.getByRole("group", { name: "Editor view", exact: true });
+	await expect(views.getByRole("button")).toHaveCount(2);
+	await expect(schematicSwitch).toHaveAttribute("aria-pressed", "false");
 	await expect(
-		page
-			.getByRole("toolbar", { name: "Circuit tools" })
-			.getByRole("button")
-			.last(),
-	).toHaveAttribute("aria-label", "Switch to schematic view");
-	await expect(schematicSwitch).toHaveCSS("color", "rgb(232, 183, 126)");
+		views.getByRole("button", { name: "Circuit view", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
 	await schematicSwitch.click();
 	await expect
 		.poll(
@@ -125,13 +125,10 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 		name: "Switch to circuit view",
 		exact: true,
 	});
+	await expect(circuitSwitch).toHaveAttribute("aria-pressed", "false");
 	await expect(
-		page
-			.getByRole("toolbar", { name: "Schematic tools" })
-			.getByRole("button")
-			.last(),
-	).toHaveAttribute("aria-label", "Switch to circuit view");
-	await expect(circuitSwitch).toHaveCSS("color", "rgb(131, 214, 164)");
+		page.getByRole("button", { name: "Schematic view", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
 	if (captureArtifacts)
 		await page.screenshot({
 			path: "/tmp/ecad-shared-schematic/toolbar-schematic.png",

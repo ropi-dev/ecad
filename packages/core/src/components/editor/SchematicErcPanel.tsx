@@ -25,8 +25,6 @@ export function SchematicErcPanel({
 	return (
 		<ErcPanel
 			source="schematic"
-			// Selection attributes float on the right of the schematic.
-			position="top-left"
 			revision={shapes}
 			check={() => {
 				checked.current = schematicCircuit(shapes, definitions);

@@ -1,3 +1,5 @@
+import { viewerTheme } from "#/drawing/schematic-theme.ts";
+
 export function capturePng(
 	source: HTMLCanvasElement | HTMLImageElement,
 	options?: { width: number; height: number; background: string | null },
@@ -8,7 +10,7 @@ export function capturePng(
 	const context = canvas.getContext("2d", { willReadFrequently: true });
 	if (!context) throw new Error("Unable to create the PNG image.");
 	if (options?.background !== null) {
-		context.fillStyle = options?.background ?? "#111318";
+		context.fillStyle = options?.background ?? viewerTheme.background;
 		context.fillRect(0, 0, canvas.width, canvas.height);
 	}
 	context.drawImage(source, 0, 0, canvas.width, canvas.height);

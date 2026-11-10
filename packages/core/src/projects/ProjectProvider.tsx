@@ -83,6 +83,7 @@ export const useProjectEditor = () =>
 			editorSymbol,
 			editorDrawing,
 			editorCircuit,
+			openingCircuit,
 			selectedAsset,
 		}) => ({
 			session,
@@ -90,6 +91,7 @@ export const useProjectEditor = () =>
 			editorSymbol,
 			editorDrawing,
 			editorCircuit,
+			openingCircuit,
 			selectedAsset,
 		}),
 	);
@@ -108,6 +110,7 @@ export const useProjectActions = () =>
 			editorSymbol: _editorSymbol,
 			editorDrawing: _editorDrawing,
 			editorCircuit: _editorCircuit,
+			openingCircuit: _openingCircuit,
 			selectedAsset: _selectedAsset,
 			...actions
 		}) => actions,

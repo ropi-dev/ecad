@@ -1,6 +1,7 @@
 import { FilePlus2, FolderCog, Library } from "lucide-react";
-import { Dialog, DropdownMenu } from "radix-ui";
+import { DropdownMenu } from "radix-ui";
 import { lazy, Suspense, useState } from "react";
+import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import {
 	sidebarMenuContent,
@@ -37,15 +38,17 @@ export function ProjectMenu({
 					<button
 						type="button"
 						aria-label="Project actions"
-						className={`${workspaceActionClassName} text-[#98a4b6] data-[state=open]:bg-white/10`}
+						className={workspaceActionClassName}
 						disabled={project.busy}
 					>
-						<FolderCog size={20} aria-hidden="true" />
+						<FolderCog size={18} aria-hidden="true" />
+						Project
 					</button>
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
 					<DropdownMenu.Content
 						aria-label="Project actions"
+						align="start"
 						sideOffset={6}
 						collisionPadding={12}
 						className={sidebarMenuContent}
@@ -67,25 +70,39 @@ export function ProjectMenu({
 					</DropdownMenu.Content>
 				</DropdownMenu.Portal>
 			</DropdownMenu.Root>
-			<Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
-				<Dialog.Portal>
-					<Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-					<Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-5 text-[#c7d0dc] shadow-xl">
-						<Dialog.Title className="sr-only">Symbol libraries</Dialog.Title>
-						<Dialog.Description className="mb-4 text-sm text-[#9ba7b8]">
-							Manage user and project symbol libraries.
-						</Dialog.Description>
-						{settingsOpen && (
-							<Suspense fallback={<output>Loading libraries...</output>}>
-								<SymbolLibrarySettings />
-							</Suspense>
-						)}
-						<Dialog.Close className="mt-4 cursor-pointer rounded border border-[#414955] px-3 py-2 text-sm hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e]">
-							Done
-						</Dialog.Close>
-					</Dialog.Content>
-				</Dialog.Portal>
-			</Dialog.Root>
+			<AppDialog
+				open={settingsOpen}
+				onOpenChange={setSettingsOpen}
+				size="lg"
+				focusDialog
+				title="Symbol libraries"
+				description="Choose which libraries the symbol picker offers, and add your own."
+				footer={
+					<button
+						type="button"
+						className="ui-button"
+						data-variant="primary"
+						data-size="md"
+						onClick={() => setSettingsOpen(false)}
+					>
+						Done
+					</button>
+				}
+			>
+				<div className={dialogBodyClassName}>
+					{settingsOpen && (
+						<Suspense
+							fallback={
+								<output className="text-sm text-fg-muted">
+									Loading libraries...
+								</output>
+							}
+						>
+							<SymbolLibrarySettings />
+						</Suspense>
+					)}
+				</div>
+			</AppDialog>
 		</>
 	);
 }

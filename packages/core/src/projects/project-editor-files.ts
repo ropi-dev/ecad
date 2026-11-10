@@ -20,12 +20,22 @@ export function createProjectEditorFiles(
 		documents,
 		setDirty,
 		setEditorCircuit,
+		setOpeningCircuit,
 		setEditorDrawing,
 		setEditorSymbol,
 		showError,
 	} = state;
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++state.editorSelection;
+		// The editor waits for this circuit instead of showing the schematic.
+		setOpeningCircuit(selectionRequest);
+		try {
+			return await loadCircuit(path, selectionRequest);
+		} finally {
+			if (state.openingCircuit === selectionRequest) setOpeningCircuit(null);
+		}
+	};
+	const loadCircuit = async (path: string, selectionRequest: number) => {
 		const before = state.active;
 		const circuitId = before
 			? projectIndex(before).circuitsByPath.get(path)?.circuit.id

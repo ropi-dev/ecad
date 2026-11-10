@@ -27,13 +27,125 @@ import {
 	SCHEMATIC_STEP,
 	toMils,
 } from "@ecad/drawing-core/drawing/units.ts";
-import { ChevronDown, Lock, X } from "lucide-react";
+import { Lock, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
+import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { LabelRole } from "#/drawing/placement.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
+
+export const numberInputClassName = "ui-input w-28 pr-8 text-right";
+export const textInputClassName = "ui-input w-36";
+
+/** A number input with its unit shown inside the field's right edge. */
+export function UnitField({
+	unit,
+	children,
+}: {
+	unit?: string;
+	children: ReactNode;
+}) {
+	return (
+		<span className="relative inline-flex">
+			{children}
+			{unit && (
+				<span
+					aria-hidden="true"
+					className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-2xs text-fg-faint"
+				>
+					{unit}
+				</span>
+			)}
+		</span>
+	);
+}
+
+const kindLabels: Record<string, string> = {
+	rectangle: "Rectangle",
+	circle: "Circle",
+	triangle: "Triangle",
+	"no-connect": "No connect",
+	line: "Line",
+	wire: "Wire",
+	pin: "Pin",
+	text: "Text",
+	"net label": "Net label",
+	"supply label": "Supply label",
+};
+
+function PanelHeader({
+	title,
+	subtitle,
+	onClear,
+}: {
+	title: ReactNode;
+	subtitle: ReactNode;
+	onClear: () => void;
+}) {
+	return (
+		<header className="flex shrink-0 items-start gap-2 border-b border-line-subtle py-2.5 pr-2 pl-3">
+			<div className="min-w-0 flex-1">
+				{title}
+				<p className="m-0 mt-0.5 flex gap-1 text-2xs text-fg-faint">
+					{subtitle}
+				</p>
+			</div>
+			<button
+				type="button"
+				className={panelIconButtonClassName}
+				onClick={onClear}
+				aria-label="Clear selection"
+				title="Clear selection"
+			>
+				<X size={16} aria-hidden="true" />
+			</button>
+		</header>
+	);
+}
+
+const titleClassName =
+	"m-0 flex items-center gap-1.5 text-sm font-semibold break-words text-fg";
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+	return (
+		<section className="border-t border-line-subtle px-3 pt-2.5 pb-2 first:border-t-0">
+			<h3 className="ui-section-label m-0 mb-1">{title}</h3>
+			{children}
+		</section>
+	);
+}
+
+const rowClassName =
+	"flex min-h-8 items-center justify-between gap-3 text-xs text-fg-muted";
+
+function Rows({ rows }: { rows: [string, ReactNode][] }) {
+	return (
+		<dl className="m-0">
+			{rows.map(([label, value]) => (
+				<div key={label} className={rowClassName}>
+					<dt>{label}</dt>
+					<dd className="m-0 text-fg tabular-nums">{value}</dd>
+				</div>
+			))}
+		</dl>
+	);
+}
+
+function Tips({ children }: { children: ReactNode }) {
+	return (
+		<details className="group border-t border-line-subtle px-3 py-2 text-xs text-fg-muted">
+			<summary className="-mx-1 cursor-pointer rounded-sm px-1 py-0.5 font-medium select-none hover:text-fg">
+				Keyboard tips
+			</summary>
+			<p className="m-0 mt-1.5 leading-[1.125rem]">{children}</p>
+		</details>
+	);
+}
+
+const actionClassName = "ui-button w-full";
+const noDefinition = "This symbol's definition is read-only or unavailable.";
 
 function AttributeInput({
 	label,
@@ -63,7 +175,7 @@ function AttributeInput({
 			input.value = String(displayValue);
 	}, [displayValue]);
 	return (
-		<span className="flex items-center gap-2">
+		<UnitField unit={unit}>
 			<input
 				ref={inputRef}
 				type="number"
@@ -74,7 +186,7 @@ function AttributeInput({
 				placeholder="Mixed"
 				defaultValue={displayValue}
 				data-committed-value={value}
-				className="w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-right text-[#f0f3f8] tabular-nums focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+				className={numberInputClassName}
 				onBlur={(event) => {
 					const entered = event.currentTarget.valueAsNumber;
 					const next = unit === "mil" ? fromMils(entered) : entered;
@@ -92,8 +204,7 @@ function AttributeInput({
 						event.currentTarget.blur();
 				}}
 			/>
-			<span className="w-5 text-[#9ba7b8]">{unit}</span>
-		</span>
+		</UnitField>
 	);
 }
 
@@ -200,7 +311,7 @@ function SelectionAttributesPanel({
 			onChange={(event) =>
 				onEdit({ kind: "lock", locked: event.currentTarget.checked })
 			}
-			className="size-4 cursor-pointer accent-[#e8b77e] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+			className="ui-checkbox"
 		/>,
 	];
 	const bounds = shapes.map(shapeBounds);
@@ -259,108 +370,82 @@ function SelectionAttributesPanel({
 			/>
 		),
 	];
-	const attributes: [string, ReactNode][] = single
-		? [
-				[
-					"Type",
-					single.kind === "text" && single.electrical
-						? `${single.electrical} label`
-						: single.kind === "symbol" && single.netSymbol
-							? "net symbol"
-							: single.kind,
-				],
-				["ID", String(single.id)],
-				lockAttribute,
-				...(single.kind === "pin"
-					? (["name", "number"] as const).map(
-							(attribute): [string, ReactNode] => [
-								attribute === "name" ? "Name" : "Number",
-								<input
-									key={`${single.id}:${attribute}:${single[attribute]}`}
-									aria-label={attribute === "name" ? "Name" : "Number"}
-									defaultValue={single[attribute]}
-									className="w-32 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-									onBlur={(event) =>
+	const type = single
+		? single.kind === "text" && single.electrical
+			? `${single.electrical} label`
+			: single.kind === "symbol" && single.netSymbol
+				? "net symbol"
+				: single.kind
+		: "";
+	const properties: [string, ReactNode][] = [
+		lockAttribute,
+		...(single?.kind === "pin"
+			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [
+					attribute === "name" ? "Name" : "Number",
+					<input
+						key={`${single.id}:${attribute}:${single[attribute]}`}
+						aria-label={attribute === "name" ? "Name" : "Number"}
+						defaultValue={single[attribute]}
+						className={textInputClassName}
+						onBlur={(event) =>
+							onEdit({
+								kind: "pin",
+								attribute,
+								value: event.currentTarget.value,
+							})
+						}
+					/>,
+				])
+			: []),
+		...(symbol
+			? [
+					...(allowNetEdits
+						? [
+								[
+									"Net symbol",
+									<input
+										key="netSymbol"
+										type="checkbox"
+										aria-label="Net symbol"
+										className="ui-checkbox"
+										checked={symbol.netSymbol ?? false}
+										onChange={(event) =>
+											onEdit({
+												kind: "net-symbol",
+												netSymbol: event.currentTarget.checked,
+											})
+										}
+									/>,
+								] as [string, ReactNode],
+							]
+						: []),
+					...(symbol.netSymbol ? ["name"] : ["name", "reference", "value"]).map(
+						(attribute) => {
+							const key = attribute as keyof EditorSymbol["attributes"];
+							const label = attribute[0].toUpperCase() + attribute.slice(1);
+							return [
+								label,
+								<SymbolInstanceAttributeInput
+									key={key}
+									name={`attributes.${key}`}
+									label={label}
+									value={symbol.attributes[key]}
+									onCommit={(next) =>
 										onEdit({
-											kind: "pin",
-											attribute,
-											value: event.currentTarget.value,
+											kind: "symbol-attribute",
+											attribute: key,
+											value: next,
 										})
 									}
 								/>,
-							],
-						)
-					: []),
-				...(single.kind === "pin"
-					? (["showName", "showNumber"] as const).map(
-							(attribute): [string, ReactNode] => {
-								const label =
-									attribute === "showName" ? "Show name" : "Show number";
-								return [
-									label,
-									<input
-										key={attribute}
-										type="checkbox"
-										aria-label={label}
-										checked={single[attribute] ?? single.showLabels ?? true}
-										onChange={(event) =>
-											onEdit({
-												kind: "pin",
-												attribute,
-												value: event.currentTarget.checked,
-											})
-										}
-									/>,
-								];
-							},
-						)
-					: []),
-				...(symbol
-					? [
-							...(allowNetEdits
-								? [
-										[
-											"Net symbol",
-											<input
-												key="netSymbol"
-												type="checkbox"
-												aria-label="Net symbol"
-												checked={symbol.netSymbol ?? false}
-												onChange={(event) =>
-													onEdit({
-														kind: "net-symbol",
-														netSymbol: event.currentTarget.checked,
-													})
-												}
-											/>,
-										] as [string, ReactNode],
-									]
-								: []),
-							...(symbol.netSymbol
-								? ["name"]
-								: ["name", "reference", "value"]
-							).map((attribute) => {
-								const key = attribute as keyof EditorSymbol["attributes"];
-								const label = attribute[0].toUpperCase() + attribute.slice(1);
-								return [
-									label,
-									<SymbolInstanceAttributeInput
-										key={key}
-										name={`attributes.${key}`}
-										label={label}
-										value={symbol.attributes[key]}
-										onCommit={(next) =>
-											onEdit({
-												kind: "symbol-attribute",
-												attribute: key,
-												value: next,
-											})
-										}
-									/>,
-								] as [string, ReactNode];
-							}),
-						]
-					: []),
+							] as [string, ReactNode];
+						},
+					),
+				]
+			: []),
+	];
+	const geometry: [string, ReactNode][] = single
+		? [
 				editable(
 					single.kind === "text" ? "Anchor X" : "Center X",
 					"x",
@@ -411,16 +496,101 @@ function SelectionAttributesPanel({
 					: []),
 			]
 		: [
-				lockAttribute,
 				["Left X", distance(left)],
 				["Bottom Y", distance(bottom)],
 				["Width", distance(right - left)],
 				["Height", distance(top - bottom)],
 			];
+	const pinLabels: [string, ReactNode][] =
+		single?.kind === "pin"
+			? (["showName", "showNumber"] as const).map(
+					(attribute): [string, ReactNode] => {
+						const label =
+							attribute === "showName" ? "Show name" : "Show number";
+						return [
+							label,
+							<input
+								key={attribute}
+								type="checkbox"
+								aria-label={label}
+								className="ui-checkbox"
+								checked={single[attribute] ?? single.showLabels ?? true}
+								onChange={(event) =>
+									onEdit({
+										kind: "pin",
+										attribute,
+										value: event.currentTarget.checked,
+									})
+								}
+							/>,
+						];
+					},
+				)
+			: [];
+	const labelPosition = symbol?.netSymbol &&
+		symbol.children.length > 0 &&
+		allowNetEdits && (
+			<label className={rowClassName}>
+				Label position
+				<select
+					aria-label="Label position"
+					value={symbolLabelPosition(symbol, "name")}
+					className="ui-select w-28"
+					onChange={(event) =>
+						onEdit({
+							kind: "symbol-label-position",
+							position: event.currentTarget.value as SymbolLabelPosition,
+						})
+					}
+				>
+					<option value="default">Default</option>
+					<option value="above">Above</option>
+					<option value="below">Below</option>
+					<option value="left">Left</option>
+					<option value="right">Right</option>
+					<option value="custom" disabled>
+						Custom
+					</option>
+				</select>
+			</label>
+		);
+	const hasAppearance =
+		pinLabels.length > 0 ||
+		!!labelPosition ||
+		textShapes.length > 0 ||
+		basicShapes.length > 0 ||
+		outlinedShapes.length > 0;
 	return (
 		<FloatingPanel label="Selection attributes" position="top-right">
+			<PanelHeader
+				onClear={onClear}
+				title={
+					<p className={titleClassName}>
+						{single
+							? symbol
+								? symbol.netSymbol
+									? symbol.attributes.name || "Net symbol"
+									: [symbol.attributes.name, symbol.attributes.reference]
+											.filter(Boolean)
+											.join(" · ") || "Symbol"
+								: (kindLabels[type] ?? type)
+							: "Selected shapes"}
+					</p>
+				}
+				subtitle={
+					single ? (
+						<>
+							<span>{type}</span>
+							<span aria-hidden="true">·</span>
+							<span>ID {single.id}</span>
+						</>
+					) : (
+						<span>{shapes.length} items</span>
+					)
+				}
+			/>
 			<div
-				className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5"
+				className="m-0 min-h-0 overflow-y-auto overscroll-contain max-[760px]:pb-4 max-[760px]:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
 				onKeyDownCapture={(event) => {
 					const target = event.target;
 					if (
@@ -434,240 +604,186 @@ function SelectionAttributesPanel({
 					}
 				}}
 			>
-				<header className="flex items-center justify-end gap-3">
-					<button
-						type="button"
-						className="relative z-1 grid h-[30px] w-7 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-[#98a4b6] hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e]"
-						onClick={onClear}
-						aria-label="Clear selection"
-						title="Clear selection"
-					>
-						<X size={17} />
-					</button>
-				</header>
-				<p className="mt-3 text-[14px] leading-[1.7] text-[#e8b77e]">
-					{single
-						? symbol
-							? symbol.netSymbol
-								? symbol.attributes.name
-								: `${symbol.attributes.name} · ${symbol.attributes.reference}`
-							: `${single.kind === "text" && single.electrical ? `${single.electrical} label` : single.kind} ${single.id}`
-						: "Selected shapes"}
-				</p>
-				{symbol && (
-					<button
-						type="button"
-						onClick={onEditSymbol}
-						disabled={!onEditSymbol}
-						title={
-							onEditSymbol
-								? "Open the library definition"
-								: "This symbol's definition is read-only or unavailable."
-						}
-						className="mt-3 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
-					>
-						Edit symbol
-					</button>
-				)}
-				{!single && onCreateSymbol && (
-					<>
-						<button
-							type="button"
-							onClick={onCreateSymbol}
-							disabled={!canCreateSymbol}
-							className="mt-3 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
-						>
-							Create symbol
-						</button>
-						{!canCreateSymbol && (
-							<p className="mt-2 text-[12px] text-[#9ba7b8]">
-								Select shapes without existing symbols or electrical labels to
-								create a symbol.
-							</p>
+				{(symbol || (!single && onCreateSymbol) || single?.kind === "text") && (
+					<div className="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
+						{symbol && (
+							<button
+								type="button"
+								onClick={onEditSymbol}
+								disabled={!onEditSymbol}
+								title={
+									onEditSymbol ? "Open the library definition" : noDefinition
+								}
+								className={actionClassName}
+								data-variant="secondary"
+							>
+								Edit symbol
+							</button>
 						)}
-						<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
-							Selection bounds
-						</p>
-					</>
-				)}
-				{single?.kind === "text" && allowNetEdits && !isSymbolChild && (
-					<label className="mt-3 block text-xs text-[#9ba7b8]">
-						Label role
-						<select
-							aria-label="Label role"
-							className="mt-2 block w-full rounded bg-[#19212e] p-2 text-[#f0f3f8]"
-							value={single.electrical ?? "text"}
-							onChange={(event) =>
-								onEdit({
-									kind: "label-role",
-									role:
-										event.target.value === "text"
-											? undefined
-											: (event.target.value as LabelRole),
-								})
-							}
-						>
-							<option value="text">Ordinary text</option>
-							<option value="net">Net label</option>
-							<option value="supply">Supply label</option>
-						</select>
-					</label>
-				)}
-				{single?.kind === "text" && (
-					<label className="mt-3 block text-[12px] text-[#9ba7b8]">
-						{single.electrical ? "Net name" : "Text"}
-						<textarea
-							key={`${single.id}:${single.text}`}
-							ref={(input) => {
-								if (input && textFocusId === single.id) {
-									input.focus({ preventScroll: true });
-									input.select();
-									onTextFocus();
-								}
-							}}
-							aria-label={single.electrical ? "Net name" : "Text content"}
-							defaultValue={single.text}
-							rows={3}
-							maxLength={2000}
-							className="mt-2 block w-full resize-y rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-							onBlur={(event) =>
-								onEdit({ kind: "text", text: event.currentTarget.value })
-							}
-							onKeyDown={(event) => {
-								if (event.key === "Escape") event.currentTarget.blur();
-							}}
-						/>
-					</label>
-				)}
-				<dl className="my-4 text-[12px]">
-					{attributes.map(([label, value]) => (
-						<div
-							key={label}
-							className="flex items-center justify-between gap-3 border-b border-[#ffffff0a] py-2"
-						>
-							<dt className="text-[#9ba7b8]">{label}</dt>
-							<dd className="m-0 tabular-nums">{value}</dd>
-						</div>
-					))}
-				</dl>
-				{symbol?.netSymbol && symbol.children.length > 0 && allowNetEdits && (
-					<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
-						Label position
-						<span className="relative mr-7 w-24 shrink-0">
-							<select
-								aria-label="Label position"
-								value={symbolLabelPosition(symbol, "name")}
-								className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-								onChange={(event) =>
-									onEdit({
-										kind: "symbol-label-position",
-										position: event.currentTarget.value as SymbolLabelPosition,
-									})
-								}
-							>
-								<option value="default">Default</option>
-								<option value="above">Above</option>
-								<option value="below">Below</option>
-								<option value="left">Left</option>
-								<option value="right">Right</option>
-								<option value="custom" disabled>
-									Custom
-								</option>
-							</select>
-							<ChevronDown
-								aria-hidden="true"
-								size={12}
-								className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-[#f0f3f8]"
-							/>
-						</span>
-					</label>
-				)}
-				{textShapes.length > 0 && (
-					<TextAlignmentInputs
-						horizontalAlign={
-							textShapes.every(
-								(shape) =>
-									(shape.horizontalAlign ?? "center") ===
-									(textShapes[0].horizontalAlign ?? "center"),
-							)
-								? (textShapes[0].horizontalAlign ?? "center")
-								: ""
-						}
-						verticalAlign={
-							textShapes.every(
-								(shape) =>
-									(shape.verticalAlign ?? "middle") ===
-									(textShapes[0].verticalAlign ?? "middle"),
-							)
-								? (textShapes[0].verticalAlign ?? "middle")
-								: ""
-						}
-						onChange={(alignment) =>
-							onEdit({ kind: "text-alignment", alignment })
-						}
-					/>
-				)}
-				{basicShapes.length > 0 && (
-					<label className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
-						Line style
-						<span className="relative mr-7 w-24 shrink-0">
-							<select
-								aria-label="Line style"
-								value={lineStyle}
-								className="w-full appearance-none rounded border border-[#ffffff20] bg-[#19212e] py-1 pr-3 pl-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-								onChange={(event) =>
-									onEdit({
-										kind: "line-style",
-										lineStyle: event.currentTarget.value as LineStyle,
-									})
-								}
-							>
-								{lineStyle === "" && (
-									<option value="" disabled>
-										Mixed
-									</option>
+						{symbol && !onEditSymbol && (
+							<p className="m-0 text-xs text-fg-faint">{noDefinition}</p>
+						)}
+						{!single && onCreateSymbol && (
+							<>
+								<button
+									type="button"
+									onClick={onCreateSymbol}
+									disabled={!canCreateSymbol}
+									className={actionClassName}
+									data-variant="secondary"
+								>
+									Create symbol
+								</button>
+								{!canCreateSymbol && (
+									<p className="m-0 text-xs text-fg-faint">
+										Select shapes without existing symbols or electrical labels
+										to create a symbol.
+									</p>
 								)}
-								{lineStyles.map((style) => (
-									<option key={style} value={style}>
-										{lineStyleLabels[style]}
-									</option>
-								))}
-							</select>
-							<ChevronDown
-								aria-hidden="true"
-								size={12}
-								className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-[#f0f3f8]"
-							/>
-						</span>
-					</label>
-				)}
-				{outlinedShapes.length > 0 && (
-					<div className="flex items-center justify-between gap-3 text-[12px] text-[#9ba7b8]">
-						<span>Line width</span>
-						{symbol ? (
-							<SymbolInstanceAttributeInput
-								name="lineWidth"
-								label="Line width"
-								value={lineWidth}
-								unit="mil"
-								positive
-								onCommit={(value) => {
-									if (value !== null)
-										onAttributeChange("lineWidth", fromMils(value));
-								}}
-							/>
-						) : (
-							<AttributeInput
-								key={shapes.map((shape) => shape.id).join(",")}
-								label="Line width"
-								value={lineWidth}
-								positive
-								onChange={(value) => onAttributeChange("lineWidth", value)}
-							/>
+							</>
+						)}
+						{single?.kind === "text" && allowNetEdits && !isSymbolChild && (
+							<label className="flex flex-col gap-1.5 text-xs text-fg-muted">
+								Label role
+								<select
+									aria-label="Label role"
+									className="ui-select w-full"
+									value={single.electrical ?? "text"}
+									onChange={(event) =>
+										onEdit({
+											kind: "label-role",
+											role:
+												event.target.value === "text"
+													? undefined
+													: (event.target.value as LabelRole),
+										})
+									}
+								>
+									<option value="text">Ordinary text</option>
+									<option value="net">Net label</option>
+									<option value="supply">Supply label</option>
+								</select>
+							</label>
+						)}
+						{single?.kind === "text" && (
+							<label className="flex flex-col gap-1.5 text-xs text-fg-muted">
+								{single.electrical ? "Net name" : "Text"}
+								<textarea
+									key={`${single.id}:${single.text}`}
+									ref={(input) => {
+										if (input && textFocusId === single.id) {
+											input.focus({ preventScroll: true });
+											input.select();
+											onTextFocus();
+										}
+									}}
+									aria-label={single.electrical ? "Net name" : "Text content"}
+									defaultValue={single.text}
+									rows={3}
+									maxLength={2000}
+									className="ui-input block w-full resize-y"
+									onBlur={(event) =>
+										onEdit({ kind: "text", text: event.currentTarget.value })
+									}
+									onKeyDown={(event) => {
+										if (event.key === "Escape") event.currentTarget.blur();
+									}}
+								/>
+							</label>
 						)}
 					</div>
 				)}
-				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
+				<Section title="Properties">
+					<Rows rows={properties} />
+				</Section>
+				<Section title={single ? "Position and size" : "Selection bounds"}>
+					<Rows rows={geometry} />
+				</Section>
+				{hasAppearance && (
+					<Section title="Appearance">
+						{pinLabels.length > 0 && <Rows rows={pinLabels} />}
+						{labelPosition}
+						{textShapes.length > 0 && (
+							<TextAlignmentInputs
+								horizontalAlign={
+									textShapes.every(
+										(shape) =>
+											(shape.horizontalAlign ?? "center") ===
+											(textShapes[0].horizontalAlign ?? "center"),
+									)
+										? (textShapes[0].horizontalAlign ?? "center")
+										: ""
+								}
+								verticalAlign={
+									textShapes.every(
+										(shape) =>
+											(shape.verticalAlign ?? "middle") ===
+											(textShapes[0].verticalAlign ?? "middle"),
+									)
+										? (textShapes[0].verticalAlign ?? "middle")
+										: ""
+								}
+								onChange={(alignment) =>
+									onEdit({ kind: "text-alignment", alignment })
+								}
+							/>
+						)}
+						{basicShapes.length > 0 && (
+							<label className={rowClassName}>
+								Line style
+								<select
+									aria-label="Line style"
+									value={lineStyle}
+									className="ui-select w-28"
+									onChange={(event) =>
+										onEdit({
+											kind: "line-style",
+											lineStyle: event.currentTarget.value as LineStyle,
+										})
+									}
+								>
+									{lineStyle === "" && (
+										<option value="" disabled>
+											Mixed
+										</option>
+									)}
+									{lineStyles.map((style) => (
+										<option key={style} value={style}>
+											{lineStyleLabels[style]}
+										</option>
+									))}
+								</select>
+							</label>
+						)}
+						{outlinedShapes.length > 0 && (
+							<div className={rowClassName}>
+								<span>Line width</span>
+								{symbol ? (
+									<SymbolInstanceAttributeInput
+										name="lineWidth"
+										label="Line width"
+										value={lineWidth}
+										unit="mil"
+										positive
+										onCommit={(value) => {
+											if (value !== null)
+												onAttributeChange("lineWidth", fromMils(value));
+										}}
+									/>
+								) : (
+									<AttributeInput
+										key={shapes.map((shape) => shape.id).join(",")}
+										label="Line width"
+										value={lineWidth}
+										positive
+										onChange={(value) => onAttributeChange("lineWidth", value)}
+									/>
+								)}
+							</div>
+						)}
+					</Section>
+				)}
+				<Tips>
 					{symbol
 						? "Position edits move the whole symbol. Child positions are relative to the symbol center."
 						: isSymbolChild
@@ -680,7 +796,7 @@ function SelectionAttributesPanel({
 					Arrow keys move {formatMils(snapStep || SCHEMATIC_STEP)}; Shift +
 					arrows move {formatMils((snapStep || SCHEMATIC_STEP) * 10)} when the
 					drawing is focused.
-				</p>
+				</Tips>
 			</div>
 		</FloatingPanel>
 	);
@@ -724,53 +840,46 @@ function FixedChildAttributes({
 				];
 	return (
 		<FloatingPanel label="Selection attributes" position="top-right">
-			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain p-2.5">
-				<header className="flex items-center justify-end gap-3">
+			<PanelHeader
+				onClear={onClear}
+				title={
+					<p className={titleClassName}>
+						{shape.kind === "pin"
+							? `Pin ${[shape.number, shape.name].filter(Boolean).join(" · ")}`
+							: `${shape.kind} ${shape.id}`}
+						<Lock
+							size={13}
+							aria-label="Fixed"
+							className="shrink-0 text-fg-faint"
+						/>
+					</p>
+				}
+				subtitle={<span>Fixed by the symbol definition</span>}
+			/>
+			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain">
+				<div className="px-3 pt-3 pb-2.5">
 					<button
 						type="button"
-						className="relative z-1 grid h-[30px] w-7 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-[#98a4b6] hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e]"
-						onClick={onClear}
-						aria-label="Clear selection"
-						title="Clear selection"
+						onClick={onEditSymbol}
+						disabled={!onEditSymbol}
+						title={onEditSymbol ? "Open the library definition" : noDefinition}
+						className={actionClassName}
+						data-variant="secondary"
 					>
-						<X size={17} />
+						Edit symbol
 					</button>
-				</header>
-				<p className="mt-3 flex items-center gap-2 text-[14px] leading-[1.7] text-[#e8b77e]">
-					{shape.kind === "pin"
-						? `Pin ${[shape.number, shape.name].filter(Boolean).join(" · ")}`
-						: `${shape.kind} ${shape.id}`}
-					<Lock size={13} aria-label="Fixed" className="text-[#9ba7b8]" />
-				</p>
-				<button
-					type="button"
-					onClick={onEditSymbol}
-					disabled={!onEditSymbol}
-					title={
-						onEditSymbol
-							? "Open the library definition"
-							: "This symbol's definition is read-only or unavailable."
-					}
-					className="mt-3 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
-				>
-					Edit symbol
-				</button>
-				<dl className="my-4 text-[12px]">
-					{attributes.map(([label, value]) => (
-						<div
-							key={label}
-							className="flex items-center justify-between gap-3 border-b border-[#ffffff0a] py-2"
-						>
-							<dt className="text-[#9ba7b8]">{label}</dt>
-							<dd className="m-0 text-[#f0f3f8] tabular-nums">{value}</dd>
-						</div>
-					))}
-				</dl>
-				<p className="mt-3 text-[12px] leading-[1.7] text-[#9ba7b8]">
+					{!onEditSymbol && (
+						<p className="m-0 mt-2.5 text-xs text-fg-faint">{noDefinition}</p>
+					)}
+				</div>
+				<Section title="Properties">
+					<Rows rows={attributes} />
+				</Section>
+				<Tips>
 					Pins are fixed by the symbol definition. Edit the symbol to change
 					them. Positions are relative to the symbol center. Dragging, arrow
 					keys and rotation act on the whole symbol.
-				</p>
+				</Tips>
 			</div>
 		</FloatingPanel>
 	);
@@ -788,18 +897,18 @@ function TextAlignmentInputs({
 	onChange: (alignment: TextAlignment) => void;
 }) {
 	return (
-		<div className="mb-3 space-y-2 text-[12px] text-[#9ba7b8]">
+		<>
 			{(["horizontalAlign", "verticalAlign"] as const).map((axis) => {
 				const horizontal = axis === "horizontalAlign";
 				const title = `${label} ${horizontal ? "horizontal" : "vertical"} alignment`;
 				const value = horizontal ? horizontalAlign : verticalAlign;
 				return (
-					<label key={axis} className="flex items-center justify-between gap-3">
+					<label key={axis} className={rowClassName}>
 						<span>{horizontal ? "Horizontal align" : "Vertical align"}</span>
 						<select
 							aria-label={title}
 							value={value}
-							className="mr-7 w-24 rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+							className="ui-select w-28"
 							onChange={(event) =>
 								onChange({ [axis]: event.currentTarget.value })
 							}
@@ -820,6 +929,6 @@ function TextAlignmentInputs({
 					</label>
 				);
 			})}
-		</div>
+		</>
 	);
 }

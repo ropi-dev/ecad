@@ -1,16 +1,12 @@
-import { FolderOpen, Trash2, Upload } from "lucide-react";
+import { FolderOpen, FolderUp, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type {
 	ConfiguredSymbolLibrary,
 	LibraryScope,
 } from "#/symbol-library/config.ts";
 import exampleSymbolUrl from "#/symbol-library/examples/test-point.ecadsym?url";
-
-const button =
-	"flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-white/20 px-3 py-2 text-xs hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:opacity-50";
-const inputClass =
-	"mt-1 block w-full rounded border border-white/20 bg-[#191c22] p-2 text-[#e8edf5]";
 
 export function SymbolLibraryControls({
 	library,
@@ -36,7 +32,7 @@ export function SymbolLibraryControls({
 		error,
 	} = library;
 	return (
-		<div className="space-y-3 text-[#e8edf5]">
+		<div className="flex flex-col gap-4 text-fg">
 			<LibraryList
 				title="User libraries"
 				scope="user"
@@ -51,120 +47,133 @@ export function SymbolLibraryControls({
 					library={library}
 				/>
 			)}
-			<label className="block text-xs text-[#9ba7b8]">
-				Add library to
-				<select
-					aria-label="Library scope"
-					value={scope}
-					disabled={loading}
-					onChange={(event) =>
-						setScope(event.currentTarget.value as LibraryScope)
-					}
-					className={inputClass}
-				>
-					<option value="user">User libraries</option>
-					{hasProject && <option value="project">Project libraries</option>}
-				</select>
-			</label>
-			<label className="block text-xs text-[#9ba7b8]">
-				Library name
+			<section className="flex flex-col gap-3 border-t border-line-subtle pt-4">
+				<h3 className="ui-section-label m-0">Add a library</h3>
+				<div className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
+					<label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted">
+						Add library to
+						<select
+							aria-label="Library scope"
+							value={scope}
+							disabled={loading}
+							onChange={(event) =>
+								setScope(event.currentTarget.value as LibraryScope)
+							}
+							className="ui-select h-8 w-full"
+						>
+							<option value="user">User libraries</option>
+							{hasProject && <option value="project">Project libraries</option>}
+						</select>
+					</label>
+					<label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted">
+						Library name
+						<input
+							aria-label="Library name"
+							value={name}
+							disabled={loading}
+							maxLength={100}
+							placeholder={
+								scope === "project" ? "Project symbols" : "Imported symbols"
+							}
+							onChange={(event) => setName(event.currentTarget.value)}
+							className="ui-input h-8 w-full"
+						/>
+					</label>
+				</div>
 				<input
-					aria-label="Library name"
-					value={name}
+					ref={input}
+					type="file"
+					multiple
+					accept=".ecadsym,.json"
+					aria-label="Upload symbol files"
+					className="hidden"
 					disabled={loading}
-					maxLength={100}
-					placeholder={
-						scope === "project" ? "Project symbols" : "Imported symbols"
-					}
-					onChange={(event) => setName(event.currentTarget.value)}
-					className={inputClass}
+					onChange={(event) => {
+						const files = Array.from(event.currentTarget.files ?? []);
+						event.currentTarget.value = "";
+						if (files.length) void upload(files, false, scope, name);
+					}}
 				/>
-			</label>
-			<input
-				ref={input}
-				type="file"
-				multiple
-				accept=".ecadsym,.json"
-				aria-label="Upload symbol files"
-				className="hidden"
-				disabled={loading}
-				onChange={(event) => {
-					const files = Array.from(event.currentTarget.files ?? []);
-					event.currentTarget.value = "";
-					if (files.length) void upload(files, false, scope, name);
-				}}
-			/>
-			<input
-				ref={directoryInput}
-				type="file"
-				multiple
-				{...{ webkitdirectory: "" }}
-				aria-label="Upload symbol directory"
-				className="hidden"
-				disabled={loading}
-				onChange={(event) => {
-					const files = Array.from(event.currentTarget.files ?? []);
-					event.currentTarget.value = "";
-					if (files.length) void upload(files, true, scope, name);
-				}}
-			/>
-			<button
-				type="button"
-				disabled={loading}
-				onClick={() => input.current?.click()}
-				className={button}
-			>
-				<Upload size={14} aria-hidden="true" />
-				Upload symbols
-			</button>
-			<button
-				type="button"
-				disabled={loading}
-				onClick={() => directoryInput.current?.click()}
-				className={button}
-			>
-				Upload library directory
-			</button>
-			{canOpenDirectory && (
-				<button
-					type="button"
+				<input
+					ref={directoryInput}
+					type="file"
+					multiple
+					{...{ webkitdirectory: "" }}
+					aria-label="Upload symbol directory"
+					className="hidden"
 					disabled={loading}
-					onClick={() => void openDirectory(scope, name)}
-					className={button}
-				>
-					<FolderOpen size={14} aria-hidden="true" />
-					Add library directory
-				</button>
-			)}
-			<button
-				type="button"
-				disabled={loading}
-				onClick={() => void refresh()}
-				className={button}
-			>
-				Reload libraries
-			</button>
-			<p className="m-0 text-xs text-[#9ba7b8]">
-				One symbol per .ecadsym or .json file.
-			</p>
-			<a
-				href={exampleSymbolUrl}
-				download="test-point.ecadsym"
-				className="inline-block text-xs text-[#76c4c0] underline"
-			>
-				Download example
-			</a>
-			{feedback && message && (
-				<output className="block text-xs text-[#76c4c0]">{message}</output>
-			)}
-			{feedback && error && (
-				<p
-					role="alert"
-					className="max-h-32 overflow-auto whitespace-pre-wrap break-words text-xs text-[#ffb4ab]"
-				>
-					{error}
+					onChange={(event) => {
+						const files = Array.from(event.currentTarget.files ?? []);
+						event.currentTarget.value = "";
+						if (files.length) void upload(files, true, scope, name);
+					}}
+				/>
+				<div className="flex flex-wrap gap-2">
+					<button
+						type="button"
+						disabled={loading}
+						onClick={() => input.current?.click()}
+						className="ui-button"
+						data-variant="secondary"
+					>
+						<Upload size={14} aria-hidden="true" />
+						Upload symbols
+					</button>
+					<button
+						type="button"
+						disabled={loading}
+						onClick={() => directoryInput.current?.click()}
+						className="ui-button"
+						data-variant="secondary"
+					>
+						<FolderUp size={14} aria-hidden="true" />
+						Upload library directory
+					</button>
+					{canOpenDirectory && (
+						<button
+							type="button"
+							disabled={loading}
+							onClick={() => void openDirectory(scope, name)}
+							className="ui-button"
+							data-variant="secondary"
+						>
+							<FolderOpen size={14} aria-hidden="true" />
+							Add library directory
+						</button>
+					)}
+					<button
+						type="button"
+						disabled={loading}
+						onClick={() => void refresh()}
+						className="ui-button"
+						data-variant="ghost"
+					>
+						<RefreshCw size={14} aria-hidden="true" />
+						Reload libraries
+					</button>
+				</div>
+				<p className="m-0 text-xs text-fg-faint">
+					One symbol per .ecadsym or .json file.{" "}
+					<a
+						href={exampleSymbolUrl}
+						download="test-point.ecadsym"
+						className="rounded-sm text-fg-muted underline underline-offset-2 hover:text-fg"
+					>
+						Download example
+					</a>
 				</p>
-			)}
+				{feedback && message && (
+					<output className="block text-xs text-success">{message}</output>
+				)}
+				{feedback && error && (
+					<p
+						role="alert"
+						className="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-words text-xs text-danger"
+					>
+						{error}
+					</p>
+				)}
+			</section>
 		</div>
 	);
 }
@@ -181,16 +190,20 @@ function LibraryList({
 	library: ReturnType<typeof useSymbolLibrary>;
 }) {
 	return (
-		<fieldset aria-label={title} className="min-w-0 border-0 p-0">
-			<legend className="mb-1 text-xs font-semibold">{title}</legend>
+		<fieldset aria-label={title} className="m-0 min-w-0 border-0 p-0">
+			<legend className="ui-section-label mb-1.5 p-0">{title}</legend>
 			{!libraries.length && (
-				<p className="my-1 text-xs text-[#9ba7b8]">No libraries configured.</p>
+				<p className="m-0 text-xs text-fg-faint">No libraries configured.</p>
 			)}
 			{libraries.map((entry) => (
-				<div key={entry.id} className="flex items-center gap-2 py-1">
-					<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs">
+				<div
+					key={entry.id}
+					className="-mx-1.5 flex min-h-8 items-center gap-2 rounded-md px-1.5 hover:bg-hover"
+				>
+					<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-1 text-sm">
 						<input
 							type="checkbox"
+							className="ui-checkbox"
 							checked={entry.enabled}
 							disabled={library.loading}
 							onChange={() => void library.toggle(entry.id, scope)}
@@ -204,7 +217,7 @@ function LibraryList({
 								aria-label={`Remove ${entry.name}`}
 								disabled={library.loading}
 								onClick={() => void library.remove(entry.id, scope)}
-								className="cursor-pointer rounded p-1 text-[#9ba7b8] hover:bg-white/10 hover:text-[#ffb4ab] disabled:opacity-50"
+								className={`${panelIconButtonClassName} hover:text-danger`}
 							>
 								<Trash2 size={14} aria-hidden="true" />
 							</button>

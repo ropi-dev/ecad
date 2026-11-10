@@ -2,13 +2,14 @@ import type { KeyboardEventHandler, ReactNode } from "react";
 
 export type FloatingPanelPosition = "top-right" | "top-left" | "left-center";
 
+// Panels keep clear of the rulers, the document bar and the dock. On a phone
+// they become a sheet above the dock instead.
+const sheet =
+	"max-[760px]:inset-x-[var(--chrome-gap)] max-[760px]:top-auto max-[760px]:bottom-[calc(var(--chrome-dock)+env(safe-area-inset-bottom))] max-[760px]:max-h-[45%] max-[760px]:w-auto max-[760px]:translate-y-0";
 const positionClassName: Record<FloatingPanelPosition, string> = {
-	"top-right":
-		"top-10 right-10 max-h-[calc(100%-112px)] max-[600px]:top-22 max-[600px]:right-9 max-[600px]:max-h-[calc(100%-160px)] max-[600px]:w-[min(256px,calc(100%-48px))]",
-	"top-left":
-		"top-10 left-10 max-h-[calc(100%-112px)] max-[600px]:top-22 max-[600px]:left-9 max-[600px]:max-h-[calc(100%-160px)] max-[600px]:w-[min(256px,calc(100%-48px))]",
-	"left-center":
-		"top-1/2 left-10 max-h-[calc(100%-176px)] -translate-y-1/2 max-[600px]:left-9 max-[600px]:w-[min(256px,calc(100%-48px))]",
+	"top-right": `top-[var(--chrome-top)] right-[var(--chrome-right)] max-h-[calc(100%-var(--chrome-top)-var(--chrome-dock))] ${sheet}`,
+	"top-left": `top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] max-h-[calc(100%-var(--chrome-top)-var(--chrome-bar)-var(--chrome-dock))] ${sheet}`,
+	"left-center": `top-1/2 left-[var(--chrome-gap)] max-h-[calc(100%-2*var(--chrome-dock))] -translate-y-1/2 ${sheet}`,
 };
 
 export function FloatingPanel({
@@ -30,7 +31,7 @@ export function FloatingPanel({
 }) {
 	return (
 		<Element
-			className={`absolute ${raised ? "z-5" : "z-2"} flex min-h-0 w-80 flex-col rounded-[10px] border border-[#414955] bg-[#191c22ed] p-[5px] shadow-[0_8px_32px_#0005] backdrop-blur-[12px] ${positionClassName[position]}`}
+			className={`ui-panel absolute bg-raised ${raised ? "z-5" : "z-2"} flex min-h-0 w-72 flex-col overflow-hidden ${positionClassName[position]}`}
 			aria-label={label}
 			onKeyDown={onKeyDown}
 		>

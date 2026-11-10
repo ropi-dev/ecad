@@ -1,4 +1,4 @@
-import { ChevronUp, type LucideIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import {
 	type ComponentProps,
@@ -15,11 +15,14 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
 import {
-	toolbarMenuItemClassName,
+	scrollFadeClassName,
+	useScrollEdges,
+} from "#/components/viewer/useScrollEdges.ts";
+import {
+	toolbarPopoverClassName,
 	toolbarSurfaceClassName,
 	viewControlButtonClassName,
 } from "#/components/viewer/viewControlStyles.ts";
@@ -61,47 +64,39 @@ export function ToolbarDock({
 	children: ReactNode;
 }) {
 	const [host, setHost] = useState<HTMLDivElement | null>(null);
-	const row = useRef<HTMLDivElement>(null);
-	const updateFade = useRef<() => void>(undefined);
-	// Content can widen without resizing the capped row, such as a longer
-	// zoom label, so recheck after every render.
-	useEffect(() => updateFade.current?.());
-	useEffect(() => {
-		const element = row.current;
-		if (!scrollable || !element) return;
-		// Fade the clipped edge so a narrow screen shows the row scrolls.
-		const update = () => {
-			const start = element.scrollLeft > 1;
-			const end =
-				element.scrollLeft + element.clientWidth < element.scrollWidth - 1;
-			const fade = start && end ? "both" : start ? "start" : end ? "end" : "";
-			if (element.dataset.fade !== fade) element.dataset.fade = fade;
-		};
-		update();
-		updateFade.current = update;
-		const observer = new ResizeObserver(update);
-		observer.observe(element);
-		element.addEventListener("scroll", update, { passive: true });
-		return () => {
-			updateFade.current = undefined;
-			observer.disconnect();
-			element.removeEventListener("scroll", update);
-		};
-	}, [scrollable]);
+	const [row, setRow] = useState<HTMLDivElement | null>(null);
+	// Fade the clipped edge so a narrow screen shows the row scrolls.
+	useScrollEdges(scrollable ? row : null);
 	return (
 		<ToolbarGroups panelHost={host}>
 			<div
 				ref={setHost}
 				role="toolbar"
 				aria-label={label}
-				className={`absolute bottom-4 left-1/2 z-10 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 p-1 ${toolbarSurfaceClassName}`}
+				className={`group absolute bottom-[calc(var(--chrome-gap)+env(safe-area-inset-bottom))] left-1/2 z-10 w-max max-w-[calc(100%-2*var(--chrome-right))] -translate-x-1/2 p-1 ${toolbarSurfaceClassName}`}
 			>
 				<div
-					ref={row}
-					className={`flex items-center gap-0.5 ${scrollable ? "touch-pan-x flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:thin] data-[fade=both]:[mask-image:linear-gradient(to_right,transparent,black_2rem,black_calc(100%-2rem),transparent)] data-[fade=end]:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] data-[fade=start]:[mask-image:linear-gradient(to_right,transparent,black_2rem)]" : "flex-wrap justify-center"}`}
+					ref={setRow}
+					className={`flex items-center gap-0.5 ${scrollable ? `touch-pan-x flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:thin] ${scrollFadeClassName}` : "flex-wrap justify-center"}`}
 				>
 					{children}
 				</div>
+				{scrollable && (
+					<>
+						<span
+							aria-hidden="true"
+							className="pointer-events-none absolute inset-y-0 left-0 hidden w-5 items-center justify-center text-fg group-data-[fade=both]:flex group-data-[fade=start]:flex"
+						>
+							<ChevronLeft size={14} strokeWidth={2.5} />
+						</span>
+						<span
+							aria-hidden="true"
+							className="pointer-events-none absolute inset-y-0 right-0 hidden w-5 items-center justify-center text-fg group-data-[fade=both]:flex group-data-[fade=end]:flex"
+						>
+							<ChevronRight size={14} strokeWidth={2.5} />
+						</span>
+					</>
+				)}
 			</div>
 		</ToolbarGroups>
 	);
@@ -111,21 +106,12 @@ export function ToolbarSeparator() {
 	return (
 		<hr
 			aria-orientation="vertical"
-			className="mx-1 my-0 h-5 w-px shrink-0 self-center border-0 bg-[#414955]"
+			className="mx-1.5 my-0 h-5 w-px shrink-0 self-center border-0 bg-line"
 		/>
 	);
 }
 
-/** Focus the chosen item in a panel, or its first enabled item. */
-function focusChoice(panel: HTMLElement | null) {
-	(
-		panel?.querySelector<HTMLButtonElement>(
-			'button[aria-pressed="true"]:not(:disabled)',
-		) ?? panel?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-	)?.focus();
-}
-
-/** Move focus back to a trigger without opening its tooltip. */
+/** Move focus to a button by code without opening its tooltip. */
 export function quietFocus(button: HTMLElement | null) {
 	if (!button) return;
 	button.dataset.quietFocus = "true";
@@ -134,9 +120,22 @@ export function quietFocus(button: HTMLElement | null) {
 }
 
 /**
- * A toolbar button that opens a panel above itself. The panel closes
- * after a choice unless `closeOnChoose` is false, which suits repeated actions
- * such as panning.
+ * Focus the chosen item in a panel, or its first enabled item. A quiet focus
+ * leaves the item's tooltip closed.
+ */
+function focusChoice(panel: HTMLElement | null, quiet = false) {
+	const button =
+		panel?.querySelector<HTMLButtonElement>(
+			'button[aria-pressed="true"]:not(:disabled)',
+		) ?? panel?.querySelector<HTMLButtonElement>("button:not(:disabled)");
+	if (quiet) quietFocus(button ?? null);
+	else button?.focus();
+}
+
+/**
+ * A toolbar button that opens a row of icon buttons above itself. The row
+ * closes after a choice unless `closeOnChoose` is false, which suits repeated
+ * actions such as panning.
  */
 export function ToolbarGroup({
 	label,
@@ -164,6 +163,9 @@ export function ToolbarGroup({
 	const root = useRef<HTMLDivElement>(null);
 	const trigger = useRef<HTMLButtonElement>(null);
 	const panel = useRef<HTMLDivElement>(null);
+	// Opened with the keyboard, the focused tool names itself in its tooltip.
+	// Opened by pointer or shortcut, tooltips wait for a hover.
+	const quietOpen = useRef(false);
 	const [left, setLeft] = useState<number | null>(null);
 
 	useLayoutEffect(() => {
@@ -199,7 +201,7 @@ export function ToolbarGroup({
 	const placed = left !== null;
 	useEffect(() => {
 		// The panel stays hidden, and so unfocusable, until it has been placed.
-		if (open && placed) focusChoice(panel.current);
+		if (open && placed) focusChoice(panel.current, quietOpen.current);
 	}, [open, placed]);
 
 	useEffect(() => {
@@ -238,21 +240,25 @@ export function ToolbarGroup({
 				data-active={active}
 				disabled={disabled}
 				tooltip={activeLabel ? `${label}: ${activeLabel}` : label}
-				className={`${viewControlButtonClassName} relative`}
-				onClick={() => setOpenId(open ? null : id)}
+				className={viewControlButtonClassName}
+				onClick={(event) => {
+					// A key press on the button is a trusted click with no detail.
+					quietOpen.current = event.detail > 0 || !event.isTrusted;
+					setOpenId(open ? null : id);
+				}}
 				onKeyDown={(event) => {
 					if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 					event.preventDefault();
+					quietOpen.current = false;
 					if (open) focusPanel();
 					else setOpenId(id);
 				}}
 			>
 				<Icon size={18} aria-hidden="true" />
-				<ChevronUp
-					size={8}
-					strokeWidth={3}
+				{/* Corner mark: this button opens a panel of tools. */}
+				<span
 					aria-hidden="true"
-					className="absolute top-0.5 right-0.5 opacity-60"
+					className="absolute right-1 bottom-1 size-[5px] bg-current opacity-55 [clip-path:polygon(100%_0,100%_100%,0_100%)]"
 				/>
 			</TooltipButton>
 			{open &&
@@ -279,12 +285,12 @@ export function ToolbarGroup({
 						id={id}
 						role="toolbar"
 						aria-label={`${label} toolbar`}
-						aria-orientation="vertical"
+						aria-orientation="horizontal"
 						style={{
 							left: left ?? 0,
 							visibility: left === null ? "hidden" : undefined,
 						}}
-						className={`absolute bottom-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-6rem)] w-max min-w-40 max-w-[calc(100vw-1.5rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain p-1 outline-none ${toolbarSurfaceClassName}`}
+						className={`absolute bottom-[calc(100%+0.5rem)] z-20 flex w-max max-w-[calc(100vw-1.5rem)] items-center gap-0.5 overflow-x-auto overscroll-contain p-1 outline-none [scrollbar-width:thin] ${toolbarPopoverClassName}`}
 						onClick={(event) => {
 							if (
 								!closeOnChoose ||
@@ -336,32 +342,27 @@ export function ToolbarGroup({
 	);
 }
 
-/** Labeled row in a toolbar group panel. */
-export function ToolbarMenuItem({
+/** Icon button in a toolbar group panel. Its name shows in its tooltip. */
+export function ToolbarGroupButton({
 	icon: Icon,
 	label,
 	shortcut,
 	...props
-}: Omit<ComponentProps<"button">, "children"> & {
-	icon?: LucideIcon;
+}: Omit<ComponentProps<typeof TooltipButton>, "children" | "tooltip"> & {
+	icon: LucideIcon;
 	label: string;
-	shortcut?: string;
 }) {
 	return (
-		<button
+		<TooltipButton
 			type="button"
 			aria-label={label}
 			aria-keyshortcuts={shortcut}
-			className={toolbarMenuItemClassName}
+			tooltip={label}
+			shortcut={shortcut}
+			className={viewControlButtonClassName}
 			{...props}
 		>
-			{Icon && <Icon size={16} aria-hidden="true" className="shrink-0" />}
-			<span className="flex-1">{label}</span>
-			{shortcut && (
-				<kbd className="shrink-0 font-sans text-[10px] text-[#7c8696]">
-					{formatShortcut(shortcut)}
-				</kbd>
-			)}
-		</button>
+			<Icon size={18} aria-hidden="true" />
+		</TooltipButton>
 	);
 }

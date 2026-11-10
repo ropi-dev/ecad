@@ -1,6 +1,7 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { viewerTheme } from "@ecad/core/drawing/schematic-theme.ts";
 import type { ProjectSnapshot } from "@ecad/core/projects/format.ts";
 import {
 	app,
@@ -333,7 +334,8 @@ function createWindow() {
 		minWidth: 720,
 		minHeight: 480,
 		title: "ECAD desktop",
-		backgroundColor: "#111318",
+		// The app background, so the window does not flash before the page paints.
+		backgroundColor: viewerTheme.background,
 		webPreferences: {
 			preload: join(__dirname, "preload.cjs"),
 			contextIsolation: true,

@@ -2,6 +2,9 @@ import { Tooltip } from "radix-ui";
 import { type ComponentProps, useState } from "react";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 
+const tooltipClassName =
+	"z-60 max-w-[min(18rem,calc(100vw-1.5rem))] animate-fade-in rounded-md border border-line bg-raised px-2 py-1.5 text-xs font-medium text-fg shadow-pop motion-reduce:animate-none";
+
 export function TooltipButton({
 	tooltip,
 	shortcut,
@@ -32,19 +35,16 @@ export function TooltipButton({
 				<Tooltip.Content
 					data-slot="toolbar-tooltip"
 					side="top"
-					sideOffset={10}
+					sideOffset={8}
 					collisionPadding={12}
-					className="z-60 max-w-[min(18rem,calc(100vw-1.5rem))] rounded-md border border-[#414955] bg-[#222731] px-3 py-2 text-xs leading-relaxed text-[#e8edf5] shadow-[0_4px_16px_#0006]"
+					className={tooltipClassName}
 				>
-					<span className="flex items-center gap-3">
+					<span className="flex items-center gap-2">
 						<span>{tooltip}</span>
 						{shortcut && (
-							<kbd className="shrink-0 rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans text-[10px] text-[#b7c1cf]">
-								{formatShortcut(shortcut)}
-							</kbd>
+							<kbd className="ui-kbd">{formatShortcut(shortcut)}</kbd>
 						)}
 					</span>
-					<Tooltip.Arrow className="fill-[#222731]" width={10} height={5} />
 				</Tooltip.Content>
 			</Tooltip.Portal>
 		</Tooltip.Root>

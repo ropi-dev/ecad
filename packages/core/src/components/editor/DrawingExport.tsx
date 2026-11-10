@@ -1,7 +1,16 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { useState } from "react";
+import { X } from "lucide-react";
+import { useId, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+	DialogHeader,
+	dialogBodyClassName,
+	dialogCloseClassName,
+	dialogDescriptionClassName,
+	dialogFooterClassName,
+	dialogTitleClassName,
+} from "#/components/ui/Dialog.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
@@ -33,7 +42,9 @@ export function DrawingExport({
 	const [format, setFormat] = useState("png");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
-	const field = "rounded border border-white/30 bg-slate-800 p-2 text-white";
+	const titleId = useId();
+	const fieldLabel =
+		"flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted";
 	return (
 		<>
 			{open &&
@@ -42,12 +53,12 @@ export function DrawingExport({
 						ref={(node) => {
 							if (node && !node.open) node.showModal();
 						}}
-						aria-label="Export drawing"
+						aria-labelledby={titleId}
 						onCancel={(event) => {
 							event.preventDefault();
 							if (!busy) onClose();
 						}}
-						className="fixed inset-0 m-auto max-h-[calc(100%-2rem)] overflow-y-auto bg-transparent p-0 backdrop:bg-black/60"
+						className="ui-dialog fixed inset-0 m-auto max-w-sm overflow-hidden"
 						onPointerDown={(event) => event.stopPropagation()}
 						onKeyDown={(event) => {
 							event.stopPropagation();
@@ -55,7 +66,7 @@ export function DrawingExport({
 						}}
 					>
 						<form
-							className="flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-xl border border-white/20 bg-slate-900 p-6 text-sm text-white shadow-xl"
+							className="flex min-h-0 flex-1 flex-col"
 							onSubmit={async (event) => {
 								event.preventDefault();
 								if (busy) return;
@@ -106,89 +117,123 @@ export function DrawingExport({
 								}
 							}}
 						>
-							<label className="flex flex-col gap-1">
-								Output
-								<select
-									className={field}
-									value={area}
-									onChange={(e) => setArea(e.target.value as typeof area)}
-								>
-									<option value="sheet">Full sheet and drawing</option>
-									<option value="drawing">Drawing only</option>
-								</select>
-							</label>
-							<label className="flex flex-col gap-1">
-								Format
-								<select
-									className={field}
-									value={format}
-									onChange={(e) => setFormat(e.target.value)}
-								>
-									<option value="png">PNG</option>
-									<option value="svg">SVG vector</option>
-								</select>
-							</label>
-							<div className="grid grid-cols-2 gap-3">
-								<label className="flex flex-col gap-1">
-									Width in pixels
-									<input
-										className={field}
-										type="number"
-										min="1"
-										max="16384"
-										required
-										value={width}
-										onChange={(e) => setWidth(e.target.valueAsNumber)}
-									/>
+							<DialogHeader
+								title={
+									<h2 id={titleId} className={dialogTitleClassName}>
+										Export drawing
+									</h2>
+								}
+								description={
+									<p className={dialogDescriptionClassName}>
+										Content is fitted without stretching. The grid, selection
+										and editor controls are left out.
+									</p>
+								}
+							/>
+							<div className={`${dialogBodyClassName} flex flex-col gap-3.5`}>
+								<label className={fieldLabel}>
+									Output
+									<select
+										className="ui-select h-8 w-full"
+										value={area}
+										onChange={(e) => setArea(e.target.value as typeof area)}
+									>
+										<option value="sheet">Full sheet and drawing</option>
+										<option value="drawing">Drawing only</option>
+									</select>
 								</label>
-								<label className="flex flex-col gap-1">
-									Height in pixels
-									<input
-										className={field}
-										type="number"
-										min="1"
-										max="16384"
-										required
-										value={height}
-										onChange={(e) => setHeight(e.target.valueAsNumber)}
-									/>
-								</label>
-							</div>
-							<label className="flex flex-col gap-1">
-								Background
-								<select
-									className={field}
-									value={background}
-									onChange={(e) =>
-										setBackground(e.target.value as typeof background)
-									}
-								>
-									<option value="white">White</option>
-									<option value="dark">Dark</option>
-									<option value="transparent">Transparent</option>
-								</select>
-							</label>
-							<p className="text-slate-300">
-								Fits all content without stretching. No grid, selection or
-								editor controls. SVG text stays sharp at any zoom.
-							</p>
-							{error && (
-								<p role="alert" className="text-red-300">
-									{error}
+								<div className="grid grid-cols-2 gap-3">
+									<label className={fieldLabel}>
+										Format
+										<select
+											className="ui-select h-8 w-full"
+											value={format}
+											onChange={(e) => setFormat(e.target.value)}
+										>
+											<option value="png">PNG</option>
+											<option value="svg">SVG vector</option>
+										</select>
+									</label>
+									<label className={fieldLabel}>
+										Background
+										<select
+											className="ui-select h-8 w-full"
+											value={background}
+											onChange={(e) =>
+												setBackground(e.target.value as typeof background)
+											}
+										>
+											<option value="white">White</option>
+											<option value="dark">Dark</option>
+											<option value="transparent">Transparent</option>
+										</select>
+									</label>
+								</div>
+								<div className="grid grid-cols-2 gap-3">
+									<label className={fieldLabel}>
+										Width in pixels
+										<input
+											className="ui-input h-8 w-full"
+											type="number"
+											min="1"
+											max="16384"
+											required
+											value={width}
+											onChange={(e) => setWidth(e.target.valueAsNumber)}
+										/>
+									</label>
+									<label className={fieldLabel}>
+										Height in pixels
+										<input
+											className="ui-input h-8 w-full"
+											type="number"
+											min="1"
+											max="16384"
+											required
+											value={height}
+											onChange={(e) => setHeight(e.target.valueAsNumber)}
+										/>
+									</label>
+								</div>
+								<p className="m-0 text-xs text-fg-faint">
+									SVG text stays sharp at any zoom.
 								</p>
-							)}
-							<div className="flex justify-end gap-3">
-								<button type="button" disabled={busy} onClick={() => onClose()}>
-									Close
+								{error && (
+									<p role="alert" className="m-0 text-sm text-danger">
+										{error}
+									</p>
+								)}
+							</div>
+							<footer className={dialogFooterClassName}>
+								<button
+									type="button"
+									className="ui-button"
+									data-variant="ghost"
+									data-size="md"
+									disabled={busy}
+									onClick={() => onClose()}
+								>
+									Cancel
 								</button>
 								<button
-									className="rounded bg-amber-200 px-4 py-2 text-slate-950 disabled:opacity-50"
+									className="ui-button"
+									data-variant="primary"
+									data-size="md"
 									disabled={busy}
 									type="submit"
 								>
 									{busy ? "Exporting..." : "Download"}
 								</button>
-							</div>
+							</footer>
+							<button
+								type="button"
+								aria-label="Close dialog"
+								className={dialogCloseClassName}
+								disabled={busy}
+								onClick={() => onClose()}
+							>
+								<X size={16} aria-hidden="true" />
+							</button>
 						</form>
 					</dialog>,
 					document.body,

@@ -14,7 +14,7 @@ The exception permits use in proprietary electronic designs. It does not exempt 
 
 ## Font
 
-`packages/core/src/projects/fonts/Caveat-Medium.ttf` is by the Caveat Project Authors, copyright 2014. It remains under the [SIL Open Font License 1.1](packages/core/src/projects/fonts/OFL.txt).
+The interface is set in Inter, by The Inter Project Authors, from the `@fontsource-variable/inter` package. It remains under the SIL Open Font License 1.1. Builds copy that license into `THIRD_PARTY_NOTICES.txt` with the other dependency notices.
 
 ## STEP importer
 

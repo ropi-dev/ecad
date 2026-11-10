@@ -5,6 +5,11 @@ import {
 	useFormContext,
 	useFormState,
 } from "react-hook-form";
+import {
+	numberInputClassName,
+	textInputClassName,
+	UnitField,
+} from "#/components/editor/SelectionAttributes.tsx";
 import type { SymbolInstanceAttributeValues } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 
 export function SymbolInstanceAttributeInput<
@@ -40,7 +45,7 @@ export function SymbolInstanceAttributeInput<
 	const field = register(name, { valueAsNumber: numeric });
 	return (
 		<span className="flex flex-col items-end gap-1">
-			<span className="flex items-center gap-2">
+			<UnitField unit={unit}>
 				<input
 					{...field}
 					type={numeric ? "number" : "text"}
@@ -52,7 +57,7 @@ export function SymbolInstanceAttributeInput<
 					title={step === "90" ? "Angle in 90° increments" : undefined}
 					placeholder={numeric ? "Mixed" : undefined}
 					data-committed-value={value}
-					className={`rounded border border-[#ffffff20] bg-[#19212e] px-2 py-1 text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-[#e8b77e] aria-invalid:border-[#ffb4ab] ${numeric ? "w-24 text-right tabular-nums" : "w-32"}`}
+					className={`${numeric ? numberInputClassName : textInputClassName} aria-invalid:border-danger`}
 					onBlur={async (event) => {
 						await field.onBlur(event);
 						const state = getFieldState(name);
@@ -63,13 +68,12 @@ export function SymbolInstanceAttributeInput<
 						onCommit(next);
 					}}
 				/>
-				{unit && <span className="w-5 text-[#9ba7b8]">{unit}</span>}
-			</span>
+			</UnitField>
 			{error && (
 				<span
 					id={errorId}
 					role="alert"
-					className="max-w-44 text-[12px] text-[#ffb4ab]"
+					className="max-w-44 text-right text-xs text-danger"
 				>
 					{error.message}
 				</span>

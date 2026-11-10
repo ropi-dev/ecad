@@ -1,6 +1,13 @@
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from "lucide-react";
 import { Toast } from "radix-ui";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import {
+	type ReactNode,
+	useEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
 import { toastManager } from "#/components/ui/toast.ts";
 
 const icons = {
@@ -9,6 +16,30 @@ const icons = {
 	warning: TriangleAlert,
 	info: Info,
 };
+
+const pinnedHostId = "app-notices-pinned";
+
+/**
+ * A notice that stays until the user dismisses it, such as an import report.
+ * It joins the toasts' column, so the two never cover each other. Without a
+ * Toaster on the page it renders in place with `fallbackClassName`.
+ */
+export function PinnedNotice({
+	children,
+	fallbackClassName,
+}: {
+	children: ReactNode;
+	fallbackClassName?: string;
+}) {
+	const [host, setHost] = useState<HTMLElement | null | undefined>(undefined);
+	useEffect(() => setHost(document.getElementById(pinnedHostId)), []);
+	if (host === undefined) return null;
+	return host ? (
+		createPortal(children, host)
+	) : (
+		<div className={fallbackClassName}>{children}</div>
+	);
+}
 
 export function Toaster() {
 	const viewport = useRef<HTMLOListElement>(null);
@@ -61,11 +92,11 @@ export function Toaster() {
 					>
 						<Icon className="app-toast-icon" size={18} aria-hidden="true" />
 						<div className="min-w-0 flex-1">
-							<Toast.Title className="text-sm font-medium text-[#e8edf5]">
+							<Toast.Title className="text-sm font-semibold text-fg">
 								{notification.title}
 							</Toast.Title>
 							{notification.description && (
-								<Toast.Description className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-[#a8b3c2]">
+								<Toast.Description className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-[1.125rem] text-fg-muted">
 									{notification.description}
 								</Toast.Description>
 							)}
@@ -79,11 +110,14 @@ export function Toaster() {
 					</Toast.Root>
 				);
 			})}
-			<Toast.Viewport
-				ref={viewport}
-				className="app-toast-viewport"
-				label="Notifications, press F8 to focus"
-			/>
+			<div className="app-notices">
+				<div id={pinnedHostId} className="app-notices-pinned" />
+				<Toast.Viewport
+					ref={viewport}
+					className="app-toast-viewport"
+					label="Notifications, press F8 to focus"
+				/>
+			</div>
 		</Toast.Provider>
 	);
 }

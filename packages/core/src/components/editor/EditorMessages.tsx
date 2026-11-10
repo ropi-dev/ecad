@@ -6,6 +6,7 @@ import {
 	visibleEditorMessages,
 } from "#/components/editor/editorMessages.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
+import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 function messageButtonRef(target: { current: HTMLButtonElement | null }) {
 	return (button: HTMLButtonElement) => {
@@ -91,12 +92,24 @@ export function EditorMessages({
 	issuesButtonRef,
 	dismiss,
 	showIssues,
-}: ReturnType<typeof useEditorMessages>) {
+	besidePanel = false,
+}: ReturnType<typeof useEditorMessages> & {
+	/** A panel is open in the top-left corner; show the messages beside it. */
+	besidePanel?: boolean;
+}) {
 	if (messages.length === 0 && hiddenIssues.length === 0) return null;
 	return (
-		<div className="pointer-events-none absolute top-22 left-10 z-3 flex max-w-[min(560px,calc(100%-56px))] flex-col items-start gap-2 *:pointer-events-auto">
+		<div
+			data-beside-panel={besidePanel}
+			className="pointer-events-none absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 flex max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] flex-col items-start gap-2 *:pointer-events-auto min-[761px]:data-[beside-panel=true]:left-[calc(var(--chrome-gap)+18.5rem)] min-[761px]:data-[beside-panel=true]:max-w-[min(560px,calc(100%-2*var(--chrome-gap)-18.5rem))]"
+		>
 			{messages.length > 0 && (
-				<div className="flex max-w-full items-start gap-1 rounded-lg border border-[#72543a] bg-[#392e25f5] py-1.5 pr-1.5 pl-3 text-[13px] text-[#edc49a]">
+				<div className="ui-notice flex max-w-full items-start gap-2 py-1.5 pr-1.5 pl-2.5">
+					<TriangleAlert
+						size={15}
+						aria-hidden="true"
+						className="mt-1.5 shrink-0 text-warning"
+					/>
 					<div
 						role="alert"
 						className="max-h-25 min-w-0 flex-1 overflow-auto py-1 break-words"
@@ -112,7 +125,7 @@ export function EditorMessages({
 						type="button"
 						aria-label="Dismiss editor messages"
 						title="Dismiss"
-						className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-[#edc49a] hover:bg-[#edc49a1f] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+						className={panelIconButtonClassName}
 						onClick={(event) =>
 							dismiss(
 								event.currentTarget.closest("main")?.querySelector("canvas"),
@@ -127,10 +140,14 @@ export function EditorMessages({
 				<button
 					ref={issuesButtonRef}
 					type="button"
-					className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#72543a] bg-[#392e25f5] px-2.5 py-1.5 text-[12px] text-[#edc49a] hover:bg-[#4a3b2ff5] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
+					className="ui-notice inline-flex h-8 cursor-pointer items-center gap-1.5 px-2.5 font-medium hover:border-warning"
 					onClick={showIssues}
 				>
-					<TriangleAlert size={14} aria-hidden="true" />
+					<TriangleAlert
+						size={14}
+						aria-hidden="true"
+						className="text-warning"
+					/>
 					Show {hiddenIssues.length}{" "}
 					{hiddenIssues.length === 1 ? "issue" : "issues"}
 				</button>

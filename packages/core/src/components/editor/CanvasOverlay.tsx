@@ -82,7 +82,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						<svg
 							data-testid="ruler-position-guide"
 							aria-hidden="true"
-							className="absolute inset-0 size-full stroke-gray-400/60 stroke-1"
+							className="absolute inset-0 size-full stroke-fg-muted/60 stroke-1"
 						>
 							{rulerPosition.y >= 24 &&
 								rulerPosition.y <= view.viewport.height && (
@@ -118,7 +118,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							return (
 								<span
 									data-testid="wire-connection"
-									className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#e8b77e]"
+									className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent"
 									style={{ left: point.x, top: point.y }}
 								/>
 							);
@@ -145,7 +145,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							return (
 								<span
 									data-testid="symbol-child-selection"
-									className="absolute border border-dashed border-[#e8b77e]"
+									className="absolute border border-dashed border-accent"
 									style={{
 										left: topLeft.x - 3,
 										top: topLeft.y - 3,
@@ -167,7 +167,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 								key={anchor.key}
 								data-testid="text-anchor"
 								data-anchor-id={anchor.key}
-								className="pointer-events-none absolute z-1 size-[9px] -translate-x-1/2 -translate-y-1/2 text-[#e8b77e] drop-shadow-[0_0_1px_#19212e] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
+								className="pointer-events-none absolute z-1 size-[9px] -translate-x-1/2 -translate-y-1/2 text-accent drop-shadow-[0_0_1px_var(--color-paper)] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
 								style={{ left: point.x, top: point.y }}
 							/>
 						);
@@ -182,7 +182,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						return (
 							<span
 								key={`${shape.id}:${handle.id}`}
-								className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 border border-[#e8b77e] bg-[#19212e]"
+								className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 border border-accent bg-paper"
 								data-testid="resize-handle"
 								data-shape-id={shape.id}
 								data-handle={handle.id}
@@ -196,8 +196,8 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 				<div
 					className={`pointer-events-none absolute z-2 border ${
 						marquee.mode === "window"
-							? "border-[#60a5fa] bg-[#60a5fa25]"
-							: "border-dashed border-[#4ade80] bg-[#4ade8025]"
+							? "border-select-window bg-select-window-tint"
+							: "border-dashed border-select-crossing bg-select-crossing-tint"
 					}`}
 					data-testid="selection-rectangle"
 					data-selection-mode={marquee.mode}
@@ -220,7 +220,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							data-testid="selection-action"
 							data-selection-action={marquee.selection}
 							aria-hidden="true"
-							className="pointer-events-none absolute z-3 rounded border border-white/15 bg-[#19212e]/90 p-0.5 text-gray-100 shadow-sm"
+							className="pointer-events-none absolute z-3 rounded-sm border border-line bg-raised p-0.5 text-fg shadow-panel"
 							style={{ left: marquee.end.x + 14, top: marquee.end.y + 14 }}
 						>
 							<Icon className="size-3" strokeWidth={2.5} />

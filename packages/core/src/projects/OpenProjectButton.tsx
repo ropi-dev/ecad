@@ -1,7 +1,7 @@
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Check, FolderOpen } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import {
@@ -12,7 +12,12 @@ import {
 } from "#/projects/sidebarMenu.ts";
 import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
 
-const className = `${workspaceActionClassName} text-[#e8b77e] data-[state=open]:bg-white/10`;
+const tile = (
+	<>
+		<FolderOpen size={18} aria-hidden="true" />
+		Open
+	</>
+);
 
 const projectLabel = (name: string) =>
 	name.startsWith("Untitled-") ? `Untitled · ${name.slice(9, 17)}` : name;
@@ -24,9 +29,16 @@ const projectLabel = (name: string) =>
  */
 export function OpenProjectButton({
 	onActiveChange,
+	label = "Open project",
+	className = workspaceActionClassName,
+	children = tile,
 }: {
 	/** Reports whether the project menu or the save prompt is open. */
 	onActiveChange?: (active: boolean) => void;
+	/** Accessible name. The start page's card differs from the sidebar tile. */
+	label?: string;
+	className?: string;
+	children?: ReactNode;
 }) {
 	const project = useProjectSelection(
 		({ busy, list, mode, open, project, save }) => ({
@@ -70,16 +82,17 @@ export function OpenProjectButton({
 				<DropdownMenu.Trigger asChild>
 					<button
 						type="button"
-						aria-label="Open project"
+						aria-label={label}
 						disabled={project.busy}
 						className={className}
 					>
-						<FolderOpen size={20} aria-hidden="true" />
+						{children}
 					</button>
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
 					<DropdownMenu.Content
 						aria-label="Open project"
+						align="start"
 						sideOffset={6}
 						collisionPadding={12}
 						className={`${sidebarMenuContent} max-h-80`}
@@ -88,7 +101,7 @@ export function OpenProjectButton({
 							Open project
 						</DropdownMenu.Label>
 						{projects === null ? (
-							<output className="block px-2 py-2 text-xs text-[#98a4b6]">
+							<output className="block px-2 py-1.5 text-xs text-fg-muted">
 								Loading projects...
 							</output>
 						) : (
@@ -106,7 +119,7 @@ export function OpenProjectButton({
 										<Check
 											size={14}
 											aria-hidden="true"
-											className={current ? "shrink-0" : "invisible shrink-0"}
+											className={current ? "text-accent" : "invisible"}
 										/>
 										<span className="truncate">{projectLabel(name)}</span>
 									</DropdownMenu.Item>
@@ -114,12 +127,12 @@ export function OpenProjectButton({
 							})
 						)}
 						{projects?.length === 0 && !listError && (
-							<p className="px-2 py-2 text-xs text-[#98a4b6]">
+							<p className="m-0 px-2 py-1.5 text-xs text-fg-muted">
 								No saved projects
 							</p>
 						)}
 						{listError && (
-							<p role="alert" className="px-2 py-2 text-xs text-[#edc49a]">
+							<p role="alert" className="m-0 px-2 py-1.5 text-xs text-warning">
 								{listError}
 							</p>
 						)}
@@ -132,7 +145,7 @@ export function OpenProjectButton({
 		<>
 			<button
 				type="button"
-				aria-label="Open project"
+				aria-label={label}
 				disabled={project.busy}
 				className={className}
 				onClick={() => {
@@ -140,7 +153,7 @@ export function OpenProjectButton({
 					else void project.open();
 				}}
 			>
-				<FolderOpen size={20} aria-hidden="true" />
+				{children}
 			</button>
 			<OpenProjectDialog
 				open={confirmOpen}

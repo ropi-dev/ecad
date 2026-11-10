@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import { useFileImport } from "#/components/viewer/useFileImport.ts";
+import { viewerTheme } from "#/drawing/schematic-theme.ts";
 import { expandGerberFileEffect } from "#/formats/expandGerberFile.ts";
 import { ImportOwnership } from "#/formats/import-ownership.ts";
 import {
@@ -16,14 +17,7 @@ import {
 } from "#/formats/parseGerberFile.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 
-const COLORS = [
-	"#e8b77e",
-	"#76b8e8",
-	"#a99bea",
-	"#78c9a5",
-	"#e88ea1",
-	"#d2cf7d",
-];
+const COLORS = viewerTheme.layerPalette;
 
 // Diagnostics stay on the layer, which shows them for as long as it exists.
 function readGerber(file: File) {

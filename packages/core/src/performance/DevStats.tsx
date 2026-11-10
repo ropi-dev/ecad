@@ -368,7 +368,7 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 			ref={element}
 			aria-label="Development stats"
 			data-shortcut-scope="none"
-			className="fixed top-0 left-0 z-[90] min-w-48 rounded-md border border-white/15 bg-black/80 font-mono text-[11px] leading-4 text-[#e8e9ec] shadow-[0_8px_32px_#0008] backdrop-blur-sm"
+			className="ui-panel fixed top-0 left-0 z-[90] min-w-48 font-mono text-2xs leading-4"
 			style={{
 				transform: position
 					? `translate(${position.x}px, ${position.y}px)`
@@ -378,7 +378,7 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 			onPointerDown={(event) => event.stopPropagation()}
 		>
 			<header
-				className="flex cursor-grab touch-none items-center justify-between gap-3 rounded-t-md border-b border-white/10 bg-white/5 py-1 pr-1 pl-2.5 text-[10px] uppercase tracking-wide text-white/50 select-none active:cursor-grabbing"
+				className="flex cursor-grab touch-none items-center justify-between gap-3 rounded-t-[inherit] border-b border-line-subtle bg-hover py-1 pr-1 pl-2.5 text-2xs tracking-wide text-fg-faint uppercase select-none active:cursor-grabbing"
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerUp={endDrag}
@@ -388,7 +388,7 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 					type="button"
 					aria-label="Move development stats with the arrow keys"
 					title="Drag to move. Arrow keys move it too."
-					className="cursor-grab rounded px-0.5 text-left uppercase focus-visible:outline-1 focus-visible:outline-white/60"
+					className="cursor-grab rounded-sm px-0.5 text-left uppercase focus-visible:outline-1 focus-visible:outline-accent"
 					onKeyDown={onKeyDown}
 				>
 					Dev stats · Ctrl+Shift+D
@@ -397,7 +397,7 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 					type="button"
 					data-no-drag
 					aria-label="Hide development stats"
-					className="rounded px-1 text-white/60 hover:bg-white/10 hover:text-white"
+					className="cursor-pointer rounded-sm px-1 text-fg-muted hover:bg-hover hover:text-fg"
 					onClick={onHide}
 				>
 					×
@@ -407,13 +407,13 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 				<dl className="grid grid-cols-[auto_auto] gap-x-4">
 					{rows.map(([label, value]) => (
 						<div key={label} className="contents">
-							<dt className="text-white/55">{label}</dt>
+							<dt className="text-fg-muted">{label}</dt>
 							<dd className="m-0 text-right tabular-nums">{value}</dd>
 						</div>
 					))}
 				</dl>
 				{!stats.recorder && (
-					<p className="mt-1 max-w-48 text-[10px] text-amber-300/80">
+					<p className="m-0 mt-1 max-w-48 text-2xs text-warning">
 						Recorder off (?perf=0), only FPS is live.
 					</p>
 				)}

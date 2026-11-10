@@ -171,7 +171,6 @@ export async function distributionAssets(workspace: string) {
 			"packages/default-symbols/LICENSE.md",
 			"packages/default-symbols/NOTICE.md",
 			"packages/default-symbols/CC-BY-SA-4.0.txt",
-			"packages/core/src/projects/fonts/OFL.txt",
 			"licenses/occt-import-js-LGPL-2.1.txt",
 			"licenses/OCCT-LGPL-2.1.txt",
 			"licenses/OCCT-LGPL-EXCEPTION.txt",

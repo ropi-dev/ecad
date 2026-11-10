@@ -2,7 +2,7 @@ ECAD is a Gerber and STEP viewer with a 2D drawing editor. The web and Electron 
 
 ECAD is experimental. Features, file formats, and UI behavior may change. Keep backups of project files and verify exports before using them for fabrication.
 
-Original application code is under the [MIT license](LICENSE). Third-party code and assets retain their own licenses, including the KiCad-derived symbols, Caveat font, and LGPL STEP importer. See [third-party notices](THIRD_PARTY_NOTICES.md) and the [publication checklist](docs/publication.md). Production builds include dependency notices and matching STEP importer source archives. The first web or desktop build downloads about 53 MB of source archives; see [source caching and rebuild instructions](licenses/STEP-SOURCE.md).
+Original application code is under the [MIT license](LICENSE). Third-party code and assets retain their own licenses, including the KiCad-derived symbols, Inter font, and LGPL STEP importer. See [third-party notices](THIRD_PARTY_NOTICES.md) and the [publication checklist](docs/publication.md). Production builds include dependency notices and matching STEP importer source archives. The first web or desktop build downloads about 53 MB of source archives; see [source caching and rebuild instructions](licenses/STEP-SOURCE.md).
 
 | Package | Contents |
 | --- | --- |

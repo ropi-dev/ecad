@@ -7,6 +7,7 @@ import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
 import { untangleCircuitGraph } from "@ecad/drawing-core/circuit/untangle.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { Workflow } from "lucide-react";
 import {
 	lazy,
 	type MouseEvent as ReactMouseEvent,
@@ -30,6 +31,8 @@ import {
 	handleHistoryKeyDown,
 	isEditableTarget,
 } from "#/lib/keyboard.ts";
+import { DocumentBar } from "#/projects/DocumentBar.tsx";
+import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import {
 	type CircuitDocument,
 	useProjectSelection,
@@ -481,8 +484,20 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			}}
 		>
 			<h1 className="sr-only">{circuit.name}</h1>
+			<DocumentBar
+				icon={Workflow}
+				title={circuit.name}
+				selection={`circuit:${circuit.id}`}
+				circuit
+			>
+				<EditorViewSwitch view="circuit" />
+			</DocumentBar>
 			{circuitMessages.length > 0 && (
-				<div role="alert" className="circuit-error">
+				<div
+					role="alert"
+					data-beside-panel={ercOpen}
+					className="ui-notice circuit-error"
+				>
 					{circuitMessages.map((message) => (
 						<p key={message}>{message}</p>
 					))}
@@ -549,8 +564,13 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			{ercOpen && (
 				<Suspense
 					fallback={
-						<FloatingPanel label="Electrical rules check" as="section" raised>
-							<output className="p-2.5 text-[12px] text-[#9ba7b8]">
+						<FloatingPanel
+							label="Electrical rules check"
+							as="section"
+							position="top-left"
+							raised
+						>
+							<output className="p-3 text-xs text-fg-muted">
 								Loading electrical checks...
 							</output>
 						</FloatingPanel>

@@ -1,6 +1,7 @@
 import { PIN_RADIUS, shapeBounds } from "@ecad/drawing-core/drawing/shapes.ts";
 import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import { memo } from "react";
+import { darkSchematicTheme, viewerTheme } from "#/drawing/schematic-theme.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { drawingFontStack } from "#/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -21,7 +22,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 	if (!definition.children.length)
 		return (
 			<span
-				className="grid h-7 w-11 shrink-0 place-items-center text-[11px] text-[#9ba7b8]"
+				className="grid h-7 w-11 shrink-0 place-items-center text-2xs text-fg-faint"
 				aria-hidden="true"
 			>
 				Empty
@@ -53,7 +54,8 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 	return (
 		<svg
 			viewBox={`${bounds.minX - padding} ${-bounds.maxY - padding} ${width + 2 * padding} ${height + 2 * padding}`}
-			className="h-7 w-11 shrink-0 text-[#76c4c0]"
+			className="h-7 w-11 shrink-0"
+			style={{ color: darkSchematicTheme.appearance.stroke }}
 			aria-hidden="true"
 		>
 			{lines && (
@@ -79,7 +81,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 						transform={`translate(${child.kind === "text" ? textCenter(child).x : child.x} ${-(child.kind === "text" ? textCenter(child).y : child.y)}) rotate(${(-child.rotation * 180) / Math.PI})`}
 						fill={
 							child.kind !== "line" && "filled" in child && child.filled
-								? "#18282b"
+								? viewerTheme.thumbnailFill
 								: "none"
 						}
 						stroke="currentColor"
@@ -132,7 +134,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 									child.kind === "pin"
 										? "currentColor"
 										: child.filled
-											? "#18282b"
+											? viewerTheme.thumbnailFill
 											: "none"
 								}
 								stroke={child.kind === "pin" ? "none" : "currentColor"}

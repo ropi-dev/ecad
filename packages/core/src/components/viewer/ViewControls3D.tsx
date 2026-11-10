@@ -147,35 +147,31 @@ export function ViewControls3D({
 				</TooltipButton>
 			)}
 			{view && (
-				<>
-					<TooltipButton
-						type="button"
-						className={button}
-						disabled={!enabled}
-						tooltip="Isometric view"
-						onClick={() => view("iso")}
-					>
-						Iso
-					</TooltipButton>
-					<TooltipButton
-						type="button"
-						className={button}
-						disabled={!enabled}
-						tooltip="Top view"
-						onClick={() => view("top")}
-					>
-						Top
-					</TooltipButton>
-					<TooltipButton
-						type="button"
-						className={button}
-						disabled={!enabled}
-						tooltip="Front view"
-						onClick={() => view("front")}
-					>
-						Front
-					</TooltipButton>
-				</>
+				// biome-ignore lint/a11y/useSemanticElements: a fieldset adds form semantics to plain view buttons
+				<div
+					role="group"
+					aria-label="View direction"
+					className="flex shrink-0 items-center gap-0.5"
+				>
+					{(
+						[
+							["iso", "Iso", "Isometric view"],
+							["top", "Top", "Top view"],
+							["front", "Front", "Front view"],
+						] as const
+					).map(([direction, label, tooltip]) => (
+						<TooltipButton
+							key={direction}
+							type="button"
+							className={`${button} px-2.5`}
+							disabled={!enabled}
+							tooltip={tooltip}
+							onClick={() => view(direction)}
+						>
+							{label}
+						</TooltipButton>
+					))}
+				</div>
 			)}
 		</>
 	);
@@ -189,7 +185,7 @@ export function ViewControls3D({
 			tooltip="Export PNG"
 			onClick={exportPng}
 		>
-			<Download size={18} aria-hidden="true" />
+			<Download size={16} aria-hidden="true" />
 			{exporting ? "Exporting…" : "PNG"}
 		</TooltipButton>
 	);
@@ -210,8 +206,9 @@ export function ViewControls3D({
 		<ToolbarDock label={label} scrollable={false}>
 			{zoomControls}
 			{antialiasButton}
-			{(toggleProjection || view || pngButton) && <ToolbarSeparator />}
+			{(toggleProjection || view) && <ToolbarSeparator />}
 			{viewControls}
+			{pngButton && <ToolbarSeparator />}
 			{pngButton}
 			{children && <ToolbarSeparator />}
 			{children}

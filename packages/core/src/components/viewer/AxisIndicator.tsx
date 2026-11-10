@@ -5,9 +5,9 @@ import type { AxisIndicatorHandle } from "#/components/viewer/types/AxisIndicato
 function projectAxes(rotation: Quaternion) {
 	const inverse = rotation.clone().invert();
 	return [
-		{ label: "X", color: "text-red-400", direction: new Vector3(1, 0, 0) },
-		{ label: "Y", color: "text-green-400", direction: new Vector3(0, 1, 0) },
-		{ label: "Z", color: "text-blue-400", direction: new Vector3(0, 0, 1) },
+		{ label: "X", color: "text-axis-x", direction: new Vector3(1, 0, 0) },
+		{ label: "Y", color: "text-axis-y", direction: new Vector3(0, 1, 0) },
+		{ label: "Z", color: "text-axis-z", direction: new Vector3(0, 0, 1) },
 	]
 		.map((axis) => ({
 			...axis,
@@ -35,10 +35,10 @@ export function AxisIndicator({ ref }: { ref?: Ref<AxisIndicatorHandle> }) {
 			role="img"
 			aria-label="XYZ axis orientation"
 			viewBox="0 0 96 96"
-			className="pointer-events-none absolute bottom-36 left-4 z-10 size-24 select-none sm:bottom-4"
+			className="pointer-events-none absolute bottom-[calc(var(--chrome-dock)+24px)] left-[var(--chrome-gap)] z-10 size-24 select-none sm:bottom-[var(--chrome-gap)]"
 		>
 			<title>Model axes: X red, Y green, Z blue</title>
-			<circle cx="48" cy="48" r="3" className="fill-slate-400" />
+			<circle cx="48" cy="48" r="3" className="fill-fg-faint" />
 			{axes.map(({ label, color, direction }) => (
 				<g key={label} className={color}>
 					<line
@@ -64,7 +64,7 @@ export function AxisIndicator({ ref }: { ref?: Ref<AxisIndicatorHandle> }) {
 						cx={48 + direction.x * 35}
 						cy={48 - direction.y * 35}
 						r="9"
-						className="fill-slate-900"
+						className="fill-panel"
 						stroke="currentColor"
 						strokeWidth="1.5"
 					/>

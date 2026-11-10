@@ -246,7 +246,7 @@ export function SceneViewport({
 									: `${ariaLabel}. Shift + left-drag to orbit and Ctrl + left-drag to pan. Two-finger swipe to pan, Shift + two-finger swipe to orbit, pinch or Ctrl + scroll to zoom toward the pointer. Middle-drag to pan and Shift + middle-drag to orbit with a mouse. Double-click the middle button or press F6 to fit. Arrow keys pan, plus or minus zooms. On touchscreens, drag to orbit and use two fingers to pan or pinch to zoom.`,
 						),
 						canvasClassName:
-							"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-amber-200",
+							"block h-full w-full touch-none focus-visible:outline-2 focus-visible:outline-accent",
 						updateScene: sceneUpdate.current,
 						onChange: (snapshot) => {
 							ownCamera.current = {
@@ -319,18 +319,20 @@ export function SceneViewport({
 			{exportError && (
 				<p
 					role="alert"
-					className="absolute bottom-32 left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg border border-amber-200/30 bg-slate-900 p-3 text-sm text-amber-200"
+					className="ui-notice absolute bottom-[calc(var(--chrome-dock)+8px)] left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 px-3 py-2"
 				>
 					{exportError}
 				</p>
 			)}
 			{selectionInfo && (
 				<FloatingPanel label="Selection attributes" position="top-right">
-					<div className="min-h-0 overflow-y-auto overscroll-contain p-2.5">
-						<p className="break-words text-[14px] leading-[1.7] text-[#e8b77e]">
+					<header className="shrink-0 border-b border-line-subtle px-3 py-2.5">
+						<p className="m-0 break-words text-sm font-semibold">
 							{selectionInfo.name || "Unnamed component"}
 						</p>
-						<dl className="my-4 text-[12px]">
+					</header>
+					<div className="min-h-0 overflow-y-auto overscroll-contain px-3 py-1.5">
+						<dl className="m-0 text-xs">
 							{[
 								[
 									"Type",
@@ -345,10 +347,10 @@ export function SceneViewport({
 							].map(([label, value]) => (
 								<div
 									key={label}
-									className="flex justify-between gap-3 border-b border-[#ffffff0a] py-2"
+									className="flex min-h-8 items-center justify-between gap-3"
 								>
-									<dt className="text-[#9ba7b8]">{label}</dt>
-									<dd className="min-w-0 break-words text-right tabular-nums">
+									<dt className="text-fg-muted">{label}</dt>
+									<dd className="m-0 min-w-0 break-words text-right tabular-nums">
 										{value}
 									</dd>
 								</div>

@@ -56,7 +56,7 @@ function ThumbnailSkeleton() {
 		<span
 			aria-hidden="true"
 			data-thumbnail-skeleton=""
-			className="block h-7 w-11 shrink-0 animate-pulse rounded bg-white/10 motion-reduce:animate-none"
+			className="block h-7 w-11 shrink-0 animate-pulse rounded-sm bg-hover motion-reduce:animate-none"
 		/>
 	);
 }
