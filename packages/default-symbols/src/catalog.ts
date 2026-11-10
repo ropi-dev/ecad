@@ -718,6 +718,8 @@ export const catalog: readonly SourceSymbol[] = [
 		source: "power:GND",
 		showPinLabels: false,
 		rotation: 0,
+		// Like KiCad power symbols. Net symbols are not circuit components.
+		pinType: "power-in",
 		drawing: [
 			[
 				"polyline",
@@ -742,6 +744,8 @@ export const catalog: readonly SourceSymbol[] = [
 		source: "power:VCC",
 		showPinLabels: false,
 		rotation: 0,
+		// Like KiCad power symbols. Net symbols are not circuit components.
+		pinType: "power-in",
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
 			["polyline", [0.0, 0.0], [0.0, 100.0]],
@@ -760,6 +764,8 @@ export const catalog: readonly SourceSymbol[] = [
 		source: "power:VDD",
 		showPinLabels: false,
 		rotation: 0,
+		// Like KiCad power symbols. Net symbols are not circuit components.
+		pinType: "power-in",
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
 			["polyline", [0.0, 0.0], [0.0, 100.0]],
@@ -778,6 +784,8 @@ export const catalog: readonly SourceSymbol[] = [
 		source: "power:+3V3",
 		showPinLabels: false,
 		rotation: 0,
+		// Like KiCad power symbols. Net symbols are not circuit components.
+		pinType: "power-in",
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
 			["polyline", [0.0, 0.0], [0.0, 100.0]],
@@ -796,6 +804,8 @@ export const catalog: readonly SourceSymbol[] = [
 		source: "power:+5V",
 		showPinLabels: false,
 		rotation: 0,
+		// Like KiCad power symbols. Net symbols are not circuit components.
+		pinType: "power-in",
 		drawing: [
 			["polyline", [-30.0, 50.0], [0.0, 100.0]],
 			["polyline", [0.0, 0.0], [0.0, 100.0]],
@@ -899,6 +909,13 @@ export const catalog: readonly SourceSymbol[] = [
 		value: "Op amp",
 		source: "Amplifier_Operational:LM321",
 		rotation: 0,
+		pinTypes: {
+			"+": "input",
+			"-": "input",
+			OUT: "output",
+			"V+": "power-in",
+			"V-": "power-in",
+		},
 		drawing: [
 			// Pin names are metadata in ECAD. Draw the input polarity marks explicitly.
 			["polyline", [-175, 100], [-125, 100]],
@@ -914,7 +931,7 @@ export const catalog: readonly SourceSymbol[] = [
 			["pin", "+", -300.0, 100.0, 100.0, "R"],
 			["pin", "V-", -100.0, -300.0, 150.0, "U"],
 			["pin", "-", -300.0, -100.0, 100.0, "R"],
-			["pin", "4", 300.0, 0.0, 100.0, "L"],
+			["pin", "OUT", 300.0, 0.0, 100.0, "L"],
 			["pin", "V+", -100.0, 300.0, 150.0, "D"],
 		],
 	},
@@ -955,8 +972,9 @@ export const catalog: readonly SourceSymbol[] = [
 			["polyline", [-65.0, 75.0], [-45.0, 75.0]],
 			["polyline", [-55.0, 85.0], [-55.0, 65.0]],
 			["polyline", [0.0, 125.0], [0.0, -125.0]],
-			["pin", "-", -100.0, 100.0, 100.0, "R"],
-			["pin", "+", -100.0, -100.0, 100.0, "R"],
+			// Pin 1 is positive, next to the drawn plus mark, as in KiCad.
+			["pin", "+", -100.0, 100.0, 100.0, "R"],
+			["pin", "-", -100.0, -100.0, 100.0, "R"],
 		],
 	},
 	{

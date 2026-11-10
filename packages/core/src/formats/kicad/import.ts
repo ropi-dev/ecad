@@ -1,4 +1,8 @@
 import type { ShapeInput } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	type PinElectricalType,
+	pinElectricalTypes,
+} from "@ecad/drawing-core/drawing/pin-types.ts";
 import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
@@ -22,6 +26,17 @@ import {
 import { measurePerformance } from "#/performance/runtime.ts";
 
 type XY = [number, number];
+/** KiCad pin types such as `power_in` map to `power-in`. Passive pins store no type. */
+function kicadPinType(token: SExpr[number] | undefined): {
+	electricalType?: PinElectricalType;
+} {
+	const type = String(token).replaceAll("_", "-");
+	return type !== "passive" &&
+		(pinElectricalTypes as readonly string[]).includes(type)
+		? { electricalType: type as PinElectricalType }
+		: {};
+}
+
 export interface KiCadImportReport {
 	version: string;
 	sheet: { width: number; height: number };
@@ -186,7 +201,7 @@ function convert(source: string): KiCadImportResult {
 	};
 	const warnings = new Set<string>([
 		"Net names apply throughout this drawing. KiCad hierarchical and local power scopes are not represented.",
-		"Pin electrical types, footprints, simulation settings, and other source metadata are retained in the import report, not applied to electrical analysis.",
+		"Footprints, simulation settings, and other source metadata are retained in the import report, not applied to electrical analysis.",
 		"Pin names and numbers use native visibility fields. KiCad label placement, font styling and overbars are approximated.",
 		"No-connect markers are graphics only. Wire and pin connectivity uses ECAD geometry. Hierarchical sheets and buses are not imported.",
 		"KiCad colors, line patterns, font styling, text mirroring, label outlines and pin decoration shapes are approximated. Download the import report to retain source metadata, which is not saved in the drawing.",
@@ -408,6 +423,7 @@ function convert(source: string): KiCadImportResult {
 						kind: "pin",
 						name,
 						number,
+						...kicadPinType(g[1]),
 						length,
 						showName:
 							!hidden(g) &&

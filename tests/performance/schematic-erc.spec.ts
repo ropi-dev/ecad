@@ -37,8 +37,10 @@ test(
 		await expect(
 			toolbar.getByRole("button", { name: "Shapes", exact: true }),
 		).toBeEnabled();
-		// The imported reference design is clean; an unwired resistor adds two
-		// findings to select.
+		// The imported reference design has one finding: KiCad pin types make
+		// its RC-filtered VREG_AVDD rail an undriven power input, as in KiCad
+		// without a PWR_FLAG. Builds before pin types report none. An unwired
+		// resistor adds two warnings.
 		await toolbar.getByRole("button", { name: "Symbols", exact: true }).click();
 		await page
 			.getByRole("button", { name: "Insert Resistor, US", exact: true })
@@ -60,7 +62,7 @@ test(
 					await panel
 						.getByRole("button", { name: "Run ERC", exact: true })
 						.click();
-					await expect(status).toHaveText("0 errors, 2 warnings");
+					await expect(status).toHaveText(/^(0 errors|1 error), 2 warnings$/);
 				}),
 			);
 		}

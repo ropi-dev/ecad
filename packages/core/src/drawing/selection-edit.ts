@@ -1,4 +1,5 @@
 import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
+import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
 	boxBorder,
 	type EditorShape,
@@ -44,6 +45,11 @@ export type SelectionEdit =
 			readonly value: string;
 	  }
 	| {
+			readonly kind: "pin";
+			readonly attribute: "electricalType";
+			readonly value: PinElectricalType;
+	  }
+	| {
 			readonly kind: "symbol-attribute";
 			readonly attribute: keyof EditorSymbol["attributes"];
 			readonly value: string;
@@ -53,6 +59,19 @@ export type SelectionEdit =
 			readonly kind: "symbol-label-position";
 			readonly position: SymbolLabelPosition;
 	  };
+
+/**
+ * Whether an edit applies to a pin that stays fixed to its symbol. Only the
+ * electrical type and label visibility change, as overrides on that placement.
+ */
+export function editsFixedPin(edit: SelectionEdit): boolean {
+	return (
+		edit.kind === "pin" &&
+		(edit.attribute === "electricalType" ||
+			edit.attribute === "showName" ||
+			edit.attribute === "showNumber")
+	);
+}
 
 export interface SelectionEditContext {
 	/** The selected top-level shapes. */
@@ -208,7 +227,10 @@ export function applySelectionEdit(
 			return single?.kind === "pin"
 				? {
 						replacements: [{ ...single, [edit.attribute]: edit.value }],
-						label: `Change pin ${edit.attribute}`,
+						label:
+							edit.attribute === "electricalType"
+								? "Change pin type"
+								: `Change pin ${edit.attribute}`,
 					}
 				: undefined;
 		case "symbol-attribute":

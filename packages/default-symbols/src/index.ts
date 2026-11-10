@@ -1,3 +1,4 @@
+import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
 	MM_PER_MIL,
 	SYMBOL_TEXT_SIZE,
@@ -17,6 +18,9 @@ export type {
 export { symbolCategories } from "./types.ts";
 
 const MIL_TO_GRID = MM_PER_MIL;
+/** Passive pins store no type, so files stay readable by earlier versions. */
+const electricalType = (type: PinElectricalType | undefined) =>
+	type && type !== "passive" ? { electricalType: type } : {};
 const round = (value: number) => Math.round(value * 1e9) / 1e9 || 0;
 
 function generate(source: SourceSymbol): DefaultSymbol {
@@ -86,6 +90,7 @@ function generate(source: SourceSymbol): DefaultSymbol {
 				shapes.push({
 					kind: "pin",
 					name,
+					...electricalType(source.pinTypes?.[name] ?? source.pinType),
 					...(number === undefined
 						? {}
 						: {
@@ -103,6 +108,9 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			}
 		}
 	}
+	for (const name of Object.keys(source.pinTypes ?? {}))
+		if (!shapes.some((shape) => shape.kind === "pin" && shape.name === name))
+			throw new Error(`${source.id} has a type for missing pin ${name}.`);
 	// Keep labels clear of the geometry, including tall connectors and power pins.
 	const ys = shapes.flatMap((shape) => {
 		if ("x1" in shape) return [shape.y1, shape.y2];

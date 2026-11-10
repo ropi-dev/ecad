@@ -5,11 +5,18 @@ import {
 } from "@ecad/drawing-core/drawing/line-style.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
+	type PinElectricalType,
+	pinElectricalType,
+	pinElectricalTypeLabels,
+	pinElectricalTypes,
+} from "@ecad/drawing-core/drawing/pin-types.ts";
+import {
 	boxBorder,
 	boxText,
 	type EditorShape,
 	type EditorSymbol,
 	isBasicShape,
+	type PinShape,
 	type ShapeAttribute,
 	type SymbolLabelPosition,
 	shapeBounds,
@@ -224,6 +231,62 @@ interface SelectionAttributesProps {
 	onTextFocus: () => void;
 }
 
+function PinTypeSelect({
+	pin,
+	onEdit,
+}: {
+	pin: { readonly electricalType?: PinElectricalType };
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	return (
+		<select
+			aria-label="Electrical type"
+			className="ui-select w-36"
+			value={pinElectricalType(pin)}
+			onChange={(event) =>
+				onEdit({
+					kind: "pin",
+					attribute: "electricalType",
+					value: event.currentTarget.value as PinElectricalType,
+				})
+			}
+		>
+			{pinElectricalTypes.map((type) => (
+				<option key={type} value={type}>
+					{pinElectricalTypeLabels[type]}
+				</option>
+			))}
+		</select>
+	);
+}
+
+/** Show name and Show number checkboxes for one pin. */
+function pinLabelRows(
+	pin: Pick<PinShape, "showLabels" | "showName" | "showNumber">,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	return (["showName", "showNumber"] as const).map((attribute) => {
+		const label = attribute === "showName" ? "Show name" : "Show number";
+		return [
+			label,
+			<input
+				key={attribute}
+				type="checkbox"
+				aria-label={label}
+				className="ui-checkbox"
+				checked={pin[attribute] ?? pin.showLabels ?? true}
+				onChange={(event) =>
+					onEdit({
+						kind: "pin",
+						attribute,
+						value: event.currentTarget.checked,
+					})
+				}
+			/>,
+		];
+	});
+}
+
 export function SelectionAttributes(props: SelectionAttributesProps) {
 	const symbol = props.shapes.length === 1 ? props.shapes[0] : undefined;
 	if (props.readOnly && symbol)
@@ -232,6 +295,7 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 				shape={symbol}
 				onClear={props.onClear}
 				onEditSymbol={props.onEditSymbol}
+				onEdit={props.onEdit}
 			/>
 		);
 	if (symbol?.kind === "symbol")
@@ -397,6 +461,14 @@ function SelectionAttributesPanel({
 					/>,
 				])
 			: []),
+		...(single?.kind === "pin"
+			? [
+					[
+						"Electrical type",
+						<PinTypeSelect key="electricalType" pin={single} onEdit={onEdit} />,
+					] as [string, ReactNode],
+				]
+			: []),
 		...(symbol
 			? [
 					...(allowNetEdits
@@ -501,32 +573,7 @@ function SelectionAttributesPanel({
 				["Width", distance(right - left)],
 				["Height", distance(top - bottom)],
 			];
-	const pinLabels: [string, ReactNode][] =
-		single?.kind === "pin"
-			? (["showName", "showNumber"] as const).map(
-					(attribute): [string, ReactNode] => {
-						const label =
-							attribute === "showName" ? "Show name" : "Show number";
-						return [
-							label,
-							<input
-								key={attribute}
-								type="checkbox"
-								aria-label={label}
-								className="ui-checkbox"
-								checked={single[attribute] ?? single.showLabels ?? true}
-								onChange={(event) =>
-									onEdit({
-										kind: "pin",
-										attribute,
-										value: event.currentTarget.checked,
-									})
-								}
-							/>,
-						];
-					},
-				)
-			: [];
+	const pinLabels = single?.kind === "pin" ? pinLabelRows(single, onEdit) : [];
 	const labelPosition = symbol?.netSymbol &&
 		symbol.children.length > 0 &&
 		allowNetEdits && (
@@ -808,31 +855,30 @@ function SelectionAttributesPanel({
 	);
 }
 
-const showLabel = (shown: boolean) => (shown ? "Shown" : "Hidden");
-
 /** The attributes of a symbol child that only the symbol definition changes. */
 function FixedChildAttributes({
 	shape,
 	onClear,
 	onEditSymbol,
+	onEdit,
 }: {
 	shape: EditorShape;
 	onClear: () => void;
 	onEditSymbol?: () => void;
+	onEdit: (edit: SelectionEdit) => void;
 }) {
 	const degrees = (((shape.rotation * 180) / Math.PI) % 360) + 360;
 	const angle = `${Number((degrees % 360).toFixed(2))}°`;
-	const attributes: [string, string][] =
+	const attributes: [string, ReactNode][] =
 		shape.kind === "pin"
 			? [
 					["Type", "pin"],
 					["Number", shape.number || "—"],
 					["Name", shape.name || "—"],
 					[
-						"Number label",
-						showLabel(shape.showNumber ?? shape.showLabels ?? true),
+						"Electrical type",
+						<PinTypeSelect key="electricalType" pin={shape} onEdit={onEdit} />,
 					],
-					["Name label", showLabel(shape.showName ?? shape.showLabels ?? true)],
 					["Center X", formatMils(shape.x)],
 					["Center Y", formatMils(shape.y)],
 					["Lead length", formatMils(shape.length ?? 0)],
@@ -881,10 +927,16 @@ function FixedChildAttributes({
 				<Section title="Properties">
 					<Rows rows={attributes} />
 				</Section>
+				{shape.kind === "pin" && (
+					<Section title="Appearance">
+						<Rows rows={pinLabelRows(shape, onEdit)} />
+					</Section>
+				)}
 				<Tips>
 					Pins are fixed by the symbol definition. Edit the symbol to change
-					them. Positions are relative to the symbol center. Dragging, arrow
-					keys and rotation act on the whole symbol.
+					them. Electrical type and label visibility changes apply to this
+					placement only. Positions are relative to the symbol center. Dragging,
+					arrow keys and rotation act on the whole symbol.
 				</Tips>
 			</div>
 		</FloatingPanel>

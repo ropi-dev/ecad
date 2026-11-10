@@ -1,3 +1,4 @@
+import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
 	fromMils,
 	SYMBOL_TEXT_SIZE,
@@ -17,9 +18,14 @@ export function legacySymbols(): DefaultSymbol[] {
 		x2: fromMils(x2),
 		y2: fromMils(y2),
 	});
-	const pin = (x: number, y: number): SymbolPrimitive => ({
+	const pin = (
+		x: number,
+		y: number,
+		electricalType?: PinElectricalType,
+	): SymbolPrimitive => ({
 		kind: "pin",
 		name: "",
+		...(electricalType ? { electricalType } : {}),
 		x: fromMils(x),
 		y: fromMils(y),
 	});
@@ -116,7 +122,8 @@ export function legacySymbols(): DefaultSymbol[] {
 					line(-100, 50, 100, 50),
 					line(-50, 0, 50, 0),
 					line(-10, -50, 10, -50),
-					pin(0, 150),
+					// Like KiCad power symbols. Net symbols are not circuit components.
+					pin(0, 150, "power-in"),
 				],
 			},
 			texts: [
