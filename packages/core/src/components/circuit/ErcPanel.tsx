@@ -18,16 +18,16 @@ import {
 	FloatingPanel,
 	type FloatingPanelPosition,
 } from "#/components/viewer/FloatingPanel.tsx";
+import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 const pageSize = 50;
 
 const severityStyle = {
-	error: { label: "Error", className: "text-red-300" },
-	warning: { label: "Warning", className: "text-amber-200" },
+	error: { label: "Error", className: "text-danger" },
+	warning: { label: "Warning", className: "text-warning" },
 } as const;
 
-const iconButton =
-	"grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-[#98a4b6] hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] disabled:pointer-events-none disabled:opacity-35";
+const iconButton = panelIconButtonClassName;
 
 const count = (value: number, noun: string) =>
 	`${value.toLocaleString()} ${noun}${value === 1 ? "" : "s"}`;
@@ -62,12 +62,12 @@ export function ErcPanel({
 	source,
 	revision,
 	check,
-	position = "top-right",
+	position = "top-left",
 	onClose,
 	onSelect,
 }: {
 	source: "circuit" | "schematic";
-	/** Where the panel floats, clear of the editor's other panels. */
+	/** Where the panel floats. Both editors open it under the document bar. */
 	position?: FloatingPanelPosition;
 	revision: unknown;
 	check(): ErcDiagnostic[];
@@ -99,66 +99,67 @@ export function ErcPanel({
 				if (event.key === "Escape") onClose();
 			}}
 		>
-			<div className="flex min-h-0 flex-col p-2.5">
-				<header className="flex items-center justify-between gap-3">
-					<h2 className="m-0 text-[11px] font-semibold text-[#98a4b6]">
-						Electrical rules check
-					</h2>
-					<button
-						type="button"
-						className={iconButton}
-						aria-label="Close electrical rules check"
-						title="Close"
-						onClick={onClose}
-					>
-						<X size={16} aria-hidden="true" />
-					</button>
-				</header>
+			<header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
+				<h2 className="m-0 text-sm font-semibold">Electrical rules check</h2>
 				<button
 					type="button"
-					className="mt-2 w-full cursor-pointer rounded border border-[#e8b77e60] bg-[#e8b77e15] px-3 py-2 text-[12px] text-[#e8b77e] hover:bg-[#e8b77e25] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-					onClick={() => {
-						try {
-							setResult({ revision, diagnostics: check() });
-							setError("");
-							setPage(0);
-							setActiveId(null);
-						} catch (cause) {
-							setError(errorMessage(cause, "ERC failed."));
-						}
-					}}
+					className={iconButton}
+					aria-label="Close electrical rules check"
+					title="Close"
+					onClick={onClose}
 				>
-					Run ERC
+					<X size={16} aria-hidden="true" />
 				</button>
-				<output
-					className={`mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-[1.5] ${error ? "text-red-300" : "text-[#9ba7b8]"}`}
-				>
-					{error ? (
-						`Check failed: ${error}`
-					) : !result ? (
-						`Run checks on this ${source}'s pin types and connections.`
-					) : stale ? (
-						`${source === "circuit" ? "Circuit" : "Schematic"} changed. Run ERC again to update results.`
-					) : (
-						<>
-							<span
-								className={`inline-flex items-center gap-1 font-medium tabular-nums ${errors ? severityStyle.error.className : ""}`}
-							>
-								<OctagonAlert size={14} aria-hidden="true" />
-								{count(errors, "error")}
-							</span>
-							<span className="sr-only">, </span>
-							<span
-								className={`inline-flex items-center gap-1 font-medium tabular-nums ${warnings ? severityStyle.warning.className : ""}`}
-							>
-								<TriangleAlert size={14} aria-hidden="true" />
-								{count(warnings, "warning")}
-							</span>
-						</>
-					)}
-				</output>
+			</header>
+			<div className="flex min-h-0 flex-col p-3">
+				<div className="flex items-center gap-3">
+					<output
+						className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-[1.125rem] ${error ? "text-danger" : "text-fg-muted"}`}
+					>
+						{error ? (
+							`Check failed: ${error}`
+						) : !result ? (
+							`Run checks on this ${source}'s pin types and connections.`
+						) : stale ? (
+							`${source === "circuit" ? "Circuit" : "Schematic"} changed. Run ERC again to update results.`
+						) : (
+							<>
+								<span
+									className={`inline-flex items-center gap-1 font-medium tabular-nums ${errors ? severityStyle.error.className : ""}`}
+								>
+									<OctagonAlert size={14} aria-hidden="true" />
+									{count(errors, "error")}
+								</span>
+								<span className="sr-only">, </span>
+								<span
+									className={`inline-flex items-center gap-1 font-medium tabular-nums ${warnings ? severityStyle.warning.className : ""}`}
+								>
+									<TriangleAlert size={14} aria-hidden="true" />
+									{count(warnings, "warning")}
+								</span>
+							</>
+						)}
+					</output>
+					<button
+						type="button"
+						className="ui-button shrink-0"
+						data-variant="primary"
+						onClick={() => {
+							try {
+								setResult({ revision, diagnostics: check() });
+								setError("");
+								setPage(0);
+								setActiveId(null);
+							} catch (cause) {
+								setError(errorMessage(cause, "ERC failed."));
+							}
+						}}
+					>
+						Run ERC
+					</button>
+				</div>
 				{current && diagnostics.length === 0 && (
-					<p className="mt-2 text-[12px] leading-[1.5] text-[#c7d0dc]">
+					<p className="m-0 mt-2 text-xs leading-[1.125rem] text-fg">
 						No electrical issues found by the {defaultErcRules.length} enabled
 						rules.
 					</p>
@@ -166,16 +167,16 @@ export function ErcPanel({
 				{current && diagnostics.length > 0 && (
 					<>
 						<ol
-							className="m-0 mt-2 min-h-0 list-none overflow-y-auto overscroll-contain p-0"
+							className="-mx-1.5 mt-2 mb-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0"
 							aria-label="ERC results"
 						>
 							{diagnostics.slice(first, last).map((item) => {
 								const severity = severityStyle[item.severity];
 								return (
-									<li key={item.id} className="mb-[3px] last:mb-0">
+									<li key={item.id} className="mb-0.5 last:mb-0">
 										<button
 											type="button"
-											className="w-full cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1.5 text-left text-[11px] leading-[1.4] text-[#c7d0dc] transition-[background,border-color] duration-150 hover:bg-[#ffffff08] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#e8b77e] aria-[current=true]:border-[#b88f6170] aria-[current=true]:bg-[#e8b77e0c]"
+											className="ui-toggle w-full cursor-pointer rounded-md border px-1.5 py-1.5 text-left text-2xs leading-4 [--toggle-on-fg:var(--color-fg-muted)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-fg:var(--color-fg-muted)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
 											aria-current={activeId === item.id ? "true" : undefined}
 											onClick={() => {
 												const target = item.target ?? item.subjects[0];
@@ -186,8 +187,8 @@ export function ErcPanel({
 											<span className={`font-medium ${severity.className}`}>
 												{severity.label}
 											</span>
-											<span className="text-[#8892a2]"> · {item.ruleId}</span>
-											<span className="mt-0.5 block break-words text-[12px] text-[#e1e6ee]">
+											<span className="text-fg-faint"> · {item.ruleId}</span>
+											<span className="mt-0.5 block break-words text-xs text-fg">
 												{item.message}
 											</span>
 										</button>
@@ -196,7 +197,7 @@ export function ErcPanel({
 							})}
 						</ol>
 						{diagnostics.length > pageSize && (
-							<footer className="mt-2 flex items-center justify-between gap-2 border-t border-[#ffffff0a] pt-2">
+							<footer className="mt-2 flex items-center justify-between gap-2 border-t border-line-subtle pt-2">
 								<button
 									type="button"
 									className={iconButton}
@@ -207,7 +208,7 @@ export function ErcPanel({
 								>
 									<ChevronLeft size={16} aria-hidden="true" />
 								</button>
-								<span className="text-[11px] text-[#98a4b6] tabular-nums">
+								<span className="text-2xs text-fg-muted tabular-nums">
 									{(first + 1).toLocaleString()}–{last.toLocaleString()} of{" "}
 									{diagnostics.length.toLocaleString()}
 								</span>

@@ -28,7 +28,7 @@ export function Viewer2D({
 	);
 	return (
 		<div
-			className="absolute inset-0 min-h-0 touch-none overscroll-contain select-none [&_canvas:focus-visible]:outline-2 [&_canvas:focus-visible]:-outline-offset-2 [&_canvas:focus-visible]:outline-[#e8b77e]"
+			className="absolute inset-0 min-h-0 touch-none overscroll-contain select-none [&_canvas:focus-visible]:outline-2 [&_canvas:focus-visible]:-outline-offset-2 [&_canvas:focus-visible]:outline-accent"
 			role="application"
 			aria-label={ariaLabel}
 		>

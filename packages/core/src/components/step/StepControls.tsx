@@ -1,3 +1,4 @@
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
 export function StepControls({
@@ -10,14 +11,15 @@ export function StepControls({
 	onWireframe: () => void;
 }) {
 	return (
-		<button
+		<TooltipButton
 			type="button"
-			className={viewControlButtonClassName}
+			className={`${viewControlButtonClassName} px-2.5`}
 			disabled={!enabled}
 			aria-pressed={wireframe}
+			tooltip={wireframe ? "Show solid surfaces" : "Show wireframe"}
 			onClick={onWireframe}
 		>
 			Wire
-		</button>
+		</TooltipButton>
 	);
 }

@@ -4,19 +4,23 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	CircuitBoard,
-	File,
+	Component,
+	FileCog,
+	FileUp,
+	Folder,
 	FolderOpen,
+	House,
 	Layers,
-	ListTree,
 	LogOut,
-	Pin,
-	PinOff,
+	type LucideIcon,
+	PanelLeft,
 	PlugZap,
 	Plus,
 	Search,
+	Workflow,
 	X,
 } from "lucide-react";
-import { DropdownMenu } from "radix-ui";
+import { DropdownMenu, Tooltip } from "radix-ui";
 import {
 	Fragment,
 	lazy,
@@ -29,14 +33,19 @@ import {
 	useState,
 } from "react";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { PinnedNotice } from "#/components/ui/Toaster.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import {
-	formatShortcut,
 	hasShortcutModifier,
 	shortcutModifier,
 } from "#/components/viewer/shortcutModifier.ts";
-import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
+import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
+import {
+	scrollFadeClassName,
+	useScrollEdges,
+} from "#/components/viewer/useScrollEdges.ts";
 import type { KiCadImportReport } from "#/formats/kicad/import.ts";
+import { addProjectFiles } from "#/projects/add-project-files.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import {
 	type AssetKind,
@@ -49,9 +58,15 @@ import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import { SaveProjectButton } from "#/projects/SaveProjectButton.tsx";
-import { sidebarMenuContent, sidebarMenuItem } from "#/projects/sidebarMenu.ts";
+import {
+	sidebarMenuContent,
+	sidebarMenuItem,
+	sidebarMenuLabel,
+	sidebarMenuSeparator,
+} from "#/projects/sidebarMenu.ts";
 import {
 	useWorkspaceControls,
+	useWorkspaceRegistration,
 	workspaceActionClassName,
 } from "#/projects/WorkspaceControls.tsx";
 
@@ -66,14 +81,32 @@ const CreateFileDialog = lazy(() =>
 	})),
 );
 const focus =
-	"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#e8b77e]";
-const button = `inline-flex h-7 items-center justify-center gap-1.5 rounded text-[11px] text-[#98a4b6] hover:bg-white/10 hover:text-white disabled:opacity-40 ${focus}`;
+	"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+const row = `flex h-7 min-w-0 items-center gap-2 rounded-md text-sm no-underline pointer-coarse:h-11 ${focus}`;
+// Hovering the window's left edge reveals the sidebar. The pointer has to rest
+// there before it opens, and may stray out briefly before it closes.
+const hoverOpenDelay = 250;
+const hoverCloseDelay = 400;
+// The file inputs stay mounted while the menu that opens them is closed.
 const importTypes = [
-	["kicad", "KiCad schematic", CircuitBoard, ".kicad_sch"],
-	["symbol", "symbol", CircuitBoard, ".ecadsym,.json"],
-	["gerber", "Gerber", Layers, undefined],
-	["step", "STEP", Box, ".step,.stp"],
+	["kicad", "KiCad schematic", FileUp, ".kicad_sch", "KiCad schematic..."],
+	["symbol", "symbol", Component, ".ecadsym,.json", "Symbols..."],
+	["gerber", "Gerber", Layers, undefined, "Gerber files..."],
+	["step", "STEP", Box, ".step,.stp", "STEP models..."],
 ] as const;
+const newFileTypes = [
+	["drawing", CircuitBoard],
+	["symbol", Component],
+	["circuit", Workflow],
+] as const;
+const fileIcons: Record<string, LucideIcon> = {
+	Drawing: CircuitBoard,
+	Circuit: Workflow,
+	Symbol: Component,
+	Gerber: Layers,
+	STEP: Box,
+	Project: FileCog,
+};
 const filters = [
 	"All files",
 	"Circuit",
@@ -127,12 +160,36 @@ export function ProjectFilesSidebar({
 		}),
 	);
 	const workspaceControls = useWorkspaceControls();
+	const registration = useWorkspaceRegistration();
+	const setSidebarPinned = registration?.setSidebarPinned;
+	const registerSidebar = registration?.registerSidebar;
 	const library = useSymbolLibrary();
 	const [pinned, setPinned] = useState(false);
+	useEffect(() => {
+		setSidebarPinned?.(pinned);
+		return () => setSidebarPinned?.(false);
+	}, [pinned, setSidebarPinned]);
+	const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+	const [filterRow, setFilterRow] = useState<HTMLFieldSetElement | null>(null);
+	useScrollEdges(filterRow);
+	// Lets the start page open the sidebar, as its own button does.
+	const openDrawer = useCallback(() => setTouchOpen(true), []);
+	useEffect(() => registerSidebar?.(openDrawer), [registerSidebar, openDrawer]);
 	const [hovered, setHovered] = useState(false);
 	const [focused, setFocused] = useState(false);
 	const [touchOpen, setTouchOpen] = useState(false);
 	const sidebarRef = useRef<HTMLFieldSetElement>(null);
+	const panelRef = useRef<HTMLElement>(null);
+	const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const hoverSoon = useCallback((next: boolean, delay: number) => {
+		clearTimeout(hoverTimer.current);
+		hoverTimer.current = setTimeout(() => setHovered(next), delay);
+	}, []);
+	const setHoveredNow = useCallback((next: boolean) => {
+		clearTimeout(hoverTimer.current);
+		setHovered(next);
+	}, []);
+	useEffect(() => () => clearTimeout(hoverTimer.current), []);
 	const panelId = useId();
 	const [query, setQuery] = useState("");
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -158,14 +215,14 @@ export function ProjectFilesSidebar({
 		const sync = (event: PointerEvent) => {
 			if (event.pointerType !== "mouse") return;
 			document.removeEventListener("pointermove", sync, true);
-			setHovered(
+			setHoveredNow(
 				event.target instanceof Node &&
-					!!sidebarRef.current?.contains(event.target),
+					!!panelRef.current?.contains(event.target),
 			);
 		};
 		document.addEventListener("pointermove", sync, true);
 		return () => document.removeEventListener("pointermove", sync, true);
-	}, [overlayOpen]);
+	}, [overlayOpen, setHoveredNow]);
 	const togglePin = useCallback(() => {
 		if (
 			document.activeElement instanceof HTMLElement &&
@@ -173,10 +230,10 @@ export function ProjectFilesSidebar({
 		)
 			document.activeElement.blur();
 		setFocused(false);
-		setHovered(false);
+		setHoveredNow(false);
 		setTouchOpen(false);
 		setPinned((current) => !current);
-	}, []);
+	}, [setHoveredNow]);
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (
@@ -194,26 +251,30 @@ export function ProjectFilesSidebar({
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [togglePin]);
+	const closeDrawer = useCallback(() => {
+		if (
+			document.activeElement instanceof HTMLElement &&
+			sidebarRef.current?.contains(document.activeElement)
+		)
+			document.activeElement.blur();
+		setTouchOpen(false);
+		setFocused(false);
+		setHoveredNow(false);
+	}, [setHoveredNow]);
 	useEffect(() => {
 		if (!touchOpen || pinned || overlayOpen) return;
+		// The backdrop takes taps on the workspace. This covers what is drawn
+		// above it, such as a toast.
 		const dismiss = (event: PointerEvent) => {
 			if (
-				!(event.target instanceof Node) ||
-				sidebarRef.current?.contains(event.target)
+				event.target instanceof Node &&
+				!sidebarRef.current?.contains(event.target)
 			)
-				return;
-			if (
-				document.activeElement instanceof HTMLElement &&
-				sidebarRef.current?.contains(document.activeElement)
-			)
-				document.activeElement.blur();
-			setTouchOpen(false);
-			setFocused(false);
-			setHovered(false);
+				closeDrawer();
 		};
 		document.addEventListener("pointerdown", dismiss, true);
 		return () => document.removeEventListener("pointerdown", dismiss, true);
-	}, [touchOpen, pinned, overlayOpen]);
+	}, [touchOpen, pinned, overlayOpen, closeDrawer]);
 	const editorLink = useRef<HTMLAnchorElement>(null);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
@@ -349,32 +410,10 @@ export function ProjectFilesSidebar({
 		if (!project || !files.length) return;
 		setImporting(true);
 		setError("");
-		// Files over the size limit are reported without being read or stored.
-		const rejected: string[] = [];
-		const accepted = files.filter((file) => {
-			const reason = fileSizeProblem(assetFormat(file.name, kind), file.size);
-			if (reason) rejected.push(`${file.name}: ${reason}`);
-			return !reason;
-		});
 		try {
-			if (accepted.length) await project.importAssets(accepted, kind);
-			if (rejected.length) {
-				const description = rejected.join("\n");
-				setError(description);
-				toastManager.add({
-					type: accepted.length ? "warning" : "error",
-					title: accepted.length
-						? "Files added with issues"
-						: "Unable to add project files",
-					description,
-				});
-			} else if (accepted.length) {
-				toastManager.add({
-					type: "success",
-					title: "Files added",
-					description: `${accepted.length} file${accepted.length === 1 ? "" : "s"} added to the project.`,
-				});
-			}
+			setError(
+				(await addProjectFiles(project.importAssets, files, kind)).problems,
+			);
 		} catch (cause) {
 			showError(cause, "Unable to add project files.");
 		} finally {
@@ -399,22 +438,84 @@ export function ProjectFilesSidebar({
 		}
 	}
 
+	const activePath = workspaceControls?.document?.path;
+	const circuitOpen = workspaceControls?.document?.circuit ?? false;
+	const plain = workspaceControls?.document?.plain ?? true;
+	const report = importReport && (
+		<output className="ui-panel block bg-raised p-3 text-xs shadow-pop">
+			<span className="block font-semibold">KiCad schematic imported</span>
+			<span className="mt-1 block text-fg-muted">
+				Imported KiCad drawing with electrical net and supply names. Review
+				conversion limits and source metadata in the report.
+			</span>
+			{importReport.skipped.length > 0 && (
+				<>
+					<span className="mt-2 block font-medium text-warning">
+						Skipped {importReport.skipped.length}{" "}
+						{importReport.skipped.length === 1 ? "item" : "items"} that could
+						not be converted:
+					</span>
+					<ul
+						aria-label="Skipped KiCad items"
+						className="m-0 mt-1 max-h-32 list-disc overflow-y-auto pl-4 text-fg-muted"
+					>
+						{importReport.skipped
+							.slice(0, 20)
+							.map(({ item, reason }, index) => (
+								// Units of one multi-unit part share a name and reason.
+								// biome-ignore lint/suspicious/noArrayIndexKey: see above
+								<li key={index}>
+									{item.charAt(0).toUpperCase() + item.slice(1)}: {reason}
+								</li>
+							))}
+					</ul>
+					{importReport.skipped.length > 20 && (
+						<span className="mt-1 block text-fg-muted">
+							Showing the first 20. The report lists all{" "}
+							{importReport.skipped.length}.
+						</span>
+					)}
+				</>
+			)}
+			<span className="mt-3 flex justify-end gap-2">
+				<button
+					type="button"
+					aria-label="Dismiss import report"
+					className="ui-button"
+					data-variant="ghost"
+					onClick={() => setImportReport(undefined)}
+				>
+					Dismiss
+				</button>
+				<button
+					type="button"
+					className="ui-button"
+					data-variant="secondary"
+					onClick={() => {
+						const url = URL.createObjectURL(
+							new Blob([JSON.stringify(importReport, null, 2)], {
+								type: "application/json",
+							}),
+						);
+						const link = document.createElement("a");
+						link.href = url;
+						link.download = "kicad-import-report.json";
+						link.click();
+						setTimeout(() => URL.revokeObjectURL(url), 1000);
+					}}
+				>
+					Download import report
+				</button>
+			</span>
+		</output>
+	);
+
 	return (
 		<fieldset
 			ref={sidebarRef}
 			aria-label="File sidebar"
 			data-shortcut-scope="sidebar"
-			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-[#c7d0dc] ${pinned ? "w-64 max-w-[calc(100vw-4rem)]" : "w-0"}`}
-			onPointerEnter={(event) => {
-				if (
-					event.pointerType === "mouse" &&
-					window.matchMedia("(hover: hover)").matches
-				)
-					setHovered(true);
-			}}
-			onPointerLeave={(event) => {
-				if (event.pointerType === "mouse") setHovered(false);
-			}}
+			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-fg ${pinned ? "w-64 max-w-[calc(100vw-4rem)]" : "w-0"}`}
 			onMouseDownCapture={() => setFocused(false)}
 			onFocusCapture={(event) => {
 				if (event.target.matches(":focus-visible")) setFocused(true);
@@ -427,100 +528,94 @@ export function ProjectFilesSidebar({
 				if (event.key === "Escape" && !overlayOpen) {
 					(document.activeElement as HTMLElement)?.blur();
 					setFocused(false);
-					setHovered(false);
+					setHoveredNow(false);
 					setTouchOpen(false);
 				}
 			}}
 		>
+			{/* Opened by a tap or click, the sidebar is a drawer: a tap outside
+			    closes it without also pressing whatever lies under it. */}
+			{touchOpen && !pinned && !overlayOpen && (
+				<div
+					aria-hidden="true"
+					data-testid="sidebar-backdrop"
+					className="fixed inset-0 animate-fade-in bg-scrim/50 motion-reduce:animate-none"
+					onClick={closeDrawer}
+				/>
+			)}
+			{/* Resting the mouse on the left edge reveals the sidebar. */}
+			<div
+				aria-hidden="true"
+				data-testid="sidebar-edge"
+				className="absolute inset-y-0 left-0 z-10 w-2"
+				onPointerEnter={(event) => {
+					if (
+						event.pointerType === "mouse" &&
+						window.matchMedia("(hover: hover)").matches
+					)
+						hoverSoon(true, hoverOpenDelay);
+				}}
+				onPointerLeave={(event) => {
+					if (event.pointerType === "mouse") hoverSoon(false, hoverCloseDelay);
+				}}
+				onClick={() => setTouchOpen(true)}
+			/>
+			{/* Opens the sidebar on a click, never on hover. The open panel
+			    covers it. */}
 			<button
 				type="button"
 				aria-label="Show project files"
 				aria-expanded={open}
 				aria-controls={panelId}
 				tabIndex={open ? -1 : 0}
-				className={`absolute inset-y-0 left-0 z-10 w-2 border-0 bg-transparent p-0 ${focus}`}
+				data-shortcut-scope={open ? "none" : undefined}
+				className={`ui-panel absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-10 grid size-[var(--chrome-control)] cursor-pointer place-items-center text-fg-muted hover:text-fg ${focus} ${plain ? "workspace-plain" : ""}`}
 				onClick={() => setTouchOpen(true)}
-			/>
-			{importReport && (
-				<output className="fixed bottom-4 right-4 z-50 max-w-sm rounded border border-white/20 bg-[#191c22] p-3 text-xs shadow-lg">
-					<span className="block">
-						Imported KiCad drawing with electrical net and supply names. Review
-						conversion limits and source metadata in the report.
-					</span>
-					{importReport.skipped.length > 0 && (
-						<>
-							<span className="mt-2 block font-medium text-amber-200">
-								Skipped {importReport.skipped.length}{" "}
-								{importReport.skipped.length === 1 ? "item" : "items"} that
-								could not be converted:
-							</span>
-							<ul
-								aria-label="Skipped KiCad items"
-								className="m-0 mt-1 max-h-32 list-disc overflow-y-auto pl-4"
-							>
-								{importReport.skipped
-									.slice(0, 20)
-									.map(({ item, reason }, index) => (
-										// Units of one multi-unit part share a name and reason.
-										// biome-ignore lint/suspicious/noArrayIndexKey: see above
-										<li key={index}>
-											{item.charAt(0).toUpperCase() + item.slice(1)}: {reason}
-										</li>
-									))}
-							</ul>
-							{importReport.skipped.length > 20 && (
-								<span className="block">
-									Showing the first 20. The report lists all{" "}
-									{importReport.skipped.length}.
-								</span>
-							)}
-						</>
-					)}
-					<button
-						type="button"
-						className={button}
-						onClick={() => {
-							const url = URL.createObjectURL(
-								new Blob([JSON.stringify(importReport, null, 2)], {
-									type: "application/json",
-								}),
-							);
-							const link = document.createElement("a");
-							link.href = url;
-							link.download = "kicad-import-report.json";
-							link.click();
-							setTimeout(() => URL.revokeObjectURL(url), 1000);
-						}}
-					>
-						Download import report
-					</button>
-					<button
-						type="button"
-						aria-label="Dismiss import report"
-						className={button}
-						onClick={() => setImportReport(undefined)}
-					>
-						Dismiss
-					</button>
-				</output>
+			>
+				<PanelLeft size={18} aria-hidden="true" />
+			</button>
+			{report && (
+				<PinnedNotice fallbackClassName="fixed right-4 bottom-4 z-50 w-[min(360px,calc(100vw-2rem))]">
+					{report}
+				</PinnedNotice>
 			)}
 
 			<aside
+				ref={panelRef}
 				id={panelId}
 				aria-label="Project files"
 				data-open={open}
 				data-pinned={pinned}
 				aria-hidden={!open}
 				inert={!open}
-				className={`absolute inset-y-0 left-0 flex h-full w-64 max-w-[calc(100vw-4rem)] min-h-0 flex-col overflow-hidden border-r border-[#343b46] bg-[#191c22] transition-transform duration-200 ease-in-out motion-reduce:transition-none ${open ? "translate-x-0" : "-translate-x-full"} ${open && !pinned ? "shadow-xl" : ""}`}
+				onPointerEnter={(event) => {
+					if (
+						event.pointerType === "mouse" &&
+						window.matchMedia("(hover: hover)").matches
+					)
+						setHoveredNow(true);
+				}}
+				onPointerLeave={(event) => {
+					if (event.pointerType === "mouse") hoverSoon(false, hoverCloseDelay);
+				}}
+				className={`absolute inset-y-0 left-0 z-20 flex h-full w-64 max-w-[calc(100vw-4rem)] min-h-0 flex-col overflow-hidden border-r border-line bg-panel transition-transform duration-200 ease-in-out motion-reduce:transition-none ${open ? "translate-x-0" : "-translate-x-full"} ${open && !pinned ? "shadow-pop" : ""}`}
 			>
-				<header className="flex shrink-0 items-center gap-2 border-b border-white/10 h-12 px-3">
-					<ListTree
-						size={17}
-						aria-hidden="true"
-						className="shrink-0 text-[#98a4b6]"
-					/>
-					<h2 className="m-0 text-[13px] font-semibold">Files</h2>
+				<header className="flex h-12 shrink-0 items-center gap-1 pr-2 pl-2">
+					<ProjectLink
+						href="/"
+						aria-label="Workspace home"
+						title={snapshot?.manifest.name}
+						className={`flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-fg no-underline hover:bg-hover pointer-coarse:h-11 ${focus}`}
+					>
+						<House
+							size={16}
+							className="shrink-0 text-fg-faint"
+							aria-hidden="true"
+						/>
+						<span className="truncate text-sm font-semibold">
+							{snapshot?.manifest.name ?? "ECAD"}
+						</span>
+					</ProjectLink>
 					{snapshot && (
 						<DropdownMenu.Root
 							open={addMenuOpen}
@@ -532,7 +627,9 @@ export function ProjectFilesSidebar({
 									type="button"
 									aria-label="Add file"
 									disabled={busy}
-									className={`${button} ml-auto w-7 data-[state=open]:bg-white/10 data-[state=open]:text-white`}
+									className="ui-button"
+									data-variant="ghost"
+									data-icon
 								>
 									<Plus size={16} aria-hidden="true" />
 								</button>
@@ -548,19 +645,33 @@ export function ProjectFilesSidebar({
 									}}
 									className={sidebarMenuContent}
 								>
-									{(["drawing", "symbol", "circuit"] as const).map((kind) => (
+									<DropdownMenu.Label className={sidebarMenuLabel}>
+										New
+									</DropdownMenu.Label>
+									{newFileTypes.map(([kind, Icon]) => (
 										<DropdownMenu.Item
 											key={kind}
 											className={sidebarMenuItem}
 											disabled={busy}
 											onSelect={() => setCreatingFile(kind)}
 										>
-											{kind === "drawing" ? (
-												<File size={14} aria-hidden="true" />
-											) : (
-												<CircuitBoard size={14} aria-hidden="true" />
-											)}
+											<Icon size={14} aria-hidden="true" />
 											New {kind}
+										</DropdownMenu.Item>
+									))}
+									<DropdownMenu.Separator className={sidebarMenuSeparator} />
+									<DropdownMenu.Label className={sidebarMenuLabel}>
+										Import
+									</DropdownMenu.Label>
+									{importTypes.map(([kind, , Icon, , item]) => (
+										<DropdownMenu.Item
+											key={kind}
+											className={sidebarMenuItem}
+											disabled={busy || (kind === "symbol" && library.loading)}
+											onSelect={() => fileInputs.current[kind]?.click()}
+										>
+											<Icon size={14} aria-hidden="true" />
+											{item}
 										</DropdownMenu.Item>
 									))}
 								</DropdownMenu.Content>
@@ -568,9 +679,33 @@ export function ProjectFilesSidebar({
 						</DropdownMenu.Root>
 					)}
 				</header>
+				{importTypes.map(([kind, label, , accept]) => (
+					<input
+						key={kind}
+						ref={(node) => {
+							fileInputs.current[kind] = node;
+						}}
+						type="file"
+						hidden
+						multiple={kind !== "kicad"}
+						aria-label={`Add ${label} files`}
+						accept={accept}
+						disabled={
+							!snapshot || busy || (kind === "symbol" && library.loading)
+						}
+						onChange={(event) => {
+							const files = Array.from(event.target.files ?? []);
+							if (kind === "kicad") {
+								if (files[0]) void uploadSchematic(files[0]);
+							} else if (kind === "symbol") void library.upload(files);
+							else void upload(files, kind);
+							event.target.value = "";
+						}}
+					/>
+				))}
 				<nav
 					aria-label="Workspaces"
-					className="grid shrink-0 grid-cols-4 gap-2 border-b border-white/10 p-3"
+					className="grid shrink-0 grid-cols-4 gap-1.5 px-3 pb-3"
 				>
 					<OpenProjectButton onActiveChange={setOpenMenuActive} />
 					<SaveProjectButton />
@@ -585,7 +720,8 @@ export function ProjectFilesSidebar({
 										disabled
 										className={workspaceActionClassName}
 									>
-										<PlugZap size={20} aria-hidden="true" />
+										<PlugZap size={18} aria-hidden="true" />
+										MCP
 									</button>
 								}
 							>
@@ -601,7 +737,8 @@ export function ProjectFilesSidebar({
 								disabled
 								className={workspaceActionClassName}
 							>
-								<PlugZap size={20} aria-hidden="true" />
+								<PlugZap size={18} aria-hidden="true" />
+								MCP
 							</button>
 						)
 					) : (
@@ -609,61 +746,20 @@ export function ProjectFilesSidebar({
 							href="/editor"
 							aria-label="Schematic editor"
 							onClick={() => project.selectEditorFile()}
-							className={`${workspaceActionClassName} text-[#c3abd8]`}
+							className={workspaceActionClassName}
 						>
-							<CircuitBoard size={20} aria-hidden="true" />
+							<CircuitBoard size={18} aria-hidden="true" />
+							Editor
 						</ProjectLink>
 					)}
 				</nav>
-				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-line-subtle">
 					{snapshot ? (
 						<>
-							<div className="shrink-0 border-b border-white/10 pb-1">
-								<div className="flex items-center h-9 gap-0.5 px-2">
-									<ProjectLink
-										href="/"
-										aria-label="Workspace home"
-										title={snapshot.manifest.name}
-										className={`flex min-w-0 items-center rounded text-xs hover:bg-white/10 hover:text-white flex-1 gap-2 py-1 ${focus}`}
-									>
-										<FolderOpen
-											size={14}
-											className="shrink-0 text-[#98a4b6]"
-											aria-hidden="true"
-										/>
-										<span className="truncate">{snapshot.manifest.name}</span>
-									</ProjectLink>
-									{importTypes.map(([kind, label, Icon, accept]) => (
-										<label
-											key={kind}
-											className={`${button} relative w-6 shrink-0 cursor-pointer px-0 focus-within:outline-2 focus-within:outline-[#e8b77e] has-[:disabled]:opacity-40`}
-										>
-											<Icon className="size-3.5 shrink-0" aria-hidden="true" />
-											<input
-												type="file"
-												multiple={kind !== "kicad"}
-												aria-label={`Add ${label} files`}
-												accept={accept}
-												disabled={
-													busy || (kind === "symbol" && library.loading)
-												}
-												className="absolute inset-0 size-full cursor-pointer opacity-0"
-												onChange={(event) => {
-													const files = Array.from(event.target.files ?? []);
-													if (kind === "kicad") {
-														if (files[0]) void uploadSchematic(files[0]);
-													} else if (kind === "symbol")
-														void library.upload(files);
-													else void upload(files, kind);
-													event.target.value = "";
-												}}
-											/>
-										</label>
-									))}
-								</div>
-								<div className="mx-2 flex items-center gap-2 rounded border border-white/10 bg-[#111318] px-2 focus-within:border-[#e8b77e80]">
+							<div className="shrink-0 pt-3 pb-2">
+								<div className="mx-3 flex h-7 items-center gap-2 rounded-md border border-line bg-field px-2 focus-within:border-accent hover:border-line-strong pointer-coarse:h-11">
 									<Search
-										className="size-3.5 shrink-0 text-[#98a4b6]"
+										className="size-3.5 shrink-0 text-fg-faint"
 										aria-hidden="true"
 									/>
 									<input
@@ -675,48 +771,73 @@ export function ProjectFilesSidebar({
 											setQuery(event.target.value);
 											setPage(0);
 										}}
-										className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none [&::-webkit-search-cancel-button]:hidden"
+										className="h-full min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-faint pointer-coarse:text-lg [&::-webkit-search-cancel-button]:hidden"
 									/>
 									{query && (
 										<button
 											type="button"
 											aria-label="Clear file search"
-											className={`rounded p-1 ${focus}`}
+											className={`-mr-1 grid size-5 cursor-pointer place-items-center rounded-sm text-fg-faint hover:bg-hover hover:text-fg pointer-coarse:size-11 ${focus}`}
 											onClick={() => {
 												setQuery("");
 												setPage(0);
 											}}
 										>
-											<X className="size-3.5" />
+											<X className="size-3.5" aria-hidden="true" />
 										</button>
 									)}
 								</div>
-								<fieldset
-									aria-label="File types"
-									className="mt-1 flex flex-wrap gap-0.5 px-2"
-								>
-									{filters.map((type) => (
-										<button
-											key={type}
-											type="button"
-											aria-label={
-												type === "Symbol" ? "Symbol files" : undefined
-											}
-											aria-pressed={filter === type}
-											className={`rounded px-1 py-1 text-[10px] text-[#98a4b6] hover:bg-white/5 aria-pressed:bg-[#e8b77e1c] aria-pressed:text-[#e8b77e] ${focus}`}
-											onClick={() => {
-												setFilter(type);
-												setPage(0);
-											}}
-										>
-											{type === "Symbol" ? "Symbols" : type}
-										</button>
-									))}
-								</fieldset>
+								<div className="group relative mt-2">
+									<fieldset
+										ref={setFilterRow}
+										aria-label="File types"
+										className={`m-0 flex min-w-0 gap-1 overflow-x-auto border-0 px-3 py-0 [scrollbar-width:none] ${scrollFadeClassName}`}
+										onWheel={(event) => {
+											// A mouse wheel scrolls the one-line row sideways.
+											if (Math.abs(event.deltaY) > Math.abs(event.deltaX))
+												event.currentTarget.scrollLeft += event.deltaY;
+										}}
+									>
+										{filters.map((type) => (
+											<button
+												key={type}
+												type="button"
+												aria-label={
+													type === "Symbol" ? "Symbol files" : undefined
+												}
+												aria-pressed={filter === type}
+												className={`ui-toggle h-6 shrink-0 cursor-pointer rounded-full border px-2.5 text-2xs font-medium [--toggle-line:var(--color-line-subtle)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-bg:transparent] hover:[--toggle-line:var(--color-line)] pointer-coarse:h-11 pointer-coarse:px-3.5 ${focus}`}
+												onClick={(event) => {
+													setFilter(type);
+													setPage(0);
+													event.currentTarget.scrollIntoView({
+														block: "nearest",
+														inline: "nearest",
+													});
+												}}
+											>
+												{type === "Symbol" ? "Symbols" : type}
+											</button>
+										))}
+									</fieldset>
+									{/* More file types lie to this side. */}
+									<ChevronLeft
+										size={13}
+										strokeWidth={2.5}
+										aria-hidden="true"
+										className="pointer-events-none absolute top-1/2 left-0.5 hidden -translate-y-1/2 text-fg group-data-[fade=both]:block group-data-[fade=start]:block"
+									/>
+									<ChevronRight
+										size={13}
+										strokeWidth={2.5}
+										aria-hidden="true"
+										className="pointer-events-none absolute top-1/2 right-0.5 hidden -translate-y-1/2 text-fg group-data-[fade=both]:block group-data-[fade=end]:block"
+									/>
+								</div>
 							</div>
 							{importing && (
 								<output
-									className="px-3 py-1 text-[11px] text-[#98a4b6]"
+									className="px-3 py-1 text-xs text-fg-muted"
 									aria-live="polite"
 								>
 									<span>Adding project files...</span>
@@ -726,7 +847,7 @@ export function ProjectFilesSidebar({
 								<p
 									role="alert"
 									title={error || library.error || undefined}
-									className="px-3 py-1 text-[11px] text-[#edc49a]"
+									className="m-0 line-clamp-3 px-3 py-1 text-xs text-warning"
 								>
 									<span>{error || library.error}</span>
 								</p>
@@ -736,7 +857,7 @@ export function ProjectFilesSidebar({
 									{library.message}
 								</output>
 							)}
-							<div className="min-h-0 flex-1 overflow-auto overscroll-contain py-1">
+							<div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">
 								<table className="w-full table-fixed border-collapse text-left">
 									<caption className="sr-only">
 										Files in the current project
@@ -750,22 +871,19 @@ export function ProjectFilesSidebar({
 										{filtered
 											.slice(first, first + pageSize)
 											.map((file, index) => {
-												const Icon =
-													file.type === "Drawing" ||
-													file.type === "Symbol" ||
+												const Icon = fileIcons[file.type] ?? FileCog;
+												const circuitActive =
+													circuitOpen &&
+													activePath === (file.circuitPath ?? file.path);
+												const active =
 													file.type === "Circuit"
-														? CircuitBoard
-														: file.type === "Gerber"
-															? Layers
-															: file.type === "STEP"
-																? Box
-																: File;
+														? circuitActive
+														: !circuitOpen && activePath === file.path;
 												const content = (
 													<>
-														<span className="w-5 shrink-0" aria-hidden="true" />
 														<Icon
-															size={14}
-															className="shrink-0 opacity-70"
+															size={15}
+															className="ui-toggle-faint shrink-0"
 															aria-hidden="true"
 														/>
 														<span className="truncate">{file.name}</span>
@@ -778,11 +896,11 @@ export function ProjectFilesSidebar({
 																filtered[first + index - 1]?.group !==
 																	file.group) && (
 																<tr>
-																	<td>
+																	<td className="p-0">
 																		<button
 																			type="button"
 																			aria-expanded={!collapsed.has(file.group)}
-																			className={`flex h-8 w-full items-center gap-2 px-3 text-xs ${focus}`}
+																			className={`${row} w-full cursor-pointer px-1.5 font-medium text-fg hover:bg-hover`}
 																			onClick={() =>
 																				setCollapsed((current) => {
 																					const next = new Set(current);
@@ -796,14 +914,27 @@ export function ProjectFilesSidebar({
 																			}
 																		>
 																			<ChevronRight
-																				size={12}
-																				className={
+																				size={14}
+																				aria-hidden="true"
+																				className={`shrink-0 text-fg-faint transition-transform duration-100 ${
 																					collapsed.has(file.group)
 																						? ""
 																						: "rotate-90"
-																				}
+																				}`}
 																			/>
-																			<FolderOpen size={14} />
+																			{collapsed.has(file.group) ? (
+																				<Folder
+																					size={15}
+																					aria-hidden="true"
+																					className="shrink-0 text-fg-faint"
+																				/>
+																			) : (
+																				<FolderOpen
+																					size={15}
+																					aria-hidden="true"
+																					className="shrink-0 text-fg-faint"
+																				/>
+																			)}
 																			<span className="truncate">
 																				{file.group}
 																			</span>
@@ -814,7 +945,9 @@ export function ProjectFilesSidebar({
 														<tr
 															hidden={!!file.group && collapsed.has(file.group)}
 														>
-															<td>
+															<td
+																className={`p-0 ${file.group ? "pl-[22px]" : ""}`}
+															>
 																{file.href ? (
 																	<ProjectLink
 																		href={file.href}
@@ -831,8 +964,9 @@ export function ProjectFilesSidebar({
 																				? "Open all Gerber layers"
 																				: `Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`
 																		}
+																		aria-current={active ? "page" : undefined}
 																		title={`${file.name} · ${file.type}`}
-																		className={`flex h-8 min-w-0 items-center gap-2 pr-3 pl-2 text-xs hover:bg-white/5 focus:bg-[#e8b77e1c] focus:text-[#e8b77e] ${focus}`}
+																		className={`ui-toggle ${row} px-1.5 aria-[current=page]:font-medium`}
 																		onClick={() => {
 																			if (file.href === "/editor") {
 																				if (file.type === "Circuit")
@@ -858,7 +992,7 @@ export function ProjectFilesSidebar({
 																) : (
 																	<div
 																		title={`${file.name} · ${file.type}`}
-																		className="flex h-8 items-center text-xs text-[#98a4b6] gap-2 pr-3 pl-2"
+																		className={`${row} px-1.5 text-fg-faint`}
 																	>
 																		{content}
 																	</div>
@@ -869,7 +1003,10 @@ export function ProjectFilesSidebar({
 																		file={file.circuitPath ?? file.path}
 																		view="circuit"
 																		aria-label={`Open ${file.name} in circuit view`}
-																		className={`${button} ml-9 px-2`}
+																		aria-current={
+																			circuitActive ? "page" : undefined
+																		}
+																		className={`ui-toggle ${row} ml-[11px] border-l pr-1.5 pl-[11px] [--toggle-line:var(--color-line)] [--toggle-on-line:var(--color-line)] aria-[current=page]:font-medium`}
 																		onClick={() => {
 																			void project
 																				.openCircuit(
@@ -883,7 +1020,14 @@ export function ProjectFilesSidebar({
 																				);
 																		}}
 																	>
-																		<ListTree size={12} /> Circuit view
+																		<Workflow
+																			size={15}
+																			aria-hidden="true"
+																			className="ui-toggle-faint shrink-0"
+																		/>
+																		<span className="truncate">
+																			Circuit view
+																		</span>
 																	</ProjectLink>
 																)}
 															</td>
@@ -894,11 +1038,12 @@ export function ProjectFilesSidebar({
 									</tbody>
 								</table>
 								{!filtered.length && (
-									<div className="px-4 py-3 text-xs text-[#98a4b6]">
-										<p>No matching files</p>
+									<div className="px-1.5 py-3 text-xs text-fg-muted">
+										<p className="m-0">No matching files</p>
 										<button
 											type="button"
-											className={`${button} mt-1 px-2`}
+											className="ui-button mt-2"
+											data-variant="secondary"
 											onClick={() => {
 												setQuery("");
 												setFilter("All files");
@@ -911,25 +1056,33 @@ export function ProjectFilesSidebar({
 								)}
 							</div>
 							{lastPage > 0 && (
-								<footer className="flex shrink-0 items-center justify-end gap-2 border-t border-white/10 text-[10px] text-[#98a4b6] h-8 px-3">
+								<footer className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line-subtle pr-2 pl-3 text-2xs text-fg-faint tabular-nums">
+									<span>
+										{first + 1}–{Math.min(first + pageSize, filtered.length)} of{" "}
+										{filtered.length}
+									</span>
 									<nav aria-label="Project file pages" className="flex gap-1">
 										<button
 											type="button"
 											aria-label="Previous files"
 											disabled={!currentPage}
-											className={`${button} w-7`}
+											className="ui-button"
+											data-variant="ghost"
+											data-icon
 											onClick={() => setPage(currentPage - 1)}
 										>
-											<ChevronLeft className="size-3.5" />
+											<ChevronLeft className="size-3.5" aria-hidden="true" />
 										</button>
 										<button
 											type="button"
 											aria-label="Next files"
 											disabled={currentPage === lastPage}
-											className={`${button} w-7`}
+											className="ui-button"
+											data-variant="ghost"
+											data-icon
 											onClick={() => setPage(currentPage + 1)}
 										>
-											<ChevronRight className="size-3.5" />
+											<ChevronRight className="size-3.5" aria-hidden="true" />
 										</button>
 									</nav>
 								</footer>
@@ -940,39 +1093,38 @@ export function ProjectFilesSidebar({
 				<ProjectLink href="/editor" ref={editorLink} hidden tabIndex={-1}>
 					Open new file
 				</ProjectLink>
-				<footer className="flex shrink-0 gap-1 border-t border-white/10 p-1.5">
-					<button
-						type="button"
-						aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
-						aria-pressed={pinned}
-						aria-keyshortcuts={`${shortcutModifier().key}+Shift+S`}
-						aria-controls={panelId}
-						className={`${button} h-9 min-w-0 flex-1 justify-start px-2`}
-						onClick={togglePin}
-					>
-						{pinned ? (
-							<PinOff size={18} aria-hidden="true" />
-						) : (
-							<Pin size={18} aria-hidden="true" />
+				<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
+					<footer className="flex shrink-0 items-center gap-1 border-t border-line-subtle p-2">
+						{onExit && (
+							<TooltipButton
+								aria-label="Exit"
+								tooltip="Exit"
+								// A held shortcut chord must not quit the app by accident.
+								data-shortcut-scope="none"
+								className="ui-button"
+								data-variant="ghost"
+								data-icon
+								onClick={onExit}
+							>
+								<LogOut size={15} aria-hidden="true" />
+							</TooltipButton>
 						)}
-						<span>{pinned ? "Pinned" : "Compact"}</span>
-						<kbd className="ml-auto text-[10px] text-[#98a4b6]">
-							{formatShortcut("Ctrl+Shift+S")}
-						</kbd>
-					</button>
-					{onExit && (
-						<button
-							type="button"
-							aria-label="Exit"
-							// A held shortcut chord must not quit the app by accident.
-							data-shortcut-scope="none"
-							className={`${button} h-9 w-9 shrink-0`}
-							onClick={onExit}
+						{/* Lit while the sidebar is pinned beside the workspace. */}
+						<TooltipButton
+							aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
+							aria-pressed={pinned}
+							aria-keyshortcuts={`${shortcutModifier().key}+Shift+S`}
+							aria-controls={panelId}
+							tooltip={pinned ? "Compact sidebar" : "Pin sidebar"}
+							shortcut="Ctrl+Shift+S"
+							className="ui-button ui-toggle ml-auto"
+							data-icon
+							onClick={togglePin}
 						>
-							<LogOut size={18} aria-hidden="true" />
-						</button>
-					)}
-				</footer>
+							<PanelLeft size={16} aria-hidden="true" />
+						</TooltipButton>
+					</footer>
+				</Tooltip.Provider>
 			</aside>
 			{creatingFile && (
 				<div className="pointer-events-auto">

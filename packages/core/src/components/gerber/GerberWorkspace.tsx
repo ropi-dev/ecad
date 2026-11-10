@@ -1,3 +1,4 @@
+import { Layers } from "lucide-react";
 import { useState } from "react";
 import { GerberHeader } from "#/components/gerber/GerberHeader.tsx";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
@@ -7,6 +8,7 @@ import {
 	describeDiagnostics,
 	summarizeDiagnostics,
 } from "#/formats/diagnostics.ts";
+import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import {
 	useProjectActions,
 	useProjectSelection,
@@ -16,6 +18,8 @@ export function GerberWorkspace() {
 	const project = useProjectActions();
 	// Project messages, such as assets a new project left out, show here too.
 	const projectError = useProjectSelection((value) => value.error) ?? "";
+	const selectedAsset = useProjectSelection((value) => value.selectedAsset);
+	const gerberAsset = selectedAsset?.kind === "gerber" ? selectedAsset : null;
 	const {
 		layers,
 		loading,
@@ -39,6 +43,14 @@ export function GerberWorkspace() {
 		.join("\n");
 	return (
 		<main className="relative flex h-dvh flex-col overflow-hidden">
+			<DocumentBar
+				icon={Layers}
+				title={
+					gerberAsset?.name ??
+					(layers.length ? "All Gerber layers" : "Gerber viewer")
+				}
+				path={gerberAsset?.path ?? "gerber:all-layers"}
+			/>
 			<GerberHeader
 				loading={loading}
 				onOpenFile={(files) => {
@@ -49,7 +61,7 @@ export function GerberWorkspace() {
 			{message && (
 				<output
 					data-testid="viewer-message"
-					className="absolute top-22 left-10 z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-56px))] overflow-auto rounded-lg border border-[#72543a] bg-[#392e25f5] px-3 py-2.5 text-[13px] whitespace-pre-line text-[#edc49a]"
+					className="ui-notice absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-3 m-0 max-h-25 max-w-[min(560px,calc(100%-2*var(--chrome-gap)))] overflow-auto px-3 py-2 whitespace-pre-line"
 				>
 					{message}
 				</output>

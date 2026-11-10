@@ -98,7 +98,6 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	],
 	["packages/core/src/projects/errors.ts", ["@projects", "@storage"]],
 	["packages/core/src/projects/SymbolLibrarySettings.tsx", ["@symbols"]],
-	["packages/core/src/projects/fonts/**", ["@editor"]],
 	["packages/core/src/projects/**", ["@projects"]],
 
 	// Core: feature areas.

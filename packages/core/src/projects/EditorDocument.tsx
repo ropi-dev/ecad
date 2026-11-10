@@ -1,4 +1,4 @@
-import { type ComponentType, lazy, Suspense } from "react";
+import { type ComponentType, lazy, Suspense, useState } from "react";
 import type {
 	Editor2DProps,
 	EditorCanvasProps,
@@ -18,20 +18,34 @@ export function EditorDocument({
 	...props
 }: Editor2DProps & { Canvas: ComponentType<EditorCanvasProps> }) {
 	const project = useProjectEditor();
+	// A circuit link opens this route while its circuit is still loading.
+	// Showing the schematic for that moment would start its viewer, which
+	// then keeps that camera, so wait for the circuit that was opening on
+	// arrival. A switch from an open schematic keeps it on screen instead.
+	const [arrivedOpening] = useState(() => project?.openingCircuit ?? null);
 	// Text sizes are measured with the schematic font, so wait for it to load.
 	const fontsReady = useDrawingFonts();
 	if (!fontsReady) return null;
+	const openingCircuit = (
+		<output className="block p-6 text-sm text-fg-muted">
+			Opening circuit...
+		</output>
+	);
 	if (!props.store && project?.editorCircuit)
 		return (
-			<Suspense
-				fallback={<output className="block p-6">Opening circuit...</output>}
-			>
+			<Suspense fallback={openingCircuit}>
 				<CircuitEditor
 					key={`${project.session}:${project.editorCircuit.file.circuit.id}`}
 					document={project.editorCircuit}
 				/>
 			</Suspense>
 		);
+	if (
+		!props.store &&
+		arrivedOpening !== null &&
+		project?.openingCircuit === arrivedOpening
+	)
+		return openingCircuit;
 	const symbol = props.store ? null : project?.editorSymbol;
 	const drawing = props.store ? null : project?.editorDrawing;
 	return (
@@ -47,6 +61,15 @@ export function EditorDocument({
 			store={symbol?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}
 			drawingName={drawing?.file.name}
+			documentSelection={
+				props.store
+					? undefined
+					: symbol
+						? `symbol:${symbol.file.id}`
+						: drawing
+							? `drawing:${drawing.file.id}`
+							: "drawing"
+			}
 			viewSwitch={
 				!props.store && !symbol ? (
 					<EditorViewSwitch view="schematic" />

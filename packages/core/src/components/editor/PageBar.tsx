@@ -15,16 +15,18 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
-import { toolbarSurfaceClassName } from "#/components/viewer/viewControlStyles.ts";
+import {
+	panelIconButtonClassName,
+	toolbarSurfaceClassName,
+} from "#/components/viewer/viewControlStyles.ts";
 
-const tabClassName =
-	"flex h-8 max-w-44 shrink-0 cursor-pointer items-center rounded-md px-2.5 text-[12px] text-[#b7c1cf] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] aria-[current=page]:bg-[#e8b77e1c] aria-[current=page]:text-[#e8b77e] disabled:cursor-default disabled:opacity-50";
-const iconButtonClassName =
-	"grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-[#98a4b6] hover:bg-white/10 hover:text-[#e8edf4] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent";
-const smallIconButtonClassName =
-	"grid size-7 shrink-0 cursor-pointer place-items-center rounded text-[#98a4b6] hover:bg-white/10 hover:text-[#e8edf4] focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent";
-const inputClassName =
-	"h-7 min-w-0 flex-1 rounded border border-[#e8b77e80] bg-[#11141a] px-2 text-[12px] text-[#e8edf4] outline-none";
+const focusClassName =
+	"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+// The open page carries the accent, which eases in and out (see `.ui-toggle`).
+const tabClassName = `ui-toggle flex h-8 max-w-44 shrink-0 cursor-pointer items-center rounded-md px-2.5 text-xs font-medium disabled:cursor-default disabled:opacity-50 disabled:[--toggle-fg:var(--color-fg-muted)] ${focusClassName}`;
+const iconButtonClassName = `grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-fg-muted hover:bg-hover hover:text-fg aria-expanded:bg-pressed aria-expanded:text-fg disabled:cursor-default disabled:text-fg-disabled disabled:hover:bg-transparent ${focusClassName}`;
+const smallIconButtonClassName = `grid size-7 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-faint hover:bg-hover hover:text-fg disabled:cursor-default disabled:text-fg-disabled disabled:hover:bg-transparent ${focusClassName}`;
+const inputClassName = "ui-input h-7 min-w-0 flex-1";
 
 export type PageEdit = (pages: DrawingPage[], label: string) => boolean;
 
@@ -38,6 +40,7 @@ export function PageBar({
 	current,
 	shapeCounts,
 	disabled = false,
+	floating = false,
 	onSelect,
 	onEdit,
 }: {
@@ -46,6 +49,11 @@ export function PageBar({
 	/** Shapes on each page by ID, so the list can say what a delete removes. */
 	shapeCounts: ReadonlyMap<number, number>;
 	disabled?: boolean;
+	/**
+	 * Places itself at the top centre of the canvas. Otherwise the document
+	 * bar lays it out.
+	 */
+	floating?: boolean;
 	onSelect: (page: number) => void;
 	onEdit: PageEdit;
 }) {
@@ -131,7 +139,7 @@ export function PageBar({
 	return (
 		<nav
 			aria-label="Schematic pages"
-			className={`absolute top-10 left-1/2 z-3 flex max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 items-center gap-0.5 p-1 max-[600px]:top-22 ${toolbarSurfaceClassName}`}
+			className={`flex h-[var(--chrome-control)] items-center gap-0.5 p-1 ${floating ? "absolute top-10 left-1/2 z-3 max-w-[min(40rem,calc(100%-5rem))] -translate-x-1/2 max-[600px]:top-22" : "relative max-w-[40rem] min-w-0"} ${toolbarSurfaceClassName}`}
 			onPointerDown={(event) => event.stopPropagation()}
 		>
 			<button
@@ -191,33 +199,31 @@ export function PageBar({
 					ref={panel}
 					id={listId}
 					aria-label="Pages"
-					className="absolute top-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-12rem))] -translate-x-1/2 w-[min(320px,calc(100vw-1.5rem))] flex-col rounded-lg border border-[#414955] bg-[#191c22] p-2 shadow-[0_8px_32px_#0008]"
+					className="ui-popover absolute top-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-12rem))] w-[min(320px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col"
 				>
-					<header className="mb-1 flex items-center justify-between gap-2 pl-1">
-						<h2 className="m-0 text-[12px] font-semibold text-[#c7d0dc]">
-							Pages
-						</h2>
+					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
+						<h2 className="m-0 text-sm font-semibold">Pages</h2>
 						<button
 							type="button"
-							className={smallIconButtonClassName}
+							className={panelIconButtonClassName}
 							aria-label="Close page list"
 							onClick={() => {
 								setListOpen(false);
 								quietFocus(toggle.current);
 							}}
 						>
-							<X size={14} aria-hidden="true" />
+							<X size={16} aria-hidden="true" />
 						</button>
 					</header>
-					<ol className="m-0 min-h-0 flex-1 overflow-y-auto p-0">
+					<ol className="m-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5 pb-0">
 						{pages.map((page, index) => {
 							const count = shapeCounts.get(page.id) ?? 0;
 							return (
 								<li
 									key={page.id}
-									className="group flex list-none items-center gap-1 rounded py-0.5"
+									className="flex list-none items-center gap-1 py-0.5"
 								>
-									<span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-[#7d8897]">
+									<span className="w-5 shrink-0 text-right text-2xs text-fg-faint tabular-nums">
 										{index + 1}
 									</span>
 									{renaming === page.id ? (
@@ -239,7 +245,7 @@ export function PageBar({
 											onDoubleClick={() => setRenaming(page.id)}
 										>
 											<span className="truncate">{page.name}</span>
-											<span className="shrink-0 text-[10px] tabular-nums opacity-60">
+											<span className="shrink-0 text-2xs font-normal tabular-nums opacity-70">
 												{count} {count === 1 ? "item" : "items"}
 											</span>
 										</button>
@@ -276,7 +282,7 @@ export function PageBar({
 									</button>
 									<button
 										type="button"
-										className={`${smallIconButtonClassName} hover:text-[#f0a3a3]`}
+										className={`${smallIconButtonClassName} hover:text-danger`}
 										aria-label={`Delete ${page.name}`}
 										title={
 											count
@@ -294,7 +300,7 @@ export function PageBar({
 					</ol>
 					<button
 						type="button"
-						className="mt-1 flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-[12px] text-[#b7c1cf] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50"
+						className={`m-1.5 flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-xs text-fg-muted hover:bg-hover hover:text-fg disabled:cursor-default disabled:opacity-50 ${focusClassName}`}
 						disabled={disabled}
 						onClick={addPage}
 					>

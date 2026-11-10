@@ -110,11 +110,20 @@ test("reorders layers and preserves focus, visibility and camera", async ({
 					.getByRole("complementary", { name: "Layers" })
 					.boundingBox();
 				const canvas = await page.locator("canvas").boundingBox();
+				// On a wide screen the panel floats at the left, centred on the
+				// canvas. On a phone it is a sheet above the toolbar.
+				const placed =
+					!!panel &&
+					(width <= 760
+						? Math.abs(panel.x - 8) < 1 &&
+							panel.y >= height * 0.4 &&
+							panel.y + panel.height <= height - 60
+						: Math.abs(panel.y + panel.height / 2 - height / 2) < 1 &&
+							Math.abs(panel.x - 16) < 1);
 				return (
 					!!panel &&
 					!!canvas &&
-					Math.abs(panel.y + panel.height / 2 - height / 2) < 1 &&
-					Math.abs(panel.x - (width <= 600 ? 36 : 40)) < 1 &&
+					placed &&
 					panel.x + panel.width <= width &&
 					canvas.x === 0 &&
 					canvas.y === 0 &&

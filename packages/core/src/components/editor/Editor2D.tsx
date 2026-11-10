@@ -13,6 +13,7 @@ import {
 	formatInches,
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
+import { ArrowLeft, CircuitBoard, Component } from "lucide-react";
 import {
 	lazy,
 	type ReactNode,
@@ -66,6 +67,7 @@ import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
+import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
@@ -91,6 +93,8 @@ export type EditorCanvasProps = Editor2DProps & {
 	drawingName?: string;
 	headerControls?: ReactNode;
 	viewSwitch?: ReactNode;
+	/** Id of the open file among the project's file selections. */
+	documentSelection?: string;
 	syncSelection?: boolean;
 };
 
@@ -106,6 +110,7 @@ function EditorCanvas({
 	drawingName,
 	headerControls,
 	viewSwitch,
+	documentSelection,
 	syncSelection = false,
 }: EditorCanvasProps) {
 	const isSymbol = symbolName !== undefined;
@@ -432,6 +437,21 @@ function EditorCanvas({
 		);
 	}
 
+	// In a project the page tabs share the document bar's row. Standalone,
+	// they float at the top centre of the canvas.
+	const pageBar = (floating: boolean) =>
+		!isSymbol && scene ? (
+			<PageBar
+				pages={pages}
+				current={page.id}
+				shapeCounts={pageShapeCounts}
+				disabled={!ready}
+				floating={floating}
+				onSelect={selectPage}
+				onEdit={editPages}
+			/>
+		) : undefined;
+
 	return (
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
@@ -455,12 +475,22 @@ function EditorCanvas({
 					? `Symbol editor · ${symbolName}`
 					: `Schematic editor · ${drawingName ? `${drawingName} · ` : ""}${pages.length > 1 ? `${page.name} (page ${pageIndex + 1} of ${pages.length}) · ` : ""}${sheet.name ? `${sheet.name} · ` : ""}${formatInches(sheet.width)} × ${formatInches(sheet.height)} in`}
 			</h1>
-			<EditorHeader
-				headerControls={headerControls}
-				registered={!!registerEditor}
-				enableMcp={enableMcp}
-				store={store}
-			/>
+			{registerEditor ? (
+				<DocumentBar
+					icon={isSymbol ? Component : CircuitBoard}
+					title={isSymbol ? symbolName : drawingName}
+					selection={documentSelection}
+					center={pageBar(false)}
+				>
+					{headerControls ?? viewSwitch}
+				</DocumentBar>
+			) : (
+				<EditorHeader
+					headerControls={headerControls}
+					enableMcp={enableMcp}
+					store={store}
+				/>
+			)}
 			<div className="relative flex min-h-0 flex-1">
 				<div
 					ref={canvasArea}
@@ -499,7 +529,6 @@ function EditorCanvas({
 								selectionFitBounds(selected, selectedSymbol, selectedChild)
 							}
 							groupedControls
-							trailingControls={viewSwitch}
 							controlsLabel={isSymbol ? "Symbol tools" : "Schematic tools"}
 							gridBounds={
 								isSymbol
@@ -565,17 +594,8 @@ function EditorCanvas({
 						connectionHover={connectionHover}
 						marquee={marquee}
 					/>
-					<EditorMessages {...messages} />
-					{!isSymbol && scene && (
-						<PageBar
-							pages={pages}
-							current={page.id}
-							shapeCounts={pageShapeCounts}
-							disabled={!ready}
-							onSelect={selectPage}
-							onEdit={editPages}
-						/>
-					)}
+					<EditorMessages {...messages} besidePanel={ercOpen && !isSymbol} />
+					{!registerEditor && pageBar(true)}
 					{ercOpen && !isSymbol && (
 						<Suspense
 							fallback={
@@ -585,7 +605,7 @@ function EditorCanvas({
 									position="top-left"
 									raised
 								>
-									<output className="p-2.5 text-[12px] text-[#9ba7b8]">
+									<output className="p-3 text-xs text-fg-muted">
 										Loading electrical checks...
 									</output>
 								</FloatingPanel>
@@ -638,8 +658,6 @@ function LibrarySymbolEditor({
 	onClose: () => void;
 }) {
 	const { store, save, saving, error } = useLibrarySymbolSave(target);
-	const buttonClass =
-		"cursor-pointer rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white disabled:cursor-default disabled:opacity-50";
 	return (
 		<EditorCanvas
 			store={store}
@@ -649,7 +667,8 @@ function LibrarySymbolEditor({
 				<>
 					<button
 						type="button"
-						className={buttonClass}
+						className="ui-button"
+						data-variant="secondary"
 						disabled={saving}
 						onClick={() =>
 							void save()
@@ -657,12 +676,14 @@ function LibrarySymbolEditor({
 								.catch(() => undefined)
 						}
 					>
+						<ArrowLeft size={14} aria-hidden="true" />
 						Back to schematic
 					</button>
 					{error && (
 						<p
 							role="alert"
-							className="max-w-md rounded bg-slate-900 p-2 text-sm text-[#edc49a]"
+							className="m-0 max-w-md truncate text-xs text-danger"
+							title={error}
 						>
 							{error}
 						</p>

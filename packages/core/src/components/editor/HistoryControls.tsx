@@ -3,7 +3,10 @@ import { History as HistoryIcon, Redo2, Undo2, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
-import { viewControlButtonClassName } from "#/components/viewer/ViewControls3D.tsx";
+import {
+	panelIconButtonClassName,
+	viewControlButtonClassName,
+} from "#/components/viewer/viewControlStyles.ts";
 
 export function HistoryControls({
 	history,
@@ -65,7 +68,7 @@ export function HistoryControls({
 			<li key={id} className="list-none">
 				<button
 					type="button"
-					className="my-0.5 flex min-w-48 cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-[#b7c1cf] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e] aria-[current=step]:bg-[#e8b77e1c] aria-[current=step]:text-[#e8b77e] disabled:cursor-default disabled:opacity-50"
+					className="ui-toggle my-px flex h-7 w-full min-w-48 cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:[--toggle-fg:var(--color-fg-muted)] aria-[current=step]:font-medium pointer-coarse:h-11"
 					disabled={disabled}
 					aria-label={`Restore #${id}: ${node.label}`}
 					aria-current={isCurrent ? "step" : undefined}
@@ -77,12 +80,14 @@ export function HistoryControls({
 					}
 					onClick={() => onRestore(id)}
 				>
-					<span className="text-[10px] tabular-nums opacity-65">#{id}</span>
+					<span className="w-7 shrink-0 text-2xs tabular-nums opacity-70">
+						#{id}
+					</span>
 					<span className="whitespace-nowrap">{node.label}</span>
-					{isCurrent && <span className="ml-auto text-[10px]">Current</span>}
+					{isCurrent && <span className="ml-auto pl-3 text-2xs">Current</span>}
 				</button>
 				{node.childIds.length > 0 && (
-					<ol className="m-0 ml-3 border-l border-white/15 pl-2">
+					<ol className="m-0 ml-3.5 border-l border-line p-0 pl-1.5">
 						{node.childIds.map(renderNode)}
 					</ol>
 				)}
@@ -133,23 +138,31 @@ export function HistoryControls({
 					ref={panel}
 					id={panelId}
 					aria-label="Drawing history"
-					className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+0.5rem)] z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] flex-col rounded-lg border border-[#414955] bg-[#191c22] p-2 shadow-[0_8px_32px_#0008]"
+					className="ui-popover absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 flex max-h-[min(28rem,calc(100dvh-10rem))] w-[min(360px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col"
 				>
-					<button
-						type="button"
-						aria-label="Close drawing history"
-						className="absolute top-2 right-2 z-10 grid size-7 cursor-pointer place-items-center rounded text-[#98a4b6] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-						onClick={() => {
-							setOpen(false);
-							quietFocus(toggle.current);
-						}}
-					>
-						<X size={16} aria-hidden="true" />
-					</button>
-					<div className="mr-8 min-h-0 overflow-auto overscroll-contain">
+					<header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
+						<h2 className="m-0 text-sm font-semibold">History</h2>
+						<button
+							type="button"
+							aria-label="Close drawing history"
+							className={panelIconButtonClassName}
+							onClick={() => {
+								setOpen(false);
+								quietFocus(toggle.current);
+							}}
+						>
+							<X size={16} aria-hidden="true" />
+						</button>
+					</header>
+					<div className="min-h-0 overflow-auto overscroll-contain p-1.5">
 						<ol className="m-0 min-w-max list-none p-0">
 							{roots.map((node) => renderNode(node.id))}
 						</ol>
+						{Object.keys(history.nodes).length < 2 && (
+							<p className="m-0 px-2 pt-1 pb-1.5 text-xs text-fg-faint">
+								Each edit is listed here. Choose one to go back to it.
+							</p>
+						)}
 					</div>
 				</section>
 			)}

@@ -1,5 +1,5 @@
 import { symbolCategories } from "@ecad/default-symbols";
-import { ChevronRight, Microchip } from "lucide-react";
+import { ChevronRight, Cpu, Search } from "lucide-react";
 import { Popover } from "radix-ui";
 import {
 	type ComponentProps,
@@ -37,7 +37,10 @@ type PickerEntry =
 	| { kind: "part"; id: string; part: string; symbols: SymbolDefinition[] };
 
 const optionClassName =
-	"flex scroll-mt-8 cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left focus-visible:outline-2 focus-visible:outline-[#e8b77e] disabled:cursor-default disabled:opacity-50 data-highlighted:bg-white/10";
+	"flex scroll-mt-8 cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1 text-left text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 data-highlighted:bg-hover pointer-coarse:min-h-11";
+const optionNameClassName = "block truncate text-sm leading-[1.125rem]";
+const optionDetailClassName =
+	"block truncate text-2xs leading-[0.875rem] text-fg-faint";
 
 const SymbolOption = memo(function SymbolOption({
 	definition,
@@ -74,13 +77,13 @@ const SymbolOption = memo(function SymbolOption({
 		>
 			<SymbolThumbnail definition={definition} />
 			<span className="min-w-0">
-				<span className="block truncate text-[13px] leading-tight">
+				<span className={optionNameClassName}>
 					{definition.packaging?.name ?? definition.name}
 				</span>
 				{(!components || definition.packaging) && (
 					<span
 						title={definition.packaging?.description ?? definition.description}
-						className="block truncate text-[11px] leading-tight text-[#7c8696]"
+						className={optionDetailClassName}
 					>
 						{definition.packaging?.description ?? definition.description}
 					</span>
@@ -125,17 +128,15 @@ const PartOption = memo(function PartOption({
 		>
 			<SymbolThumbnail definition={entry.symbols[0]} />
 			<span className="min-w-0 flex-1">
-				<span className="block truncate text-[13px] leading-tight">
-					{entry.part}
-				</span>
-				<span className="block truncate text-[11px] leading-tight text-[#7c8696]">
+				<span className={optionNameClassName}>{entry.part}</span>
+				<span className={optionDetailClassName}>
 					{count} {count === 1 ? "packaging" : "packagings"}
 				</span>
 			</span>
 			<ChevronRight
 				size={14}
 				aria-hidden="true"
-				className="shrink-0 text-[#9ba7b8]"
+				className="shrink-0 text-fg-faint"
 			/>
 		</button>
 	);
@@ -331,7 +332,7 @@ export function SymbolPicker({
 					aria-pressed={active}
 					className={viewControlButtonClassName}
 				>
-					<Microchip size={18} aria-hidden="true" />
+					<Cpu size={18} aria-hidden="true" />
 				</TooltipButton>
 			</Popover.Trigger>
 			<Popover.Portal>
@@ -442,29 +443,36 @@ export function SymbolPicker({
 						)
 							searchInput.current?.focus();
 					}}
-					className="z-50 flex w-72 max-w-[calc(100vw-2rem)] max-h-[min(22rem,calc(100dvh-6rem))] flex-col overflow-hidden rounded-lg border border-[#414955] bg-[#191c22] text-[#e8edf5] shadow-[0_8px_32px_#0008]"
+					className="ui-popover z-50 flex max-h-[min(26rem,calc(100dvh-6rem))] w-[22.5rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden"
 				>
-					<input
-						ref={searchInput}
-						type="search"
-						aria-label={searchLabel}
-						placeholder={searchLabel}
-						autoComplete="off"
-						aria-controls={openPart ? packagingListId : listId}
-						aria-activedescendant={
-							openPart
-								? highlightedPackage &&
-									packageOptionIds.get(highlightedPackage.id)
-								: highlighted && optionIds.get(highlighted.id)
-						}
-						value={query}
-						onChange={(event) => {
-							setQuery(event.currentTarget.value);
-							setActiveId(undefined);
-							setOpenPartId(undefined);
-						}}
-						className="m-2 block shrink-0 rounded-md border border-[#414955] bg-[#191c22] px-2.5 py-1.5 text-[13px] text-[#e8edf5] placeholder:text-[#9ba7b8] focus-visible:outline-2 focus-visible:outline-[#e8b77e]"
-					/>
+					<div className="m-2 flex h-8 shrink-0 items-center gap-2 rounded-md border border-line bg-field px-2 focus-within:border-accent">
+						<Search
+							size={14}
+							aria-hidden="true"
+							className="shrink-0 text-fg-faint"
+						/>
+						<input
+							ref={searchInput}
+							type="search"
+							aria-label={searchLabel}
+							placeholder={searchLabel}
+							autoComplete="off"
+							aria-controls={openPart ? packagingListId : listId}
+							aria-activedescendant={
+								openPart
+									? highlightedPackage &&
+										packageOptionIds.get(highlightedPackage.id)
+									: highlighted && optionIds.get(highlighted.id)
+							}
+							value={query}
+							onChange={(event) => {
+								setQuery(event.currentTarget.value);
+								setActiveId(undefined);
+								setOpenPartId(undefined);
+							}}
+							className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-faint [&::-webkit-search-cancel-button]:hidden"
+						/>
+					</div>
 					<div
 						id={listId}
 						data-symbol-picker=""
@@ -490,7 +498,7 @@ export function SymbolPicker({
 						{library.error && (
 							<p
 								role="alert"
-								className="mb-2 whitespace-pre-wrap text-xs text-[#f0aaa5]"
+								className="m-0 mb-2 whitespace-pre-wrap text-xs text-danger"
 							>
 								{library.error}
 							</p>
@@ -498,7 +506,7 @@ export function SymbolPicker({
 						{groups.length === 0 && (
 							<output
 								aria-live="polite"
-								className="block text-xs text-[#9ba7b8]"
+								className="block px-1.5 py-2 text-xs text-fg-muted"
 							>
 								{query.trim()
 									? components
@@ -519,7 +527,7 @@ export function SymbolPicker({
 											: category
 									}
 								>
-									<h3 className="sticky top-0 z-10 -mx-2 mt-0 mb-0.5 border-t border-b border-[#414955] bg-[#191c22] px-2 py-1 text-[11px] font-semibold text-[#9ba7b8]">
+									<h3 className="ui-section-label sticky top-0 z-10 -mx-2 mt-0 mb-0.5 border-b border-line-subtle bg-raised px-3.5 py-1.5">
 										{components && category === "Custom symbols"
 											? "Custom components"
 											: category}
@@ -583,9 +591,9 @@ export function SymbolPicker({
 																	preventScroll: true,
 																});
 															}}
-															className="z-50 flex w-64 max-w-[calc(100vw-2rem)] max-h-[min(22rem,var(--radix-popover-content-available-height))] flex-col overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-2 text-[#e8edf5] shadow-[0_8px_32px_#0008]"
+															className="ui-popover z-50 flex max-h-[min(22rem,var(--radix-popover-content-available-height))] w-64 max-w-[calc(100vw-2rem)] flex-col overflow-auto p-2"
 														>
-															<h4 className="-mx-2 -mt-2 mb-1 border-b border-[#414955] px-2 py-1 text-[11px] font-semibold text-[#9ba7b8]">
+															<h4 className="ui-section-label -mx-2 -mt-2 mb-1 border-b border-line-subtle px-3.5 py-1.5">
 																{entry.part}
 															</h4>
 															<div
@@ -618,6 +626,24 @@ export function SymbolPicker({
 							))}
 						</div>
 					</div>
+					<p
+						aria-hidden="true"
+						className="m-0 flex shrink-0 items-center gap-3 border-t border-line-subtle px-3 py-1.5 text-2xs text-fg-faint"
+					>
+						<span className="flex items-center gap-1">
+							<kbd className="ui-kbd">↑</kbd>
+							<kbd className="ui-kbd">↓</kbd>
+							Browse
+						</span>
+						<span className="flex items-center gap-1">
+							<kbd className="ui-kbd">Enter</kbd>
+							{components ? "Place" : "Insert"}
+						</span>
+						<span className="flex items-center gap-1">
+							<kbd className="ui-kbd">Esc</kbd>
+							Close
+						</span>
+					</p>
 				</Popover.Content>
 			</Popover.Portal>
 		</Popover.Root>

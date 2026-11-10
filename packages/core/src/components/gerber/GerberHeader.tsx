@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { workspaceLinkClassName } from "#/projects/EditorHeader.tsx";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
 import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
@@ -13,17 +14,24 @@ export function GerberHeader({
 	const project = useProjectActions();
 	const workspaceControls = useWorkspaceControls();
 	if (workspaceControls) return null;
+	const link = {
+		className: workspaceLinkClassName,
+		"data-variant": "secondary",
+		"data-size": "md",
+	} as const;
 	return (
-		<header className="absolute top-10 left-10 z-2 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-2 max-[600px]:top-9 max-[600px]:left-9">
-			<ProjectLink
-				href="/"
-				className="inline-flex min-h-10 items-center rounded-lg border border-white/20 bg-slate-900 px-3 text-sm text-white/90 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white"
-			>
+		<header className="absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-2 flex max-w-[calc(100%-2*var(--chrome-gap))] flex-wrap items-center gap-2">
+			<ProjectLink href="/" {...link}>
 				Workspace
 			</ProjectLink>
 			{!project && (
-				<label className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e]">
-					<Plus size={16} /> {loading ? "Reading…" : "Add files"}
+				<label
+					className={`${workspaceLinkClassName} relative focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent`}
+					data-variant="primary"
+					data-size="md"
+				>
+					<Plus size={15} aria-hidden="true" />{" "}
+					{loading ? "Reading…" : "Add files"}
 					<input
 						type="file"
 						className="absolute inset-0 size-full cursor-pointer opacity-0"
@@ -37,16 +45,10 @@ export function GerberHeader({
 					/>
 				</label>
 			)}
-			<ProjectLink
-				href="/step"
-				className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
-			>
+			<ProjectLink href="/step" {...link}>
 				STEP viewer
 			</ProjectLink>
-			<ProjectLink
-				href="/editor"
-				className="relative inline-flex cursor-pointer items-center gap-[7px] rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#e8b77e] no-underline focus-visible:outline-2 focus-visible:outline-amber-200"
-			>
+			<ProjectLink href="/editor" {...link}>
 				Schematic editor
 			</ProjectLink>
 		</header>

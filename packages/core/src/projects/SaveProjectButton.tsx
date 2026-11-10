@@ -21,7 +21,8 @@ export function SaveProjectButton() {
 			type="button"
 			aria-label="Save project"
 			disabled={project.busy}
-			className={`${workspaceActionClassName} ${project.unsaved ? "text-[#e8b77e]" : "text-[#98a4b6]"}`}
+			data-unsaved={project.unsaved}
+			className={`${workspaceActionClassName} relative data-[unsaved=true]:border-accent-line data-[unsaved=true]:text-accent`}
 			onClick={() => {
 				toastManager.close("project-save");
 				void project
@@ -45,7 +46,14 @@ export function SaveProjectButton() {
 					});
 			}}
 		>
-			<Save size={20} aria-hidden="true" />
+			<Save size={18} aria-hidden="true" />
+			Save
+			{project.unsaved && (
+				<span
+					aria-hidden="true"
+					className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent"
+				/>
+			)}
 		</button>
 	);
 }

@@ -11,6 +11,7 @@ import {
 	Raycaster,
 	Vector3,
 } from "three";
+import { viewerTheme } from "#/drawing/schematic-theme.ts";
 import { hoverLayerColor } from "#/engine/layer-style.ts";
 import {
 	pickPlanarRegion,
@@ -93,14 +94,15 @@ export function createSceneHover(
 		) {
 			target.color.set(hoverLayerColor(`#${source.color.getHexString()}`));
 			// White surfaces cannot brighten further, but still need visible feedback.
-			if (target.color.equals(source.color)) target.color.set("#ffd166");
-			if (mode === "selection") target.color.set("#ffcc33");
+			if (target.color.equals(source.color))
+				target.color.set(viewerTheme.hover);
+			if (mode === "selection") target.color.set(viewerTheme.selection);
 		}
 		if (mode === "selection") {
 			target.opacity = Math.max(source.opacity, 0.9);
 			// Keep selected model parts bright even on faces turned away from the light.
 			if ("emissive" in target && target.emissive instanceof Color)
-				target.emissive.set("#805000");
+				target.emissive.set(viewerTheme.selectionGlow);
 		}
 		target.depthWrite = false;
 		target.polygonOffset = true;

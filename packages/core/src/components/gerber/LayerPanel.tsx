@@ -15,9 +15,9 @@ import {
 } from "#/formats/diagnostics.ts";
 
 const severityStyle = {
-	warning: { label: "Warning", className: "text-amber-200" },
-	error: { label: "Error", className: "text-red-300" },
-	fatal: { label: "Fatal", className: "text-red-300" },
+	warning: { label: "Warning", className: "text-warning" },
+	error: { label: "Error", className: "text-danger" },
+	fatal: { label: "Fatal", className: "text-danger" },
 } as const;
 
 export function LayerPanel({
@@ -48,7 +48,7 @@ export function LayerPanel({
 	return (
 		<FloatingPanel label="Layers" position="left-center">
 			<ol
-				className="m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0.5"
+				className="m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-1.5"
 				onDragOver={(event) => {
 					if (dragged) event.preventDefault();
 				}}
@@ -69,7 +69,7 @@ export function LayerPanel({
 					return (
 						<li
 							key={layer.id}
-							className={`group relative mb-[3px] grid min-h-11 ${diagnostics.length ? "grid-cols-[16px_minmax(0,1fr)_auto_28px_24px]" : "grid-cols-[16px_minmax(0,1fr)_28px_24px]"} items-center gap-1.5 rounded-md border border-transparent px-1 py-1.5 transition-[background,border-color] duration-150 ease-[ease] last:mb-0 hover:bg-[#ffffff08] data-[focused=true]:border-[#b88f6170] data-[focused=true]:bg-[#e8b77e0c] data-[dragging=true]:opacity-35 after:pointer-events-none after:absolute after:inset-x-0 after:hidden after:h-0.5 after:rounded-[3px] after:bg-[#e8b77e] data-[drop]:after:block data-[drop=before]:after:-top-[3px] data-[drop=after]:after:-bottom-[3px]`}
+							className={`group relative mb-0.5 grid min-h-11 ${diagnostics.length ? "grid-cols-[16px_minmax(0,1fr)_auto_28px_24px]" : "grid-cols-[16px_minmax(0,1fr)_28px_24px]"} items-center gap-1.5 rounded-md border border-transparent px-1 py-1 last:mb-0 hover:bg-hover data-[focused=true]:border-accent-line data-[focused=true]:bg-accent-tint data-[dragging=true]:opacity-35 after:pointer-events-none after:absolute after:inset-x-0 after:hidden after:h-0.5 after:rounded-full after:bg-accent data-[drop]:after:block data-[drop=before]:after:-top-[3px] data-[drop=after]:after:-bottom-[3px]`}
 							data-layer-id={layer.id}
 							data-focused={focused}
 							data-hidden={!layer.visible}
@@ -102,7 +102,7 @@ export function LayerPanel({
 						>
 							<button
 								type="button"
-								className="relative z-1 grid h-[30px] place-items-center rounded-[5px] border-0 bg-transparent p-0 hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] w-4 cursor-grab text-[#657183] active:cursor-grabbing"
+								className="relative z-1 grid h-7 w-4 cursor-grab pointer-coarse:h-11 place-items-center rounded-sm border-0 bg-transparent p-0 text-fg-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent active:cursor-grabbing"
 								draggable
 								aria-label={`Reorder ${layer.name}`}
 								title="Drag to reorder, or use the up and down arrow keys"
@@ -141,7 +141,7 @@ export function LayerPanel({
 							<button
 								type="button"
 								data-testid="layer-select"
-								className="grid w-full min-w-0 cursor-pointer grid-cols-[7px_minmax(0,1fr)] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit before:absolute before:inset-0 before:rounded-[inherit] before:content-[''] focus-visible:outline-none focus-visible:before:outline-2 focus-visible:before:-outline-offset-2 focus-visible:before:outline-[#e8b77e]"
+								className="grid w-full min-w-0 cursor-pointer grid-cols-[7px_minmax(0,1fr)] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit before:absolute before:inset-0 before:rounded-[inherit] before:content-[''] focus-visible:outline-none focus-visible:before:outline-2 focus-visible:before:-outline-offset-2 focus-visible:before:outline-accent"
 								aria-label={`Focus ${layer.name}`}
 								title={focused ? "Exit layer focus" : `Focus ${layer.name}`}
 								aria-pressed={focused}
@@ -149,7 +149,7 @@ export function LayerPanel({
 							>
 								<span
 									data-testid="layer-swatch"
-									className="block h-[18px] w-[7px] shrink-0 rounded-[2px] border group-data-[hidden=true]:opacity-40"
+									className="block h-4 w-[7px] shrink-0 rounded-xs border group-data-[hidden=true]:opacity-40"
 									style={{
 										backgroundColor: layer.color,
 										borderColor: layer.color,
@@ -157,7 +157,7 @@ export function LayerPanel({
 								/>
 								<span
 									data-testid="layer-name"
-									className="block min-w-0 truncate text-[12px] font-medium text-[#e1e6ee] group-data-[hidden=true]:opacity-40"
+									className="block min-w-0 truncate text-xs font-medium text-fg group-data-[hidden=true]:opacity-40"
 									title={layer.name}
 								>
 									{layer.name}
@@ -167,7 +167,7 @@ export function LayerPanel({
 								<button
 									type="button"
 									data-testid="layer-diagnostics"
-									className={`relative z-1 inline-flex h-[30px] cursor-pointer items-center gap-1 rounded-[5px] border-0 bg-transparent px-1.5 text-[11px] font-medium tabular-nums group-data-[hidden=true]:opacity-40 hover:bg-[#ffffff10] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] ${errors ? severityStyle.error.className : severityStyle.warning.className}`}
+									className={`relative z-1 inline-flex h-7 cursor-pointer items-center gap-1 rounded-md pointer-coarse:h-11 border-0 bg-transparent px-1.5 text-2xs font-medium tabular-nums group-data-[hidden=true]:opacity-40 hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent ${errors ? severityStyle.error.className : severityStyle.warning.className}`}
 									aria-label={`Diagnostics for ${layer.name}: ${summary}`}
 									title={summary}
 									aria-expanded={open}
@@ -190,7 +190,7 @@ export function LayerPanel({
 							)}
 							<button
 								type="button"
-								className="relative z-1 grid h-[30px] place-items-center rounded-[5px] border-0 bg-transparent p-0 hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] w-full cursor-pointer text-[#98a4b6]"
+								className="relative z-1 grid h-7 w-full cursor-pointer place-items-center pointer-coarse:h-11 rounded-md border-0 bg-transparent p-0 text-fg-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
 								aria-label={`${layer.visible ? "Hide" : "Show"} ${layer.name}`}
 								title={layer.visible ? "Hide layer" : "Show layer"}
 								aria-pressed={layer.visible}
@@ -200,7 +200,7 @@ export function LayerPanel({
 							</button>
 							<button
 								type="button"
-								className="relative z-1 grid h-[30px] place-items-center rounded-[5px] border-0 bg-transparent p-0 hover:bg-[#ffffff10] hover:text-[#f0f3f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b77e] w-6 cursor-pointer text-[#748093]"
+								className="relative z-1 grid h-7 w-6 cursor-pointer place-items-center pointer-coarse:h-11 rounded-md border-0 bg-transparent p-0 text-fg-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
 								aria-label={`Remove ${layer.name}`}
 								title="Remove layer"
 								onClick={() => onRemove(layer.id)}
@@ -212,7 +212,7 @@ export function LayerPanel({
 									id={diagnosticsId}
 									data-testid="layer-diagnostics-list"
 									aria-label={`Diagnostics for ${layer.name}`}
-									className="relative z-1 col-span-full m-0 mt-1 max-h-48 list-none overflow-y-auto overscroll-contain rounded-[5px] bg-[#0f1115] px-2 py-1.5 text-[11px] leading-[1.4] text-[#c7d0dc]"
+									className="relative z-1 col-span-full m-0 mt-1 max-h-48 list-none overflow-y-auto overscroll-contain rounded-md bg-field px-2 py-1.5 text-2xs leading-4 text-fg-muted"
 								>
 									{diagnostics.map((diagnostic, position) => (
 										<li
@@ -227,7 +227,7 @@ export function LayerPanel({
 												{severityStyle[diagnostic.severity].label}
 											</span>
 											{diagnostic.line !== undefined && (
-												<span className="text-[#8892a2]">
+												<span className="text-fg-faint">
 													{" "}
 													· Line {diagnostic.line}
 												</span>

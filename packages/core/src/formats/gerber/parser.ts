@@ -1,4 +1,5 @@
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { viewerTheme } from "#/drawing/schematic-theme.ts";
 import type {
 	Attributes,
 	Bounds,
@@ -1040,7 +1041,7 @@ export function parseGerber(
 			name: filename,
 			objects,
 			bounds,
-			color: "#dc9d51",
+			color: viewerTheme.layer,
 			visible: true,
 			opacity: 1,
 			metadata,

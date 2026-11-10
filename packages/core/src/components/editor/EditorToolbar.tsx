@@ -13,8 +13,8 @@ import {
 	MapPin,
 	Minus,
 	MousePointer2,
-	RotateCcwSquare,
-	RotateCwSquare,
+	RotateCcw,
+	RotateCw,
 	Shapes,
 	Square,
 	SquareDashedMousePointer,
@@ -47,14 +47,12 @@ import type {
 } from "#/components/editor/useCanvasGestures.ts";
 import {
 	ToolbarGroup,
-	ToolbarMenuItem,
+	ToolbarGroupButton,
 	ToolbarSeparator,
 } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
-import {
-	useViewExport,
-	viewControlButtonClassName,
-} from "#/components/viewer/ViewControls3D.tsx";
+import { useViewExport } from "#/components/viewer/ViewControls3D.tsx";
+import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
@@ -169,7 +167,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				active={!!current}
 			>
 				{items.map(({ kind, label, icon }) => (
-					<ToolbarMenuItem
+					<ToolbarGroupButton
 						key={kind}
 						icon={icon}
 						label={label}
@@ -240,13 +238,13 @@ export const EditorToolbar = memo(function EditorToolbar({
 					label: "Rotate counterclockwise",
 					shortcut: "R",
 					angle: Math.PI / 2,
-					icon: RotateCcwSquare,
+					icon: RotateCcw,
 				},
 				{
 					label: "Rotate clockwise",
 					shortcut: "Shift+R",
 					angle: -Math.PI / 2,
-					icon: RotateCwSquare,
+					icon: RotateCw,
 				},
 			].map(({ label, shortcut, angle, icon: Icon }) =>
 				toggle(
@@ -306,13 +304,13 @@ export const EditorToolbar = memo(function EditorToolbar({
 				</>
 			)}
 			<ToolbarGroup label="Export" icon={Download} disabled={!ready}>
-				<ToolbarMenuItem
+				<ToolbarGroupButton
 					icon={FileImage}
 					label="Export drawing"
 					onClick={() => setExportOpen(true)}
 				/>
 				{viewExport.exportPng && (
-					<ToolbarMenuItem
+					<ToolbarGroupButton
 						icon={ImageDown}
 						label="Export PNG"
 						disabled={!viewExport.enabled || viewExport.exporting}

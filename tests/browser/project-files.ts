@@ -10,12 +10,10 @@ export async function openProjectFiles(page: Page) {
 	await page.waitForFunction(
 		() => !document.querySelector('[aria-busy="true"]'),
 	);
-	const expand = page.getByRole("button", {
-		name: "Show project files",
-		exact: true,
-		includeHidden: true,
-	});
-	await expand.hover();
+	// Resting the mouse on the window's left edge reveals the sidebar.
+	const y = required(page.viewportSize()).height / 2;
+	await page.mouse.move(60, y);
+	await page.mouse.move(2, y);
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await expect
 		.poll(async () => required(await sidebar.boundingBox()).x)

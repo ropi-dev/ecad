@@ -48,3 +48,30 @@ export const darkSchematicTheme: SchematicTheme = {
 		label: "#e8edf5",
 	},
 };
+
+/** Colours the Gerber and STEP viewers draw with, outside any drawing. */
+export const viewerTheme = {
+	/** The app background: a captured PNG's backdrop and the desktop window's. */
+	background: "#0f1115",
+	hover: "#ffd166",
+	selection: "#ffcc33",
+	selectionGlow: "#805000",
+	/** Layers behind the focused Gerber layer. */
+	unfocusedLayer: "#467386",
+	ambientGround: "#566173",
+	gridMajor: "#64748b",
+	gridMinor: "#334155",
+	/** STEP parts and Gerber layers that carry no colour of their own. */
+	model: "#e8b77e",
+	layer: "#dc9d51",
+	layerPalette: [
+		"#e8b77e",
+		"#76b8e8",
+		"#a99bea",
+		"#78c9a5",
+		"#e88ea1",
+		"#d2cf7d",
+	],
+	/** Fill of a symbol thumbnail's body. */
+	thumbnailFill: "#18282b",
+} as const;

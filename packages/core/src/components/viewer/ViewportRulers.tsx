@@ -151,7 +151,7 @@ export function ViewportRulers({
 				</div>
 			)}
 			<div
-				className="pointer-events-none absolute inset-0 z-2 overflow-clip [&_line]:stroke-1 [&_text]:fill-current [&_text]:[font-family:ui-monospace,monospace] [&_text]:text-[10px] [&_text]:tabular-nums text-[#9ba7b8] [&_line]:stroke-[#657183] [&_.ruler-band]:fill-[#191c22] [&_.ruler-edge]:stroke-[#414955] [&_svg]:absolute"
+				className="pointer-events-none absolute inset-0 z-2 overflow-clip [&_line]:stroke-1 [&_text]:fill-current [&_text]:font-mono [&_text]:text-[10px] [&_text]:tabular-nums text-fg-muted [&_line]:stroke-ruler-tick [&_.ruler-band]:fill-ruler [&_.ruler-edge]:stroke-line [&_svg]:absolute"
 				role="img"
 				aria-label={`Drawing rulers in ${unit === "mil" ? "mils" : "millimetres"}`}
 				aria-describedby={descriptionId}
@@ -183,7 +183,7 @@ export function ViewportRulers({
 						aria-hidden="true"
 					>
 						<path
-							className="fill-none stroke-[#657183] stroke-1"
+							className="fill-none stroke-ruler-tick stroke-1"
 							d={horizontal
 								.filter((tick) => tick.label === undefined)
 								.map((tick) => `M${tick.position} 19V${BAND}`)
@@ -237,7 +237,7 @@ export function ViewportRulers({
 						aria-hidden="true"
 					>
 						<path
-							className="fill-none stroke-[#657183] stroke-1"
+							className="fill-none stroke-ruler-tick stroke-1"
 							d={vertical
 								.filter((tick) => tick.label === undefined)
 								.map(

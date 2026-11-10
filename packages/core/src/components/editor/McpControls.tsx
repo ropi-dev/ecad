@@ -60,8 +60,8 @@ export function McpControls({
 					2,
 				)
 			: "";
-	const fieldClassName =
-		"w-full rounded border border-[#414955] bg-[#111318] px-2 py-1.5 font-mono text-[11px] text-[#e8edf5]";
+	const fieldClassName = "ui-input w-full font-mono text-2xs";
+	const fieldLabel = "text-xs font-medium text-fg-muted";
 	const label = enabled
 		? connection?.status === "connected"
 			? "MCP connected"
@@ -76,10 +76,11 @@ export function McpControls({
 					aria-pressed={enabled}
 					aria-expanded={panelOpen}
 					aria-controls={`${fieldId}-panel`}
+					data-size={compact ? undefined : "md"}
 					className={
 						compact
-							? `${workspaceActionClassName} text-[#c3abd8] aria-pressed:bg-[#e8b77e1c] aria-pressed:text-[#e8b77e]`
-							: "inline-flex cursor-pointer items-center rounded-lg border border-[#414955] bg-[#1b1e24ed] px-3 py-[9px] text-[12px] font-medium text-[#e8edf5] shadow-[0_4px_16px_#0003] hover:bg-[#303741] aria-pressed:border-[#b88f61] aria-pressed:text-[#e8b77e]"
+							? workspaceActionClassName
+							: "ui-button ui-toggle shadow-panel [--toggle-bg:var(--color-panel)] [--toggle-fg:var(--color-fg)] [--toggle-line:var(--color-line)] [--toggle-on-bg:var(--color-panel)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-bg:var(--color-panel)] hover:[--toggle-line:var(--color-line-strong)]"
 					}
 					onClick={() => {
 						if (enabled) return;
@@ -88,7 +89,14 @@ export function McpControls({
 						setEnabled(true);
 					}}
 				>
-					{compact ? <PlugZap size={20} aria-hidden="true" /> : label}
+					{compact ? (
+						<>
+							<PlugZap size={18} aria-hidden="true" />
+							MCP
+						</>
+					) : (
+						label
+					)}
 				</button>
 			</Popover.Trigger>
 			{panelOpen && connection && connection.status !== "disconnected" && (
@@ -96,7 +104,7 @@ export function McpControls({
 					<Popover.Content
 						asChild
 						role="region"
-						side={compact ? "right" : "bottom"}
+						side="bottom"
 						align="start"
 						sideOffset={8}
 						collisionPadding={12}
@@ -104,40 +112,54 @@ export function McpControls({
 						<section
 							id={`${fieldId}-panel`}
 							aria-label="MCP connection"
-							className="z-30 grid max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-1.5rem))] w-[min(360px,calc(100vw-1.5rem))] max-w-[var(--radix-popover-content-available-width)] gap-3 overflow-auto rounded-lg border border-[#414955] bg-[#191c22] p-3 text-[12px] text-[#e8edf5] shadow-xl"
+							className="ui-popover z-30 grid max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-1.5rem))] w-[min(360px,calc(100vw-1.5rem))] max-w-[var(--radix-popover-content-available-width)] gap-3 overflow-auto p-3 text-xs"
 						>
-							{enabled && (
-								<button
-									type="button"
-									className="justify-self-end rounded border border-[#72543a] bg-[#392e25] px-3 py-1.5 text-[#edc49a] hover:bg-[#493a2b]"
-									onClick={() => {
-										activeConnection.current?.disconnect();
-										setEnabled(false);
-										setPanelOpen(false);
-										setConnection(null);
-										setCopyMessage("");
-									}}
-								>
-									Disable MCP
-								</button>
-							)}
+							<header className="flex items-center justify-between gap-3">
+								<h2 className="m-0 text-sm font-semibold">MCP connection</h2>
+								{enabled && (
+									<button
+										type="button"
+										className="ui-button"
+										data-variant="danger"
+										onClick={() => {
+											activeConnection.current?.disconnect();
+											setEnabled(false);
+											setPanelOpen(false);
+											setConnection(null);
+											setCopyMessage("");
+										}}
+									>
+										Disable MCP
+									</button>
+								)}
+							</header>
 							{connection.status === "connecting" && (
-								<output>Connecting to this drawing...</output>
+								<output className="text-fg-muted">
+									Connecting to this drawing...
+								</output>
 							)}
 							{connection.status === "error" && (
-								<p role="alert">{connection.message}</p>
+								<p role="alert" className="m-0 text-danger">
+									{connection.message}
+								</p>
 							)}
 							{connection.status === "connected" && (
 								<>
-									<output className="font-medium text-[#e8b77e]">
+									<output className="flex items-center gap-2 font-medium text-success">
+										<span
+											aria-hidden="true"
+											className="size-1.5 rounded-full bg-success"
+										/>
 										Connected to this drawing
 									</output>
-									<p className="text-[#9ba7b8]">
+									<p className="m-0 text-fg-muted">
 										MCP tools can read and edit this drawing. Keep this tab
 										open. Disable MCP to disconnect.
 									</p>
-									<div className="grid gap-1">
-										<label htmlFor={`${fieldId}-url`}>MCP URL</label>
+									<div className="grid gap-1.5">
+										<label htmlFor={`${fieldId}-url`} className={fieldLabel}>
+											MCP URL
+										</label>
 										<input
 											id={`${fieldId}-url`}
 											className={fieldClassName}
@@ -145,8 +167,10 @@ export function McpControls({
 											value={connection.url}
 										/>
 									</div>
-									<div className="grid gap-1">
-										<label htmlFor={`${fieldId}-token`}>MCP bearer token</label>
+									<div className="grid gap-1.5">
+										<label htmlFor={`${fieldId}-token`} className={fieldLabel}>
+											MCP bearer token
+										</label>
 										<input
 											id={`${fieldId}-token`}
 											className={fieldClassName}
@@ -155,8 +179,11 @@ export function McpControls({
 											value={connection.token}
 										/>
 									</div>
-									<div className="grid gap-1">
-										<label htmlFor={`${fieldId}-configuration`}>
+									<div className="grid gap-1.5">
+										<label
+											htmlFor={`${fieldId}-configuration`}
+											className={fieldLabel}
+										>
 											MCP configuration
 										</label>
 										<textarea
@@ -169,7 +196,9 @@ export function McpControls({
 									</div>
 									<button
 										type="button"
-										className="rounded border border-[#72543a] bg-[#392e25] px-3 py-2 text-[#edc49a] hover:bg-[#493a2b]"
+										className="ui-button"
+										data-variant="primary"
+										data-size="md"
 										onClick={async () => {
 											try {
 												await navigator.clipboard.writeText(configuration);
@@ -183,7 +212,9 @@ export function McpControls({
 									>
 										Copy configuration
 									</button>
-									{copyMessage && <output>{copyMessage}</output>}
+									{copyMessage && (
+										<output className="text-fg-muted">{copyMessage}</output>
+									)}
 								</>
 							)}
 						</section>

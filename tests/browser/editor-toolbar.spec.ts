@@ -19,10 +19,15 @@ test("keyboard opening, tool navigation, and Escape restore focus", async ({
 		name: "Shapes toolbar",
 		exact: true,
 	});
+	// Opened from the keyboard, the focused tool names itself. The group
+	// button's own tooltip may still be closing.
+	await expect(
+		page.locator('[data-slot="toolbar-tooltip"]:not([data-state="closed"])'),
+	).toHaveText("Rectangle");
 	await expectKeyboardNavigation(
 		tools.getByRole("button", { disabled: false }),
-		"ArrowDown",
-		"ArrowUp",
+		"ArrowRight",
+		"ArrowLeft",
 	);
 	await tools.getByRole("button", { name: "Rectangle", exact: true }).focus();
 	await page.keyboard.press("Enter");
@@ -55,6 +60,32 @@ test("keyboard opening, tool navigation, and Escape restore focus", async ({
 	).toBeFocused();
 	await page.keyboard.press("Tab");
 	await expect(tools).toBeHidden();
+});
+
+test("a group opens as a row of icons that name themselves on hover", async ({
+	page,
+}) => {
+	await page.getByRole("button", { name: "Shapes", exact: true }).click();
+	const tools = page.getByRole("toolbar", {
+		name: "Shapes toolbar",
+		exact: true,
+	});
+	await expect(tools).toHaveAttribute("aria-orientation", "horizontal");
+	const buttons = tools.getByRole("button");
+	await expect(buttons).toHaveCount(5);
+	await expect(buttons).toHaveText(["", "", "", "", ""]);
+	const boxes = await buttons.evaluateAll((items) =>
+		items.map((item) => item.getBoundingClientRect().toJSON()),
+	);
+	expect(new Set(boxes.map((box) => box.y)).size).toBe(1);
+	// Opened by pointer, no name shows until a tool is hovered.
+	const tooltip = page.locator(
+		'[data-slot="toolbar-tooltip"]:not([data-state="closed"])',
+	);
+	await page.waitForTimeout(500);
+	await expect(tooltip).toHaveCount(0);
+	await tools.getByRole("button", { name: "Circle", exact: true }).hover();
+	await expect(tooltip).toHaveText("Circle");
 });
 
 test("clicking a submenu's padding keeps it open", async ({ page }) => {

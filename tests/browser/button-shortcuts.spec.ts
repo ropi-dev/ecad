@@ -14,8 +14,10 @@ test.beforeEach(async ({ page }) => {
 test("hints wait for Ctrl to be held for 1 second while shortcuts work at once", async ({
 	page,
 }) => {
-	await page.keyboard.down("Control");
+	// Read the clock before the press. Read after it, the hold would start
+	// late by one round trip and could measure under a second.
 	const pressed = await page.evaluate(() => performance.now());
+	await page.keyboard.down("Control");
 	await page.keyboard.press("s");
 	await expect(
 		page.getByRole("toolbar", { name: "Shapes toolbar", exact: true }),

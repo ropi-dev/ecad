@@ -44,6 +44,8 @@ export interface ProjectContextValue {
 	editorSymbol: SymbolDocument | null;
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
+	/** Identifies the circuit being opened, or null when none is. */
+	openingCircuit: number | null;
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
 	openCircuit(path: string): Promise<boolean>;
 	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
@@ -281,6 +283,7 @@ export function createProjectSession(
 		editorSymbol: state.editorSymbol,
 		editorDrawing: state.editorDrawing,
 		editorCircuit: state.editorCircuit,
+		openingCircuit: state.openingCircuit,
 		openCircuit,
 		switchEditorView,
 		rememberViewSelection,
@@ -345,6 +348,7 @@ export function createProjectSession(
 						editorSymbol: _editorSymbol,
 						editorDrawing: _editorDrawing,
 						editorCircuit: _editorCircuit,
+						openingCircuit: _openingCircuit,
 						selectedAsset: _selectedAsset,
 						...actions
 					} = next;

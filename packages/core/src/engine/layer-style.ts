@@ -1,4 +1,5 @@
 import { Color, SRGBColorSpace } from "three";
+import { viewerTheme } from "#/drawing/schematic-theme.ts";
 
 export const UNFOCUSED_FILL_OPACITY = 0.06;
 export const UNFOCUSED_OUTLINE_OPACITY = 0.1;
@@ -9,7 +10,7 @@ export const UNFOCUSED_OUTLINE_WIDTH = 4;
 export const UNFOCUSED_OUTLINE_WIDTH_MM = 0.05;
 
 /** A single cool film tone keeps unfocused geometry separate from layer colors. */
-export const UNFOCUSED_XRAY_COLOR = "#467386";
+export const UNFOCUSED_XRAY_COLOR = viewerTheme.unfocusedLayer;
 
 /** Keep the layer hue while giving hovered nets a small lift. */
 export function hoverLayerColor(color: string): string {

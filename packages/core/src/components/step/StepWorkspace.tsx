@@ -5,6 +5,8 @@ import { StepParts } from "#/components/step/StepParts.tsx";
 import { StepViewer } from "#/components/step/StepViewer.tsx";
 import { useStepFile } from "#/components/step/useStepFile.ts";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
+import { DocumentBar } from "#/projects/DocumentBar.tsx";
+import { workspaceLinkClassName } from "#/projects/EditorHeader.tsx";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import {
 	useProjectActions,
@@ -18,6 +20,7 @@ export function StepWorkspace() {
 	const { model, loading, message, openFile, cancel, clear } = useStepFile();
 	// Project messages, such as assets a new project left out, show here too.
 	const projectError = useProjectSelection((value) => value.error) ?? "";
+	const selectedAsset = useProjectSelection((value) => value.selectedAsset);
 	const [hidden, setHidden] = useState<Set<number>>(new Set());
 	const [wireframe, setWireframe] = useState(false);
 	const [ready, setReady] = useState(false);
@@ -31,11 +34,14 @@ export function StepWorkspace() {
 			setRendererError("");
 		}
 	};
-	const button =
-		"inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-slate-900/95 px-3 text-xs text-white/80 shadow-lg hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-white";
+	const link = {
+		className: workspaceLinkClassName,
+		"data-variant": "secondary",
+		"data-size": "md",
+	} as const;
 	return (
 		<main
-			className="relative h-dvh overflow-hidden"
+			className="workspace-plain relative h-dvh overflow-hidden"
 			onDragEnter={(event) => {
 				if (project) return;
 				if (!event.dataTransfer.types.includes("Files")) return;
@@ -60,16 +66,28 @@ export function StepWorkspace() {
 				if (file) void load(file);
 			}}
 		>
+			<DocumentBar
+				icon={Box}
+				title={model?.name ?? selectedAsset?.name ?? "STEP viewer"}
+				selection={
+					selectedAsset?.kind === "step"
+						? `asset:${selectedAsset.path}`
+						: undefined
+				}
+				plain
+			/>
 			{!workspaceControls && (
-				<header className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
-					<ProjectLink href="/" className={button}>
+				<header className="absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-20 flex max-w-[calc(100%-2*var(--chrome-gap))] flex-wrap gap-2">
+					<ProjectLink href="/" {...link}>
 						Workspace
 					</ProjectLink>
 					{!project && (
 						<label
-							className={`${button} relative cursor-pointer focus-within:outline-2 focus-within:outline-white`}
+							className={`${workspaceLinkClassName} relative focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent`}
+							data-variant="primary"
+							data-size="md"
 						>
-							<Upload size={16} />
+							<Upload size={15} aria-hidden="true" />
 							{loading ? "Reading STEP..." : "Open STEP"}
 							<input
 								type="file"
@@ -84,10 +102,10 @@ export function StepWorkspace() {
 							/>
 						</label>
 					)}
-					<ProjectLink href="/gerber" className={button}>
+					<ProjectLink href="/gerber" {...link}>
 						Gerber viewer
 					</ProjectLink>
-					<ProjectLink href="/editor" className={button}>
+					<ProjectLink href="/editor" {...link}>
 						Schematic editor
 					</ProjectLink>
 				</header>
@@ -95,7 +113,7 @@ export function StepWorkspace() {
 			{notices.length > 0 && (
 				<div
 					role="alert"
-					className="absolute left-4 top-20 z-20 max-h-28 max-w-[calc(100%-2rem)] overflow-auto rounded-lg border border-amber-200/30 bg-slate-900 p-3 text-sm text-amber-200 sm:max-w-sm"
+					className="ui-notice absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] left-[var(--chrome-gap)] z-20 max-h-28 max-w-[calc(100%-2*var(--chrome-gap))] overflow-auto px-3 py-2 sm:max-w-sm"
 				>
 					{notices.map((notice) => (
 						<p key={notice} className="m-0">
@@ -141,34 +159,45 @@ export function StepWorkspace() {
 					)}
 				</>
 			) : (
-				<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-					<Box size={40} className="text-slate-500" />
-					<h1 className="text-xl font-medium text-slate-200">STEP viewer</h1>
-					<p className="text-sm text-slate-400">
+				<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+					<span className="mb-2 grid size-14 place-items-center rounded-2xl border border-line bg-panel text-fg-faint">
+						<Box size={26} aria-hidden="true" />
+					</span>
+					<h1 className="m-0 text-xl font-semibold text-fg">STEP viewer</h1>
+					<p className="m-0 max-w-sm text-sm text-fg-muted">
 						{project
-							? "Add a STEP file in the sidebar to explore it in 3D."
+							? "Add a STEP model from the sidebar's + menu to explore it in 3D."
 							: "Open or drop a .step or .stp file to explore it in 3D."}
 					</p>
-					<p className="text-xs text-slate-400">Files stay on your device.</p>
+					<p className="m-0 text-xs text-fg-faint">
+						Files stay on your device.
+					</p>
 				</div>
 			)}
 			{loading && (
-				<output className="absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-4 rounded-lg border border-white/20 bg-slate-900 p-4 text-sm shadow-lg">
+				<output className="ui-panel absolute top-1/2 left-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-4 py-3 pr-3 pl-4 text-sm shadow-pop">
 					<span>Reading STEP file...</span>
-					<button type="button" className={button} onClick={cancel}>
+					<button
+						type="button"
+						className="ui-button"
+						data-variant="secondary"
+						onClick={cancel}
+					>
 						Cancel
 					</button>
 				</output>
 			)}
 			{model && (
-				<p className="pointer-events-none absolute bottom-20 left-0 w-full px-4 text-center text-xs text-slate-400">
-					{formatShortcut(
-						"Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom · F6 to fit",
-					)}
+				<p className="pointer-events-none absolute bottom-[calc(var(--chrome-dock)+env(safe-area-inset-bottom))] left-0 m-0 flex w-full justify-center px-4">
+					<span className="rounded-md border border-line-subtle bg-panel px-2.5 py-1 text-center text-2xs text-fg-muted">
+						{formatShortcut(
+							"Shift + left-drag to orbit · Ctrl + left-drag to pan · Pinch to zoom · F6 to fit",
+						)}
+					</span>
 				</p>
 			)}
 			{dragging && (
-				<div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-xl border-2 border-dashed border-amber-200 bg-slate-900/90 text-lg text-amber-200">
+				<div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-accent bg-scrim text-lg font-medium text-accent">
 					Drop a STEP file to open it
 				</div>
 			)}

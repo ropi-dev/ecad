@@ -1,9 +1,9 @@
 import {
 	Cable,
 	CirclePlus,
+	Cpu,
 	Hand,
 	type LucideIcon,
-	Microchip,
 	MousePointer2,
 	Redo2,
 	Shuffle,
@@ -20,7 +20,6 @@ import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import { ZoomControls } from "#/components/viewer/ZoomControls.tsx";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
-import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 
 const CircuitComponentPicker = lazy(() =>
 	import("#/components/circuit/CircuitComponentPicker.tsx").then((module) => ({
@@ -117,7 +116,7 @@ export function CircuitToolbar({
 						aria-label="Components"
 						disabled
 					>
-						<Microchip size={18} aria-hidden="true" />
+						<Cpu size={18} aria-hidden="true" />
 					</button>
 				}
 			>
@@ -162,7 +161,6 @@ export function CircuitToolbar({
 			>
 				{Math.round(zoomLevel * 100)}%
 			</ZoomControls>
-			<EditorViewSwitch view="circuit" />
 		</ToolbarDock>
 	);
 }

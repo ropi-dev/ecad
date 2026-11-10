@@ -52,6 +52,8 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		symbolDocuments: documents.collection("symbol"),
 		drawingDocuments: documents.collection("drawing"),
 		editorCircuit: null as CircuitDocument | null,
+		/** The request that is opening a circuit, while one is. */
+		openingCircuit: null as number | null,
 		editorSymbol: null as SymbolDocument | null,
 		editorDrawing: null as DrawingDocument | null,
 		symbols: [] as SymbolLibrary,
@@ -115,6 +117,11 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 	const setEditorCircuit = (next: CircuitDocument | null) => {
 		if (Object.is(next, state.editorCircuit)) return;
 		state.editorCircuit = next;
+		publish();
+	};
+	const setOpeningCircuit = (next: number | null) => {
+		if (next === state.openingCircuit) return;
+		state.openingCircuit = next;
 		publish();
 	};
 	const setEditorSymbol = (next: SymbolDocument | null) => {
@@ -215,6 +222,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		setProject,
 		setStore,
 		setEditorCircuit,
+		setOpeningCircuit,
 		setEditorSymbol,
 		setEditorDrawing,
 		setEpoch,

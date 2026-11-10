@@ -14,29 +14,30 @@ export function StepParts({
 	return (
 		<aside
 			aria-label="Model parts"
-			className="absolute right-4 top-20 z-10 flex max-h-[40%] w-60 flex-col rounded-lg border border-white/20 bg-slate-900/95 p-3 text-sm shadow-lg sm:top-4 sm:max-h-[calc(100%-7rem)] sm:w-72"
+			className="ui-panel absolute top-[calc(var(--chrome-top)+var(--chrome-bar))] right-[var(--chrome-right)] z-10 flex max-h-[40%] w-60 flex-col overflow-hidden sm:top-[var(--chrome-top)] sm:max-h-[calc(100%-var(--chrome-top)-var(--chrome-dock))] sm:w-72"
 		>
-			<div className="flex min-w-0 items-center justify-between gap-2">
-				<h2 className="truncate font-medium" title={model.name}>
+			<header className="flex min-w-0 shrink-0 items-center justify-between gap-2 border-b border-line-subtle py-1.5 pr-1.5 pl-3">
+				<h2 className="m-0 truncate text-sm font-semibold" title={model.name}>
 					{model.name}
 				</h2>
 				<button
 					type="button"
-					className="h-10 shrink-0 rounded border border-white/20 px-2 text-xs text-white/80 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
+					className="ui-button"
+					data-variant="ghost"
 					onClick={onClear}
 				>
 					Close
 				</button>
-			</div>
-			<ul className="min-h-0 overflow-y-auto">
+			</header>
+			<ul className="m-0 min-h-0 list-none overflow-y-auto p-1.5">
 				{model.parts.map((part, index) => (
 					<li key={part.id}>
-						<label className="flex min-h-11 cursor-pointer items-center gap-3 rounded px-2 hover:bg-white/10">
+						<label className="flex min-h-8 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-sm hover:bg-hover pointer-coarse:min-h-11">
 							<input
 								type="checkbox"
 								checked={!hidden.has(index)}
 								onChange={() => onToggle(index)}
-								className="size-4 shrink-0 accent-amber-200 focus-visible:outline-2 focus-visible:outline-white"
+								className="ui-checkbox"
 							/>
 							<span
 								className="truncate"

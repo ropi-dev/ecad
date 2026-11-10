@@ -15,6 +15,7 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
+import { viewerTheme } from "#/drawing/schematic-theme.ts";
 import { getSceneBounds } from "#/engine/camera.ts";
 import { capturePng } from "#/engine/capture-png.ts";
 import { create3DControls } from "#/engine/controls3d.ts";
@@ -191,7 +192,10 @@ export function createSceneViewport(
 			return result.damage;
 		};
 		const scene = new Scene();
-		scene.add(group, new HemisphereLight("white", "#566173", 2.5));
+		scene.add(
+			group,
+			new HemisphereLight("white", viewerTheme.ambientGround, 2.5),
+		);
 		if (batcher) scene.add(batcher.object);
 		/**
 		 * Draws the whole view. Three recomputes every world matrix under the
@@ -263,7 +267,13 @@ export function createSceneViewport(
 		const radius = Math.max(sphere.radius, 0.001);
 		if (!topView) {
 			const grid = lifecycle.acquire(
-				() => new GridHelper(radius * 6, 60, "#64748b", "#334155"),
+				() =>
+					new GridHelper(
+						radius * 6,
+						60,
+						viewerTheme.gridMajor,
+						viewerTheme.gridMinor,
+					),
 				(grid) => grid.dispose(),
 			);
 			grid.rotation.x = Math.PI / 2;

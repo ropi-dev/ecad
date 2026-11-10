@@ -3,10 +3,8 @@
 	height: 100dvh;
 	min-height: 360px;
 	overflow: hidden;
-	color: #e8edf5;
-	font:
-		13px system-ui,
-		sans-serif;
+	color: var(--color-fg);
+	font-size: var(--text-sm);
 }
 .circuit-workspace,
 .circuit-canvas {
@@ -17,7 +15,8 @@
 }
 .circuit-canvas {
 	overflow: hidden;
-	background: #19212e radial-gradient(#303a49 1px, transparent 1px);
+	background: var(--circuit-canvas)
+		radial-gradient(var(--circuit-dot) 1px, transparent 1px);
 	background-size: 20px 20px;
 }
 .circuit-canvas > svg {
@@ -33,7 +32,7 @@
 .circuit-editor button:focus-visible,
 .circuit-editor input:focus-visible,
 .circuit-editor select:focus-visible {
-	outline: 2px solid #e8b77e;
+	outline: 2px solid var(--color-accent);
 	outline-offset: 2px;
 }
 .circuit-canvas.is-panning,
@@ -46,34 +45,32 @@
 }
 .circuit-edge {
 	fill: none;
-	stroke: #64a99e;
+	stroke: var(--circuit-edge);
 	stroke-width: 2;
 	opacity: 0.7;
 	pointer-events: none;
 }
 .circuit-edge.is-highlighted {
-	stroke: #b8dcd5;
+	stroke: var(--circuit-edge-highlight);
 	opacity: 1;
 }
 .circuit-edge.is-selected {
-	stroke: #e8b77e;
+	stroke: var(--color-accent);
 	stroke-width: 3;
 	opacity: 1;
 }
 .circuit-component-body {
-	fill: #20292f;
-	stroke: #45535d;
+	fill: var(--circuit-body);
+	stroke: var(--circuit-body-line);
 	stroke-width: 1.5;
 }
 .circuit-component.is-selected .circuit-component-body {
-	stroke: #e8b77e;
+	stroke: var(--color-accent);
 	stroke-width: 2;
 }
 .circuit-canvas text {
-	fill: #dce4e8;
-	font:
-		13px system-ui,
-		sans-serif;
+	fill: var(--circuit-text);
+	font: 13px var(--font-sans);
 	pointer-events: none;
 }
 .circuit-canvas .circuit-reference {
@@ -81,11 +78,11 @@
 	font-weight: 650;
 }
 .circuit-canvas .circuit-value {
-	fill: #95a8b5;
+	fill: var(--circuit-text-muted);
 	font-size: 12px;
 }
 .circuit-canvas .circuit-pin-name {
-	fill: #a4b3bd;
+	fill: var(--circuit-pin-name);
 }
 .circuit-collapse-button {
 	cursor: pointer;
@@ -94,7 +91,7 @@
 	fill: transparent;
 }
 .circuit-collapse-button:hover .circuit-collapse-control {
-	fill: #ffffff10;
+	fill: var(--color-hover);
 }
 .circuit-node-handle,
 .circuit-net {
@@ -110,95 +107,91 @@
 }
 .circuit-connection-preview {
 	fill: none;
-	stroke: #e8b77e;
+	stroke: var(--color-accent);
 	stroke-width: 2;
 	stroke-dasharray: 6 4;
 	vector-effect: non-scaling-stroke;
 	pointer-events: none;
 }
 .circuit-pin circle {
-	fill: #20292f;
-	stroke: #99a9b5;
+	fill: var(--circuit-body);
+	stroke: var(--circuit-pin-line);
 	stroke-width: 2;
 }
 .circuit-pin circle.connected {
-	fill: #c1d3d9;
+	fill: var(--circuit-pin-connected);
 }
 .circuit-pin.is-selected circle,
 .circuit-pin:hover circle {
-	fill: #e8b77e;
-	stroke: #e8b77e;
+	fill: var(--color-accent);
+	stroke: var(--color-accent);
 	stroke-width: 3;
 }
 .circuit-no-connect {
-	stroke: #daa879;
+	stroke: var(--circuit-no-connect);
 	stroke-width: 2;
 }
 .circuit-net circle {
-	fill: #15231f;
-	stroke: #72c9b4;
+	fill: var(--circuit-net-fill);
+	stroke: var(--circuit-net);
 	stroke-width: 3;
 }
 .circuit-net text {
-	fill: #8bd6c5;
+	fill: var(--circuit-net-text);
 	font-size: 12px;
 	font-weight: 600;
 	paint-order: stroke;
-	stroke: #19212e;
+	stroke: var(--circuit-canvas);
 	stroke-width: 5px;
 	stroke-linejoin: round;
 }
 .circuit-net.is-selected circle,
 .circuit-net:hover circle {
-	stroke: #e8b77e;
-	fill: #30432b;
+	stroke: var(--color-accent);
+	fill: var(--circuit-net-active);
 }
 .circuit-pin.is-target circle {
-	fill: #e8b77e;
-	stroke: #e8b77e;
+	fill: var(--color-accent);
+	stroke: var(--color-accent);
 	stroke-width: 4;
 }
 
 .circuit-status {
 	position: absolute;
-	bottom: 20px;
-	left: 24px;
-	right: 24px;
+	bottom: calc(var(--chrome-dock) + env(safe-area-inset-bottom));
+	left: var(--chrome-gap);
+	right: var(--chrome-gap);
 	z-index: 1;
-	display: block;
+	display: flex;
+	justify-content: center;
 	pointer-events: none;
-	color: #9ba7b8;
-	font-size: 11px;
 }
 .circuit-connection-status {
-	position: absolute;
-	bottom: 56px;
-	left: 0;
-	color: #c4ccd8;
+	padding: 4px 10px;
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-md);
+	background: var(--color-panel);
+	box-shadow: var(--shadow-panel);
+	color: var(--color-fg-muted);
+	font-size: var(--text-xs);
 }
 .circuit-error {
 	position: absolute;
-	top: 40px;
-	left: 40px;
+	top: calc(var(--chrome-top) + var(--chrome-bar));
+	left: var(--chrome-gap);
 	z-index: 4;
-	max-width: min(560px, calc(100% - 80px));
+	max-width: min(560px, calc(100% - 2 * var(--chrome-gap)));
 	max-height: 120px;
 	overflow: auto;
-	border: 1px solid #72543a;
-	border-radius: 8px;
-	padding: 10px 12px;
-	background: #392e25f5;
-	color: #edc49a;
+	padding: 8px 12px;
 }
-@media (max-width: 600px) {
-	.circuit-status {
-		bottom: 20px;
-		left: 16px;
-		right: 16px;
-		font-size: 10px;
-	}
-	.circuit-connection-status {
-		max-width: 80%;
+.circuit-error p {
+	margin: 0;
+}
+@media (min-width: 761px) {
+	.circuit-error[data-beside-panel="true"] {
+		left: calc(var(--chrome-gap) + 18.5rem);
+		max-width: min(560px, calc(100% - 2 * var(--chrome-gap) - 18.5rem));
 	}
 }
 .circuit-editor .circuit-node-button,
@@ -210,7 +203,7 @@
 	cursor: inherit;
 }
 .circuit-editor .circuit-node-button:focus-visible {
-	outline: 2px solid #e8b77e;
+	outline: 2px solid var(--color-accent);
 	outline-offset: -2px;
 }
 
@@ -223,8 +216,8 @@
 	opacity: 0.75;
 }
 .circuit-placement-preview rect {
-	fill: #20292f;
-	stroke: #e8b77e;
+	fill: var(--circuit-body);
+	stroke: var(--color-accent);
 	stroke-width: 2;
 	stroke-dasharray: 6 4;
 }
@@ -238,15 +231,15 @@
 	cursor: pointer;
 }
 .circuit-connection:has(button:focus-visible) .circuit-edge {
-	stroke: #e8b77e;
+	stroke: var(--color-accent);
 	opacity: 1;
 }
 .circuit-connection .circuit-node-button:focus-visible {
 	outline: none;
 }
 .circuit-net.is-target circle {
-	fill: #30432b;
-	stroke: #e8b77e;
+	fill: var(--circuit-net-active);
+	stroke: var(--color-accent);
 	stroke-width: 4;
 }
 .circuit-node-handle,
@@ -257,50 +250,59 @@
 	display: grid;
 	gap: 3px;
 	padding: 3px;
-	border: 1px solid #b88f61;
-	border-radius: 5px;
-	background: #19212e;
+	border: 1px solid var(--color-accent-line);
+	border-radius: var(--radius-md);
+	background: var(--color-raised);
+	box-shadow: var(--shadow-pop);
 }
 .circuit-inline-fields input {
 	min-width: 0;
 	width: 100%;
 	height: 24px;
 	padding: 2px 5px;
-	border: 1px solid #45535d;
-	border-radius: 3px;
-	background: #11171a;
-	color: #e8edf5;
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-sm);
+	background: var(--color-field);
+	color: var(--color-fg);
 	font: inherit;
 }
 .circuit-context-menu {
 	position: absolute;
 	z-index: 12;
 	display: grid;
-	width: 180px;
+	width: 190px;
 	padding: 4px;
-	border: 1px solid #45535d;
-	border-radius: 7px;
-	background: #19212e;
-	box-shadow: 0 8px 24px #0006;
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-lg);
+	background: var(--color-raised);
+	box-shadow: var(--shadow-pop);
+	animation: var(--animate-fade-in);
 }
 .circuit-context-menu button {
-	padding: 7px 10px;
+	min-height: 28px;
+	padding: 0 8px;
 	border: 0;
-	border-radius: 3px;
+	border-radius: var(--radius-sm);
 	background: transparent;
 	color: inherit;
 	text-align: left;
 	font: inherit;
+	font-size: var(--text-xs);
 	cursor: pointer;
 }
 .circuit-context-menu button:hover,
 .circuit-context-menu button:focus-visible {
-	background: #ffffff10;
+	background: var(--color-hover);
+}
+@media (prefers-reduced-motion: reduce) {
+	.circuit-context-menu {
+		animation: none;
+	}
 }
 
 .circuit-collapsed-anchor {
-	fill: #c1d3d9;
-	stroke: #99a9b5;
+	fill: var(--circuit-pin-connected);
+	stroke: var(--circuit-pin-line);
 	stroke-width: 2;
 	pointer-events: none;
 }
@@ -329,10 +331,10 @@
 
 .circuit-inline-fields .circuit-add-alias {
 	height: 24px;
-	border: 1px solid #45535d;
-	border-radius: 3px;
-	background: #20292f;
-	color: #dce4e8;
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-sm);
+	background: var(--color-hover);
+	color: var(--color-fg);
 	font: inherit;
 	cursor: pointer;
 }
