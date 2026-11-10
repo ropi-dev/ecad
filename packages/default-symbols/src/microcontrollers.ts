@@ -1,4 +1,28 @@
+import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import type { SourceSymbol } from "./types.ts";
+
+/** Pins every Raspberry Pi chip shares. GPIO and unnamed pins are bidirectional. */
+const raspberryPiPins: Readonly<Record<string, PinElectricalType>> = {
+	ADC_AVDD: "power-in",
+	DVDD: "power-in",
+	GND: "power-in",
+	IOVDD: "power-in",
+	VREG_VIN: "power-in",
+	QSPI_SCLK: "output",
+	RUN: "input",
+	SWCLK: "input",
+	XIN: "input",
+	XOUT: "output",
+};
+const rp2350Pins: Readonly<Record<string, PinElectricalType>> = {
+	...raspberryPiPins,
+	QSPI_IOVDD: "power-in",
+	USB_OTP_VDD: "power-in",
+	VREG_AVDD: "power-in",
+	VREG_FB: "input",
+	VREG_LX: "power-out",
+	VREG_PGND: "power-in",
+};
 
 export const microcontrollers: readonly SourceSymbol[] = [
 	{
@@ -17,6 +41,13 @@ export const microcontrollers: readonly SourceSymbol[] = [
 		source: "MCU_RaspberryPi:RP2040",
 		rotation: 0,
 		filled: true,
+		pinType: "bidirectional",
+		pinTypes: {
+			...raspberryPiPins,
+			TESTEN: "input",
+			USB_VDD: "power-in",
+			VREG_VOUT: "power-out",
+		},
 		drawing: [
 			["rectangle", -900, 1550, 900, -1550],
 			["pin", "ADC_AVDD", -1000, 1450, 100, "R", "43"],
@@ -94,6 +125,8 @@ export const microcontrollers: readonly SourceSymbol[] = [
 		source: "MCU_RaspberryPi:RP2350A",
 		rotation: 0,
 		filled: true,
+		pinType: "bidirectional",
+		pinTypes: rp2350Pins,
 		drawing: [
 			["rectangle", -900, 1600, 900, -1600],
 			["pin", "ADC_AVDD", -1000, 1500, 100, "R", "44"],
@@ -175,6 +208,8 @@ export const microcontrollers: readonly SourceSymbol[] = [
 		source: "MCU_RaspberryPi:RP2350B",
 		rotation: 0,
 		filled: true,
+		pinType: "bidirectional",
+		pinTypes: rp2350Pins,
 		drawing: [
 			["rectangle", -900, 2450, 900, -2450],
 			["pin", "ADC_AVDD", -1000, 2350, 100, "R", "59"],

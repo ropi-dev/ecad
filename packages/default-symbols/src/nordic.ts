@@ -1,3 +1,4 @@
+import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import type { SourceShape, SourceSymbol } from "./types.ts";
 
 type PinTable = Readonly<Record<string, string>>;
@@ -279,6 +280,43 @@ const npm2100Right = [
 	"SCL",
 ];
 
+// GPIO pins, including those shared with XL, NFC and AIN, are bidirectional.
+const nrf54lPinTypes: Readonly<Record<string, PinElectricalType>> = {
+	VDD: "power-in",
+	VSS: "power-in",
+	VSS_PA: "power-in",
+	// The regulator output and the internal supplies that need decoupling.
+	DCC: "power-out",
+	DECA: "power-out",
+	DECD: "power-out",
+	DECRF: "power-out",
+	XC1: "input",
+	XC2: "output",
+	ANT: "bidirectional",
+	nRESET: "input",
+	SWDCLK: "input",
+	SWDIO: "bidirectional",
+};
+const npm2100PinTypes: Readonly<Record<string, PinElectricalType>> = {
+	VBAT: "power-in",
+	// The boost inductor runs from VBAT to SW.
+	SW: "passive",
+	VOUT: "power-out",
+	"LSOUT/VOUTLDO": "power-out",
+	VINT: "power-out",
+	AVSS1: "power-in",
+	AVSS2: "power-in",
+	PVSS: "power-in",
+	VSET: "input",
+	SHPHLD: "input",
+	SYSGDEN: "input",
+	"PG/RESET": "open-collector",
+	GPIO0: "bidirectional",
+	GPIO1: "bidirectional",
+	SDA: "bidirectional",
+	SCL: "input",
+};
+
 const padOrder = (number: string) => {
 	const [, row = "", column] = number.match(/^([A-Z]*)(\d+)$/) ?? [];
 	return [row, Number(column)] as const;
@@ -350,6 +388,8 @@ const nrf54l = (
 	source: `Nordic nRF54L15, nRF54L10, and nRF54L05 datasheet v1.0, ${code} package pin assignments`,
 	rotation: 0,
 	filled: true,
+	pinType: "bidirectional",
+	pinTypes: nrf54lPinTypes,
 	drawing: chip(pins, nrf54lLeft, gpioOrder, 600),
 });
 
@@ -392,6 +432,7 @@ const npm2100 = (code: string, pins: PinTable, pkg: string): SourceSymbol => ({
 	source: `Nordic nPM2100 datasheet v1.0, ${code} pin assignment`,
 	rotation: 0,
 	filled: true,
+	pinTypes: npm2100PinTypes,
 	drawing: chip(pins, npm2100Left, (name) => npm2100Right.indexOf(name), 500),
 });
 

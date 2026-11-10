@@ -1,3 +1,5 @@
+import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
+
 /** Portable version 1 geometry. This package has no editor or renderer dependencies. */
 export type SymbolPrimitive =
 	| { kind: "line" | "wire"; x1: number; y1: number; x2: number; y2: number }
@@ -31,6 +33,8 @@ export type SymbolPrimitive =
 			y: number;
 			name: string;
 			number?: string;
+			/** Omitted for a passive pin. */
+			electricalType?: PinElectricalType;
 			length?: number;
 			rotation?: number;
 			labelOffset?: number;
@@ -121,5 +125,9 @@ export interface SourceSymbol {
 	rotation: number;
 	filled?: boolean;
 	showPinLabels?: boolean;
+	/** The electrical type of pins that `pinTypes` does not name. Defaults to passive. */
+	pinType?: PinElectricalType;
+	/** Electrical types by pin name. Every key must name a pin. */
+	pinTypes?: Readonly<Record<string, PinElectricalType>>;
 	drawing: readonly SourceShape[];
 }

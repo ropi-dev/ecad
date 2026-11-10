@@ -12,7 +12,7 @@ Current limits:
 
 - Matching net and supply names connect disconnected sections throughout the drawing. KiCad hierarchical sheet scopes and local supply scopes are not represented.
 - Pin names and numbers use native `showName` and `showNumber` fields. Each field records the source visibility independently. ECAD places these labels with its native pin-label layout rather than detached text children.
-- No-connect marks do not suppress electrical checks. Pin electrical types, footprint associations, DNP flags and simulation metadata are available in the report only.
+- No-connect marks do not suppress electrical checks. Pin electrical types are applied to the imported pins, with KiCad names such as `power_in` written as `power-in`. Footprint associations, DNP flags and simulation metadata are available in the report only.
 - Nested sheets, buses, bus entries, images and other unsupported sheet constructs produce warnings. The report retains their source expressions. Symbols with missing or inherited embedded definitions, power symbols without exactly one pin, and items with malformed coordinates or geometry are skipped. Each converted item is validated against the drawing schema where it is produced. Malformed expressions, documents that are not `.kicad_sch` files, and unsupported paper sizes reject the import.
 - Arcs use line segments at intervals of at most ten degrees. Filled polylines use outlines. Font metrics, overbars, text mirroring, colors, line patterns, label outlines and pin decoration shapes are approximations. Rectangle and circle fills use ECAD's fill rendering.
 - The worksheet remains ECAD's A3 worksheet. Coordinate conversion honors the KiCad paper dimensions, but ECAD does not yet change its worksheet to match other paper sizes.

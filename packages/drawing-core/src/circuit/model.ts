@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+	defaultPinElectricalType,
+	pinElectricalTypes,
+} from "#/drawing/pin-types.ts";
 
 const id = z.string().min(1).max(200);
 const name = z.string().trim().min(1).max(200);
@@ -11,16 +15,7 @@ export const circuitPinSchema = z.strictObject({
 	schematicShapeId: z.number().int().positive().optional(),
 	name: z.string().max(200),
 	number: name,
-	electricalType: z
-		.enum([
-			"passive",
-			"input",
-			"output",
-			"bidirectional",
-			"power-in",
-			"power-out",
-		])
-		.default("passive"),
+	electricalType: z.enum(pinElectricalTypes).default(defaultPinElectricalType),
 });
 export const circuitComponentSchema = z.strictObject({
 	id,

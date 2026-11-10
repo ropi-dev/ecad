@@ -4,6 +4,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import { required } from "../../../tests/helpers/required.ts";
 import { generateDefaultSymbols, symbolCategories } from "../src/index.ts";
 
@@ -90,12 +91,74 @@ test("semiconductor and passive variants preserve terminal identity and polarity
 			[-3.81, 0],
 		],
 	);
+	// The drawn plus mark sits beside pin 1, the top terminal.
+	assert.deepEqual(
+		pins("buzzer").map(({ name, y }) => [name, Math.sign(y)]),
+		[
+			["+", 1],
+			["-", -1],
+		],
+	);
 	assert.equal(pins("transformer").length, 4);
 	assert.equal(pins("connector-8").length, 8);
 	assert.deepEqual(
-		pins("op-amp").map(({ name }) => name),
-		["+", "V-", "-", "4", "V+"],
+		pins("op-amp").map((pin) => [pin.name, pinElectricalType(pin)]),
+		[
+			["+", "input"],
+			["V-", "power-in"],
+			["-", "input"],
+			["OUT", "output"],
+			["V+", "power-in"],
+		],
 	);
+});
+
+test("every built-in pin has an electrical type that fits its role", () => {
+	const types = (id: string) =>
+		new Map(
+			required(
+				generateDefaultSymbols().find(({ file }) => file.id === id),
+			).file.shapes.flatMap((shape) =>
+				shape.kind === "pin" ? [[shape.name, pinElectricalType(shape)]] : [],
+			),
+		);
+	for (const { file, category } of generateDefaultSymbols()) {
+		const pins = file.shapes
+			.filter((shape) => shape.kind === "pin")
+			.map((pin) => ({ ...pin, electricalType: pinElectricalType(pin) }));
+		for (const pin of pins) {
+			// Supply and ground pins take power; only regulators supply it.
+			if (/^(\w*VDD\w*|VBAT|VREG_VIN|\w*VSS\w*|GND|VREG_PGND)$/.test(pin.name))
+				assert.equal(pin.electricalType, "power-in", `${file.id} ${pin.name}`);
+			if (/^(GPIO\d+|P\d\.\d\d)/.test(pin.name))
+				assert.equal(
+					pin.electricalType,
+					"bidirectional",
+					`${file.id} ${pin.name}`,
+				);
+		}
+		if (file.netSymbol)
+			assert.deepEqual(
+				pins.map(({ electricalType }) => electricalType),
+				["power-in"],
+			);
+		else if (
+			["Passives", "Diodes", "Transistors", "Switches", "Connectors"].includes(
+				category,
+			)
+		)
+			assert.ok(
+				pins.every(({ electricalType }) => electricalType === "passive"),
+				file.id,
+			);
+	}
+	assert.equal(types("rp2040").get("VREG_VOUT"), "power-out");
+	assert.equal(types("rp2350a").get("VREG_LX"), "power-out");
+	assert.equal(types("nrf54l15-qfaa").get("DECD"), "power-out");
+	assert.equal(types("nrf54l15-qfaa").get("nRESET"), "input");
+	assert.equal(types("npm2100-qeaa").get("VOUT"), "power-out");
+	assert.equal(types("npm2100-qeaa").get("PG/RESET"), "open-collector");
+	assert.equal(types("battery").get("+"), "passive");
 });
 
 test("CLI writes one portable file per symbol with attribution and refuses overwrites", async () => {

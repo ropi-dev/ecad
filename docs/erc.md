@@ -47,13 +47,15 @@ Use an optional `code` when a rule can report different violations involving the
 
 | Rule ID | Default | Condition |
 | --- | --- | --- |
-| `unconnected-pin` | Warning | Pin has no net or belongs to a net containing only itself. A disconnected pin marked no-connect is exempt. |
-| `undriven-input` | Warning | A net with at least two pins has inputs but no output, bidirectional pin, or power output. |
-| `undriven-power` | Error | A net with at least two pins has power inputs but no power output. |
-| `conflicting-outputs` | Error | Multiple signal or power outputs share a net, including mixed outputs. Bidirectional pins do not count. |
-| `connected-no-connect` | Error | A pin is both in a net and marked no-connect. The persisted circuit validator already prevents this, but the rule can check in-memory inputs. |
+| `unconnected-pin` | Warning | Pin has no net or belongs to a net containing only itself. A disconnected pin marked no-connect, or with the Unconnected pin type, is exempt. |
+| `undriven-input` | Warning | A net with at least two pins has inputs but no output, bidirectional, tri-state, passive, power output, open-collector or open-emitter pin. |
+| `undriven-power` | Error | A net with at least two pins has power inputs but no power output and no supply symbol. |
+| `conflicting-outputs` | Error | Multiple signal or power outputs share a net, including mixed outputs. Bidirectional pins do not count. Same-name pins of one component, such as a regulator's OUT pin and tab, count as one output. |
+| `connected-no-connect` | Error | A pin is both in a net and marked no-connect, or a pin with the Unconnected pin type shares a net with another pin. The persisted circuit validator already prevents the first case, but the rule can check in-memory inputs. |
 
-A lone input or power input produces an unconnected warning, rather than a second missing-driver finding. A contradictory no-connect marker on a connected pin does not suppress missing-driver findings. Passive pins do not prove that a signal or power source exists. Connector-fed supplies need a pin typed as power-out. Ground names and supply labels alone do not prove a driver exists. The model currently has no open-drain, tri-state, voltage, or power-flag semantics. Those checks need more pin or circuit data before they can be reliable.
+Rules read each pin's electrical type. Types match KiCad's: input, output, bidirectional, tri-state, passive, free, unspecified, power input, power output, open collector, open emitter and unconnected (`no-connect`). A pin without a type is passive. In the schematic editor, each pin takes its type from the symbol definition, so changing a pin's type in the symbol editor changes the check for every placement. Changing it on a pin of a placed symbol overrides it for that placement only. Built-in symbols follow KiCad's conventions: passives, diodes, transistors, switches, connectors and batteries have passive pins; chip supply and ground pins are power inputs; regulator outputs are power outputs; GPIOs are bidirectional. KiCad imports keep their source pin types.
+
+A lone input or power input produces an unconnected warning, rather than a second missing-driver finding. A contradictory no-connect marker on a connected pin does not suppress missing-driver findings. As in KiCad, passive pins drive inputs, so resistors around an op amp input satisfy it. Open-collector and open-emitter outputs also drive inputs, because the pull-up may be inside the receiving chip. Only a power output drives a power input. A supply symbol, such as GND or VCC, on the net also counts as the source and takes the place of KiCad's PWR_FLAG. Supply labels and net labels alone do not. A rail fed through a passive part, such as an inductor, ferrite or RC filter, needs a supply symbol on the filtered net. The checker has no voltage or tri-state bus semantics.
 
 ## Validation
 

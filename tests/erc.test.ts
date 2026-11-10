@@ -34,14 +34,48 @@ test("ERC reports isolated pins, including single-pin nets, and honors no-connec
 });
 
 test("ERC distinguishes signal drivers, power drivers and passive connections", () => {
-	assert.deepEqual(checks(["input", "passive"]), ["undriven-input"]);
-	for (const driver of ["output", "bidirectional", "power-out"] as const)
+	for (const driver of [
+		"output",
+		"bidirectional",
+		"tri-state",
+		"passive",
+		"power-out",
+		"open-collector",
+		"open-emitter",
+	] as const)
 		assert.deepEqual(checks(["input", driver]), []);
+	for (const other of ["input", "free", "unspecified"] as const)
+		assert.deepEqual(checks(["input", other]), ["undriven-input"]);
 	assert.deepEqual(checks(["power-in", "passive"]), ["undriven-power"]);
 	assert.deepEqual(checks(["power-in", "output"]), ["undriven-power"]);
 	assert.deepEqual(checks(["power-in", "power-out"]), []);
 	assert.deepEqual(checks(["passive", "passive"]), []);
 	assert.deepEqual(checks(["bidirectional", "bidirectional"]), []);
+});
+
+test("ERC treats same-name outputs of one component as one output", () => {
+	const circuit = fixture(["power-out", "power-out"]);
+	const [regulator, other] = circuit.components;
+	regulator.pins.push({ ...other.pins[0], name: "OUT" });
+	regulator.pins[0].name = "OUT";
+	circuit.components = [regulator];
+	assert.deepEqual(runErc(circuit, defaultErcRules), []);
+	regulator.pins[1].name = "OUT2";
+	assert.deepEqual(
+		runErc(circuit, defaultErcRules).map((item) => item.ruleId),
+		["conflicting-outputs"],
+	);
+});
+
+test("ERC treats a supply symbol on the net as the power source", () => {
+	const circuit = fixture(["power-in", "passive"]);
+	circuit.nets[0].schematicShapeIds = [7];
+	assert.deepEqual(runErc(circuit, defaultErcRules), []);
+});
+
+test("ERC exempts Unconnected-type pins from wiring and flags them when wired", () => {
+	assert.deepEqual(checks(["no-connect"], false), []);
+	assert.deepEqual(checks(["no-connect", "passive"]), ["connected-no-connect"]);
 });
 
 test("ERC reports one output conflict per net for signal, power and mixed outputs", () => {
@@ -186,7 +220,7 @@ test("finding codes distinguish violations and duplicate subjects do not change 
 test("net findings keep their identity when an equivalent net receives a new ID", () => {
 	for (const types of [
 		["output", "output"],
-		["input", "passive"],
+		["input", "input"],
 		["power-in", "passive"],
 	] as const) {
 		const circuit = fixture([...types]);
@@ -225,7 +259,7 @@ test("diagnostics snapshot reused subject arrays and navigation targets", () => 
 
 test("connected no-connect markers do not suppress missing driver findings", () => {
 	for (const type of ["input", "power-in"] as const) {
-		const circuit = fixture([type, "passive"]);
+		const circuit = fixture([type, type === "input" ? "input" : "passive"]);
 		circuit.noConnectPinIds = ["p0"];
 		assert.equal(runErc(circuit, defaultErcRules).length, 2);
 	}

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { lineStyles } from "#/drawing/line-style.ts";
 import { normalizeNetSymbol } from "#/drawing/net-symbol.ts";
+import { pinElectricalTypes } from "#/drawing/pin-types.ts";
 import {
 	electricalLabelRoles,
 	fillableShapeKinds,
@@ -29,6 +30,12 @@ const textAlignmentFields = {
 const lineStyle = z.enum(lineStyles).optional();
 const point = z.strictObject({ x: z.number(), y: z.number() });
 const pinLength = z.number().min(0).max(1000);
+const pinElectricalType = z
+	.enum(pinElectricalTypes)
+	.optional()
+	.describe(
+		"Electrical type used by ERC, as in KiCad. Omit it for a passive pin.",
+	);
 
 /** One field per symbol attribute, such as name, reference and value. */
 function perAttribute<T extends z.ZodType>(value: T) {
@@ -81,6 +88,7 @@ const pinShapeFields = {
 	kind: z.literal("pin"),
 	name: z.string().describe("Pin name, such as VCC or GND."),
 	number: z.string().describe("Pin number, such as 1, 01 or A1."),
+	electricalType: pinElectricalType,
 	length: pinLength.optional(),
 	labelOffset: z.number().min(-1000).max(1000).optional(),
 	showLabels: z.boolean().optional(),
@@ -221,6 +229,7 @@ export const symbolChildOverrideSchema = z.strictObject({
 	text: z.string().optional(),
 	name: z.string().optional(),
 	number: z.string().optional(),
+	electricalType: pinElectricalType,
 	showLabels: z.boolean().optional(),
 	showName: z.boolean().optional(),
 	showNumber: z.boolean().optional(),

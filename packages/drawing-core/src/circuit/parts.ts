@@ -3,6 +3,7 @@ import {
 	type CircuitPin,
 	circuitComponentSchema,
 } from "#/circuit/model.ts";
+import { defaultPinElectricalType } from "#/drawing/pin-types.ts";
 
 export interface CircuitPartDefinition {
 	id: string;
@@ -43,7 +44,7 @@ export function instantiateCircuitPart(
 			...pin,
 			id: globalThis.crypto.randomUUID(),
 			number: pin.number.trim() || String(index + 1),
-			electricalType: pin.electricalType ?? "passive",
+			electricalType: pin.electricalType ?? defaultPinElectricalType,
 		})),
 	});
 }

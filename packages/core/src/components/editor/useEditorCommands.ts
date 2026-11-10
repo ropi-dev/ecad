@@ -26,6 +26,7 @@ import type {
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import {
 	applySelectionEdit,
+	editsFixedPin,
 	type SelectionEdit,
 } from "#/drawing/selection-edit.ts";
 import { createSymbolFromShapes } from "#/drawing/symbols.ts";
@@ -95,10 +96,11 @@ export function useEditorCommands({
 			const child =
 				symbol &&
 				selectedChild &&
-				canSelectSymbolChild(symbol, selectedChild, current.allowLocked)
+				(canSelectSymbolChild(symbol, selectedChild, current.allowLocked) ||
+					editsFixedPin(edit))
 					? selectedChild
 					: undefined;
-			// A pin stays fixed to its symbol, so it takes no edits.
+			// A pin stays fixed to its symbol, so it takes no other edits.
 			if (selectedChild && !child) return;
 			const result = applySelectionEdit(edit, {
 				selection,

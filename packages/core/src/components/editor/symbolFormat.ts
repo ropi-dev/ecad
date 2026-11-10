@@ -1,4 +1,5 @@
 import { lineStyles } from "@ecad/drawing-core/drawing/line-style.ts";
+import { pinElectricalTypes } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
 	type SymbolChildOverride,
 	symbolChildOverridesSchema,
@@ -162,6 +163,7 @@ const shapeSchema = Schema.Union(
 		locked,
 		name: Schema.optional(Schema.String),
 		number: Schema.optional(Schema.String),
+		electricalType: Schema.optional(Schema.Literal(...pinElectricalTypes)),
 		showLabels: Schema.optional(Schema.Boolean),
 		showName: Schema.optional(Schema.Boolean),
 		showNumber: Schema.optional(Schema.Boolean),

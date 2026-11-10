@@ -24,6 +24,7 @@ export function componentFromSymbol(
 										name: child.name,
 										number: child.number,
 										sourcePinId: String(child.id),
+										electricalType: child.electricalType,
 									},
 								]
 							: [],

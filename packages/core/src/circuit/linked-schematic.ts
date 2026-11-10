@@ -15,6 +15,7 @@ import {
 	electricalNets,
 } from "@ecad/drawing-core/drawing/named-nets.ts";
 import { pageKey } from "@ecad/drawing-core/drawing/pages.ts";
+import { defaultPinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
@@ -815,7 +816,8 @@ function extractComponents(
 						? existing.number
 						: pin.number,
 				sourcePin: { name: pin.name, number: pin.number },
-				electricalType: existing?.electricalType ?? pin.electricalType,
+				// The symbol definition owns the type, so library edits reach the circuit.
+				electricalType: pin.electricalType,
 			};
 		});
 		const pinOrder = new Map(old?.pins.map((pin, index) => [pin.id, index]));
@@ -1233,6 +1235,9 @@ function fallbackDefinition(
 			kind: "pin",
 			name: pin.name,
 			number: pin.number,
+			...(pin.electricalType === defaultPinElectricalType
+				? {}
+				: { electricalType: pin.electricalType }),
 			x: fromMils(-200),
 			y: -index * DEFAULT_PIN_LENGTH,
 			width: 1,

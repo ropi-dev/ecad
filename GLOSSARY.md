@@ -13,6 +13,9 @@ A reusable description of a component's graphical representation and pins.
 **Pin**:
 An electrical connection point owned by a component, identified by its name and package number.
 
+**Electrical type**:
+A pin's electrical role, such as input, output, passive or power input, using KiCad's pin types. The electrical rules check uses it to decide which pins drive a net.
+
 **Terminal**:
 The exposed end of a pin where a wire connects.
 
