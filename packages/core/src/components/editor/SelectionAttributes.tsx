@@ -88,9 +88,9 @@ function PanelHeader({
 		<header className="flex shrink-0 items-start gap-2 border-b border-line-subtle py-2.5 pr-2 pl-3">
 			<div className="min-w-0 flex-1">
 				{title}
-				<p className="m-0 mt-0.5 flex gap-1 text-2xs text-fg-faint">
+				<div className="mt-0.5 flex gap-1 text-2xs text-fg-faint">
 					{subtitle}
-				</p>
+				</div>
 			</div>
 			<button
 				type="button"
@@ -579,11 +579,17 @@ function SelectionAttributesPanel({
 				}
 				subtitle={
 					single ? (
-						<>
-							<span>{type}</span>
-							<span aria-hidden="true">·</span>
-							<span>ID {single.id}</span>
-						</>
+						// Reads "type · ID 3", with the ID as a labelled value.
+						<dl className="m-0 flex gap-1">
+							<div>
+								<dt className="sr-only">Type</dt>
+								<dd className="m-0">{type}</dd>
+							</div>
+							<div className="flex gap-1 before:content-['·']">
+								<dt>ID</dt>
+								<dd className="m-0">{single.id}</dd>
+							</div>
+						</dl>
 					) : (
 						<span>{shapes.length} items</span>
 					)
