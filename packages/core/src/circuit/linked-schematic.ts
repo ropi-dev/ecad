@@ -381,7 +381,12 @@ function placeNoConnectMarkers(
 	let nextId = next.reduce((max, shape) => Math.max(max, shape.id), 0) + 1;
 	for (const component of circuit.components)
 		for (const pin of component.pins) {
-			if (!current.has(pin.id) || marked.has(pin.id)) continue;
+			if (
+				!current.has(pin.id) ||
+				marked.has(pin.id) ||
+				pin.sourcePinId === undefined
+			)
+				continue;
 			const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
 			const symbol = shapeId === undefined ? undefined : symbols.get(shapeId);
 			if (!symbol) continue;
@@ -406,6 +411,7 @@ function noConnectMarkers(
 	shapes: readonly EditorShape[],
 	components: readonly CircuitComponent[],
 	nets: readonly CircuitNet[],
+	schematicNets?: readonly ElectricalNet[],
 ): NoConnectMarks {
 	const marks: NoConnectMarks = new Map();
 	const markers: { id?: number; x: number; y: number; page: number }[] = [];
@@ -505,7 +511,7 @@ function noConnectMarkers(
 					});
 			if (stubs.size) {
 				const connected = new Set(nets.flatMap((net) => net.pinIds));
-				for (const net of electricalNets(shapes)) {
+				for (const net of schematicNets ?? electricalNets(shapes)) {
 					if (net.pins.length !== 1 || !net.wires.some((id) => stubs.has(id)))
 						continue;
 					const [terminal] = net.pins;
@@ -865,6 +871,7 @@ function extractCircuitFromSchematic(
 		extracted.shapes,
 		components,
 		circuit.nets,
+		extracted.schematicNets,
 	);
 	const connected = new Set(circuit.nets.flatMap((net) => net.pinIds));
 	const marked = [...noConnectMarks.keys()].filter((id) => !connected.has(id));
@@ -1055,7 +1062,11 @@ function extractNets(
 	shapes: EditorShape[],
 	components: readonly CircuitComponent[],
 	context: SyncContext,
-): { nets: CircuitNet[]; shapes: EditorShape[] } {
+): {
+	nets: CircuitNet[];
+	shapes: EditorShape[];
+	schematicNets: ElectricalNet[];
+} {
 	const { file, labels, newId } = context;
 	const fileNets = file.circuit.nets;
 	const pinId = schematicPinLookup(components);
@@ -1152,6 +1163,7 @@ function extractNets(
 	);
 	return {
 		nets,
+		schematicNets,
 		shapes: shapes.map((shape) => {
 			const id = bindingUpdates.get(shape.id);
 			return shape.kind === "text" && shape.circuitNet && id !== undefined
