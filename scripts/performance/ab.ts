@@ -87,9 +87,16 @@ export function floorScaleFor(cpu: number): number {
 
 /**
  * Event-loop p95 noise comes from the 250 ms sampling timer's alignment, not
- * from CPU speed, so its floor never scales.
+ * from CPU speed, so its floor never scales. Neither do the floors of the
+ * installed-browser zoom scenarios, which the harness cannot throttle.
  */
-const unscaledFloors: ReadonlySet<string> = new Set(["eventLoopP95Ms"]);
+const unscaledFloors: ReadonlySet<string> = new Set([
+	"eventLoopP95Ms",
+	"zoomFrameMs",
+	"zoomHeldFrameMs",
+	"zoomScriptMs",
+	"zoomHeldScriptMs",
+]);
 
 export function floorFor(metric: string, options = defaultDecision): number {
 	const floor = regressionFloors[metric] ?? defaultFloor;
@@ -256,11 +263,14 @@ export function describeJudgement(
 /**
  * Node scenarios that measure a build the base checkout provides. The base
  * variant of `cli-drawing` runs the base commit's built CLI through
- * `ECAD_CLI_EXECUTABLE`. Other Node scenarios import the head checkout's
+ * `ECAD_CLI_EXECUTABLE`. The installed-browser zoom scenarios load each
+ * variant's preview server. Other Node scenarios import the head checkout's
  * source directly, so they run head-only against their budgets.
  */
 export const nodeVariantScenarios: ReadonlySet<string> = new Set([
 	"cli-drawing",
+	"editor-zoom-firefox",
+	"editor-zoom-chrome",
 ]);
 
 /**
