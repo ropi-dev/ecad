@@ -1,6 +1,7 @@
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	type ErcDiagnostic,
+	type ErcOptions,
 	type ErcSubject,
 	runErc,
 } from "@ecad/drawing-core/erc/engine.ts";
@@ -19,6 +20,7 @@ import {
 	type FloatingPanelPosition,
 } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
+import { useErcSeverity } from "#/settings/useErcSeverity.ts";
 
 const pageSize = 50;
 
@@ -51,7 +53,7 @@ export function CircuitErcPanel({
 			source="circuit"
 			revision={revision}
 			ruleCount={defaultErcRules.length}
-			check={() => runErc(circuit, defaultErcRules)}
+			check={(severity) => runErc(circuit, defaultErcRules, { severity })}
 			onSelect={(item) => {
 				const target = item.target ?? item.subjects[0];
 				if (target) onSelect(target);
@@ -78,18 +80,22 @@ export function ErcPanel({
 	position?: FloatingPanelPosition;
 	revision: unknown;
 	ruleCount: number;
-	check(): ErcDiagnostic[];
+	check(severity: ErcOptions["severity"]): ErcDiagnostic[];
 	onClose(): void;
 	onSelect(diagnostic: ErcDiagnostic): void;
 }) {
+	const severity = useErcSeverity();
 	const [result, setResult] = useState<{
 		revision: unknown;
+		severity: ErcOptions["severity"];
 		diagnostics: ErcDiagnostic[];
 	} | null>(null);
 	const [error, setError] = useState("");
 	const [page, setPage] = useState(0);
 	const [activeId, setActiveId] = useState<string | null>(null);
-	const stale = result !== null && result.revision !== revision;
+	const changedRules = result !== null && result.severity !== severity;
+	const stale =
+		result !== null && (result.revision !== revision || changedRules);
 	const diagnostics = result?.diagnostics ?? [];
 	const errors = diagnostics.filter((item) => item.severity === "error").length;
 	const warnings = diagnostics.length - errors;
@@ -129,7 +135,7 @@ export function ErcPanel({
 						) : !result ? (
 							`Run checks on this ${source}'s pin types and connections.`
 						) : stale ? (
-							`${source === "circuit" ? "Circuit" : "Schematic"} changed. Run ERC again to update results.`
+							`${result.revision === revision && changedRules ? "ERC settings" : source === "circuit" ? "Circuit" : "Schematic"} changed. Run ERC again to update results.`
 						) : (
 							<>
 								<span
@@ -154,7 +160,11 @@ export function ErcPanel({
 						data-variant="primary"
 						onClick={() => {
 							try {
-								setResult({ revision, diagnostics: check() });
+								setResult({
+									revision,
+									severity,
+									diagnostics: check(severity),
+								});
 								setError("");
 								setPage(0);
 								setActiveId(null);

@@ -8,6 +8,7 @@ export function instrumentProjectStorage(
 		mode: storage.mode,
 		canWriteFile: storage.canWriteFile?.bind(storage),
 		saveProject: storage.saveProject?.bind(storage),
+		saveSettings: storage.saveSettings?.bind(storage),
 		subscribeExternalChanges: storage.subscribeExternalChanges?.bind(storage),
 		refresh:
 			storage.refresh &&

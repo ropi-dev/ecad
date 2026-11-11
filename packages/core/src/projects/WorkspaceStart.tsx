@@ -214,6 +214,7 @@ export function WorkspaceStart() {
 							{(
 								[
 									["Pin or compact the sidebar", "Ctrl+Shift+S"],
+									["Open settings", "Ctrl+,"],
 									["Show every shortcut", "Hold Ctrl"],
 								] as const
 							).map(([label, keys]) => (

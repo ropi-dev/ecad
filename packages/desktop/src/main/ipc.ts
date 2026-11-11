@@ -7,6 +7,10 @@ import {
 	projectNameSchema,
 	projectPathSchema,
 } from "@ecad/core/projects/format.ts";
+import {
+	appSettingsSchema,
+	projectSettingsSchema,
+} from "@ecad/core/settings/schema.ts";
 import { parseSymbolConfig } from "@ecad/core/symbol-library/config.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { z } from "zod";
@@ -16,6 +20,7 @@ import {
 	type InvokeChannel,
 	libraryChannels,
 	projectChannels,
+	settingsChannels,
 } from "#/bridge.ts";
 
 const PATH_LIMIT = 4096;
@@ -106,7 +111,13 @@ export const ipcArguments = {
 	[projectChannels.importAssets]: z.tuple([projectDirectory, projectAssets]),
 	[projectChannels.readAsset]: z.tuple([projectDirectory, projectPath]),
 	[projectChannels.canWriteFile]: z.tuple([projectDirectory, projectPath]),
+	[projectChannels.saveSettings]: z.tuple([
+		projectDirectory,
+		projectSettingsSchema,
+	]),
 	[projectChannels.refresh]: z.tuple([projectDirectory]),
+	[settingsChannels.load]: z.tuple([]),
+	[settingsChannels.save]: z.tuple([appSettingsSchema]),
 	[displayChannels.getCalibration]: z.tuple([]),
 	[appChannels.quit]: z.tuple([]),
 } satisfies Record<InvokeChannel, z.ZodTuple>;

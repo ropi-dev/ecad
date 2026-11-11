@@ -28,10 +28,11 @@ export function SchematicErcPanel({
 			source="schematic"
 			revision={shapes}
 			ruleCount={schematicErcRules.length}
-			check={() => {
+			check={(severity) => {
 				checked.current = schematicCircuit(shapes, definitions);
 				return runErc(checked.current.circuit, schematicErcRules, {
 					schematic: schematicErcInput(shapes),
+					severity,
 				});
 			}}
 			onClose={onClose}

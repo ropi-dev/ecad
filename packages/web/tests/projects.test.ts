@@ -421,3 +421,30 @@ test("browser storage refuses oversized assets before storing them or reading th
 		new Uint8Array([3]),
 	);
 });
+
+test("project settings live in the project file and survive later saves", async () => {
+	const browser = browserFilesystem();
+	const storage = createWebProjectStorage(browser.root, browser.selection);
+	await storage.create("Rules");
+	const settings = { ercSeverity: { "unconnected-pin": "off" as const } };
+	const saved = await required(storage.saveSettings)("Rules", settings);
+	assert.deepEqual(saved.manifest.settings, settings);
+	const manifest = new TextDecoder().decode(
+		required(browser.entries.get(`Rules/${PROJECT_FILE}`)),
+	);
+	assert.match(manifest, /\[settings\.ercSeverity\]/);
+	assert.deepEqual(parseProjectManifest(manifest).settings, settings);
+	await storage.save("Rules", { shapes: [shape], symbols: [] });
+	assert.deepEqual(
+		(await createWebProjectStorage(browser.root, browser.selection).load())
+			?.manifest.settings,
+		settings,
+	);
+	const cleared = await required(storage.saveSettings)("Rules", {});
+	assert.equal(cleared.manifest.settings, undefined);
+	await assert.rejects(
+		required(storage.saveSettings)("Rules", {
+			ercSeverity: { "unconnected-pin": "sometimes" },
+		} as never),
+	);
+});

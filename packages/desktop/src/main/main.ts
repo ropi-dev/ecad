@@ -20,6 +20,7 @@ import {
 	libraryChannels,
 	projectChannels,
 	projectEvents,
+	settingsChannels,
 } from "#/bridge.ts";
 import { encodeIpcError } from "#/ipc-errors.ts";
 import { readDisplayCalibration } from "#/main/display-calibration.ts";
@@ -29,6 +30,7 @@ import {
 	type ExternalLibraryRequest,
 } from "#/main/library-approvals.ts";
 import { DesktopProjects } from "#/main/projects.ts";
+import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
 
 protocol.registerSchemesAsPrivileged([
@@ -59,6 +61,7 @@ const directoryArgument = process.argv
 	.slice(process.defaultApp ? 2 : 1)
 	.find((argument) => !argument.startsWith("-"));
 const library = new DesktopSymbolLibrary();
+const settings = new DesktopSettings();
 const approvals = new ExternalLibraryApprovals({
 	chosen: (directory) => library.isChosenDirectory(directory),
 	confirm: confirmExternalLibrary,
@@ -267,10 +270,18 @@ function registerProjectHandlers() {
 	handle(projectChannels.importAssets, (directory, assets) =>
 		projects.importAssets(directory, assets),
 	);
+	handle(projectChannels.saveSettings, (directory, settings) =>
+		projects.saveSettings(directory, settings),
+	);
 	handle(projectChannels.readAsset, (directory, path) =>
 		projects.readAsset(directory, path),
 	);
 	handle(projectChannels.refresh, (directory) => projects.refresh(directory));
+}
+
+function registerSettingsHandlers() {
+	handle(settingsChannels.load, () => settings.load());
+	handle(settingsChannels.save, (next) => settings.save(next));
 }
 
 function registerDisplayHandlers() {
@@ -410,6 +421,7 @@ void app.whenReady().then(() => {
 	});
 	registerLibraryHandlers();
 	registerProjectHandlers();
+	registerSettingsHandlers();
 	registerDisplayHandlers();
 	handle(appChannels.quit, () => app.quit());
 	createWindow();

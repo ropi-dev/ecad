@@ -25,6 +25,7 @@ import {
 	type ProjectLockMode,
 	ProjectRepository,
 } from "@ecad/core/projects/repository.ts";
+import type { ProjectSettings } from "@ecad/core/settings/schema.ts";
 import {
 	FileLocked,
 	inspectLock,
@@ -520,6 +521,11 @@ export class DesktopProjects {
 	}
 	readAsset(directory: string, path: string) {
 		return this.sequential(() => this.current(directory).readAsset(path));
+	}
+	saveSettings(directory: string, settings: ProjectSettings) {
+		return this.sequential(async () =>
+			this.snapshot(await this.current(directory).saveSettings(settings)),
+		);
 	}
 	/**
 	 * Project manifests are untrusted. A configured path is used only when it

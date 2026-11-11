@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
@@ -86,12 +86,9 @@ test(
 				],
 			};
 			// Saves accept only directories the user already configured or picked.
-			await mkdir(join(directory, ".ecad"));
-			await writeFile(
-				join(directory, ".ecad", "config.json"),
-				JSON.stringify(config),
-			);
 			const library = new DesktopSymbolLibrary(undefined, directory);
+			await mkdir(dirname(library.configurationPath), { recursive: true });
+			await writeFile(library.configurationPath, JSON.stringify(config));
 			await measure("symbolConfigSaveMs", () =>
 				library.saveConfiguration(config),
 			);

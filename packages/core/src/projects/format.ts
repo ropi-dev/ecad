@@ -24,6 +24,7 @@ import {
 	InvalidProjectPath,
 	schemaReason,
 } from "#/projects/errors.ts";
+import { readProjectSettingsSchema } from "#/settings/schema.ts";
 import {
 	type ConfiguredSymbolLibrary,
 	validateSymbolLibraries,
@@ -77,6 +78,7 @@ export const manifestSchema = z.strictObject({
 		.optional(),
 	symbols: z.array(projectPathSchema),
 	assets: z.array(assetSchema).default([]),
+	settings: readProjectSettingsSchema.optional(),
 });
 export type ProjectManifest = z.infer<typeof manifestSchema>;
 export type ProjectAsset = z.infer<typeof assetSchema>;

@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { configPaths } from "#/main/config-directory.ts";
 import {
 	ExternalLibraryApprovals,
 	type ExternalLibraryRequest,
@@ -45,7 +46,7 @@ test("approvals are remembered per project in the user's config directory", asyn
 		assert.deepEqual(asked, [request]);
 		assert.equal(
 			approvals.path,
-			join(home, ".ecad", "approved-libraries.json"),
+			join(configPaths(home).directory, "approved-libraries.json"),
 		);
 		assert.deepEqual(JSON.parse(await readFile(approvals.path, "utf8")), {
 			version: 1,
@@ -153,8 +154,9 @@ test("damaged or unwritable approvals never approve a directory by themselves", 
 			project: join(home, "project"),
 			directory: join(home, "parts"),
 		};
-		await mkdir(join(home, ".ecad"));
-		const path = join(home, ".ecad", "approved-libraries.json");
+		const directory = configPaths(home).directory;
+		await mkdir(directory, { recursive: true });
+		const path = join(directory, "approved-libraries.json");
 		for (const contents of [
 			"{",
 			JSON.stringify({ version: 2, approvals: [request] }),
@@ -169,7 +171,7 @@ test("damaged or unwritable approvals never approve a directory by themselves", 
 			);
 		}
 		await rm(path);
-		await chmod(join(home, ".ecad"), 0o555);
+		await chmod(directory, 0o555);
 		try {
 			const approvals = new ExternalLibraryApprovals({
 				homeDirectory: home,
@@ -183,6 +185,26 @@ test("damaged or unwritable approvals never approve a directory by themselves", 
 				false,
 			);
 		} finally {
-			await chmod(join(home, ".ecad"), 0o755);
+			await chmod(directory, 0o755);
 		}
+	}));
+
+test("approvals saved by older versions in ~/.ecad still apply", async () =>
+	withHome(async (home) => {
+		const request = {
+			project: join(home, "project"),
+			directory: join(home, "parts"),
+		};
+		await mkdir(join(home, ".ecad"));
+		await writeFile(
+			join(home, ".ecad", "approved-libraries.json"),
+			JSON.stringify({ version: 1, approvals: [request] }),
+		);
+		assert.equal(
+			await new ExternalLibraryApprovals({ homeDirectory: home }).approve(
+				request,
+				{ prompt: false },
+			),
+			true,
+		);
 	}));

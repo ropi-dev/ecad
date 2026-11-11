@@ -12,10 +12,7 @@ import {
 } from "react";
 import type { Object3D } from "three";
 import { AxisIndicator } from "#/components/viewer/AxisIndicator.tsx";
-import {
-	setAntialiasing,
-	useAntialiasing,
-} from "#/components/viewer/antialiasing.ts";
+import { useAntialiasing } from "#/components/viewer/antialiasing.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
 import {
 	FloatingPanel,
@@ -414,10 +411,6 @@ export function SceneViewport({
 									setActiveProjection((current) =>
 										current === "perspective" ? "orthographic" : "perspective",
 									)
-					}
-					antialias={antialias}
-					toggleAntialias={
-						cameraMode === "top" ? () => setAntialiasing(!antialias) : undefined
 					}
 					fit={() => stepZoom((viewport) => viewport.fit())}
 					zoom={(factor) => stepZoom((viewport) => viewport.zoom(factor))}

@@ -43,8 +43,12 @@ export default defineConfig({
 					origin: new URL(url ?? `http://127.0.0.1:${port}`).origin,
 					localStorage: [
 						{
-							name: "ecad.antialias",
-							value: process.env.ECAD_PERF_ANTIALIAS === "1" ? "1" : "0",
+							name: "ecad.settings.v1",
+							value: JSON.stringify({
+								version: 1,
+								antialiasing:
+									process.env.ECAD_PERF_ANTIALIAS === "1" ? "on" : "off",
+							}),
 						},
 					],
 				},

@@ -3,6 +3,7 @@ import type {
 	ProjectDocument,
 	ProjectSnapshot,
 } from "#/projects/format.ts";
+import type { ProjectSettings } from "#/settings/schema.ts";
 
 /** The project as it is now on disk, and the project paths that changed. */
 export interface ProjectRefresh {
@@ -23,6 +24,10 @@ export interface ProjectStorage {
 		assets: { name: string; kind: AssetKind; bytes: Uint8Array }[],
 	): Promise<ProjectSnapshot>;
 	readAsset(directory: string, path: string): Promise<Uint8Array>;
+	saveSettings?(
+		directory: string,
+		settings: ProjectSettings,
+	): Promise<ProjectSnapshot>;
 	canWriteFile?(directory: string, path: string): Promise<boolean>;
 	/**
 	 * Calls the listener with the open project's directory when another

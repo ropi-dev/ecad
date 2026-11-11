@@ -12,7 +12,7 @@ import {
 	getAppPerformance,
 	measurePerformance,
 } from "#/performance/runtime.ts";
-import { isProjectError } from "#/projects/errors.ts";
+import { isProjectError, ProjectClosed } from "#/projects/errors.ts";
 import type {
 	AssetKind,
 	ProjectAsset,
@@ -27,6 +27,7 @@ import { createProjectExternalReload } from "#/projects/project-external-reload.
 import { createProjectFileActions } from "#/projects/project-file-actions.ts";
 import { createProjectSessionState } from "#/projects/project-session-state.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
+import type { ProjectSettings } from "#/settings/schema.ts";
 import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
 
 export interface RestoredAssets {
@@ -78,6 +79,9 @@ export interface ProjectContextValue {
 	 * not read; `problems` names each of them, and the others still load.
 	 */
 	readAssets(kind: AssetKind): Promise<RestoredAssets>;
+	saveSettings?(
+		change: (settings: ProjectSettings) => ProjectSettings,
+	): Promise<void>;
 }
 export interface CircuitDocument {
 	file: CircuitFile;
@@ -319,6 +323,27 @@ export function createProjectSession(
 		save,
 		importAssets: (files, kind) => importAssets(files, kind, epoch),
 		readAssets,
+		...(storage.saveSettings && {
+			saveSettings: (change: (settings: ProjectSettings) => ProjectSettings) =>
+				enqueue(async () => {
+					const saveSettings = storage.saveSettings;
+					const previous = state.active;
+					if (!saveSettings || !previous || state.generation !== epoch)
+						throw new ProjectClosed();
+					if (state.conflict) throw state.conflict;
+					try {
+						update(
+							await saveSettings(
+								previous.directory,
+								change(previous.manifest.settings ?? {}),
+							),
+						);
+					} catch (cause) {
+						state.noteConflict(cause);
+						throw cause;
+					}
+				}),
+		}),
 	});
 	let stableActions: Partial<ProjectContextValue> | undefined;
 	let actionEpoch = -1;

@@ -1,11 +1,10 @@
-import { useSyncExternalStore } from "react";
+import type { AntialiasingMode } from "#/settings/schema.ts";
+import { useAppSettings } from "#/settings/store.ts";
 
-const STORAGE_KEY = "ecad.antialias";
 const SOFTWARE_RENDERER =
 	/swiftshader|llvmpipe|softpipe|software|basic render/i;
-const listeners = new Set<() => void>();
 
-function softwareRenderer() {
+function detectSoftwareRenderer() {
 	if (typeof document === "undefined") return false;
 	try {
 		const canvas = document.createElement("canvas");
@@ -24,36 +23,17 @@ function softwareRenderer() {
 	}
 }
 
-function stored() {
-	try {
-		const value = localStorage.getItem(STORAGE_KEY);
-		if (value !== null) return value !== "0";
-	} catch {}
-	return !softwareRenderer();
+let software: boolean | undefined;
+
+export function automaticAntialiasing() {
+	software ??= detectSoftwareRenderer();
+	return !software;
 }
 
-let enabled: boolean | undefined;
-
-const current = () => {
-	enabled ??= stored();
-	return enabled;
-};
-
-const subscribe = (listener: () => void) => {
-	listeners.add(listener);
-	return () => {
-		listeners.delete(listener);
-	};
-};
-
-export function setAntialiasing(next: boolean) {
-	enabled = next;
-	try {
-		localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-	} catch {}
-	for (const listener of listeners) listener();
+export function resolveAntialiasing(mode: AntialiasingMode = "auto") {
+	return mode === "auto" ? automaticAntialiasing() : mode === "on";
 }
 
 export function useAntialiasing() {
-	return useSyncExternalStore(subscribe, current, () => true);
+	return resolveAntialiasing(useAppSettings().antialiasing);
 }

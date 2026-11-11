@@ -17,6 +17,7 @@ import {
 	PlugZap,
 	Plus,
 	Search,
+	Settings,
 	Workflow,
 	X,
 } from "lucide-react";
@@ -69,6 +70,7 @@ import {
 	useWorkspaceRegistration,
 	workspaceActionClassName,
 } from "#/projects/WorkspaceControls.tsx";
+import { LazySettingsDialog } from "#/settings/LazySettingsDialog.tsx";
 
 const SidebarMcpControls = lazy(() =>
 	import("#/components/editor/McpControls.tsx").then((module) => ({
@@ -204,9 +206,14 @@ export function ProjectFilesSidebar({
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
 	const [openMenuActive, setOpenMenuActive] = useState(false);
 	const [projectMenuActive, setProjectMenuActive] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(false);
 	// Menus and dialogs opened from the sidebar are portaled outside of it.
 	const overlayOpen =
-		addMenuOpen || creatingFile !== null || openMenuActive || projectMenuActive;
+		addMenuOpen ||
+		creatingFile !== null ||
+		openMenuActive ||
+		projectMenuActive ||
+		settingsOpen;
 	const open = pinned || hovered || focused || touchOpen || overlayOpen;
 	useEffect(() => {
 		if (overlayOpen) return;
@@ -251,6 +258,23 @@ export function ProjectFilesSidebar({
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [togglePin]);
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (
+				!hasShortcutModifier(event) ||
+				event.altKey ||
+				event.shiftKey ||
+				event.key !== "," ||
+				event.isComposing
+			)
+				return;
+			event.preventDefault();
+			event.stopPropagation();
+			setSettingsOpen(true);
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, []);
 	const closeDrawer = useCallback(() => {
 		if (
 			document.activeElement instanceof HTMLElement &&
@@ -1109,6 +1133,19 @@ export function ProjectFilesSidebar({
 								<LogOut size={15} aria-hidden="true" />
 							</TooltipButton>
 						)}
+						<TooltipButton
+							aria-label="Settings"
+							aria-keyshortcuts={`${shortcutModifier().key}+,`}
+							tooltip="Settings"
+							shortcut="Ctrl+,"
+							data-shortcut-scope="none"
+							className="ui-button"
+							data-variant="ghost"
+							data-icon
+							onClick={() => setSettingsOpen(true)}
+						>
+							<Settings size={15} aria-hidden="true" />
+						</TooltipButton>
 						{/* Lit while the sidebar is pinned beside the workspace. */}
 						<TooltipButton
 							aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
@@ -1126,6 +1163,7 @@ export function ProjectFilesSidebar({
 					</footer>
 				</Tooltip.Provider>
 			</aside>
+			<LazySettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 			{creatingFile && (
 				<div className="pointer-events-auto">
 					<Suspense fallback={null}>
