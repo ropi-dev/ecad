@@ -129,7 +129,7 @@ The 2D hover and selection tests check hover counts, selection attributes, and c
 
 Performance budgets stay local. CI excludes `gerber-performance.spec.ts` and does not run `pnpm run perf`. The other browser specs, including rendering and performance diagnostics behavior, still run. CI gates on `pnpm run lint`. Formatting and import organization are available through `pnpm run check`.
 
-Capture performance before feature work with `pnpm run perf:baseline`, then run `pnpm run perf` after changes to check startup, large projects, drawing, and imports against budgets and the local baseline. `pnpm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
+Feature threads do not run the timing benchmarks. `pnpm run perf:main` checks main once per batch of merged commits, and `pnpm run perf --grep <scenario>` compares named scenarios against the merge base for performance work. `pnpm run perf:dev` adds React profiling. Live diagnostics are available at `window.__ecadPerformance` in development, or with `?perf=1` in production. See the [performance guide](docs/performance.md) for reports, controls, and measurement limits.
 
 ## Working in the packages
 

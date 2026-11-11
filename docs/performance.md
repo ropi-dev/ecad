@@ -3,17 +3,44 @@
 Run these commands from the repository root after `pnpm install --frozen-lockfile` and `pnpm exec playwright install chromium`:
 
 ```bash
-# After the change, compare the affected scenarios against the merge base:
-pnpm run perf
+# Performance work in a thread: compare named scenarios against the merge base.
+pnpm run perf --grep 'editor-pan|editor-toolbar'
 # Compare against another ref, such as the base branch of a stacked pull request:
-pnpm run perf --base origin/my-base-branch
-# Compare every scenario:
-pnpm run perf --all
-# Once per merged batch: every scenario against the absolute budgets, 4× throttled:
+pnpm run perf --grep editor-pan --base origin/my-base-branch
+# Once per batch of merged commits, from a clean checkout of origin/main:
+pnpm run perf:main
+# After it: every scenario against the absolute budgets, 4× throttled:
 pnpm run perf:budgets
 ```
 
-`pnpm run perf` selects scenarios from the change; see [Scenario selection](#scenario-selection). It needs no baseline: it builds the merge base itself and measures base and head in one session. See [A/B runs](#ab-runs). `pnpm run perf:budgets` runs the full suite unless you pass `--grep`. `pnpm run perf:baseline` is deprecated: it prints that it is no longer needed and runs nothing.
+## When to measure
+
+Feature and fix threads do not run the timing benchmarks. Reports from 48 A/B runs on the shared host between November 5 and 11, 2026 show why:
+
+- Every run that finished within two minutes compared three scenarios or fewer. An ordinary editor change selects 48 to 66, and those runs took 17 to 42 minutes, nearly all of it under exclusive access to the benchmark lock, which other threads' sandbox tests wait on.
+- 21 of the 48 runs reported a regression. Most were followed by a narrower rerun that passed, so the thread paid for a second run to clear noise. With about 60 scenarios and several metrics each, one false verdict per run is the expected outcome on a host that other threads load.
+
+Timing is checked on main instead, once per batch of merged commits; see [Main check](#main-check). On pull requests, GitHub's smoke job still runs every scenario and enforces the DOM node and script size budgets.
+
+A thread measures when its task is a performance change, or when it adds or edits a scenario. Pass the scenarios that cover the change with `--grep`, at most three. One scenario takes 20 to 140 seconds and three took 49 to 101 seconds. `editor-frame-rate` is the exception at three to seven minutes on its own. Without `--grep`, `pnpm run perf` still selects every scenario the change affects, as described under [Scenario selection](#scenario-selection); `perf:main` relies on that.
+
+## Main check
+
+`pnpm run perf:main` compares main against the commit it last checked. Run it from a clean checkout of `origin/main`, on an idle host.
+
+1. It fetches `origin/main` and reads the checked commit from `main-check.json` in the base build cache, `~/.cache/ecad-perf` unless `ECAD_PERF_CACHE_DIR` is set. Every checkout on the host shares that file.
+2. With no checked commit, it records `HEAD` and runs nothing. With no commits since the checked one, it runs nothing.
+3. Otherwise it runs the A/B comparison with the checked commit as the base. The scenarios come from the paths changed between the two commits. Options it does not use itself, such as `--all` and `--grep`, go to the comparison.
+4. When the only failures are regression verdicts, it reruns those scenarios once. A regression that does not reproduce is reported as noise and the check passes.
+5. A pass records `HEAD` as the checked commit. A failure leaves the checked commit unchanged, so the next run covers the same commits again. After a fix, the next run records the new commit. To keep a slowdown, run `pnpm run perf:main --accept`.
+
+For a confirmed regression the output lists the commits in the range and the `--grep` pattern of the regressed scenarios. To find the commit, check out each one and run `pnpm run perf --base <checked commit> --grep '<pattern>'`.
+
+`--since <ref>` compares against another commit for one run. From a checkout with uncommitted changes, or one that is not on `origin/main`, the comparison runs but records nothing.
+
+Run `pnpm run perf:budgets` after the main check passes. It takes about 24 minutes.
+
+Without `--grep`, `pnpm run perf` selects scenarios from the change; see [Scenario selection](#scenario-selection). It needs no baseline: it builds the merge base itself and measures base and head in one session. See [A/B runs](#ab-runs). `pnpm run perf:budgets` runs the full suite unless you pass `--grep`. `pnpm run perf:baseline` is deprecated: it prints that it is no longer needed and runs nothing.
 
 For parallel threads, use the [container setup](parallel-development.md). Native and sandbox performance commands share a host-wide benchmark lock. Native builds hold shared access to it, so they can overlap other builds and tests but never a benchmark's measurement; measurement holds exclusive access. Artifacts live under `/tmp`, with `perf-artifacts` linking to the native checkout's artifact directory. Sandbox artifacts have a separate location.
 
@@ -38,7 +65,7 @@ Node scenarios run unthrottled in every mode. `cli-drawing` runs the base commit
 
 `pnpm sandbox perf` runs the same comparison in the benchmark container. The host exports the base source, and the container builds it into the `ecad-perf-base-cache` volume. In the container, builds run inside the benchmark lock.
 
-The budget run, `pnpm run perf:budgets`, is the previous single-variant run with no baseline: every scenario three times, 4× CPU throttling, and the absolute budgets on the medians. `ECAD_PERF_RUNS` changes the repeats. Run it, and an A/B run of every scenario against the main commit before the batch (`pnpm run perf --all --base <pre-batch-main>`), once per merged batch.
+The budget run, `pnpm run perf:budgets`, is the previous single-variant run with no baseline: every scenario three times, 4× CPU throttling, and the absolute budgets on the medians. `ECAD_PERF_RUNS` changes the repeats. Run it once per batch of merged commits, after the [main check](#main-check).
 
 ## A/B sensitivity
 
@@ -141,7 +168,7 @@ Development runs (`pnpm run perf:dev`) still compare against a stored baseline, 
 
 Event-loop comparisons allow 100 ms of sampling noise. The collector samples every 250 ms, so short scenarios vary with the timer's alignment to import tasks. Repeated local measurements of the same app build produced median event-loop p95 values between 156 and 258 ms while CPU frame submission stayed around 200 ms. Import duration, blocking time, and frame time retain their separate regression checks.
 
-Performance benchmarks run locally, following `AGENTS.md`. Hosted-runner variation made the absolute timing budgets unreliable as CI gates. A run that passed all symbol budgets failed an unrelated empty-project event-loop budget. Compare before and after on the same machine with an A/B run, and inspect `perf-artifacts/latest.json` before reporting a performance change.
+Performance benchmarks run locally, following `AGENTS.md`. Hosted-runner variation made the absolute timing budgets unreliable as CI gates. A run that passed all symbol budgets failed an unrelated empty-project event-loop budget. Compare before and after on the same machine with an A/B run of the scenarios that cover the change, and inspect `perf-artifacts/latest.json` before reporting a performance change.
 
 GitHub Actions runs the scenarios only as a functional smoke test. The `Performance scenarios (smoke)` job in `browser-tests.yml` runs every scenario once, without CPU throttling, on three workers. It sets `ECAD_PERF_SMOKE=1`. In that mode the reporter still fails a scenario that errors or misses a required measurement, and still enforces the DOM node and script size budgets. It skips every `…Ms` timing budget, never reads or writes a baseline, and always runs every scenario rather than the affected selection. The job keeps scenarios working as the UI changes; it says nothing about speed.
 
@@ -262,7 +289,7 @@ const result = await measurePerformanceAsync(
 );
 ```
 
-The helpers preserve return values, thrown errors, and cancellation. Collection is guarded for server rendering and disabled production sessions. For React workspaces, use `PerformanceBoundary`; for a new benchmark, record its result in the app scenario, attach the JSON report, and add a budget with a meaningful limit. Run the production comparison before reporting the feature complete. `AGENTS.md` makes this part of the development workflow.
+The helpers preserve return values, thrown errors, and cancellation. Collection is guarded for server rendering and disabled production sessions. For React workspaces, use `PerformanceBoundary`; for a new benchmark, record its result in the app scenario, attach the JSON report, and add a budget with a meaningful limit. Check the new scenario against its budgets with `pnpm run perf:budgets --grep <scenario>` before reporting the feature complete.
 
 The `kicad-import` scenario selects the licensed RP2350A schematic through the Files sidebar after first testing malformed-input recovery. It converts 87 component instances and 272 terminals, persists and opens the resulting 663 shapes, downloads the conversion report, and verifies that the drawing survives reload. Under the same 4× Chromium CPU throttle, conversion has a 1.5-second budget and the import-through-render interaction has a 5-second budget. DOM, decoded scripts and frame p95 limits are 2,000 nodes, 3 MB and 500 ms. The frame measurement includes the cold render of the entire reference sheet. Keep this limit when investigating slow runs and avoid concurrent benchmarks on the same machine. The `import.kicad` metric covers the KiCad worker round trip: starting the worker, reading the file, parsing, conversion, schema validation and returning the result to the page. Before conversion moved to a worker, it covered only parsing, conversion and schema validation on the page thread. This new scenario has no pre-feature counterpart. Use `ECAD_PERF_PORT` to select a free local preview port when other worktrees are benchmarking.
 
