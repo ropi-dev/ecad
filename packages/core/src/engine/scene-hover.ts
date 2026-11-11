@@ -13,6 +13,7 @@ import {
 } from "three";
 import { viewerTheme } from "#/drawing/schematic-theme.ts";
 import { hoverLayerColor } from "#/engine/layer-style.ts";
+import { copyHoleCut, insideHole } from "#/engine/planar-holes.ts";
 import {
 	pickPlanarRegion,
 	planarRegionPositions,
@@ -40,7 +41,11 @@ export interface SceneTarget {
 /** Callers can disable picking on an object or a whole subtree independently of visibility. */
 function hoverable(object: Object3D): boolean {
 	for (let part: Object3D | null = object; part; part = part.parent)
-		if (!part.visible || part.userData.hoverEnabled === false) return false;
+		if (
+			(!part.visible && !part.userData.pickWhenHidden) ||
+			part.userData.hoverEnabled === false
+		)
+			return false;
 	return true;
 }
 
@@ -145,6 +150,7 @@ export function createSceneHover(
 						if (!ray.intersectPlane(plane, point)) continue;
 						const distance = point.distanceTo(ray.origin);
 						entry.object.worldToLocal(point);
+						if (insideHole(mesh, point.x, point.y)) continue;
 						entry.object.getWorldScale(worldScale);
 						const tolerance =
 							(pixelSize * 3) /
@@ -209,6 +215,7 @@ export function createSceneHover(
 			const originals = materials(selected.mesh);
 			materials(overlay).forEach((material, index) => {
 				syncMaterial(originals[index], material);
+				copyHoleCut(originals[index], material);
 			});
 			overlay.matrix.copy(
 				selected.region !== undefined

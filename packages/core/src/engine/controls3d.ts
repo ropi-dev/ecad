@@ -19,17 +19,29 @@ export function create3DControls(
 	controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: null };
 	controls.zoomToCursor = true;
 	controls.touches.ONE = null;
-	if (lockTop) {
+	const panFirst = lockTop;
+	let rotationLocked = lockTop;
+	const setRotationLocked = (locked: boolean) => {
+		rotationLocked = locked;
+		if (!panFirst) return;
 		controls.enableRotate = false;
-		controls.minPolarAngle = controls.maxPolarAngle = Math.PI / 2;
-		controls.minAzimuthAngle = controls.maxAzimuthAngle = 0;
-		controls.touches.ONE = TOUCH.PAN;
-	}
+		controls.minPolarAngle = locked ? Math.PI / 2 : 0;
+		controls.maxPolarAngle = locked ? Math.PI / 2 : Math.PI;
+		controls.minAzimuthAngle = locked ? 0 : Number.NEGATIVE_INFINITY;
+		controls.maxAzimuthAngle = locked ? 0 : Number.POSITIVE_INFINITY;
+		controls.touches.ONE = locked ? TOUCH.PAN : null;
+	};
+	setRotationLocked(lockTop);
 	controls.listenToKeyEvents(canvas);
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
 	const orbit = (deltaX: number, deltaY: number) => {
-		if (!controls.enabled || !controls.enableRotate) return;
+		if (
+			!controls.enabled ||
+			rotationLocked ||
+			(!panFirst && !controls.enableRotate)
+		)
+			return;
 		const camera = controls.object;
 		const distance = Math.hypot(deltaX, deltaY);
 		if (distance === 0) return;
@@ -59,7 +71,7 @@ export function create3DControls(
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
 		const delta = wheelDelta(event, canvas);
-		if (event.shiftKey && !lockTop) {
+		if (event.shiftKey && !rotationLocked) {
 			orbit(
 				event.deltaMode === 2
 					? event.deltaX * Math.max(canvas.clientHeight, 1)
@@ -83,7 +95,12 @@ export function create3DControls(
 		)
 			return;
 		const button = event.button === 0 ? "LEFT" : "MIDDLE";
-		if (lockTop) {
+		if (panFirst) {
+			if (event.shiftKey && !rotationLocked) {
+				orbitPointer = event.pointerId;
+				controls.mouseButtons[button] = null;
+				return;
+			}
 			controls.mouseButtons[button] =
 				event.ctrlKey || event.metaKey || event.shiftKey
 					? MOUSE.ROTATE
@@ -107,7 +124,7 @@ export function create3DControls(
 		if (!previous) return;
 		if (
 			orbitPointer === event.pointerId ||
-			(previous.touch && pointers.size === 1)
+			(previous.touch && pointers.size === 1 && !rotationLocked)
 		) {
 			orbit(previous.x - event.clientX, previous.y - event.clientY);
 		}
@@ -120,7 +137,7 @@ export function create3DControls(
 	};
 	const onMouseDown = (event: MouseEvent) => {
 		if (
-			!lockTop &&
+			!panFirst &&
 			event.button !== 1 &&
 			!(
 				event.button === 0 &&
@@ -153,6 +170,7 @@ export function create3DControls(
 	canvas.addEventListener("auxclick", onAuxClick);
 	return {
 		controls,
+		setRotationLocked,
 		dispose: () => {
 			canvas.removeEventListener("pointerdown", onPointerDown, true);
 			canvas.removeEventListener("pointermove", onPointerMove, true);

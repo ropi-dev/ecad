@@ -423,6 +423,13 @@ export const budgets = {
 		domNodes: 1000,
 		eventLoopP95Ms: 500,
 	},
+	"gerber-3d": {
+		importGerberMs: 10000,
+		interactionP95Ms: 5000,
+		domNodes: 1000,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 1500,
+	},
 	"editor-imports": {
 		navigationP95Ms: 5000,
 		importGerberMs: 10000,

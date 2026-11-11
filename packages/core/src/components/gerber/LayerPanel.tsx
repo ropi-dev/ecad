@@ -1,4 +1,6 @@
 import {
+	ChevronDown,
+	ChevronUp,
 	Eye,
 	EyeOff,
 	GripVertical,
@@ -8,6 +10,7 @@ import {
 } from "lucide-react";
 import { useId, useState } from "react";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
+import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { Diagnostic, SceneLayer } from "#/engine/types.ts";
 import {
 	countDiagnostics,
@@ -19,6 +22,17 @@ const severityStyle = {
 	error: { label: "Error", className: "text-danger" },
 	fatal: { label: "Fatal", className: "text-danger" },
 } as const;
+
+const columns = [
+	[
+		"grid-cols-[16px_minmax(0,1fr)_28px]",
+		"grid-cols-[16px_minmax(0,1fr)_28px_24px]",
+	],
+	[
+		"grid-cols-[16px_minmax(0,1fr)_auto_28px]",
+		"grid-cols-[16px_minmax(0,1fr)_auto_28px_24px]",
+	],
+] as const;
 
 export function LayerPanel({
 	layers,
@@ -33,12 +47,13 @@ export function LayerPanel({
 	onFocus: (id?: string) => void;
 	onVisibility: (id: string) => void;
 	onMove: (id: string, targetId: string, after: boolean) => void;
-	onRemove: (id: string) => void;
+	onRemove?: (id: string) => void;
 }) {
 	const [dragged, setDragged] = useState<string>();
 	const [drop, setDrop] = useState<{ id: string; after: boolean }>();
 	const [announcement, setAnnouncement] = useState("");
 	const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+	const [collapsed, setCollapsed] = useState(false);
 	const listId = useId();
 	const ordered = [...layers].reverse();
 	const finishDrag = () => {
@@ -46,8 +61,35 @@ export function LayerPanel({
 		setDrop(undefined);
 	};
 	return (
-		<FloatingPanel label="Layers" position="left-center">
+		<FloatingPanel label="Layers" position="top-right" raised>
+			<header
+				className={`flex shrink-0 items-center justify-between gap-3 py-1.5 pr-1.5 pl-3 ${collapsed ? "" : "border-b border-line-subtle"}`}
+			>
+				<h2 className="m-0 text-sm font-semibold">
+					Layers{" "}
+					<span className="font-normal text-fg-muted tabular-nums">
+						{layers.length}
+					</span>
+				</h2>
+				<button
+					type="button"
+					className={panelIconButtonClassName}
+					aria-label={collapsed ? "Expand layers" : "Collapse layers"}
+					title={collapsed ? "Expand" : "Collapse"}
+					aria-expanded={!collapsed}
+					aria-controls={listId}
+					onClick={() => setCollapsed(!collapsed)}
+				>
+					{collapsed ? (
+						<ChevronDown size={16} aria-hidden="true" />
+					) : (
+						<ChevronUp size={16} aria-hidden="true" />
+					)}
+				</button>
+			</header>
 			<ol
+				id={listId}
+				hidden={collapsed}
 				className="m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-1.5"
 				onDragOver={(event) => {
 					if (dragged) event.preventDefault();
@@ -69,7 +111,7 @@ export function LayerPanel({
 					return (
 						<li
 							key={layer.id}
-							className={`group relative mb-0.5 grid min-h-11 ${diagnostics.length ? "grid-cols-[16px_minmax(0,1fr)_auto_28px_24px]" : "grid-cols-[16px_minmax(0,1fr)_28px_24px]"} items-center gap-1.5 rounded-md border border-transparent px-1 py-1 last:mb-0 hover:bg-hover data-[focused=true]:border-accent-line data-[focused=true]:bg-accent-tint data-[dragging=true]:opacity-35 after:pointer-events-none after:absolute after:inset-x-0 after:hidden after:h-0.5 after:rounded-full after:bg-accent data-[drop]:after:block data-[drop=before]:after:-top-[3px] data-[drop=after]:after:-bottom-[3px]`}
+							className={`group relative mb-0.5 grid min-h-11 ${columns[diagnostics.length ? 1 : 0][onRemove ? 1 : 0]} items-center gap-1.5 rounded-md border border-transparent px-1 py-1 last:mb-0 hover:bg-hover data-[focused=true]:border-accent-line data-[focused=true]:bg-accent-tint data-[dragging=true]:opacity-35 after:pointer-events-none after:absolute after:inset-x-0 after:hidden after:h-0.5 after:rounded-full after:bg-accent data-[drop]:after:block data-[drop=before]:after:-top-[3px] data-[drop=after]:after:-bottom-[3px]`}
 							data-layer-id={layer.id}
 							data-focused={focused}
 							data-hidden={!layer.visible}
@@ -198,15 +240,17 @@ export function LayerPanel({
 							>
 								{layer.visible ? <Eye size={17} /> : <EyeOff size={17} />}
 							</button>
-							<button
-								type="button"
-								className="relative z-1 grid h-7 w-6 cursor-pointer place-items-center pointer-coarse:h-11 rounded-md border-0 bg-transparent p-0 text-fg-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-								aria-label={`Remove ${layer.name}`}
-								title="Remove layer"
-								onClick={() => onRemove(layer.id)}
-							>
-								<X size={14} />
-							</button>
+							{onRemove && (
+								<button
+									type="button"
+									className="relative z-1 grid h-7 w-6 cursor-pointer place-items-center pointer-coarse:h-11 rounded-md border-0 bg-transparent p-0 text-fg-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+									aria-label={`Remove ${layer.name}`}
+									title="Remove layer"
+									onClick={() => onRemove(layer.id)}
+								>
+									<X size={14} />
+								</button>
+							)}
 							{open && diagnostics.length > 0 && (
 								<ul
 									id={diagnosticsId}

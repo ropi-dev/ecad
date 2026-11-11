@@ -24,7 +24,8 @@
         });
         const hover = this.children.find(object => object.userData.hoverHighlight);
         const highlightBounds = hover?.children.length ? new Box3().setFromObject(hover) : undefined;
-        document.getElementById('scene-state').textContent = JSON.stringify({ objects, camera: camera.position.toArray(), highlighted: hover?.children.length ?? 0, highlightBounds: highlightBounds ? { min: highlightBounds.min.toArray(), max: highlightBounds.max.toArray() } : null });
+        const grids = { flat: this.getObjectByName('viewport-grid')?.visible ?? false, plane: this.getObjectByName('viewport-plane-grid')?.visible ?? false };
+        document.getElementById('scene-state').textContent = JSON.stringify({ objects, grids, camera: camera.position.toArray(), highlighted: hover?.children.length ?? 0, highlightBounds: highlightBounds ? { min: highlightBounds.min.toArray(), max: highlightBounds.max.toArray() } : null });
       };
       createRoot(document.getElementById('root')).render(createElement(StrictMode, null, createElement(GerberWorkspace)));
     </script>

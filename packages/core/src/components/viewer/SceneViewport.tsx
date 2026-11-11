@@ -17,7 +17,10 @@ import {
 	useAntialiasing,
 } from "#/components/viewer/antialiasing.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
-import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
+import {
+	FloatingPanel,
+	type FloatingPanelPosition,
+} from "#/components/viewer/FloatingPanel.tsx";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 import type { AxisIndicatorHandle } from "#/components/viewer/types/AxisIndicatorHandle.ts";
 import type { Viewer2DSnapshot } from "#/components/viewer/types/Viewer2DSnapshot.ts";
@@ -57,6 +60,9 @@ export interface SceneViewportProps {
 	cameraState?: { camera?: Camera };
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
+	hoverHighlight?: boolean;
+	orbit?: boolean;
+	selectionPosition?: FloatingPanelPosition;
 	interactionHint?: string;
 	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
 	gridBounds?: Bounds;
@@ -72,6 +78,7 @@ export interface SceneViewportProps {
 	/** Grouped toolbars place these after the zoom controls. */
 	trailingControls?: ReactNode;
 	groupedControls?: boolean;
+	scrollableControls?: boolean;
 	/** Accessible name of the bottom toolbar. */
 	controlsLabel?: string;
 }
@@ -86,6 +93,9 @@ export function SceneViewport({
 	cameraState,
 	getFitBounds,
 	selectionEnabled = true,
+	hoverHighlight = true,
+	orbit = false,
+	selectionPosition = "top-right",
 	interactionHint,
 	gridBounds,
 	rulerUnit,
@@ -98,6 +108,7 @@ export function SceneViewport({
 	extraControls,
 	trailingControls,
 	groupedControls = false,
+	scrollableControls = false,
 	controlsLabel,
 }: SceneViewportProps) {
 	const [selectionInfo, setSelectionInfo] = useState<SceneSelection | null>(
@@ -204,6 +215,11 @@ export function SceneViewport({
 		}),
 		[stepZoom],
 	);
+	const currentOrbit = useRef(orbit);
+	useEffect(() => {
+		currentOrbit.current = orbit;
+		runtime.current?.setOrbit(orbit);
+	}, [orbit]);
 	const currentProjection = useRef(activeProjection);
 	useEffect(() => {
 		currentProjection.current = activeProjection;
@@ -237,6 +253,8 @@ export function SceneViewport({
 								: undefined),
 						getFitBounds: readFitBounds,
 						selectionEnabled,
+						hoverHighlight,
+						orbit: currentOrbit.current,
 						antialias,
 						ariaLabel: formatShortcut(
 							interactionHint
@@ -280,6 +298,7 @@ export function SceneViewport({
 		ariaLabel,
 		interactionHint,
 		selectionEnabled,
+		hoverHighlight,
 		lockProjection,
 		fitZoom,
 		cameraState,
@@ -325,7 +344,10 @@ export function SceneViewport({
 				</p>
 			)}
 			{selectionInfo && (
-				<FloatingPanel label="Selection attributes" position="top-right">
+				<FloatingPanel
+					label="Selection attributes"
+					position={selectionPosition}
+				>
 					<header className="shrink-0 border-b border-line-subtle px-3 py-2.5">
 						<p className="m-0 break-words text-sm font-semibold">
 							{selectionInfo.name || "Unnamed component"}
@@ -359,13 +381,14 @@ export function SceneViewport({
 					</div>
 				</FloatingPanel>
 			)}
-			{cameraMode === "top" && (
+			{cameraMode === "top" && !orbit && (
 				<ViewportRulers unit={rulerUnit} ref={rulers} gridBounds={gridBounds} />
 			)}
 			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D
 					grouped={groupedControls}
+					scrollable={scrollableControls}
 					trailing={trailingControls}
 					label={controlsLabel}
 					enabled={controlsReady}

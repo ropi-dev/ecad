@@ -39,8 +39,15 @@ export function gerberLayerOrder(filename: string, source: string): LayerOrder {
 		/(?:%TF\.FileFunction,|G04\s+#@!\s*TF\.FileFunction,)([^*]+)\*/i.exec(
 			source,
 		);
-	if (attribute) {
-		const order = attributeOrder(attribute[1]);
+	return classifyGerberLayer(filename, attribute?.[1]);
+}
+
+export function classifyGerberLayer(
+	filename: string,
+	fileFunction?: string,
+): LayerOrder {
+	if (fileFunction) {
+		const order = attributeOrder(fileFunction);
 		if (order) return order;
 	}
 	const name = filename.slice(filename.lastIndexOf("/") + 1).toLowerCase();
