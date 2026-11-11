@@ -1,13 +1,12 @@
 import { lazy, type ReactNode, Suspense } from "react";
 import { Toaster } from "#/components/ui/Toaster.tsx";
 import { useButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts";
+import { useDebugStats } from "#/performance/useDebugStats.ts";
 import { ProjectConflictNotice } from "#/projects/ProjectConflictNotice.tsx";
 import { ProjectFilesSidebar } from "#/projects/ProjectFilesSidebar.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 
-const DevStats = import.meta.env?.DEV
-	? lazy(() => import("#/performance/DevStats.tsx"))
-	: null;
+const DebugStats = lazy(() => import("#/performance/DebugStats.tsx"));
 
 export function ProjectShell({
 	children,
@@ -20,6 +19,7 @@ export function ProjectShell({
 	sidebar?: ReactNode;
 }) {
 	useButtonShortcuts();
+	const debugStats = useDebugStats();
 	const project = useProjectSelection(({ busy, session }) => ({
 		busy,
 		session,
@@ -36,9 +36,9 @@ export function ProjectShell({
 			</div>
 			<ProjectConflictNotice />
 			<Toaster />
-			{DevStats && (
+			{debugStats && (
 				<Suspense fallback={null}>
-					<DevStats />
+					<DebugStats />
 				</Suspense>
 			)}
 		</div>

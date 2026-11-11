@@ -5,6 +5,7 @@ import { Tabs } from "radix-ui";
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { AppDialog } from "#/components/ui/Dialog.tsx";
 import { automaticAntialiasing } from "#/components/viewer/antialiasing.ts";
+import { setDebugStats } from "#/performance/useDebugStats.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import {
 	type AntialiasingMode,
@@ -197,6 +198,23 @@ function DisplaySettings() {
 				Automatic turns antialiasing off on software renderers, where it slows
 				down drawing.
 			</p>
+			<h3 className="ui-section-label m-0 mt-5 mb-1">Debugging</h3>
+			<SettingRow
+				label="Show debug stats"
+				description="A floating window with frame rate, frame time, draw calls, long tasks and memory. Ctrl+Shift+D toggles it."
+			>
+				{(id) => (
+					<input
+						id={id}
+						type="checkbox"
+						className="ui-checkbox shrink-0"
+						checked={settings.debugStats ?? false}
+						onChange={(event) =>
+							void setDebugStats(event.currentTarget.checked)
+						}
+					/>
+				)}
+			</SettingRow>
 		</section>
 	);
 }

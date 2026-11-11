@@ -29,6 +29,7 @@ const readErcSeveritySchema = z.record(z.string(), z.unknown()).transform(
 const appShape = {
 	version: z.literal(1),
 	antialiasing: z.enum(antialiasingModes).optional(),
+	debugStats: z.boolean().optional(),
 	ercSeverity: ercSeveritySchema.optional(),
 };
 const projectShape = {
