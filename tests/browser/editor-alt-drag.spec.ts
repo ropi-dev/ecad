@@ -151,3 +151,39 @@ test("Alt-drag copies topmost text instead of a symbol behind it", async ({
 		...snapPoint({ x: 20, y: -80 }, (await drawingGridStep(page)) / 10),
 	});
 });
+
+test("Alt-drag on a selected item duplicates the whole selection with its layout", async ({
+	page,
+}) => {
+	const canvas = page.locator("canvas");
+	const bounds = required(await canvas.boundingBox());
+	for (const [id, modifiers] of [
+		[1, []],
+		[3, ["Shift"]],
+	] as const) {
+		const { screen } = await shapePoint(page, id);
+		await canvas.click({
+			position: { x: screen.x - bounds.x, y: screen.y - bounds.y },
+			modifiers: [...modifiers],
+		});
+	}
+	const before = await documentState(page);
+	await altDrag(page, 1);
+	await expect
+		.poll(async () => (await documentState(page)).shapes.length)
+		.toBe(before.shapes.length + 2);
+	const after = await documentState(page);
+	expect(after.shapes.slice(0, before.shapes.length)).toEqual(before.shapes);
+	expect(after.historySize).toBe(before.historySize + 1);
+	const label = required(before.shapes.find((shape) => shape.id === 1));
+	const wire = required(before.shapes.find((shape) => shape.id === 3));
+	const target = snapPoint(
+		{ x: label.x + 20, y: label.y - 20 },
+		await drawingGridStep(page),
+	);
+	const delta = { x: target.x - label.x, y: target.y - label.y };
+	expect(after.shapes.slice(before.shapes.length)).toEqual([
+		{ ...label, id: 4, x: label.x + delta.x, y: label.y + delta.y },
+		{ ...wire, id: 5, x: wire.x + delta.x, y: wire.y + delta.y },
+	]);
+});

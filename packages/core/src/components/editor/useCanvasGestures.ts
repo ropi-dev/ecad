@@ -435,7 +435,11 @@ export function useCanvasGestures({
 				const createdIds = new Set(active.originals.map((shape) => shape.id));
 				session.place(
 					session.shapes().filter((shape) => createdIds.has(shape.id)),
-					active.mode === "duplicate" ? `Duplicate ${kind}` : `Draw ${kind}`,
+					active.mode !== "duplicate"
+						? `Draw ${kind}`
+						: active.originals.length > 1
+							? "Duplicate selection"
+							: `Duplicate ${kind}`,
 				);
 				setTool("select");
 			} else if (
@@ -652,8 +656,10 @@ export function useCanvasGestures({
 						)
 					: undefined;
 			const duplicate =
-				event.altKey && (hit?.kind === "symbol" || hit?.kind === "text")
-					? hit
+				event.altKey && hit
+					? selectedIds.has(hit.id)
+						? selected.filter((shape) => canSelectShape(shape, allowLocked))
+						: [hit]
 					: undefined;
 			if (event.altKey && !duplicate) return;
 			stop(event);
@@ -734,12 +740,14 @@ export function useCanvasGestures({
 				handler.press(event, point, start);
 				return;
 			}
-			if (duplicate) {
-				shape = pasteSelection([duplicate], shapes, session.nextId(), {
+			let copies: EditorShape[] = [];
+			if (duplicate && hit) {
+				copies = pasteSelection(duplicate, shapes, session.nextId(), {
 					x: 0,
 					y: 0,
-				})[0];
-				session.preview([...session.shapes(), shape]);
+				});
+				shape = copies[duplicate.findIndex((item) => item.id === hit.id)];
+				session.preview([...session.shapes(), ...copies]);
 			} else if (created) {
 				const create = handler.create;
 				if (!create) return;
@@ -753,15 +761,16 @@ export function useCanvasGestures({
 			}
 			const childKey = resize?.childKey ?? editableChild?.key;
 
-			const originals = shape
-				? childKey === undefined &&
-					!created &&
-					!resize &&
-					!duplicate &&
-					selectedIds.has(shape.id)
-					? selected
-					: [shape]
-				: [];
+			const originals = duplicate
+				? copies
+				: shape
+					? childKey === undefined &&
+						!created &&
+						!resize &&
+						selectedIds.has(shape.id)
+						? selected
+						: [shape]
+					: [];
 			session.select(
 				resize
 					? selectedIds

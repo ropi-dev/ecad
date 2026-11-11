@@ -4,7 +4,7 @@ Run `pnpm run test:browser` for the browser cases. CI runs the same suite across
 
 | Browser cases | Coverage that needs a browser |
 | --- | --- |
-| Editor, 31 | Canvas pointer coordinates, shape drawing, selection modifiers, orthogonal wire gestures, ruler guides, placement rotation for a symbol and two placement tools, Alt-drag copies, per-document zoom and pan, the zoom label during a continuous zoom, batched and panned redraws, antialiasing, history panel rendering |
+| Editor, 32 | Canvas pointer coordinates, shape drawing, selection modifiers, orthogonal wire gestures, ruler guides, placement rotation for a symbol and two placement tools, Alt-drag copies, per-document zoom and pan, the zoom label during a continuous zoom, batched and panned redraws, antialiasing, history panel rendering |
 | Clipboard and messages, 8 | Native clipboard formats and fallbacks, command and clipboard errors, library issue notices |
 | Circuit, 9 | Pin drag preview, connection and merge, undo and redo, autosave completing during a gesture or a connection selection, component picker filtering, connection highlights, keyboard redo and input isolation, wide net label fitting, panning during placement, circuit ERC |
 | Linked schematic and PCB, 10 | Navigation and selection between circuit and schematic, synchronization in both directions, pending autosaves and schematic undo, generated label dragging, net symbol merging, undo and rebuilds |

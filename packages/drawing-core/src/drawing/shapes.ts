@@ -3,6 +3,7 @@ export {
 	isUnsafeMove,
 	moveShapes,
 	prepareMove,
+	snappedMoveDelta,
 	UNSAFE_MOVE_MESSAGE,
 	withFullRouting,
 } from "#/drawing/connected-wire-transforms.ts";
