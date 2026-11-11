@@ -1,14 +1,25 @@
-import { expect, test } from "@playwright/test";
-import {
-	selectSymbolAttribute,
-	selectSymbolParent,
-} from "../browser/symbol-items";
+import { expect, type Page, test } from "@playwright/test";
+import { selectSymbolParent } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
+
+async function openReference(page: Page) {
+	await selectSymbolParent(page);
+	const marker = required(
+		await page
+			.locator('[data-testid="text-anchor"][data-anchor-id$=":label:0"]')
+			.boundingBox(),
+	);
+	await page.mouse.dblclick(
+		marker.x + marker.width / 2,
+		marker.y + marker.height / 2,
+	);
+	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+}
 
 test(
 	"editor-text-alignment",
@@ -92,13 +103,13 @@ test(
 		await page
 			.getByRole("button", { name: "Insert Resistor", exact: true })
 			.click();
-		await canvas.click({
-			position: { x: box.width * 0.4, y: box.height * 0.5 },
-		});
+		const resistor = { x: box.width * 0.4, y: box.height * 0.5 };
+		await canvas.click({ position: resistor });
+		await canvas.dblclick({ position: resistor });
 		const center = await page
 			.getByRole("spinbutton", { name: "Center X", exact: true })
 			.inputValue();
-		await selectSymbolAttribute(page, "reference");
+		await openReference(page);
 		for (const [horizontal, vertical] of [
 			["left", "top"],
 			["center", "middle"],
@@ -128,6 +139,7 @@ test(
 			});
 		}
 		await selectSymbolParent(page);
+		await canvas.dblclick({ position: resistor });
 		await expect(
 			page.getByRole("spinbutton", { name: "Center X", exact: true }),
 		).toHaveValue(center);

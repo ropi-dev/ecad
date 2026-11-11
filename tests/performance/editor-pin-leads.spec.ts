@@ -1,5 +1,5 @@
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -7,15 +7,26 @@ import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
 
+// A press that ends where it began on a pin end starts a wire.
+async function openPin(page: Page, point: { x: number; y: number }) {
+	await page.mouse.move(point.x, point.y);
+	for (const clickCount of [1, 2]) {
+		await page.mouse.down({ clickCount });
+		await page.mouse.move(point.x + 4, point.y);
+		await page.mouse.move(point.x, point.y);
+		await page.mouse.up({ clickCount });
+	}
+}
+
 test("editor-pin-leads", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
 	await ready(page);
 	await (await toolbarButton(page, "Pin")).click();
 	const canvas = page.locator("canvas");
 	const bounds = required(await canvas.boundingBox());
-	await canvas.click({
-		position: { x: bounds.width * 0.4, y: bounds.height / 2 },
-	});
+	const pin = { x: bounds.width * 0.4, y: bounds.height / 2 };
+	await canvas.click({ position: pin });
+	await openPin(page, { x: bounds.x + pin.x, y: bounds.y + pin.y });
 	await expect(
 		page.getByRole("spinbutton", { name: "Lead length", exact: true }),
 	).toHaveValue("100");

@@ -35,14 +35,16 @@ test(
 		};
 		let saves = await saveCount(page);
 		await page.mouse.click(source.x, source.y);
-		await expect(
-			page.getByRole("textbox", { name: "Reference", exact: true }),
-		).toHaveValue("R1");
+		const anchor = page.getByTestId("text-anchor").first();
+		await expect(anchor).toHaveAttribute("data-anchor-id", /^\d+:/);
 		await expect(page.locator('[data-tool="select"]')).toBeAttached();
 		await saved(page, saves);
 		for (let repeat = 0; repeat < 3; repeat++) {
 			await pointAt(page, source);
 			saves = await saveCount(page);
+			const previous = required(
+				await anchor.getAttribute("data-anchor-id"),
+			).split(":")[0];
 			await interaction(page, "symbol.duplicate", async () => {
 				await page.keyboard.down("Alt");
 				await page.mouse.move(source.x, source.y);
@@ -53,11 +55,14 @@ test(
 				await page.mouse.up();
 				await page.keyboard.up("Alt");
 				await page.waitForFunction(
-					(reference) =>
-						document.querySelector<HTMLInputElement>(
-							'input[aria-label="Reference"]',
-						)?.value === reference,
-					`R${repeat + 2}`,
+					(previous) => {
+						const id = document
+							.querySelector('[data-testid="text-anchor"]')
+							?.getAttribute("data-anchor-id")
+							?.split(":")[0];
+						return id !== undefined && id !== previous;
+					},
+					previous,
 					{ polling: "raf" },
 				);
 			});

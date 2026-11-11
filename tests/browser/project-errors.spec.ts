@@ -13,6 +13,7 @@ import {
 	openProjectActions,
 	openProjectFiles,
 } from "./project-files";
+import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>
@@ -457,6 +458,7 @@ test("unsaved edits in the library symbol editor are named by the conflict notic
 		.getByRole("button", { name: "Insert QA part", exact: true })
 		.click();
 	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await openPlacedShape(page);
 	await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"Symbol editor · QA part",

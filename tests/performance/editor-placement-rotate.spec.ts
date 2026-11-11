@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
-import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
+import {
+	finish,
+	interaction,
+	metric,
+	ready,
+	report,
+	savedShapes,
+} from "./app-helpers.ts";
 
 setupAppTests();
 
@@ -36,11 +43,11 @@ test(
 					box.y + box.height / 2 + 30,
 				);
 				await page.waitForFunction(
-					() =>
-						document
-							.querySelector<HTMLInputElement>('input[aria-label="Angle"]')
-							?.getAttribute("data-committed-value") === "90",
-					undefined,
+					(id) =>
+						document.querySelector(
+							`[data-testid="text-anchor"][data-anchor-id^="${id}:label:"]`,
+						),
+					repeat + 1,
 					{ polling: "raf" },
 				);
 				await page.evaluate(
@@ -56,6 +63,16 @@ test(
 				page.getByRole("button", { name: "Select", exact: true }),
 			).toHaveAttribute("aria-pressed", "true");
 		}
+		const project = required(
+			await page.evaluate(() => localStorage.getItem("ecad.active-project")),
+		);
+		await expect
+			.poll(async () =>
+				(await savedShapes<{ kind: string; rotation: number }>(page, project))
+					?.filter((shape) => shape.kind === "symbol")
+					.map((shape) => Math.round((shape.rotation * 180) / Math.PI)),
+			)
+			.toEqual([90, 90, 90]);
 		const value = await report(page);
 		await finish(page, testInfo, "editor-placement-rotate", {
 			interactionP95Ms: required(metric(value, "scenario.interaction")),

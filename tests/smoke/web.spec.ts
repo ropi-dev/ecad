@@ -93,8 +93,10 @@ test("the built web app opens a drawing, keeps it across a reload and serves edi
 	await page.mouse.move(760, 440, { steps: 4 });
 	await page.mouse.up();
 	await expect(
-		page.getByRole("button", { name: "Clear selection", exact: true }),
-	).toBeVisible();
+		page
+			.getByRole("toolbar", { name: /^(Schematic|Symbol) tools$/ })
+			.getByRole("button", { name: "Delete", exact: true }),
+	).toBeEnabled();
 
 	const client = await connectMcp(page);
 	try {

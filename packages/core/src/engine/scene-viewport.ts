@@ -68,6 +68,7 @@ export interface SceneViewportOptions {
 	updateScene?: (object: Object3D) => void;
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	onSelection?: (selection: SceneSelection | null) => void;
+	onOpenSelection?: () => void;
 	onOrientation?: (rotation: Quaternion) => void;
 	onZoom?: (zoom: number) => void;
 	onReady?: (ready: boolean) => void;
@@ -108,6 +109,7 @@ export function createSceneViewport(
 		updateScene,
 		onChange,
 		onSelection,
+		onOpenSelection,
 		onOrientation,
 		onZoom,
 		onReady,
@@ -782,21 +784,38 @@ export function createSceneViewport(
 				raycaster.ray,
 				visibleHeight() / Math.max(element.clientHeight, 1),
 			);
+			const previous = selected;
 			selected = hover?.getTarget() ?? null;
-			if (selected) {
-				const box = selectionBounds(selected);
-				const planar = selected.entry.planar;
-				const dimensions = box.getSize(new Vector3());
-				onSelection?.({
-					name: selected.mesh.name || selected.entry.object.name,
-					region: planar ? selected.region : undefined,
-					dimensions: planar
-						? [dimensions.x, dimensions.y]
-						: dimensions.toArray(),
-				});
-			} else onSelection?.(null);
+			if (
+				previous?.mesh !== selected?.mesh ||
+				previous?.region !== selected?.region
+			) {
+				if (selected) {
+					const box = selectionBounds(selected);
+					const planar = selected.entry.planar;
+					const dimensions = box.getSize(new Vector3());
+					onSelection?.({
+						name: selected.mesh.name || selected.entry.object.name,
+						region: planar ? selected.region : undefined,
+						dimensions: planar
+							? [dimensions.x, dimensions.y]
+							: dimensions.toArray(),
+					});
+				} else onSelection?.(null);
+			}
 			if (!hoverHighlight) pointer = null;
 			schedule();
+		};
+		const openSelection = (event: MouseEvent) => {
+			if (
+				selected &&
+				event.button === 0 &&
+				!event.shiftKey &&
+				!event.ctrlKey &&
+				!event.altKey &&
+				!event.metaKey
+			)
+				onOpenSelection?.();
 		};
 		const moveHover = (event: PointerEvent) => {
 			if (
@@ -821,6 +840,7 @@ export function createSceneViewport(
 			lifecycle.listen(canvas, "pointerleave", clearHover);
 			lifecycle.listen(canvas, "pointerdown", startPress);
 			lifecycle.listen(canvas, "pointerup", endPress);
+			lifecycle.listen(canvas, "dblclick", openSelection);
 			lifecycle.listen(canvas, "pointercancel", cancelPress);
 			lifecycle.listen(window, "blur", cancelPress);
 		}

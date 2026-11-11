@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { expectKeyboardNavigation } from "./keyboard-navigation";
+import { openPlacedShape } from "./symbol-items";
 
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/editor.html");
@@ -161,6 +162,7 @@ test("chip packagings open in a submenu from their part", async ({ page }) => {
 	await expect(packagings).toBeHidden();
 	await expect(symbols).toHaveAttribute("aria-pressed", "true");
 	await page.locator("canvas").click({ position: { x: 600, y: 300 } });
+	await openPlacedShape(page);
 	await expect(
 		page.getByRole("textbox", { name: "Name", exact: true }),
 	).toHaveValue("nRF54L15-CAAA");
@@ -342,6 +344,7 @@ test("arrow keys, Enter, and Escape navigate packaging submenus", async ({
 	await page.keyboard.press("Enter");
 	await expect(search).toBeHidden();
 	await page.locator("canvas").click({ position: { x: 600, y: 300 } });
+	await openPlacedShape(page);
 	await expect(
 		page.getByRole("textbox", { name: "Name", exact: true }),
 	).toHaveValue("nRF54L10-QFAA");
@@ -386,6 +389,7 @@ test("symbol picker search, arrow keys, and Enter choose a symbol", async ({
 	await page.keyboard.press("Enter");
 	await expect(symbols).toHaveAttribute("aria-pressed", "true");
 	await page.locator("canvas").click({ position: { x: 600, y: 300 } });
+	await openPlacedShape(page);
 	await expect(
 		page.getByRole("textbox", { name: "Name", exact: true }),
 	).toHaveValue("Polarized capacitor");

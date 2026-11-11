@@ -70,7 +70,7 @@ test("pending autosaves preserve generated net bindings and schematic undo", asy
 	await closeProjectFiles(page);
 	for (let index = 0; index < 10; index++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.locator("canvas").click({ position: { x: 384, y: 360 } });
+	await page.locator("canvas").dblclick({ position: { x: 384, y: 360 } });
 	const reference = page.getByRole("textbox", {
 		name: "Reference",
 		exact: true,
@@ -392,7 +392,8 @@ test("electrical labels use the normal grid for dragging and keyboard movement",
 			]);
 		}, electrical);
 		const source = screen(center, 1.5);
-		await page.mouse.click(source.x, source.y);
+		await page.mouse.dblclick(source.x, source.y);
+		await page.locator("canvas").focus();
 		await page.keyboard.press("ArrowRight");
 		await expect(page.getByTestId("resize-handle")).toHaveCount(
 			electrical ? 0 : 4,

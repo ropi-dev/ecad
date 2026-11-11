@@ -1,5 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { snapCoordinate } from "@ecad/drawing-core/drawing/shapes.ts";
+import { expect, type Page, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { drawingGridStep, drawingPoint } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -13,6 +15,20 @@ import {
 } from "./app-helpers.ts";
 
 setupAppTests();
+
+async function snappedPosition(page: Page, position: { x: number; y: number }) {
+	const box = required(await page.locator("canvas").boundingBox());
+	const zero = await drawingPoint(page, { x: 0, y: 0 });
+	const unit = await drawingPoint(page, { x: 1, y: 1 });
+	const step = await drawingGridStep(page);
+	const world = (axis: "x" | "y") =>
+		snapCoordinate(
+			(box[axis] + position[axis] - zero[axis]) / (unit[axis] - zero[axis]),
+			step,
+		);
+	const point = await drawingPoint(page, { x: world("x"), y: world("y") });
+	return { x: point.x - box.x, y: point.y - box.y };
+}
 
 for (const scenario of [
 	"editor-pin-labels",
@@ -64,9 +80,16 @@ for (const scenario of [
 			await (await toolbarButton(page, "Pin")).click();
 			const canvas = page.locator("canvas");
 			const bounds = required(await canvas.boundingBox());
-			await canvas.click({
-				position: { x: bounds.width * 0.4, y: bounds.height / 2 },
+			const position = { x: bounds.width * 0.4, y: bounds.height / 2 };
+			await canvas.click({ position });
+			// Shift keeps the press on the pin from starting a wire.
+			await canvas.dblclick({
+				position: await snappedPosition(page, position),
+				modifiers: ["Shift"],
 			});
+			await expect(
+				page.getByRole("textbox", { name: "Name", exact: true }),
+			).toBeVisible();
 			if (scenario === "editor-pin-visibility") {
 				for (const [label, value] of [
 					["Name", "RUN"],

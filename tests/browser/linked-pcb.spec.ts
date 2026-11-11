@@ -247,7 +247,25 @@ test("view switches carry the selected component between circuit and schematic",
 	const panel = page.getByRole("complementary", {
 		name: "Selection attributes",
 	});
-	await expect(panel.getByText("Resistor · R1", { exact: true })).toBeVisible();
+	const selectedReferences = async () => {
+		const ids = await page
+			.getByTestId("text-anchor")
+			.evaluateAll((anchors) =>
+				anchors.map((anchor) =>
+					Number(anchor.getAttribute("data-anchor-id")?.split(":")[0]),
+				),
+			);
+		const shapes: { id: number; attributes?: { reference?: string } }[] =
+			JSON.parse(
+				required(await page.locator("#project-document").textContent()),
+			).shapes;
+		return shapes
+			.filter((shape) => ids.includes(shape.id))
+			.map((shape) => shape.attributes?.reference)
+			.sort();
+	};
+	await expect.poll(selectedReferences).toEqual(["R1"]);
+	await expect(panel).toBeHidden();
 	if (captureArtifacts) {
 		await mkdir("/tmp/ecad-selection-sync", { recursive: true });
 		await page.screenshot({ path: "/tmp/ecad-selection-sync/schematic.png" });
@@ -260,7 +278,7 @@ test("view switches carry the selected component between circuit and schematic",
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
 	await page.locator("canvas").click({ position: { x: 650, y: 350 } });
-	await expect(panel.getByText("Resistor · R2", { exact: true })).toBeVisible();
+	await expect.poll(selectedReferences).toEqual(["R2"]);
 	await page
 		.getByRole("button", { name: "Switch to circuit view", exact: true })
 		.click();
@@ -275,7 +293,7 @@ test("view switches carry the selected component between circuit and schematic",
 	await page
 		.getByRole("button", { name: "Switch to schematic view", exact: true })
 		.click();
-	await expect(panel.getByText("Resistor · R2", { exact: true })).toBeVisible();
+	await expect.poll(selectedReferences).toEqual(["R2"]);
 	// The view fits both resistors tightly; zoom out so the marquee encloses
 	// them with their labels.
 	const zoomOut = page.getByRole("button", { name: "Zoom out", exact: true });
@@ -286,9 +304,7 @@ test("view switches carry the selected component between circuit and schematic",
 	await page.mouse.down();
 	await page.mouse.move(canvas.x + 900, canvas.y + 620, { steps: 6 });
 	await page.mouse.up();
-	await expect(
-		panel.getByText("Selected shapes", { exact: true }),
-	).toBeVisible();
+	await expect.poll(selectedReferences).toEqual(["R1", "R2"]);
 	await page
 		.getByRole("button", { name: "Switch to circuit view", exact: true })
 		.click();
@@ -299,9 +315,7 @@ test("view switches carry the selected component between circuit and schematic",
 	await page
 		.getByRole("button", { name: "Switch to schematic view", exact: true })
 		.click();
-	await expect(
-		panel.getByText("Selected shapes", { exact: true }),
-	).toBeVisible();
+	await expect.poll(selectedReferences).toEqual(["R1", "R2"]);
 	await page
 		.getByRole("button", { name: "Switch to circuit view", exact: true })
 		.click();
@@ -316,4 +330,5 @@ test("view switches carry the selected component between circuit and schematic",
 		.click();
 	await expect(page.locator("canvas")).toBeVisible();
 	await expect(panel).toBeHidden();
+	await expect.poll(selectedReferences).toEqual([]);
 });

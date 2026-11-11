@@ -28,8 +28,28 @@ test("editor-box", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		position: { x: bounds.width / 2, y: bounds.height / 2 },
 	});
 	const selectParent = () => selectSymbolParent(page);
+	const openBox = async () => {
+		const handle = (id: string) =>
+			page
+				.locator(`[data-testid="resize-handle"][data-handle="${id}"]`)
+				.boundingBox()
+				.then(required);
+		const [middle, corner] = await Promise.all([handle("0,1"), handle("1,1")]);
+		// Shift keeps the press on the selected box from picking a label.
+		await canvas.dblclick({
+			position: {
+				x: (middle.x + corner.x + middle.width) / 2 - bounds.x,
+				y: (middle.y + corner.y + middle.height) / 2 - bounds.y,
+			},
+			modifiers: ["Shift"],
+		});
+		await expect(
+			page.getByRole("spinbutton", { name: "Font size", exact: true }),
+		).toBeVisible();
+	};
 	for (let repeat = 0; repeat < 3; repeat++) {
 		await selectParent();
+		await openBox();
 		const saves = await saveCount(page);
 		await interaction(page, "box.font-size", async () => {
 			const value = 120 + repeat * 20;
@@ -94,7 +114,7 @@ test("editor-box", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		const textAnchor = required(
 			await page.locator('[data-anchor-id="1:text:2"]').boundingBox(),
 		);
-		await page.mouse.click(
+		await page.mouse.dblclick(
 			textAnchor.x + textAnchor.width / 2 + 5,
 			textAnchor.y + textAnchor.height / 2 + 5,
 		);

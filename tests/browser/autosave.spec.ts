@@ -5,6 +5,7 @@ import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 async function drawWithTimersPaused(page: Page) {
@@ -84,6 +85,7 @@ test("user-library symbol edits persist while timers are paused", async ({
 		.getByRole("button", { name: "Insert User part", exact: true })
 		.click();
 	await page.locator("canvas").click({ position: { x: 500, y: 300 } });
+	await openPlacedShape(page);
 	await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"Symbol editor · User part",

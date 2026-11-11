@@ -1,10 +1,26 @@
-import { expect, test } from "@playwright/test";
+import { snapCoordinate } from "@ecad/drawing-core/drawing/shapes.ts";
+import { expect, type Page, test } from "@playwright/test";
+import { drawingGridStep, drawingPoint } from "../browser/symbol-items";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
+
+async function snappedPosition(page: Page, position: { x: number; y: number }) {
+	const box = required(await page.locator("canvas").boundingBox());
+	const zero = await drawingPoint(page, { x: 0, y: 0 });
+	const unit = await drawingPoint(page, { x: 1, y: 1 });
+	const step = await drawingGridStep(page);
+	const world = (axis: "x" | "y") =>
+		snapCoordinate(
+			(box[axis] + position[axis] - zero[axis]) / (unit[axis] - zero[axis]),
+			step,
+		);
+	const point = await drawingPoint(page, { x: world("x"), y: world("y") });
+	return { x: point.x - box.x, y: point.y - box.y };
+}
 
 test("editor-no-connect", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
@@ -17,6 +33,11 @@ test("editor-no-connect", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	const pin = { x: bounds.width * 0.45, y: bounds.height / 2 };
 	await (await toolbarButton(page, "Pin")).click();
 	await canvas.click({ position: pin });
+	const terminal = await snappedPosition(page, pin);
+	// Shift keeps the press on the pin from starting a wire.
+	const open = () =>
+		canvas.dblclick({ position: terminal, modifiers: ["Shift"] });
+	await open();
 	const pinX = await page
 		.getByRole("spinbutton", { name: "Center X", exact: true })
 		.inputValue();
@@ -28,6 +49,7 @@ test("editor-no-connect", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 				document.querySelector('[data-tool="select"]'),
 			);
 		});
+		await open();
 		await expect(
 			page.getByRole("spinbutton", { name: "Center X", exact: true }),
 		).toHaveValue(pinX);

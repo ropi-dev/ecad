@@ -123,6 +123,7 @@ interface CanvasGesturesOptions {
 	symbolDefinition: SymbolDefinition | null;
 	isSymbol: boolean;
 	setTextFocusId: Dispatch<SetStateAction<number | null>>;
+	openAttributes: () => void;
 }
 
 export function useCanvasGestures({
@@ -142,6 +143,7 @@ export function useCanvasGestures({
 	symbolDefinition,
 	isSymbol,
 	setTextFocusId,
+	openAttributes,
 }: CanvasGesturesOptions) {
 	const [marquee, setMarquee] = useState<CanvasMarquee | null>(null);
 	const [placement, setPlacement] = useState({
@@ -484,7 +486,10 @@ export function useCanvasGestures({
 			};
 			session.place([placed], placementLabel(kind));
 			setTool("select");
-			if (placed.kind === "text") setTextFocusId(placed.id);
+			if (placed.kind === "text") {
+				setTextFocusId(placed.id);
+				openAttributes();
+			}
 			return;
 		},
 		hover: (_event, point) => {
@@ -617,14 +622,21 @@ export function useCanvasGestures({
 			const point = pointAt(event, event.target);
 			const shape =
 				point &&
-				shapeAt(shapes, point, 0, (shape) =>
-					canSelectShape(shape, allowLocked),
+				shapeAt(
+					shapes,
+					point,
+					6 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+					(shape) => canSelectShape(shape, allowLocked),
 				);
-			if (shape?.kind !== "text") return;
+			if (!shape) return;
 			event.preventDefault();
 			event.stopPropagation();
-			session.select(new Set([shape.id]));
-			setTextFocusId(shape.id);
+			if (shape.kind === "text") {
+				session.select(new Set([shape.id]));
+				setTextFocusId(shape.id);
+			} else if (!session.getState().selection.has(shape.id))
+				session.select(new Set([shape.id]));
+			openAttributes();
 		},
 		onPointerDownCapture: (event) => {
 			const canvas = event.target;

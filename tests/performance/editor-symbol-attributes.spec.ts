@@ -55,10 +55,11 @@ test(
 			await page
 				.getByRole("button", { name: "Insert Editable package", exact: true })
 				.click();
-			const bounds = required(await page.locator("canvas").boundingBox());
-			await page
-				.locator("canvas")
-				.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
+			const canvas = page.locator("canvas");
+			const bounds = required(await canvas.boundingBox());
+			const position = { x: bounds.width * 0.4, y: bounds.height / 2 };
+			await canvas.click({ position });
+			await canvas.dblclick({ position });
 			await interaction(page, "symbol.open-definition", async () => {
 				await page
 					.getByRole("button", { name: "Edit symbol", exact: true })

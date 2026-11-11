@@ -1,5 +1,5 @@
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { drawingPoint, selectSymbolParent } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -15,6 +15,15 @@ import {
 } from "./app-helpers.ts";
 
 setupAppTests();
+
+async function worldPoint(page: Page, point: { x: number; y: number }) {
+	const origin = await drawingPoint(page, { x: 0, y: 0 });
+	const unit = await drawingPoint(page, { x: 1, y: 1 });
+	return {
+		x: (point.x - origin.x) / (unit.x - origin.x),
+		y: (point.y - origin.y) / (unit.y - origin.y),
+	};
+}
 
 test(
 	"editor-symbol-children",
@@ -81,24 +90,21 @@ test(
 			.click();
 		const canvas = page.locator("canvas");
 		const box = required(await canvas.boundingBox());
-		let saves = await saveCount(page);
-		await canvas.click({
-			position: { x: box.width * 0.45, y: box.height * 0.5 },
+		const grid = fromMils(100);
+		const placement = await worldPoint(page, {
+			x: box.x + box.width * 0.45,
+			y: box.y + box.height * 0.5,
 		});
-		const center = await page
-			.getByRole("spinbutton", { name: "Center X", exact: true })
-			.inputValue();
-		// Attribute fields show mils. Drawing points and the symbol file use millimetres.
 		const parent = {
-			x: fromMils(Number(center)),
-			y: fromMils(
-				Number(
-					await page
-						.getByRole("spinbutton", { name: "Center Y", exact: true })
-						.inputValue(),
-				),
-			),
+			x: Math.round(placement.x / grid) * grid,
+			y: Math.round(placement.y / grid) * grid,
 		};
+		let saves = await saveCount(page);
+		const origin = await drawingPoint(page, parent);
+		await page.mouse.click(origin.x, origin.y);
+		const anchor = page.locator(
+			'[data-testid="text-anchor"][data-anchor-id*=":text:"]',
+		);
 		const children = [
 			{ kind: "rectangle", x: 0, y: 0, label: "Center X" },
 			{ kind: "text", x: 0, y: 0, label: "Anchor X" },
@@ -110,21 +116,25 @@ test(
 				// press, so let it finish before the next child is selected.
 				await saved(page, saves);
 				saves = await saveCount(page);
-				await interaction(page, "symbol.child-edit", async () => {
-					const point = await drawingPoint(page, {
-						x: parent.x + child.x + (child.kind === "rectangle" ? 10 : 0),
-						y: parent.y + child.y + (child.kind === "rectangle" ? 30 : 0),
-					});
-					await page.mouse.move(point.x, point.y);
-					await page.mouse.down();
+				const point = await drawingPoint(page, {
+					x: parent.x + child.x + (child.kind === "rectangle" ? 10 : 0),
+					y: parent.y + child.y + (child.kind === "rectangle" ? 30 : 0),
+				});
+				await page.mouse.move(point.x, point.y);
+				for (const clickCount of [1, 2]) {
+					await page.mouse.down({ clickCount });
+					// A press that ends where it began on a pin end starts a wire.
 					if (child.kind === "pin") {
 						await page.mouse.move(point.x + 4, point.y);
 						await page.mouse.move(point.x, point.y);
 					}
-					await page.mouse.up();
-					await expect(
-						page.getByTestId("symbol-child-selection"),
-					).toBeVisible();
+					await page.mouse.up({ clickCount });
+				}
+				await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+				await expect(
+					page.getByRole("spinbutton", { name: child.label, exact: true }),
+				).toBeVisible();
+				await interaction(page, "symbol.child-edit", async () => {
 					const { label } = child;
 					const input = page.getByRole("spinbutton", {
 						name: label,
@@ -146,9 +156,20 @@ test(
 					);
 				});
 				await selectSymbolParent(page);
-				await expect(
-					page.getByRole("spinbutton", { name: "Center X", exact: true }),
-				).toHaveValue(center);
+				const text = required(children.find(({ kind }) => kind === "text"));
+				const expected = await drawingPoint(page, {
+					x: parent.x + text.x,
+					y: parent.y + text.y,
+				});
+				await expect
+					.poll(async () => {
+						const box = required(await anchor.boundingBox());
+						return Math.hypot(
+							box.x + box.width / 2 - expected.x,
+							box.y + box.height / 2 - expected.y,
+						);
+					})
+					.toBeLessThan(1);
 			}
 		}
 		const value = await report(page);

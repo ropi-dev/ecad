@@ -20,7 +20,9 @@ test(
 			.click();
 		const canvas = page.locator("canvas");
 		const box = required(await canvas.boundingBox());
-		await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
+		const position = { x: box.width / 2, y: box.height / 2 };
+		await canvas.click({ position });
+		await canvas.dblclick({ position });
 		const center = page.getByRole("spinbutton", {
 			name: "Center X",
 			exact: true,

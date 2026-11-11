@@ -1,7 +1,7 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
-import { selectSymbolAttribute } from "./symbol-items";
+import { openPlacedShape, selectSymbolAttribute } from "./symbol-items";
 
 test.describe.configure({ mode: "serial" });
 
@@ -14,6 +14,11 @@ const documentState = async (
 	page: import("@playwright/test").Page,
 ): Promise<{ shapes: EditorShape[]; historyId: number; historySize: number }> =>
 	JSON.parse(required(await page.locator("#editor-document").textContent()));
+
+async function lastReference(page: import("@playwright/test").Page) {
+	const shape = (await documentState(page)).shapes.at(-1);
+	return shape?.kind === "symbol" ? shape.attributes.reference : undefined;
+}
 
 async function copiedSelection(page: import("@playwright/test").Page) {
 	await expect
@@ -44,6 +49,7 @@ test.beforeEach(async ({ page }) => {
 	await page
 		.locator("canvas")
 		.click({ position: { x: box.width / 2, y: box.height / 2 } });
+	await openPlacedShape(page);
 	await expect(
 		page.getByRole("textbox", { name: "Reference", exact: true }),
 	).toHaveValue("R1");
@@ -59,13 +65,9 @@ test("native copy, repeated paste, undo, redo and cut preserve the clipboard sna
 	const copied = await copiedSelection(page);
 	expect(copied.format).toBe("ecad-selection");
 	await page.keyboard.press("Control+v");
-	await expect(
-		page.getByRole("textbox", { name: "Reference", exact: true }),
-	).toHaveValue("R2");
+	await expect.poll(() => lastReference(page)).toBe("R2");
 	await page.keyboard.press("Control+v");
-	await expect(
-		page.getByRole("textbox", { name: "Reference", exact: true }),
-	).toHaveValue("R3");
+	await expect.poll(() => lastReference(page)).toBe("R3");
 	const pasted = await documentState(page);
 	expect(pasted.shapes).toHaveLength(3);
 	expect(pasted.shapes[1].x).not.toBe(pasted.shapes[2].x);
@@ -217,9 +219,7 @@ test("HTML preserves editable geometry when custom types are stripped", async ({
 		]);
 	});
 	await page.keyboard.press("Control+v");
-	await expect(
-		page.getByRole("textbox", { name: "Reference", exact: true }),
-	).toHaveValue("R2");
+	await expect.poll(() => lastReference(page)).toBe("R2");
 	const pasted = (await documentState(page)).shapes[1];
 	expect(pasted.kind).toBe("symbol");
 	expect(pasted.width).toBe(original.shapes[0].width);

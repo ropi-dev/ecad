@@ -97,8 +97,12 @@ for (const [scenario, names, part] of [
 						},
 					});
 					await expect(
-						page.getByRole("textbox", { name: "Name", exact: true }),
-					).toHaveValue(name);
+						page
+							.locator(
+								`[data-testid="text-anchor"][data-anchor-id^="${index + 1}:label:"]`,
+							)
+							.first(),
+					).toBeAttached();
 				});
 			}
 			await page.getByRole("button", { name: "Symbols", exact: true }).click();

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { drawingPoint } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
@@ -66,6 +67,8 @@ test("editor-line-styles", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		bounds.y + bounds.height * 0.8,
 	);
 	await page.mouse.up();
+	const rectangle = await drawingPoint(page, { x: -10, y: -6 });
+	await page.mouse.dblclick(rectangle.x, rectangle.y);
 	await expect(
 		page.getByText("Selected shapes", { exact: true }),
 	).toBeVisible();

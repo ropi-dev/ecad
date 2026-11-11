@@ -157,8 +157,10 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 		await page.mouse.move(760, 440, { steps: 4 });
 		await page.mouse.up();
 		await expect(
-			page.getByRole("button", { name: "Clear selection", exact: true }),
-		).toBeVisible();
+			page
+				.getByRole("toolbar", { name: /^(Schematic|Symbol) tools$/ })
+				.getByRole("button", { name: "Delete", exact: true }),
+		).toBeEnabled();
 	} finally {
 		await app.close();
 	}
