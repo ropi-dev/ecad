@@ -347,6 +347,10 @@ function createWindow() {
 		title: "ECAD desktop",
 		// The app background, so the window does not flash before the page paints.
 		backgroundColor: viewerTheme.background,
+		// Linux and Windows drop the title bar and its buttons: the sidebar's
+		// Exit button closes the app, and a strip along the page's top edge
+		// moves the window (see renderer/window.css). macOS keeps its title bar.
+		frame: process.platform === "darwin",
 		webPreferences: {
 			preload: join(__dirname, "preload.cjs"),
 			contextIsolation: true,

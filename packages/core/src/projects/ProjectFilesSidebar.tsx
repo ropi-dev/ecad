@@ -11,7 +11,6 @@ import {
 	FolderOpen,
 	House,
 	Layers,
-	LogOut,
 	type LucideIcon,
 	PanelLeft,
 	PlugZap,
@@ -275,6 +274,24 @@ export function ProjectFilesSidebar({
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, []);
+	useEffect(() => {
+		if (!onExit) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (
+				!hasShortcutModifier(event) ||
+				event.altKey ||
+				event.shiftKey ||
+				event.code !== "KeyQ" ||
+				event.isComposing
+			)
+				return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (!event.repeat) onExit();
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, [onExit]);
 	const closeDrawer = useCallback(() => {
 		if (
 			document.activeElement instanceof HTMLElement &&
@@ -1122,15 +1139,18 @@ export function ProjectFilesSidebar({
 						{onExit && (
 							<TooltipButton
 								aria-label="Exit"
+								aria-keyshortcuts={`${shortcutModifier().key}+Q`}
 								tooltip="Exit"
-								// A held shortcut chord must not quit the app by accident.
+								shortcut="Ctrl+Q"
+								// Only Ctrl+Q quits. The held-modifier hints skip this button,
+								// so another chord cannot quit by accident.
 								data-shortcut-scope="none"
 								className="ui-button"
 								data-variant="ghost"
 								data-icon
 								onClick={onExit}
 							>
-								<LogOut size={15} aria-hidden="true" />
+								<X size={15} aria-hidden="true" />
 							</TooltipButton>
 						)}
 						<TooltipButton

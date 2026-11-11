@@ -12,7 +12,8 @@ const editorKeys: Record<string, string> = {
 	Connections: "J",
 	"Pan view": "B",
 	Export: "B",
-	Select: "Q",
+	// Q quits the desktop app, and Firefox on Linux.
+	Select: "2",
 	Pan: "P",
 	Rectangle: "R",
 	Circle: "O",
@@ -71,9 +72,9 @@ let dispose: (() => void) | undefined;
 
 function listen() {
 	const shortcut = shortcutModifier();
-	const preferredEditorKeys =
-		shortcut.key === "Meta" ? { ...editorKeys, Select: "2" } : editorKeys;
-	const nativeKeys = new Set(shortcut.key === "Meta" ? ["Q", "H", "M"] : []);
+	// Keys the app or the system owns: Q quits, and macOS hides and minimizes
+	// with Cmd+H and Cmd+M.
+	const nativeKeys = new Set(shortcut.key === "Meta" ? ["Q", "H", "M"] : ["Q"]);
 	const overlay = document.createElement("div");
 	overlay.className = "button-shortcuts";
 	overlay.setAttribute("popover", "manual");
@@ -163,7 +164,7 @@ function listen() {
 					const scope = scopeFor(button);
 					const sidebar = scope === "sidebar";
 					const label = labelFor(button);
-					const preferred = sidebar ? sidebarKeys : preferredEditorKeys;
+					const preferred = sidebar ? sidebarKeys : editorKeys;
 					let key = keys.get(button);
 					if (!key) {
 						const reserved = new Set(Object.values(preferred));
