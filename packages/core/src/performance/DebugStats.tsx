@@ -10,9 +10,12 @@ import type {
 	PerformanceData,
 	PerformanceSample,
 } from "#/performance/recorder.ts";
-import { getAppPerformance } from "#/performance/runtime.ts";
+import {
+	acquirePerformance,
+	getAppPerformance,
+} from "#/performance/runtime.ts";
+import { setDebugStats } from "#/performance/useDebugStats.ts";
 
-const STORAGE_KEY = "ecad.dev-stats";
 const POSITION_KEY = "ecad.dev-stats-position";
 /** Space kept between the window and the viewport edges. */
 const MARGIN = 8;
@@ -38,21 +41,6 @@ interface Stats {
 	domNodes: number;
 	recorder: boolean;
 }
-
-const readVisible = () => {
-	if (navigator.webdriver) return false;
-	try {
-		return localStorage.getItem(STORAGE_KEY) !== "0";
-	} catch {
-		return true;
-	}
-};
-
-const storeVisible = (visible: boolean) => {
-	try {
-		localStorage.setItem(STORAGE_KEY, visible ? "1" : "0");
-	} catch {}
-};
 
 interface Position {
 	x: number;
@@ -112,8 +100,8 @@ const ms = (value: number | null) =>
 const count = (value: number | null) =>
 	value === null ? "–" : value.toLocaleString();
 
-export default function DevStats() {
-	const [visible, setVisible] = useState<boolean | null>(null);
+/** Mounted while the debug stats setting is on. */
+export default function DebugStats() {
 	const [stats, setStats] = useState<Stats | null>(null);
 	const frameTimes = useRef<number[]>([]);
 	const renderTimes = useRef<number[]>([]);
@@ -128,24 +116,7 @@ export default function DevStats() {
 	const subscribed = useRef(false);
 
 	useEffect(() => {
-		setVisible(readVisible());
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (
-				!event.ctrlKey ||
-				!event.shiftKey ||
-				event.altKey ||
-				event.metaKey ||
-				event.key.toLowerCase() !== "d" ||
-				event.defaultPrevented
-			)
-				return;
-			event.preventDefault();
-			if (event.repeat) return;
-			setVisible((current) => {
-				storeVisible(!current);
-				return !current;
-			});
-		};
+		const release = acquirePerformance();
 		const since = (times: number[], at: number, window: number) => {
 			while (times.length && times[0] < at - window) times.shift();
 		};
@@ -177,15 +148,13 @@ export default function DevStats() {
 		for (const sample of recorder?.snapshot().events ?? []) receive(sample);
 		const unsubscribe = recorder?.subscribe(receive);
 		subscribed.current = unsubscribe !== undefined;
-		window.addEventListener("keydown", onKeyDown);
 		return () => {
 			unsubscribe?.();
-			window.removeEventListener("keydown", onKeyDown);
+			release();
 		};
 	}, []);
 
 	useEffect(() => {
-		if (!visible) return;
 		frameTimes.current = [];
 		const opened = performance.now();
 		let frame = requestAnimationFrame(function tick(now) {
@@ -241,20 +210,11 @@ export default function DevStats() {
 		return () => {
 			cancelAnimationFrame(frame);
 			clearInterval(timer);
-			setStats(null);
 		};
-	}, [visible]);
+	}, []);
 
-	if (!visible || !stats) return null;
-	return (
-		<StatsWindow
-			stats={stats}
-			onHide={() => {
-				storeVisible(false);
-				setVisible(false);
-			}}
-		/>
-	);
+	if (!stats) return null;
+	return <StatsWindow stats={stats} onHide={() => setDebugStats(false)} />;
 }
 
 /**
@@ -366,7 +326,7 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 	return (
 		<section
 			ref={element}
-			aria-label="Development stats"
+			aria-label="Debug stats"
 			data-shortcut-scope="none"
 			className="ui-panel fixed top-0 left-0 z-[90] min-w-48 font-mono text-2xs leading-4"
 			style={{
@@ -386,17 +346,17 @@ function StatsWindow({ stats, onHide }: { stats: Stats; onHide: () => void }) {
 			>
 				<button
 					type="button"
-					aria-label="Move development stats with the arrow keys"
+					aria-label="Move debug stats with the arrow keys"
 					title="Drag to move. Arrow keys move it too."
 					className="cursor-grab rounded-sm px-0.5 text-left uppercase focus-visible:outline-1 focus-visible:outline-accent"
 					onKeyDown={onKeyDown}
 				>
-					Dev stats · Ctrl+Shift+D
+					Debug stats · Ctrl+Shift+D
 				</button>
 				<button
 					type="button"
 					data-no-drag
-					aria-label="Hide development stats"
+					aria-label="Hide debug stats"
 					className="cursor-pointer rounded-sm px-1 text-fg-muted hover:bg-hover hover:text-fg"
 					onClick={onHide}
 				>

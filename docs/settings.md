@@ -7,6 +7,7 @@ Each setting is global, per project, or both:
 | Setting | Global | Project |
 | --- | --- | --- |
 | Antialiasing (Automatic, On, Off) | yes | no |
+| Show debug stats (off by default, Ctrl+Shift+D toggles) | yes | no |
 | Electrical rule levels (Error, Warning, Off per rule) | yes | yes |
 | Symbol libraries | user libraries | project libraries |
 

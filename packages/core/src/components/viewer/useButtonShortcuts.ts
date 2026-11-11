@@ -46,7 +46,8 @@ const sidebarKeys: Record<string, string> = {
 // chords and Ctrl+click selection don't flash the overlay. Shortcuts work
 // as soon as the modifier goes down.
 const hintDelayMs = 1000;
-const devSidebarKeys = new Set(import.meta.env?.DEV ? ["D"] : []);
+// Ctrl+Shift+D toggles the debug stats window.
+const reservedSidebarKeys = new Set(["D"]);
 const labelFor = (button: HTMLButtonElement) =>
 	button.getAttribute("aria-label") ??
 	button.getAttribute("title") ??
@@ -181,7 +182,7 @@ function listen() {
 							(candidate) =>
 								candidate &&
 								!nativeKeys.has(candidate) &&
-								!(sidebar && devSidebarKeys.has(candidate)) &&
+								!(sidebar && reservedSidebarKeys.has(candidate)) &&
 								available(candidate) &&
 								(candidate === preferred[label] || !reserved.has(candidate)) &&
 								(sidebar ||
