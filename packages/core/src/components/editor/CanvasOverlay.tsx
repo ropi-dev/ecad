@@ -77,6 +77,8 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 				<div
 					className="pointer-events-none absolute inset-0 z-2 overflow-hidden"
 					aria-hidden="true"
+					// Handles and guides follow the camera on every frame.
+					data-shortcut-mutations="ignore"
 				>
 					{rulerPosition && (
 						<svg

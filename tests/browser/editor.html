@@ -3,8 +3,9 @@
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schematic editor</title></head>
   <body>
     <div id="root"></div>
-    <output id="editor-scene" hidden></output>
-    <output id="editor-document" hidden></output>
+    <!-- Test probes, rewritten on every rendered frame. They move no button, so shortcut hints ignore them. -->
+    <output id="editor-scene" hidden data-shortcut-mutations="ignore"></output>
+    <output id="editor-document" hidden data-shortcut-mutations="ignore"></output>
     <script type="module" src="./editor.tsx"></script>
   </body>
 </html>
