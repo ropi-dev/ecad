@@ -446,3 +446,51 @@ test("macOS reserves Quit, Hide and Minimize in preferred and fallback assignmen
 	expect(nativeEvents).toEqual([false, false, false, false, false, false]);
 	await page.keyboard.up("Meta");
 });
+
+test("a wheel zoom with Ctrl held does not rebuild the hints on every frame", async ({
+	page,
+}) => {
+	await page.keyboard.down("Control");
+	await expect(page.locator(`${hints}[title="Fit drawing"]`)).toBeVisible();
+	// Zoom in for 20 frames, then back out by the same steps.
+	const { rebuilds, elapsed } = await page.evaluate(
+		() =>
+			new Promise<{ rebuilds: number; elapsed: number }>((resolve) => {
+				const canvas = document.querySelector("canvas");
+				const overlay = document.querySelector(".button-shortcuts");
+				if (!canvas || !overlay) throw new Error("Expected the editor");
+				let rebuilds = 0;
+				const observer = new MutationObserver(() => rebuilds++);
+				observer.observe(overlay, { childList: true });
+				const started = performance.now();
+				let frame = 0;
+				const tick = () => {
+					if (frame === 40) {
+						const elapsed = performance.now() - started;
+						if (observer.takeRecords().length) rebuilds++;
+						observer.disconnect();
+						resolve({ rebuilds, elapsed });
+						return;
+					}
+					canvas.dispatchEvent(
+						new WheelEvent("wheel", {
+							deltaY: frame < 20 ? -40 : 40,
+							ctrlKey: true,
+							clientX: innerWidth / 2,
+							clientY: innerHeight / 2,
+							bubbles: true,
+							cancelable: true,
+						}),
+					);
+					frame++;
+					requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			}),
+	);
+	// The rulers and the paper change on every frame and move no button. The
+	// zoom label does change a button, at most every 100 ms.
+	expect(rebuilds).toBeLessThanOrEqual(Math.floor(elapsed / 100) + 2);
+	await expect(page.locator(`${hints}[title="Fit drawing"]`)).toBeVisible();
+	await page.keyboard.up("Control");
+});

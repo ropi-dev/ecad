@@ -303,8 +303,17 @@ function listen() {
 	const keyup = (event: KeyboardEvent) => {
 		if (event.key === shortcut.key || !event[shortcut.flag]) hide();
 	};
+	// A view overlay such as the rulers changes on every frame of a pan or
+	// zoom, and Ctrl is held for a wheel zoom. An overlay that neither holds
+	// nor moves a button sets `data-shortcut-mutations="ignore"`, so its
+	// changes don't rebuild the hints.
+	const affectsButtons = ({ target }: MutationRecord) => {
+		if (overlay.contains(target)) return false;
+		const element = target instanceof Element ? target : target.parentElement;
+		return !element?.closest('[data-shortcut-mutations="ignore"]');
+	};
 	const observer = new MutationObserver((records) => {
-		if (records.some((record) => !overlay.contains(record.target))) schedule();
+		if (records.some(affectsButtons)) schedule();
 	});
 	const observation: MutationObserverInit = {
 		subtree: true,

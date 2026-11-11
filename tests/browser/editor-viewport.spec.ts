@@ -226,3 +226,61 @@ test("the zoom label trails a continuous zoom and ends on its level", async ({
 	expect(changes).toBeLessThanOrEqual(Math.floor(elapsed / 100) + 1);
 	await expect(fit).toHaveText(before);
 });
+
+test("a continuous zoom places each ruler tick with one attribute", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/editor.html");
+	const rulers = page.getByRole("img", { name: "Drawing rulers in mils" });
+	await expect(rulers.locator("[data-axis]")).not.toHaveCount(0);
+	// Zoom in for 20 frames, then back out by the same steps.
+	const { frames, writes, ticks } = await rulers.evaluate(
+		(rulers) =>
+			new Promise<{ frames: number; writes: number; ticks: number }>(
+				(resolve) => {
+					const canvas = document.querySelector("canvas");
+					if (!canvas) throw new Error("Expected the canvas");
+					let writes = 0;
+					let ticks = 0;
+					const count = (records: MutationRecord[]) => {
+						writes += records.filter(
+							(record) => record.type === "attributes",
+						).length;
+					};
+					const observer = new MutationObserver(count);
+					observer.observe(rulers, { attributes: true, subtree: true });
+					let frame = 0;
+					const tick = () => {
+						ticks = Math.max(
+							ticks,
+							rulers.querySelectorAll("[data-axis]").length,
+						);
+						if (frame === 40) {
+							count(observer.takeRecords());
+							observer.disconnect();
+							resolve({ frames: frame, writes, ticks });
+							return;
+						}
+						canvas.dispatchEvent(
+							new WheelEvent("wheel", {
+								deltaY: frame < 20 ? -8 : 8,
+								ctrlKey: true,
+								clientX: innerWidth / 2,
+								clientY: innerHeight / 2,
+								bubbles: true,
+								cancelable: true,
+							}),
+						);
+						frame++;
+						requestAnimationFrame(tick);
+					};
+					requestAnimationFrame(tick);
+				},
+			),
+	);
+	// The ticks follow every frame.
+	expect(writes).toBeGreaterThan(frames);
+	// A frame writes one transform per labelled tick and the two paths of the
+	// unlabelled ones. The allowance covers the values of ticks that enter.
+	expect(writes).toBeLessThanOrEqual(frames * (ticks + 2) + 60);
+});
