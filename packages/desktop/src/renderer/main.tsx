@@ -15,6 +15,7 @@ import {
 	createDesktopSymbolLibraryStorage,
 } from "#/renderer/storage.ts";
 import "@ecad/core/styles.css";
+import "#/renderer/window.css";
 
 type Workspace = "home" | "editor" | "gerber" | "step";
 const storage = createDesktopSymbolLibraryStorage(window.ecadSymbolLibrary);

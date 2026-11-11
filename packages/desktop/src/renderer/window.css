@@ -1,0 +1,28 @@
+/*
+ * The window has no title bar on Linux and Windows. This strip along the top
+ * edge moves it instead: the empty gap above a workspace's chrome, or the top
+ * of the ruler. Electron ignores drag regions in framed windows, so the strip
+ * does nothing on macOS, which keeps its title bar.
+ */
+.window-drag {
+	position: fixed;
+	inset: 0 0 auto;
+	height: var(--chrome-gap);
+	-webkit-app-region: drag;
+}
+
+/* Controls that reach into the strip still take clicks. */
+#root
+	:is(
+		button,
+		a,
+		input,
+		select,
+		textarea,
+		[role],
+		[tabindex],
+		.ui-panel,
+		.ui-popover
+	) {
+	-webkit-app-region: no-drag;
+}
