@@ -31,6 +31,7 @@ import { createSceneDisplay, type ViewerScene } from "#/engine/scene.ts";
 import { createSceneHover, type SceneTarget } from "#/engine/scene-hover.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 import {
+	createPlaneGrid,
 	createViewportGrid,
 	type ViewportGridOptions,
 } from "#/engine/viewport-grid.ts";
@@ -59,6 +60,8 @@ export interface SceneViewportOptions {
 	initialCamera?: Camera;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
+	hoverHighlight?: boolean;
+	orbit?: boolean;
 	antialias?: boolean;
 	ariaLabel?: string;
 	canvasClassName?: string;
@@ -81,6 +84,7 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	setGrid: (grid: ViewportGridOptions | null) => void;
 	actualSize: () => void;
 	setProjection: (projection: "perspective" | "orthographic") => void;
+	setOrbit: (enabled: boolean) => void;
 	dispose: () => void;
 }
 
@@ -96,6 +100,8 @@ export function createSceneViewport(
 		initialCamera,
 		getFitBounds,
 		selectionEnabled = true,
+		hoverHighlight = true,
+		orbit = false,
 		antialias = true,
 		ariaLabel = "3D model",
 		canvasClassName = "",
@@ -225,12 +231,19 @@ export function createSceneViewport(
 				? lifecycle.acquire(createViewportGrid, (grid) => grid.dispose())
 				: null;
 		if (grid) scene.add(grid.object);
+		const planeGrid =
+			cameraMode === "top"
+				? lifecycle.acquire(createPlaneGrid, (grid) => grid.dispose())
+				: null;
+		if (planeGrid) scene.add(planeGrid.object);
 		const canvas = output.domElement;
 		canvas.tabIndex = 0;
 		canvas.setAttribute("aria-label", ariaLabel);
 		canvas.className = canvasClassName;
 		element.append(canvas);
 		const topView = cameraMode === "top";
+		let orbiting = false;
+		const flat = () => topView && !orbiting;
 		const fieldOfView = topView ? 25 : 40;
 		let camera: PerspectiveCamera | OrthographicCamera =
 			projection === "orthographic"
@@ -246,7 +259,7 @@ export function createSceneViewport(
 			() => create3DControls(camera, canvas, () => fit(), { lockTop: topView }),
 			(navigation) => navigation.dispose(),
 		);
-		const { controls } = navigation;
+		const { controls, setRotationLocked } = navigation;
 		// Include caller-supplied placement in camera fitting and clipping bounds.
 		updateScene?.(group);
 		const bounds = new Box3().setFromObject(group);
@@ -265,6 +278,10 @@ export function createSceneViewport(
 			throw new Error("The scene has no finite geometry to display.");
 		const sphere = bounds.getBoundingSphere(new Sphere());
 		const radius = Math.max(sphere.radius, 0.001);
+		const boardBottom = () => {
+			const box = new Box3().setFromObject(group);
+			return (box.isEmpty() ? 0 : box.min.z) - radius * 0.002;
+		};
 		if (!topView) {
 			const grid = lifecycle.acquire(
 				() =>
@@ -339,7 +356,22 @@ export function createSceneViewport(
 			onSelection?.(null);
 			schedule();
 		};
+		let gridOptions: ViewportGridOptions | null = null;
+		let planeZ = 0;
+		const showGrid = () => {
+			if (grid) grid.object.visible = !orbiting && gridOptions !== null;
+			planeGrid?.show(orbiting);
+		};
 		const placeGrid = (position: { x: number; y: number }) => {
+			if (orbiting) {
+				planeGrid?.update({
+					center: { x: controls.target.x, y: controls.target.y, z: planeZ },
+					extent: camera.far,
+					rulerScale: Math.max(element.clientHeight, 1) / visibleHeight(),
+					ratio: output.getPixelRatio(),
+				});
+				return;
+			}
 			if (!grid) return;
 			// A top view maps the drawing plane linearly in either projection.
 			const height = visibleHeight();
@@ -375,6 +407,7 @@ export function createSceneViewport(
 					!changed &&
 					(!edited || (batched && damage)) &&
 					!pointer &&
+					!orbiting &&
 					camera instanceof OrthographicCamera
 						? panCache.pan(scene, camera, placeGrid, damage ?? undefined)
 						: null;
@@ -405,7 +438,8 @@ export function createSceneViewport(
 						if (batched)
 							batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 						renderScene();
-						if (camera instanceof OrthographicCamera) panCache?.capture(camera);
+						if (camera instanceof OrthographicCamera && !orbiting)
+							panCache?.capture(camera);
 						else panCache?.invalidate();
 					} finally {
 						if (shown) {
@@ -424,7 +458,7 @@ export function createSceneViewport(
 							: currentZoom) * 1e6,
 					) / 1e6,
 				);
-				if (topView) {
+				if (flat()) {
 					const width = Math.max(element.clientWidth, 1);
 					const height = Math.max(element.clientHeight, 1);
 					onChange?.({
@@ -521,7 +555,7 @@ export function createSceneViewport(
 				.clone()
 				.sub(controls.target)
 				.normalize();
-			if (topView) direction.set(0, 0, 1);
+			if (flat()) direction.set(0, 0, 1);
 			else if (!direction.lengthSq()) direction.set(1, -1, 0.8).normalize();
 			controls.target.copy(fitSphere.center);
 			// A flat editor sheet fits its rectangle, with room for rulers and controls.
@@ -577,8 +611,8 @@ export function createSceneViewport(
 			schedule();
 		};
 		const view = (direction: "iso" | "top" | "front") => {
-			if (topView) direction = "top";
-			camera.up.set(0, topView ? 1 : 0, topView ? 0 : 1);
+			if (flat()) direction = "top";
+			camera.up.set(0, flat() ? 1 : 0, flat() ? 0 : 1);
 			const offset =
 				direction === "top"
 					? new Vector3(0, 0, 1)
@@ -654,6 +688,41 @@ export function createSceneViewport(
 			schedule();
 		};
 		const reset = fit;
+		let pivotZ = 0;
+		const settlePivot = () => {
+			if (!orbiting) return;
+			const view = controls.target.clone().sub(camera.position);
+			if (Math.abs(view.z) < view.length() * 0.02) return;
+			const scale = (pivotZ - camera.position.z) / view.z;
+			const distance = view.length() * scale;
+			if (
+				!(scale > 0) ||
+				distance < controls.minDistance ||
+				distance > controls.maxDistance
+			)
+				return;
+			controls.target.copy(camera.position).addScaledVector(view, scale);
+		};
+		const setOrbit = (enabled: boolean) => {
+			if (!topView || enabled === orbiting) return;
+			if (!enabled) settlePivot();
+			orbiting = enabled;
+			if (enabled) pivotZ = controls.target.z;
+			setRotationLocked(!enabled);
+			const distance = camera.position.distanceTo(controls.target);
+			const direction = enabled
+				? new Vector3(0.5, -0.75, 0.9).normalize()
+				: new Vector3(0, 0, 1);
+			camera.up.set(0, enabled ? 0 : 1, enabled ? 1 : 0);
+			camera.position
+				.copy(controls.target)
+				.addScaledVector(direction, distance);
+			camera.lookAt(controls.target);
+			planeZ = boardBottom();
+			showGrid();
+			controls.update();
+			schedule();
+		};
 		const pan = (x: number, y: number) => controls.pan(-x, -y);
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") clearSelection();
@@ -726,6 +795,7 @@ export function createSceneViewport(
 						: dimensions.toArray(),
 				});
 			} else onSelection?.(null);
+			if (!hoverHighlight) pointer = null;
 			schedule();
 		};
 		const moveHover = (event: PointerEvent) => {
@@ -738,6 +808,7 @@ export function createSceneViewport(
 				clearHover();
 				return;
 			}
+			if (!hoverHighlight) return;
 			const rect = canvas.getBoundingClientRect();
 			pointer = new Vector2(
 				((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -756,10 +827,12 @@ export function createSceneViewport(
 		lifecycle.listen(canvas, "keydown", onKey);
 		lifecycle.listen(canvas, "webglcontextlost", onLost);
 		// Camera moves alone can reuse the last frame.
+		controls.addEventListener("change", settlePivot);
 		controls.addEventListener("change", requestFrame);
-		lifecycle.addFinalizer(() =>
-			controls.removeEventListener("change", requestFrame),
-		);
+		lifecycle.addFinalizer(() => {
+			controls.removeEventListener("change", settlePivot);
+			controls.removeEventListener("change", requestFrame);
+		});
 		const runtime: SceneViewportRuntime = {
 			dispose,
 			fit: reset,
@@ -784,8 +857,12 @@ export function createSceneViewport(
 				if (next !== null && previous !== null) zoom(next / previous);
 				schedule();
 			},
+			setOrbit,
 			setGrid: (options) => {
+				gridOptions = options;
 				grid?.set(options);
+				planeGrid?.set(options);
+				showGrid();
 				schedule();
 			},
 			actualSize: () => {
@@ -803,11 +880,14 @@ export function createSceneViewport(
 					batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 				// The grid is a view aid, not part of the exported picture.
 				const gridVisible = grid?.object.visible ?? false;
+				const planeVisible = planeGrid?.object.visible ?? false;
 				if (grid) grid.object.visible = false;
+				if (planeGrid) planeGrid.object.visible = false;
 				try {
 					renderScene();
 				} finally {
 					if (grid) grid.object.visible = gridVisible;
+					if (planeGrid) planeGrid.object.visible = planeVisible;
 				}
 				// The canvas now lacks the grid, so the next frame redraws it.
 				schedule();
@@ -815,6 +895,7 @@ export function createSceneViewport(
 			},
 			update: (update) => {
 				update(group);
+				if (orbiting) planeZ = boardBottom();
 				if (batcher) scheduleDrawing();
 				else schedule();
 			},
@@ -853,6 +934,7 @@ export function createSceneViewport(
 			controls.update();
 			schedule();
 		}
+		if (orbit) setOrbit(true);
 		return runtime;
 	} catch (error) {
 		dispose();

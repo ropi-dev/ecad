@@ -4,8 +4,11 @@ import {
 	type Camera,
 	Color,
 	CustomBlending,
+	DoubleSide,
+	Mesh,
 	OneFactor,
 	OneMinusSrcAlphaFactor,
+	PlaneGeometry,
 	Points,
 	type Scene,
 	ShaderMaterial,
@@ -239,6 +242,123 @@ export function createViewportGrid() {
 		},
 		dispose() {
 			geometry.dispose();
+			material.dispose();
+		},
+	};
+}
+
+export function createPlaneGrid() {
+	const material = new ShaderMaterial({
+		uniforms: {
+			color: { value: new Color() },
+			spacing: { value: new Vector2(1, 1) },
+			opacity: { value: new Vector2() },
+			radius: { value: 1 },
+			bounds: { value: new Vector4(-1e9, -1e9, 1e9, 1e9) },
+			outside: { value: 1 },
+		},
+		vertexShader: /* glsl */ `
+			varying vec2 world;
+			void main() {
+				vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+				world = worldPosition.xy;
+				gl_Position = projectionMatrix * viewMatrix * worldPosition;
+			}
+		`,
+		fragmentShader: /* glsl */ `
+			uniform vec3 color;
+			uniform vec2 spacing;
+			uniform vec2 opacity;
+			uniform float radius;
+			uniform vec4 bounds;
+			uniform float outside;
+			varying vec2 world;
+			float dots(float cell) {
+				vec2 perPixel = max(fwidth(world), vec2(1e-9));
+				float cellPixels = cell / max(perPixel.x, perPixel.y);
+				float across = length(dFdx(world));
+				float along = length(dFdy(world));
+				float stretch = max(across, along) / max(min(across, along), 1e-9);
+				float fade = clamp(cellPixels - ${MINIMUM_CELL.toFixed(1)}, 0.0, 1.0) *
+					clamp((6.0 - stretch) / 3.0, 0.0, 1.0);
+				vec2 offset = (fract(world / cell + 0.5) - 0.5) * cell / perPixel;
+				return fade * clamp(radius + 0.5 - length(offset), 0.0, 1.0);
+			}
+			void main() {
+				float alpha = max(opacity.x * dots(spacing.x), opacity.y * dots(spacing.y));
+				bool inside = all(greaterThanEqual(world, bounds.xy)) &&
+					all(lessThanEqual(world, bounds.zw));
+				alpha *= inside ? 1.0 : outside;
+				if (alpha <= 0.0) discard;
+				gl_FragColor = vec4(color, alpha);
+			}
+		`,
+		transparent: false,
+		blending: CustomBlending,
+		blendSrc: SrcAlphaFactor,
+		blendDst: OneMinusSrcAlphaFactor,
+		blendSrcAlpha: OneFactor,
+		blendDstAlpha: OneMinusSrcAlphaFactor,
+		depthTest: false,
+		depthWrite: false,
+		side: DoubleSide,
+	});
+	const { uniforms } = material;
+	const plane = new Mesh(new PlaneGeometry(1, 1), material);
+	plane.name = "viewport-plane-grid";
+	plane.frustumCulled = false;
+	plane.renderOrder = Number.MIN_SAFE_INTEGER;
+	plane.visible = false;
+	let options: ViewportGridOptions | null = null;
+	let shown = false;
+	return {
+		object: plane,
+		set(next: ViewportGridOptions | null) {
+			options = next;
+			plane.visible = shown && next !== null;
+			if (next) uniforms.color.value.setStyle(next.color, "");
+		},
+		show(visible: boolean) {
+			shown = visible;
+			plane.visible = visible && options !== null;
+		},
+		update({
+			center,
+			extent,
+			rulerScale,
+			ratio,
+		}: {
+			center: { x: number; y: number; z: number };
+			extent: number;
+			rulerScale: number;
+			ratio: number;
+		}) {
+			if (!options) return;
+			plane.position.set(center.x, center.y, center.z);
+			plane.scale.set(extent, extent, 1);
+			const [first, second] = gridLayers(rulerScale, options.unit);
+			uniforms.spacing.value.set(
+				first?.spacing.minor ?? 1,
+				second?.spacing.minor ?? first?.spacing.minor ?? 1,
+			);
+			uniforms.opacity.value.set(first?.opacity ?? 0, second?.opacity ?? 0);
+			uniforms.radius.value = ratio;
+			const { bounds } = options;
+			if (bounds) {
+				uniforms.bounds.value.set(
+					bounds.minX,
+					bounds.minY,
+					bounds.maxX,
+					bounds.maxY,
+				);
+				uniforms.outside.value = OUTSIDE_OPACITY;
+			} else {
+				uniforms.bounds.value.set(-1e9, -1e9, 1e9, 1e9);
+				uniforms.outside.value = 1;
+			}
+		},
+		dispose() {
+			plane.geometry.dispose();
 			material.dispose();
 		},
 	};

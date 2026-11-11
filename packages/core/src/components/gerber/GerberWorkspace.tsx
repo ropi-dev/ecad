@@ -4,10 +4,6 @@ import { GerberHeader } from "#/components/gerber/GerberHeader.tsx";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import { LayerPanel } from "#/components/gerber/LayerPanel.tsx";
 import { useGerberFile } from "#/components/gerber/useGerberFile.ts";
-import {
-	describeDiagnostics,
-	summarizeDiagnostics,
-} from "#/formats/diagnostics.ts";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import {
 	useProjectActions,
@@ -29,16 +25,7 @@ export function GerberWorkspace() {
 	} = useGerberFile();
 	const [focusedLayerId, setFocusedLayerId] = useState<string>();
 	const [rendererError, setRendererError] = useState("");
-	// Project workspaces have no layer panel, so the banner lists diagnostics.
-	const diagnostics = project
-		? layers
-				.filter((layer) => layer.diagnostics.length)
-				.map(
-					(layer) =>
-						`${layer.name}: ${describeDiagnostics(layer.diagnostics)} (${summarizeDiagnostics(layer.diagnostics, 10)})`,
-				)
-		: [];
-	const message = [projectError, ...fileMessages, ...diagnostics, rendererError]
+	const message = [projectError, ...fileMessages, rendererError]
 		.filter(Boolean)
 		.join("\n");
 	return (
@@ -67,7 +54,7 @@ export function GerberWorkspace() {
 				</output>
 			)}
 			<div className="relative flex min-h-0 flex-1">
-				{!project && layers.length > 0 && (
+				{layers.length > 0 && (
 					<LayerPanel
 						layers={layers}
 						focusedLayerId={focusedLayerId}
@@ -90,12 +77,16 @@ export function GerberWorkspace() {
 								),
 							);
 						}}
-						onRemove={(id) => {
-							if (focusedLayerId === id) setFocusedLayerId(undefined);
-							setLayers((current) =>
-								current.filter((layer) => layer.id !== id),
-							);
-						}}
+						onRemove={
+							project
+								? undefined
+								: (id) => {
+										if (focusedLayerId === id) setFocusedLayerId(undefined);
+										setLayers((current) =>
+											current.filter((layer) => layer.id !== id),
+										);
+									}
+						}
 						onMove={(id, targetId, after) =>
 							setLayers((current) => {
 								if (id === targetId) return current;

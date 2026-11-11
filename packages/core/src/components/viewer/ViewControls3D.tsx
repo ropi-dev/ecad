@@ -32,6 +32,7 @@ export const useViewExport = () => useContext(ViewExportContext);
 export function ViewControls3D({
 	enabled,
 	grouped = false,
+	scrollable = false,
 	children,
 	trailing,
 	label: controlsLabel,
@@ -55,6 +56,7 @@ export function ViewControls3D({
 	 * in one scrolling row. Camera and view buttons are not shown.
 	 */
 	grouped?: boolean;
+	scrollable?: boolean;
 	label?: string;
 	zoomLevel: number;
 	actualSize?: () => void;
@@ -203,7 +205,7 @@ export function ViewControls3D({
 			</ViewExportContext>
 		);
 	return (
-		<ToolbarDock label={label} scrollable={false}>
+		<ToolbarDock label={label} scrollable={scrollable}>
 			{zoomControls}
 			{antialiasButton}
 			{(toggleProjection || view) && <ToolbarSeparator />}
