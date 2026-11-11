@@ -20,7 +20,10 @@ import {
 } from "@ecad/drawing-core/drawing/named-nets.ts";
 import { pageKey } from "@ecad/drawing-core/drawing/pages.ts";
 import { defaultPinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
-import { localToWorld } from "@ecad/drawing-core/drawing/shape-geometry.ts";
+import {
+	drawShape,
+	localToWorld,
+} from "@ecad/drawing-core/drawing/shape-geometry.ts";
 import {
 	connectionTolerance,
 	DEFAULT_LINE_WIDTH,
@@ -82,6 +85,17 @@ export function synchronizePcb(
 	definitions: readonly SymbolDefinition[],
 	environment: Partial<LinkedSchematicEnvironment> = {},
 ): LinkedSchematic {
+	return measuredSynchronize(file, shapes, previous, definitions, environment)
+		.linked;
+}
+
+function measuredSynchronize(
+	file: CircuitFile,
+	shapes: EditorShape[],
+	previous: CircuitFile | undefined,
+	definitions: readonly SymbolDefinition[],
+	environment: Partial<LinkedSchematicEnvironment>,
+): Synchronized {
 	return measurePerformance(
 		"pcb.synchronize",
 		() => {
@@ -138,112 +152,26 @@ export function schematicCircuit(
 					: shape,
 			)
 		: shapes;
-	const { circuit } = synchronizePcb(empty, extracted, empty, definitions, {
-		newId: () => `net-${++next}`,
-	}).file;
-	const pinShapes = new Map<string, number>();
-	const marked = measurePerformance(
-		"schematic.no-connect",
-		() => {
-			// Markers and terminals meet only on one page.
-			const nearMarker = createPointIndex(
-				shapes.flatMap((shape) =>
-					(shape.kind === "no-connect"
-						? [shape]
-						: shape.kind === "symbol"
-							? symbolShapes(shape).filter(
-									(child) => child.kind === "no-connect",
-								)
-							: []
-					).map((marker) => ({
-						x: marker.x,
-						y: marker.y,
-						page: pageKey(shape),
-					})),
-				),
-				(marker) => marker,
-			);
-			const symbolPages = new Map(
-				shapes.map((shape) => [shape.id, pageKey(shape)]),
-			);
-			const terminals = new Map<number, Map<string, Point>>();
-			for (const shape of shapes)
-				if (shape.kind === "symbol")
-					terminals.set(
-						shape.id,
-						new Map(
-							symbolShapes(shape).flatMap((child) =>
-								child.kind === "pin"
-									? [[String(child.id), child] as const]
-									: [],
-							),
-						),
-					);
-			const marked = new Set(circuit.noConnectPinIds);
-			const pinsByTerminal = new Map<string, string>();
-			for (const component of circuit.components)
-				for (const pin of component.pins) {
-					const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
-					if (shapeId === undefined) continue;
-					pinShapes.set(pin.id, shapeId);
-					pinsByTerminal.set(`${shapeId}:${pin.sourcePinId}`, pin.id);
-					const terminal =
-						pin.sourcePinId === undefined
-							? undefined
-							: terminals.get(shapeId)?.get(pin.sourcePinId);
-					if (
-						terminal &&
-						nearMarker(
-							terminal,
-							(marker) =>
-								marker.page === symbolPages.get(shapeId) &&
-								Math.hypot(marker.x - terminal.x, marker.y - terminal.y) <=
-									connectionTolerance,
-						)
-					)
-						marked.add(pin.id);
-				}
-			const wires = shapes.flatMap((shape) =>
-				shape.kind === "wire"
-					? [
-							{
-								id: shape.id,
-								page: pageKey(shape),
-								start: localToWorld(shape, -shape.width / 2, 0),
-								end: localToWorld(shape, shape.width / 2, 0),
-							},
-						]
-					: [],
-			);
-			const onWire = createWireIndex(wires);
-			const stubs = new Set<number>();
-			for (const marker of shapes)
-				if (marker.kind === "no-connect")
-					onWire(marker, (wire) => {
-						if (
-							wire.page === pageKey(marker) &&
-							pointOnWire(marker, wire.start, wire.end)
-						)
-							stubs.add(wire.id);
-						return false;
-					});
-			if (stubs.size) {
-				const connected = new Set(circuit.nets.flatMap((net) => net.pinIds));
-				for (const net of electricalNets(shapes)) {
-					if (net.pins.length !== 1 || !net.wires.some((id) => stubs.has(id)))
-						continue;
-					const [terminal] = net.pins;
-					const pinId = pinsByTerminal.get(
-						`${terminal.shapeId}:${terminal.pinId}`,
-					);
-					if (pinId && !connected.has(pinId)) marked.add(pinId);
-				}
-			}
-			return marked;
-		},
-		{ shapes: shapes.length },
+	const { linked, noConnectMarks } = measuredSynchronize(
+		empty,
+		extracted,
+		empty,
+		definitions,
+		{ newId: () => `net-${++next}` },
 	);
-	circuit.noConnectPinIds = [...marked];
+	const { circuit } = linked.file;
+	const marks =
+		noConnectMarks ??
+		noConnectMarkers(shapes, circuit.components, circuit.nets);
+	circuit.noConnectPinIds = [
+		...new Set([...circuit.noConnectPinIds, ...marks.keys()]),
+	];
+	const pinShapes = new Map<string, number>();
+	for (const component of circuit.components)
+		for (const pin of component.pins) {
+			const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
+			if (shapeId !== undefined) pinShapes.set(pin.id, shapeId);
+		}
 	return {
 		circuit,
 		shapeIds({ kind, id }) {
@@ -273,13 +201,18 @@ interface LinkedSchematic {
 	source: "circuit" | "schematic";
 }
 
+interface Synchronized {
+	linked: LinkedSchematic;
+	noConnectMarks?: NoConnectMarks;
+}
+
 function synchronize(
 	file: CircuitFile,
 	shapes: EditorShape[],
 	previous: CircuitFile | undefined,
 	definitions: readonly SymbolDefinition[],
 	environment: Partial<LinkedSchematicEnvironment>,
-): LinkedSchematic {
+): Synchronized {
 	const imported =
 		previous === undefined &&
 		(file.circuit.components.length > 0 || file.circuit.nets.length > 0);
@@ -301,22 +234,29 @@ function synchronize(
 	const circuitChanged =
 		imported || !jsonEqual(file.circuit, base.circuit) || unplaced;
 	const circuit = structuredClone(file.circuit);
-	const linked = circuitChanged
-		? placeCircuitInSchematic(
-				circuit,
-				bound,
-				context,
-				imported ||
-					(file.circuit.components.length > 0 &&
-						file.circuit.components.every(
-							(component) => component.schematicShapeId === undefined,
-						)),
-			)
-		: extractCircuitFromSchematic(circuit, bound, context);
+	let noConnectMarks: NoConnectMarks | undefined;
+	let linked: EditorShape[];
+	if (circuitChanged)
+		linked = placeCircuitInSchematic(
+			circuit,
+			bound,
+			context,
+			imported ||
+				(file.circuit.components.length > 0 &&
+					file.circuit.components.every(
+						(component) => component.schematicShapeId === undefined,
+					)),
+		);
+	else
+		({ shapes: linked, noConnectMarks } = extractCircuitFromSchematic(
+			circuit,
+			bound,
+			context,
+		));
 	const ids = new Set(
 		[...circuit.components, ...circuit.nets].map((entity) => entity.id),
 	);
-	return {
+	const result: LinkedSchematic = {
 		file: circuitFileSchema.parse({
 			circuit,
 			graph: {
@@ -332,6 +272,7 @@ function synchronize(
 		shapes: refreshLabels(circuit, linked, context.measureText),
 		source: circuitChanged ? "circuit" : "schematic",
 	};
+	return { linked: result, noConnectMarks };
 }
 
 function bindNetLabels(
@@ -390,15 +331,196 @@ function placeCircuitInSchematic(
 	initializing: boolean,
 ): EditorShape[] {
 	const placed = placeComponentSymbols(circuit, shapes, context);
-	if (!initializing && jsonEqual(circuit.nets, context.previous.circuit.nets))
-		return placed.shapes;
-	return placeNetLabels(
-		circuit,
-		placed.shapes,
-		shapes,
-		placed.nextId,
-		context,
-		initializing,
+	const labeled =
+		!initializing && jsonEqual(circuit.nets, context.previous.circuit.nets)
+			? placed.shapes
+			: placeNetLabels(
+					circuit,
+					placed.shapes,
+					shapes,
+					placed.nextId,
+					context,
+					initializing,
+				);
+	return placeNoConnectMarkers(circuit, labeled, shapes, context, initializing);
+}
+
+function placeNoConnectMarkers(
+	circuit: Circuit,
+	shapes: EditorShape[],
+	originalShapes: readonly EditorShape[],
+	context: SyncContext,
+	initializing: boolean,
+): EditorShape[] {
+	const previous = context.previous.circuit;
+	const current = new Set(circuit.noConnectPinIds);
+	const cleared = initializing
+		? []
+		: previous.noConnectPinIds.filter((id) => !current.has(id));
+	if (!current.size && !cleared.length) return shapes;
+	const remove = new Set<number>();
+	if (cleared.length) {
+		const before = noConnectMarkers(
+			originalShapes,
+			previous.components,
+			previous.nets,
+		);
+		for (const id of cleared)
+			for (const marker of before.get(id) ?? []) remove.add(marker);
+	}
+	const next = remove.size
+		? shapes.filter((shape) => !remove.has(shape.id))
+		: [...shapes];
+	if (!current.size) return next;
+	const marked = noConnectMarkers(next, circuit.components, circuit.nets);
+	const symbols = new Map<number, EditorSymbol>();
+	for (const shape of next)
+		if (shape.kind === "symbol" && !symbols.has(shape.id))
+			symbols.set(shape.id, shape);
+	const terminals = new Map<EditorSymbol, SymbolTerminals>();
+	let nextId = next.reduce((max, shape) => Math.max(max, shape.id), 0) + 1;
+	for (const component of circuit.components)
+		for (const pin of component.pins) {
+			if (!current.has(pin.id) || marked.has(pin.id)) continue;
+			const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
+			const symbol = shapeId === undefined ? undefined : symbols.get(shapeId);
+			if (!symbol) continue;
+			let symbolTerminals = terminals.get(symbol);
+			if (!symbolTerminals) {
+				symbolTerminals = indexTerminals(symbol);
+				terminals.set(symbol, symbolTerminals);
+			}
+			const terminal = symbolTerminals.find(pin);
+			if (!terminal) continue;
+			next.push({
+				...drawShape(nextId++, "no-connect", terminal, terminal),
+				...(symbol.page === undefined ? {} : { page: symbol.page }),
+			});
+		}
+	return next;
+}
+
+type NoConnectMarks = Map<string, number[]>;
+
+function noConnectMarkers(
+	shapes: readonly EditorShape[],
+	components: readonly CircuitComponent[],
+	nets: readonly CircuitNet[],
+): NoConnectMarks {
+	const marks: NoConnectMarks = new Map();
+	const markers: { id?: number; x: number; y: number; page: number }[] = [];
+	for (const shape of shapes)
+		if (shape.kind === "no-connect")
+			markers.push({
+				id: shape.id,
+				x: shape.x,
+				y: shape.y,
+				page: pageKey(shape),
+			});
+		else if (
+			shape.kind === "symbol" &&
+			shape.children.some((child) => child.kind === "no-connect")
+		)
+			for (const child of symbolShapes(shape))
+				if (child.kind === "no-connect")
+					markers.push({ x: child.x, y: child.y, page: pageKey(shape) });
+	if (!markers.length) return marks;
+	return measurePerformance(
+		"schematic.no-connect",
+		() => {
+			const mark = (pinId: string, marker?: number) => {
+				let ids = marks.get(pinId);
+				if (!ids) {
+					ids = [];
+					marks.set(pinId, ids);
+				}
+				if (marker !== undefined && !ids.includes(marker)) ids.push(marker);
+			};
+			// Markers and terminals meet only on one page.
+			const nearMarker = createPointIndex(markers, (marker) => marker);
+			const symbols = new Map<number, EditorSymbol>();
+			for (const shape of shapes)
+				if (shape.kind === "symbol" && !symbols.has(shape.id))
+					symbols.set(shape.id, shape);
+			const terminals = new Map<number, Map<string, Point>>();
+			const terminalsOf = (symbol: EditorSymbol) => {
+				let pins = terminals.get(symbol.id);
+				if (!pins) {
+					pins = new Map(
+						symbolShapes(symbol).flatMap((child) =>
+							child.kind === "pin" ? [[String(child.id), child] as const] : [],
+						),
+					);
+					terminals.set(symbol.id, pins);
+				}
+				return pins;
+			};
+			const pinsByTerminal = new Map<string, string>();
+			for (const component of components)
+				for (const pin of component.pins) {
+					const shapeId = pin.schematicShapeId ?? component.schematicShapeId;
+					const symbol =
+						shapeId === undefined ? undefined : symbols.get(shapeId);
+					if (!symbol || pin.sourcePinId === undefined) continue;
+					pinsByTerminal.set(`${symbol.id}:${pin.sourcePinId}`, pin.id);
+					const terminal = terminalsOf(symbol).get(pin.sourcePinId);
+					if (!terminal) continue;
+					const page = pageKey(symbol);
+					nearMarker(terminal, (marker) => {
+						if (
+							marker.page === page &&
+							Math.hypot(marker.x - terminal.x, marker.y - terminal.y) <=
+								connectionTolerance
+						)
+							mark(pin.id, marker.id);
+						return false;
+					});
+				}
+			const wires = shapes.flatMap((shape) =>
+				shape.kind === "wire"
+					? [
+							{
+								id: shape.id,
+								page: pageKey(shape),
+								start: localToWorld(shape, -shape.width / 2, 0),
+								end: localToWorld(shape, shape.width / 2, 0),
+							},
+						]
+					: [],
+			);
+			const onWire = createWireIndex(wires);
+			const stubs = new Map<number, number[]>();
+			for (const marker of shapes)
+				if (marker.kind === "no-connect")
+					onWire(marker, (wire) => {
+						if (
+							wire.page === pageKey(marker) &&
+							pointOnWire(marker, wire.start, wire.end)
+						) {
+							const ids = stubs.get(wire.id);
+							if (ids) ids.push(marker.id);
+							else stubs.set(wire.id, [marker.id]);
+						}
+						return false;
+					});
+			if (stubs.size) {
+				const connected = new Set(nets.flatMap((net) => net.pinIds));
+				for (const net of electricalNets(shapes)) {
+					if (net.pins.length !== 1 || !net.wires.some((id) => stubs.has(id)))
+						continue;
+					const [terminal] = net.pins;
+					const pinId = pinsByTerminal.get(
+						`${terminal.shapeId}:${terminal.pinId}`,
+					);
+					if (!pinId || connected.has(pinId)) continue;
+					mark(pinId);
+					for (const id of net.wires)
+						for (const marker of stubs.get(id) ?? []) mark(pinId, marker);
+				}
+			}
+			return marks;
+		},
+		{ shapes: shapes.length },
 	);
 }
 
@@ -715,7 +837,7 @@ function extractCircuitFromSchematic(
 	circuit: Circuit,
 	shapes: EditorShape[],
 	context: SyncContext,
-): EditorShape[] {
+): { shapes: EditorShape[]; noConnectMarks: NoConnectMarks } {
 	const components = extractComponents(circuit, shapes, context);
 	circuit.components = components;
 	const units = new Map(
@@ -739,13 +861,18 @@ function extractCircuitFromSchematic(
 	});
 	const extracted = extractNets(annotated, components, context);
 	circuit.nets = extracted.nets;
+	const noConnectMarks = noConnectMarkers(
+		extracted.shapes,
+		components,
+		circuit.nets,
+	);
 	const connected = new Set(circuit.nets.flatMap((net) => net.pinIds));
-	const pins = new Set(
-		components.flatMap((component) => component.pins.map((pin) => pin.id)),
-	);
-	circuit.noConnectPinIds = circuit.noConnectPinIds.filter(
-		(id) => pins.has(id) && !connected.has(id),
-	);
+	const marked = [...noConnectMarks.keys()].filter((id) => !connected.has(id));
+	const kept = new Set(marked);
+	circuit.noConnectPinIds = [
+		...circuit.noConnectPinIds.filter((id) => kept.delete(id)),
+		...kept,
+	];
 	if (
 		!jsonEqual(
 			{ ...circuit, revision: context.file.circuit.revision },
@@ -753,7 +880,7 @@ function extractCircuitFromSchematic(
 		)
 	)
 		circuit.revision++;
-	return extracted.shapes;
+	return { shapes: extracted.shapes, noConnectMarks };
 }
 
 function extractComponents(

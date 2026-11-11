@@ -1649,3 +1649,145 @@ test("undo and redo of a net-name merge restore every symbol declaration and mem
 		assert.deepEqual(redone.file.circuit.nets, merged.file.circuit.nets);
 	}
 });
+
+test("schematic no-connect markers set and clear circuit no-connect pins", async () => {
+	const { drawShape, pinTerminals } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
+	const original = createCircuit("Board");
+	const symbol = createSymbol(1, resistor, { x: 0, y: 0 }, "R1");
+	const [terminal, other] = pinTerminals(symbol);
+	const stubEnd = { x: other.x + 5.08, y: other.y };
+	const marked = synchronizePcb(
+		original,
+		[
+			symbol,
+			drawShape(2, "no-connect", terminal, terminal),
+			drawShape(3, "wire", other, stubEnd),
+			drawShape(4, "no-connect", stubEnd, stubEnd),
+		],
+		original,
+		symbolDefinitions,
+	);
+	const [first, second] = marked.file.circuit.components[0].pins;
+	assert.deepEqual(marked.file.circuit.noConnectPinIds, [first.id, second.id]);
+	const cleared = synchronizePcb(
+		marked.file,
+		marked.shapes.filter((shape) => shape.id !== 2 && shape.id !== 4),
+		marked.file,
+		symbolDefinitions,
+	);
+	assert.deepEqual(cleared.file.circuit.noConnectPinIds, []);
+	assert.equal(cleared.file.circuit.revision, marked.file.circuit.revision + 1);
+});
+
+test("circuit no-connect pins place and remove schematic markers", async () => {
+	const { drawShape, pinTerminals } = await import(
+		"@ecad/drawing-core/drawing/shapes.ts"
+	);
+	const original = createCircuit("Board");
+	const r1 = { ...createSymbol(1, resistor, { x: 0, y: 0 }, "R1"), page: 2 };
+	const r2 = createSymbol(2, resistor, { x: 20, y: 0 }, "R2");
+	const [terminal, other] = pinTerminals(r1);
+	const stubEnd = { x: other.x + 5.08, y: other.y };
+	const first = synchronizePcb(
+		original,
+		[
+			r1,
+			r2,
+			{ ...drawShape(3, "wire", other, stubEnd), page: 2 },
+			{ ...drawShape(4, "no-connect", stubEnd, stubEnd), page: 2 },
+		],
+		original,
+		symbolDefinitions,
+	);
+	const [pin, stubbed] = first.file.circuit.components[0].pins;
+	assert.deepEqual(first.file.circuit.noConnectPinIds, [stubbed.id]);
+	const declared = synchronizePcb(
+		applyCircuitCommand(first.file, {
+			type: "no-connect",
+			pinId: pin.id,
+			enabled: true,
+		}),
+		first.shapes,
+		first.file,
+		symbolDefinitions,
+	);
+	const markers = declared.shapes.filter(
+		(shape) => shape.kind === "no-connect",
+	);
+	assert.equal(markers.length, 2);
+	const placed = required(markers.find((shape) => shape.id !== 4));
+	assert.equal(placed.page, 2);
+	assert.ok(Math.hypot(placed.x - terminal.x, placed.y - terminal.y) < 1e-9);
+	const unchanged = synchronizePcb(
+		declared.file,
+		declared.shapes,
+		declared.file,
+		symbolDefinitions,
+	);
+	assert.deepEqual(
+		unchanged.file.circuit.noConnectPinIds,
+		declared.file.circuit.noConnectPinIds,
+	);
+	assert.equal(unchanged.file.circuit.revision, declared.file.circuit.revision);
+	const connected = synchronizePcb(
+		applyCircuitCommand(
+			applyCircuitCommand(declared.file, {
+				type: "no-connect",
+				pinId: stubbed.id,
+				enabled: false,
+			}),
+			{
+				type: "connect",
+				pinIds: [pin.id, first.file.circuit.components[1].pins[0].id],
+			},
+		),
+		declared.shapes,
+		declared.file,
+		symbolDefinitions,
+	);
+	assert.deepEqual(
+		connected.shapes.filter((shape) => shape.kind === "no-connect"),
+		[],
+	);
+	assert.ok(connected.shapes.some((shape) => shape.id === 3));
+	const roundtrip = synchronizePcb(
+		connected.file,
+		connected.shapes,
+		connected.file,
+		symbolDefinitions,
+	);
+	assert.deepEqual(roundtrip.file.circuit.noConnectPinIds, []);
+	assert.deepEqual(roundtrip.file.circuit.nets, connected.file.circuit.nets);
+});
+
+test("circuit no-connect pins get markers when the circuit is placed", () => {
+	let file = createCircuit("Board");
+	const component = componentFromSymbol(resistor, []);
+	file = applyCircuitCommand(file, { type: "add-component", component });
+	file = applyCircuitCommand(file, {
+		type: "no-connect",
+		pinId: component.pins[1].id,
+		enabled: true,
+	});
+	const placed = synchronizePcb(
+		file,
+		[],
+		createCircuit("Board", file.circuit.id),
+		symbolDefinitions,
+	);
+	assert.equal(
+		placed.shapes.filter((shape) => shape.kind === "no-connect").length,
+		1,
+	);
+	const roundtrip = synchronizePcb(
+		placed.file,
+		placed.shapes,
+		placed.file,
+		symbolDefinitions,
+	);
+	assert.deepEqual(roundtrip.file.circuit.noConnectPinIds, [
+		component.pins[1].id,
+	]);
+});
