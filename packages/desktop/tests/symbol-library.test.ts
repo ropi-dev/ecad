@@ -16,6 +16,7 @@ import {
 	SYMBOL_FILE_LIMIT,
 	type SymbolFile,
 } from "@ecad/core/components/editor/symbolFormat.ts";
+import { configPaths } from "#/main/config-directory.ts";
 import {
 	DesktopSymbolLibrary,
 	readSymbolDirectory,
@@ -246,7 +247,7 @@ test("desktop user configuration persists in the home directory and validates be
 		};
 		await storage.saveConfiguration(config);
 		assert.deepEqual(
-			JSON.parse(await readFile(join(home, ".ecad", "config.json"), "utf8")),
+			JSON.parse(await readFile(storage.configurationPath, "utf8")),
 			config,
 		);
 		const reopened = new DesktopSymbolLibrary(undefined, home);
@@ -266,8 +267,10 @@ test("desktop user configuration persists in the home directory and validates be
 			/duplicated/,
 		);
 		assert.deepEqual(await reopened.loadConfiguration(), config);
-		assert.deepEqual(await readdir(join(home, ".ecad")), ["config.json"]);
-		await writeFile(join(home, ".ecad", "config.json"), "{");
+		assert.deepEqual(await readdir(configPaths(home).directory), [
+			"symbol-libraries.json",
+		]);
+		await writeFile(storage.configurationPath, "{");
 		await assert.rejects(storage.loadConfiguration());
 	});
 });
@@ -275,7 +278,7 @@ test("desktop user configuration persists in the home directory and validates be
 test("configured relative user directories resolve against the home directory", async () => {
 	await withDirectory(async (home) => {
 		await mkdir(join(home, "parts"));
-		await mkdir(join(home, ".ecad"));
+		await mkdir(configPaths(home).directory, { recursive: true });
 		await writeFile(
 			join(home, "parts", "point.ecadsym"),
 			JSON.stringify(symbol("point")),
@@ -294,7 +297,7 @@ test("configured relative user directories resolve against the home directory", 
 				],
 			};
 			await writeFile(
-				join(home, ".ecad", "config.json"),
+				join(configPaths(home).directory, "symbol-libraries.json"),
 				JSON.stringify(config),
 			);
 			const storage = new DesktopSymbolLibrary(undefined, home);
@@ -351,7 +354,7 @@ test("user configuration saves accept only directories the main process chose or
 			);
 
 			// A damaged configuration trusts nothing, but a safe configuration can replace it.
-			await mkdir(join(home, ".ecad"));
+			await mkdir(configPaths(home).directory, { recursive: true });
 			await writeFile(storage.configurationPath, "{");
 			await assert.rejects(
 				storage.saveConfiguration(injected(outside)),
@@ -529,6 +532,38 @@ test("external edits, removed definitions, and ID changes never overwrite a dire
 		await assert.rejects(
 			library.saveConfiguredSymbol(directory, original, original),
 			/definition changed/,
+		);
+	});
+});
+
+test("the user configuration moves from ~/.ecad to the platform configuration directory", async () => {
+	await withDirectory(async (home) => {
+		const { defaultSymbolConfig } = await import(
+			"@ecad/core/symbol-library/config.ts"
+		);
+		const legacy = {
+			...defaultSymbolConfig(),
+			symbolLibraries: defaultSymbolConfig().symbolLibraries.map((library) => ({
+				...library,
+				enabled: false,
+			})),
+		};
+		await mkdir(join(home, ".ecad"));
+		await writeFile(join(home, ".ecad", "config.json"), JSON.stringify(legacy));
+		const storage = new DesktopSymbolLibrary(undefined, home);
+		assert.equal(
+			storage.configurationPath,
+			join(configPaths(home).directory, "symbol-libraries.json"),
+		);
+		assert.deepEqual(await storage.loadConfiguration(), legacy);
+		await storage.saveConfiguration(defaultSymbolConfig());
+		assert.deepEqual(
+			JSON.parse(await readFile(storage.configurationPath, "utf8")),
+			defaultSymbolConfig(),
+		);
+		assert.deepEqual(
+			await new DesktopSymbolLibrary(undefined, home).loadConfiguration(),
+			defaultSymbolConfig(),
 		);
 	});
 });

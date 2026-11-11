@@ -1,4 +1,4 @@
-import { Box, Download, Scan, Sparkles, Square } from "lucide-react";
+import { Box, Download, Scan, Square } from "lucide-react";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import {
 	ToolbarDock,
@@ -46,8 +46,6 @@ export function ViewControls3D({
 	toggleProjection,
 	exportPng,
 	exporting = false,
-	antialias,
-	toggleAntialias,
 }: Pick<Viewer3DHandle, "fit" | "zoom"> & {
 	view?: Viewer3DHandle["view"];
 	enabled: boolean;
@@ -67,8 +65,6 @@ export function ViewControls3D({
 	fitLabel?: string;
 	exportPng?: () => void;
 	exporting?: boolean;
-	antialias?: boolean;
-	toggleAntialias?: () => void;
 }) {
 	const button = viewControlButtonClassName;
 	const viewExport = useMemo(
@@ -107,23 +103,6 @@ export function ViewControls3D({
 				`${Math.round(zoomLevel * 100)}%`
 			)}
 		</ZoomControls>
-	);
-	const antialiasButton = toggleAntialias && (
-		<TooltipButton
-			type="button"
-			className={button}
-			disabled={!enabled}
-			aria-label="Antialiasing"
-			aria-pressed={antialias}
-			tooltip={
-				antialias
-					? "Turn off antialiasing for faster drawing"
-					: "Turn on antialiasing for smoother edges"
-			}
-			onClick={toggleAntialias}
-		>
-			<Sparkles size={18} aria-hidden="true" />
-		</TooltipButton>
 	);
 	const viewControls = (
 		<>
@@ -199,7 +178,6 @@ export function ViewControls3D({
 					{children}
 					<ToolbarSeparator />
 					{zoomControls}
-					{antialiasButton}
 					{trailing}
 				</ToolbarDock>
 			</ViewExportContext>
@@ -207,7 +185,6 @@ export function ViewControls3D({
 	return (
 		<ToolbarDock label={label} scrollable={scrollable}>
 			{zoomControls}
-			{antialiasButton}
 			{(toggleProjection || view) && <ToolbarSeparator />}
 			{viewControls}
 			{pngButton && <ToolbarSeparator />}

@@ -6,10 +6,12 @@ import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
+import { setSettingsStorage } from "@ecad/core/settings/store.ts";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
 	createDesktopProjectStorage,
+	createDesktopSettingsStorage,
 	createDesktopSymbolLibraryStorage,
 } from "#/renderer/storage.ts";
 import "@ecad/core/styles.css";
@@ -64,4 +66,7 @@ function App() {
 }
 const root = document.getElementById("root");
 if (!root) throw new Error("The desktop editor root element is missing.");
-createRoot(root).render(<App />);
+void createDesktopSettingsStorage(window.ecadSettings).then((settings) => {
+	setSettingsStorage(settings);
+	createRoot(root).render(<App />);
+});

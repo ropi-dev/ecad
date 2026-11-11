@@ -3,7 +3,12 @@ import { Dialog } from "radix-ui";
 import { type ReactNode, useRef } from "react";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
-const widths = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-lg" } as const;
+const widths = {
+	sm: "max-w-sm",
+	md: "max-w-md",
+	lg: "max-w-lg",
+	xl: "max-w-3xl",
+} as const;
 
 /** Title and optional description shared by every dialog. */
 export function DialogHeader({

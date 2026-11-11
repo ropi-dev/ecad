@@ -1,7 +1,6 @@
 import { FilePlus2, FolderCog, Library } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
-import { lazy, Suspense, useState } from "react";
-import { AppDialog, dialogBodyClassName } from "#/components/ui/Dialog.tsx";
+import { useState } from "react";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import {
 	sidebarMenuContent,
@@ -9,17 +8,11 @@ import {
 	useReportActive,
 } from "#/projects/sidebarMenu.ts";
 import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
-
-const SymbolLibrarySettings = lazy(() =>
-	import("#/projects/SymbolLibrarySettings.tsx").then((module) => ({
-		default: module.SymbolLibrarySettings,
-	})),
-);
+import { LazySettingsDialog } from "#/settings/LazySettingsDialog.tsx";
 
 export function ProjectMenu({
 	onActiveChange,
 }: {
-	/** Reports whether the menu or the Symbol libraries dialog is open. */
 	onActiveChange?: (active: boolean) => void;
 }) {
 	const project = useProjectSelection(({ busy, create }) => ({ busy, create }));
@@ -70,39 +63,11 @@ export function ProjectMenu({
 					</DropdownMenu.Content>
 				</DropdownMenu.Portal>
 			</DropdownMenu.Root>
-			<AppDialog
+			<LazySettingsDialog
 				open={settingsOpen}
 				onOpenChange={setSettingsOpen}
-				size="lg"
-				focusDialog
-				title="Symbol libraries"
-				description="Choose which libraries the symbol picker offers, and add your own."
-				footer={
-					<button
-						type="button"
-						className="ui-button"
-						data-variant="primary"
-						data-size="md"
-						onClick={() => setSettingsOpen(false)}
-					>
-						Done
-					</button>
-				}
-			>
-				<div className={dialogBodyClassName}>
-					{settingsOpen && (
-						<Suspense
-							fallback={
-								<output className="text-sm text-fg-muted">
-									Loading libraries...
-								</output>
-							}
-						>
-							<SymbolLibrarySettings />
-						</Suspense>
-					)}
-				</div>
-			</AppDialog>
+				section="libraries"
+			/>
 		</>
 	);
 }

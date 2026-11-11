@@ -4,11 +4,13 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
 	appChannels,
 	type DesktopAppBridge,
+	type DesktopSettingsBridge,
 	type DesktopSymbolLibraryBridge,
 	displayChannels,
 	libraryChannels,
 	projectChannels,
 	projectEvents,
+	settingsChannels,
 } from "#/bridge.ts";
 
 const bridge: DesktopSymbolLibraryBridge = {
@@ -55,6 +57,8 @@ const projects: ProjectStorage = {
 		ipcRenderer.invoke(projectChannels.readAsset, directory, path),
 	canWriteFile: (directory, path) =>
 		ipcRenderer.invoke(projectChannels.canWriteFile, directory, path),
+	saveSettings: (directory, settings) =>
+		ipcRenderer.invoke(projectChannels.saveSettings, directory, settings),
 	refresh: (directory) =>
 		ipcRenderer.invoke(projectChannels.refresh, directory),
 	subscribeExternalChanges: (listener) => {
@@ -80,6 +84,12 @@ const display: DisplayBridge = {
 	},
 };
 contextBridge.exposeInMainWorld("ecadDisplay", display);
+
+const settings: DesktopSettingsBridge = {
+	load: () => ipcRenderer.invoke(settingsChannels.load),
+	save: (next) => ipcRenderer.invoke(settingsChannels.save, next),
+};
+contextBridge.exposeInMainWorld("ecadSettings", settings);
 
 const desktopApp: DesktopAppBridge = {
 	quit: () => ipcRenderer.invoke(appChannels.quit),

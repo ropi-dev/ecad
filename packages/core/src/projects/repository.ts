@@ -32,6 +32,10 @@ import {
 	pcbDocumentName,
 	primaryPcbId,
 } from "#/projects/pcb.ts";
+import {
+	type ProjectSettings,
+	projectSettingsSchema,
+} from "#/settings/schema.ts";
 
 export interface ProjectDirectory {
 	name: string;
@@ -750,6 +754,22 @@ export class ProjectRepository {
 				);
 				throw cause;
 			}
+		});
+	}
+
+	saveSettings(settings: ProjectSettings): Promise<ProjectSnapshot> {
+		return this.locked("exclusive", async () => {
+			const current = await this.assertCurrent();
+			const parsed = projectSettingsSchema.parse(settings);
+			const { settings: _previous, ...rest } = current.manifest;
+			const manifest = Object.keys(parsed).length
+				? { ...rest, settings: parsed }
+				: rest;
+			const content = serializeProjectManifest(manifest);
+			await this.directory.write(PROJECT_FILE, encoder.encode(content));
+			this.snapshot = { ...current, manifest };
+			this.savedManifest = content;
+			return this.snapshot;
 		});
 	}
 

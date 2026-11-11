@@ -7,6 +7,7 @@ import {
 	displayChannels,
 	libraryChannels,
 	projectChannels,
+	settingsChannels,
 } from "#/bridge.ts";
 import { ipcArguments, parseIpcArguments } from "#/main/ipc.ts";
 
@@ -34,6 +35,7 @@ test("every invoke channel validates its arguments", () => {
 	const channels = [
 		...Object.values(libraryChannels),
 		...Object.values(projectChannels),
+		...Object.values(settingsChannels),
 		displayChannels.getCalibration,
 		appChannels.quit,
 	];

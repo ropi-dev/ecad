@@ -7,10 +7,10 @@ import {
 	rm,
 	writeFile,
 } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import { z } from "zod";
+import { configPaths } from "#/main/config-directory.ts";
 
 export interface ExternalLibraryRequest {
 	/** Real path of the open project, or its in-memory ID before it is saved. */
@@ -36,11 +36,12 @@ function same(left: ExternalLibraryRequest, right: ExternalLibraryRequest) {
 
 /**
  * Remembers which outside library directories the user let each project use.
- * Approvals live in the user's own ~/.ecad directory and never in a project,
+ * Approvals live in the user's own configuration directory and never in a project,
  * so opening a downloaded project cannot approve its own paths.
  */
 export class ExternalLibraryApprovals {
 	readonly path: string;
+	private readonly legacyPath: string;
 	private session: ExternalLibraryRequest[] = [];
 	private readonly sequential = createSerialQueue();
 
@@ -53,11 +54,9 @@ export class ExternalLibraryApprovals {
 			confirm?(request: ExternalLibraryRequest): Promise<boolean>;
 		} = {},
 	) {
-		this.path = join(
-			options.homeDirectory ?? homedir(),
-			".ecad",
-			"approved-libraries.json",
-		);
+		const paths = configPaths(options.homeDirectory);
+		this.path = join(paths.directory, "approved-libraries.json");
+		this.legacyPath = join(paths.legacyDirectory, "approved-libraries.json");
 	}
 
 	/**
@@ -91,16 +90,20 @@ export class ExternalLibraryApprovals {
 	}
 
 	private async read(): Promise<ExternalLibraryRequest[]> {
-		try {
-			const metadata = await lstat(this.path);
-			if (!metadata.isFile() || metadata.size > APPROVALS_FILE_LIMIT) return [];
-			return approvalsSchema.parse(
-				JSON.parse(await readFile(this.path, "utf8")),
-			).approvals;
-		} catch {
-			// Missing or damaged approvals approve nothing, so the user is asked again.
-			return [];
+		for (const path of [this.path, this.legacyPath]) {
+			try {
+				const metadata = await lstat(path);
+				if (!metadata.isFile() || metadata.size > APPROVALS_FILE_LIMIT)
+					return [];
+				return approvalsSchema.parse(JSON.parse(await readFile(path, "utf8")))
+					.approvals;
+			} catch (cause) {
+				if ((cause as NodeJS.ErrnoException).code === "ENOENT") continue;
+				// Damaged approvals approve nothing, so the user is asked again.
+				return [];
+			}
 		}
+		return [];
 	}
 
 	private async write(approvals: ExternalLibraryRequest[]) {

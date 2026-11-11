@@ -1,6 +1,13 @@
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
+import type { AppSettings } from "@ecad/core/settings/schema.ts";
+import type { SettingsStorage } from "@ecad/core/settings/store.ts";
 import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.tsx";
-import type { DesktopSymbolLibraryBridge } from "#/bridge.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import type {
+	DesktopSettingsBridge,
+	DesktopSymbolLibraryBridge,
+	LoadedDesktopSettings,
+} from "#/bridge.ts";
 import { decodeIpcErrors } from "#/ipc-errors.ts";
 
 function decoded<Args extends unknown[], Result>(
@@ -75,7 +82,37 @@ export function createDesktopProjectStorage(
 			bridge.readAsset(directory, path),
 		),
 		canWriteFile: decoded(bridge, bridge.canWriteFile),
+		saveSettings: decoded(bridge, bridge.saveSettings),
 		refresh: decoded(bridge, bridge.refresh),
 		subscribeExternalChanges: bridge.subscribeExternalChanges?.bind(bridge),
+	};
+}
+
+export async function createDesktopSettingsStorage(
+	bridge: DesktopSettingsBridge,
+): Promise<SettingsStorage> {
+	let loaded: LoadedDesktopSettings;
+	try {
+		loaded = await decodeIpcErrors(() => bridge.load())();
+	} catch (cause) {
+		loaded = {
+			path: "the desktop settings file",
+			settings: { version: 1 },
+			error: errorMessage(cause, "Unable to read settings."),
+		};
+	}
+	let { settings, error } = loaded;
+	const save = decodeIpcErrors((next: AppSettings) => bridge.save(next));
+	return {
+		location: `to ${loaded.path}`,
+		load() {
+			if (error) throw new Error(error);
+			return settings;
+		},
+		async save(next) {
+			await save(next);
+			settings = next;
+			error = undefined;
+		},
 	};
 }

@@ -222,5 +222,7 @@ export function createWebProjectStorage(
 			sequential(() => current(directory).importAssets(assets)),
 		readAsset: (directory, path) =>
 			sequential(() => current(directory).readAsset(path)),
+		saveSettings: (directory, settings) =>
+			sequential(() => current(directory).saveSettings(settings)),
 	};
 }

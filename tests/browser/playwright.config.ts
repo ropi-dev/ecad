@@ -19,7 +19,12 @@ export default defineConfig({
 			origins: [
 				{
 					origin: new URL(`http://127.0.0.1:${port}`).origin,
-					localStorage: [{ name: "ecad.antialias", value: "0" }],
+					localStorage: [
+						{
+							name: "ecad.settings.v1",
+							value: JSON.stringify({ version: 1, antialiasing: "off" }),
+						},
+					],
 				},
 			],
 		},

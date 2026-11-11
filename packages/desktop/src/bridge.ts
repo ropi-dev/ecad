@@ -1,5 +1,6 @@
 import type { SymbolLibrary } from "@ecad/core/components/editor/symbolFormat.ts";
 import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
+import type { AppSettings } from "@ecad/core/settings/schema.ts";
 import type {
 	ConfiguredSymbolLibrary,
 	LibraryScope,
@@ -50,6 +51,7 @@ export const projectChannels = {
 	importAssets: "projects:import-assets",
 	readAsset: "projects:read-asset",
 	canWriteFile: "projects:can-write-file",
+	saveSettings: "projects:save-settings",
 	refresh: "projects:refresh",
 } as const;
 
@@ -63,8 +65,25 @@ declare global {
 		ecadSymbolLibrary: DesktopSymbolLibraryBridge;
 		ecadProjects: ProjectStorage;
 		ecadApp: DesktopAppBridge;
+		ecadSettings: DesktopSettingsBridge;
 	}
 }
+
+export interface LoadedDesktopSettings {
+	path: string;
+	settings: AppSettings;
+	error?: string;
+}
+
+export interface DesktopSettingsBridge {
+	load(): Promise<LoadedDesktopSettings>;
+	save(settings: AppSettings): Promise<void>;
+}
+
+export const settingsChannels = {
+	load: "settings:load",
+	save: "settings:save",
+} as const;
 
 /** Requests about the desktop app itself. */
 export interface DesktopAppBridge {
@@ -85,5 +104,6 @@ export const displayChannels = {
 export type InvokeChannel =
 	| (typeof libraryChannels)[keyof typeof libraryChannels]
 	| (typeof projectChannels)[keyof typeof projectChannels]
+	| (typeof settingsChannels)[keyof typeof settingsChannels]
 	| typeof displayChannels.getCalibration
 	| typeof appChannels.quit;

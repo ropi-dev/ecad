@@ -34,6 +34,7 @@ import {
 } from "@ecad/core/symbol-library/config.ts";
 import type { SymbolLibrarySnapshot } from "@ecad/core/symbol-library/storage.tsx";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { configPaths } from "#/main/config-directory.ts";
 
 const symbolExtension = /\.(ecadsym|json)$/i;
 
@@ -230,33 +231,37 @@ function orderedLibrary(symbols: SymbolLibrary): string {
 /**
  * Only the main process chooses paths. A directory reaches the user
  * configuration only after the user picks it in a native dialog or adds it to
- * ~/.ecad/config.json themselves.
+ * symbol-libraries.json in the configuration directory themselves.
  */
 export class DesktopSymbolLibrary {
 	private snapshot: SymbolLibrarySnapshot;
 	private readonly sequential = createSerialQueue();
 	private approvedDirectories = new Set<string>();
 	readonly configurationPath: string;
+	private readonly legacyConfigurationPath: string;
+	private readonly homeDirectory: string;
 
-	constructor(
-		directory?: string,
-		private homeDirectory = homedir(),
-	) {
+	constructor(directory?: string, homeDirectory?: string) {
+		this.homeDirectory = homeDirectory ?? homedir();
 		this.snapshot = { symbols: [], directory };
-		this.configurationPath = join(homeDirectory, ".ecad", "config.json");
+		const paths = configPaths(homeDirectory);
+		this.configurationPath = join(paths.directory, "symbol-libraries.json");
+		this.legacyConfigurationPath = join(paths.legacyDirectory, "config.json");
 	}
 
 	private async readConfiguration(): Promise<SymbolLibraryConfig> {
-		try {
-			if ((await lstat(this.configurationPath)).size > SYMBOL_CONFIG_LIMIT)
-				throw new Error(
-					"Symbol library configuration must be 10 MB or smaller.",
-				);
-			return parseSymbolConfig(await readFile(this.configurationPath, "utf8"));
-		} catch (cause) {
-			if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
-			return defaultSymbolConfig();
+		for (const path of [this.configurationPath, this.legacyConfigurationPath]) {
+			try {
+				if ((await lstat(path)).size > SYMBOL_CONFIG_LIMIT)
+					throw new Error(
+						"Symbol library configuration must be 10 MB or smaller.",
+					);
+				return parseSymbolConfig(await readFile(path, "utf8"));
+			} catch (cause) {
+				if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+			}
 		}
+		return defaultSymbolConfig();
 	}
 
 	loadConfiguration() {
