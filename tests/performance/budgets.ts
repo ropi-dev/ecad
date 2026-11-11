@@ -437,6 +437,10 @@ export const budgets = {
 		frameP95Ms: 500,
 		eventLoopP95Ms: 1500,
 	},
+	// Installed browsers, not throttled, on whatever GPU the machine has: only
+	// the count is a budget. A/B runs compare the timings.
+	"editor-zoom-firefox": { zoomWrites: 60 },
+	"editor-zoom-chrome": { zoomWrites: 60 },
 } as const;
 export type Scenario = keyof typeof budgets;
 export const regressionFloors: Record<string, number> = {
@@ -451,4 +455,11 @@ export const regressionFloors: Record<string, number> = {
 	scriptBytes: 100_000,
 	heapBytes: 5_000_000,
 	domNodes: 50,
+	// The installed-browser zoom scenarios. Their frames take one to eight
+	// milliseconds and are never throttled, so these floors are not scaled.
+	zoomFrameMs: 0.5,
+	zoomHeldFrameMs: 0.5,
+	zoomScriptMs: 0.25,
+	zoomHeldScriptMs: 0.25,
+	zoomWrites: 5,
 };

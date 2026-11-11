@@ -25,6 +25,7 @@ import {
 	judgeScenario,
 	maxRounds,
 	median,
+	nodeVariantScenarios,
 } from "../scripts/performance/ab.ts";
 import {
 	inUse,
@@ -59,6 +60,37 @@ test("the limit is the baseline rule: 25% plus the metric's noise floor", () => 
 	assert.equal(
 		floorFor("domNodes", { ...defaultDecision, floorScale: 0.25 }),
 		50,
+	);
+});
+
+test("installed-browser zoom scenarios compare both variants with floors that never scale", () => {
+	for (const scenario of ["editor-zoom-firefox", "editor-zoom-chrome"])
+		assert.ok(nodeVariantScenarios.has(scenario), scenario);
+	// The harness cannot throttle those browsers.
+	const unthrottled = { ...defaultDecision, floorScale: floorScaleFor(1) };
+	assert.equal(floorFor("zoomFrameMs", unthrottled), 0.5);
+	assert.equal(floorFor("zoomHeldScriptMs", unthrottled), 0.25);
+	assert.equal(floorFor("zoomWrites", unthrottled), 5);
+	// Laying the rulers out through React wrote 159 attributes per zoom frame
+	// against 38, and held-zoom script time in Chrome was 2.3 ms against 0.43.
+	assert.equal(
+		judgeMetric("zoomWrites", repeat(38, 5), repeat(159, 5)).verdict,
+		"regression",
+	);
+	assert.equal(
+		judgeMetric(
+			"zoomHeldScriptMs",
+			repeat(0.43, 5),
+			repeat(2.3, 5),
+			unthrottled,
+		).verdict,
+		"regression",
+	);
+	// A tenth of a millisecond of noise on a one millisecond frame passes.
+	assert.equal(
+		judgeMetric("zoomFrameMs", repeat(1.1, 5), repeat(1.2, 5), unthrottled)
+			.verdict,
+		"pass",
 	);
 });
 
