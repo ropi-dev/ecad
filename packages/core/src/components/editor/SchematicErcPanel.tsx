@@ -1,6 +1,7 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { runErc } from "@ecad/drawing-core/erc/engine.ts";
-import { defaultErcRules } from "@ecad/drawing-core/erc/rules.ts";
+import { schematicErcInput } from "@ecad/drawing-core/erc/schematic.ts";
+import { schematicErcRules } from "@ecad/drawing-core/erc/schematic-rules.ts";
 import { useRef } from "react";
 import { schematicCircuit } from "#/circuit/linked-schematic.ts";
 import { ErcPanel } from "#/components/circuit/ErcPanel.tsx";
@@ -26,13 +27,18 @@ export function SchematicErcPanel({
 		<ErcPanel
 			source="schematic"
 			revision={shapes}
+			ruleCount={schematicErcRules.length}
 			check={() => {
 				checked.current = schematicCircuit(shapes, definitions);
-				return runErc(checked.current.circuit, defaultErcRules);
+				return runErc(checked.current.circuit, schematicErcRules, {
+					schematic: schematicErcInput(shapes),
+				});
 			}}
 			onClose={onClose}
-			onSelect={(subject) => {
-				const ids = checked.current?.shapeIds(subject) ?? [];
+			onSelect={(item) => {
+				const ids = (item.target ? [item.target] : item.subjects).flatMap(
+					(subject) => checked.current?.shapeIds(subject) ?? [],
+				);
 				if (ids.length) onSelect(new Set(ids));
 			}}
 		/>

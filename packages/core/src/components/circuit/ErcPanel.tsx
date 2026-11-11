@@ -35,6 +35,7 @@ const count = (value: number, noun: string) =>
 /** Electrical rules check for the circuit editor. */
 export function CircuitErcPanel({
 	circuit,
+	onSelect,
 	...props
 }: {
 	circuit: Circuit;
@@ -49,18 +50,24 @@ export function CircuitErcPanel({
 			{...props}
 			source="circuit"
 			revision={revision}
+			ruleCount={defaultErcRules.length}
 			check={() => runErc(circuit, defaultErcRules)}
+			onSelect={(item) => {
+				const target = item.target ?? item.subjects[0];
+				if (target) onSelect(target);
+			}}
 		/>
 	);
 }
 
 /**
- * Runs the default electrical rules on demand and lists the findings. Results
- * go stale when `revision` changes.
+ * Runs electrical rules on demand and lists the findings. Results go stale
+ * when `revision` changes.
  */
 export function ErcPanel({
 	source,
 	revision,
+	ruleCount,
 	check,
 	position = "top-left",
 	onClose,
@@ -70,9 +77,10 @@ export function ErcPanel({
 	/** Where the panel floats. Both editors open it under the document bar. */
 	position?: FloatingPanelPosition;
 	revision: unknown;
+	ruleCount: number;
 	check(): ErcDiagnostic[];
 	onClose(): void;
-	onSelect(subject: ErcSubject): void;
+	onSelect(diagnostic: ErcDiagnostic): void;
 }) {
 	const [result, setResult] = useState<{
 		revision: unknown;
@@ -160,8 +168,7 @@ export function ErcPanel({
 				</div>
 				{current && diagnostics.length === 0 && (
 					<p className="m-0 mt-2 text-xs leading-[1.125rem] text-fg">
-						No electrical issues found by the {defaultErcRules.length} enabled
-						rules.
+						No electrical issues found by the {ruleCount} enabled rules.
 					</p>
 				)}
 				{current && diagnostics.length > 0 && (
@@ -179,9 +186,8 @@ export function ErcPanel({
 											className="ui-toggle w-full cursor-pointer rounded-md border px-1.5 py-1.5 text-left text-2xs leading-4 [--toggle-on-fg:var(--color-fg-muted)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-fg:var(--color-fg-muted)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
 											aria-current={activeId === item.id ? "true" : undefined}
 											onClick={() => {
-												const target = item.target ?? item.subjects[0];
 												setActiveId(item.id);
-												if (target) onSelect(target);
+												onSelect(item);
 											}}
 										>
 											<span className={`font-medium ${severity.className}`}>

@@ -4,6 +4,7 @@ import type {
 	CircuitNet,
 	CircuitPin,
 } from "#/circuit/model.ts";
+import type { ErcSchematic } from "#/erc/schematic.ts";
 import { errorMessage } from "#/lib/error-message.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -14,7 +15,7 @@ type ReadonlyData<T> = T extends readonly (infer Item)[]
 		: T;
 export type ErcSeverity = "error" | "warning";
 export type ErcSubject = {
-	readonly kind: "pin" | "net" | "component";
+	readonly kind: "pin" | "net" | "component" | "shape";
 	readonly id: string;
 };
 export type ErcFinding = {
@@ -38,6 +39,7 @@ export interface ErcContext {
 	readonly netsByPin: ReadonlyMap<string, ReadonlyData<CircuitNet>>;
 	readonly pinsByNet: ReadonlyMap<string, readonly ErcPin[]>;
 	readonly noConnect: ReadonlySet<string>;
+	readonly schematic?: ErcSchematic;
 }
 export interface ErcRule {
 	readonly id: string;
@@ -47,6 +49,7 @@ export interface ErcRule {
 }
 export interface ErcOptions {
 	readonly severity?: Readonly<Record<string, ErcSeverity | "off">>;
+	readonly schematic?: ErcSchematic;
 }
 
 export function runErc(
@@ -83,6 +86,7 @@ export function runErc(
 				netsByPin,
 				pinsByNet,
 				noConnect: new Set(circuit.noConnectPinIds),
+				...(options.schematic ? { schematic: options.schematic } : {}),
 			};
 			const diagnostics = new Map<string, ErcDiagnostic>();
 			for (const rule of rules) {
