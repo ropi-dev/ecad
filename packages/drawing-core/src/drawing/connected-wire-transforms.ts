@@ -56,6 +56,24 @@ export function moveShapes(
 	allowLocked = false,
 ): EditorShape[] {
 	if (!allowLocked && shapes.some((shape) => shape.locked)) return shapes;
+	delta = snappedMoveDelta(anchorShape, delta, gridStep);
+	const moved = shapes.map((shape) => ({
+		...shape,
+		x: shape.x + delta.x,
+		y: shape.y + delta.y,
+	}));
+	if (delta.x === 0 && delta.y === 0) return moved;
+	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId, {
+		pitch: gridStep,
+		delta,
+	});
+}
+
+export function snappedMoveDelta(
+	anchorShape: EditorShape | undefined,
+	delta: Point,
+	gridStep: number,
+): Point {
 	if (gridStep > 0 && anchorShape) {
 		// Keep corners on the grid even when the center lies halfway between grid lines.
 		const anchor =
@@ -76,18 +94,9 @@ export function moveShapes(
 			{ x: anchor.x + delta.x, y: anchor.y + delta.y },
 			gridStep,
 		);
-		delta = { x: target.x - anchor.x, y: target.y - anchor.y };
+		return { x: target.x - anchor.x, y: target.y - anchor.y };
 	}
-	const moved = shapes.map((shape) => ({
-		...shape,
-		x: shape.x + delta.x,
-		y: shape.y + delta.y,
-	}));
-	if (delta.x === 0 && delta.y === 0) return moved;
-	return connectTransformedTerminals(shapes, moved, allShapes, nextShapeId, {
-		pitch: gridStep,
-		delta,
-	});
+	return delta;
 }
 
 interface GraphNode {

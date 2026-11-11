@@ -8,6 +8,7 @@ import {
 	type ResizeHandle,
 	resizeShape,
 	resizeSymbolChild,
+	snappedMoveDelta,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
@@ -160,7 +161,25 @@ export function canvasDragStep(
 			movingShapeId: draft.id,
 		});
 	}
-	if (drag.mode === "move" || drag.mode === "duplicate") {
+	if (drag.mode === "duplicate") {
+		if (!moved) return none();
+		const step = snappedMoveDelta(
+			drag.anchorShape ?? drag.originals[0],
+			delta,
+			drag.gridStep,
+		);
+		return result({
+			kind: "preview",
+			movingShapeId: drag.anchorShape?.id ?? drag.originals[0].id,
+			replacements: drag.originals.map((shape) => ({
+				...shape,
+				x: shape.x + step.x,
+				y: shape.y + step.y,
+			})),
+			base: drag.initialShapes,
+		});
+	}
+	if (drag.mode === "move") {
 		if (!moved) return none();
 		return result({
 			kind: "preview",
@@ -170,7 +189,7 @@ export function canvasDragStep(
 				delta,
 				drag.gridStep,
 				drag.anchorShape,
-				drag.mode === "duplicate" ? drag.originals : drag.initialShapes,
+				drag.initialShapes,
 				context.nextId(),
 				context.allowLocked,
 			),

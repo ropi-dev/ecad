@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { drawShape, resizeHandles } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	drawShape,
+	type EditorShape,
+	resizeHandles,
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type CanvasDrag,
 	canvasDragStep,
@@ -256,4 +260,47 @@ test("a press on a pin waits for movement before it drags", () => {
 		context(),
 	);
 	assert.deepEqual(step.effect, { kind: "none" });
+});
+
+test("a duplicate moves every copy by one snapped step without adding wires", () => {
+	const label: EditorShape = {
+		id: 1,
+		kind: "text",
+		x: 10,
+		y: 0,
+		width: 8,
+		height: 2,
+		lineWidth: 0.2,
+		rotation: 0,
+		fontSize: 1.5,
+		horizontalAlign: "left",
+		verticalAlign: "bottom",
+		electrical: "net",
+		text: "SIGNAL",
+	};
+	const wire = drawShape(2, "wire", { x: 0, y: 0 }, { x: 20, y: 0 });
+	const active = drag({
+		mode: "duplicate",
+		created: true,
+		valid: false,
+		gridStep: 5,
+		originals: [label, wire],
+		anchorShape: label,
+		initialShapes: [label, wire],
+	});
+	const step = canvasDragStep(
+		active,
+		{ x: 6, y: -9 },
+		{ x: 120, y: 100 },
+		context(),
+	);
+	assert.deepEqual(step.effect, {
+		kind: "preview",
+		movingShapeId: 1,
+		replacements: [
+			{ ...label, x: 15, y: -10 },
+			{ ...wire, x: wire.x + 5, y: wire.y - 10 },
+		],
+		base: [label, wire],
+	});
 });
