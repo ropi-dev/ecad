@@ -63,7 +63,15 @@ test("editor-item-locks", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	const position = { x: box.width * 0.45, y: box.height * 0.5 };
 	await canvas.click({ position });
 	await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
+	const openAttributes = async () => {
+		// Shift keeps the press from selecting the symbol's text.
+		await canvas.dblclick({ position, modifiers: ["Shift"] });
+		await expect(
+			page.getByRole("checkbox", { name: "Locked", exact: true }),
+		).toBeVisible();
+	};
 	for (let repeat = 0; repeat < 3; repeat++) {
+		if (repeat === 1) await openAttributes();
 		await interaction(page, "symbol.lock", async () => {
 			if (repeat === 1)
 				await page
@@ -74,7 +82,10 @@ test("editor-item-locks", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 					.getByRole("button", { name: "Lock selection", exact: true })
 					.click();
 			await page.waitForFunction(
-				() => !document.querySelector('[aria-label="Selection attributes"]'),
+				() =>
+					document.querySelector<HTMLButtonElement>(
+						'[role="toolbar"] button[aria-label="Delete"]',
+					)?.disabled === true,
 				undefined,
 				{ polling: "raf" },
 			);
@@ -93,6 +104,7 @@ test("editor-item-locks", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 				{ polling: "raf" },
 			);
 		});
+		if (repeat === 1) await openAttributes();
 		await interaction(page, "symbol.unlock", async () => {
 			if (repeat === 1)
 				await page

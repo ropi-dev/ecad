@@ -1,9 +1,6 @@
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
-import { expect, test } from "@playwright/test";
-import {
-	selectSymbolAttribute,
-	selectSymbolParent,
-} from "../browser/symbol-items";
+import { expect, type Page, test } from "@playwright/test";
+import { selectSymbolParent } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
@@ -17,6 +14,22 @@ import {
 
 setupAppTests();
 
+async function openSymbolAttribute(page: Page, attribute: string) {
+	await selectSymbolParent(page);
+	const marker = required(
+		await page
+			.locator(
+				`[data-testid="text-anchor"][data-anchor-id$=":label:${attribute === "Reference" ? 0 : 1}"]`,
+			)
+			.boundingBox(),
+	);
+	await page.mouse.dblclick(
+		marker.x + marker.width / 2,
+		marker.y + marker.height / 2,
+	);
+	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
+}
+
 test(
 	"editor-symbol-text",
 	{ tag: ["@editor", "@symbols"] },
@@ -29,9 +42,9 @@ test(
 			.click();
 		const canvas = page.locator("canvas");
 		const box = required(await canvas.boundingBox());
-		await canvas.click({
-			position: { x: box.width * 0.5, y: box.height * 0.5 },
-		});
+		const position = { x: box.width * 0.5, y: box.height * 0.5 };
+		await canvas.click({ position });
+		await canvas.dblclick({ position });
 		const center = page.getByRole("spinbutton", {
 			name: "Center X",
 			exact: true,
@@ -39,7 +52,7 @@ test(
 		const initialCenter = await center.inputValue();
 		for (let repeat = 0; repeat < 3; repeat++) {
 			for (const attribute of ["Reference", "Value"]) {
-				await selectSymbolAttribute(page, attribute.toLowerCase());
+				await openSymbolAttribute(page, attribute);
 				await interaction(page, "symbol.text-position", async () => {
 					const input = page.getByRole("spinbutton", {
 						name: "Anchor X",
@@ -58,6 +71,7 @@ test(
 					);
 				});
 				await selectSymbolParent(page);
+				await canvas.dblclick({ position });
 				await expect(center).toHaveValue(initialCenter);
 			}
 		}

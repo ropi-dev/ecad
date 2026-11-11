@@ -114,10 +114,6 @@ async function createShape(page: Page, kind: string, x: number, y: number) {
 	if (kind === "Circle") await dragTo(page, [x, y], [x + g(6), y]);
 	else if (kind === "Wire") {
 		await placePin(page, x - g(12), y);
-		// Keep the attributes panel from covering the wire's far endpoint.
-		await page
-			.getByRole("button", { name: "Clear selection", exact: true })
-			.click();
 		await (await toolbarButton(page, "Wire")).click();
 		await clickAt(page, x - g(12), y);
 		await clickAt(page, x + g(12), y);
@@ -706,6 +702,37 @@ test("placement rotation leaves the selection untouched and resets after cancell
 		.toBe(0);
 });
 
+test("only a double click opens an item's attributes", async ({ page }) => {
+	const panel = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	const remove = page.getByRole("button", { name: "Delete", exact: true });
+	await createShape(page, "Rectangle", g(40), g(40));
+	await expect(remove).toBeEnabled();
+	await expect(panel).toHaveCount(0);
+	await page.keyboard.press("Escape");
+	await expect(remove).toBeDisabled();
+	await clickAt(page, g(40), g(40));
+	await expect(remove).toBeEnabled();
+	await expect(panel).toHaveCount(0);
+
+	const center = await screen(page, g(40), g(40));
+	await page.mouse.dblclick(center.x, center.y);
+	await expect(panel.getByText("Rectangle", { exact: true })).toBeVisible();
+	await dragTo(page, [g(40), g(40)], [g(52), g(40)]);
+	await expect
+		.poll(async () => (await nonPinState(page)).shapes[0].x)
+		.toBeCloseTo(g(52), 4);
+	await expect(panel).toBeVisible();
+
+	await clickAt(page, g(70), g(70));
+	await expect(remove).toBeDisabled();
+	await expect(panel).toHaveCount(0);
+	await clickAt(page, g(52), g(40));
+	await expect(remove).toBeEnabled();
+	await expect(panel).toHaveCount(0);
+});
+
 test("schematic pins are selectable but stay fixed to their symbol", async ({
 	page,
 }) => {
@@ -730,7 +757,8 @@ test("schematic pins are selectable but stay fixed to their symbol", async ({
 			return Math.hypot(end.x - middle.x, end.y - middle.y);
 		})
 		.toBeGreaterThan(12);
-	await clickAt(page, lead.x, lead.y);
+	const leadPoint = await screen(page, lead.x, lead.y);
+	await page.mouse.dblclick(leadPoint.x, leadPoint.y);
 
 	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
 	const panel = page.getByRole("complementary", {
@@ -864,14 +892,11 @@ test("panning shows the same picture as a full redraw", async ({ page }) => {
 	const shifted = await area();
 	// Selecting and clearing the rectangle redraws the whole scene in place.
 	const rectangle = await screen(page, g(40), g(40));
+	const remove = page.getByRole("button", { name: "Delete", exact: true });
 	await page.mouse.click(rectangle.x, rectangle.y);
-	await expect(
-		page.getByRole("button", { name: "Clear selection", exact: true }),
-	).toBeVisible();
+	await expect(remove).toBeEnabled();
 	await page.keyboard.press("Escape");
-	await expect(
-		page.getByRole("button", { name: "Clear selection", exact: true }),
-	).toHaveCount(0);
+	await expect(remove).toBeDisabled();
 	await settle();
 	// Grid dot coverage may round differently by a level.
 	expect(

@@ -45,8 +45,8 @@ test("editor-pin-wire", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		await page.getByRole("button", { name: "Select", exact: true }).click();
 		await expect(page.locator('[data-tool="select"]')).toBeAttached();
 		await expect(
-			page.getByRole("spinbutton", { name: "Length", exact: true }),
-		).toBeVisible();
+			page.getByRole("button", { name: "Delete", exact: true }),
+		).toBeEnabled();
 		saves = await saveCount(page);
 		await (await toolbarButton(page, "Undo")).click();
 	}

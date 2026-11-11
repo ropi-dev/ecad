@@ -53,6 +53,9 @@ test(
 			)
 			.toBeGreaterThan(0);
 		const bounds = required(await canvas.boundingBox());
+		const deleteButton = page
+			.getByRole("toolbar", { name: "Schematic tools", exact: true })
+			.getByRole("button", { name: "Delete", exact: true });
 		for (let repeat = 0; repeat < 3; repeat++) {
 			await interaction(page, "crossings.select-all", async () => {
 				await page.mouse.move(
@@ -65,13 +68,10 @@ test(
 					bounds.y + bounds.height * 0.8,
 				);
 				await page.mouse.up();
-				await expect(
-					page.getByText("Selected shapes", { exact: true }),
-				).toBeVisible();
+				await expect(deleteButton).toBeEnabled();
 			});
-			await page
-				.getByRole("button", { name: "Clear selection", exact: true })
-				.click();
+			await page.keyboard.press("Escape");
+			await expect(deleteButton).toBeDisabled();
 		}
 		const value = await report(page);
 		await finish(page, testInfo, "editor-wire-crossings", {

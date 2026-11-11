@@ -71,8 +71,10 @@ test(
 				.locator("canvas")
 				.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
 			await expect(
-				page.getByRole("textbox", { name: "Name", exact: true }),
-			).toHaveValue("Reference parent");
+				page
+					.getByRole("toolbar", { name: "Schematic tools", exact: true })
+					.getByRole("button", { name: "Delete", exact: true }),
+			).toBeEnabled();
 		});
 		await expect
 			.poll(async () =>

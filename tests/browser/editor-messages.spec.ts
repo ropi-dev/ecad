@@ -1,6 +1,7 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, type Page, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
+import { openPlacedShape } from "./symbol-items";
 
 test.use({
 	viewport: { width: 1440, height: 900 },
@@ -62,6 +63,7 @@ test.beforeEach(async ({ page }) => {
 	await page
 		.locator("canvas")
 		.click({ position: { x: box.width / 2, y: box.height / 2 } });
+	await openPlacedShape(page);
 	await expect(
 		page.getByRole("textbox", { name: "Reference", exact: true }),
 	).toHaveValue("R1");

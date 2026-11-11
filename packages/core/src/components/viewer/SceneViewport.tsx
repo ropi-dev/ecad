@@ -114,6 +114,7 @@ export function SceneViewport({
 	const [selectionInfo, setSelectionInfo] = useState<SceneSelection | null>(
 		null,
 	);
+	const [attributesOpen, setAttributesOpen] = useState(false);
 	const [controlsReady, setControlsReady] = useState(false);
 	const [exporting, setExporting] = useState(false);
 	const [exportError, setExportError] = useState("");
@@ -235,6 +236,7 @@ export function SceneViewport({
 		if (!element) return;
 		reportReady(false);
 		setSelectionInfo(null);
+		setAttributesOpen(false);
 		let viewport: SceneViewportRuntime | undefined;
 		try {
 			viewport = measurePerformance(
@@ -273,7 +275,11 @@ export function SceneViewport({
 							};
 							reportChange(snapshot);
 						},
-						onSelection: setSelectionInfo,
+						onSelection: (selection) => {
+							setSelectionInfo(selection);
+							setAttributesOpen(false);
+						},
+						onOpenSelection: () => setAttributesOpen(true),
 						onOrientation: (rotation) => axes.current?.update(rotation),
 						onZoom: reportZoom,
 						onReady: reportReady,
@@ -343,7 +349,7 @@ export function SceneViewport({
 					{exportError}
 				</p>
 			)}
-			{selectionInfo && (
+			{selectionInfo && attributesOpen && (
 				<FloatingPanel
 					label="Selection attributes"
 					position={selectionPosition}

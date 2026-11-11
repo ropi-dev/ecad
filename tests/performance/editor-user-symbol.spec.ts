@@ -56,10 +56,10 @@ test(
 			.getByRole("button", { name: "Insert User package", exact: true })
 			.click();
 		const bounds = required(await page.locator("canvas").boundingBox());
-		await page
-			.locator("canvas")
-			.click({ position: { x: bounds.width * 0.4, y: bounds.height / 2 } });
+		const placed = { x: bounds.width * 0.4, y: bounds.height / 2 };
+		await page.locator("canvas").click({ position: placed });
 		for (let repeat = 0; repeat < 3; repeat++) {
+			await page.locator("canvas").dblclick({ position: placed });
 			await interaction(page, "symbol.open-user-definition", async () => {
 				await page
 					.getByRole("button", { name: "Edit symbol", exact: true })

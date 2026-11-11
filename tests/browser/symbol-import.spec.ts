@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
+import {
+	type EditorSymbol,
+	shapeBounds,
+	symbolChildWorld,
+} from "@ecad/drawing-core/drawing/shapes.ts";
 import { test as base, expect, type Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { openProjectActions } from "./project-files";
+import { drawingPoint } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 const example = readFileSync(
@@ -92,6 +98,20 @@ test("uploads, previews, places, undoes, and restores custom symbols after reloa
 	const canvas = page.locator("canvas");
 	const box = required(await canvas.boundingBox());
 	await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
+	const placed = JSON.parse(
+		required(await page.locator("#editor-document").textContent()),
+	).shapes[0] as EditorSymbol;
+	const ring = shapeBounds(
+		symbolChildWorld(
+			placed,
+			required(placed.children.find((child) => child.kind === "circle")),
+		),
+	);
+	const edge = await drawingPoint(page, {
+		x: ring.maxX,
+		y: (ring.minY + ring.maxY) / 2,
+	});
+	await page.mouse.dblclick(edge.x, edge.y);
 	await expect(
 		page.getByRole("textbox", { name: "Reference", exact: true }),
 	).toHaveValue("TP1");

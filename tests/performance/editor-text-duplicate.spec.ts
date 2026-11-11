@@ -76,21 +76,11 @@ test(
 					});
 					await page.mouse.up();
 					await page.keyboard.up("Alt");
-					await page.waitForFunction(
-						({ field, text, id }) => {
-							const label = Array.from(document.querySelectorAll("dt")).find(
-								(item) => item.textContent === "ID",
-							);
-							return (
-								document.querySelector<HTMLTextAreaElement>(
-									`textarea[aria-label="${field}"]`,
-								)?.value === text &&
-								label?.parentElement?.querySelector("dd")?.textContent ===
-									String(id)
-							);
-						},
-						{ field: source.field, text: source.text, id: expectedId++ },
-					);
+					await expect(
+						page.locator(
+							`[data-testid="text-anchor"][data-anchor-id="${expectedId++}"]`,
+						),
+					).toBeAttached();
 				});
 				await saved(page, saves);
 			}

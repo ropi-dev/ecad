@@ -32,15 +32,23 @@ export async function selectDrawingShape(
 	);
 	const canvas = page.locator("canvas");
 	const bounds = required(await canvas.boundingBox());
-	await canvas.click({
-		position: { x: point.x - bounds.x, y: point.y - bounds.y },
-		modifiers,
-	});
+	const position = { x: point.x - bounds.x, y: point.y - bounds.y };
+	if (modifiers?.length) await canvas.click({ position, modifiers });
+	else await canvas.dblclick({ position });
 	await expect(page.getByTestId("symbol-child-selection")).toHaveCount(0);
 	if (shape.kind === "symbol" && !modifiers?.length)
 		await expect(
 			page.getByRole("textbox", { name: "Reference", exact: true }),
 		).toHaveValue(shape.attributes.reference);
+}
+
+export async function openPlacedShape(page: Page) {
+	const document = JSON.parse(
+		required(
+			await page.locator("#editor-document, #project-document").textContent(),
+		),
+	);
+	await selectDrawingShape(page, required(document.shapes.at(-1)).id);
 }
 
 export async function drawingPoint(

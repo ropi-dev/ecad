@@ -80,6 +80,10 @@ test(
 			y: bounds.y + bounds.height / 2,
 		};
 		for (let repeat = 0; repeat < 3; repeat++) {
+			await page.mouse.dblclick(source.x, source.y);
+			await expect(
+				page.getByRole("spinbutton", { name: "Center X", exact: true }),
+			).toBeVisible();
 			let saves = await saveCount(page);
 			await interaction(page, "component.move-connected", async () => {
 				await page.mouse.move(source.x, source.y);

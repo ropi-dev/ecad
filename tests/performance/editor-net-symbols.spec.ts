@@ -1,9 +1,29 @@
-import { expect, test } from "@playwright/test";
+import { snapCoordinate } from "@ecad/drawing-core/drawing/shapes.ts";
+import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
+import { expect, type Page, test } from "@playwright/test";
+import { drawingGridStep, drawingPoint } from "../browser/symbol-items";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, interaction, metric, ready, report } from "./app-helpers.ts";
 
 setupAppTests();
+
+async function placedPoint(
+	page: Page,
+	position: { x: number; y: number },
+	offset: { x: number; y: number },
+) {
+	const box = required(await page.locator("canvas").boundingBox());
+	const zero = await drawingPoint(page, { x: 0, y: 0 });
+	const unit = await drawingPoint(page, { x: 1, y: 1 });
+	const step = await drawingGridStep(page);
+	const world = (axis: "x" | "y") =>
+		snapCoordinate(
+			(box[axis] + position[axis] - zero[axis]) / (unit[axis] - zero[axis]),
+			step,
+		) + offset[axis];
+	return drawingPoint(page, { x: world("x"), y: world("y") });
+}
 
 test("editor-net-symbols", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await page.goto("/editor?perf=1");
@@ -16,11 +36,19 @@ test("editor-net-symbols", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 			.click();
 		const canvas = page.locator("canvas");
 		const bounds = required(await canvas.boundingBox());
-		await canvas.click({
-			position: {
-				x: bounds.width * (name === "Ground" ? 0.35 : 0.55),
-				y: bounds.height * 0.45,
-			},
+		const position = {
+			x: bounds.width * (name === "Ground" ? 0.35 : 0.55),
+			y: bounds.height * 0.45,
+		};
+		await canvas.click({ position });
+		const body = await placedPoint(page, position, {
+			x: 0,
+			y: fromMils(name === "Ground" ? 0 : 50),
+		});
+		// Shift keeps the press from starting a wire or picking a pin.
+		await canvas.dblclick({
+			position: { x: body.x - bounds.x, y: body.y - bounds.y },
+			modifiers: ["Shift"],
 		});
 		await expect(
 			page.getByRole("checkbox", { name: "Net symbol", exact: true }),

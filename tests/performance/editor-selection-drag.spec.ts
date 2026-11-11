@@ -188,8 +188,8 @@ test(
 			await page.mouse.move(end.x, end.y, { steps: 2 });
 			await page.mouse.up();
 			await expect(
-				page.getByText("Selected shapes", { exact: true }),
-			).toBeVisible();
+				page.getByRole("button", { name: "Delete", exact: true }),
+			).toBeEnabled();
 			gestures.push(
 				await interaction(page, "selection-drag.gesture", async () => {
 					await page.mouse.move(anchor.x, anchor.y);

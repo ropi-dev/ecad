@@ -64,6 +64,7 @@ import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
@@ -210,6 +211,14 @@ function EditorCanvas({
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
 	const [textFocusId, setTextFocusId] = useState<number | null>(null);
+	const [attributesFor, setAttributesFor] = useState<{
+		selection: ReadonlySet<number>;
+		childKey: string | null;
+	} | null>(null);
+	const openAttributes = useCallback(() => {
+		const { selection, childKey } = session.getState();
+		setAttributesFor({ selection, childKey });
+	}, [session]);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
 	const [ercOpen, setErcOpen] = useState(false);
 	const canvasArea = useRef<HTMLDivElement>(null);
@@ -253,6 +262,7 @@ function EditorCanvas({
 		symbolDefinition,
 		isSymbol,
 		setTextFocusId,
+		openAttributes,
 	});
 	const {
 		getDrag,
@@ -378,13 +388,23 @@ function EditorCanvas({
 		},
 	});
 
+	const editAttributes = useCallback(
+		(edit: SelectionEdit) => {
+			editSelection(edit);
+			openAttributes();
+		},
+		[editSelection, openAttributes],
+	);
+	const attributesShown =
+		attributesFor?.selection === selectedIds &&
+		attributesFor.childKey === selectedChildKey;
 	const selectionAttributes = useMemo(
 		() => (
 			<SelectionAttributes
 				shapes={selectedChild ? [selectedChild.shape] : selected}
 				isSymbolChild={selectedChild !== undefined}
 				readOnly={selectedChildFixed}
-				onEdit={editSelection}
+				onEdit={editAttributes}
 				onEditSymbol={
 					editTarget
 						? () => {
@@ -414,7 +434,7 @@ function EditorCanvas({
 			selectedChild,
 			selectedChildFixed,
 			selected,
-			editSelection,
+			editAttributes,
 			editTarget,
 			symbolPath,
 			suppliedStore,
@@ -638,7 +658,7 @@ function EditorCanvas({
 						</Suspense>
 					)}
 				</div>
-				{selectionAttributes}
+				{attributesShown && selectionAttributes}
 			</div>
 			{creatingSymbol && (
 				<CreateSymbolDialog

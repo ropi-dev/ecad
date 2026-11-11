@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
+import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>
@@ -54,6 +55,7 @@ test("attributes open and save the reusable project symbol definition", async ({
 		.getByRole("button", { name: "Insert Editable part", exact: true })
 		.click();
 	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await openPlacedShape(page);
 	// The instance name can differ from the definition name.
 	await page
 		.getByRole("textbox", { name: "Name", exact: true })
@@ -145,7 +147,7 @@ test("reusable symbol editing excludes net-symbol placement and role changes", a
 	await page
 		.getByRole("button", { name: "Insert Resistor", exact: true })
 		.click();
-	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await page.locator("canvas").dblclick({ position: { x: 600, y: 450 } });
 	await expect(
 		page.getByRole("textbox", { name: "Name", exact: true }),
 	).toHaveValue("Resistor");

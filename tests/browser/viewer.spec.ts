@@ -201,7 +201,7 @@ test("hovering a Gerber shape does not highlight it, but clicking selects it", a
 	for (let step = 0; step < 40 && !point; step++) {
 		const x = box.x + box.width * (0.35 + 0.3 * ((step % 8) / 7));
 		const y = box.y + box.height * (0.35 + 0.3 * (Math.floor(step / 8) / 4));
-		await page.mouse.click(x, y);
+		await page.mouse.dblclick(x, y);
 		if (await selection.isVisible()) point = { x, y };
 	}
 	const target = required(point);
@@ -211,6 +211,9 @@ test("hovering a Gerber shape does not highlight it, but clicking selects it", a
 	await page.waitForTimeout(300);
 	expect(await highlighted()).toBe(0);
 	await page.mouse.click(target.x, target.y);
+	await page.waitForTimeout(300);
+	await expect(selection).toBeHidden();
+	await page.mouse.dblclick(target.x, target.y);
 	await expect(selection).toBeVisible();
 	await page.mouse.move(target.x + 1, target.y);
 	await page.waitForTimeout(300);
@@ -368,14 +371,14 @@ test("clicking inside a hole in 3D selects the drill, not the copper it cuts", a
 		name: "Selection attributes",
 	});
 	const hole = screen(average(await corners("board-PTH.gbr")));
-	await page.mouse.click(hole.x, hole.y);
+	await page.mouse.dblclick(hole.x, hole.y);
 	await expect(selection).toContainText("board-PTH.gbr");
 	const copper = await corners("board-F_Cu.gbr");
 	const center = average(copper);
 	const beside = screen(
 		center.map((value, axis) => 0.7 * value + 0.3 * copper[0][axis]),
 	);
-	await page.mouse.click(beside.x, beside.y);
+	await page.mouse.dblclick(beside.x, beside.y);
 	await expect(selection).toContainText("board-F_Cu.gbr");
 	expect(errors).toEqual([]);
 });

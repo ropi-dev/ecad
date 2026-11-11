@@ -67,10 +67,13 @@ test(
 			);
 		}
 		// Selecting a finding selects the symbols behind it in the drawing.
+		const deleteButton = toolbar.getByRole("button", {
+			name: "Delete",
+			exact: true,
+		});
+		await expect(deleteButton).toBeDisabled();
 		await panel.getByRole("listitem").first().getByRole("button").click();
-		await expect(
-			page.getByRole("complementary", { name: "Selection attributes" }),
-		).toBeVisible();
+		await expect(deleteButton).toBeEnabled();
 		await page.screenshot({
 			path: resolve("perf-artifacts/schematic-erc.png"),
 		});
