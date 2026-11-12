@@ -385,6 +385,7 @@ function createWindow() {
 		minWidth: 720,
 		minHeight: 480,
 		title: "ECAD desktop",
+		show: false,
 		// The app background, so the window does not flash before the page paints.
 		backgroundColor: viewerTheme.background,
 		// Linux and Windows drop the title bar and its buttons: the sidebar's
@@ -402,6 +403,8 @@ function createWindow() {
 	// default File/Edit/View menu bar. macOS keeps its app menu at the top of
 	// the screen, which also provides the standard Cmd shortcuts.
 	window.removeMenu();
+	window.maximize();
+	window.show();
 	window.webContents.on("before-input-event", (event, input) => {
 		if (input.type !== "keyDown" || !isDevToolsShortcut(input)) return;
 		event.preventDefault();

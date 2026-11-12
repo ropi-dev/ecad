@@ -33,6 +33,8 @@ async function boot() {
 		on() {}
 		loadURL() {}
 		removeMenu() {}
+		maximize() {}
+		show() {}
 		static getAllWindows() {
 			return [Window];
 		}
