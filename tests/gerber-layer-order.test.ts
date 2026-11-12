@@ -180,6 +180,18 @@ test("drill layers become barrels that span the board in 3D", () => {
 	const part = (name: string) =>
 		object.children.find((child) => child.userData.planarPart === name) as Mesh;
 	const barrel = part("walls");
+	assert.equal(barrel.geometry.getAttribute("position"), undefined);
+	const flat = new Box3().setFromObject(object);
+	assert.deepEqual([flat.min.z, flat.max.z], [-0.5, 0.5]);
+	stylePlanarObject3D(object, "#ffaa00", 1, false);
+	assert.equal(barrel.geometry.getAttribute("position"), undefined);
+	const shown = object.clone(true);
+	stylePlanarObject3D(shown, "#ffaa00", 1, false, placeBoardLayers([drill])[0]);
+	const shownBarrel = shown.children.find(
+		(child) => child.userData.planarPart === "walls",
+	) as Mesh;
+	assert.equal(shownBarrel.visible, true);
+	assert.equal(shownBarrel.geometry, barrel.geometry);
 	assert.equal(
 		barrel.geometry.getAttribute("position").count,
 		(compiled.edges.length / 6) * 24,
@@ -190,6 +202,11 @@ test("drill layers become barrels that span the board in 3D", () => {
 		radii.push(Math.hypot(position.getX(index) - 2, position.getY(index) - 3));
 	assert.ok(Math.abs(Math.max(...radii) - 0.5) < 1e-3);
 	assert.ok(Math.abs(Math.min(...radii) - (0.5 - DRILL_WALL)) < 0.01);
+	barrel.scale.z = 1;
+	barrel.updateMatrixWorld(true);
+	const built = new Box3().setFromObject(object);
+	assert.deepEqual(built.min.toArray(), flat.min.toArray());
+	assert.deepEqual(built.max.toArray(), flat.max.toArray());
 	stylePlanarObject3D(
 		object,
 		"#ffaa00",

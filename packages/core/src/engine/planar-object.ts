@@ -1,6 +1,7 @@
 import {
 	AdditiveBlending,
 	AlwaysStencilFunc,
+	Box3,
 	BufferAttribute,
 	BufferGeometry,
 	type Camera,
@@ -43,6 +44,7 @@ import { PlanarOutline } from "#/engine/planar-outline.ts";
 import type { Bounds, PlanarObject } from "#/engine/types.ts";
 
 const geometries = new WeakMap<Object3D, PlanarGeometry>();
+const pendingWalls = new WeakMap<BufferGeometry, () => BufferGeometry>();
 
 /** Reuse resolved surfaces for picking, including meshes borrowed by another viewer. */
 export const getPlanarGeometry = (object: Object3D) => geometries.get(object);
@@ -140,10 +142,18 @@ export function createPlanarObject3D(
 		fill.userData.planarPart = "fill";
 		object.add(fill);
 		if (extrude) {
-			const walls = new Mesh(
+			geometry.computeBoundingBox();
+			const pending = new BufferGeometry();
+			pending.boundingBox = new Box3().copy(geometry.boundingBox ?? new Box3());
+			pending.boundingBox.min.z = -0.5;
+			pending.boundingBox.max.z = 0.5;
+			pendingWalls.set(pending, () =>
 				extrude === "barrel"
 					? createTubeGeometry(compiled, wall)
 					: createWallGeometry(compiled),
+			);
+			const walls = new Mesh(
+				pending,
 				extrude === "barrel"
 					? new MeshStandardMaterial({
 							color: source.color,
@@ -258,6 +268,14 @@ export function stylePlanarObject3D(
 		) {
 			const thickness = stack?.thickness ?? 0;
 			part.visible = barrel || slab;
+			const build = part.visible && pendingWalls.get(part.geometry);
+			if (build) {
+				pendingWalls.delete(part.geometry);
+				const built = build();
+				for (const name of Object.keys(built.attributes))
+					part.geometry.setAttribute(name, built.getAttribute(name));
+				part.geometry.boundingBox = null;
+			}
 			part.scale.z = thickness || 1;
 			part.position.z = slab
 				? (-(Math.sign(stack?.z ?? 0) || 1) * thickness) / 2
