@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { Box3, type Mesh } from "three";
+import { Box3, BufferGeometry, type Mesh } from "three";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
-import { offsetRing, planarRings } from "#/engine/planar-holes.ts";
+import {
+	createTubeGeometry,
+	offsetRing,
+	planarRings,
+} from "#/engine/planar-holes.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
@@ -324,4 +328,14 @@ test("hole walls offset inward and stay open in tiny holes", () => {
 		},
 	]);
 	assert.equal(planarRings(compiled.edges).length, 2);
+	for (const wall of [0, DRILL_WALL, 5]) {
+		const tube = createTubeGeometry(compiled, wall);
+		const reference = new BufferGeometry();
+		reference.setAttribute("position", tube.getAttribute("position"));
+		reference.computeVertexNormals();
+		assert.deepEqual(
+			tube.getAttribute("normal").array,
+			reference.getAttribute("normal").array,
+		);
+	}
 });

@@ -81,6 +81,28 @@ export function offsetRing(ring: Ring, distance: number): Ring {
 	});
 }
 
+function faceNormals(vertices: Float32Array) {
+	const normals = new Float32Array(vertices.length);
+	for (let index = 0; index < vertices.length; index += 9) {
+		const abx = vertices[index] - vertices[index + 3],
+			aby = vertices[index + 1] - vertices[index + 4],
+			abz = vertices[index + 2] - vertices[index + 5];
+		const cbx = vertices[index + 6] - vertices[index + 3],
+			cby = vertices[index + 7] - vertices[index + 4],
+			cbz = vertices[index + 8] - vertices[index + 5];
+		const x = Math.fround(cby * abz - cbz * aby),
+			y = Math.fround(cbz * abx - cbx * abz),
+			z = Math.fround(cbx * aby - cby * abx);
+		const scale = 1 / (Math.sqrt(x * x + y * y + z * z) || 1);
+		for (let corner = index; corner < index + 9; corner += 3) {
+			normals[corner] = x * scale;
+			normals[corner + 1] = y * scale;
+			normals[corner + 2] = z * scale;
+		}
+	}
+	return normals;
+}
+
 export function createTubeGeometry(compiled: PlanarGeometry, wall: number) {
 	const rings = planarRings(compiled.edges);
 	const vertices = new Float32Array(
@@ -93,12 +115,25 @@ export function createTubeGeometry(compiled: PlanarGeometry, wall: number) {
 		vertices[offset++] = z;
 	};
 	const quad = (
-		a: [number, number, number],
-		b: [number, number, number],
-		c: [number, number, number],
-		d: [number, number, number],
+		ax: number,
+		ay: number,
+		az: number,
+		bx: number,
+		by: number,
+		bz: number,
+		cx: number,
+		cy: number,
+		cz: number,
+		dx: number,
+		dy: number,
+		dz: number,
 	) => {
-		for (const point of [a, b, c, a, c, d]) push(...point);
+		push(ax, ay, az);
+		push(bx, by, bz);
+		push(cx, cy, cz);
+		push(ax, ay, az);
+		push(cx, cy, cz);
+		push(dx, dy, dz);
 	};
 	for (const outer of rings) {
 		const inner = offsetRing(outer, wall);
@@ -108,15 +143,18 @@ export function createTubeGeometry(compiled: PlanarGeometry, wall: number) {
 				[nx, ny] = outer[next];
 			const [ix, iy] = inner[index],
 				[jx, jy] = inner[next];
-			quad([ox, oy, -0.5], [nx, ny, -0.5], [nx, ny, 0.5], [ox, oy, 0.5]);
-			quad([ix, iy, -0.5], [ix, iy, 0.5], [jx, jy, 0.5], [jx, jy, -0.5]);
-			quad([ox, oy, 0.5], [nx, ny, 0.5], [jx, jy, 0.5], [ix, iy, 0.5]);
-			quad([ox, oy, -0.5], [ix, iy, -0.5], [jx, jy, -0.5], [nx, ny, -0.5]);
+			quad(ox, oy, -0.5, nx, ny, -0.5, nx, ny, 0.5, ox, oy, 0.5);
+			quad(ix, iy, -0.5, ix, iy, 0.5, jx, jy, 0.5, jx, jy, -0.5);
+			quad(ox, oy, 0.5, nx, ny, 0.5, jx, jy, 0.5, ix, iy, 0.5);
+			quad(ox, oy, -0.5, ix, iy, -0.5, jx, jy, -0.5, nx, ny, -0.5);
 		}
 	}
 	const geometry = new BufferGeometry();
 	geometry.setAttribute("position", new BufferAttribute(vertices, 3));
-	geometry.computeVertexNormals();
+	geometry.setAttribute(
+		"normal",
+		new BufferAttribute(faceNormals(vertices), 3),
+	);
 	return geometry;
 }
 
