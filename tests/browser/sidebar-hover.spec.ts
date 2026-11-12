@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
+import { openProjectFiles } from "./project-files";
 
 test("the sidebar slides over the workspace from its button and the left edge", async ({
 	page,
@@ -143,6 +144,50 @@ test("Ctrl+Shift+S toggles pinned and Compact states, including from file search
 	await expect(
 		sidebar.getByRole("button", { name: "Pin sidebar", exact: true }),
 	).toHaveAttribute("aria-pressed", "false");
+});
+
+test("opening a file closes the sidebar unless it is pinned", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	const sidebar = await openProjectFiles(page);
+	const drawing = sidebar.getByRole("link", {
+		name: "Open Untitled.ecaddraw",
+		exact: true,
+	});
+	await drawing.click();
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await expect(
+		page.getByRole("heading", { level: 1, name: /^Schematic editor/ }),
+	).toBeVisible();
+	await openProjectFiles(page);
+	await sidebar
+		.getByRole("link", {
+			name: "Open Untitled.ecaddraw in circuit view",
+			exact: true,
+		})
+		.click();
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await page
+		.getByRole("button", { name: "Show project files", exact: true })
+		.click();
+	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await drawing.click();
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	await expect(page.getByTestId("sidebar-backdrop")).toHaveCount(0);
+	await openProjectFiles(page);
+	await sidebar
+		.getByRole("button", { name: "Pin sidebar", exact: true })
+		.click();
+	await sidebar
+		.getByRole("link", {
+			name: "Open Untitled.ecaddraw in circuit view",
+			exact: true,
+		})
+		.click();
+	await page.mouse.move(900, 400);
+	await expect(sidebar).toHaveAttribute("data-pinned", "true");
+	await expect(sidebar).toHaveAttribute("data-open", "true");
 });
 
 test.describe("touch sidebar", () => {

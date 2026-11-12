@@ -82,6 +82,7 @@ test(
 			element.setAttribute("data-test-identity", "persistent");
 		});
 		for (let repeat = 0; repeat < 3; repeat++) {
+			await openProjectFiles(page);
 			await sidebar.getByLabel("Search project files").fill("sidebar-package");
 			await interaction(page, "sidebar.open-symbol", async () => {
 				await sidebar
@@ -96,6 +97,7 @@ test(
 			await expect(sidebar.getByLabel("Search project files")).toHaveValue(
 				"sidebar-package",
 			);
+			await openProjectFiles(page);
 			await sidebar.getByRole("button", { name: "Clear file search" }).click();
 			await interaction(page, "sidebar.open-drawing", async () => {
 				await sidebar

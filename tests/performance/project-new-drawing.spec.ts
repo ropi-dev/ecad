@@ -82,6 +82,7 @@ test(
 					);
 				}),
 			);
+			await openProjectFiles(page);
 			await sidebar
 				.getByRole("link", {
 					name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/,
