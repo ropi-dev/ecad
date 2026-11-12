@@ -173,9 +173,6 @@ export function ProjectFilesSidebar({
 	const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 	const [filterRow, setFilterRow] = useState<HTMLFieldSetElement | null>(null);
 	useScrollEdges(filterRow);
-	// Lets the start page open the sidebar, as its own button does.
-	const openDrawer = useCallback(() => setTouchOpen(true), []);
-	useEffect(() => registerSidebar?.(openDrawer), [registerSidebar, openDrawer]);
 	const [hovered, setHovered] = useState(false);
 	const [focused, setFocused] = useState(false);
 	const [touchOpen, setTouchOpen] = useState(false);
@@ -240,6 +237,39 @@ export function ProjectFilesSidebar({
 		setTouchOpen(false);
 		setPinned((current) => !current);
 	}, [setHoveredNow]);
+	const sidebarActions = useMemo(
+		() => ({
+			open: () => setTouchOpen(true),
+			openAddMenu: () => {
+				setTouchOpen(true);
+				setAddMenuOpen(true);
+			},
+			openSettings: () => setSettingsOpen(true),
+		}),
+		[],
+	);
+	useEffect(
+		() => registerSidebar?.(sidebarActions),
+		[registerSidebar, sidebarActions],
+	);
+	const canAddFile = !!project?.project && !project.busy && !importing;
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (
+				!hasShortcutModifier(event) ||
+				event.altKey ||
+				!event.shiftKey ||
+				event.code !== "KeyN" ||
+				event.isComposing
+			)
+				return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			if (!event.repeat && canAddFile) sidebarActions.openAddMenu();
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, [canAddFile, sidebarActions]);
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (

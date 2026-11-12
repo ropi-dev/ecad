@@ -352,12 +352,19 @@ for (const platform of ["MacIntel", "Win32"]) {
 		await page.goto("/tests/browser/projects.html");
 		await expect(
 			page.getByLabel("Workspace instructions", { exact: true }),
-		).toContainText(mac ? "⌘+Shift+S" : "Ctrl+Shift+S");
+		).toContainText(mac ? "⌘+Shift+N" : "Ctrl+Shift+N");
 		const sidebar = page.getByRole("complementary", {
 			name: "Project files",
 			exact: true,
 			includeHidden: true,
 		});
+		const addFile = page.getByRole("menu", { name: "Add file", exact: true });
+		await page.keyboard.press(`${other}+Shift+n`);
+		await expect(addFile).toHaveCount(0);
+		await page.keyboard.press(`${modifier}+Shift+n`);
+		await expect(addFile).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(addFile).toHaveCount(0);
 		await page.keyboard.press(`${other}+Shift+s`);
 		await expect(sidebar).toHaveAttribute("data-pinned", "false");
 		await page.keyboard.press(`${modifier}+Shift+s`);

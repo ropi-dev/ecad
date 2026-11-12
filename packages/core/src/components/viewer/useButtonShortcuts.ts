@@ -69,6 +69,11 @@ const keyFor = (event: KeyboardEvent) => {
 
 let users = 0;
 let dispose: (() => void) | undefined;
+let reveal: (() => void) | undefined;
+
+export function revealButtonShortcuts() {
+	reveal?.();
+}
 
 function listen() {
 	const shortcut = shortcutModifier();
@@ -82,6 +87,7 @@ function listen() {
 	document.body.append(overlay);
 	let held = false;
 	let revealed = false;
+	let clicked = false;
 	let revealTimer: ReturnType<typeof setTimeout> | undefined;
 	let frame = 0;
 	const keys = new Map<HTMLButtonElement, string>();
@@ -89,6 +95,7 @@ function listen() {
 	const hide = () => {
 		held = false;
 		revealed = false;
+		clicked = false;
 		clearTimeout(revealTimer);
 		revealTimer = undefined;
 		observer.disconnect();
@@ -304,6 +311,17 @@ function listen() {
 	const keyup = (event: KeyboardEvent) => {
 		if (event.key === shortcut.key || !event[shortcut.flag]) hide();
 	};
+	const pointerdown = () => {
+		if (clicked) hide();
+	};
+	reveal = () => {
+		if (held) return;
+		held = true;
+		revealed = true;
+		clicked = true;
+		observer.observe(document.body, observation);
+		refresh();
+	};
 	// A view overlay such as the rulers changes on every frame of a pan or
 	// zoom, and Ctrl is held for a wheel zoom. An overlay that neither holds
 	// nor moves a button sets `data-shortcut-mutations="ignore"`, so its
@@ -335,6 +353,7 @@ function listen() {
 	};
 	window.addEventListener("keydown", keydown, true);
 	window.addEventListener("keyup", keyup, true);
+	window.addEventListener("pointerdown", pointerdown, true);
 	window.addEventListener("blur", hide);
 	document.addEventListener("visibilitychange", hide);
 	window.addEventListener("scroll", schedule, true);
@@ -345,7 +364,9 @@ function listen() {
 		overlay.remove();
 		window.removeEventListener("keydown", keydown, true);
 		window.removeEventListener("keyup", keyup, true);
+		window.removeEventListener("pointerdown", pointerdown, true);
 		window.removeEventListener("blur", hide);
+		reveal = undefined;
 		document.removeEventListener("visibilitychange", hide);
 		window.removeEventListener("scroll", schedule, true);
 		window.removeEventListener("resize", schedule);
