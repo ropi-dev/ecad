@@ -42,12 +42,12 @@ test(
 		await (await openProjectFiles(page))
 			.getByLabel("Add Gerber files")
 			.setInputFiles({
-				name: "PTH.gbr",
+				name: "Pads-F_Cu.gbr",
 				mimeType: "text/plain",
 				buffer: Buffer.from(pthGerber(2000, false)),
 			});
 		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Open PTH.gbr", exact: true })
+			.getByRole("link", { name: "Open Pads-F_Cu.gbr", exact: true })
 			.click();
 		await expect
 			.poll(
@@ -99,12 +99,12 @@ test(
 			.toBeNull();
 		started = await page.evaluate(() => performance.now());
 		await (await openProjectFiles(page))
-			.getByRole("link", { name: "Open PTH.gbr", exact: true })
+			.getByRole("link", { name: "Open Pads-F_Cu.gbr", exact: true })
 			.click();
 		await expect.poll(importedFiles).toBe(1);
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("file"))
-			.toMatch(/PTH\.gbr$/);
+			.toMatch(/Pads-F_Cu\.gbr$/);
 		started = await page.evaluate(() => performance.now());
 		await page.goBack();
 		await expect.poll(importedFiles).toBe(2);
@@ -116,6 +116,6 @@ test(
 		await expect.poll(importedFiles).toBe(1);
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("file"))
-			.toMatch(/PTH\.gbr$/);
+			.toMatch(/Pads-F_Cu\.gbr$/);
 	},
 );

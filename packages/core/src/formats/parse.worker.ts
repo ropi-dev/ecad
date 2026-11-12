@@ -5,9 +5,12 @@ self.onmessage = (
 ) => {
 	const { id, source, filename } = event.data;
 	const reply = parseWorkerReply(source, filename);
-	const mesh = "result" in reply ? reply.result.mesh : undefined;
-	self.postMessage(
-		{ id, ...reply },
-		{ transfer: mesh ? [mesh.positions.buffer, mesh.edges.buffer] : [] },
-	);
+	const { mesh, walls } = "result" in reply ? reply.result : {};
+	const buffers = [
+		mesh?.positions,
+		mesh?.edges,
+		walls?.positions,
+		walls?.normals,
+	].flatMap((array) => (array ? [array.buffer] : []));
+	self.postMessage({ id, ...reply }, { transfer: buffers });
 };

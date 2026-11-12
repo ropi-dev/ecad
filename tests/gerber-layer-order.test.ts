@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { Box3, BufferGeometry, type Mesh } from "three";
+import { Box3, BufferAttribute, BufferGeometry, type Mesh } from "three";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
-import {
-	createTubeGeometry,
-	offsetRing,
-	planarRings,
-} from "#/engine/planar-holes.ts";
 import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
 	stylePlanarObject3D,
 } from "#/engine/planar-object.ts";
+import {
+	buildPlanarWalls,
+	offsetRing,
+	planarRings,
+} from "#/engine/planar-walls.ts";
 import { expandGerberFile } from "#/formats/expandGerberFile.ts";
 import {
 	DRILL_WALL,
@@ -20,6 +20,7 @@ import {
 	placeBoardLayers,
 } from "#/formats/gerber/board-stack.ts";
 import { gerberLayerOrder } from "#/formats/gerber/layer-order.ts";
+import { parseWorkerReply } from "#/formats/parse-reply.ts";
 import { installArchiveWorker } from "./helpers/archive-worker";
 
 after(installArchiveWorker().restore);
@@ -175,7 +176,7 @@ test("drill layers become barrels that span the board in 3D", () => {
 			type: "planar",
 		},
 		compiled,
-		{ extrude: "barrel", wall: DRILL_WALL },
+		buildPlanarWalls(compiled.edges, "barrel", DRILL_WALL),
 	);
 	const part = (name: string) =>
 		object.children.find((child) => child.userData.planarPart === name) as Mesh;
@@ -236,7 +237,7 @@ test("surface layers extrude inward from their outer face in 3D", () => {
 				type: "planar",
 			},
 			compiled,
-			{ extrude: "slab" },
+			buildPlanarWalls(compiled.edges, "slab"),
 		);
 		const placement = placeBoardLayers([layer])[0];
 		object.position.z = placement.z;
@@ -329,13 +330,34 @@ test("hole walls offset inward and stay open in tiny holes", () => {
 	]);
 	assert.equal(planarRings(compiled.edges).length, 2);
 	for (const wall of [0, DRILL_WALL, 5]) {
-		const tube = createTubeGeometry(compiled, wall);
+		const barrel = buildPlanarWalls(compiled.edges, "barrel", wall);
 		const reference = new BufferGeometry();
-		reference.setAttribute("position", tube.getAttribute("position"));
-		reference.computeVertexNormals();
-		assert.deepEqual(
-			tube.getAttribute("normal").array,
-			reference.getAttribute("normal").array,
+		reference.setAttribute(
+			"position",
+			new BufferAttribute(barrel.positions, 3),
 		);
+		reference.computeVertexNormals();
+		assert.deepEqual(barrel.normals, reference.getAttribute("normal").array);
 	}
+});
+
+test("the parse worker builds a layer's 3D walls and hands their buffers over", () => {
+	const walls = (fileFunction: string, filename: string) => {
+		const reply = parseWorkerReply(source(fileFunction), filename);
+		assert.ok("result" in reply);
+		assert.ok(reply.result.mesh && reply.result.walls);
+		return { mesh: reply.result.mesh, ...reply.result.walls };
+	};
+	const drill = walls("Plated,1,2,PTH", "holes.gbr");
+	assert.equal(drill.extrude, "barrel");
+	assert.equal(drill.positions.length, (drill.mesh.edges.length / 6) * 24 * 3);
+	assert.equal(drill.normals?.length, drill.positions.length);
+	assert.equal(walls("", "board-PTH.gbr").extrude, "barrel");
+	const copper = walls("Copper,L1,Top", "top.gbr");
+	assert.equal(copper.extrude, "slab");
+	assert.equal(copper.positions.length, (copper.mesh.edges.length / 6) * 6 * 3);
+	assert.equal(copper.normals, undefined);
+	assert.notEqual(copper.positions.buffer, copper.mesh.edges.buffer);
+	const fatal = parseWorkerReply("not a gerber file", "top.gbr");
+	assert.ok(!("result" in fatal) || !fatal.result.walls);
 });

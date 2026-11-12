@@ -12,7 +12,6 @@ import {
 	formatDiagnostic,
 	summarizeDiagnostics,
 } from "#/formats/diagnostics.ts";
-import { DRILL_WALL, isDrillLayer } from "#/formats/gerber/board-stack.ts";
 import {
 	acquireImported,
 	checkFileSize,
@@ -85,11 +84,7 @@ export function parseGerberFileEffect(file: File) {
 							id: `${id}:${object.id}`,
 						})),
 					};
-					const mesh = createPlanarObject3D(drawing, geometry, {
-						...(isDrillLayer(drawing)
-							? { extrude: "barrel", wall: DRILL_WALL }
-							: { extrude: "slab" }),
-					});
+					const mesh = createPlanarObject3D(drawing, geometry, parsed.walls);
 					let disposed = false;
 					const dispose = () => {
 						if (disposed) return;
