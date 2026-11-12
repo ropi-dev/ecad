@@ -24,6 +24,12 @@ export interface WorkspaceDocument {
 	plain: boolean;
 }
 
+export interface SidebarActions {
+	open: () => void;
+	openAddMenu: () => void;
+	openSettings: () => void;
+}
+
 interface WorkspaceControlsValue {
 	editor: EditorControls | null;
 	registerEditor: (
@@ -32,15 +38,14 @@ interface WorkspaceControlsValue {
 	) => () => void;
 	document: WorkspaceDocument | null;
 	sidebarPinned: boolean;
-	/** Opens the file sidebar as a drawer. Null while no sidebar is mounted. */
-	openSidebar: (() => void) | null;
+	sidebar: SidebarActions | null;
 }
 
 interface WorkspaceRegistration {
 	registerEditor: WorkspaceControlsValue["registerEditor"];
 	registerDocument: (document: WorkspaceDocument) => () => void;
 	setSidebarPinned: (pinned: boolean) => void;
-	registerSidebar: (open: () => void) => () => void;
+	registerSidebar: (actions: SidebarActions) => () => void;
 }
 
 const WorkspaceControls = createContext<WorkspaceControlsValue | null>(null);
@@ -60,11 +65,11 @@ export function WorkspaceControlsProvider({
 		(WorkspaceDocument & { id: symbol })[]
 	>([]);
 	const [sidebarPinned, setSidebarPinned] = useState(false);
-	const [openSidebar, setOpenSidebar] = useState<(() => void) | null>(null);
-	const registerSidebar = useCallback((open: () => void) => {
-		setOpenSidebar(() => open);
+	const [sidebar, setSidebar] = useState<SidebarActions | null>(null);
+	const registerSidebar = useCallback((actions: SidebarActions) => {
+		setSidebar(actions);
 		return () =>
-			setOpenSidebar((current) => (current === open ? null : current));
+			setSidebar((current) => (current === actions ? null : current));
 	}, []);
 	const registerEditor = useCallback(
 		(store: EditorControls["store"], enableMcp: boolean) => {
@@ -96,9 +101,9 @@ export function WorkspaceControlsProvider({
 			registerEditor,
 			document: documents.at(-1) ?? null,
 			sidebarPinned,
-			openSidebar,
+			sidebar,
 		}),
-		[editors, registerEditor, documents, sidebarPinned, openSidebar],
+		[editors, registerEditor, documents, sidebarPinned, sidebar],
 	);
 	return (
 		<Registration.Provider value={registration}>
