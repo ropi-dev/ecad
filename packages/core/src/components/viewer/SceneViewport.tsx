@@ -314,7 +314,7 @@ export function SceneViewport({
 		runtime.current?.setGrid(grid);
 	}, [grid]);
 	useEffect(() => {
-		runtime.current?.resize(size.width, size.height);
+		if (size) runtime.current?.resize(size.width, size.height);
 	}, [size]);
 	const exportingRef = useRef(false);
 	// Stable, so toolbars reading it through context don't re-render on zoom.
