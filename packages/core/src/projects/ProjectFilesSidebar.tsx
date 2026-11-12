@@ -24,6 +24,7 @@ import { DropdownMenu, Tooltip } from "radix-ui";
 import {
 	Fragment,
 	lazy,
+	type ReactNode,
 	Suspense,
 	useCallback,
 	useEffect,
@@ -131,9 +132,11 @@ interface ProjectFile {
 
 export function ProjectFilesSidebar({
 	onExit,
+	footerActions,
 }: {
 	/** Quits the app. The Exit button shows only when it is given. */
 	onExit?: () => void;
+	footerActions?: ReactNode;
 } = {}) {
 	const project = useProjectSelection(
 		({
@@ -1198,6 +1201,7 @@ export function ProjectFilesSidebar({
 						>
 							<Settings size={15} aria-hidden="true" />
 						</TooltipButton>
+						{footerActions}
 						{/* Lit while the sidebar is pinned beside the workspace. */}
 						<TooltipButton
 							aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}

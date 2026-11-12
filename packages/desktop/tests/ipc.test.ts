@@ -8,6 +8,7 @@ import {
 	libraryChannels,
 	projectChannels,
 	settingsChannels,
+	updateChannels,
 } from "#/bridge.ts";
 import { ipcArguments, parseIpcArguments } from "#/main/ipc.ts";
 
@@ -38,6 +39,7 @@ test("every invoke channel validates its arguments", () => {
 		...Object.values(settingsChannels),
 		displayChannels.getCalibration,
 		appChannels.quit,
+		...Object.values(updateChannels),
 	];
 	assert.deepEqual(Object.keys(ipcArguments).sort(), [...channels].sort());
 });

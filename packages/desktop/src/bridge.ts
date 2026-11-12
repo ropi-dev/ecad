@@ -66,6 +66,7 @@ declare global {
 		ecadProjects: ProjectStorage;
 		ecadApp: DesktopAppBridge;
 		ecadSettings: DesktopSettingsBridge;
+		ecadUpdates: DesktopUpdatesBridge;
 	}
 }
 
@@ -95,6 +96,40 @@ export const appChannels = {
 	quit: "app:quit",
 } as const;
 
+export interface DesktopRelease {
+	version: string;
+	changes: string[];
+}
+
+export type DesktopUpdateState =
+	| { status: "idle"; latest?: DesktopRelease; checkError?: string }
+	| { status: "checking"; latest?: DesktopRelease }
+	| { status: "available"; latest: DesktopRelease }
+	| { status: "downloading"; latest: DesktopRelease; progress: number }
+	| { status: "installing"; latest: DesktopRelease }
+	| { status: "installed"; latest: DesktopRelease }
+	| { status: "failed"; latest: DesktopRelease; message: string };
+
+export interface DesktopUpdatesBridge {
+	/** @return null when this build does not update itself. */
+	getState(): Promise<DesktopUpdateState | null>;
+	check(): Promise<void>;
+	install(): Promise<void>;
+	restart(): Promise<void>;
+	onChanged(listener: (state: DesktopUpdateState) => void): () => void;
+}
+
+export const updateChannels = {
+	getState: "updates:get-state",
+	check: "updates:check",
+	install: "updates:install",
+	restart: "updates:restart",
+} as const;
+
+export const updateEvents = {
+	changed: "updates:changed",
+} as const;
+
 export const displayChannels = {
 	getCalibration: "display:calibration",
 	changed: "display:changed",
@@ -105,5 +140,6 @@ export type InvokeChannel =
 	| (typeof libraryChannels)[keyof typeof libraryChannels]
 	| (typeof projectChannels)[keyof typeof projectChannels]
 	| (typeof settingsChannels)[keyof typeof settingsChannels]
+	| (typeof updateChannels)[keyof typeof updateChannels]
 	| typeof displayChannels.getCalibration
 	| typeof appChannels.quit;

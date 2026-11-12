@@ -85,6 +85,7 @@ async function boot() {
 		"#/main/library-approvals.ts": { ExternalLibraryApprovals: class {} },
 		"#/main/projects.ts": { DesktopProjects: class {} },
 		"#/main/symbol-library.ts": { DesktopSymbolLibrary: Library },
+		"#/main/updates.ts": { readPackagedDistribution: () => null },
 	};
 	const source = await readFile(
 		new URL("../src/main/main.ts", import.meta.url),
