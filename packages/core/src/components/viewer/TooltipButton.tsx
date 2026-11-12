@@ -1,5 +1,5 @@
 import { Tooltip } from "radix-ui";
-import { type ComponentProps, useState } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { formatShortcut } from "#/components/viewer/shortcutModifier.ts";
 
 const tooltipClassName =
@@ -10,7 +10,7 @@ export function TooltipButton({
 	shortcut,
 	...props
 }: Omit<ComponentProps<"button">, "title"> & {
-	tooltip: string;
+	tooltip: ReactNode;
 	shortcut?: string;
 }) {
 	const [open, setOpen] = useState(false);

@@ -21,6 +21,8 @@ import {
 	projectChannels,
 	projectEvents,
 	settingsChannels,
+	updateChannels,
+	updateEvents,
 } from "#/bridge.ts";
 import { encodeIpcError } from "#/ipc-errors.ts";
 import { readDisplayCalibration } from "#/main/display-calibration.ts";
@@ -32,6 +34,7 @@ import {
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
+import { DesktopUpdater, readPackagedDistribution } from "#/main/updates.ts";
 
 protocol.registerSchemesAsPrivileged([
 	{
@@ -79,6 +82,8 @@ const projects = new DesktopProjects(
 	},
 );
 let window: BrowserWindow | null = null;
+let updater: DesktopUpdater | null = null;
+let relaunchOnQuit = false;
 
 async function confirmExternalLibrary({
 	project,
@@ -284,6 +289,41 @@ function registerSettingsHandlers() {
 	handle(settingsChannels.save, (next) => settings.save(next));
 }
 
+function createUpdater() {
+	const distribution =
+		app.isPackaged &&
+		process.platform === "linux" &&
+		readPackagedDistribution(app.getAppPath());
+	if (!distribution) return null;
+	return new DesktopUpdater({
+		currentVersion: app.getVersion(),
+		architecture: distribution.architecture,
+		temporaryDirectory: app.getPath("temp"),
+		feedUrl: process.env.ECAD_UPDATE_FEED_URL || undefined,
+		fetch: (url, init) => net.fetch(url, init),
+		onChange: (state) => {
+			if (window && !window.isDestroyed())
+				window.webContents.send(updateEvents.changed, state);
+		},
+	});
+}
+
+function registerUpdateHandlers() {
+	updater = createUpdater();
+	updater?.start();
+	app.on("will-quit", () => {
+		if (relaunchOnQuit) app.relaunch();
+	});
+	handle(updateChannels.getState, () => updater?.state ?? null);
+	handle(updateChannels.check, () => updater?.check());
+	handle(updateChannels.install, () => updater?.install());
+	handle(updateChannels.restart, () => {
+		if (updater?.state.status !== "installed") return;
+		relaunchOnQuit = true;
+		app.quit();
+	});
+}
+
 function registerDisplayHandlers() {
 	let cached: {
 		key: string;
@@ -379,6 +419,7 @@ function createWindow() {
 			detail: "Choose Save project to keep your work before closing.",
 		});
 		if (choice === 1) event.preventDefault();
+		else relaunchOnQuit = false;
 	});
 	window.webContents.on("will-navigate", (event, url) => {
 		if (url !== rendererUrl) event.preventDefault();
@@ -427,6 +468,7 @@ void app.whenReady().then(() => {
 	registerProjectHandlers();
 	registerSettingsHandlers();
 	registerDisplayHandlers();
+	registerUpdateHandlers();
 	handle(appChannels.quit, () => app.quit());
 	createWindow();
 	app.on("activate", () => {

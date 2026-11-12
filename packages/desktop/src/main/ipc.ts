@@ -21,6 +21,7 @@ import {
 	libraryChannels,
 	projectChannels,
 	settingsChannels,
+	updateChannels,
 } from "#/bridge.ts";
 
 const PATH_LIMIT = 4096;
@@ -120,6 +121,10 @@ export const ipcArguments = {
 	[settingsChannels.save]: z.tuple([appSettingsSchema]),
 	[displayChannels.getCalibration]: z.tuple([]),
 	[appChannels.quit]: z.tuple([]),
+	[updateChannels.getState]: z.tuple([]),
+	[updateChannels.check]: z.tuple([]),
+	[updateChannels.install]: z.tuple([]),
+	[updateChannels.restart]: z.tuple([]),
 } satisfies Record<InvokeChannel, z.ZodTuple>;
 
 export type IpcArguments<Channel extends InvokeChannel> = z.output<

@@ -6,11 +6,15 @@ import {
 	type DesktopAppBridge,
 	type DesktopSettingsBridge,
 	type DesktopSymbolLibraryBridge,
+	type DesktopUpdateState,
+	type DesktopUpdatesBridge,
 	displayChannels,
 	libraryChannels,
 	projectChannels,
 	projectEvents,
 	settingsChannels,
+	updateChannels,
+	updateEvents,
 } from "#/bridge.ts";
 
 const bridge: DesktopSymbolLibraryBridge = {
@@ -95,3 +99,19 @@ const desktopApp: DesktopAppBridge = {
 	quit: () => ipcRenderer.invoke(appChannels.quit),
 };
 contextBridge.exposeInMainWorld("ecadApp", desktopApp);
+
+const updates: DesktopUpdatesBridge = {
+	getState: () => ipcRenderer.invoke(updateChannels.getState),
+	check: () => ipcRenderer.invoke(updateChannels.check),
+	install: () => ipcRenderer.invoke(updateChannels.install),
+	restart: () => ipcRenderer.invoke(updateChannels.restart),
+	onChanged: (listener) => {
+		const handle = (_event: unknown, state: DesktopUpdateState) =>
+			listener(state);
+		ipcRenderer.on(updateEvents.changed, handle);
+		return () => {
+			ipcRenderer.removeListener(updateEvents.changed, handle);
+		};
+	},
+};
+contextBridge.exposeInMainWorld("ecadUpdates", updates);

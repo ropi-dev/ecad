@@ -230,11 +230,12 @@ async function main() {
 			`${JSON.stringify(
 				{
 					name: desktopPackage.name,
-					version: desktopPackage.version,
+					version,
 					private: true,
 					main: desktopPackage.main,
 					// Electron names the window class after this: StartupWMClass.
 					desktopName: "ecad.desktop",
+					updates: { format: "deb", architecture },
 				},
 				null,
 				"\t",

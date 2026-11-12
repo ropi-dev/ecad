@@ -22,6 +22,7 @@
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",
 		"@ecad/drawing-core": "workspace:*",
+		"lucide-react": "^0.577.0",
 		"zod": "^4.6.7"
 	},
 	"devDependencies": {

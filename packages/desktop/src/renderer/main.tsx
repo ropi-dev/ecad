@@ -3,6 +3,7 @@ import { Editor2D } from "@ecad/core/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "@ecad/core/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "@ecad/core/components/step/StepWorkspace.tsx";
 import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.tsx";
+import { ProjectFilesSidebar } from "@ecad/core/projects/ProjectFilesSidebar.tsx";
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
@@ -14,6 +15,7 @@ import {
 	createDesktopSettingsStorage,
 	createDesktopSymbolLibraryStorage,
 } from "#/renderer/storage.ts";
+import { UpdateButton } from "#/renderer/UpdateButton.tsx";
 import "@ecad/core/styles.css";
 import "#/renderer/window.css";
 
@@ -46,7 +48,14 @@ function App() {
 	}, []);
 	return (
 		<ProjectProvider storage={projects} symbolStorage={storage}>
-			<ProjectShell onExit={() => void window.ecadApp.quit()}>
+			<ProjectShell
+				sidebar={
+					<ProjectFilesSidebar
+						onExit={() => void window.ecadApp.quit()}
+						footerActions={<UpdateButton updates={window.ecadUpdates} />}
+					/>
+				}
+			>
 				<PerformanceBoundary
 					name={workspace}
 					path={workspace === "home" ? "/" : `/${workspace}`}
