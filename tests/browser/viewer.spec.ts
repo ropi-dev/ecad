@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import type { Camera } from "three";
 import { demoFiles } from "../fixtures/demo-gerbers";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
@@ -251,6 +252,7 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 			]),
 		);
 	const rulers = page.locator('[aria-label="Drawing rulers in millimetres"]');
+	const axes = page.getByRole("img", { name: "XYZ axis orientation" });
 	const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
 	await expect(zoomIn).toBeEnabled();
 	await zoomIn.click();
@@ -265,9 +267,11 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await expect.poll(async () => (await state()).camera.length).toBe(3);
 	const flatHeight = (await state()).camera[2];
+	await expect(axes).toHaveCount(0);
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(rulers).toHaveCount(0);
+	await expect(axes).toBeVisible();
 	await expect.poll(heights).toEqual({
 		"atlas-F_Cu.gbr": 0.87,
 		"atlas-B_Cu.gbr": -0.87,
@@ -295,6 +299,7 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await expect(rulers).toHaveCount(1);
+	await expect(axes).toHaveCount(0);
 	const percent = async () =>
 		Number.parseInt((await fit.textContent()) ?? "", 10);
 	await expect
@@ -313,6 +318,178 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 		.poll(async () => (await state()).grids)
 		.toEqual({ flat: true, plane: false });
 	expect(await sameCanvas()).toBe(true);
+	expect(errors).toEqual([]);
+});
+
+test("3D navigation turns around and drags the board point under the cursor", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles(
+		demoFiles.slice(0, 3).map((file) => ({
+			name: file.name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(file.source),
+		})),
+	);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3);
+	const plane = async () =>
+		JSON.parse((await page.locator("#scene-state").textContent()) || "{}").grids
+			?.plane;
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect.poll(plane).toBe(true);
+	const box = required(await page.locator("canvas").boundingBox());
+	const ground = (x: number, y: number) =>
+		page.evaluate(
+			({ x, y }) => {
+				const camera = (window as unknown as { sceneCamera: Camera })
+					.sceneCamera;
+				const near = camera.position.clone().set(x, y, -1).unproject(camera);
+				const far = camera.position.clone().set(x, y, 1).unproject(camera);
+				return near
+					.clone()
+					.lerp(far, near.z / (near.z - far.z))
+					.toArray();
+			},
+			{
+				x: ((x - box.x) / box.width) * 2 - 1,
+				y: 1 - ((y - box.y) / box.height) * 2,
+			},
+		);
+	const screen = (point: number[]) =>
+		page.evaluate((point) => {
+			const camera = (window as unknown as { sceneCamera: Camera }).sceneCamera;
+			const [x, y] = camera.position
+				.clone()
+				.fromArray(point)
+				.project(camera)
+				.toArray();
+			return [x, y];
+		}, point);
+	const drag = async (
+		from: { x: number; y: number },
+		dx: number,
+		dy: number,
+		shift = false,
+	) => {
+		await page.mouse.move(from.x, from.y);
+		if (shift) await page.keyboard.down("Shift");
+		await page.mouse.down();
+		await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
+		await page.mouse.up();
+		if (shift) await page.keyboard.up("Shift");
+		await page.waitForTimeout(150);
+	};
+	const toPixels = ([x, y]: number[]) => ({
+		x: box.x + ((x + 1) / 2) * box.width,
+		y: box.y + ((1 - y) / 2) * box.height,
+	});
+	const near = (actual: number[], expected: { x: number; y: number }) => {
+		const pixel = toPixels(actual);
+		expect(Math.abs(pixel.x - expected.x)).toBeLessThan(1.5);
+		expect(Math.abs(pixel.y - expected.y)).toBeLessThan(1.5);
+	};
+	const cursor = {
+		x: box.x + box.width * 0.42,
+		y: box.y + box.height * 0.55,
+	};
+	await drag(cursor, -150, -60);
+	const centre = await ground(box.x + box.width / 2, box.y + box.height / 2);
+	const offBoard = { x: box.x + 12, y: box.y + box.height - 12 };
+	const before = toPixels(await screen(centre));
+	await drag(offBoard, 100, -60, true);
+	near(await screen(centre), before);
+	const grabbed = await ground(cursor.x, cursor.y);
+	await drag(cursor, 140, -90, true);
+	near(await screen(grabbed), cursor);
+	await drag(cursor, 120, 70);
+	near(await screen(grabbed), { x: cursor.x + 120, y: cursor.y + 70 });
+	const focus = async () =>
+		JSON.parse((await page.locator("#scene-state").textContent()) || "{}")
+			.focus as number[] | null;
+	const start = { x: cursor.x + 120, y: cursor.y + 70 };
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(start.x - 80, start.y + 40, { steps: 6 });
+	await page.waitForTimeout(150);
+	expect(await focus()).toBeNull();
+	await page.mouse.up();
+	const pivot = { x: start.x - 80, y: start.y + 40 };
+	await page.mouse.move(pivot.x, pivot.y);
+	await page.keyboard.down("Shift");
+	await page.mouse.down();
+	await page.waitForTimeout(150);
+	expect(await focus()).toBeNull();
+	await page.mouse.move(pivot.x + 90, pivot.y - 50, { steps: 6 });
+	await expect.poll(focus).not.toBeNull();
+	near(await screen(required(await focus())), pivot);
+	if (captureArtifacts)
+		await page.screenshot({ path: test.info().outputPath("orbit-focus.png") });
+	await page.mouse.up();
+	await page.keyboard.up("Shift");
+	await expect.poll(focus).toBeNull();
+	expect(errors).toEqual([]);
+});
+
+test("the 3D focus stays on the board after orbiting edge-on", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles(
+		demoFiles.slice(0, 3).map((file) => ({
+			name: file.name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(file.source),
+		})),
+	);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3);
+	const state = async () =>
+		JSON.parse((await page.locator("#scene-state").textContent()) || "{}") as {
+			objects?: { box: number[] }[];
+			grids?: { plane: boolean };
+			focus?: number[] | null;
+		};
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect.poll(async () => (await state()).grids?.plane).toBe(true);
+	const objects = required((await state()).objects);
+	const minX = Math.min(...objects.map((object) => object.box[0]));
+	const minY = Math.min(...objects.map((object) => object.box[1]));
+	const maxX = Math.max(...objects.map((object) => object.box[2]));
+	const maxY = Math.max(...objects.map((object) => object.box[3]));
+	const box = required(await page.locator("canvas").boundingBox());
+	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	const orbit = async (
+		from: { x: number; y: number },
+		dx: number,
+		dy: number,
+		check = false,
+	) => {
+		await page.mouse.move(from.x, from.y);
+		await page.keyboard.down("Shift");
+		await page.mouse.down();
+		await page.mouse.move(from.x + dx, from.y + dy, { steps: 10 });
+		if (check) {
+			await expect.poll(async () => (await state()).focus).toBeTruthy();
+			const [x, y, z] = required((await state()).focus);
+			expect(x).toBeGreaterThanOrEqual(minX - 1e-3);
+			expect(x).toBeLessThanOrEqual(maxX + 1e-3);
+			expect(y).toBeGreaterThanOrEqual(minY - 1e-3);
+			expect(y).toBeLessThanOrEqual(maxY + 1e-3);
+			expect(z).toBeCloseTo(0, 6);
+		}
+		await page.mouse.up();
+		await page.keyboard.up("Shift");
+		await page.waitForTimeout(150);
+	};
+	for (const dy of [400, -800]) {
+		await orbit(centre, 0, dy);
+		await orbit(centre, 60, 0, true);
+		await orbit({ x: box.x + 20, y: box.y + 20 }, 60, 0, true);
+	}
 	expect(errors).toEqual([]);
 });
 
