@@ -2,7 +2,23 @@
 
 .workspace-start {
 	container-type: inline-size;
+	isolation: isolate;
 	color: var(--color-fg-faint);
+}
+
+.workspace-start::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background:
+		radial-gradient(var(--circuit-dot) 1px, transparent 1px) center / 20px 20px;
+	mask-image: radial-gradient(
+		ellipse at center,
+		transparent 20%,
+		#000000b3 100%
+	);
+	pointer-events: none;
 }
 
 .workspace-start-pointer {
