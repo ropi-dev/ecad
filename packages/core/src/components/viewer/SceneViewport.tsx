@@ -387,7 +387,7 @@ export function SceneViewport({
 			{cameraMode === "top" && !orbit && (
 				<ViewportRulers unit={rulerUnit} ref={rulers} gridBounds={gridBounds} />
 			)}
-			{cameraMode === "orbit" && <AxisIndicator ref={axes} />}
+			{(cameraMode === "orbit" || orbit) && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D
 					grouped={groupedControls}

@@ -13,7 +13,15 @@ export function create3DControls(
 	camera: PerspectiveCamera | OrthographicCamera,
 	canvas: HTMLElement,
 	fit: () => void,
-	{ lockTop = false }: { lockTop?: boolean } = {},
+	{
+		lockTop = false,
+		focus,
+		onFocus,
+	}: {
+		lockTop?: boolean;
+		focus?: (clientX: number, clientY: number) => Vector3 | null;
+		onFocus?: (point: Vector3 | null) => void;
+	} = {},
 ) {
 	const controls = new OrbitControls(camera, canvas);
 	controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: null };
@@ -35,6 +43,30 @@ export function create3DControls(
 	controls.listenToKeyEvents(canvas);
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
+	let pivot: Vector3 | null = null;
+	let lastWheel = Number.NEGATIVE_INFINITY;
+	let wheelEnd: ReturnType<typeof setTimeout> | undefined;
+	let focusShown = false;
+	const showFocus = () => {
+		if (!pivot || focusShown) return;
+		focusShown = true;
+		onFocus?.(pivot);
+	};
+	const hideFocus = () => {
+		if (!focusShown) return;
+		focusShown = false;
+		onFocus?.(null);
+	};
+	const beginGesture = (clientX: number, clientY: number) => {
+		hideFocus();
+		pivot = focus?.(clientX, clientY) ?? null;
+		if (!pivot) return;
+		const camera = controls.object;
+		const forward = camera.getWorldDirection(new Vector3());
+		const depth = pivot.clone().sub(camera.position).dot(forward);
+		if (depth < controls.minDistance || depth > controls.maxDistance) return;
+		controls.target.copy(camera.position).addScaledVector(forward, depth);
+	};
 	const orbit = (deltaX: number, deltaY: number) => {
 		if (
 			!controls.enabled ||
@@ -45,22 +77,25 @@ export function create3DControls(
 		const camera = controls.object;
 		const distance = Math.hypot(deltaX, deltaY);
 		if (distance === 0) return;
+		showFocus();
 		const scale =
 			(2 * Math.PI * controls.rotateSpeed) / Math.max(canvas.clientHeight, 1);
-		const offset = camera.position.clone().sub(controls.target);
+		const center = (pivot ?? controls.target).clone();
 		const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 		const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-		const rotation = new Quaternion().setFromAxisAngle(
+		const turn = new Quaternion().setFromAxisAngle(
 			new Vector3(0, 0, 1),
 			deltaX * scale * (up.z < 0 ? -1 : 1),
 		);
-		offset.applyQuaternion(rotation);
-		up.applyQuaternion(rotation);
-		right.applyQuaternion(rotation);
-		rotation.setFromAxisAngle(right, deltaY * scale);
-		offset.applyQuaternion(rotation);
+		right.applyQuaternion(turn);
+		const rotation = new Quaternion()
+			.setFromAxisAngle(right, deltaY * scale)
+			.multiply(turn);
+		const rotateAround = (point: Vector3) =>
+			point.sub(center).applyQuaternion(rotation).add(center);
+		rotateAround(camera.position);
+		rotateAround(controls.target);
 		camera.up.copy(up).applyQuaternion(rotation).normalize();
-		camera.position.copy(controls.target).add(offset);
 		camera.lookAt(controls.target);
 		camera.updateMatrixWorld();
 		controls.dispatchEvent({ type: "change" });
@@ -71,6 +106,9 @@ export function create3DControls(
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
 		const delta = wheelDelta(event, canvas);
+		if (event.timeStamp - lastWheel > 200)
+			beginGesture(event.clientX, event.clientY);
+		lastWheel = event.timeStamp;
 		if (event.shiftKey && !rotationLocked) {
 			orbit(
 				event.deltaMode === 2
@@ -81,6 +119,8 @@ export function create3DControls(
 		} else if (controls.enablePan) {
 			controls.pan(-delta.x, -delta.y);
 		}
+		clearTimeout(wheelEnd);
+		wheelEnd = setTimeout(hideFocus, 200);
 	};
 	const onPointerDown = (event: PointerEvent) => {
 		if (!controls.enabled) return;
@@ -89,11 +129,11 @@ export function create3DControls(
 			y: event.clientY,
 			touch: event.pointerType === "touch",
 		});
-		if (
-			event.pointerType === "touch" ||
-			(event.button !== 0 && event.button !== 1)
-		)
-			return;
+		const touch = event.pointerType === "touch";
+		if (pointers.size > 1) hideFocus();
+		else if (touch || event.button === 0 || event.button === 1)
+			beginGesture(event.clientX, event.clientY);
+		if (touch || (event.button !== 0 && event.button !== 1)) return;
 		const button = event.button === 0 ? "LEFT" : "MIDDLE";
 		if (panFirst) {
 			if (event.shiftKey && !rotationLocked) {
@@ -134,6 +174,7 @@ export function create3DControls(
 	const onPointerEnd = (event: PointerEvent) => {
 		pointers.delete(event.pointerId);
 		if (orbitPointer === event.pointerId) orbitPointer = null;
+		if (pointers.size === 0) hideFocus();
 	};
 	const onMouseDown = (event: MouseEvent) => {
 		if (
@@ -178,6 +219,7 @@ export function create3DControls(
 			canvas.removeEventListener("pointercancel", onPointerEnd, true);
 			canvas.removeEventListener("lostpointercapture", onPointerEnd, true);
 			pointers.clear();
+			clearTimeout(wheelEnd);
 			canvas.removeEventListener("wheel", onWheel, true);
 			canvas.removeEventListener("mousedown", onMouseDown);
 			canvas.removeEventListener("auxclick", onAuxClick);

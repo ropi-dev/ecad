@@ -7,6 +7,7 @@ import {
 	type Object3D,
 	OrthographicCamera,
 	PerspectiveCamera,
+	Plane,
 	type Quaternion,
 	Raycaster,
 	Scene,
@@ -20,6 +21,7 @@ import { getSceneBounds } from "#/engine/camera.ts";
 import { capturePng } from "#/engine/capture-png.ts";
 import { create3DControls } from "#/engine/controls3d.ts";
 import { createDrawBatcher } from "#/engine/draw-batch.ts";
+import { createFocusMarker } from "#/engine/focus-marker.ts";
 import {
 	handleViewerKeyDown,
 	MAX_ZOOM,
@@ -238,6 +240,10 @@ export function createSceneViewport(
 				? lifecycle.acquire(createPlaneGrid, (grid) => grid.dispose())
 				: null;
 		if (planeGrid) scene.add(planeGrid.object);
+		const focusMarker = lifecycle.acquire(createFocusMarker, (marker) =>
+			marker.dispose(),
+		);
+		scene.add(focusMarker.object);
 		const canvas = output.domElement;
 		canvas.tabIndex = 0;
 		canvas.setAttribute("aria-label", ariaLabel);
@@ -258,7 +264,15 @@ export function createSceneViewport(
 				: 2 * camera.position.distanceTo(controls.target) * halfFovTangent;
 		camera.up.set(0, topView ? 1 : 0, topView ? 0 : 1);
 		const navigation = lifecycle.acquire(
-			() => create3DControls(camera, canvas, () => fit(), { lockTop: topView }),
+			() =>
+				create3DControls(camera, canvas, () => fit(), {
+					lockTop: topView,
+					focus: (clientX, clientY) => focus(clientX, clientY),
+					onFocus: (point) => {
+						focusMarker.show(point, output.getPixelRatio());
+						schedule();
+					},
+				}),
 			(navigation) => navigation.dispose(),
 		);
 		const { controls, setRotationLocked } = navigation;
@@ -280,9 +294,11 @@ export function createSceneViewport(
 			throw new Error("The scene has no finite geometry to display.");
 		const sphere = bounds.getBoundingSphere(new Sphere());
 		const radius = Math.max(sphere.radius, 0.001);
-		const boardBottom = () => {
-			const box = new Box3().setFromObject(group);
-			return (box.isEmpty() ? 0 : box.min.z) - radius * 0.002;
+		const board = new Box3();
+		const midPlane = new Plane(new Vector3(0, 0, 1), 0);
+		const measureBoard = () => {
+			board.setFromObject(group);
+			planeZ = (board.isEmpty() ? 0 : board.min.z) - radius * 0.002;
 		};
 		if (!topView) {
 			const grid = lifecycle.acquire(
@@ -693,12 +709,42 @@ export function createSceneViewport(
 			schedule();
 		};
 		const reset = fit;
-		let pivotZ = 0;
+		const focus = (clientX: number, clientY: number): Vector3 | null => {
+			if (!orbiting || board.isEmpty()) return null;
+			const rect = canvas.getBoundingClientRect();
+			const onPlane = (x: number, y: number) => {
+				raycaster.setFromCamera(new Vector2(x, y), camera);
+				return raycaster.ray.intersectPlane(midPlane, new Vector3());
+			};
+			const hit = onPlane(
+				((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+				-((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+			);
+			if (
+				hit &&
+				hit.x >= board.min.x &&
+				hit.x <= board.max.x &&
+				hit.y >= board.min.y &&
+				hit.y <= board.max.y
+			)
+				return hit;
+			const middle =
+				onPlane(0, 0) ??
+				raycaster.ray.closestPointToPoint(
+					board.getCenter(new Vector3()),
+					new Vector3(),
+				);
+			return middle
+				.setZ(0)
+				.clamp(
+					new Vector3(board.min.x, board.min.y, 0),
+					new Vector3(board.max.x, board.max.y, 0),
+				);
+		};
 		const settlePivot = () => {
-			if (!orbiting) return;
 			const view = controls.target.clone().sub(camera.position);
 			if (Math.abs(view.z) < view.length() * 0.02) return;
-			const scale = (pivotZ - camera.position.z) / view.z;
+			const scale = -camera.position.z / view.z;
 			const distance = view.length() * scale;
 			if (
 				!(scale > 0) ||
@@ -712,7 +758,6 @@ export function createSceneViewport(
 			if (!topView || enabled === orbiting) return;
 			if (!enabled) settlePivot();
 			orbiting = enabled;
-			if (enabled) pivotZ = controls.target.z;
 			setRotationLocked(!enabled);
 			const distance = camera.position.distanceTo(controls.target);
 			const direction = enabled
@@ -723,7 +768,7 @@ export function createSceneViewport(
 				.copy(controls.target)
 				.addScaledVector(direction, distance);
 			camera.lookAt(controls.target);
-			planeZ = boardBottom();
+			measureBoard();
 			showGrid();
 			controls.update();
 			schedule();
@@ -850,10 +895,8 @@ export function createSceneViewport(
 		lifecycle.listen(canvas, "keydown", onKey);
 		lifecycle.listen(canvas, "webglcontextlost", onLost);
 		// Camera moves alone can reuse the last frame.
-		controls.addEventListener("change", settlePivot);
 		controls.addEventListener("change", requestFrame);
 		lifecycle.addFinalizer(() => {
-			controls.removeEventListener("change", settlePivot);
 			controls.removeEventListener("change", requestFrame);
 		});
 		const runtime: SceneViewportRuntime = {
@@ -907,13 +950,16 @@ export function createSceneViewport(
 				// The grid is a view aid, not part of the exported picture.
 				const gridVisible = grid?.object.visible ?? false;
 				const planeVisible = planeGrid?.object.visible ?? false;
+				const focusVisible = focusMarker.object.visible;
 				if (grid) grid.object.visible = false;
 				if (planeGrid) planeGrid.object.visible = false;
+				focusMarker.object.visible = false;
 				try {
 					renderScene();
 				} finally {
 					if (grid) grid.object.visible = gridVisible;
 					if (planeGrid) planeGrid.object.visible = planeVisible;
+					focusMarker.object.visible = focusVisible;
 				}
 				// The canvas now lacks the grid, so the next frame redraws it.
 				schedule();
@@ -921,7 +967,7 @@ export function createSceneViewport(
 			},
 			update: (update) => {
 				update(group);
-				if (orbiting) planeZ = boardBottom();
+				if (orbiting) measureBoard();
 				if (batcher) scheduleDrawing();
 				else schedule();
 			},
