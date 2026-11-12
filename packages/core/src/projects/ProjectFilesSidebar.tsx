@@ -1009,6 +1009,7 @@ export function ProjectFilesSidebar({
 																		title={`${file.name} · ${file.type}`}
 																		className={`ui-toggle ${row} px-1.5 aria-[current=page]:font-medium`}
 																		onClick={() => {
+																			if (!pinned) closeDrawer();
 																			if (file.href === "/editor") {
 																				if (file.type === "Circuit")
 																					void project
@@ -1049,6 +1050,7 @@ export function ProjectFilesSidebar({
 																		}
 																		className={`ui-toggle ${row} ml-[11px] border-l pr-1.5 pl-[11px] [--toggle-line:var(--color-line)] [--toggle-on-line:var(--color-line)] aria-[current=page]:font-medium`}
 																		onClick={() => {
+																			if (!pinned) closeDrawer();
 																			void project
 																				.openCircuit(
 																					file.circuitPath ?? file.path,
