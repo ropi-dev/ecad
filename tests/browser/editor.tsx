@@ -11,7 +11,7 @@ import {
 import { Effect } from "effect";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { LineLoop, Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
+import { Mesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { Editor2D } from "#/components/editor/Editor2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
@@ -67,9 +67,6 @@ Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
 			worksheet: this.getObjectByName("Worksheet frame")?.parent?.name,
 			camera: camera.type,
 			textures: renderer.info.memory.textures,
-			outlines: shapes?.children
-				.filter((shape) => shape instanceof LineLoop)
-				.map((shape) => ({ width: shape.scale.x, height: shape.scale.y })),
 			wireTerminals: this.getObjectByName(
 				"editor-wire-terminals",
 			)?.children.map((terminal) => ({

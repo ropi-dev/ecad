@@ -12,10 +12,6 @@ import {
 	isFillableShape,
 	PIN_RADIUS,
 	type ShapeKind,
-	selectionSize,
-	shapeBounds,
-	shapeCenter,
-	symbolSelectionFrame,
 	symbolShapes,
 	symbolTextPosition,
 	symbolTextShapes,
@@ -94,14 +90,8 @@ export interface DisplayShape extends DrawingTransform, TextAlignment {
 	children?: DisplayShape[];
 }
 
-export interface DisplaySelection extends DrawingTransform {
-	shapeKey: string;
-	renderOrder: number;
-}
-
 export interface DrawingDisplay {
 	shapes: DisplayShape[];
-	selections: DisplaySelection[];
 	terminals: DisplayShape[];
 	junctions: DisplayShape[];
 	connections: DisplayShape[];
@@ -518,29 +508,6 @@ export function buildStaticDisplay(
 				crossings.get(shape.id),
 			),
 		),
-		selections: shapes
-			.filter((shape) => selectedIds.has(shape.id))
-			.map((shape) => ({
-				shapeKey: `shape:${shape.id}`,
-				...(shape.kind === "symbol"
-					? symbolSelectionFrame(shape)
-					: {
-							...shapeCenter(shape),
-							...selectionSize(shape),
-							rotation: shape.rotation,
-						}),
-				...(shape.kind === "pin" && (shape.length ?? 0) > 0
-					? (() => {
-							const bounds = shapeBounds(shape);
-							return {
-								x: (bounds.minX + bounds.maxX) / 2,
-								y: (bounds.minY + bounds.maxY) / 2,
-								rotation: 0,
-							};
-						})()
-					: {}),
-				renderOrder: shapes.length + 1,
-			})),
 		terminals: openEnds.map(({ shape, point }) =>
 			junctionDisplay(
 				{ ...terminal, ...point },

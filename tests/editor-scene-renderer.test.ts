@@ -9,7 +9,6 @@ import {
 import {
 	BufferGeometry,
 	Group,
-	LineLoop,
 	Material,
 	Mesh,
 	type MeshBasicMaterial,
@@ -134,15 +133,11 @@ function describe(root: Object3D) {
 	});
 	const index = new Map(objects.map((object, position) => [object, position]));
 	const material = (object: Object3D) =>
-		object instanceof Mesh || object instanceof LineLoop
-			? (object.material as MeshBasicMaterial)
-			: undefined;
+		object instanceof Mesh ? (object.material as MeshBasicMaterial) : undefined;
 	const description = objects.map((object) => {
 		const paint = material(object);
 		const geometry =
-			object instanceof Mesh || object instanceof LineLoop
-				? (object.geometry as BufferGeometry)
-				: undefined;
+			object instanceof Mesh ? (object.geometry as BufferGeometry) : undefined;
 		return {
 			type: object.type,
 			name: object.name,
@@ -211,24 +206,20 @@ function fresh(value: DrawingDisplay) {
 test("incremental scene updates match a full rebuild and release replaced resources", () => {
 	const renderer = createDrawingRenderer(null);
 	const root = new Group();
-	// Palette materials and the outline frame live as long as the renderer. Each
-	// mesh geometry, glyph material, and texture belongs to the displays using it.
+	// Palette materials live as long as the renderer. Each mesh geometry, glyph
+	// material, and texture belongs to the displays using it.
 	const owned = new Set<object>();
 	const shared = new Set<object>();
 	const resources = () => {
 		const live = new Set<object>();
 		root.traverse((object) => {
-			if (!(object instanceof Mesh || object instanceof LineLoop)) return;
+			if (!(object instanceof Mesh)) return;
 			const material = object.material as MeshBasicMaterial;
-			const items = [material, material.alphaMap];
-			if (object instanceof Mesh) items.push(object.geometry);
+			const items = [material, material.alphaMap, object.geometry];
 			for (const item of items) if (item) live.add(item);
-			(object instanceof Mesh && material.alphaMap ? owned : shared).add(
-				material,
-			);
+			(material.alphaMap ? owned : shared).add(material);
 			if (material.alphaMap) owned.add(material.alphaMap);
-			if (object instanceof Mesh) owned.add(object.geometry);
-			else shared.add(object.geometry);
+			owned.add(object.geometry);
 		});
 		return live;
 	};

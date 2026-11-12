@@ -73,7 +73,6 @@ test("standalone text and previews stay upright without moving aligned bounds or
 					assert.equal(rendered.horizontalAlign, horizontalAlign);
 				}
 				assert.ok(hitShape(shape, center, 0));
-				assert.equal(display.selections[0].rotation, shape.rotation);
 				assert.deepEqual(shape, before);
 			}
 		}

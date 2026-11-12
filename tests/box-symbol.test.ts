@@ -15,11 +15,11 @@ import {
 	shapeBounds,
 	symbolChildren,
 	symbolChildWorld,
+	symbolSelectionFrame,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
 	symbolFileShapes,
 	symbolFileWithShapes,
@@ -48,9 +48,7 @@ function assertFits(symbol: EditorSymbol) {
 		assert.ok(
 			Math.abs(shapeBounds(symbol)[key] - shapeBounds(world)[key]) < 1e-9,
 		);
-	const {
-		selections: [selection],
-	} = buildDrawingDisplay([symbol], new Set([symbol.id]));
+	const selection = symbolSelectionFrame(symbol);
 	assert.equal(selection.width, border.width);
 	assert.equal(selection.height, border.height);
 	assert.ok(Math.abs(selection.x - world.x) < 1e-9);

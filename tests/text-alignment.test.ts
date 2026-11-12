@@ -72,8 +72,6 @@ test("all alignments share their rendered bounds with selection, hit testing and
 				const display = buildDrawingDisplay([shape], new Set([shape.id]));
 				assert.equal(display.shapes[0].x, center.x);
 				assert.equal(display.shapes[0].y, center.y);
-				assert.equal(display.selections[0].x, center.x);
-				assert.equal(display.selections[0].y, center.y);
 				assert.ok(hitShape(shape, center, 0));
 				const bounds = shapeBounds(shape);
 				assert.ok(containsSelection(shape, bounds));
