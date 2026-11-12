@@ -34,12 +34,12 @@ import {
 	type PlanarGeometry,
 } from "#/engine/planar-geometry.ts";
 import {
-	createTubeGeometry,
 	cutHoles,
 	type HoleMask,
 	pickThroughHoles,
 } from "#/engine/planar-holes.ts";
 import { PlanarOutline } from "#/engine/planar-outline.ts";
+import type { PlanarWalls } from "#/engine/planar-walls.ts";
 import type { Bounds, PlanarObject } from "#/engine/types.ts";
 
 const geometries = new WeakMap<Object3D, PlanarGeometry>();
@@ -80,37 +80,13 @@ class PlanarFillMesh extends Mesh<BufferGeometry, MeshBasicMaterial> {
 	}
 }
 
-function createWallGeometry({ edges }: PlanarGeometry) {
-	const vertices = new Float32Array(edges.length * 3);
-	let offset = 0;
-	const push = (x: number, y: number, z: number) => {
-		vertices[offset++] = x;
-		vertices[offset++] = y;
-		vertices[offset++] = z;
-	};
-	for (let index = 0; index < edges.length; index += 6) {
-		const ax = edges[index],
-			ay = edges[index + 1],
-			bx = edges[index + 3],
-			by = edges[index + 4];
-		push(ax, ay, -0.5);
-		push(bx, by, -0.5);
-		push(bx, by, 0.5);
-		push(ax, ay, -0.5);
-		push(bx, by, 0.5);
-		push(ax, ay, 0.5);
-	}
-	const geometry = new BufferGeometry();
-	geometry.setAttribute("position", new BufferAttribute(vertices, 3));
-	return geometry;
-}
-
 /** Builds actual triangle meshes and contour geometry, with no texture maps. */
 export function createPlanarObject3D(
 	source: PlanarObject,
 	compiled: PlanarGeometry = compilePlanarGeometry(source.objects),
-	{ extrude, wall = 0 }: { extrude?: "slab" | "barrel"; wall?: number } = {},
+	walls?: PlanarWalls,
 ) {
+	const extrude = walls?.extrude;
 	const object = new Group();
 	object.name = source.name;
 	object.visible = source.visible;
@@ -139,11 +115,19 @@ export function createPlanarObject3D(
 		const fill = new PlanarFillMesh(geometry, material);
 		fill.userData.planarPart = "fill";
 		object.add(fill);
-		if (extrude) {
-			const walls = new Mesh(
-				extrude === "barrel"
-					? createTubeGeometry(compiled, wall)
-					: createWallGeometry(compiled),
+		if (walls) {
+			const wallGeometry = new BufferGeometry();
+			wallGeometry.setAttribute(
+				"position",
+				new BufferAttribute(walls.positions, 3),
+			);
+			if (walls.normals)
+				wallGeometry.setAttribute(
+					"normal",
+					new BufferAttribute(walls.normals, 3),
+				);
+			const wallMesh = new Mesh(
+				wallGeometry,
 				extrude === "barrel"
 					? new MeshStandardMaterial({
 							color: source.color,
@@ -156,9 +140,9 @@ export function createPlanarObject3D(
 						})
 					: new MeshBasicMaterial({ color: source.color, side: DoubleSide }),
 			);
-			walls.userData.planarPart = "walls";
-			walls.visible = false;
-			object.add(walls);
+			wallMesh.userData.planarPart = "walls";
+			wallMesh.visible = false;
+			object.add(wallMesh);
 		}
 		if (extrude === "slab") {
 			const sheet = new Mesh(
