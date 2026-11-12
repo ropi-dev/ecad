@@ -24,7 +24,6 @@ interface State {
 		x: number;
 		y: number;
 	}[];
-	outlines: { width: number; height: number }[];
 	wireTerminals: { x: number; y: number; width: number; height: number }[];
 	wireJunctions: { x: number; y: number; width: number; height: number }[];
 	wireBridges: string[];

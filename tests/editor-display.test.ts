@@ -8,7 +8,6 @@ import {
 import {
 	type BufferGeometry,
 	Group,
-	LineLoop,
 	type Mesh,
 	type MeshBasicMaterial,
 	Raycaster,
@@ -48,17 +47,6 @@ test("display resolves wire stroke dimensions, selection, and drawing order with
 	);
 	assert.equal(display.shapes[1].height, wire.lineWidth);
 	assert.equal(display.shapes[1].rotation, Math.PI / 2);
-	assert.deepEqual(display.selections, [
-		{
-			shapeKey: "shape:2",
-			x: 40,
-			y: 15,
-			width: 30.5,
-			height: 1.3,
-			rotation: Math.PI / 2,
-			renderOrder: 3,
-		},
-	]);
 });
 
 test("display suppresses connected terminals and colors each remaining wire end", () => {
@@ -525,13 +513,6 @@ test("renderer reuses moved geometry and releases replaced, canceled, and owned 
 	assert.equal(moved.geometry, geometry);
 	assert.equal(moved.position.x, 70);
 	assert.equal(oldDisposals, 0);
-	const selection = required(
-		required(root.getObjectByName("editor-shapes")).children.find(
-			(part) => part instanceof LineLoop,
-		),
-	);
-	assert.equal(selection.position.x, 70);
-	assert.equal(selection.scale.x, rectangle.width + 4);
 	const resized = update({ ...rectangle, width: 40 }, [
 		{ ...rectangle, x: 60 },
 	]);
@@ -594,7 +575,6 @@ test("net highlighting follows connected and named wires without selecting compo
 			"stroke",
 		],
 	);
-	assert.equal(display.selections.length, 1);
 	const fromLabel = buildDrawingDisplay(shapes, new Set([5]));
 	assert.deepEqual(
 		fromLabel.shapes.slice(0, 4).map((shape) => shape.appearance),

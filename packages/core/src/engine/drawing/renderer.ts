@@ -1,15 +1,12 @@
 import {
-	BufferGeometry,
+	type BufferGeometry,
 	type CanvasTexture,
 	Group,
-	LineBasicMaterial,
-	LineLoop,
 	type Material,
 	Matrix4,
 	Mesh,
 	MeshBasicMaterial,
 	type Object3D,
-	Vector3,
 } from "three";
 import type {
 	DisplayShape,
@@ -101,7 +98,6 @@ interface MeshNode {
 	atlas: number;
 	children: MeshNode[];
 	pinLabels: boolean;
-	outline?: LineLoop;
 }
 
 /** GPU resources shared by every mesh with the same display key. */
@@ -199,12 +195,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			entry.geometry = { source: display.geometry, uv, value: geometry };
 			return geometry;
 		};
-		const frame = own(() => new BufferGeometry()).setFromPoints([
-			new Vector3(-0.5, -0.5, 0),
-			new Vector3(0.5, -0.5, 0),
-			new Vector3(0.5, 0.5, 0),
-			new Vector3(-0.5, 0.5, 0),
-		]);
 		const palette = (create: (color: string) => MeshBasicMaterial) =>
 			Object.fromEntries(
 				Object.entries(darkSchematicTheme.appearance).map(
@@ -227,13 +217,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		const rounds = palette((color) => createRoundMaterial({ color }));
 		const roundHalos = palette((color) =>
 			createRoundMaterial({ color, opacity: 0.6 }),
-		);
-		const selection = own(
-			() =>
-				new LineBasicMaterial({
-					color: darkSchematicTheme.appearance.selected,
-					depthTest: false,
-				}),
 		);
 		const materialFor = (
 			display: DisplayShape,
@@ -348,7 +331,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 				atlas: atlasVersion,
 				children,
 				pinLabels,
-				outline: node?.outline,
 			};
 		};
 		const reconcileNode = (
@@ -487,22 +469,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		};
 		const updateStatic = (display: DrawingDisplay) => {
 			shapeNodes = reconcile(shapeNodes, display.shapes, undefined);
-			const frames = new Map(
-				display.selections.map((outline) => [outline.shapeKey, outline]),
-			);
-			const children: Object3D[] = [];
-			for (const node of shapeNodes) {
-				children.push(node.object);
-				const outline = frames.get(node.key);
-				if (!outline) {
-					node.outline = undefined;
-					continue;
-				}
-				node.outline ??= new LineLoop(frame, selection);
-				touch(node.outline);
-				applyTransform(node.outline, outline);
-				children.push(node.outline);
-			}
+			const children: Object3D[] = shapeNodes.map((node) => node.object);
 			for (const entry of groups) {
 				entry.nodes = reconcile(entry.nodes, display[entry.section], undefined);
 				setChildren(
@@ -520,7 +487,6 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 					const staticChanged =
 						!rendered ||
 						rendered.shapes !== display.shapes ||
-						rendered.selections !== display.selections ||
 						rendered.terminals !== display.terminals ||
 						rendered.junctions !== display.junctions ||
 						rendered.connections !== display.connections ||
