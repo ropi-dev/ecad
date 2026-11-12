@@ -175,6 +175,41 @@ for (const [direction, steps] of [
 	});
 }
 
+for (const delay of [0, 100]) {
+	test(`a schematic opens at actual size when the display calibration takes ${delay} ms`, async ({
+		page,
+	}) => {
+		await page.addInitScript((delay) => {
+			window.ecadDisplay = {
+				getCalibration: () =>
+					new Promise((resolve) =>
+						setTimeout(() => resolve({ pixelsPerMm: 6.4 }), delay),
+					),
+				onChanged: () => () => {},
+			};
+		}, delay);
+		await page.goto("/tests/browser/projects.html");
+		await (await openProjectFiles(page))
+			.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
+			.click();
+		await closeProjectFiles(page);
+		const actualSize = page.getByRole("button", {
+			name: "Actual size",
+			exact: true,
+		});
+		await expect(actualSize).toBeEnabled();
+		await expect(actualSize).toHaveText("100%");
+		await page
+			.getByRole("button", { name: "Fit drawing", exact: true })
+			.click();
+		await expect(actualSize).not.toHaveText("100%");
+		await switchTo(page, "circuit");
+		await switchTo(page, "schematic");
+		await expect(actualSize).toBeEnabled();
+		await expect(actualSize).not.toHaveText("100%");
+	});
+}
+
 test("the zoom label trails a continuous zoom and ends on its level", async ({
 	page,
 }) => {

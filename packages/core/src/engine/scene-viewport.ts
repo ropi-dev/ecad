@@ -311,6 +311,9 @@ export function createSceneViewport(
 		camera.far = radius * 1000;
 		let zoomReferenceDistance = 0;
 		let physicalScale: number | null = null;
+		let openingView: string | null = null;
+		const cameraKey = () =>
+			[...camera.position.toArray(), camera.zoom, visibleHeight()].join();
 		let viewportHeight = Math.max(element.clientHeight, 1);
 		const referenceDistance = () =>
 			physicalScale === null
@@ -872,9 +875,12 @@ export function createSceneViewport(
 						: null;
 				if (next === physicalScale) return;
 				const previous = physicalScale;
+				const untouched = openingView === cameraKey();
+				openingView = null;
 				physicalScale = next;
 				updateZoomLimits();
 				if (next !== null && previous !== null) zoom(next / previous);
+				else if (next !== null && untouched) runtime.actualSize();
 				schedule();
 			},
 			setOrbit,
@@ -954,6 +960,7 @@ export function createSceneViewport(
 			controls.update();
 			schedule();
 		}
+		if (!initialCamera) openingView = cameraKey();
 		if (orbit) setOrbit(true);
 		return runtime;
 	} catch (error) {
