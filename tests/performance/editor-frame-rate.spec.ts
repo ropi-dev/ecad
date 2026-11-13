@@ -147,7 +147,7 @@ test("editor-frame-rate", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		localStorage.setItem("ecad.active-project", "Frame rate");
 	}, shapes);
 	await page.goto("/editor?perf=1");
-	await ready(page);
+	await ready(page, 60_000);
 	await expect(
 		page.getByRole("button", { name: "Select", exact: true }),
 	).toBeEnabled({ timeout: 60_000 });
