@@ -263,13 +263,13 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	const canvas = required(await page.locator("canvas").elementHandle());
 	const sameCanvas = () =>
 		canvas.evaluate((element) => element === document.querySelector("canvas"));
-	const toggle = page.getByRole("button", { name: "3D", exact: true });
-	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	const toggle = page.getByRole("button", { name: "2D", exact: true });
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect.poll(async () => (await state()).camera.length).toBe(3);
 	const flatHeight = (await state()).camera[2];
 	await expect(axes).toHaveCount(0);
 	await toggle.click();
-	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await expect(rulers).toHaveCount(0);
 	await expect(axes).toBeVisible();
 	await expect.poll(heights).toEqual({
@@ -280,8 +280,12 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	await expect
 		.poll(async () => (await state()).grids)
 		.toEqual({ flat: false, plane: true });
-	const [x, y] = (await state()).camera;
-	expect(Math.hypot(x, y)).toBeGreaterThan(1);
+	await expect
+		.poll(async () => {
+			const [x, y] = (await state()).camera;
+			return Math.hypot(x, y);
+		})
+		.toBeGreaterThan(1);
 	expect(await sameCanvas()).toBe(true);
 	await expect(
 		page.getByRole("button", { name: "Iso", exact: true }),
@@ -297,7 +301,7 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	});
 	await page.mouse.up();
 	await toggle.click();
-	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(rulers).toHaveCount(1);
 	await expect(axes).toHaveCount(0);
 	const percent = async () =>
@@ -321,6 +325,105 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	expect(errors).toEqual([]);
 });
 
+test("an orbit drag leaves the 2D view in perspective from the current camera", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/viewer.html");
+	const rulers = page.locator('[aria-label="Drawing rulers in millimetres"]');
+	const axes = page.getByRole("img", { name: "XYZ axis orientation" });
+	const shiftDrag = async (dx: number, dy: number) => {
+		const box = required(await page.locator("canvas").boundingBox());
+		const x = box.x + box.width / 2;
+		const y = box.y + box.height / 2;
+		await page.keyboard.down("Shift");
+		await page.mouse.move(x, y);
+		await page.mouse.down();
+		await page.mouse.move(x + dx, y + dy, { steps: 3 });
+		await page.mouse.up();
+		await page.keyboard.up("Shift");
+		await page.waitForTimeout(100);
+	};
+	await expect(rulers).toHaveCount(1);
+	await shiftDrag(0, 40);
+	await expect(axes).toHaveCount(0);
+	await expect(rulers).toHaveCount(1);
+	await page.locator("input[type=file]").setInputFiles(
+		demoFiles.slice(0, 3).map((file) => ({
+			name: file.name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(file.source),
+		})),
+	);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3);
+	const state = async () =>
+		JSON.parse(
+			(await page.locator("#scene-state").textContent()) || '{"objects":[]}',
+		) as {
+			objects: { name: string; z: number }[];
+			grids: { flat: boolean; plane: boolean };
+			camera: number[];
+		};
+	const cameraType = () =>
+		page.evaluate(
+			() => (window as unknown as { sceneCamera: Camera }).sceneCamera.type,
+		);
+	const toggle = page.getByRole("button", { name: "2D", exact: true });
+	const orthographic = page.getByRole("button", {
+		name: "Orthographic camera",
+	});
+	await orthographic.click();
+	await expect(orthographic).toHaveAttribute("aria-pressed", "true");
+	await expect.poll(cameraType).toBe("OrthographicCamera");
+	const box = required(await page.locator("canvas").boundingBox());
+	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	await page.keyboard.down("Shift");
+	await page.mouse.move(centre.x, centre.y);
+	await page.mouse.down();
+	await page.mouse.move(centre.x + 2, centre.y + 2);
+	await page.waitForTimeout(100);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await page.mouse.move(centre.x, centre.y + 12, { steps: 3 });
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect(orthographic).toHaveAttribute("aria-pressed", "false");
+	await expect(rulers).toHaveCount(0);
+	await expect.poll(cameraType).toBe("PerspectiveCamera");
+	await expect
+		.poll(async () => (await state()).grids)
+		.toEqual({ flat: false, plane: true });
+	await expect
+		.poll(async () =>
+			(await state()).objects.map((object) => Number(object.z.toFixed(3))),
+		)
+		.toEqual([0.87, -0.87, 0.92]);
+	const [x, y, z] = (await state()).camera;
+	expect(Math.hypot(x, y)).toBeGreaterThan(0);
+	expect(Math.hypot(x, y)).toBeLessThan(0.3 * z);
+	await page.mouse.up();
+	await page.keyboard.up("Shift");
+	if (captureArtifacts)
+		await page.screenshot({ path: test.info().outputPath("orbit-start.png") });
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(rulers).toHaveCount(1);
+	await expect(orthographic).toHaveAttribute("aria-pressed", "true");
+	await expect.poll(cameraType).toBe("OrthographicCamera");
+	await expect
+		.poll(async () => {
+			const [x, y] = (await state()).camera;
+			return Math.hypot(x, y);
+		})
+		.toBeLessThan(1e-6);
+	await page.keyboard.down("Shift");
+	await page.mouse.wheel(100, 0);
+	await page.keyboard.up("Shift");
+	await page.waitForTimeout(100);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(rulers).toHaveCount(1);
+	expect(errors).toEqual([]);
+});
+
 test("3D navigation turns around and drags the board point under the cursor", async ({
 	page,
 }) => {
@@ -338,7 +441,7 @@ test("3D navigation turns around and drags the board point under the cursor", as
 	const plane = async () =>
 		JSON.parse((await page.locator("#scene-state").textContent()) || "{}").grids
 			?.plane;
-	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await page.getByRole("button", { name: "2D", exact: true }).click();
 	await expect.poll(plane).toBe(true);
 	const box = required(await page.locator("canvas").boundingBox());
 	const ground = (x: number, y: number) =>
@@ -453,7 +556,7 @@ test("the 3D focus stays on the board after orbiting edge-on", async ({
 			grids?: { plane: boolean };
 			focus?: number[] | null;
 		};
-	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await page.getByRole("button", { name: "2D", exact: true }).click();
 	await expect.poll(async () => (await state()).grids?.plane).toBe(true);
 	const objects = required((await state()).objects);
 	const minX = Math.min(...objects.map((object) => object.box[0]));
@@ -517,10 +620,10 @@ test("clicking inside a hole in 3D selects the drill, not the copper it cuts", a
 		},
 	]);
 	await expect(page.locator("[data-layer-id]")).toHaveCount(2);
-	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await page.getByRole("button", { name: "2D", exact: true }).click();
 	await expect(
-		page.getByRole("button", { name: "3D", exact: true }),
-	).toHaveAttribute("aria-pressed", "true");
+		page.getByRole("button", { name: "2D", exact: true }),
+	).toHaveAttribute("aria-pressed", "false");
 	const box = required(await page.locator("canvas").boundingBox());
 	const corners = async (name: string) => {
 		await expect

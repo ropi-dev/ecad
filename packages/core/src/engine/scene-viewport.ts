@@ -4,11 +4,12 @@ import {
 	DirectionalLight,
 	GridHelper,
 	HemisphereLight,
+	Matrix4,
 	type Object3D,
 	OrthographicCamera,
 	PerspectiveCamera,
 	Plane,
-	type Quaternion,
+	Quaternion,
 	Raycaster,
 	Scene,
 	Sphere,
@@ -44,6 +45,16 @@ import type {
 import { createLifecycle } from "#/lib/lifecycle.ts";
 import { getAppPerformance } from "#/performance/runtime.ts";
 
+const ORBIT_TURN_MS = 280;
+const TOP_VIEW = new Quaternion();
+const TILTED_VIEW = new Quaternion().setFromRotationMatrix(
+	new Matrix4().lookAt(
+		new Vector3(0.5, -0.75, 0.9),
+		new Vector3(),
+		new Vector3(0, 0, 1),
+	),
+);
+
 export const MIN_PHYSICAL_ZOOM = 0.01;
 export const MAX_PHYSICAL_ZOOM = 100;
 
@@ -64,6 +75,7 @@ export interface SceneViewportOptions {
 	selectionEnabled?: boolean;
 	hoverHighlight?: boolean;
 	orbit?: boolean;
+	gestureOrbit?: boolean;
 	antialias?: boolean;
 	ariaLabel?: string;
 	canvasClassName?: string;
@@ -72,6 +84,7 @@ export interface SceneViewportOptions {
 	onSelection?: (selection: SceneSelection | null) => void;
 	onOpenSelection?: () => void;
 	onOrientation?: (rotation: Quaternion) => void;
+	onOrbit?: (orbiting: boolean) => void;
 	onZoom?: (zoom: number) => void;
 	onReady?: (ready: boolean) => void;
 	onError?: (message: string) => void;
@@ -105,6 +118,7 @@ export function createSceneViewport(
 		selectionEnabled = true,
 		hoverHighlight = true,
 		orbit = false,
+		gestureOrbit = false,
 		antialias = true,
 		ariaLabel = "3D model",
 		canvasClassName = "",
@@ -113,6 +127,7 @@ export function createSceneViewport(
 		onSelection,
 		onOpenSelection,
 		onOrientation,
+		onOrbit,
 		onZoom,
 		onReady,
 		onError,
@@ -267,6 +282,7 @@ export function createSceneViewport(
 			() =>
 				create3DControls(camera, canvas, () => fit(), {
 					lockTop: topView,
+					unlock: gestureOrbit ? () => startOrbit() : undefined,
 					focus: (clientX, clientY) => focus(clientX, clientY),
 					onFocus: (point) => {
 						focusMarker.show(point, output.getPixelRatio());
@@ -754,24 +770,94 @@ export function createSceneViewport(
 				return;
 			controls.target.copy(camera.position).addScaledVector(view, scale);
 		};
-		const setOrbit = (enabled: boolean) => {
-			if (!topView || enabled === orbiting) return;
-			if (!enabled) settlePivot();
+		let turn: { frame: number; finish: () => void } | null = null;
+		const turnCamera = (
+			to: Quaternion,
+			animate: boolean,
+			done?: () => void,
+		) => {
+			if (turn) cancelAnimationFrame(turn.frame);
+			turn = null;
+			const from = camera.quaternion.clone();
+			const pose = (rotation: Quaternion) => {
+				const distance = camera.position.distanceTo(controls.target);
+				camera.position
+					.set(0, 0, distance)
+					.applyQuaternion(rotation)
+					.add(controls.target);
+				camera.up.set(0, 1, 0).applyQuaternion(rotation);
+				camera.quaternion.copy(rotation);
+				schedule();
+			};
+			const finish = () => {
+				if (turn) cancelAnimationFrame(turn.frame);
+				turn = null;
+				pose(to);
+				done?.();
+				controls.update();
+			};
+			if (
+				!animate ||
+				window.matchMedia("(prefers-reduced-motion: reduce)").matches
+			) {
+				finish();
+				return;
+			}
+			const started = performance.now();
+			const step = (now: number) => {
+				const progress = Math.max(
+					0,
+					Math.min((now - started) / ORBIT_TURN_MS, 1),
+				);
+				if (progress === 1) {
+					finish();
+					return;
+				}
+				pose(from.clone().slerp(to, progress * progress * (3 - 2 * progress)));
+				if (turn) turn.frame = requestAnimationFrame(step);
+			};
+			turn = { frame: requestAnimationFrame(step), finish };
+		};
+		const finishTurn = () => turn?.finish();
+		element.addEventListener("pointerdown", finishTurn, true);
+		element.addEventListener("wheel", finishTurn, {
+			capture: true,
+			passive: true,
+		});
+		lifecycle.addFinalizer(() => {
+			if (turn) cancelAnimationFrame(turn.frame);
+			element.removeEventListener("pointerdown", finishTurn, true);
+			element.removeEventListener("wheel", finishTurn, true);
+		});
+		let leaving = false;
+		const applyOrbit = (enabled: boolean) => {
 			orbiting = enabled;
 			setRotationLocked(!enabled);
-			const distance = camera.position.distanceTo(controls.target);
-			const direction = enabled
-				? new Vector3(0.5, -0.75, 0.9).normalize()
-				: new Vector3(0, 0, 1);
-			camera.up.set(0, enabled ? 0 : 1, enabled ? 1 : 0);
-			camera.position
-				.copy(controls.target)
-				.addScaledVector(direction, distance);
-			camera.lookAt(controls.target);
 			measureBoard();
 			showGrid();
-			controls.update();
 			schedule();
+		};
+		const startOrbit = () => {
+			if (orbiting) return false;
+			applyOrbit(true);
+			onOrbit?.(true);
+			return true;
+		};
+		const setOrbit = (enabled: boolean) => {
+			if (!topView || enabled === (orbiting && !leaving)) return;
+			if (enabled) {
+				leaving = false;
+				startOrbit();
+				turnCamera(TILTED_VIEW, true);
+				return;
+			}
+			leaving = true;
+			settlePivot();
+			turnCamera(TOP_VIEW, true, () => {
+				leaving = false;
+				applyOrbit(false);
+				onOrbit?.(false);
+			});
 		};
 		const pan = (x: number, y: number) => controls.pan(-x, -y);
 		const onKey = (event: KeyboardEvent) => {
@@ -1007,7 +1093,10 @@ export function createSceneViewport(
 			schedule();
 		}
 		if (!initialCamera) openingView = cameraKey();
-		if (orbit) setOrbit(true);
+		if (topView && orbit) {
+			applyOrbit(true);
+			turnCamera(TILTED_VIEW, false);
+		}
 		return runtime;
 	} catch (error) {
 		dispose();

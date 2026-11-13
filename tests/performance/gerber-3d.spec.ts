@@ -35,6 +35,7 @@ const frames = (page: Page) =>
 
 test("gerber-3d", { tag: ["@import"] }, async ({ page }, testInfo) => {
 	test.setTimeout(240_000);
+	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.goto("/projects?perf=1");
 	await ready(page);
 	await expect(
@@ -68,8 +69,9 @@ test("gerber-3d", { tag: ["@import"] }, async ({ page }, testInfo) => {
 	await expect
 		.poll(async () => (await report(page)).metrics["import.gerber"]?.count ?? 0)
 		.toBeGreaterThan(0);
-	const toggle = page.getByRole("button", { name: "3D", exact: true });
+	const toggle = page.getByRole("button", { name: "2D", exact: true });
 	await expect(toggle).toBeEnabled();
+	const axes = page.getByRole("img", { name: "XYZ axis orientation" });
 	const canvas = required(await page.locator("canvas").boundingBox());
 	const center = {
 		x: canvas.x + canvas.width / 2,
@@ -79,7 +81,8 @@ test("gerber-3d", { tag: ["@import"] }, async ({ page }, testInfo) => {
 	times.push(
 		await interaction(page, "gerber.enter-3d", async () => {
 			await toggle.click();
-			await expect(toggle).toHaveAttribute("aria-pressed", "true");
+			await expect(toggle).toHaveAttribute("aria-pressed", "false");
+			await expect(axes).toBeVisible();
 			await frames(page);
 		}),
 	);
@@ -97,7 +100,8 @@ test("gerber-3d", { tag: ["@import"] }, async ({ page }, testInfo) => {
 	times.push(
 		await interaction(page, "gerber.leave-3d", async () => {
 			await toggle.click();
-			await expect(toggle).toHaveAttribute("aria-pressed", "false");
+			await expect(toggle).toHaveAttribute("aria-pressed", "true");
+			await expect(axes).toHaveCount(0);
 			await frames(page);
 		}),
 	);

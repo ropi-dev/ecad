@@ -9,16 +9,20 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { wheelDelta } from "#/engine/navigation.ts";
 
+const UNLOCK_DISTANCE = 4;
+
 export function create3DControls(
 	camera: PerspectiveCamera | OrthographicCamera,
 	canvas: HTMLElement,
 	fit: () => void,
 	{
 		lockTop = false,
+		unlock,
 		focus,
 		onFocus,
 	}: {
 		lockTop?: boolean;
+		unlock?: () => boolean;
 		focus?: (clientX: number, clientY: number) => Vector3 | null;
 		onFocus?: (point: Vector3 | null) => void;
 	} = {},
@@ -44,6 +48,7 @@ export function create3DControls(
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
 	let pivot: Vector3 | null = null;
+	let gestureStart: { x: number; y: number } | null = null;
 	let lastWheel = Number.NEGATIVE_INFINITY;
 	let wheelEnd: ReturnType<typeof setTimeout> | undefined;
 	let focusShown = false;
@@ -58,6 +63,7 @@ export function create3DControls(
 		onFocus?.(null);
 	};
 	const beginGesture = (clientX: number, clientY: number) => {
+		gestureStart = { x: clientX, y: clientY };
 		hideFocus();
 		pivot = focus?.(clientX, clientY) ?? null;
 		if (!pivot) return;
@@ -68,15 +74,13 @@ export function create3DControls(
 		controls.target.copy(camera.position).addScaledVector(forward, depth);
 	};
 	const orbit = (deltaX: number, deltaY: number) => {
-		if (
-			!controls.enabled ||
-			rotationLocked ||
-			(!panFirst && !controls.enableRotate)
-		)
-			return;
+		if (!controls.enabled || (!panFirst && !controls.enableRotate)) return;
+		if (Math.hypot(deltaX, deltaY) === 0) return;
+		if (rotationLocked) {
+			if (!unlock?.()) return;
+			if (gestureStart) beginGesture(gestureStart.x, gestureStart.y);
+		}
 		const camera = controls.object;
-		const distance = Math.hypot(deltaX, deltaY);
-		if (distance === 0) return;
 		showFocus();
 		const scale =
 			(2 * Math.PI * controls.rotateSpeed) / Math.max(canvas.clientHeight, 1);
@@ -136,7 +140,7 @@ export function create3DControls(
 		if (touch || (event.button !== 0 && event.button !== 1)) return;
 		const button = event.button === 0 ? "LEFT" : "MIDDLE";
 		if (panFirst) {
-			if (event.shiftKey && !rotationLocked) {
+			if (event.shiftKey && (!rotationLocked || unlock)) {
 				orbitPointer = event.pointerId;
 				controls.mouseButtons[button] = null;
 				return;
@@ -162,12 +166,17 @@ export function create3DControls(
 	const onPointerMove = (event: PointerEvent) => {
 		const previous = pointers.get(event.pointerId);
 		if (!previous) return;
-		if (
-			orbitPointer === event.pointerId ||
-			(previous.touch && pointers.size === 1 && !rotationLocked)
-		) {
-			orbit(previous.x - event.clientX, previous.y - event.clientY);
-		}
+		const deltaX = previous.x - event.clientX;
+		const deltaY = previous.y - event.clientY;
+		if (orbitPointer === event.pointerId) {
+			if (
+				rotationLocked &&
+				(!event.shiftKey || Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
+			)
+				return;
+			orbit(deltaX, deltaY);
+		} else if (previous.touch && pointers.size === 1 && !rotationLocked)
+			orbit(deltaX, deltaY);
 		previous.x = event.clientX;
 		previous.y = event.clientY;
 	};
