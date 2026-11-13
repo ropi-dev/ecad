@@ -8,6 +8,7 @@ import {
 import {
 	type EditorShape,
 	shapeBounds,
+	symbolTextMoved,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	formatInches,
@@ -29,6 +30,7 @@ import {
 } from "react";
 import { CanvasOverlay } from "#/components/editor/CanvasOverlay.tsx";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
+import { CursorReadout } from "#/components/editor/CursorReadout.tsx";
 import {
 	EditorMessages,
 	useEditorMessages,
@@ -398,11 +400,16 @@ function EditorCanvas({
 	const attributesShown =
 		attributesFor?.selection === selectedIds &&
 		attributesFor.childKey === selectedChildKey;
+	const childTextMoved =
+		!!selectedSymbol &&
+		selectedChild?.shape.kind === "text" &&
+		symbolTextMoved(selectedSymbol, selectedChild.key);
 	const selectionAttributes = useMemo(
 		() => (
 			<SelectionAttributes
 				shapes={selectedChild ? [selectedChild.shape] : selected}
 				isSymbolChild={selectedChild !== undefined}
+				symbolTextMoved={childTextMoved}
 				readOnly={selectedChildFixed}
 				onEdit={editAttributes}
 				onEditSymbol={
@@ -433,6 +440,7 @@ function EditorCanvas({
 		[
 			selectedChild,
 			selectedChildFixed,
+			childTextMoved,
 			selected,
 			editAttributes,
 			editTarget,
@@ -611,6 +619,7 @@ function EditorCanvas({
 						selectedChild={selectedChild}
 						handles={handles}
 						guideCenter={guideCenter}
+						canvasArea={canvasArea}
 						connectionHover={connectionHover}
 						marquee={marquee}
 					/>
@@ -657,6 +666,11 @@ function EditorCanvas({
 							/>
 						</Suspense>
 					)}
+					<CursorReadout
+						ready={ready}
+						cameraView={cameraView}
+						canvasArea={canvasArea}
+					/>
 				</div>
 				{attributesShown && selectionAttributes}
 			</div>

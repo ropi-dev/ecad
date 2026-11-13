@@ -7,11 +7,14 @@ import {
 	type EditorSymbol,
 	editShapeAttribute,
 	moveShapes,
+	moveSymbolText,
 	normalizeNetSymbol,
 	replaceSymbolChild,
 	setSymbolLabelPosition,
 	symbolChildren,
 	symbolLabelPosition,
+	symbolTextMoved,
+	symbolTextShapes,
 	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { createLabelShape } from "#/drawing/placement.ts";
@@ -23,6 +26,7 @@ import {
 } from "#/drawing/selection-edit.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { createTextShape, updateText } from "#/drawing/text.ts";
+import { required } from "./helpers/required.ts";
 
 const measureText = (value: string) => value.length * 48;
 const box = (id = 1) => {
@@ -524,4 +528,67 @@ test("symbol-level edits made while a child is selected still change the parent 
 		applySelectionEdit({ kind: "label-role", role: "net" }, withChild),
 		undefined,
 	);
+});
+
+test("resetting a selected symbol text returns it to the definition", () => {
+	const original = resistor(20);
+	const placement = (symbol: EditorSymbol) =>
+		symbolTextShapes(symbol).map(
+			({ x, y, rotation, horizontalAlign, verticalAlign }) => ({
+				x,
+				y,
+				rotation,
+				horizontalAlign,
+				verticalAlign,
+			}),
+		);
+	const labels = (symbol: EditorSymbol) =>
+		symbolChildren(symbol).filter((child) =>
+			child.key.startsWith("attribute:"),
+		);
+	const [first, second] = labels(original);
+	assert.ok(first?.shape.kind === "text" && second?.shape.kind === "text");
+	assert.equal(symbolTextMoved(original, first.key), false);
+	const reset = (symbol: EditorSymbol, key: string) =>
+		applySelectionEdit(
+			{ kind: "symbol-text-reset" },
+			context([symbol], {
+				child: {
+					symbol,
+					child: required(labels(symbol).find((child) => child.key === key)),
+				},
+			}),
+		);
+	assert.equal(reset(original, first.key), undefined);
+	assert.equal(
+		applySelectionEdit({ kind: "symbol-text-reset" }, context([original])),
+		undefined,
+	);
+	const moved = moveSymbolText(
+		replaceSymbolChild(original, first.key, {
+			...first.shape,
+			x: first.shape.x + 5,
+			y: first.shape.y - 3,
+			rotation: Math.PI / 2,
+			horizontalAlign: "right",
+		}),
+		1,
+		{ x: 4, y: 4 },
+	);
+	assert.equal(symbolTextMoved(moved, first.key), true);
+	assert.equal(symbolTextMoved(moved, second.key), true);
+	const edit = reset(moved, first.key);
+	assert.equal(edit?.label, "Reset text position");
+	const [restored] = edit?.replacements ?? [];
+	assert.ok(restored?.kind === "symbol");
+	assert.equal(symbolTextMoved(restored, first.key), false);
+	assert.equal(symbolTextMoved(restored, second.key), true);
+	assert.deepEqual(placement(restored)[0], placement(original)[0]);
+	assert.deepEqual(placement(restored)[1], placement(moved)[1]);
+	assert.deepEqual(restored.attributes, moved.attributes);
+	const locked = replaceSymbolChild(moved, first.key, {
+		...required(labels(moved).find((child) => child.key === first.key)).shape,
+		locked: true,
+	});
+	assert.equal(reset(locked, first.key), undefined);
 });

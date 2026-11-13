@@ -4,6 +4,7 @@ import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
+import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 const [selected, highlighted, wire] = (
@@ -406,15 +407,21 @@ test("ruler position guide follows the object center through release and cancell
 	page,
 }) => {
 	await createShape(page, "Rectangle", g(40), g(40));
-	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
+	await expect(page.getByTestId("ruler-position-guide")).toHaveAttribute(
+		"data-source",
+		"cursor",
+	);
 	const start = await screen(page, g(32), g(40));
 	const end = await screen(page, g(52), g(56));
 	await page.mouse.move(start.x, start.y);
 	await page.mouse.down();
-	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
+	await expect(page.getByTestId("ruler-position-guide")).toHaveAttribute(
+		"data-source",
+		"cursor",
+	);
 	await page.mouse.move(end.x, end.y, { steps: 4 });
 	const crosshair = page.getByTestId("ruler-position-guide");
-	await expect(crosshair).toBeVisible();
+	await expect(crosshair).toHaveAttribute("data-source", "object");
 	const center = await screen(page, g(60), g(56));
 	const box = required(await crosshair.boundingBox());
 	await expect
@@ -435,24 +442,33 @@ test("ruler position guide follows the object center through release and cancell
 		"x2",
 		String(box.width),
 	);
-	await expect(crosshair.locator("line").nth(1)).toHaveAttribute("y1", "0");
-	await expect(crosshair.locator("line").nth(1)).toHaveAttribute("y2", "24");
+	await expect(crosshair.locator("line").nth(1)).toHaveAttribute(
+		"y1",
+		String(box.height - 24),
+	);
+	await expect(crosshair.locator("line").nth(1)).toHaveAttribute(
+		"y2",
+		String(box.height),
+	);
 	await page.screenshot({ path: "/tmp/ecad-ruler-position-guide.png" });
 	await page.mouse.up();
-	await expect(crosshair).toHaveCount(0);
+	await expect(crosshair).toHaveAttribute("data-source", "cursor");
 	await page.mouse.move(center.x, center.y);
 	await page.mouse.down();
 	await page.mouse.move(center.x + 40, center.y - 25, { steps: 3 });
-	await expect(crosshair).toBeVisible();
+	await expect(crosshair).toHaveAttribute("data-source", "object");
 	await page.keyboard.press("Escape");
-	await expect(crosshair).toHaveCount(0);
+	await expect(crosshair).toHaveAttribute("data-source", "cursor");
 	await page.mouse.up();
-	const restored = (await state(page)).shapes[0];
-	expect(restored.x).toBeCloseTo(g(60), 4);
-	expect(restored.y).toBeCloseTo(g(56), 4);
+	await expect
+		.poll(async () => (await state(page)).shapes[0].x)
+		.toBeCloseTo(g(60), 4);
+	await expect
+		.poll(async () => (await state(page)).shapes[0].y)
+		.toBeCloseTo(g(56), 4);
 });
 
-test("moving a symbol child does not show the ruler position guide", async ({
+test("moving a symbol child keeps the ruler position guide on the cursor", async ({
 	page,
 }) => {
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
@@ -467,8 +483,75 @@ test("moving a symbol child does not show the ruler position guide", async ({
 	await page.mouse.down();
 	await page.mouse.move(label.x + 40, label.y - 20, { steps: 4 });
 	await expect(page.getByTestId("symbol-child-selection")).toBeVisible();
-	await expect(page.getByTestId("ruler-position-guide")).toHaveCount(0);
+	await expect(page.getByTestId("ruler-position-guide")).toHaveAttribute(
+		"data-source",
+		"cursor",
+	);
 	await page.mouse.up();
+});
+
+test("Reset position returns a dragged symbol label and shows only for symbol text", async ({
+	page,
+}) => {
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await clickAt(page, 100, 100);
+	const anchor = page.locator('[data-anchor-id="1:label:0"]');
+	const home = required(await anchor.boundingBox());
+	await page.mouse.move(home.x + home.width / 2, home.y + home.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(home.x + 60, home.y - 40, { steps: 4 });
+	await page.mouse.up();
+	await expect
+		.poll(async () => Math.abs(required(await anchor.boundingBox()).x - home.x))
+		.toBeGreaterThan(20);
+	const moved = required(await anchor.boundingBox());
+	await page.mouse.dblclick(
+		moved.x + moved.width / 2,
+		moved.y + moved.height / 2,
+	);
+	const reset = page.getByRole("button", { name: "Reset position" });
+	await expect(reset).toBeEnabled();
+	await reset.click();
+	await expect
+		.poll(async () => required(await anchor.boundingBox()).x)
+		.toBeCloseTo(home.x, 0);
+	await expect
+		.poll(async () => required(await anchor.boundingBox()).y)
+		.toBeCloseTo(home.y, 0);
+	await expect(reset).toBeDisabled();
+	await openPlacedShape(page);
+	await expect(reset).toHaveCount(0);
+	await (await toolbarButton(page, "Text")).click();
+	await clickAt(page, 300, 200);
+	await expect(
+		page.getByRole("complementary", { name: "Selection attributes" }),
+	).toBeVisible();
+	await expect(reset).toHaveCount(0);
+});
+
+test("every symbol shows an anchor cross at its position", async ({ page }) => {
+	const anchors = page.getByTestId("symbol-anchors");
+	await expect(anchors).toHaveCount(0);
+	const insert = async (x: number) => {
+		await page.getByRole("button", { name: "Symbols", exact: true }).click();
+		await page
+			.getByRole("button", { name: "Insert Resistor", exact: true })
+			.click();
+		await clickAt(page, x, 100);
+		await page.keyboard.press("Escape");
+	};
+	await insert(100);
+	await expect(anchors).toHaveAttribute("data-count", "1");
+	const symbol = (await state(page)).shapes[0];
+	const expected = await screen(page, symbol.x, symbol.y);
+	const cross = required(await anchors.locator("path").boundingBox());
+	expect(Math.abs(cross.x + cross.width / 2 - expected.x)).toBeLessThan(1);
+	expect(Math.abs(cross.y + cross.height / 2 - expected.y)).toBeLessThan(1);
+	await insert(300);
+	await expect(anchors).toHaveAttribute("data-count", "2");
 });
 
 // A symbol and a placement tool; every tool shares the Net label's path.
@@ -486,7 +569,7 @@ for (const item of ["Resistor", "Net label"]) {
 		}
 		await moveAt(page, 100, 100);
 		const crosshair = page.getByTestId("ruler-position-guide");
-		await expect(crosshair).toBeVisible();
+		await expect(crosshair).toHaveAttribute("data-source", "object");
 		const guide = await crosshair.evaluate((svg) => ({
 			x:
 				svg.getBoundingClientRect().x +
@@ -502,7 +585,9 @@ for (const item of ["Resistor", "Net label"]) {
 					const y1 = Number(line.getAttribute("y1"));
 					const y2 = Number(line.getAttribute("y2"));
 					return line.dataset.axis === "x"
-						? y1 === 0 && y2 === 24 && x1 === x2
+						? y1 === svg.getBoundingClientRect().height - 24 &&
+								y2 === svg.getBoundingClientRect().height &&
+								x1 === x2
 						: x1 === svg.getBoundingClientRect().width - 24 &&
 								x2 === svg.getBoundingClientRect().width &&
 								y1 === y2;
@@ -515,7 +600,7 @@ for (const item of ["Resistor", "Net label"]) {
 		if (item === "Resistor")
 			await page.screenshot({ path: "/tmp/ecad-placement-ruler-guide.png" });
 		await clickAt(page, 100, 100);
-		await expect(crosshair).toHaveCount(0);
+		await expect(crosshair).toHaveAttribute("data-source", "cursor");
 		const center = await page.evaluate(async () => {
 			const shapesPath = "/packages/drawing-core/src/drawing/shapes.ts";
 			const { shapeBounds } = await import(shapesPath);
@@ -542,7 +627,7 @@ for (const item of ["Resistor", "Net label"]) {
 	});
 }
 
-test("placement ruler guide clears on Escape and appears while drawing a shape", async ({
+test("placement ruler guide returns to the cursor on Escape and follows a shape being drawn", async ({
 	page,
 }) => {
 	await page.getByRole("button", { name: "Symbols", exact: true }).click();
@@ -551,16 +636,16 @@ test("placement ruler guide clears on Escape and appears while drawing a shape",
 		.click();
 	await moveAt(page, 100, 100);
 	const crosshair = page.getByTestId("ruler-position-guide");
-	await expect(crosshair).toBeVisible();
+	await expect(crosshair).toHaveAttribute("data-source", "object");
 	await page.keyboard.press("Escape");
-	await expect(crosshair).toHaveCount(0);
+	await expect(crosshair).toHaveAttribute("data-source", "cursor");
 	await (await toolbarButton(page, "Rectangle")).click();
 	await moveAt(page, 100, 100);
 	await page.mouse.down();
 	await moveAt(page, 150, 150);
-	await expect(crosshair).toBeVisible();
+	await expect(crosshair).toHaveAttribute("data-source", "object");
 	await page.mouse.up();
-	await expect(crosshair).toHaveCount(0);
+	await expect(crosshair).toHaveAttribute("data-source", "cursor");
 });
 
 // A symbol, a text-anchored tool and a centered tool; Pin, Text and Supply
@@ -896,6 +981,7 @@ test("panning shows the same picture as a full redraw", async ({ page }) => {
 	await expect(remove).toBeEnabled();
 	await page.keyboard.press("Escape");
 	await expect(remove).toBeDisabled();
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 	await settle();
 	// Grid dot coverage may round differently by a level.
 	expect(

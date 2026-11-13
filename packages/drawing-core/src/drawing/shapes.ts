@@ -76,10 +76,12 @@ export {
 } from "#/drawing/symbol-instances.ts";
 export {
 	moveSymbolText,
+	resetSymbolText,
 	type SymbolLabelPosition,
 	setSymbolLabelPosition,
 	symbolLabelAnchor,
 	symbolLabelPosition,
+	symbolTextMoved,
 } from "#/drawing/symbol-labels.ts";
 export { cutWiresUnderSymbols } from "#/drawing/symbol-wire-cuts.ts";
 export {

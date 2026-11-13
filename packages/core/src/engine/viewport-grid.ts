@@ -33,6 +33,11 @@ const OUTSIDE_OPACITY = 0.3;
 const MINIMUM_CELL = 2;
 /** Most dots a frame draws, so a degenerate view can't flood the GPU. */
 const MAXIMUM_DOTS = 1 << 20;
+const majorBrightness = /* glsl */ `
+	float majorBrightness(vec2 index) {
+		return any(lessThan(mod(index + 0.5, 10.0), vec2(1.0))) ? 1.3 : 1.0;
+	}
+`;
 
 /**
  * Dots at every minor ruler spacing, drawn under the scene as one point per
@@ -51,6 +56,8 @@ export function createViewportGrid() {
 			cellB: { value: new Vector2(1, 1) },
 			startA: { value: new Vector2() },
 			startB: { value: new Vector2() },
+			originA: { value: new Vector2() },
+			originB: { value: new Vector2() },
 			columns: { value: new Vector2(1, 1) },
 			countA: { value: 0 },
 			opacity: { value: new Vector2() },
@@ -65,6 +72,8 @@ export function createViewportGrid() {
 			uniform vec2 cellB;
 			uniform vec2 startA;
 			uniform vec2 startB;
+			uniform vec2 originA;
+			uniform vec2 originB;
 			uniform vec2 columns;
 			uniform float countA;
 			uniform vec2 opacity;
@@ -72,6 +81,8 @@ export function createViewportGrid() {
 			uniform vec4 viewport;
 			flat out vec2 center;
 			flat out float strength;
+			flat out float brightness;
+			${majorBrightness}
 			void main() {
 				float index = float(gl_VertexID);
 				bool second = index >= countA;
@@ -79,9 +90,12 @@ export function createViewportGrid() {
 				float perRow = second ? columns.y : columns.x;
 				float row = floor(local / perRow);
 				vec2 cell = second ? cellB : cellA;
-				center = (second ? startB : startA) +
-					vec2(local - row * perRow, row) * cell;
+				vec2 cellIndex = vec2(local - row * perRow, row);
+				center = (second ? startB : startA) + cellIndex * cell;
 				strength = second ? opacity.y : opacity.x;
+				brightness = majorBrightness(
+					(second ? originB : originA) + cellIndex
+				);
 				gl_Position = vec4((center - viewport.xy) / viewport.zw * 2.0 - 1.0, 0.0, 1.0);
 				gl_PointSize = 2.0 * ceil(radius + 1.0);
 			}
@@ -93,6 +107,7 @@ export function createViewportGrid() {
 			uniform float outside;
 			flat in vec2 center;
 			flat in float strength;
+			flat in float brightness;
 			void main() {
 				vec2 pixel = gl_FragCoord.xy;
 				float alpha = strength *
@@ -101,7 +116,7 @@ export function createViewportGrid() {
 					all(lessThanEqual(pixel, bounds.zw));
 				alpha *= inside ? 1.0 : outside;
 				if (alpha <= 0.0) discard;
-				gl_FragColor = vec4(color, alpha);
+				gl_FragColor = vec4(color * brightness, alpha);
 			}
 		`,
 		// Opaque in Three's sort, so it draws before the scene, but blended.
@@ -130,6 +145,7 @@ export function createViewportGrid() {
 		{ cell: uniforms.cellB.value, phase: new Vector2(), used: false },
 	];
 	const starts = [uniforms.startA.value, uniforms.startB.value];
+	const origins = [uniforms.originA.value, uniforms.originB.value];
 	// Only the dots in the current viewport are drawn, so a pan strip draws
 	// few of them.
 	points.onBeforeRender = (renderer) => {
@@ -137,10 +153,11 @@ export function createViewportGrid() {
 		let total = 0;
 		layers.forEach(({ cell, phase, used }, index) => {
 			const start = starts[index];
-			start.set(
-				phase.x + cell.x * (Math.floor((viewport.x - phase.x) / cell.x) - 1),
-				phase.y + cell.y * (Math.floor((viewport.y - phase.y) / cell.y) - 1),
+			const origin = origins[index].set(
+				Math.floor((viewport.x - phase.x) / cell.x) - 1,
+				Math.floor((viewport.y - phase.y) / cell.y) - 1,
 			);
+			start.set(phase.x + cell.x * origin.x, phase.y + cell.y * origin.y);
 			const columns = used ? Math.ceil(viewport.z / cell.x) + 3 : 0;
 			const rows = used ? Math.ceil(viewport.w / cell.y) + 3 : 0;
 			uniforms.columns.value.setComponent(index, Math.max(columns, 1));
@@ -273,6 +290,7 @@ export function createPlaneGrid() {
 			uniform vec4 bounds;
 			uniform float outside;
 			varying vec2 world;
+			${majorBrightness}
 			float dots(float cell) {
 				vec2 perPixel = max(fwidth(world), vec2(1e-9));
 				float cellPixels = cell / max(perPixel.x, perPixel.y);
@@ -285,12 +303,18 @@ export function createPlaneGrid() {
 				return fade * clamp(radius + 0.5 - length(offset), 0.0, 1.0);
 			}
 			void main() {
-				float alpha = max(opacity.x * dots(spacing.x), opacity.y * dots(spacing.y));
+				float first = opacity.x * dots(spacing.x);
+				float second = opacity.y * dots(spacing.y);
+				float alpha = max(first, second);
+				float cell = first >= second ? spacing.x : spacing.y;
 				bool inside = all(greaterThanEqual(world, bounds.xy)) &&
 					all(lessThanEqual(world, bounds.zw));
 				alpha *= inside ? 1.0 : outside;
 				if (alpha <= 0.0) discard;
-				gl_FragColor = vec4(color, alpha);
+				gl_FragColor = vec4(
+					color * majorBrightness(floor(world / cell + 0.5)),
+					alpha
+				);
 			}
 		`,
 		transparent: false,

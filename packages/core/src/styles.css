@@ -84,15 +84,15 @@
 	--text-xl: 1.375rem;
 	--text-xl--line-height: 1.75rem;
 
-	--radius-sm: 0.25rem;
-	--radius-md: 0.375rem;
-	--radius-lg: 0.5rem;
-	--radius-xl: 0.625rem;
-	--radius-2xl: 0.875rem;
+	--radius-sm: 0.125rem;
+	--radius-md: 0.1875rem;
+	--radius-lg: 0.25rem;
+	--radius-xl: 0.3125rem;
+	--radius-2xl: 0.375rem;
 
-	--shadow-panel: 0 1px 2px #00000066, 0 6px 16px -4px #00000080;
-	--shadow-pop: 0 2px 4px #0000004d, 0 12px 28px -6px #000000a6;
-	--shadow-dialog: 0 24px 64px -12px #000000cc;
+	--shadow-panel: 0 1px 3px #00000059;
+	--shadow-pop: 0 4px 14px #00000073;
+	--shadow-dialog: 0 16px 48px #000000a6;
 
 	/* Hover and press states switch at once. Entrances and toggles are eased. */
 	--ease-out: cubic-bezier(0.2, 0, 0, 1);
@@ -102,18 +102,20 @@
 :root {
 	/*
 	 * Floating chrome sits one gap inside the canvas. Workspaces with rulers
-	 * add the 24px ruler band at the top and right; plain ones do not.
+	 * add the 24px ruler band at the bottom and right; plain ones do not.
 	 */
-	--chrome-gap: 16px;
+	--chrome-gap: 10px;
 	--ruler-band: 24px;
-	--chrome-top: calc(var(--ruler-band) + var(--chrome-gap));
+	--chrome-top: var(--chrome-gap);
 	--chrome-right: calc(var(--ruler-band) + var(--chrome-gap));
+	--chrome-bottom: calc(var(--ruler-band) + var(--chrome-gap));
 	/* Height of the sidebar button and the document bar beside it. */
 	--chrome-control: 40px;
 	/* That height plus the space under it. */
 	--chrome-bar: calc(var(--chrome-control) + 8px);
+	--dock-height: 62px;
 	/* Height of the dock plus the space above it. */
-	--chrome-dock: calc(62px + var(--chrome-gap));
+	--chrome-dock: calc(var(--dock-height) + var(--chrome-bottom));
 
 	/* Circuit graph. */
 	--circuit-canvas: #19212e;
@@ -142,12 +144,13 @@
 @media (pointer: coarse) {
 	:root {
 		--chrome-control: 46px;
-		--chrome-dock: calc(70px + var(--chrome-gap));
+		--dock-height: 70px;
 	}
 }
 .workspace-plain {
-	--chrome-top: var(--chrome-gap);
 	--chrome-right: var(--chrome-gap);
+	--chrome-bottom: var(--chrome-gap);
+	--chrome-dock: calc(var(--dock-height) + var(--chrome-bottom));
 }
 
 @layer base {
@@ -481,14 +484,12 @@
 		opacity: 0.5;
 	}
 
-	/* Small uppercase heading for a group of fields or list rows. */
+	/* Small heading for a group of fields or list rows. */
 	.ui-section-label {
-		color: var(--color-fg-faint);
-		font-size: var(--text-2xs);
+		color: var(--color-fg-muted);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		letter-spacing: 0.04em;
 		line-height: 1rem;
-		text-transform: uppercase;
 	}
 
 	.ui-kbd {

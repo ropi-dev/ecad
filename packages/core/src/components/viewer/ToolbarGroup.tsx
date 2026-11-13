@@ -73,7 +73,7 @@ export function ToolbarDock({
 				ref={setHost}
 				role="toolbar"
 				aria-label={label}
-				className={`group absolute bottom-[calc(var(--chrome-gap)+env(safe-area-inset-bottom))] left-1/2 z-10 w-max max-w-[calc(100%-2*var(--chrome-right))] -translate-x-1/2 p-1 ${toolbarSurfaceClassName}`}
+				className={`group absolute bottom-[calc(var(--chrome-bottom)+env(safe-area-inset-bottom))] left-1/2 z-10 w-max max-w-[calc(100%-2*var(--chrome-right))] -translate-x-1/2 p-1 ${toolbarSurfaceClassName}`}
 			>
 				<div
 					ref={setRow}

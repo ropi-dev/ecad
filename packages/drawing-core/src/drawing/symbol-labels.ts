@@ -184,3 +184,49 @@ export function symbolLabelPosition(
 		(["above", "below", "left", "right"] as const).find(matches) ?? "custom"
 	);
 }
+
+const placementFields: readonly string[] = [
+	"x",
+	"y",
+	"rotation",
+	"horizontalAlign",
+	"verticalAlign",
+];
+
+function textAttribute(key: string) {
+	return key.startsWith("attribute:")
+		? (key.slice(10) as SymbolText["attribute"])
+		: undefined;
+}
+
+export function symbolTextMoved(symbol: EditorSymbol, key: string): boolean {
+	const override: Record<string, unknown> = symbol.childOverrides?.[key] ?? {};
+	const attribute = textAttribute(key);
+	return (
+		placementFields.some((field) => override[field] !== undefined) ||
+		(attribute !== undefined &&
+			symbolLabelPosition(symbol, attribute) !== "default")
+	);
+}
+
+export function resetSymbolText(
+	symbol: EditorSymbol,
+	key: string,
+): EditorSymbol {
+	if (!symbolTextMoved(symbol, key)) return symbol;
+	const override = Object.fromEntries(
+		Object.entries(symbol.childOverrides?.[key] ?? {}).filter(
+			([field]) => !placementFields.includes(field),
+		),
+	);
+	const reset = {
+		...symbol,
+		childOverrides: Object.keys(override).length
+			? { ...symbol.childOverrides, [key]: override }
+			: withoutKey(symbol.childOverrides, key),
+	};
+	const attribute = textAttribute(key);
+	return attribute
+		? setSymbolLabelPosition(reset, attribute, "default")
+		: reset;
+}
