@@ -121,7 +121,7 @@ Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format
 
 ### Deploy with the Vercel GitHub app
 
-The `ecad` project in the `ropis-projects` Vercel team connects to `ropi-dev/ecad` through the Vercel GitHub app. Pushes to `main` deploy to production at `app.ecad.ropi.dev`, and `ecad.ropi.dev` redirects there. Other branches and pull requests get preview deployments.
+The `ecad` project in the `ropis-projects` Vercel team connects to `ropi-dev/ecad` through the Vercel GitHub app. Pushes to `main` deploy to production at `app.ecad.ropi.dev`, and `ecad.ropi.dev` redirects there. Other branches and pull requests don't deploy, because `git.deploymentEnabled` in `packages/web/vercel.json` turns off every branch except `main`.
 
 Use the TanStack Start framework preset, Node.js 24, and `packages/web` as the project root. Keep the default install, build, and output settings, and allow the build to include files outside the root directory so it can use the shared workspace packages. Vercel sets `VERCEL`, which enables the Nitro adapter in the web Vite config.
 
