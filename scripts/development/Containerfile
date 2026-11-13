@@ -3,6 +3,6 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=/pnpm:$PATH
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
-RUN npm install --global pnpm@10.34.9 && pnpm dlx playwright@1.63.0 install --with-deps chromium && apt-get update && apt-get install --no-install-recommends --yes util-linux && rm -rf /var/lib/apt/lists/*
+RUN npm install --global pnpm@10.34.9 && pnpm dlx playwright@1.63.0 install --with-deps chromium && rm -rf /pnpm/store /root/.cache/pnpm && install -d -o node -g node /pnpm/store && apt-get update && apt-get install --no-install-recommends --yes util-linux && rm -rf /var/lib/apt/lists/*
 COPY entrypoint.sh /opt/ecad/entrypoint.sh
 WORKDIR /workspace
