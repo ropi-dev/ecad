@@ -10,6 +10,7 @@ import {
 	moveShapes,
 	normalizeNetSymbol,
 	replaceSymbolChild,
+	resetSymbolText,
 	type ShapeAttribute,
 	type SymbolChild,
 	type SymbolLabelPosition,
@@ -58,7 +59,8 @@ export type SelectionEdit =
 	| {
 			readonly kind: "symbol-label-position";
 			readonly position: SymbolLabelPosition;
-	  };
+	  }
+	| { readonly kind: "symbol-text-reset" };
 
 /**
  * Whether an edit applies to a pin that stays fixed to its symbol. Only the
@@ -264,6 +266,19 @@ export function applySelectionEdit(
 					.map((shape) => setSymbolLabelPosition(shape, "name", edit.position)),
 				label: "Position label",
 			};
+		case "symbol-text-reset": {
+			const target = context.child;
+			if (
+				!target ||
+				target.child.shape.kind !== "text" ||
+				target.child.shape.locked
+			)
+				return undefined;
+			const reset = resetSymbolText(target.symbol, target.child.key);
+			return reset === target.symbol
+				? undefined
+				: { replacements: [reset], label: "Reset text position" };
+		}
 	}
 }
 

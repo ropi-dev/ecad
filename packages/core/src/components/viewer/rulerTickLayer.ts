@@ -26,8 +26,8 @@ export type TickLayer = ReturnType<typeof createTickLayer>;
  * and stay in ascending order: the tree changes only when a tick enters or
  * leaves.
  *
- * The horizontal ruler's coordinates run along x, with the band from y 0 to
- * `RULER_BAND`. The vertical ruler's run along y, with the band from x 1.
+ * The horizontal ruler's coordinates run along x, with the band from y 1.
+ * The vertical ruler's run along y, with the band from x 1.
  */
 export function createTickLayer(svg: SVGSVGElement, axis: "x" | "y") {
 	const minor = svgElement("path", {
@@ -38,14 +38,11 @@ export function createTickLayer(svg: SVGSVGElement, axis: "x" | "y") {
 	const createGroup = () => {
 		const node = svgElement("g", { "data-axis": axis });
 		node.append(
-			svgElement(
-				"line",
-				axis === "x" ? { y1: 15, y2: RULER_BAND } : { x1: 1, x2: 10 },
-			),
+			svgElement("line", axis === "x" ? { y1: 1, y2: 10 } : { x1: 1, x2: 10 }),
 			svgElement(
 				"text",
 				axis === "x"
-					? { x: 3, y: 11 }
+					? { x: 3, y: 21 }
 					: { transform: "translate(14 3) rotate(90)" },
 			),
 		);
@@ -62,8 +59,7 @@ export function createTickLayer(svg: SVGSVGElement, axis: "x" | "y") {
 				const position = tick.position + offset;
 				if (tick.label === undefined) {
 					const rounded = Math.round(position * 100) / 100;
-					path +=
-						axis === "x" ? `M${rounded} 19V${RULER_BAND}` : `M1 ${rounded}H6`;
+					path += axis === "x" ? `M${rounded} 1V6` : `M1 ${rounded}H6`;
 					continue;
 				}
 				while (old < groups.length && groups[old].value < tick.value)

@@ -10,8 +10,16 @@ import {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import { Diff, Minus, Plus } from "lucide-react";
-import { memo, useMemo, useState, useSyncExternalStore } from "react";
+import {
+	memo,
+	type RefObject,
+	useMemo,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
+import { RulerPositionGuide } from "#/components/editor/RulerPositionGuide.tsx";
+import { SymbolAnchors } from "#/components/editor/SymbolAnchors.tsx";
 import type { SelectionMode } from "#/components/editor/selectionMode.ts";
 import { createTextAnchorReader } from "#/components/editor/textAnchors.ts";
 import type {
@@ -35,6 +43,7 @@ interface CanvasOverlayProps {
 	selectedChild: SymbolChild | undefined;
 	handles: { shape: EditorShape; handle: ResizeHandle }[];
 	guideCenter: Point | null;
+	canvasArea: RefObject<HTMLElement | null>;
 	connectionHover: Point | null;
 	marquee: ReturnType<typeof useCanvasGestures>["marquee"];
 }
@@ -48,6 +57,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 	selectedChild,
 	handles,
 	guideCenter,
+	canvasArea,
 	connectionHover,
 	marquee,
 }: CanvasOverlayProps) {
@@ -61,16 +71,6 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 		() => readTextAnchors(shapes, selected),
 		[readTextAnchors, shapes, selected],
 	);
-	const rulerPosition =
-		guideCenter && view
-			? worldToScreen(
-					guideCenter,
-					view.camera,
-					view.viewport.width,
-					view.viewport.height,
-				)
-			: null;
-
 	return (
 		<>
 			{view && (
@@ -80,34 +80,11 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 					// Handles and guides follow the camera on every frame.
 					data-shortcut-mutations="ignore"
 				>
-					{rulerPosition && (
-						<svg
-							data-testid="ruler-position-guide"
-							aria-hidden="true"
-							className="absolute inset-0 size-full stroke-fg-muted/60 stroke-1"
-						>
-							{rulerPosition.y >= 24 &&
-								rulerPosition.y <= view.viewport.height && (
-									<line
-										data-axis="y"
-										x1={view.viewport.width - 24}
-										y1={rulerPosition.y}
-										x2={view.viewport.width}
-										y2={rulerPosition.y}
-									/>
-								)}
-							{rulerPosition.x >= 0 &&
-								rulerPosition.x < view.viewport.width - 24 && (
-									<line
-										data-axis="x"
-										x1={rulerPosition.x}
-										y1={0}
-										x2={rulerPosition.x}
-										y2={24}
-									/>
-								)}
-						</svg>
-					)}
+					<RulerPositionGuide
+						view={view}
+						guideCenter={guideCenter}
+						canvasArea={canvasArea}
+					/>
 					{connectionHover &&
 						tool === "wire" &&
 						(() => {
@@ -157,6 +134,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 								/>
 							);
 						})()}
+					<SymbolAnchors view={view} shapes={shapes} />
 					{textAnchors.map((anchor) => {
 						const point = worldToScreen(
 							anchor,
@@ -169,7 +147,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 								key={anchor.key}
 								data-testid="text-anchor"
 								data-anchor-id={anchor.key}
-								className="pointer-events-none absolute z-1 size-[9px] -translate-x-1/2 -translate-y-1/2 text-accent drop-shadow-[0_0_1px_var(--color-paper)] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
+								className="pointer-events-none absolute z-1 size-[5px] -translate-x-1/2 -translate-y-1/2 text-accent drop-shadow-[0_0_1px_var(--color-paper)] before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-current after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-current"
 								style={{ left: point.x, top: point.y }}
 							/>
 						);

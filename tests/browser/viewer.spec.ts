@@ -488,7 +488,7 @@ test("the 3D focus stays on the board after orbiting edge-on", async ({
 	for (const dy of [400, -800]) {
 		await orbit(centre, 0, dy);
 		await orbit(centre, 60, 0, true);
-		await orbit({ x: box.x + 20, y: box.y + 20 }, 60, 0, true);
+		await orbit({ x: box.x + 20, y: box.y + 80 }, 60, 0, true);
 	}
 	expect(errors).toEqual([]);
 });

@@ -16,7 +16,7 @@ export function ProjectConflictNotice() {
 		<div
 			role="alert"
 			aria-labelledby="project-conflict-title"
-			className="ui-notice fixed top-[calc(var(--chrome-gap)+var(--chrome-bar)+var(--ruler-band))] left-1/2 z-40 flex w-[min(620px,calc(100%-2*var(--chrome-gap)))] -translate-x-1/2 items-start gap-3 py-2.5 pr-2.5 pl-3 shadow-pop"
+			className="ui-notice fixed top-[calc(var(--chrome-gap)+var(--chrome-bar))] left-1/2 z-40 flex w-[min(620px,calc(100%-2*var(--chrome-gap)))] -translate-x-1/2 items-start gap-3 py-2.5 pr-2.5 pl-3 shadow-pop"
 		>
 			<TriangleAlert
 				size={16}

@@ -217,6 +217,7 @@ function AttributeInput({
 
 interface SelectionAttributesProps {
 	isSymbolChild?: boolean;
+	symbolTextMoved?: boolean;
 	/** Shows the attributes without inputs, for a pin fixed to its symbol. */
 	readOnly?: boolean;
 	shapes: EditorShape[];
@@ -309,6 +310,7 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 
 function SelectionAttributesPanel({
 	isSymbolChild = false,
+	symbolTextMoved,
 	shapes,
 	snapStep = 0,
 	onClear,
@@ -743,6 +745,22 @@ function SelectionAttributesPanel({
 									}}
 								/>
 							</label>
+						)}
+						{isSymbolChild && single?.kind === "text" && (
+							<button
+								type="button"
+								onClick={() => onEdit({ kind: "symbol-text-reset" })}
+								disabled={!symbolTextMoved}
+								title={
+									symbolTextMoved
+										? "Move this text back to where the symbol defines it"
+										: "This text is already at its original position"
+								}
+								className={actionClassName}
+								data-variant="secondary"
+							>
+								Reset position
+							</button>
 						)}
 					</div>
 				)}

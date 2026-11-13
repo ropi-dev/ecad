@@ -64,7 +64,7 @@ function setStyle(
 }
 
 /**
- * Rulers along the top and right of a top view, and the paper under it.
+ * Rulers along the bottom and right of a top view, and the paper under it.
  *
  * React renders the frame, which changes only with the viewport size. The
  * ticks and the paper follow the camera on every frame, so they are placed
@@ -245,7 +245,7 @@ export function ViewportRulers({
 					to the right; Y increases upward.
 				</span>
 				<div
-					className="absolute top-0 left-0 overflow-clip"
+					className="absolute bottom-0 left-0 overflow-clip"
 					style={{ width: Math.max(width - BAND, 0), height: BAND + 1 }}
 				>
 					<svg
@@ -254,16 +254,16 @@ export function ViewportRulers({
 						height={BAND + 1}
 						aria-hidden="true"
 					>
-						<path className="ruler-band" d={`M0 0H${width}V${BAND}H0Z`} />
-						<path className="ruler-edge fill-none" d={`M0 ${BAND}H${width}`} />
+						<path className="ruler-band" d={`M0 1H${width}V${BAND + 1}H0Z`} />
+						<path className="ruler-edge fill-none" d={`M0 1H${width}`} />
 					</svg>
 					<svg
 						ref={horizontalTicks}
 						className="top-0 will-change-transform"
 						style={{ left: -OVERSCAN }}
 						width={width + 2 * OVERSCAN}
-						height={BAND}
-						viewBox={`${-OVERSCAN} 0 ${width + 2 * OVERSCAN} ${BAND}`}
+						height={BAND + 1}
+						viewBox={`${-OVERSCAN} 0 ${width + 2 * OVERSCAN} ${BAND + 1}`}
 						aria-hidden="true"
 					/>
 				</div>
@@ -278,7 +278,10 @@ export function ViewportRulers({
 						aria-hidden="true"
 					>
 						<path className="ruler-band" d={`M1 0H${BAND + 1}V${height}H1Z`} />
-						<path className="ruler-edge fill-none" d={`M1 ${BAND}V${height}`} />
+						<path
+							className="ruler-edge fill-none"
+							d={`M1 0V${height - BAND}`}
+						/>
 					</svg>
 					<svg
 						ref={verticalTicks}
@@ -290,7 +293,7 @@ export function ViewportRulers({
 						aria-hidden="true"
 					/>
 					<svg
-						className="top-0 left-0"
+						className="bottom-0 left-0"
 						width={BAND + 1}
 						height={BAND}
 						aria-hidden="true"
