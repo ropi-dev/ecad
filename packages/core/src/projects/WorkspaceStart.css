@@ -1,5 +1,3 @@
-@import "@fontsource/caveat/latin-500.css";
-
 .workspace-start {
 	container-type: inline-size;
 	isolation: isolate;
@@ -19,42 +17,6 @@
 		#000000b3 100%
 	);
 	pointer-events: none;
-}
-
-.workspace-start-pointer {
-	position: absolute;
-	top: 50%;
-	left: 24px;
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 4px;
-	border: 0;
-	border-radius: var(--radius-lg);
-	background: none;
-	color: var(--color-fg-faint);
-	cursor: pointer;
-	transform: translateY(-50%);
-}
-
-.workspace-start-pointer:disabled {
-	cursor: default;
-}
-
-.workspace-start-arrow {
-	width: 176px;
-	height: 120px;
-	flex-shrink: 0;
-	transform: rotate(-6deg);
-}
-
-.workspace-start-note {
-	font-family: "Caveat", cursive;
-	font-size: 28px;
-	font-weight: 500;
-	line-height: 1.15;
-	color: var(--color-fg-muted);
-	transform: rotate(-5deg);
 }
 
 .workspace-start-message {
@@ -105,60 +67,8 @@
 	}
 }
 
-@container (max-width: 1050px) {
-	.workspace-start-pointer {
-		left: 16px;
-		width: 152px;
-	}
-
-	.workspace-start-note {
-		position: absolute;
-		bottom: calc(100% - 4px);
-		left: 8px;
-	}
-
-	.workspace-start-arrow {
-		width: 144px;
-		height: 96px;
-	}
-}
-
 @container (max-width: 720px) {
-	.workspace-start-pointer {
-		width: 128px;
-	}
-
-	.workspace-start-arrow {
-		width: 120px;
-	}
-
-	.workspace-start-note {
-		font-size: 24px;
-	}
-
 	.workspace-start-message {
-		width: auto;
-		margin-inline: 168px 24px;
 		font-size: 16px;
-	}
-}
-
-@container (max-width: 440px) {
-	.workspace-start-pointer {
-		left: 8px;
-		width: 92px;
-	}
-
-	.workspace-start-arrow {
-		width: 84px;
-		height: 72px;
-	}
-
-	.workspace-start-note {
-		font-size: 21px;
-	}
-
-	.workspace-start-message {
-		margin-inline: 116px 20px;
 	}
 }
