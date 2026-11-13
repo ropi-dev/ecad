@@ -197,7 +197,7 @@ if (command === "build-image") {
 		"--volume",
 		`ecad-${id}-${role}-root-modules:${workspace}/node_modules`,
 		"--volume",
-		"ecad-pnpm-store:/pnpm/store",
+		"ecad-pnpm-store-node:/pnpm/store",
 		"--env",
 		`ECAD_WORKTREE_ID=${id}`,
 	];
