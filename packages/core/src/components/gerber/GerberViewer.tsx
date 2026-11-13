@@ -16,9 +16,6 @@ import {
 } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
 
-// Display spacing in millimetres, independent of physical PCB thickness.
-const LAYER_SPACING = 0.1;
-
 /** Applies Gerber layer controls to planar objects in the shared viewport. */
 export function GerberViewer({
 	scene,
@@ -29,7 +26,6 @@ export function GerberViewer({
 	focusedLayerId?: string;
 }) {
 	const [flat, setFlat] = useState(true);
-	const [stacked, setStacked] = useState(false);
 	// Display settings do not rebuild geometry or reset the camera.
 	const [geometryScene, setGeometryScene] = useState(scene);
 	const current = new Map(scene.map((object) => [object.id, object]));
@@ -46,13 +42,10 @@ export function GerberViewer({
 		})
 	)
 		setGeometryScene(scene);
-	const view3D = stacked && geometryScene.length > 0;
-	const drills = view3D
-		? scene.filter(
-				(object): object is ParsedGerberObject =>
-					object.type === "spatial" && object.visible && isDrillLayer(object),
-			)
-		: [];
+	const drills = scene.filter(
+		(object): object is ParsedGerberObject =>
+			object.type === "spatial" && object.visible && isDrillLayer(object),
+	);
 	const drillKey = drills.map((object) => object.id).join(",");
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the mask follows the visible drill layers, which drillKey names
 	const holes = useMemo(
@@ -72,8 +65,8 @@ export function GerberViewer({
 				(object) =>
 					object.id === focusedLayerId && object.visible && object.opacity > 0,
 			);
-			const placements = view3D ? placeBoardLayers(scene) : [];
-			const sheet = view3D ? boardOutline(scene) : undefined;
+			const placements = placeBoardLayers(scene);
+			const sheet = boardOutline(scene);
 			group.children.forEach((mesh, index) => {
 				const source = geometryScene[index];
 				const entry = source && entries.get(source.id);
@@ -85,16 +78,14 @@ export function GerberViewer({
 				const placement = placements[order];
 				mesh.visible = object.visible;
 				mesh.userData.hoverEnabled = !focused || object.id === focusedLayerId;
-				mesh.position.z = placement ? placement.z : order * LAYER_SPACING;
+				mesh.position.z = placement?.z ?? 0;
 				// Draw the focused fill last so other layers' X-ray contours cannot tint it.
 				mesh.renderOrder =
 					focused && object.id === focusedLayerId
 						? 2 * scene.length
 						: placement?.through
 							? scene.length + order
-							: placement
-								? 0
-								: order;
+							: 0;
 				stylePlanarObject3D(
 					mesh,
 					object.color,
@@ -109,10 +100,10 @@ export function GerberViewer({
 			const bounds = new Box3().setFromObject(group);
 			if (!bounds.isEmpty()) {
 				const center = bounds.getCenter(new Vector3());
-				group.position.set(-center.x, -center.y, view3D ? -center.z : 0);
+				group.position.set(-center.x, -center.y, -center.z);
 			}
 		},
-		[scene, geometryScene, focusedLayerId, view3D, holes],
+		[scene, geometryScene, focusedLayerId, holes],
 	);
 	const toggle = geometryScene.length > 0 && (
 		<TooltipButton
@@ -133,11 +124,8 @@ export function GerberViewer({
 			updateScene={updateScene}
 			orbit={!flat && geometryScene.length > 0}
 			gestureOrbit={geometryScene.length > 0}
-			onOrbit={(orbiting) => {
-				setStacked(orbiting);
-				setFlat(!orbiting);
-			}}
-			interactionHint="Drag or swipe to pan, and Shift + drag to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
+			onOrbit={(orbiting) => setFlat(!orbiting)}
+			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
 			hoverHighlight={false}
 			selectionPosition="top-left"
 			scrollableControls

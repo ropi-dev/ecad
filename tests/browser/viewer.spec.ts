@@ -222,7 +222,7 @@ test("hovering a Gerber shape does not highlight it, but clicking selects it", a
 	expect(errors).toEqual([]);
 });
 
-test("the 3D camera orbits the same viewport, stacks layers and returns to the top view", async ({
+test("the 3D camera orbits the same viewport and layer stack and returns to the top view", async ({
 	page,
 }) => {
 	const errors: string[] = [];
@@ -268,15 +268,17 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 	await expect.poll(async () => (await state()).camera.length).toBe(3);
 	const flatHeight = (await state()).camera[2];
 	await expect(axes).toHaveCount(0);
+	const stack = {
+		"atlas-F_Cu.gbr": 0.87,
+		"atlas-B_Cu.gbr": -0.87,
+		"atlas-F_Mask.gbr": 0.92,
+	};
+	await expect.poll(heights).toEqual(stack);
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await expect(rulers).toHaveCount(0);
 	await expect(axes).toBeVisible();
-	await expect.poll(heights).toEqual({
-		"atlas-F_Cu.gbr": 0.87,
-		"atlas-B_Cu.gbr": -0.87,
-		"atlas-F_Mask.gbr": 0.92,
-	});
+	expect(await heights()).toEqual(stack);
 	await expect
 		.poll(async () => (await state()).grids)
 		.toEqual({ flat: false, plane: true });
@@ -313,11 +315,7 @@ test("the 3D camera orbits the same viewport, stacks layers and returns to the t
 				((await percent()) / Number.parseInt(zoomed, 10)),
 		)
 		.toBeCloseTo(1, 2);
-	await expect.poll(heights).toEqual({
-		"atlas-F_Cu.gbr": 0,
-		"atlas-B_Cu.gbr": 0.1,
-		"atlas-F_Mask.gbr": 0.2,
-	});
+	expect(await heights()).toEqual(stack);
 	await expect
 		.poll(async () => (await state()).grids)
 		.toEqual({ flat: true, plane: false });
@@ -421,6 +419,53 @@ test("an orbit drag leaves the 2D view in perspective from the current camera", 
 	await page.waitForTimeout(100);
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(rulers).toHaveCount(1);
+	expect(errors).toEqual([]);
+});
+
+test("a Shift + trackpad swipe leaves the 2D view and a Shift + wheel stays flat", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/viewer.html");
+	await page.locator("input[type=file]").setInputFiles(
+		demoFiles.slice(0, 3).map((file) => ({
+			name: file.name,
+			mimeType: "text/plain",
+			buffer: Buffer.from(file.source),
+		})),
+	);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3);
+	const toggle = page.getByRole("button", { name: "2D", exact: true });
+	const axes = page.getByRole("img", { name: "XYZ axis orientation" });
+	const swipe = (deltaY: number, wheelDeltaY: number) =>
+		page.locator("canvas").evaluate(
+			(canvas, [deltaY, wheelDeltaY]) => {
+				const box = canvas.getBoundingClientRect();
+				canvas.dispatchEvent(
+					new WheelEvent("wheel", {
+						bubbles: true,
+						cancelable: true,
+						shiftKey: true,
+						clientX: box.left + box.width / 2,
+						clientY: box.top + box.height / 2,
+						deltaY,
+						wheelDeltaY,
+					} as WheelEventInit),
+				);
+			},
+			[deltaY, wheelDeltaY],
+		);
+	await swipe(100, -120);
+	await page.waitForTimeout(100);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await swipe(2, -6);
+	await page.waitForTimeout(100);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(axes).toHaveCount(0);
+	for (let step = 0; step < 4; step++) await swipe(4, -12);
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect(axes).toHaveCount(1);
 	expect(errors).toEqual([]);
 });
 

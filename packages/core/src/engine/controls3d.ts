@@ -7,7 +7,7 @@ import {
 	Vector3,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { wheelDelta } from "#/engine/navigation.ts";
+import { isMouseWheel, wheelDelta } from "#/engine/navigation.ts";
 
 const UNLOCK_DISTANCE = 4;
 
@@ -50,6 +50,7 @@ export function create3DControls(
 	let pivot: Vector3 | null = null;
 	let gestureStart: { x: number; y: number } | null = null;
 	let lastWheel = Number.NEGATIVE_INFINITY;
+	let wheelTravel = 0;
 	let wheelEnd: ReturnType<typeof setTimeout> | undefined;
 	let focusShown = false;
 	const showFocus = () => {
@@ -110,16 +111,20 @@ export function create3DControls(
 		event.stopImmediatePropagation();
 		if (!controls.enabled) return;
 		const delta = wheelDelta(event, canvas);
-		if (event.timeStamp - lastWheel > 200)
+		if (event.timeStamp - lastWheel > 200) {
 			beginGesture(event.clientX, event.clientY);
+			wheelTravel = 0;
+		}
 		lastWheel = event.timeStamp;
+		const orbitX =
+			event.deltaMode === 2
+				? event.deltaX * Math.max(canvas.clientHeight, 1)
+				: delta.x;
 		if (event.shiftKey && !rotationLocked) {
-			orbit(
-				event.deltaMode === 2
-					? event.deltaX * Math.max(canvas.clientHeight, 1)
-					: delta.x,
-				delta.y,
-			);
+			orbit(orbitX, delta.y);
+		} else if (event.shiftKey && unlock && !isMouseWheel(event)) {
+			wheelTravel += Math.hypot(delta.x, delta.y);
+			if (wheelTravel >= UNLOCK_DISTANCE) orbit(orbitX, delta.y);
 		} else if (controls.enablePan) {
 			controls.pan(-delta.x, -delta.y);
 		}

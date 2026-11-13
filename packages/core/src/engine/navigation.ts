@@ -75,6 +75,26 @@ export function wheelDelta(
 	};
 }
 
+const WHEEL_TICK = 120;
+
+export function isMouseWheel(
+	event: Pick<WheelEvent, "deltaMode" | "deltaX" | "deltaY"> & {
+		wheelDeltaX?: number;
+		wheelDeltaY?: number;
+	},
+) {
+	if (event.deltaMode !== 0) return true;
+	return (
+		[
+			[event.wheelDeltaX, event.deltaX],
+			[event.wheelDeltaY, event.deltaY],
+		] as const
+	).some(
+		([ticks, delta]) =>
+			!!ticks && ticks % WHEEL_TICK === 0 && ticks !== -3 * delta,
+	);
+}
+
 export function viewerPixelRatio() {
 	return Math.min(window.devicePixelRatio || 1, 2);
 }
