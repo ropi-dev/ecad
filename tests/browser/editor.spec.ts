@@ -963,12 +963,13 @@ test("panning shows the same picture as a full redraw", async ({ page }) => {
 		await settle();
 	}
 	expect(await panned()).toBeGreaterThan(before);
-	// The drawing area inside the rulers, whose labels may still be settling.
+	// The drawing area inside the rulers, without the toolbar floating over it.
 	const area = () =>
 		page.screenshot({
+			mask: [page.getByRole("toolbar")],
 			clip: {
 				x: box.x,
-				y: box.y + 25,
+				y: box.y,
 				width: box.width - 25,
 				height: box.height - 25,
 			},
