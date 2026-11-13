@@ -599,7 +599,11 @@ export function ProjectFilesSidebar({
 					setFocused(false);
 			}}
 			onKeyDown={(event) => {
-				if (event.key === "Escape" && !overlayOpen) {
+				if (
+					event.key === "Escape" &&
+					!overlayOpen &&
+					event.currentTarget.contains(event.target as Node)
+				) {
 					(document.activeElement as HTMLElement)?.blur();
 					setFocused(false);
 					setHoveredNow(false);

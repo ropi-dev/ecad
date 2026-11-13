@@ -190,6 +190,21 @@ test("opening a file closes the sidebar unless it is pinned", async ({
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 });
 
+test("Escape before the Add file menu's first frame leaves the sidebar open", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	const sidebar = await openProjectFiles(page);
+	const add = sidebar.getByRole("button", { name: "Add file", exact: true });
+	await page.addStyleTag({ content: ".ui-popover { animation-delay: 1s; }" });
+	await add.click();
+	await expect(page.getByRole("menu")).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await expect(page.getByRole("menu")).toHaveCount(0);
+	await expect(add).toBeFocused();
+});
+
 test.describe("touch sidebar", () => {
 	test.use({
 		viewport: { width: 390, height: 844 },
