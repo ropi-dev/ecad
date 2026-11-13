@@ -20,6 +20,9 @@ test("circuit-erc", { tag: ["@circuit"] }, async ({ page }, testInfo) => {
 		.getByRole("button", { name: "Electrical rules check", exact: true })
 		.click();
 	const panel = page.getByRole("region", { name: "Electrical rules check" });
+	await expect(
+		panel.getByRole("button", { name: "Run ERC", exact: true }),
+	).toBeVisible();
 	const times: number[] = [];
 	for (let repeat = 0; repeat < 3; repeat++) {
 		times.push(
