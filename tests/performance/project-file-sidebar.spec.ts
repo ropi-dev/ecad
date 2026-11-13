@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
+import {
+	closeProjectFiles,
+	openProjectFiles,
+	projectRail,
+} from "../browser/project-files";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
 import {
@@ -21,7 +25,7 @@ test(
 		await page.goto("/projects?perf=1");
 		await ready(page);
 		await expect(
-			(await openProjectFiles(page)).getByRole("button", {
+			projectRail(page).getByRole("button", {
 				name: "Add file",
 				exact: true,
 			}),
@@ -150,20 +154,20 @@ test(
 			);
 			await page.mouse.move(900, 400);
 			await expect(sidebar).toHaveAttribute("data-open", "false");
-			expect(required(await page.locator("canvas").boundingBox()).x).toBe(0);
+			expect(required(await page.locator("canvas").boundingBox()).x).toBe(48);
 		}
 		const hoverRevealMs = await interaction(
 			page,
 			"sidebar.reveal",
 			async () => {
 				const y = required(page.viewportSize()).height / 2;
-				await page.mouse.move(60, y);
-				await page.mouse.move(2, y);
+				await page.mouse.move(200, y);
+				await page.mouse.move(24, y);
 				await page.waitForFunction(
 					() =>
 						document
 							.querySelector('aside[aria-label="Project files"]')
-							?.getBoundingClientRect().x === 0,
+							?.getBoundingClientRect().x === 48,
 					undefined,
 					{ polling: "raf" },
 				);
@@ -174,7 +178,7 @@ test(
 		for (let repeat = 0; repeat < 3; repeat++) {
 			menuOpenTimes.push(
 				await interaction(page, "sidebar.add-file-menu", async () => {
-					await sidebar
+					await projectRail(page)
 						.getByRole("button", { name: "Add file", exact: true })
 						.click();
 					await page.waitForFunction(
@@ -188,41 +192,11 @@ test(
 			);
 			await page.keyboard.press("Escape");
 			await expect(
-				sidebar.getByRole("button", { name: "Add file", exact: true }),
-			).toBeFocused();
-		}
-		const pinTimes: number[] = [];
-		for (let repeat = 0; repeat < 3; repeat++) {
-			// Closing the menu lets the compact sidebar collapse, so hover it open again.
-			await openProjectFiles(page);
-			pinTimes.push(
-				await interaction(page, "sidebar.pin", async () => {
-					await sidebar
-						.getByRole("button", { name: "Pin sidebar", exact: true })
-						.click();
-					await page.waitForFunction(
-						() =>
-							document.querySelector("canvas")?.getBoundingClientRect().x ===
-							256,
-						undefined,
-						{ polling: "raf" },
-					);
+				projectRail(page).getByRole("button", {
+					name: "Add file",
+					exact: true,
 				}),
-			);
-			await page.mouse.move(900, 400);
-			await expect(sidebar).toHaveAttribute("data-open", "true");
-			if (repeat === 2)
-				await page.screenshot({
-					path: "perf-artifacts/sidebar-pinned-performance.png",
-				});
-			await sidebar
-				.getByRole("button", { name: "Compact sidebar", exact: true })
-				.click();
-			await page.waitForFunction(
-				() => document.querySelector("canvas")?.getBoundingClientRect().x === 0,
-				undefined,
-				{ polling: "raf" },
-			);
+			).toBeFocused();
 		}
 		await page.screenshot({
 			path: "perf-artifacts/sidebar-layout-performance.png",
@@ -232,16 +206,19 @@ test(
 		await expect(
 			page.getByRole("button", { name: "Select", exact: true }),
 		).toBeEnabled();
-		await page.getByRole("button", { name: "Show project files" }).click();
+		await page
+			.getByRole("navigation", { name: "Sidebar shortcuts" })
+			.click({ position: { x: 24, y: 400 } });
 		await page.screenshot({
 			path: "perf-artifacts/sidebar-layout-performance-mobile.png",
 		});
 		await closeProjectFiles(page);
 		await page.setViewportSize({ width: 1280, height: 800 });
-		await page.getByRole("button", { name: "Show project files" }).click();
+		await page
+			.getByRole("navigation", { name: "Sidebar shortcuts" })
+			.click({ position: { x: 24, y: 400 } });
 		const value = await report(page);
 		await finish(page, testInfo, "project-file-sidebar", {
-			pinMs: percentile(pinTimes),
 			hoverRevealMs,
 			railNavigationMs: percentile(railNavigationTimes),
 			menuOpenMs: percentile(menuOpenTimes),

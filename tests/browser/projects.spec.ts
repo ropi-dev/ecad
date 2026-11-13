@@ -4,6 +4,7 @@ import {
 	closeProjectFiles,
 	openProjectActions,
 	openProjectFiles,
+	projectRail,
 } from "./project-files";
 import { toolbarButton } from "./toolbar";
 
@@ -86,7 +87,7 @@ test("failed symbol saves keep edits available for retry and leave the schematic
 	expect((await documentState(page)).dirty).toBe(true);
 	await page.evaluate(() => window.dispatchEvent(new Event("restore-writes")));
 	await projectsPage(page);
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("button", { name: "Save project", exact: true })
 		.click();
 	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
@@ -106,7 +107,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "Multiple drawings");
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("link", { name: "Schematic editor", exact: true })
 		.click();
 	await drawRectangle(page);
@@ -115,7 +116,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 		.toBe(1);
 	const primary = (await documentState(page)).shapes;
 	const createDrawing = async () => {
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Add file", exact: true })
 			.click();
 		await page
@@ -185,7 +186,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 		.poll(async () => (await documentState(page)).editorShapes.length)
 		.toBe(1);
 	expect((await documentState(page)).shapes).toEqual(primary);
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("button", { name: "Add file", exact: true })
 		.click();
 	await page.getByRole("menuitem", { name: "New symbol", exact: true }).click();
@@ -218,7 +219,7 @@ test("the sidebar Open project button lists saved web projects and switches to o
 		.poll(async () => (await documentState(page)).name)
 		.toBe("Untitled");
 	const openMenu = async () => {
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Open project", exact: true })
 			.click();
 		const menu = page.getByRole("menu", { name: "Open project", exact: true });

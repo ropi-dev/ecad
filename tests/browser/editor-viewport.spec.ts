@@ -1,7 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
-import { closeProjectFiles, openProjectFiles } from "./project-files";
+import {
+	closeProjectFiles,
+	openProjectFiles,
+	projectRail,
+} from "./project-files";
 
 const schematicCamera = async (page: Page) => {
 	const value = await page.locator("html").getAttribute("data-editor-camera");
@@ -79,8 +83,9 @@ test("each document retains independent schematic and circuit zoom and pan", asy
 		await switchTo(page, "circuit");
 		await expect.poll(() => circuitCamera(page)).toBe(circuit);
 	}
-	const sidebar = await openProjectFiles(page);
-	await sidebar.getByRole("button", { name: "Add file", exact: true }).click();
+	await projectRail(page)
+		.getByRole("button", { name: "Add file", exact: true })
+		.click();
 	await page
 		.getByRole("menuitem", { name: "New circuit", exact: true })
 		.click();

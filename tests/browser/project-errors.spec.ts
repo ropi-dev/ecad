@@ -12,6 +12,7 @@ import {
 	closeProjectFiles,
 	openProjectActions,
 	openProjectFiles,
+	projectRail,
 } from "./project-files";
 import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
@@ -27,7 +28,7 @@ async function screenshot(page: Page, name: string) {
 }
 
 async function openSchematic(page: Page) {
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("link", { name: "Schematic editor", exact: true })
 		.click();
 	await closeProjectFiles(page);
@@ -232,7 +233,7 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 		.getByRole("alert")
 		.filter({ hasText: "Reload it from disk before saving" });
 
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("button", { name: "Save project", exact: true })
 		.click();
 	await expect(notice).toBeVisible();
@@ -327,7 +328,7 @@ test("creating a project from one with a conflict carries its assets and leaves 
 	const notice = page.getByRole("alert").filter({
 		hasText: "This project changed on disk",
 	});
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("button", { name: "Save project", exact: true })
 		.click();
 	await expect(notice).toBeVisible();
@@ -594,7 +595,7 @@ test("a part whose symbol needs a library it depends on that fails to load is re
 	await expect
 		.poll(async () => (await documentState(page)).name)
 		.toBe("Untitled");
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("link", { name: "Schematic editor", exact: true })
 		.click();
 	await closeProjectFiles(page);

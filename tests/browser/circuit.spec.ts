@@ -2,7 +2,11 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { captureArtifacts } from "./artifacts";
-import { closeProjectFiles, openProjectFiles } from "./project-files";
+import {
+	closeProjectFiles,
+	openProjectFiles,
+	projectRail,
+} from "./project-files";
 
 const state = async (page: Page) =>
 	JSON.parse((await page.locator("#circuit-document").textContent()) ?? "{}");
@@ -28,14 +32,12 @@ async function createCircuit(page: Page) {
 	await expect(
 		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
-	await expect(
-		(await openProjectFiles(page)).getByRole("button", {
-			name: "Add file",
-			exact: true,
-		}),
-	).toBeEnabled();
-	await openProjectFiles(page);
-	await page.getByRole("button", { name: "Add file", exact: true }).click();
+	const add = projectRail(page).getByRole("button", {
+		name: "Add file",
+		exact: true,
+	});
+	await expect(add).toBeEnabled();
+	await add.click();
 	await page
 		.getByRole("menuitem", { name: "New circuit", exact: true })
 		.click();

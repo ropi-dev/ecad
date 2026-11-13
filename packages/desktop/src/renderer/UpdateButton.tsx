@@ -136,8 +136,9 @@ export function UpdateButton({ updates }: { updates: DesktopUpdatesBridge }) {
 					<Changelog state={state} />
 				</span>
 			}
+			side="right"
 			data-shortcut-scope="none"
-			className="ui-button relative"
+			className="ui-button relative size-9"
 			data-variant="ghost"
 			data-icon
 			onClick={() => {
@@ -148,7 +149,7 @@ export function UpdateButton({ updates }: { updates: DesktopUpdatesBridge }) {
 			}}
 		>
 			<CircleArrowUp
-				size={15}
+				size={18}
 				aria-hidden="true"
 				className={`${busy ? "animate-pulse" : ""} ${tone?.icon ?? ""}`}
 			/>

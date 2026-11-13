@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openProjectFiles } from "./project-files";
+import { projectRail } from "./project-files";
 
 test("opening another project protects drafts through save, discard, errors and cancellation", async ({
 	page,
@@ -9,7 +9,7 @@ test("opening another project protects drafts through save, discard, errors and 
 		page.getByLabel("Workspace instructions", { exact: true }),
 	).toBeVisible();
 	const open = async () => {
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Open project", exact: true })
 			.click();
 		await expect(
@@ -87,7 +87,8 @@ test("the sidebar Exit button calls the host's exit handler", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects-design.html");
-	await (await openProjectFiles(page))
+	await page
+		.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
 		.getByRole("button", { name: "Exit", exact: true })
 		.click();
 	await expect

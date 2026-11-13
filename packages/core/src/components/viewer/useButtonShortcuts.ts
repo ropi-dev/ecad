@@ -37,9 +37,6 @@ const editorKeys: Record<string, string> = {
 	"Fit drawing": "F",
 };
 const sidebarKeys: Record<string, string> = {
-	"Pin sidebar": "S",
-	"Compact sidebar": "S",
-	"Show project files": "B",
 	"Add file": "N",
 	"Open project": "O",
 };
@@ -293,7 +290,7 @@ function listen() {
 			target.getAttribute("aria-disabled") !== "true"
 		) {
 			// Undo and Redo leave focus where the user was working, usually the canvas.
-			if (!target.hasAttribute("data-shortcut-keeps-focus"))
+			if (!target.closest("[data-shortcut-keeps-focus]"))
 				target.focus({ preventScroll: true });
 			if (target.getAttribute("aria-haspopup") === "menu") {
 				target.dispatchEvent(

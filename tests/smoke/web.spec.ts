@@ -2,7 +2,7 @@ import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, type Page, test } from "@playwright/test";
-import { openProjectFiles } from "../browser/project-files.ts";
+import { openProjectFiles, projectRail } from "../browser/project-files.ts";
 import { toolbarButton } from "../browser/toolbar.ts";
 
 // Runs against `vite build` output served by `vite preview`, the same server
@@ -21,14 +21,15 @@ async function editorReady(page: Page) {
 				.querySelector("h1")
 				?.textContent?.startsWith("Schematic editor ·") &&
 			document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')
-				?.disabled === false,
+				?.disabled === false &&
+			!document.querySelector('[aria-busy="true"]'),
 		undefined,
 		{ polling: "raf", timeout: 30_000 },
 	);
 }
 
 async function connectMcp(page: Page) {
-	await (await openProjectFiles(page))
+	await projectRail(page)
 		.getByRole("button", { name: "Enable MCP", exact: true })
 		.click();
 	await expect(

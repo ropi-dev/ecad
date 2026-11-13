@@ -10,8 +10,8 @@ import {
 } from "#/projects/WorkspaceControls.tsx";
 
 /**
- * Names the open document. It floats at the top left of a workspace, beside
- * the sidebar button, so the canvas keeps its size. Outside a project it
+ * Names the open document. It floats at the top left of a workspace, so the
+ * canvas keeps its size. Outside a project it
  * renders nothing.
  */
 export function DocumentBar({
@@ -20,7 +20,6 @@ export function DocumentBar({
 	selection,
 	path: suppliedPath,
 	circuit = false,
-	plain = false,
 	center,
 	children,
 }: {
@@ -33,8 +32,6 @@ export function DocumentBar({
 	path?: string;
 	/** The file is open in its circuit view. */
 	circuit?: boolean;
-	/** The workspace has no rulers. */
-	plain?: boolean;
 	/**
 	 * A second bar for the top centre of the workspace, such as the page tabs.
 	 * It stays centred while there is room and otherwise sits after this bar.
@@ -44,7 +41,7 @@ export function DocumentBar({
 	children?: ReactNode;
 }) {
 	const project = useProjectSelection(({ project }) => ({ project }));
-	const pinned = useWorkspaceControls()?.sidebarPinned ?? false;
+	const docked = useWorkspaceControls()?.sidebarDocked ?? false;
 	const registerDocument = useWorkspaceRegistration()?.registerDocument;
 	const snapshot = project?.project;
 	const path = useMemo(
@@ -58,8 +55,8 @@ export function DocumentBar({
 		[snapshot, selection, suppliedPath],
 	);
 	useEffect(
-		() => registerDocument?.({ path, circuit, plain }),
-		[registerDocument, path, circuit, plain],
+		() => registerDocument?.({ path, circuit }),
+		[registerDocument, path, circuit],
 	);
 	if (!project) return null;
 	const name =
@@ -74,8 +71,8 @@ export function DocumentBar({
 			{/* The row mirrors the sidebar button's inset on the right, so a
 			    centred bar is centred on the workspace. */}
 			<div
-				data-pinned={pinned}
-				className={`pointer-events-none absolute top-[var(--chrome-top)] right-[calc(var(--chrome-gap)+var(--chrome-control)+6px)] left-[calc(var(--chrome-gap)+var(--chrome-control)+6px)] z-4 grid items-start gap-2 data-[pinned=true]:right-[var(--chrome-gap)] data-[pinned=true]:left-[var(--chrome-gap)] ${center ? "grid-cols-[minmax(min-content,1fr)_auto_minmax(0,1fr)] max-[600px]:grid-cols-[minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"}`}
+				data-docked={docked}
+				className={`pointer-events-none absolute top-[var(--chrome-top)] right-[calc(var(--chrome-gap)+var(--chrome-control)+6px)] left-[calc(var(--chrome-gap)+var(--chrome-control)+6px)] z-4 grid items-start gap-2 data-[docked=true]:right-[var(--chrome-gap)] data-[docked=true]:left-[var(--chrome-gap)] ${center ? "grid-cols-[minmax(min-content,1fr)_auto_minmax(0,1fr)] max-[600px]:grid-cols-[minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"}`}
 			>
 				{/* biome-ignore lint/a11y/useSemanticElements: a fieldset would disable nothing here and carries form semantics */}
 				<div

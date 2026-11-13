@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openProjectFiles } from "../browser/project-files";
+import { openProjectFiles, projectRail } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
 import { setupAppTests } from "./app-fixture.ts";
 import {
@@ -22,7 +22,7 @@ test(
 			page.getByLabel("Workspace instructions", { exact: true }),
 		).toBeVisible();
 		const createMs = await interaction(page, "drawing.create", async () => {
-			await (await openProjectFiles(page))
+			await projectRail(page)
 				.getByRole("button", { name: "Add file", exact: true })
 				.click();
 			await page

@@ -21,11 +21,9 @@ test(
 			}),
 		).toHaveAttribute("title", "Untitled");
 		await expect(
-			page.getByRole("button", {
-				name: "Add file",
-				exact: true,
-				includeHidden: true,
-			}),
+			page
+				.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
+				.getByRole("button", { name: "Add file", exact: true }),
 		).toBeEnabled();
 		const names = await page.evaluate(async () => {
 			const root = await navigator.storage.getDirectory();

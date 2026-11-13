@@ -2,7 +2,11 @@ import { mkdir } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
-import { closeProjectFiles, openProjectFiles } from "./project-files";
+import {
+	closeProjectFiles,
+	openProjectFiles,
+	projectRail,
+} from "./project-files";
 import { toolbarButton } from "./toolbar";
 
 test("one schematic opens both editors and saves edits in both directions", async ({
@@ -11,9 +15,9 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/projects.html");
-	await openProjectFiles(page);
+	const sidebar = await openProjectFiles(page);
 	await expect(
-		page.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true }),
+		sidebar.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true }),
 	).toHaveCount(1);
 	await expect(
 		page.getByText("Untitled.ecadcircuit", { exact: true }),
@@ -163,8 +167,9 @@ test("toolbar switches keep an additional schematic selected with pending edits"
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	const sidebar = await openProjectFiles(page);
-	await sidebar.getByRole("button", { name: "Add file", exact: true }).click();
+	await projectRail(page)
+		.getByRole("button", { name: "Add file", exact: true })
+		.click();
 	await page
 		.getByRole("menuitem", { name: "New circuit", exact: true })
 		.click();
