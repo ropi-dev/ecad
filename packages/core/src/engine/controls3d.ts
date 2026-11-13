@@ -113,7 +113,7 @@ export function create3DControls(
 		if (event.timeStamp - lastWheel > 200)
 			beginGesture(event.clientX, event.clientY);
 		lastWheel = event.timeStamp;
-		if (event.shiftKey && (!rotationLocked || unlock)) {
+		if (event.shiftKey && !rotationLocked) {
 			orbit(
 				event.deltaMode === 2
 					? event.deltaX * Math.max(canvas.clientHeight, 1)
@@ -169,7 +169,10 @@ export function create3DControls(
 		const deltaX = previous.x - event.clientX;
 		const deltaY = previous.y - event.clientY;
 		if (orbitPointer === event.pointerId) {
-			if (rotationLocked && Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
+			if (
+				rotationLocked &&
+				(!event.shiftKey || Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
+			)
 				return;
 			orbit(deltaX, deltaY);
 		} else if (previous.touch && pointers.size === 1 && !rotationLocked)

@@ -132,12 +132,12 @@ export function GerberViewer({
 			scene={geometryScene}
 			updateScene={updateScene}
 			orbit={!flat && geometryScene.length > 0}
-			gestureOrbit
+			gestureOrbit={geometryScene.length > 0}
 			onOrbit={(orbiting) => {
 				setStacked(orbiting);
 				setFlat(!orbiting);
 			}}
-			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
+			interactionHint="Drag or swipe to pan, and Shift + drag to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
 			hoverHighlight={false}
 			selectionPosition="top-left"
 			scrollableControls

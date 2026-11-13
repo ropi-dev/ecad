@@ -331,6 +331,24 @@ test("an orbit drag leaves the 2D view in perspective from the current camera", 
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/browser/viewer.html");
+	const rulers = page.locator('[aria-label="Drawing rulers in millimetres"]');
+	const axes = page.getByRole("img", { name: "XYZ axis orientation" });
+	const shiftDrag = async (dx: number, dy: number) => {
+		const box = required(await page.locator("canvas").boundingBox());
+		const x = box.x + box.width / 2;
+		const y = box.y + box.height / 2;
+		await page.keyboard.down("Shift");
+		await page.mouse.move(x, y);
+		await page.mouse.down();
+		await page.mouse.move(x + dx, y + dy, { steps: 3 });
+		await page.mouse.up();
+		await page.keyboard.up("Shift");
+		await page.waitForTimeout(100);
+	};
+	await expect(rulers).toHaveCount(1);
+	await shiftDrag(0, 40);
+	await expect(axes).toHaveCount(0);
+	await expect(rulers).toHaveCount(1);
 	await page.locator("input[type=file]").setInputFiles(
 		demoFiles.slice(0, 3).map((file) => ({
 			name: file.name,
@@ -355,7 +373,6 @@ test("an orbit drag leaves the 2D view in perspective from the current camera", 
 	const orthographic = page.getByRole("button", {
 		name: "Orthographic camera",
 	});
-	const rulers = page.locator('[aria-label="Drawing rulers in millimetres"]');
 	await orthographic.click();
 	await expect(orthographic).toHaveAttribute("aria-pressed", "true");
 	await expect.poll(cameraType).toBe("OrthographicCamera");
@@ -398,6 +415,12 @@ test("an orbit drag leaves the 2D view in perspective from the current camera", 
 			return Math.hypot(x, y);
 		})
 		.toBeLessThan(1e-6);
+	await page.keyboard.down("Shift");
+	await page.mouse.wheel(100, 0);
+	await page.keyboard.up("Shift");
+	await page.waitForTimeout(100);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(rulers).toHaveCount(1);
 	expect(errors).toEqual([]);
 });
 
