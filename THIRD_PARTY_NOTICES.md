@@ -14,7 +14,7 @@ The exception permits use in proprietary electronic designs. It does not exempt 
 
 ## Font
 
-The interface is set in Inter, by The Inter Project Authors, from the `@fontsource-variable/inter` package. The start page's handwritten note uses Caveat, by the Caveat Project Authors, from the `@fontsource/caveat` package. Both remain under the SIL Open Font License 1.1. Builds copy their licenses into `THIRD_PARTY_NOTICES.txt` with the other dependency notices.
+The interface is set in Inter, by The Inter Project Authors, from the `@fontsource-variable/inter` package. It remains under the SIL Open Font License 1.1. Builds copy its license into `THIRD_PARTY_NOTICES.txt` with the other dependency notices.
 
 ## STEP importer
 

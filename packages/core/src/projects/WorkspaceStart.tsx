@@ -62,29 +62,6 @@ export function WorkspaceStart() {
 	return (
 		<main className="workspace-start workspace-plain relative flex h-full min-h-dvh flex-col">
 			<DocumentBar icon={House} />
-			<button
-				type="button"
-				aria-label="Start here: open the sidebar"
-				disabled={!sidebar}
-				data-shortcut-scope="none"
-				className="workspace-start-pointer"
-				onClick={() => sidebar?.open()}
-			>
-				<svg
-					aria-hidden="true"
-					viewBox="0 0 150 80"
-					className="workspace-start-arrow"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.7"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				>
-					<path d="M143 65 C116 69 106 39 83 30 S39 21 7 30 M8 30 Q21 20 28 13 M7 31 Q20 34 29 44" />
-					<path d="M139 68 C115 70 105 43 84 33 S40 24 12 31" opacity=".35" />
-				</svg>
-				<span className="workspace-start-note">Start here</span>
-			</button>
 			<div className="workspace-start-message">
 				{project?.busy ? (
 					<output>Opening your workspace...</output>
