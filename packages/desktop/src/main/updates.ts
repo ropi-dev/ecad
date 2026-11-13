@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { DesktopRelease, DesktopUpdateState } from "#/bridge.ts";
 
 export const releaseFeedUrl =
-	"https://api.github.com/repos/ropi-dev/ecad/releases/latest";
+	"https://api.github.com/repos/ropi-dev/ecad/releases?per_page=50";
 const firstCheckDelay = 10_000;
 const checkInterval = 6 * 60 * 60 * 1000;
 const staleDownloadAge = 24 * 60 * 60 * 1000;
@@ -34,6 +34,8 @@ export function readPackagedDistribution(appPath: string) {
 }
 
 const releaseSchema = z.object({
+	draft: z.boolean().optional(),
+	prerelease: z.boolean().optional(),
 	body: z.string().nullish(),
 	assets: z.array(
 		z.object({
@@ -133,16 +135,13 @@ export function releaseChanges(body: string | null | undefined) {
 	});
 }
 
-export function selectReleasePackage(
-	value: unknown,
+function releasePackage(
+	release: z.infer<typeof releaseSchema>,
 	architecture: string,
-	feedUrl = releaseFeedUrl,
-): ReleasePackage {
-	const release = releaseSchema.safeParse(value);
-	if (!release.success)
-		throw new Error("The release feed sent an unexpected response.");
+	feedUrl: string,
+) {
 	const suffix = `_${architecture}.deb`;
-	for (const asset of release.data.assets) {
+	for (const asset of release.assets) {
 		if (!asset.name.startsWith("ecad_") || !asset.name.endsWith(suffix))
 			continue;
 		const version = asset.name.slice("ecad_".length, -suffix.length);
@@ -150,15 +149,41 @@ export function selectReleasePackage(
 		if (!versionPattern.test(version) || !sha256) continue;
 		const url = new URL(asset.browser_download_url, feedUrl);
 		if (!isAllowedDownload(url.href, feedUrl)) continue;
-		return {
-			version,
-			url: url.href,
-			size: asset.size,
-			sha256,
-			changes: releaseChanges(release.data.body),
-		};
+		return { version, url: url.href, size: asset.size, sha256 };
 	}
-	throw new Error(`The latest release has no package for ${architecture}.`);
+	return null;
+}
+
+export function selectReleasePackage(
+	value: unknown,
+	architecture: string,
+	currentVersion: string,
+	feedUrl = releaseFeedUrl,
+): ReleasePackage {
+	const parsed = z
+		.union([
+			releaseSchema.transform((release) => [release]),
+			z.array(releaseSchema),
+		])
+		.safeParse(value);
+	if (!parsed.success)
+		throw new Error("The release feed sent an unexpected response.");
+	const releases = parsed.data
+		.filter((release) => !release.draft && !release.prerelease)
+		.flatMap((release) => {
+			const found = releasePackage(release, architecture, feedUrl);
+			return found ? [{ found, body: release.body }] : [];
+		})
+		.sort((a, b) => compareDebianVersions(b.found.version, a.found.version));
+	const newest = releases[0]?.found;
+	if (!newest)
+		throw new Error(`The releases have no package for ${architecture}.`);
+	const changes = releases
+		.filter(
+			({ found }) => compareDebianVersions(found.version, currentVersion) > 0,
+		)
+		.flatMap(({ body }) => releaseChanges(body));
+	return { ...newest, changes: [...new Set(changes)] };
 }
 
 function isAllowedDownload(url: string, feedUrl: string) {
@@ -237,6 +262,7 @@ export class DesktopUpdater {
 			found = selectReleasePackage(
 				await response.json(),
 				this.options.architecture,
+				this.options.currentVersion,
 				this.feedUrl,
 			);
 		} catch (cause) {

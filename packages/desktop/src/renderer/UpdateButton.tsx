@@ -85,9 +85,7 @@ function Changelog({ state }: { state: DesktopUpdateState }) {
 	const hidden = latest.changes.length - shownChanges;
 	return (
 		<span className="mt-2 block border-t border-line-subtle pt-2 font-normal">
-			<span className="block text-fg-muted">
-				Changes in {describeVersion(latest.version)}
-			</span>
+			<span className="block text-fg-muted">Changes since your version</span>
 			<ul className="m-0 mt-1 list-disc pl-4">
 				{latest.changes.slice(0, shownChanges).map((change, index) => (
 					// biome-ignore lint/suspicious/noArrayIndexKey: two changes can share a title

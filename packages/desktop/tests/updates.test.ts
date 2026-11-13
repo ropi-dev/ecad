@@ -93,7 +93,7 @@ test("Debian versions compare like dpkg", () => {
 });
 
 test("the release package matches the architecture and needs a checksum", () => {
-	assert.deepEqual(selectReleasePackage(release(), "amd64"), {
+	assert.deepEqual(selectReleasePackage(release(), "amd64", current), {
 		version: next,
 		url: "https://github.com/ropi-dev/ecad/amd64.deb",
 		size: bytes.length,
@@ -101,25 +101,56 @@ test("the release package matches the architecture and needs a checksum", () => 
 		changes,
 	});
 	const missing = /no package for armhf/;
-	assert.throws(() => selectReleasePackage(release(), "armhf"), missing);
+	assert.throws(
+		() => selectReleasePackage(release(), "armhf", current),
+		missing,
+	);
 	for (const overrides of [
 		{ digest: null },
 		{ name: "ecad_$(id)_amd64.deb" },
 		{ browser_download_url: "http://example.com/amd64.deb" },
 	])
 		assert.throws(
-			() => selectReleasePackage(release(overrides), "amd64"),
+			() => selectReleasePackage(release(overrides), "amd64", current),
 			/no package for amd64/,
 		);
 	assert.throws(
-		() => selectReleasePackage({ message: "Not Found" }, "amd64"),
+		() => selectReleasePackage({ message: "Not Found" }, "amd64", current),
 		/unexpected response/,
 	);
 	assert.equal(
-		selectReleasePackage({ ...release(), body: "x".repeat(200_000) }, "amd64")
-			.version,
+		selectReleasePackage(
+			{ ...release(), body: "x".repeat(200_000) },
+			"amd64",
+			current,
+		).version,
 		next,
 	);
+});
+
+test("the changes cover only the releases newer than the installed one", () => {
+	const middle = "0.0.0+git20261109120000.ab12cd3";
+	const build = (version: string, body: string, extra = {}) => ({
+		...release({ name: `ecad_${version}_amd64.deb` }),
+		body,
+		...extra,
+	});
+	const feed = [
+		build(middle, "* Middle change"),
+		build(next, "* Newest change\n* Middle change"),
+		build(current, "* Installed change"),
+		build("0.0.0+git20261101000000.0", "* Old change"),
+		build("0.0.0+git20261113000000.0", "* Draft change", { draft: true }),
+		build("0.0.0+git20261113000001.0", "* Beta change", { prerelease: true }),
+	];
+	const selected = selectReleasePackage(feed, "amd64", current);
+	assert.equal(selected.version, next);
+	assert.deepEqual(selected.changes, ["Newest change", "Middle change"]);
+	assert.deepEqual(selectReleasePackage(feed, "amd64", next).changes, []);
+	assert.deepEqual(selectReleasePackage(feed, "amd64", middle).changes, [
+		"Newest change",
+		"Middle change",
+	]);
 });
 
 test("release notes become a list of changes", () => {
@@ -252,7 +283,7 @@ test("checks report failures, current releases and newer ones", () =>
 		await updater.check();
 		assert.deepEqual(updater.state, {
 			status: "idle",
-			latest: { version: current, changes },
+			latest: { version: current, changes: [] },
 		});
 		feed.body = release();
 		await updater.check();
