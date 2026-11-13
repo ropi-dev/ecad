@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	mkdir,
@@ -17,6 +17,7 @@ import type { DesktopUpdateState } from "#/bridge.ts";
 import {
 	compareDebianVersions,
 	DesktopUpdater,
+	relaunchAfterExit,
 	releaseChanges,
 	removeStaleDownloads,
 	selectReleasePackage,
@@ -357,3 +358,33 @@ test("a stalled download fails instead of waiting forever", () =>
 		);
 		assert.equal(installed.length, 0);
 	}));
+
+test("a restart starts the app again only after the old process exits, without no_new_privs", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "ecad-relaunch-"));
+	const marker = join(directory, "started");
+	const old = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"]);
+	const exited = new Promise((resolve) => old.once("exit", resolve));
+	try {
+		relaunchAfterExit(
+			"/bin/sh",
+			["-c", 'grep NoNewPrivs /proc/self/status > "$0"', marker],
+			old.pid,
+		);
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		await assert.rejects(stat(marker));
+		old.kill();
+		await exited;
+		for (let i = 0; i < 50; i++) {
+			const text = await readFile(marker, "utf8").catch(() => "");
+			if (text) {
+				assert.match(text, /^NoNewPrivs:\s+0$/m);
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
+		assert.fail("The app was not started again.");
+	} finally {
+		old.kill();
+		await rm(directory, { recursive: true, force: true });
+	}
+});
