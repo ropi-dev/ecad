@@ -59,6 +59,8 @@ export interface SceneViewportProps {
 	selectionEnabled?: boolean;
 	hoverHighlight?: boolean;
 	orbit?: boolean;
+	gestureOrbit?: boolean;
+	onOrbit?: (orbiting: boolean) => void;
 	selectionPosition?: FloatingPanelPosition;
 	interactionHint?: string;
 	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
@@ -92,6 +94,8 @@ export function SceneViewport({
 	selectionEnabled = true,
 	hoverHighlight = true,
 	orbit = false,
+	gestureOrbit = false,
+	onOrbit,
 	selectionPosition = "top-right",
 	interactionHint,
 	gridBounds,
@@ -152,8 +156,17 @@ export function SceneViewport({
 		[showZoom],
 	);
 	useEffect(() => () => clearTimeout(zoomLabel.current.timer), []);
-	const [activeProjection, setActiveProjection] = useState(projection);
-	useEffect(() => setActiveProjection(projection), [projection]);
+	const [flatProjection, setFlatProjection] = useState(projection);
+	useEffect(() => setFlatProjection(projection), [projection]);
+	const [orbitProjection, setOrbitProjection] =
+		useState<typeof projection>("perspective");
+	const [orbiting, setOrbiting] = useState(orbit);
+	const activeProjection = orbiting ? orbitProjection : flatProjection;
+	const reportOrbit = useEffectEvent((next: boolean) => {
+		if (next && !orbiting) setOrbitProjection("perspective");
+		setOrbiting(next);
+		onOrbit?.(next);
+	});
 	const displayScale = useDisplayScale(physicalSizeZoom);
 	const antialias = useAntialiasing();
 	const ownCamera = useRef<{ camera?: Camera; scene?: ViewerScene }>({});
@@ -254,6 +267,7 @@ export function SceneViewport({
 						selectionEnabled,
 						hoverHighlight,
 						orbit: currentOrbit.current,
+						gestureOrbit,
 						antialias,
 						ariaLabel: formatShortcut(
 							interactionHint
@@ -278,6 +292,7 @@ export function SceneViewport({
 						},
 						onOpenSelection: () => setAttributesOpen(true),
 						onOrientation: (rotation) => axes.current?.update(rotation),
+						onOrbit: reportOrbit,
 						onZoom: reportZoom,
 						onReady: reportReady,
 						onError: reportError,
@@ -286,6 +301,7 @@ export function SceneViewport({
 			);
 			runtime.current = viewport;
 			configureDisplay(viewport);
+			reportOrbit(cameraMode === "top" && currentOrbit.current);
 		} catch (error) {
 			reportError(
 				`3D viewer unavailable: ${errorMessage(error, "WebGL is not supported in this browser.")}`,
@@ -302,6 +318,7 @@ export function SceneViewport({
 		interactionHint,
 		selectionEnabled,
 		hoverHighlight,
+		gestureOrbit,
 		lockProjection,
 		fitZoom,
 		cameraState,
@@ -384,10 +401,10 @@ export function SceneViewport({
 					</div>
 				</FloatingPanel>
 			)}
-			{cameraMode === "top" && !orbit && (
+			{cameraMode === "top" && !orbiting && (
 				<ViewportRulers unit={rulerUnit} ref={rulers} gridBounds={gridBounds} />
 			)}
-			{(cameraMode === "orbit" || orbit) && <AxisIndicator ref={axes} />}
+			{(cameraMode === "orbit" || orbiting) && <AxisIndicator ref={axes} />}
 			{controlsReady && (
 				<ViewControls3D
 					grouped={groupedControls}
@@ -408,8 +425,11 @@ export function SceneViewport({
 						lockProjection
 							? undefined
 							: () =>
-									setActiveProjection((current) =>
-										current === "perspective" ? "orthographic" : "perspective",
+									(orbiting ? setOrbitProjection : setFlatProjection)(
+										(current) =>
+											current === "perspective"
+												? "orthographic"
+												: "perspective",
 									)
 					}
 					fit={() => stepZoom((viewport) => viewport.fit())}

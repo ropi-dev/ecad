@@ -28,6 +28,7 @@ export function GerberViewer({
 	scene: readonly (PlanarObject | ParsedGerberObject)[];
 	focusedLayerId?: string;
 }) {
+	const [flat, setFlat] = useState(true);
 	const [stacked, setStacked] = useState(false);
 	// Display settings do not rebuild geometry or reset the camera.
 	const [geometryScene, setGeometryScene] = useState(scene);
@@ -117,11 +118,11 @@ export function GerberViewer({
 		<TooltipButton
 			type="button"
 			className={`${viewControlButtonClassName} px-2.5`}
-			aria-pressed={view3D}
-			tooltip={view3D ? "Show the flat top view" : "Show layers in 3D"}
-			onClick={() => setStacked(!view3D)}
+			aria-pressed={flat}
+			tooltip={flat ? "Show layers in 3D" : "Show the flat top view"}
+			onClick={() => setFlat(!flat)}
 		>
-			3D
+			2D
 		</TooltipButton>
 	);
 	return (
@@ -130,7 +131,13 @@ export function GerberViewer({
 			{...props}
 			scene={geometryScene}
 			updateScene={updateScene}
-			orbit={view3D}
+			orbit={!flat && geometryScene.length > 0}
+			gestureOrbit
+			onOrbit={(orbiting) => {
+				setStacked(orbiting);
+				setFlat(!orbiting);
+			}}
+			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
 			hoverHighlight={false}
 			selectionPosition="top-left"
 			scrollableControls
