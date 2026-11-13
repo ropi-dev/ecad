@@ -156,9 +156,20 @@ test(
 			page,
 			"sidebar.reveal",
 			async () => {
-				await openProjectFiles(page);
+				const y = required(page.viewportSize()).height / 2;
+				await page.mouse.move(60, y);
+				await page.mouse.move(2, y);
+				await page.waitForFunction(
+					() =>
+						document
+							.querySelector('aside[aria-label="Project files"]')
+							?.getBoundingClientRect().x === 0,
+					undefined,
+					{ polling: "raf" },
+				);
 			},
 		);
+		await openProjectFiles(page);
 		const menuOpenTimes: number[] = [];
 		for (let repeat = 0; repeat < 3; repeat++) {
 			menuOpenTimes.push(
