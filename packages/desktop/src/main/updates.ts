@@ -383,6 +383,20 @@ export class DesktopUpdater {
 	}
 }
 
+const waitThenStart =
+	'i=0; while [ "$i" -lt 100 ] && kill -0 "$1" 2>/dev/null; do sleep 0.1; i=$((i + 1)); done; shift; exec "$0" "$@"';
+
+export function relaunchAfterExit(
+	executable: string,
+	args: string[],
+	pid = process.pid,
+) {
+	spawn("/bin/sh", ["-c", waitThenStart, executable, String(pid), ...args], {
+		detached: true,
+		stdio: "ignore",
+	}).unref();
+}
+
 export function installWithPkexec(path: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(

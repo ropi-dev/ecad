@@ -34,7 +34,11 @@ import {
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
-import { DesktopUpdater, readPackagedDistribution } from "#/main/updates.ts";
+import {
+	DesktopUpdater,
+	readPackagedDistribution,
+	relaunchAfterExit,
+} from "#/main/updates.ts";
 
 protocol.registerSchemesAsPrivileged([
 	{
@@ -312,7 +316,8 @@ function registerUpdateHandlers() {
 	updater = createUpdater();
 	updater?.start();
 	app.on("will-quit", () => {
-		if (relaunchOnQuit) app.relaunch();
+		if (relaunchOnQuit)
+			relaunchAfterExit(process.execPath, process.argv.slice(1));
 	});
 	handle(updateChannels.getState, () => updater?.state ?? null);
 	handle(updateChannels.check, () => updater?.check());
