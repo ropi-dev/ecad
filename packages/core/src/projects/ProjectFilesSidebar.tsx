@@ -12,9 +12,9 @@ import {
 	House,
 	Layers,
 	type LucideIcon,
-	PanelLeft,
 	PlugZap,
 	Plus,
+	Save,
 	Search,
 	Settings,
 	Workflow,
@@ -28,7 +28,6 @@ import {
 	Suspense,
 	useCallback,
 	useEffect,
-	useId,
 	useMemo,
 	useRef,
 	useState,
@@ -40,7 +39,11 @@ import {
 	hasShortcutModifier,
 	shortcutModifier,
 } from "#/components/viewer/shortcutModifier.ts";
-import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
+import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
+import {
+	TooltipButton,
+	TooltipTrigger,
+} from "#/components/viewer/TooltipButton.tsx";
 import {
 	scrollFadeClassName,
 	useScrollEdges,
@@ -58,17 +61,16 @@ import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { primaryPcbId } from "#/projects/pcb.ts";
-import { SaveProjectButton } from "#/projects/SaveProjectButton.tsx";
 import {
 	sidebarMenuContent,
 	sidebarMenuItem,
 	sidebarMenuLabel,
 	sidebarMenuSeparator,
 } from "#/projects/sidebarMenu.ts";
+import { useSaveProject } from "#/projects/useSaveProject.ts";
 import {
 	useWorkspaceControls,
 	useWorkspaceRegistration,
-	workspaceActionClassName,
 } from "#/projects/WorkspaceControls.tsx";
 import { LazySettingsDialog } from "#/settings/LazySettingsDialog.tsx";
 
@@ -84,10 +86,9 @@ const CreateFileDialog = lazy(() =>
 );
 const focus =
 	"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+const railButton = "ui-button size-9";
 const row = `flex h-7 min-w-0 items-center gap-2 rounded-md text-sm no-underline pointer-coarse:h-11 ${focus}`;
-// Hovering the window's left edge reveals the sidebar. The pointer has to rest
-// there before it opens, and may stray out briefly before it closes.
-const hoverOpenDelay = 250;
+// The pointer may stray out of the sidebar briefly before it closes.
 const hoverCloseDelay = 400;
 // The file inputs stay mounted while the menu that opens them is closed.
 const importTypes = [
@@ -165,14 +166,15 @@ export function ProjectFilesSidebar({
 	);
 	const workspaceControls = useWorkspaceControls();
 	const registration = useWorkspaceRegistration();
-	const setSidebarPinned = registration?.setSidebarPinned;
+	const setSidebarDocked = registration?.setSidebarDocked;
 	const registerSidebar = registration?.registerSidebar;
 	const library = useSymbolLibrary();
-	const [pinned, setPinned] = useState(false);
+	const saveProject = useSaveProject();
 	useEffect(() => {
-		setSidebarPinned?.(pinned);
-		return () => setSidebarPinned?.(false);
-	}, [pinned, setSidebarPinned]);
+		setSidebarDocked?.(true);
+		return () => setSidebarDocked?.(false);
+	}, [setSidebarDocked]);
+	const railRef = useRef<HTMLElement>(null);
 	const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 	const [filterRow, setFilterRow] = useState<HTMLFieldSetElement | null>(null);
 	useScrollEdges(filterRow);
@@ -191,7 +193,6 @@ export function ProjectFilesSidebar({
 		setHovered(next);
 	}, []);
 	useEffect(() => () => clearTimeout(hoverTimer.current), []);
-	const panelId = useId();
 	const [query, setQuery] = useState("");
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 	const [filter, setFilter] = useState<(typeof filters)[number]>("All files");
@@ -202,18 +203,23 @@ export function ProjectFilesSidebar({
 	const [creatingFile, setCreatingFile] = useState<
 		"drawing" | "symbol" | "circuit" | null
 	>(null);
-	const [addMenuOpen, setAddMenuOpen] = useState(false);
-	const [openMenuActive, setOpenMenuActive] = useState(false);
-	const [projectMenuActive, setProjectMenuActive] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	// Menus and dialogs opened from the sidebar are portaled outside of it.
+	const [railAddMenuOpen, setRailAddMenuOpen] = useState(false);
+	const [railOpenActive, setRailOpenActive] = useState(false);
+	const [railProjectActive, setRailProjectActive] = useState(false);
+	const [railMcpActive, setRailMcpActive] = useState(false);
+	// Menus and dialogs opened from the rail leave the sidebar closed.
 	const overlayOpen =
-		addMenuOpen ||
+		railAddMenuOpen ||
+		railOpenActive ||
+		railProjectActive ||
+		railMcpActive ||
 		creatingFile !== null ||
-		openMenuActive ||
-		projectMenuActive ||
 		settingsOpen;
-	const open = pinned || hovered || focused || touchOpen || overlayOpen;
+	const open = hovered || focused || touchOpen;
+	useEffect(() => {
+		if (overlayOpen) setHoveredNow(false);
+	}, [overlayOpen, setHoveredNow]);
 	useEffect(() => {
 		if (overlayOpen) return;
 		// A menu or dialog closing under the pointer leaves no pointerleave
@@ -229,24 +235,10 @@ export function ProjectFilesSidebar({
 		document.addEventListener("pointermove", sync, true);
 		return () => document.removeEventListener("pointermove", sync, true);
 	}, [overlayOpen, setHoveredNow]);
-	const togglePin = useCallback(() => {
-		if (
-			document.activeElement instanceof HTMLElement &&
-			sidebarRef.current?.contains(document.activeElement)
-		)
-			document.activeElement.blur();
-		setFocused(false);
-		setHoveredNow(false);
-		setTouchOpen(false);
-		setPinned((current) => !current);
-	}, [setHoveredNow]);
 	const sidebarActions = useMemo(
 		() => ({
 			open: () => setTouchOpen(true),
-			openAddMenu: () => {
-				setTouchOpen(true);
-				setAddMenuOpen(true);
-			},
+			openAddMenu: () => setRailAddMenuOpen(true),
 			openSettings: () => setSettingsOpen(true),
 		}),
 		[],
@@ -273,23 +265,6 @@ export function ProjectFilesSidebar({
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [canAddFile, sidebarActions]);
-	useEffect(() => {
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (
-				!hasShortcutModifier(event) ||
-				event.altKey ||
-				!event.shiftKey ||
-				event.code !== "KeyS" ||
-				event.isComposing
-			)
-				return;
-			event.preventDefault();
-			event.stopPropagation();
-			if (!event.repeat) togglePin();
-		};
-		window.addEventListener("keydown", onKeyDown, true);
-		return () => window.removeEventListener("keydown", onKeyDown, true);
-	}, [togglePin]);
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (
@@ -336,7 +311,7 @@ export function ProjectFilesSidebar({
 		setHoveredNow(false);
 	}, [setHoveredNow]);
 	useEffect(() => {
-		if (!touchOpen || pinned || overlayOpen) return;
+		if (!touchOpen || overlayOpen) return;
 		// The backdrop takes taps on the workspace. This covers what is drawn
 		// above it, such as a toast.
 		const dismiss = (event: PointerEvent) => {
@@ -348,7 +323,7 @@ export function ProjectFilesSidebar({
 		};
 		document.addEventListener("pointerdown", dismiss, true);
 		return () => document.removeEventListener("pointerdown", dismiss, true);
-	}, [touchOpen, pinned, overlayOpen, closeDrawer]);
+	}, [touchOpen, overlayOpen, closeDrawer]);
 	const editorLink = useRef<HTMLAnchorElement>(null);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
@@ -514,7 +489,60 @@ export function ProjectFilesSidebar({
 
 	const activePath = workspaceControls?.document?.path;
 	const circuitOpen = workspaceControls?.document?.circuit ?? false;
-	const plain = workspaceControls?.document?.plain ?? true;
+	const returnToRail = (label: string) =>
+		quietFocus(
+			railRef.current?.querySelector<HTMLElement>(
+				`button[aria-label="${label}"]`,
+			) ?? null,
+		);
+	const isActive = (file: ProjectFile) =>
+		file.type === "Circuit"
+			? circuitOpen && activePath === file.path
+			: !circuitOpen && activePath === file.path;
+	function openFile(file: ProjectFile) {
+		if (!project) return;
+		closeDrawer();
+		if (file.href === "/editor") {
+			if (file.type === "Circuit")
+				void project
+					.openCircuit(file.path)
+					.catch((cause) => showError(cause, "Unable to open circuit."));
+			else project.selectEditorFile(file.path);
+		}
+		if (file.asset) project.selectAsset(file.asset);
+		else if (file.allLayers) project.selectAsset(null);
+	}
+	const addMenuItems = (
+		<>
+			<DropdownMenu.Label className={sidebarMenuLabel}>New</DropdownMenu.Label>
+			{newFileTypes.map(([kind, Icon]) => (
+				<DropdownMenu.Item
+					key={kind}
+					className={sidebarMenuItem}
+					disabled={busy}
+					onSelect={() => setCreatingFile(kind)}
+				>
+					<Icon size={14} aria-hidden="true" />
+					New {kind}
+				</DropdownMenu.Item>
+			))}
+			<DropdownMenu.Separator className={sidebarMenuSeparator} />
+			<DropdownMenu.Label className={sidebarMenuLabel}>
+				Import
+			</DropdownMenu.Label>
+			{importTypes.map(([kind, , Icon, , item]) => (
+				<DropdownMenu.Item
+					key={kind}
+					className={sidebarMenuItem}
+					disabled={busy || (kind === "symbol" && library.loading)}
+					onSelect={() => fileInputs.current[kind]?.click()}
+				>
+					<Icon size={14} aria-hidden="true" />
+					{item}
+				</DropdownMenu.Item>
+			))}
+		</>
+	);
 	const report = importReport && (
 		<output className="ui-panel block bg-raised p-3 text-xs shadow-pop">
 			<span className="block font-semibold">KiCad schematic imported</span>
@@ -589,9 +617,16 @@ export function ProjectFilesSidebar({
 			ref={sidebarRef}
 			aria-label="File sidebar"
 			data-shortcut-scope="sidebar"
-			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-fg ${pinned ? "w-64 max-w-[calc(100vw-4rem)]" : "w-0"}`}
+			className={`relative z-30 m-0 h-full min-w-0 shrink-0 border-0 p-0 text-fg w-12`}
 			onMouseDownCapture={() => setFocused(false)}
 			onFocusCapture={(event) => {
+				// Focus in a portaled menu, or returned quietly to the rail, does not
+				// reveal the sidebar.
+				if (
+					!event.currentTarget.contains(event.target) ||
+					event.target.dataset.quietFocus === "true"
+				)
+					return;
 				if (event.target.matches(":focus-visible")) setFocused(true);
 			}}
 			onBlurCapture={(event) => {
@@ -613,7 +648,7 @@ export function ProjectFilesSidebar({
 		>
 			{/* Opened by a tap or click, the sidebar is a drawer: a tap outside
 			    closes it without also pressing whatever lies under it. */}
-			{touchOpen && !pinned && !overlayOpen && (
+			{touchOpen && !overlayOpen && (
 				<div
 					aria-hidden="true"
 					data-testid="sidebar-backdrop"
@@ -621,37 +656,209 @@ export function ProjectFilesSidebar({
 					onClick={closeDrawer}
 				/>
 			)}
-			{/* Resting the mouse on the left edge reveals the sidebar. */}
-			<div
-				aria-hidden="true"
-				data-testid="sidebar-edge"
-				className="absolute inset-y-0 left-0 z-10 w-2"
-				onPointerEnter={(event) => {
-					if (
-						event.pointerType === "mouse" &&
-						window.matchMedia("(hover: hover)").matches
-					)
-						hoverSoon(true, hoverOpenDelay);
-				}}
-				onPointerLeave={(event) => {
-					if (event.pointerType === "mouse") hoverSoon(false, hoverCloseDelay);
-				}}
-				onClick={() => setTouchOpen(true)}
-			/>
-			{/* Opens the sidebar on a click, never on hover. The open panel
-			    covers it. */}
-			<button
-				type="button"
-				aria-label="Show project files"
-				aria-expanded={open}
-				aria-controls={panelId}
-				tabIndex={open ? -1 : 0}
-				data-shortcut-scope={open ? "none" : undefined}
-				className={`ui-panel absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-10 grid size-[var(--chrome-control)] cursor-pointer place-items-center text-fg-muted hover:text-fg ${focus} ${plain ? "workspace-plain" : ""}`}
-				onClick={() => setTouchOpen(true)}
-			>
-				<PanelLeft size={18} aria-hidden="true" />
-			</button>
+			<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
+				{/* biome-ignore lint/a11y/useKeyWithClickEvents: a tap on the rail's empty space opens the sidebar on touch screens, which cannot hover */}
+				<nav
+					ref={railRef}
+					aria-label="Sidebar shortcuts"
+					data-shortcut-keeps-focus
+					className="absolute inset-y-0 left-0 z-30 flex w-12 flex-col items-center gap-1 border-r border-line bg-panel py-2"
+					onPointerEnter={(event) => {
+						if (
+							event.pointerType === "mouse" &&
+							!overlayOpen &&
+							window.matchMedia("(hover: hover)").matches
+						)
+							setHoveredNow(true);
+					}}
+					onPointerLeave={(event) => {
+						if (event.pointerType === "mouse")
+							hoverSoon(false, hoverCloseDelay);
+					}}
+					onPointerDown={(event) => {
+						if (
+							event.target instanceof Element &&
+							event.target.closest("a, button")
+						)
+							setHoveredNow(false);
+					}}
+					onClick={(event) => {
+						if (
+							event.target instanceof Element &&
+							event.currentTarget.contains(event.target) &&
+							!event.target.closest("a, button")
+						)
+							setTouchOpen(true);
+					}}
+				>
+					{snapshot && (
+						<DropdownMenu.Root
+							open={railAddMenuOpen}
+							onOpenChange={setRailAddMenuOpen}
+							modal={false}
+						>
+							<TooltipTrigger
+								tooltip="Add file"
+								shortcut="Ctrl+Shift+N"
+								side="right"
+							>
+								<DropdownMenu.Trigger asChild>
+									<button
+										type="button"
+										aria-label="Add file"
+										disabled={busy}
+										className={railButton}
+										data-variant="ghost"
+										data-icon
+									>
+										<Plus size={18} aria-hidden="true" />
+									</button>
+								</DropdownMenu.Trigger>
+							</TooltipTrigger>
+							<DropdownMenu.Portal>
+								<DropdownMenu.Content
+									aria-label="Add file"
+									side="right"
+									align="start"
+									sideOffset={12}
+									collisionPadding={12}
+									onCloseAutoFocus={(event) => {
+										event.preventDefault();
+										if (!creatingFile) returnToRail("Add file");
+									}}
+									className={sidebarMenuContent}
+								>
+									{addMenuItems}
+								</DropdownMenu.Content>
+							</DropdownMenu.Portal>
+						</DropdownMenu.Root>
+					)}
+					<OpenProjectButton
+						onActiveChange={setRailOpenActive}
+						onCloseAutoFocus={(event) => {
+							event.preventDefault();
+							returnToRail("Open project");
+						}}
+						className={railButton}
+					/>
+					<ProjectMenu
+						onActiveChange={setRailProjectActive}
+						onCloseAutoFocus={(event) => {
+							event.preventDefault();
+							returnToRail("Project actions");
+						}}
+						className={railButton}
+					/>
+					{workspaceControls?.editor ? (
+						workspaceControls.editor.enableMcp ? (
+							<Suspense
+								fallback={
+									<button
+										type="button"
+										aria-label="Enable MCP"
+										disabled
+										className={railButton}
+										data-variant="ghost"
+										data-icon
+									>
+										<PlugZap size={18} aria-hidden="true" />
+									</button>
+								}
+							>
+								<SidebarMcpControls
+									store={workspaceControls.editor.store}
+									rail
+									onActiveChange={setRailMcpActive}
+								/>
+							</Suspense>
+						) : (
+							<TooltipButton
+								aria-label="MCP unavailable"
+								tooltip="MCP is unavailable in this editor"
+								side="right"
+								disabled
+								className={railButton}
+								data-variant="ghost"
+								data-icon
+							>
+								<PlugZap size={18} aria-hidden="true" />
+							</TooltipButton>
+						)
+					) : (
+						<TooltipTrigger tooltip="Schematic editor" side="right">
+							<ProjectLink
+								href="/editor"
+								aria-label="Schematic editor"
+								onClick={() => project.selectEditorFile()}
+								className={railButton}
+								data-variant="ghost"
+								data-icon
+							>
+								<CircuitBoard size={18} aria-hidden="true" />
+							</ProjectLink>
+						</TooltipTrigger>
+					)}
+					<div className="flex-1" />
+					{saveProject && (
+						<TooltipButton
+							aria-label="Save project"
+							tooltip={
+								saveProject.unsaved
+									? "Save project (unsaved changes)"
+									: "Save project"
+							}
+							side="right"
+							disabled={saveProject.busy}
+							data-unsaved={saveProject.unsaved}
+							className={`${railButton} relative data-[unsaved=true]:text-accent`}
+							data-variant="ghost"
+							data-icon
+							onClick={saveProject.save}
+						>
+							<Save size={18} aria-hidden="true" />
+							{saveProject.unsaved && (
+								<span
+									aria-hidden="true"
+									className="absolute top-1 right-1 size-1.5 rounded-full bg-accent"
+								/>
+							)}
+						</TooltipButton>
+					)}
+					<TooltipButton
+						aria-label="Settings"
+						aria-keyshortcuts={`${shortcutModifier().key}+,`}
+						tooltip="Settings"
+						shortcut="Ctrl+,"
+						side="right"
+						data-shortcut-scope="none"
+						className={railButton}
+						data-variant="ghost"
+						data-icon
+						onClick={() => setSettingsOpen(true)}
+					>
+						<Settings size={18} aria-hidden="true" />
+					</TooltipButton>
+					{footerActions}
+					{onExit && (
+						<TooltipButton
+							aria-label="Exit"
+							aria-keyshortcuts={`${shortcutModifier().key}+Q`}
+							tooltip="Exit"
+							shortcut="Ctrl+Q"
+							side="right"
+							// Only Ctrl+Q quits. The held-modifier hints skip this button,
+							// so another chord cannot quit by accident.
+							data-shortcut-scope="none"
+							className={railButton}
+							data-variant="ghost"
+							data-icon
+							onClick={onExit}
+						>
+							<X size={18} aria-hidden="true" />
+						</TooltipButton>
+					)}
+				</nav>
+			</Tooltip.Provider>
 			{report && (
 				<PinnedNotice fallbackClassName="fixed right-4 bottom-4 z-50 w-[min(360px,calc(100vw-2rem))]">
 					{report}
@@ -660,10 +867,8 @@ export function ProjectFilesSidebar({
 
 			<aside
 				ref={panelRef}
-				id={panelId}
 				aria-label="Project files"
 				data-open={open}
-				data-pinned={pinned}
 				aria-hidden={!open}
 				inert={!open}
 				onPointerEnter={(event) => {
@@ -676,7 +881,7 @@ export function ProjectFilesSidebar({
 				onPointerLeave={(event) => {
 					if (event.pointerType === "mouse") hoverSoon(false, hoverCloseDelay);
 				}}
-				className={`absolute inset-y-0 left-0 z-20 flex h-full w-64 max-w-[calc(100vw-4rem)] min-h-0 flex-col overflow-hidden border-r border-line bg-panel transition-transform duration-200 ease-in-out motion-reduce:transition-none ${open ? "translate-x-0" : "-translate-x-full"} ${open && !pinned ? "shadow-pop" : ""}`}
+				className={`absolute inset-y-0 z-20 flex h-full w-64 left-12 max-w-[calc(100vw-4rem)] min-h-0 flex-col overflow-hidden border-r border-line bg-panel transition-transform duration-120 ease-out motion-reduce:transition-none ${open ? "translate-x-0" : "-translate-x-full"} ${open ? "shadow-pop" : ""}`}
 			>
 				<header className="flex h-12 shrink-0 items-center gap-1 pr-2 pl-2">
 					<ProjectLink
@@ -694,68 +899,6 @@ export function ProjectFilesSidebar({
 							{snapshot?.manifest.name ?? "ECAD"}
 						</span>
 					</ProjectLink>
-					{snapshot && (
-						<DropdownMenu.Root
-							open={addMenuOpen}
-							onOpenChange={setAddMenuOpen}
-							modal={false}
-						>
-							<DropdownMenu.Trigger asChild>
-								<button
-									type="button"
-									aria-label="Add file"
-									disabled={busy}
-									className="ui-button"
-									data-variant="ghost"
-									data-icon
-								>
-									<Plus size={16} aria-hidden="true" />
-								</button>
-							</DropdownMenu.Trigger>
-							<DropdownMenu.Portal>
-								<DropdownMenu.Content
-									aria-label="Add file"
-									align="end"
-									sideOffset={6}
-									collisionPadding={12}
-									onCloseAutoFocus={(event) => {
-										if (creatingFile) event.preventDefault();
-									}}
-									className={sidebarMenuContent}
-								>
-									<DropdownMenu.Label className={sidebarMenuLabel}>
-										New
-									</DropdownMenu.Label>
-									{newFileTypes.map(([kind, Icon]) => (
-										<DropdownMenu.Item
-											key={kind}
-											className={sidebarMenuItem}
-											disabled={busy}
-											onSelect={() => setCreatingFile(kind)}
-										>
-											<Icon size={14} aria-hidden="true" />
-											New {kind}
-										</DropdownMenu.Item>
-									))}
-									<DropdownMenu.Separator className={sidebarMenuSeparator} />
-									<DropdownMenu.Label className={sidebarMenuLabel}>
-										Import
-									</DropdownMenu.Label>
-									{importTypes.map(([kind, , Icon, , item]) => (
-										<DropdownMenu.Item
-											key={kind}
-											className={sidebarMenuItem}
-											disabled={busy || (kind === "symbol" && library.loading)}
-											onSelect={() => fileInputs.current[kind]?.click()}
-										>
-											<Icon size={14} aria-hidden="true" />
-											{item}
-										</DropdownMenu.Item>
-									))}
-								</DropdownMenu.Content>
-							</DropdownMenu.Portal>
-						</DropdownMenu.Root>
-					)}
 				</header>
 				{importTypes.map(([kind, label, , accept]) => (
 					<input
@@ -781,56 +924,6 @@ export function ProjectFilesSidebar({
 						}}
 					/>
 				))}
-				<nav
-					aria-label="Workspaces"
-					className="grid shrink-0 grid-cols-4 gap-1.5 px-3 pb-3"
-				>
-					<OpenProjectButton onActiveChange={setOpenMenuActive} />
-					<SaveProjectButton />
-					<ProjectMenu onActiveChange={setProjectMenuActive} />
-					{workspaceControls?.editor ? (
-						workspaceControls.editor.enableMcp ? (
-							<Suspense
-								fallback={
-									<button
-										type="button"
-										aria-label="Enable MCP"
-										disabled
-										className={workspaceActionClassName}
-									>
-										<PlugZap size={18} aria-hidden="true" />
-										MCP
-									</button>
-								}
-							>
-								<SidebarMcpControls
-									store={workspaceControls.editor.store}
-									compact
-								/>
-							</Suspense>
-						) : (
-							<button
-								type="button"
-								aria-label="MCP unavailable"
-								disabled
-								className={workspaceActionClassName}
-							>
-								<PlugZap size={18} aria-hidden="true" />
-								MCP
-							</button>
-						)
-					) : (
-						<ProjectLink
-							href="/editor"
-							aria-label="Schematic editor"
-							onClick={() => project.selectEditorFile()}
-							className={workspaceActionClassName}
-						>
-							<CircuitBoard size={18} aria-hidden="true" />
-							Editor
-						</ProjectLink>
-					)}
-				</nav>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-line-subtle">
 					{snapshot ? (
 						<>
@@ -953,10 +1046,7 @@ export function ProjectFilesSidebar({
 												const circuitActive =
 													circuitOpen &&
 													activePath === (file.circuitPath ?? file.path);
-												const active =
-													file.type === "Circuit"
-														? circuitActive
-														: !circuitOpen && activePath === file.path;
+												const active = isActive(file);
 												const content = (
 													<>
 														<Icon
@@ -1045,26 +1135,7 @@ export function ProjectFilesSidebar({
 																		aria-current={active ? "page" : undefined}
 																		title={`${file.name} · ${file.type}`}
 																		className={`ui-toggle ${row} px-1.5 aria-[current=page]:font-medium`}
-																		onClick={() => {
-																			if (!pinned) closeDrawer();
-																			if (file.href === "/editor") {
-																				if (file.type === "Circuit")
-																					void project
-																						.openCircuit(file.path)
-																						.catch((cause) =>
-																							showError(
-																								cause,
-																								"Unable to open circuit.",
-																							),
-																						);
-																				else
-																					project.selectEditorFile(file.path);
-																			}
-																			if (file.asset)
-																				project.selectAsset(file.asset);
-																			else if (file.allLayers)
-																				project.selectAsset(null);
-																		}}
+																		onClick={() => openFile(file)}
 																	>
 																		{content}
 																	</ProjectLink>
@@ -1087,7 +1158,7 @@ export function ProjectFilesSidebar({
 																		}
 																		className={`ui-toggle ${row} ml-[11px] border-l pr-1.5 pl-[11px] [--toggle-line:var(--color-line)] [--toggle-on-line:var(--color-line)] aria-[current=page]:font-medium`}
 																		onClick={() => {
-																			if (!pinned) closeDrawer();
+																			closeDrawer();
 																			void project
 																				.openCircuit(
 																					file.circuitPath ?? file.path,
@@ -1173,55 +1244,6 @@ export function ProjectFilesSidebar({
 				<ProjectLink href="/editor" ref={editorLink} hidden tabIndex={-1}>
 					Open new file
 				</ProjectLink>
-				<Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
-					<footer className="flex shrink-0 items-center gap-1 border-t border-line-subtle p-2">
-						{onExit && (
-							<TooltipButton
-								aria-label="Exit"
-								aria-keyshortcuts={`${shortcutModifier().key}+Q`}
-								tooltip="Exit"
-								shortcut="Ctrl+Q"
-								// Only Ctrl+Q quits. The held-modifier hints skip this button,
-								// so another chord cannot quit by accident.
-								data-shortcut-scope="none"
-								className="ui-button"
-								data-variant="ghost"
-								data-icon
-								onClick={onExit}
-							>
-								<X size={15} aria-hidden="true" />
-							</TooltipButton>
-						)}
-						<TooltipButton
-							aria-label="Settings"
-							aria-keyshortcuts={`${shortcutModifier().key}+,`}
-							tooltip="Settings"
-							shortcut="Ctrl+,"
-							data-shortcut-scope="none"
-							className="ui-button"
-							data-variant="ghost"
-							data-icon
-							onClick={() => setSettingsOpen(true)}
-						>
-							<Settings size={15} aria-hidden="true" />
-						</TooltipButton>
-						{footerActions}
-						{/* Lit while the sidebar is pinned beside the workspace. */}
-						<TooltipButton
-							aria-label={pinned ? "Compact sidebar" : "Pin sidebar"}
-							aria-pressed={pinned}
-							aria-keyshortcuts={`${shortcutModifier().key}+Shift+S`}
-							aria-controls={panelId}
-							tooltip={pinned ? "Compact sidebar" : "Pin sidebar"}
-							shortcut="Ctrl+Shift+S"
-							className="ui-button ui-toggle ml-auto"
-							data-icon
-							onClick={togglePin}
-						>
-							<PanelLeft size={16} aria-hidden="true" />
-						</TooltipButton>
-					</footer>
-				</Tooltip.Provider>
 			</aside>
 			<LazySettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 			{creatingFile && (

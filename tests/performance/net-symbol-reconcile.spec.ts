@@ -1,6 +1,10 @@
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { expect, test } from "@playwright/test";
-import { closeProjectFiles, openProjectFiles } from "../browser/project-files";
+import {
+	closeProjectFiles,
+	openProjectFiles,
+	projectRail,
+} from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -127,7 +131,7 @@ test(
 			.click();
 		await expect(page.locator(".circuit-component")).toHaveCount(32);
 		await expect(page).toHaveURL(circuitUrl);
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Add file", exact: true })
 			.click();
 		await page

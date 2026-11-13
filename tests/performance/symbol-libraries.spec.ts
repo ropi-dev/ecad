@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openProjectFiles } from "../browser/project-files";
+import { projectRail } from "../browser/project-files";
 import { defaultSymbolRows } from "../helpers/default-symbol-rows.ts";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -73,7 +73,7 @@ test(
 		});
 		await page.reload();
 		await ready(page);
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Project actions", exact: true })
 			.click();
 		await page
@@ -93,7 +93,7 @@ test(
 			).toBeEnabled();
 		});
 		await page.getByRole("button", { name: "Done", exact: true }).click();
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("link", { name: "Schematic editor", exact: true })
 			.click();
 		await interaction(page, "library.picker", async () => {

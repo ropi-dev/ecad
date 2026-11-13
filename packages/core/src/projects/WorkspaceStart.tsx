@@ -61,7 +61,7 @@ export function WorkspaceStart() {
 
 	return (
 		<main className="workspace-start workspace-plain relative flex h-full min-h-dvh flex-col">
-			<DocumentBar icon={House} plain />
+			<DocumentBar icon={House} />
 			<button
 				type="button"
 				aria-label="Start here: open the sidebar"

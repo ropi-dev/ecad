@@ -1,7 +1,8 @@
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Check, FolderOpen } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
-import { type ReactNode, useState } from "react";
+import { type ReactElement, useState } from "react";
+import { TooltipTrigger } from "#/components/viewer/TooltipButton.tsx";
 import { OpenProjectDialog } from "#/projects/OpenProjectDialog.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import {
@@ -10,14 +11,6 @@ import {
 	sidebarMenuLabel,
 	useReportActive,
 } from "#/projects/sidebarMenu.ts";
-import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
-
-const tile = (
-	<>
-		<FolderOpen size={18} aria-hidden="true" />
-		Open
-	</>
-);
 
 const projectLabel = (name: string) =>
 	name.startsWith("Untitled-") ? `Untitled · ${name.slice(9, 17)}` : name;
@@ -29,17 +22,19 @@ const projectLabel = (name: string) =>
  */
 export function OpenProjectButton({
 	onActiveChange,
-	label = "Open project",
-	className = workspaceActionClassName,
-	children = tile,
+	className,
+	onCloseAutoFocus,
 }: {
 	/** Reports whether the project menu or the save prompt is open. */
 	onActiveChange?: (active: boolean) => void;
-	/** Accessible name. The start page's card differs from the sidebar tile. */
-	label?: string;
-	className?: string;
-	children?: ReactNode;
+	className: string;
+	onCloseAutoFocus?: (event: Event) => void;
 }) {
+	const withTooltip = (trigger: ReactElement) => (
+		<TooltipTrigger tooltip="Open project" side="right">
+			{trigger}
+		</TooltipTrigger>
+	);
 	const project = useProjectSelection(
 		({ busy, list, mode, open, project, save }) => ({
 			busy,
@@ -79,21 +74,25 @@ export function OpenProjectButton({
 						});
 				}}
 			>
-				<DropdownMenu.Trigger asChild>
-					<button
-						type="button"
-						aria-label={label}
-						disabled={project.busy}
-						className={className}
-					>
-						{children}
-					</button>
-				</DropdownMenu.Trigger>
+				{withTooltip(
+					<DropdownMenu.Trigger asChild>
+						<button
+							type="button"
+							aria-label="Open project"
+							disabled={project.busy}
+							className={className}
+						>
+							<FolderOpen size={18} aria-hidden="true" />
+						</button>
+					</DropdownMenu.Trigger>,
+				)}
 				<DropdownMenu.Portal>
 					<DropdownMenu.Content
 						aria-label="Open project"
+						side="right"
+						onCloseAutoFocus={onCloseAutoFocus}
 						align="start"
-						sideOffset={6}
+						sideOffset={12}
 						collisionPadding={12}
 						className={`${sidebarMenuContent} max-h-80`}
 					>
@@ -143,18 +142,20 @@ export function OpenProjectButton({
 
 	return (
 		<>
-			<button
-				type="button"
-				aria-label={label}
-				disabled={project.busy}
-				className={className}
-				onClick={() => {
-					if (project.inMemory) setConfirmOpen(true);
-					else void project.open();
-				}}
-			>
-				{children}
-			</button>
+			{withTooltip(
+				<button
+					type="button"
+					aria-label="Open project"
+					disabled={project.busy}
+					className={className}
+					onClick={() => {
+						if (project.inMemory) setConfirmOpen(true);
+						else void project.open();
+					}}
+				>
+					<FolderOpen size={18} aria-hidden="true" />
+				</button>,
+			)}
 			<OpenProjectDialog
 				open={confirmOpen}
 				busy={project.busy}

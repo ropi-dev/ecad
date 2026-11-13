@@ -20,8 +20,6 @@ export interface WorkspaceDocument {
 	path?: string;
 	/** The file is open in its circuit view. A drawing and its circuit can share a path. */
 	circuit: boolean;
-	/** The workspace has no rulers, so its chrome sits closer to the edge. */
-	plain: boolean;
 }
 
 export interface SidebarActions {
@@ -37,23 +35,19 @@ interface WorkspaceControlsValue {
 		enableMcp: boolean,
 	) => () => void;
 	document: WorkspaceDocument | null;
-	sidebarPinned: boolean;
+	sidebarDocked: boolean;
 	sidebar: SidebarActions | null;
 }
 
 interface WorkspaceRegistration {
 	registerEditor: WorkspaceControlsValue["registerEditor"];
 	registerDocument: (document: WorkspaceDocument) => () => void;
-	setSidebarPinned: (pinned: boolean) => void;
+	setSidebarDocked: (docked: boolean) => void;
 	registerSidebar: (actions: SidebarActions) => () => void;
 }
 
 const WorkspaceControls = createContext<WorkspaceControlsValue | null>(null);
 const Registration = createContext<WorkspaceRegistration | null>(null);
-
-/** Labelled tile in the sidebar's project actions row. A pressed tile carries the accent. */
-export const workspaceActionClassName =
-	"ui-toggle flex h-12 w-full min-w-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border text-2xs font-medium no-underline [--toggle-bg:var(--color-hover)] [--toggle-line:var(--color-line-subtle)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-bg:var(--color-pressed)] hover:[--toggle-line:var(--color-line)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:[--toggle-fg:var(--color-fg-muted)] data-[state=open]:[--toggle-bg:var(--color-pressed)] data-[state=open]:[--toggle-fg:var(--color-fg)] data-[state=open]:[--toggle-line:var(--color-line)]";
 
 export function WorkspaceControlsProvider({
 	children,
@@ -64,7 +58,7 @@ export function WorkspaceControlsProvider({
 	const [documents, setDocuments] = useState<
 		(WorkspaceDocument & { id: symbol })[]
 	>([]);
-	const [sidebarPinned, setSidebarPinned] = useState(false);
+	const [sidebarDocked, setSidebarDocked] = useState(false);
 	const [sidebar, setSidebar] = useState<SidebarActions | null>(null);
 	const registerSidebar = useCallback((actions: SidebarActions) => {
 		setSidebar(actions);
@@ -90,7 +84,7 @@ export function WorkspaceControlsProvider({
 		() => ({
 			registerEditor,
 			registerDocument,
-			setSidebarPinned,
+			setSidebarDocked,
 			registerSidebar,
 		}),
 		[registerEditor, registerDocument, registerSidebar],
@@ -100,10 +94,10 @@ export function WorkspaceControlsProvider({
 			editor: editors.at(-1) ?? null,
 			registerEditor,
 			document: documents.at(-1) ?? null,
-			sidebarPinned,
+			sidebarDocked,
 			sidebar,
 		}),
-		[editors, registerEditor, documents, sidebarPinned, sidebar],
+		[editors, registerEditor, documents, sidebarDocked, sidebar],
 	);
 	return (
 		<Registration.Provider value={registration}>

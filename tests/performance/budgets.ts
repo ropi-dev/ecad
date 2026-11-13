@@ -198,7 +198,6 @@ export const budgets = {
 		frameP95Ms: 500,
 	},
 	"project-file-sidebar": {
-		pinMs: 750,
 		hoverRevealMs: 750,
 		railNavigationMs: 1200,
 		menuOpenMs: 750,

@@ -74,7 +74,6 @@ export function StepWorkspace() {
 						? `asset:${selectedAsset.path}`
 						: undefined
 				}
-				plain
 			/>
 			{!workspaceControls && (
 				<header className="absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-20 flex max-w-[calc(100%-2*var(--chrome-gap))] flex-wrap gap-2">

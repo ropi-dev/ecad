@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openProjectFiles } from "../browser/project-files";
+import { openProjectFiles, projectRail } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -23,7 +23,7 @@ test(
 			page.getByLabel("Workspace instructions", { exact: true }),
 		).toBeVisible();
 		await interaction(page, "symbol.create", async () => {
-			await (await openProjectFiles(page))
+			await projectRail(page)
 				.getByRole("button", { name: "Add file", exact: true })
 				.click();
 			await page

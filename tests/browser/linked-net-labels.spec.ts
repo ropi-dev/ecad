@@ -264,7 +264,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		),
 	).toHaveLength(2);
 	const moved = (await document()).shapes;
-	await page.mouse.move(20, 20);
+	await page.mouse.move(1270, 20);
 	if (captureArtifacts)
 		await page.screenshot({ path: testInfo.outputPath("moved-net-label.png") });
 	const { toolbarButton } = await import("./toolbar");
@@ -303,7 +303,7 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		),
 	).toEqual(moved.find((shape: EditorShape) => shape.id === label.id));
 	const rotated = (await document()).shapes;
-	await page.mouse.move(20, 20);
+	await page.mouse.move(1270, 20);
 	if (captureArtifacts)
 		await page.screenshot({
 			path: testInfo.outputPath("rotated-net-label.png"),

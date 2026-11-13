@@ -10,17 +10,20 @@ export async function openProjectFiles(page: Page) {
 	await page.waitForFunction(
 		() => !document.querySelector('[aria-busy="true"]'),
 	);
-	// Resting the mouse on the window's left edge reveals the sidebar.
+	// Resting the mouse on the rail reveals the sidebar beside it.
 	const y = required(page.viewportSize()).height / 2;
-	await page.mouse.move(60, y);
-	await page.mouse.move(2, y);
+	await page.mouse.move(200, y);
+	await page.mouse.move(24, y);
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await expect
 		.poll(async () => required(await sidebar.boundingBox()).x)
-		.toBe(0);
+		.toBe(48);
 	await sidebar.hover({ position: { x: 100, y: 20 } });
 	return sidebar;
 }
+
+export const projectRail = (page: Page) =>
+	page.getByRole("navigation", { name: "Sidebar shortcuts", exact: true });
 
 export async function closeProjectFiles(page: Page) {
 	const sidebar = page.getByRole("complementary", {
@@ -29,13 +32,8 @@ export async function closeProjectFiles(page: Page) {
 		includeHidden: true,
 	});
 	if (!(await sidebar.count())) return;
-	const unpin = sidebar.getByRole("button", {
-		name: "Compact sidebar",
-		exact: true,
-	});
-	if (await unpin.isVisible()) await unpin.click();
-	await page
-		.getByRole("button", { name: "Show project files", exact: true })
+	await projectRail(page)
+		.getByRole("button", { name: "Settings", exact: true })
 		.focus();
 	await page.keyboard.press("Escape");
 	await page.mouse.move(required(page.viewportSize()).width - 20, 100);
@@ -48,8 +46,7 @@ export async function closeProjectFiles(page: Page) {
 }
 
 export async function openProjectActions(page: Page) {
-	const sidebar = await openProjectFiles(page);
-	await sidebar
+	await projectRail(page)
 		.getByRole("button", { name: "Project actions", exact: true })
 		.click();
 }

@@ -1,23 +1,29 @@
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { PlugZap } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactElement, useEffect, useId, useRef, useState } from "react";
+import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
+import { TooltipTrigger } from "#/components/viewer/TooltipButton.tsx";
 import {
 	connectEditorMcp,
 	type EditorMcpState,
 } from "#/mcp/editor-connection.ts";
-import { workspaceActionClassName } from "#/projects/WorkspaceControls.tsx";
+import { useReportActive } from "#/projects/sidebarMenu.ts";
 
 export function McpControls({
 	store,
-	compact = false,
+	rail = false,
+	onActiveChange,
 }: {
 	store: ReturnType<typeof createDrawingStore>;
-	compact?: boolean;
+	rail?: boolean;
+	onActiveChange?: (active: boolean) => void;
 }) {
 	const fieldId = useId();
 	const [enabled, setEnabled] = useState(false);
 	const [panelOpen, setPanelOpen] = useState(false);
+	const trigger = useRef<HTMLButtonElement>(null);
+	useReportActive(panelOpen, onActiveChange);
 	const [connection, setConnection] = useState<EditorMcpState | null>(null);
 	const [copyMessage, setCopyMessage] = useState("");
 	const activeConnection = useRef<ReturnType<typeof connectEditorMcp> | null>(
@@ -67,47 +73,57 @@ export function McpControls({
 			? "MCP connected"
 			: "MCP connecting..."
 		: "Enable MCP";
+	const withTooltip = (button: ReactElement) =>
+		rail ? (
+			<TooltipTrigger tooltip={label} side="right">
+				{button}
+			</TooltipTrigger>
+		) : (
+			button
+		);
 	return (
 		<Popover.Root open={panelOpen} onOpenChange={setPanelOpen}>
-			<Popover.Trigger asChild>
-				<button
-					type="button"
-					aria-label={label}
-					aria-pressed={enabled}
-					aria-expanded={panelOpen}
-					aria-controls={`${fieldId}-panel`}
-					data-size={compact ? undefined : "md"}
-					className={
-						compact
-							? workspaceActionClassName
-							: "ui-button ui-toggle shadow-panel [--toggle-bg:var(--color-panel)] [--toggle-fg:var(--color-fg)] [--toggle-line:var(--color-line)] [--toggle-on-bg:var(--color-panel)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-bg:var(--color-panel)] hover:[--toggle-line:var(--color-line-strong)]"
-					}
-					onClick={() => {
-						if (enabled) return;
-						setConnection(null);
-						setCopyMessage("");
-						setEnabled(true);
-					}}
-				>
-					{compact ? (
-						<>
-							<PlugZap size={18} aria-hidden="true" />
-							MCP
-						</>
-					) : (
-						label
-					)}
-				</button>
-			</Popover.Trigger>
+			{withTooltip(
+				<Popover.Trigger asChild>
+					<button
+						ref={trigger}
+						type="button"
+						aria-label={label}
+						aria-pressed={enabled}
+						aria-expanded={panelOpen}
+						aria-controls={`${fieldId}-panel`}
+						data-size={rail ? undefined : "md"}
+						data-icon={rail || undefined}
+						className={
+							rail
+								? "ui-button ui-toggle size-9"
+								: "ui-button ui-toggle shadow-panel [--toggle-bg:var(--color-panel)] [--toggle-fg:var(--color-fg)] [--toggle-line:var(--color-line)] [--toggle-on-bg:var(--color-panel)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-bg:var(--color-panel)] hover:[--toggle-line:var(--color-line-strong)]"
+						}
+						onClick={() => {
+							if (enabled) return;
+							setConnection(null);
+							setCopyMessage("");
+							setEnabled(true);
+						}}
+					>
+						{rail ? <PlugZap size={18} aria-hidden="true" /> : label}
+					</button>
+				</Popover.Trigger>,
+			)}
 			{panelOpen && connection && connection.status !== "disconnected" && (
 				<Popover.Portal>
 					<Popover.Content
 						asChild
 						role="region"
-						side="bottom"
+						side={rail ? "right" : "bottom"}
 						align="start"
-						sideOffset={8}
+						sideOffset={rail ? 12 : 8}
 						collisionPadding={12}
+						onCloseAutoFocus={(event) => {
+							if (!rail) return;
+							event.preventDefault();
+							quietFocus(trigger.current);
+						}}
 					>
 						<section
 							id={`${fieldId}-panel`}

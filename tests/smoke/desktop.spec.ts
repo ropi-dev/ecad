@@ -10,7 +10,7 @@ import {
 	type Page,
 	test,
 } from "@playwright/test";
-import { openProjectFiles } from "../browser/project-files.ts";
+import { openProjectFiles, projectRail } from "../browser/project-files.ts";
 import { toolbarButton } from "../browser/toolbar.ts";
 
 // Launches the built desktop app (`pnpm run build:desktop`) in real Electron.
@@ -92,7 +92,8 @@ async function editorReady(page: Page) {
 				.querySelector("h1")
 				?.textContent?.startsWith("Schematic editor ·") &&
 			document.querySelector<HTMLButtonElement>('button[aria-label="Select"]')
-				?.disabled === false,
+				?.disabled === false &&
+			!document.querySelector('[aria-busy="true"]'),
 		undefined,
 		{ polling: "raf", timeout: 30_000 },
 	);
@@ -120,7 +121,7 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 		await page.mouse.up();
 
 		await chooseFolder(app, parent);
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Save project", exact: true })
 			.click();
 		await expect(
@@ -141,7 +142,7 @@ test("the desktop app saves a project to disk and reopens it after a relaunch", 
 	({ app, page } = await launch(home));
 	try {
 		await chooseFolder(app, directory);
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Open project", exact: true })
 			.click();
 		// The relaunched app starts in an empty in-memory project.
@@ -187,7 +188,7 @@ test("the desktop app reloads a drawing another program changed and keeps saving
 		await page.mouse.move(710, 400, { steps: 4 });
 		await page.mouse.up();
 		await chooseFolder(app, parent);
-		await (await openProjectFiles(page))
+		await projectRail(page)
 			.getByRole("button", { name: "Save project", exact: true })
 			.click();
 		await expect(
@@ -259,7 +260,8 @@ test("the sidebar Exit button quits the desktop app after the unsaved-changes pr
 		const prompts = () =>
 			app.evaluate(() => (globalThis as { exitPrompts?: number }).exitPrompts);
 		const exit = async () =>
-			(await openProjectFiles(page))
+			page
+				.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
 				.getByRole("button", { name: "Exit", exact: true })
 				.click();
 		await exit();

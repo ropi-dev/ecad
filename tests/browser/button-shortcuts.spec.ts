@@ -90,13 +90,13 @@ test("sidebar needs Ctrl+Shift while Ctrl reveals both scopes", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	const { openProjectFiles } = await import("./project-files");
-	const sidebar = await openProjectFiles(page);
-	await sidebar
-		.getByRole("button", { name: "Pin sidebar", exact: true })
-		.click();
+	await expect(
+		page.getByLabel("Workspace instructions", { exact: true }),
+	).toBeVisible();
+	await page.mouse.move(900, 400);
+	const addFile = page.getByRole("menu", { name: "Add file", exact: true });
 	await page.keyboard.down("Control");
-	const hint = page.locator(`${hints}[title="Compact sidebar"]`);
+	const hint = page.locator(`${hints}[title="Add file"]`);
 	await expect(hint).toBeVisible();
 	await expect(hint.locator('[data-slot="shift-icon"]')).toBeVisible();
 	await expect(hint.locator('[data-slot="modifier-icon"]')).toBeVisible();
@@ -137,14 +137,16 @@ test("sidebar needs Ctrl+Shift while Ctrl reveals both scopes", async ({
 	expect(Math.abs(letterMiddle - middle)).toBeLessThan(0.1);
 	const key = await hint.getAttribute("data-shortcut");
 	await page.keyboard.press(required(key));
-	await expect(sidebar).toHaveAttribute("data-pinned", "true");
+	await expect(addFile).toHaveCount(0);
 	await page.keyboard.down("Shift");
 	await page.keyboard.press(required(key));
-	await expect(sidebar).toHaveAttribute("data-pinned", "false");
+	await expect(addFile).toBeVisible();
 	await page.keyboard.up("Shift");
 	await expect(page.locator(hints).first()).toBeVisible();
 	await page.keyboard.up("Control");
 	await expect(page.locator(hints)).toHaveCount(0);
+	await page.keyboard.press("Escape");
+	await expect(addFile).toHaveCount(0);
 });
 
 test("single-key hints fit beside each other and stay aligned with each toolbar row", async ({
@@ -154,9 +156,6 @@ test("single-key hints fit beside each other and stay aligned with each toolbar 
 	await page.goto("/tests/browser/projects.html");
 	const { openProjectFiles } = await import("./project-files");
 	const sidebar = await openProjectFiles(page);
-	await sidebar
-		.getByRole("button", { name: "Pin sidebar", exact: true })
-		.click();
 	await sidebar
 		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
@@ -242,9 +241,6 @@ test("Radix dialogs hide background hints and block background Delete", async ({
 	const { openProjectFiles } = await import("./project-files");
 	const sidebar = await openProjectFiles(page);
 	await sidebar
-		.getByRole("button", { name: "Pin sidebar", exact: true })
-		.click();
-	await sidebar
 		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
 		.click();
 	await (await toolbarButton(page, "Rectangle")).click();
@@ -260,7 +256,10 @@ test("Radix dialogs hide background hints and block background Delete", async ({
 			.editorShapes;
 	const before = await shapes();
 	expect(before).toHaveLength(1);
-	await sidebar.getByRole("button", { name: "Add file", exact: true }).click();
+	await page
+		.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
+		.getByRole("button", { name: "Add file", exact: true })
+		.click();
 	await page
 		.getByRole("menuitem", { name: "New drawing", exact: true })
 		.click();
@@ -283,11 +282,14 @@ test("Radix dialogs hide background hints and block background Delete", async ({
 for (const label of ["Add file", "Project actions", "Open project"]) {
 	test(`sidebar shortcut opens the ${label} dropdown`, async ({ page }) => {
 		await page.goto("/tests/browser/projects.html");
-		const { openProjectFiles } = await import("./project-files");
-		const sidebar = await openProjectFiles(page);
-		await sidebar
-			.getByRole("button", { name: "Pin sidebar", exact: true })
-			.click();
+		await expect(
+			page.getByLabel("Workspace instructions", { exact: true }),
+		).toBeVisible();
+		await page.mouse.move(900, 400);
+		const rail = page.getByRole("navigation", {
+			name: "Sidebar shortcuts",
+			exact: true,
+		});
 		await page.keyboard.down("Control");
 		const hint = page.locator(`${hints}[title="${label}"]`);
 		await expect(hint).toBeVisible();
@@ -298,11 +300,7 @@ for (const label of ["Add file", "Project actions", "Open project"]) {
 			page.getByRole("menu", { name: label, exact: true }),
 		).toBeVisible();
 		await expect(
-			sidebar.getByRole("button", {
-				name: label,
-				exact: true,
-				includeHidden: true,
-			}),
+			rail.getByRole("button", { name: label, exact: true }),
 		).toHaveAttribute("aria-expanded", "true");
 		await page.keyboard.up("Shift");
 		await page.keyboard.up("Control");
@@ -365,16 +363,7 @@ for (const platform of ["MacIntel", "Win32"]) {
 		await expect(addFile).toBeVisible();
 		await page.keyboard.press("Escape");
 		await expect(addFile).toHaveCount(0);
-		await page.keyboard.press(`${other}+Shift+s`);
-		await expect(sidebar).toHaveAttribute("data-pinned", "false");
-		await page.keyboard.press(`${modifier}+Shift+s`);
-		await expect(sidebar).toHaveAttribute("data-pinned", "true");
-		await expect(
-			sidebar.getByRole("button", { name: "Compact sidebar", exact: true }),
-		).toHaveAttribute("aria-keyshortcuts", `${modifier}+Shift+S`);
-		await sidebar.getByLabel("Search project files").focus();
-		await page.keyboard.press(`${modifier}+Shift+s`);
-		await expect(sidebar).toHaveAttribute("data-pinned", "false");
+		await expect(sidebar).toHaveAttribute("data-open", "false");
 	});
 }
 

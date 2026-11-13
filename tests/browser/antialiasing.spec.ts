@@ -1,5 +1,4 @@
 import { expect, type Page, test } from "@playwright/test";
-import { openProjectFiles } from "./project-files";
 import { drawingPoint } from "./symbol-items";
 
 const canvasAntialias = (page: Page) =>
@@ -13,8 +12,13 @@ const canvasAntialias = (page: Page) =>
 
 async function openSettings(page: Page) {
 	await page.goto("/tests/browser/projects.html");
-	const sidebar = await openProjectFiles(page);
-	await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
+	await page.waitForFunction(
+		() => !document.querySelector('[aria-busy="true"]'),
+	);
+	await page
+		.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
+		.getByRole("button", { name: "Settings", exact: true })
+		.click();
 	return page.getByRole("dialog", { name: "Settings" });
 }
 
