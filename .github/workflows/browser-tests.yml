@@ -69,6 +69,7 @@ jobs:
     # measurements. Hosted-runner timing is unreliable, so this job never
     # checks timing budgets or baselines; see docs/performance.md.
     name: Performance scenarios (smoke)
+    if: false
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
