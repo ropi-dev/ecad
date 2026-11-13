@@ -51,7 +51,7 @@ Storage classes and the provider serialize their operations with `createSerialQu
 
 ## Server services
 
-Web server services stay behind Start server functions and server routes. The editor MCP session handlers in `packages/core/src/services/server/editor-mcp.ts` back the `/api/editor-mcp` and `/mcp/editor/<session-id>` routes; see the [MCP guide](mcp.md). Desktop filesystem operations live in Electron's main process and are called through the preload bridge. Never import filesystem services into browser helpers or renderer components.
+Web server services stay behind Start server functions and server routes. Desktop filesystem operations and the editor MCP server live in Electron's main process and are called through the preload bridge; see the [MCP guide](mcp.md). Never import filesystem services into browser helpers or renderer components.
 
 Keep Zod where the existing framework integration already uses it. Effect Schema validates new application data boundaries. A process-wide managed runtime is unnecessary for the current services; use one only when shared scoped resources need an explicit application shutdown lifecycle.
 

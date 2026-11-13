@@ -10,6 +10,7 @@ import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import {
 	closeProjectFiles,
+	openPrimaryDrawing,
 	openProjectActions,
 	openProjectFiles,
 	projectRail,
@@ -28,9 +29,7 @@ async function screenshot(page: Page, name: string) {
 }
 
 async function openSchematic(page: Page) {
-	await projectRail(page)
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
+	await openPrimaryDrawing(page);
 	await closeProjectFiles(page);
 	await expect(
 		page.getByRole("button", { name: "Select", exact: true }),
@@ -595,9 +594,7 @@ test("a part whose symbol needs a library it depends on that fails to load is re
 	await expect
 		.poll(async () => (await documentState(page)).name)
 		.toBe("Untitled");
-	await projectRail(page)
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
+	await openPrimaryDrawing(page);
 	await closeProjectFiles(page);
 
 	const banner = page.getByRole("alert").filter({ hasText: "Bench parts" });

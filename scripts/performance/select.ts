@@ -48,8 +48,6 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/web/src/routes/editor.tsx", ["@editor", "@symbols"]],
 	["packages/web/src/routes/gerber.tsx", ["@import"]],
 	["packages/web/src/routes/step.tsx", ["@import"]],
-	["packages/web/src/routes/api.*", ["@editor"]],
-	["packages/web/src/routes/mcp.*", ["@editor"]],
 	["packages/web/src/projects/storage.ts", "all"],
 	// Mounted around every route.
 	["packages/web/src/projects/AppProjects.tsx", "all"],

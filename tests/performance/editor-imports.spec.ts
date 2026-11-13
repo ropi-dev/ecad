@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
-import { openProjectFiles, projectRail } from "../browser/project-files";
+import { openPrimaryDrawing, openProjectFiles } from "../browser/project-files";
 import { toolbarButton } from "../browser/toolbar";
 import { pthGerber } from "../fixtures/pth-gerber";
 import { setupAppTests } from "./app-fixture.ts";
@@ -17,9 +17,7 @@ test(
 		await expect(
 			page.getByLabel("Workspace instructions", { exact: true }),
 		).toBeVisible();
-		await projectRail(page)
-			.getByRole("link", { name: "Schematic editor", exact: true })
-			.click();
+		await openPrimaryDrawing(page);
 		await expect(page.locator("canvas")).toBeVisible();
 		await expect
 			.poll(

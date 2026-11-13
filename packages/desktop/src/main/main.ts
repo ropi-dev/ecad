@@ -18,6 +18,8 @@ import {
 	displayChannels,
 	type InvokeChannel,
 	libraryChannels,
+	mcpChannels,
+	mcpEvents,
 	projectChannels,
 	projectEvents,
 	settingsChannels,
@@ -31,6 +33,7 @@ import {
 	ExternalLibraryApprovals,
 	type ExternalLibraryRequest,
 } from "#/main/library-approvals.ts";
+import { createDesktopMcpServer } from "#/main/mcp-server.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
@@ -86,6 +89,13 @@ const projects = new DesktopProjects(
 	},
 );
 let window: BrowserWindow | null = null;
+const mcp = createDesktopMcpServer({
+	send: (request) => {
+		if (!window || window.isDestroyed()) return false;
+		window.webContents.send(mcpEvents.request, request);
+		return true;
+	},
+});
 let updater: DesktopUpdater | null = null;
 let relaunchOnQuit = false;
 
@@ -329,6 +339,15 @@ function registerUpdateHandlers() {
 	});
 }
 
+function registerMcpHandlers() {
+	handle(mcpChannels.enable, () => mcp.enable());
+	handle(mcpChannels.disable, () => mcp.disable());
+	handle(mcpChannels.reply, (requestId, reply) => {
+		mcp.reply(requestId, reply);
+	});
+	app.on("will-quit", () => void mcp.disable());
+}
+
 function registerDisplayHandlers() {
 	let cached: {
 		key: string;
@@ -437,8 +456,11 @@ function createWindow() {
 	);
 	// Watcher events can be missed, for example on network filesystems.
 	window.on("focus", () => void projects.checkExternalChanges());
+	// A reloaded or closed page has no editor to run MCP commands.
+	window.webContents.on("did-start-loading", () => void mcp.disable());
 	window.on("closed", () => {
 		window = null;
+		void mcp.disable();
 	});
 	void window.loadURL(rendererUrl);
 }
@@ -477,6 +499,7 @@ void app.whenReady().then(() => {
 	registerSettingsHandlers();
 	registerDisplayHandlers();
 	registerUpdateHandlers();
+	registerMcpHandlers();
 	handle(appChannels.quit, () => app.quit());
 	createWindow();
 	app.on("activate", () => {

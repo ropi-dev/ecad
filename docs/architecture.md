@@ -68,7 +68,7 @@ A rectangle drag starts with temporary editor geometry. Pointer movement updates
 
 The store exposes stable, immutable snapshots and a subscription for React's `useSyncExternalStore`. Pass it to `<Editor2D store={store} />` to display and edit the same document used by external commands. Without this prop, each editor creates its own store.
 
-In the web app, the editor's **Enable MCP** control connects this same store to a session-specific MCP endpoint. The server forwards complete operations to the browser, where Effect executes them. The desktop renderer sets `enableMcp={false}` because these endpoints belong to the web app. See [MCP access to an open drawing](mcp.md) for client setup, tool inputs, and session lifetime.
+In the desktop app, the sidebar's **Enable MCP** button starts an MCP endpoint in Electron's main process. It forwards complete operations to the renderer, where Effect executes them against the open editor's store. The web app has no MCP controls or endpoints. See [MCP access to drawings](mcp.md) for client setup, tool inputs, and connection lifetime.
 
 The standalone CLI and stdio server create a store from a local drawing for each operation. They reuse the same MCP tool definitions and commands, save successful edits, and preserve history in an adjacent file. The stdio server reloads the drawing on each call so it sees edits from other CLI processes. See [CLI and stdio access](mcp.md#cli-and-stdio-access).
 

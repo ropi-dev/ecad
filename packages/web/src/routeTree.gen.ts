@@ -14,9 +14,6 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as GerberRouteImport } from './routes/gerber'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as StepRouteImport } from './routes/step'
-import { Route as ApiEditorMcpRouteImport } from './routes/api.editor-mcp'
-import { Route as ApiEditorMcpSessionIdRouteImport } from './routes/api.editor-mcp.$sessionId'
-import { Route as McpEditorSessionIdRouteImport } from './routes/mcp.editor.$sessionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -43,21 +40,6 @@ const StepRoute = StepRouteImport.update({
   path: '/step',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiEditorMcpRoute = ApiEditorMcpRouteImport.update({
-  id: '/api/editor-mcp',
-  path: '/api/editor-mcp',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiEditorMcpSessionIdRoute = ApiEditorMcpSessionIdRouteImport.update({
-  id: '/$sessionId',
-  path: '/$sessionId',
-  getParentRoute: () => ApiEditorMcpRoute,
-} as any)
-const McpEditorSessionIdRoute = McpEditorSessionIdRouteImport.update({
-  id: '/mcp/editor/$sessionId',
-  path: '/mcp/editor/$sessionId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -65,9 +47,6 @@ export interface FileRoutesByFullPath {
   '/gerber': typeof GerberRoute
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
-  '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
-  '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
-  '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -75,9 +54,6 @@ export interface FileRoutesByTo {
   '/gerber': typeof GerberRoute
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
-  '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
-  '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
-  '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,41 +62,13 @@ export interface FileRoutesById {
   '/gerber': typeof GerberRoute
   '/projects': typeof ProjectsRoute
   '/step': typeof StepRoute
-  '/api/editor-mcp': typeof ApiEditorMcpRouteWithChildren
-  '/api/editor-mcp/$sessionId': typeof ApiEditorMcpSessionIdRoute
-  '/mcp/editor/$sessionId': typeof McpEditorSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/editor'
-    | '/gerber'
-    | '/projects'
-    | '/step'
-    | '/api/editor-mcp'
-    | '/api/editor-mcp/$sessionId'
-    | '/mcp/editor/$sessionId'
+  fullPaths: '/' | '/editor' | '/gerber' | '/projects' | '/step'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/editor'
-    | '/gerber'
-    | '/projects'
-    | '/step'
-    | '/api/editor-mcp'
-    | '/api/editor-mcp/$sessionId'
-    | '/mcp/editor/$sessionId'
-  id:
-    | '__root__'
-    | '/'
-    | '/editor'
-    | '/gerber'
-    | '/projects'
-    | '/step'
-    | '/api/editor-mcp'
-    | '/api/editor-mcp/$sessionId'
-    | '/mcp/editor/$sessionId'
+  to: '/' | '/editor' | '/gerber' | '/projects' | '/step'
+  id: '__root__' | '/' | '/editor' | '/gerber' | '/projects' | '/step'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -129,8 +77,6 @@ export interface RootRouteChildren {
   GerberRoute: typeof GerberRoute
   ProjectsRoute: typeof ProjectsRoute
   StepRoute: typeof StepRoute
-  ApiEditorMcpRoute: typeof ApiEditorMcpRouteWithChildren
-  McpEditorSessionIdRoute: typeof McpEditorSessionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -170,41 +116,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StepRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/editor-mcp': {
-      id: '/api/editor-mcp'
-      path: '/api/editor-mcp'
-      fullPath: '/api/editor-mcp'
-      preLoaderRoute: typeof ApiEditorMcpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/editor-mcp/$sessionId': {
-      id: '/api/editor-mcp/$sessionId'
-      path: '/$sessionId'
-      fullPath: '/api/editor-mcp/$sessionId'
-      preLoaderRoute: typeof ApiEditorMcpSessionIdRouteImport
-      parentRoute: typeof ApiEditorMcpRoute
-    }
-    '/mcp/editor/$sessionId': {
-      id: '/mcp/editor/$sessionId'
-      path: '/mcp/editor/$sessionId'
-      fullPath: '/mcp/editor/$sessionId'
-      preLoaderRoute: typeof McpEditorSessionIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
-
-interface ApiEditorMcpRouteChildren {
-  ApiEditorMcpSessionIdRoute: typeof ApiEditorMcpSessionIdRoute
-}
-
-const ApiEditorMcpRouteChildren: ApiEditorMcpRouteChildren = {
-  ApiEditorMcpSessionIdRoute: ApiEditorMcpSessionIdRoute,
-}
-
-const ApiEditorMcpRouteWithChildren = ApiEditorMcpRoute._addFileChildren(
-  ApiEditorMcpRouteChildren,
-)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -212,8 +125,6 @@ const rootRouteChildren: RootRouteChildren = {
   GerberRoute: GerberRoute,
   ProjectsRoute: ProjectsRoute,
   StepRoute: StepRoute,
-  ApiEditorMcpRoute: ApiEditorMcpRouteWithChildren,
-  McpEditorSessionIdRoute: McpEditorSessionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

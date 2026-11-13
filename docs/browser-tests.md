@@ -8,7 +8,7 @@
 | Circuit connectivity, pointer and keyboard input, persistence, and navigation races | 5 | `tests/circuit.test.ts`, `tests/circuit-symbol-components.test.ts`, `tests/circuit-net-labels.test.ts` |
 | Project files, independent drawings and symbols, save recovery, search, mobile layout, and menus | 8 | `packages/web/tests/projects.test.ts`, `packages/web/tests/symbol-storage.test.ts`, `packages/desktop/tests/projects.test.ts`, `packages/desktop/tests/storage.test.ts` |
 | Symbols, labels, attributes, locks, rotation, thumbnails, and reusable definitions | 13 | `tests/default-symbols.test.ts`, `tests/symbol-library-editing.test.ts`, `tests/symbol-children.test.ts`, `tests/item-locks.test.ts`, `tests/text-alignment.test.ts`, `tests/symbol-text-positions.test.ts`, `tests/pin-label-visibility.test.ts` |
-| Toolbar keyboard and touch input, and MCP commands | 3 | `tests/navigation.test.ts`, `tests/editor-mcp-connection.test.ts`, `tests/editor-mcp-server.test.ts`, `tests/mcp-drawing-tools.test.ts` |
+| Toolbar keyboard and touch input | 2 | `tests/navigation.test.ts` |
 | STEP, Gerber and KiCad import, exports, layers, hover, cameras, and gestures | 14 | `tests/import-effect.test.ts`, `tests/drawing-export.test.ts`, `tests/gerber.test.ts`, `tests/gerber-partial-import.test.ts`, `tests/step.test.ts`, `tests/kicad-import.test.ts`, `tests/scene-hover.test.ts` |
 
 The browser suite samples user workflows. Node tests cover geometry, normalization, serialization, validation, and command combinations. Keep each browser scenario focused on one workflow and use representative inputs rather than repeating the same interaction for every model variant.

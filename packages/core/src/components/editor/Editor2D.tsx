@@ -513,11 +513,7 @@ function EditorCanvas({
 					{headerControls ?? viewSwitch}
 				</DocumentBar>
 			) : (
-				<EditorHeader
-					headerControls={headerControls}
-					enableMcp={enableMcp}
-					store={store}
-				/>
+				<EditorHeader headerControls={headerControls} />
 			)}
 			<div className="relative flex min-h-0 flex-1">
 				<div

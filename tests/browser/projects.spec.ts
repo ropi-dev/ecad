@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
+	openPrimaryDrawing,
 	openProjectActions,
 	openProjectFiles,
 	projectRail,
@@ -107,9 +108,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await createProject(page, "Multiple drawings");
-	await projectRail(page)
-		.getByRole("link", { name: "Schematic editor", exact: true })
-		.click();
+	await openPrimaryDrawing(page);
 	await drawRectangle(page);
 	await expect
 		.poll(async () => (await documentState(page)).shapes.length)

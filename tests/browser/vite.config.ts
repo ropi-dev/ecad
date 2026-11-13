@@ -1,6 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-import { editorMcpApi } from "./editor-mcp-api.ts";
 
 export default defineConfig({
 	publicDir: "packages/web/public",
@@ -12,5 +11,5 @@ export default defineConfig({
 	optimizeDeps: { include: ["@ecad/core > fflate"] },
 	// Test and benchmark output must not reload pages during a run.
 	server: { watch: { ignored: ["**/perf-artifacts/**"] } },
-	plugins: [tailwindcss(), editorMcpApi()],
+	plugins: [tailwindcss()],
 });

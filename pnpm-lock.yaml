@@ -135,9 +135,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.9.2
         version: 5.9.2(@sinclair/typebox@0.25.24)(@standard-schema/spec@1.1.0)(ajv@8.20.0)(effect@3.22.2)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.0))(zod@4.6.7)
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.32.2
-        version: 1.32.2(zod@4.6.7)
       earcut:
         specifier: ^3.2.3
         version: 3.2.3
@@ -201,6 +198,12 @@ importers:
       '@ecad/drawing-core':
         specifier: workspace:*
         version: link:../drawing-core
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.32.2
+        version: 1.32.2(zod@4.6.7)
+      effect:
+        specifier: ^3.22.2
+        version: 3.22.2
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.3.0)

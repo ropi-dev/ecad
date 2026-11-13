@@ -49,6 +49,7 @@ import {
 	useScrollEdges,
 } from "#/components/viewer/useScrollEdges.ts";
 import type { KiCadImportReport } from "#/formats/kicad/import.ts";
+import type { EditorMcpConnector } from "#/mcp/editor-connection.ts";
 import { addProjectFiles } from "#/projects/add-project-files.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import {
@@ -134,10 +135,13 @@ interface ProjectFile {
 export function ProjectFilesSidebar({
 	onExit,
 	footerActions,
+	mcp,
 }: {
 	/** Quits the app. The Exit button shows only when it is given. */
 	onExit?: () => void;
 	footerActions?: ReactNode;
+	/** Only the desktop app passes this; the web app shows no MCP controls. */
+	mcp?: EditorMcpConnector;
 } = {}) {
 	const project = useProjectSelection(
 		({
@@ -208,6 +212,12 @@ export function ProjectFilesSidebar({
 	const [railOpenActive, setRailOpenActive] = useState(false);
 	const [railProjectActive, setRailProjectActive] = useState(false);
 	const [railMcpActive, setRailMcpActive] = useState(false);
+	const [mcpRequested, setMcpRequested] = useState(false);
+	const editorOpen = Boolean(workspaceControls?.editor);
+	useEffect(() => {
+		if (!editorOpen) return;
+		return () => setMcpRequested(false);
+	}, [editorOpen]);
 	// Menus and dialogs opened from the rail leave the sidebar closed.
 	const overlayOpen =
 		railAddMenuOpen ||
@@ -749,55 +759,60 @@ export function ProjectFilesSidebar({
 						}}
 						className={railButton}
 					/>
-					{workspaceControls?.editor ? (
-						workspaceControls.editor.enableMcp ? (
-							<Suspense
-								fallback={
-									<button
-										type="button"
+					{workspaceControls?.editor
+						? mcp &&
+							(workspaceControls.editor.enableMcp ? (
+								<Suspense
+									fallback={
+										<button
+											type="button"
+											aria-label="Enable MCP"
+											disabled
+											className={railButton}
+											data-variant="ghost"
+											data-icon
+										>
+											<PlugZap size={18} aria-hidden="true" />
+										</button>
+									}
+								>
+									<SidebarMcpControls
+										store={workspaceControls.editor.store}
+										connect={mcp}
+										autoEnable={mcpRequested}
+										onActiveChange={setRailMcpActive}
+									/>
+								</Suspense>
+							) : (
+								<TooltipButton
+									aria-label="MCP unavailable"
+									tooltip="MCP is unavailable in this editor"
+									side="right"
+									disabled
+									className={railButton}
+									data-variant="ghost"
+									data-icon
+								>
+									<PlugZap size={18} aria-hidden="true" />
+								</TooltipButton>
+							))
+						: mcp && (
+								<TooltipTrigger tooltip="Enable MCP" side="right">
+									<ProjectLink
+										href="/editor"
 										aria-label="Enable MCP"
-										disabled
+										onClick={() => {
+											setMcpRequested(true);
+											project.selectEditorFile();
+										}}
 										className={railButton}
 										data-variant="ghost"
 										data-icon
 									>
 										<PlugZap size={18} aria-hidden="true" />
-									</button>
-								}
-							>
-								<SidebarMcpControls
-									store={workspaceControls.editor.store}
-									rail
-									onActiveChange={setRailMcpActive}
-								/>
-							</Suspense>
-						) : (
-							<TooltipButton
-								aria-label="MCP unavailable"
-								tooltip="MCP is unavailable in this editor"
-								side="right"
-								disabled
-								className={railButton}
-								data-variant="ghost"
-								data-icon
-							>
-								<PlugZap size={18} aria-hidden="true" />
-							</TooltipButton>
-						)
-					) : (
-						<TooltipTrigger tooltip="Schematic editor" side="right">
-							<ProjectLink
-								href="/editor"
-								aria-label="Schematic editor"
-								onClick={() => project.selectEditorFile()}
-								className={railButton}
-								data-variant="ghost"
-								data-icon
-							>
-								<CircuitBoard size={18} aria-hidden="true" />
-							</ProjectLink>
-						</TooltipTrigger>
-					)}
+									</ProjectLink>
+								</TooltipTrigger>
+							)}
 					<div className="flex-1" />
 					{saveProject && (
 						<TooltipButton

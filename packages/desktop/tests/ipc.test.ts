@@ -6,6 +6,7 @@ import {
 	appChannels,
 	displayChannels,
 	libraryChannels,
+	mcpChannels,
 	projectChannels,
 	settingsChannels,
 	updateChannels,
@@ -40,8 +41,26 @@ test("every invoke channel validates its arguments", () => {
 		displayChannels.getCalibration,
 		appChannels.quit,
 		...Object.values(updateChannels),
+		...Object.values(mcpChannels),
 	];
 	assert.deepEqual(Object.keys(ipcArguments).sort(), [...channels].sort());
+});
+
+test("an MCP reply must be a drawing reply for a request ID", () => {
+	const requestId = "8a6e0f53-5d4a-4c55-9d1f-8f0c4c0e2b1a";
+	const reply = { ok: false, error: { code: "Busy", message: "Busy" } };
+	assert.deepEqual(parseIpcArguments(mcpChannels.reply, [requestId, reply]), [
+		requestId,
+		reply,
+	]);
+	assert.throws(
+		() => parseIpcArguments(mcpChannels.reply, ["not-an-id", reply]),
+		/Invalid mcp:reply request \(argument 1\)/,
+	);
+	assert.throws(
+		() => parseIpcArguments(mcpChannels.reply, [requestId, { ok: true }]),
+		/Invalid mcp:reply request \(argument 2/,
+	);
 });
 
 test("well-formed renderer arguments pass validation", () => {
