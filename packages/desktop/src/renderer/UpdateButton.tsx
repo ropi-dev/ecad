@@ -1,5 +1,5 @@
 import { TooltipButton } from "@ecad/core/components/viewer/TooltipButton.tsx";
-import { CircleArrowUp } from "lucide-react";
+import { CircleArrowUp, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DesktopUpdateState, DesktopUpdatesBridge } from "#/bridge.ts";
 
@@ -146,11 +146,21 @@ export function UpdateButton({ updates }: { updates: DesktopUpdatesBridge }) {
 				else void updates.install();
 			}}
 		>
-			<CircleArrowUp
-				size={18}
-				aria-hidden="true"
-				className={`${busy ? "animate-pulse" : ""} ${tone?.icon ?? ""}`}
-			/>
+			{state.status === "checking" ? (
+				<RefreshCw
+					size={18}
+					aria-hidden="true"
+					className="animate-spin motion-reduce:animate-none"
+				/>
+			) : busy ? (
+				<LoaderCircle
+					size={18}
+					aria-hidden="true"
+					className="animate-spin motion-reduce:animate-none"
+				/>
+			) : (
+				<CircleArrowUp size={18} aria-hidden="true" className={tone?.icon} />
+			)}
 			{tone && (
 				<span
 					aria-hidden="true"
