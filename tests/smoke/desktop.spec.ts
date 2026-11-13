@@ -3,6 +3,8 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
 	type ElectronApplication,
 	_electron as electron,
@@ -279,6 +281,77 @@ test("the sidebar Exit button quits the desktop app after the unsaved-changes pr
 		await exit();
 		await exited;
 	} finally {
+		await app.close().catch(() => {});
+	}
+});
+
+test("Enable MCP in the sidebar opens the drawing and lets an MCP client edit it", async ({
+	browserName: _browserName,
+}, testInfo) => {
+	const home = testInfo.outputPath("home");
+	await mkdir(home, { recursive: true });
+	const { app, page } = await launch(home);
+	const client = new Client({ name: "ecad-smoke-test", version: "1.0.0" });
+	try {
+		// Closing with the MCP edit unsaved would otherwise open a native prompt.
+		// The main process answers it, so Playwright must not dismiss it too.
+		page.on("dialog", () => {});
+		await app.evaluate(({ dialog }) => {
+			dialog.showMessageBoxSync = (() => 1) as typeof dialog.showMessageBoxSync;
+		});
+		await projectRail(page)
+			.getByRole("link", { name: "Enable MCP", exact: true })
+			.click();
+		await editorReady(page);
+		await expect(
+			page.getByText("Connected to the open drawing", { exact: true }),
+		).toBeVisible();
+		const url = await page.getByLabel("MCP URL", { exact: true }).inputValue();
+		const token = await page
+			.getByLabel("MCP bearer token", { exact: true })
+			.inputValue();
+		expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+		await client.connect(
+			new StreamableHTTPClientTransport(new URL(url), {
+				requestInit: { headers: { Authorization: `Bearer ${token}` } },
+			}),
+		);
+		const placed = await client.callTool({
+			name: "placeRectangle",
+			arguments: {
+				x: 20,
+				y: 30,
+				width: 40,
+				height: 15,
+				rotation: 0,
+				lineWidth: 0.2,
+			},
+		});
+		expect(placed.isError).not.toBe(true);
+		await expect(
+			projectRail(page).getByRole("button", {
+				name: "Save project",
+				exact: true,
+			}),
+		).toHaveAttribute("data-unsaved", "true");
+
+		await page
+			.getByRole("button", { name: "Disable MCP", exact: true })
+			.click();
+		await expect(
+			projectRail(page).getByRole("button", {
+				name: "Enable MCP",
+				exact: true,
+			}),
+		).toHaveAttribute("aria-pressed", "false");
+		await expect(
+			fetch(url, {
+				method: "POST",
+				headers: { Authorization: `Bearer ${token}` },
+			}),
+		).rejects.toThrow();
+	} finally {
+		await client.close().catch(() => {});
 		await app.close().catch(() => {});
 	}
 });

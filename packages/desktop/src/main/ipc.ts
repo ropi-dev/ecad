@@ -13,12 +13,14 @@ import {
 } from "@ecad/core/settings/schema.ts";
 import { parseSymbolConfig } from "@ecad/core/symbol-library/config.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { drawingReplySchema } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { z } from "zod";
 import {
 	appChannels,
 	displayChannels,
 	type InvokeChannel,
 	libraryChannels,
+	mcpChannels,
 	projectChannels,
 	settingsChannels,
 	updateChannels,
@@ -125,6 +127,9 @@ export const ipcArguments = {
 	[updateChannels.check]: z.tuple([]),
 	[updateChannels.install]: z.tuple([]),
 	[updateChannels.restart]: z.tuple([]),
+	[mcpChannels.enable]: z.tuple([]),
+	[mcpChannels.disable]: z.tuple([]),
+	[mcpChannels.reply]: z.tuple([z.string().uuid(), drawingReplySchema]),
 } satisfies Record<InvokeChannel, z.ZodTuple>;
 
 export type IpcArguments<Channel extends InvokeChannel> = z.output<

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { projectRail } from "../browser/project-files";
+import { openProjectFiles, projectRail } from "../browser/project-files";
 import { defaultSymbolRows } from "../helpers/default-symbol-rows.ts";
 import { required } from "../helpers/required.ts";
 import { setupAppTests } from "./app-fixture.ts";
@@ -93,8 +93,8 @@ test(
 			).toBeEnabled();
 		});
 		await page.getByRole("button", { name: "Done", exact: true }).click();
-		await projectRail(page)
-			.getByRole("link", { name: "Schematic editor", exact: true })
+		await (await openProjectFiles(page))
+			.getByRole("link", { name: "Open Library fixture.ecaddraw", exact: true })
 			.click();
 		await interaction(page, "library.picker", async () => {
 			await page.getByRole("button", { name: "Symbols", exact: true }).click();

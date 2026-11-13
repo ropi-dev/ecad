@@ -10,6 +10,10 @@ import type {
 	SymbolLibrarySnapshot,
 	SymbolLibraryStorage,
 } from "@ecad/core/symbol-library/storage.tsx";
+import type {
+	DrawingEnvelope,
+	DrawingReply,
+} from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 
 export interface DesktopSymbolLibraryBridge
 	extends Pick<
@@ -67,6 +71,7 @@ declare global {
 		ecadApp: DesktopAppBridge;
 		ecadSettings: DesktopSettingsBridge;
 		ecadUpdates: DesktopUpdatesBridge;
+		ecadMcp: DesktopMcpBridge;
 	}
 }
 
@@ -130,6 +135,29 @@ export const updateEvents = {
 	changed: "updates:changed",
 } as const;
 
+export interface DesktopMcpEndpoint {
+	url: string;
+	token: string;
+}
+
+/** The main process serves MCP on localhost and runs each tool call in the open editor. */
+export interface DesktopMcpBridge {
+	enable(): Promise<DesktopMcpEndpoint>;
+	disable(): Promise<void>;
+	reply(requestId: string, reply: DrawingReply): Promise<void>;
+	onRequest(listener: (request: DrawingEnvelope) => void): () => void;
+}
+
+export const mcpChannels = {
+	enable: "mcp:enable",
+	disable: "mcp:disable",
+	reply: "mcp:reply",
+} as const;
+
+export const mcpEvents = {
+	request: "mcp:request",
+} as const;
+
 export const displayChannels = {
 	getCalibration: "display:calibration",
 	changed: "display:changed",
@@ -141,5 +169,6 @@ export type InvokeChannel =
 	| (typeof projectChannels)[keyof typeof projectChannels]
 	| (typeof settingsChannels)[keyof typeof settingsChannels]
 	| (typeof updateChannels)[keyof typeof updateChannels]
+	| (typeof mcpChannels)[keyof typeof mcpChannels]
 	| typeof displayChannels.getCalibration
 	| typeof appChannels.quit;

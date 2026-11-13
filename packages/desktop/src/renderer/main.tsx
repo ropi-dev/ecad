@@ -10,6 +10,7 @@ import { WorkspaceStart } from "@ecad/core/projects/WorkspaceStart.tsx";
 import { setSettingsStorage } from "@ecad/core/settings/store.ts";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createDesktopMcpConnector } from "#/renderer/mcp.ts";
 import {
 	createDesktopProjectStorage,
 	createDesktopSettingsStorage,
@@ -22,6 +23,7 @@ import "#/renderer/window.css";
 type Workspace = "home" | "editor" | "gerber" | "step";
 const storage = createDesktopSymbolLibraryStorage(window.ecadSymbolLibrary);
 const projects = createDesktopProjectStorage(window.ecadProjects);
+const mcp = createDesktopMcpConnector(window.ecadMcp);
 function App() {
 	const [workspace, setWorkspace] = useState<Workspace>("home");
 	useEffect(() => {
@@ -53,6 +55,7 @@ function App() {
 					<ProjectFilesSidebar
 						onExit={() => void window.ecadApp.quit()}
 						footerActions={<UpdateButton updates={window.ecadUpdates} />}
+						mcp={mcp}
 					/>
 				}
 			>
@@ -63,7 +66,7 @@ function App() {
 					{workspace === "home" ? (
 						<WorkspaceStart />
 					) : workspace === "editor" ? (
-						<Editor2D enableMcp={false} />
+						<Editor2D />
 					) : workspace === "gerber" ? (
 						<GerberWorkspace />
 					) : (

@@ -151,7 +151,7 @@ See the [drawing architecture guide](docs/architecture.md), [Effect integration 
 
 ## Run the CLI
 
-The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing commands and MCP tools with the web and desktop apps through `@ecad/drawing-core`.
+The CLI runs under Node and edits local `.ecaddraw` files. It shares its drawing commands with the web and desktop apps, and its MCP tools with the desktop app, through `@ecad/drawing-core`.
 
 ```bash
 export ECAD_DRAWING="$PWD/drawing.ecaddraw"

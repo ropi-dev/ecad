@@ -1,39 +1,42 @@
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { PlugZap } from "lucide-react";
 import { Popover } from "radix-ui";
-import { type ReactElement, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { TooltipTrigger } from "#/components/viewer/TooltipButton.tsx";
-import {
-	connectEditorMcp,
-	type EditorMcpState,
+import type {
+	EditorMcpConnection,
+	EditorMcpConnector,
+	EditorMcpState,
 } from "#/mcp/editor-connection.ts";
 import { useReportActive } from "#/projects/sidebarMenu.ts";
 
 export function McpControls({
 	store,
-	rail = false,
+	connect,
+	autoEnable = false,
 	onActiveChange,
 }: {
 	store: ReturnType<typeof createDrawingStore>;
-	rail?: boolean;
+	connect: EditorMcpConnector;
+	autoEnable?: boolean;
 	onActiveChange?: (active: boolean) => void;
 }) {
 	const fieldId = useId();
-	const [enabled, setEnabled] = useState(false);
-	const [panelOpen, setPanelOpen] = useState(false);
+	const [enabled, setEnabled] = useState(autoEnable);
+	const [panelOpen, setPanelOpen] = useState(autoEnable);
 	const trigger = useRef<HTMLButtonElement>(null);
 	useReportActive(panelOpen, onActiveChange);
 	const [connection, setConnection] = useState<EditorMcpState | null>(null);
 	const [copyMessage, setCopyMessage] = useState("");
-	const activeConnection = useRef<ReturnType<typeof connectEditorMcp> | null>(
-		null,
-	);
+	const currentStore = useRef(store);
+	currentStore.current = store;
+	const activeConnection = useRef<EditorMcpConnection | null>(null);
 	useEffect(() => {
 		if (!enabled) return;
 		let mounted = true;
-		const connection = connectEditorMcp({
-			store,
+		const connection = connect({
+			getStore: () => currentStore.current,
 			onState: (state) => {
 				if (!mounted) return;
 				setConnection(state);
@@ -50,7 +53,7 @@ export function McpControls({
 			if (activeConnection.current === connection)
 				activeConnection.current = null;
 		};
-	}, [enabled, store]);
+	}, [enabled, connect]);
 	const configuration =
 		connection?.status === "connected"
 			? JSON.stringify(
@@ -73,17 +76,9 @@ export function McpControls({
 			? "MCP connected"
 			: "MCP connecting..."
 		: "Enable MCP";
-	const withTooltip = (button: ReactElement) =>
-		rail ? (
-			<TooltipTrigger tooltip={label} side="right">
-				{button}
-			</TooltipTrigger>
-		) : (
-			button
-		);
 	return (
 		<Popover.Root open={panelOpen} onOpenChange={setPanelOpen}>
-			{withTooltip(
+			<TooltipTrigger tooltip={label} side="right">
 				<Popover.Trigger asChild>
 					<button
 						ref={trigger}
@@ -92,13 +87,8 @@ export function McpControls({
 						aria-pressed={enabled}
 						aria-expanded={panelOpen}
 						aria-controls={`${fieldId}-panel`}
-						data-size={rail ? undefined : "md"}
-						data-icon={rail || undefined}
-						className={
-							rail
-								? "ui-button ui-toggle size-9"
-								: "ui-button ui-toggle shadow-panel [--toggle-bg:var(--color-panel)] [--toggle-fg:var(--color-fg)] [--toggle-line:var(--color-line)] [--toggle-on-bg:var(--color-panel)] [--toggle-on-line:var(--color-accent-line)] hover:[--toggle-bg:var(--color-panel)] hover:[--toggle-line:var(--color-line-strong)]"
-						}
+						data-icon
+						className="ui-button ui-toggle size-9"
 						onClick={() => {
 							if (enabled) return;
 							setConnection(null);
@@ -106,21 +96,20 @@ export function McpControls({
 							setEnabled(true);
 						}}
 					>
-						{rail ? <PlugZap size={18} aria-hidden="true" /> : label}
+						<PlugZap size={18} aria-hidden="true" />
 					</button>
-				</Popover.Trigger>,
-			)}
+				</Popover.Trigger>
+			</TooltipTrigger>
 			{panelOpen && connection && connection.status !== "disconnected" && (
 				<Popover.Portal>
 					<Popover.Content
 						asChild
 						role="region"
-						side={rail ? "right" : "bottom"}
+						side="right"
 						align="start"
-						sideOffset={rail ? 12 : 8}
+						sideOffset={12}
 						collisionPadding={12}
 						onCloseAutoFocus={(event) => {
-							if (!rail) return;
 							event.preventDefault();
 							quietFocus(trigger.current);
 						}}
@@ -151,7 +140,7 @@ export function McpControls({
 							</header>
 							{connection.status === "connecting" && (
 								<output className="text-fg-muted">
-									Connecting to this drawing...
+									Starting the MCP server...
 								</output>
 							)}
 							{connection.status === "error" && (
@@ -166,11 +155,11 @@ export function McpControls({
 											aria-hidden="true"
 											className="size-1.5 rounded-full bg-success"
 										/>
-										Connected to this drawing
+										Connected to the open drawing
 									</output>
 									<p className="m-0 text-fg-muted">
-										MCP tools can read and edit this drawing. Keep this tab
-										open. Disable MCP to disconnect.
+										MCP tools can read and edit the drawing open in the editor.
+										Keep ECAD open. Disable MCP to disconnect.
 									</p>
 									<div className="grid gap-1.5">
 										<label htmlFor={`${fieldId}-url`} className={fieldLabel}>

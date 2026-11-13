@@ -4,12 +4,15 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
 	appChannels,
 	type DesktopAppBridge,
+	type DesktopMcpBridge,
 	type DesktopSettingsBridge,
 	type DesktopSymbolLibraryBridge,
 	type DesktopUpdateState,
 	type DesktopUpdatesBridge,
 	displayChannels,
 	libraryChannels,
+	mcpChannels,
+	mcpEvents,
 	projectChannels,
 	projectEvents,
 	settingsChannels,
@@ -115,3 +118,19 @@ const updates: DesktopUpdatesBridge = {
 	},
 };
 contextBridge.exposeInMainWorld("ecadUpdates", updates);
+
+const mcp: DesktopMcpBridge = {
+	enable: () => ipcRenderer.invoke(mcpChannels.enable),
+	disable: () => ipcRenderer.invoke(mcpChannels.disable),
+	reply: (requestId, reply) =>
+		ipcRenderer.invoke(mcpChannels.reply, requestId, reply),
+	onRequest: (listener) => {
+		const handle = (_event: unknown, request: Parameters<typeof listener>[0]) =>
+			listener(request);
+		ipcRenderer.on(mcpEvents.request, handle);
+		return () => {
+			ipcRenderer.removeListener(mcpEvents.request, handle);
+		};
+	},
+};
+contextBridge.exposeInMainWorld("ecadMcp", mcp);

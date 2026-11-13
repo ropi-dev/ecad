@@ -1,6 +1,4 @@
-import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { ReactNode } from "react";
-import { McpControls } from "#/components/editor/McpControls.tsx";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 
 /** Shared look of the links that head a workspace opened without a project. */
@@ -12,12 +10,8 @@ export const workspaceLinkClassName = "ui-button bg-panel shadow-panel";
  */
 export function EditorHeader({
 	headerControls,
-	enableMcp,
-	store,
 }: {
 	headerControls?: ReactNode;
-	enableMcp: boolean;
-	store: ReturnType<typeof createDrawingStore>;
 }) {
 	return (
 		<header className="absolute top-[var(--chrome-top)] left-[var(--chrome-gap)] z-4 flex max-w-[calc(100%-2*var(--chrome-gap))] flex-wrap items-center gap-2">
@@ -47,7 +41,6 @@ export function EditorHeader({
 					>
 						Workspace
 					</ProjectLink>
-					{enableMcp && <McpControls store={store} />}
 				</>
 			)}
 		</header>

@@ -50,3 +50,12 @@ export async function openProjectActions(page: Page) {
 		.getByRole("button", { name: "Project actions", exact: true })
 		.click();
 }
+
+export async function openPrimaryDrawing(page: Page) {
+	await (await openProjectFiles(page))
+		.getByRole("link", {
+			name: /^(?:Open Drawing|Open Untitled\.ecaddraw)$/,
+			exact: true,
+		})
+		.click();
+}
