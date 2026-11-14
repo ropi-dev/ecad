@@ -200,7 +200,7 @@ const boxArea = (shape: EditorShape) => shape.width * shape.height;
 
 export function shapeAt<T extends EditorShape>(
 	shapes: readonly T[],
-	point: Point,
+	at: Point | ((shape: T) => Point | null),
 	tolerance: number,
 	selectable: (shape: T) => boolean = () => true,
 ): T | undefined {
@@ -208,6 +208,8 @@ export function shapeAt<T extends EditorShape>(
 	for (let index = shapes.length - 1; index >= 0; index--) {
 		const shape = shapes[index];
 		if (!selectable(shape)) continue;
+		const point = typeof at === "function" ? at(shape) : at;
+		if (!point) continue;
 		if (isHollowBoardShape(shape)) {
 			const hit = hitHollowBoardShape(shape, point, tolerance);
 			if (hit === "stroke") return shape;

@@ -112,6 +112,15 @@ export function nextPadNumber(shapes: readonly EditorShape[]): string {
 	return String(highest + 1);
 }
 
+const smdPadLayer = (active: FootprintLayer): FootprintLayer =>
+	copperLayers.includes(active) ? active : "F.Cu";
+
+export const newPadLayers = (
+	type: PadType,
+	active: FootprintLayer,
+): readonly FootprintLayer[] =>
+	type === "through-hole" ? copperLayers : [smdPadLayer(active)];
+
 export function createPad(
 	id: number,
 	center: Point,
@@ -131,7 +140,7 @@ export function createPad(
 				...base,
 				kind: "rectangle",
 				...smdPadSize,
-				layer: copperLayers.includes(layer) ? layer : "F.Cu",
+				layer: smdPadLayer(layer),
 				pad: { number, type },
 			}
 		: {

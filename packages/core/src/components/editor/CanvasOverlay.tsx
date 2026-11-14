@@ -9,6 +9,7 @@ import {
 	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import { shapeLayer } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Diff, Minus, Plus } from "lucide-react";
 import {
 	memo,
@@ -26,7 +27,7 @@ import type {
 	CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
-import { worldToScreen } from "#/engine/camera.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 
 const selectionIcons: Record<Exclude<SelectionMode, "replace">, typeof Plus> = {
 	add: Plus,
@@ -46,7 +47,11 @@ interface CanvasOverlayProps {
 	canvasArea: RefObject<HTMLElement | null>;
 	connectionHover: Point | null;
 	marquee: ReturnType<typeof useCanvasGestures>["marquee"];
+	placementPreview?: EditorShape | null;
 }
+
+const polygonPoints = (outline: readonly Point[] | null) =>
+	outline?.map((point) => `${point.x},${point.y}`).join(" ");
 
 export const CanvasOverlay = memo(function CanvasOverlay({
 	cameraView,
@@ -60,40 +65,75 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 	canvasArea,
 	connectionHover,
 	marquee,
+	placementPreview,
 }: CanvasOverlayProps) {
-	const view = useSyncExternalStore(
+	const projection = useSyncExternalStore(
 		cameraView.subscribe,
-		cameraView.getSnapshot,
-		cameraView.getSnapshot,
+		cameraView.getProjection,
+		cameraView.getProjection,
 	);
+	const view = cameraView.getSnapshot();
 	const [readTextAnchors] = useState(createTextAnchorReader);
 	const textAnchors = useMemo(
 		() => readTextAnchors(shapes, selected),
 		[readTextAnchors, shapes, selected],
 	);
+	const turned = projection?.turned === true;
 	return (
 		<>
-			{view && (
+			{view && projection && (
 				<div
 					className="pointer-events-none absolute inset-0 z-2 overflow-hidden"
 					aria-hidden="true"
 					// Handles and guides follow the camera on every frame.
 					data-shortcut-mutations="ignore"
 				>
-					<RulerPositionGuide
-						view={view}
-						guideCenter={guideCenter}
-						canvasArea={canvasArea}
-					/>
+					{!turned && (
+						<RulerPositionGuide
+							view={view}
+							guideCenter={guideCenter}
+							canvasArea={canvasArea}
+						/>
+					)}
+					{turned && (
+						<svg
+							className="absolute inset-0 size-full overflow-visible"
+							data-testid="board-outlines"
+							aria-hidden="true"
+						>
+							{placementPreview && (
+								<polygon
+									data-testid="board-placement"
+									points={polygonPoints(
+										projection.screenOutline(placementPreview),
+									)}
+									fill={
+										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
+									}
+									fillOpacity={0.4}
+									stroke={
+										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
+									}
+									strokeWidth={1}
+								/>
+							)}
+							{selected.map((shape) => (
+								<polygon
+									key={shape.id}
+									data-testid="board-selection"
+									data-shape-id={shape.id}
+									points={polygonPoints(projection.screenOutline(shape))}
+									className="fill-accent/15 stroke-accent"
+									strokeWidth={1.5}
+								/>
+							))}
+						</svg>
+					)}
 					{connectionHover &&
 						tool === "wire" &&
 						(() => {
-							const point = worldToScreen(
-								connectionHover,
-								view.camera,
-								view.viewport.width,
-								view.viewport.height,
-							);
+							const point = projection.toScreen(connectionHover);
+							if (!point) return null;
 							return (
 								<span
 									data-testid="wire-connection"
@@ -109,18 +149,15 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							const bounds = shapeBounds(
 								symbolChildWorld(selectedSymbol, selectedChild.shape),
 							);
-							const topLeft = worldToScreen(
-								{ x: bounds.minX, y: bounds.maxY },
-								view.camera,
-								view.viewport.width,
-								view.viewport.height,
-							);
-							const bottomRight = worldToScreen(
-								{ x: bounds.maxX, y: bounds.minY },
-								view.camera,
-								view.viewport.width,
-								view.viewport.height,
-							);
+							const topLeft = projection.toScreen({
+								x: bounds.minX,
+								y: bounds.maxY,
+							});
+							const bottomRight = projection.toScreen({
+								x: bounds.maxX,
+								y: bounds.minY,
+							});
+							if (!topLeft || !bottomRight) return null;
 							return (
 								<span
 									data-testid="symbol-child-selection"
@@ -134,14 +171,16 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 								/>
 							);
 						})()}
-					<SymbolAnchors view={view} shapes={shapes} />
+					{!turned && <SymbolAnchors view={view} shapes={shapes} />}
 					{textAnchors.map((anchor) => {
-						const point = worldToScreen(
+						const owner =
+							turned &&
+							selected.find((shape) => String(shape.id) === anchor.key);
+						const point = projection.toScreen(
 							anchor,
-							view.camera,
-							view.viewport.width,
-							view.viewport.height,
+							owner ? projection.heightOf(owner) : 0,
 						);
+						if (!point) return null;
 						return (
 							<span
 								key={anchor.key}
@@ -153,12 +192,11 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						);
 					})}
 					{handles.map(({ shape, handle }) => {
-						const point = worldToScreen(
+						const point = projection.toScreen(
 							handle,
-							view.camera,
-							view.viewport.width,
-							view.viewport.height,
+							projection.heightOf(shape),
 						);
+						if (!point) return null;
 						return (
 							<span
 								key={`${shape.id}:${handle.id}`}

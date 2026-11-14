@@ -56,6 +56,7 @@ export interface SceneViewportProps {
 	physicalSizeZoom?: boolean;
 	pixelsPerMmAt100?: number;
 	cameraState?: { camera?: Camera };
+	keepView?: boolean;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	hoverHighlight?: boolean;
@@ -92,6 +93,7 @@ export function SceneViewport({
 	physicalSizeZoom = false,
 	pixelsPerMmAt100,
 	cameraState,
+	keepView = false,
 	getFitBounds,
 	selectionEnabled = true,
 	hoverHighlight = true,
@@ -240,10 +242,15 @@ export function SceneViewport({
 		runtime.current?.setProjection(activeProjection);
 	}, [activeProjection]);
 	const sceneUpdate = useRef(updateScene);
+	const shownScene = useRef<ViewerScene | null>(null);
+	const [restarts, setRestarts] = useState(0);
 	useEffect(() => {
 		sceneUpdate.current = updateScene;
-		if (updateScene) runtime.current?.update(updateScene);
-	}, [updateScene]);
+		if (updateScene && shownScene.current === sourceScene)
+			runtime.current?.update(updateScene);
+	}, [updateScene, sourceScene]);
+	const mountKey = keepView ? restarts : sourceScene;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a kept view swaps later scenes in place, in the effect below
 	useEffect(() => {
 		const element = host.current;
 		if (!element) return;
@@ -304,6 +311,7 @@ export function SceneViewport({
 				{ objects: sourceScene.length },
 			);
 			runtime.current = viewport;
+			shownScene.current = sourceScene;
 			configureDisplay(viewport);
 			reportOrbit(cameraMode === "top" && currentOrbit.current);
 		} catch (error) {
@@ -313,10 +321,11 @@ export function SceneViewport({
 		}
 		return () => {
 			runtime.current = null;
+			shownScene.current = null;
 			viewport?.dispose();
 		};
 	}, [
-		sourceScene,
+		mountKey,
 		cameraMode,
 		ariaLabel,
 		interactionHint,
@@ -329,6 +338,18 @@ export function SceneViewport({
 		cameraState,
 		antialias,
 	]);
+	useEffect(() => {
+		if (!keepView || !runtime.current || shownScene.current === sourceScene)
+			return;
+		let swapped = false;
+		try {
+			swapped = runtime.current.setScene(sourceScene, sceneUpdate.current);
+		} catch (error) {
+			if (import.meta.env?.DEV) console.error(error);
+		}
+		if (swapped) shownScene.current = sourceScene;
+		else setRestarts((count) => count + 1);
+	}, [keepView, sourceScene]);
 	useEffect(() => {
 		runtime.current?.setPhysicalScale(zoomScale);
 	}, [zoomScale]);

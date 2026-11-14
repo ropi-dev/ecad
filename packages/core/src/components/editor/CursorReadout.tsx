@@ -1,4 +1,5 @@
 import { type LengthUnit, toMils } from "@ecad/drawing-core/drawing/units.ts";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	type RefObject,
 	useLayoutEffect,
@@ -7,55 +8,70 @@ import {
 } from "react";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
 import { useCursorPoint } from "#/components/editor/useCursorPoint.ts";
-import { screenToWorld } from "#/engine/camera.ts";
 
 export function CursorReadout({
 	ready,
 	cameraView,
 	canvasArea,
 	unit = "mil",
+	layer,
+	besideAxes = false,
 }: {
 	unit?: LengthUnit;
+	layer?: FootprintLayer;
+	besideAxes?: boolean;
 	ready: boolean;
 	cameraView: CanvasView;
 	canvasArea: RefObject<HTMLElement | null>;
 }) {
 	const [element, setElement] = useState<HTMLDivElement | null>(null);
-	const view = useSyncExternalStore(
+	const projection = useSyncExternalStore(
 		cameraView.subscribe,
-		cameraView.getSnapshot,
-		cameraView.getSnapshot,
+		cameraView.getProjection,
+		cameraView.getProjection,
 	);
 	const point = useCursorPoint(canvasArea);
 	const cursor =
-		point && view
-			? screenToWorld(
-					point,
-					view.camera,
-					view.viewport.width,
-					view.viewport.height,
-				)
+		point && projection
+			? projection.toWorld(point, projection.layerHeight(layer ? [layer] : []))
 			: null;
 	const [fits, setFits] = useState(true);
 	useLayoutEffect(() => {
 		const area = canvasArea.current;
-		const dock = area?.querySelector('[role="toolbar"]');
-		if (!area || !element || !dock) return;
-		const observer = new ResizeObserver(() =>
+		if (!area || !element) return;
+		let dock: Element | null = null;
+		const measure = () =>
 			setFits(
-				element.getBoundingClientRect().right + 8 <=
-					dock.getBoundingClientRect().left,
-			),
-		);
-		for (const target of [area, element, dock]) observer.observe(target);
-		return () => observer.disconnect();
+				!dock ||
+					element.getBoundingClientRect().right + 8 <=
+						dock.getBoundingClientRect().left,
+			);
+		const sizes = new ResizeObserver(measure);
+		sizes.observe(area);
+		sizes.observe(element);
+		const follow = () => {
+			const next = area.querySelector('[role="toolbar"]');
+			if (next === dock) return;
+			if (dock) sizes.unobserve(dock);
+			dock = next;
+			if (dock) sizes.observe(dock);
+			else measure();
+		};
+		follow();
+		const nodes = new MutationObserver(follow);
+		nodes.observe(area, { childList: true, subtree: true });
+		return () => {
+			sizes.disconnect();
+			nodes.disconnect();
+		};
 	}, [element, canvasArea]);
 	if (!ready) return null;
 	return (
 		<div
 			ref={setElement}
 			aria-hidden="true"
-			className={`ui-panel pointer-events-none absolute bottom-[calc(var(--chrome-bottom)+env(safe-area-inset-bottom))] left-[var(--chrome-gap)] z-3 flex h-7 items-center text-xs whitespace-nowrap tabular-nums pointer-coarse:hidden ${fits ? "" : "invisible"}`}
+			data-testid="cursor-readout"
+			className={`ui-panel pointer-events-none absolute bottom-[calc(var(--chrome-bottom)+env(safe-area-inset-bottom))] z-3 flex h-7 items-center text-xs whitespace-nowrap tabular-nums pointer-coarse:hidden ${besideAxes ? "left-[calc(var(--chrome-gap)+6.5rem)]" : "left-[var(--chrome-gap)]"} ${fits ? "" : "invisible"}`}
 		>
 			{(["x", "y"] as const).map((axis) => (
 				<span

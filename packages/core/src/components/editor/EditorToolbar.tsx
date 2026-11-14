@@ -31,6 +31,7 @@ import {
 	type ComponentProps,
 	type Dispatch,
 	memo,
+	type Ref,
 	type SetStateAction,
 	useState,
 	useSyncExternalStore,
@@ -104,7 +105,11 @@ interface EditorToolbarProps {
 	restoreHistory: (program: DrawingCommand<unknown>) => void;
 	tool: Tool;
 	sheetless: boolean;
-	footprint?: { flat: boolean; empty: boolean; onToggleFlat: () => void };
+	footprint?: {
+		flat: boolean;
+		onToggleFlat: () => void;
+		toggle: Ref<HTMLButtonElement>;
+	};
 	symbolLibrary: ComponentProps<typeof SymbolPicker>["library"];
 	finishDrag: (cancel?: boolean) => void;
 	finishWire: () => void;
@@ -332,9 +337,10 @@ export const EditorToolbar = memo(function EditorToolbar({
 			{footprint && (
 				<>
 					{toggle({
+						ref: footprint.toggle,
 						className: `${viewControlButtonClassName} px-2.5`,
-						"aria-pressed": footprint.empty ? undefined : footprint.flat,
-						disabled: footprint.empty,
+						"aria-pressed": footprint.flat,
+						disabled: footprint.flat && !ready,
 						tooltip: footprint.flat
 							? "Show layers in 3D"
 							: "Show the flat top view",

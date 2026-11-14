@@ -3,9 +3,15 @@ import {
 	expandBounds,
 	mergeBounds,
 	shapeBounds,
+	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
-import { isPad, shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
+import {
+	footprintFitBounds,
+	isPad,
+	shapeLayer,
+	shapeLayers,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type {
 	Bounds,
@@ -14,13 +20,19 @@ import type {
 	PlanarObject,
 	SceneObject,
 } from "#/engine/types.ts";
+import {
+	BOARD_STACK_TOP,
+	type BoardPlacement,
+	placeBoardLayers,
+} from "#/formats/gerber/board-stack.ts";
 
 const boardMargin = 1;
 const boardEdgeWidth = 0.1;
+const drawingGap = 0.02;
 export const DRILL_LAYER_ID = "footprint:drill";
 export const BOARD_LAYER_ID = "footprint:board";
 
-const gerberFileFunctions: readonly (readonly [FootprintLayer, string])[] = [
+const stackLayers: readonly (readonly [FootprintLayer, string])[] = [
 	["F.Cu", "Copper,L1,Top"],
 	["B.Cu", "Copper,L2,Bot"],
 	["F.SilkS", "Legend,Top"],
@@ -30,11 +42,77 @@ const gerberFileFunctions: readonly (readonly [FootprintLayer, string])[] = [
 	["F.Paste", "Paste,Top"],
 	["B.Paste", "Paste,Bot"],
 ];
-const boardLayers = new Map(gerberFileFunctions);
+const drawingLayers: readonly (readonly [FootprintLayer, string, number])[] = [
+	["F.Fab", "AssemblyDrawing,Top", 1],
+	["B.Fab", "AssemblyDrawing,Bot", -1],
+	["F.CrtYd", "Other,Courtyard,Top", 2],
+	["B.CrtYd", "Other,Courtyard,Bot", -2],
+];
+const boardLayers: readonly (readonly [FootprintLayer, string])[] = [
+	...stackLayers,
+	...drawingLayers.map(
+		([layer, fileFunction]) => [layer, fileFunction] as const,
+	),
+];
+const fileFunctionAttribute = (fileFunction: string) => ({
+	".FileFunction": fileFunction.split(","),
+});
+const placements = new Map<string, BoardPlacement>([
+	...stackLayers.map(
+		([layer, fileFunction]) =>
+			[
+				layer,
+				placeBoardLayers([
+					{ name: layer, metadata: fileFunctionAttribute(fileFunction) },
+				])[0],
+			] as const,
+	),
+	...drawingLayers.map(
+		([layer, , step]) =>
+			[
+				layer,
+				{
+					z: Math.sign(step) * BOARD_STACK_TOP + step * drawingGap,
+					thickness: 0,
+					depthBias: 3 + Math.abs(step),
+					through: false,
+				},
+			] as const,
+	),
+]);
 const layerObjectId = (layer: FootprintLayer) => `footprint:${layer}`;
+const textObjectId = (layer: FootprintLayer) => `footprint:${layer}:text`;
 const layersByObjectId = new Map(
-	gerberFileFunctions.map(([layer]) => [layerObjectId(layer), layer]),
+	boardLayers.flatMap(([layer]) => [
+		[layerObjectId(layer), layer] as const,
+		[textObjectId(layer), layer] as const,
+	]),
 );
+
+export const BOARD_SURFACE_Z = BOARD_STACK_TOP;
+
+export const placeFootprintBoard: typeof placeBoardLayers = (layers) => {
+	const stack = placeBoardLayers(layers);
+	return layers.map(
+		(layer, index) => placements.get(layer.name) ?? stack[index],
+	);
+};
+
+export function layerSurfaceZ(
+	layers: readonly FootprintLayer[],
+	hidden: ReadonlySet<FootprintLayer>,
+	eyeZ: number,
+): number {
+	const shown = layers.filter((layer) => !hidden.has(layer));
+	const heights = (shown.length ? shown : layers).map(
+		(layer) => (placements.get(layer)?.z ?? 0) - BOARD_SURFACE_Z,
+	);
+	return heights.reduce(
+		(nearest, height) =>
+			Math.abs(eyeZ - height) < Math.abs(eyeZ - nearest) ? height : nearest,
+		heights[0] ?? 0,
+	);
+}
 
 function placement(shape: EditorShape): Matrix {
 	const cos = Math.cos(shape.rotation);
@@ -141,90 +219,226 @@ function planarLayer(
 		color,
 		visible: true,
 		opacity: 1,
-		metadata: { ".FileFunction": fileFunction.split(",") },
+		metadata: fileFunctionAttribute(fileFunction),
 	};
 }
 
 export const boardEdgeBounds = (shapes: readonly EditorShape[]): Bounds =>
-	expandBounds(mergeBounds(shapes.map(strokedBounds)), boardMargin);
+	expandBounds(
+		shapes.length
+			? mergeBounds(shapes.map(strokedBounds))
+			: footprintFitBounds(shapes),
+		boardMargin,
+	);
 
-export function footprintBoard(shapes: readonly EditorShape[]): PlanarObject[] {
-	if (!shapes.length) return [];
-	const objects = new Map<FootprintLayer, SceneObject[]>();
-	const drills: SceneObject[] = [];
+export type BoardLayerSource = readonly (EditorShape | number)[];
+
+export interface BoardLayerPlan {
+	id: string;
+	source: BoardLayerSource;
+	extrude?: "slab" | "barrel";
+	texts?: readonly TextShape[];
+	build(): PlanarObject;
+}
+
+export function planFootprintBoard(
+	shapes: readonly EditorShape[],
+): BoardLayerPlan[] {
+	const members = new Map<FootprintLayer, EditorShape[]>();
+	const texts = new Map<FootprintLayer, TextShape[]>();
+	const drilled: EditorShape[] = [];
 	for (const shape of shapes) {
-		const geometry = shapeGeometry(shape);
-		if (!geometry) continue;
+		if (shape.kind === "text") {
+			const layer = shapeLayer(shape);
+			const onLayer = texts.get(layer) ?? [];
+			onLayer.push(shape);
+			texts.set(layer, onLayer);
+			continue;
+		}
+		if (!shapeGeometry(shape)) continue;
 		for (const layer of shapeLayers(shape)) {
-			if (!boardLayers.has(layer)) continue;
-			const onLayer = objects.get(layer) ?? [];
-			onLayer.push({
-				id: `${layer}:${shape.id}`,
-				geometry,
-				bounds: strokedBounds(shape),
-				polarity: "dark",
-				transform: placement(shape),
-				attributes: {},
-			});
-			objects.set(layer, onLayer);
+			const onLayer = members.get(layer) ?? [];
+			onLayer.push(shape);
+			members.set(layer, onLayer);
 		}
-		if (isPad(shape) && shape.pad.drill !== undefined) {
-			const radius = shape.pad.drill / 2;
-			drills.push({
-				id: `drill:${shape.id}`,
-				geometry: { type: "circle", x: shape.x, y: shape.y, radius },
-				bounds: expandBounds(
-					{ minX: shape.x, minY: shape.y, maxX: shape.x, maxY: shape.y },
-					radius,
-				),
-				polarity: "dark",
-				attributes: {},
-			});
-		}
+		if (isPad(shape) && shape.pad.drill !== undefined) drilled.push(shape);
 	}
 	const edge = boardEdgeBounds(shapes);
 	const colors = darkSchematicTheme.appearance;
 	return [
-		planarLayer(BOARD_LAYER_ID, "Board edge", colors["F.Fab"], "Profile,NP", [
-			{
-				id: "board-edge",
-				geometry: {
-					type: "path",
-					d: rectanglePath(edge),
-					fill: false,
-					strokeWidth: boardEdgeWidth,
-				},
-				bounds: edge,
-				polarity: "dark",
-				attributes: {},
-			},
-		]),
-		...gerberFileFunctions.flatMap(([layer, fileFunction]) => {
-			const onLayer = objects.get(layer);
+		{
+			id: BOARD_LAYER_ID,
+			source: [edge.minX, edge.minY, edge.maxX, edge.maxY],
+			build: () =>
+				planarLayer(
+					BOARD_LAYER_ID,
+					"Board edge",
+					colors["F.Fab"],
+					"Profile,NP",
+					[
+						{
+							id: "board-edge",
+							geometry: {
+								type: "path",
+								d: rectanglePath(edge),
+								fill: false,
+								strokeWidth: boardEdgeWidth,
+							},
+							bounds: edge,
+							polarity: "dark",
+							attributes: {},
+						},
+					],
+				),
+		},
+		...boardLayers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
+			const onLayer = members.get(layer);
 			return onLayer
 				? [
-						planarLayer(
-							layerObjectId(layer),
-							layer,
-							colors[layer],
-							fileFunction,
-							onLayer,
-						),
+						{
+							id: layerObjectId(layer),
+							source: onLayer,
+							extrude: placements.get(layer)?.thickness ? "slab" : undefined,
+							build: () =>
+								planarLayer(
+									layerObjectId(layer),
+									layer,
+									colors[layer],
+									fileFunction,
+									onLayer.flatMap((shape): SceneObject[] => {
+										const geometry = shapeGeometry(shape);
+										return geometry
+											? [
+													{
+														id: `${layer}:${shape.id}`,
+														geometry,
+														bounds: strokedBounds(shape),
+														polarity: "dark",
+														transform: placement(shape),
+														attributes: {},
+													},
+												]
+											: [];
+									}),
+								),
+						},
 					]
 				: [];
 		}),
-		...(drills.length
+		...boardLayers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
+			const onLayer = texts.get(layer);
+			return onLayer
+				? [
+						{
+							id: textObjectId(layer),
+							source: onLayer,
+							texts: onLayer,
+							build: () => ({
+								...planarLayer(
+									textObjectId(layer),
+									layer,
+									colors[layer],
+									fileFunction,
+									[],
+								),
+								bounds: mergeBounds(onLayer.map(shapeBounds)),
+							}),
+						},
+					]
+				: [];
+		}),
+		...(drilled.length
 			? [
-					planarLayer(
-						DRILL_LAYER_ID,
-						"Drills",
-						colors["pad-through"],
-						"Plated,1,2,PTH",
-						drills,
-					),
+					{
+						id: DRILL_LAYER_ID,
+						source: drilled,
+						extrude: "barrel" as const,
+						build: () =>
+							planarLayer(
+								DRILL_LAYER_ID,
+								"Drills",
+								colors["pad-through"],
+								"Plated,1,2,PTH",
+								drilled.flatMap((shape): SceneObject[] => {
+									if (!isPad(shape) || shape.pad.drill === undefined) return [];
+									const radius = shape.pad.drill / 2;
+									return [
+										{
+											id: `drill:${shape.id}`,
+											geometry: {
+												type: "circle",
+												x: shape.x,
+												y: shape.y,
+												radius,
+											},
+											bounds: expandBounds(
+												{
+													minX: shape.x,
+													minY: shape.y,
+													maxX: shape.x,
+													maxY: shape.y,
+												},
+												radius,
+											),
+											polarity: "dark",
+											attributes: {},
+										},
+									];
+								}),
+							),
+					},
 				]
 			: []),
 	];
+}
+
+export const sameSource = (a: BoardLayerSource, b: BoardLayerSource) =>
+	a.length === b.length && a.every((item, index) => item === b[index]);
+
+export function createBoardBuilder<Layer extends { dispose(): void }>(
+	buildLayer: (plan: BoardLayerPlan) => Layer,
+) {
+	type Built = { source: BoardLayerSource; layer: Layer };
+	let layers = new Map<string, Built>();
+	let retired: Layer[] = [];
+	return {
+		build(shapes: readonly EditorShape[]): Layer[] {
+			const next = new Map<string, Built>();
+			try {
+				for (const plan of planFootprintBoard(shapes)) {
+					const kept = layers.get(plan.id);
+					next.set(
+						plan.id,
+						kept && sameSource(kept.source, plan.source)
+							? kept
+							: { source: plan.source, layer: buildLayer(plan) },
+					);
+				}
+			} catch (cause) {
+				for (const [id, built] of next)
+					if (layers.get(id) !== built) built.layer.dispose();
+				throw cause;
+			}
+			for (const [id, built] of layers)
+				if (next.get(id) !== built) retired.push(built.layer);
+			layers = next;
+			return [...next.values()].map((built) => built.layer);
+		},
+		release(shown: readonly Layer[]) {
+			const kept = new Set(shown);
+			retired = retired.filter((layer) => {
+				if (kept.has(layer)) return true;
+				layer.dispose();
+				return false;
+			});
+		},
+		dispose() {
+			for (const layer of retired) layer.dispose();
+			for (const built of layers.values()) built.layer.dispose();
+			retired = [];
+			layers = new Map();
+		},
+	};
 }
 
 export function boardObjectVisible(

@@ -1,4 +1,5 @@
 import type { Camera } from "#/engine/types.ts";
+import type { ViewProjection } from "#/engine/view-projection.ts";
 
 export interface RenderDiagnostics {
 	width: number;
@@ -13,6 +14,7 @@ export interface Viewer2DSnapshot {
 	backend: string;
 	message: string;
 	camera: Camera;
+	projection?: ViewProjection;
 	zoom: number;
 	viewport: { width: number; height: number };
 	highlighted: number;

@@ -152,7 +152,7 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 	};
 }
 
-function uprightTextRotation(rotation: number): number {
+export function uprightTextRotation(rotation: number): number {
 	const angle = rotation % Math.PI;
 	if (angle > Math.PI / 2) return angle - Math.PI;
 	if (angle <= -Math.PI / 2) return angle + Math.PI;

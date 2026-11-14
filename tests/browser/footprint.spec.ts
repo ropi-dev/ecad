@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
 	openProjectFiles,
@@ -61,7 +62,57 @@ async function drag(
 	await page.mouse.up();
 }
 
-test("a footprint takes pads and layer graphics, hides layers and turns into a 3D board", async ({
+async function orbitUntilAboveHorizon(
+	page: Page,
+	pivot: { x: number; y: number },
+	point: { x: number; y: number },
+) {
+	const readout = page.getByTestId("cursor-readout");
+	await page.keyboard.down("Shift");
+	for (let turn = 0; turn < 40; turn++) {
+		await page.mouse.move(point.x, point.y - 1);
+		await page.mouse.move(point.x, point.y);
+		if (!/\d/.test((await readout.textContent()) ?? "")) break;
+		await page.mouse.move(pivot.x, pivot.y);
+		await page.mouse.down();
+		await page.mouse.move(pivot.x, pivot.y - 6, { steps: 2 });
+		await page.mouse.up();
+	}
+	await page.keyboard.up("Shift");
+	await expect(readout).not.toContainText(/\d/);
+}
+
+async function boardSelection(page: Page) {
+	return page.evaluate(() => {
+		const area = (
+			document.querySelector("[data-view]") as HTMLElement
+		).getBoundingClientRect();
+		return Object.fromEntries(
+			[
+				...document.querySelectorAll<SVGPolygonElement>(
+					'[data-testid="board-selection"]',
+				),
+			].map((outline) => {
+				const corners = (outline.getAttribute("points") ?? "")
+					.split(" ")
+					.map((corner) => corner.split(",").map(Number));
+				return [
+					Number(outline.dataset.shapeId),
+					{
+						x:
+							area.left +
+							corners.reduce((sum, [x]) => sum + x, 0) / corners.length,
+						y:
+							area.top +
+							corners.reduce((sum, [, y]) => sum + y, 0) / corners.length,
+					},
+				];
+			}),
+		);
+	});
+}
+
+test("a footprint takes pads and layer graphics, hides layers and is edited as a 3D board", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
@@ -85,7 +136,7 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	const canvas = page.getByRole("application", { name: "Footprint editor" });
 	await expect(canvas.locator("canvas")).toBeVisible();
 	const flat = page.getByRole("button", { name: "2D", exact: true });
-	await expect(flat).toBeDisabled();
+	await expect(flat).toBeEnabled();
 
 	await (await toolbarButton(page, "Surface mount pad")).click();
 	for (const x of [-1, 1]) {
@@ -181,16 +232,105 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	await flat.click();
 	await expect(area).toHaveAttribute("data-view", "3d");
 	await expect(flat).toHaveAttribute("aria-pressed", "false");
+	await expect(flat).toBeFocused();
 	await expect(
 		page.getByRole("application", { name: "Footprint board" }),
 	).toBeVisible();
 	await expect(
-		page.getByRole("button", { name: "Pads", exact: true }),
-	).toBeDisabled();
-	await expect(
 		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
 	).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "Pads", exact: true }),
+	).toBeEnabled();
 	const boardCanvas = await area.locator("canvas").elementHandle();
+	const view = required(await area.boundingBox());
+
+	await page.mouse.move(view.x + view.width - 80, view.y + 70);
+	await page.mouse.down();
+	await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2, {
+		steps: 3,
+	});
+	await page.mouse.move(view.x + 330, view.y + view.height - 110, { steps: 3 });
+	await page.mouse.up();
+	const selection = page.locator('[data-testid="board-selection"]');
+	await expect(selection).toHaveCount(4);
+	const [throughHole] = (await documentState(page)).editorShapes;
+	const outlines = await boardSelection(page);
+	const grip = required(outlines[throughHole.id]);
+
+	await page.keyboard.down("ControlOrMeta");
+	await page.keyboard.down("Shift");
+	await page.mouse.click(grip.x, grip.y);
+	await page.keyboard.up("Shift");
+	await page.keyboard.up("ControlOrMeta");
+	await expect(selection).toHaveCount(3);
+	await page.keyboard.press("Escape");
+	await expect(selection).toHaveCount(0);
+
+	await page.mouse.click(grip.x, grip.y);
+	await expect(selection).toHaveCount(1);
+	await expect(selection).toHaveAttribute(
+		"data-shape-id",
+		String(throughHole.id),
+	);
+	await expect(page.getByTestId("resize-handle")).not.toHaveCount(0);
+	await page.mouse.move(grip.x, grip.y);
+	await page.mouse.down();
+	await page.mouse.move(grip.x - 40, grip.y - 10, { steps: 3 });
+	await page.mouse.move(grip.x - 90, grip.y - 30, { steps: 3 });
+	await page.mouse.up();
+	await expect(selection).toHaveAttribute(
+		"data-shape-id",
+		String(throughHole.id),
+	);
+	await expect
+		.poll(async () => {
+			const moved = (await documentState(page)).editorShapes[0];
+			return moved.x !== throughHole.x || moved.y !== throughHole.y;
+		})
+		.toBe(true);
+	const dropped = required((await boardSelection(page))[throughHole.id]);
+	expect(Math.abs(dropped.x - (grip.x - 90))).toBeLessThan(8);
+	expect(Math.abs(dropped.y - (grip.y - 30))).toBeLessThan(8);
+	const moved = (await documentState(page)).editorShapes[0];
+	for (const coordinate of [moved.x, moved.y])
+		expect(
+			Math.abs(coordinate * 10 - Math.round(coordinate * 10)),
+		).toBeLessThan(1e-6);
+
+	await (await toolbarButton(page, "Surface mount pad")).click();
+	await page.mouse.move(view.x + view.width - 200, view.y + view.height / 2);
+	await expect(page.locator('[data-testid="board-placement"]')).toHaveCount(1);
+	await page.mouse.click(view.x + view.width - 200, view.y + view.height / 2);
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes.length)
+		.toBe(5);
+	expect((await documentState(page)).editorShapes[4].pad.type).toBe("smd");
+	expect(
+		await area
+			.locator("canvas")
+			.evaluate((canvas, before) => canvas === before, boardCanvas),
+	).toBe(true);
+	const centre = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+	const sky = { x: view.x + view.width - 80, y: view.y + 40 };
+	await orbitUntilAboveHorizon(page, centre, sky);
+	await page.mouse.down();
+	await page.mouse.move(centre.x, centre.y, { steps: 3 });
+	await page.mouse.move(view.x + 330, view.y + view.height - 110, { steps: 3 });
+	await expect(page.locator("[data-selection-mode]")).toHaveCount(1);
+	await page.mouse.up();
+	await expect(selection).not.toHaveCount(0);
+	await page.mouse.click(sky.x, sky.y);
+	await expect(selection).toHaveCount(0);
+	await (await toolbarButton(page, "Surface mount pad")).click();
+	await page.mouse.move(centre.x, centre.y + 150);
+	await expect(page.locator('[data-testid="board-placement"]')).toHaveCount(1);
+	await page.mouse.move(sky.x, sky.y);
+	await expect(page.locator('[data-testid="board-placement"]')).toHaveCount(0);
+	await page.mouse.click(sky.x, sky.y);
+	await page.keyboard.press("Escape");
+	expect((await documentState(page)).editorShapes).toHaveLength(5);
 	await page.getByRole("button", { name: "Hide Front silkscreen" }).click();
 	await expect(
 		page.getByRole("button", { name: "Show Front silkscreen" }),
@@ -200,11 +340,40 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 			.locator("canvas")
 			.evaluate((canvas, before) => canvas === before, boardCanvas),
 	).toBe(true);
+	await (await toolbarButton(page, "Through-hole pad")).click();
+	await expect(area).toHaveAttribute("data-tool", "through-hole-pad");
 	await flat.click();
 	await expect(area).toHaveAttribute("data-view", "2d");
 	await expect(flat).toHaveAttribute("aria-pressed", "true");
+	await expect(flat).toBeFocused();
+	await expect(page.getByTestId("cursor-readout")).toBeVisible();
+	await expect(area).toHaveAttribute("data-tool", "through-hole-pad");
 	await expect(
 		page.getByRole("button", { name: "Pads", exact: true }),
 	).toBeEnabled();
-	expect((await documentState(page)).editorShapes).toHaveLength(4);
+	expect((await documentState(page)).editorShapes).toHaveLength(5);
+
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "3d");
+	await expect(
+		page.getByRole("button", { name: "Pads", exact: true }),
+	).toBeEnabled();
+	await area.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
+		const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+		context?.getExtension("WEBGL_lose_context")?.loseContext();
+	});
+	await expect(area).toHaveAttribute("data-view", "2d");
+	await expect(
+		page.getByText("The 3D graphics context was lost"),
+	).toBeVisible();
+	await expect(flat).toBeEnabled();
+	await expect(flat).toHaveAttribute("aria-pressed", "true");
+
+	await page.setViewportSize({ width: 1400, height: 900 });
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "3d");
+	await expect(
+		page.getByRole("button", { name: "Pads", exact: true }),
+	).toBeEnabled();
+	await expect(page.getByTestId("cursor-readout")).toBeVisible();
 });

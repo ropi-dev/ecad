@@ -79,11 +79,13 @@ import {
 } from "#/components/footprint/FootprintLayerPanel.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
+import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
+import { boardEdgeBounds, layerSurfaceZ } from "#/footprint/board.ts";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
@@ -119,6 +121,9 @@ export type EditorCanvasProps = Editor2DProps & {
 	syncSelection?: boolean;
 };
 
+const NO_SHAPES: EditorShape[] = [];
+const NO_SELECTION: ReadonlySet<number> = new Set();
+
 export function Editor2D(props: Editor2DProps = {}) {
 	return <EditorDocument {...props} Canvas={EditorCanvas} />;
 }
@@ -145,6 +150,7 @@ function EditorCanvas({
 	const unit = isFootprint ? "mm" : "mil";
 	const layers = useFootprintLayers();
 	const [board, setBoard] = useState<"closed" | "open" | "closing">("closed");
+	const flatShown = board === "closed";
 	const [boardError, setBoardError] = useState("");
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
@@ -158,7 +164,7 @@ function EditorCanvas({
 	const store = suppliedStore ?? project?.store ?? ownedStore;
 	const viewport = useEditorViewport(store, unit);
 	const { cameraView, gridStep } = viewport;
-	const ready = viewport.ready && board === "closed";
+	const ready = viewport.ready && board !== "closing";
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
 		() => registerEditor?.(store, enableMcp && !isFootprint),
@@ -267,6 +273,28 @@ function EditorCanvas({
 		[sheetless, sheet, page.name, pageIndex, pages.length],
 	);
 	const shapes = editor.draft ?? pageShapes;
+	const boardShapes = useMemo(() => {
+		const draft = editor.draft;
+		if (board === "closed") return drawing.shapes;
+		if (!draft) return fitTextShapes(drawing.shapes);
+		const drafted = new Map(draft.map((shape) => [shape.id, shape]));
+		const stored = new Set(drawing.shapes.map((shape) => shape.id));
+		return fitTextShapes([
+			...drawing.shapes.map((shape) => drafted.get(shape.id) ?? shape),
+			...draft.filter((shape) => !stored.has(shape.id)),
+		]);
+	}, [editor.draft, board, drawing.shapes]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each view reports its own camera, so the other view's last one is dropped at the switch
+	useLayoutEffect(() => {
+		cameraView.clear();
+	}, [cameraView, flatShown]);
+	useLayoutEffect(() => {
+		if (flatShown) return;
+		cameraView.setSurfaces((onLayers, eyeZ) =>
+			layerSurfaceZ(onLayers, layers.hidden, eyeZ),
+		);
+		return () => cameraView.setSurfaces(null);
+	}, [flatShown, layers.hidden, cameraView]);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
@@ -344,9 +372,9 @@ function EditorCanvas({
 		[wirePreview, placementPreview],
 	);
 	const { scene, updateScene } = useEditorScene(
-		shapes,
-		selectedIds,
-		previews,
+		flatShown ? shapes : NO_SHAPES,
+		flatShown ? selectedIds : NO_SELECTION,
+		flatShown ? previews : NO_SHAPES,
 		sheetless ? null : pageSheet,
 	);
 	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
@@ -453,15 +481,22 @@ function EditorCanvas({
 			clearPlacementPreview();
 		},
 	});
+	const viewToggle = useRef<HTMLButtonElement>(null);
+	const refocusToggle = useRef(false);
+	useEffect(() => {
+		const button = viewToggle.current;
+		if (!refocusToggle.current || !button || button.disabled) return;
+		refocusToggle.current = false;
+		if (document.activeElement === document.body) quietFocus(button);
+	});
 	const toggleBoard = useCallback(() => {
+		refocusToggle.current = true;
 		finishDrag(true);
 		finishWire();
 		clearPlacementPreview();
-		setTool("select");
 		setBoardError("");
-		session.select(new Set());
 		setBoard((current) => (current === "closed" ? "open" : "closing"));
-	}, [finishDrag, finishWire, clearPlacementPreview, session]);
+	}, [finishDrag, finishWire, clearPlacementPreview]);
 	const closeBoard = useCallback(() => setBoard("closed"), []);
 	const toggleLayer = (layer: FootprintLayer) => {
 		if (!layers.hidden.has(layer)) {
@@ -475,11 +510,11 @@ function EditorCanvas({
 			isFootprint
 				? {
 						flat: board !== "open",
-						empty: drawing.shapes.length === 0,
 						onToggleFlat: toggleBoard,
+						toggle: viewToggle,
 					}
 				: undefined,
-		[isFootprint, board, drawing.shapes.length, toggleBoard],
+		[isFootprint, board, toggleBoard],
 	);
 
 	const editAttributes = useCallback(
@@ -622,7 +657,6 @@ function EditorCanvas({
 			className="relative flex h-dvh flex-col overflow-hidden"
 			{...clipboard}
 			onKeyDownCapture={(event) => {
-				if (board !== "closed") return;
 				handleEditorShortcut(event, {
 					dialogOpen: creatingSymbol,
 					ready,
@@ -666,9 +700,8 @@ function EditorCanvas({
 					data-view={
 						isFootprint ? (board === "closed" ? "2d" : "3d") : undefined
 					}
-					{...(board === "closed" ? pointerHandlers : {})}
+					{...pointerHandlers}
 					onKeyDownCapture={(event) => {
-						if (board !== "closed") return;
 						handleCanvasKeyDown(event, {
 							session,
 							gestures,
@@ -686,15 +719,22 @@ function EditorCanvas({
 				>
 					{board !== "closed" && (
 						<FootprintBoardView
-							shapes={drawing.shapes}
+							shapes={boardShapes}
 							hiddenLayers={layers.hidden}
 							cameraState={viewport.cameraState}
 							pixelsPerMmAt100={footprintPixelsPerMmAt100}
 							fitZoom={1.1}
+							getFitBounds={() =>
+								selectionFitBounds(selected, selectedSymbol, selectedChild) ??
+								boardEdgeBounds(boardShapes)
+							}
 							closing={board === "closing"}
 							onClose={closeBoard}
 							onError={setBoardError}
+							onReady={viewport.onReady}
+							onChange={cameraView.update}
 							controls={toolbar}
+							interactionHint={footprintInteractionHint}
 						/>
 					)}
 					{scene && board === "closed" && (
@@ -735,21 +775,20 @@ function EditorCanvas({
 							}
 						/>
 					)}
-					{board === "closed" && (
-						<CanvasOverlay
-							cameraView={cameraView}
-							tool={tool}
-							shapes={shapes}
-							selected={selected}
-							selectedSymbol={selectedSymbol}
-							selectedChild={selectedChild}
-							handles={handles}
-							guideCenter={guideCenter}
-							canvasArea={canvasArea}
-							connectionHover={connectionHover}
-							marquee={marquee}
-						/>
-					)}
+					<CanvasOverlay
+						cameraView={cameraView}
+						tool={tool}
+						shapes={shapes}
+						selected={selected}
+						selectedSymbol={selectedSymbol}
+						selectedChild={selectedChild}
+						handles={handles}
+						guideCenter={guideCenter}
+						canvasArea={canvasArea}
+						connectionHover={connectionHover}
+						marquee={marquee}
+						placementPreview={placementPreview}
+					/>
 					<EditorMessages
 						{...messages}
 						besidePanel={isFootprint || (ercOpen && !sheetless)}
@@ -810,6 +849,8 @@ function EditorCanvas({
 						cameraView={cameraView}
 						canvasArea={canvasArea}
 						unit={unit}
+						layer={isFootprint ? layers.active : undefined}
+						besideAxes={board !== "closed"}
 					/>
 				</div>
 				{attributesShown && selectionAttributes}
