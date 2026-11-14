@@ -9,11 +9,13 @@ import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts
 export interface Viewer2DProps
 	extends Omit<SceneViewportProps, "cameraMode" | "ref"> {
 	ref?: Ref<Viewer2DHandle>;
+	focusOutline?: boolean;
 }
 
 export function Viewer2D({
 	ref,
 	ariaLabel = "2D drawing viewport",
+	focusOutline = true,
 	...props
 }: Viewer2DProps) {
 	const viewer = useRef<SceneViewportHandle>(null);
@@ -28,7 +30,11 @@ export function Viewer2D({
 	);
 	return (
 		<div
-			className="absolute inset-0 min-h-0 touch-none overscroll-contain select-none [&_canvas:focus-visible]:outline-2 [&_canvas:focus-visible]:-outline-offset-2 [&_canvas:focus-visible]:outline-accent"
+			className={`absolute inset-0 min-h-0 touch-none overscroll-contain select-none ${
+				focusOutline
+					? "[&_canvas:focus-visible]:outline-2 [&_canvas:focus-visible]:-outline-offset-2 [&_canvas:focus-visible]:outline-accent"
+					: "[&_canvas]:outline-none [&_canvas:focus-visible]:outline-none"
+			}`}
 			role="application"
 			aria-label={ariaLabel}
 		>
