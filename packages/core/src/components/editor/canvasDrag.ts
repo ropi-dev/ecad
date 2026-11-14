@@ -34,7 +34,7 @@ export interface CanvasDrag {
 	created: boolean;
 	valid: boolean;
 	selectionMode: SelectionMode;
-	pointer?: { point: Point | null; screen: Point };
+	pointer?: Point;
 	wireStart?: Point;
 	/** The latest move preview would route a wire through another net. */
 	unsafe?: boolean;

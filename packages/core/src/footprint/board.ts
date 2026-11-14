@@ -269,7 +269,6 @@ export function planFootprintBoard(
 		{
 			id: BOARD_LAYER_ID,
 			source: [edge.minX, edge.minY, edge.maxX, edge.maxY],
-			extrude: "slab",
 			build: () =>
 				planarLayer(
 					BOARD_LAYER_ID,
@@ -441,10 +440,6 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 		},
 	};
 }
-
-export const footprintBoard = (
-	shapes: readonly EditorShape[],
-): PlanarObject[] => planFootprintBoard(shapes).map((plan) => plan.build());
 
 export function boardObjectVisible(
 	id: string,

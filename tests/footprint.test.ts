@@ -38,7 +38,6 @@ import {
 	boardObjectVisible,
 	createBoardBuilder,
 	DRILL_LAYER_ID,
-	footprintBoard,
 	layerSurfaceZ,
 	placeFootprintBoard,
 	planFootprintBoard,
@@ -63,6 +62,8 @@ import type { SymbolLibraryStorage } from "#/symbol-library/storage.tsx";
 import { required } from "./helpers/required.ts";
 
 const measure = (text: string) => text.length * 57.6;
+const buildBoard = (shapes: readonly EditorShape[]) =>
+	planFootprintBoard(shapes).map((plan) => plan.build());
 const noLayers = new Set<FootprintLayer>();
 const ids = (shapes: readonly EditorShape[]) => shapes.map((shape) => shape.id);
 const silkLine = (id: number, y = 1) =>
@@ -584,7 +585,7 @@ test("footprint files reject schematic items, pages and duplicate IDs", () => {
 });
 
 test("the board has one object per layer, one per layer's text, drills for through-hole pads and an edge 1 mm outside them", () => {
-	const board = footprintBoard([
+	const board = buildBoard([
 		...twoPadsWireCourtyardAndThroughHole(),
 		silkText(9),
 	]);
@@ -627,7 +628,7 @@ test("the board has one object per layer, one per layer's text, drills for throu
 });
 
 test("an empty footprint's board is an edge 1 mm outside a 4 by 3 mm area, and text adds its own object", () => {
-	const empty = footprintBoard([]);
+	const empty = buildBoard([]);
 	assert.deepEqual(
 		empty.map((layer) => layer.id),
 		[BOARD_LAYER_ID],
@@ -639,7 +640,7 @@ test("an empty footprint's board is an edge 1 mm outside a 4 by 3 mm area, and t
 		maxY: 2.5,
 	});
 	assert.deepEqual(
-		footprintBoard([silkText(1)]).map((layer) => layer.id),
+		buildBoard([silkText(1)]).map((layer) => layer.id),
 		[BOARD_LAYER_ID, "footprint:F.SilkS:text"],
 	);
 });
@@ -719,7 +720,7 @@ test("a board builder keeps unchanged layers and frees a replaced one once the v
 });
 
 test("courtyard and fabrication drawings lie flat outside the stack, and a pad through the board is edited on the side facing the camera", () => {
-	const board = footprintBoard([
+	const board = buildBoard([
 		courtyard(1),
 		{ ...courtyard(2), layer: "B.Fab" },
 		createPad(3, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
@@ -753,7 +754,7 @@ test("courtyard and fabrication drawings lie flat outside the stack, and a pad t
 });
 
 test("a rotated pad's copper turns with it on the board", () => {
-	const board = footprintBoard([
+	const board = buildBoard([
 		{
 			...createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
 			rotation: Math.PI / 2,

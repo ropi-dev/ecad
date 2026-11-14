@@ -475,7 +475,7 @@ export function useCanvasGestures({
 		if (!point && active.mode !== "marquee") return;
 		const end = screenPoint(event, active.canvas);
 		if (active.mode === "marquee") active.selectionMode = selectionMode(event);
-		active.pointer = { point, screen: end };
+		active.pointer = end;
 		stepDrag(active, point, end);
 	};
 	const refreshMarqueeMode = useEffectEvent((event: KeyboardEvent) => {
@@ -484,7 +484,7 @@ export function useCanvasGestures({
 		const mode = selectionMode(event);
 		if (mode === active.selectionMode) return;
 		active.selectionMode = mode;
-		stepDrag(active, active.pointer.point, active.pointer.screen);
+		stepDrag(active, null, active.pointer);
 	});
 	const marqueeActive = marquee !== null;
 	useEffect(() => {
