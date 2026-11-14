@@ -66,14 +66,16 @@ const directorySymbolRequest = z.strictObject({
 });
 const symbolFile = parsedBy(parseSymbolFile);
 const symbolLibrary = parsedBy(parseSavedSymbolLibrary);
-// The project repository validates drawing, circuit and symbol contents before
-// writing. Checking the structure here avoids parsing large drawings twice.
+// The project repository validates drawing, circuit, symbol and footprint
+// contents before writing. Checking the structure here avoids parsing large
+// drawings twice.
 const projectDocument = z
 	.object({
 		shapes: z.array(z.unknown()),
 		pages: z.array(z.unknown()).optional(),
 		drawings: z.array(z.unknown()).optional(),
 		circuits: z.array(z.unknown()).optional(),
+		footprints: z.array(z.unknown()).optional(),
 		symbols: z.array(z.unknown()),
 		symbolLibraries: z.array(z.unknown()).optional(),
 	})
