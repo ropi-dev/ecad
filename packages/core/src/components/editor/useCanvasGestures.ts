@@ -8,6 +8,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	findWireConnection,
+	insideHollowBoardShape,
 	isUnsafeMove,
 	openPins,
 	prepareMove,
@@ -74,7 +75,6 @@ import {
 	placementSnapsToConnection,
 } from "#/drawing/placement.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
-import { screenToWorld } from "#/engine/camera.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -239,29 +239,79 @@ export function useCanvasGestures({
 	const [movingShapeId, setMovingShapeId] = useState<number | null>(null);
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
-	const handleAt = (point: Point) => {
-		const tolerance = 7 / (cameraView.getSnapshot()?.camera.scale ?? 1);
-		return [...handles]
-			.reverse()
-			.find(
-				({ handle }) =>
-					Math.abs(handle.x - point.x) <= tolerance &&
-					Math.abs(handle.y - point.y) <= tolerance,
-			);
+	const cameraScale = () => cameraView.getProjection()?.scale ?? 1;
+	const screenAt = (
+		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
+		canvas: HTMLCanvasElement,
+	) => {
+		const rect = canvas.getBoundingClientRect();
+		return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 	};
 	const pointAt = (
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
-	) => {
-		const view = cameraView.getSnapshot();
-		if (!view) return null;
-		const rect = canvas.getBoundingClientRect();
-		return screenToWorld(
-			{ x: event.clientX - rect.left, y: event.clientY - rect.top },
-			view.camera,
-			rect.width,
-			rect.height,
+		plane?: number,
+	) =>
+		cameraView.getProjection()?.toWorld(screenAt(event, canvas), plane) ?? null;
+	const shapePlane = (shape: EditorShape) => {
+		const projection = cameraView.getProjection();
+		return (
+			projection?.planeOf(shape) ?? projection?.layerPlane(footprintLayer) ?? 0
 		);
+	};
+	const toolPlane = (current: CanvasTool) =>
+		isPadTool(current)
+			? shapePlane(padAt(current, { x: 0, y: 0 }))
+			: (cameraView.getProjection()?.layerPlane(footprintLayer) ?? 0);
+	const handleAt = (screen: Point) => {
+		const projection = cameraView.getProjection();
+		if (!projection) return undefined;
+		return [...handles].reverse().find(({ shape, handle }) => {
+			const point = projection.toScreen(handle, shapePlane(shape));
+			return (
+				!!point &&
+				Math.abs(point.x - screen.x) <= 7 &&
+				Math.abs(point.y - screen.y) <= 7
+			);
+		});
+	};
+	const pickableShapes = () => {
+		const projection = cameraView.getProjection();
+		return projection?.tilted
+			? shapes.filter((shape) => projection.planeOf(shape) !== undefined)
+			: shapes;
+	};
+	const pick = (screen: Point) => {
+		const projection = cameraView.getProjection();
+		if (!projection) return null;
+		const tolerance = 6 / projection.scale;
+		const byPlane = new Map<number, EditorShape[]>();
+		for (const shape of shapes) {
+			const plane = projection.planeOf(shape);
+			if (plane === undefined) continue;
+			const onPlane = byPlane.get(plane) ?? [];
+			onPlane.push(shape);
+			byPlane.set(plane, onPlane);
+		}
+		let area: { shape: EditorShape; point: Point; plane: number } | undefined;
+		for (const plane of projection.nearestFirst(byPlane.keys())) {
+			const point = projection.toWorld(screen, plane);
+			if (!point) continue;
+			const shape = shapeAt(
+				byPlane.get(plane) ?? [],
+				point,
+				tolerance,
+				(candidate) => canSelectShape(candidate, allowLocked),
+			);
+			if (!shape) continue;
+			if (!insideHollowBoardShape(shape, point, tolerance))
+				return { shape, point, plane };
+			area ??= { shape, point, plane };
+		}
+		if (area) return area;
+		const plane = projection.layerPlane(footprintLayer);
+		const point = projection.toWorld(screen, plane);
+		return point && { shape: undefined, point, plane };
 	};
 	const stop = (event: ReactPointerEvent) => {
 		event.preventDefault();
@@ -282,11 +332,8 @@ export function useCanvasGestures({
 	};
 	const placementAnchor = (tool: PlacementTool, point: Point, start: Point) =>
 		placementSnapsToConnection(tool)
-			? (findWireConnection(
-					session.shapes(),
-					point,
-					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
-				) ?? start)
+			? (findWireConnection(session.shapes(), point, 8 / cameraScale()) ??
+				start)
 			: start;
 	// Routing obstacles are rebuilt only after the drawing changes.
 	const routing = useRef<WireRoutingContext | null>(null);
@@ -306,7 +353,7 @@ export function useCanvasGestures({
 			const connection = findWireConnection(
 				shapes,
 				point,
-				8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+				8 / (cameraView.getProjection()?.scale ?? 1),
 				active.start,
 			);
 			setConnectionHover(connection ?? null);
@@ -376,9 +423,9 @@ export function useCanvasGestures({
 	);
 	const stepDrag = (active: Drag, point: Point, end: Point) => {
 		const step = canvasDragStep(active, point, end, {
-			shapes,
+			shapes: pickableShapes(),
 			allowLocked,
-			cameraScale: () => cameraView.getSnapshot()?.camera.scale ?? 1,
+			cameraScale,
 			nextId: session.nextId,
 		});
 		active.moved = step.moved;
@@ -401,10 +448,9 @@ export function useCanvasGestures({
 		const active = getDrag();
 		if (!active || active.pointerId !== event.pointerId) return;
 		stop(event);
-		const point = pointAt(event, active.canvas);
+		const point = pointAt(event, active.canvas, active.plane);
 		if (!point) return;
-		const rect = active.canvas.getBoundingClientRect();
-		const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+		const end = screenAt(event, active.canvas);
 		if (active.mode === "marquee") active.selectionMode = selectionMode(event);
 		active.pointer = { point, screen: end };
 		stepDrag(active, point, end);
@@ -611,7 +657,7 @@ export function useCanvasGestures({
 					const connection = findWireConnection(
 						session.shapes(),
 						point,
-						8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+						8 / cameraScale(),
 					);
 					if (!connection) return;
 					startWire(connection, event.pointerId);
@@ -622,7 +668,7 @@ export function useCanvasGestures({
 					!next ||
 					next.blocked ||
 					next.segments.reduce((sum, segment) => sum + segment.width, 0) *
-						(cameraView.getSnapshot()?.camera.scale ?? 1) <
+						cameraScale() <
 						3
 				)
 					return;
@@ -647,7 +693,7 @@ export function useCanvasGestures({
 				const connection = findWireConnection(
 					session.shapes(),
 					point,
-					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+					8 / cameraScale(),
 				);
 				setConnectionHover(connection ?? null);
 				canvas.style.cursor = connection ? "crosshair" : "not-allowed";
@@ -672,15 +718,7 @@ export function useCanvasGestures({
 		onDoubleClickCapture: (event) => {
 			if (!(event.target instanceof HTMLCanvasElement) || tool !== "select")
 				return;
-			const point = pointAt(event, event.target);
-			const shape =
-				point &&
-				shapeAt(
-					shapes,
-					point,
-					6 / (cameraView.getSnapshot()?.camera.scale ?? 1),
-					(shape) => canSelectShape(shape, allowLocked),
-				);
+			const shape = pick(screenAt(event, event.target))?.shape;
 			if (!shape) return;
 			event.preventDefault();
 			event.stopPropagation();
@@ -699,7 +737,12 @@ export function useCanvasGestures({
 				return;
 			}
 			const mode = selectionMode(event);
+			const projection = cameraView.getProjection();
 			if (
+				!projection ||
+				(projection.tilted &&
+					event.shiftKey &&
+					!event[shortcutModifier().flag]) ||
 				!event.isPrimary ||
 				event.button !== 0 ||
 				tool === "pan" ||
@@ -709,17 +752,18 @@ export function useCanvasGestures({
 						!event[shortcutModifier().flag]))
 			)
 				return;
-			const point = pointAt(event, canvas);
-			if (!point) return;
-			const hit =
+			const screen = screenAt(event, canvas);
+			const picked =
 				tool === "select"
-					? shapeAt(
-							shapes,
-							point,
-							6 / (cameraView.getSnapshot()?.camera.scale ?? 1),
-							(candidate) => canSelectShape(candidate, allowLocked),
-						)
-					: undefined;
+					? pick(screen)
+					: (() => {
+							const plane = toolPlane(tool);
+							const point = projection.toWorld(screen, plane);
+							return point && { shape: undefined, point, plane };
+						})();
+			if (!picked) return;
+			let { point, plane } = picked;
+			const hit = picked.shape;
 			const duplicate =
 				event.altKey && hit
 					? selectedIds.has(hit.id)
@@ -729,7 +773,11 @@ export function useCanvasGestures({
 			if (event.altKey && !duplicate) return;
 			stop(event);
 			canvas.focus({ preventScroll: true });
-			const resize = duplicate ? undefined : handleAt(point);
+			const resize = duplicate ? undefined : handleAt(screen);
+			if (resize && projection.tilted) {
+				plane = shapePlane(resize.shape);
+				point = projection.toWorld(screen, plane) ?? point;
+			}
 			canvas.style.cursor = resize?.handle.cursor ?? "";
 			let shape: EditorShape | undefined;
 			const created = tool !== "select";
@@ -743,12 +791,7 @@ export function useCanvasGestures({
 				mode === "replace" &&
 				selectedSymbol &&
 				hit?.id === selectedSymbol.id
-					? symbolChildAt(
-							selectedSymbol,
-							point,
-							2 / (cameraView.getSnapshot()?.camera.scale ?? 1),
-							allowLocked,
-						)
+					? symbolChildAt(selectedSymbol, point, 2 / cameraScale(), allowLocked)
 					: undefined;
 			if (childHit) shape = selectedSymbol;
 			const editableChild =
@@ -774,7 +817,7 @@ export function useCanvasGestures({
 				(!childHit || childHit.shape.kind === "pin")
 			) {
 				let connection: ReturnType<typeof openPins>[number] | undefined;
-				let distance = 8 / (cameraView.getSnapshot()?.camera.scale ?? 1);
+				let distance = 8 / cameraScale();
 				const candidates = measurePerformance(
 					"editor.pin-hit-test",
 					() =>
@@ -849,17 +892,14 @@ export function useCanvasGestures({
 							: selectedIds,
 			);
 			session.selectChild(childKey ?? inspectedChild?.key ?? null);
-			const rect = canvas.getBoundingClientRect();
 			gesture.current = {
 				kind: "drag",
 				drag: {
 					pointerId: event.pointerId,
 					canvas,
 					start,
-					startScreen: {
-						x: event.clientX - rect.left,
-						y: event.clientY - rect.top,
-					},
+					startScreen: screen,
+					plane,
 					previousSelection: selectedIds,
 					childKey,
 					previousChild: selectedChildKey,
@@ -903,7 +943,7 @@ export function useCanvasGestures({
 				return;
 			}
 			if (!(event.target instanceof HTMLCanvasElement)) return;
-			const point = pointAt(event, event.target);
+			const point = pointAt(event, event.target, toolPlane(tool));
 			if (point && toolHandlers[tool].hover?.(event.target, point)) return;
 			if (
 				getWire() &&
@@ -917,9 +957,8 @@ export function useCanvasGestures({
 				if (point) previewWire(point);
 				return;
 			}
-			event.target.style.cursor = point
-				? (handleAt(point)?.handle.cursor ?? "")
-				: "";
+			event.target.style.cursor =
+				handleAt(screenAt(event, event.target))?.handle.cursor ?? "";
 		},
 		onPointerUpCapture: (event) => {
 			if (getDrag()?.pointerId !== event.pointerId) return;

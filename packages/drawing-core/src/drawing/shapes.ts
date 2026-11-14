@@ -47,6 +47,7 @@ export type { ShapeKind } from "#/drawing/shape-kinds.ts";
 export {
 	containsSelection,
 	hitShape,
+	insideHollowBoardShape,
 	intersectsSelection,
 	selectionSize,
 	shapeAt,

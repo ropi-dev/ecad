@@ -196,6 +196,14 @@ function hitHollowBoardShape(
 	return outsideBy < -reach ? "inside" : "stroke";
 }
 
+export const insideHollowBoardShape = (
+	shape: EditorShape,
+	point: Point,
+	tolerance: number,
+) =>
+	isHollowBoardShape(shape) &&
+	hitHollowBoardShape(shape, point, tolerance) === "inside";
+
 const boxArea = (shape: EditorShape) => shape.width * shape.height;
 
 export function shapeAt<T extends EditorShape>(

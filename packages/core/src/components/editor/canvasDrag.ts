@@ -10,7 +10,7 @@ import {
 	resizeSymbolChild,
 	snappedMoveDelta,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	applySelection,
 	type SelectionMode,
@@ -22,6 +22,7 @@ export interface CanvasDrag {
 	canvas: HTMLCanvasElement;
 	start: Point;
 	startScreen: Point;
+	plane: number;
 	previousSelection: ReadonlySet<number>;
 	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-child";
 	childKey?: string;
@@ -44,6 +45,8 @@ export interface CanvasDrag {
 export interface CanvasMarquee {
 	start: Point;
 	end: Point;
+	area: Bounds;
+	plane: number;
 	mode: "window" | "crossing";
 	selection: SelectionMode;
 }
@@ -221,6 +224,8 @@ export function canvasDragStep(
 		marquee: {
 			start: drag.startScreen,
 			end: screen,
+			area: bounds,
+			plane: drag.plane,
 			mode,
 			selection: drag.selectionMode,
 		},
