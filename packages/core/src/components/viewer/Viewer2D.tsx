@@ -7,7 +7,7 @@ import {
 import type { Viewer2DHandle } from "#/components/viewer/types/Viewer2DHandle.ts";
 
 export interface Viewer2DProps
-	extends Omit<SceneViewportProps, "cameraMode" | "projection" | "ref"> {
+	extends Omit<SceneViewportProps, "cameraMode" | "ref"> {
 	ref?: Ref<Viewer2DHandle>;
 }
 

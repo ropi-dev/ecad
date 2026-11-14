@@ -82,6 +82,10 @@ Document history contains only drawing data. The editor separately remembers sel
 
 `packages/web/src/symbol-library/storage.ts` persists user configuration in project-independent localStorage. The desktop adapter calls the preload bridge; Electron's main process reads and atomically writes `symbol-libraries.json` in the platform configuration directory (see `packages/desktop/src/main/config-directory.ts`) and resolves configured directory sources. Project storage persists `symbolLibraries` with drawing data and keeps existing standalone project symbols in the manifest. The project provider exposes both scopes, so opening a project never replaces or copies the user's libraries. See [symbol library configuration](symbol-format.md#user-and-project-configuration).
 
+## Footprints
+
+A footprint reuses the drawing store, commands and editor canvas, with board layers and pads as optional fields on the shared shapes. See [the footprint editor](footprints.md).
+
 ## Rendering ownership
 
 `buildDrawingDisplay` accepts drawing data and explicit presentation state. Its output is suitable for testing without mounting React or creating a renderer. The Three.js adapter consumes those descriptions and owns cached geometry, materials, and textures. Removing shapes or previews releases their cached resources; disposing the adapter releases the worksheet and all remaining resources.

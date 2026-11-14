@@ -11,6 +11,8 @@ const groups: Record<string, string> = {
 	"Supply label": "Connections",
 	Pin: "Connections",
 	"No connect": "Connections",
+	"Surface mount pad": "Pads",
+	"Through-hole pad": "Pads",
 	"Export drawing": "Export",
 	"Export PNG": "Export",
 };
@@ -19,7 +21,7 @@ const groups: Record<string, string> = {
 export async function toolbarButton(page: Page, name: string) {
 	await page
 		.getByRole("toolbar", {
-			name: /^(View controls|3D view controls|Circuit tools|Schematic tools|Symbol tools)$/,
+			name: /^(View controls|3D view controls|Circuit tools|Schematic tools|Symbol tools|Footprint tools)$/,
 		})
 		.waitFor();
 	const group = groups[name];

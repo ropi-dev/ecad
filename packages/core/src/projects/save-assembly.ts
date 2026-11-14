@@ -9,6 +9,10 @@ import {
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
+import {
+	type FootprintFile,
+	footprintFileWithShapes,
+} from "#/footprint/format.ts";
 import type { ProjectDrawing } from "#/projects/format.ts";
 import type { ConfiguredSymbolLibrary } from "#/symbol-library/config.ts";
 
@@ -21,6 +25,8 @@ export function assembleProjectSave({
 	drawings,
 	drawingEdits,
 	savedCircuits,
+	footprints,
+	footprintEdits,
 }: {
 	symbols: SymbolLibrary;
 	libraries: readonly ConfiguredSymbolLibrary[];
@@ -34,6 +40,8 @@ export function assembleProjectSave({
 		{ shapes: EditorShape[]; pages?: readonly DrawingPage[] }
 	>;
 	savedCircuits?: CircuitFile[];
+	footprints?: FootprintFile[];
+	footprintEdits?: ReadonlyMap<string, EditorShape[]>;
 }) {
 	let savedSymbols = symbols;
 	if (pending.size) {
@@ -63,6 +71,14 @@ export function assembleProjectSave({
 					}),
 				}),
 		symbols: savedSymbols,
+		...(footprints === undefined
+			? {}
+			: {
+					footprints: footprints.map((file) => {
+						const shapes = footprintEdits?.get(file.id);
+						return shapes ? footprintFileWithShapes(file, shapes) : file;
+					}),
+				}),
 		symbolLibraries: libraries.map((library) =>
 			library.id === "project-symbols" &&
 			library.source.kind === "embedded" &&

@@ -31,6 +31,15 @@ import {
 	type WireRoutingContext,
 	wireEnds,
 } from "@ecad/drawing-core/drawing/wire-routing.ts";
+import type {
+	FootprintLayer,
+	PadType,
+} from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	createPad,
+	nextPadNumber,
+	onFootprintLayer,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { freeze } from "@ecad/drawing-core/lib/freeze.ts";
 import {
 	type Dispatch,
@@ -75,7 +84,15 @@ export type CanvasTool =
 	| ShapeKind
 	| "select"
 	| "pan"
-	| "symbol";
+	| "symbol"
+	| PadTool;
+type PadTool = "smd-pad" | "through-hole-pad";
+const padToolTypes: Record<PadTool, PadType> = {
+	"smd-pad": "smd",
+	"through-hole-pad": "through-hole",
+};
+const isPadTool = (tool: string): tool is PadTool =>
+	Object.hasOwn(padToolTypes, tool);
 type Drag = CanvasDrag;
 interface WireChain {
 	start: Point;
@@ -121,7 +138,8 @@ interface CanvasGesturesOptions {
 	ready: boolean;
 	gridStep: number;
 	symbolDefinition: SymbolDefinition | null;
-	isSymbol: boolean;
+	sheetless: boolean;
+	footprintLayer?: FootprintLayer;
 	setTextFocusId: Dispatch<SetStateAction<number | null>>;
 	openAttributes: () => void;
 }
@@ -141,7 +159,8 @@ export function useCanvasGestures({
 	ready,
 	gridStep,
 	symbolDefinition,
-	isSymbol,
+	sheetless,
+	footprintLayer,
 	setTextFocusId,
 	openAttributes,
 }: CanvasGesturesOptions) {
@@ -161,7 +180,11 @@ export function useCanvasGestures({
 			? placement.rotation
 			: 0;
 	const canRotatePlacement =
-		isPlacementTool(tool) || (tool === "symbol" && !!symbolDefinition);
+		isPlacementTool(tool) ||
+		isPadTool(tool) ||
+		(tool === "symbol" && !!symbolDefinition);
+	const onLayer = <Shape extends EditorShape>(shape: Shape): Shape =>
+		footprintLayer ? onFootprintLayer(shape, footprintLayer) : shape;
 	const rotatePlacement = useCallback((angle: number) => {
 		setPlacement((current) => ({
 			...current,
@@ -476,11 +499,13 @@ export function useCanvasGestures({
 	const placementHandler = (kind: PlacementTool): ToolHandler => ({
 		press: (_event, point, start) => {
 			const placed = {
-				...createPlacementShape(
-					kind,
-					session.nextId(),
-					placementAnchor(kind, point, start),
-					measureText,
+				...onLayer(
+					createPlacementShape(
+						kind,
+						session.nextId(),
+						placementAnchor(kind, point, start),
+						measureText,
+					),
 				),
 				rotation: placementRotation,
 			};
@@ -496,12 +521,38 @@ export function useCanvasGestures({
 			setPlacementPreview({
 				tool,
 				symbolDefinition,
-				shape: createPlacementShape(
-					kind,
-					session.nextId(),
-					placementAnchor(kind, point, snapPoint(point, gridStep)),
-					measureText,
+				shape: onLayer(
+					createPlacementShape(
+						kind,
+						session.nextId(),
+						placementAnchor(kind, point, snapPoint(point, gridStep)),
+						measureText,
+					),
 				),
+			});
+			return true;
+		},
+	});
+	const padAt = (tool: PadTool, center: Point) =>
+		createPad(
+			session.nextId(),
+			center,
+			padToolTypes[tool],
+			nextPadNumber(session.drawing().shapes),
+			footprintLayer ?? "F.Cu",
+		);
+	const padHandler = (kind: PadTool): ToolHandler => ({
+		press: (_event, _point, start) => {
+			session.place(
+				[{ ...padAt(kind, start), rotation: placementRotation }],
+				"Place pad",
+			);
+		},
+		hover: (_canvas, point) => {
+			setPlacementPreview({
+				tool,
+				symbolDefinition,
+				shape: padAt(kind, snapPoint(point, gridStep)),
 			});
 			return true;
 		},
@@ -509,7 +560,7 @@ export function useCanvasGestures({
 	const drawingHandler = (
 		kind: "rectangle" | "circle" | "triangle" | "line",
 	): ToolHandler => ({
-		create: (start) => drawShape(session.nextId(), kind, start, start),
+		create: (start) => onLayer(drawShape(session.nextId(), kind, start, start)),
 	});
 	const toolHandlers: Record<CanvasTool, ToolHandler> = {
 		select: {},
@@ -523,9 +574,11 @@ export function useCanvasGestures({
 		text: placementHandler("text"),
 		net: placementHandler("net"),
 		supply: placementHandler("supply"),
+		"smd-pad": padHandler("smd-pad"),
+		"through-hole-pad": padHandler("through-hole-pad"),
 		symbol: {
 			press: (_event, _point, start) => {
-				if (!symbolDefinition || (isSymbol && symbolDefinition.netSymbol))
+				if (!symbolDefinition || (sheetless && symbolDefinition.netSymbol))
 					return;
 				const symbol = {
 					...createSymbol(session.nextId(), symbolDefinition, start),
@@ -754,10 +807,13 @@ export function useCanvasGestures({
 			}
 			let copies: EditorShape[] = [];
 			if (duplicate && hit) {
-				copies = pasteSelection(duplicate, shapes, session.nextId(), {
-					x: 0,
-					y: 0,
-				});
+				copies = pasteSelection(
+					duplicate,
+					shapes,
+					session.nextId(),
+					{ x: 0, y: 0 },
+					footprintLayer ? { footprintLayer } : "drawing",
+				);
 				shape = copies[duplicate.findIndex((item) => item.id === hit.id)];
 				session.preview([...session.shapes(), ...copies]);
 			} else if (created) {

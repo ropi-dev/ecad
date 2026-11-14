@@ -277,6 +277,9 @@ export class ProjectRepository {
 				}
 			}),
 		);
+		const footprints =
+			manifest.footprints &&
+			(await Promise.all(manifest.footprints.map((path) => readJson(path))));
 		const document = validateProjectDocument(
 			{
 				shapes: drawing.shapes as ProjectDocument["shapes"],
@@ -334,6 +337,7 @@ export class ProjectRepository {
 							),
 						}),
 				symbols,
+				...(footprints === undefined ? {} : { footprints }),
 				symbolLibraries:
 					drawing.symbolLibraries as ProjectDocument["symbolLibraries"],
 			} as ProjectDocument,
@@ -341,6 +345,7 @@ export class ProjectRepository {
 				drawing: manifest.drawing,
 				drawings: manifest.drawings,
 				circuits: manifest.circuits?.map((paths) => paths.circuit),
+				footprints: manifest.footprints,
 			},
 		);
 		const snapshot: ProjectSnapshot = {
@@ -419,6 +424,7 @@ export class ProjectRepository {
 		);
 		const drawing = `${revision}/${mainName}/${mainName}.ecaddraw`;
 		const symbols: string[] = [];
+		const footprints: string[] = [];
 		const drawings: string[] = [];
 		try {
 			await this.directory.write(
@@ -444,6 +450,15 @@ export class ProjectRepository {
 					encoder.encode(JSON.stringify(symbol)),
 				);
 				symbols.push(path);
+			}
+			for (const footprint of document.footprints ?? []) {
+				const path = `${revision}/footprints/${footprint.id}.ecadfp`;
+				parseProjectPath(path);
+				await this.directory.write(
+					path,
+					encoder.encode(JSON.stringify(footprint)),
+				);
+				footprints.push(path);
 			}
 			for (const file of document.drawings ?? []) {
 				const path = `${revision}/pcbs/${file.id}/${file.name}.ecaddraw`;
@@ -480,6 +495,7 @@ export class ProjectRepository {
 				...(document.circuits === undefined ? {} : { circuits }),
 				drawing,
 				symbols,
+				...(document.footprints === undefined ? {} : { footprints }),
 				...(document.drawings === undefined ? {} : { drawings }),
 			};
 			const content = serializeProjectManifest(manifest);
@@ -610,6 +626,26 @@ export class ProjectRepository {
 			symbols.push(path);
 			files.set(path, encoder.encode(JSON.stringify(symbol)));
 		}
+		const previousFootprints = new Map(
+			previous?.footprints?.map((footprint, index) => [
+				footprint.id,
+				previous.manifest.footprints?.[index],
+			]),
+		);
+		const footprints: string[] = [];
+		for (const footprint of snapshot.footprints ?? []) {
+			const existing = previousFootprints.get(footprint.id);
+			const path =
+				existing && !reserved.has(existing)
+					? existing
+					: await this.unusedPath(
+							`footprints/${footprint.id}.ecadfp`,
+							reserved,
+						);
+			reserved.add(path);
+			footprints.push(path);
+			files.set(path, encoder.encode(JSON.stringify(footprint)));
+		}
 		const circuits = (snapshot.circuits ?? []).map((file) => ({
 			circuit:
 				file.circuit.id === primaryPcbId
@@ -625,6 +661,7 @@ export class ProjectRepository {
 			...(snapshot.circuits === undefined ? {} : { circuits }),
 			drawing,
 			symbols,
+			...(snapshot.footprints === undefined ? {} : { footprints }),
 			...(snapshot.drawings === undefined ? {} : { drawings }),
 		};
 		const content = serializeProjectManifest(manifest);
@@ -670,6 +707,7 @@ export class ProjectRepository {
 				previous.manifest.drawing,
 				...(previous.manifest.drawings ?? []),
 				...previous.manifest.symbols,
+				...(previous.manifest.footprints ?? []),
 				...(previous.manifest.circuits ?? []).flatMap((paths) => [
 					paths.circuit,
 				]),
@@ -713,6 +751,7 @@ export class ProjectRepository {
 				current.manifest.drawing,
 				...(current.manifest.drawings ?? []),
 				...current.manifest.symbols,
+				...(current.manifest.footprints ?? []),
 				...(current.manifest.circuits ?? []).flatMap((paths) => [
 					paths.circuit,
 				]),

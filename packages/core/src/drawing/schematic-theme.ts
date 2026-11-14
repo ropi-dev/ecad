@@ -9,6 +9,22 @@ export interface SchematicTheme {
 	appearance: Record<DrawingAppearance, string>;
 }
 
+const kicadLayerColors = {
+	"F.Cu": "#c83434",
+	"B.Cu": "#4d7fc4",
+	"F.SilkS": "#f2eda1",
+	"B.SilkS": "#e8b2a7",
+	"F.Mask": "#a45fc2",
+	"B.Mask": "#2aa69c",
+	"F.Paste": "#b4a09a",
+	"B.Paste": "#3fa7a7",
+	"F.CrtYd": "#ff26e2",
+	"B.CrtYd": "#26e9ff",
+	"F.Fab": "#afafaf",
+	"B.Fab": "#6b72a8",
+} as const;
+const throughHolePad = "#c9a23c";
+
 export const lightSchematicTheme: SchematicTheme = {
 	desk: "#e2e1db",
 	paper: "#f5f4ef",
@@ -26,6 +42,10 @@ export const lightSchematicTheme: SchematicTheme = {
 		"pin-number": "#a90000",
 		note: "#0000c2",
 		label: "#0f0f0f",
+		...kicadLayerColors,
+		"pad-through": throughHolePad,
+		"pad-hole": "#ffffff",
+		"pad-number": "#1a1a1a",
 	},
 };
 
@@ -46,6 +66,10 @@ export const darkSchematicTheme: SchematicTheme = {
 		"pin-number": "#c99aa1",
 		note: "#8fb3ff",
 		label: "#e8edf5",
+		...kicadLayerColors,
+		"pad-through": throughHolePad,
+		"pad-hole": "#161a21",
+		"pad-number": "#ffffff",
 	},
 };
 

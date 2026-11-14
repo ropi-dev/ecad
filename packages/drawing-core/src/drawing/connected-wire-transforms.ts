@@ -29,6 +29,7 @@ import {
 	routingPitch,
 	wireEnds,
 } from "#/drawing/wire-routing.ts";
+import { isPad } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -77,6 +78,7 @@ export function snappedMoveDelta(
 	if (gridStep > 0 && anchorShape) {
 		// Keep corners on the grid even when the center lies halfway between grid lines.
 		const anchor =
+			isPad(anchorShape) ||
 			anchorShape.kind === "circle" ||
 			anchorShape.kind === "symbol" ||
 			anchorShape.kind === "pin" ||

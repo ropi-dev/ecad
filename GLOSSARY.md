@@ -33,3 +33,20 @@ An editable document that presents a circuit through component symbols, wires, l
 
 **Page**:
 One named sheet of a schematic. Wires and pins connect only within a page; net labels with the same name connect across pages.
+
+### Footprints
+
+**Footprint**:
+The copper, markings and outlines one component needs on a board, drawn on board layers.
+_Avoid_: Package, land pattern
+
+**Layer**:
+One sheet of the board stack that a footprint item sits on, such as front copper or front silkscreen.
+
+**Pad**:
+A copper area of a footprint that one component lead solders to, identified by its number. A surface mount pad is on one side of the board. A through-hole pad has a drilled hole and copper on both sides.
+_Avoid_: Pin, land
+
+**Footprint wire**:
+A straight stroke on one layer of a footprint. It forms no net, unlike a wire in a schematic.
+_Avoid_: Track, trace

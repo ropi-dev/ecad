@@ -1,15 +1,16 @@
+import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 
 export type CanvasView = ReturnType<typeof createCanvasView>;
 
-export function createCanvasView() {
+export function createCanvasView(unit: LengthUnit = "mil") {
 	let snapshot: Viewer2DSnapshot | null = null;
 	const listeners = new Set<() => void>();
 	return {
 		getSnapshot: () => snapshot,
 		getGridStep: () =>
-			snapshot ? rulerSpacing(snapshot.camera.scale, "mil").minor : 0,
+			snapshot ? rulerSpacing(snapshot.camera.scale, unit).minor : 0,
 		subscribe(listener: () => void) {
 			listeners.add(listener);
 			return () => {

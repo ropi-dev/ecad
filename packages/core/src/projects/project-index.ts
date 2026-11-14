@@ -1,5 +1,6 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { SymbolFile } from "#/components/editor/symbolFormat.ts";
+import type { FootprintFile } from "#/footprint/format.ts";
 import type { ProjectDrawing, ProjectSnapshot } from "#/projects/format.ts";
 
 interface Entry<File> {
@@ -26,6 +27,13 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 	const drawingsByCircuit = new Map<string, Entry<ProjectDrawing>>();
 	const circuitsById = new Map<string, Entry<CircuitFile>>();
 	const circuitsByPath = new Map<string, CircuitFile>();
+	const footprintsById = new Map<string, Entry<FootprintFile>>();
+	const footprintsByPath = new Map<string, FootprintFile>();
+	for (const [i, file] of (snapshot.footprints ?? []).entries()) {
+		const path = snapshot.manifest.footprints?.[i];
+		footprintsById.set(file.id, { file, path });
+		if (path) footprintsByPath.set(path, file);
+	}
 	for (const [i, file] of snapshot.symbols.entries()) {
 		const path = snapshot.manifest.symbols[i];
 		symbolsById.set(file.id, { file, path });
@@ -52,5 +60,7 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 		drawingsByCircuit,
 		circuitsById,
 		circuitsByPath,
+		footprintsById,
+		footprintsByPath,
 	};
 }

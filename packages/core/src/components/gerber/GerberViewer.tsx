@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { Box3, type Object3D, Vector3 } from "three";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { Viewer2D, type Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
@@ -20,12 +26,34 @@ import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
 export function GerberViewer({
 	scene,
 	focusedLayerId,
+	flat: controlledFlat,
+	onFlatChange,
+	centered = true,
+	controls,
 	...props
-}: Pick<Viewer2DProps, "onError" | "onReady"> & {
+}: Omit<
+	Viewer2DProps,
+	| "scene"
+	| "updateScene"
+	| "orbit"
+	| "gestureOrbit"
+	| "onOrbit"
+	| "extraControls"
+	| "ref"
+> & {
 	scene: readonly (PlanarObject | ParsedGerberObject)[];
 	focusedLayerId?: string;
+	flat?: boolean;
+	onFlatChange?: (flat: boolean) => void;
+	centered?: boolean;
+	controls?: ReactNode;
 }) {
-	const [flat, setFlat] = useState(true);
+	const [ownFlat, setOwnFlat] = useState(true);
+	const flat = controlledFlat ?? ownFlat;
+	const setFlat = (next: boolean) => {
+		setOwnFlat(next);
+		onFlatChange?.(next);
+	};
 	// Display settings do not rebuild geometry or reset the camera.
 	const [geometryScene, setGeometryScene] = useState(scene);
 	const current = new Map(scene.map((object) => [object.id, object]));
@@ -46,7 +74,7 @@ export function GerberViewer({
 		(object): object is ParsedGerberObject =>
 			object.type === "spatial" && object.visible && isDrillLayer(object),
 	);
-	const drillKey = drills.map((object) => object.id).join(",");
+	const drillKey = drills.map((object) => object.object.uuid).join(",");
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the mask follows the visible drill layers, which drillKey names
 	const holes = useMemo(
 		() =>
@@ -100,10 +128,11 @@ export function GerberViewer({
 			const bounds = new Box3().setFromObject(group);
 			if (!bounds.isEmpty()) {
 				const center = bounds.getCenter(new Vector3());
-				group.position.set(-center.x, -center.y, -center.z);
+				if (centered) group.position.set(-center.x, -center.y, -center.z);
+				else group.position.z = -bounds.max.z;
 			}
 		},
-		[scene, geometryScene, focusedLayerId, holes],
+		[scene, geometryScene, focusedLayerId, holes, centered],
 	);
 	const toggle = geometryScene.length > 0 && (
 		<TooltipButton
@@ -119,17 +148,17 @@ export function GerberViewer({
 	return (
 		<Viewer2D
 			ariaLabel="Gerber drawing"
+			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
+			hoverHighlight={false}
+			selectionPosition="top-left"
+			scrollableControls={controls === undefined}
 			{...props}
 			scene={geometryScene}
 			updateScene={updateScene}
 			orbit={!flat && geometryScene.length > 0}
-			gestureOrbit={geometryScene.length > 0}
+			gestureOrbit={controlledFlat === undefined && geometryScene.length > 0}
 			onOrbit={(orbiting) => setFlat(!orbiting)}
-			interactionHint="Drag or swipe to pan, and Shift + drag or Shift + swipe to orbit in 3D. Pinch or Ctrl + scroll to zoom. Arrow keys pan, plus or minus zooms, and F6 fits the scene."
-			hoverHighlight={false}
-			selectionPosition="top-left"
-			scrollableControls
-			extraControls={toggle}
+			extraControls={controls ?? toggle}
 		/>
 	);
 }

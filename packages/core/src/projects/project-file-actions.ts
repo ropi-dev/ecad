@@ -12,6 +12,7 @@ type FileActions = Pick<
 	| "createDrawing"
 	| "importSchematic"
 	| "createSymbol"
+	| "createFootprint"
 >;
 
 /**
@@ -162,6 +163,29 @@ export function createProjectFileActions(
 						? projectIndex(snapshot).symbolsById.get(symbol.id)?.path
 						: undefined;
 					if (!path) throw new Error("Unable to open the new symbol file.");
+					return path;
+				});
+			}),
+
+		createFootprint: (name) =>
+			enqueue(async () => {
+				if (!state.active || state.generation !== epoch)
+					throw new Error("Open a project before creating a footprint.");
+				return measurePerformanceAsync("project.create-footprint", async () => {
+					const { createEmptyFootprintFile } = await import(
+						"#/footprint/format.ts"
+					);
+					const footprints = state.active?.footprints ?? [];
+					const footprint = createEmptyFootprintFile(name, footprints);
+					await persist(undefined, undefined, undefined, undefined, [
+						...footprints,
+						footprint,
+					]);
+					const snapshot = state.active;
+					const path = snapshot
+						? projectIndex(snapshot).footprintsById.get(footprint.id)?.path
+						: undefined;
+					if (!path) throw new Error("Unable to open the new footprint file.");
 					return path;
 				});
 			}),

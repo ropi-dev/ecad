@@ -1,3 +1,4 @@
+export type LengthUnit = "mm" | "mil";
 export const MM_PER_MIL = 0.0254;
 export const fromMils = (mils: number) =>
 	Number((mils * MM_PER_MIL).toPrecision(15));

@@ -35,6 +35,8 @@ export {
 export {
 	constrainWireEndpoint,
 	drawShape,
+	expandBounds,
+	mergeBounds,
 	pinLeadShape,
 	shapeBounds,
 	shapeCenter,

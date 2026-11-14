@@ -206,7 +206,7 @@ Set `ECAD_PERF_BASELINE_PATH` to use another development comparison file.
 
 ## Scenario selection
 
-Every test in `tests/performance` has one or more area tags, listed in `tests/performance/tags.ts`: `@startup`, `@projects`, `@editor`, `@symbols`, `@circuit`, `@import`, `@storage` and `@cli`. Three cheap, broad scenarios also carry `@core`: `projects-empty`, `projects-large` and `editor-toolbar`. The reporter fails a run that contains a test without a known tag, and `tests/performance-selection.test.ts` checks every listed test.
+Every test in `tests/performance` has one or more area tags, listed in `tests/performance/tags.ts`: `@startup`, `@projects`, `@editor`, `@symbols`, `@footprint`, `@circuit`, `@import`, `@storage` and `@cli`. Three cheap, broad scenarios also carry `@core`: `projects-empty`, `projects-large` and `editor-toolbar`. The reporter fails a run that contains a test without a known tag, and `tests/performance-selection.test.ts` checks every listed test.
 
 `pnpm run perf` collects the changed paths: `git diff --name-only` between `HEAD` and its merge base with `origin/main`, plus staged, unstaged and untracked files. The table in `scripts/performance/select.ts` maps each path to areas; the first matching row wins. The run then passes `--grep` with `@core` and those areas to Playwright. It prints each path, the areas it selects and the matching row, so the selection can be audited:
 

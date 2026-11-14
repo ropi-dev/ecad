@@ -1,4 +1,11 @@
 export const budgets = {
+	"footprint-board": {
+		interactionP95Ms: 1500,
+		openFootprintMs: 50,
+		domNodes: 1500,
+		scriptBytes: 3_000_000,
+		frameP95Ms: 500,
+	},
 	"toast-notifications": {
 		interactionP95Ms: 1000,
 		domNodes: 1200,

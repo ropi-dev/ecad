@@ -118,7 +118,12 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		["@editor", "@symbols", "@circuit"],
 	],
 	["packages/core/src/components/editor/**", ["@editor"]],
+	["packages/core/src/components/footprint/**", ["@footprint"]],
 	["packages/core/src/components/circuit/**", ["@circuit"]],
+	[
+		"packages/core/src/components/gerber/GerberViewer.tsx",
+		["@import", "@footprint"],
+	],
 	["packages/core/src/components/gerber/**", ["@import"]],
 	["packages/core/src/components/step/**", ["@import"]],
 	[
@@ -134,6 +139,11 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/drawing/text.ts", ["@editor", "@circuit"]],
 	["packages/core/src/drawing/diagonal-wires.ts", ["@editor", "@import"]],
 	["packages/core/src/drawing/**", ["@editor"]],
+	[
+		"packages/core/src/footprint/format.ts",
+		["@footprint", "@projects", "@storage"],
+	],
+	["packages/core/src/footprint/**", ["@footprint"]],
 	["packages/core/src/circuit/symbol-components.ts", ["@circuit", "@symbols"]],
 	["packages/core/src/circuit/**", ["@circuit"]],
 	// Project storage and linked documents check imported asset formats.
@@ -161,6 +171,18 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/drawing-core/src/circuit/model.ts", ["@circuit", "@storage"]],
 	["packages/drawing-core/src/circuit/**", ["@circuit"]],
 	["packages/drawing-core/src/erc/**", ["@circuit"]],
+	[
+		"packages/drawing-core/src/footprint/**",
+		[
+			"@footprint",
+			"@editor",
+			"@symbols",
+			"@circuit",
+			"@import",
+			"@storage",
+			"@cli",
+		],
+	],
 	["packages/drawing-core/src/mcp/**", ["@editor", "@cli"]],
 	[
 		"packages/drawing-core/src/commands/**",

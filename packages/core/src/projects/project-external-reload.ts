@@ -27,6 +27,7 @@ export function createProjectExternalReload(
 		enqueue,
 		drawingDocuments,
 		symbolDocuments,
+		footprintDocuments,
 		circuitDocuments,
 		linkedAssembler,
 		noteConflict,
@@ -34,6 +35,7 @@ export function createProjectExternalReload(
 		setEditorCircuit,
 		setEditorDrawing,
 		setEditorSymbol,
+		setEditorFootprint,
 		setSelectedAsset,
 	} = state;
 	const unsaved = () => state.needsSave || state.unsavedEditors.size > 0;
@@ -110,6 +112,25 @@ export function createProjectExternalReload(
 				symbolDocuments.set(id, replaced);
 				if (state.editorSymbol === document) setEditorSymbol(replaced);
 			}
+			for (const [id, document] of footprintDocuments) {
+				const next = after.footprintsById.get(id);
+				if (!next?.path) {
+					document.unsubscribe();
+					footprintDocuments.delete(id);
+					closed.push(document.file.name);
+					if (state.editorFootprint === document) setEditorFootprint(null);
+					continue;
+				}
+				if (!moved(next.path, before.footprintsById.get(id)?.path)) continue;
+				replaceDrawingShapes(document.store, next.file.shapes, true);
+				const replaced = {
+					...document,
+					file: next.file,
+					savedShapes: document.store.getSnapshot().shapes,
+				};
+				footprintDocuments.set(id, replaced);
+				if (state.editorFootprint === document) setEditorFootprint(replaced);
+			}
 			for (const [id, document] of circuitDocuments) {
 				const next = after.circuitsById.get(id);
 				if (!next?.path) {
@@ -140,6 +161,9 @@ export function createProjectExternalReload(
 				names.push(entry.file.name);
 		for (const [id, entry] of after.symbolsById)
 			if (entry.path && moved(entry.path, before.symbolsById.get(id)?.path))
+				names.push(entry.file.name);
+		for (const [id, entry] of after.footprintsById)
+			if (entry.path && moved(entry.path, before.footprintsById.get(id)?.path))
 				names.push(entry.file.name);
 		if (
 			state.selectedAsset &&

@@ -14,7 +14,13 @@ import {
 	formatInches,
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
-import { ArrowLeft, CircuitBoard, Component } from "lucide-react";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	footprintFitBounds,
+	footprintLayerView,
+	shapeLayers,
+} from "@ecad/drawing-core/footprint/shapes.ts";
+import { ArrowLeft, CircuitBoard, Component, Cpu } from "lucide-react";
 import {
 	lazy,
 	type ReactNode,
@@ -36,7 +42,10 @@ import {
 	useEditorMessages,
 } from "#/components/editor/EditorMessages.tsx";
 import { EditorToolbar } from "#/components/editor/EditorToolbar.tsx";
-import { editorInteractionHint } from "#/components/editor/editorInteractionHint.ts";
+import {
+	editorInteractionHint,
+	footprintInteractionHint,
+} from "#/components/editor/editorInteractionHint.ts";
 import {
 	handleCanvasKeyDown,
 	handleEditorShortcut,
@@ -63,6 +72,11 @@ import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.t
 import { useSchematicSelectionSync } from "#/components/editor/useSchematicSelectionSync.ts";
 import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { FootprintBoardView } from "#/components/footprint/FootprintBoardView.tsx";
+import {
+	FootprintLayerPanel,
+	useFootprintLayers,
+} from "#/components/footprint/FootprintLayerPanel.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
@@ -91,8 +105,12 @@ export interface Editor2DProps {
 	enableMcp?: boolean;
 }
 
+const noLayers: ReadonlySet<FootprintLayer> = new Set();
+const footprintPixelsPerMmAt100 = 100;
+
 export type EditorCanvasProps = Editor2DProps & {
 	symbolName?: string;
+	footprintName?: string;
 	drawingName?: string;
 	headerControls?: ReactNode;
 	viewSwitch?: ReactNode;
@@ -110,13 +128,24 @@ function EditorCanvas({
 	store: suppliedStore,
 	enableMcp = true,
 	symbolName,
+	footprintName,
 	drawingName,
 	headerControls,
 	viewSwitch,
 	documentSelection,
 	syncSelection = false,
 }: EditorCanvasProps) {
-	const isSymbol = symbolName !== undefined;
+	const isFootprint = footprintName !== undefined;
+	const sheetless = symbolName !== undefined || isFootprint;
+	const editorKind = isFootprint
+		? "Footprint"
+		: sheetless
+			? "Symbol"
+			: "Schematic";
+	const unit = isFootprint ? "mm" : "mil";
+	const layers = useFootprintLayers();
+	const [board, setBoard] = useState<"closed" | "open" | "closing">("closed");
+	const [boardError, setBoardError] = useState("");
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
 		({ store, error, libraryErrors, selectEditorFile }) => ({
@@ -127,12 +156,13 @@ function EditorCanvas({
 		}),
 	);
 	const store = suppliedStore ?? project?.store ?? ownedStore;
-	const viewport = useEditorViewport(store);
-	const { cameraView, gridStep, ready } = viewport;
+	const viewport = useEditorViewport(store, unit);
+	const { cameraView, gridStep } = viewport;
+	const ready = viewport.ready && board === "closed";
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
-		() => registerEditor?.(store, enableMcp),
-		[registerEditor, store, enableMcp],
+		() => registerEditor?.(store, enableMcp && !isFootprint),
+		[registerEditor, store, enableMcp, isFootprint],
 	);
 	const drawing = useSyncExternalStore(
 		store.subscribe,
@@ -142,20 +172,48 @@ function EditorCanvas({
 	const history = drawing.history;
 	const symbolLibrary = useSymbolLibrary();
 	const { definitions, byReference } = symbolLibrary;
-	const resolveShapes = useCallback(
-		(shapes: EditorShape[]) =>
-			resolveDrawingSymbols(fitTextShapes(shapes), definitions, byReference)
-				.shapes,
-		[definitions, byReference],
-	);
-	const resolved = useMemo(
-		() =>
-			resolveDrawingSymbols(
-				fitTextShapes(drawing.shapes),
+	const resolveDocument = useCallback(
+		(shapes: EditorShape[]) => {
+			const result = resolveDrawingSymbols(
+				fitTextShapes(shapes),
 				definitions,
 				byReference,
-			),
-		[drawing.shapes, definitions, byReference],
+			);
+			return isFootprint
+				? {
+						...result,
+						shapes: footprintLayerView(
+							result.shapes,
+							layers.hidden,
+							layers.active,
+						),
+					}
+				: result;
+		},
+		[definitions, byReference, isFootprint, layers.hidden, layers.active],
+	);
+	const resolveShapes = useCallback(
+		(shapes: EditorShape[]) => resolveDocument(shapes).shapes,
+		[resolveDocument],
+	);
+	const resolved = useMemo(
+		() => resolveDocument(drawing.shapes),
+		[resolveDocument, drawing.shapes],
+	);
+	const layerItemCounts = useMemo(() => {
+		const counts = new Map<FootprintLayer, number>();
+		if (isFootprint)
+			for (const shape of drawing.shapes)
+				for (const layer of shapeLayers(shape))
+					counts.set(layer, (counts.get(layer) ?? 0) + 1);
+		return counts;
+	}, [isFootprint, drawing.shapes]);
+	const everyLayerShapes = useMemo(
+		() =>
+			isFootprint
+				? footprintLayerView(fitTextShapes(drawing.shapes), noLayers)
+				: [],
+		[isFootprint, drawing.shapes],
 	);
 	const [session] = useState(() => createEditorSession(store, resolveShapes));
 	useLayoutEffect(
@@ -196,7 +254,7 @@ function EditorCanvas({
 	}, [drawing.shapes, pages]);
 	const pageSheet = useMemo(
 		() =>
-			isSymbol
+			sheetless
 				? sheet
 				: {
 						...sheet,
@@ -206,7 +264,7 @@ function EditorCanvas({
 							count: pages.length,
 						},
 					},
-		[isSymbol, sheet, page.name, pageIndex, pages.length],
+		[sheetless, sheet, page.name, pageIndex, pages.length],
 	);
 	const shapes = editor.draft ?? pageShapes;
 	const [tool, setTool] = useState<Tool>("select");
@@ -262,7 +320,8 @@ function EditorCanvas({
 		ready,
 		gridStep,
 		symbolDefinition,
-		isSymbol,
+		sheetless,
+		footprintLayer: isFootprint ? layers.active : undefined,
 		setTextFocusId,
 		openAttributes,
 	});
@@ -288,7 +347,7 @@ function EditorCanvas({
 		shapes,
 		selectedIds,
 		previews,
-		isSymbol ? null : pageSheet,
+		sheetless ? null : pageSheet,
 	);
 	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
 	const guideShape = movingShape ?? placementPreview;
@@ -334,12 +393,13 @@ function EditorCanvas({
 	const rerouteNotice = useLegacyWireReroute({
 		store,
 		session,
-		isSymbol,
+		sheetless,
 		ready: symbolLibrary.ready,
 		resolved,
 	});
 	const issues = editorIssues([
 		viewport.viewerError,
+		boardError,
 		rerouteNotice?.historyId === drawing.history.currentId
 			? rerouteNotice.text
 			: "",
@@ -381,7 +441,11 @@ function EditorCanvas({
 	const clipboard = useDrawingClipboard({
 		session,
 		enabled: () => ready && !creatingSymbol && !getDrag() && !getWire(),
-		target: isSymbol ? "symbol" : "drawing",
+		target: isFootprint
+			? { footprintLayer: layers.active }
+			: sheetless
+				? "symbol"
+				: "drawing",
 		pasteStep: gridStep || SCHEMATIC_STEP,
 		beforePaste: () => {
 			finishWire();
@@ -389,6 +453,34 @@ function EditorCanvas({
 			clearPlacementPreview();
 		},
 	});
+	const toggleBoard = useCallback(() => {
+		finishDrag(true);
+		finishWire();
+		clearPlacementPreview();
+		setTool("select");
+		setBoardError("");
+		session.select(new Set());
+		setBoard((current) => (current === "closed" ? "open" : "closing"));
+	}, [finishDrag, finishWire, clearPlacementPreview, session]);
+	const closeBoard = useCallback(() => setBoard("closed"), []);
+	const toggleLayer = (layer: FootprintLayer) => {
+		if (!layers.hidden.has(layer)) {
+			finishDrag(true);
+			session.select(new Set());
+		}
+		layers.toggle(layer);
+	};
+	const footprintControls = useMemo(
+		() =>
+			isFootprint
+				? {
+						flat: board !== "open",
+						empty: drawing.shapes.length === 0,
+						onToggleFlat: toggleBoard,
+					}
+				: undefined,
+		[isFootprint, board, drawing.shapes.length, toggleBoard],
+	);
 
 	const editAttributes = useCallback(
 		(edit: SelectionEdit) => {
@@ -425,8 +517,11 @@ function EditorCanvas({
 							}
 						: undefined
 				}
-				onCreateSymbol={isSymbol ? undefined : () => setCreatingSymbol(true)}
-				allowNetEdits={!isSymbol}
+				onCreateSymbol={sheetless ? undefined : () => setCreatingSymbol(true)}
+				allowNetEdits={!sheetless}
+				footprint={isFootprint}
+				hiddenLayers={layers.hidden}
+				unit={unit}
 				snapStep={
 					selectedChild
 						? gridStep / (selectedChild.shape.kind === "text" ? 10 : 1)
@@ -448,7 +543,10 @@ function EditorCanvas({
 			suppliedStore,
 			definitionId,
 			project,
-			isSymbol,
+			sheetless,
+			isFootprint,
+			layers.hidden,
+			unit,
 			gridStep,
 			selectionSnapStep,
 			session,
@@ -468,7 +566,7 @@ function EditorCanvas({
 	// In a project the page tabs share the document bar's row. Standalone,
 	// they float at the top centre of the canvas.
 	const pageBar = (floating: boolean) =>
-		!isSymbol && scene ? (
+		!sheetless && scene ? (
 			<PageBar
 				pages={pages}
 				current={page.id}
@@ -480,11 +578,51 @@ function EditorCanvas({
 			/>
 		) : undefined;
 
+	const toolbar = (
+		<EditorToolbar
+			shapes={
+				isFootprint
+					? everyLayerShapes
+					: sheetless
+						? resolved.shapes
+						: pageShapes
+			}
+			sheet={pageSheet}
+			drawingName={drawingName}
+			ready={ready}
+			history={history}
+			undo={undo}
+			redo={redo}
+			restoreHistory={restoreHistory}
+			tool={tool}
+			sheetless={sheetless}
+			footprint={footprintControls}
+			symbolLibrary={pickerLibrary}
+			finishDrag={finishDrag}
+			finishWire={finishWire}
+			setSymbolDefinition={setSymbolDefinition}
+			setTool={setTool}
+			clearPlacementPreview={clearPlacementPreview}
+			canRotatePlacement={canRotatePlacement}
+			allowLocked={allowLocked}
+			session={session}
+			hasSelection={hasSelection}
+			rotateItems={rotateItems}
+			selectionLocked={selectionLocked}
+			lockDisabled={selectedChildFixed}
+			editSelection={editSelection}
+			removeSelected={removeSelected}
+			ercOpen={ercOpen}
+			onErc={sheetless ? undefined : () => setErcOpen((open) => !open)}
+		/>
+	);
+
 	return (
 		<main
 			className="relative flex h-dvh flex-col overflow-hidden"
 			{...clipboard}
-			onKeyDownCapture={(event) =>
+			onKeyDownCapture={(event) => {
+				if (board !== "closed") return;
 				handleEditorShortcut(event, {
 					dialogOpen: creatingSymbol,
 					ready,
@@ -495,18 +633,18 @@ function EditorCanvas({
 					rotateItems,
 					undo,
 					redo,
-				})
-			}
+				});
+			}}
 		>
 			<h1 className="sr-only">
-				{isSymbol
-					? `Symbol editor · ${symbolName}`
+				{sheetless
+					? `${editorKind} editor · ${footprintName ?? symbolName}`
 					: `Schematic editor · ${drawingName ? `${drawingName} · ` : ""}${pages.length > 1 ? `${page.name} (page ${pageIndex + 1} of ${pages.length}) · ` : ""}${sheet.name ? `${sheet.name} · ` : ""}${formatInches(sheet.width)} × ${formatInches(sheet.height)} in`}
 			</h1>
 			{registerEditor ? (
 				<DocumentBar
-					icon={isSymbol ? Component : CircuitBoard}
-					title={isSymbol ? symbolName : drawingName}
+					icon={isFootprint ? Cpu : sheetless ? Component : CircuitBoard}
+					title={footprintName ?? symbolName ?? drawingName}
 					selection={documentSelection}
 					center={pageBar(false)}
 				>
@@ -520,13 +658,17 @@ function EditorCanvas({
 					ref={canvasArea}
 					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					style={{
-						backgroundColor: isSymbol
+						backgroundColor: sheetless
 							? darkSchematicTheme.paper
 							: darkSchematicTheme.desk,
 					}}
 					data-tool={tool}
-					{...pointerHandlers}
-					onKeyDownCapture={(event) =>
+					data-view={
+						isFootprint ? (board === "closed" ? "2d" : "3d") : undefined
+					}
+					{...(board === "closed" ? pointerHandlers : {})}
+					onKeyDownCapture={(event) => {
+						if (board !== "closed") return;
 						handleCanvasKeyDown(event, {
 							session,
 							gestures,
@@ -539,23 +681,40 @@ function EditorCanvas({
 							selectionSnapStep,
 							allowLocked,
 							removeSelected,
-						})
-					}
+						});
+					}}
 				>
-					{scene && (
+					{board !== "closed" && (
+						<FootprintBoardView
+							shapes={drawing.shapes}
+							hiddenLayers={layers.hidden}
+							cameraState={viewport.cameraState}
+							pixelsPerMmAt100={footprintPixelsPerMmAt100}
+							fitZoom={1.1}
+							closing={board === "closing"}
+							onClose={closeBoard}
+							onError={setBoardError}
+							controls={toolbar}
+						/>
+					)}
+					{scene && board === "closed" && (
 						<OrthographicViewer2D
-							rulerUnit="mil"
+							rulerUnit={unit}
 							scene={scene}
 							cameraState={viewport.cameraState}
 							fitZoom={1.1}
-							physicalSizeZoom
+							physicalSizeZoom={!isFootprint}
+							pixelsPerMmAt100={
+								isFootprint ? footprintPixelsPerMmAt100 : undefined
+							}
 							getFitBounds={() =>
-								selectionFitBounds(selected, selectedSymbol, selectedChild)
+								selectionFitBounds(selected, selectedSymbol, selectedChild) ??
+								(isFootprint ? footprintFitBounds(drawing.shapes) : null)
 							}
 							groupedControls
-							controlsLabel={isSymbol ? "Symbol tools" : "Schematic tools"}
+							controlsLabel={`${editorKind} tools`}
 							gridBounds={
-								isSymbol
+								sheetless
 									? undefined
 									: {
 											minX: -sheet.width / 2,
@@ -569,59 +728,43 @@ function EditorCanvas({
 							onReady={viewport.onReady}
 							onError={viewport.onError}
 							onChange={cameraView.update}
-							extraControls={
-								<EditorToolbar
-									shapes={isSymbol ? resolved.shapes : pageShapes}
-									sheet={pageSheet}
-									drawingName={drawingName}
-									ready={ready}
-									history={history}
-									undo={undo}
-									redo={redo}
-									restoreHistory={restoreHistory}
-									tool={tool}
-									isSymbol={isSymbol}
-									symbolLibrary={pickerLibrary}
-									finishDrag={finishDrag}
-									finishWire={finishWire}
-									setSymbolDefinition={setSymbolDefinition}
-									setTool={setTool}
-									clearPlacementPreview={clearPlacementPreview}
-									canRotatePlacement={canRotatePlacement}
-									allowLocked={allowLocked}
-									session={session}
-									hasSelection={hasSelection}
-									rotateItems={rotateItems}
-									selectionLocked={selectionLocked}
-									lockDisabled={selectedChildFixed}
-									editSelection={editSelection}
-									removeSelected={removeSelected}
-									ercOpen={ercOpen}
-									onErc={
-										isSymbol ? undefined : () => setErcOpen((open) => !open)
-									}
-								/>
+							extraControls={toolbar}
+							ariaLabel={`${editorKind} editor`}
+							interactionHint={
+								isFootprint ? footprintInteractionHint : editorInteractionHint
 							}
-							ariaLabel={isSymbol ? "Symbol editor" : "Schematic editor"}
-							interactionHint={editorInteractionHint}
 						/>
 					)}
-					<CanvasOverlay
-						cameraView={cameraView}
-						tool={tool}
-						shapes={shapes}
-						selected={selected}
-						selectedSymbol={selectedSymbol}
-						selectedChild={selectedChild}
-						handles={handles}
-						guideCenter={guideCenter}
-						canvasArea={canvasArea}
-						connectionHover={connectionHover}
-						marquee={marquee}
+					{board === "closed" && (
+						<CanvasOverlay
+							cameraView={cameraView}
+							tool={tool}
+							shapes={shapes}
+							selected={selected}
+							selectedSymbol={selectedSymbol}
+							selectedChild={selectedChild}
+							handles={handles}
+							guideCenter={guideCenter}
+							canvasArea={canvasArea}
+							connectionHover={connectionHover}
+							marquee={marquee}
+						/>
+					)}
+					<EditorMessages
+						{...messages}
+						besidePanel={isFootprint || (ercOpen && !sheetless)}
 					/>
-					<EditorMessages {...messages} besidePanel={ercOpen && !isSymbol} />
+					{isFootprint && (
+						<FootprintLayerPanel
+							active={layers.active}
+							hidden={layers.hidden}
+							itemCounts={layerItemCounts}
+							onActivate={layers.activate}
+							onToggle={toggleLayer}
+						/>
+					)}
 					{!registerEditor && pageBar(true)}
-					{ercOpen && !isSymbol && (
+					{ercOpen && !sheetless && (
 						<Suspense
 							fallback={
 								<FloatingPanel
@@ -666,6 +809,7 @@ function EditorCanvas({
 						ready={ready}
 						cameraView={cameraView}
 						canvasArea={canvasArea}
+						unit={unit}
 					/>
 				</div>
 				{attributesShown && selectionAttributes}

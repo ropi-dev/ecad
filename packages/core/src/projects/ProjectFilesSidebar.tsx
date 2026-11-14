@@ -5,6 +5,7 @@ import {
 	ChevronRight,
 	CircuitBoard,
 	Component,
+	Cpu,
 	FileCog,
 	FileUp,
 	Folder,
@@ -101,12 +102,14 @@ const importTypes = [
 const newFileTypes = [
 	["drawing", CircuitBoard],
 	["symbol", Component],
+	["footprint", Cpu],
 	["circuit", Workflow],
 ] as const;
 const fileIcons: Record<string, LucideIcon> = {
 	Drawing: CircuitBoard,
 	Circuit: Workflow,
 	Symbol: Component,
+	Footprint: Cpu,
 	Gerber: Layers,
 	STEP: Box,
 	Project: FileCog,
@@ -115,6 +118,7 @@ const filters = [
 	"All files",
 	"Circuit",
 	"Drawing",
+	"Footprint",
 	"Gerber",
 	"STEP",
 	"Symbol",
@@ -148,6 +152,7 @@ export function ProjectFilesSidebar({
 			busy,
 			createCircuit,
 			createDrawing,
+			createFootprint,
 			createSymbol,
 			importAssets,
 			importSchematic,
@@ -159,6 +164,7 @@ export function ProjectFilesSidebar({
 			busy,
 			createCircuit,
 			createDrawing,
+			createFootprint,
 			createSymbol,
 			importAssets,
 			importSchematic,
@@ -205,7 +211,7 @@ export function ProjectFilesSidebar({
 	const [error, setError] = useState("");
 	const [importReport, setImportReport] = useState<KiCadImportReport>();
 	const [creatingFile, setCreatingFile] = useState<
-		"drawing" | "symbol" | "circuit" | null
+		"drawing" | "symbol" | "footprint" | "circuit" | null
 	>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [railAddMenuOpen, setRailAddMenuOpen] = useState(false);
@@ -414,6 +420,12 @@ export function ProjectFilesSidebar({
 							path,
 							name: path.split("/").at(-1) ?? path,
 							type: "Symbol",
+							href: "/editor" as const,
+						})),
+						...(manifest.footprints ?? []).map((path) => ({
+							path,
+							name: path.split("/").at(-1) ?? path,
+							type: "Footprint",
 							href: "/editor" as const,
 						})),
 						...(manifest.assets.some((asset) => asset.kind === "gerber")
@@ -1274,7 +1286,9 @@ export function ProjectFilesSidebar({
 										? project.createCircuit(name)
 										: creatingFile === "drawing"
 											? project.createDrawing(name)
-											: project.createSymbol(name));
+											: creatingFile === "footprint"
+												? project.createFootprint(name)
+												: project.createSymbol(name));
 									if (creatingFile === "circuit")
 										await project.openCircuit(path);
 									else project.selectEditorFile(path);

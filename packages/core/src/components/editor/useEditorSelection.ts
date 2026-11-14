@@ -4,6 +4,7 @@ import {
 	canSelectShape,
 	canSelectSymbolChild,
 	type EditorShape,
+	mergeBounds,
 	resizeHandles,
 	shapeBounds,
 	symbolChildren,
@@ -113,12 +114,5 @@ export function selectionFitBounds(
 		selectedSymbol && selectedChild
 			? [symbolChildWorld(selectedSymbol, selectedChild.shape)]
 			: selected;
-	if (!targets.length) return null;
-	const bounds = targets.map(shapeBounds);
-	return {
-		minX: Math.min(...bounds.map((box) => box.minX)),
-		minY: Math.min(...bounds.map((box) => box.minY)),
-		maxX: Math.max(...bounds.map((box) => box.maxX)),
-		maxY: Math.max(...bounds.map((box) => box.maxY)),
-	};
+	return targets.length ? mergeBounds(targets.map(shapeBounds)) : null;
 }

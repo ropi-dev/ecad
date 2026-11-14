@@ -24,6 +24,8 @@ import {
 	PIN_LABEL_GAP,
 	PIN_NUMBER_GAP,
 } from "@ecad/drawing-core/drawing/units.ts";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
 import { analyzeDrawing } from "#/drawing/drawing-analysis.ts";
 import {
 	fontPixels,
@@ -72,7 +74,13 @@ export type DrawingAppearance =
 	| "text"
 	| "pin-number"
 	| "note"
-	| "label";
+	| "label"
+	| FootprintLayer
+	| "pad-through"
+	| "pad-hole"
+	| "pad-number";
+
+const maximumPadNumberSize = 0.8;
 
 const estimateText: MeasureText = (text) => text.length * fontPixels * 0.6;
 
@@ -90,6 +98,17 @@ export interface DisplayShape extends DrawingTransform, TextAlignment {
 	children?: DisplayShape[];
 }
 
+export function rotatesFreeOfParentScale(
+	child: DisplayShape,
+	parent: DisplayShape | undefined,
+): parent is DisplayShape {
+	return (
+		parent !== undefined &&
+		child.rotation !== 0 &&
+		(parent.geometry.kind === "symbol" || parent.width !== parent.height)
+	);
+}
+
 export interface DrawingDisplay {
 	shapes: DisplayShape[];
 	terminals: DisplayShape[];
@@ -101,6 +120,8 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
+	if (isPad(shape))
+		return { kind: shape.kind, width, height, lineWidth: 0, filled: true };
 	if (kind !== "symbol")
 		return {
 			kind,
@@ -181,7 +202,7 @@ function displayShape(
 		shape.kind === "symbol" &&
 		shape.children.some((child) => isFillableShape(child) && child.filled)
 			? symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
-			: isFillableShape(shape) && shape.filled
+			: isFillableShape(shape) && shape.filled && !isPad(shape)
 				? [shape]
 				: [];
 	const fills = fillChildren
@@ -200,10 +221,67 @@ function displayShape(
 			width: child.width / shape.width,
 			height: child.height / shape.height,
 			rotation: shape.kind === "symbol" ? child.rotation : 0,
-			appearance: "fill" as const,
+			appearance: shape.layer ? appearance : ("fill" as const),
 			renderOrder: renderOrder - 0.5,
 		}));
 	if (fills.length) display.children = fills;
+	if (isPad(shape)) {
+		const { number, drill } = shape.pad;
+		const fontSize = Math.min(
+			maximumPadNumberSize,
+			Math.min(shape.width, shape.height) / 2,
+		);
+		const layout = textLayout(number, measure);
+		const labelWidth = (layout.width * fontSize) / fontPixels;
+		const labelHeight = (layout.height * fontSize) / fontPixels;
+		display.children = [
+			...(drill === undefined
+				? []
+				: [
+						{
+							key: `${key}:hole`,
+							name: `pad hole ${shape.id}`,
+							geometry: {
+								kind: "circle" as const,
+								width: drill,
+								height: drill,
+								lineWidth: 0,
+								filled: true,
+							},
+							x: 0,
+							y: 0,
+							width: drill / shape.width,
+							height: drill / shape.height,
+							rotation: 0,
+							appearance: "pad-hole" as const,
+							renderOrder: renderOrder + 0.25,
+						},
+					]),
+			...(number
+				? [
+						{
+							key: `${key}:number`,
+							name: `pad number ${shape.id}`,
+							geometry: {
+								kind: "text" as const,
+								width: labelWidth,
+								height: labelHeight,
+								lineWidth: 0,
+							},
+							x: 0,
+							y: 0,
+							width: labelWidth / shape.width,
+							height: labelHeight / shape.height,
+							rotation: -shape.rotation,
+							appearance: "pad-number" as const,
+							text: number,
+							pinLabel: true as const,
+							renderOrder: renderOrder + 0.5,
+						},
+					]
+				: []),
+		];
+	}
 	if (shape.kind === "symbol") {
 		const labels = shape.texts
 			.filter((label) => shape.attributes[label.attribute])
@@ -310,6 +388,15 @@ function displayShape(
 		});
 	}
 	return display;
+}
+
+function unselectedAppearance(shape: EditorShape): DrawingAppearance {
+	if (isPad(shape) && shape.pad.type === "through-hole") return "pad-through";
+	if (shape.layer) return shape.layer;
+	if (shape.kind === "pin" || shape.kind === "wire") return shape.kind;
+	return (shape.kind === "text" && !isNetLabel(shape)) || isBoxSymbol(shape)
+		? "note"
+		: "stroke";
 }
 
 function junctionDisplay(
@@ -497,12 +584,7 @@ export function buildStaticDisplay(
 					? "selected"
 					: highlightedWires.has(shape.id)
 						? "highlighted"
-						: shape.kind === "pin" || shape.kind === "wire"
-							? shape.kind
-							: (shape.kind === "text" && !isNetLabel(shape)) ||
-									isBoxSymbol(shape)
-								? "note"
-								: "stroke",
+						: unselectedAppearance(shape),
 				index + 1,
 				measure,
 				crossings.get(shape.id),

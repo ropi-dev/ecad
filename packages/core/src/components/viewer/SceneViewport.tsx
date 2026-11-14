@@ -54,6 +54,7 @@ export interface SceneViewportProps {
 	/** Magnification applied to the fitted view that defines 100% zoom. */
 	fitZoom?: number;
 	physicalSizeZoom?: boolean;
+	pixelsPerMmAt100?: number;
 	cameraState?: { camera?: Camera };
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
@@ -89,6 +90,7 @@ export function SceneViewport({
 	lockProjection = false,
 	fitZoom = 1,
 	physicalSizeZoom = false,
+	pixelsPerMmAt100,
 	cameraState,
 	getFitBounds,
 	selectionEnabled = true,
@@ -168,6 +170,7 @@ export function SceneViewport({
 		onOrbit?.(next);
 	});
 	const displayScale = useDisplayScale(physicalSizeZoom);
+	const zoomScale = lockProjection ? (pixelsPerMmAt100 ?? displayScale) : null;
 	const antialias = useAntialiasing();
 	const ownCamera = useRef<{ camera?: Camera; scene?: ViewerScene }>({});
 	const host = useRef<HTMLDivElement>(null);
@@ -207,7 +210,7 @@ export function SceneViewport({
 		[cameraMode, rulerUnit, gridMinX, gridMaxX, gridMinY, gridMaxY],
 	);
 	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
-		viewport.setPhysicalScale(displayScale);
+		viewport.setPhysicalScale(zoomScale);
 		viewport.setGrid(grid);
 	});
 	const readFitBounds = useEffectEvent(() => getFitBounds?.() ?? null);
@@ -258,6 +261,7 @@ export function SceneViewport({
 						projection: currentProjection.current,
 						lockProjection,
 						fitZoom,
+						pixelsPerMmAt100,
 						initialCamera:
 							cameraState?.camera ??
 							(ownCamera.current.scene === sourceScene
@@ -321,12 +325,13 @@ export function SceneViewport({
 		gestureOrbit,
 		lockProjection,
 		fitZoom,
+		pixelsPerMmAt100,
 		cameraState,
 		antialias,
 	]);
 	useEffect(() => {
-		runtime.current?.setPhysicalScale(displayScale);
-	}, [displayScale]);
+		runtime.current?.setPhysicalScale(zoomScale);
+	}, [zoomScale]);
 	useEffect(() => {
 		runtime.current?.setGrid(grid);
 	}, [grid]);
@@ -413,6 +418,7 @@ export function SceneViewport({
 					label={controlsLabel}
 					enabled={controlsReady}
 					zoomLevel={zoomLevel}
+					absoluteZoom={zoomScale !== null}
 					actualSize={
 						displayScale !== null
 							? () => stepZoom((viewport) => viewport.actualSize())

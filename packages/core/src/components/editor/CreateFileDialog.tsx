@@ -9,7 +9,7 @@ export function CreateFileDialog({
 		? "Name this symbol to add it to your Symbols list."
 		: "Name this drawing to add it to your project.",
 }: {
-	kind: "drawing" | "symbol" | "circuit";
+	kind: "drawing" | "symbol" | "footprint" | "circuit";
 	onClose: () => void;
 	onCreate: (name: string) => Promise<string | undefined>;
 	description?: string;
@@ -71,12 +71,7 @@ export function CreateFileDialog({
 					htmlFor={inputId}
 					className="block text-xs font-medium text-fg-muted"
 				>
-					{kind === "drawing"
-						? "Drawing"
-						: kind === "circuit"
-							? "Circuit"
-							: "Symbol"}{" "}
-					name
+					{kind[0].toUpperCase() + kind.slice(1)} name
 				</label>
 				<input
 					id={inputId}

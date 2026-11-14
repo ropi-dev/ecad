@@ -17,6 +17,7 @@ export function FloatingPanel({
 	position = "top-right",
 	as: Element = "aside",
 	raised = false,
+	narrow = false,
 	onKeyDown,
 	children,
 }: {
@@ -26,12 +27,13 @@ export function FloatingPanel({
 	as?: "aside" | "section";
 	/** Floats above the editor header and messages, for panels the user opens. */
 	raised?: boolean;
+	narrow?: boolean;
 	onKeyDown?: KeyboardEventHandler<HTMLElement>;
 	children: ReactNode;
 }) {
 	return (
 		<Element
-			className={`ui-panel absolute bg-raised ${raised ? "z-5" : "z-2"} flex min-h-0 w-72 flex-col overflow-hidden ${positionClassName[position]}`}
+			className={`ui-panel absolute bg-raised ${raised ? "z-5" : "z-2"} flex min-h-0 ${narrow ? "w-56" : "w-72"} flex-col overflow-hidden ${positionClassName[position]}`}
 			aria-label={label}
 			onKeyDown={onKeyDown}
 		>

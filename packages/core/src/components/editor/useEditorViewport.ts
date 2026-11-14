@@ -1,3 +1,4 @@
+import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import { useState, useSyncExternalStore } from "react";
 import { createCanvasView } from "#/components/editor/canvasView.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
@@ -11,7 +12,7 @@ const cameraStates = new WeakMap<
  * The canvas camera and viewer state. The camera position is kept per drawing
  * store, so switching documents and back restores the previous view.
  */
-export function useEditorViewport(store: object) {
+export function useEditorViewport(store: object, unit: LengthUnit = "mil") {
 	let cameraState = cameraStates.get(store);
 	if (!cameraState) {
 		cameraState = {};
@@ -19,7 +20,7 @@ export function useEditorViewport(store: object) {
 	}
 	const [ready, setReady] = useState(false);
 	const [viewerError, setViewerError] = useState("");
-	const [cameraView] = useState(createCanvasView);
+	const [cameraView] = useState(() => createCanvasView(unit));
 	const gridStep = useSyncExternalStore(
 		cameraView.subscribe,
 		cameraView.getGridStep,

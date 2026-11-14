@@ -47,35 +47,30 @@ export function EditorDocument({
 	)
 		return openingCircuit;
 	const symbol = props.store ? null : project?.editorSymbol;
+	const footprint = props.store ? null : project?.editorFootprint;
 	const drawing = props.store ? null : project?.editorDrawing;
+	const file = symbol
+		? `symbol:${symbol.file.id}`
+		: footprint
+			? `footprint:${footprint.file.id}`
+			: drawing
+				? `drawing:${drawing.file.id}`
+				: undefined;
 	return (
 		<Canvas
-			key={`${project?.session ?? 0}:${
-				symbol
-					? `symbol:${symbol.file.id}`
-					: drawing
-						? `drawing:${drawing.file.id}`
-						: "schematic"
-			}`}
+			key={`${project?.session ?? 0}:${file ?? "schematic"}`}
 			{...props}
-			store={symbol?.store ?? drawing?.store ?? props.store}
+			store={symbol?.store ?? footprint?.store ?? drawing?.store ?? props.store}
 			symbolName={symbol?.file.name}
+			footprintName={footprint?.file.name}
 			drawingName={drawing?.file.name}
-			documentSelection={
-				props.store
-					? undefined
-					: symbol
-						? `symbol:${symbol.file.id}`
-						: drawing
-							? `drawing:${drawing.file.id}`
-							: "drawing"
-			}
+			documentSelection={props.store ? undefined : (file ?? "drawing")}
 			viewSwitch={
-				!props.store && !symbol ? (
+				!props.store && !symbol && !footprint ? (
 					<EditorViewSwitch view="schematic" />
 				) : undefined
 			}
-			syncSelection={!props.store && !symbol}
+			syncSelection={!props.store && !symbol && !footprint}
 		/>
 	);
 }

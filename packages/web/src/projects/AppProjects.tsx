@@ -88,7 +88,13 @@ function useProjectFileUrl() {
 
 	useEffect(() => {
 		if (!context?.project || context.busy || navigating) return;
-		const { project, editorCircuit, editorDrawing, editorSymbol } = context;
+		const {
+			project,
+			editorCircuit,
+			editorDrawing,
+			editorSymbol,
+			editorFootprint,
+		} = context;
 		const { manifest } = project;
 		const path = location.pathname;
 		if (path !== "/editor" && path !== "/step" && path !== "/gerber") {
@@ -103,9 +109,11 @@ function useProjectFileUrl() {
 					? `circuit:${editorCircuit.file.circuit.id}`
 					: editorSymbol
 						? `symbol:${editorSymbol.file.id}`
-						: editorDrawing
-							? `drawing:${editorDrawing.file.id}`
-							: "drawing"
+						: editorFootprint
+							? `footprint:${editorFootprint.file.id}`
+							: editorDrawing
+								? `drawing:${editorDrawing.file.id}`
+								: "drawing"
 				: context.selectedAsset?.kind === (path === "/step" ? "step" : "gerber")
 					? `asset:${context.selectedAsset.path}`
 					: undefined;

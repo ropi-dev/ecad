@@ -125,6 +125,24 @@ export function pinLeadShape(pin: PinShape): BasicShape {
 	};
 }
 
+export function mergeBounds(boxes: readonly Bounds[]): Bounds {
+	return {
+		minX: Math.min(...boxes.map((box) => box.minX)),
+		minY: Math.min(...boxes.map((box) => box.minY)),
+		maxX: Math.max(...boxes.map((box) => box.maxX)),
+		maxY: Math.max(...boxes.map((box) => box.maxY)),
+	};
+}
+
+export function expandBounds(bounds: Bounds, by: number): Bounds {
+	return {
+		minX: bounds.minX - by,
+		minY: bounds.minY - by,
+		maxX: bounds.maxX + by,
+		maxY: bounds.maxY + by,
+	};
+}
+
 export function shapeBounds(shape: EditorShape): Bounds {
 	if (shape.kind === "pin" && (shape.length ?? 0) > 0) {
 		const length = shape.length ?? 0;
