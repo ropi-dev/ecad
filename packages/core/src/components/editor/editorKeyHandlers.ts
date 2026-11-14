@@ -31,6 +31,7 @@ export function handleEditorShortcut(
 		ready,
 		session,
 		canRotatePlacement,
+		placing,
 		clearPlacementPreview,
 		setTool,
 		rotateItems,
@@ -41,6 +42,7 @@ export function handleEditorShortcut(
 		ready: boolean;
 		session: EditorSession;
 		canRotatePlacement: boolean;
+		placing: boolean;
 		clearPlacementPreview: Gestures["clearPlacementPreview"];
 		setTool: Dispatch<SetStateAction<CanvasTool>>;
 		rotateItems: (angle: number) => void;
@@ -50,7 +52,7 @@ export function handleEditorShortcut(
 ) {
 	const shortcut = editorShortcut(event, {
 		dialogOpen,
-		placing: canRotatePlacement,
+		placing,
 		editable: isEditableTarget(event),
 		canRotate:
 			ready && (canRotatePlacement || session.getState().selection.size > 0),

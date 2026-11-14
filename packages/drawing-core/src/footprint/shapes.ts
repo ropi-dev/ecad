@@ -1,4 +1,9 @@
-import type { EditorShape, FillableShape, ShapePad } from "#/drawing/schema.ts";
+import type {
+	EditorShape,
+	FillableShape,
+	ShapePad,
+	ShapeVia,
+} from "#/drawing/schema.ts";
 import { mergeBounds, shapeBounds } from "#/drawing/shape-geometry.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import {
@@ -20,6 +25,8 @@ const smdPadSize = { width: 1, height: 1.5 } as const;
 const throughHolePadSize = 1.7;
 const throughHoleDrill = 1;
 const drillShareOfPad = 0.6;
+const viaSize = 0.6;
+const viaDrill = 0.3;
 const emptyFootprintFit: Bounds = { minX: -2, minY: -1.5, maxX: 2, maxY: 1.5 };
 
 const lineWidth = 0.15;
@@ -34,6 +41,17 @@ export const isPad = (shape: EditorShape): shape is PadShape =>
 	(shape.kind === "rectangle" || shape.kind === "circle") &&
 	shape.pad !== undefined;
 
+export type ViaShape = FillableShape & { kind: "circle"; via: ShapeVia };
+
+export const isVia = (shape: EditorShape): shape is ViaShape =>
+	shape.kind === "circle" && shape.via !== undefined;
+
+export const isPadOrVia = (shape: EditorShape): shape is PadShape | ViaShape =>
+	isPad(shape) || isVia(shape);
+
+export const shapeDrill = (shape: EditorShape): number | undefined =>
+	isPad(shape) ? shape.pad.drill : isVia(shape) ? shape.via.drill : undefined;
+
 export const isFootprintShape = (shape: EditorShape) =>
 	footprintShapeKinds.has(shape.kind) &&
 	!(shape.kind === "text" && shape.electrical);
@@ -42,7 +60,7 @@ export const shapeLayer = (shape: EditorShape): FootprintLayer =>
 	shape.layer ?? layerWithoutOne;
 
 export function shapeLayers(shape: EditorShape): readonly FootprintLayer[] {
-	return isPad(shape) && shape.pad.type === "through-hole"
+	return (isPad(shape) && shape.pad.type === "through-hole") || isVia(shape)
 		? copperLayers
 		: [shapeLayer(shape)];
 }
@@ -153,6 +171,22 @@ export function createPad(
 			};
 }
 
+export const createVia = (id: number, center: Point): ViaShape => ({
+	id,
+	kind: "circle",
+	...center,
+	width: viaSize,
+	height: viaSize,
+	rotation: 0,
+	lineWidth,
+	filled: true,
+	layer: "F.Cu",
+	via: { drill: viaDrill },
+});
+
+export const editVia = (shape: ViaShape, drill: number): ViaShape =>
+	drill > 0 && drill < shape.width ? { ...shape, via: { drill } } : shape;
+
 export const padMinorSize = (pad: PadShape) => Math.min(pad.width, pad.height);
 
 function fitDrill(shape: PadShape): PadShape {
@@ -165,8 +199,11 @@ function fitDrill(shape: PadShape): PadShape {
 			};
 }
 
-export function fitPad<Shape extends EditorShape>(shape: Shape): Shape {
-	return isPad(shape) ? (fitDrill(shape) as Shape) : shape;
+export function fitHole<Shape extends EditorShape>(shape: Shape): Shape {
+	if (isPad(shape)) return fitDrill(shape) as Shape;
+	if (isVia(shape) && shape.via.drill >= shape.width)
+		return { ...shape, via: { drill: shape.width * drillShareOfPad } } as Shape;
+	return shape;
 }
 
 export type PadEdit =
@@ -219,7 +256,7 @@ export function setShapeLayer(
 	shape: EditorShape,
 	layer: FootprintLayer,
 ): EditorShape {
-	if (shape.kind === "symbol") return shape;
+	if (shape.kind === "symbol" || isVia(shape)) return shape;
 	if (isPad(shape))
 		return shape.pad.type === "smd" && copperLayers.includes(layer)
 			? { ...shape, layer }
