@@ -116,6 +116,17 @@ test("well-formed renderer arguments pass validation", () => {
 		]),
 		["/projects/controller", { shapes: [], symbols: [], symbolLibraries: [] }],
 	);
+	const footprint = { format: "ecad-footprint", id: "sot-23" };
+	assert.deepEqual(
+		parseIpcArguments(projectChannels.save, [
+			"/projects/controller",
+			{ shapes: [], symbols: [], footprints: [footprint] },
+		]),
+		[
+			"/projects/controller",
+			{ shapes: [], symbols: [], footprints: [footprint] },
+		],
+	);
 	assert.deepEqual(
 		parseIpcArguments(projectChannels.readAsset, [
 			"/projects/controller",
