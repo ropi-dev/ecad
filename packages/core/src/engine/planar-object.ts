@@ -1,6 +1,7 @@
 import {
 	AdditiveBlending,
 	AlwaysStencilFunc,
+	Box3,
 	BufferAttribute,
 	BufferGeometry,
 	type Camera,
@@ -15,6 +16,7 @@ import {
 	PlaneGeometry,
 	ReplaceStencilOp,
 	type Scene,
+	Sphere,
 	Vector3,
 	type WebGLRenderer,
 	ZeroStencilOp,
@@ -63,6 +65,41 @@ function placeSheet(sheet: Object3D, bounds: Bounds, z: number) {
 		1,
 	);
 }
+
+function setBounds(geometry: BufferGeometry, positions: Float32Array) {
+	if (!positions.length) return;
+	let minX = Infinity,
+		minY = Infinity,
+		minZ = Infinity,
+		maxX = -Infinity,
+		maxY = -Infinity,
+		maxZ = -Infinity;
+	for (let index = 0; index < positions.length; index += 3) {
+		const x = positions[index],
+			y = positions[index + 1],
+			z = positions[index + 2];
+		minX = Math.min(minX, x);
+		maxX = Math.max(maxX, x);
+		minY = Math.min(minY, y);
+		maxY = Math.max(maxY, y);
+		minZ = Math.min(minZ, z);
+		maxZ = Math.max(maxZ, z);
+	}
+	const box = new Box3(
+		new Vector3(minX, minY, minZ),
+		new Vector3(maxX, maxY, maxZ),
+	);
+	const center = box.getCenter(new Vector3());
+	let radiusSquared = 0;
+	for (let index = 0; index < positions.length; index += 3) {
+		const x = positions[index] - center.x,
+			y = positions[index + 1] - center.y,
+			z = positions[index + 2] - center.z;
+		radiusSquared = Math.max(radiusSquared, x * x + y * y + z * z);
+	}
+	geometry.boundingBox = box;
+	geometry.boundingSphere = new Sphere(center, Math.sqrt(radiusSquared));
+}
 const cameraPosition = new Vector3();
 const layerPosition = new Vector3();
 
@@ -101,6 +138,7 @@ export function createPlanarObject3D(
 			new BufferAttribute(compiled.positions, 3),
 		);
 		geometry.computeVertexNormals();
+		setBounds(geometry, compiled.positions);
 		const material = new MeshBasicMaterial({
 			color: source.color,
 			transparent: true,
@@ -121,6 +159,7 @@ export function createPlanarObject3D(
 				"position",
 				new BufferAttribute(walls.positions, 3),
 			);
+			setBounds(wallGeometry, walls.positions);
 			if (walls.normals)
 				wallGeometry.setAttribute(
 					"normal",
