@@ -79,6 +79,39 @@ const tones: Partial<
 	installed: { icon: "text-accent", dot: "bg-accent" },
 };
 
+function DownloadProgress({ progress }: { progress: number }) {
+	const done = Math.min(Math.max(progress, 0), 1);
+	return (
+		<svg
+			width={18}
+			height={18}
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth={2}
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+			data-testid="update-download-progress"
+		>
+			<circle cx={12} cy={12} r={10} className="opacity-25" />
+			<circle
+				cx={12}
+				cy={12}
+				r={10}
+				stroke="currentColor"
+				pathLength={100}
+				strokeDasharray={100}
+				strokeDashoffset={100 * (1 - done)}
+				transform="rotate(-90 12 12)"
+				className={`text-accent transition-[stroke-dashoffset] duration-300 motion-reduce:transition-none ${done === 0 ? "opacity-0" : ""}`}
+			/>
+			<path d="M12 8v8" />
+			<path d="m8 12 4 4 4-4" />
+		</svg>
+	);
+}
+
 function Changelog({ state }: { state: DesktopUpdateState }) {
 	const latest = state.latest;
 	if (!latest?.changes.length) return null;
@@ -152,6 +185,8 @@ export function UpdateButton({ updates }: { updates: DesktopUpdatesBridge }) {
 					aria-hidden="true"
 					className="animate-spin motion-reduce:animate-none"
 				/>
+			) : state.status === "downloading" ? (
+				<DownloadProgress progress={state.progress} />
 			) : busy ? (
 				<LoaderCircle
 					size={18}
