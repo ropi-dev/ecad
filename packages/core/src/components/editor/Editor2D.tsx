@@ -37,6 +37,7 @@ import {
 import { CanvasOverlay } from "#/components/editor/CanvasOverlay.tsx";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { CursorReadout } from "#/components/editor/CursorReadout.tsx";
+import type { CanvasProjection } from "#/components/editor/canvasView.ts";
 import {
 	EditorMessages,
 	useEditorMessages,
@@ -72,6 +73,7 @@ import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.t
 import { useSchematicSelectionSync } from "#/components/editor/useSchematicSelectionSync.ts";
 import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
+import { BoardOverlay } from "#/components/footprint/BoardOverlay.tsx";
 import { FootprintBoardView } from "#/components/footprint/FootprintBoardView.tsx";
 import {
 	FootprintLayerPanel,
@@ -158,7 +160,16 @@ function EditorCanvas({
 	const store = suppliedStore ?? project?.store ?? ownedStore;
 	const viewport = useEditorViewport(store, unit);
 	const { cameraView, gridStep } = viewport;
-	const ready = viewport.ready && board === "closed";
+	const [boardProjected, setBoardProjected] = useState(false);
+	const ready =
+		board === "closed" ? viewport.ready : board === "open" && boardProjected;
+	const projectBoard = useCallback(
+		(projection: CanvasProjection | null) => {
+			cameraView.setProjection(projection);
+			setBoardProjected(projection !== null);
+		},
+		[cameraView],
+	);
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
 		() => registerEditor?.(store, enableMcp && !isFootprint),
@@ -267,6 +278,19 @@ function EditorCanvas({
 		[sheetless, sheet, page.name, pageIndex, pages.length],
 	);
 	const shapes = editor.draft ?? pageShapes;
+	const boardShapes = useMemo(() => {
+		if (!isFootprint || !editor.draft) return drawing.shapes;
+		const draft = new Map(editor.draft.map((shape) => [shape.id, shape]));
+		const shown = new Set(resolved.shapes.map((shape) => shape.id));
+		const known = new Set(drawing.shapes.map((shape) => shape.id));
+		return [
+			...drawing.shapes.flatMap((shape) => {
+				const next = draft.get(shape.id);
+				return next ? [next] : shown.has(shape.id) ? [] : [shape];
+			}),
+			...editor.draft.filter((shape) => !known.has(shape.id)),
+		];
+	}, [isFootprint, editor.draft, drawing.shapes, resolved.shapes]);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
@@ -457,11 +481,9 @@ function EditorCanvas({
 		finishDrag(true);
 		finishWire();
 		clearPlacementPreview();
-		setTool("select");
 		setBoardError("");
-		session.select(new Set());
 		setBoard((current) => (current === "closed" ? "open" : "closing"));
-	}, [finishDrag, finishWire, clearPlacementPreview, session]);
+	}, [finishDrag, finishWire, clearPlacementPreview]);
 	const closeBoard = useCallback(() => setBoard("closed"), []);
 	const toggleLayer = (layer: FootprintLayer) => {
 		if (!layers.hidden.has(layer)) {
@@ -475,11 +497,10 @@ function EditorCanvas({
 			isFootprint
 				? {
 						flat: board !== "open",
-						empty: drawing.shapes.length === 0,
 						onToggleFlat: toggleBoard,
 					}
 				: undefined,
-		[isFootprint, board, drawing.shapes.length, toggleBoard],
+		[isFootprint, board, toggleBoard],
 	);
 
 	const editAttributes = useCallback(
@@ -622,7 +643,7 @@ function EditorCanvas({
 			className="relative flex h-dvh flex-col overflow-hidden"
 			{...clipboard}
 			onKeyDownCapture={(event) => {
-				if (board !== "closed") return;
+				if (board === "closing") return;
 				handleEditorShortcut(event, {
 					dialogOpen: creatingSymbol,
 					ready,
@@ -666,9 +687,9 @@ function EditorCanvas({
 					data-view={
 						isFootprint ? (board === "closed" ? "2d" : "3d") : undefined
 					}
-					{...(board === "closed" ? pointerHandlers : {})}
+					{...pointerHandlers}
 					onKeyDownCapture={(event) => {
-						if (board !== "closed") return;
+						if (board === "closing") return;
 						handleCanvasKeyDown(event, {
 							session,
 							gestures,
@@ -686,8 +707,10 @@ function EditorCanvas({
 				>
 					{board !== "closed" && (
 						<FootprintBoardView
-							shapes={drawing.shapes}
+							shapes={boardShapes}
 							hiddenLayers={layers.hidden}
+							activeLayer={layers.active}
+							onProjection={projectBoard}
 							cameraState={viewport.cameraState}
 							pixelsPerMmAt100={footprintPixelsPerMmAt100}
 							fitZoom={1.1}
@@ -733,6 +756,15 @@ function EditorCanvas({
 							interactionHint={
 								isFootprint ? footprintInteractionHint : editorInteractionHint
 							}
+						/>
+					)}
+					{board === "open" && (
+						<BoardOverlay
+							cameraView={cameraView}
+							selected={selected}
+							handles={handles}
+							preview={placementPreview}
+							marquee={marquee}
 						/>
 					)}
 					{board === "closed" && (

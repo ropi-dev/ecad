@@ -1,16 +1,58 @@
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import { screenToWorld, worldToScreen } from "#/engine/camera.ts";
 import { rulerSpacing } from "#/engine/ruler.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 
+export interface CanvasProjection {
+	width: number;
+	height: number;
+	scale: number;
+	tilted: boolean;
+	toWorld: (screen: Point, plane?: number) => Point | null;
+	toScreen: (point: Point, plane?: number) => Point | null;
+	planeOf: (shape: EditorShape) => number | undefined;
+	layerPlane: (layer?: FootprintLayer) => number;
+	nearestFirst: (planes: Iterable<number>) => number[];
+}
+
 export type CanvasView = ReturnType<typeof createCanvasView>;
+
+function flatProjection({
+	camera,
+	viewport: { width, height },
+}: Viewer2DSnapshot): CanvasProjection {
+	return {
+		width,
+		height,
+		scale: camera.scale,
+		tilted: false,
+		toWorld: (screen) => screenToWorld(screen, camera, width, height),
+		toScreen: (point) => worldToScreen(point, camera, width, height),
+		planeOf: () => 0,
+		layerPlane: () => 0,
+		nearestFirst: (planes) => [...planes],
+	};
+}
 
 export function createCanvasView(unit: LengthUnit = "mil") {
 	let snapshot: Viewer2DSnapshot | null = null;
+	let flat: CanvasProjection | null = null;
+	let tilted: CanvasProjection | null = null;
 	const listeners = new Set<() => void>();
+	const notify = () => {
+		for (const listener of listeners) listener();
+	};
+	const getProjection = () => tilted ?? flat;
 	return {
 		getSnapshot: () => snapshot,
-		getGridStep: () =>
-			snapshot ? rulerSpacing(snapshot.camera.scale, unit).minor : 0,
+		getProjection,
+		getGridStep: () => {
+			const projection = getProjection();
+			return projection ? rulerSpacing(projection.scale, unit).minor : 0;
+		},
 		subscribe(listener: () => void) {
 			listeners.add(listener);
 			return () => {
@@ -28,7 +70,13 @@ export function createCanvasView(unit: LengthUnit = "mil") {
 			)
 				return;
 			snapshot = value;
-			for (const listener of listeners) listener();
+			flat = flatProjection(value);
+			notify();
+		},
+		setProjection(value: CanvasProjection | null) {
+			if (value === tilted) return;
+			tilted = value;
+			notify();
 		},
 	};
 }

@@ -339,6 +339,7 @@ test("dragging out a shape keeps the layer and stroke it started with", () => {
 			canvas: {} as HTMLCanvasElement,
 			start: { x: 0, y: 0 },
 			startScreen: { x: 0, y: 0 },
+			plane: 0,
 			previousSelection: new Set(),
 			mode: "draw",
 			previousChild: null,

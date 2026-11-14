@@ -30,6 +30,7 @@ export function GerberViewer({
 	onFlatChange,
 	centered = true,
 	controls,
+	onPlace,
 	...props
 }: Omit<
 	Viewer2DProps,
@@ -47,6 +48,7 @@ export function GerberViewer({
 	onFlatChange?: (flat: boolean) => void;
 	centered?: boolean;
 	controls?: ReactNode;
+	onPlace?: (group: Object3D) => void;
 }) {
 	const [ownFlat, setOwnFlat] = useState(true);
 	const flat = controlledFlat ?? ownFlat;
@@ -131,8 +133,9 @@ export function GerberViewer({
 				if (centered) group.position.set(-center.x, -center.y, -center.z);
 				else group.position.z = -bounds.max.z;
 			}
+			onPlace?.(group);
 		},
-		[scene, geometryScene, focusedLayerId, holes, centered],
+		[scene, geometryScene, focusedLayerId, holes, centered, onPlace],
 	);
 	const toggle = geometryScene.length > 0 && (
 		<TooltipButton
@@ -155,7 +158,9 @@ export function GerberViewer({
 			{...props}
 			scene={geometryScene}
 			updateScene={updateScene}
-			orbit={!flat && geometryScene.length > 0}
+			orbit={
+				!flat && (geometryScene.length > 0 || controlledFlat !== undefined)
+			}
 			gestureOrbit={controlledFlat === undefined && geometryScene.length > 0}
 			onOrbit={(orbiting) => setFlat(!orbiting)}
 			extraControls={controls ?? toggle}

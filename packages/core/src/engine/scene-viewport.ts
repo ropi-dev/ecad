@@ -31,7 +31,11 @@ import {
 } from "#/engine/navigation.ts";
 import { createPanCache } from "#/engine/pan-cache.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene.ts";
-import { createSceneHover, type SceneTarget } from "#/engine/scene-hover.ts";
+import {
+	createSceneHover,
+	type SceneHover,
+	type SceneTarget,
+} from "#/engine/scene-hover.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 import {
 	createPlaneGrid,
@@ -58,6 +62,22 @@ const TILTED_VIEW = new Quaternion().setFromRotationMatrix(
 export const MIN_PHYSICAL_ZOOM = 0.01;
 export const MAX_PHYSICAL_ZOOM = 100;
 
+export interface ViewProjection {
+	width: number;
+	height: number;
+	scale: number;
+	fromAbove: boolean;
+	toScreen: (point: {
+		x: number;
+		y: number;
+		z: number;
+	}) => { x: number; y: number } | null;
+	toPlane: (
+		screen: { x: number; y: number },
+		z: number,
+	) => { x: number; y: number } | null;
+}
+
 export interface SceneSelection {
 	name: string;
 	region?: number;
@@ -78,6 +98,7 @@ export interface SceneViewportOptions {
 	orbit?: boolean;
 	gestureOrbit?: boolean;
 	antialias?: boolean;
+	liveScene?: boolean;
 	ariaLabel?: string;
 	canvasClassName?: string;
 	updateScene?: (object: Object3D) => void;
@@ -87,6 +108,7 @@ export interface SceneViewportOptions {
 	onOrientation?: (rotation: Quaternion) => void;
 	onOrbit?: (orbiting: boolean) => void;
 	onZoom?: (zoom: number) => void;
+	onProjection?: (projection: ViewProjection) => void;
 	onReady?: (ready: boolean) => void;
 	onError?: (message: string) => void;
 }
@@ -95,6 +117,7 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;
 	capture: () => Promise<Blob>;
 	update: (update: (object: Object3D) => void) => void;
+	replace: (scene: ViewerScene, update?: (object: Object3D) => void) => void;
 	resize: (width: number, height: number) => void;
 	setPhysicalScale: (scale: number | null) => void;
 	/** Shows a dot grid under a top view, or hides it with null. */
@@ -122,6 +145,7 @@ export function createSceneViewport(
 		orbit = false,
 		gestureOrbit = false,
 		antialias = true,
+		liveScene = false,
 		ariaLabel = "3D model",
 		canvasClassName = "",
 		updateScene,
@@ -131,6 +155,7 @@ export function createSceneViewport(
 		onOrientation,
 		onOrbit,
 		onZoom,
+		onProjection,
 		onReady,
 		onError,
 	}: SceneViewportOptions,
@@ -183,21 +208,22 @@ export function createSceneViewport(
 				}
 			},
 		);
-		const content = lifecycle.acquire(
-			() => createSceneDisplay(sourceScene),
-			(display) => display.dispose(),
-		);
-		const group = content.object;
+		let content = createSceneDisplay(sourceScene);
+		lifecycle.addFinalizer(() => content.dispose());
+		let group = content.object;
 		// Only a locked top view pans without changing scale or orientation.
 		const panCache =
-			cameraMode === "top" && !content.hasOutlines
+			cameraMode === "top" && !content.hasOutlines && !liveScene
 				? lifecycle.acquire(
 						() => createPanCache(output),
 						(cache) => cache.dispose(),
 					)
 				: null;
 		const batcher =
-			cameraMode === "top" && !content.hasOutlines && !selectionEnabled
+			cameraMode === "top" &&
+			!content.hasOutlines &&
+			!selectionEnabled &&
+			!liveScene
 				? lifecycle.acquire(createDrawBatcher, (batcher) => batcher.dispose())
 				: null;
 		if (batcher) {
@@ -377,15 +403,11 @@ export function createSceneViewport(
 		let ready = false;
 		let pointer: Vector2 | null = null;
 		const raycaster = new Raycaster();
-		const hover = lifecycle.acquire(
-			() => createSceneHover(content.entries),
-			(hover) => hover.dispose(),
-		);
+		let hover = createSceneHover(content.entries);
+		lifecycle.addFinalizer(() => hover.dispose());
 		scene.add(hover.object);
-		const selection = lifecycle.acquire(
-			() => createSceneHover(content.entries, "selection"),
-			(selection) => selection.dispose(),
-		);
+		let selection = createSceneHover(content.entries, "selection");
+		lifecycle.addFinalizer(() => selection.dispose());
 		scene.add(selection.object);
 		let selected: SceneTarget | null = null;
 		let highlighted = 0;
@@ -495,6 +517,7 @@ export function createSceneViewport(
 						}
 					}
 				}
+				reportProjection();
 				onOrientation?.(camera.quaternion);
 				const currentZoom =
 					referenceDistance() / (visibleHeight() / (2 * halfFovTangent));
@@ -556,6 +579,46 @@ export function createSceneViewport(
 					started,
 				);
 			}
+		};
+		let projectionKey = "";
+		const reportProjection = () => {
+			if (!onProjection) return;
+			const width = Math.max(element.clientWidth, 1);
+			const height = Math.max(element.clientHeight, 1);
+			const key = [
+				...camera.matrixWorld.elements,
+				...camera.projectionMatrix.elements,
+				width,
+				height,
+			].join();
+			if (key === projectionKey) return;
+			projectionKey = key;
+			const view = camera.clone();
+			const ray = new Raycaster();
+			const plane = new Plane(new Vector3(0, 0, 1));
+			onProjection({
+				width,
+				height,
+				scale: height / visibleHeight(),
+				fromAbove: camera.getWorldDirection(new Vector3()).z < 0,
+				toScreen: ({ x, y, z }) => {
+					const point = new Vector3(x, y, z).project(view);
+					if (!Number.isFinite(point.x) || Math.abs(point.z) > 1) return null;
+					return {
+						x: ((point.x + 1) / 2) * width,
+						y: ((1 - point.y) / 2) * height,
+					};
+				},
+				toPlane: ({ x, y }, z) => {
+					ray.setFromCamera(
+						new Vector2((x / width) * 2 - 1, 1 - (y / height) * 2),
+						view,
+					);
+					plane.constant = -z;
+					const hit = ray.ray.intersectPlane(plane, new Vector3());
+					return hit ? { x: hit.x, y: hit.y } : null;
+				},
+			});
 		};
 		const selectionBounds = (target: SceneTarget) => {
 			const box = new Box3();
@@ -1053,6 +1116,32 @@ export function createSceneViewport(
 				// The canvas now lacks the grid, so the next frame redraws it.
 				schedule();
 				return capturePng(canvas);
+			},
+			replace: (next, update) => {
+				const display = createSceneDisplay(next);
+				let nextHover: SceneHover | undefined;
+				let nextSelection: SceneHover;
+				try {
+					nextHover = createSceneHover(display.entries);
+					nextSelection = createSceneHover(display.entries, "selection");
+				} catch (error) {
+					nextHover?.dispose();
+					display.dispose();
+					throw error;
+				}
+				scene.remove(group, hover.object, selection.object);
+				content.dispose();
+				hover.dispose();
+				selection.dispose();
+				content = display;
+				group = display.object;
+				hover = nextHover;
+				selection = nextSelection;
+				scene.add(group, hover.object, selection.object);
+				if (selected) clearSelection();
+				update?.(group);
+				measureBoard();
+				schedule();
 			},
 			update: (update) => {
 				update(group);

@@ -14,6 +14,7 @@ import type {
 	PlanarObject,
 	SceneObject,
 } from "#/engine/types.ts";
+import { placeBoardLayers } from "#/formats/gerber/board-stack.ts";
 
 const boardMargin = 1;
 const boardEdgeWidth = 0.1;
@@ -226,6 +227,31 @@ export function footprintBoard(shapes: readonly EditorShape[]): PlanarObject[] {
 			: []),
 	];
 }
+
+let layerHeights: Map<FootprintLayer, number> | undefined;
+
+export function boardLayerHeight(layer: FootprintLayer): number {
+	layerHeights ??= new Map(
+		placeBoardLayers(
+			gerberFileFunctions.map(([name, fileFunction]) => ({
+				name,
+				metadata: { ".FileFunction": fileFunction.split(",") },
+			})),
+		).map((placement, index) => [gerberFileFunctions[index][0], placement.z]),
+	);
+	return (
+		layerHeights.get(layer) ??
+		layerHeights.get(layer.startsWith("B.") ? "B.SilkS" : "F.SilkS") ??
+		0
+	);
+}
+
+export const boardShapeLayers = (
+	shape: EditorShape,
+): readonly FootprintLayer[] =>
+	shapeGeometry(shape)
+		? shapeLayers(shape).filter((layer) => boardLayers.has(layer))
+		: [];
 
 export function boardObjectVisible(
 	id: string,

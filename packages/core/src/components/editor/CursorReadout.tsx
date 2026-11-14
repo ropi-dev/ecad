@@ -7,7 +7,6 @@ import {
 } from "react";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
 import { useCursorPoint } from "#/components/editor/useCursorPoint.ts";
-import { screenToWorld } from "#/engine/camera.ts";
 
 export function CursorReadout({
 	ready,
@@ -21,21 +20,13 @@ export function CursorReadout({
 	canvasArea: RefObject<HTMLElement | null>;
 }) {
 	const [element, setElement] = useState<HTMLDivElement | null>(null);
-	const view = useSyncExternalStore(
+	const projection = useSyncExternalStore(
 		cameraView.subscribe,
-		cameraView.getSnapshot,
-		cameraView.getSnapshot,
+		cameraView.getProjection,
+		cameraView.getProjection,
 	);
 	const point = useCursorPoint(canvasArea);
-	const cursor =
-		point && view
-			? screenToWorld(
-					point,
-					view.camera,
-					view.viewport.width,
-					view.viewport.height,
-				)
-			: null;
+	const cursor = point && projection ? projection.toWorld(point) : null;
 	const [fits, setFits] = useState(true);
 	useLayoutEffect(() => {
 		const area = canvasArea.current;

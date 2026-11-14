@@ -35,6 +35,7 @@ import {
 	createSceneViewport,
 	type SceneSelection,
 	type SceneViewportRuntime,
+	type ViewProjection,
 } from "#/engine/scene-viewport.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
@@ -70,6 +71,8 @@ export interface SceneViewportProps {
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
 	updateScene?: (object: Object3D) => void;
+	liveScene?: boolean;
+	onProjection?: (projection: ViewProjection) => void;
 	ref?: Ref<SceneViewportHandle>;
 	onReady?: (ready: boolean) => void;
 	onError?: (message: string) => void;
@@ -104,6 +107,8 @@ export function SceneViewport({
 	rulerUnit,
 	onChange,
 	updateScene,
+	liveScene = false,
+	onProjection,
 	ref,
 	onReady,
 	onError,
@@ -240,10 +245,26 @@ export function SceneViewport({
 		runtime.current?.setProjection(activeProjection);
 	}, [activeProjection]);
 	const sceneUpdate = useRef(updateScene);
+	const latestScene = useRef(sourceScene);
 	useEffect(() => {
 		sceneUpdate.current = updateScene;
-		if (updateScene) runtime.current?.update(updateScene);
-	}, [updateScene]);
+		const replaced = latestScene.current !== sourceScene;
+		latestScene.current = sourceScene;
+		const viewport = runtime.current;
+		if (!viewport) return;
+		if (replaced && liveScene) {
+			try {
+				viewport.replace(sourceScene, updateScene);
+			} catch (error) {
+				reportError(errorMessage(error, "Unable to draw this scene."));
+			}
+		} else if (updateScene) viewport.update(updateScene);
+	}, [updateScene, sourceScene, liveScene]);
+	const reportProjection = useEffectEvent((projection: ViewProjection) =>
+		onProjection?.(projection),
+	);
+	const createdScene = liveScene ? null : sourceScene;
+	const projecting = onProjection !== undefined;
 	useEffect(() => {
 		const element = host.current;
 		if (!element) return;
@@ -251,12 +272,13 @@ export function SceneViewport({
 		setSelectionInfo(null);
 		setAttributesOpen(false);
 		let viewport: SceneViewportRuntime | undefined;
+		const scene = createdScene ?? latestScene.current;
 		try {
 			viewport = measurePerformance(
 				"renderer.initialize",
 				() =>
 					createSceneViewport(element, {
-						scene: sourceScene,
+						scene,
 						cameraMode,
 						projection: currentProjection.current,
 						lockProjection,
@@ -264,7 +286,7 @@ export function SceneViewport({
 						pixelsPerMmAt100,
 						initialCamera:
 							cameraState?.camera ??
-							(ownCamera.current.scene === sourceScene
+							(ownCamera.current.scene === scene
 								? ownCamera.current.camera
 								: undefined),
 						getFitBounds: readFitBounds,
@@ -286,7 +308,7 @@ export function SceneViewport({
 						onChange: (snapshot) => {
 							ownCamera.current = {
 								camera: snapshot.camera,
-								scene: sourceScene,
+								scene,
 							};
 							reportChange(snapshot);
 						},
@@ -298,10 +320,12 @@ export function SceneViewport({
 						onOrientation: (rotation) => axes.current?.update(rotation),
 						onOrbit: reportOrbit,
 						onZoom: reportZoom,
+						onProjection: projecting ? reportProjection : undefined,
+						liveScene,
 						onReady: reportReady,
 						onError: reportError,
 					}),
-				{ objects: sourceScene.length },
+				{ objects: scene.length },
 			);
 			runtime.current = viewport;
 			configureDisplay(viewport);
@@ -316,7 +340,9 @@ export function SceneViewport({
 			viewport?.dispose();
 		};
 	}, [
-		sourceScene,
+		createdScene,
+		liveScene,
+		projecting,
 		cameraMode,
 		ariaLabel,
 		interactionHint,

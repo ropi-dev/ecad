@@ -61,9 +61,7 @@ async function drag(
 	await page.mouse.up();
 }
 
-test("a footprint takes pads and layer graphics, hides layers and turns into a 3D board", async ({
-	page,
-}) => {
+async function createFootprint(page: Page) {
 	await page.goto("/tests/browser/projects.html");
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Workspace home", exact: true })
@@ -82,10 +80,16 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"Footprint editor · Test part",
 	);
+}
+
+test("a footprint takes pads and layer graphics, hides layers and turns into a 3D board", async ({
+	page,
+}) => {
+	await createFootprint(page);
 	const canvas = page.getByRole("application", { name: "Footprint editor" });
 	await expect(canvas.locator("canvas")).toBeVisible();
 	const flat = page.getByRole("button", { name: "2D", exact: true });
-	await expect(flat).toBeDisabled();
+	await expect(flat).toBeEnabled();
 
 	await (await toolbarButton(page, "Surface mount pad")).click();
 	for (const x of [-1, 1]) {
@@ -186,7 +190,7 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	).toBeVisible();
 	await expect(
 		page.getByRole("button", { name: "Pads", exact: true }),
-	).toBeDisabled();
+	).toBeEnabled();
 	await expect(
 		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
 	).toHaveCount(0);
@@ -207,4 +211,141 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 		page.getByRole("button", { name: "Pads", exact: true }),
 	).toBeEnabled();
 	expect((await documentState(page)).editorShapes).toHaveLength(4);
+});
+
+test("footprint items are selected, moved and placed on their layer in the 3D view", async ({
+	page,
+}) => {
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await createFootprint(page);
+	const canvas = page.getByRole("application", { name: "Footprint editor" });
+	await expect(canvas.locator("canvas")).toBeVisible();
+	await (await toolbarButton(page, "Surface mount pad")).click();
+	for (const x of [-1, 1]) {
+		const point = await screenPointOfMillimetres(page, x, 0);
+		await page.mouse.move(point.x, point.y);
+		await page.mouse.click(point.x, point.y);
+	}
+	await page.keyboard.press("Escape");
+	await page.getByRole("button", { name: "Draw on Front silkscreen" }).click();
+	await page.getByRole("button", { name: "Shapes", exact: true }).click();
+	await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+	await drag(page, { x: -2, y: -1.5 }, { x: 2, y: 1.5 });
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes.length)
+		.toBe(3);
+	await page.getByRole("button", { name: "Draw on Front copper" }).click();
+	const firstPad = await screenPointOfMillimetres(page, -1, 0);
+	await page.mouse.click(firstPad.x, firstPad.y);
+
+	const flat = page.getByRole("button", { name: "2D", exact: true });
+	await flat.click();
+	const area = page.locator("[data-view]");
+	await expect(area).toHaveAttribute("data-view", "3d");
+	const outline = page.getByTestId("board-selection");
+	await expect(outline).toHaveCount(1);
+	const [first, second] = (await documentState(page)).editorShapes;
+	await expect(outline).toHaveAttribute("data-shape-id", String(first.id));
+	const centre = async () => {
+		const box = await outline.boundingBox();
+		if (!box) throw new Error("The selection outline has no box.");
+		return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	};
+	let start = await centre();
+	await expect.poll(async () => (await centre()).x).toBe(start.x);
+	start = await centre();
+
+	const board = page.getByRole("application", { name: "Footprint board" });
+	const boardBox = await board.boundingBox();
+	if (!boardBox) throw new Error("The board view has no box.");
+	await page.mouse.click(boardBox.x + boardBox.width - 60, boardBox.y + 60);
+	await expect(outline).toHaveCount(0);
+	await page.mouse.click(start.x, start.y);
+	await expect(outline).toHaveCount(1);
+	await expect(outline).toHaveAttribute("data-shape-id", String(first.id));
+
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(start.x - 30, start.y, { steps: 4 });
+	await page.mouse.move(start.x - 60, start.y, { steps: 4 });
+	await page.mouse.up();
+	await expect
+		.poll(async () => {
+			const pad = (await documentState(page)).editorShapes[0];
+			return [pad.id, pad.layer, pad.x < -1.2];
+		})
+		.toEqual([first.id, "F.Cu", true]);
+	await expect
+		.poll(async () => {
+			const end = await centre();
+			return Math.hypot(end.x - (start.x - 60), end.y - start.y);
+		})
+		.toBeLessThan(12);
+	const moved = (await documentState(page)).editorShapes;
+	expect(moved[1]).toEqual(second);
+	expect(moved[2].x).toBe(0);
+
+	await (await toolbarButton(page, "Surface mount pad")).click();
+	await page.mouse.move(start.x + 40, start.y + 60);
+	await expect(page.getByTestId("board-placement-preview")).toBeVisible();
+	await page.mouse.click(start.x + 40, start.y + 60);
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(async () =>
+			(await documentState(page)).editorShapes
+				.slice(3)
+				.map((shape: { pad?: { number: string }; layer?: string }) => [
+					shape.pad?.number,
+					shape.layer,
+				]),
+		)
+		.toEqual([["3", "F.Cu"]]);
+
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes.length)
+		.toBe(3);
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "2d");
+});
+
+test("an empty footprint opens an empty 3D view that takes its first pad", async ({
+	page,
+}) => {
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await createFootprint(page);
+	const flat = page.getByRole("button", { name: "2D", exact: true });
+	await flat.click();
+	const area = page.locator("[data-view]");
+	await expect(area).toHaveAttribute("data-view", "3d");
+	const board = page.getByRole("application", { name: "Footprint board" });
+	await expect(board).toBeVisible();
+	const pads = page.getByRole("button", { name: "Pads", exact: true });
+	await expect(pads).toBeEnabled();
+	const box = await board.boundingBox();
+	if (!box) throw new Error("The board view has no box.");
+	await (await toolbarButton(page, "Surface mount pad")).click();
+	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	await page.mouse.move(centre.x, centre.y);
+	await expect(page.getByTestId("board-placement-preview")).toBeVisible();
+	await page.mouse.click(centre.x, centre.y);
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(async () =>
+			(await documentState(page)).editorShapes.map(
+				(shape: { pad?: { number: string }; layer?: string }) => [
+					shape.pad?.number,
+					shape.layer,
+				],
+			),
+		)
+		.toEqual([["1", "F.Cu"]]);
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes.length)
+		.toBe(0);
+	await expect(area).toHaveAttribute("data-view", "3d");
+	await expect(board).toBeVisible();
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "2d");
 });

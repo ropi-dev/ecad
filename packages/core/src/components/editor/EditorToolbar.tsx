@@ -104,7 +104,7 @@ interface EditorToolbarProps {
 	restoreHistory: (program: DrawingCommand<unknown>) => void;
 	tool: Tool;
 	sheetless: boolean;
-	footprint?: { flat: boolean; empty: boolean; onToggleFlat: () => void };
+	footprint?: { flat: boolean; onToggleFlat: () => void };
 	symbolLibrary: ComponentProps<typeof SymbolPicker>["library"];
 	finishDrag: (cancel?: boolean) => void;
 	finishWire: () => void;
@@ -333,8 +333,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				<>
 					{toggle({
 						className: `${viewControlButtonClassName} px-2.5`,
-						"aria-pressed": footprint.empty ? undefined : footprint.flat,
-						disabled: footprint.empty,
+						"aria-pressed": footprint.flat,
 						tooltip: footprint.flat
 							? "Show layers in 3D"
 							: "Show the flat top view",

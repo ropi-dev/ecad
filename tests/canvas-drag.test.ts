@@ -19,6 +19,7 @@ function drag(overrides: Partial<CanvasDrag>): CanvasDrag {
 		canvas: {} as HTMLCanvasElement,
 		start: { x: 0, y: 0 },
 		startScreen: { x: 100, y: 100 },
+		plane: 0,
 		previousSelection: new Set(),
 		mode: "move",
 		previousChild: null,
@@ -191,6 +192,8 @@ test("dragging right selects enclosed shapes; dragging left selects crossed shap
 		marquee: {
 			start: { x: 100, y: 100 },
 			end: { x: 300, y: 50 },
+			area: { minX: -5, maxX: 45, minY: -5, maxY: 15 },
+			plane: 0,
 			mode: "window",
 			selection: "replace",
 		},
