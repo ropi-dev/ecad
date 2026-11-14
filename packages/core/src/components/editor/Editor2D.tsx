@@ -78,8 +78,8 @@ import {
 	useFootprintLayers,
 } from "#/components/footprint/FootprintLayerPanel.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
-import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
+import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
@@ -769,7 +769,10 @@ function EditorCanvas({
 						/>
 					)}
 					{scene && !isFootprint && (
-						<OrthographicViewer2D
+						<Viewer2D
+							projection="orthographic"
+							lockProjection
+							focusOutline={false}
 							rulerUnit={unit}
 							scene={scene}
 							cameraState={viewport.cameraState}

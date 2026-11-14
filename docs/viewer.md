@@ -2,7 +2,7 @@
 
 ## Schematic editor
 
-Open `/editor`, or choose **Schematic editor** from either viewer. The editor uses `OrthographicViewer2D`, which reuses the shared viewport, rulers, grid, pan, zoom, and fit controls with a locked orthographic camera. The sheet border is landscape A3, 420 × 297 mm, with the origin at its lower-left corner.
+Open `/editor`, or choose **Schematic editor** from either viewer. The editor uses `Viewer2D`, the same viewer as Gerber files and the footprint editor, with a locked orthographic camera and no focus outline on the canvas. The sheet border is landscape A3, 420 × 297 mm, with the origin at its lower-left corner.
 
 The sheet has a KiCad-style double frame, numbered columns, lettered rows, and a bottom-right title block. Outside the physical sheet edge, the grid uses 30% of its inside opacity; the boundary follows sheet size, pan, and zoom. `Editor2D` accepts a `sheet` prop with `width` and `height` in millimetres and an optional `name`, for example `<Editor2D sheet={{ width: 210, height: 297, name: "A4" }} />`. Changing these values rebuilds the worksheet and fit bounds without changing the drawing objects. Zones divide the available width and height evenly; margins, coordinate bands, and the title block shrink to fit small sheets. Custom sizes display their dimensions when no name is supplied. The title, file, date, and revision fields are blank until document metadata is added.
 
@@ -14,7 +14,7 @@ Use the **Symbols** toolbar button to open the symbol library. Choose **Resistor
 
 The grid has 10 × 10 small cells per major square. Ruler labels remain at the major intervals; snapping is always on and follows the finer cells as zoom changes. The editor has no snap toggle.
 
-`packages/core/src/components/editor` owns the shapes and their graphics resources. Symbol instances own local child geometry and independent attributes; built-in definitions live in `symbols.ts`. Symbol children are excluded from standalone wire merging and junction movement. Edits update the existing scene without resetting the camera. `OrthographicViewer2D` also accepts a general `ViewerScene` and the same reset, zoom, and pan handle as `Viewer2D`.
+`packages/core/src/components/editor` owns the shapes and their graphics resources. Symbol instances own local child geometry and independent attributes; built-in definitions live in `symbols.ts`. Symbol children are excluded from standalone wire merging and junction movement. Edits update the existing scene without resetting the camera.
 
 ## Viewing Gerber files
 
