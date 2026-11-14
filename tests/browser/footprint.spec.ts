@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
 	openProjectFiles,
@@ -61,7 +62,37 @@ async function drag(
 	await page.mouse.up();
 }
 
-test("a footprint takes pads and layer graphics, hides layers and turns into a 3D board", async ({
+async function boardSelection(page: Page) {
+	return page.evaluate(() => {
+		const area = (
+			document.querySelector("[data-view]") as HTMLElement
+		).getBoundingClientRect();
+		return Object.fromEntries(
+			[
+				...document.querySelectorAll<SVGPolygonElement>(
+					'[data-testid="board-selection"]',
+				),
+			].map((outline) => {
+				const corners = (outline.getAttribute("points") ?? "")
+					.split(" ")
+					.map((corner) => corner.split(",").map(Number));
+				return [
+					Number(outline.dataset.shapeId),
+					{
+						x:
+							area.left +
+							corners.reduce((sum, [x]) => sum + x, 0) / corners.length,
+						y:
+							area.top +
+							corners.reduce((sum, [, y]) => sum + y, 0) / corners.length,
+					},
+				];
+			}),
+		);
+	});
+}
+
+test("a footprint takes pads and layer graphics, hides layers and is edited as a 3D board", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
@@ -85,7 +116,7 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	const canvas = page.getByRole("application", { name: "Footprint editor" });
 	await expect(canvas.locator("canvas")).toBeVisible();
 	const flat = page.getByRole("button", { name: "2D", exact: true });
-	await expect(flat).toBeDisabled();
+	await expect(flat).toBeEnabled();
 
 	await (await toolbarButton(page, "Surface mount pad")).click();
 	for (const x of [-1, 1]) {
@@ -185,12 +216,72 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 		page.getByRole("application", { name: "Footprint board" }),
 	).toBeVisible();
 	await expect(
-		page.getByRole("button", { name: "Pads", exact: true }),
-	).toBeDisabled();
-	await expect(
 		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
 	).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "Pads", exact: true }),
+	).toBeEnabled();
 	const boardCanvas = await area.locator("canvas").elementHandle();
+	const view = required(await area.boundingBox());
+
+	// A rectangle dragged to the left selects whatever it touches.
+	await page.mouse.move(view.x + view.width - 80, view.y + 70);
+	await page.mouse.down();
+	await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2, {
+		steps: 3,
+	});
+	await page.mouse.move(view.x + 330, view.y + view.height - 110, { steps: 3 });
+	await page.mouse.up();
+	const selection = page.locator('[data-testid="board-selection"]');
+	await expect(selection).toHaveCount(4);
+	const [throughHole] = (await documentState(page)).editorShapes;
+	const outlines = await boardSelection(page);
+	await page.keyboard.press("Escape");
+	await expect(selection).toHaveCount(0);
+
+	const grip = required(outlines[throughHole.id]);
+	await page.mouse.click(grip.x, grip.y);
+	await expect(selection).toHaveCount(1);
+	await expect(selection).toHaveAttribute(
+		"data-shape-id",
+		String(throughHole.id),
+	);
+	await expect(page.getByTestId("resize-handle")).not.toHaveCount(0);
+	await page.mouse.move(grip.x, grip.y);
+	await page.mouse.down();
+	await page.mouse.move(grip.x - 40, grip.y - 10, { steps: 3 });
+	await page.mouse.move(grip.x - 90, grip.y - 30, { steps: 3 });
+	await page.mouse.up();
+	await expect(selection).toHaveAttribute(
+		"data-shape-id",
+		String(throughHole.id),
+	);
+	await expect
+		.poll(async () => {
+			const moved = (await documentState(page)).editorShapes[0];
+			return moved.x !== throughHole.x || moved.y !== throughHole.y;
+		})
+		.toBe(true);
+	const moved = (await documentState(page)).editorShapes[0];
+	for (const coordinate of [moved.x, moved.y])
+		expect(
+			Math.abs(coordinate * 10 - Math.round(coordinate * 10)),
+		).toBeLessThan(1e-6);
+
+	await (await toolbarButton(page, "Surface mount pad")).click();
+	await page.mouse.move(view.x + view.width - 200, view.y + view.height / 2);
+	await expect(page.locator('[data-testid="board-placement"]')).toHaveCount(1);
+	await page.mouse.click(view.x + view.width - 200, view.y + view.height / 2);
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes.length)
+		.toBe(5);
+	expect((await documentState(page)).editorShapes[4].pad.type).toBe("smd");
+	expect(
+		await area
+			.locator("canvas")
+			.evaluate((canvas, before) => canvas === before, boardCanvas),
+	).toBe(true);
 	await page.getByRole("button", { name: "Hide Front silkscreen" }).click();
 	await expect(
 		page.getByRole("button", { name: "Show Front silkscreen" }),
@@ -206,5 +297,5 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	await expect(
 		page.getByRole("button", { name: "Pads", exact: true }),
 	).toBeEnabled();
-	expect((await documentState(page)).editorShapes).toHaveLength(4);
+	expect((await documentState(page)).editorShapes).toHaveLength(5);
 });

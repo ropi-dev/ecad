@@ -151,8 +151,44 @@ test(
 		for (let round = 0; round < 3; round++) {
 			await interaction(page, "footprint.board-open", async () => {
 				await flat.click();
+				await page.mouse.move(centre.x, centre.y);
 				await expect(area).toHaveAttribute("data-view", "3d");
 				await expect(flat).toHaveAttribute("aria-pressed", "false");
+			});
+			await expect(
+				page.getByRole("button", { name: "Select", exact: true }),
+			).toBeEnabled();
+			// The opening turn is over once the axis indicator rests.
+			await page.evaluate(
+				() =>
+					new Promise<void>((resolve) => {
+						let last = "";
+						let still = 0;
+						const check = () => {
+							const axes =
+								document.querySelector('[aria-label="XYZ axis orientation"]')
+									?.innerHTML ?? "";
+							still = axes && axes === last ? still + 1 : 0;
+							last = axes;
+							if (still >= 6) resolve();
+							else requestAnimationFrame(check);
+						};
+						check();
+					}),
+			);
+			// The camera turns about the view centre, where the first round put a pad.
+			await interaction(page, "footprint.board-move-pad", async () => {
+				for (const [x, y] of [
+					[60, -30],
+					[0, 0],
+				]) {
+					await page.mouse.down();
+					await page.mouse.move(centre.x + x, centre.y + y, { steps: 6 });
+					await page.mouse.up();
+				}
+				await expect(
+					page.locator('[data-testid="board-selection"]'),
+				).toHaveCount(1);
 			});
 			await interaction(page, "footprint.board-close", async () => {
 				await flat.click();

@@ -28,7 +28,8 @@ export function GerberViewer({
 	focusedLayerId,
 	flat: controlledFlat,
 	onFlatChange,
-	centered = true,
+	surfaceZ,
+	placeLayers = placeBoardLayers,
 	controls,
 	...props
 }: Omit<
@@ -45,7 +46,12 @@ export function GerberViewer({
 	focusedLayerId?: string;
 	flat?: boolean;
 	onFlatChange?: (flat: boolean) => void;
-	centered?: boolean;
+	/**
+	 * The board height that lies on the grid plane. The board then keeps its
+	 * own coordinates instead of centring on the grid origin.
+	 */
+	surfaceZ?: number;
+	placeLayers?: typeof placeBoardLayers;
 	controls?: ReactNode;
 }) {
 	const [ownFlat, setOwnFlat] = useState(true);
@@ -93,7 +99,7 @@ export function GerberViewer({
 				(object) =>
 					object.id === focusedLayerId && object.visible && object.opacity > 0,
 			);
-			const placements = placeBoardLayers(scene);
+			const placements = placeLayers(scene);
 			const sheet = boardOutline(scene);
 			group.children.forEach((mesh, index) => {
 				const source = geometryScene[index];
@@ -122,17 +128,20 @@ export function GerberViewer({
 					placement && { ...placement, sheet, holes },
 				);
 			});
+			group.position.set(0, 0, 0);
+			if (surfaceZ !== undefined) {
+				group.position.z = -surfaceZ;
+				return;
+			}
 			// Center the displayed board on the grid origin without changing source coordinates.
 			// Include every layer so visibility and focus changes cannot move the board.
-			group.position.set(0, 0, 0);
 			const bounds = new Box3().setFromObject(group);
 			if (!bounds.isEmpty()) {
 				const center = bounds.getCenter(new Vector3());
-				if (centered) group.position.set(-center.x, -center.y, -center.z);
-				else group.position.z = -bounds.max.z;
+				group.position.set(-center.x, -center.y, -center.z);
 			}
 		},
-		[scene, geometryScene, focusedLayerId, holes, centered],
+		[scene, geometryScene, focusedLayerId, holes, surfaceZ, placeLayers],
 	);
 	const toggle = geometryScene.length > 0 && (
 		<TooltipButton

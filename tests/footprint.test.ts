@@ -33,10 +33,14 @@ import { defaultSheet } from "#/drawing/worksheet.ts";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	BOARD_LAYER_ID,
+	BOARD_SURFACE_Z,
 	boardEdgeBounds,
 	boardObjectVisible,
 	DRILL_LAYER_ID,
 	footprintBoard,
+	layerSurfaceZ,
+	placeFootprintBoard,
+	planFootprintBoard,
 } from "#/footprint/board.ts";
 import {
 	createEmptyFootprintFile,
@@ -576,7 +580,7 @@ test("footprint files reject schematic items, pages and duplicate IDs", () => {
 		assert.throws(() => footprintFileWithShapes(empty, shapes), message);
 });
 
-test("the board has one object per stack layer, drills for through-hole pads and an edge 1 mm outside them", () => {
+test("the board has one object per layer, one per layer's text, drills for through-hole pads and an edge 1 mm outside them", () => {
 	const board = footprintBoard([
 		...twoPadsWireCourtyardAndThroughHole(),
 		silkText(9),
@@ -588,10 +592,14 @@ test("the board has one object per stack layer, drills for through-hole pads and
 			["footprint:F.Cu", 3],
 			["footprint:B.Cu", 1],
 			["footprint:F.SilkS", 1],
+			["footprint:F.CrtYd", 1],
+			["footprint:F.SilkS:text", 0],
 			[DRILL_LAYER_ID, 1],
 		],
 	);
-	const profileTopCopperBottomCopperTopLegendDrill = [9, 3, 5, 0, 10];
+	const profileTopCopperBottomCopperTopLegendUnknownTopLegendDrill = [
+		9, 3, 5, 0, 11, 0, 10,
+	];
 	assert.deepEqual(
 		board.map(
 			(layer) =>
@@ -600,7 +608,7 @@ test("the board has one object per stack layer, drills for through-hole pads and
 					layer.metadata[".FileFunction"]?.join(","),
 				)[0],
 		),
-		profileTopCopperBottomCopperTopLegendDrill,
+		profileTopCopperBottomCopperTopLegendUnknownTopLegendDrill,
 	);
 	const edge = required(board[0]).bounds;
 	assert.deepEqual(
@@ -611,16 +619,83 @@ test("the board has one object per stack layer, drills for through-hole pads and
 	const throughHolePadTop = 3.85;
 	assert.ok(Math.abs(edge.minX - (courtyardStrokeEdge - 1)) < 1e-9);
 	assert.ok(Math.abs(edge.maxY - (throughHolePadTop + 1)) < 1e-9);
-	for (const layer of board)
+	for (const layer of board.filter((layer) => layer.objects.length))
 		assert.ok(compilePlanarGeometry(layer.objects).positions.length > 0);
 });
 
-test("an empty footprint has no board, and one with only text has just an edge", () => {
-	assert.deepEqual(footprintBoard([]), []);
+test("an empty footprint's board is an edge 1 mm outside a 4 by 3 mm area, and text adds its own object", () => {
+	const empty = footprintBoard([]);
 	assert.deepEqual(
-		footprintBoard([silkText(1)]).map((layer) => layer.id),
+		empty.map((layer) => layer.id),
 		[BOARD_LAYER_ID],
 	);
+	assert.deepEqual(required(empty[0]).bounds, {
+		minX: -3,
+		minY: -2.5,
+		maxX: 3,
+		maxY: 2.5,
+	});
+	assert.deepEqual(
+		footprintBoard([silkText(1)]).map((layer) => layer.id),
+		[BOARD_LAYER_ID, "footprint:F.SilkS:text"],
+	);
+});
+
+test("a board plan keeps a layer's source while an edit leaves its items alone", () => {
+	const shapes = twoPadsWireCourtyardAndThroughHole();
+	const source = (plans: ReturnType<typeof planFootprintBoard>, id: string) =>
+		required(plans.find((plan) => plan.id === id)).source;
+	const same = (a: readonly unknown[], b: readonly unknown[]) =>
+		a.length === b.length && a.every((item, index) => item === b[index]);
+	const before = planFootprintBoard(shapes);
+	const wire = required(shapes.find((shape) => shape.kind === "line"));
+	const after = planFootprintBoard(
+		shapes.map((shape) =>
+			shape === wire ? { ...wire, y: wire.y - 0.2 } : shape,
+		),
+	);
+	for (const id of [BOARD_LAYER_ID, "footprint:F.Cu", DRILL_LAYER_ID])
+		assert.ok(same(source(before, id), source(after, id)), id);
+	assert.ok(
+		!same(
+			source(before, "footprint:F.SilkS"),
+			source(after, "footprint:F.SilkS"),
+		),
+	);
+});
+
+test("courtyard and fabrication drawings lie flat outside the stack, and a pad through the board is edited on the side facing the camera", () => {
+	const board = footprintBoard([
+		courtyard(1),
+		{ ...courtyard(2), layer: "B.Fab" },
+		createPad(3, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
+		silkLine(4),
+	]);
+	const placed = new Map(
+		placeFootprintBoard(board).map((placement, index) => [
+			required(board[index]).name,
+			placement,
+		]),
+	);
+	const height = (layer: FootprintLayer) => required(placed.get(layer)).z;
+	assert.ok(height("F.CrtYd") > height("F.SilkS"));
+	assert.ok(height("F.SilkS") > height("F.Cu"));
+	assert.ok(height("B.Fab") < -height("F.SilkS"));
+	assert.equal(required(placed.get("F.CrtYd")).thickness, 0);
+	assert.ok(required(placed.get("F.Cu")).thickness > 0);
+
+	assert.equal(layerSurfaceZ(["F.SilkS"], noLayers, 10), 0);
+	assert.ok(
+		Math.abs(
+			layerSurfaceZ(["F.Cu"], noLayers, 10) -
+				(height("F.Cu") - BOARD_SURFACE_Z),
+		) < 1e-9,
+	);
+	const bothSides: FootprintLayer[] = ["F.Cu", "B.Cu"];
+	const top = layerSurfaceZ(bothSides, noLayers, 10);
+	const bottom = layerSurfaceZ(bothSides, noLayers, -10);
+	assert.ok(top > bottom);
+	assert.equal(layerSurfaceZ(bothSides, new Set(["F.Cu"]), 10), bottom);
 });
 
 test("a rotated pad's copper turns with it on the board", () => {
@@ -641,6 +716,14 @@ test("hiding a layer hides its board object, and drills hide with the last coppe
 	const frontCopperHidden = new Set<FootprintLayer>(["F.Cu"]);
 	assert.equal(boardObjectVisible("footprint:F.Cu", frontCopperHidden), false);
 	assert.equal(boardObjectVisible("footprint:B.Cu", frontCopperHidden), true);
+	assert.equal(
+		boardObjectVisible("footprint:F.SilkS:text", new Set(["F.SilkS"])),
+		false,
+	);
+	assert.equal(
+		boardObjectVisible("footprint:F.CrtYd", new Set(["F.CrtYd"])),
+		false,
+	);
 	assert.equal(boardObjectVisible(DRILL_LAYER_ID, frontCopperHidden), true);
 	assert.equal(boardObjectVisible(BOARD_LAYER_ID, frontCopperHidden), true);
 	assert.equal(

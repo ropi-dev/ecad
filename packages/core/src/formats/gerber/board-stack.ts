@@ -37,6 +37,8 @@ const TOP_MASK = surface(TOP_COPPER.z, MASK_THICKNESS, 1);
 const TOP_PASTE = surface(TOP_MASK.z, PASTE_THICKNESS, 2);
 const TOP_LEGEND = surface(TOP_PASTE.z, LEGEND_THICKNESS, 3);
 const UNKNOWN = surface(TOP_LEGEND.z, LEGEND_THICKNESS, 4);
+/** Height of the top legend's surface above the middle of the board. */
+export const BOARD_STACK_TOP = TOP_LEGEND.z;
 const PROFILE = { z: 0, thickness: 0, depthBias: 0, through: true };
 const DRILL = {
 	z: 0,

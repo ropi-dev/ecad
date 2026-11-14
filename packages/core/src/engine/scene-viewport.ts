@@ -95,6 +95,14 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;
 	capture: () => Promise<Blob>;
 	update: (update: (object: Object3D) => void) => void;
+	/**
+	 * Shows another scene and keeps the camera. Returns false when this view
+	 * cannot swap its objects, and the caller then starts a new view.
+	 */
+	setScene: (
+		scene: ViewerScene,
+		update?: (object: Object3D) => void,
+	) => boolean;
 	resize: (width: number, height: number) => void;
 	setPhysicalScale: (scale: number | null) => void;
 	/** Shows a dot grid under a top view, or hides it with null. */
@@ -183,11 +191,14 @@ export function createSceneViewport(
 				}
 			},
 		);
-		const content = lifecycle.acquire(
-			() => createSceneDisplay(sourceScene),
-			(display) => display.dispose(),
-		);
-		const group = content.object;
+		let content = createSceneDisplay(sourceScene);
+		lifecycle.addFinalizer(() => content.dispose());
+		const retired: (() => void)[] = [];
+		const releaseRetired = () => {
+			for (const release of retired.splice(0)) release();
+		};
+		lifecycle.addFinalizer(releaseRetired);
+		let group = content.object;
 		// Only a locked top view pans without changing scale or orientation.
 		const panCache =
 			cameraMode === "top" && !content.hasOutlines
@@ -377,15 +388,11 @@ export function createSceneViewport(
 		let ready = false;
 		let pointer: Vector2 | null = null;
 		const raycaster = new Raycaster();
-		const hover = lifecycle.acquire(
-			() => createSceneHover(content.entries),
-			(hover) => hover.dispose(),
-		);
+		let hover = createSceneHover(content.entries);
+		lifecycle.addFinalizer(() => hover.dispose());
 		scene.add(hover.object);
-		const selection = lifecycle.acquire(
-			() => createSceneHover(content.entries, "selection"),
-			(selection) => selection.dispose(),
-		);
+		let selection = createSceneHover(content.entries, "selection");
+		lifecycle.addFinalizer(() => selection.dispose());
 		scene.add(selection.object);
 		let selected: SceneTarget | null = null;
 		let highlighted = 0;
@@ -485,6 +492,7 @@ export function createSceneViewport(
 						if (batched)
 							batcher?.prepare(visibleHeight() / Math.max(canvas.height, 1));
 						renderScene();
+						releaseRetired();
 						if (camera instanceof OrthographicCamera && !orbiting)
 							panCache?.capture(camera);
 						else panCache?.invalidate();
@@ -505,17 +513,32 @@ export function createSceneViewport(
 							: currentZoom) * 1e6,
 					) / 1e6,
 				);
-				if (flat()) {
+				if (topView && onChange) {
 					const width = Math.max(element.clientWidth, 1);
 					const height = Math.max(element.clientHeight, 1);
-					onChange?.({
+					onChange({
 						backend: "WebGL 2 · Three.js",
 						message: "",
-						camera: {
-							x: shown?.x ?? camera.position.x,
-							y: shown?.y ?? camera.position.y,
-							scale: height / visibleHeight(),
-						},
+						...(flat()
+							? {
+									camera: {
+										x: shown?.x ?? camera.position.x,
+										y: shown?.y ?? camera.position.y,
+										scale: height / visibleHeight(),
+									},
+								}
+							: {
+									camera: turnedCamera(height),
+									projection: {
+										matrix: viewMatrix
+											.multiplyMatrices(
+												camera.projectionMatrix,
+												camera.matrixWorldInverse,
+											)
+											.toArray(),
+										eyeZ: camera.position.z,
+									},
+								}),
 						zoom: currentZoom,
 						viewport: { width, height },
 						highlighted,
@@ -556,6 +579,28 @@ export function createSceneViewport(
 					started,
 				);
 			}
+		};
+		const viewMatrix = new Matrix4();
+		/** The top view that a turned camera returns to. */
+		const turnedCamera = (height: number): Camera => {
+			const view = controls.target.clone().sub(camera.position);
+			const length = view.length();
+			const depth =
+				Math.abs(view.z) < length * 0.02
+					? 0
+					: (-camera.position.z / view.z) * length;
+			const centre =
+				depth > 0
+					? camera.position.clone().addScaledVector(view.normalize(), depth)
+					: controls.target;
+			return {
+				x: centre.x,
+				y: centre.y,
+				scale:
+					camera instanceof OrthographicCamera || !(depth > 0)
+						? height / visibleHeight()
+						: height / (2 * depth * halfFovTangent),
+			};
 		};
 		const selectionBounds = (target: SceneTarget) => {
 			const box = new Box3();
@@ -1059,6 +1104,34 @@ export function createSceneViewport(
 				if (orbiting) measureBoard();
 				if (batcher) scheduleDrawing();
 				else schedule();
+			},
+			setScene: (next, update) => {
+				if (panCache || batcher) return false;
+				const display = createSceneDisplay(next);
+				if (display.hasOutlines !== content.hasOutlines) {
+					display.dispose();
+					return false;
+				}
+				scene.remove(group, hover.object, selection.object);
+				// Equal materials share one compiled program, which the renderer
+				// deletes with its last material. Releasing the replaced scene
+				// after the next frame lets the new one take its programs over.
+				const replaced = [content, hover, selection];
+				retired.push(() => {
+					for (const resource of replaced) resource.dispose();
+				});
+				content = display;
+				group = display.object;
+				hover = createSceneHover(display.entries);
+				selection = createSceneHover(display.entries, "selection");
+				scene.add(group, hover.object, selection.object);
+				if (selected) clearSelection();
+				update?.(group);
+				const shown = new Box3().setFromObject(group);
+				if (!shown.isEmpty()) bounds.copy(shown);
+				if (orbiting) measureBoard();
+				schedule();
+				return true;
 			},
 		};
 		resize(Math.max(element.clientWidth, 1), Math.max(element.clientHeight, 1));
