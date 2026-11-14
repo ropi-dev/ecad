@@ -4,7 +4,13 @@ import type {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ComponentProps,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { DoubleSide, Group, Mesh, PlaneGeometry } from "three";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
@@ -89,10 +95,9 @@ function buildLayer(plan: BoardLayerPlan): ParsedGerberObject {
 export function FootprintBoardView({
 	shapes,
 	hiddenLayers,
-	closing,
-	onClose,
-	onError,
-	onReady,
+	flat,
+	onFlatChange,
+	onBuildError,
 	...viewer
 }: Pick<
 	Viewer2DProps,
@@ -102,15 +107,19 @@ export function FootprintBoardView({
 	| "getFitBounds"
 	| "onChange"
 	| "onReady"
+	| "onError"
 	| "interactionHint"
-> & {
-	shapes: readonly EditorShape[];
-	hiddenLayers: ReadonlySet<FootprintLayer>;
-	controls: ReactNode;
-	closing: boolean;
-	onClose: () => void;
-	onError: (message: string) => void;
-}) {
+> &
+	Pick<
+		ComponentProps<typeof GerberViewer>,
+		"controls" | "orbitGesture" | "updateFlatScene"
+	> & {
+		shapes: readonly EditorShape[];
+		hiddenLayers: ReadonlySet<FootprintLayer>;
+		flat: boolean;
+		onFlatChange: (flat: boolean) => void;
+		onBuildError: (message: string) => void;
+	}) {
 	const [builder] = useState(() => createBoardBuilder(buildLayer));
 	useEffect(() => () => builder.dispose(), [builder]);
 	const [board, setBoard] = useState<ParsedGerberObject[]>();
@@ -120,12 +129,13 @@ export function FootprintBoardView({
 	useEffect(() => {
 		try {
 			setBoard(builder.build(shapes));
+			onBuildError("");
 		} catch (cause) {
 			if (import.meta.env?.DEV) console.error(cause);
-			onError("Unable to build the 3D view of this footprint.");
-			onClose();
+			setBoard([]);
+			onBuildError("Unable to build the 3D view of this footprint.");
 		}
-	}, [builder, shapes, onError, onClose]);
+	}, [builder, shapes, onBuildError]);
 	const scene = useMemo(
 		() =>
 			board?.map((object) => ({
@@ -134,20 +144,19 @@ export function FootprintBoardView({
 			})),
 		[board, hiddenLayers],
 	);
-	const [tilted, setTilted] = useState(false);
-	const turned = useRef(false);
+	const shownFlat = useRef(true);
 	useEffect(() => {
-		if (closing && !turned.current) onClose();
-	}, [closing, onClose]);
+		if (flat && shownFlat.current) onFlatChange(true);
+	}, [flat, onFlatChange]);
 	if (!scene) return null;
 	return (
 		<GerberViewer
-			ariaLabel="Footprint board"
+			ariaLabel="Footprint editor"
 			scene={scene}
-			flat={!tilted || closing}
-			onFlatChange={(flat) => {
-				if (!flat) turned.current = true;
-				else if (turned.current) onClose();
+			flat={flat}
+			onFlatChange={(next) => {
+				shownFlat.current = next;
+				onFlatChange(next);
 			}}
 			surfaceZ={BOARD_SURFACE_Z}
 			placeLayers={placeFootprintBoard}
@@ -158,14 +167,6 @@ export function FootprintBoardView({
 			rulerUnit="mm"
 			groupedControls
 			controlsLabel="Footprint tools"
-			onReady={(ready) => {
-				if (ready) setTilted(true);
-				onReady?.(ready);
-			}}
-			onError={(message) => {
-				onError(message);
-				onClose();
-			}}
 			{...viewer}
 		/>
 	);

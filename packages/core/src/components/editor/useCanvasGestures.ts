@@ -786,7 +786,8 @@ export function useCanvasGestures({
 				tool === "pan" ||
 				(event.shiftKey &&
 					!event[shortcutModifier().flag] &&
-					cameraView.getProjection()?.turned) ||
+					(cameraView.getProjection()?.turned ||
+						(footprintLayer !== undefined && event.altKey))) ||
 				((event.ctrlKey || event.metaKey) &&
 					(tool !== "select" ||
 						event.altKey ||

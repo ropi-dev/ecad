@@ -9,6 +9,7 @@ import { Box3, type Object3D, Vector3 } from "three";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { Viewer2D, type Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
+import type { OrbitGesture } from "#/engine/controls3d.ts";
 import { createHoleMask } from "#/engine/planar-holes.ts";
 import {
 	getPlanarGeometry,
@@ -30,6 +31,8 @@ export function GerberViewer({
 	onFlatChange,
 	surfaceZ,
 	placeLayers = placeBoardLayers,
+	orbitGesture = "shift",
+	updateFlatScene,
 	controls,
 	...props
 }: Omit<
@@ -48,10 +51,14 @@ export function GerberViewer({
 	onFlatChange?: (flat: boolean) => void;
 	surfaceZ?: number;
 	placeLayers?: typeof placeBoardLayers;
+	orbitGesture?: OrbitGesture;
+	updateFlatScene?: (object: Object3D) => void;
 	controls?: ReactNode;
 }) {
 	const [ownFlat, setOwnFlat] = useState(true);
 	const flat = controlledFlat ?? ownFlat;
+	const [orbiting, setOrbiting] = useState(false);
+	const layersShown = !updateFlatScene || orbiting;
 	const setFlat = (next: boolean) => {
 		setOwnFlat(next);
 		onFlatChange?.(next);
@@ -86,8 +93,8 @@ export function GerberViewer({
 		[drillKey],
 	);
 	useEffect(() => () => holes?.dispose(), [holes]);
-	const updateScene = useCallback(
-		(group: Object3D) => {
+	const styleLayers = useCallback(
+		(meshes: readonly Object3D[]) => {
 			const entries = new Map(
 				scene.map((object, index) => [object.id, { object, index }]),
 			);
@@ -97,7 +104,7 @@ export function GerberViewer({
 			);
 			const placements = placeLayers(scene);
 			const sheet = boardOutline(scene);
-			group.children.forEach((mesh, index) => {
+			meshes.forEach((mesh, index) => {
 				const source = geometryScene[index];
 				const entry = source && entries.get(source.id);
 				if (!entry) {
@@ -124,6 +131,17 @@ export function GerberViewer({
 					placement && { ...placement, sheet, holes },
 				);
 			});
+		},
+		[scene, geometryScene, focusedLayerId, holes, placeLayers],
+	);
+	const updateScene = useCallback(
+		(group: Object3D) => {
+			const layers = group.children.slice(0, geometryScene.length);
+			if (layersShown) styleLayers(layers);
+			else for (const mesh of layers) mesh.visible = false;
+			updateFlatScene?.(group);
+			for (const flatObject of group.children.slice(geometryScene.length))
+				flatObject.visible = !layersShown;
 			group.position.set(0, 0, 0);
 			if (surfaceZ !== undefined) {
 				group.position.z = -surfaceZ;
@@ -137,7 +155,7 @@ export function GerberViewer({
 				group.position.set(-center.x, -center.y, -center.z);
 			}
 		},
-		[scene, geometryScene, focusedLayerId, holes, surfaceZ, placeLayers],
+		[geometryScene, layersShown, styleLayers, updateFlatScene, surfaceZ],
 	);
 	const toggle = geometryScene.length > 0 && (
 		<TooltipButton
@@ -161,8 +179,16 @@ export function GerberViewer({
 			scene={geometryScene}
 			updateScene={updateScene}
 			orbit={!flat && geometryScene.length > 0}
-			gestureOrbit={controlledFlat === undefined && geometryScene.length > 0}
-			onOrbit={(orbiting) => setFlat(!orbiting)}
+			gestureOrbit={
+				(controlledFlat === undefined || onFlatChange) &&
+				geometryScene.length > 0
+					? orbitGesture
+					: undefined
+			}
+			onOrbit={(next) => {
+				setOrbiting(next);
+				setFlat(!next);
+			}}
 			extraControls={controls ?? toggle}
 		/>
 	);

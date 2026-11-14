@@ -109,6 +109,7 @@ interface EditorToolbarProps {
 	sheetless: boolean;
 	footprint?: {
 		flat: boolean;
+		available: boolean;
 		onToggleFlat: () => void;
 		toggle: Ref<HTMLButtonElement>;
 	};
@@ -342,7 +343,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 						ref: footprint.toggle,
 						className: `${viewControlButtonClassName} px-2.5`,
 						"aria-pressed": footprint.flat,
-						disabled: footprint.flat && !ready,
+						disabled: footprint.flat && (!ready || !footprint.available),
 						tooltip: footprint.flat
 							? "Show layers in 3D"
 							: "Show the flat top view",

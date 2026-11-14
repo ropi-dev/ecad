@@ -20,7 +20,7 @@ import {
 import { viewerTheme } from "#/drawing/schematic-theme.ts";
 import { getSceneBounds } from "#/engine/camera.ts";
 import { capturePng } from "#/engine/capture-png.ts";
-import { create3DControls } from "#/engine/controls3d.ts";
+import { create3DControls, type OrbitGesture } from "#/engine/controls3d.ts";
 import { createDrawBatcher } from "#/engine/draw-batch.ts";
 import { createFocusMarker } from "#/engine/focus-marker.ts";
 import {
@@ -77,7 +77,7 @@ export interface SceneViewportOptions {
 	selectionEnabled?: boolean;
 	hoverHighlight?: boolean;
 	orbit?: boolean;
-	gestureOrbit?: boolean;
+	gestureOrbit?: OrbitGesture;
 	antialias?: boolean;
 	ariaLabel?: string;
 	canvasClassName?: string;
@@ -125,7 +125,7 @@ export function createSceneViewport(
 		selectionEnabled = true,
 		hoverHighlight = true,
 		orbit = false,
-		gestureOrbit = false,
+		gestureOrbit,
 		antialias = true,
 		ariaLabel = "3D model",
 		canvasClassName = "",
@@ -293,6 +293,7 @@ export function createSceneViewport(
 				create3DControls(camera, canvas, () => fit(), {
 					lockTop: topView,
 					unlock: gestureOrbit ? () => startOrbit() : undefined,
+					unlockGesture: gestureOrbit,
 					focus: (clientX, clientY) => focus(clientX, clientY),
 					onFocus: (point) => {
 						focusMarker.show(point, output.getPixelRatio());
