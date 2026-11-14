@@ -112,9 +112,7 @@ async function boardSelection(page: Page) {
 	});
 }
 
-test("a footprint takes pads and layer graphics, hides layers and is edited as a 3D board", async ({
-	page,
-}) => {
+async function createFootprint(page: Page) {
 	await page.goto("/tests/browser/projects.html");
 	await (await openProjectFiles(page))
 		.getByRole("link", { name: "Workspace home", exact: true })
@@ -133,8 +131,17 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"Footprint editor · Test part",
 	);
-	const canvas = page.getByRole("application", { name: "Footprint editor" });
-	await expect(canvas.locator("canvas")).toBeVisible();
+	await expect(
+		page
+			.getByRole("application", { name: "Footprint editor" })
+			.locator("canvas"),
+	).toBeVisible();
+}
+
+test("a footprint takes pads and layer graphics, hides layers and is edited as a 3D board", async ({
+	page,
+}) => {
+	await createFootprint(page);
 	const flat = page.getByRole("button", { name: "2D", exact: true });
 	await expect(flat).toBeEnabled();
 
@@ -240,7 +247,7 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
 	).toHaveCount(0);
 	await expect(
-		page.getByRole("button", { name: "Pads", exact: true }),
+		page.getByRole("button", { name: "Pads and vias", exact: true }),
 	).toBeEnabled();
 	const boardCanvas = await area.locator("canvas").elementHandle();
 	const view = required(await area.boundingBox());
@@ -349,14 +356,14 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	await expect(page.getByTestId("cursor-readout")).toBeVisible();
 	await expect(area).toHaveAttribute("data-tool", "through-hole-pad");
 	await expect(
-		page.getByRole("button", { name: "Pads", exact: true }),
+		page.getByRole("button", { name: "Pads and vias", exact: true }),
 	).toBeEnabled();
 	expect((await documentState(page)).editorShapes).toHaveLength(5);
 
 	await flat.click();
 	await expect(area).toHaveAttribute("data-view", "3d");
 	await expect(
-		page.getByRole("button", { name: "Pads", exact: true }),
+		page.getByRole("button", { name: "Pads and vias", exact: true }),
 	).toBeEnabled();
 	await area.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
 		const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
@@ -373,7 +380,54 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	await flat.click();
 	await expect(area).toHaveAttribute("data-view", "3d");
 	await expect(
-		page.getByRole("button", { name: "Pads", exact: true }),
+		page.getByRole("button", { name: "Pads and vias", exact: true }),
 	).toBeEnabled();
 	await expect(page.getByTestId("cursor-readout")).toBeVisible();
+});
+
+test("the via tool places vias through both copper layers, and a via's drill is edited in Attributes", async ({
+	page,
+}) => {
+	await createFootprint(page);
+	await (await toolbarButton(page, "Via")).click();
+	await expect(page.locator("[data-view]")).toHaveAttribute("data-tool", "via");
+	for (const x of [-1, 1]) {
+		const point = await screenPointOfMillimetres(page, x, 0);
+		await page.mouse.move(point.x, point.y);
+		await page.mouse.click(point.x, point.y);
+	}
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(async () =>
+			(await documentState(page)).editorShapes.map(
+				(shape: {
+					kind: string;
+					x: number;
+					width: number;
+					via?: { drill: number };
+				}) => [shape.kind, shape.x, shape.width, shape.via?.drill],
+			),
+		)
+		.toEqual([
+			["circle", -1, 0.6, 0.3],
+			["circle", 1, 0.6, 0.3],
+		]);
+
+	const via = await screenPointOfMillimetres(page, -1, 0);
+	const attributes = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	await page.mouse.dblclick(via.x, via.y);
+	await expect(attributes.getByText("Both copper layers")).toBeVisible();
+	await expect(attributes.getByLabel("Pad number")).toHaveCount(0);
+	const drill = attributes.getByLabel("Drill");
+	await expect(drill).toHaveValue("0.3");
+	await drill.fill("0.4");
+	await drill.press("Enter");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes[0].via)
+		.toEqual({ drill: 0.4 });
+	await drill.fill("0.6");
+	await drill.press("Enter");
+	await expect(drill).toHaveValue("0.4");
 });

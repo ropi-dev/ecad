@@ -25,7 +25,12 @@ import {
 	PIN_NUMBER_GAP,
 } from "@ecad/drawing-core/drawing/units.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
-import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
+import {
+	isPad,
+	isPadOrVia,
+	isVia,
+	shapeDrill,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { analyzeDrawing } from "#/drawing/drawing-analysis.ts";
 import {
 	fontPixels,
@@ -77,6 +82,7 @@ export type DrawingAppearance =
 	| "label"
 	| FootprintLayer
 	| "pad-through"
+	| "via"
 	| "pad-hole"
 	| "pad-number";
 
@@ -120,7 +126,7 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
-	if (isPad(shape))
+	if (isPadOrVia(shape))
 		return { kind: shape.kind, width, height, lineWidth: 0, filled: true };
 	if (kind !== "symbol")
 		return {
@@ -202,7 +208,7 @@ function displayShape(
 		shape.kind === "symbol" &&
 		shape.children.some((child) => isFillableShape(child) && child.filled)
 			? symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
-			: isFillableShape(shape) && shape.filled && !isPad(shape)
+			: isFillableShape(shape) && shape.filled && !isPadOrVia(shape)
 				? [shape]
 				: [];
 	const fills = fillChildren
@@ -225,8 +231,9 @@ function displayShape(
 			renderOrder: renderOrder - 0.5,
 		}));
 	if (fills.length) display.children = fills;
-	if (isPad(shape)) {
-		const { number, drill } = shape.pad;
+	if (isPadOrVia(shape)) {
+		const drill = shapeDrill(shape);
+		const number = isPad(shape) ? shape.pad.number : "";
 		const fontSize = Math.min(
 			maximumPadNumberSize,
 			Math.min(shape.width, shape.height) / 2,
@@ -240,7 +247,7 @@ function displayShape(
 				: [
 						{
 							key: `${key}:hole`,
-							name: `pad hole ${shape.id}`,
+							name: `${isPad(shape) ? "pad" : "via"} hole ${shape.id}`,
 							geometry: {
 								kind: "circle" as const,
 								width: drill,
@@ -392,6 +399,7 @@ function displayShape(
 
 function unselectedAppearance(shape: EditorShape): DrawingAppearance {
 	if (isPad(shape) && shape.pad.type === "through-hole") return "pad-through";
+	if (isVia(shape)) return "via";
 	if (shape.layer) return shape.layer;
 	if (shape.kind === "pin" || shape.kind === "wire") return shape.kind;
 	return (shape.kind === "text" && !isNetLabel(shape)) || isBoxSymbol(shape)

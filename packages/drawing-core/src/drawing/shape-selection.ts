@@ -148,7 +148,8 @@ const isHollowBoardShape = (shape: EditorShape) =>
 	shape.layer !== undefined &&
 	isFillableShape(shape) &&
 	!shape.filled &&
-	!shape.pad;
+	!shape.pad &&
+	!shape.via;
 
 function hitHollowBoardShape(
 	shape: EditorShape,

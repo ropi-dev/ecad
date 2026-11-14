@@ -84,7 +84,7 @@ Document history contains only drawing data. The editor separately remembers sel
 
 ## Footprints
 
-A footprint reuses the drawing store, commands and editor canvas, with board layers and pads as optional fields on the shared shapes. See [the footprint editor](footprints.md).
+A footprint reuses the drawing store, commands and editor canvas, with board layers, pads and vias as optional fields on the shared shapes. See [the footprint editor](footprints.md).
 
 ## Rendering ownership
 

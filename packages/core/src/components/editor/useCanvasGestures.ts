@@ -31,12 +31,14 @@ import {
 	type WireRoutingContext,
 	wireEnds,
 } from "@ecad/drawing-core/drawing/wire-routing.ts";
-import type {
-	FootprintLayer,
-	PadType,
+import {
+	copperLayers,
+	type FootprintLayer,
+	type PadType,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	createPad,
+	createVia,
 	newPadLayers,
 	nextPadNumber,
 	onFootprintLayer,
@@ -85,7 +87,8 @@ export type CanvasTool =
 	| "select"
 	| "pan"
 	| "symbol"
-	| PadTool;
+	| PadTool
+	| "via";
 type PadTool = "smd-pad" | "through-hole-pad";
 const padToolTypes: Record<PadTool, PadType> = {
 	"smd-pad": "smd",
@@ -183,6 +186,7 @@ export function useCanvasGestures({
 		isPlacementTool(tool) ||
 		isPadTool(tool) ||
 		(tool === "symbol" && !!symbolDefinition);
+	const placing = canRotatePlacement || tool === "via";
 	const onLayer = <Shape extends EditorShape>(shape: Shape): Shape =>
 		footprintLayer ? onFootprintLayer(shape, footprintLayer) : shape;
 	const rotatePlacement = useCallback((angle: number) => {
@@ -247,9 +251,11 @@ export function useCanvasGestures({
 			?.layerHeight(
 				isPadTool(tool)
 					? newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu")
-					: footprintLayer
-						? [footprintLayer]
-						: [],
+					: tool === "via"
+						? copperLayers
+						: footprintLayer
+							? [footprintLayer]
+							: [],
 			) ?? 0;
 	const screenPoint = (
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
@@ -626,6 +632,19 @@ export function useCanvasGestures({
 			return true;
 		},
 	});
+	const viaHandler: ToolHandler = {
+		press: (_event, _point, start) => {
+			session.place([createVia(session.nextId(), start)], "Place via");
+		},
+		hover: (_canvas, point) => {
+			setPlacementPreview({
+				tool,
+				symbolDefinition,
+				shape: createVia(session.nextId(), snapPoint(point, gridStep)),
+			});
+			return true;
+		},
+	};
 	const drawingHandler = (
 		kind: "rectangle" | "circle" | "triangle" | "line",
 	): ToolHandler => ({
@@ -645,6 +664,7 @@ export function useCanvasGestures({
 		supply: placementHandler("supply"),
 		"smd-pad": padHandler("smd-pad"),
 		"through-hole-pad": padHandler("through-hole-pad"),
+		via: viaHandler,
 		symbol: {
 			press: (_event, _point, start) => {
 				if (!symbolDefinition || (sheetless && symbolDefinition.netSymbol))
@@ -1028,6 +1048,7 @@ export function useCanvasGestures({
 		placementPreview,
 		clearPlacementPreview,
 		canRotatePlacement,
+		placing,
 		rotatePlacement,
 		connectionHover,
 		finishDrag,

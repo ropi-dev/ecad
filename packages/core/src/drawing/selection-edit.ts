@@ -24,7 +24,10 @@ import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	editPad,
+	editVia,
 	isPad,
+	isPadOrVia,
+	isVia,
 	type PadEdit,
 	setShapeLayer,
 } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -66,6 +69,7 @@ export type SelectionEdit =
 	| { readonly kind: "net-symbol"; readonly netSymbol: boolean }
 	| { readonly kind: "layer"; readonly layer: FootprintLayer }
 	| { readonly kind: "pad"; readonly edit: PadEdit }
+	| { readonly kind: "via-drill"; readonly drill: number }
 	| { readonly kind: "fill"; readonly filled: boolean }
 	| {
 			readonly kind: "symbol-label-position";
@@ -291,10 +295,17 @@ export function applySelectionEdit(
 						label: `Change pad ${edit.edit.attribute}`,
 					}
 				: undefined;
+		case "via-drill":
+			return single && isVia(single)
+				? {
+						replacements: [editVia(single, edit.drill)],
+						label: "Change via drill",
+					}
+				: undefined;
 		case "fill":
 			return {
 				replacements: selection.flatMap((shape) =>
-					isFillableShape(shape) && !isPad(shape)
+					isFillableShape(shape) && !isPadOrVia(shape)
 						? [{ ...shape, filled: edit.filled }]
 						: [],
 				),

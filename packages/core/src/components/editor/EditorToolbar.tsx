@@ -5,6 +5,7 @@ import {
 	Cable,
 	Circle,
 	CircleDot,
+	CircleSmall,
 	Download,
 	FileImage,
 	Hand,
@@ -85,6 +86,7 @@ const tools = [
 		label: "Through-hole pad",
 		icon: CircleDot,
 	},
+	{ group: "pads", kind: "via", label: "Via", icon: CircleSmall },
 ] as const;
 const footprintTools = tools.map((item) =>
 	item.kind === "line" ? { ...item, label: "Wire", icon: Cable } : item,
@@ -243,7 +245,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				)}
 			<ToolbarSeparator />
 			{footprint ? (
-				renderGroup("pads", "Pads", CircleDot)
+				renderGroup("pads", "Pads and vias", CircleDot)
 			) : (
 				<>
 					<SymbolPicker
