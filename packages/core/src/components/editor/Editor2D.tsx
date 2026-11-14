@@ -152,6 +152,8 @@ function EditorCanvas({
 	const [board, setBoard] = useState<"closed" | "open" | "closing">("closed");
 	const flatShown = board === "closed";
 	const [boardError, setBoardError] = useState("");
+	const [boardBuildError, setBoardBuildError] = useState("");
+	const [boardMount, setBoardMount] = useState(0);
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
 		({ store, error, libraryErrors, selectEditorFile }) => ({
@@ -275,8 +277,7 @@ function EditorCanvas({
 	const shapes = editor.draft ?? pageShapes;
 	const boardShapes = useMemo(() => {
 		const draft = editor.draft;
-		if (board === "closed") return drawing.shapes;
-		if (!draft) return fitTextShapes(drawing.shapes);
+		if (board === "closed" || !draft) return fitTextShapes(drawing.shapes);
 		const drafted = new Map(draft.map((shape) => [shape.id, shape]));
 		const stored = new Set(drawing.shapes.map((shape) => shape.id));
 		return fitTextShapes([
@@ -284,17 +285,13 @@ function EditorCanvas({
 			...draft.filter((shape) => !stored.has(shape.id)),
 		]);
 	}, [editor.draft, board, drawing.shapes]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: each view reports its own camera, so the other view's last one is dropped at the switch
 	useLayoutEffect(() => {
-		cameraView.clear();
-	}, [cameraView, flatShown]);
-	useLayoutEffect(() => {
-		if (flatShown) return;
+		if (!isFootprint) return;
 		cameraView.setSurfaces((onLayers, eyeZ) =>
 			layerSurfaceZ(onLayers, layers.hidden, eyeZ),
 		);
 		return () => cameraView.setSurfaces(null);
-	}, [flatShown, layers.hidden, cameraView]);
+	}, [isFootprint, layers.hidden, cameraView]);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
@@ -429,6 +426,7 @@ function EditorCanvas({
 	const issues = editorIssues([
 		viewport.viewerError,
 		boardError,
+		boardBuildError,
 		rerouteNotice?.historyId === drawing.history.currentId
 			? rerouteNotice.text
 			: "",
@@ -498,7 +496,23 @@ function EditorCanvas({
 		setBoardError("");
 		setBoard((current) => (current === "closed" ? "open" : "closing"));
 	}, [finishDrag, finishWire, clearPlacementPreview]);
-	const closeBoard = useCallback(() => setBoard("closed"), []);
+	const showBoardFlat = useCallback(
+		(flat: boolean) => setBoard(flat ? "closed" : "open"),
+		[],
+	);
+	const reportBoardBuild = useCallback((message: string) => {
+		setBoardBuildError(message);
+		if (message) setBoard("closed");
+	}, []);
+	const reportBoardError = (message: string) => {
+		if (board === "closed") {
+			viewport.onError(message);
+			return;
+		}
+		setBoardError(message);
+		setBoard("closed");
+		setBoardMount((count) => count + 1);
+	};
 	const toggleLayer = (layer: FootprintLayer) => {
 		if (!layers.hidden.has(layer)) {
 			finishDrag(true);
@@ -511,11 +525,12 @@ function EditorCanvas({
 			isFootprint
 				? {
 						flat: board !== "open",
+						available: !boardBuildError,
 						onToggleFlat: toggleBoard,
 						toggle: viewToggle,
 					}
 				: undefined,
-		[isFootprint, board, toggleBoard],
+		[isFootprint, board, boardBuildError, toggleBoard],
 	);
 
 	const editAttributes = useCallback(
@@ -719,39 +734,41 @@ function EditorCanvas({
 						});
 					}}
 				>
-					{board !== "closed" && (
+					{isFootprint && (
 						<FootprintBoardView
+							key={boardMount}
 							shapes={boardShapes}
 							hiddenLayers={layers.hidden}
+							flat={board !== "open"}
+							onFlatChange={showBoardFlat}
+							orbitGesture="alt-shift"
+							updateFlatScene={updateScene}
 							cameraState={viewport.cameraState}
 							pixelsPerMmAt100={footprintPixelsPerMmAt100}
 							fitZoom={1.1}
 							getFitBounds={() =>
 								selectionFitBounds(selected, selectedSymbol, selectedChild) ??
-								boardEdgeBounds(boardShapes)
+								(board === "closed"
+									? footprintFitBounds(drawing.shapes)
+									: boardEdgeBounds(boardShapes))
 							}
-							closing={board === "closing"}
-							onClose={closeBoard}
-							onError={setBoardError}
+							onBuildError={reportBoardBuild}
+							onError={reportBoardError}
 							onReady={viewport.onReady}
 							onChange={cameraView.update}
 							controls={toolbar}
 							interactionHint={footprintInteractionHint}
 						/>
 					)}
-					{scene && board === "closed" && (
+					{scene && !isFootprint && (
 						<OrthographicViewer2D
 							rulerUnit={unit}
 							scene={scene}
 							cameraState={viewport.cameraState}
 							fitZoom={1.1}
-							physicalSizeZoom={!isFootprint}
-							pixelsPerMmAt100={
-								isFootprint ? footprintPixelsPerMmAt100 : undefined
-							}
+							physicalSizeZoom
 							getFitBounds={() =>
-								selectionFitBounds(selected, selectedSymbol, selectedChild) ??
-								(isFootprint ? footprintFitBounds(drawing.shapes) : null)
+								selectionFitBounds(selected, selectedSymbol, selectedChild)
 							}
 							groupedControls
 							controlsLabel={`${editorKind} tools`}
@@ -772,9 +789,7 @@ function EditorCanvas({
 							onChange={cameraView.update}
 							extraControls={toolbar}
 							ariaLabel={`${editorKind} editor`}
-							interactionHint={
-								isFootprint ? footprintInteractionHint : editorInteractionHint
-							}
+							interactionHint={editorInteractionHint}
 						/>
 					)}
 					<CanvasOverlay

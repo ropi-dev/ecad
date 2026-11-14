@@ -249,13 +249,35 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		.toBe(4);
 
 	const area = page.locator("[data-view]");
+	const flatCanvas = await area.locator("canvas").elementHandle();
+	await page.keyboard.down("Alt");
+	await page.keyboard.down("Shift");
+	await page.mouse.move(secondPad.x, secondPad.y);
+	await page.mouse.down();
+	await page.mouse.move(secondPad.x, secondPad.y - 40, { steps: 4 });
+	await page.mouse.up();
+	await page.keyboard.up("Shift");
+	await page.keyboard.up("Alt");
+	await expect(area).toHaveAttribute("data-view", "3d");
+	await expect(flat).toHaveAttribute("aria-pressed", "false");
+	await expect(
+		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
+	).toHaveCount(0);
+	expect((await documentState(page)).editorShapes).toHaveLength(4);
+	expect(
+		await area
+			.locator("canvas")
+			.evaluate((canvas, before) => canvas === before, flatCanvas),
+	).toBe(true);
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "2d");
 	await expect(flat).toHaveAttribute("aria-pressed", "true");
 	await flat.click();
 	await expect(area).toHaveAttribute("data-view", "3d");
 	await expect(flat).toHaveAttribute("aria-pressed", "false");
 	await expect(flat).toBeFocused();
 	await expect(
-		page.getByRole("application", { name: "Footprint board" }),
+		page.getByRole("application", { name: "Footprint editor" }),
 	).toBeVisible();
 	await expect(
 		page.getByRole("img", { name: "Drawing rulers in millimetres" }),

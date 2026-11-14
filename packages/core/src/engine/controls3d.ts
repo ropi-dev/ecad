@@ -11,6 +11,8 @@ import { isMouseWheel, wheelDelta } from "#/engine/navigation.ts";
 
 const UNLOCK_DISTANCE = 4;
 
+export type OrbitGesture = "shift" | "alt-shift";
+
 export function create3DControls(
 	camera: PerspectiveCamera | OrthographicCamera,
 	canvas: HTMLElement,
@@ -18,11 +20,13 @@ export function create3DControls(
 	{
 		lockTop = false,
 		unlock,
+		unlockGesture = "shift",
 		focus,
 		onFocus,
 	}: {
 		lockTop?: boolean;
 		unlock?: () => boolean;
+		unlockGesture?: OrbitGesture;
 		focus?: (clientX: number, clientY: number) => Vector3 | null;
 		onFocus?: (point: Vector3 | null) => void;
 	} = {},
@@ -44,6 +48,8 @@ export function create3DControls(
 		controls.touches.ONE = locked ? TOUCH.PAN : null;
 	};
 	setRotationLocked(lockTop);
+	const unlocks = (event: MouseEvent) =>
+		!!unlock && event.shiftKey && (unlockGesture === "shift" || event.altKey);
 	controls.listenToKeyEvents(canvas);
 	const pointers = new Map<number, { x: number; y: number; touch: boolean }>();
 	let orbitPointer: number | null = null;
@@ -122,7 +128,7 @@ export function create3DControls(
 				: delta.x;
 		if (event.shiftKey && !rotationLocked) {
 			orbit(orbitX, delta.y);
-		} else if (event.shiftKey && unlock && !isMouseWheel(event)) {
+		} else if (unlocks(event) && !isMouseWheel(event)) {
 			wheelTravel += Math.hypot(delta.x, delta.y);
 			if (wheelTravel >= UNLOCK_DISTANCE) orbit(orbitX, delta.y);
 		} else if (controls.enablePan) {
@@ -145,7 +151,7 @@ export function create3DControls(
 		if (touch || (event.button !== 0 && event.button !== 1)) return;
 		const button = event.button === 0 ? "LEFT" : "MIDDLE";
 		if (panFirst) {
-			if (event.shiftKey && (!rotationLocked || unlock)) {
+			if (event.shiftKey && (!rotationLocked || unlocks(event))) {
 				orbitPointer = event.pointerId;
 				controls.mouseButtons[button] = null;
 				return;
@@ -176,7 +182,7 @@ export function create3DControls(
 		if (orbitPointer === event.pointerId) {
 			if (
 				rotationLocked &&
-				(!event.shiftKey || Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
+				(!unlocks(event) || Math.hypot(deltaX, deltaY) < UNLOCK_DISTANCE)
 			)
 				return;
 			orbit(deltaX, deltaY);

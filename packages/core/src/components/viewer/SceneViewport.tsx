@@ -30,6 +30,7 @@ import {
 	type ViewportRulersHandle,
 } from "#/components/viewer/ViewportRulers.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import type { OrbitGesture } from "#/engine/controls3d.ts";
 import type { ViewerScene } from "#/engine/scene.ts";
 import {
 	createSceneViewport,
@@ -61,7 +62,7 @@ export interface SceneViewportProps {
 	selectionEnabled?: boolean;
 	hoverHighlight?: boolean;
 	orbit?: boolean;
-	gestureOrbit?: boolean;
+	gestureOrbit?: OrbitGesture;
 	onOrbit?: (orbiting: boolean) => void;
 	selectionPosition?: FloatingPanelPosition;
 	interactionHint?: string;
@@ -98,7 +99,7 @@ export function SceneViewport({
 	selectionEnabled = true,
 	hoverHighlight = true,
 	orbit = false,
-	gestureOrbit = false,
+	gestureOrbit,
 	onOrbit,
 	selectionPosition = "top-right",
 	interactionHint,
