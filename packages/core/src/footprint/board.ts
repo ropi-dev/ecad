@@ -91,9 +91,9 @@ const placements = new Map<string, BoardPlacement>([
 			[
 				padNumberLayerName(layer),
 				{
-					z: side * (BOARD_STACK_TOP + drawingGap / 2),
+					z: side * (BOARD_STACK_TOP + 3 * drawingGap),
 					thickness: 0,
-					depthBias: 3,
+					depthBias: 6,
 					through: false,
 				},
 			] as const,

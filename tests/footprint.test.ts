@@ -800,7 +800,7 @@ test("courtyard and fabrication drawings lie flat outside the stack, and a pad t
 	assert.equal(layerSurfaceZ(bothSides, new Set(["F.Cu"]), 10), bottom);
 });
 
-test("pad numbers lie just above each copper side's stack and hide with that copper", () => {
+test("pad numbers lie outside each side's stack and drawings and hide with that copper", () => {
 	const smd = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
 	const through = createPad(2, { x: 2, y: 0 }, "through-hole", "2", "F.Cu");
 	const unnumbered = createPad(3, { x: 4, y: 0 }, "smd", "", "B.Cu");
@@ -821,9 +821,13 @@ test("pad numbers lie just above each copper side's stack and hide with that cop
 		]),
 	);
 	const z = (id: string) => required(placed.get(id));
-	assert.ok(z("footprint:F.Cu:pad-numbers") > BOARD_SURFACE_Z);
+	const drawing = (layer: FootprintLayer) =>
+		required(placeFootprintBoard([{ name: layer, metadata: {} }])[0]).z;
 	assert.ok(z("footprint:F.Cu:pad-numbers") > z("footprint:F.Paste"));
-	assert.ok(z("footprint:B.Cu:pad-numbers") < -BOARD_SURFACE_Z);
+	for (const layer of ["F.Fab", "F.CrtYd"] as const)
+		assert.ok(z("footprint:F.Cu:pad-numbers") > drawing(layer), layer);
+	for (const layer of ["B.Fab", "B.CrtYd"] as const)
+		assert.ok(z("footprint:B.Cu:pad-numbers") < drawing(layer), layer);
 	assert.equal(
 		boardObjectVisible("footprint:F.Cu:pad-numbers", new Set(["F.Cu"])),
 		false,
