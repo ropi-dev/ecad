@@ -165,6 +165,22 @@ export function uprightTextRotation(rotation: number): number {
 	return angle;
 }
 
+export function padNumberSize(
+	pad: { width: number; height: number },
+	number: string,
+	measure: MeasureText,
+): { width: number; height: number } {
+	const fontSize = Math.min(
+		maximumPadNumberSize,
+		Math.min(pad.width, pad.height) / 2,
+	);
+	const layout = textLayout(number, measure);
+	return {
+		width: (layout.width * fontSize) / fontPixels,
+		height: (layout.height * fontSize) / fontPixels,
+	};
+}
+
 function displayShape(
 	shape: EditorShape,
 	key: string,
@@ -234,13 +250,11 @@ function displayShape(
 	if (isPadOrVia(shape)) {
 		const drill = shapeDrill(shape);
 		const number = isPad(shape) ? shape.pad.number : "";
-		const fontSize = Math.min(
-			maximumPadNumberSize,
-			Math.min(shape.width, shape.height) / 2,
+		const { width: labelWidth, height: labelHeight } = padNumberSize(
+			shape,
+			number,
+			measure,
 		);
-		const layout = textLayout(number, measure);
-		const labelWidth = (layout.width * fontSize) / fontPixels;
-		const labelHeight = (layout.height * fontSize) / fontPixels;
 		display.children = [
 			...(drill === undefined
 				? []

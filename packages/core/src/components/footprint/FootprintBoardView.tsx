@@ -4,6 +4,7 @@ import type {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import type { PadShape } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
 	type ComponentProps,
 	useEffect,
@@ -11,11 +12,11 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { DoubleSide, Group, Mesh, PlaneGeometry } from "three";
+import { DoubleSide, FrontSide, Group, Mesh, PlaneGeometry } from "three";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
-import { uprightTextRotation } from "#/drawing/display.ts";
-import { createTextMaterial } from "#/engine/drawing/text.ts";
+import { padNumberSize, uprightTextRotation } from "#/drawing/display.ts";
+import { createTextMaterial, measureText } from "#/engine/drawing/text.ts";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	createPlanarObject3D,
@@ -34,14 +35,47 @@ import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
 
 const TEXT_RENDER_ORDER = 4;
 
+interface Label extends Pick<TextShape, "text" | "horizontalAlign" | "bold"> {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	rotation: number;
+	facing?: "top" | "bottom";
+}
+
+const textLabel = (text: TextShape): Label => ({
+	...textCenter(text),
+	text: text.text,
+	horizontalAlign: text.horizontalAlign,
+	bold: text.bold,
+	width: text.width,
+	height: text.height,
+	rotation: uprightTextRotation(text.rotation),
+});
+
+function padNumberLabel(pad: PadShape, bottom: boolean): Label {
+	const size = padNumberSize(pad, pad.pad.number, measureText);
+	return {
+		text: pad.pad.number,
+		horizontalAlign: "center",
+		x: pad.x,
+		y: pad.y,
+		width: size.width,
+		height: size.height,
+		rotation: 0,
+		facing: bottom ? "bottom" : "top",
+	};
+}
+
 function buildTexts(
 	layer: ReturnType<BoardLayerPlan["build"]>,
-	texts: readonly TextShape[],
+	labels: readonly Label[],
 ): ParsedGerberObject {
 	const group = new Group();
 	group.name = layer.name;
 	const quad = new PlaneGeometry(1, 1);
-	const glyphs = texts.map((text) => {
+	const glyphs = labels.map((text) => {
 		const drawn = createTextMaterial(
 			text.text,
 			text.horizontalAlign,
@@ -49,15 +83,14 @@ function buildTexts(
 		);
 		drawn.material.color.set(layer.color);
 		drawn.material.depthTest = true;
-		drawn.material.side = DoubleSide;
+		drawn.material.side = text.facing ? FrontSide : DoubleSide;
 		drawn.material.polygonOffset = true;
 		drawn.material.polygonOffsetFactor = -2;
 		drawn.material.polygonOffsetUnits = -2;
 		const mesh = new Mesh(quad, drawn.material);
-		const center = textCenter(text);
-		mesh.position.set(center.x, center.y, 0);
+		mesh.position.set(text.x, text.y, 0);
 		mesh.scale.set(text.width, text.height, 1);
-		mesh.rotation.z = uprightTextRotation(text.rotation);
+		mesh.rotation.set(0, text.facing === "bottom" ? Math.PI : 0, text.rotation);
 		mesh.renderOrder = TEXT_RENDER_ORDER;
 		group.add(mesh);
 		return drawn;
@@ -76,7 +109,14 @@ function buildTexts(
 
 function buildLayer(plan: BoardLayerPlan): ParsedGerberObject {
 	const layer = plan.build();
-	if (plan.texts) return buildTexts(layer, plan.texts);
+	if (plan.texts) return buildTexts(layer, plan.texts.map(textLabel));
+	if (plan.padNumbers) {
+		const { pads, bottom } = plan.padNumbers;
+		return buildTexts(
+			layer,
+			pads.map((pad) => padNumberLabel(pad, bottom)),
+		);
+	}
 	const compiled = compilePlanarGeometry(layer.objects);
 	const mesh = createPlanarObject3D(
 		layer,

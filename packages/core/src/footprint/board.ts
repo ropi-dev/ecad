@@ -10,6 +10,7 @@ import {
 	footprintFitBounds,
 	isPad,
 	isPadOrVia,
+	type PadShape,
 	shapeDrill,
 	shapeLayer,
 	shapeLayers,
@@ -50,6 +51,10 @@ const drawingLayers: readonly (readonly [FootprintLayer, string, number])[] = [
 	["F.CrtYd", "Other,Courtyard,Top", 2],
 	["B.CrtYd", "Other,Courtyard,Bot", -2],
 ];
+const padNumberSides = [
+	["F.Cu", "Other,PadNumbers,Top", 1],
+	["B.Cu", "Other,PadNumbers,Bot", -1],
+] as const;
 const boardLayers: readonly (readonly [FootprintLayer, string])[] = [
 	...stackLayers,
 	...drawingLayers.map(
@@ -81,15 +86,35 @@ const placements = new Map<string, BoardPlacement>([
 				},
 			] as const,
 	),
+	...padNumberSides.map(
+		([layer, , side]) =>
+			[
+				padNumberLayerName(layer),
+				{
+					z: side * (BOARD_STACK_TOP + drawingGap / 2),
+					thickness: 0,
+					depthBias: 3,
+					through: false,
+				},
+			] as const,
+	),
 ]);
+function padNumberLayerName(layer: FootprintLayer) {
+	return `${layer} pad numbers`;
+}
 const layerObjectId = (layer: FootprintLayer) => `footprint:${layer}`;
 const textObjectId = (layer: FootprintLayer) => `footprint:${layer}:text`;
-const layersByObjectId = new Map(
-	boardLayers.flatMap(([layer]) => [
+const padNumberObjectId = (layer: FootprintLayer) =>
+	`footprint:${layer}:pad-numbers`;
+const layersByObjectId = new Map([
+	...boardLayers.flatMap(([layer]) => [
 		[layerObjectId(layer), layer] as const,
 		[textObjectId(layer), layer] as const,
 	]),
-);
+	...padNumberSides.map(
+		([layer]) => [padNumberObjectId(layer), layer] as const,
+	),
+]);
 
 export const BOARD_SURFACE_Z = BOARD_STACK_TOP;
 
@@ -240,6 +265,7 @@ export interface BoardLayerPlan {
 	source: BoardLayerSource;
 	extrude?: "slab" | "barrel";
 	texts?: readonly TextShape[];
+	padNumbers?: { pads: readonly PadShape[]; bottom: boolean };
 	build(): PlanarObject;
 }
 
@@ -249,7 +275,14 @@ export function planFootprintBoard(
 	const members = new Map<FootprintLayer, EditorShape[]>();
 	const texts = new Map<FootprintLayer, TextShape[]>();
 	const drilled: EditorShape[] = [];
+	const numbered = new Map<FootprintLayer, PadShape[]>();
 	for (const shape of shapes) {
+		if (isPad(shape) && shape.pad.number)
+			for (const layer of shapeLayers(shape)) {
+				const onLayer = numbered.get(layer) ?? [];
+				onLayer.push(shape);
+				numbered.set(layer, onLayer);
+			}
 		if (shape.kind === "text") {
 			const layer = shapeLayer(shape);
 			const onLayer = texts.get(layer) ?? [];
@@ -344,6 +377,28 @@ export function planFootprintBoard(
 									[],
 								),
 								bounds: mergeBounds(onLayer.map(shapeBounds)),
+							}),
+						},
+					]
+				: [];
+		}),
+		...padNumberSides.flatMap(([layer, fileFunction, side]) => {
+			const pads = numbered.get(layer);
+			return pads
+				? [
+						{
+							id: padNumberObjectId(layer),
+							source: pads,
+							padNumbers: { pads, bottom: side < 0 },
+							build: () => ({
+								...planarLayer(
+									padNumberObjectId(layer),
+									padNumberLayerName(layer),
+									colors["pad-number"],
+									fileFunction,
+									[],
+								),
+								bounds: mergeBounds(pads.map(shapeBounds)),
 							}),
 						},
 					]
