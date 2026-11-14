@@ -12,7 +12,7 @@ import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 export function useFootprintLayers() {
 	const [active, setActive] = useState<FootprintLayer>("F.Cu");
 	const [hidden, setHidden] = useState<ReadonlySet<FootprintLayer>>(
-		() => new Set(),
+		() => new Set(["F.Paste", "B.Paste"]),
 	);
 	const toggle = useCallback(
 		(layer: FootprintLayer) =>

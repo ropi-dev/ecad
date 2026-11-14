@@ -193,15 +193,29 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	const attributes = page.getByRole("complementary", {
 		name: "Selection attributes",
 	});
+	const showFrontPaste = page.getByRole("button", { name: "Show Front paste" });
+	await expect(showFrontPaste).toBeVisible();
 	await page.getByRole("button", { name: "Hide Front copper" }).click();
 	await page.mouse.dblclick(pad.x, pad.y);
 	await expect(attributes.getByLabel("Layer")).toHaveValue("F.CrtYd");
 	await expect(attributes.getByLabel("Pad number")).toHaveCount(0);
+	await showFrontPaste.click();
+	await page.mouse.dblclick(pad.x, pad.y);
+	await expect(attributes.getByLabel("Pad number")).toHaveValue("1");
+	await expect(attributes.getByLabel("Solder paste")).toBeDisabled();
+	await page.keyboard.press("Escape");
 	await page.getByRole("button", { name: "Show Front copper" }).click();
 	await page.mouse.dblclick(pad.x, pad.y);
 	await expect(attributes.getByLabel("Pad number")).toHaveValue("1");
 	await expect(attributes.getByLabel("Center X")).toHaveValue("-1");
+	const paste = attributes.getByLabel("Solder paste");
+	await expect(paste).toBeChecked();
+	await paste.uncheck();
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes[0].pad.paste)
+		.toBe(false);
 	await attributes.getByLabel("Pad type").selectOption("through-hole");
+	await expect(paste).toHaveCount(0);
 	await expect
 		.poll(async () => (await documentState(page)).editorShapes[0].pad)
 		.toEqual({ number: "1", type: "through-hole", drill: 0.6 });

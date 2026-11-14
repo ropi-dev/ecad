@@ -216,7 +216,7 @@ test("a window rectangle needs a whole outline and a crossing one any part of it
 });
 
 const copperSurfaces = (layers: readonly FootprintLayer[], eyeZ: number) => {
-	const heights = layers.map((layer) => (layer === "B.Cu" ? -1.8 : -0.1));
+	const heights = layers.map((layer) => (layer.startsWith("B.") ? -1.8 : -0.1));
 	return eyeZ >= 0 ? Math.max(...heights) : Math.min(...heights);
 };
 

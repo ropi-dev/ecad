@@ -59,10 +59,18 @@ export const isFootprintShape = (shape: EditorShape) =>
 export const shapeLayer = (shape: EditorShape): FootprintLayer =>
 	shape.layer ?? layerWithoutOne;
 
+const pasteLayers: Partial<Record<FootprintLayer, FootprintLayer>> = {
+	"F.Cu": "F.Paste",
+	"B.Cu": "B.Paste",
+};
+
 export function shapeLayers(shape: EditorShape): readonly FootprintLayer[] {
-	return (isPad(shape) && shape.pad.type === "through-hole") || isVia(shape)
-		? copperLayers
-		: [shapeLayer(shape)];
+	if (isVia(shape)) return copperLayers;
+	if (!isPad(shape)) return [shapeLayer(shape)];
+	if (shape.pad.type === "through-hole") return copperLayers;
+	const copper = shapeLayer(shape);
+	const paste = shape.pad.paste ? pasteLayers[copper] : undefined;
+	return paste ? [copper, paste] : [copper];
 }
 
 const boardDrawOrder: readonly FootprintLayer[] = [
@@ -137,7 +145,9 @@ export const newPadLayers = (
 	type: PadType,
 	active: FootprintLayer,
 ): readonly FootprintLayer[] =>
-	type === "through-hole" ? copperLayers : [smdPadLayer(active)];
+	type === "through-hole"
+		? copperLayers
+		: shapeLayers(createPad(0, { x: 0, y: 0 }, type, "", active));
 
 export function createPad(
 	id: number,
@@ -159,7 +169,7 @@ export function createPad(
 				kind: "rectangle",
 				...smdPadSize,
 				layer: smdPadLayer(layer),
-				pad: { number, type },
+				pad: { number, type, paste: true },
 			}
 		: {
 				...base,
@@ -210,7 +220,8 @@ export type PadEdit =
 	| { attribute: "number"; value: string }
 	| { attribute: "type"; value: PadType }
 	| { attribute: "shape"; value: PadShape["kind"] }
-	| { attribute: "drill"; value: number };
+	| { attribute: "drill"; value: number }
+	| { attribute: "paste"; value: boolean };
 
 export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 	switch (edit.attribute) {
@@ -223,12 +234,13 @@ export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 			if (edit.value === shape.pad.type) return shape;
 			if (edit.value === "smd") {
 				const { drill: _drill, ...pad } = shape.pad;
-				return { ...shape, pad: { ...pad, type: "smd" } };
+				return { ...shape, pad: { ...pad, type: "smd", paste: true } };
 			}
+			const { paste: _paste, ...pad } = shape.pad;
 			return {
 				...shape,
 				pad: {
-					...shape.pad,
+					...pad,
 					type: "through-hole",
 					drill: padMinorSize(shape) * drillShareOfPad,
 				},
@@ -248,6 +260,10 @@ export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 				edit.value > 0 &&
 				edit.value < padMinorSize(shape)
 				? { ...shape, pad: { ...shape.pad, drill: edit.value } }
+				: shape;
+		case "paste":
+			return shape.pad.type === "smd"
+				? { ...shape, pad: { ...shape.pad, paste: edit.value } }
 				: shape;
 	}
 }

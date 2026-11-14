@@ -78,6 +78,12 @@ const padSchema = z
 			.positive()
 			.optional()
 			.describe("Hole diameter in millimetres. Surface mount pads omit it."),
+		paste: z
+			.boolean()
+			.optional()
+			.describe(
+				"Adds a solder paste opening the size of the pad on the paste layer of its copper side. Surface mount pads only.",
+			),
 	})
 	.describe(
 		"Makes a footprint rectangle or circle a pad. The shape is its copper.",
@@ -178,12 +184,14 @@ const validPad = (shape: {
 	if (shape.kind !== "rectangle" && shape.kind !== "circle") return false;
 	if (pad.type === "smd") return pad.drill === undefined;
 	return (
-		pad.drill !== undefined && pad.drill < Math.min(shape.width, shape.height)
+		pad.paste === undefined &&
+		pad.drill !== undefined &&
+		pad.drill < Math.min(shape.width, shape.height)
 	);
 };
 const validPadError = {
 	error:
-		"A pad must be a rectangle or a circle. A through-hole pad needs a drill smaller than the pad, and a surface mount pad has none.",
+		"A pad must be a rectangle or a circle. A through-hole pad needs a drill smaller than the pad and has no paste setting. A surface mount pad has no drill.",
 };
 const validVia = (shape: {
 	kind: string;

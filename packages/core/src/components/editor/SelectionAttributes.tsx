@@ -329,7 +329,10 @@ function padRows(
 	pad: PadShape,
 	unit: LengthUnit,
 	onEdit: (edit: SelectionEdit) => void,
+	hiddenLayers?: ReadonlySet<FootprintLayer>,
 ): [string, ReactNode][] {
+	const pasteKeepsPadVisible =
+		pad.pad.paste === true && hiddenLayers?.has(shapeLayer(pad)) === true;
 	return [
 		[
 			"Pad number",
@@ -392,6 +395,35 @@ function padRows(
 				<option value="circle">Circle</option>
 			</select>,
 		],
+		...(pad.pad.type === "smd"
+			? [
+					[
+						"Solder paste",
+						<input
+							key="paste"
+							type="checkbox"
+							aria-label="Solder paste"
+							className="ui-checkbox"
+							checked={pad.pad.paste ?? false}
+							disabled={pasteKeepsPadVisible}
+							title={
+								pasteKeepsPadVisible
+									? "Show the pad's copper layer to remove its paste"
+									: undefined
+							}
+							onChange={(event) =>
+								onEdit({
+									kind: "pad",
+									edit: {
+										attribute: "paste",
+										value: event.currentTarget.checked,
+									},
+								})
+							}
+						/>,
+					] as [string, ReactNode],
+				]
+			: []),
 		...(pad.pad.drill === undefined
 			? []
 			: [
@@ -605,7 +637,8 @@ function SelectionAttributesPanel({
 		lockAttribute,
 		...(layer === undefined
 			? []
-			: single && shapeLayers(single).length > 1
+			: single &&
+					copperLayers.every((copper) => shapeLayers(single).includes(copper))
 				? [["Layer", "Both copper layers"] as [string, ReactNode]]
 				: [
 						[
@@ -642,7 +675,7 @@ function SelectionAttributesPanel({
 							</select>,
 						] as [string, ReactNode],
 					]),
-		...(pad ? padRows(pad, unit, onEdit) : []),
+		...(pad ? padRows(pad, unit, onEdit, hiddenLayers) : []),
 		...(via ? viaRows(via, unit, onEdit) : []),
 		...(single?.kind === "pin"
 			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [
