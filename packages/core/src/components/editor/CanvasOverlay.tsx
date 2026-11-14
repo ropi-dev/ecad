@@ -9,6 +9,11 @@ import {
 	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	shapeLayer,
+	shapeLayers,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { Diff, Minus, Plus } from "lucide-react";
 import {
 	memo,
@@ -26,7 +31,10 @@ import type {
 	CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
-import { worldToScreen } from "#/engine/camera.ts";
+import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { screenAt } from "#/engine/view-projection.ts";
+import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
+import { shapeOutline } from "#/footprint/outline.ts";
 
 const selectionIcons: Record<Exclude<SelectionMode, "replace">, typeof Plus> = {
 	add: Plus,
@@ -46,6 +54,23 @@ interface CanvasOverlayProps {
 	canvasArea: RefObject<HTMLElement | null>;
 	connectionHover: Point | null;
 	marquee: ReturnType<typeof useCanvasGestures>["marquee"];
+	/** Height of the surface items on these layers lie on in a view turned in 3D. */
+	layerHeight?: (layers: readonly FootprintLayer[]) => number;
+	placementPreview?: EditorShape | null;
+}
+
+/** An item's outline as the turned view shows it, or nothing when part of it is behind the camera. */
+function projectedOutline(
+	view: Viewer2DSnapshot,
+	shape: EditorShape,
+	height: number,
+) {
+	const points = shapeOutline(shape).map((corner) =>
+		screenAt(view, corner, height),
+	);
+	return points.every((point) => point !== null)
+		? points.map((point) => `${point.x},${point.y}`).join(" ")
+		: undefined;
 }
 
 export const CanvasOverlay = memo(function CanvasOverlay({
@@ -60,6 +85,8 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 	canvasArea,
 	connectionHover,
 	marquee,
+	layerHeight,
+	placementPreview,
 }: CanvasOverlayProps) {
 	const view = useSyncExternalStore(
 		cameraView.subscribe,
@@ -71,6 +98,9 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 		() => readTextAnchors(shapes, selected),
 		[readTextAnchors, shapes, selected],
 	);
+	const heightOf = (shape: EditorShape) =>
+		layerHeight?.(shapeLayers(shape)) ?? 0;
+	const turned = view?.projection !== undefined;
 	return (
 		<>
 			{view && (
@@ -80,20 +110,54 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 					// Handles and guides follow the camera on every frame.
 					data-shortcut-mutations="ignore"
 				>
-					<RulerPositionGuide
-						view={view}
-						guideCenter={guideCenter}
-						canvasArea={canvasArea}
-					/>
+					{!turned && (
+						<RulerPositionGuide
+							view={view}
+							guideCenter={guideCenter}
+							canvasArea={canvasArea}
+						/>
+					)}
+					{turned && (
+						<svg
+							className="absolute inset-0 size-full overflow-visible"
+							data-testid="board-outlines"
+							aria-hidden="true"
+						>
+							{placementPreview && (
+								<polygon
+									data-testid="board-placement"
+									points={projectedOutline(
+										view,
+										placementPreview,
+										heightOf(placementPreview),
+									)}
+									fill={
+										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
+									}
+									fillOpacity={0.4}
+									stroke={
+										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
+									}
+									strokeWidth={1}
+								/>
+							)}
+							{selected.map((shape) => (
+								<polygon
+									key={shape.id}
+									data-testid="board-selection"
+									data-shape-id={shape.id}
+									points={projectedOutline(view, shape, heightOf(shape))}
+									className="fill-accent/15 stroke-accent"
+									strokeWidth={1.5}
+								/>
+							))}
+						</svg>
+					)}
 					{connectionHover &&
 						tool === "wire" &&
 						(() => {
-							const point = worldToScreen(
-								connectionHover,
-								view.camera,
-								view.viewport.width,
-								view.viewport.height,
-							);
+							const point = screenAt(view, connectionHover);
+							if (!point) return null;
 							return (
 								<span
 									data-testid="wire-connection"
@@ -109,18 +173,15 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							const bounds = shapeBounds(
 								symbolChildWorld(selectedSymbol, selectedChild.shape),
 							);
-							const topLeft = worldToScreen(
-								{ x: bounds.minX, y: bounds.maxY },
-								view.camera,
-								view.viewport.width,
-								view.viewport.height,
-							);
-							const bottomRight = worldToScreen(
-								{ x: bounds.maxX, y: bounds.minY },
-								view.camera,
-								view.viewport.width,
-								view.viewport.height,
-							);
+							const topLeft = screenAt(view, {
+								x: bounds.minX,
+								y: bounds.maxY,
+							});
+							const bottomRight = screenAt(view, {
+								x: bounds.maxX,
+								y: bounds.minY,
+							});
+							if (!topLeft || !bottomRight) return null;
 							return (
 								<span
 									data-testid="symbol-child-selection"
@@ -134,14 +195,13 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 								/>
 							);
 						})()}
-					<SymbolAnchors view={view} shapes={shapes} />
+					{!turned && <SymbolAnchors view={view} shapes={shapes} />}
 					{textAnchors.map((anchor) => {
-						const point = worldToScreen(
-							anchor,
-							view.camera,
-							view.viewport.width,
-							view.viewport.height,
-						);
+						const owner =
+							turned &&
+							selected.find((shape) => String(shape.id) === anchor.key);
+						const point = screenAt(view, anchor, owner ? heightOf(owner) : 0);
+						if (!point) return null;
 						return (
 							<span
 								key={anchor.key}
@@ -153,12 +213,8 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						);
 					})}
 					{handles.map(({ shape, handle }) => {
-						const point = worldToScreen(
-							handle,
-							view.camera,
-							view.viewport.width,
-							view.viewport.height,
-						);
+						const point = screenAt(view, handle, heightOf(shape));
+						if (!point) return null;
 						return (
 							<span
 								key={`${shape.id}:${handle.id}`}

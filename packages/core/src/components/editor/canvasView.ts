@@ -24,7 +24,12 @@ export function createCanvasView(unit: LengthUnit = "mil") {
 				snapshot.camera.y === value.camera.y &&
 				snapshot.camera.scale === value.camera.scale &&
 				snapshot.viewport.width === value.viewport.width &&
-				snapshot.viewport.height === value.viewport.height
+				snapshot.viewport.height === value.viewport.height &&
+				snapshot.projection?.eyeZ === value.projection?.eyeZ &&
+				(snapshot.projection?.matrix ?? []).every(
+					(entry, index) => entry === value.projection?.matrix[index],
+				) &&
+				!snapshot.projection === !value.projection
 			)
 				return;
 			snapshot = value;

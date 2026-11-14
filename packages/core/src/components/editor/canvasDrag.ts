@@ -10,7 +10,7 @@ import {
 	resizeSymbolChild,
 	snappedMoveDelta,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	applySelection,
 	type SelectionMode,
@@ -22,6 +22,8 @@ export interface CanvasDrag {
 	canvas: HTMLCanvasElement;
 	start: Point;
 	startScreen: Point;
+	/** Height of the plane the drag moves on while the view is turned in 3D. */
+	height?: number;
 	previousSelection: ReadonlySet<number>;
 	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-child";
 	childKey?: string;
@@ -83,6 +85,12 @@ export function canvasDragStep(
 		allowLocked: boolean;
 		cameraScale(): number;
 		nextId(): number;
+		/** Replaces the drawing-space test of what a selection rectangle picks. */
+		inMarquee?(
+			shape: EditorShape,
+			box: Bounds,
+			mode: CanvasMarquee["mode"],
+		): boolean;
 	},
 ): { moved: boolean; valid: boolean; effect: CanvasDragEffect } {
 	const moved =
@@ -215,7 +223,24 @@ export function canvasDragStep(
 		minY: Math.min(drag.start.y, point.y),
 		maxY: Math.max(drag.start.y, point.y),
 	};
-	const matches = mode === "window" ? containsSelection : intersectsSelection;
+	const { inMarquee } = context;
+	const matches = inMarquee
+		? (shape: EditorShape) =>
+				inMarquee(
+					shape,
+					{
+						minX: Math.min(drag.startScreen.x, screen.x),
+						maxX: Math.max(drag.startScreen.x, screen.x),
+						minY: Math.min(drag.startScreen.y, screen.y),
+						maxY: Math.max(drag.startScreen.y, screen.y),
+					},
+					mode,
+				)
+		: (shape: EditorShape) =>
+				(mode === "window" ? containsSelection : intersectsSelection)(
+					shape,
+					bounds,
+				);
 	return result({
 		kind: "marquee",
 		marquee: {
@@ -226,9 +251,7 @@ export function canvasDragStep(
 		},
 		selection: applySelection(
 			drag.previousSelection,
-			context.shapes
-				.filter((shape) => matches(shape, bounds))
-				.map((shape) => shape.id),
+			context.shapes.filter(matches).map((shape) => shape.id),
 			drag.selectionMode,
 		),
 	});
