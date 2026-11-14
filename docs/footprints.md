@@ -16,7 +16,7 @@ This editor is a first version. Footprints are not yet placed on a board, linked
 
 The **Layers** panel at the top left lists twelve layers: copper, silkscreen, solder mask, paste, courtyard and fabrication, each for the front and the back of the board. Colours follow KiCad's defaults.
 
-Select a layer's name to make it the active layer. New graphics go on the active layer, and it draws on top of the others. The other layers draw in board order, with mask and paste under their copper so an opening shows as a rim around its pad. The eye button hides or shows a layer. Items on a hidden layer are not drawn and cannot be selected, and hiding a layer clears the selection. The active layer cannot be hidden, and making a hidden layer active shows it. The attributes panel marks hidden layers in its Layer field and will not move an item onto one, so an item cannot vanish by changing its layer. Export includes hidden layers and draws every layer in board order, whichever layer is active. The number beside a layer counts its items.
+Select a layer's name to make it the active layer. New graphics go on the active layer, and it draws on top of the others. The other layers draw in board order, with mask and paste under their copper so an opening shows as a rim around its pad. The eye button hides or shows a layer. The two paste layers start hidden each time a footprint opens. Items on a hidden layer are not drawn and cannot be selected, and hiding a layer clears the selection. The active layer cannot be hidden, and making a hidden layer active shows it. The attributes panel marks hidden layers in its Layer field and will not move an item onto one, so an item cannot vanish by changing its layer. Export includes hidden layers and draws every layer in board order, whichever layer is active. The number beside a layer counts its items.
 
 Select an item and change **Layer** in Attributes to move it. A selection of several items moves together.
 
@@ -26,9 +26,9 @@ Open **Pads** in the toolbar and choose **Surface mount pad** or **Through-hole 
 
 A surface mount pad starts as a 1 by 1.5 mm rectangle on the active copper layer, or on front copper when another layer is active. A through-hole pad starts as a 1.7 mm circle with a 1 mm drill. It has copper on both sides of the board, so it shows while either copper layer is visible and its Layer reads "Both copper layers".
 
-Select a pad to edit its Pad number, Pad type, Pad shape, Drill, position and size in Attributes. A pad is a rectangle or a circle. A drill must be smaller than its pad, and the Drill field reverts a value that is not. Shrinking a through-hole pad below its drill shrinks the drill to 60% of the pad. Changing a back-side pad to through-hole and back keeps it on the back.
+Select a pad to edit its Pad number, Pad type, Pad shape, Solder paste, Drill, position and size in Attributes. A pad is a rectangle or a circle. A drill must be smaller than its pad, and the Drill field reverts a value that is not. Shrinking a through-hole pad below its drill shrinks the drill to 60% of the pad. Changing a back-side pad to through-hole and back keeps it on the back.
 
-Pads do not yet add solder mask openings or paste. Draw them on the mask and paste layers where a footprint needs them.
+A surface mount pad has a **Solder paste** checkbox in Attributes, on for new pads. While it is on, the pad adds an opening of its own size and shape to the paste layer on its copper side: F.Paste for a front pad, B.Paste for a back one. The opening follows the pad when it moves, resizes or changes side. The pad counts toward the paste layer in the Layers panel, stays visible while either its copper or its paste layer is shown, and appears on the paste layer in the 3D view once that layer is shown. The flat view draws it once, in copper colour. Through-hole pads have no paste setting, and changing a through-hole pad to surface mount turns paste on. Pads do not yet add solder mask openings. Draw them on the mask layers where a footprint needs them.
 
 ## Wires and graphics
 
@@ -100,7 +100,7 @@ A `.ecadfp` file is UTF-8 JSON:
 | Field | Meaning |
 | --- | --- |
 | `layer` | `F.Cu`, `B.Cu`, `F.SilkS`, `B.SilkS`, `F.Mask`, `B.Mask`, `F.Paste`, `B.Paste`, `F.CrtYd`, `B.CrtYd`, `F.Fab` or `B.Fab`. An item without one is read as `F.SilkS` and saved with it. |
-| `pad` | Makes a rectangle or circle a pad. `number` is up to 16 characters. `type` is `smd` or `through-hole`. A through-hole pad needs `drill`, a hole diameter in millimetres smaller than the pad. A surface mount pad must not have one. |
+| `pad` | Makes a rectangle or circle a pad. `number` is up to 16 characters. `type` is `smd` or `through-hole`. A through-hole pad needs `drill`, a hole diameter in millimetres smaller than the pad. A surface mount pad must not have one. `paste: true` on a surface mount pad adds a paste opening the size of the pad on its side's paste layer. A through-hole pad must not have `paste`. |
 | `filled` | Fills a rectangle, circle or triangle with its layer's colour. A pad is always solid. |
 
 The project manifest lists footprint paths in `footprints`. Web storage writes them as `footprints/<id>.ecadfp` in each revision, and desktop storage keeps them as visible files under `footprints/`. The desktop app watches them for changes from other programs like its other project files.

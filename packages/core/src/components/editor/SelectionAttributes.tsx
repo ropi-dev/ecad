@@ -386,6 +386,29 @@ function padRows(
 				<option value="circle">Circle</option>
 			</select>,
 		],
+		...(pad.pad.type === "smd"
+			? [
+					[
+						"Solder paste",
+						<input
+							key="paste"
+							type="checkbox"
+							aria-label="Solder paste"
+							className="ui-checkbox"
+							checked={pad.pad.paste ?? false}
+							onChange={(event) =>
+								onEdit({
+									kind: "pad",
+									edit: {
+										attribute: "paste",
+										value: event.currentTarget.checked,
+									},
+								})
+							}
+						/>,
+					] as [string, ReactNode],
+				]
+			: []),
 		...(pad.pad.drill === undefined
 			? []
 			: [

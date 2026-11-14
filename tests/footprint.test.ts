@@ -18,9 +18,11 @@ import {
 	footprintFitBounds,
 	footprintLayerView,
 	isPad,
+	newPadLayers,
 	nextPadNumber,
 	onFootprintLayer,
 	setShapeLayer,
+	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { canvasDragStep } from "#/components/editor/canvasDrag.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
@@ -229,17 +231,60 @@ test("without an active layer the view keeps board order, as export does", () =>
 test("a through-hole pad shows until both copper layers are hidden", () => {
 	const shapes = twoPadsWireCourtyardAndThroughHole();
 	assert.deepEqual(
-		ids(footprintLayerView(shapes, new Set(["F.Cu"]), "F.SilkS")),
+		ids(footprintLayerView(shapes, new Set(["F.Cu", "F.Paste"]), "F.SilkS")),
 		[5, 4, 3],
 	);
 	assert.deepEqual(
-		ids(footprintLayerView(shapes, new Set(["F.Cu", "B.Cu"]), "F.SilkS")),
+		ids(
+			footprintLayerView(
+				shapes,
+				new Set(["F.Cu", "F.Paste", "B.Cu"]),
+				"F.SilkS",
+			),
+		),
 		[4, 3],
 	);
 });
 
+test("a surface mount pad adds paste on its own side until paste is turned off", () => {
+	const front = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
+	assert.deepEqual(shapeLayers(front), ["F.Cu", "F.Paste"]);
+	assert.deepEqual(newPadLayers("smd", "B.Cu"), ["B.Cu", "B.Paste"]);
+	const back = setShapeLayer(front, "B.Cu");
+	assert.deepEqual(shapeLayers(back), ["B.Cu", "B.Paste"]);
+	const bare = editPad(front, { attribute: "paste", value: false });
+	assert.deepEqual(shapeLayers(bare), ["F.Cu"]);
+	assert.equal(editorShapeSchema.safeParse(bare).success, true);
+	assert.deepEqual(
+		ids(footprintLayerView([front, bare], new Set(["F.Cu"]), "F.SilkS")),
+		[1],
+	);
+	const through = editPad(front, { attribute: "type", value: "through-hole" });
+	assert.equal(through.pad.paste, undefined);
+	assert.equal(editPad(through, { attribute: "paste", value: true }), through);
+	assert.equal(
+		editorShapeSchema.safeParse({
+			...through,
+			pad: { ...through.pad, paste: true },
+		}).success,
+		false,
+	);
+	assert.deepEqual(
+		buildBoard([front])
+			.map((layer) => layer.id)
+			.filter((id) => id.endsWith("Paste")),
+		["footprint:F.Paste"],
+	);
+	assert.deepEqual(
+		buildBoard([bare])
+			.map((layer) => layer.id)
+			.filter((id) => id.endsWith("Paste")),
+		[],
+	);
+});
+
 test("the editor session edits visible shapes without touching hidden ones", () => {
-	const hidden = new Set<FootprintLayer>(["F.Cu"]);
+	const hidden = new Set<FootprintLayer>(["F.Cu", "F.Paste"]);
 	const session = createEditorSession(
 		createDrawingStore(
 			twoPadsWireCourtyardAndThroughHole().filter((shape) => shape.id !== 5),
@@ -596,13 +641,14 @@ test("the board has one object per layer, one per layer's text, drills for throu
 			["footprint:F.Cu", 3],
 			["footprint:B.Cu", 1],
 			["footprint:F.SilkS", 1],
+			["footprint:F.Paste", 2],
 			["footprint:F.CrtYd", 1],
 			["footprint:F.SilkS:text", 0],
 			[DRILL_LAYER_ID, 1],
 		],
 	);
-	const profileTopCopperBottomCopperTopLegendUnknownTopLegendDrill = [
-		9, 3, 5, 0, 11, 0, 10,
+	const profileTopCopperBottomCopperTopLegendTopPasteUnknownTopLegendDrill = [
+		9, 3, 5, 0, 1, 11, 0, 10,
 	];
 	assert.deepEqual(
 		board.map(
@@ -612,7 +658,7 @@ test("the board has one object per layer, one per layer's text, drills for throu
 					layer.metadata[".FileFunction"]?.join(","),
 				)[0],
 		),
-		profileTopCopperBottomCopperTopLegendUnknownTopLegendDrill,
+		profileTopCopperBottomCopperTopLegendTopPasteUnknownTopLegendDrill,
 	);
 	const edge = required(board[0]).bounds;
 	assert.deepEqual(
