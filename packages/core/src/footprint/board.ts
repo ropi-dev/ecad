@@ -9,6 +9,8 @@ import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	footprintFitBounds,
 	isPad,
+	isPadOrVia,
+	shapeDrill,
 	shapeLayer,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -142,7 +144,7 @@ function shapeGeometry(shape: EditorShape): Geometry | undefined {
 		};
 	if (shape.kind === "circle") {
 		const radius = width / 2;
-		if (isPad(shape)) return { type: "circle", x: 0, y: 0, radius };
+		if (isPadOrVia(shape)) return { type: "circle", x: 0, y: 0, radius };
 		const outer: Geometry = {
 			type: "circle",
 			x: 0,
@@ -198,7 +200,7 @@ function shapeGeometry(shape: EditorShape): Geometry | undefined {
 const strokedBounds = (shape: EditorShape) =>
 	expandBounds(
 		shapeBounds(shape),
-		isPad(shape) || shape.kind === "line" || shape.kind === "text"
+		isPadOrVia(shape) || shape.kind === "line" || shape.kind === "text"
 			? 0
 			: shape.lineWidth / 2,
 	);
@@ -261,7 +263,7 @@ export function planFootprintBoard(
 			onLayer.push(shape);
 			members.set(layer, onLayer);
 		}
-		if (isPad(shape) && shape.pad.drill !== undefined) drilled.push(shape);
+		if (shapeDrill(shape) !== undefined) drilled.push(shape);
 	}
 	const edge = boardEdgeBounds(shapes);
 	const colors = darkSchematicTheme.appearance;
@@ -360,8 +362,9 @@ export function planFootprintBoard(
 								colors["pad-through"],
 								"Plated,1,2,PTH",
 								drilled.flatMap((shape): SceneObject[] => {
-									if (!isPad(shape) || shape.pad.drill === undefined) return [];
-									const radius = shape.pad.drill / 2;
+									const drill = shapeDrill(shape);
+									if (drill === undefined) return [];
+									const radius = drill / 2;
 									return [
 										{
 											id: `drill:${shape.id}`,

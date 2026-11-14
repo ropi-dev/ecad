@@ -47,9 +47,13 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	isPad,
+	isPadOrVia,
+	isVia,
 	type PadShape,
 	padMinorSize,
 	shapeLayer,
+	shapeLayers,
+	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Lock, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -95,6 +99,7 @@ const kindLabels: Record<string, string> = {
 	wire: "Wire",
 	pin: "Pin",
 	text: "Text",
+	via: "Via",
 	"net label": "Net label",
 	"supply label": "Supply label",
 };
@@ -313,6 +318,7 @@ function pinLabelRows(
 
 function selectionType(shape: EditorShape, footprint: boolean): string {
 	if (isPad(shape)) return "pad";
+	if (isVia(shape)) return "via";
 	if (shape.kind === "text" && shape.electrical)
 		return `${shape.electrical} label`;
 	if (shape.kind === "symbol" && shape.netSymbol) return "net symbol";
@@ -323,7 +329,10 @@ function padRows(
 	pad: PadShape,
 	unit: LengthUnit,
 	onEdit: (edit: SelectionEdit) => void,
+	hiddenLayers?: ReadonlySet<FootprintLayer>,
 ): [string, ReactNode][] {
+	const pasteKeepsPadVisible =
+		pad.pad.paste === true && hiddenLayers?.has(shapeLayer(pad)) === true;
 	return [
 		[
 			"Pad number",
@@ -396,6 +405,12 @@ function padRows(
 							aria-label="Solder paste"
 							className="ui-checkbox"
 							checked={pad.pad.paste ?? false}
+							disabled={pasteKeepsPadVisible}
+							title={
+								pasteKeepsPadVisible
+									? "Show the pad's copper layer to remove its paste"
+									: undefined
+							}
 							onChange={(event) =>
 								onEdit({
 									kind: "pad",
@@ -427,6 +442,27 @@ function padRows(
 						/>,
 					] as [string, ReactNode],
 				]),
+	];
+}
+
+function viaRows(
+	via: ViaShape,
+	unit: LengthUnit,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	return [
+		[
+			"Drill",
+			<AttributeInput
+				key={`${via.id}:drill`}
+				label="Drill"
+				value={via.via.drill}
+				unit={unit}
+				positive
+				below={via.width}
+				onChange={(drill) => onEdit({ kind: "via-drill", drill })}
+			/>,
+		],
 	];
 }
 
@@ -469,7 +505,7 @@ function SelectionAttributesPanel({
 	const basicShapes = shapes.flatMap((shape) => {
 		const border =
 			shape.kind === "symbol" ? boxBorder(shape)?.shape : undefined;
-		if (isPad(shape)) return [];
+		if (isPadOrVia(shape)) return [];
 		return isBasicShape(shape)
 			? [shape]
 			: border && isBasicShape(border)
@@ -488,12 +524,12 @@ function SelectionAttributesPanel({
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
 			? symbolShapes(shape).filter((child) => child.kind !== "text")
-			: shape.kind === "text" || isPad(shape)
+			: shape.kind === "text" || isPadOrVia(shape)
 				? []
 				: [shape],
 	);
 	const fillable = footprint
-		? shapes.filter(isFillableShape).filter((shape) => !isPad(shape))
+		? shapes.filter(isFillableShape).filter((shape) => !isPadOrVia(shape))
 		: [];
 	const lineWidth =
 		outlinedShapes.length &&
@@ -539,6 +575,7 @@ function SelectionAttributesPanel({
 			? formatMils
 			: (value: number) => `${Number(value.toFixed(4))} mm`;
 	const pad = single && isPad(single) ? single : undefined;
+	const via = single && isVia(single) ? single : undefined;
 	const layer =
 		footprint && shapes.every((shape) => shape.kind !== "symbol")
 			? shapes.every((shape) => shapeLayer(shape) === shapeLayer(shapes[0]))
@@ -600,7 +637,8 @@ function SelectionAttributesPanel({
 		lockAttribute,
 		...(layer === undefined
 			? []
-			: pad?.pad.type === "through-hole"
+			: single &&
+					copperLayers.every((copper) => shapeLayers(single).includes(copper))
 				? [["Layer", "Both copper layers"] as [string, ReactNode]]
 				: [
 						[
@@ -637,7 +675,8 @@ function SelectionAttributesPanel({
 							</select>,
 						] as [string, ReactNode],
 					]),
-		...(pad ? padRows(pad, unit, onEdit) : []),
+		...(pad ? padRows(pad, unit, onEdit, hiddenLayers) : []),
+		...(via ? viaRows(via, unit, onEdit) : []),
 		...(single?.kind === "pin"
 			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [
 					attribute === "name" ? "Name" : "Number",

@@ -11,8 +11,9 @@ const groups: Record<string, string> = {
 	"Supply label": "Connections",
 	Pin: "Connections",
 	"No connect": "Connections",
-	"Surface mount pad": "Pads",
-	"Through-hole pad": "Pads",
+	"Surface mount pad": "Pads and vias",
+	"Through-hole pad": "Pads and vias",
+	Via: "Pads and vias",
 	"Export drawing": "Export",
 	"Export PNG": "Export",
 };

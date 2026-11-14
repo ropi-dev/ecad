@@ -22,13 +22,21 @@ Select an item and change **Layer** in Attributes to move it. A selection of sev
 
 ## Pads
 
-Open **Pads** in the toolbar and choose **Surface mount pad** or **Through-hole pad**, then click to place one. The tool stays active, so each further click places the next pad. Pads number themselves from the highest whole pad number in the footprint. R rotates the pad before it is placed, and Escape returns to Select.
+Open **Pads and vias** in the toolbar and choose **Surface mount pad** or **Through-hole pad**, then click to place one. The tool stays active, so each further click places the next pad. Pads number themselves from the highest whole pad number in the footprint. R rotates the pad before it is placed, and Escape returns to Select.
 
 A surface mount pad starts as a 1 by 1.5 mm rectangle on the active copper layer, or on front copper when another layer is active. A through-hole pad starts as a 1.7 mm circle with a 1 mm drill. It has copper on both sides of the board, so it shows while either copper layer is visible and its Layer reads "Both copper layers".
 
 Select a pad to edit its Pad number, Pad type, Pad shape, Solder paste, Drill, position and size in Attributes. A pad is a rectangle or a circle. A drill must be smaller than its pad, and the Drill field reverts a value that is not. Shrinking a through-hole pad below its drill shrinks the drill to 60% of the pad. Changing a back-side pad to through-hole and back keeps it on the back.
 
 A surface mount pad has a **Solder paste** checkbox in Attributes, on for new pads. While it is on, the pad adds an opening of its own size and shape to the paste layer on its copper side: F.Paste for a front pad, B.Paste for a back one. The opening follows the pad when it moves, resizes or changes side. The pad counts toward the paste layer in the Layers panel, stays visible while either its copper or its paste layer is shown, and appears on the paste layer in the 3D view once that layer is shown. The flat view draws it once, in copper colour. Through-hole pads have no paste setting, and changing a through-hole pad to surface mount turns paste on. Pads do not yet add solder mask openings. Draw them on the mask layers where a footprint needs them.
+
+## Vias
+
+A via is a plated hole that joins front and back copper, such as a thermal via under an exposed pad. Open **Pads and vias** and choose **Via**, then click to place one. Like the pad tools it stays active until Escape. A new via is a 0.6 mm circle with a 0.3 mm drill. It has copper on both sides and no number, and its Layer reads "Both copper layers". Hiding one copper layer leaves vias visible on the other.
+
+Select a via to edit its Drill, position and radius in Attributes. The drill must be smaller than the via, and the Drill field reverts a value that is not. Shrinking a via below its drill shrinks the drill to 60% of the via. A via is always solid and keeps its centre on the grid. In the 3D view its drill is an open barrel through the board, like a through-hole pad's.
+
+Vias are tented: they add no mask opening. Pasted into a schematic or symbol, a via becomes a plain circle.
 
 ## Wires and graphics
 
@@ -101,13 +109,14 @@ A `.ecadfp` file is UTF-8 JSON:
 | --- | --- |
 | `layer` | `F.Cu`, `B.Cu`, `F.SilkS`, `B.SilkS`, `F.Mask`, `B.Mask`, `F.Paste`, `B.Paste`, `F.CrtYd`, `B.CrtYd`, `F.Fab` or `B.Fab`. An item without one is read as `F.SilkS` and saved with it. |
 | `pad` | Makes a rectangle or circle a pad. `number` is up to 16 characters. `type` is `smd` or `through-hole`. A through-hole pad needs `drill`, a hole diameter in millimetres smaller than the pad. A surface mount pad must not have one. `paste: true` on a surface mount pad adds a paste opening the size of the pad on its side's paste layer. A through-hole pad must not have `paste`. |
+| `via` | Makes a circle a via. `drill` is the hole diameter in millimetres, smaller than the circle. A pad cannot also be a via. |
 | `filled` | Fills a rectangle, circle or triangle with its layer's colour. A pad is always solid. |
 
 The project manifest lists footprint paths in `footprints`. Web storage writes them as `footprints/<id>.ecadfp` in each revision, and desktop storage keeps them as visible files under `footprints/`. The desktop app watches them for changes from other programs like its other project files.
 
 ## Code
 
-`packages/drawing-core/src/footprint/` holds the layer list, pad creation and edits, and `footprintLayerView`, which filters and orders shapes for the editor. The optional `layer` and `pad` fields are part of the shared shape schema in `packages/drawing-core/src/drawing/schema.ts`, so the drawing store, commands and history take footprint items unchanged. `packages/core/src/footprint/format.ts` validates the file, and `packages/core/src/footprint/board.ts` turns the shapes into the planar layers the board stack renders. `Editor2D` runs in footprint mode when the project opens a footprint: it adds `FootprintLayerPanel`, the pad tools and `FootprintBoardView`, which hands the board to `GerberViewer`. `pasteSelection` in `packages/core/src/drawing/clipboard.ts` takes a footprint destination. The viewport's `pixelsPerMmAt100` option fixes what 100% zoom means.
+`packages/drawing-core/src/footprint/` holds the layer list, pad and via creation and edits, and `footprintLayerView`, which filters and orders shapes for the editor. The optional `layer`, `pad` and `via` fields are part of the shared shape schema in `packages/drawing-core/src/drawing/schema.ts`, so the drawing store, commands and history take footprint items unchanged. `packages/core/src/footprint/format.ts` validates the file, and `packages/core/src/footprint/board.ts` turns the shapes into the planar layers the board stack renders. `Editor2D` runs in footprint mode when the project opens a footprint: it adds `FootprintLayerPanel`, the pad and via tools, and `FootprintBoardView`, which hands the board to `GerberViewer`. `pasteSelection` in `packages/core/src/drawing/clipboard.ts` takes a footprint destination. The viewport's `pixelsPerMmAt100` option fixes what 100% zoom means.
 
 The 3D view runs the same gestures, commands and session as the flat view. Three things differ:
 

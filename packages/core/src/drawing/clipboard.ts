@@ -193,8 +193,9 @@ export function pasteSelection(
 				if (footprint) copy.layer ??= destination.footprintLayer;
 				else {
 					delete copy.layer;
-					if ("pad" in copy && copy.pad) {
+					if (("pad" in copy && copy.pad) || ("via" in copy && copy.via)) {
 						delete copy.pad;
+						delete copy.via;
 						delete copy.filled;
 					}
 				}

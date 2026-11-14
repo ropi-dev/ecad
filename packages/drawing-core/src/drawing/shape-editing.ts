@@ -21,7 +21,7 @@ import {
 } from "#/drawing/symbol-instances.ts";
 import { textCenter } from "#/drawing/text-alignment.ts";
 import type { Point } from "#/drawing/types.ts";
-import { fitPad } from "#/footprint/shapes.ts";
+import { fitHole } from "#/footprint/shapes.ts";
 
 export function moveSymbolChild(
 	symbol: EditorSymbol,
@@ -179,21 +179,21 @@ export function editShapeAttribute(
 	if (shape.kind === "text" && attribute === "lineWidth") return shape;
 	if (attribute === "radius") {
 		return shape.kind === "circle"
-			? fitPad({ ...shape, width: value * 2, height: value * 2 })
+			? fitHole({ ...shape, width: value * 2, height: value * 2 })
 			: shape;
 	}
 	if (
 		shape.kind === "circle" &&
 		(attribute === "width" || attribute === "height")
 	) {
-		return fitPad({ ...shape, width: value, height: value });
+		return fitHole({ ...shape, width: value, height: value });
 	}
 	if (
 		(shape.kind === "wire" || shape.kind === "line") &&
 		attribute === "height"
 	)
 		return shape;
-	return fitPad({ ...shape, [attribute]: value });
+	return fitHole({ ...shape, [attribute]: value });
 }
 
 export interface ResizeHandle extends Point {
@@ -296,7 +296,7 @@ export function resizeShape(
 			),
 		);
 		const diameter = radius * 2;
-		return fitPad({ ...shape, width: diameter, height: diameter });
+		return fitHole({ ...shape, width: diameter, height: diameter });
 	}
 	if (shape.kind === "wire" || shape.kind === "line") {
 		const fixed = localToWorld(
@@ -360,7 +360,7 @@ export function resizeShape(
 		0.1,
 		shape.height + handle.yDirection * dy,
 	);
-	return fitPad({
+	return fitHole({
 		...shape,
 		...localToWorld(
 			shape,

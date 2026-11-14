@@ -47,6 +47,10 @@ One sheet of the board stack that a footprint item sits on, such as front copper
 A copper area of a footprint that one component lead solders to, identified by its number. A surface mount pad is on one side of the board. A through-hole pad has a drilled hole and copper on both sides.
 _Avoid_: Pin, land
 
+**Via**:
+A plated hole in a footprint that joins front and back copper. Nothing solders to it, so it has no number.
+_Avoid_: Through-hole pad, hole
+
 **Footprint wire**:
 A straight stroke on one layer of a footprint. It forms no net, unlike a wire in a schematic.
 _Avoid_: Track, trace

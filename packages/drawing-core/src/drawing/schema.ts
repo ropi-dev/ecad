@@ -89,9 +89,18 @@ const padSchema = z
 		"Makes a footprint rectangle or circle a pad. The shape is its copper.",
 	);
 
+const viaSchema = z
+	.strictObject({
+		drill: z.number().positive().describe("Hole diameter in millimetres."),
+	})
+	.describe(
+		"Makes a footprint circle a plated via through both copper layers. The circle is its copper.",
+	);
+
 const fillableShapeFields = {
 	filled: z.boolean().optional(),
 	pad: padSchema.optional(),
+	via: viaSchema.optional(),
 	...geometryFields,
 	lineStyle,
 	kind: z.enum(fillableShapeKinds),
@@ -184,6 +193,20 @@ const validPadError = {
 	error:
 		"A pad must be a rectangle or a circle. A through-hole pad needs a drill smaller than the pad and has no paste setting. A surface mount pad has no drill.",
 };
+const validVia = (shape: {
+	kind: string;
+	width: number;
+	pad?: unknown;
+	via?: z.output<typeof viaSchema>;
+}) =>
+	!shape.via ||
+	(shape.kind === "circle" &&
+		shape.pad === undefined &&
+		shape.via.drill < shape.width);
+const validViaError = {
+	error:
+		"A via must be a circle that is not a pad, with a drill smaller than the circle.",
+};
 const orthogonalWire = (wire: { rotation: number }) =>
 	Math.abs(Math.sin(2 * wire.rotation)) <= 1e-9;
 const orthogonalWireError = {
@@ -193,11 +216,13 @@ const orthogonalWireError = {
 const fillableInputSchema = z
 	.strictObject(fillableShapeFields)
 	.refine(roundCircle, roundCircleError)
-	.refine(validPad, validPadError);
+	.refine(validPad, validPadError)
+	.refine(validVia, validViaError);
 const fillableShapeSchema = z
 	.strictObject({ ...fillableShapeFields, id: shapeId })
 	.refine(roundCircle, roundCircleError)
-	.refine(validPad, validPadError);
+	.refine(validPad, validPadError)
+	.refine(validVia, validViaError);
 const lineInputSchema = z.strictObject(lineShapeFields);
 const lineShapeSchema = z.strictObject({ ...lineShapeFields, id: shapeId });
 const wireInputSchema = z
@@ -587,6 +612,7 @@ export const savedDrawingShapesSchema = z.preprocess(
 
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export type ShapePad = z.output<typeof padSchema>;
+export type ShapeVia = z.output<typeof viaSchema>;
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
 export interface PinShape extends z.output<typeof pinShapeSchema> {}
