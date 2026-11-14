@@ -411,6 +411,20 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	).toBeVisible();
 	await expect(flat).toBeEnabled();
 	await expect(flat).toHaveAttribute("aria-pressed", "true");
+	await page.keyboard.down("Alt");
+	await page.keyboard.down("Shift");
+	await page.mouse.move(centre.x, centre.y);
+	await page.mouse.down();
+	await page.mouse.move(centre.x, centre.y - 40, { steps: 4 });
+	await page.mouse.up();
+	await page.keyboard.up("Shift");
+	await page.keyboard.up("Alt");
+	await expect(area).toHaveAttribute("data-view", "3d");
+	await expect(page.getByText("The 3D graphics context was lost")).toHaveCount(
+		0,
+	);
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "2d");
 
 	await page.setViewportSize({ width: 1400, height: 900 });
 	await flat.click();

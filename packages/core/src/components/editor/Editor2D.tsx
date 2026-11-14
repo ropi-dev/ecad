@@ -497,8 +497,16 @@ function EditorCanvas({
 		setBoard((current) => (current === "closed" ? "open" : "closing"));
 	}, [finishDrag, finishWire, clearPlacementPreview]);
 	const showBoardFlat = useCallback(
-		(flat: boolean) => setBoard(flat ? "closed" : "open"),
-		[],
+		(flat: boolean) => {
+			if (!flat) {
+				finishDrag(true);
+				finishWire();
+				clearPlacementPreview();
+				setBoardError("");
+			}
+			setBoard(flat ? "closed" : "open");
+		},
+		[finishDrag, finishWire, clearPlacementPreview],
 	);
 	const reportBoardBuild = useCallback((message: string) => {
 		setBoardBuildError(message);
