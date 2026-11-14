@@ -153,6 +153,23 @@ test("a footprint takes pads and layer graphics, hides layers and turns into a 3
 	await expect(drill).toHaveValue("0.6");
 	await page.keyboard.press("Escape");
 
+	await page.getByRole("button", { name: "Hide Back copper" }).click();
+	const secondPad = await screenPointOfMillimetres(page, 1, 0);
+	await page.mouse.dblclick(secondPad.x, secondPad.y);
+	const backCopper = attributes.getByLabel("Layer").locator("option", {
+		hasText: "Back copper",
+	});
+	await expect(backCopper).toHaveText("Back copper (hidden)");
+	await expect(backCopper).toBeDisabled();
+	await page.getByRole("button", { name: "Show Back copper" }).click();
+	await page.mouse.dblclick(secondPad.x, secondPad.y);
+	await attributes.getByLabel("Layer").selectOption("B.Cu");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes[1].layer)
+		.toBe("B.Cu");
+	await expect(attributes.getByLabel("Layer")).toHaveValue("B.Cu");
+	await page.keyboard.press("Escape");
+
 	await expect
 		.poll(
 			async () => (await documentState(page)).footprints?.[0]?.shapes.length,

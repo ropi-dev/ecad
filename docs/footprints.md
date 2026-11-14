@@ -16,7 +16,7 @@ This editor is a first version. Footprints are not yet placed on a board, linked
 
 The **Layers** panel at the top left lists twelve layers: copper, silkscreen, solder mask, paste, courtyard and fabrication, each for the front and the back of the board. Colours follow KiCad's defaults.
 
-Select a layer's name to make it the active layer. New graphics go on the active layer, and it draws on top of the others. The other layers draw in board order, with mask and paste under their copper so an opening shows as a rim around its pad. The eye button hides or shows a layer. Items on a hidden layer are not drawn and cannot be selected, and hiding a layer clears the selection. The active layer cannot be hidden, and making a hidden layer active shows it. Export includes hidden layers and draws every layer in board order, whichever layer is active. The number beside a layer counts its items.
+Select a layer's name to make it the active layer. New graphics go on the active layer, and it draws on top of the others. The other layers draw in board order, with mask and paste under their copper so an opening shows as a rim around its pad. The eye button hides or shows a layer. Items on a hidden layer are not drawn and cannot be selected, and hiding a layer clears the selection. The active layer cannot be hidden, and making a hidden layer active shows it. The attributes panel marks hidden layers in its Layer field and will not move an item onto one, so an item cannot vanish by changing its layer. Export includes hidden layers and draws every layer in board order, whichever layer is active. The number beside a layer counts its items.
 
 Select an item and change **Layer** in Attributes to move it. A selection of several items moves together.
 

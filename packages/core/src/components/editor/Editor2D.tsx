@@ -520,6 +520,7 @@ function EditorCanvas({
 				onCreateSymbol={sheetless ? undefined : () => setCreatingSymbol(true)}
 				allowNetEdits={!sheetless}
 				footprint={isFootprint}
+				hiddenLayers={layers.hidden}
 				unit={unit}
 				snapStep={
 					selectedChild
@@ -544,6 +545,7 @@ function EditorCanvas({
 			project,
 			sheetless,
 			isFootprint,
+			layers.hidden,
 			unit,
 			gridStep,
 			selectionSnapStep,

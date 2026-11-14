@@ -248,6 +248,7 @@ interface SelectionAttributesProps {
 	/** Shows the net symbol and label role controls. Reusable symbols have no nets. */
 	allowNetEdits?: boolean;
 	footprint?: boolean;
+	hiddenLayers?: ReadonlySet<FootprintLayer>;
 	unit?: LengthUnit;
 	onEdit: (edit: SelectionEdit) => void;
 	textFocusId: number | null;
@@ -434,6 +435,7 @@ function SelectionAttributesPanel({
 	onClear,
 	allowNetEdits = false,
 	footprint = false,
+	hiddenLayers,
 	unit = "mil",
 	onEdit,
 	onCreateSymbol,
@@ -600,8 +602,13 @@ function SelectionAttributesPanel({
 								{footprintLayers
 									.filter((item) => !pad || copperLayers.includes(item))
 									.map((item) => (
-										<option key={item} value={item}>
+										<option
+											key={item}
+											value={item}
+											disabled={hiddenLayers?.has(item)}
+										>
 											{footprintLayerLabels[item]}
+											{hiddenLayers?.has(item) ? " (hidden)" : ""}
 										</option>
 									))}
 							</select>,
