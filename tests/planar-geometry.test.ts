@@ -9,6 +9,7 @@ import {
 	createPlanarObject3D,
 	disposePlanarObject3D,
 } from "#/engine/planar-object.ts";
+import { buildPlanarWalls } from "#/engine/planar-walls.ts";
 import type { SceneObject } from "#/engine/types.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { pthGerber } from "./fixtures/pth-gerber";
@@ -132,6 +133,47 @@ test("planar objects are real mesh geometry without maps or backing images", () 
 		}
 	});
 	assert.equal(meshes, 3);
+	disposePlanarObject3D(object);
+});
+
+test("planar fills and walls carry the bounds three would compute", () => {
+	const compiled = compilePlanarGeometry([
+		{ ...rect(8), transform: [1, 0, 0, 1, 10, 20] },
+		rect(4, "clear"),
+		rect(3),
+	]);
+	const object = createPlanarObject3D(
+		{
+			type: "planar",
+			id: "test",
+			name: "test",
+			color: "#ff0000",
+			visible: true,
+			opacity: 1,
+			metadata: {},
+			objects: [],
+			bounds: { minX: -2, minY: -2, maxX: 14, maxY: 24 },
+		},
+		compiled,
+		buildPlanarWalls(compiled.edges, "slab"),
+	);
+	let checked = 0;
+	object.traverse((part) => {
+		if (!(part instanceof Mesh)) return;
+		if (!["fill", "walls"].includes(part.userData.planarPart)) return;
+		const { boundingBox, boundingSphere } = part.geometry;
+		assert.ok(boundingBox && boundingSphere);
+		const expected = part.geometry.clone();
+		expected.boundingBox = null;
+		expected.boundingSphere = null;
+		expected.computeBoundingBox();
+		expected.computeBoundingSphere();
+		assert.ok(boundingBox.equals(expected.boundingBox));
+		assert.ok(boundingSphere.equals(expected.boundingSphere));
+		expected.dispose();
+		checked++;
+	});
+	assert.equal(checked, 2);
 	disposePlanarObject3D(object);
 });
 
