@@ -37,9 +37,9 @@ import type {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	createPad,
+	newPadLayers,
 	nextPadNumber,
 	onFootprintLayer,
-	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { freeze } from "@ecad/drawing-core/lib/freeze.ts";
 import {
@@ -76,8 +76,6 @@ import {
 } from "#/drawing/placement.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { measureText } from "#/engine/drawing/text.ts";
-import { screenAt, worldAt } from "#/engine/view-projection.ts";
-import { outlineInBox, shapeOutline } from "#/footprint/outline.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
 export type CanvasTool =
@@ -142,11 +140,6 @@ interface CanvasGesturesOptions {
 	symbolDefinition: SymbolDefinition | null;
 	sheetless: boolean;
 	footprintLayer?: FootprintLayer;
-	/**
-	 * Height of the surface that items on these layers lie on while the view
-	 * is turned in 3D. The pointer is read on that surface.
-	 */
-	layerHeight?: (layers: readonly FootprintLayer[]) => number;
 	setTextFocusId: Dispatch<SetStateAction<number | null>>;
 	openAttributes: () => void;
 }
@@ -168,7 +161,6 @@ export function useCanvasGestures({
 	symbolDefinition,
 	sheetless,
 	footprintLayer,
-	layerHeight,
 	setTextFocusId,
 	openAttributes,
 }: CanvasGesturesOptions) {
@@ -248,23 +240,17 @@ export function useCanvasGestures({
 	const [wirePreview, setWirePreview] = useState<EditorShape[] | null>(null);
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const heightOf = (shape: EditorShape) =>
-		layerHeight?.(shapeLayers(shape)) ?? 0;
+		cameraView.getProjection()?.heightOf(shape) ?? 0;
 	const toolHeight = () =>
-		layerHeight?.(
-			isPadTool(tool)
-				? shapeLayers(
-						createPad(
-							0,
-							{ x: 0, y: 0 },
-							padToolTypes[tool],
-							"",
-							footprintLayer ?? "F.Cu",
-						),
-					)
-				: footprintLayer
-					? [footprintLayer]
-					: [],
-		) ?? 0;
+		cameraView
+			.getProjection()
+			?.layerHeight(
+				isPadTool(tool)
+					? newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu")
+					: footprintLayer
+						? [footprintLayer]
+						: [],
+			) ?? 0;
 	const screenPoint = (
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
@@ -273,10 +259,10 @@ export function useCanvasGestures({
 		return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 	};
 	const handleAt = (screen: Point) => {
-		const view = cameraView.getSnapshot();
-		if (!view) return undefined;
+		const projection = cameraView.getProjection();
+		if (!projection) return undefined;
 		return [...handles].reverse().find(({ shape, handle }) => {
-			const at = screenAt(view, handle, heightOf(shape));
+			const at = projection.toScreen(handle, projection.heightOf(shape));
 			return (
 				at !== null &&
 				Math.abs(at.x - screen.x) <= 7 &&
@@ -288,43 +274,30 @@ export function useCanvasGestures({
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
 		height = 0,
-	) => {
-		const view = cameraView.getSnapshot();
-		return view && worldAt(view, screenPoint(event, canvas), height);
-	};
-	/** The selectable shape under the pointer, on the surface nearest the camera. */
+	) =>
+		cameraView.getProjection()?.toWorld(screenPoint(event, canvas), height) ??
+		null;
 	const pick = (
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
 	) => {
-		const view = cameraView.getSnapshot();
-		if (!view) return undefined;
+		const projection = cameraView.getProjection();
+		if (!projection) return undefined;
 		const screen = screenPoint(event, canvas);
-		const tolerance = 6 / view.camera.scale;
-		const selectable = (shape: EditorShape) =>
-			canSelectShape(shape, allowLocked);
-		if (!view.projection) {
-			const point = worldAt(view, screen);
-			return point ? shapeAt(shapes, point, tolerance, selectable) : undefined;
-		}
-		const nearest = view.projection.eyeZ >= 0 ? 1 : -1;
-		const heights = new Map(shapes.map((shape) => [shape, heightOf(shape)]));
 		const points = new Map<number, Point | null>();
 		return shapeAt(
-			[...shapes].sort(
-				(a, b) => nearest * ((heights.get(a) ?? 0) - (heights.get(b) ?? 0)),
-			),
+			projection.nearestLast(shapes),
 			(shape) => {
-				const height = heights.get(shape) ?? 0;
+				const height = projection.heightOf(shape);
 				let point = points.get(height);
 				if (point === undefined) {
-					point = worldAt(view, screen, height);
+					point = projection.toWorld(screen, height);
 					points.set(height, point);
 				}
 				return point;
 			},
-			tolerance,
-			selectable,
+			6 / projection.scale,
+			(shape) => canSelectShape(shape, allowLocked),
 		);
 	};
 	const stop = (event: ReactPointerEvent) => {
@@ -349,7 +322,7 @@ export function useCanvasGestures({
 			? (findWireConnection(
 					session.shapes(),
 					point,
-					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+					8 / (cameraView.getProjection()?.scale ?? 1),
 				) ?? start)
 			: start;
 	// Routing obstacles are rebuilt only after the drawing changes.
@@ -370,7 +343,7 @@ export function useCanvasGestures({
 			const connection = findWireConnection(
 				shapes,
 				point,
-				8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+				8 / (cameraView.getProjection()?.scale ?? 1),
 				active.start,
 			);
 			setConnectionHover(connection ?? null);
@@ -438,23 +411,14 @@ export function useCanvasGestures({
 		},
 		[previewWire],
 	);
-	const stepDrag = (active: Drag, point: Point, end: Point) => {
-		const view = cameraView.getSnapshot();
+	const stepDrag = (active: Drag, point: Point | null, end: Point) => {
 		const step = canvasDragStep(active, point, end, {
 			shapes,
 			allowLocked,
-			cameraScale: () => cameraView.getSnapshot()?.camera.scale ?? 1,
+			cameraScale: () => cameraView.getProjection()?.scale ?? 1,
 			nextId: session.nextId,
-			// A turned view maps a screen rectangle to no rectangle on the board.
-			inMarquee: view?.projection
-				? (shape, box, mode) => {
-						const height = heightOf(shape);
-						const outline = shapeOutline(shape).flatMap(
-							(corner) => screenAt(view, corner, height) ?? [],
-						);
-						return outline.length > 2 && outlineInBox(outline, box, mode);
-					}
-				: undefined,
+			inScreenBox: (shape, box, mode) =>
+				cameraView.getProjection()?.inScreenBox(shape, box, mode) ?? false,
 		});
 		active.moved = step.moved;
 		active.valid = step.valid;
@@ -472,12 +436,43 @@ export function useCanvasGestures({
 			session.select(effect.selection);
 		}
 	};
+	const beginDrag = (
+		event: ReactPointerEvent,
+		canvas: HTMLCanvasElement,
+		drag: Omit<
+			CanvasDrag,
+			| "pointerId"
+			| "canvas"
+			| "startScreen"
+			| "previousSelection"
+			| "previousChild"
+			| "moved"
+			| "initialShapes"
+			| "valid"
+		>,
+	) => {
+		gesture.current = {
+			kind: "drag",
+			drag: {
+				pointerId: event.pointerId,
+				canvas,
+				startScreen: screenPoint(event, canvas),
+				previousSelection: selectedIds,
+				previousChild: selectedChildKey,
+				moved: false,
+				initialShapes: session.shapes(),
+				valid: false,
+				...drag,
+			},
+		};
+		canvas.setPointerCapture(event.pointerId);
+	};
 	const updateDrag = (event: ReactPointerEvent) => {
 		const active = getDrag();
 		if (!active || active.pointerId !== event.pointerId) return;
 		stop(event);
 		const point = pointAt(event, active.canvas, active.height);
-		if (!point) return;
+		if (!point && active.mode !== "marquee") return;
 		const end = screenPoint(event, active.canvas);
 		if (active.mode === "marquee") active.selectionMode = selectionMode(event);
 		active.pointer = { point, screen: end };
@@ -685,7 +680,7 @@ export function useCanvasGestures({
 					const connection = findWireConnection(
 						session.shapes(),
 						point,
-						8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+						8 / (cameraView.getProjection()?.scale ?? 1),
 					);
 					if (!connection) return;
 					startWire(connection, event.pointerId);
@@ -696,7 +691,7 @@ export function useCanvasGestures({
 					!next ||
 					next.blocked ||
 					next.segments.reduce((sum, segment) => sum + segment.width, 0) *
-						(cameraView.getSnapshot()?.camera.scale ?? 1) <
+						(cameraView.getProjection()?.scale ?? 1) <
 						3
 				)
 					return;
@@ -721,7 +716,7 @@ export function useCanvasGestures({
 				const connection = findWireConnection(
 					session.shapes(),
 					point,
-					8 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+					8 / (cameraView.getProjection()?.scale ?? 1),
 				);
 				setConnectionHover(connection ?? null);
 				canvas.style.cursor = connection ? "crosshair" : "not-allowed";
@@ -769,8 +764,9 @@ export function useCanvasGestures({
 				!event.isPrimary ||
 				event.button !== 0 ||
 				tool === "pan" ||
-				// Shift + drag orbits a view turned in 3D.
-				(event.shiftKey && cameraView.getSnapshot()?.projection) ||
+				(event.shiftKey &&
+					!event[shortcutModifier().flag] &&
+					cameraView.getProjection()?.turned) ||
 				((event.ctrlKey || event.metaKey) &&
 					(tool !== "select" ||
 						event.altKey ||
@@ -789,7 +785,24 @@ export function useCanvasGestures({
 						? toolHeight()
 						: 0;
 			const point = pointAt(event, canvas, height);
-			if (!point) return;
+			if (!point) {
+				if (!cameraView.getProjection()?.turned) return;
+				stop(event);
+				if (tool !== "select" || pressedHandle || event.altKey) return;
+				canvas.focus({ preventScroll: true });
+				canvas.style.cursor = "";
+				session.select(mode === "replace" ? new Set() : selectedIds);
+				session.selectChild(null);
+				beginDrag(event, canvas, {
+					start: null,
+					mode: "marquee",
+					gridStep: cameraView.getGridStep(),
+					originals: [],
+					created: false,
+					selectionMode: mode,
+				});
+				return;
+			}
 			const duplicate =
 				event.altKey && hit
 					? selectedIds.has(hit.id)
@@ -815,7 +828,7 @@ export function useCanvasGestures({
 					? symbolChildAt(
 							selectedSymbol,
 							point,
-							2 / (cameraView.getSnapshot()?.camera.scale ?? 1),
+							2 / (cameraView.getProjection()?.scale ?? 1),
 							allowLocked,
 						)
 					: undefined;
@@ -843,7 +856,7 @@ export function useCanvasGestures({
 				(!childHit || childHit.shape.kind === "pin")
 			) {
 				let connection: ReturnType<typeof openPins>[number] | undefined;
-				let distance = 8 / (cameraView.getSnapshot()?.camera.scale ?? 1);
+				let distance = 8 / (cameraView.getProjection()?.scale ?? 1);
 				const candidates = measurePerformance(
 					"editor.pin-hit-test",
 					() =>
@@ -918,54 +931,38 @@ export function useCanvasGestures({
 							: selectedIds,
 			);
 			session.selectChild(childKey ?? inspectedChild?.key ?? null);
-			const rect = canvas.getBoundingClientRect();
-			gesture.current = {
-				kind: "drag",
-				drag: {
-					pointerId: event.pointerId,
-					canvas,
-					start,
-					startScreen: {
-						x: event.clientX - rect.left,
-						y: event.clientY - rect.top,
-					},
-					height,
-					previousSelection: selectedIds,
-					childKey,
-					previousChild: selectedChildKey,
-					mode: duplicate
-						? "duplicate"
-						: childKey !== undefined
-							? "symbol-child"
-							: created
-								? "draw"
-								: resize
-									? "resize"
-									: shape
-										? "move"
-										: "marquee",
-					handle: resize?.handle,
-					anchorShape: shape,
-					gridStep:
-						editableChild?.shape.kind === "text" ||
-						(!created &&
-							!resize &&
-							originals.length > 0 &&
-							originals.every(
-								(item) => item.kind === "text" && !isNetLabel(item),
-							))
-							? snapStep / 10
-							: snapStep,
-					moved: false,
-					originals,
-					initialShapes: session.shapes(),
-					created: created || !!duplicate,
-					valid: false,
-					selectionMode: mode,
-					wireStart,
-				},
-			};
-			canvas.setPointerCapture(event.pointerId);
+			beginDrag(event, canvas, {
+				start,
+				height,
+				childKey,
+				mode: duplicate
+					? "duplicate"
+					: childKey !== undefined
+						? "symbol-child"
+						: created
+							? "draw"
+							: resize
+								? "resize"
+								: shape
+									? "move"
+									: "marquee",
+				handle: resize?.handle,
+				anchorShape: shape,
+				gridStep:
+					editableChild?.shape.kind === "text" ||
+					(!created &&
+						!resize &&
+						originals.length > 0 &&
+						originals.every(
+							(item) => item.kind === "text" && !isNetLabel(item),
+						))
+						? snapStep / 10
+						: snapStep,
+				originals,
+				created: created || !!duplicate,
+				selectionMode: mode,
+				wireStart,
+			});
 		},
 		onPointerMoveCapture: (event) => {
 			if (getDrag()) {
@@ -978,7 +975,8 @@ export function useCanvasGestures({
 				event.target,
 				tool === "select" ? 0 : toolHeight(),
 			);
-			if (point && toolHandlers[tool].hover?.(event.target, point)) return;
+			if (!point) clearPlacementPreview();
+			else if (toolHandlers[tool].hover?.(event.target, point)) return;
 			if (
 				getWire() &&
 				event.isPrimary &&

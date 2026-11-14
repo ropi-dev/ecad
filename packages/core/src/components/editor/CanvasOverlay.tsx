@@ -9,11 +9,7 @@ import {
 	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
-import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
-import {
-	shapeLayer,
-	shapeLayers,
-} from "@ecad/drawing-core/footprint/shapes.ts";
+import { shapeLayer } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Diff, Minus, Plus } from "lucide-react";
 import {
 	memo,
@@ -32,9 +28,6 @@ import type {
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
-import { screenAt } from "#/engine/view-projection.ts";
-import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
-import { shapeOutline } from "#/footprint/outline.ts";
 
 const selectionIcons: Record<Exclude<SelectionMode, "replace">, typeof Plus> = {
 	add: Plus,
@@ -54,24 +47,11 @@ interface CanvasOverlayProps {
 	canvasArea: RefObject<HTMLElement | null>;
 	connectionHover: Point | null;
 	marquee: ReturnType<typeof useCanvasGestures>["marquee"];
-	/** Height of the surface items on these layers lie on in a view turned in 3D. */
-	layerHeight?: (layers: readonly FootprintLayer[]) => number;
 	placementPreview?: EditorShape | null;
 }
 
-/** An item's outline as the turned view shows it, or nothing when part of it is behind the camera. */
-function projectedOutline(
-	view: Viewer2DSnapshot,
-	shape: EditorShape,
-	height: number,
-) {
-	const points = shapeOutline(shape).map((corner) =>
-		screenAt(view, corner, height),
-	);
-	return points.every((point) => point !== null)
-		? points.map((point) => `${point.x},${point.y}`).join(" ")
-		: undefined;
-}
+const polygonPoints = (outline: readonly Point[] | null) =>
+	outline?.map((point) => `${point.x},${point.y}`).join(" ");
 
 export const CanvasOverlay = memo(function CanvasOverlay({
 	cameraView,
@@ -85,25 +65,23 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 	canvasArea,
 	connectionHover,
 	marquee,
-	layerHeight,
 	placementPreview,
 }: CanvasOverlayProps) {
-	const view = useSyncExternalStore(
+	const projection = useSyncExternalStore(
 		cameraView.subscribe,
-		cameraView.getSnapshot,
-		cameraView.getSnapshot,
+		cameraView.getProjection,
+		cameraView.getProjection,
 	);
+	const view = cameraView.getSnapshot();
 	const [readTextAnchors] = useState(createTextAnchorReader);
 	const textAnchors = useMemo(
 		() => readTextAnchors(shapes, selected),
 		[readTextAnchors, shapes, selected],
 	);
-	const heightOf = (shape: EditorShape) =>
-		layerHeight?.(shapeLayers(shape)) ?? 0;
-	const turned = view?.projection !== undefined;
+	const turned = projection?.turned === true;
 	return (
 		<>
-			{view && (
+			{view && projection && (
 				<div
 					className="pointer-events-none absolute inset-0 z-2 overflow-hidden"
 					aria-hidden="true"
@@ -126,10 +104,8 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							{placementPreview && (
 								<polygon
 									data-testid="board-placement"
-									points={projectedOutline(
-										view,
-										placementPreview,
-										heightOf(placementPreview),
+									points={polygonPoints(
+										projection.screenOutline(placementPreview),
 									)}
 									fill={
 										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
@@ -146,7 +122,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 									key={shape.id}
 									data-testid="board-selection"
 									data-shape-id={shape.id}
-									points={projectedOutline(view, shape, heightOf(shape))}
+									points={polygonPoints(projection.screenOutline(shape))}
 									className="fill-accent/15 stroke-accent"
 									strokeWidth={1.5}
 								/>
@@ -156,7 +132,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 					{connectionHover &&
 						tool === "wire" &&
 						(() => {
-							const point = screenAt(view, connectionHover);
+							const point = projection.toScreen(connectionHover);
 							if (!point) return null;
 							return (
 								<span
@@ -173,11 +149,11 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							const bounds = shapeBounds(
 								symbolChildWorld(selectedSymbol, selectedChild.shape),
 							);
-							const topLeft = screenAt(view, {
+							const topLeft = projection.toScreen({
 								x: bounds.minX,
 								y: bounds.maxY,
 							});
-							const bottomRight = screenAt(view, {
+							const bottomRight = projection.toScreen({
 								x: bounds.maxX,
 								y: bounds.minY,
 							});
@@ -200,7 +176,10 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						const owner =
 							turned &&
 							selected.find((shape) => String(shape.id) === anchor.key);
-						const point = screenAt(view, anchor, owner ? heightOf(owner) : 0);
+						const point = projection.toScreen(
+							anchor,
+							owner ? projection.heightOf(owner) : 0,
+						);
 						if (!point) return null;
 						return (
 							<span
@@ -213,7 +192,10 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						);
 					})}
 					{handles.map(({ shape, handle }) => {
-						const point = screenAt(view, handle, heightOf(shape));
+						const point = projection.toScreen(
+							handle,
+							projection.heightOf(shape),
+						);
 						if (!point) return null;
 						return (
 							<span

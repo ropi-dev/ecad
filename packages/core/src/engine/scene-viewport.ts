@@ -33,6 +33,7 @@ import { createPanCache } from "#/engine/pan-cache.ts";
 import { createSceneDisplay, type ViewerScene } from "#/engine/scene.ts";
 import { createSceneHover, type SceneTarget } from "#/engine/scene-hover.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
+import { MIN_GRAZING_SLOPE } from "#/engine/view-projection.ts";
 import {
 	createPlaneGrid,
 	createViewportGrid,
@@ -95,10 +96,6 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	pan: (x: number, y: number) => void;
 	capture: () => Promise<Blob>;
 	update: (update: (object: Object3D) => void) => void;
-	/**
-	 * Shows another scene and keeps the camera. Returns false when this view
-	 * cannot swap its objects, and the caller then starts a new view.
-	 */
 	setScene: (
 		scene: ViewerScene,
 		update?: (object: Object3D) => void,
@@ -581,12 +578,11 @@ export function createSceneViewport(
 			}
 		};
 		const viewMatrix = new Matrix4();
-		/** The top view that a turned camera returns to. */
 		const turnedCamera = (height: number): Camera => {
 			const view = controls.target.clone().sub(camera.position);
 			const length = view.length();
 			const depth =
-				Math.abs(view.z) < length * 0.02
+				Math.abs(view.z) < length * MIN_GRAZING_SLOPE
 					? 0
 					: (-camera.position.z / view.z) * length;
 			const centre =
@@ -814,7 +810,7 @@ export function createSceneViewport(
 		};
 		const settlePivot = () => {
 			const view = controls.target.clone().sub(camera.position);
-			if (Math.abs(view.z) < view.length() * 0.02) return;
+			if (Math.abs(view.z) < view.length() * MIN_GRAZING_SLOPE) return;
 			const scale = -camera.position.z / view.z;
 			const distance = view.length() * scale;
 			if (
@@ -1113,9 +1109,6 @@ export function createSceneViewport(
 					return false;
 				}
 				scene.remove(group, hover.object, selection.object);
-				// Equal materials share one compiled program, which the renderer
-				// deletes with its last material. Releasing the replaced scene
-				// after the next frame lets the new one take its programs over.
 				const replaced = [content, hover, selection];
 				retired.push(() => {
 					for (const resource of replaced) resource.dispose();

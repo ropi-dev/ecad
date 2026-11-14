@@ -89,10 +89,8 @@ const layersByObjectId = new Map(
 	]),
 );
 
-/** The board height that the 3D view puts on the grid plane. */
 export const BOARD_SURFACE_Z = BOARD_STACK_TOP;
 
-/** Courtyard and fabrication drawings lie flat just outside the layer stack. */
 export const placeFootprintBoard: typeof placeBoardLayers = (layers) => {
 	const stack = placeBoardLayers(layers);
 	return layers.map(
@@ -100,11 +98,6 @@ export const placeFootprintBoard: typeof placeBoardLayers = (layers) => {
 	);
 };
 
-/**
- * Height in the 3D view of the surface that items on these layers are drawn
- * on. A pad on both sides of the board uses the side facing a camera at
- * height `eyeZ`.
- */
 export function layerSurfaceZ(
 	layers: readonly FootprintLayer[],
 	hidden: ReadonlySet<FootprintLayer>,
@@ -114,8 +107,11 @@ export function layerSurfaceZ(
 	const heights = (shown.length ? shown : layers).map(
 		(layer) => (placements.get(layer)?.z ?? 0) - BOARD_SURFACE_Z,
 	);
-	if (!heights.length) return 0;
-	return eyeZ >= -BOARD_SURFACE_Z ? Math.max(...heights) : Math.min(...heights);
+	return heights.reduce(
+		(nearest, height) =>
+			Math.abs(eyeZ - height) < Math.abs(eyeZ - nearest) ? height : nearest,
+		heights[0] ?? 0,
+	);
 }
 
 function placement(shape: EditorShape): Matrix {
@@ -227,7 +223,6 @@ function planarLayer(
 	};
 }
 
-/** The board edge lies 1 mm outside the footprint, or outside a 4 by 3 mm area while it is empty. */
 export const boardEdgeBounds = (shapes: readonly EditorShape[]): Bounds =>
 	expandBounds(
 		shapes.length
@@ -236,18 +231,16 @@ export const boardEdgeBounds = (shapes: readonly EditorShape[]): Bounds =>
 		boardMargin,
 	);
 
+export type BoardLayerSource = readonly (EditorShape | number)[];
+
 export interface BoardLayerPlan {
 	id: string;
-	/** What the layer is built from. Plans with equal entries build the same layer. */
-	source: readonly unknown[];
-	/** How the 3D view gives the layer its thickness. Flat drawings have none. */
+	source: BoardLayerSource;
 	extrude?: "slab" | "barrel";
-	/** The layer's text, which the view draws from glyph textures on its surface. */
 	texts?: readonly TextShape[];
 	build(): PlanarObject;
 }
 
-/** Lists the board's layers without building them, so unchanged ones can be kept. */
 export function planFootprintBoard(
 	shapes: readonly EditorShape[],
 ): BoardLayerPlan[] {
@@ -398,6 +391,55 @@ export function planFootprintBoard(
 				]
 			: []),
 	];
+}
+
+export const sameSource = (a: BoardLayerSource, b: BoardLayerSource) =>
+	a.length === b.length && a.every((item, index) => item === b[index]);
+
+export function createBoardBuilder<Layer extends { dispose(): void }>(
+	buildLayer: (plan: BoardLayerPlan) => Layer,
+) {
+	type Built = { source: BoardLayerSource; layer: Layer };
+	let layers = new Map<string, Built>();
+	let retired: Layer[] = [];
+	return {
+		build(shapes: readonly EditorShape[]): Layer[] {
+			const next = new Map<string, Built>();
+			try {
+				for (const plan of planFootprintBoard(shapes)) {
+					const kept = layers.get(plan.id);
+					next.set(
+						plan.id,
+						kept && sameSource(kept.source, plan.source)
+							? kept
+							: { source: plan.source, layer: buildLayer(plan) },
+					);
+				}
+			} catch (cause) {
+				for (const [id, built] of next)
+					if (layers.get(id) !== built) built.layer.dispose();
+				throw cause;
+			}
+			for (const [id, built] of layers)
+				if (next.get(id) !== built) retired.push(built.layer);
+			layers = next;
+			return [...next.values()].map((built) => built.layer);
+		},
+		release(shown: readonly Layer[]) {
+			const kept = new Set(shown);
+			retired = retired.filter((layer) => {
+				if (kept.has(layer)) return true;
+				layer.dispose();
+				return false;
+			});
+		},
+		dispose() {
+			for (const layer of retired) layer.dispose();
+			for (const built of layers.values()) built.layer.dispose();
+			retired = [];
+			layers = new Map();
+		},
+	};
 }
 
 export const footprintBoard = (

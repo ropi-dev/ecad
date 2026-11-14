@@ -46,10 +46,6 @@ export function GerberViewer({
 	focusedLayerId?: string;
 	flat?: boolean;
 	onFlatChange?: (flat: boolean) => void;
-	/**
-	 * The board height that lies on the grid plane. The board then keeps its
-	 * own coordinates instead of centring on the grid origin.
-	 */
 	surfaceZ?: number;
 	placeLayers?: typeof placeBoardLayers;
 	controls?: ReactNode;

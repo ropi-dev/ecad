@@ -36,11 +36,13 @@ import {
 	BOARD_SURFACE_Z,
 	boardEdgeBounds,
 	boardObjectVisible,
+	createBoardBuilder,
 	DRILL_LAYER_ID,
 	footprintBoard,
 	layerSurfaceZ,
 	placeFootprintBoard,
 	planFootprintBoard,
+	sameSource,
 } from "#/footprint/board.ts";
 import {
 	createEmptyFootprintFile,
@@ -361,6 +363,7 @@ test("dragging out a shape keeps the layer and stroke it started with", () => {
 			allowLocked: false,
 			cameraScale: () => 100,
 			nextId: () => 10,
+			inScreenBox: () => false,
 		},
 	);
 	assert.equal(effect.kind, "preview");
@@ -645,8 +648,6 @@ test("a board plan keeps a layer's source while an edit leaves its items alone",
 	const shapes = twoPadsWireCourtyardAndThroughHole();
 	const source = (plans: ReturnType<typeof planFootprintBoard>, id: string) =>
 		required(plans.find((plan) => plan.id === id)).source;
-	const same = (a: readonly unknown[], b: readonly unknown[]) =>
-		a.length === b.length && a.every((item, index) => item === b[index]);
 	const before = planFootprintBoard(shapes);
 	const wire = required(shapes.find((shape) => shape.kind === "line"));
 	const after = planFootprintBoard(
@@ -655,13 +656,66 @@ test("a board plan keeps a layer's source while an edit leaves its items alone",
 		),
 	);
 	for (const id of [BOARD_LAYER_ID, "footprint:F.Cu", DRILL_LAYER_ID])
-		assert.ok(same(source(before, id), source(after, id)), id);
+		assert.ok(sameSource(source(before, id), source(after, id)), id);
 	assert.ok(
-		!same(
+		!sameSource(
 			source(before, "footprint:F.SilkS"),
 			source(after, "footprint:F.SilkS"),
 		),
 	);
+});
+
+test("a board builder keeps unchanged layers and frees a replaced one once the view no longer shows it", () => {
+	const disposed: string[] = [];
+	let builds = 0;
+	let failing = "";
+	const builder = createBoardBuilder((plan) => {
+		if (plan.id === failing) throw new Error("no layer");
+		const name = `${plan.id}#${++builds}`;
+		return { id: plan.id, name, dispose: () => disposed.push(name) };
+	});
+	const layer = <Built extends { id: string }>(
+		board: readonly Built[],
+		id: string,
+	) => required(board.find((built) => built.id === id));
+	const shapes = twoPadsWireCourtyardAndThroughHole();
+	const wire = required(shapes.find((shape) => shape.kind === "line"));
+	const moved = (by: number) =>
+		shapes.map((shape) =>
+			shape === wire ? { ...wire, y: wire.y - by } : shape,
+		);
+	const first = builder.build(shapes);
+	const second = builder.build(moved(0.2));
+	assert.equal(layer(second, "footprint:F.Cu"), layer(first, "footprint:F.Cu"));
+	assert.notEqual(
+		layer(second, "footprint:F.SilkS"),
+		layer(first, "footprint:F.SilkS"),
+	);
+	const last = moved(0.4);
+	const third = builder.build(last);
+	assert.equal(disposed.length, 0);
+	builder.release(first);
+	assert.deepEqual(disposed, [layer(second, "footprint:F.SilkS").name]);
+	builder.release(third);
+	assert.deepEqual(disposed, [
+		layer(second, "footprint:F.SilkS").name,
+		layer(first, "footprint:F.SilkS").name,
+	]);
+
+	failing = "footprint:F.SilkS";
+	const built = builds;
+	assert.throws(() => builder.build(moved(0.6)), /no layer/);
+	assert.equal(disposed.length, 2 + builds - built);
+	failing = "";
+	const fourth = builder.build(last);
+	assert.equal(
+		layer(fourth, "footprint:F.SilkS"),
+		layer(third, "footprint:F.SilkS"),
+	);
+
+	builder.dispose();
+	for (const kept of fourth) assert.ok(disposed.includes(kept.name));
+	assert.equal(new Set(disposed).size, disposed.length);
 });
 
 test("courtyard and fabrication drawings lie flat outside the stack, and a pad through the board is edited on the side facing the camera", () => {

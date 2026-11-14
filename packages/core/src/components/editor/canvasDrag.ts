@@ -1,8 +1,6 @@
 import {
-	containsSelection,
 	drawShape,
 	type EditorShape,
-	intersectsSelection,
 	moveShapes,
 	moveSymbolChild,
 	type ResizeHandle,
@@ -20,9 +18,8 @@ import {
 export interface CanvasDrag {
 	pointerId: number;
 	canvas: HTMLCanvasElement;
-	start: Point;
+	start: Point | null;
 	startScreen: Point;
-	/** Height of the plane the drag moves on while the view is turned in 3D. */
 	height?: number;
 	previousSelection: ReadonlySet<number>;
 	mode: "move" | "duplicate" | "marquee" | "draw" | "resize" | "symbol-child";
@@ -37,7 +34,7 @@ export interface CanvasDrag {
 	created: boolean;
 	valid: boolean;
 	selectionMode: SelectionMode;
-	pointer?: { point: Point; screen: Point };
+	pointer?: { point: Point | null; screen: Point };
 	wireStart?: Point;
 	/** The latest move preview would route a wire through another net. */
 	unsafe?: boolean;
@@ -78,25 +75,25 @@ export type CanvasDragEffect =
  */
 export function canvasDragStep(
 	drag: CanvasDrag,
-	point: Point,
+	point: Point | null,
 	screen: Point,
 	context: {
 		shapes: readonly EditorShape[];
 		allowLocked: boolean;
 		cameraScale(): number;
 		nextId(): number;
-		/** Replaces the drawing-space test of what a selection rectangle picks. */
-		inMarquee?(
+		inScreenBox(
 			shape: EditorShape,
 			box: Bounds,
 			mode: CanvasMarquee["mode"],
 		): boolean;
 	},
 ): { moved: boolean; valid: boolean; effect: CanvasDragEffect } {
-	const moved =
-		drag.moved ||
-		Math.hypot(screen.x - drag.startScreen.x, screen.y - drag.startScreen.y) >=
-			3;
+	const distance = Math.hypot(
+		screen.x - drag.startScreen.x,
+		screen.y - drag.startScreen.y,
+	);
+	const moved = drag.moved || distance >= 3;
 	let valid = drag.valid;
 	const result = (effect: CanvasDragEffect) => ({ moved, valid, effect });
 	const none = () => result({ kind: "none" });
@@ -106,8 +103,41 @@ export function canvasDragStep(
 		valid = true;
 	}
 
-	if (drag.gridStep > 0 && !moved && drag.mode !== "marquee") return none();
-	const delta = { x: point.x - drag.start.x, y: point.y - drag.start.y };
+	if (drag.mode === "marquee") {
+		if (distance < 3)
+			return result({
+				kind: "marquee-cancel",
+				selection:
+					drag.selectionMode === "replace" ? new Set() : drag.previousSelection,
+			});
+		const mode = screen.x < drag.startScreen.x ? "crossing" : "window";
+		const box = {
+			minX: Math.min(drag.startScreen.x, screen.x),
+			maxX: Math.max(drag.startScreen.x, screen.x),
+			minY: Math.min(drag.startScreen.y, screen.y),
+			maxY: Math.max(drag.startScreen.y, screen.y),
+		};
+		return result({
+			kind: "marquee",
+			marquee: {
+				start: drag.startScreen,
+				end: screen,
+				mode,
+				selection: drag.selectionMode,
+			},
+			selection: applySelection(
+				drag.previousSelection,
+				context.shapes
+					.filter((shape) => context.inScreenBox(shape, box, mode))
+					.map((shape) => shape.id),
+				drag.selectionMode,
+			),
+		});
+	}
+	const { start } = drag;
+	if (!point || !start) return none();
+	if (drag.gridStep > 0 && !moved) return none();
+	const delta = { x: point.x - start.x, y: point.y - start.y };
 	if (drag.mode === "symbol-child") {
 		const original = drag.originals[0];
 		if (!moved || original.kind !== "symbol" || drag.childKey === undefined)
@@ -148,13 +178,7 @@ export function canvasDragStep(
 		const original = drag.originals[0];
 		if (original.kind === "symbol" || original.kind === "text") return none();
 		const draft = {
-			...drawShape(
-				original.id,
-				original.kind,
-				drag.start,
-				point,
-				drag.gridStep,
-			),
+			...drawShape(original.id, original.kind, start, point, drag.gridStep),
 			lineWidth: original.lineWidth,
 			...(original.layer ? { layer: original.layer } : {}),
 		};
@@ -208,51 +232,5 @@ export function canvasDragStep(
 			base: drag.initialShapes,
 		});
 	}
-	if (
-		Math.hypot(screen.x - drag.startScreen.x, screen.y - drag.startScreen.y) < 3
-	)
-		return result({
-			kind: "marquee-cancel",
-			selection:
-				drag.selectionMode === "replace" ? new Set() : drag.previousSelection,
-		});
-	const mode = screen.x < drag.startScreen.x ? "crossing" : "window";
-	const bounds = {
-		minX: Math.min(drag.start.x, point.x),
-		maxX: Math.max(drag.start.x, point.x),
-		minY: Math.min(drag.start.y, point.y),
-		maxY: Math.max(drag.start.y, point.y),
-	};
-	const { inMarquee } = context;
-	const matches = inMarquee
-		? (shape: EditorShape) =>
-				inMarquee(
-					shape,
-					{
-						minX: Math.min(drag.startScreen.x, screen.x),
-						maxX: Math.max(drag.startScreen.x, screen.x),
-						minY: Math.min(drag.startScreen.y, screen.y),
-						maxY: Math.max(drag.startScreen.y, screen.y),
-					},
-					mode,
-				)
-		: (shape: EditorShape) =>
-				(mode === "window" ? containsSelection : intersectsSelection)(
-					shape,
-					bounds,
-				);
-	return result({
-		kind: "marquee",
-		marquee: {
-			start: drag.startScreen,
-			end: screen,
-			mode,
-			selection: drag.selectionMode,
-		},
-		selection: applySelection(
-			drag.previousSelection,
-			context.shapes.filter(matches).map((shape) => shape.id),
-			drag.selectionMode,
-		),
-	});
+	return none();
 }

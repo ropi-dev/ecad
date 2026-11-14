@@ -56,7 +56,6 @@ export interface SceneViewportProps {
 	physicalSizeZoom?: boolean;
 	pixelsPerMmAt100?: number;
 	cameraState?: { camera?: Camera };
-	/** A new scene replaces the objects in place and keeps the camera. */
 	keepView?: boolean;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
@@ -250,7 +249,7 @@ export function SceneViewport({
 		if (updateScene && shownScene.current === sourceScene)
 			runtime.current?.update(updateScene);
 	}, [updateScene, sourceScene]);
-	const viewScene = keepView ? restarts : sourceScene;
+	const mountKey = keepView ? restarts : sourceScene;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a kept view swaps later scenes in place, in the effect below
 	useEffect(() => {
 		const element = host.current;
@@ -326,7 +325,7 @@ export function SceneViewport({
 			viewport?.dispose();
 		};
 	}, [
-		viewScene,
+		mountKey,
 		cameraMode,
 		ariaLabel,
 		interactionHint,
@@ -342,13 +341,14 @@ export function SceneViewport({
 	useEffect(() => {
 		if (!keepView || !runtime.current || shownScene.current === sourceScene)
 			return;
+		let swapped = false;
 		try {
-			if (runtime.current.setScene(sourceScene, sceneUpdate.current))
-				shownScene.current = sourceScene;
-			else setRestarts((count) => count + 1);
+			swapped = runtime.current.setScene(sourceScene, sceneUpdate.current);
 		} catch (error) {
-			reportError(errorMessage(error, "Unable to draw this scene."));
+			if (import.meta.env?.DEV) console.error(error);
 		}
+		if (swapped) shownScene.current = sourceScene;
+		else setRestarts((count) => count + 1);
 	}, [keepView, sourceScene]);
 	useEffect(() => {
 		runtime.current?.setPhysicalScale(zoomScale);

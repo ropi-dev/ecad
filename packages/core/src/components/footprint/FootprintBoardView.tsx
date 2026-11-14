@@ -20,13 +20,12 @@ import {
 	BOARD_SURFACE_Z,
 	type BoardLayerPlan,
 	boardObjectVisible,
+	createBoardBuilder,
 	placeFootprintBoard,
-	planFootprintBoard,
 } from "#/footprint/board.ts";
 import { DRILL_WALL } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
 
-// Text draws after the translucent board sheets, which would tint it.
 const TEXT_RENDER_ORDER = 4;
 
 function buildTexts(
@@ -45,7 +44,6 @@ function buildTexts(
 		drawn.material.color.set(layer.color);
 		drawn.material.depthTest = true;
 		drawn.material.side = DoubleSide;
-		// The text shares its height with the layer's own graphics.
 		drawn.material.polygonOffset = true;
 		drawn.material.polygonOffsetFactor = -2;
 		drawn.material.polygonOffsetUnits = -2;
@@ -88,49 +86,6 @@ function buildLayer(plan: BoardLayerPlan): ParsedGerberObject {
 	};
 }
 
-/**
- * Builds the board's layers and keeps the ones an edit leaves alone, so a
- * drag rebuilds only the layers its items are on.
- */
-function createBoardBuilder() {
-	type Built = { source: readonly unknown[]; object: ParsedGerberObject };
-	let layers = new Map<string, Built>();
-	const retired: ParsedGerberObject[] = [];
-	return {
-		build(shapes: readonly EditorShape[]): ParsedGerberObject[] {
-			// The view showed the retired layers until the previous build replaced them.
-			for (const object of retired.splice(0)) object.dispose();
-			const next = new Map<string, Built>();
-			try {
-				for (const plan of planFootprintBoard(shapes)) {
-					const kept = layers.get(plan.id);
-					next.set(
-						plan.id,
-						kept &&
-							kept.source.length === plan.source.length &&
-							kept.source.every((item, index) => item === plan.source[index])
-							? kept
-							: { source: plan.source, object: buildLayer(plan) },
-					);
-				}
-			} catch (cause) {
-				for (const [id, built] of next)
-					if (layers.get(id) !== built) built.object.dispose();
-				throw cause;
-			}
-			for (const [id, built] of layers)
-				if (next.get(id) !== built) retired.push(built.object);
-			layers = next;
-			return [...next.values()].map((built) => built.object);
-		},
-		dispose() {
-			for (const object of retired.splice(0)) object.dispose();
-			for (const built of layers.values()) built.object.dispose();
-			layers = new Map();
-		},
-	};
-}
-
 export function FootprintBoardView({
 	shapes,
 	hiddenLayers,
@@ -156,9 +111,12 @@ export function FootprintBoardView({
 	onClose: () => void;
 	onError: (message: string) => void;
 }) {
-	const [builder] = useState(createBoardBuilder);
+	const [builder] = useState(() => createBoardBuilder(buildLayer));
 	useEffect(() => () => builder.dispose(), [builder]);
 	const [board, setBoard] = useState<ParsedGerberObject[]>();
+	useEffect(() => {
+		if (board) builder.release(board);
+	}, [builder, board]);
 	useEffect(() => {
 		try {
 			setBoard(builder.build(shapes));
@@ -204,7 +162,10 @@ export function FootprintBoardView({
 				if (ready) setTilted(true);
 				onReady?.(ready);
 			}}
-			onError={onError}
+			onError={(message) => {
+				onError(message);
+				onClose();
+			}}
 			{...viewer}
 		/>
 	);

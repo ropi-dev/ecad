@@ -79,6 +79,7 @@ import {
 } from "#/components/footprint/FootprintLayerPanel.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { OrthographicViewer2D } from "#/components/viewer/OrthographicViewer2D.tsx";
+import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
@@ -120,6 +121,9 @@ export type EditorCanvasProps = Editor2DProps & {
 	syncSelection?: boolean;
 };
 
+const NO_SHAPES: EditorShape[] = [];
+const NO_SELECTION: ReadonlySet<number> = new Set();
+
 export function Editor2D(props: Editor2DProps = {}) {
 	return <EditorDocument {...props} Canvas={EditorCanvas} />;
 }
@@ -146,6 +150,7 @@ function EditorCanvas({
 	const unit = isFootprint ? "mm" : "mil";
 	const layers = useFootprintLayers();
 	const [board, setBoard] = useState<"closed" | "open" | "closing">("closed");
+	const flatShown = board === "closed";
 	const [boardError, setBoardError] = useState("");
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
@@ -268,7 +273,6 @@ function EditorCanvas({
 		[sheetless, sheet, page.name, pageIndex, pages.length],
 	);
 	const shapes = editor.draft ?? pageShapes;
-	// A preview holds only the shown layers. The board keeps the hidden ones.
 	const boardShapes = useMemo(() => {
 		const draft = editor.draft;
 		if (board === "closed") return drawing.shapes;
@@ -280,18 +284,17 @@ function EditorCanvas({
 			...draft.filter((shape) => !stored.has(shape.id)),
 		]);
 	}, [editor.draft, board, drawing.shapes]);
-	const layerHeight = useMemo(
-		() =>
-			board === "closed"
-				? undefined
-				: (onLayers: readonly FootprintLayer[]) =>
-						layerSurfaceZ(
-							onLayers,
-							layers.hidden,
-							cameraView.getSnapshot()?.projection?.eyeZ ?? 0,
-						),
-		[board, layers.hidden, cameraView],
-	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each view reports its own camera, so the other view's last one is dropped at the switch
+	useLayoutEffect(() => {
+		cameraView.clear();
+	}, [cameraView, flatShown]);
+	useLayoutEffect(() => {
+		if (flatShown) return;
+		cameraView.setSurfaces((onLayers, eyeZ) =>
+			layerSurfaceZ(onLayers, layers.hidden, eyeZ),
+		);
+		return () => cameraView.setSurfaces(null);
+	}, [flatShown, layers.hidden, cameraView]);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
@@ -347,7 +350,6 @@ function EditorCanvas({
 		symbolDefinition,
 		sheetless,
 		footprintLayer: isFootprint ? layers.active : undefined,
-		layerHeight,
 		setTextFocusId,
 		openAttributes,
 	});
@@ -370,9 +372,9 @@ function EditorCanvas({
 		[wirePreview, placementPreview],
 	);
 	const { scene, updateScene } = useEditorScene(
-		shapes,
-		selectedIds,
-		previews,
+		flatShown ? shapes : NO_SHAPES,
+		flatShown ? selectedIds : NO_SELECTION,
+		flatShown ? previews : NO_SHAPES,
 		sheetless ? null : pageSheet,
 	);
 	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
@@ -479,11 +481,19 @@ function EditorCanvas({
 			clearPlacementPreview();
 		},
 	});
+	const viewToggle = useRef<HTMLButtonElement>(null);
+	const refocusToggle = useRef(false);
+	useEffect(() => {
+		const button = viewToggle.current;
+		if (!refocusToggle.current || !button || button.disabled) return;
+		refocusToggle.current = false;
+		if (document.activeElement === document.body) quietFocus(button);
+	});
 	const toggleBoard = useCallback(() => {
+		refocusToggle.current = true;
 		finishDrag(true);
 		finishWire();
 		clearPlacementPreview();
-		setTool("select");
 		setBoardError("");
 		setBoard((current) => (current === "closed" ? "open" : "closing"));
 	}, [finishDrag, finishWire, clearPlacementPreview]);
@@ -501,6 +511,7 @@ function EditorCanvas({
 				? {
 						flat: board !== "open",
 						onToggleFlat: toggleBoard,
+						toggle: viewToggle,
 					}
 				: undefined,
 		[isFootprint, board, toggleBoard],
@@ -776,7 +787,6 @@ function EditorCanvas({
 						canvasArea={canvasArea}
 						connectionHover={connectionHover}
 						marquee={marquee}
-						layerHeight={layerHeight}
 						placementPreview={placementPreview}
 					/>
 					<EditorMessages
@@ -839,7 +849,7 @@ function EditorCanvas({
 						cameraView={cameraView}
 						canvasArea={canvasArea}
 						unit={unit}
-						height={layerHeight?.([layers.active])}
+						layer={isFootprint ? layers.active : undefined}
 						besideAxes={board !== "closed"}
 					/>
 				</div>

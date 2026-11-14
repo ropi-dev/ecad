@@ -6,7 +6,6 @@ import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 
 const circleSides = 48;
 
-/** The closed path around a footprint item, in drawing coordinates. */
 export function shapeOutline(shape: EditorShape): Point[] {
 	const center = shapeCenter(shape);
 	const cos = Math.cos(shape.rotation);
@@ -53,10 +52,6 @@ function contains(outline: readonly Point[], point: Point) {
 	return within;
 }
 
-/**
- * Whether a selection rectangle picks a closed outline. A window rectangle
- * needs the whole outline, and a crossing one any part of its area.
- */
 export function outlineInBox(
 	outline: readonly Point[],
 	box: Bounds,

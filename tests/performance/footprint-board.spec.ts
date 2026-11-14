@@ -158,7 +158,6 @@ test(
 			await expect(
 				page.getByRole("button", { name: "Select", exact: true }),
 			).toBeEnabled();
-			// The opening turn is over once the axis indicator rests.
 			await page.evaluate(
 				() =>
 					new Promise<void>((resolve) => {
@@ -176,7 +175,6 @@ test(
 						check();
 					}),
 			);
-			// The camera turns about the view centre, where the first round put a pad.
 			await interaction(page, "footprint.board-move-pad", async () => {
 				for (const [x, y] of [
 					[60, -30],
@@ -190,6 +188,12 @@ test(
 					page.locator('[data-testid="board-selection"]'),
 				).toHaveCount(1);
 			});
+			const outline = page.locator('[data-testid="board-selection"]');
+			const placed = (await outline.getAttribute("points")) ?? "";
+			await page.keyboard.press("ControlOrMeta+z");
+			await expect(outline).not.toHaveAttribute("points", placed);
+			await page.keyboard.press("ControlOrMeta+Shift+z");
+			await expect(outline).toHaveAttribute("points", placed);
 			await interaction(page, "footprint.board-close", async () => {
 				await flat.click();
 				await expect(area).toHaveAttribute("data-view", "2d");

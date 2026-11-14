@@ -9,6 +9,8 @@ import {
 	type CanvasDrag,
 	canvasDragStep,
 } from "#/components/editor/canvasDrag.ts";
+import { createCanvasView } from "#/components/editor/canvasView.ts";
+import { required } from "./helpers/required.ts";
 
 const box = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 10, y: 10 });
 const far = drawShape(2, "rectangle", { x: 40, y: 0 }, { x: 50, y: 10 });
@@ -33,12 +35,33 @@ function drag(overrides: Partial<CanvasDrag>): CanvasDrag {
 	};
 }
 
+const flatView = createCanvasView();
+flatView.update({
+	backend: "test",
+	message: "",
+	camera: { x: 120, y: -80, scale: 4 },
+	zoom: 1,
+	viewport: { width: 1200, height: 800 },
+	highlighted: 0,
+	diagnostics: {
+		width: 1200,
+		height: 800,
+		drawCalls: 0,
+		triangles: 0,
+		geometries: 0,
+		textures: 0,
+	},
+});
+const flat = required(flatView.getProjection());
+const onScreen = (x: number, y: number) => required(flat.toScreen({ x, y }));
+
 function context(scale = 1) {
 	const calls = { scale: 0, nextId: 0 };
 	return {
 		calls,
 		shapes: [box, far],
 		allowLocked: false,
+		inScreenBox: flat.inScreenBox,
 		cameraScale() {
 			calls.scale++;
 			return scale;
@@ -180,17 +203,18 @@ test("text and symbols are not drawn by dragging", () => {
 });
 
 test("dragging right selects enclosed shapes; dragging left selects crossed shapes", () => {
+	assert.deepEqual(onScreen(-5, -5), { x: 100, y: 100 });
 	const window = canvasDragStep(
-		drag({ mode: "marquee", start: { x: -5, y: -5 } }),
-		{ x: 45, y: 15 },
-		{ x: 300, y: 50 },
+		drag({ mode: "marquee", start: null }),
+		null,
+		onScreen(45, 15),
 		context(),
 	);
 	assert.deepEqual(window.effect, {
 		kind: "marquee",
 		marquee: {
 			start: { x: 100, y: 100 },
-			end: { x: 300, y: 50 },
+			end: { x: 300, y: 20 },
 			mode: "window",
 			selection: "replace",
 		},
@@ -198,9 +222,9 @@ test("dragging right selects enclosed shapes; dragging left selects crossed shap
 	});
 
 	const crossing = canvasDragStep(
-		drag({ mode: "marquee", start: { x: 45, y: 15 } }),
+		drag({ mode: "marquee", startScreen: onScreen(45, 15) }),
 		{ x: 5, y: 5 },
-		{ x: 20, y: 120 },
+		onScreen(5, 5),
 		context(),
 	);
 	assert.equal(crossing.effect.kind, "marquee");
@@ -214,12 +238,11 @@ test("marquee modes add to, subtract from or toggle the selection", () => {
 		const step = canvasDragStep(
 			drag({
 				mode: "marquee",
-				start: { x: -5, y: -5 },
 				previousSelection: new Set([box.id, far.id]),
 				selectionMode,
 			}),
 			{ x: 15, y: 15 },
-			{ x: 300, y: 50 },
+			onScreen(15, 15),
 			context(),
 		);
 		return step.effect.kind === "marquee" ? step.effect.selection : undefined;

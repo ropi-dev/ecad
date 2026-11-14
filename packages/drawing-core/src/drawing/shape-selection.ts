@@ -198,11 +198,6 @@ function hitHollowBoardShape(
 
 const boxArea = (shape: EditorShape) => shape.width * shape.height;
 
-/**
- * The topmost shape at a point. `at` is one point for every shape, or gives
- * each shape its own point, or none to skip it, when the shapes lie on
- * planes that a tilted view maps differently.
- */
 export function shapeAt<T extends EditorShape>(
 	shapes: readonly T[],
 	at: Point | ((shape: T) => Point | null),
