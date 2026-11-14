@@ -14,6 +14,9 @@ importers:
       '@ecad/cli':
         specifier: workspace:*
         version: link:packages/cli
+      '@ecad/default-footprints':
+        specifier: workspace:*
+        version: link:packages/default-footprints
       '@ecad/default-symbols':
         specifier: workspace:*
         version: link:packages/default-symbols
@@ -123,6 +126,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@ecad/default-footprints':
+        specifier: workspace:*
+        version: link:../default-footprints
       '@ecad/default-symbols':
         specifier: workspace:*
         version: link:../default-symbols
@@ -183,6 +189,12 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+
+  packages/default-footprints:
+    dependencies:
+      '@ecad/drawing-core':
+        specifier: workspace:*
+        version: link:../drawing-core
 
   packages/default-symbols:
     dependencies:

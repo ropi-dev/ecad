@@ -53,6 +53,8 @@ export interface DefaultSymbolFile {
 	prefix: string;
 	value: string;
 	netSymbol?: boolean;
+	/** The default footprint, from the built-in footprint library. */
+	footprint?: { library: "builtin"; id: string };
 	shapes: SymbolPrimitive[];
 }
 
@@ -121,6 +123,8 @@ export interface SourceSymbol {
 	prefix: string;
 	value: string;
 	netSymbol?: boolean;
+	/** The ID of a footprint in `@ecad/default-footprints`. */
+	footprint?: string;
 	source: string;
 	rotation: number;
 	filled?: boolean;

@@ -15,6 +15,7 @@ import {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -28,6 +29,7 @@ export interface SymbolDefinition {
 	prefix: string;
 	value: string;
 	netSymbol?: boolean;
+	footprint?: FootprintReference;
 	children: SymbolShape[];
 	texts: SymbolText[];
 }
@@ -70,6 +72,9 @@ export function createSymbol(
 				? {}
 				: { netSymbol: definition.netSymbol }),
 			...(definition.library ? { library: definition.library } : {}),
+			...(definition.footprint
+				? { footprint: { ...definition.footprint } }
+				: {}),
 			...position,
 			width:
 				2 *

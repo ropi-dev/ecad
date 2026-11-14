@@ -66,7 +66,11 @@ export interface ProjectContextValue {
 	reportUnsavedEdits(key: string, unsaved: boolean): void;
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
-	createFootprint(name: string): Promise<string>;
+	/** Creates a footprint file, empty or with a copy of `from`'s description and shapes. */
+	createFootprint(
+		name: string,
+		from?: { description: string; shapes: readonly EditorShape[] },
+	): Promise<string>;
 	createDrawing(name: string): Promise<string>;
 	importSchematic(file: File): Promise<{
 		path: string;

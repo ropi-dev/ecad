@@ -10,7 +10,19 @@ A dragged or nudged pad keeps its centre on the grid, as the Pad tool places it.
 
 MCP clients cannot edit a footprint yet. The desktop app's MCP endpoint leaves an open footprint out.
 
-This editor is a first version. Footprints are not yet placed on a board, linked to symbols or checked against design rules, and there is no import or export for other tools' footprint formats.
+This editor is a first version. Footprints are not yet placed on a board or checked against design rules, and there is no import or export for other tools' footprint formats.
+
+## Built-in footprints and symbols
+
+The app has a library of 52 built-in footprints adapted from KiCad's, such as 0805 chip resistors, SOT-23, pin headers and the QFN packages of the built-in microcontrollers. See the [default-footprints package](../packages/default-footprints/README.md) for the list and how they were converted. Built-in footprints are read-only.
+
+A symbol placed in a schematic can name the footprint its component is soldered with. Select one placed symbol and choose it under **Footprint** in Attributes. The list has **None**, the project's footprints, and the built-in footprints grouped by their KiCad library. Undo restores the previous footprint. The symbol editor has no Footprint section, because a nested placement inside a symbol is not a component.
+
+A new placement starts with its symbol definition's default footprint. Most built-in symbols have one, and several share it: the diodes all use SOD-123 and both battery symbols use the same coin cell holder. Power symbols, net symbols, Box and symbols without pins have no Footprint section. Placements saved before footprints existed have none until you choose one. Changing a definition's default does not change existing placements.
+
+Pads match pins by number. A pin without a number takes its position among the symbol's pins, counting from 1, so a diode's K and A pins match pads 1 and 2. Below the list, Attributes says whether the pads match all pins, or names the pins without a pad and the numbered pads without a pin. Unnumbered pads, such as a switch's mounting lugs, are left out. A footprint missing from the project or the library shows as "(missing)" and keeps its reference.
+
+For a project footprint, **Open footprint** opens it in the footprint editor. For a built-in one, **Copy to project** saves a copy as a new project footprint, which you can edit, and switches the selected symbol to the copy.
 
 ## Layers
 
@@ -112,11 +124,13 @@ A `.ecadfp` file is UTF-8 JSON:
 | `via` | Makes a circle a via. `drill` is the hole diameter in millimetres, smaller than the circle. A pad cannot also be a via. |
 | `filled` | Fills a rectangle, circle or triangle with its layer's colour. A pad is always solid. |
 
+A placed symbol stores its footprint as `footprint`, such as `{ "library": "builtin", "id": "r_0805_2012metric" }`. `library` is `builtin` for the built-in library or `project` for a footprint file in the open project, and `id` is the footprint's `id`. A symbol file's optional `footprint` field has the same shape and sets the default for new placements. See [Symbol files](symbol-format.md).
+
 The project manifest lists footprint paths in `footprints`. Web storage writes them as `footprints/<id>.ecadfp` in each revision, and desktop storage keeps them as visible files under `footprints/`. The desktop app watches them for changes from other programs like its other project files.
 
 ## Code
 
-`packages/drawing-core/src/footprint/` holds the layer list, pad and via creation and edits, and `footprintLayerView`, which filters and orders shapes for the editor. The optional `layer`, `pad` and `via` fields are part of the shared shape schema in `packages/drawing-core/src/drawing/schema.ts`, so the drawing store, commands and history take footprint items unchanged. `packages/core/src/footprint/format.ts` validates the file, and `packages/core/src/footprint/board.ts` turns the shapes into the planar layers the board stack renders. `Editor2D` runs in footprint mode when the project opens a footprint: it adds `FootprintLayerPanel`, the pad and via tools, and `FootprintBoardView`, which hands the board to `GerberViewer`. The flat view and the 3D view are one `GerberViewer` viewport. Its `updateFlatScene` option adds the editor's flat drawing, which shows in place of the board layers until an orbit starts, so the Gerber viewer's orbit gesture, camera turn and return to the top view all apply. `orbitGesture="alt-shift"` makes that gesture need Alt as well as Shift while the view is flat. `pasteSelection` in `packages/core/src/drawing/clipboard.ts` takes a footprint destination. The viewport's `pixelsPerMmAt100` option fixes what 100% zoom means.
+`packages/drawing-core/src/footprint/` holds the layer list, pad and via creation and edits, and `footprintLayerView`, which filters and orders shapes for the editor. Its `reference.ts` has the footprint reference schema and `matchPinsToPads`. `packages/core/src/footprint/library.ts` loads `@ecad/default-footprints` on demand, and `SymbolFootprintField` in `components/editor/` is the Attributes panel's Footprint section. The optional `layer`, `pad` and `via` fields are part of the shared shape schema in `packages/drawing-core/src/drawing/schema.ts`, so the drawing store, commands and history take footprint items unchanged. `packages/core/src/footprint/format.ts` validates the file, and `packages/core/src/footprint/board.ts` turns the shapes into the planar layers the board stack renders. `Editor2D` runs in footprint mode when the project opens a footprint: it adds `FootprintLayerPanel`, the pad and via tools, and `FootprintBoardView`, which hands the board to `GerberViewer`. The flat view and the 3D view are one `GerberViewer` viewport. Its `updateFlatScene` option adds the editor's flat drawing, which shows in place of the board layers until an orbit starts, so the Gerber viewer's orbit gesture, camera turn and return to the top view all apply. `orbitGesture="alt-shift"` makes that gesture need Alt as well as Shift while the view is flat. `pasteSelection` in `packages/core/src/drawing/clipboard.ts` takes a footprint destination. The viewport's `pixelsPerMmAt100` option fixes what 100% zoom means.
 
 The 3D view runs the same gestures, commands and session as the flat view. Three things differ:
 

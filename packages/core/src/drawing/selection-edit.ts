@@ -22,6 +22,7 @@ import {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import {
 	editPad,
 	editVia,
@@ -65,6 +66,10 @@ export type SelectionEdit =
 			readonly kind: "symbol-attribute";
 			readonly attribute: keyof EditorSymbol["attributes"];
 			readonly value: string;
+	  }
+	| {
+			readonly kind: "symbol-footprint";
+			readonly footprint: FootprintReference | undefined;
 	  }
 	| { readonly kind: "net-symbol"; readonly netSymbol: boolean }
 	| { readonly kind: "layer"; readonly layer: FootprintLayer }
@@ -264,6 +269,17 @@ export function applySelectionEdit(
 						: shape,
 				),
 				label: `Change symbol ${edit.attribute}`,
+			};
+		case "symbol-footprint":
+			return {
+				replacements: selection.map((shape) => {
+					if (shape.kind !== "symbol" || shape.netSymbol) return shape;
+					const { footprint: _footprint, ...symbol } = shape;
+					return edit.footprint
+						? { ...symbol, footprint: { ...edit.footprint } }
+						: symbol;
+				}),
+				label: edit.footprint ? "Change footprint" : "Remove footprint",
 			};
 		case "net-symbol":
 			return {

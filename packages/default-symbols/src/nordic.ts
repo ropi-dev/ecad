@@ -377,6 +377,7 @@ const nrf54l = (
 	pins: PinTable,
 	gpios: number,
 	pkg: string,
+	footprint?: string,
 ): SourceSymbol => ({
 	id: `${part}-${code}`.toLowerCase(),
 	category: "Microcontrollers",
@@ -385,6 +386,7 @@ const nrf54l = (
 	description: `Nordic Bluetooth LE and multiprotocol SoC, 128 MHz Cortex-M33, ${memory}, ${gpios} GPIO, ${pkg}`,
 	prefix: "U",
 	value: `${part}-${code}`,
+	...(footprint ? { footprint } : {}),
 	source: `Nordic nRF54L15, nRF54L10, and nRF54L05 datasheet v1.0, ${code} package pin assignments`,
 	rotation: 0,
 	filled: true,
@@ -394,9 +396,27 @@ const nrf54l = (
 });
 
 const nrf54lPackages = [
-	["QDAA", nrf54lQfn40, 24, "QFN-40 with exposed ground pad"],
-	["QFAA", nrf54lQfn48, 31, "QFN-48 with exposed ground pad"],
-	["QGAA", nrf54lQfn52, 35, "QFN-52 with exposed ground pad"],
+	[
+		"QDAA",
+		nrf54lQfn40,
+		24,
+		"QFN-40 with exposed ground pad",
+		"qfn-40-1ep_5x5mm_p0.4mm_ep3.6x3.6mm",
+	],
+	[
+		"QFAA",
+		nrf54lQfn48,
+		31,
+		"QFN-48 with exposed ground pad",
+		"qfn-48-1ep_6x6mm_p0.4mm_ep4.6x4.6mm",
+	],
+	[
+		"QGAA",
+		nrf54lQfn52,
+		35,
+		"QFN-52 with exposed ground pad",
+		"vqfn-52-1ep_6x6mm_p0.4mm_ep4.7x4.7mm",
+	],
 ] as const;
 
 export const nordicMicrocontrollers: readonly SourceSymbol[] = [
@@ -407,8 +427,8 @@ export const nordicMicrocontrollers: readonly SourceSymbol[] = [
 			["nRF54L05", "0.5 MB NVM, 96 KB RAM"],
 		] as const
 	).flatMap(([part, memory]) =>
-		nrf54lPackages.map(([code, pins, gpios, pkg]) =>
-			nrf54l(part, memory, code, pins, gpios, pkg),
+		nrf54lPackages.map(([code, pins, gpios, pkg, footprint]) =>
+			nrf54l(part, memory, code, pins, gpios, pkg, footprint),
 		),
 	),
 	nrf54l(
@@ -421,7 +441,12 @@ export const nordicMicrocontrollers: readonly SourceSymbol[] = [
 	),
 ];
 
-const npm2100 = (code: string, pins: PinTable, pkg: string): SourceSymbol => ({
+const npm2100 = (
+	code: string,
+	pins: PinTable,
+	pkg: string,
+	footprint?: string,
+): SourceSymbol => ({
 	id: `npm2100-${code}`.toLowerCase(),
 	category: "Power",
 	packaging: { part: "nPM2100", name: code, description: pkg },
@@ -429,6 +454,7 @@ const npm2100 = (code: string, pins: PinTable, pkg: string): SourceSymbol => ({
 	description: `Nordic primary-cell PMIC with boost regulator, load switch or LDO, fuel gauge and TWI, ${pkg}`,
 	prefix: "U",
 	value: `nPM2100-${code}`,
+	...(footprint ? { footprint } : {}),
 	source: `Nordic nPM2100 datasheet v1.0, ${code} pin assignment`,
 	rotation: 0,
 	filled: true,
@@ -437,6 +463,11 @@ const npm2100 = (code: string, pins: PinTable, pkg: string): SourceSymbol => ({
 });
 
 export const nordicPowerManagement: readonly SourceSymbol[] = [
-	npm2100("QEAA", npm2100Qfn16, "QFN-16 with exposed ground pad"),
+	npm2100(
+		"QEAA",
+		npm2100Qfn16,
+		"QFN-16 with exposed ground pad",
+		"qfn-16-1ep_4x4mm_p0.65mm_ep2.1x2.1mm",
+	),
 	npm2100("CAAA", npm2100Csp16, "16-ball wafer-level CSP"),
 ];

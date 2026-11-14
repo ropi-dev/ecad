@@ -41,6 +41,7 @@ export function legacySymbols(): DefaultSymbol[] {
 				description: "IEC resistor with two leads",
 				prefix: "R",
 				value: "10k",
+				footprint: { library: "builtin", id: "r_0805_2012metric" },
 				shapes: [
 					line(-150, 0, -100, 0),
 					{
@@ -81,6 +82,7 @@ export function legacySymbols(): DefaultSymbol[] {
 				description: "Two plates with connecting leads",
 				prefix: "C",
 				value: "100n",
+				footprint: { library: "builtin", id: "c_0805_2012metric" },
 				shapes: [
 					line(-150, 0, -30, 0),
 					line(-30, -80, -30, 80),

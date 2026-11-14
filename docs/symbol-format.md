@@ -82,7 +82,7 @@ If browser storage is unavailable, imports remain usable in the open editor and 
 }
 ```
 
-All fields above are required. `description` and `value` may be empty strings. Unknown fields are rejected to catch misspellings.
+All fields above are required except `footprint`. `description` and `value` may be empty strings. Unknown fields are rejected to catch misspellings.
 
 | Symbol field | Meaning |
 | --- | --- |
@@ -91,6 +91,7 @@ All fields above are required. `description` and `value` may be empty strings. U
 | `description` | Text shown in the picker, up to 500 characters. |
 | `prefix` | Reference prefix, 1–16 characters: ASCII letter first, then letters, digits, or `_`. Instances receive references such as `J1`. |
 | `value` | Default editable value, up to 100 characters. |
+| `footprint` | Optional default footprint for new placements: `{ "library": "builtin", "id": "r_0805_2012metric" }`, or `"library": "project"` for a footprint file in the project. Omit it for a symbol with no default. See [Built-in footprints and symbols](footprints.md#built-in-footprints-and-symbols). |
 | `shapes` | Up to 256 primitives, described below. An empty array represents a symbol with no shapes yet. |
 
 ## Drawing primitives
@@ -131,7 +132,7 @@ Schematics and symbol files refer to library definitions by the library's scope 
 
 `scope` is `user` or `project`. `id` identifies an entry in that scope's symbol library configuration. The default built-in library uses `user` and `builtin`; project symbol files use `project` and `project-symbols`. Rotation in symbol files uses degrees, while schematic drawing geometry uses radians.
 
-Placements do not save the referenced definition's shapes. The editor resolves geometry and label styles from the library, so definition edits appear in existing placements. Schematics retain instance positions, rotations, attribute values, explicit stroke overrides, and `textPositions`. This optional object maps `name`, `reference`, and `value` to label anchors with `x` and `y` in millimetres relative to the symbol origin before rotation. New placements copy their initial text positions from the definition. Older drawings without a position use the library's default for that label. Drag any item on an unselected symbol to move the whole symbol. Select the symbol first, then drag a child to move it independently. Select a child on the canvas to edit its local coordinates, dimensions, text, pin fields or appearance in Attributes. A child at X = 0 and Y = 0 sits at the symbol center. Label positions survive saving, undo and redo, and moving or rotating the symbol. Nested placements accept optional `attributes` with `name`, `reference`, and `value`, optional `textPositions` in the same local coordinates, and an optional `lineWidth` override. The optional `textAlignments` object maps each label attribute to `horizontalAlign` and `verticalAlign` overrides. Each placement saves these overrides independently of the library definition.
+Placements do not save the referenced definition's shapes. The editor resolves geometry and label styles from the library, so definition edits appear in existing placements. Schematics retain instance positions, rotations, attribute values, footprints, explicit stroke overrides, and `textPositions`. This optional object maps `name`, `reference`, and `value` to label anchors with `x` and `y` in millimetres relative to the symbol origin before rotation. New placements copy their initial text positions from the definition. Older drawings without a position use the library's default for that label. Drag any item on an unselected symbol to move the whole symbol. Select the symbol first, then drag a child to move it independently. Select a child on the canvas to edit its local coordinates, dimensions, text, pin fields or appearance in Attributes. A child at X = 0 and Y = 0 sits at the symbol center. Label positions survive saving, undo and redo, and moving or rotating the symbol. Nested placements accept optional `attributes` with `name`, `reference`, and `value`, optional `textPositions` in the same local coordinates, and an optional `lineWidth` override. The optional `textAlignments` object maps each label attribute to `horizontalAlign` and `verticalAlign` overrides. Each placement saves these overrides independently of the library definition.
 
 The optional `childOverrides` object stores instance edits to individual children. Keys such as `shape:2` refer to a child's local ID. Attribute labels use `attribute:name`, `attribute:reference` and `attribute:value`. Each entry contains only changed fields, such as `x`, `y`, `fontSize`, `text`, `number` or `lineStyle`. Coordinates are relative to the symbol center before rotation. Override rotations use radians, matching drawing shapes. Nested placements preserve the same overrides. The library definition and other placements keep their original children.
 

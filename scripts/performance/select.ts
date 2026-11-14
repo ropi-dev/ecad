@@ -143,6 +143,8 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		"packages/core/src/footprint/format.ts",
 		["@footprint", "@projects", "@storage"],
 	],
+	// The Attributes panel loads the built-in footprints for a selected symbol.
+	["packages/core/src/footprint/library.ts", ["@footprint", "@editor"]],
 	["packages/core/src/footprint/**", ["@footprint"]],
 	["packages/core/src/circuit/symbol-components.ts", ["@circuit", "@symbols"]],
 	["packages/core/src/circuit/**", ["@circuit"]],
@@ -203,6 +205,10 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		"packages/default-symbols/scripts/**",
 		["@symbols", "@editor", "@circuit", "@storage"],
 	],
+	// Built-in footprints load on demand in the schematic editor's Attributes
+	// panel, and copies of them become project footprints.
+	["packages/default-footprints/src/**", ["@editor", "@footprint"]],
+	["packages/default-footprints/scripts/**", ["@editor", "@footprint"]],
 	["packages/cli/src/**", ["@cli"]],
 	["packages/cli/bin/**", ["@cli"]],
 	["packages/cli/scripts/**", ["@cli"]],

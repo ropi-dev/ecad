@@ -14,6 +14,10 @@ import {
 	horizontalAlignments,
 	verticalAlignments,
 } from "@ecad/drawing-core/drawing/text-alignment.ts";
+import {
+	footprintIdPattern,
+	footprintLibraries,
+} from "@ecad/drawing-core/footprint/reference.ts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as ParseResult from "effect/ParseResult";
@@ -185,6 +189,12 @@ const symbolFileSchema = Schema.Struct({
 	prefix: Schema.String.pipe(Schema.pattern(/^[A-Za-z][A-Za-z0-9_]{0,15}$/)),
 	value: Schema.String.pipe(Schema.maxLength(100)),
 	netSymbol: Schema.optional(Schema.Boolean),
+	footprint: Schema.optional(
+		Schema.Struct({
+			library: Schema.Literal(...footprintLibraries),
+			id: Schema.String.pipe(Schema.pattern(footprintIdPattern)),
+		}),
+	),
 	shapes: Schema.Array(shapeSchema).pipe(Schema.maxItems(256)),
 });
 export type SymbolFile = typeof symbolFileSchema.Type;

@@ -86,6 +86,8 @@ Document history contains only drawing data. The editor separately remembers sel
 
 A footprint reuses the drawing store, commands and editor canvas, with board layers, pads and vias as optional fields on the shared shapes. See [the footprint editor](footprints.md).
 
+`@ecad/default-footprints` generates the built-in footprint library, as `@ecad/default-symbols` generates the built-in symbols. Symbol definitions and placements refer to a footprint by library and ID in an optional `footprint` field. A placement copies its definition's footprint when it is created and keeps its own from then on. The editor imports the footprint package on demand, so a schematic that never shows a component's footprint does not load it.
+
 ## Rendering ownership
 
 `buildDrawingDisplay` accepts drawing data and explicit presentation state. Its output is suitable for testing without mounting React or creating a renderer. The Three.js adapter consumes those descriptions and owns cached geometry, materials, and textures. Removing shapes or previews releases their cached resources; disposing the adapter releases the worksheet and all remaining resources.

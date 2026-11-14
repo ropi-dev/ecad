@@ -2,6 +2,7 @@ import {
 	type ComponentType,
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
 	useMemo,
@@ -61,6 +62,12 @@ export function useProjectSelection<T>(
 	);
 }
 const emptySubscribe = () => () => {};
+
+/** Reads the project as it is now, for code that runs after an await. */
+export function useLatestProjectSnapshot() {
+	const session = useContext(ProjectContext);
+	return useCallback(() => session?.getSnapshot().project ?? null, [session]);
+}
 export const useProject = () => useProjectSelection((value) => value);
 export const useProjectSnapshot = () =>
 	useProjectSelection((value) => value.project);
