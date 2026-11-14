@@ -5,7 +5,11 @@ import {
 	shapeBounds,
 	shapeCenter,
 } from "#/drawing/shape-geometry.ts";
-import { isBoxSymbol, type SymbolChild } from "#/drawing/shape-types.ts";
+import {
+	isBoxSymbol,
+	isFillableShape,
+	type SymbolChild,
+} from "#/drawing/shape-types.ts";
 import {
 	boxBorder,
 	canSelectSymbolChild,
@@ -140,6 +144,60 @@ export function symbolChildAt(
 	);
 }
 
+const isHollowBoardShape = (shape: EditorShape) =>
+	shape.layer !== undefined &&
+	isFillableShape(shape) &&
+	!shape.filled &&
+	!shape.pad;
+
+function hitHollowBoardShape(
+	shape: EditorShape,
+	point: Point,
+	tolerance: number,
+): "stroke" | "inside" | undefined {
+	const reach = Math.max(shape.lineWidth / 2, tolerance);
+	const dx = point.x - shape.x;
+	const dy = point.y - shape.y;
+	const x = dx * Math.cos(shape.rotation) + dy * Math.sin(shape.rotation);
+	const y = -dx * Math.sin(shape.rotation) + dy * Math.cos(shape.rotation);
+	const right = shape.width / 2;
+	const top = shape.height / 2;
+	const counterclockwiseCorners =
+		shape.kind === "triangle"
+			? [
+					[-right, -top],
+					[right, -top],
+					[0, top],
+				]
+			: [
+					[-right, -top],
+					[right, -top],
+					[right, top],
+					[-right, top],
+				];
+	const outsideBy =
+		shape.kind === "circle"
+			? Math.hypot(x, y) - right
+			: Math.max(
+					...counterclockwiseCorners.map(([fromX, fromY], index) => {
+						const [toX, toY] =
+							counterclockwiseCorners[
+								(index + 1) % counterclockwiseCorners.length
+							];
+						const edgeX = toX - fromX;
+						const edgeY = toY - fromY;
+						return (
+							((x - fromX) * edgeY - (y - fromY) * edgeX) /
+							Math.hypot(edgeX, edgeY)
+						);
+					}),
+				);
+	if (outsideBy > reach) return undefined;
+	return outsideBy < -reach ? "inside" : "stroke";
+}
+
+const boxArea = (shape: EditorShape) => shape.width * shape.height;
+
 export function shapeAt<T extends EditorShape>(
 	shapes: readonly T[],
 	point: Point,
@@ -150,7 +208,12 @@ export function shapeAt<T extends EditorShape>(
 	for (let index = shapes.length - 1; index >= 0; index--) {
 		const shape = shapes[index];
 		if (!selectable(shape)) continue;
-		if (shape.kind !== "symbol" || isBoxSymbol(shape)) {
+		if (isHollowBoardShape(shape)) {
+			const hit = hitHollowBoardShape(shape, point, tolerance);
+			if (hit === "stroke") return shape;
+			if (hit === "inside" && (!area || boxArea(shape) < boxArea(area)))
+				area = shape;
+		} else if (shape.kind !== "symbol" || isBoxSymbol(shape)) {
 			if (hitShape(shape, point, tolerance)) return shape;
 		} else if (hitSymbolContent(shape, point, tolerance)) return shape;
 		else if (!area && hitShape(shape, point, tolerance)) area = shape;

@@ -17,6 +17,7 @@ import {
 	parseSavedSymbolLibrary,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
+import { type FootprintFile, footprintFileSchema } from "#/footprint/format.ts";
 import {
 	InvalidProjectDocument,
 	InvalidProjectFile,
@@ -77,6 +78,7 @@ export const manifestSchema = z.strictObject({
 		)
 		.optional(),
 	symbols: z.array(projectPathSchema),
+	footprints: z.array(projectPathSchema).optional(),
 	assets: z.array(assetSchema).default([]),
 	settings: readProjectSettingsSchema.optional(),
 });
@@ -108,6 +110,7 @@ export interface ProjectDocument {
 	drawings?: ProjectDrawing[];
 	circuits?: CircuitFile[];
 	symbols: SymbolLibrary;
+	footprints?: FootprintFile[];
 	symbolLibraries?: readonly ConfiguredSymbolLibrary[];
 }
 export interface ProjectSnapshot extends ProjectDocument {
@@ -155,6 +158,7 @@ export interface ProjectDocumentFiles {
 	drawing: string;
 	drawings?: readonly string[];
 	circuits?: readonly string[];
+	footprints?: readonly string[];
 }
 
 function invalid(file: string | undefined, reason: string, cause?: unknown) {
@@ -252,6 +256,21 @@ export function validateProjectDocument(
 			cause,
 		);
 	}
+	const footprints =
+		document.footprints === undefined
+			? undefined
+			: check(z.array(footprintFileSchema), document.footprints, {
+					field: "footprints",
+					items: files?.footprints,
+				});
+	if (
+		footprints &&
+		new Set(footprints.map((file) => file.id)).size !== footprints.length
+	)
+		throw invalid(
+			files && PROJECT_FILE,
+			"The project contains duplicate footprint IDs.",
+		);
 	let symbolLibraries: readonly ConfiguredSymbolLibrary[] | undefined;
 	try {
 		symbolLibraries =
@@ -278,6 +297,7 @@ export function validateProjectDocument(
 		...(drawings === undefined ? {} : { drawings }),
 		...(circuits === undefined ? {} : { circuits }),
 		symbols,
+		...(footprints === undefined ? {} : { footprints }),
 		...(symbolLibraries === undefined ? {} : { symbolLibraries }),
 	};
 }

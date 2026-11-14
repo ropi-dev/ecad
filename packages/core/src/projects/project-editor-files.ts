@@ -23,6 +23,7 @@ export function createProjectEditorFiles(
 		setOpeningCircuit,
 		setEditorDrawing,
 		setEditorSymbol,
+		setEditorFootprint,
 		showError,
 	} = state;
 	const openCircuit = async (path: string) => {
@@ -101,6 +102,7 @@ export function createProjectEditorFiles(
 			};
 		});
 		setEditorSymbol(null);
+		setEditorFootprint(null);
 		setEditorDrawing(null);
 		setEditorCircuit(document);
 		return true;
@@ -191,7 +193,7 @@ export function createProjectEditorFiles(
 		const circuitId =
 			view === "circuit"
 				? state.editorCircuit?.file.circuit.id
-				: state.editorCircuit || state.editorSymbol
+				: state.editorCircuit || state.editorSymbol || state.editorFootprint
 					? undefined
 					: state.editorDrawing
 						? projectIndex(snapshot).drawingsById.get(
@@ -243,6 +245,9 @@ export function createProjectEditorFiles(
 			const symbolId = before
 				? projectIndex(before).symbolsByPath.get(path ?? "")?.id
 				: undefined;
+			const footprintId = before
+				? projectIndex(before).footprintsByPath.get(path ?? "")?.id
+				: undefined;
 			const request = ++state.editorSelection;
 			return autosave()
 				.then(() => {
@@ -254,9 +259,12 @@ export function createProjectEditorFiles(
 								? projectIndex(current).drawingsById.get(drawingId)?.path
 								: symbolId
 									? projectIndex(current).symbolsById.get(symbolId)?.path
-									: path === before?.manifest.drawing
-										? current.manifest.drawing
-										: path
+									: footprintId
+										? projectIndex(current).footprintsById.get(footprintId)
+												?.path
+										: path === before?.manifest.drawing
+											? current.manifest.drawing
+											: path
 							: path,
 					);
 				})
@@ -268,6 +276,7 @@ export function createProjectEditorFiles(
 		if (!snapshot) return false;
 		if (!path || path === snapshot.manifest.drawing) {
 			setEditorSymbol(null);
+			setEditorFootprint(null);
 			setEditorDrawing(null);
 			return true;
 		}
@@ -287,7 +296,28 @@ export function createProjectEditorFiles(
 				};
 			});
 			setEditorSymbol(null);
+			setEditorFootprint(null);
 			setEditorDrawing(document);
+			return true;
+		}
+		const footprint = projectIndex(snapshot).footprintsByPath.get(path);
+		if (footprint) {
+			const document = documents.openDocument("footprint", footprint.id, () => {
+				const footprintStore = measurePerformance(
+					"editor.open-footprint",
+					() => createDrawingStore(footprint.shapes),
+					{ shapes: footprint.shapes.length },
+				);
+				return {
+					file: footprint,
+					store: footprintStore,
+					savedShapes: footprintStore.getSnapshot().shapes,
+					unsubscribe: subscribeDrawing(footprintStore),
+				};
+			});
+			setEditorSymbol(null);
+			setEditorDrawing(null);
+			setEditorFootprint(document);
 			return true;
 		}
 		const file = projectIndex(snapshot).symbolsByPath.get(path);
@@ -306,6 +336,7 @@ export function createProjectEditorFiles(
 			};
 		});
 		setEditorDrawing(null);
+		setEditorFootprint(null);
 		setEditorSymbol(document);
 		return true;
 	};

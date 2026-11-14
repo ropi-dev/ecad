@@ -139,13 +139,17 @@ export function canvasDragStep(
 	if (drag.mode === "draw") {
 		const original = drag.originals[0];
 		if (original.kind === "symbol" || original.kind === "text") return none();
-		const draft = drawShape(
-			original.id,
-			original.kind,
-			drag.start,
-			point,
-			drag.gridStep,
-		);
+		const draft = {
+			...drawShape(
+				original.id,
+				original.kind,
+				drag.start,
+				point,
+				drag.gridStep,
+			),
+			lineWidth: original.lineWidth,
+			...(original.layer ? { layer: original.layer } : {}),
+		};
 		const scale = context.cameraScale();
 		valid =
 			draft.width > 0 &&

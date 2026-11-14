@@ -8,6 +8,7 @@ import { type ClipboardEvent as ReactClipboardEvent, useRef } from "react";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import {
 	drawingClipboardType,
+	type PasteDestination,
 	parseSelection,
 	pasteSelection,
 	selectionFileText,
@@ -25,7 +26,7 @@ export interface DrawingClipboardOptions {
 
 	enabled: () => boolean;
 
-	target: "symbol" | "drawing";
+	target: PasteDestination;
 
 	pasteStep: number;
 
@@ -122,10 +123,7 @@ export function useDrawingClipboard({
 			);
 		} catch (cause) {
 			session.setError(
-				errorMessage(
-					cause,
-					"This selection cannot be pasted into a reusable symbol.",
-				),
+				errorMessage(cause, "This selection cannot be pasted here."),
 			);
 			return;
 		}

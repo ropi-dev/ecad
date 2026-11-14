@@ -40,6 +40,7 @@ export function ViewControls3D({
 	fit,
 	zoom,
 	zoomLevel,
+	absoluteZoom = false,
 	actualSize,
 	view,
 	projection,
@@ -57,6 +58,7 @@ export function ViewControls3D({
 	scrollable?: boolean;
 	label?: string;
 	zoomLevel: number;
+	absoluteZoom?: boolean;
 	actualSize?: () => void;
 	projection: "perspective" | "orthographic";
 	toggleProjection?: () => void;
@@ -76,8 +78,8 @@ export function ViewControls3D({
 			zoom={zoom}
 			fit={fit}
 			enabled={enabled}
-			canZoomIn={zoomLevel < (actualSize ? MAX_PHYSICAL_ZOOM : MAX_ZOOM)}
-			canZoomOut={zoomLevel > (actualSize ? MIN_PHYSICAL_ZOOM : MIN_ZOOM)}
+			canZoomIn={zoomLevel < (absoluteZoom ? MAX_PHYSICAL_ZOOM : MAX_ZOOM)}
+			canZoomOut={zoomLevel > (absoluteZoom ? MIN_PHYSICAL_ZOOM : MIN_ZOOM)}
 			buttonClassName={button}
 			fitClassName={`${button} min-w-14 tabular-nums`}
 			fitLabel={fitLabel}

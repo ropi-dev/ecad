@@ -147,7 +147,7 @@ Web routes live in `packages/web/src/routes`, with the root document in `__root.
 
 Tailwind styles live in `packages/core/src/styles.css`.
 
-See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
+See the [drawing architecture guide](docs/architecture.md), [Effect integration guide](docs/effect.md), [viewer guide](docs/viewer.md), and [MCP guide](docs/mcp.md). The [footprint guide](docs/footprints.md) covers the footprint editor and its file format. The [symbol format guide](docs/symbol-format.md) explains portable symbol files; the [example directory](packages/web/public/examples/symbols) contains a small library for either app.
 
 ## Run the CLI
 

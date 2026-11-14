@@ -8,6 +8,8 @@ import {
 	symbolTextShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import { isFootprintShape } from "@ecad/drawing-core/footprint/shapes.ts";
 import { z } from "zod";
 import {
 	createEmptySymbolFile,
@@ -134,16 +136,26 @@ export function selectionPasteError(text: string): string | undefined {
 	}
 }
 
+export type PasteDestination =
+	| "drawing"
+	| "symbol"
+	| { footprintLayer: FootprintLayer };
+
 export function pasteSelection(
 	source: readonly EditorShape[],
 	existing: readonly EditorShape[],
 	nextId: number,
 	offset: Point,
-	destination: "drawing" | "symbol" = "drawing",
+	destination: PasteDestination = "drawing",
 ): EditorShape[] {
 	return measurePerformance(
 		"drawing.clipboard-paste",
 		() => {
+			const footprint = typeof destination === "object";
+			if (footprint && !source.every(isFootprintShape))
+				throw new Error(
+					"A footprint takes rectangles, circles, triangles, lines and text. Pins, schematic wires, net labels and symbols cannot be pasted into it.",
+				);
 			if (
 				destination === "symbol" &&
 				source.some(
@@ -178,6 +190,14 @@ export function pasteSelection(
 						? duplicateSymbol(shape, id, [...existing, ...pasted])
 						: { ...structuredClone(shape), id };
 				if (copy.kind === "text") delete copy.circuitNet;
+				if (footprint) copy.layer ??= destination.footprintLayer;
+				else {
+					delete copy.layer;
+					if ("pad" in copy && copy.pad) {
+						delete copy.pad;
+						delete copy.filled;
+					}
+				}
 				pasted.push({ ...copy, x: copy.x + offset.x, y: copy.y + offset.y });
 			}
 			if (destination === "symbol")

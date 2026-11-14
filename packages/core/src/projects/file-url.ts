@@ -35,6 +35,10 @@ export function projectFileSelections(
 			const symbol = project.symbols[index];
 			return symbol ? [selection(`symbol:${symbol.id}`, path)] : [];
 		}),
+		...(manifest.footprints ?? []).flatMap((path, index) => {
+			const footprint = project.footprints?.[index];
+			return footprint ? [selection(`footprint:${footprint.id}`, path)] : [];
+		}),
 		...(manifest.circuits ?? []).flatMap((paths, index) => {
 			const circuit = project.circuits?.[index];
 			return circuit

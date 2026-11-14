@@ -6,6 +6,7 @@ import {
 	type EditorSymbol,
 	editShapeAttribute,
 	isBasicShape,
+	isFillableShape,
 	isUnsafeMove,
 	moveShapes,
 	normalizeNetSymbol,
@@ -20,6 +21,13 @@ import {
 	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts";
+import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	editPad,
+	isPad,
+	type PadEdit,
+	setShapeLayer,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import type { LabelRole } from "#/drawing/placement.ts";
 import { type MeasureText, updateText } from "#/drawing/text.ts";
 
@@ -56,6 +64,9 @@ export type SelectionEdit =
 			readonly value: string;
 	  }
 	| { readonly kind: "net-symbol"; readonly netSymbol: boolean }
+	| { readonly kind: "layer"; readonly layer: FootprintLayer }
+	| { readonly kind: "pad"; readonly edit: PadEdit }
+	| { readonly kind: "fill"; readonly filled: boolean }
 	| {
 			readonly kind: "symbol-label-position";
 			readonly position: SymbolLabelPosition;
@@ -265,6 +276,29 @@ export function applySelectionEdit(
 					.filter((shape) => shape.kind === "symbol")
 					.map((shape) => setSymbolLabelPosition(shape, "name", edit.position)),
 				label: "Position label",
+			};
+		case "layer":
+			return {
+				replacements: selection.map((shape) =>
+					setShapeLayer(shape, edit.layer),
+				),
+				label: "Change layer",
+			};
+		case "pad":
+			return single && isPad(single)
+				? {
+						replacements: [editPad(single, edit.edit)],
+						label: `Change pad ${edit.edit.attribute}`,
+					}
+				: undefined;
+		case "fill":
+			return {
+				replacements: selection.flatMap((shape) =>
+					isFillableShape(shape) && !isPad(shape)
+						? [{ ...shape, filled: edit.filled }]
+						: [],
+				),
+				label: edit.filled ? "Fill shape" : "Clear fill",
 			};
 		case "symbol-text-reset": {
 			const target = context.child;

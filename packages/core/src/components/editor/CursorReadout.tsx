@@ -1,4 +1,4 @@
-import { toMils } from "@ecad/drawing-core/drawing/units.ts";
+import { type LengthUnit, toMils } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	type RefObject,
 	useLayoutEffect,
@@ -13,7 +13,9 @@ export function CursorReadout({
 	ready,
 	cameraView,
 	canvasArea,
+	unit = "mil",
 }: {
+	unit?: LengthUnit;
 	ready: boolean;
 	cameraView: CanvasView;
 	canvasArea: RefObject<HTMLElement | null>;
@@ -62,7 +64,10 @@ export function CursorReadout({
 				>
 					<span className="text-fg-faint">{axis.toUpperCase()}</span>
 					<span className="font-medium">
-						{cursor && Math.round(toMils(cursor[axis]))}
+						{cursor &&
+							(unit === "mil"
+								? Math.round(toMils(cursor[axis]))
+								: cursor[axis].toFixed(2))}
 					</span>
 				</span>
 			))}

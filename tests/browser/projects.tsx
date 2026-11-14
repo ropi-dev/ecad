@@ -53,6 +53,7 @@ function ProjectDocument() {
 	);
 	const editorStore =
 		project.editorSymbol?.store ??
+		project.editorFootprint?.store ??
 		project.editorDrawing?.store ??
 		project.store;
 	const editor = useSyncExternalStore(
@@ -69,6 +70,7 @@ function ProjectDocument() {
 				dirty: project.dirty,
 				symbols: project.project?.symbols,
 				drawings: project.project?.drawings,
+				footprints: project.project?.footprints,
 				editorDrawing: project.editorDrawing?.file.id,
 				editorShapes: editor.shapes,
 			})}

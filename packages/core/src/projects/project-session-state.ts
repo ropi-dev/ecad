@@ -16,6 +16,7 @@ import { createLinkedPcbAssembler } from "#/projects/linked-pcb.ts";
 import type {
 	CircuitDocument,
 	DrawingDocument,
+	FootprintDocument,
 	ProjectContextValue,
 	SymbolDocument,
 } from "#/projects/ProjectSession.ts";
@@ -35,6 +36,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 	const documents = createDocumentRegistry<{
 		circuit: CircuitDocument;
 		symbol: SymbolDocument;
+		footprint: FootprintDocument;
 		drawing: DrawingDocument;
 	}>();
 	const state = {
@@ -50,11 +52,13 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		documents,
 		circuitDocuments: documents.collection("circuit"),
 		symbolDocuments: documents.collection("symbol"),
+		footprintDocuments: documents.collection("footprint"),
 		drawingDocuments: documents.collection("drawing"),
 		editorCircuit: null as CircuitDocument | null,
 		/** The request that is opening a circuit, while one is. */
 		openingCircuit: null as number | null,
 		editorSymbol: null as SymbolDocument | null,
+		editorFootprint: null as FootprintDocument | null,
 		editorDrawing: null as DrawingDocument | null,
 		symbols: [] as SymbolLibrary,
 		libraries: [] as readonly ConfiguredSymbolLibrary[],
@@ -127,6 +131,11 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 	const setEditorSymbol = (next: SymbolDocument | null) => {
 		if (Object.is(next, state.editorSymbol)) return;
 		state.editorSymbol = next;
+		publish();
+	};
+	const setEditorFootprint = (next: FootprintDocument | null) => {
+		if (Object.is(next, state.editorFootprint)) return;
+		state.editorFootprint = next;
 		publish();
 	};
 	const setEditorDrawing = (next: DrawingDocument | null) => {
@@ -224,6 +233,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		setEditorCircuit,
 		setOpeningCircuit,
 		setEditorSymbol,
+		setEditorFootprint,
 		setEditorDrawing,
 		setEpoch,
 		setBusy,

@@ -16,6 +16,7 @@ import {
 	type EditorShape,
 	type EditorSymbol,
 	isBasicShape,
+	isFillableShape,
 	type PinShape,
 	type ShapeAttribute,
 	type SymbolLabelPosition,
@@ -31,9 +32,25 @@ import {
 import {
 	formatMils,
 	fromMils,
+	type LengthUnit,
 	SCHEMATIC_STEP,
 	toMils,
 } from "@ecad/drawing-core/drawing/units.ts";
+import {
+	copperLayers,
+	type FootprintLayer,
+	footprintLayerLabels,
+	footprintLayers,
+	type PadType,
+	padTypeLabels,
+	padTypes,
+} from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	isPad,
+	type PadShape,
+	padMinorSize,
+	shapeLayer,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { Lock, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
@@ -160,6 +177,7 @@ function AttributeInput({
 	unit = "mil",
 	positive = false,
 	nonNegative = false,
+	below = Number.POSITIVE_INFINITY,
 	step = "any",
 	onChange,
 }: {
@@ -168,6 +186,7 @@ function AttributeInput({
 	unit?: string;
 	positive?: boolean;
 	nonNegative?: boolean;
+	below?: number;
 	step?: string;
 	onChange: (value: number) => void;
 }) {
@@ -201,6 +220,7 @@ function AttributeInput({
 						Number.isFinite(next) &&
 						(!positive || next > 0) &&
 						(!nonNegative || next >= 0) &&
+						next < below &&
 						(step !== "90" || next % 90 === 0)
 					) {
 						if (next !== value && entered !== displayValue) onChange(next);
@@ -227,6 +247,8 @@ interface SelectionAttributesProps {
 	onEditSymbol?: () => void;
 	/** Shows the net symbol and label role controls. Reusable symbols have no nets. */
 	allowNetEdits?: boolean;
+	footprint?: boolean;
+	unit?: LengthUnit;
 	onEdit: (edit: SelectionEdit) => void;
 	textFocusId: number | null;
 	onTextFocus: () => void;
@@ -288,6 +310,102 @@ function pinLabelRows(
 	});
 }
 
+function selectionType(shape: EditorShape, footprint: boolean): string {
+	if (isPad(shape)) return "pad";
+	if (shape.kind === "text" && shape.electrical)
+		return `${shape.electrical} label`;
+	if (shape.kind === "symbol" && shape.netSymbol) return "net symbol";
+	return footprint && shape.kind === "line" ? "wire" : shape.kind;
+}
+
+function padRows(
+	pad: PadShape,
+	unit: LengthUnit,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	return [
+		[
+			"Pad number",
+			<input
+				key={`${pad.id}:number:${pad.pad.number}`}
+				aria-label="Pad number"
+				defaultValue={pad.pad.number}
+				maxLength={16}
+				className={textInputClassName}
+				onBlur={(event) =>
+					onEdit({
+						kind: "pad",
+						edit: { attribute: "number", value: event.currentTarget.value },
+					})
+				}
+			/>,
+		],
+		[
+			"Pad type",
+			<select
+				key="type"
+				aria-label="Pad type"
+				className="ui-select w-36"
+				value={pad.pad.type}
+				onChange={(event) =>
+					onEdit({
+						kind: "pad",
+						edit: {
+							attribute: "type",
+							value: event.currentTarget.value as PadType,
+						},
+					})
+				}
+			>
+				{padTypes.map((type) => (
+					<option key={type} value={type}>
+						{padTypeLabels[type]}
+					</option>
+				))}
+			</select>,
+		],
+		[
+			"Pad shape",
+			<select
+				key="shape"
+				aria-label="Pad shape"
+				className="ui-select w-36"
+				value={pad.kind}
+				onChange={(event) =>
+					onEdit({
+						kind: "pad",
+						edit: {
+							attribute: "shape",
+							value: event.currentTarget.value as PadShape["kind"],
+						},
+					})
+				}
+			>
+				<option value="rectangle">Rectangle</option>
+				<option value="circle">Circle</option>
+			</select>,
+		],
+		...(pad.pad.drill === undefined
+			? []
+			: [
+					[
+						"Drill",
+						<AttributeInput
+							key={`${pad.id}:drill`}
+							label="Drill"
+							value={pad.pad.drill}
+							unit={unit}
+							positive
+							below={padMinorSize(pad)}
+							onChange={(value) =>
+								onEdit({ kind: "pad", edit: { attribute: "drill", value } })
+							}
+						/>,
+					] as [string, ReactNode],
+				]),
+	];
+}
+
 export function SelectionAttributes(props: SelectionAttributesProps) {
 	const symbol = props.shapes.length === 1 ? props.shapes[0] : undefined;
 	if (props.readOnly && symbol)
@@ -315,6 +433,8 @@ function SelectionAttributesPanel({
 	snapStep = 0,
 	onClear,
 	allowNetEdits = false,
+	footprint = false,
+	unit = "mil",
 	onEdit,
 	onCreateSymbol,
 	onEditSymbol,
@@ -324,6 +444,7 @@ function SelectionAttributesPanel({
 	const basicShapes = shapes.flatMap((shape) => {
 		const border =
 			shape.kind === "symbol" ? boxBorder(shape)?.shape : undefined;
+		if (isPad(shape)) return [];
 		return isBasicShape(shape)
 			? [shape]
 			: border && isBasicShape(border)
@@ -342,10 +463,13 @@ function SelectionAttributesPanel({
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
 			? symbolShapes(shape).filter((child) => child.kind !== "text")
-			: shape.kind === "text"
+			: shape.kind === "text" || isPad(shape)
 				? []
 				: [shape],
 	);
+	const fillable = footprint
+		? shapes.filter(isFillableShape).filter((shape) => !isPad(shape))
+		: [];
 	const lineWidth =
 		outlinedShapes.length &&
 		outlinedShapes.every(
@@ -385,7 +509,17 @@ function SelectionAttributesPanel({
 	const right = Math.max(...bounds.map((box) => box.maxX));
 	const bottom = Math.min(...bounds.map((box) => box.minY));
 	const top = Math.max(...bounds.map((box) => box.maxY));
-	const distance = formatMils;
+	const distance =
+		unit === "mil"
+			? formatMils
+			: (value: number) => `${Number(value.toFixed(4))} mm`;
+	const pad = single && isPad(single) ? single : undefined;
+	const layer =
+		footprint && shapes.every((shape) => shape.kind !== "symbol")
+			? shapes.every((shape) => shapeLayer(shape) === shapeLayer(shapes[0]))
+				? shapeLayer(shapes[0])
+				: ""
+			: undefined;
 	const editable = (
 		label: string,
 		attribute: ShapeAttribute,
@@ -420,7 +554,7 @@ function SelectionAttributesPanel({
 					attribute !== "angle" &&
 					attribute !== "length"
 				}
-				unit={attribute === "angle" ? "°" : "mil"}
+				unit={attribute === "angle" ? "°" : unit}
 				step={
 					attribute === "angle" &&
 					(single?.kind === "wire" ||
@@ -436,15 +570,44 @@ function SelectionAttributesPanel({
 			/>
 		),
 	];
-	const type = single
-		? single.kind === "text" && single.electrical
-			? `${single.electrical} label`
-			: single.kind === "symbol" && single.netSymbol
-				? "net symbol"
-				: single.kind
-		: "";
+	const type = single ? selectionType(single, footprint) : "";
 	const properties: [string, ReactNode][] = [
 		lockAttribute,
+		...(layer === undefined
+			? []
+			: pad?.pad.type === "through-hole"
+				? [["Layer", "Both copper layers"] as [string, ReactNode]]
+				: [
+						[
+							"Layer",
+							<select
+								key="layer"
+								aria-label="Layer"
+								className="ui-select w-36"
+								value={layer}
+								onChange={(event) =>
+									onEdit({
+										kind: "layer",
+										layer: event.currentTarget.value as FootprintLayer,
+									})
+								}
+							>
+								{layer === "" && (
+									<option value="" disabled>
+										Mixed
+									</option>
+								)}
+								{footprintLayers
+									.filter((item) => !pad || copperLayers.includes(item))
+									.map((item) => (
+										<option key={item} value={item}>
+											{footprintLayerLabels[item]}
+										</option>
+									))}
+							</select>,
+						] as [string, ReactNode],
+					]),
+		...(pad ? padRows(pad, unit, onEdit) : []),
 		...(single?.kind === "pin"
 			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [
 					attribute === "name" ? "Name" : "Number",
@@ -608,6 +771,7 @@ function SelectionAttributesPanel({
 		!!labelPosition ||
 		textShapes.length > 0 ||
 		basicShapes.length > 0 ||
+		fillable.length > 0 ||
 		outlinedShapes.length > 0;
 	return (
 		<FloatingPanel label="Selection attributes" position="top-right">
@@ -622,7 +786,9 @@ function SelectionAttributesPanel({
 									: [symbol.attributes.name, symbol.attributes.reference]
 											.filter(Boolean)
 											.join(" · ") || "Symbol"
-								: (kindLabels[type] ?? type)
+								: pad
+									? `Pad ${pad.pad.number}`.trim()
+									: (kindLabels[type] ?? type)
 							: "Selected shapes"}
 					</p>
 				}
@@ -799,6 +965,23 @@ function SelectionAttributesPanel({
 								}
 							/>
 						)}
+						{fillable.length > 0 && (
+							<label className={rowClassName}>
+								Filled
+								<input
+									type="checkbox"
+									aria-label="Filled"
+									className="ui-checkbox"
+									checked={fillable.every((shape) => shape.filled)}
+									onChange={(event) =>
+										onEdit({
+											kind: "fill",
+											filled: event.currentTarget.checked,
+										})
+									}
+								/>
+							</label>
+						)}
 						{basicShapes.length > 0 && (
 							<label className={rowClassName}>
 								Line style
@@ -846,6 +1029,7 @@ function SelectionAttributesPanel({
 										key={shapes.map((shape) => shape.id).join(",")}
 										label="Line width"
 										value={lineWidth}
+										unit={unit}
 										positive
 										onChange={(value) => onAttributeChange("lineWidth", value)}
 									/>
@@ -864,9 +1048,9 @@ function SelectionAttributesPanel({
 								: single && isNetLabel(single)
 									? "Drag to move the label."
 									: "Drag to move; drag handles to resize."}{" "}
-					Arrow keys move {formatMils(snapStep || SCHEMATIC_STEP)}; Shift +
-					arrows move {formatMils((snapStep || SCHEMATIC_STEP) * 10)} when the
-					drawing is focused.
+					Arrow keys move {distance(snapStep || SCHEMATIC_STEP)}; Shift + arrows
+					move {distance((snapStep || SCHEMATIC_STEP) * 10)} when the drawing is
+					focused.
 				</Tips>
 			</div>
 		</FloatingPanel>

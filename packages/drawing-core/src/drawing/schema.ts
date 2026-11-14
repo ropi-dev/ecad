@@ -13,6 +13,7 @@ import {
 	horizontalAlignments,
 	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
+import { footprintLayers, padTypes } from "#/footprint/layers.ts";
 
 /*
  * The shape types at the end of this file are inferred from these schemas.
@@ -52,6 +53,12 @@ const geometryFields = {
 		.describe(
 			"ID of the schematic page the shape is on. Omit it for the first page. Symbol children ignore it.",
 		),
+	layer: z
+		.enum(footprintLayers)
+		.optional()
+		.describe(
+			"Board layer of a footprint item, such as F.Cu or F.SilkS. Schematic and symbol shapes omit it.",
+		),
 	x: z.number().describe("Shape center X in millimetres."),
 	y: z
 		.number()
@@ -62,8 +69,23 @@ const geometryFields = {
 	lineWidth: z.number().positive().describe("Stroke width in millimetres."),
 };
 
+const padSchema = z
+	.strictObject({
+		number: z.string().max(16).describe("Pad number, such as 1 or A1."),
+		type: z.enum(padTypes),
+		drill: z
+			.number()
+			.positive()
+			.optional()
+			.describe("Hole diameter in millimetres. Surface mount pads omit it."),
+	})
+	.describe(
+		"Makes a footprint rectangle or circle a pad. The shape is its copper.",
+	);
+
 const fillableShapeFields = {
 	filled: z.boolean().optional(),
+	pad: padSchema.optional(),
 	...geometryFields,
 	lineStyle,
 	kind: z.enum(fillableShapeKinds),
@@ -136,6 +158,24 @@ const roundCircle = (shape: { kind: string; width: number; height: number }) =>
 const roundCircleError = {
 	error: "A circle must have equal width and height.",
 };
+const validPad = (shape: {
+	kind: string;
+	width: number;
+	height: number;
+	pad?: z.output<typeof padSchema>;
+}) => {
+	const { pad } = shape;
+	if (!pad) return true;
+	if (shape.kind !== "rectangle" && shape.kind !== "circle") return false;
+	if (pad.type === "smd") return pad.drill === undefined;
+	return (
+		pad.drill !== undefined && pad.drill < Math.min(shape.width, shape.height)
+	);
+};
+const validPadError = {
+	error:
+		"A pad must be a rectangle or a circle. A through-hole pad needs a drill smaller than the pad, and a surface mount pad has none.",
+};
 const orthogonalWire = (wire: { rotation: number }) =>
 	Math.abs(Math.sin(2 * wire.rotation)) <= 1e-9;
 const orthogonalWireError = {
@@ -144,10 +184,12 @@ const orthogonalWireError = {
 
 const fillableInputSchema = z
 	.strictObject(fillableShapeFields)
-	.refine(roundCircle, roundCircleError);
+	.refine(roundCircle, roundCircleError)
+	.refine(validPad, validPadError);
 const fillableShapeSchema = z
 	.strictObject({ ...fillableShapeFields, id: shapeId })
-	.refine(roundCircle, roundCircleError);
+	.refine(roundCircle, roundCircleError)
+	.refine(validPad, validPadError);
 const lineInputSchema = z.strictObject(lineShapeFields);
 const lineShapeSchema = z.strictObject({ ...lineShapeFields, id: shapeId });
 const wireInputSchema = z
@@ -536,6 +578,7 @@ export const savedDrawingShapesSchema = z.preprocess(
 );
 
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
+export type ShapePad = z.output<typeof padSchema>;
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
 export interface PinShape extends z.output<typeof pinShapeSchema> {}

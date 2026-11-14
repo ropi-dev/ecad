@@ -15,13 +15,13 @@ const reroutedStores = new WeakSet<object>();
 export function useLegacyWireReroute({
 	store,
 	session,
-	isSymbol,
+	sheetless,
 	ready,
 	resolved,
 }: {
 	store: ReturnType<typeof createDrawingStore>;
 	session: EditorSession;
-	isSymbol: boolean;
+	sheetless: boolean;
 	ready: boolean;
 	resolved: { shapes: EditorShape[]; errors: string[] };
 }) {
@@ -31,7 +31,7 @@ export function useLegacyWireReroute({
 	} | null>(null);
 	useEffect(() => {
 		if (
-			isSymbol ||
+			sheetless ||
 			!ready ||
 			resolved.errors.length ||
 			reroutedStores.has(store)

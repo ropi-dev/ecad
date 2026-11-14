@@ -4,6 +4,7 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	Cable,
 	Circle,
+	CircleDot,
 	Download,
 	FileImage,
 	Hand,
@@ -13,6 +14,7 @@ import {
 	MapPin,
 	Minus,
 	MousePointer2,
+	RectangleVertical,
 	RotateCcw,
 	RotateCw,
 	Shapes,
@@ -70,8 +72,24 @@ const tools = [
 	{ group: "connections", kind: "no-connect", label: "No connect", icon: X },
 	{ group: "connections", kind: "net", label: "Net label", icon: Tag },
 	{ group: "connections", kind: "supply", label: "Supply label", icon: Zap },
+	{
+		group: "pads",
+		kind: "smd-pad",
+		label: "Surface mount pad",
+		icon: RectangleVertical,
+	},
+	{
+		group: "pads",
+		kind: "through-hole-pad",
+		label: "Through-hole pad",
+		icon: CircleDot,
+	},
 ] as const;
+const footprintTools = tools.map((item) =>
+	item.kind === "line" ? { ...item, label: "Wire", icon: Cable } : item,
+);
 type ToolItem = (typeof tools)[number];
+type ToolGroup = "shapes" | "connections" | "pads";
 
 interface EditorToolbarProps {
 	shapes: EditorShape[];
@@ -85,7 +103,8 @@ interface EditorToolbarProps {
 	redo: () => void;
 	restoreHistory: (program: DrawingCommand<unknown>) => void;
 	tool: Tool;
-	isSymbol: boolean;
+	sheetless: boolean;
+	footprint?: { flat: boolean; empty: boolean; onToggleFlat: () => void };
 	symbolLibrary: ComponentProps<typeof SymbolPicker>["library"];
 	finishDrag: (cancel?: boolean) => void;
 	finishWire: () => void;
@@ -119,7 +138,8 @@ export const EditorToolbar = memo(function EditorToolbar({
 	redo,
 	restoreHistory,
 	tool,
-	isSymbol,
+	sheetless,
+	footprint,
 	symbolLibrary,
 	finishDrag,
 	finishWire,
@@ -145,14 +165,14 @@ export const EditorToolbar = memo(function EditorToolbar({
 		clearPlacementPreview();
 		setTool(kind);
 	};
-	const toolGroup = (group: "shapes" | "connections") =>
-		tools.filter(
+	const toolGroup = (group: ToolGroup) =>
+		(footprint ? footprintTools : tools).filter(
 			(item) =>
 				item.group === group &&
-				!(isSymbol && (item.kind === "net" || item.kind === "supply")),
+				!(sheetless && (item.kind === "net" || item.kind === "supply")),
 		);
 	const renderGroup = (
-		group: "shapes" | "connections",
+		group: ToolGroup,
 		label: string,
 		fallback: ToolItem["icon"],
 	) => {
@@ -217,20 +237,26 @@ export const EditorToolbar = memo(function EditorToolbar({
 					),
 				)}
 			<ToolbarSeparator />
-			<SymbolPicker
-				library={symbolLibrary}
-				allowNetSymbols={!isSymbol}
-				disabled={!ready}
-				active={tool === "symbol"}
-				onChoose={(definition) => {
-					if (isSymbol && definition.netSymbol) return;
-					finishDrag();
-					finishWire();
-					setSymbolDefinition(definition);
-					setTool("symbol");
-				}}
-			/>
-			{renderGroup("connections", "Connections", Cable)}
+			{footprint ? (
+				renderGroup("pads", "Pads", CircleDot)
+			) : (
+				<>
+					<SymbolPicker
+						library={symbolLibrary}
+						allowNetSymbols={!sheetless}
+						disabled={!ready}
+						active={tool === "symbol"}
+						onChoose={(definition) => {
+							if (sheetless && definition.netSymbol) return;
+							finishDrag();
+							finishWire();
+							setSymbolDefinition(definition);
+							setTool("symbol");
+						}}
+					/>
+					{renderGroup("connections", "Connections", Cable)}
+				</>
+			)}
 			{renderGroup("shapes", "Shapes", Shapes)}
 			<ToolbarSeparator />
 			{[
@@ -300,6 +326,21 @@ export const EditorToolbar = memo(function EditorToolbar({
 			{onErc && (
 				<>
 					<ErcButton open={ercOpen} disabled={!ready} onClick={onErc} />
+					<ToolbarSeparator />
+				</>
+			)}
+			{footprint && (
+				<>
+					{toggle({
+						className: `${viewControlButtonClassName} px-2.5`,
+						"aria-pressed": footprint.empty ? undefined : footprint.flat,
+						disabled: footprint.empty,
+						tooltip: footprint.flat
+							? "Show layers in 3D"
+							: "Show the flat top view",
+						onClick: footprint.onToggleFlat,
+						children: "2D",
+					})}
 					<ToolbarSeparator />
 				</>
 			)}

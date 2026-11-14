@@ -8,6 +8,7 @@ import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { ComponentType } from "react";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import type { SymbolFile } from "#/components/editor/symbolFormat.ts";
+import type { FootprintFile } from "#/footprint/format.ts";
 import {
 	getAppPerformance,
 	measurePerformance,
@@ -43,6 +44,7 @@ export interface ProjectContextValue {
 	selectAsset(asset: ProjectAsset | null): void;
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
+	editorFootprint: FootprintDocument | null;
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
 	/** Identifies the circuit being opened, or null when none is. */
@@ -64,6 +66,7 @@ export interface ProjectContextValue {
 	reportUnsavedEdits(key: string, unsaved: boolean): void;
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
+	createFootprint(name: string): Promise<string>;
 	createDrawing(name: string): Promise<string>;
 	importSchematic(file: File): Promise<{
 		path: string;
@@ -95,6 +98,12 @@ export interface SymbolDocument {
 	savedShapes: EditorShape[];
 	unsubscribe(): void;
 }
+export interface FootprintDocument {
+	file: FootprintFile;
+	store: ReturnType<typeof createDrawingStore>;
+	savedShapes: EditorShape[];
+	unsubscribe(): void;
+}
 export interface DrawingDocument {
 	file: ProjectDrawing;
 	store: ReturnType<typeof createDrawingStore>;
@@ -117,6 +126,7 @@ export function createProjectSession(
 		setStore,
 		setEditorCircuit,
 		setEditorSymbol,
+		setEditorFootprint,
 		setEditorDrawing,
 		setEpoch,
 		setBusy,
@@ -155,6 +165,7 @@ export function createProjectSession(
 		documents.clear();
 		setEditorCircuit(null);
 		setEditorSymbol(null);
+		setEditorFootprint(null);
 		setEditorDrawing(null);
 		update(snapshot);
 		setSelectedAsset(null);
@@ -197,6 +208,9 @@ export function createProjectSession(
 						? {}
 						: { drawings: state.active.drawings }),
 					symbols: state.symbols,
+					...(state.active?.footprints === undefined
+						? {}
+						: { footprints: state.active.footprints }),
 					symbolLibraries: state.libraries,
 				};
 				const source = state.active;
@@ -285,6 +299,7 @@ export function createProjectSession(
 		},
 		store: state.store,
 		editorSymbol: state.editorSymbol,
+		editorFootprint: state.editorFootprint,
 		editorDrawing: state.editorDrawing,
 		editorCircuit: state.editorCircuit,
 		openingCircuit: state.openingCircuit,
@@ -371,6 +386,7 @@ export function createProjectSession(
 						otherUnsavedEdits: _otherUnsavedEdits,
 						store: _store,
 						editorSymbol: _editorSymbol,
+						editorFootprint: _editorFootprint,
 						editorDrawing: _editorDrawing,
 						editorCircuit: _editorCircuit,
 						openingCircuit: _openingCircuit,

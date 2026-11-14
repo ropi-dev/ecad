@@ -1,6 +1,10 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { Matrix4, Vector3 } from "three";
-import { buildDrawingDisplay, type DisplayShape } from "#/drawing/display.ts";
+import {
+	buildDrawingDisplay,
+	type DisplayShape,
+	rotatesFreeOfParentScale,
+} from "#/drawing/display.ts";
 import {
 	darkSchematicTheme,
 	lightSchematicTheme,
@@ -80,7 +84,7 @@ export function exportDrawingSvg(
 				parentShape?: DisplayShape,
 			) => {
 				const local = new Matrix4().makeTranslation(shape.x, shape.y, 0);
-				if (parentShape?.geometry.kind === "symbol" && shape.rotation !== 0) {
+				if (rotatesFreeOfParentScale(shape, parentShape)) {
 					local
 						.multiply(
 							new Matrix4().makeScale(

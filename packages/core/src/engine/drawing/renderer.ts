@@ -8,12 +8,13 @@ import {
 	MeshBasicMaterial,
 	type Object3D,
 } from "three";
-import type {
-	DisplayShape,
-	DrawingAppearance,
-	DrawingDisplay,
-	DrawingGeometry,
-	DrawingTransform,
+import {
+	type DisplayShape,
+	type DrawingAppearance,
+	type DrawingDisplay,
+	type DrawingGeometry,
+	type DrawingTransform,
+	rotatesFreeOfParentScale,
 } from "#/drawing/display.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
@@ -300,7 +301,7 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			object.name = display.name;
 			touch(object);
 			applyTransform(object, display);
-			if (parent?.geometry.kind === "symbol" && display.rotation !== 0)
+			if (rotatesFreeOfParentScale(display, parent))
 				object.matrix
 					.makeTranslation(display.x, display.y, 0)
 					.multiply(scale.makeScale(1 / parent.width, 1 / parent.height, 1))

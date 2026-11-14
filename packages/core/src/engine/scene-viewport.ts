@@ -71,6 +71,7 @@ export interface SceneViewportOptions {
 	lockProjection?: boolean;
 	fitZoom?: number;
 	initialCamera?: Camera;
+	pixelsPerMmAt100?: number;
 	getFitBounds?: () => Bounds | null;
 	selectionEnabled?: boolean;
 	hoverHighlight?: boolean;
@@ -114,6 +115,7 @@ export function createSceneViewport(
 		lockProjection = false,
 		fitZoom = 1,
 		initialCamera,
+		pixelsPerMmAt100,
 		getFitBounds,
 		selectionEnabled = true,
 		hoverHighlight = true,
@@ -342,7 +344,15 @@ export function createSceneViewport(
 		camera.near = radius / 1000;
 		camera.far = radius * 1000;
 		let zoomReferenceDistance = 0;
-		let physicalScale: number | null = null;
+		const acceptedScale = (scale: number | null | undefined) =>
+			topView &&
+			lockProjection &&
+			scale != null &&
+			Number.isFinite(scale) &&
+			scale > 0
+				? scale
+				: null;
+		let physicalScale = acceptedScale(pixelsPerMmAt100);
 		let openingView: string | null = null;
 		const cameraKey = () =>
 			[...camera.position.toArray(), camera.zoom, visibleHeight()].join();
@@ -994,14 +1004,7 @@ export function createSceneViewport(
 			resize,
 			setProjection,
 			setPhysicalScale: (scale) => {
-				const next =
-					topView &&
-					lockProjection &&
-					scale !== null &&
-					Number.isFinite(scale) &&
-					scale > 0
-						? scale
-						: null;
+				const next = acceptedScale(scale);
 				if (next === physicalScale) return;
 				const previous = physicalScale;
 				const untouched = openingView === cameraKey();
