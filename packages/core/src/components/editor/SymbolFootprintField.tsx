@@ -39,7 +39,7 @@ export function SymbolFootprintField({
 	choices: FootprintChoices;
 	onChange: (footprint: FootprintReference | undefined) => void;
 }) {
-	const builtin = useBuiltinFootprints();
+	const { library: builtin, failed: builtinFailed } = useBuiltinFootprints();
 	const [copying, setCopying] = useState(false);
 	const [copyError, setCopyError] = useState("");
 	const mounted = useRef(true);
@@ -56,8 +56,9 @@ export function SymbolFootprintField({
 			: current
 				? choices.project.find(({ id }) => id === current.id)
 				: undefined;
-	const loading = current?.library === "builtin" && !builtin;
-	const missing = current !== undefined && !loading && !file;
+	const waiting = current?.library === "builtin" && !builtin;
+	const loading = waiting && !builtinFailed;
+	const missing = current !== undefined && !waiting && !file;
 	const pins = symbolPinNumbers(
 		symbolShapes(symbol).filter((child) => child.kind === "pin"),
 	);
@@ -75,7 +76,6 @@ export function SymbolFootprintField({
 				className="ui-select w-full overflow-clip whitespace-nowrap [overflow-clip-margin:content-box]"
 				title={file?.name}
 				value={current ? footprintKey(current) : ""}
-				disabled={!builtin}
 				onChange={(event) => {
 					const [library, id] = event.currentTarget.value.split(/:(.*)/s);
 					onChange(
@@ -86,9 +86,9 @@ export function SymbolFootprintField({
 				}}
 			>
 				<option value="">None</option>
-				{current && (loading || missing) && (
+				{current && (waiting || missing) && (
 					<option value={footprintKey(current)}>
-						{loading ? current.id : `${current.id} (missing)`}
+						{waiting ? current.id : `${current.id} (missing)`}
 					</option>
 				)}
 				{choices.project.length > 0 && (
@@ -114,27 +114,35 @@ export function SymbolFootprintField({
 			</select>
 			<p
 				id={`footprint-status-${symbol.id}`}
-				className={`m-0 text-xs ${missing || mismatched ? "text-warning" : "text-fg-faint"}`}
+				className={`m-0 text-xs ${missing || mismatched || (waiting && builtinFailed) ? "text-warning" : "text-fg-faint"}`}
 			>
 				{!current
 					? "No footprint assigned."
-					: loading
-						? "Loading built-in footprints..."
-						: missing
-							? current.library === "project"
-								? "This footprint is not in the project."
-								: "This footprint is not in the built-in library."
-							: match && mismatched
-								? [
-										match.pinsWithoutPads.length > 0 &&
-											`No pad for ${plural(match.pinsWithoutPads.length, "pin")} ${list(match.pinsWithoutPads)}.`,
-										match.padsWithoutPins.length > 0 &&
-											`No pin for ${plural(match.padsWithoutPins.length, "pad")} ${list(match.padsWithoutPins)}.`,
-									]
-										.filter(Boolean)
-										.join(" ")
-								: `Pads match all ${pins.length} ${plural(pins.length, "pin")}.`}
+					: waiting && builtinFailed
+						? "The built-in footprints could not be loaded. Reload the page to try again."
+						: loading
+							? "Loading built-in footprints..."
+							: missing
+								? current.library === "project"
+									? "This footprint is not in the project."
+									: "This footprint is not in the built-in library."
+								: match && mismatched
+									? [
+											match.pinsWithoutPads.length > 0 &&
+												`No pad for ${plural(match.pinsWithoutPads.length, "pin")} ${list(match.pinsWithoutPads)}.`,
+											match.padsWithoutPins.length > 0 &&
+												`No pin for ${plural(match.padsWithoutPins.length, "pad")} ${list(match.padsWithoutPins)}.`,
+										]
+											.filter(Boolean)
+											.join(" ")
+									: `Pads match all ${pins.length} ${plural(pins.length, "pin")}.`}
 			</p>
+			{builtinFailed && !waiting && (
+				<p className="m-0 text-xs text-warning">
+					The built-in footprints could not be loaded. Reload the page to try
+					again.
+				</p>
+			)}
 			{file && current?.library === "project" && choices.onOpen && (
 				<button
 					type="button"

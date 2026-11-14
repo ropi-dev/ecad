@@ -15,7 +15,11 @@ import {
 	matchPinsToPads,
 	symbolPinNumbers,
 } from "@ecad/drawing-core/footprint/reference.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import {
+	parseSymbolFile,
+	symbolFileFromSymbol,
+} from "#/components/editor/symbolFormat.ts";
+import { selectionFileText } from "#/drawing/clipboard.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import {
@@ -175,6 +179,19 @@ test("symbol files store an optional default footprint", () => {
 		parseSymbolFile(JSON.stringify(withoutFootprint)).footprint,
 		undefined,
 	);
+});
+
+test("copying a placed symbol as a symbol file keeps its footprint as the default", () => {
+	const placed: EditorSymbol = {
+		...createSymbol(1, definition("led"), { x: 0, y: 0 }),
+		definitionId: "custom.led",
+		footprint: { library: "project", id: "led-side" },
+	};
+	assert.deepEqual(symbolFileFromSymbol(placed).footprint, placed.footprint);
+	const copied = parseSymbolFile(selectionFileText([placed]));
+	assert.deepEqual(copied.footprint, placed.footprint);
+	const { footprint: _footprint, ...bare } = placed;
+	assert.equal(symbolFileFromSymbol(bare).footprint, undefined);
 });
 
 test("the Attributes panel sets and clears the footprint of every selected component", () => {

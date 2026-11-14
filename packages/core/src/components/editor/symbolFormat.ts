@@ -331,6 +331,7 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 					description: "",
 					prefix: "U",
 					value: symbol.attributes.value,
+					...(symbol.footprint ? { footprint: { ...symbol.footprint } } : {}),
 					shapes: [],
 				},
 				[...symbolShapes({ ...symbol, x: 0, y: 0, rotation: 0 })],

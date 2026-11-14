@@ -30,23 +30,38 @@ export function loadBuiltinFootprints(): Promise<BuiltinFootprintLibrary> {
 			};
 			return loaded;
 		},
+		(cause: unknown) => {
+			loading = undefined;
+			throw cause;
+		},
 	);
 	return loading;
 }
 
-export function useBuiltinFootprints(): BuiltinFootprintLibrary | undefined {
+export interface BuiltinFootprints {
+	readonly library: BuiltinFootprintLibrary | undefined;
+	readonly failed: boolean;
+}
+
+export function useBuiltinFootprints(): BuiltinFootprints {
 	const [library, setLibrary] = useState(loaded);
+	const [failed, setFailed] = useState(false);
 	useEffect(() => {
 		if (library) return;
 		let current = true;
-		void loadBuiltinFootprints().then((next) => {
-			if (current) setLibrary(next);
-		});
+		loadBuiltinFootprints().then(
+			(next) => {
+				if (current) setLibrary(next);
+			},
+			() => {
+				if (current) setFailed(true);
+			},
+		);
 		return () => {
 			current = false;
 		};
 	}, [library]);
-	return library;
+	return { library, failed };
 }
 
 export const footprintPadNumbers = (shapes: readonly EditorShape[]) =>
