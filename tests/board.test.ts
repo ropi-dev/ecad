@@ -28,7 +28,15 @@ import {
 	type Circuit,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
-import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	type EditorShape,
+	type SymbolShape,
+	symbolShapes,
+} from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	replaceSymbolChild,
+	symbolChildren,
+} from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -691,6 +699,126 @@ describe("the board view", () => {
 				display.selected.has(footprintItemId(r1.id, index)),
 			),
 		);
+	});
+
+	test("footprint text shows the component's reference, value and footprint name, and follows schematic edits", () => {
+		const labelled = (text: string, y: number): EditorShape => ({
+			id: y + 1,
+			kind: "text",
+			layer: "F.Fab",
+			x: 0,
+			y,
+			width: 2,
+			height: 1.5,
+			rotation: 0,
+			lineWidth: 0.15,
+			fontSize: 1,
+			text,
+		});
+		const fab: FootprintSource = {
+			reference: { library: "project", id: "fab" },
+			name: "Fab resistor",
+			shapes: [
+				...required(source(r0805)).shapes,
+				labelled(`\${REFERENCE}`, 0),
+				labelled(`\${VALUE} \${OTHER}`, 2),
+				labelled(`\${FOOTPRINT_NAME}`, 4),
+			],
+		};
+		const circuit = dividerCircuit();
+		const sync = (shapes: readonly EditorShape[], value: string) =>
+			synchronizeBoard({
+				shapes,
+				circuit: {
+					...circuit,
+					components: circuit.components.map((component) => ({
+						...component,
+						value,
+					})),
+				},
+				footprintOf: () => fab.reference,
+				source: () => fab,
+				nextId: 1000,
+			});
+		const texts = (footprint: EditorShape) =>
+			symbolShapes(footprint as BoardFootprint).flatMap((shape) =>
+				shape.kind === "text" ? [shape] : [],
+			);
+		const placed = sync([], "10k").place;
+		assert.deepEqual(
+			texts(placed[0]).map((shape) => shape.text),
+			["R1", `10k \${OTHER}`, "Fab resistor"],
+		);
+		const [reference] = texts(placed[0]);
+		assert.ok(reference.width < 2 / 3);
+		assert.deepEqual((placed[0] as BoardFootprint).texts, []);
+		assert.equal(
+			(updateFromSchematic(circuit).place[0] as BoardFootprint).texts.length,
+			1,
+		);
+		assert.ok(
+			boardDisplay(placed, new Set(), new Set(), "F.Cu").shapes.some(
+				(shape) => shape.kind === "text" && shape.text === "R2",
+			),
+		);
+		const edited = sync(placed, "4k7").replace;
+		assert.equal(texts(edited[0])[1].text, `4k7 \${OTHER}`);
+		assert.deepEqual(
+			(edited[0] as BoardFootprint).children.flatMap((child) =>
+				child.kind === "text" ? [child.text] : [],
+			),
+			[`\${REFERENCE}`, `\${VALUE} \${OTHER}`, `\${FOOTPRINT_NAME}`],
+		);
+	});
+
+	test("resizing a footprint's reference text on the board keeps it following the reference", () => {
+		const fab: FootprintSource = {
+			reference: { library: "project", id: "fab" },
+			name: "Fab",
+			shapes: [
+				{
+					id: 1,
+					kind: "text",
+					layer: "F.Fab",
+					x: 0,
+					y: 0,
+					width: 7.5,
+					height: 1.5,
+					rotation: 0,
+					lineWidth: 0.15,
+					fontSize: 1,
+					text: `\${REFERENCE}`,
+				},
+			],
+		};
+		const [footprint] = synchronizeBoard({
+			shapes: [],
+			circuit: dividerCircuit(),
+			footprintOf: () => fab.reference,
+			source: () => fab,
+			nextId: 1,
+		}).place as BoardFootprint[];
+		const child = required(
+			symbolChildren(footprint).find((item) => item.shape.kind === "text"),
+		);
+		assert.equal(child.shape.kind === "text" && child.shape.text, "R1");
+		const bigger = replaceSymbolChild(footprint, child.key, {
+			...child.shape,
+			fontSize: 2,
+			width: child.shape.width * 2,
+			height: child.shape.height * 2,
+		} as SymbolShape);
+		assert.deepEqual(bigger.childOverrides?.[child.key], {
+			fontSize: 2,
+			width: 15,
+			height: 3,
+		});
+		const renamed = {
+			...bigger,
+			attributes: { ...bigger.attributes, reference: "R10" },
+		};
+		const [text] = symbolShapes(renamed);
+		assert.equal(text.kind === "text" && text.text, "R10");
 	});
 });
 

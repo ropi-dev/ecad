@@ -9,6 +9,7 @@ import { flipLayer } from "#/footprint/layers.ts";
 import type { FootprintReference } from "#/footprint/reference.ts";
 import { footprintKey } from "#/footprint/reference.ts";
 import { isPad, type PadShape, shapeLayer } from "#/footprint/shapes.ts";
+import { showsReference } from "#/footprint/text-variables.ts";
 
 export type BoardFootprint = EditorSymbol & {
 	footprint: FootprintReference;
@@ -94,16 +95,20 @@ export function createBoardFootprint(
 		...(part.component ? { component: part.component } : {}),
 		...(options.flipped ? { flipped: true } : {}),
 		children,
-		texts: [
-			{
-				attribute: "reference",
-				x: 0,
-				y: size.top + referenceSize * 0.8,
-				fontSize: referenceSize,
-				horizontalAlign: "center",
-				verticalAlign: "middle",
-			},
-		],
+		texts: children.some(
+			(child) => child.kind === "text" && showsReference(child.text),
+		)
+			? []
+			: [
+					{
+						attribute: "reference",
+						x: 0,
+						y: size.top + referenceSize * 0.8,
+						fontSize: referenceSize,
+						horizontalAlign: "center",
+						verticalAlign: "middle",
+					},
+				],
 		attributes: {
 			name: source.name,
 			reference: part.reference,

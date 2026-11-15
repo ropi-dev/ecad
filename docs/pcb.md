@@ -10,7 +10,7 @@ Each time a PCB opens, and when you press **Update from schematic**, the board c
 
 - A component without a footprint on the board gets one: the footprint its schematic symbol names under **Footprint** in Attributes. New footprints are laid out in rows to the right of the board outline, or around the origin before there is one.
 - A component whose schematic footprint changed gets the new footprint in the same place, rotation and side.
-- References and values follow the circuit.
+- References and values follow the circuit, and so does footprint text that shows them. See [Wires and graphics](footprints.md#wires-and-graphics).
 - Tracks, vias and zones on a net the circuit no longer has, for example after a schematic edit renamed an unlabelled net, take the net of the pads their tracks and vias touch, when those pads agree. Copper whose pads disagree, and a zone with no track or via on its net, keeps the old net. The toast counts it and DRC reports it.
 - A footprint whose component left the circuit is removed. A footprint whose component lost its footprint, or whose footprint is missing, stays where it is.
 - A second footprint for the same component, such as a copy, stays on the board without a component, so its pads have no nets.
