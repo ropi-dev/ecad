@@ -8,7 +8,7 @@ export function createRouterProjectLink(
 	navigate: (
 		href: ProjectPath,
 		file?: string,
-		view?: "circuit",
+		view?: "circuit" | "pcb",
 	) => Promise<void>,
 ) {
 	return function RouterProjectLink({

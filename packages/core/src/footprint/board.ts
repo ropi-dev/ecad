@@ -250,15 +250,53 @@ function planarLayer(
 	};
 }
 
-export const boardEdgeBounds = (shapes: readonly EditorShape[]): Bounds =>
-	expandBounds(
+export function boardEdgeBounds(shapes: readonly EditorShape[]): Bounds {
+	const outline = shapes.filter((shape) => shape.layer === "Edge.Cuts");
+	if (outline.length) return mergeBounds(outline.map(strokedBounds));
+	return expandBounds(
 		shapes.length
 			? mergeBounds(shapes.map(strokedBounds))
 			: footprintFitBounds(shapes),
 		boardMargin,
 	);
+}
 
-export type BoardLayerSource = readonly (EditorShape | number)[];
+export type BoardLayerSource = readonly (EditorShape | number | object)[];
+
+/** Copper regions drawn on a layer besides its shapes, such as zone fills. */
+export interface BoardRegion {
+	layer: FootprintLayer;
+	polygons: readonly (readonly (readonly [number, number])[])[][];
+}
+
+export interface BoardPlanOptions {
+	regions?: readonly BoardRegion[];
+}
+
+const regionPath = (polygons: BoardRegion["polygons"]) =>
+	polygons
+		.flatMap((rings) =>
+			rings.map(
+				(ring) =>
+					`${ring.map(([x, y], index) => `${index ? "L" : "M"}${x} ${y}`).join("")}Z`,
+			),
+		)
+		.join("");
+
+const regionBounds = (polygons: BoardRegion["polygons"]): Bounds => {
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	for (const rings of polygons)
+		for (const [x, y] of rings[0] ?? []) {
+			minX = Math.min(minX, x);
+			minY = Math.min(minY, y);
+			maxX = Math.max(maxX, x);
+			maxY = Math.max(maxY, y);
+		}
+	return { minX, minY, maxX, maxY };
+};
 
 export interface BoardLayerPlan {
 	id: string;
@@ -271,7 +309,16 @@ export interface BoardLayerPlan {
 
 export function planFootprintBoard(
 	shapes: readonly EditorShape[],
+	options: BoardPlanOptions = {},
 ): BoardLayerPlan[] {
+	const regions = new Map<FootprintLayer, BoardRegion[]>();
+	for (const region of options.regions ?? [])
+		if (region.polygons.length) {
+			const onLayer = regions.get(region.layer) ?? [];
+			onLayer.push(region);
+			regions.set(region.layer, onLayer);
+		}
+	const outline = shapes.filter((shape) => shape.layer === "Edge.Cuts");
 	const members = new Map<FootprintLayer, EditorShape[]>();
 	const texts = new Map<FootprintLayer, TextShape[]>();
 	const drilled: EditorShape[] = [];
@@ -290,7 +337,8 @@ export function planFootprintBoard(
 			texts.set(layer, onLayer);
 			continue;
 		}
-		if (!shapeGeometry(shape)) continue;
+		if (!shapeGeometry(shape) || shape.layer === "Edge.Cuts") continue;
+		if (shape.kind === "rectangle" && shape.zone) continue;
 		for (const layer of shapeLayers(shape)) {
 			const onLayer = members.get(layer) ?? [];
 			onLayer.push(shape);
@@ -301,38 +349,69 @@ export function planFootprintBoard(
 	const edge = boardEdgeBounds(shapes);
 	const colors = darkSchematicTheme.appearance;
 	return [
-		{
-			id: BOARD_LAYER_ID,
-			source: [edge.minX, edge.minY, edge.maxX, edge.maxY],
-			build: () =>
-				planarLayer(
-					BOARD_LAYER_ID,
-					"Board edge",
-					colors["F.Fab"],
-					"Profile,NP",
-					[
-						{
-							id: "board-edge",
-							geometry: {
-								type: "path",
-								d: rectanglePath(edge),
-								fill: false,
-								strokeWidth: boardEdgeWidth,
-							},
-							bounds: edge,
-							polarity: "dark",
-							attributes: {},
-						},
-					],
-				),
-		},
+		outline.length
+			? {
+					id: BOARD_LAYER_ID,
+					source: outline,
+					build: () =>
+						planarLayer(
+							BOARD_LAYER_ID,
+							"Board edge",
+							colors["Edge.Cuts"],
+							"Profile,NP",
+							outline.flatMap((shape): SceneObject[] => {
+								const geometry = shapeGeometry({
+									...shape,
+									filled: false,
+								} as EditorShape);
+								return geometry
+									? [
+											{
+												id: `edge:${shape.id}`,
+												geometry,
+												bounds: strokedBounds(shape),
+												polarity: "dark",
+												transform: placement(shape),
+												attributes: {},
+											},
+										]
+									: [];
+							}),
+						),
+				}
+			: {
+					id: BOARD_LAYER_ID,
+					source: [edge.minX, edge.minY, edge.maxX, edge.maxY],
+					build: () =>
+						planarLayer(
+							BOARD_LAYER_ID,
+							"Board edge",
+							colors["F.Fab"],
+							"Profile,NP",
+							[
+								{
+									id: "board-edge",
+									geometry: {
+										type: "path",
+										d: rectanglePath(edge),
+										fill: false,
+										strokeWidth: boardEdgeWidth,
+									},
+									bounds: edge,
+									polarity: "dark",
+									attributes: {},
+								},
+							],
+						),
+				},
 		...boardLayers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
 			const onLayer = members.get(layer);
-			return onLayer
+			const layerRegions = regions.get(layer) ?? [];
+			return onLayer || layerRegions.length
 				? [
 						{
 							id: layerObjectId(layer),
-							source: onLayer,
+							source: [...(onLayer ?? []), ...layerRegions],
 							extrude: placements.get(layer)?.thickness ? "slab" : undefined,
 							build: () =>
 								planarLayer(
@@ -340,21 +419,36 @@ export function planFootprintBoard(
 									layer,
 									colors[layer],
 									fileFunction,
-									onLayer.flatMap((shape): SceneObject[] => {
-										const geometry = shapeGeometry(shape);
-										return geometry
-											? [
-													{
-														id: `${layer}:${shape.id}`,
-														geometry,
-														bounds: strokedBounds(shape),
-														polarity: "dark",
-														transform: placement(shape),
-														attributes: {},
-													},
-												]
-											: [];
-									}),
+									[
+										...layerRegions.map(
+											(region, index): SceneObject => ({
+												id: `${layer}:region:${index}`,
+												geometry: {
+													type: "path",
+													d: regionPath(region.polygons),
+													fill: true,
+												},
+												bounds: regionBounds(region.polygons),
+												polarity: "dark",
+												attributes: {},
+											}),
+										),
+										...(onLayer ?? []).flatMap((shape): SceneObject[] => {
+											const geometry = shapeGeometry(shape);
+											return geometry
+												? [
+														{
+															id: `${layer}:${shape.id}`,
+															geometry,
+															bounds: strokedBounds(shape),
+															polarity: "dark",
+															transform: placement(shape),
+															attributes: {},
+														},
+													]
+												: [];
+										}),
+									],
 								),
 						},
 					]
@@ -460,10 +554,10 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 	let layers = new Map<string, Built>();
 	let retired: Layer[] = [];
 	return {
-		build(shapes: readonly EditorShape[]): Layer[] {
+		build(shapes: readonly EditorShape[], options?: BoardPlanOptions): Layer[] {
 			const next = new Map<string, Built>();
 			try {
-				for (const plan of planFootprintBoard(shapes)) {
+				for (const plan of planFootprintBoard(shapes, options)) {
 					const kept = layers.get(plan.id);
 					next.set(
 						plan.id,

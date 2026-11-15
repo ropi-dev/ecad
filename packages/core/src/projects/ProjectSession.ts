@@ -2,10 +2,13 @@ import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import { createProjectSymbolStorage } from "#/projects/project-symbol-storage.ts";
 import "#/performance/initialize.ts";
+import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { ComponentType } from "react";
+import type { BoardFile } from "#/board/format.ts";
+import type { BoardRulesStore } from "#/board/rules-store.ts";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import type { SymbolFile } from "#/components/editor/symbolFormat.ts";
 import type { FootprintFile } from "#/footprint/format.ts";
@@ -46,13 +49,14 @@ export interface ProjectContextValue {
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
 	editorFootprint: FootprintDocument | null;
+	editorBoard: BoardDocument | null;
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
 	/** Identifies the circuit being opened, or null when none is. */
 	openingCircuit: number | null;
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
 	openCircuit(path: string): Promise<boolean>;
-	switchEditorView(view: "circuit" | "schematic"): Promise<void>;
+	switchEditorView(view: EditorView): Promise<void>;
 	rememberViewSelection(selection: ViewSelection): void;
 	takeSelectionHandoff(view: ViewSelection["view"]): ViewSelection | null;
 	createCircuit(name: string): Promise<string>;
@@ -73,6 +77,10 @@ export interface ProjectContextValue {
 		from?: { description: string; shapes: readonly EditorShape[] },
 	): Promise<string>;
 	createDrawing(name: string): Promise<string>;
+	/** Adds an example design's schematic, circuit and board. Resolves to the board's path. */
+	importExample(
+		example: import("#/examples/designs.ts").ExampleDesignId,
+	): Promise<string>;
 	importSchematic(file: File): Promise<{
 		path: string;
 		report: import("#/formats/kicad/import.ts").KiCadImportReport;
@@ -113,6 +121,15 @@ export interface FootprintDocument {
 	savedShapes: EditorShape[];
 	unsubscribe(): void;
 }
+export interface BoardDocument {
+	file: BoardFile;
+	store: ReturnType<typeof createDrawingStore>;
+	savedShapes: EditorShape[];
+	rules: BoardRulesStore;
+	savedRules: BoardRules;
+	unsubscribe(): void;
+}
+export type EditorView = "schematic" | "circuit" | "pcb";
 export interface DrawingDocument {
 	file: ProjectDrawing;
 	store: ReturnType<typeof createDrawingStore>;
@@ -136,6 +153,7 @@ export function createProjectSession(
 		setEditorCircuit,
 		setEditorSymbol,
 		setEditorFootprint,
+		setEditorBoard,
 		setEditorDrawing,
 		setEpoch,
 		setBusy,
@@ -162,7 +180,7 @@ export function createProjectSession(
 		selectEditorFile,
 		subscribeMain,
 		stopMain,
-	} = createProjectEditorFiles(state, autosave);
+	} = createProjectEditorFiles(state, autosave, persist);
 	const fileActions = createProjectFileActions(state, persist);
 	const reloadExternalChanges = createProjectExternalReload(state, autosave);
 	const adopt = (snapshot: ProjectSnapshot) => {
@@ -175,6 +193,7 @@ export function createProjectSession(
 		setEditorCircuit(null);
 		setEditorSymbol(null);
 		setEditorFootprint(null);
+		setEditorBoard(null);
 		setEditorDrawing(null);
 		update(snapshot);
 		setSelectedAsset(null);
@@ -220,6 +239,9 @@ export function createProjectSession(
 					...(state.active?.footprints === undefined
 						? {}
 						: { footprints: state.active.footprints }),
+					...(state.active?.boards === undefined
+						? {}
+						: { boards: state.active.boards }),
 					symbolLibraries: state.libraries,
 				};
 				const source = state.active;
@@ -310,6 +332,7 @@ export function createProjectSession(
 		store: state.store,
 		editorSymbol: state.editorSymbol,
 		editorFootprint: state.editorFootprint,
+		editorBoard: state.editorBoard,
 		editorDrawing: state.editorDrawing,
 		editorCircuit: state.editorCircuit,
 		openingCircuit: state.openingCircuit,
@@ -398,6 +421,7 @@ export function createProjectSession(
 						store: _store,
 						editorSymbol: _editorSymbol,
 						editorFootprint: _editorFootprint,
+						editorBoard: _editorBoard,
 						editorDrawing: _editorDrawing,
 						editorCircuit: _editorCircuit,
 						openingCircuit: _openingCircuit,

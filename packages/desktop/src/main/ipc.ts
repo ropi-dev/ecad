@@ -76,6 +76,7 @@ const projectDocument = z
 		drawings: z.array(z.unknown()).optional(),
 		circuits: z.array(z.unknown()).optional(),
 		footprints: z.array(z.unknown()).optional(),
+		boards: z.array(z.unknown()).optional(),
 		symbols: z.array(z.unknown()),
 		symbolLibraries: z.array(z.unknown()).optional(),
 	})

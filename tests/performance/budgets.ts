@@ -1,4 +1,10 @@
 export const budgets = {
+	"pcb-example": {
+		interactionP95Ms: 6000,
+		openBoardMs: 100,
+		domNodes: 1500,
+		scriptBytes: 3_500_000,
+	},
 	"footprint-board": {
 		interactionP95Ms: 1500,
 		openFootprintMs: 50,

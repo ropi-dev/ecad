@@ -7,7 +7,9 @@ import {
 	CircleDot,
 	CircleSmall,
 	Download,
+	FileArchive,
 	FileImage,
+	FlipHorizontal2,
 	Hand,
 	ImageDown,
 	Lock,
@@ -16,10 +18,16 @@ import {
 	Minus,
 	MousePointer2,
 	RectangleVertical,
+	RefreshCw,
 	RotateCcw,
 	RotateCw,
+	Settings2,
 	Shapes,
+	ShieldCheck,
+	Spline,
 	Square,
+	SquareDashed,
+	SquareDashedBottom,
 	SquareDashedMousePointer,
 	Tag,
 	Trash2,
@@ -87,12 +95,21 @@ const tools = [
 		icon: CircleDot,
 	},
 	{ group: "pads", kind: "via", label: "Via", icon: CircleSmall },
+	{ group: "routing", kind: "track", label: "Track", icon: Spline },
+	{ group: "routing", kind: "via", label: "Via", icon: CircleSmall },
+	{ group: "routing", kind: "zone", label: "Copper zone", icon: SquareDashed },
+	{
+		group: "routing",
+		kind: "outline",
+		label: "Board outline",
+		icon: SquareDashedBottom,
+	},
 ] as const;
 const footprintTools = tools.map((item) =>
 	item.kind === "line" ? { ...item, label: "Wire", icon: Cable } : item,
 );
 type ToolItem = (typeof tools)[number];
-type ToolGroup = "shapes" | "connections" | "pads";
+type ToolGroup = "shapes" | "connections" | "pads" | "routing";
 
 interface EditorToolbarProps {
 	shapes: EditorShape[];
@@ -134,6 +151,17 @@ interface EditorToolbarProps {
 	ercOpen: boolean;
 	/** Toggles the electrical rules check. Symbol drawings have none. */
 	onErc?: () => void;
+	board?: {
+		onSync: () => void;
+		checksOpen: boolean;
+		onChecks: () => void;
+		setupOpen: boolean;
+		onSetup: () => void;
+		canFlip: boolean;
+		onFlip: () => void;
+		onExport: () => void;
+		exporting: boolean;
+	};
 }
 
 export const EditorToolbar = memo(function EditorToolbar({
@@ -165,6 +193,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 	removeSelected,
 	ercOpen,
 	onErc,
+	board,
 }: EditorToolbarProps) {
 	const [exportOpen, setExportOpen] = useState(false);
 	const viewExport = useViewExport();
@@ -174,7 +203,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 		setTool(kind);
 	};
 	const toolGroup = (group: ToolGroup) =>
-		(footprint ? footprintTools : tools).filter(
+		(footprint && !board ? footprintTools : tools).filter(
 			(item) =>
 				item.group === group &&
 				!(sheetless && (item.kind === "net" || item.kind === "supply")),
@@ -245,7 +274,18 @@ export const EditorToolbar = memo(function EditorToolbar({
 					),
 				)}
 			<ToolbarSeparator />
-			{footprint ? (
+			{board ? (
+				<>
+					{renderGroup("routing", "Routing", Spline)}
+					{toggle({
+						disabled: !ready,
+						"aria-label": "Update from schematic",
+						tooltip: "Update from schematic",
+						onClick: board.onSync,
+						children: <RefreshCw size={18} aria-hidden="true" />,
+					})}
+				</>
+			) : footprint ? (
 				renderGroup("pads", "Pads and vias", CircleDot)
 			) : (
 				<>
@@ -294,6 +334,16 @@ export const EditorToolbar = memo(function EditorToolbar({
 					label,
 				),
 			)}
+			{board &&
+				toggle({
+					disabled: !ready || !board.canFlip,
+					"aria-label": "Flip to the other side",
+					"aria-keyshortcuts": "F",
+					tooltip: "Flip to the other side",
+					shortcut: "F",
+					onClick: board.onFlip,
+					children: <FlipHorizontal2 size={18} aria-hidden="true" />,
+				})}
 			{toggle({
 				disabled: !ready || !hasSelection || lockDisabled,
 				"aria-label": selectionLocked ? "Unlock selection" : "Lock selection",
@@ -337,6 +387,27 @@ export const EditorToolbar = memo(function EditorToolbar({
 					<ToolbarSeparator />
 				</>
 			)}
+			{board && (
+				<>
+					{toggle({
+						disabled: !ready,
+						"aria-label": "Design rules check",
+						"aria-pressed": board.checksOpen,
+						tooltip: "Design rules check",
+						onClick: board.onChecks,
+						children: <ShieldCheck size={18} aria-hidden="true" />,
+					})}
+					{toggle({
+						disabled: !ready,
+						"aria-label": "Board setup",
+						"aria-pressed": board.setupOpen,
+						tooltip: "Board setup",
+						onClick: board.onSetup,
+						children: <Settings2 size={18} aria-hidden="true" />,
+					})}
+					<ToolbarSeparator />
+				</>
+			)}
 			{footprint && (
 				<>
 					{toggle({
@@ -354,6 +425,15 @@ export const EditorToolbar = memo(function EditorToolbar({
 				</>
 			)}
 			<ToolbarGroup label="Export" icon={Download} disabled={!ready}>
+				{board && (
+					<ToolbarGroupButton
+						icon={FileArchive}
+						label="Export Gerber and drill files"
+						disabled={board.exporting}
+						aria-busy={board.exporting}
+						onClick={board.onExport}
+					/>
+				)}
 				<ToolbarGroupButton
 					icon={FileImage}
 					label="Export drawing"

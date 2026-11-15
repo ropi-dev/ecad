@@ -33,27 +33,31 @@ function displayNumber(value: number) {
 
 export function SymbolInstanceAttributeForm({
 	symbol,
+	millimetres = false,
 	children,
 }: {
 	symbol: EditorSymbol;
+	/** Positions in millimetres, for footprints placed on a board. */
+	millimetres?: boolean;
 	children: ReactNode;
 }) {
+	const length = millimetres ? displayNumber : toMils;
 	const values = useMemo((): SymbolInstanceAttributeValues => {
 		const outlined = symbolShapes(symbol).filter(
 			(child) => child.kind !== "text",
 		);
 		return {
 			attributes: { ...symbol.attributes },
-			x: toMils(symbol.x),
-			y: toMils(symbol.y),
+			x: length(symbol.x),
+			y: length(symbol.y),
 			angle: displayNumber((symbol.rotation * 180) / Math.PI),
 			lineWidth:
 				outlined.length &&
 				outlined.every((child) => child.lineWidth === outlined[0].lineWidth)
-					? toMils(outlined[0].lineWidth)
+					? length(outlined[0].lineWidth)
 					: null,
 		};
-	}, [symbol]);
+	}, [symbol, length]);
 	const form = useForm({
 		values,
 		resolver: zodResolver(schema, undefined, { mode: "sync" }),

@@ -70,3 +70,10 @@ The source footprints are:
 - `Package_DFN_QFN:QFN-56-1EP_7x7mm_P0.4mm_EP3.2x3.2mm`
 - `Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm`
 - `Package_DFN_QFN:QFN-80-1EP_10x10mm_P0.4mm_EP3.4x3.4mm`
+- `Package_SO:SOIC-8_5.23x5.23mm_P1.27mm`
+- `Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm`
+- `Connector_USB:USB_Micro-B_Molex-105017-0001`
+- `Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical`
+
+The USB Micro-B receptacle's oval shell holes are round drills here, the
+smallest dimension of each oval.

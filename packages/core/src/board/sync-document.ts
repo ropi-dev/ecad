@@ -1,0 +1,126 @@
+import type { FootprintSource } from "@ecad/drawing-core/board/footprints.ts";
+import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
+import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
+import { updateShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	type createDrawingStore,
+	DrawingStore,
+} from "@ecad/drawing-core/commands/drawing-store.ts";
+import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
+import { Effect, Either } from "effect";
+import type { FootprintFile } from "#/footprint/format.ts";
+import { loadBuiltinFootprints } from "#/footprint/library.ts";
+import type { ProjectSnapshot } from "#/projects/format.ts";
+import { primaryPcbId } from "#/projects/pcb.ts";
+import { projectIndex } from "#/projects/project-index.ts";
+
+export interface BoardContext {
+	circuit?: Circuit;
+	/** Each circuit component's schematic footprint. */
+	footprintOf(componentId: string): FootprintReference | undefined;
+	projectFootprints: readonly FootprintFile[];
+}
+
+export function boardContext(
+	snapshot: ProjectSnapshot | null | undefined,
+	circuitId: string | undefined,
+): BoardContext {
+	if (!snapshot || !circuitId)
+		return { footprintOf: () => undefined, projectFootprints: [] };
+	const index = projectIndex(snapshot);
+	const circuit = index.circuitsById.get(circuitId)?.file.circuit;
+	const schematic =
+		circuitId === primaryPcbId
+			? snapshot.shapes
+			: (index.drawingsByCircuit.get(circuitId)?.file.shapes ?? []);
+	const symbols = new Map(
+		schematic.flatMap((shape) =>
+			shape.kind === "symbol" ? [[shape.id, shape] as const] : [],
+		),
+	);
+	const components = new Map(
+		circuit?.components.map((component) => [component.id, component]),
+	);
+	return {
+		circuit,
+		footprintOf(componentId) {
+			const component = components.get(componentId);
+			if (!component) return undefined;
+			const ids = component.schematicShapeIds ?? [
+				...(component.schematicShapeId ? [component.schematicShapeId] : []),
+			];
+			for (const id of ids) {
+				const footprint = symbols.get(id)?.footprint;
+				if (footprint) return footprint;
+			}
+			return undefined;
+		},
+		projectFootprints: snapshot.footprints ?? [],
+	};
+}
+
+export async function footprintSources(
+	projectFootprints: readonly FootprintFile[],
+) {
+	const builtin = await loadBuiltinFootprints();
+	return (reference: FootprintReference): FootprintSource | undefined => {
+		const file =
+			reference.library === "project"
+				? projectFootprints.find((footprint) => footprint.id === reference.id)
+				: builtin.byId.get(reference.id)?.file;
+		return file
+			? { reference, name: file.name, shapes: file.shapes }
+			: undefined;
+	};
+}
+
+export interface BoardSyncReport {
+	placed: number;
+	updated: number;
+	removed: number;
+	missing: string[];
+}
+
+/**
+ * Brings a board's store up to date with its circuit and schematic as one
+ * undo step, "Update from schematic". Nothing is committed when the board
+ * already matches.
+ */
+export async function synchronizeBoardStore(
+	store: ReturnType<typeof createDrawingStore>,
+	context: BoardContext,
+): Promise<BoardSyncReport | null> {
+	const { circuit } = context;
+	if (!circuit) return null;
+	const source = await footprintSources(context.projectFootprints);
+	const current = store.getSnapshot();
+	const result = synchronizeBoard({
+		shapes: current.shapes,
+		circuit,
+		footprintOf: (component) => context.footprintOf(component.id),
+		source,
+		nextId: current.nextShapeId,
+	});
+	if (store.getSnapshot() !== current) return null;
+	if (result.place.length || result.replace.length || result.remove.length) {
+		const outcome = Effect.runSync(
+			Effect.either(
+				updateShapesEffect(
+					{
+						place: result.place.map(({ id: _id, ...shape }) => shape),
+						replace: result.replace,
+						remove: result.remove,
+					},
+					"Update from schematic",
+				).pipe(Effect.provideService(DrawingStore, store)),
+			),
+		);
+		if (Either.isLeft(outcome)) throw new Error(outcome.left.message);
+	}
+	return {
+		placed: result.place.length,
+		updated: result.replace.length,
+		removed: result.remove.length,
+		missing: result.missing.map((entry) => entry.reference),
+	};
+}

@@ -123,6 +123,7 @@ function manifestPaths(manifest: ProjectManifest): string[] {
 		...(manifest.drawings ?? []),
 		...manifest.symbols,
 		...(manifest.footprints ?? []),
+		...(manifest.boards ?? []),
 		...(manifest.circuits ?? []).map((paths) => paths.circuit),
 	];
 }
@@ -130,7 +131,9 @@ function manifestPaths(manifest: ProjectManifest): string[] {
 function withDocumentPaths(
 	manifest: ProjectManifest,
 	paths: Pick<ProjectManifest, "drawing" | "symbolLibraries" | "symbols"> &
-		Partial<Pick<ProjectManifest, "circuits" | "footprints" | "drawings">>,
+		Partial<
+			Pick<ProjectManifest, "circuits" | "footprints" | "boards" | "drawings">
+		>,
 ): ProjectManifest {
 	const {
 		drawing: _drawing,
@@ -340,6 +343,9 @@ export class ProjectRepository {
 		const footprints =
 			manifest.footprints &&
 			(await Promise.all(manifest.footprints.map((path) => readJson(path))));
+		const boards =
+			manifest.boards &&
+			(await Promise.all(manifest.boards.map((path) => readJson(path))));
 		const document = validateProjectDocument(
 			{
 				shapes: (drawing?.shapes ?? []) as ProjectDocument["shapes"],
@@ -398,6 +404,7 @@ export class ProjectRepository {
 						}),
 				symbols,
 				...(footprints === undefined ? {} : { footprints }),
+				...(boards === undefined ? {} : { boards }),
 				symbolLibraries:
 					libraries?.symbolLibraries as ProjectDocument["symbolLibraries"],
 			} as ProjectDocument,
@@ -407,6 +414,7 @@ export class ProjectRepository {
 				drawings: manifest.drawings,
 				circuits: manifest.circuits?.map((paths) => paths.circuit),
 				footprints: manifest.footprints,
+				boards: manifest.boards,
 			},
 		);
 		const snapshot: ProjectSnapshot = {
@@ -489,6 +497,7 @@ export class ProjectRepository {
 		const usedNames = new Set(mainName ? [mainName.toLowerCase()] : []);
 		const symbols: string[] = [];
 		const footprints: string[] = [];
+		const boards: string[] = [];
 		const drawings: string[] = [];
 		try {
 			if (drawing)
@@ -515,6 +524,12 @@ export class ProjectRepository {
 					encoder.encode(JSON.stringify(footprint)),
 				);
 				footprints.push(path);
+			}
+			for (const board of document.boards ?? []) {
+				const path = `${revision}/boards/${board.id}.ecadpcb`;
+				parseProjectPath(path);
+				await this.directory.write(path, encoder.encode(JSON.stringify(board)));
+				boards.push(path);
 			}
 			for (const file of document.drawings ?? []) {
 				let name = file.name;
@@ -556,6 +571,7 @@ export class ProjectRepository {
 				symbolLibraries: libraries,
 				symbols,
 				...(document.footprints === undefined ? {} : { footprints }),
+				...(document.boards === undefined ? {} : { boards }),
 				...(document.drawings === undefined ? {} : { drawings }),
 			});
 			const content = serializeProjectManifest(manifest);
@@ -706,6 +722,23 @@ export class ProjectRepository {
 			footprints.push(path);
 			files.set(path, encoder.encode(JSON.stringify(footprint)));
 		}
+		const previousBoards = new Map(
+			previous?.boards?.map((board, index) => [
+				board.id,
+				previous.manifest.boards?.[index],
+			]),
+		);
+		const boards: string[] = [];
+		for (const board of snapshot.boards ?? []) {
+			const existing = previousBoards.get(board.id);
+			const path =
+				existing && !reserved.has(existing)
+					? existing
+					: await this.unusedPath(`${board.name}.ecadpcb`, reserved);
+			reserved.add(path);
+			boards.push(path);
+			files.set(path, encoder.encode(JSON.stringify(board)));
+		}
 		const circuits = (snapshot.circuits ?? []).map((file) => ({
 			circuit:
 				file.circuit.id === primaryPcbId && drawing
@@ -722,6 +755,7 @@ export class ProjectRepository {
 			symbolLibraries: libraries,
 			symbols,
 			...(snapshot.footprints === undefined ? {} : { footprints }),
+			...(snapshot.boards === undefined ? {} : { boards }),
 			...(snapshot.drawings === undefined ? {} : { drawings }),
 		});
 		const content = serializeProjectManifest(manifest);

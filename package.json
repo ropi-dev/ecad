@@ -73,6 +73,7 @@
 		"perf:main": "tsx scripts/performance/main.ts",
 		"symbols:generate": "pnpm --filter @ecad/default-symbols run generate",
 		"footprints:generate": "pnpm --filter @ecad/default-footprints run generate",
+		"example:rp2350a": "tsx scripts/examples/rp2350a.ts",
 		"sandbox": "node scripts/development/sandbox.ts"
 	},
 	"packageManager": "pnpm@10.34.9"

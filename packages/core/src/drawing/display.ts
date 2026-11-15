@@ -84,7 +84,8 @@ export type DrawingAppearance =
 	| "pad-through"
 	| "via"
 	| "pad-hole"
-	| "pad-number";
+	| "pad-number"
+	| "ratsnest";
 
 const maximumPadNumberSize = 0.8;
 
@@ -668,6 +669,50 @@ export function buildStaticDisplay(
 				lineWidth: 0.1,
 			},
 		})),
+	};
+}
+
+/**
+ * A board's display: each item in its layer's colour, or the selection or
+ * highlight colour, and the ratsnest above everything. Boards have no wire
+ * terminals, junctions or pin halos.
+ */
+export function buildBoardStaticDisplay(
+	shapes: EditorShape[],
+	selectedIds: ReadonlySet<number>,
+	highlightedIds: ReadonlySet<number>,
+	ratsnest: readonly EditorShape[],
+	measure: MeasureText = estimateText,
+): StaticDrawingDisplay {
+	return {
+		shapes: [
+			...shapes.map((shape, index) =>
+				documentShapeDisplay(
+					shape,
+					selectedIds.has(shape.id)
+						? "selected"
+						: highlightedIds.has(shape.id)
+							? "highlighted"
+							: unselectedAppearance(shape),
+					index + 1,
+					measure,
+					undefined,
+				),
+			),
+			...ratsnest.map((shape) =>
+				documentShapeDisplay(
+					shape,
+					"ratsnest",
+					shapes.length + 1,
+					measure,
+					undefined,
+				),
+			),
+		],
+		terminals: [],
+		junctions: [],
+		connections: [],
+		halos: [],
 	};
 }
 

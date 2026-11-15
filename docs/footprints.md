@@ -10,11 +10,11 @@ A dragged or nudged pad keeps its centre on the grid, as the Pad tool places it.
 
 MCP clients cannot edit a footprint yet. The desktop app's MCP endpoint leaves an open footprint out.
 
-This editor is a first version. Footprints are not yet placed on a board or checked against design rules, and there is no import or export for other tools' footprint formats.
+A [PCB](pcb.md) places footprints on a board. There is no import or export for other tools' footprint formats.
 
 ## Built-in footprints and symbols
 
-The app has a library of 52 built-in footprints adapted from KiCad's, such as 0805 chip resistors, SOT-23, pin headers and the QFN packages of the built-in microcontrollers. See the [default-footprints package](../packages/default-footprints/README.md) for the list and how they were converted. Built-in footprints are read-only.
+The app has a library of 56 built-in footprints adapted from KiCad's, such as 0805 chip resistors, SOT-23, pin headers and the QFN packages of the built-in microcontrollers. See the [default-footprints package](../packages/default-footprints/README.md) for the list and how they were converted. Built-in footprints are read-only.
 
 A symbol placed in a schematic can name the footprint its component is soldered with. Select one placed symbol and choose it under **Footprint** in Attributes. The list has **None**, the project's footprints, and the built-in footprints grouped by their KiCad library. Undo restores the previous footprint. The symbol editor has no Footprint section, because a nested placement inside a symbol is not a component.
 
@@ -26,7 +26,7 @@ For a project footprint, **Open footprint** opens it in the footprint editor. Fo
 
 ## Layers
 
-The **Layers** panel at the top left lists twelve layers: copper, silkscreen, solder mask, paste, courtyard and fabrication, each for the front and the back of the board. Colours follow KiCad's defaults.
+The **Layers** panel at the top left lists thirteen layers: copper, silkscreen, solder mask, paste, courtyard and fabrication, each for the front and the back of the board, and the board outline (Edge.Cuts). Colours follow KiCad's defaults.
 
 Select a layer's name to make it the active layer. New graphics go on the active layer, and it draws on top of the others. The other layers draw in board order, with mask and paste under their copper so an opening shows as a rim around its pad. The eye button hides or shows a layer. The two paste layers start hidden each time a footprint opens. Items on a hidden layer are not drawn and cannot be selected, and hiding a layer clears the selection. The active layer cannot be hidden, and making a hidden layer active shows it. The attributes panel marks hidden layers in its Layer field and will not move an item onto one, so an item cannot vanish by changing its layer. Export includes hidden layers and draws every layer in board order, whichever layer is active. The number beside a layer counts its items.
 
@@ -119,7 +119,7 @@ A `.ecadfp` file is UTF-8 JSON:
 
 | Field | Meaning |
 | --- | --- |
-| `layer` | `F.Cu`, `B.Cu`, `F.SilkS`, `B.SilkS`, `F.Mask`, `B.Mask`, `F.Paste`, `B.Paste`, `F.CrtYd`, `B.CrtYd`, `F.Fab` or `B.Fab`. An item without one is read as `F.SilkS` and saved with it. |
+| `layer` | `F.Cu`, `B.Cu`, `F.SilkS`, `B.SilkS`, `F.Mask`, `B.Mask`, `F.Paste`, `B.Paste`, `F.CrtYd`, `B.CrtYd`, `F.Fab`, `B.Fab` or `Edge.Cuts`. An item without one is read as `F.SilkS` and saved with it. |
 | `pad` | Makes a rectangle or circle a pad. `number` is up to 16 characters. `type` is `smd` or `through-hole`. A through-hole pad needs `drill`, a hole diameter in millimetres smaller than the pad. A surface mount pad must not have one. `paste: true` on a surface mount pad adds a paste opening the size of the pad on its side's paste layer. A through-hole pad must not have `paste`. |
 | `via` | Makes a circle a via. `drill` is the hole diameter in millimetres, smaller than the circle. A pad cannot also be a via. |
 | `filled` | Fills a rectangle, circle or triangle with its layer's colour. A pad is always solid. |

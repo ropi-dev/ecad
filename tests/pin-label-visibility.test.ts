@@ -139,6 +139,7 @@ test("built-ins hide redundant terminal labels and retain pinout and polarity la
 		"inductor",
 		"ferrite-bead",
 		"crystal",
+		"crystal-gnd24",
 		"fuse",
 		"switch-spst",
 		"switch-spdt",

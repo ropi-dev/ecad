@@ -8,6 +8,7 @@ import {
 	Cpu,
 	FileCog,
 	FileUp,
+	Grid2x2,
 	House,
 	Layers,
 	type LucideIcon,
@@ -111,6 +112,7 @@ const fileIcons: Record<string, LucideIcon> = {
 	Circuit: Workflow,
 	Symbol: Component,
 	Footprint: Cpu,
+	PCB: Grid2x2,
 	Gerber: Layers,
 	STEP: Box,
 	Project: FileCog,
@@ -121,6 +123,7 @@ const filters = [
 	"Drawing",
 	"Footprint",
 	"Gerber",
+	"PCB",
 	"STEP",
 	"Symbol",
 ] as const;
@@ -155,6 +158,7 @@ export function ProjectFilesSidebar({
 			createFootprint,
 			createSymbol,
 			importAssets,
+			importExample,
 			importSchematic,
 			openCircuit,
 			project,
@@ -167,6 +171,7 @@ export function ProjectFilesSidebar({
 			createFootprint,
 			createSymbol,
 			importAssets,
+			importExample,
 			importSchematic,
 			openCircuit,
 			project,
@@ -423,6 +428,12 @@ export function ProjectFilesSidebar({
 							type: "Footprint",
 							href: "/editor" as const,
 						})),
+						...(manifest.boards ?? []).map((path) => ({
+							path,
+							name: path.split("/").at(-1) ?? path,
+							type: "PCB",
+							href: "/editor" as const,
+						})),
 						...(manifest.assets.some((asset) => asset.kind === "gerber")
 							? [
 									{
@@ -512,6 +523,20 @@ export function ProjectFilesSidebar({
 		project.selectEditorFile(path);
 		editorLink.current?.click();
 	}
+	async function openExample() {
+		if (!project) return;
+		setImporting(true);
+		setError("");
+		try {
+			const path = await project.importExample("rp2350a");
+			await project.selectEditorFile(path);
+			editorLink.current?.click();
+		} catch (cause) {
+			showError(cause, "Unable to add the example.");
+		} finally {
+			setImporting(false);
+		}
+	}
 	async function uploadSchematic(file: File) {
 		if (!project) return;
 		setImporting(true);
@@ -585,6 +610,18 @@ export function ProjectFilesSidebar({
 					{item}
 				</DropdownMenu.Item>
 			))}
+			<DropdownMenu.Separator className={sidebarMenuSeparator} />
+			<DropdownMenu.Label className={sidebarMenuLabel}>
+				Examples
+			</DropdownMenu.Label>
+			<DropdownMenu.Item
+				className={sidebarMenuItem}
+				disabled={busy}
+				onSelect={() => void openExample()}
+			>
+				<Grid2x2 size={14} aria-hidden="true" />
+				RP2350A reference design
+			</DropdownMenu.Item>
 		</>
 	);
 	const report = importReport && (

@@ -3,6 +3,7 @@
 // Coordinates and radii are in mils. Arcs use degrees, counterclockwise.
 import { microcontrollers } from "./microcontrollers.ts";
 import { nordicMicrocontrollers, nordicPowerManagement } from "./nordic.ts";
+import { referenceSymbols } from "./reference-parts.ts";
 import type { SourceSymbol } from "./types.ts";
 
 export const catalog: readonly SourceSymbol[] = [
@@ -1025,4 +1026,5 @@ export const catalog: readonly SourceSymbol[] = [
 			["pin", "A", 0.0, -200.0, 100.0, "U"],
 		],
 	},
+	...referenceSymbols,
 ];

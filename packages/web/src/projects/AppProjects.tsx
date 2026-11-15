@@ -94,6 +94,7 @@ function useProjectFileUrl() {
 			editorDrawing,
 			editorSymbol,
 			editorFootprint,
+			editorBoard,
 		} = context;
 		const { manifest } = project;
 		const path = location.pathname;
@@ -111,9 +112,11 @@ function useProjectFileUrl() {
 						? `symbol:${editorSymbol.file.id}`
 						: editorFootprint
 							? `footprint:${editorFootprint.file.id}`
-							: editorDrawing
-								? `drawing:${editorDrawing.file.id}`
-								: "drawing"
+							: editorBoard
+								? `board:${editorBoard.file.id}`
+								: editorDrawing
+									? `drawing:${editorDrawing.file.id}`
+									: "drawing"
 				: context.selectedAsset?.kind === (path === "/step" ? "step" : "gerber")
 					? `asset:${context.selectedAsset.path}`
 					: undefined;

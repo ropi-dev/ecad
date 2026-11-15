@@ -5,7 +5,7 @@ export type ProjectPath = "/gerber" | "/editor" | "/" | "/step";
 export type ProjectLinkProps = Omit<ComponentProps<"a">, "href"> & {
 	href: ProjectPath;
 	file?: string;
-	view?: "circuit";
+	view?: "circuit" | "pcb";
 };
 
 export function ProjectLink(props: ProjectLinkProps) {

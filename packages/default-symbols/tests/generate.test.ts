@@ -11,7 +11,7 @@ import { generateDefaultSymbols, symbolCategories } from "../src/index.ts";
 test("default generation is deterministic and returns independent geometry and labels", () => {
 	const first = generateDefaultSymbols();
 	const second = generateDefaultSymbols();
-	assert.equal(first.length, 61);
+	assert.equal(first.length, 66);
 	assert.deepEqual(first, second);
 	assert.equal(new Set(first.map(({ file }) => file.id)).size, first.length);
 	assert.deepEqual(
@@ -172,7 +172,7 @@ test("CLI writes one portable file per symbol with attribution and refuses overw
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
 		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 61);
+		assert.equal(files.filter((file) => file.endsWith(".ecadsym")).length, 66);
 		for (const { file } of generateDefaultSymbols()) {
 			assert.deepEqual(
 				JSON.parse(await readFile(join(output, `${file.id}.ecadsym`), "utf8")),
@@ -524,6 +524,10 @@ test("package-specific chips group their packages under one part", () => {
 		nRF54L10: ["QDAA", "QFAA", "QGAA"],
 		nRF54L05: ["QDAA", "QFAA", "QGAA"],
 		nPM2100: ["QEAA", "CAAA"],
+		"Crystal, 4 pins": ["3225"],
+		W25Q128JV: ["W25Q128JVS"],
+		"AMS1117-3.3": ["SOT-223"],
+		"USB Micro-B": ["Right angle SMD"],
 	});
 	const first = generateDefaultSymbols();
 	const packaged = required(first.find(({ packaging }) => packaging));

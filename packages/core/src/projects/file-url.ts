@@ -8,7 +8,7 @@ export interface ProjectFileSelection {
 	id: string;
 	path: string;
 	file: string;
-	view?: "circuit";
+	view?: "circuit" | "pcb";
 }
 
 export function projectFileSelections(
@@ -18,7 +18,7 @@ export function projectFileSelections(
 	const selection = (
 		id: string,
 		path: string,
-		view?: "circuit",
+		view?: "circuit" | "pcb",
 	): ProjectFileSelection => ({
 		id,
 		path,
@@ -40,6 +40,10 @@ export function projectFileSelections(
 		...(manifest.footprints ?? []).flatMap((path, index) => {
 			const footprint = project.footprints?.[index];
 			return footprint ? [selection(`footprint:${footprint.id}`, path)] : [];
+		}),
+		...(manifest.boards ?? []).flatMap((path, index) => {
+			const board = project.boards?.[index];
+			return board ? [selection(`board:${board.id}`, path, "pcb")] : [];
 		}),
 		...(manifest.circuits ?? []).flatMap((paths, index) => {
 			const circuit = project.circuits?.[index];

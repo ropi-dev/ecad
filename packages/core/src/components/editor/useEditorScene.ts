@@ -4,6 +4,7 @@ import {
 	buildPreviewDisplay,
 	buildStaticDisplay,
 	type DrawingDisplay,
+	type StaticDrawingDisplay,
 } from "#/drawing/display.ts";
 import {
 	buildWorksheetDisplay,
@@ -22,6 +23,11 @@ export function useEditorScene(
 	selectedIds: ReadonlySet<number>,
 	previews: EditorShape[] = [],
 	sheet: SheetSize | null = defaultSheet,
+	buildStatic: (
+		shapes: EditorShape[],
+		selectedIds: ReadonlySet<number>,
+		measure: typeof measureText,
+	) => StaticDrawingDisplay = buildStaticDisplay,
 ) {
 	const [renderer, setRenderer] = useState<DrawingRenderer>();
 	const width = sheet?.width;
@@ -59,10 +65,10 @@ export function useEditorScene(
 		() =>
 			measurePerformance(
 				"editor.scene-display",
-				() => buildStaticDisplay(shapes, selectedIds, measureText),
+				() => buildStatic(shapes, selectedIds, measureText),
 				{ shapes: shapes.length },
 			),
-		[shapes, selectedIds],
+		[shapes, selectedIds, buildStatic],
 	);
 	const shapeCount = shapes.length;
 	const preview = useMemo(

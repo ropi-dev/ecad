@@ -98,3 +98,17 @@ export function uniquePcbName(
 	}
 	return candidate;
 }
+
+export function uniqueBoardName(
+	name: string,
+	document: ProjectDocument,
+): string {
+	const used = new Set((document.boards ?? []).map((file) => file.name));
+	const base = pcbDocumentName(name);
+	let candidate = base;
+	for (let suffix = 2; used.has(candidate); suffix++) {
+		const ending = ` ${suffix}`;
+		candidate = `${base.slice(0, 120 - ending.length)}${ending}`;
+	}
+	return candidate;
+}

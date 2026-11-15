@@ -90,6 +90,29 @@ const padSchema = z
 		"Makes a footprint rectangle or circle a pad. The shape is its copper.",
 	);
 
+const netField = z
+	.string()
+	.min(1)
+	.max(200)
+	.optional()
+	.describe(
+		"Circuit net ID of a board track, via or zone. Omit it for an item on no net.",
+	);
+
+const zoneSchema = z
+	.strictObject({
+		clearance: z
+			.number()
+			.positive()
+			.optional()
+			.describe(
+				"Gap in millimetres between the fill and copper on other nets. Omit it for the board's clearance.",
+			),
+	})
+	.describe(
+		"Makes a board copper rectangle a zone: copper that fills the rectangle and keeps clear of other nets.",
+	);
+
 const viaSchema = z
 	.strictObject({
 		drill: z.number().positive().describe("Hole diameter in millimetres."),
@@ -102,12 +125,15 @@ const fillableShapeFields = {
 	filled: z.boolean().optional(),
 	pad: padSchema.optional(),
 	via: viaSchema.optional(),
+	zone: zoneSchema.optional(),
+	net: netField,
 	...geometryFields,
 	lineStyle,
 	kind: z.enum(fillableShapeKinds),
 };
 const lineShapeFields = {
 	...geometryFields,
+	net: netField,
 	lineStyle,
 	kind: z.literal("line"),
 };
@@ -208,6 +234,22 @@ const validViaError = {
 	error:
 		"A via must be a circle that is not a pad, with a drill smaller than the circle.",
 };
+const validZone = (shape: {
+	kind: string;
+	layer?: string;
+	pad?: unknown;
+	via?: unknown;
+	zone?: unknown;
+}) =>
+	!shape.zone ||
+	(shape.kind === "rectangle" &&
+		shape.pad === undefined &&
+		shape.via === undefined &&
+		(shape.layer === "F.Cu" || shape.layer === "B.Cu"));
+const validZoneError = {
+	error:
+		"A zone must be a rectangle on a copper layer that is not a pad or via.",
+};
 const orthogonalWire = (wire: { rotation: number }) =>
 	Math.abs(Math.sin(2 * wire.rotation)) <= 1e-9;
 const orthogonalWireError = {
@@ -218,12 +260,14 @@ const fillableInputSchema = z
 	.strictObject(fillableShapeFields)
 	.refine(roundCircle, roundCircleError)
 	.refine(validPad, validPadError)
-	.refine(validVia, validViaError);
+	.refine(validVia, validViaError)
+	.refine(validZone, validZoneError);
 const fillableShapeSchema = z
 	.strictObject({ ...fillableShapeFields, id: shapeId })
 	.refine(roundCircle, roundCircleError)
 	.refine(validPad, validPadError)
-	.refine(validVia, validViaError);
+	.refine(validVia, validViaError)
+	.refine(validZone, validZoneError);
 const lineInputSchema = z.strictObject(lineShapeFields);
 const lineShapeSchema = z.strictObject({ ...lineShapeFields, id: shapeId });
 const wireInputSchema = z
@@ -354,6 +398,20 @@ const symbolShapeFields = {
 		.optional(),
 	strokeOverride: z.number().positive().optional(),
 	footprint: footprintReferenceSchema.optional(),
+	component: z
+		.string()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe(
+			"Circuit component ID of a footprint placed on a board. Its pads take their nets from this component's pins.",
+		),
+	flipped: z
+		.boolean()
+		.optional()
+		.describe(
+			"A board footprint mounted on the back. Its children are already mirrored onto the back layers.",
+		),
 	childOverrides: symbolChildOverridesSchema.optional(),
 	textAlignments: z
 		.strictObject(perAttribute(z.strictObject(textAlignmentFields).optional()))
@@ -615,6 +673,7 @@ export const savedDrawingShapesSchema = z.preprocess(
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export type ShapePad = z.output<typeof padSchema>;
 export type ShapeVia = z.output<typeof viaSchema>;
+export type ShapeZone = z.output<typeof zoneSchema>;
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
 export interface PinShape extends z.output<typeof pinShapeSchema> {}

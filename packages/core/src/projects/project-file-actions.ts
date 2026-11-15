@@ -13,6 +13,7 @@ type FileActions = Pick<
 	| "importSchematic"
 	| "createSymbol"
 	| "createFootprint"
+	| "importExample"
 >;
 
 /**
@@ -146,6 +147,86 @@ export function createProjectFileActions(
 					: undefined;
 				if (!path) throw new Error("Unable to open imported drawing.");
 				return { path, report: result.report };
+			}),
+
+		importExample: (example) =>
+			enqueue(async () => {
+				if (!state.active || state.generation !== epoch)
+					throw new Error("Open a project before adding an example.");
+				const [
+					{ exampleDesigns },
+					{ uniqueBoardName, uniquePcbName },
+					format,
+					{ savedDrawingShapesSchema },
+				] = await Promise.all([
+					import("#/examples/designs.ts"),
+					import("#/projects/pcb.ts"),
+					import("#/board/format.ts"),
+					import("@ecad/drawing-core/drawing/schema.ts"),
+				]);
+				const design = await exampleDesigns[example].load();
+				const current = state.active;
+				if (!current || state.generation !== epoch)
+					throw new Error("The project changed while the example was loading.");
+				const circuits = current.circuits ?? [];
+				const drawings = current.drawings ?? [];
+				const boards = current.boards ?? [];
+				let circuitId = design.circuit.id;
+				for (
+					let suffix = 2;
+					circuits.some((file) => file.circuit.id === circuitId);
+					suffix++
+				)
+					circuitId = `${design.circuit.id}-${suffix}`;
+				let drawingId: string = example;
+				for (
+					let suffix = 2;
+					drawings.some((drawing) => drawing.id === drawingId);
+					suffix++
+				)
+					drawingId = `${example}-${suffix}`;
+				const name = uniquePcbName(design.name, current, current.manifest.name);
+				const board = format.boardFileSchema.parse({
+					...format.createBoardFile(
+						uniqueBoardName(name, current),
+						circuitId,
+						boards,
+					),
+					rules: design.rules,
+					shapes: design.board,
+				});
+				await persist(
+					undefined,
+					undefined,
+					[
+						...drawings,
+						{
+							id: drawingId,
+							name,
+							circuitId,
+							shapes: savedDrawingShapesSchema.parse(design.schematic),
+						},
+					],
+					[
+						...circuits,
+						{
+							circuit: { ...design.circuit, id: circuitId, name },
+							graph: {
+								format: "ecad-circuit-graph",
+								version: 1,
+								circuitId,
+								positions: [],
+							},
+						},
+					],
+					undefined,
+					[...boards, board],
+				);
+				const path = state.active
+					? projectIndex(state.active).boardsById.get(board.id)?.path
+					: undefined;
+				if (!path) throw new Error("Unable to open the example board.");
+				return path;
 			}),
 
 		createSymbol: (name) =>

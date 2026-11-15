@@ -64,3 +64,29 @@ The footprint a symbol definition gives each new placement. Several definitions 
 
 **Built-in footprint**:
 A read-only footprint that ships with the app. A project footprint copied from one does not follow it.
+
+### Boards
+
+**PCB**:
+The board view of a circuit: its components' footprints placed on a board and joined by copper. A project has at most one PCB per circuit.
+_Avoid_: Layout, board file
+
+**Placed footprint**:
+A footprint on a PCB that stands for one circuit component. Its pads take the nets of the component's pins with the same numbers.
+
+**Track**:
+A straight copper line on one copper layer of a PCB, on a net.
+_Avoid_: Trace, footprint wire
+
+**Zone**:
+A copper area on a PCB that fills a rectangle on one net, keeping clear of other nets' copper.
+_Avoid_: Pour, polygon
+
+**Ratsnest**:
+The lines that join copper on one net that is not yet connected.
+
+**Board outline**:
+The shape of the board, drawn on the Edge.Cuts layer.
+
+**Design rules**:
+A PCB's clearances, new track width and via size. The design rules check reports copper that breaks them and connections not yet routed.

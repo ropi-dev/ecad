@@ -1,6 +1,6 @@
 # Default schematic symbols
 
-`@ecad/default-symbols` generates the schematic editor's 61 built-in symbols. It has no runtime dependencies and works offline in web, desktop, and Node builds.
+`@ecad/default-symbols` generates the schematic editor's 66 built-in symbols. It has no runtime dependencies and works offline in web, desktop, and Node builds.
 
 ```ts
 import { generateDefaultSymbols } from "@ecad/default-symbols";
@@ -15,7 +15,7 @@ Most entries name a default footprint from [`@ecad/default-footprints`](../defau
 
 Every call returns new arrays and objects. The editor converts the portable files to its drawing shapes and uses the reference and value labels for placement. Existing drawings keep their embedded geometry.
 
-The library includes IEC and US resistors, variable resistors, potentiometers, thermistors, photoresistors, capacitors, polarized and variable capacitors, inductors, ferrite beads, transformers, crystals, fuses, rectifier and Schottky diodes, Zener and TVS diodes, LEDs, photodiodes, NPN and PNP transistors, N-channel and P-channel MOSFETs and JFETs, SPST and SPDT switches, push buttons, batteries, ground and supply symbols, connectors with 2, 3, 4 or 8 pins, an operational amplifier, a speaker, a buzzer, an antenna, RP2040, RP2350A, and RP2350B microcontrollers, nRF54L15, nRF54L10, and nRF54L05 microcontrollers in every package Nordic sells, and the nPM2100 power management IC in QFN and WLCSP.
+The library includes IEC and US resistors, variable resistors, potentiometers, thermistors, photoresistors, capacitors, polarized and variable capacitors, inductors, ferrite beads, transformers, crystals, fuses, rectifier and Schottky diodes, Zener and TVS diodes, LEDs, photodiodes, NPN and PNP transistors, N-channel and P-channel MOSFETs and JFETs, SPST and SPDT switches, push buttons, batteries, ground and supply symbols, connectors with 2, 3, 4, 8 or 20 pins, a four-pin crystal, a USB Micro-B receptacle, a W25Q128JVS QSPI flash, an AMS1117-3.3 regulator, an operational amplifier, a speaker, a buzzer, an antenna, RP2040, RP2350A, and RP2350B microcontrollers, nRF54L15, nRF54L10, and nRF54L05 microcontrollers in every package Nordic sells, and the nPM2100 power management IC in QFN and WLCSP.
 
 Box is an annotation with a rectangle border and editable text. Its origin is the rectangle's top-left corner. The rectangle defines the symbol's dimensions and stays unselectable, including when Select locked items is on.
 
