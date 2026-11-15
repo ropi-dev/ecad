@@ -24,6 +24,8 @@ import type { Bounds } from "#/engine/types.ts";
 export interface ViewportGridOptions {
 	unit: "mm" | "mil";
 	color: string;
+	/** Every tenth dot. */
+	majorColor: string;
 	/** Full opacity inside these world bounds and 30% outside. */
 	bounds?: Bounds;
 }
@@ -33,9 +35,9 @@ const OUTSIDE_OPACITY = 0.3;
 const MINIMUM_CELL = 2;
 /** Most dots a frame draws, so a degenerate view can't flood the GPU. */
 const MAXIMUM_DOTS = 1 << 20;
-const majorBrightness = /* glsl */ `
-	float majorBrightness(vec2 index) {
-		return any(lessThan(mod(index + 0.5, 10.0), vec2(1.0))) ? 1.3 : 1.0;
+const majorDot = /* glsl */ `
+	float majorDot(vec2 index) {
+		return any(lessThan(mod(index + 0.5, 10.0), vec2(1.0))) ? 1.0 : 0.0;
 	}
 `;
 
@@ -50,6 +52,7 @@ export function createViewportGrid() {
 	const material = new ShaderMaterial({
 		uniforms: {
 			color: { value: new Color() },
+			majorColor: { value: new Color() },
 			// Per layer, in drawing buffer pixels: the dot spacing, the first dot
 			// drawn in the current viewport, and dots per row.
 			cellA: { value: new Vector2(1, 1) },
@@ -81,8 +84,8 @@ export function createViewportGrid() {
 			uniform vec4 viewport;
 			flat out vec2 center;
 			flat out float strength;
-			flat out float brightness;
-			${majorBrightness}
+			flat out float major;
+			${majorDot}
 			void main() {
 				float index = float(gl_VertexID);
 				bool second = index >= countA;
@@ -93,21 +96,20 @@ export function createViewportGrid() {
 				vec2 cellIndex = vec2(local - row * perRow, row);
 				center = (second ? startB : startA) + cellIndex * cell;
 				strength = second ? opacity.y : opacity.x;
-				brightness = majorBrightness(
-					(second ? originB : originA) + cellIndex
-				);
+				major = majorDot((second ? originB : originA) + cellIndex);
 				gl_Position = vec4((center - viewport.xy) / viewport.zw * 2.0 - 1.0, 0.0, 1.0);
 				gl_PointSize = 2.0 * ceil(radius + 1.0);
 			}
 		`,
 		fragmentShader: /* glsl */ `
 			uniform vec3 color;
+			uniform vec3 majorColor;
 			uniform float radius;
 			uniform vec4 bounds;
 			uniform float outside;
 			flat in vec2 center;
 			flat in float strength;
-			flat in float brightness;
+			flat in float major;
 			void main() {
 				vec2 pixel = gl_FragCoord.xy;
 				float alpha = strength *
@@ -116,7 +118,7 @@ export function createViewportGrid() {
 					all(lessThanEqual(pixel, bounds.zw));
 				alpha *= inside ? 1.0 : outside;
 				if (alpha <= 0.0) discard;
-				gl_FragColor = vec4(color * brightness, alpha);
+				gl_FragColor = vec4(mix(color, majorColor, major), alpha);
 			}
 		`,
 		// Opaque in Three's sort, so it draws before the scene, but blended.
@@ -194,7 +196,10 @@ export function createViewportGrid() {
 			options = next;
 			points.visible = next !== null;
 			// Colors are given in display values, so skip color management.
-			if (next) uniforms.color.value.setStyle(next.color, "");
+			if (next) {
+				uniforms.color.value.setStyle(next.color, "");
+				uniforms.majorColor.value.setStyle(next.majorColor, "");
+			}
 		},
 		/**
 		 * Places the dots for a view of the drawing plane centered on `position`.
@@ -268,6 +273,7 @@ export function createPlaneGrid() {
 	const material = new ShaderMaterial({
 		uniforms: {
 			color: { value: new Color() },
+			majorColor: { value: new Color() },
 			spacing: { value: new Vector2(1, 1) },
 			opacity: { value: new Vector2() },
 			radius: { value: 1 },
@@ -284,13 +290,14 @@ export function createPlaneGrid() {
 		`,
 		fragmentShader: /* glsl */ `
 			uniform vec3 color;
+			uniform vec3 majorColor;
 			uniform vec2 spacing;
 			uniform vec2 opacity;
 			uniform float radius;
 			uniform vec4 bounds;
 			uniform float outside;
 			varying vec2 world;
-			${majorBrightness}
+			${majorDot}
 			float dots(float cell) {
 				vec2 perPixel = max(fwidth(world), vec2(1e-9));
 				float cellPixels = cell / max(perPixel.x, perPixel.y);
@@ -312,7 +319,7 @@ export function createPlaneGrid() {
 				alpha *= inside ? 1.0 : outside;
 				if (alpha <= 0.0) discard;
 				gl_FragColor = vec4(
-					color * majorBrightness(floor(world / cell + 0.5)),
+					mix(color, majorColor, majorDot(floor(world / cell + 0.5))),
 					alpha
 				);
 			}
@@ -340,7 +347,10 @@ export function createPlaneGrid() {
 		set(next: ViewportGridOptions | null) {
 			options = next;
 			plane.visible = shown && next !== null;
-			if (next) uniforms.color.value.setStyle(next.color, "");
+			if (next) {
+				uniforms.color.value.setStyle(next.color, "");
+				uniforms.majorColor.value.setStyle(next.majorColor, "");
+			}
 		},
 		show(visible: boolean) {
 			shown = visible;

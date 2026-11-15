@@ -76,6 +76,11 @@ test("everything drawn on the paper stands out from it in both themes", () => {
 				contrast(color, paper) >= 3,
 				`${theme} ${name} ${color} is ${contrast(color, paper).toFixed(2)}:1 on ${paper}`,
 			);
+		const { grid, gridMajor } = schematicThemes[theme];
+		assert.ok(
+			contrast(gridMajor, paper) > contrast(grid, paper),
+			`${theme} major grid dots are fainter than the minor ones`,
+		);
 		for (const color of viewerThemes[theme].layerPalette)
 			assert.ok(
 				contrast(color, viewerThemes[theme].background) >= 3,

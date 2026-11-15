@@ -5,6 +5,7 @@ export interface SchematicTheme {
 	paper: string;
 	paperEdge: string;
 	grid: string;
+	gridMajor: string;
 	sheet: string;
 	appearance: Record<DrawingAppearance, string>;
 }
@@ -46,6 +47,7 @@ export const printSchematicTheme: SchematicTheme = {
 	paper: "#f5f4ef",
 	paperEdge: "#b5b5b5",
 	grid: "#cfcec8",
+	gridMajor: "#a8a7a1",
 	sheet: "#840000",
 	appearance: {
 		stroke: "#840000",
@@ -72,6 +74,7 @@ export const lightSchematicTheme: SchematicTheme = {
 	paper: "#fcfcfa",
 	paperEdge: "#b4bbc5",
 	grid: "#c5cbd3",
+	gridMajor: "#8f98a5",
 	sheet: "#a85454",
 	appearance: {
 		stroke: "#157a74",
@@ -98,6 +101,7 @@ export const darkSchematicTheme: SchematicTheme = {
 	paper: "#161a21",
 	paperEdge: "#3d4552",
 	grid: "#2e3744",
+	gridMajor: "#3c4758",
 	sheet: "#b87979",
 	appearance: {
 		stroke: "#76c4c0",

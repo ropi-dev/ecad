@@ -191,7 +191,7 @@ export function SceneViewport({
 	const gridMinY = gridBounds?.minY;
 	const gridMaxY = gridBounds?.maxY;
 	const theme = useTheme();
-	const gridColor = schematicThemes[theme].grid;
+	const { grid: gridColor, gridMajor } = schematicThemes[theme];
 	// Callers pass new bounds objects on every render; key the grid on values.
 	const grid = useMemo(
 		() =>
@@ -199,6 +199,7 @@ export function SceneViewport({
 				? {
 						unit: rulerUnit ?? "mm",
 						color: gridColor,
+						majorColor: gridMajor,
 						bounds:
 							gridMinX === undefined ||
 							gridMaxX === undefined ||
@@ -213,7 +214,16 @@ export function SceneViewport({
 									},
 					}
 				: null,
-		[cameraMode, rulerUnit, gridColor, gridMinX, gridMaxX, gridMinY, gridMaxY],
+		[
+			cameraMode,
+			rulerUnit,
+			gridColor,
+			gridMajor,
+			gridMinX,
+			gridMaxX,
+			gridMinY,
+			gridMaxY,
+		],
 	);
 	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
 		viewport.setPhysicalScale(zoomScale);
