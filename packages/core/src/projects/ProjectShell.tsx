@@ -5,6 +5,7 @@ import { useDebugStats } from "#/performance/useDebugStats.ts";
 import { ProjectConflictNotice } from "#/projects/ProjectConflictNotice.tsx";
 import { ProjectFilesSidebar } from "#/projects/ProjectFilesSidebar.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import "#/settings/theme.ts";
 
 const DebugStats = lazy(() => import("#/performance/DebugStats.tsx"));
 
