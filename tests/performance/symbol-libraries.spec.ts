@@ -56,11 +56,24 @@ test(
 			for (const [name, content] of [
 				[
 					".ecadprj",
-					'format = "ecad-project"\nversion = 1\nname = "Library fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n',
+					'format = "ecad-project"\nversion = 1\nname = "Library fixture"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n[[circuits]]\ncircuit = "drawing.ecaddraw"\n',
 				],
 				[
 					"drawing.ecaddraw",
-					JSON.stringify({ shapes: [], symbolLibraries: libraries("project") }),
+					JSON.stringify({
+						shapes: [],
+						circuit: {
+							format: "ecad-circuit",
+							version: 1,
+							id: "pcb-main",
+							name: "Library fixture",
+							revision: 0,
+							components: [],
+							nets: [],
+							noConnectPinIds: [],
+						},
+						symbolLibraries: libraries("project"),
+					}),
 				],
 			]) {
 				const writer = await (
