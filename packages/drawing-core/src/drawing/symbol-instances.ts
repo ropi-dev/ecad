@@ -12,6 +12,10 @@ import {
 	type SymbolChild,
 } from "#/drawing/shape-types.ts";
 import type { Point } from "#/drawing/types.ts";
+import {
+	resolveFootprintTextShape,
+	unresolveFootprintTextShape,
+} from "#/footprint/text-variables.ts";
 
 export function boxBorder(
 	symbol: EditorSymbol,
@@ -104,18 +108,27 @@ export function canInspectSymbolChild(
 	);
 }
 
+function withFootprintText(
+	symbol: EditorSymbol,
+	child: SymbolShape,
+): SymbolShape {
+	return symbol.footprint && child.kind === "text"
+		? resolveFootprintTextShape(child, symbol.attributes)
+		: child;
+}
+
 export function symbolChildren(symbol: EditorSymbol): SymbolChild[] {
 	return [
 		...symbol.children.map((shape) => ({
 			key: `shape:${shape.id}`,
-			shape: {
+			shape: withFootprintText(symbol, {
 				...shape,
 				...symbol.childOverrides?.[`shape:${shape.id}`],
 				locked:
 					symbol.childOverrides?.[`shape:${shape.id}`]?.locked ??
 					shape.locked ??
 					shape.kind !== "text",
-			} as SymbolShape,
+			} as SymbolShape),
 		})),
 		...symbolTextShapes({ ...symbol, x: 0, y: 0, rotation: 0 }).map(
 			(shape) => ({
@@ -142,10 +155,28 @@ export function replaceSymbolChild(
 	key: string,
 	child: SymbolShape,
 ): EditorSymbol {
-	const original = symbolChildren(symbol).find(
-		(item) => item.key === key,
-	)?.shape;
+	let original = symbolChildren(symbol).find((item) => item.key === key)?.shape;
 	if (!original || child.kind !== original.kind) return symbol;
+	const template = symbol.footprint
+		? symbol.children.find((item) => `shape:${item.id}` === key)
+		: undefined;
+	if (template?.kind === "text" && child.kind === "text") {
+		const raw = {
+			...template,
+			...symbol.childOverrides?.[key],
+		} as TextShape;
+		const resized =
+			child.width !== original.width || child.height !== original.height;
+		child = unresolveFootprintTextShape(child, raw, symbol.attributes);
+		if (!resized && child.text === raw.text)
+			child = { ...child, width: raw.width, height: raw.height };
+		original = {
+			...original,
+			text: raw.text,
+			width: raw.width,
+			height: raw.height,
+		} as SymbolShape;
+	}
 	if (
 		boxBorder(symbol)?.key === key &&
 		child.width === original.width &&
@@ -233,10 +264,10 @@ export function symbolShapes(symbol: EditorSymbol): readonly SymbolShape[] {
 
 function resolveSymbolShapes(symbol: EditorSymbol): SymbolShape[] {
 	return symbol.children.map((original) => {
-		const child = {
+		const child = withFootprintText(symbol, {
 			...original,
 			...symbol.childOverrides?.[`shape:${original.id}`],
-		} as SymbolShape;
+		} as SymbolShape);
 		return {
 			...child,
 			...(symbol.locked ? { locked: true } : {}),

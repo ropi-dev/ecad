@@ -690,7 +690,8 @@ function EditorCanvas({
 		attributesFor.childKey === selectedChildKey;
 	const footprintChoices = useMemo((): FootprintChoices | undefined => {
 		if (sheetless) return undefined;
-		if (!project || suppliedStore) return { project: [] };
+		if (!project || (suppliedStore && documentSelection === undefined))
+			return { project: [] };
 		const { selectEditorFile, createFootprint } = project;
 		return {
 			project: project.footprints ?? [],
@@ -714,7 +715,7 @@ function EditorCanvas({
 				return copy.id;
 			},
 		};
-	}, [sheetless, project, suppliedStore, latestProject]);
+	}, [sheetless, project, suppliedStore, documentSelection, latestProject]);
 	const childTextMoved =
 		!!selectedSymbol &&
 		selectedChild?.shape.kind === "text" &&

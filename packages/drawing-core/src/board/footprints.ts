@@ -9,6 +9,7 @@ import { flipLayer } from "#/footprint/layers.ts";
 import type { FootprintReference } from "#/footprint/reference.ts";
 import { footprintKey } from "#/footprint/reference.ts";
 import { isPad, type PadShape, shapeLayer } from "#/footprint/shapes.ts";
+import { showsReference } from "#/footprint/text-variables.ts";
 
 export type BoardFootprint = EditorSymbol & {
 	footprint: FootprintReference;
@@ -79,6 +80,7 @@ export function createBoardFootprint(
 	let children = footprintChildren(source.shapes);
 	if (options.flipped) children = children.map(mirrorChild);
 	const size = extent(children);
+	const labelLayer = options.flipped ? "B.SilkS" : "F.SilkS";
 	return {
 		id,
 		kind: "symbol",
@@ -88,22 +90,29 @@ export function createBoardFootprint(
 		height: size.height,
 		rotation: options.rotation ?? 0,
 		lineWidth: 0.12,
-		layer: options.flipped ? "B.SilkS" : "F.SilkS",
+		layer: labelLayer,
 		definitionId: `footprint:${footprintKey(source.reference)}`,
 		footprint: source.reference,
 		...(part.component ? { component: part.component } : {}),
 		...(options.flipped ? { flipped: true } : {}),
 		children,
-		texts: [
-			{
-				attribute: "reference",
-				x: 0,
-				y: size.top + referenceSize * 0.8,
-				fontSize: referenceSize,
-				horizontalAlign: "center",
-				verticalAlign: "middle",
-			},
-		],
+		texts: children.some(
+			(child) =>
+				child.kind === "text" &&
+				child.layer === labelLayer &&
+				showsReference(child.text),
+		)
+			? []
+			: [
+					{
+						attribute: "reference",
+						x: 0,
+						y: size.top + referenceSize * 0.8,
+						fontSize: referenceSize,
+						horizontalAlign: "center",
+						verticalAlign: "middle",
+					},
+				],
 		attributes: {
 			name: source.name,
 			reference: part.reference,

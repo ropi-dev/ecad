@@ -1132,6 +1132,14 @@ function SelectionAttributesPanel({
 										if (event.key === "Escape") event.currentTarget.blur();
 									}}
 								/>
+								{footprint && !boardNets && (
+									<span className="text-fg-faint">
+										On a board, <code>{`\${REFERENCE}`}</code>,{" "}
+										<code>{`\${VALUE}`}</code> and{" "}
+										<code>{`\${FOOTPRINT_NAME}`}</code> show the component's
+										reference, value and footprint name.
+									</span>
+								)}
 							</label>
 						)}
 						{isSymbolChild && single?.kind === "text" && (
