@@ -120,8 +120,10 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/components/editor/**", ["@editor"]],
 	["packages/core/src/components/footprint/**", ["@footprint", "@pcb"]],
 	["packages/core/src/components/board/**", ["@pcb"]],
+	["packages/core/src/board/format.ts", ["@pcb", "@storage"]],
 	["packages/core/src/board/**", ["@pcb"]],
 	["packages/core/src/examples/**", ["@pcb"]],
+	["packages/drawing-core/src/board/rules.ts", ["@pcb", "@storage"]],
 	["packages/drawing-core/src/board/**", ["@pcb"]],
 	["packages/core/src/components/circuit/**", ["@circuit"]],
 	[

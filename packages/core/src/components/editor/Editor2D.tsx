@@ -950,6 +950,7 @@ function EditorCanvas({
 					}
 					title={board?.file.name ?? footprintName ?? symbolName ?? drawingName}
 					selection={documentSelection}
+					view={isBoard ? "pcb" : undefined}
 					center={pageBar(false)}
 				>
 					{headerControls ?? viewSwitch}

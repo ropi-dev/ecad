@@ -84,7 +84,7 @@ export function createProjectAutosave(
 						document.rules.get() !== document.savedRules,
 				)
 				.map((document) => [
-					document.file.id,
+					document.file.circuitId,
 					{
 						shapes: document.store.getSnapshot().shapes,
 						rules: document.rules.get(),

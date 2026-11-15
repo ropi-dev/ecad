@@ -53,27 +53,43 @@ const boardShapesSchema = z.preprocess(
 		}),
 );
 
-export const boardFileSchema = z.strictObject({
-	format: z.literal("ecad-board"),
-	version: z.literal(1),
+const boardName = z
+	.string()
+	.trim()
+	.min(1)
+	.max(120)
+	.refine(
+		(name) =>
+			Array.from(name).every((character) => character.charCodeAt(0) >= 32),
+		"Use a name without control characters.",
+	);
+
+export const boardDataSchema = z.strictObject({
 	units: z.literal("mm"),
-	id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
-	name: z
-		.string()
-		.trim()
-		.min(1)
-		.max(120)
-		.refine(
-			(name) =>
-				Array.from(name).every((character) => character.charCodeAt(0) >= 32),
-			"Use a name without control characters.",
-		),
-	circuitId: z.string().min(1).max(200),
 	rules: boardRulesSchema.default(defaultBoardRules),
 	shapes: boardShapesSchema,
 });
 
+export type BoardData = z.output<typeof boardDataSchema>;
+
+export const boardFileSchema = boardDataSchema.extend({
+	circuitId: z.string().min(1).max(200),
+	name: boardName,
+});
+
 export type BoardFile = z.output<typeof boardFileSchema>;
+
+export const legacyBoardFileSchema = boardDataSchema.extend({
+	format: z.literal("ecad-board"),
+	version: z.literal(1),
+	id: z.string(),
+	name: boardName,
+	circuitId: z.string().min(1).max(200),
+});
+
+export function boardData(file: BoardFile): BoardData {
+	return { units: file.units, rules: file.rules, shapes: file.shapes };
+}
 
 export function boardFileWith(
 	file: BoardFile,
@@ -83,26 +99,9 @@ export function boardFileWith(
 	return boardFileSchema.parse({ ...file, shapes, rules });
 }
 
-export function createBoardFile(
-	name: string,
-	circuitId: string,
-	existing: readonly { id: string }[],
-): BoardFile {
-	const stem =
-		name
-			.normalize("NFKD")
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-|-$/g, "")
-			.slice(0, 56) || "board";
-	let id = stem;
-	for (let suffix = 2; existing.some((file) => file.id === id); suffix++)
-		id = `${stem}-${suffix}`;
+export function createBoardFile(name: string, circuitId: string): BoardFile {
 	return boardFileSchema.parse({
-		format: "ecad-board",
-		version: 1,
 		units: "mm",
-		id,
 		name,
 		circuitId,
 		rules: defaultBoardRules,

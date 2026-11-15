@@ -155,7 +155,7 @@ export function createProjectFileActions(
 					throw new Error("Open a project before adding an example.");
 				const [
 					{ exampleDesigns },
-					{ uniqueBoardName, uniquePcbName },
+					{ uniquePcbName },
 					format,
 					{ savedDrawingShapesSchema },
 				] = await Promise.all([
@@ -170,7 +170,6 @@ export function createProjectFileActions(
 					throw new Error("The project changed while the example was loading.");
 				const circuits = current.circuits ?? [];
 				const drawings = current.drawings ?? [];
-				const boards = current.boards ?? [];
 				let circuitId = design.circuit.id;
 				for (
 					let suffix = 2;
@@ -187,11 +186,7 @@ export function createProjectFileActions(
 					drawingId = `${example}-${suffix}`;
 				const name = uniquePcbName(design.name, current, current.manifest.name);
 				const board = format.boardFileSchema.parse({
-					...format.createBoardFile(
-						uniqueBoardName(name, current),
-						circuitId,
-						boards,
-					),
+					...format.createBoardFile(name, circuitId),
 					rules: design.rules,
 					shapes: design.board,
 				});
@@ -220,10 +215,10 @@ export function createProjectFileActions(
 						},
 					],
 					undefined,
-					[...boards, board],
+					[...(current.boards ?? []), board],
 				);
 				const path = state.active
-					? projectIndex(state.active).boardsById.get(board.id)?.path
+					? projectIndex(state.active).boardsByCircuit.get(circuitId)?.path
 					: undefined;
 				if (!path) throw new Error("Unable to open the example board.");
 				return path;

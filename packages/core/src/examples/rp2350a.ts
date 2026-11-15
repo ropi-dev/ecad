@@ -593,7 +593,7 @@ export function rp2350aBoard(
 	const shapes = [...board, ...routed.shapes, ...zones];
 	const fills = fillZones(shapes, netlist, rp2350aRules);
 	void fillReach(fills);
-	const file = createBoardFile("RP2350A", circuit.circuit.id, []);
+	const file = createBoardFile("RP2350A", circuit.circuit.id);
 	return {
 		board: { ...file, rules: rp2350aRules, shapes },
 		failed: routed.failed.length,

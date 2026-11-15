@@ -56,6 +56,8 @@ export interface ProjectContextValue {
 	openingCircuit: number | null;
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
 	openCircuit(path: string): Promise<boolean>;
+	/** Opens the PCB view of the drawing at `path`. */
+	openBoard(path: string): boolean | Promise<boolean>;
 	switchEditorView(view: EditorView): Promise<void>;
 	rememberViewSelection(selection: ViewSelection): void;
 	takeSelectionHandoff(view: ViewSelection["view"]): ViewSelection | null;
@@ -77,7 +79,7 @@ export interface ProjectContextValue {
 		from?: { description: string; shapes: readonly EditorShape[] },
 	): Promise<string>;
 	createDrawing(name: string): Promise<string>;
-	/** Adds an example design's schematic, circuit and board. Resolves to the board's path. */
+	/** Adds an example design's schematic, circuit and board. Resolves to its drawing's path. */
 	importExample(
 		example: import("#/examples/designs.ts").ExampleDesignId,
 	): Promise<string>;
@@ -174,6 +176,7 @@ export function createProjectSession(
 	);
 	const {
 		openCircuit,
+		openBoard,
 		switchEditorView,
 		rememberViewSelection,
 		takeSelectionHandoff,
@@ -337,6 +340,7 @@ export function createProjectSession(
 		editorCircuit: state.editorCircuit,
 		openingCircuit: state.openingCircuit,
 		openCircuit,
+		openBoard,
 		switchEditorView,
 		rememberViewSelection,
 		takeSelectionHandoff,

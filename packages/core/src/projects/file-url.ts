@@ -41,14 +41,21 @@ export function projectFileSelections(
 			const footprint = project.footprints?.[index];
 			return footprint ? [selection(`footprint:${footprint.id}`, path)] : [];
 		}),
-		...(manifest.boards ?? []).flatMap((path, index) => {
-			const board = project.boards?.[index];
-			return board ? [selection(`board:${board.id}`, path, "pcb")] : [];
-		}),
 		...(manifest.circuits ?? []).flatMap((paths, index) => {
 			const circuit = project.circuits?.[index];
 			return circuit
-				? [selection(`circuit:${circuit.circuit.id}`, paths.circuit, "circuit")]
+				? [
+						selection(
+							`circuit:${circuit.circuit.id}`,
+							paths.circuit,
+							"circuit",
+						),
+						...(project.boards?.some(
+							(board) => board.circuitId === circuit.circuit.id,
+						)
+							? [selection(`board:${circuit.circuit.id}`, paths.circuit, "pcb")]
+							: []),
+					]
 				: [];
 		}),
 		...manifest.assets.map((asset) =>

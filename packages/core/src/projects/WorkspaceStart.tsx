@@ -27,6 +27,7 @@ export function WorkspaceStart() {
 			importExample,
 			selectAsset,
 			selectEditorFile,
+			openBoard,
 		}) => ({
 			busy,
 			error,
@@ -36,6 +37,7 @@ export function WorkspaceStart() {
 			importExample,
 			selectAsset,
 			selectEditorFile,
+			openBoard,
 		}),
 	);
 	const sidebar = useWorkspaceControls()?.sidebar;
@@ -48,7 +50,7 @@ export function WorkspaceStart() {
 		if (!project) return;
 		setImporting(true);
 		try {
-			await project.selectEditorFile(await project.importExample("rp2350a"));
+			await project.openBoard(await project.importExample("rp2350a"));
 		} catch (cause) {
 			if (!isProjectError(cause, "ProjectConflict"))
 				toastManager.add({

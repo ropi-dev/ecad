@@ -75,7 +75,7 @@ export function EditorDocument({
 		: footprint
 			? `footprint:${footprint.file.id}`
 			: board
-				? `board:${board.file.id}`
+				? `board:${board.file.circuitId}`
 				: drawing
 					? `drawing:${drawing.file.id}`
 					: undefined;

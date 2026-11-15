@@ -24,9 +24,21 @@ import {
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
+import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView } from "#/board/view.ts";
+import { projectFileSelections } from "#/projects/file-url.ts";
+import {
+	PROJECT_FILE,
+	parseProjectManifest,
+	serializeProjectManifest,
+} from "#/projects/format.ts";
+import { projectIndex } from "#/projects/project-index.ts";
+import {
+	type ProjectDirectory,
+	ProjectRepository,
+} from "#/projects/repository.ts";
 import { required } from "./helpers/required.ts";
 
 const library = new Map(
@@ -312,5 +324,125 @@ test("negotiated routing finishes every net it is given and leaves excluded nets
 	assert.deepEqual(
 		findings.map((finding) => finding.kind),
 		["unconnected"],
+	);
+});
+
+function memoryDirectory(): ProjectDirectory & {
+	files: Map<string, Uint8Array>;
+} {
+	const files = new Map<string, Uint8Array>();
+	return {
+		name: "memory",
+		files,
+		async read(path) {
+			const bytes = files.get(path);
+			if (!bytes) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+			return bytes;
+		},
+		async write(path, bytes) {
+			files.set(path, bytes);
+		},
+		async remove(path) {
+			for (const name of [...files.keys()])
+				if (name === path || name.startsWith(`${path}/`)) files.delete(name);
+		},
+	};
+}
+
+const decode = (bytes: Uint8Array | undefined) =>
+	JSON.parse(new TextDecoder().decode(required(bytes)));
+
+for (const layout of ["files", "revisions"] as const)
+	test(`a board is saved in its drawing file next to the schematic and circuit (${layout})`, async () => {
+		const directory = memoryDirectory();
+		const repository = new ProjectRepository(directory, { layout });
+		await repository.create("Divider");
+		const circuit = twoResistors();
+		const board = {
+			...createBoardFile("Divider", circuit.id),
+			shapes: placed(circuit),
+		};
+		const saved = await repository.save({
+			shapes: [],
+			symbols: [],
+			circuits: [{ ...createCircuit("Divider", circuit.id), circuit }],
+			boards: [board],
+		});
+		const path = required(saved.manifest.drawing);
+		assert.match(path, /Divider\.ecaddraw$/);
+		assert.equal(saved.manifest.boards, undefined);
+		assert.deepEqual(
+			[...directory.files.keys()].filter((name) => name.endsWith(".ecadpcb")),
+			[],
+		);
+		const file = decode(directory.files.get(path));
+		assert.equal(file.circuit.id, circuit.id);
+		assert.deepEqual(file.board, {
+			units: "mm",
+			rules: board.rules,
+			shapes: board.shapes,
+		});
+		assert.equal(
+			projectIndex(saved).boardsByPath.get(path)?.circuitId,
+			"pcb-main",
+		);
+		assert.deepEqual(
+			projectFileSelections(saved)
+				.filter((entry) => entry.path === path)
+				.map((entry) => [entry.id, entry.view]),
+			[
+				["drawing", undefined],
+				["circuit:pcb-main", "circuit"],
+				["board:pcb-main", "pcb"],
+			],
+		);
+		const reopened = await new ProjectRepository(directory, { layout }).load();
+		assert.deepEqual(reopened.boards, [board]);
+	});
+
+test("a project with a separate .ecadpcb file loads it and moves the board into the drawing", async () => {
+	const directory = memoryDirectory();
+	const repository = new ProjectRepository(directory, { layout: "files" });
+	await repository.create("Divider");
+	const circuit = twoResistors();
+	await repository.save({
+		shapes: [],
+		symbols: [],
+		circuits: [{ ...createCircuit("Divider", circuit.id), circuit }],
+	});
+	const encode = (value: unknown) =>
+		new TextEncoder().encode(JSON.stringify(value));
+	const shapes = placed(circuit);
+	directory.files.set(
+		"Divider.ecadpcb",
+		encode({
+			format: "ecad-board",
+			version: 1,
+			units: "mm",
+			id: "divider",
+			name: "Divider",
+			circuitId: circuit.id,
+			rules: defaultBoardRules,
+			shapes,
+		}),
+	);
+	const manifest = parseProjectManifest(
+		new TextDecoder().decode(required(directory.files.get(PROJECT_FILE))),
+	);
+	directory.files.set(
+		PROJECT_FILE,
+		new TextEncoder().encode(
+			serializeProjectManifest({ ...manifest, boards: ["Divider.ecadpcb"] }),
+		),
+	);
+	const legacy = new ProjectRepository(directory, { layout: "files" });
+	const loaded = await legacy.load();
+	assert.deepEqual(loaded.boards?.[0]?.shapes, shapes);
+	const saved = await legacy.save({ shapes: [], symbols: [] });
+	assert.equal(saved.manifest.boards, undefined);
+	assert.equal(directory.files.has("Divider.ecadpcb"), false);
+	assert.deepEqual(
+		decode(directory.files.get(required(saved.manifest.drawing))).board.shapes,
+		shapes,
 	);
 });

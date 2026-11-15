@@ -35,17 +35,6 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 		footprintsById.set(file.id, { file, path });
 		if (path) footprintsByPath.set(path, file);
 	}
-	const boardsById = new Map<string, Entry<BoardFile>>();
-	const boardsByPath = new Map<string, BoardFile>();
-	const boardsByCircuit = new Map<string, Entry<BoardFile>>();
-	for (const [i, file] of (snapshot.boards ?? []).entries()) {
-		const path = snapshot.manifest.boards?.[i];
-		const entry = { file, path };
-		boardsById.set(file.id, entry);
-		if (path) boardsByPath.set(path, file);
-		if (!boardsByCircuit.has(file.circuitId))
-			boardsByCircuit.set(file.circuitId, entry);
-	}
 	for (const [i, file] of snapshot.symbols.entries()) {
 		const path = snapshot.manifest.symbols[i];
 		symbolsById.set(file.id, { file, path });
@@ -64,6 +53,13 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 		circuitsById.set(file.circuit.id, { file, path });
 		if (path) circuitsByPath.set(path, file);
 	}
+	const boardsByCircuit = new Map<string, Entry<BoardFile>>();
+	const boardsByPath = new Map<string, BoardFile>();
+	for (const file of snapshot.boards ?? []) {
+		const path = circuitsById.get(file.circuitId)?.path;
+		boardsByCircuit.set(file.circuitId, { file, path });
+		if (path) boardsByPath.set(path, file);
+	}
 	return {
 		symbolsById,
 		symbolsByPath,
@@ -74,7 +70,6 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 		circuitsByPath,
 		footprintsById,
 		footprintsByPath,
-		boardsById,
 		boardsByPath,
 		boardsByCircuit,
 	};

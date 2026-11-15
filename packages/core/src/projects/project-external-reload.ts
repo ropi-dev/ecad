@@ -135,7 +135,7 @@ export function createProjectExternalReload(
 				if (state.editorFootprint === document) setEditorFootprint(replaced);
 			}
 			for (const [id, document] of boardDocuments) {
-				const next = after.boardsById.get(id);
+				const next = after.boardsByCircuit.get(id);
 				if (!next?.path) {
 					document.unsubscribe();
 					boardDocuments.delete(id);
@@ -143,7 +143,7 @@ export function createProjectExternalReload(
 					if (state.editorBoard === document) setEditorBoard(null);
 					continue;
 				}
-				if (!moved(next.path, before.boardsById.get(id)?.path)) continue;
+				if (!moved(next.path, before.boardsByCircuit.get(id)?.path)) continue;
 				replaceDrawingShapes(document.store, next.file.shapes, true);
 				document.rules.set(next.file.rules);
 				const replaced = {
@@ -189,8 +189,12 @@ export function createProjectExternalReload(
 		for (const [id, entry] of after.footprintsById)
 			if (entry.path && moved(entry.path, before.footprintsById.get(id)?.path))
 				names.push(entry.file.name);
-		for (const [id, entry] of after.boardsById)
-			if (entry.path && moved(entry.path, before.boardsById.get(id)?.path))
+		for (const [id, entry] of after.boardsByCircuit)
+			if (
+				entry.path &&
+				moved(entry.path, before.boardsByCircuit.get(id)?.path) &&
+				!names.includes(entry.file.name)
+			)
 				names.push(entry.file.name);
 		if (
 			state.selectedAsset &&

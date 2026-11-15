@@ -1,6 +1,6 @@
 # PCB editor
 
-A PCB is the board view of a circuit. Open a schematic or a circuit and press the **PCB** side of the view switch in the document bar, next to Schematic and Circuit. The first time, the project gets a board file for that circuit, `<name>.ecadpcb`, and the PCB opens. The board also appears in the project's file list as a PCB file.
+A PCB is the board view of a circuit. Open a schematic or a circuit and press the **PCB** side of the view switch in the document bar, next to Schematic and Circuit. The first time, the circuit gets an empty board and the PCB opens. The schematic, its circuit and its board are one `.ecaddraw` file. In the project's file list, a drawing with a board has a **PCB view** row under **Circuit view**.
 
 The editor is the footprint editor's canvas with a board added: the same layers, selection, moves, rotation, locks, undo, history panel and 3D view. Lengths are in millimetres.
 
@@ -45,7 +45,7 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 ## Design rules
 
-**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, and the clearance between copper and the board edge. The board file stores them.
+**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, and the clearance between copper and the board edge. The board saves them with its items.
 
 **Design rules check** runs on demand and lists:
 
@@ -76,28 +76,26 @@ Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over both copp
 
 ## File format
 
-A `.ecadpcb` file is UTF-8 JSON:
+A board is the `board` field of its drawing's `.ecaddraw` file, next to the schematic's `shapes` and the `circuit`, which this example leaves out:
 
 ```json
 {
-  "format": "ecad-board",
-  "version": 1,
-  "units": "mm",
-  "id": "rp2350a",
-  "name": "RP2350A",
-  "circuitId": "rp2350a",
-  "rules": {
-    "clearance": 0.15,
-    "trackWidth": 0.2,
-    "viaDiameter": 0.6,
-    "viaDrill": 0.3,
-    "edgeClearance": 0.3
-  },
-  "shapes": []
+  "shapes": [],
+  "board": {
+    "units": "mm",
+    "rules": {
+      "clearance": 0.15,
+      "trackWidth": 0.2,
+      "viaDiameter": 0.6,
+      "viaDrill": 0.3,
+      "edgeClearance": 0.3
+    },
+    "shapes": []
+  }
 }
 ```
 
-`circuitId` names the circuit the board belongs to. `shapes` holds up to 50,000 items in the drawing shape format, the same as footprint items, plus:
+The board belongs to the file's circuit and takes its name. A drawing without a `board` field has no PCB yet. `board.shapes` holds up to 50,000 items in the drawing shape format, the same as footprint items, plus:
 
 | Field | Meaning |
 | --- | --- |
@@ -106,8 +104,8 @@ A `.ecadpcb` file is UTF-8 JSON:
 | `zone` | Makes a copper rectangle a zone. `clearance` optionally overrides the board clearance. |
 | `kind: "symbol"` with `footprint` | A placed footprint. `children` are its items in footprint coordinates, `component` is the circuit component ID, and `flipped` marks a footprint on the back, whose children are already mirrored. |
 
-The project manifest lists board paths in `boards`. Desktop projects keep them next to the project file, and web projects write them as `boards/<id>.ecadpcb` in each revision.
+Earlier versions saved each board in its own `.ecadpcb` file listed under `boards` in the project manifest. The app still opens such a project, and the next save moves each board into its drawing and deletes the `.ecadpcb` file.
 
 ## Code
 
-`packages/drawing-core/src/board/` holds the headless model: `footprints.ts` places and flips footprints and lists their pads, `netlist.ts` maps pads to circuit nets, `connectivity.ts` groups copper and builds the ratsnest, `drc.ts` checks the rules and reads the outline, `sync.ts` brings a board up to date with its circuit, and `autoroute.ts` routes. `packages/core/src/board/` adds the file format, zone fills (`fill.ts`, with the polygon operations the Gerber viewer uses), the flat view's display (`view.ts`), routing helpers, the Gerber writer and the schematic sync for an open document. `components/board/useBoardEditor.ts` connects them to `Editor2D`, which runs in board mode when the project opens a board.
+`packages/drawing-core/src/board/` holds the headless model: `footprints.ts` places and flips footprints and lists their pads, `netlist.ts` maps pads to circuit nets, `connectivity.ts` groups copper and builds the ratsnest, `drc.ts` checks the rules and reads the outline, `sync.ts` brings a board up to date with its circuit, and `autoroute.ts` routes. `packages/core/src/board/` adds the saved format, zone fills (`fill.ts`, with the polygon operations the Gerber viewer uses), the flat view's display (`view.ts`), routing helpers, the Gerber writer and the schematic sync for an open document. `components/board/useBoardEditor.ts` connects them to `Editor2D`, which runs in board mode when the project opens a board.

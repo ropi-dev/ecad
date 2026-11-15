@@ -30,6 +30,15 @@ test("the RP2350A example opens as a routed PCB that passes DRC and switches vie
 		.poll(async () => (await documentState(page)).boards)
 		.toEqual(["rp2350a"]);
 	await expect(page.getByText("All connections routed")).toBeVisible();
+	const files = await openProjectFiles(page);
+	await expect(
+		files.getByRole("link", { name: "Open RP2350A.ecaddraw in PCB view" }),
+	).toHaveAttribute("aria-current", "page");
+	await expect(
+		files.getByRole("link", { name: "Open RP2350A.ecaddraw", exact: true }),
+	).not.toHaveAttribute("aria-current", "page");
+	await expect(files.getByText(".ecadpcb")).toHaveCount(0);
+	await closeProjectFiles(page);
 
 	await page.getByRole("button", { name: "Design rules check" }).click();
 	await page.getByRole("button", { name: "Run DRC", exact: true }).click();

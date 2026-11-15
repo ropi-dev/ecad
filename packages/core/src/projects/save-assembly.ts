@@ -92,7 +92,7 @@ export function assembleProjectSave({
 			? {}
 			: {
 					boards: boards.map((file) => {
-						const edit = boardEdits?.get(file.id);
+						const edit = boardEdits?.get(file.circuitId);
 						return edit ? boardFileWith(file, edit.shapes, edit.rules) : file;
 					}),
 				}),

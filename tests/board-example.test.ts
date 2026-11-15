@@ -11,10 +11,7 @@ import { parseGerber } from "#/formats/gerber/index.ts";
 test("the RP2350A reference board is fully routed, passes DRC and exports readable Gerbers", async () => {
 	const design = await exampleDesigns.rp2350a.load();
 	const board = boardFileSchema.parse({
-		format: "ecad-board",
-		version: 1,
 		units: "mm",
-		id: "rp2350a",
 		name: design.name,
 		circuitId: design.circuit.id,
 		rules: design.rules,

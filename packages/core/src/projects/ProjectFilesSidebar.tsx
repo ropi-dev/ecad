@@ -112,7 +112,6 @@ const fileIcons: Record<string, LucideIcon> = {
 	Circuit: Workflow,
 	Symbol: Component,
 	Footprint: Cpu,
-	PCB: Grid2x2,
 	Gerber: Layers,
 	STEP: Box,
 	Project: FileCog,
@@ -135,6 +134,7 @@ interface ProjectFile {
 	href?: ProjectPath;
 	asset?: ProjectAsset;
 	circuitPath?: string;
+	boardPath?: string;
 	/** Opens the Gerber viewer with every layer instead of one file. */
 	allLayers?: boolean;
 }
@@ -160,6 +160,7 @@ export function ProjectFilesSidebar({
 			importAssets,
 			importExample,
 			importSchematic,
+			openBoard,
 			openCircuit,
 			project,
 			selectAsset,
@@ -173,6 +174,7 @@ export function ProjectFilesSidebar({
 			importAssets,
 			importExample,
 			importSchematic,
+			openBoard,
 			openCircuit,
 			project,
 			selectAsset,
@@ -379,6 +381,11 @@ export function ProjectFilesSidebar({
 											type: "Drawing",
 											href: "/editor" as const,
 											circuitPath: paths.circuit,
+											...(snapshot?.boards?.some(
+												(board) => board.circuitId === file.circuit.id,
+											)
+												? { boardPath: paths.circuit }
+												: {}),
 										},
 									]
 								: [
@@ -428,12 +435,6 @@ export function ProjectFilesSidebar({
 							type: "Footprint",
 							href: "/editor" as const,
 						})),
-						...(manifest.boards ?? []).map((path) => ({
-							path,
-							name: path.split("/").at(-1) ?? path,
-							type: "PCB",
-							href: "/editor" as const,
-						})),
 						...(manifest.assets.some((asset) => asset.kind === "gerber")
 							? [
 									{
@@ -457,7 +458,7 @@ export function ProjectFilesSidebar({
 						})),
 					]
 				: [],
-		[manifest, snapshot?.circuits, snapshot?.drawings],
+		[manifest, snapshot?.circuits, snapshot?.drawings, snapshot?.boards],
 	);
 	const filtered = useMemo(() => {
 		const search = query.trim().toLowerCase();
@@ -465,7 +466,8 @@ export function ProjectFilesSidebar({
 			(file) =>
 				(filter === "All files" ||
 					file.type === filter ||
-					(filter === "Circuit" && !!file.circuitPath)) &&
+					(filter === "Circuit" && !!file.circuitPath) ||
+					(filter === "PCB" && !!file.boardPath)) &&
 				(!search ||
 					file.name.toLowerCase().includes(search) ||
 					file.path.toLowerCase().includes(search)),
@@ -529,7 +531,7 @@ export function ProjectFilesSidebar({
 		setError("");
 		try {
 			const path = await project.importExample("rp2350a");
-			await project.selectEditorFile(path);
+			await project.openBoard(path);
 			editorLink.current?.click();
 		} catch (cause) {
 			showError(cause, "Unable to add the example.");
@@ -556,7 +558,7 @@ export function ProjectFilesSidebar({
 	}
 
 	const activePath = workspaceControls?.document?.path;
-	const circuitOpen = workspaceControls?.document?.circuit ?? false;
+	const openView = workspaceControls?.document?.view;
 	const returnToRail = (label: string) =>
 		quietFocus(
 			railRef.current?.querySelector<HTMLElement>(
@@ -565,8 +567,8 @@ export function ProjectFilesSidebar({
 		);
 	const isActive = (file: ProjectFile) =>
 		file.type === "Circuit"
-			? circuitOpen && activePath === file.path
-			: !circuitOpen && activePath === file.path;
+			? openView === "circuit" && activePath === file.path
+			: openView === undefined && activePath === file.path;
 	function openFile(file: ProjectFile) {
 		if (!project) return;
 		navigations.current++;
@@ -1141,8 +1143,10 @@ export function ProjectFilesSidebar({
 										{filtered.slice(first, first + pageSize).map((file) => {
 											const Icon = fileIcons[file.type] ?? FileCog;
 											const circuitActive =
-												circuitOpen &&
+												openView === "circuit" &&
 												activePath === (file.circuitPath ?? file.path);
+											const boardActive =
+												openView === "pcb" && activePath === file.boardPath;
 											const active = isActive(file);
 											const content = (
 												<>
@@ -1214,6 +1218,33 @@ export function ProjectFilesSidebar({
 																	className="ui-toggle-faint shrink-0"
 																/>
 																<span className="truncate">Circuit view</span>
+															</ProjectLink>
+														)}
+														{file.boardPath && (
+															<ProjectLink
+																href="/editor"
+																file={file.boardPath}
+																view="pcb"
+																aria-label={`Open ${file.name} in PCB view`}
+																aria-current={boardActive ? "page" : undefined}
+																className={`ui-toggle ${row} ml-[11px] border-l pr-1.5 pl-[11px] [--toggle-line:var(--color-line)] [--toggle-on-line:var(--color-line)] aria-[current=page]:font-medium`}
+																onClick={() => {
+																	closeDrawer();
+																	const path = file.boardPath;
+																	if (!path) return;
+																	void Promise.resolve(
+																		project.openBoard(path),
+																	).catch((cause) =>
+																		showError(cause, "Unable to open the PCB."),
+																	);
+																}}
+															>
+																<Grid2x2
+																	size={15}
+																	aria-hidden="true"
+																	className="ui-toggle-faint shrink-0"
+																/>
+																<span className="truncate">PCB view</span>
 															</ProjectLink>
 														)}
 													</td>

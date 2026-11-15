@@ -113,7 +113,7 @@ function useProjectFileUrl() {
 						: editorFootprint
 							? `footprint:${editorFootprint.file.id}`
 							: editorBoard
-								? `board:${editorBoard.file.id}`
+								? `board:${editorBoard.file.circuitId}`
 								: editorDrawing
 									? `drawing:${editorDrawing.file.id}`
 									: "drawing"
@@ -155,7 +155,9 @@ function useProjectFileUrl() {
 					const selection =
 						requested.view === "circuit"
 							? context.openCircuit(requested.path)
-							: context.selectEditorFile(requested.path);
+							: requested.view === "pcb"
+								? context.openBoard(requested.path)
+								: context.selectEditorFile(requested.path);
 					const failed = () => {
 						if (pending.current === request) setFailedRestoration(request);
 					};

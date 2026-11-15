@@ -284,10 +284,13 @@ export function validateProjectDocument(
 					field: "boards",
 					items: files?.boards,
 				});
-	if (boards && new Set(boards.map((file) => file.id)).size !== boards.length)
+	if (
+		boards &&
+		new Set(boards.map((file) => file.circuitId)).size !== boards.length
+	)
 		throw invalid(
 			files && PROJECT_FILE,
-			"The project contains duplicate board IDs.",
+			"The project contains two boards for one circuit.",
 		);
 	let symbolLibraries: readonly ConfiguredSymbolLibrary[] | undefined;
 	try {
