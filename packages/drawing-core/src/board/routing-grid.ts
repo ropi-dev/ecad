@@ -2,6 +2,7 @@ import {
 	type CopperItem,
 	type CopperLayer,
 	copperItems,
+	type RatsnestLine,
 } from "#/board/connectivity.ts";
 import {
 	boardOutlineSegments,
@@ -20,8 +21,8 @@ import type { Point } from "#/drawing/types.ts";
 
 export const layers: readonly CopperLayer[] = ["F.Cu", "B.Cu"];
 export const free = -1;
-export const blocked = -2;
-export const directions = [
+const blocked = -2;
+const directions = [
 	[1, 0],
 	[1, 1],
 	[0, 1],
@@ -33,7 +34,7 @@ export const directions = [
 ] as const;
 export const pitch = 0.1;
 export const viaCost = 1.5;
-export const bendCost = pitch * 2;
+const bendCost = pitch * 2;
 
 export const ruleVia = (
 	id: number,
@@ -55,10 +56,10 @@ export const ruleVia = (
 	net,
 });
 
-export const open = (grid: Int32Array, cell: number, owner: number) =>
+const open = (grid: Int32Array, cell: number, owner: number) =>
 	grid[cell] === free || grid[cell] === owner;
 
-export class Heap {
+class Heap {
 	readonly keys: number[] = [];
 	readonly values: number[] = [];
 	get size() {
@@ -104,12 +105,30 @@ export class Heap {
 	}
 }
 
-export interface GridTarget {
+interface GridTarget {
 	track: Int32Array[];
 	via: Int32Array[];
 }
 
-export type RoutingGrid = NonNullable<ReturnType<typeof routingGrid>>;
+export interface RoutingResult {
+	/** New tracks and vias, with IDs from `nextId` upwards. */
+	shapes: EditorShape[];
+	/** Connections no route was found for. */
+	failed: RatsnestLine[];
+}
+
+export interface SearchRequest {
+	owner: number;
+	sources: readonly number[];
+	targets: { has(state: number): boolean };
+	goals: readonly Point[];
+	track: readonly Int32Array[];
+	via: readonly Int32Array[];
+	trackStep(z: number, cell: number, length: number): number;
+	viaStep(cell: number): number;
+	limit?: number;
+	skipSeenSources?: boolean;
+}
 
 export function routingGrid(
 	shapes: readonly EditorShape[],
@@ -323,6 +342,114 @@ export function routingGrid(
 		flush();
 		return result;
 	};
+	const states = cells * layers.length;
+	const cost = new Float32Array(states);
+	const parent = new Int32Array(states);
+	const heading = new Int8Array(states);
+	const closed = new Uint8Array(states);
+	const visited: number[] = [];
+	const search = (request: SearchRequest) => {
+		const { owner, goals, track, via } = request;
+		for (const state of visited) {
+			cost[state] = 0;
+			parent[state] = 0;
+			heading[state] = 0;
+			closed[state] = 0;
+		}
+		visited.length = 0;
+		const heap = new Heap();
+		const estimate = (cell: number) => {
+			const point = center(cell);
+			let best = Infinity;
+			for (const goal of goals) {
+				const dx = Math.abs(point.x - goal.x);
+				const dy = Math.abs(point.y - goal.y);
+				best = Math.min(
+					best,
+					Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy),
+				);
+			}
+			return best;
+		};
+		for (const state of request.sources) {
+			if (!open(track[Math.floor(state / cells)], state % cells, owner))
+				continue;
+			if (request.skipSeenSources && cost[state]) continue;
+			cost[state] = 1e-6;
+			parent[state] = -1;
+			heading[state] = 8;
+			visited.push(state);
+			heap.push(state, estimate(state % cells));
+		}
+		const limit = request.limit ?? Infinity;
+		let steps = 0;
+		while (heap.size && steps < limit) {
+			const state = heap.pop();
+			if (closed[state]) continue;
+			closed[state] = 1;
+			steps++;
+			if (request.targets.has(state)) {
+				const path: number[] = [];
+				for (let at = state; at >= 0; at = parent[at]) path.push(at);
+				return { path: path.reverse(), steps, queue: heap.size };
+			}
+			const z = Math.floor(state / cells);
+			const cell = state % cells;
+			const column = cell % columns;
+			const row = Math.floor(cell / columns);
+			const reached = cost[state];
+			const from = heading[state];
+			const relax = (next: number, step: number, direction: number) => {
+				const total =
+					reached + step + (from !== 8 && direction !== from ? bendCost : 0);
+				if (closed[next] || (cost[next] && cost[next] <= total)) return;
+				if (!cost[next]) visited.push(next);
+				cost[next] = total;
+				parent[next] = state;
+				heading[next] = direction;
+				heap.push(next, total + estimate(next % cells));
+			};
+			const layer = track[z];
+			for (let direction = 0; direction < 8; direction++) {
+				const [dx, dy] = directions[direction];
+				const nextColumn = column + dx;
+				const nextRow = row + dy;
+				if (
+					nextColumn < 0 ||
+					nextRow < 0 ||
+					nextColumn >= columns ||
+					nextRow >= rows
+				)
+					continue;
+				const nextCell = nextRow * columns + nextColumn;
+				if (!open(layer, nextCell, owner)) continue;
+				if (
+					dx &&
+					dy &&
+					(!open(layer, row * columns + nextColumn, owner) ||
+						!open(layer, nextRow * columns + column, owner))
+				)
+					continue;
+				const nearby = near[z][nextCell];
+				const length =
+					(dx && dy ? pitch * Math.SQRT2 : pitch) +
+					(nearby !== free && nearby !== owner ? pitch * 8 : 0);
+				relax(
+					z * cells + nextCell,
+					request.trackStep(z, nextCell, length),
+					direction,
+				);
+			}
+			const other = 1 - z;
+			if (
+				open(via[0], cell, owner) &&
+				open(via[1], cell, owner) &&
+				open(track[other], cell, owner)
+			)
+				relax(other * cells + cell, request.viaStep(cell), 8);
+		}
+		return { path: undefined, steps, queue: heap.size };
+	};
 	return {
 		items,
 		columns,
@@ -339,5 +466,6 @@ export function routingGrid(
 		mark,
 		cellsInside,
 		pathShapes,
+		search,
 	};
 }

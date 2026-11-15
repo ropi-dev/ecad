@@ -772,16 +772,14 @@ function EditorCanvas({
 				onSync: () => {
 					finishDrag(true);
 					finishWire();
-					boardEditor.synchronize().catch((cause: unknown) =>
+					boardEditor.synchronize().catch((cause: unknown) => {
+						const title = "Unable to update the board from its schematic.";
 						toastManager.add({
 							type: "error",
-							title: "Unable to update the board from its schematic.",
-							description: errorMessage(
-								cause,
-								"Unable to update the board from its schematic.",
-							),
-						}),
-					);
+							title,
+							description: errorMessage(cause, title),
+						});
+					});
 				},
 				checksOpen: boardPanel === "checks",
 				onChecks: () =>

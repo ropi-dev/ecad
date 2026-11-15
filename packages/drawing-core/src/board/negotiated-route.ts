@@ -1,4 +1,3 @@
-import type { AutorouteResult } from "#/board/autoroute.ts";
 import {
 	analyzeConnectivity,
 	type CopperItem,
@@ -7,13 +6,9 @@ import {
 } from "#/board/connectivity.ts";
 import type { BoardNetlist } from "#/board/netlist.ts";
 import {
-	bendCost,
-	directions,
-	free,
-	Heap,
 	layers,
-	open,
 	pitch,
+	type RoutingResult,
 	routingGrid,
 	viaCost,
 } from "#/board/routing-grid.ts";
@@ -43,7 +38,7 @@ interface NetRoute {
 	complete: boolean;
 }
 
-function disk(radius: number, pitch: number): [number, number][] {
+function disk(radius: number): [number, number][] {
 	const reach = Math.ceil(radius / pitch);
 	const offsets: [number, number][] = [];
 	for (let dy = -reach; dy <= reach; dy++)
@@ -65,7 +60,7 @@ export function negotiatedRoute(
 	netlist: BoardNetlist,
 	nextId: number,
 	options: NegotiatedRouteOptions,
-): AutorouteResult {
+): RoutingResult {
 	const { rules } = options;
 	const grid = routingGrid(shapes, netlist, rules);
 	if (!grid) return { shapes: [], failed: [] };
@@ -78,28 +73,20 @@ export function negotiatedRoute(
 		viaRadius,
 		margin,
 		base,
-		near,
 		indexOf,
-		center,
 		cellsInside,
 		pathShapes,
 	} = grid;
 	const states = cells * layers.length;
-	const baseTrack = base.track;
-	const baseVia = base.via;
 
 	const usageTrack = new Uint16Array(states);
 	const usageVia = new Uint16Array(states);
 	const stampTrack = new Int32Array(states).fill(-1);
 	const stampVia = new Int32Array(states).fill(-1);
 	const history = new Float32Array(states);
-	const trackOnTrack = disk(width + rules.clearance + margin, pitch);
-	const viaOnTrack = disk(
-		width / 2 + rules.clearance + viaRadius + margin,
-		pitch,
-	);
-	const trackOnVia = viaOnTrack;
-	const viaOnVia = disk(2 * viaRadius + rules.clearance + margin, pitch);
+	const trackOnTrack = disk(width + rules.clearance + margin);
+	const viaOnTrack = disk(width / 2 + rules.clearance + viaRadius + margin);
+	const viaOnVia = disk(2 * viaRadius + rules.clearance + margin);
 
 	const wanted = (net: string) => !options.exclude?.has(net);
 	const connectivity = analyzeConnectivity(items, options.zoneReach);
@@ -136,126 +123,32 @@ export function negotiatedRoute(
 		}))
 		.filter((entry) => entry.groups.every((group) => group.states.length));
 
-	const cost = new Float32Array(states);
-	const parent = new Int32Array(states);
-	const heading = new Int8Array(states);
-	const closed = new Uint8Array(states);
-	const visited: number[] = [];
 	let present = 0.5;
-
+	const sharing = (usage: Uint16Array, state: number) =>
+		usage[state] ? present * usage[state] : 0;
 	const search = (
 		owner: number,
 		sources: readonly number[],
 		targets: ReadonlyMap<number, number>,
 		goals: readonly Point[],
-	): number[] | undefined => {
-		for (const state of visited) {
-			cost[state] = 0;
-			parent[state] = 0;
-			heading[state] = 0;
-			closed[state] = 0;
-		}
-		visited.length = 0;
-		const heap = new Heap();
-		const estimate = (cell: number) => {
-			const point = center(cell);
-			let best = Infinity;
-			for (const goal of goals) {
-				const dx = Math.abs(point.x - goal.x);
-				const dy = Math.abs(point.y - goal.y);
-				best = Math.min(
-					best,
-					Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy),
-				);
-			}
-			return best;
-		};
-		const sharing = (usage: Uint16Array, state: number) =>
-			usage[state] ? present * usage[state] : 0;
-		for (const state of sources) {
-			if (!open(baseTrack[Math.floor(state / cells)], state % cells, owner))
-				continue;
-			if (cost[state]) continue;
-			cost[state] = 1e-6;
-			parent[state] = -1;
-			heading[state] = 8;
-			visited.push(state);
-			heap.push(state, estimate(state % cells));
-		}
-		while (heap.size) {
-			const state = heap.pop();
-			if (closed[state]) continue;
-			closed[state] = 1;
-			if (targets.has(state)) {
-				const path: number[] = [];
-				for (let at = state; at >= 0; at = parent[at]) path.push(at);
-				return path.reverse();
-			}
-			const z = Math.floor(state / cells);
-			const cell = state % cells;
-			const column = cell % columns;
-			const row = Math.floor(cell / columns);
-			const reached = cost[state];
-			const from = heading[state];
-			const relax = (next: number, step: number, direction: number) => {
-				if (closed[next]) return;
-				const total =
-					reached + step + (from !== 8 && direction !== from ? bendCost : 0);
-				if (cost[next] && cost[next] <= total) return;
-				if (!cost[next]) visited.push(next);
-				cost[next] = total;
-				parent[next] = state;
-				heading[next] = direction;
-				heap.push(next, total + estimate(next % cells));
-			};
-			const grid = baseTrack[z];
-			for (let direction = 0; direction < 8; direction++) {
-				const [dx, dy] = directions[direction];
-				const nextColumn = column + dx;
-				const nextRow = row + dy;
-				if (
-					nextColumn < 0 ||
-					nextRow < 0 ||
-					nextColumn >= columns ||
-					nextRow >= rows
-				)
-					continue;
-				const nextCell = nextRow * columns + nextColumn;
-				if (!open(grid, nextCell, owner)) continue;
-				if (
-					dx &&
-					dy &&
-					(!open(grid, row * columns + nextColumn, owner) ||
-						!open(grid, nextRow * columns + column, owner))
-				)
-					continue;
-				const next = z * cells + nextCell;
-				const nearby = near[z][nextCell];
-				const length =
-					(dx && dy ? pitch * Math.SQRT2 : pitch) +
-					(nearby !== free && nearby !== owner ? pitch * 8 : 0);
-				relax(
-					next,
-					length * (1 + history[next]) + sharing(usageTrack, next),
-					direction,
-				);
-			}
-			const other = 1 - z;
-			if (
-				open(baseVia[0], cell, owner) &&
-				open(baseVia[1], cell, owner) &&
-				open(baseTrack[other], cell, owner)
-			)
-				relax(
-					other * cells + cell,
-					viaCost * (1 + history[cell] + history[cells + cell]) +
-						sharing(usageVia, cell) +
-						sharing(usageVia, cells + cell),
-					8,
-				);
-		}
-		return undefined;
-	};
+	) =>
+		grid.search({
+			owner,
+			sources,
+			targets,
+			goals,
+			track: base.track,
+			via: base.via,
+			trackStep: (z, cell, length) => {
+				const next = z * cells + cell;
+				return length * (1 + history[next]) + sharing(usageTrack, next);
+			},
+			viaStep: (cell) =>
+				viaCost * (1 + history[cell] + history[cells + cell]) +
+				sharing(usageVia, cell) +
+				sharing(usageVia, cells + cell),
+			skipSeenSources: true,
+		}).path;
 
 	const stamp = (
 		route: NetRoute,
@@ -291,7 +184,7 @@ export function negotiatedRoute(
 					stampTrack,
 					route.marked.track,
 				);
-				stamp(route, state, trackOnVia, usageVia, stampVia, route.marked.via);
+				stamp(route, state, viaOnTrack, usageVia, stampVia, route.marked.via);
 			}
 		for (const state of route.vias)
 			for (const layer of [0, 1]) {

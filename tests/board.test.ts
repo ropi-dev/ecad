@@ -41,6 +41,7 @@ import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { trackPath, trackSegment, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
+import { containsPoint } from "#/engine/geometry.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { projectFileSelections } from "#/projects/file-url.ts";
 import {
@@ -369,6 +370,7 @@ describe("routing and the ratsnest", () => {
 					item.pad?.shape.y === footprintVia.shape.y,
 			),
 		);
+		assert.ok(padUnder.net);
 		assert.equal(footprintVia.net, padUnder.net);
 	});
 
@@ -423,32 +425,43 @@ describe("copper pours", () => {
 	});
 
 	test("where pours on two nets overlap, the one drawn first keeps the copper and the other keeps clear", () => {
-		const { shapes, netlist, pour } = dividerBoard();
+		const { shapes, netlist, pour, at } = dividerBoard();
 		const gndPour = pour("gnd", -6, 16);
 		const midPour = pour("mid", 6, 16);
 		const board = [...shapes, gndPour, midPour];
-		const findings = designRulesCheck(board, netlist);
-		assert.deepEqual(spacingProblems(findings, midPour), []);
-		assert.ok(
-			fillZones(board, netlist, defaultBoardRules).every(
-				(fill) => fill.polygons.length > 0,
-			),
+		const overlap = at(0, -7);
+		const copperAt = (zone: EditorShape) =>
+			containsPoint(
+				required(
+					fillZones(board, netlist, defaultBoardRules).find(
+						(fill) => fill.zone.shapeId === zone.id,
+					),
+				).polygons,
+				overlap,
+			);
+		assert.deepEqual([copperAt(gndPour), copperAt(midPour)], [true, false]);
+		assert.deepEqual(
+			spacingProblems(designRulesCheck(board, netlist), midPour),
+			[],
 		);
 	});
 
-	test("two GND pours that touch join into one piece of copper", () => {
-		const { shapes, netlist, pour } = dividerBoard();
-		const board = [
-			...shapes,
-			pour("gnd", -6, 16),
-			pour("gnd", 6, 16),
-			pour("gnd", 0, 4, { dy: 12, height: 6 }),
-		];
+	test("a GND pour that only touches other GND pours keeps its copper and joins them", () => {
+		const { shapes, netlist, footprints, pour, at } = dividerBoard();
+		const center = at(0, 0);
+		const [left, right] = boardPads(footprints)
+			.filter((pad) => netlist.padNet(pad.component, pad.number) === "gnd")
+			.map((pad) => pad.shape.x - center.x)
+			.sort((a, b) => a - b);
+		const sides = [pour("gnd", left, 5), pour("gnd", right, 5)];
+		assert.ok(unroutedNets([...shapes, ...sides], netlist).includes("gnd"));
+		const bridge = pour("gnd", 0, 14, { dy: 10, height: 6 });
+		const board = [...shapes, ...sides, bridge];
 		assert.ok(!unroutedNets(board, netlist).includes("gnd"));
 		assert.equal(pourCopper(board, netlist).length, 1);
 	});
 
-	test("a pour keeps its raised clearance, and the full clearance from large round copper", () => {
+	test("a GND pour keeps 1.5 mm from a pour that raised its clearance to that, and the full board clearance from a large mounting ring", () => {
 		const { shapes, netlist, pour, at } = dividerBoard();
 		const isolated = pour("mid", -9, 8, { clearance: 1.5 });
 		const gndPour = pour("gnd", 3, 20);
@@ -534,8 +547,8 @@ describe("the design rules check", () => {
 		const alongEdge = trackSegments(
 			5100,
 			[
-				{ x: outline.x - 10, y: outline.y - 9.95 },
-				{ x: outline.x + 10, y: outline.y - 9.95 },
+				{ x: outline.x - 10, y: outline.y - 9.8 },
+				{ x: outline.x + 10, y: outline.y - 9.8 },
 			],
 			"F.Cu",
 			0.25,

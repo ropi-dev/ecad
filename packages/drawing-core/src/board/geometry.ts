@@ -140,10 +140,7 @@ export function segmentDistance(
 }
 
 /** Whether a point is inside a convex polygon, in either winding. */
-export function insidePolygon(
-	point: Point,
-	polygon: readonly Point[],
-): boolean {
+function insidePolygon(point: Point, polygon: readonly Point[]): boolean {
 	if (polygon.length < 3) return false;
 	let sign = 0;
 	for (let index = 0; index < polygon.length; index++) {

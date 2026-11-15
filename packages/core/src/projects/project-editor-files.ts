@@ -393,7 +393,7 @@ export function createProjectEditorFiles(
 		const snapshot = state.active;
 		if (!snapshot) return false;
 		if (!path || path === snapshot.manifest.drawing) {
-			clearEditors();
+			clearEditors("circuit");
 			return true;
 		}
 		const drawing = projectIndex(snapshot).drawingsByPath.get(path);

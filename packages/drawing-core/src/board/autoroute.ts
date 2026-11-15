@@ -9,13 +9,9 @@ import {
 import { hullDistance, lineEnds } from "#/board/geometry.ts";
 import type { BoardNetlist } from "#/board/netlist.ts";
 import {
-	bendCost,
-	directions,
 	free,
-	Heap,
 	layers,
-	open,
-	pitch,
+	type RoutingResult,
 	routingGrid,
 	viaCost,
 } from "#/board/routing-grid.ts";
@@ -29,13 +25,6 @@ export interface AutorouteOptions {
 	rippable?: readonly EditorShape[];
 	/** Called with what happened to each connection, for diagnosis. */
 	trace?: (event: string, line: RatsnestLine) => void;
-}
-
-export interface AutorouteResult {
-	/** New tracks and vias, with IDs from `nextId` upwards. */
-	shapes: EditorShape[];
-	/** Connections no route was found for. */
-	failed: RatsnestLine[];
 }
 
 interface Route {
@@ -54,25 +43,28 @@ interface Route {
  * crosses are ripped up and routed again later. Each rip-up makes crossing
  * that net dearer, so two nets cannot keep evicting each other.
  */
+const atPoint = (point: Point, item: CopperItem) =>
+	item.points.some(
+		(candidate) =>
+			Math.abs(candidate.x - point.x) < 1e-9 &&
+			Math.abs(candidate.y - point.y) < 1e-9,
+	);
+
 export function autoroute(
 	shapes: readonly EditorShape[],
 	netlist: BoardNetlist,
 	nextId: number,
 	options: AutorouteOptions,
-): AutorouteResult {
+): RoutingResult {
 	const { rules } = options;
 	const grid = routingGrid(shapes, netlist, rules);
 	if (!grid) return { shapes: [], failed: [] };
 	const {
-		columns,
-		rows,
 		cells,
 		width,
 		viaRadius,
 		base,
-		near: nearGrid,
 		indexOf,
-		center,
 		mark,
 		cellsInside,
 		pathShapes,
@@ -102,8 +94,8 @@ export function autoroute(
 			route.shapes.push(item.shape);
 		}
 	}
-	const routeHulls = (route: Route) =>
-		route.shapes.flatMap((shape) =>
+	const routeHulls = (shapes: readonly EditorShape[]) =>
+		shapes.flatMap((shape) =>
 			shape.kind === "line"
 				? [
 						{
@@ -127,7 +119,7 @@ export function autoroute(
 		}
 		routes.forEach((route, index) => {
 			if (!route.alive) return;
-			for (const { layers: on, hull } of routeHulls(route))
+			for (const { layers: on, hull } of routeHulls(route.shapes))
 				for (const layer of on)
 					mark(hull, layer, route.owner, live, false, (cell) => {
 						routeGrid[layer][cell] = index;
@@ -139,16 +131,8 @@ export function autoroute(
 	const strictBudget = 150_000;
 	const ripCost = 3;
 	const ripped = new Map<number, number>();
-	const cost = new Float32Array(cells * layers.length);
-	const parent = new Int32Array(cells * layers.length);
-	const heading = new Int8Array(cells * layers.length);
-	const closed = new Uint8Array(cells * layers.length);
-	const visited: number[] = [];
-	/**
-	 * A* from any source state to any target state. With `crossing`, earlier
-	 * routes of other nets are passable at a cost that grows each time their
-	 * net has been ripped up.
-	 */
+	let lastSteps = 0;
+	let lastQueue = 0;
 	const search = (
 		owner: number,
 		sources: readonly number[],
@@ -156,15 +140,6 @@ export function autoroute(
 		goal: Point,
 		crossing: boolean,
 	): number[] | undefined => {
-		for (const state of visited) {
-			cost[state] = 0;
-			parent[state] = 0;
-			heading[state] = 0;
-			closed[state] = 0;
-		}
-		visited.length = 0;
-		const track = crossing ? base.track : trackGrid;
-		const via = crossing ? base.via : viaGrid;
 		const penalty = (z: number, cell: number) => {
 			if (!crossing) return 0;
 			const route = routeGrid[z][cell];
@@ -173,110 +148,28 @@ export function autoroute(
 			if (!other?.alive || other.owner === owner) return 0;
 			return ripCost * (1 + (ripped.get(other.owner) ?? 0));
 		};
-		const heap = new Heap();
-		const estimate = (cell: number) => {
-			const point = center(cell);
-			const dx = Math.abs(point.x - goal.x);
-			const dy = Math.abs(point.y - goal.y);
-			return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
-		};
-		for (const state of sources) {
-			if (!open(track[Math.floor(state / cells)], state % cells, owner))
-				continue;
-			cost[state] = 1e-6;
-			parent[state] = -1;
-			heading[state] = 8;
-			visited.push(state);
-			heap.push(state, estimate(state % cells));
-		}
-		let steps = 0;
-		const limit = crossing ? budget : Math.min(budget, strictBudget);
-		while (heap.size && steps < limit) {
-			const state = heap.pop();
-			if (closed[state]) continue;
-			closed[state] = 1;
-			steps++;
-			if (targets.has(state)) {
-				const path: number[] = [];
-				for (let at = state; at >= 0; at = parent[at]) path.push(at);
-				return path.reverse();
-			}
-			const z = Math.floor(state / cells);
-			const cell = state % cells;
-			const column = cell % columns;
-			const row = Math.floor(cell / columns);
-			const reached = cost[state];
-			const from = heading[state];
-			const relax = (next: number, step: number, direction: number) => {
-				const total =
-					reached + step + (from !== 8 && direction !== from ? bendCost : 0);
-				if (closed[next] || (cost[next] && cost[next] <= total)) return;
-				if (!cost[next]) visited.push(next);
-				cost[next] = total;
-				parent[next] = state;
-				heading[next] = direction;
-				heap.push(next, total + estimate(next % cells));
-			};
-			for (let direction = 0; direction < 8; direction++) {
-				const [dx, dy] = directions[direction];
-				const nextColumn = column + dx;
-				const nextRow = row + dy;
-				if (
-					nextColumn < 0 ||
-					nextRow < 0 ||
-					nextColumn >= columns ||
-					nextRow >= rows
-				)
-					continue;
-				const nextCell = nextRow * columns + nextColumn;
-				const grid = track[z];
-				if (!open(grid, nextCell, owner)) continue;
-				if (
-					dx &&
-					dy &&
-					(!open(grid, row * columns + nextColumn, owner) ||
-						!open(grid, nextRow * columns + column, owner))
-				)
-					continue;
-				const near = nearGrid[z][nextCell];
-				relax(
-					z * cells + nextCell,
-					(dx && dy ? pitch * Math.SQRT2 : pitch) +
-						(near !== free && near !== owner ? pitch * 8 : 0) +
-						penalty(z, nextCell),
-					direction,
-				);
-			}
-			const other = 1 - z;
-			if (
-				open(via[0], cell, owner) &&
-				open(via[1], cell, owner) &&
-				open(track[other], cell, owner)
-			)
-				relax(
-					other * cells + cell,
-					viaCost + penalty(0, cell) + penalty(1, cell),
-					8,
-				);
-		}
-		lastSteps = steps;
-		lastQueue = heap.size;
-		return undefined;
+		const result = grid.search({
+			owner,
+			sources,
+			targets,
+			goals: [goal],
+			track: crossing ? base.track : trackGrid,
+			via: crossing ? base.via : viaGrid,
+			trackStep: (z, cell, length) => length + penalty(z, cell),
+			viaStep: (cell) => viaCost + penalty(0, cell) + penalty(1, cell),
+			limit: crossing ? budget : Math.min(budget, strictBudget),
+		});
+		lastSteps = result.steps;
+		lastQueue = result.queue;
+		return result.path;
 	};
-	let lastSteps = 0;
-	let lastQueue = 0;
 
 	const crossedRoutes = (added: readonly EditorShape[], owner: number) => {
-		const mine = routeHulls({
-			net: "",
-			owner,
-			shapes: [...added],
-			alive: true,
-		});
+		const mine = routeHulls(added);
 		const crossed = new Set<number>();
 		routes.forEach((route, index) => {
 			if (!route.alive || route.owner === owner) return;
-			for (const theirs of routeHulls(route))
+			for (const theirs of routeHulls(route.shapes))
 				for (const ours of mine)
 					if (
 						theirs.layers.some((layer) => ours.layers.includes(layer)) &&
@@ -313,17 +206,11 @@ export function autoroute(
 		if (!line) break;
 		const tries = (attempts.get(key(line)) ?? 0) + 1;
 		attempts.set(key(line), tries);
-		const near = (point: Point, item: CopperItem) =>
-			item.points.some(
-				(candidate) =>
-					Math.abs(candidate.x - point.x) < 1e-9 &&
-					Math.abs(candidate.y - point.y) < 1e-9,
-			);
 		const sourceItem = items.find(
-			(item) => item.net === line.net && near(line.from, item),
+			(item) => item.net === line.net && atPoint(line.from, item),
 		);
 		const targetItem = items.find(
-			(item) => item.net === line.net && near(line.to, item),
+			(item) => item.net === line.net && atPoint(line.to, item),
 		);
 		if (!sourceItem || !targetItem) {
 			given.add(key(line));

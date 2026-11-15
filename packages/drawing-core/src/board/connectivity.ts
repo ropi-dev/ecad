@@ -40,7 +40,7 @@ export interface CopperItem {
 
 const touching = 1e-6;
 
-export const isTrack = (shape: EditorShape) =>
+const isTrack = (shape: EditorShape) =>
 	shape.kind === "line" && isCopperLayer(shape.layer);
 
 export const isZone = (shape: EditorShape) =>

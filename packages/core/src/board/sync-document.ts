@@ -51,9 +51,7 @@ export function boardContext(
 	};
 }
 
-export async function footprintSources(
-	projectFootprints: readonly FootprintFile[],
-) {
+async function footprintSources(projectFootprints: readonly FootprintFile[]) {
 	const builtin = await loadBuiltinFootprints();
 	return (reference: FootprintReference): FootprintSource | undefined => {
 		const file =
