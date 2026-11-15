@@ -30,7 +30,7 @@ const fileSchema = z.object({
 	mode: z
 		.number()
 		.int()
-		.refine((mode) => (mode & ~0o4755) === 0),
+		.refine((mode) => [0o644, 0o755, 0o4755].includes(mode)),
 	size: count,
 	sha256: z.string().regex(/^[0-9a-f]{64}$/),
 	offset: count,

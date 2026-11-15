@@ -430,8 +430,12 @@ export class DesktopUpdater {
 		headers: Record<string, string>,
 		check: (response: Response) => void,
 		consume: (chunks: AsyncIterable<Uint8Array>) => Promise<void>,
+		signal?: AbortSignal,
 	) {
 		const controller = new AbortController();
+		const cancel = () => controller.abort(signal?.reason);
+		signal?.addEventListener("abort", cancel, { once: true });
+		if (signal?.aborted) cancel();
 		let stall: ReturnType<typeof setTimeout> | undefined;
 		const expectData = () => {
 			clearTimeout(stall);
@@ -468,6 +472,7 @@ export class DesktopUpdater {
 			);
 		} finally {
 			clearTimeout(stall);
+			signal?.removeEventListener("abort", cancel);
 			controller.abort();
 		}
 	}
@@ -570,27 +575,34 @@ export class DesktopUpdater {
 					this.set({ status: "downloading", latest, progress });
 				}
 			};
+			const cancel = new AbortController();
 			await eachLimit([...groups.values()], 4, async ([first, ...copies]) => {
 				if (!first) return;
 				const end = first.offset + first.length - 1;
-				await this.receive(
-					files.pack.url,
-					{ Range: `bytes=${first.offset}-${end}` },
-					(response) => {
-						const range = response.headers.get("content-range") ?? "";
-						if (
-							response.status !== 206 ||
-							!range.startsWith(`bytes ${first.offset}-${end}/`)
-						)
-							throw new Error("The release server ignored the byte range.");
-					},
-					(chunks) =>
-						writePackedFile(
-							counted(limited(chunks, first.length), count),
-							first,
-							join(tree, first.path),
-						),
-				);
+				try {
+					await this.receive(
+						files.pack.url,
+						{ Range: `bytes=${first.offset}-${end}` },
+						(response) => {
+							const range = response.headers.get("content-range") ?? "";
+							if (
+								response.status !== 206 ||
+								!range.startsWith(`bytes ${first.offset}-${end}/`)
+							)
+								throw new Error("The release server ignored the byte range.");
+						},
+						(chunks) =>
+							writePackedFile(
+								counted(limited(chunks, first.length), count),
+								first,
+								join(tree, first.path),
+							),
+						cancel.signal,
+					);
+				} catch (cause) {
+					cancel.abort(cause);
+					throw cause;
+				}
 				for (const copy of copies)
 					await copyFile(join(tree, first.path), join(tree, copy.path));
 			});

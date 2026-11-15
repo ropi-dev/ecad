@@ -440,7 +440,7 @@ async function withIncrementalRelease(
 		installed: string[];
 		built: { listing: string; version: string; out: string }[];
 		packed: Record<string, TreeFile>;
-		server: { ignoreRanges: boolean };
+		server: { ignoreRanges: boolean; hangThenCorrupt: boolean };
 		directory: string;
 	}) => Promise<void>,
 ) {
@@ -488,7 +488,8 @@ async function withIncrementalRelease(
 	const requests: string[] = [];
 	const installed: string[] = [];
 	const built: { listing: string; version: string; out: string }[] = [];
-	const server = { ignoreRanges: false };
+	const server = { ignoreRanges: false, hangThenCorrupt: false };
+	let ranges = 0;
 	const dpkgDeb = (...args: string[]) => {
 		const result = spawnSync("dpkg-deb", args, { encoding: "utf8" });
 		assert.equal(result.status, 0, result.stderr);
@@ -499,7 +500,7 @@ async function withIncrementalRelease(
 		architecture: "amd64",
 		temporaryDirectory: directory,
 		installedRoot: join(directory, "installed"),
-		timeout: 1000,
+		timeout: 10_000,
 		fetch: async (url, init) => {
 			const range = new Headers(init?.headers).get("range");
 			const name = url.split("/").at(-1) ?? "";
@@ -509,6 +510,26 @@ async function withIncrementalRelease(
 			if (name.endsWith(".files.zst")) {
 				const [, start, end] = /^bytes=(\d+)-(\d+)$/.exec(range ?? "") ?? [];
 				if (server.ignoreRanges || !start || !end) return new Response(pack);
+				const headers = {
+					"content-range": `bytes ${start}-${end}/${pack.length}`,
+				};
+				ranges++;
+				if (server.hangThenCorrupt && ranges === 1)
+					return new Response(
+						new ReadableStream({
+							start(controller) {
+								init?.signal?.addEventListener("abort", () =>
+									controller.error(init.signal?.reason),
+								);
+							},
+						}),
+						{ status: 206, headers },
+					);
+				if (server.hangThenCorrupt)
+					return new Response(new Uint8Array(Number(end) - Number(start) + 1), {
+						status: 206,
+						headers,
+					});
 				return new Response(pack.subarray(Number(start), Number(end) + 1), {
 					status: 206,
 					headers: {
@@ -656,3 +677,19 @@ test("the update manifest keeps every path inside usr", () => {
 			parsePackageManifest({ ...manifest, ...change }, expected),
 		);
 });
+
+test(
+	"a failed range download cancels the others and falls back at once",
+	{ skip: !hasDpkgDeb && "dpkg-deb is not installed" },
+	(t) =>
+		withIncrementalRelease(async ({ updater, installed, server }) => {
+			t.mock.method(console, "warn", () => undefined);
+			server.hangThenCorrupt = true;
+			await updater.check();
+			const started = Date.now();
+			await updater.install();
+			assert.equal(updater.state.status, "installed");
+			assert.ok(!installed[0]?.includes("/incremental/"));
+			assert.ok(Date.now() - started < 5000, "it did not wait for the stall");
+		}),
+);
