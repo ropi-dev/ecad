@@ -80,6 +80,7 @@ export function createBoardFootprint(
 	let children = footprintChildren(source.shapes);
 	if (options.flipped) children = children.map(mirrorChild);
 	const size = extent(children);
+	const labelLayer = options.flipped ? "B.SilkS" : "F.SilkS";
 	return {
 		id,
 		kind: "symbol",
@@ -89,14 +90,17 @@ export function createBoardFootprint(
 		height: size.height,
 		rotation: options.rotation ?? 0,
 		lineWidth: 0.12,
-		layer: options.flipped ? "B.SilkS" : "F.SilkS",
+		layer: labelLayer,
 		definitionId: `footprint:${footprintKey(source.reference)}`,
 		footprint: source.reference,
 		...(part.component ? { component: part.component } : {}),
 		...(options.flipped ? { flipped: true } : {}),
 		children,
 		texts: children.some(
-			(child) => child.kind === "text" && showsReference(child.text),
+			(child) =>
+				child.kind === "text" &&
+				child.layer === labelLayer &&
+				showsReference(child.text),
 		)
 			? []
 			: [

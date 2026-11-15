@@ -702,10 +702,14 @@ describe("the board view", () => {
 	});
 
 	test("footprint text shows the component's reference, value and footprint name, and follows schematic edits", () => {
-		const labelled = (text: string, y: number): EditorShape => ({
+		const labelled = (
+			text: string,
+			y: number,
+			layer: "F.Fab" | "F.SilkS" = "F.Fab",
+		): EditorShape => ({
 			id: y + 1,
 			kind: "text",
-			layer: "F.Fab",
+			layer,
 			x: 0,
 			y,
 			width: 2,
@@ -720,7 +724,7 @@ describe("the board view", () => {
 			name: "Fab resistor",
 			shapes: [
 				...required(source(r0805)).shapes,
-				labelled(`\${REFERENCE}`, 0),
+				labelled(`\${REFERENCE}`, 0, "F.SilkS"),
 				labelled(`\${VALUE} \${OTHER}`, 2),
 				labelled(`\${FOOTPRINT_NAME}`, 4),
 			],
@@ -754,6 +758,22 @@ describe("the board view", () => {
 		assert.deepEqual((placed[0] as BoardFootprint).texts, []);
 		assert.equal(
 			(updateFromSchematic(circuit).place[0] as BoardFootprint).texts.length,
+			1,
+		);
+		const onFab = {
+			...fab,
+			shapes: [...fab.shapes.slice(0, -3), labelled(`\${REFERENCE}`, 0)],
+		};
+		assert.equal(
+			(
+				synchronizeBoard({
+					shapes: [],
+					circuit,
+					footprintOf: () => onFab.reference,
+					source: () => onFab,
+					nextId: 1000,
+				}).place[0] as BoardFootprint
+			).texts.length,
 			1,
 		);
 		assert.ok(
@@ -819,6 +839,23 @@ describe("the board view", () => {
 		};
 		const [text] = symbolShapes(renamed);
 		assert.equal(text.kind === "text" && text.text, "R10");
+		const valued = {
+			...footprint,
+			children: [
+				{ ...footprint.children[0], text: `\${VALUE}`, width: 3.7 },
+			] as SymbolShape[],
+			attributes: { ...footprint.attributes, value: "4.7uF" },
+		};
+		const label = required(
+			symbolChildren(valued).find((item) => item.shape.kind === "text"),
+		);
+		const moved = replaceSymbolChild(valued, label.key, {
+			...label.shape,
+			x: label.shape.x + 1,
+		} as SymbolShape);
+		assert.deepEqual(moved.childOverrides?.[label.key], {
+			x: label.shape.x + 1,
+		});
 	});
 });
 

@@ -165,7 +165,11 @@ export function replaceSymbolChild(
 			...template,
 			...symbol.childOverrides?.[key],
 		} as TextShape;
+		const resized =
+			child.width !== original.width || child.height !== original.height;
 		child = unresolveFootprintTextShape(child, raw, symbol.attributes);
+		if (!resized && child.text === raw.text)
+			child = { ...child, width: raw.width, height: raw.height };
 		original = {
 			...original,
 			text: raw.text,
