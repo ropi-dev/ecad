@@ -68,32 +68,52 @@ function padNumberLabel(pad: PadShape, bottom: boolean): Label {
 	};
 }
 
+interface Glyph {
+	key: string;
+	drawn: ReturnType<typeof createTextMaterial>;
+	users: number;
+}
+
 function buildTexts(
 	layer: ReturnType<BoardLayerPlan["build"]>,
 	labels: readonly Label[],
+	cache: Map<string, Glyph>,
 ): ParsedGerberObject {
 	const group = new Group();
 	group.name = layer.name;
 	const quad = new PlaneGeometry(1, 1);
 	const glyphs = labels.map((text) => {
-		const drawn = createTextMaterial(
+		const key = JSON.stringify([
 			text.text,
 			text.horizontalAlign,
 			text.bold,
-		);
-		drawn.material.color.set(layer.color);
-		drawn.material.depthTest = true;
-		drawn.material.side = text.facing ? FrontSide : DoubleSide;
-		drawn.material.polygonOffset = true;
-		drawn.material.polygonOffsetFactor = -2;
-		drawn.material.polygonOffsetUnits = -2;
-		const mesh = new Mesh(quad, drawn.material);
+			!text.facing,
+			layer.color,
+		]);
+		let glyph = cache.get(key);
+		if (!glyph) {
+			const drawn = createTextMaterial(
+				text.text,
+				text.horizontalAlign,
+				text.bold,
+			);
+			drawn.material.color.set(layer.color);
+			drawn.material.depthTest = true;
+			drawn.material.side = text.facing ? FrontSide : DoubleSide;
+			drawn.material.polygonOffset = true;
+			drawn.material.polygonOffsetFactor = -2;
+			drawn.material.polygonOffsetUnits = -2;
+			glyph = { key, drawn, users: 0 };
+			cache.set(key, glyph);
+		}
+		glyph.users++;
+		const mesh = new Mesh(quad, glyph.drawn.material);
 		mesh.position.set(text.x, text.y, 0);
 		mesh.scale.set(text.width, text.height, 1);
 		mesh.rotation.set(0, text.facing === "bottom" ? Math.PI : 0, text.rotation);
 		mesh.renderOrder = TEXT_RENDER_ORDER;
 		group.add(mesh);
-		return drawn;
+		return glyph;
 	});
 	return {
 		...layer,
@@ -102,19 +122,27 @@ function buildTexts(
 		diagnostics: [],
 		dispose: () => {
 			quad.dispose();
-			for (const drawn of glyphs) drawn.dispose();
+			for (const glyph of glyphs) {
+				if (--glyph.users > 0) continue;
+				cache.delete(glyph.key);
+				glyph.drawn.dispose();
+			}
 		},
 	};
 }
 
-function buildLayer(plan: BoardLayerPlan): ParsedGerberObject {
+function buildLayer(
+	plan: BoardLayerPlan,
+	glyphs: Map<string, Glyph>,
+): ParsedGerberObject {
 	const layer = plan.build();
-	if (plan.texts) return buildTexts(layer, plan.texts.map(textLabel));
+	if (plan.texts) return buildTexts(layer, plan.texts.map(textLabel), glyphs);
 	if (plan.padNumbers) {
 		const { pads, bottom } = plan.padNumbers;
 		return buildTexts(
 			layer,
 			pads.map((pad) => padNumberLabel(pad, bottom)),
+			glyphs,
 		);
 	}
 	const compiled = compilePlanarGeometry(layer.objects);
@@ -160,7 +188,10 @@ export function FootprintBoardView({
 		onFlatChange: (flat: boolean) => void;
 		onBuildError: (message: string) => void;
 	}) {
-	const [builder] = useState(() => createBoardBuilder(buildLayer));
+	const [builder] = useState(() => {
+		const glyphs = new Map<string, Glyph>();
+		return createBoardBuilder((plan) => buildLayer(plan, glyphs));
+	});
 	useEffect(() => () => builder.dispose(), [builder]);
 	const [board, setBoard] = useState<ParsedGerberObject[]>();
 	useEffect(() => {
