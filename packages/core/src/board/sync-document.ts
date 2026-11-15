@@ -1,5 +1,8 @@
 import type { FootprintSource } from "@ecad/drawing-core/board/footprints.ts";
-import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
+import {
+	schematicFootprints,
+	synchronizeBoard,
+} from "@ecad/drawing-core/board/sync.ts";
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import { updateShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
@@ -34,11 +37,7 @@ export function boardContext(
 		circuitId === primaryPcbId
 			? snapshot.shapes
 			: (index.drawingsByCircuit.get(circuitId)?.file.shapes ?? []);
-	const symbols = new Map(
-		schematic.flatMap((shape) =>
-			shape.kind === "symbol" ? [[shape.id, shape] as const] : [],
-		),
-	);
+	const footprintOf = schematicFootprints(schematic);
 	const components = new Map(
 		circuit?.components.map((component) => [component.id, component]),
 	);
@@ -46,15 +45,7 @@ export function boardContext(
 		circuit,
 		footprintOf(componentId) {
 			const component = components.get(componentId);
-			if (!component) return undefined;
-			const ids = component.schematicShapeIds ?? [
-				...(component.schematicShapeId ? [component.schematicShapeId] : []),
-			];
-			for (const id of ids) {
-				const footprint = symbols.get(id)?.footprint;
-				if (footprint) return footprint;
-			}
-			return undefined;
+			return component && footprintOf(component);
 		},
 		projectFootprints: snapshot.footprints ?? [],
 	};
@@ -150,7 +141,7 @@ export async function synchronizeBoardStore(
 		placed: result.place.length,
 		updated: result.replace.length,
 		removed: result.remove.length,
-		missing: result.missing.map((entry) => entry.reference),
+		missing: result.missing,
 		stale: result.stale,
 	};
 }

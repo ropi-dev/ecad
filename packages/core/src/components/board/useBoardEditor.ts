@@ -40,7 +40,6 @@ import {
 } from "#/board/view.ts";
 import { createZoneScene } from "#/board/zone-scene.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
-import { fitTextShapes } from "#/components/editor/text.ts";
 import type { BoardGestures } from "#/components/editor/useCanvasGestures.ts";
 import { buildBoardStaticDisplay } from "#/drawing/display.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
@@ -88,11 +87,6 @@ export function useBoardEditor({
 	const netlist = useMemo(
 		() => boardNetlist(context.circuit),
 		[context.circuit],
-	);
-	const resolve = useCallback(
-		(shapes: EditorShape[]) =>
-			boardLayerView(fitTextShapes(shapes), hidden, active),
-		[hidden, active],
 	);
 	const live = enabled ? (draft ?? committed) : noShapes;
 	const fills = useMemo(
@@ -234,12 +228,8 @@ export function useBoardEditor({
 	);
 
 	return {
-		enabled,
 		rules,
 		netlist,
-		context,
-		resolve,
-		connectivity,
 		fills,
 		buildDisplay,
 		updateZones,
@@ -249,7 +239,6 @@ export function useBoardEditor({
 		clearSyncReport: () => setSyncReport(null),
 		flipSelection,
 		runChecks,
-		highlight,
 		unrouted: connectivity?.ratsnest.length ?? 0,
 	};
 }

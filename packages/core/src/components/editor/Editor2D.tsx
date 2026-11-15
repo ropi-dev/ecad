@@ -20,6 +20,7 @@ import {
 	footprintLayerView,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { ArrowLeft, CircuitBoard, Component, Cpu, Grid2x2 } from "lucide-react";
 import {
 	lazy,
@@ -142,7 +143,8 @@ export type EditorCanvasProps = Editor2DProps & {
 
 const NO_SHAPES: EditorShape[] = [];
 const NO_SELECTION: ReadonlySet<number> = new Set();
-const noSelection = NO_SELECTION;
+const flatBoard = (shapes: readonly EditorShape[]) =>
+	boardDisplay(shapes, NO_SELECTION, noLayers, "F.Cu").shapes;
 
 export function Editor2D(props: Editor2DProps = {}) {
 	return <EditorDocument {...props} Canvas={EditorCanvas} />;
@@ -264,9 +266,7 @@ function EditorCanvas({
 	const layerItemCounts = useMemo(() => {
 		const counts = new Map<FootprintLayer, number>();
 		if (isFootprint)
-			for (const shape of isBoard
-				? boardDisplay(drawing.shapes, noSelection, noLayers, "F.Cu").shapes
-				: drawing.shapes)
+			for (const shape of isBoard ? flatBoard(drawing.shapes) : drawing.shapes)
 				for (const layer of shapeLayers(shape))
 					counts.set(layer, (counts.get(layer) ?? 0) + 1);
 		return counts;
@@ -274,12 +274,7 @@ function EditorCanvas({
 	const everyLayerShapes = useMemo(
 		() =>
 			isBoard
-				? boardDisplay(
-						fitTextShapes(drawing.shapes),
-						noSelection,
-						noLayers,
-						"F.Cu",
-					).shapes
+				? flatBoard(fitTextShapes(drawing.shapes))
 				: isFootprint
 					? footprintLayerView(fitTextShapes(drawing.shapes), noLayers)
 					: [],
@@ -362,9 +357,7 @@ function EditorCanvas({
 				...draft.filter((shape) => !stored.has(shape.id)),
 			]);
 		}
-		return isBoard
-			? boardDisplay(shapes, noSelection, noLayers, "F.Cu").shapes
-			: shapes;
+		return isBoard ? flatBoard(shapes) : shapes;
 	}, [editor.draft, boardView, drawing.shapes, isBoard]);
 	useLayoutEffect(() => {
 		if (!isFootprint) return;
@@ -779,7 +772,16 @@ function EditorCanvas({
 				onSync: () => {
 					finishDrag(true);
 					finishWire();
-					void boardEditor.synchronize();
+					boardEditor.synchronize().catch((cause: unknown) =>
+						toastManager.add({
+							type: "error",
+							title: "Unable to update the board from its schematic.",
+							description: errorMessage(
+								cause,
+								"Unable to update the board from its schematic.",
+							),
+						}),
+					);
 				},
 				checksOpen: boardPanel === "checks",
 				onChecks: () =>
@@ -829,8 +831,10 @@ function EditorCanvas({
 							toastManager.add({
 								type: "error",
 								title: "Unable to export fabrication files",
-								description:
-									cause instanceof Error ? cause.message : String(cause),
+								description: errorMessage(
+									cause,
+									"Unable to export fabrication files",
+								),
 							}),
 						)
 						.finally(() => setExporting(false));

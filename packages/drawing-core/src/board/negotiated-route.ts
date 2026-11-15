@@ -1,41 +1,33 @@
+import type { AutorouteResult } from "#/board/autoroute.ts";
 import {
-	type AutorouteOptions,
-	type AutorouteResult,
-	blocked,
+	analyzeConnectivity,
+	type CopperItem,
+	copperItems,
+	type ZoneReach,
+} from "#/board/connectivity.ts";
+import type { BoardNetlist } from "#/board/netlist.ts";
+import {
+	bendCost,
 	directions,
 	free,
 	Heap,
 	layers,
-} from "#/board/autoroute.ts";
-import {
-	analyzeConnectivity,
-	type CopperItem,
-	type CopperLayer,
-	copperItems,
-} from "#/board/connectivity.ts";
-import {
-	boardOutlineSegments,
-	insideOutline,
-	outlineBounds,
-} from "#/board/drc.ts";
-import { type Hull, hullDistance } from "#/board/geometry.ts";
-import type { BoardNetlist } from "#/board/netlist.ts";
-import type {
-	EditorShape,
-	FillableShape,
-	LineShape,
-} from "#/drawing/schema.ts";
+	open,
+	pitch,
+	routingGrid,
+	viaCost,
+} from "#/board/routing-grid.ts";
+import type { BoardRules } from "#/board/rules.ts";
+import type { EditorShape } from "#/drawing/schema.ts";
 import type { Point } from "#/drawing/types.ts";
 
-export interface NegotiatedRouteOptions extends AutorouteOptions {
+export interface NegotiatedRouteOptions {
+	rules: BoardRules;
+	zoneReach?: ZoneReach;
 	/** Rounds of rerouting every net before giving up on overlaps. */
 	rounds?: number;
 	/** Nets left alone, such as a ground that zones connect. */
 	exclude?: ReadonlySet<string>;
-	/** History cost added to a shared cell after each round. */
-	historyCost?: number;
-	/** Factor the price of sharing grows by after each round. */
-	presentGrowth?: number;
 	/** Called once per round with the number of overlapping nets. */
 	progress?: (round: number, overlapping: number) => void;
 }
@@ -75,118 +67,26 @@ export function negotiatedRoute(
 	options: NegotiatedRouteOptions,
 ): AutorouteResult {
 	const { rules } = options;
-	const pitch = options.grid ?? 0.1;
-	const width = rules.trackWidth;
-	const viaRadius = rules.viaDiameter / 2;
-	const margin = pitch * 0.25;
-	const outline = boardOutlineSegments(shapes);
-	const bounds = outlineBounds(outline);
-	if (!bounds) return { shapes: [], failed: [] };
-	const originX = Math.floor(bounds.minX / pitch) * pitch;
-	const originY = Math.floor(bounds.minY / pitch) * pitch;
-	const columns = Math.ceil((bounds.maxX - originX) / pitch) + 1;
-	const rows = Math.ceil((bounds.maxY - originY) / pitch) + 1;
-	const cells = columns * rows;
+	const grid = routingGrid(shapes, netlist, rules);
+	if (!grid) return { shapes: [], failed: [] };
+	const {
+		items,
+		columns,
+		rows,
+		cells,
+		width,
+		viaRadius,
+		margin,
+		base,
+		near,
+		indexOf,
+		center,
+		cellsInside,
+		pathShapes,
+	} = grid;
 	const states = cells * layers.length;
-	const center = (cell: number): Point => ({
-		x: originX + (cell % columns) * pitch,
-		y: originY + Math.floor(cell / columns) * pitch,
-	});
-	const netIndex = new Map<string, number>();
-	const indexOf = (net: string | undefined) => {
-		if (net === undefined) return blocked;
-		let index = netIndex.get(net);
-		if (index === undefined) {
-			index = netIndex.size;
-			netIndex.set(net, index);
-		}
-		return index;
-	};
-
-	const baseTrack = layers.map(() => new Int32Array(cells).fill(free));
-	const baseVia = layers.map(() => new Int32Array(cells).fill(free));
-	const near = layers.map(() => new Int32Array(cells).fill(free));
-	const reachTrack = rules.clearance + width / 2 + margin;
-	const reachVia = rules.clearance + viaRadius + margin;
-	const nearReach = rules.clearance + width / 2 + 0.4;
-	const claim = (grid: Int32Array, cell: number, owner: number) => {
-		const current = grid[cell];
-		if (current === free) grid[cell] = owner;
-		else if (current !== owner) grid[cell] = blocked;
-	};
-	const markFixed = (
-		hull: Hull,
-		layer: number,
-		owner: number,
-		close: boolean,
-	) => {
-		const reach = Math.max(reachTrack, reachVia, close ? nearReach : 0);
-		let minX = Infinity;
-		let minY = Infinity;
-		let maxX = -Infinity;
-		let maxY = -Infinity;
-		for (const point of hull.points) {
-			minX = Math.min(minX, point.x);
-			minY = Math.min(minY, point.y);
-			maxX = Math.max(maxX, point.x);
-			maxY = Math.max(maxY, point.y);
-		}
-		const extent = hull.radius + reach;
-		const probe: Hull = { points: [{ x: 0, y: 0 }], radius: 0 };
-		const point = probe.points[0] as Point;
-		for (
-			let row = Math.max(0, Math.floor((minY - extent - originY) / pitch));
-			row <= Math.min(rows - 1, Math.ceil((maxY + extent - originY) / pitch));
-			row++
-		)
-			for (
-				let column = Math.max(0, Math.floor((minX - extent - originX) / pitch));
-				column <=
-				Math.min(columns - 1, Math.ceil((maxX + extent - originX) / pitch));
-				column++
-			) {
-				point.x = originX + column * pitch;
-				point.y = originY + row * pitch;
-				const distance = hullDistance(hull, probe);
-				if (distance >= reach) continue;
-				const cell = row * columns + column;
-				if (close && distance < nearReach) claim(near[layer], cell, owner);
-				if (distance < reachTrack) claim(baseTrack[layer], cell, owner);
-				if (distance < reachVia) claim(baseVia[layer], cell, owner);
-			}
-	};
-	const items = copperItems(shapes, netlist);
-	for (const item of items) {
-		if (item.kind === "zone") continue;
-		const owner = indexOf(item.net);
-		for (const layer of item.layers)
-			for (const hull of item.hulls)
-				markFixed(
-					hull,
-					layers.indexOf(layer),
-					owner,
-					item.kind === "pad" || item.kind === "track",
-				);
-	}
-	for (let cell = 0; cell < cells; cell++) {
-		const point = center(cell);
-		let edge = Infinity;
-		for (const [a, b] of outline)
-			edge = Math.min(
-				edge,
-				hullDistance(
-					{ points: [a, b], radius: 0 },
-					{ points: [point], radius: 0 },
-				),
-			);
-		const inside = insideOutline(point, outline);
-		for (let layer = 0; layer < layers.length; layer++) {
-			if (!inside || edge < rules.edgeClearance + width / 2)
-				baseTrack[layer][cell] = blocked;
-			if (!inside || edge < rules.edgeClearance + viaRadius)
-				baseVia[layer][cell] = blocked;
-		}
-	}
+	const baseTrack = base.track;
+	const baseVia = base.via;
 
 	const usageTrack = new Uint16Array(states);
 	const usageVia = new Uint16Array(states);
@@ -201,37 +101,7 @@ export function negotiatedRoute(
 	const trackOnVia = viaOnTrack;
 	const viaOnVia = disk(2 * viaRadius + rules.clearance + margin, pitch);
 
-	const cellsInside = (item: CopperItem) => {
-		const result: number[] = [];
-		for (const layer of item.layers) {
-			const z = layers.indexOf(layer);
-			const { minX, minY, maxX, maxY } = item.bounds;
-			for (
-				let row = Math.max(0, Math.ceil((minY - originY) / pitch));
-				row <= Math.min(rows - 1, Math.floor((maxY - originY) / pitch));
-				row++
-			)
-				for (
-					let column = Math.max(0, Math.ceil((minX - originX) / pitch));
-					column <= Math.min(columns - 1, Math.floor((maxX - originX) / pitch));
-					column++
-				) {
-					const cell = row * columns + column;
-					const point = center(cell);
-					if (
-						item.hulls.some(
-							(hull) =>
-								hullDistance(hull, { points: [point], radius: 0 }) <= 1e-9,
-						)
-					)
-						result.push(z * cells + cell);
-				}
-		}
-		return result;
-	};
-
-	const wanted = (net: string) =>
-		(!options.nets || options.nets.has(net)) && !options.exclude?.has(net);
+	const wanted = (net: string) => !options.exclude?.has(net);
 	const connectivity = analyzeConnectivity(items, options.zoneReach);
 	const groupsByNet = new Map<string, Map<number, CopperItem[]>>();
 	for (const item of items) {
@@ -266,15 +136,11 @@ export function negotiatedRoute(
 		}))
 		.filter((entry) => entry.groups.every((group) => group.states.length));
 
-	const open = (grid: Int32Array, cell: number, owner: number) =>
-		grid[cell] === free || grid[cell] === owner;
 	const cost = new Float32Array(states);
 	const parent = new Int32Array(states);
 	const heading = new Int8Array(states);
 	const closed = new Uint8Array(states);
 	const visited: number[] = [];
-	const viaCost = options.viaCost ?? 1.5;
-	const bendCost = options.bendCost ?? pitch * 2;
 	let present = 0.5;
 
 	const search = (
@@ -518,12 +384,11 @@ export function negotiatedRoute(
 			contested++;
 			for (const path of route.paths)
 				for (const state of path)
-					if (usageTrack[state] > 1)
-						history[state] += options.historyCost ?? 0.3;
+					if (usageTrack[state] > 1) history[state] += 0.3;
 		}
 		options.progress?.(round, contested);
 		if (!contested) break;
-		present *= options.presentGrowth ?? 1.5;
+		present *= 1.5;
 	}
 
 	// Keep nets in order while they overlap nothing kept before them.
@@ -537,87 +402,11 @@ export function negotiatedRoute(
 	}
 
 	let id = nextId;
-	const output: EditorShape[] = [];
-	const addTrack = (
-		from: Point,
-		to: Point,
-		layer: CopperLayer,
-		net: string,
-	) => {
-		const dx = to.x - from.x;
-		const dy = to.y - from.y;
-		const track: LineShape = {
-			id: id++,
-			kind: "line",
-			layer,
-			x: (from.x + to.x) / 2,
-			y: (from.y + to.y) / 2,
-			width: Math.hypot(dx, dy),
-			height: 1,
-			rotation: Math.atan2(dy, dx),
-			lineWidth: width,
-			net,
-		};
-		output.push(track);
-	};
-	const addVia = (at: Point, net: string) => {
-		const via: FillableShape = {
-			id: id++,
-			kind: "circle",
-			layer: "F.Cu",
-			x: at.x,
-			y: at.y,
-			width: rules.viaDiameter,
-			height: rules.viaDiameter,
-			rotation: 0,
-			lineWidth: 0.15,
-			filled: true,
-			via: { drill: rules.viaDrill },
-			net,
-		};
-		output.push(via);
-	};
-	for (const route of kept)
-		for (const path of route.paths) {
-			let run: Point[] = [];
-			let runLayer = Math.floor(path[0] / cells);
-			const flush = () => {
-				const corners: Point[] = [];
-				for (const point of run) {
-					const previous = corners[corners.length - 1];
-					const before = corners[corners.length - 2];
-					if (
-						before &&
-						previous &&
-						Math.abs(
-							(previous.x - before.x) * (point.y - previous.y) -
-								(previous.y - before.y) * (point.x - previous.x),
-						) < 1e-9
-					)
-						corners[corners.length - 1] = point;
-					else corners.push(point);
-				}
-				for (let index = 1; index < corners.length; index++)
-					addTrack(
-						corners[index - 1],
-						corners[index],
-						layers[runLayer],
-						route.net,
-					);
-			};
-			for (const state of path) {
-				const z = Math.floor(state / cells);
-				const point = center(state % cells);
-				if (z !== runLayer) {
-					flush();
-					addVia(point, route.net);
-					run = [];
-					runLayer = z;
-				}
-				run.push(point);
-			}
-			flush();
-		}
+	const output: EditorShape[] = kept.flatMap((route) =>
+		route.paths.flatMap((path) =>
+			pathShapes(path, route.net).map((shape) => ({ ...shape, id: id++ })),
+		),
+	);
 	const remaining = analyzeConnectivity(
 		copperItems([...shapes, ...output], netlist),
 		options.zoneReach,

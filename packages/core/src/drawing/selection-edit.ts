@@ -4,6 +4,7 @@ import {
 } from "@ecad/drawing-core/board/footprints.ts";
 import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
+import type { FillableShapeKind } from "@ecad/drawing-core/drawing/shape-kinds.ts";
 import {
 	boxBorder,
 	type EditorShape,
@@ -161,6 +162,11 @@ const attributeLabels: Partial<Record<ShapeAttribute, string>> = {
  * The replacements and history label for an Attributes panel edit, or
  * `undefined` when the edit does not apply to the selection.
  */
+export const canCarryNet = (
+	shape: EditorShape,
+): shape is Extract<EditorShape, { kind: "line" | FillableShapeKind }> =>
+	shape.kind === "line" || (isFillableShape(shape) && !isPad(shape));
+
 export function applySelectionEdit(
 	edit: SelectionEdit,
 	context: SelectionEditContext,
@@ -337,11 +343,7 @@ export function applySelectionEdit(
 		case "net":
 			return {
 				replacements: selection.flatMap((shape) => {
-					if (
-						(shape.kind !== "line" &&
-							!(isFillableShape(shape) && !isPad(shape))) ||
-						(shape.locked && !context.allowLocked)
-					)
+					if (!canCarryNet(shape) || (shape.locked && !context.allowLocked))
 						return [];
 					const { net: _net, ...rest } = shape;
 					return [edit.net ? { ...rest, net: edit.net } : rest];

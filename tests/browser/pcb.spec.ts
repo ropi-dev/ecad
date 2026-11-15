@@ -9,7 +9,7 @@ import { expect, test } from "./seeded-project";
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 
-test("the RP2350A example opens as a routed PCB that passes DRC and switches views", async ({
+test("a designer adds the RP2350A example and gets a routed board in the same file as its schematic, which passes the check", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
@@ -54,12 +54,10 @@ test("the RP2350A example opens as a routed PCB that passes DRC and switches vie
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"PCB editor · RP2350A",
 	);
-	await expect
-		.poll(async () => (await documentState(page)).editorShapes.length)
-		.toBeGreaterThan(100);
+	await expect(page.getByText("All connections routed")).toBeVisible();
 });
 
-test("the start page's example opens its PCB in the editor", async ({
+test("opening the RP2350A example from the start page lands in its PCB", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");

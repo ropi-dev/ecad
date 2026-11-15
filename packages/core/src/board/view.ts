@@ -1,4 +1,7 @@
-import type { RatsnestLine } from "@ecad/drawing-core/board/connectivity.ts";
+import {
+	isZone,
+	type RatsnestLine,
+} from "@ecad/drawing-core/board/connectivity.ts";
 import {
 	type BoardFootprint,
 	isBoardFootprint,
@@ -20,9 +23,6 @@ import {
 const itemBase = 2 ** 40;
 const itemsPerFootprint = 8192;
 const ratsnestBase = 2 ** 51;
-
-const isZoneShape = (shape: EditorShape) =>
-	shape.kind === "rectangle" && shape.zone !== undefined;
 
 const footprintVisible = (
 	footprint: BoardFootprint,
@@ -49,7 +49,7 @@ export function boardLayerView(
 	for (const shape of shapes) {
 		if (isBoardFootprint(shape)) {
 			if (footprintVisible(shape, hidden)) footprints.push(shape);
-		} else if (isZoneShape(shape)) zones.push(shape);
+		} else if (isZone(shape)) zones.push(shape);
 		else rest.push(shape);
 	}
 	const activeSide = active.startsWith("B.");
@@ -90,11 +90,6 @@ function footprintDisplayItems(
 	expansions.set(footprint, items);
 	return items;
 }
-
-export const displayOwner = (id: number) =>
-	id >= itemBase && id < ratsnestBase
-		? Math.floor((id - itemBase) / itemsPerFootprint)
-		: id;
 
 export interface BoardDisplay {
 	shapes: EditorShape[];

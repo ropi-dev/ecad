@@ -1,8 +1,6 @@
 import {
-	type BoardFootprint,
 	type BoardPad,
 	boardPads,
-	footprintItems,
 	isBoardFootprint,
 } from "#/board/footprints.ts";
 import {
@@ -16,6 +14,7 @@ import {
 import type { BoardNetlist } from "#/board/netlist.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import { mergeBounds } from "#/drawing/shape-geometry.ts";
+import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import { copperLayers, isCopperLayer } from "#/footprint/layers.ts";
 import { isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
@@ -93,8 +92,7 @@ export function copperItems(
 	for (const shape of shapes) {
 		if (isBoardFootprint(shape)) {
 			const pads = padsOf.get(shape.id) ?? [];
-			for (const child of footprintItems(shape as BoardFootprint)) {
-				const part = child as EditorShape;
+			for (const part of symbolShapes(shape) as EditorShape[]) {
 				if (isPad(part) || part.kind === "text") continue;
 				if (isVia(part)) {
 					const hulls = shapeHulls(part);
@@ -143,14 +141,7 @@ export function copperItems(
 			: isZone(shape)
 				? "zone"
 				: "graphic";
-		const net =
-			(shape.kind === "line" ||
-				shape.kind === "rectangle" ||
-				shape.kind === "circle" ||
-				shape.kind === "triangle") &&
-			shape.net
-				? shape.net
-				: undefined;
+		const net = "net" in shape ? shape.net : undefined;
 		add({
 			shapeId: shape.id,
 			kind,

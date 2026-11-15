@@ -73,7 +73,6 @@ function ProjectDocument() {
 				drawings: project.project?.drawings,
 				footprints: project.project?.footprints,
 				boards: project.project?.boards?.map((board) => board.circuitId),
-				editorBoard: project.editorBoard?.file.circuitId,
 				editorDrawing: project.editorDrawing?.file.id,
 				editorShapes: editor.shapes,
 			})}

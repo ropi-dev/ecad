@@ -673,7 +673,6 @@ export const savedDrawingShapesSchema = z.preprocess(
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export type ShapePad = z.output<typeof padSchema>;
 export type ShapeVia = z.output<typeof viaSchema>;
-export type ShapeZone = z.output<typeof zoneSchema>;
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
 export interface PinShape extends z.output<typeof pinShapeSchema> {}

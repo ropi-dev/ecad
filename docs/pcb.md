@@ -76,7 +76,7 @@ Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over both copp
 
 **Add file → Examples → RP2350A reference design**, or **Open an example** on the start page, adds the Raspberry Pi RP2350A minimal design to the project: a schematic, its circuit and a routed two-layer board with ground zones on both sides, joined by a via in each island of copper. It has the chip and its switching core regulator, W25Q128JVS flash, a 12 MHz crystal, a Micro-B USB connector with 27 Ω series resistors, an AMS1117 3.3 V regulator, BOOTSEL and RUN buttons, an SWD header and two 20-pin GPIO headers.
 
-`pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about three minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
+`pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about five minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
 
 ## File format
 
@@ -110,4 +110,4 @@ The board belongs to the file's circuit and takes its name. A drawing without a 
 
 ## Code
 
-`packages/drawing-core/src/board/` holds the headless model: `footprints.ts` places and flips footprints and lists their pads, `netlist.ts` maps pads to circuit nets, `connectivity.ts` groups copper and builds the ratsnest, `drc.ts` checks the rules and reads the outline, `sync.ts` brings a board up to date with its circuit, and `autoroute.ts` routes. `packages/core/src/board/` adds the saved format, zone fills (`fill.ts`, with the polygon operations the Gerber viewer uses), the flat view's display (`view.ts`), routing helpers, the Gerber writer and the schematic sync for an open document. `components/board/useBoardEditor.ts` connects them to `Editor2D`, which runs in board mode when the project opens a board.
+`packages/drawing-core/src/board/` holds the headless model: `footprints.ts` places and flips footprints and lists their pads, `netlist.ts` maps pads to circuit nets, `connectivity.ts` groups copper and builds the ratsnest, `drc.ts` checks the rules and reads the outline, `sync.ts` brings a board up to date with its circuit, and `negotiated-route.ts` and `autoroute.ts` route on the grid `routing-grid.ts` builds. `packages/core/src/board/` adds the saved format, zone fills (`fill.ts`, which subtracts copper with Clipper), the flat view's display (`view.ts`), routing helpers, the Gerber writer and the schematic sync for an open document. `components/board/useBoardEditor.ts` connects them to `Editor2D`, which runs in board mode when the project opens a board.

@@ -35,7 +35,7 @@ export interface BoardSyncResult {
 	replace: EditorShape[];
 	remove: number[];
 	/** Components without a footprint, or whose footprint is not available. */
-	missing: { reference: string; footprint?: FootprintReference }[];
+	missing: string[];
 	/** Tracks, vias and zones left on a net the circuit no longer has. */
 	stale: number;
 }
@@ -82,10 +82,7 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 		const source = reference ? input.source(reference) : undefined;
 		const existing = placed.get(component.id);
 		if (!reference || !source) {
-			result.missing.push({
-				reference: component.reference,
-				...(reference ? { footprint: reference } : {}),
-			});
+			result.missing.push(component.reference);
 			continue;
 		}
 		if (!existing) {
@@ -163,7 +160,7 @@ function renamedCopper(
 	const stale = (net: string | undefined): net is string =>
 		net !== undefined && !netlist.nets.has(net);
 	if (!items.some((item) => stale(item.net))) return { replace: [], stale: 0 };
-	const votes = new Map<string, Map<string, number>>();
+	const votes = new Map<string, Set<string>>();
 	nearbyPairs(items, 1e-6, (a, b) => {
 		for (const [own, pad] of [
 			[a, b],
@@ -172,8 +169,8 @@ function renamedCopper(
 			if (own.kind !== "track" && own.kind !== "via") continue;
 			if (!stale(own.net) || pad.kind !== "pad" || !pad.net) continue;
 			if (!sharesLayer(own, pad) || itemDistance(own, pad) > 1e-6) continue;
-			const tally = votes.get(own.net) ?? new Map<string, number>();
-			tally.set(pad.net, (tally.get(pad.net) ?? 0) + 1);
+			const tally = votes.get(own.net) ?? new Set<string>();
+			tally.add(pad.net);
 			votes.set(own.net, tally);
 		}
 	});
@@ -192,4 +189,21 @@ function renamedCopper(
 		return [{ ...shape, net: next }];
 	});
 	return { replace, stale: left };
+}
+
+export function schematicFootprints(schematic: readonly EditorShape[]) {
+	const symbols = new Map(
+		schematic.flatMap((shape) =>
+			shape.kind === "symbol" ? [[shape.id, shape] as const] : [],
+		),
+	);
+	return (component: CircuitComponent): FootprintReference | undefined => {
+		for (const id of component.schematicShapeIds ?? [
+			component.schematicShapeId ?? 0,
+		]) {
+			const footprint = symbols.get(id)?.footprint;
+			if (footprint) return footprint;
+		}
+		return undefined;
+	};
 }

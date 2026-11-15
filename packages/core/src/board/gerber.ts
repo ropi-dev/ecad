@@ -7,11 +7,10 @@ import {
 	rectangleCorners,
 	shapeHulls,
 } from "@ecad/drawing-core/board/geometry.ts";
-import type {
-	EditorShape,
-	SymbolShape,
+import {
+	type EditorShape,
+	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import { symbolShapes } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
@@ -143,11 +142,9 @@ class GerberWriter {
 }
 
 /** Board items with each footprint taken apart, in board coordinates. */
-function flatItems(
-	shapes: readonly EditorShape[],
-): (EditorShape | SymbolShape)[] {
+function flatItems(shapes: readonly EditorShape[]): EditorShape[] {
 	return shapes.flatMap((shape) =>
-		isBoardFootprint(shape) ? [...symbolShapes(shape)] : [shape],
+		isBoardFootprint(shape) ? (symbolShapes(shape) as EditorShape[]) : [shape],
 	);
 }
 
@@ -222,12 +219,12 @@ export function exportFabrication(
 		}
 		for (const shape of items) {
 			if (shape.kind === "text") continue;
-			if (isZone(shape as EditorShape)) continue;
-			const layers = shapeLayers(shape as EditorShape);
-			const copper = shapeLayer(shape as EditorShape);
-			if (isPad(shape as EditorShape) || isVia(shape as EditorShape)) {
+			if (isZone(shape)) continue;
+			const layers = shapeLayers(shape);
+			const copper = shapeLayer(shape);
+			if (isPad(shape) || isVia(shape)) {
 				const onCopper = layers.includes(target.layer);
-				const pad = isPad(shape as EditorShape);
+				const pad = isPad(shape);
 				const maskSide = layers.some(
 					(layer) => maskLayer[layer] === target.layer,
 				);
@@ -236,15 +233,14 @@ export function exportFabrication(
 					(shape as { pad: { paste?: boolean } }).pad.paste &&
 					pasteLayer[copper] === target.layer;
 				if (onCopper || pasteSide)
-					for (const hull of shapeHulls(shape as EditorShape))
-						writer.hull(hull);
+					for (const hull of shapeHulls(shape)) writer.hull(hull);
 				else if (pad && maskSide)
-					for (const hull of shapeHulls(shape as EditorShape))
+					for (const hull of shapeHulls(shape))
 						writer.hull(hull, maskExpansion);
 				continue;
 			}
 			if (shape.layer !== target.layer) continue;
-			drawGraphic(writer, shape as EditorShape);
+			drawGraphic(writer, shape);
 		}
 		files.push({ name: `${name}-${target.file}`, content: writer.toString() });
 	}
@@ -252,10 +248,10 @@ export function exportFabrication(
 	return files;
 }
 
-function drillFile(items: readonly (EditorShape | SymbolShape)[]): string {
+function drillFile(items: readonly EditorShape[]): string {
 	const holes = new Map<string, Point[]>();
 	for (const shape of items) {
-		const drill = shapeDrill(shape as EditorShape);
+		const drill = shapeDrill(shape);
 		if (drill === undefined) continue;
 		const key = drill.toFixed(3);
 		const list = holes.get(key) ?? [];

@@ -41,15 +41,11 @@ const ring = (points: readonly Point[]): Ring =>
 const scale = 1e6;
 const offsetTolerance = 0.002;
 
-function clipperPath(points: readonly Point[] | Ring): ClipperLib.Path {
-	const path = points.map((point) =>
-		Array.isArray(point)
-			? { X: Math.round(point[0] * scale), Y: Math.round(point[1] * scale) }
-			: {
-					X: Math.round((point as Point).x * scale),
-					Y: Math.round((point as Point).y * scale),
-				},
-	);
+function clipperPath(points: Ring): ClipperLib.Path {
+	const path = points.map(([x, y]) => ({
+		X: Math.round(x * scale),
+		Y: Math.round(y * scale),
+	}));
 	return ClipperLib.Clipper.Orientation(path) ? path : path.reverse();
 }
 
@@ -94,7 +90,7 @@ function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
 /** @return `region` less the union of `obstacles` and `keepOut`, computed in integer nanometres. */
 function subtractObstacles(
 	region: MultiPolygon,
-	obstacles: readonly (readonly Point[])[],
+	obstacles: readonly Ring[],
 	keepOut: ClipperLib.Paths = [],
 ): MultiPolygon {
 	const clipper = new ClipperLib.Clipper();
@@ -120,7 +116,7 @@ function subtractObstacles(
 const arc = Math.PI / 16;
 
 /** Closed loops chained from outline segments whose ends meet. */
-export function outlineLoops(
+function outlineLoops(
 	segments: readonly (readonly [Point, Point])[],
 ): Point[][] {
 	const key = (point: Point) =>
@@ -182,9 +178,7 @@ const fillCache = new WeakMap<
 	{ netlist: BoardNetlist; rules: BoardRules; fills: ZoneFill[] }
 >();
 
-interface EdgeGrid {
-	cells: Map<string, Hull[]>;
-}
+type EdgeGrid = Map<string, Hull[]>;
 
 const gridSize = 1;
 const reachLimit = 1;
@@ -220,7 +214,7 @@ function polygonEdges(polygon: MultiPolygon[number]): EdgeGrid {
 					else cells.set(key, [hull]);
 				}
 		});
-	grid = { cells };
+	grid = cells;
 	edgeCache.set(polygon, grid);
 	return grid;
 }
@@ -240,7 +234,7 @@ function fillDistance(
 	let distance = within;
 	const { minX, minY, maxX, maxY } = item.bounds;
 	for (const polygon of polygons) {
-		const { cells } = polygonEdges(polygon);
+		const cells = polygonEdges(polygon);
 		for (
 			let cx = Math.floor((minX - within) / gridSize);
 			cx <= Math.floor((maxX + within) / gridSize);
@@ -291,7 +285,9 @@ export function fillZones(
 		const interior = boardInterior(shapes);
 		const edges = boardOutlineSegments(shapes).map((segment) => {
 			const hull = { points: segment, radius: 0 };
-			return hullPolygon(hull, circumscribed(hull, rules.edgeClearance), arc);
+			return ring(
+				hullPolygon(hull, circumscribed(hull, rules.edgeClearance), arc),
+			);
 		});
 		for (const zone of zones) {
 			const layer = zone.layers[0];
@@ -302,7 +298,7 @@ export function fillZones(
 			region = interior.length
 				? combinePolygons(region, combinePolygons(region, interior, true), true)
 				: [];
-			const obstacles: Point[][] = [...edges];
+			const obstacles: Ring[] = [...edges];
 			const others = items.filter(
 				(item) =>
 					item !== zone &&
@@ -314,7 +310,7 @@ export function fillZones(
 			for (const item of others)
 				for (const hull of item.hulls)
 					obstacles.push(
-						hullPolygon(hull, circumscribed(hull, clearance), arc),
+						ring(hullPolygon(hull, circumscribed(hull, clearance), arc)),
 					);
 			const earlier = regions
 				.filter(
@@ -397,10 +393,10 @@ function polygonGap(
 		return 0;
 	let gap = within;
 	for (const left of a)
-		for (const edge of new Set([...polygonEdges(left).cells.values()].flat())) {
+		for (const edge of new Set([...polygonEdges(left).values()].flat())) {
 			const [p, q] = edge.points;
 			for (const right of b) {
-				const { cells } = polygonEdges(right);
+				const cells = polygonEdges(right);
 				for (
 					let cx = Math.floor((Math.min(p.x, q.x) - gap) / gridSize);
 					cx <= Math.floor((Math.max(p.x, q.x) + gap) / gridSize);

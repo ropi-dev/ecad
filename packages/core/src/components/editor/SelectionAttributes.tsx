@@ -66,7 +66,7 @@ import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstance
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { LabelRole } from "#/drawing/placement.ts";
-import type { SelectionEdit } from "#/drawing/selection-edit.ts";
+import { canCarryNet, type SelectionEdit } from "#/drawing/selection-edit.ts";
 
 export const numberInputClassName = "ui-input w-28 pr-8 text-right";
 export const textInputClassName = "ui-input w-36";
@@ -518,13 +518,6 @@ function viaRows(
 	];
 }
 
-const netCapable = (shape: EditorShape) =>
-	shape.kind === "line" ||
-	((shape.kind === "rectangle" ||
-		shape.kind === "circle" ||
-		shape.kind === "triangle") &&
-		!isPad(shape));
-
 /** Net, zone and side rows for items on a board. */
 function boardRows(
 	shapes: EditorShape[],
@@ -535,7 +528,7 @@ function boardRows(
 	const rows: [string, ReactNode][] = [];
 	const copper = shapes.filter(
 		(shape) =>
-			netCapable(shape) &&
+			canCarryNet(shape) &&
 			(isVia(shape) || shape.layer === "F.Cu" || shape.layer === "B.Cu"),
 	);
 	if (copper.length === shapes.length && copper.length) {

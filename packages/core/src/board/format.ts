@@ -70,8 +70,6 @@ export const boardDataSchema = z.strictObject({
 	shapes: boardShapesSchema,
 });
 
-export type BoardData = z.output<typeof boardDataSchema>;
-
 export const boardFileSchema = boardDataSchema.extend({
 	circuitId: z.string().min(1).max(200),
 	name: boardName,
@@ -79,7 +77,7 @@ export const boardFileSchema = boardDataSchema.extend({
 
 export type BoardFile = z.output<typeof boardFileSchema>;
 
-export function boardData(file: BoardFile): BoardData {
+export function boardData(file: BoardFile): z.output<typeof boardDataSchema> {
 	return { units: file.units, rules: file.rules, shapes: file.shapes };
 }
 

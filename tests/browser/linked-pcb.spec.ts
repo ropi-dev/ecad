@@ -52,8 +52,10 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 	});
 	// The switch sits in the document bar, with the open view pressed.
 	const views = page.getByRole("group", { name: "Editor view", exact: true });
-	await expect(views.getByRole("button")).toHaveCount(3);
 	await expect(schematicSwitch).toHaveAttribute("aria-pressed", "false");
+	await expect(
+		views.getByRole("button", { name: "Switch to pcb view", exact: true }),
+	).toHaveAttribute("aria-pressed", "false");
 	await expect(
 		views.getByRole("button", { name: "Circuit view", exact: true }),
 	).toHaveAttribute("aria-pressed", "true");

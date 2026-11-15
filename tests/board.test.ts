@@ -1,27 +1,34 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import { generateDefaultFootprints } from "@ecad/default-footprints";
 import { autoroute } from "@ecad/drawing-core/board/autoroute.ts";
 import {
 	analyzeConnectivity,
 	copperItems,
 } from "@ecad/drawing-core/board/connectivity.ts";
-import { checkBoard } from "@ecad/drawing-core/board/drc.ts";
+import { checkBoard, type DrcKind } from "@ecad/drawing-core/board/drc.ts";
 import {
+	type BoardFootprint,
 	boardPads,
 	type FootprintSource,
 	flipBoardFootprint,
-	isBoardFootprint,
 } from "@ecad/drawing-core/board/footprints.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
-import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
-import { defaultBoardRules } from "@ecad/drawing-core/board/rules.ts";
+import {
+	type BoardNetlist,
+	boardNetlist,
+} from "@ecad/drawing-core/board/netlist.ts";
+import {
+	type BoardRules,
+	defaultBoardRules,
+} from "@ecad/drawing-core/board/rules.ts";
 import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
 import {
 	type Circuit,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
@@ -33,9 +40,9 @@ import {
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { trackPath, trackSegment, trackSegments } from "#/board/routing.ts";
-import { boardDisplay, boardLayerView } from "#/board/view.ts";
+import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
+import { parseGerber } from "#/formats/gerber/index.ts";
 import { projectFileSelections } from "#/projects/file-url.ts";
-import { projectIndex } from "#/projects/project-index.ts";
 import {
 	type ProjectDirectory,
 	ProjectRepository,
@@ -49,18 +56,19 @@ const source = (reference: FootprintReference): FootprintSource | undefined => {
 	const file = library.get(reference.id);
 	return file && { reference, name: file.name, shapes: file.shapes };
 };
-const resistor = { library: "builtin", id: "r_0805_2012metric" } as const;
+const r0805 = { library: "builtin", id: "r_0805_2012metric" } as const;
+const r0603 = { library: "builtin", id: "r_0603_1608metric" } as const;
 
-function twoResistors(): Circuit {
-	const circuit = createCircuit("Divider", "pcb-main").circuit;
-	const pin = (component: string, number: string) => ({
-		id: `${component}.${number}`,
-		name: "",
-		number,
-		electricalType: "passive" as const,
-	});
+const pin = (component: string, number: string) => ({
+	id: `${component}.${number}`,
+	name: "",
+	number,
+	electricalType: "passive" as const,
+});
+
+function dividerCircuit(): Circuit {
 	return {
-		...circuit,
+		...createCircuit("Divider", "pcb-main").circuit,
 		components: ["R1", "R2"].map((reference) => ({
 			id: reference,
 			reference,
@@ -75,257 +83,589 @@ function twoResistors(): Circuit {
 	};
 }
 
-function placed(circuit: Circuit, shapes: EditorShape[] = []) {
-	const result = synchronizeBoard({
+function updateFromSchematic(
+	circuit: Circuit,
+	shapes: readonly EditorShape[] = [],
+	footprintOf: (reference: string) => FootprintReference | undefined = () =>
+		r0805,
+) {
+	return synchronizeBoard({
 		shapes,
 		circuit,
-		footprintOf: () => resistor,
+		footprintOf: (component) => footprintOf(component.reference),
 		source,
-		nextId: 1,
+		nextId: 1000,
 	});
-	return [...shapes, ...result.place];
 }
 
-test("syncing a board places one footprint per component and keeps placed ones", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	assert.equal(shapes.length, 2);
-	assert.ok(shapes.every(isBoardFootprint));
-	assert.deepEqual(
-		shapes.map(
-			(shape) => shape.kind === "symbol" && shape.attributes.reference,
-		),
-		["R1", "R2"],
-	);
-	const moved = shapes.map((shape) => ({ ...shape, x: shape.x + 10 }));
-	const again = synchronizeBoard({
-		shapes: moved,
-		circuit,
-		footprintOf: () => resistor,
-		source,
-		nextId: 3,
-	});
-	assert.deepEqual(again.place, []);
-	assert.deepEqual(again.remove, []);
-	const fewer = synchronizeBoard({
-		shapes: moved,
-		circuit: {
-			...circuit,
-			components: circuit.components.slice(0, 1),
-			nets: [],
-		},
-		footprintOf: () => resistor,
-		source,
-		nextId: 3,
-	});
-	assert.deepEqual(fewer.remove, [moved[1].id]);
+let nextId = 500;
+const rectangleOn = (
+	layer: "Edge.Cuts" | "F.Cu",
+	center: Point,
+	width: number,
+	height: number,
+): EditorShape => ({
+	id: nextId++,
+	kind: "rectangle",
+	layer,
+	x: center.x,
+	y: center.y,
+	width,
+	height,
+	rotation: 0,
+	lineWidth: 0.1,
 });
 
-test("pads take nets from the circuit and the ratsnest joins unrouted pads", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const pads = boardPads(shapes);
-	assert.equal(pads.length, 4);
-	const items = copperItems(shapes, netlist);
-	assert.deepEqual(items.map((item) => item.net).sort(), [
-		"gnd",
-		"gnd",
-		"mid",
-		"mid",
-	]);
-	const { ratsnest } = analyzeConnectivity(items);
-	assert.equal(ratsnest.length, 2);
-	const mid = required(ratsnest.find((line) => line.net === "mid"));
-	const track = trackSegments(
-		100,
+function dividerBoard() {
+	const circuit = dividerCircuit();
+	const footprints = updateFromSchematic(circuit).place;
+	const center = {
+		x: (footprints[0].x + footprints[1].x) / 2,
+		y: footprints[0].y,
+	};
+	const outline = rectangleOn("Edge.Cuts", center, 30, 20);
+	const at = (dx: number, dy: number) => ({
+		x: center.x + dx,
+		y: center.y + dy,
+	});
+	const pour = (
+		net: string,
+		dx: number,
+		width: number,
+		extra: { clearance?: number; dy?: number; height?: number } = {},
+	): EditorShape =>
+		({
+			...rectangleOn("F.Cu", at(dx, extra.dy ?? 0), width, extra.height ?? 18),
+			zone: extra.clearance === undefined ? {} : { clearance: extra.clearance },
+			net,
+		}) as EditorShape;
+	return {
+		circuit,
+		netlist: boardNetlist(circuit),
+		footprints,
+		outline,
+		shapes: [...footprints, outline],
+		at,
+		pour,
+	};
+}
+
+function routeMid(shapes: readonly EditorShape[], netlist: BoardNetlist) {
+	const mid = required(
+		ratsnest(shapes, netlist).find((line) => line.net === "mid"),
+	);
+	return trackSegments(
+		nextId++ * 10,
 		trackPath(mid.from, mid.to),
 		"F.Cu",
 		0.25,
 		"mid",
 	);
-	const routed = [...shapes, ...track];
-	const after = analyzeConnectivity(copperItems(routed, netlist));
-	assert.deepEqual(
-		after.ratsnest.map((line) => line.net),
-		["gnd"],
-	);
-});
+}
 
-test("DRC reports a track that passes too close to another net", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const gndPad = required(
-		boardPads(shapes).find(
-			(pad) => netlist.padNet(pad.component, pad.number) === "gnd",
-		),
-	);
-	const near = trackSegments(
-		200,
-		[
-			{
-				x: gndPad.shape.x - 3,
-				y: gndPad.shape.y + gndPad.shape.height / 2 + 0.2,
-			},
-			{
-				x: gndPad.shape.x + 3,
-				y: gndPad.shape.y + gndPad.shape.height / 2 + 0.2,
-			},
-		],
-		"F.Cu",
-		0.25,
-		"mid",
-	);
-	const findings = checkBoard([...shapes, ...near], netlist, defaultBoardRules);
-	assert.ok(findings.some((finding) => finding.kind === "clearance"));
-	assert.ok(findings.some((finding) => finding.kind === "outline"));
-});
+function ratsnest(
+	shapes: readonly EditorShape[],
+	netlist: BoardNetlist,
+	rules: BoardRules = defaultBoardRules,
+) {
+	return analyzeConnectivity(
+		copperItems(shapes, netlist),
+		fillReach(fillZones(shapes, netlist, rules)),
+	).ratsnest;
+}
 
-test("a zone fills around other nets, connects its own and leaves islands out", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const bounds = shapes.map((shape) => ({ x: shape.x, y: shape.y }));
-	const centerX = (bounds[0].x + bounds[1].x) / 2;
-	const centerY = bounds[0].y;
-	const outline: EditorShape = {
-		id: 50,
-		kind: "rectangle",
-		layer: "Edge.Cuts",
-		x: centerX,
-		y: centerY,
-		width: 30,
-		height: 20,
-		rotation: 0,
-		lineWidth: 0.1,
-	};
-	const zone: EditorShape = {
-		id: 51,
-		kind: "rectangle",
-		layer: "F.Cu",
-		x: centerX,
-		y: centerY,
-		width: 28,
-		height: 18,
-		rotation: 0,
-		lineWidth: 0.1,
-		zone: {},
-		net: "gnd",
-	};
-	const board = [...shapes, outline, zone];
-	const fills = fillZones(board, netlist, defaultBoardRules);
-	assert.equal(fills.length, 1);
-	assert.ok(fills[0].polygons.length >= 1);
-	const { ratsnest } = analyzeConnectivity(
-		copperItems(board, netlist),
-		fillReach(fills),
-	);
-	assert.deepEqual(
-		ratsnest.map((line) => line.net),
-		["mid"],
-	);
-	const files = exportFabrication("divider", board, fills);
-	const copper = required(files.find((file) => file.name.endsWith("F_Cu.gtl")));
-	assert.match(copper.content, /G36\*/);
-	assert.match(copper.content, /%TF\.FileFunction,Copper,L1,Top\*%/);
-	assert.ok(files.some((file) => file.name.endsWith(".drl")));
-});
+const unroutedNets = (
+	shapes: readonly EditorShape[],
+	netlist: BoardNetlist,
+	rules?: BoardRules,
+) =>
+	[...new Set(ratsnest(shapes, netlist, rules).map((line) => line.net))].sort();
 
-test("flipping a footprint mirrors it onto the back layers", () => {
-	const shapes = placed(twoResistors());
-	const footprint = shapes[0];
-	assert.ok(isBoardFootprint(footprint));
-	const flipped = flipBoardFootprint(footprint);
-	assert.equal(flipped.flipped, true);
-	assert.ok(
-		flipped.children
-			.filter((child) => child.layer?.endsWith("Cu"))
-			.every((child) => child.layer === "B.Cu"),
-	);
-	const pads = boardPads([flipped]);
-	const original = boardPads([footprint]);
-	assert.ok(
-		Math.abs(
-			pads[0].shape.x - footprint.x + (original[0].shape.x - footprint.x),
-		) < 1e-9,
-	);
-	assert.equal(flipBoardFootprint(flipped).flipped, undefined);
-});
-
-test("the flat view draws each footprint item in its layer and hides hidden layers", () => {
-	const shapes = placed(twoResistors());
-	const view = boardLayerView(shapes, new Set(), "F.Cu");
-	const display = boardDisplay(
-		view,
-		new Set([shapes[0].id]),
-		new Set(["F.SilkS"]),
-		"F.Cu",
-	);
-	assert.ok(display.shapes.every((shape) => shape.layer !== "F.SilkS"));
-	assert.ok(display.shapes.some((shape) => shape.layer === "F.Cu"));
-	assert.ok(display.selected.size > 1);
-});
-
-test("the autorouter connects every pad inside the outline without breaking clearances", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const outline: EditorShape = {
-		id: 60,
-		kind: "rectangle",
-		layer: "Edge.Cuts",
-		x: (shapes[0].x + shapes[1].x) / 2,
-		y: shapes[0].y,
-		width: 20,
-		height: 12,
-		rotation: 0,
-		lineWidth: 0.1,
-	};
-	const board = [...shapes, outline];
-	const routed = autoroute(board, netlist, 100, { rules: defaultBoardRules });
-	assert.deepEqual(routed.failed, []);
-	assert.ok(routed.shapes.length > 0);
-	assert.ok(routed.shapes.every((shape) => shape.id >= 100));
-	assert.deepEqual(
-		checkBoard([...board, ...routed.shapes], netlist, defaultBoardRules),
-		[],
-	);
-});
-
-test("negotiated routing finishes every net it is given and leaves excluded nets alone", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const outline: EditorShape = {
-		id: 60,
-		kind: "rectangle",
-		layer: "Edge.Cuts",
-		x: (shapes[0].x + shapes[1].x) / 2,
-		y: shapes[0].y,
-		width: 20,
-		height: 12,
-		rotation: 0,
-		lineWidth: 0.1,
-	};
-	const board = [...shapes, outline];
-	const routed = negotiatedRoute(board, netlist, 100, {
-		rules: defaultBoardRules,
-		exclude: new Set(["gnd"]),
+function designRulesCheck(
+	shapes: readonly EditorShape[],
+	netlist: BoardNetlist,
+	rules: BoardRules = defaultBoardRules,
+) {
+	return checkBoard(shapes, netlist, rules, {
+		zoneReach: fillReach(fillZones(shapes, netlist, rules)),
 	});
-	assert.deepEqual(routed.failed, []);
-	assert.ok(
-		routed.shapes.every((shape) => "net" in shape && shape.net === "mid"),
+}
+
+const kinds = (findings: readonly { kind: DrcKind }[]) =>
+	[...new Set(findings.map((finding) => finding.kind))].sort();
+
+const spacingProblems = (
+	findings: ReturnType<typeof checkBoard>,
+	shape: EditorShape,
+) =>
+	findings.filter(
+		(finding) =>
+			(finding.kind === "short" || finding.kind === "clearance") &&
+			finding.shapeIds.includes(shape.id),
 	);
-	const findings = checkBoard(
-		[...board, ...routed.shapes],
-		netlist,
-		defaultBoardRules,
+
+const pourCopper = (
+	shapes: readonly EditorShape[],
+	netlist: BoardNetlist,
+	rules: BoardRules = defaultBoardRules,
+) => layerFill(fillZones(shapes, netlist, rules), "F.Cu");
+
+const padNets = (footprint: EditorShape, netlist: BoardNetlist) =>
+	boardPads([footprint]).map((pad) =>
+		netlist.padNet(pad.component, pad.number),
 	);
-	assert.deepEqual(
-		findings.map((finding) => finding.kind),
-		["unconnected"],
-	);
+
+describe("updating the board from the schematic", () => {
+	test("places a footprint for every component and leaves the ones I moved where they are", () => {
+		const circuit = dividerCircuit();
+		const placed = updateFromSchematic(circuit).place;
+		assert.deepEqual(
+			placed.map(
+				(shape) => shape.kind === "symbol" && shape.attributes.reference,
+			),
+			["R1", "R2"],
+		);
+		const moved = placed.map((shape) => ({ ...shape, x: shape.x + 10 }));
+		const again = updateFromSchematic(circuit, moved);
+		assert.deepEqual([again.place, again.replace, again.remove], [[], [], []]);
+		const withoutR2 = updateFromSchematic(
+			{ ...circuit, components: circuit.components.slice(0, 1), nets: [] },
+			moved,
+		);
+		assert.deepEqual(withoutR2.remove, [moved[1].id]);
+	});
+
+	test("swaps a footprint the schematic changed without moving, turning or flipping it", () => {
+		const circuit = dividerCircuit();
+		const [r1, r2] = updateFromSchematic(circuit).place;
+		const arranged = flipBoardFootprint({
+			...(r1 as BoardFootprint),
+			x: r1.x + 4,
+			rotation: Math.PI / 2,
+		});
+		const result = updateFromSchematic(circuit, [arranged, r2], (reference) =>
+			reference === "R1" ? r0603 : r0805,
+		);
+		const swapped = required(result.replace[0]) as BoardFootprint;
+		assert.equal(swapped.footprint.id, r0603.id);
+		assert.deepEqual(
+			[swapped.x, swapped.y, swapped.rotation, swapped.flipped],
+			[arranged.x, arranged.y, arranged.rotation, true],
+		);
+	});
+
+	test("keeps a placed footprint whose footprint can no longer be found, and names it", () => {
+		const circuit = dividerCircuit();
+		const placed = updateFromSchematic(circuit).place;
+		const result = updateFromSchematic(circuit, placed, (reference) =>
+			reference === "R2" ? undefined : r0805,
+		);
+		assert.deepEqual(result.remove, []);
+		assert.deepEqual(result.missing, ["R2"]);
+	});
+
+	test("keeps a copied footprint on the board, but without a component its pads have no nets", () => {
+		const { circuit, netlist, footprints } = dividerBoard();
+		const copy = { ...footprints[0], id: 900, x: footprints[0].x + 20 };
+		const result = updateFromSchematic(circuit, [...footprints, copy]);
+		assert.deepEqual(result.remove, []);
+		const kept = required(result.replace.find((shape) => shape.id === copy.id));
+		assert.deepEqual(padNets(kept, netlist), [undefined, undefined]);
+		assert.deepEqual(padNets(footprints[0], netlist), ["gnd", "mid"]);
+	});
+
+	test("moves my tracks and pours to a net the schematic renamed", () => {
+		const { circuit, shapes, netlist, pour } = dividerBoard();
+		const track = routeMid(shapes, netlist);
+		const midPour = pour("mid", 0, 4);
+		const renamed: Circuit = {
+			...circuit,
+			nets: circuit.nets.map((net) =>
+				net.id === "mid" ? { ...net, id: "mid-2" } : net,
+			),
+		};
+		const board = [...shapes, ...track, midPour];
+		const result = updateFromSchematic(renamed, board);
+		assert.equal(result.stale, 0);
+		const updated = board.map(
+			(shape) => result.replace.find((next) => next.id === shape.id) ?? shape,
+		);
+		const findings = designRulesCheck(updated, boardNetlist(renamed));
+		assert.ok(!findings.some((finding) => finding.kind === "net"));
+		assert.deepEqual(unroutedNets(updated, boardNetlist(renamed)), ["gnd"]);
+	});
+
+	test("leaves copper on a net the schematic split in two, and the check reports it", () => {
+		const { circuit, shapes, netlist } = dividerBoard();
+		const board = [...shapes, ...routeMid(shapes, netlist)];
+		const split: Circuit = {
+			...circuit,
+			nets: [
+				...circuit.nets.filter((net) => net.id !== "mid"),
+				{ id: "left", names: ["LEFT"], pinIds: ["R1.2"] },
+				{ id: "right", names: ["RIGHT"], pinIds: ["R2.1"] },
+			],
+		};
+		const result = updateFromSchematic(split, board);
+		assert.deepEqual(result.replace, []);
+		assert.ok(result.stale > 0);
+		assert.ok(
+			designRulesCheck(board, boardNetlist(split)).some(
+				(finding) => finding.kind === "net",
+			),
+		);
+	});
+});
+
+describe("routing and the ratsnest", () => {
+	test("each pad takes its pin's net, and the ratsnest joins the pads still apart", () => {
+		const { shapes, netlist, footprints } = dividerBoard();
+		assert.deepEqual(padNets(footprints[0], netlist), ["gnd", "mid"]);
+		assert.deepEqual(unroutedNets(shapes, netlist), ["gnd", "mid"]);
+		assert.deepEqual(
+			unroutedNets([...shapes, ...routeMid(shapes, netlist)], netlist),
+			["gnd"],
+		);
+	});
+
+	test("a via placed on a footprint pad takes that pad's net", () => {
+		const circuit = dividerCircuit();
+		const file = required(library.get(r0805.id));
+		const pad = required(
+			file.shapes.find((shape) => isPad(shape as EditorShape)),
+		);
+		const via: EditorShape = {
+			id: 999,
+			kind: "circle",
+			layer: "F.Cu",
+			x: pad.x,
+			y: pad.y,
+			width: 0.6,
+			height: 0.6,
+			rotation: 0,
+			lineWidth: 0.15,
+			filled: true,
+			via: { drill: 0.3 },
+		};
+		const [r1] = synchronizeBoard({
+			shapes: [],
+			circuit,
+			footprintOf: () => r0805,
+			source: (reference) => ({
+				reference,
+				name: file.name,
+				shapes: [...file.shapes, via],
+			}),
+			nextId: 1,
+		}).place;
+		const netlist = boardNetlist(circuit);
+		const items = copperItems([r1], netlist);
+		const footprintVia = required(items.find((item) => item.kind === "via"));
+		const padUnder = required(
+			items.find(
+				(item) =>
+					item.kind === "pad" &&
+					item.pad?.shape.x === footprintVia.shape.x &&
+					item.pad?.shape.y === footprintVia.shape.y,
+			),
+		);
+		assert.equal(footprintVia.net, padUnder.net);
+	});
+
+	test("the autorouter connects every pad and the check comes back clean", () => {
+		const { shapes, netlist } = dividerBoard();
+		const routed = autoroute(shapes, netlist, 2000, {
+			rules: defaultBoardRules,
+		});
+		assert.deepEqual(routed.failed, []);
+		assert.deepEqual(
+			designRulesCheck([...shapes, ...routed.shapes], netlist),
+			[],
+		);
+	});
+
+	test("negotiated routing routes the nets it is given and leaves excluded ones unrouted", () => {
+		const { shapes, netlist } = dividerBoard();
+		const routed = negotiatedRoute(shapes, netlist, 2000, {
+			rules: defaultBoardRules,
+			exclude: new Set(["gnd"]),
+		});
+		assert.deepEqual(routed.failed, []);
+		assert.deepEqual(unroutedNets([...shapes, ...routed.shapes], netlist), [
+			"gnd",
+		]);
+		assert.deepEqual(
+			kinds(designRulesCheck([...shapes, ...routed.shapes], netlist)),
+			["unconnected"],
+		);
+	});
+});
+
+describe("copper pours", () => {
+	test("a GND pour connects the GND pads and keeps clear of MID", () => {
+		const { shapes, netlist, pour } = dividerBoard();
+		const board = [...shapes, pour("gnd", 0, 28)];
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+		assert.deepEqual(kinds(designRulesCheck(board, netlist)), ["unconnected"]);
+	});
+
+	test("a track that cuts a GND pour in two leaves a ratsnest line across the cut", () => {
+		const { shapes, netlist, pour, at } = dividerBoard();
+		const cut = trackSegments(
+			3000,
+			[at(0, -9.5), at(0, 9.5)],
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		const board = [...shapes, pour("gnd", 0, 28), ...cut];
+		assert.ok(unroutedNets(board, netlist).includes("gnd"));
+	});
+
+	test("where pours on two nets overlap, the one drawn first keeps the copper and the other keeps clear", () => {
+		const { shapes, netlist, pour } = dividerBoard();
+		const gndPour = pour("gnd", -6, 16);
+		const midPour = pour("mid", 6, 16);
+		const board = [...shapes, gndPour, midPour];
+		const findings = designRulesCheck(board, netlist);
+		assert.deepEqual(spacingProblems(findings, midPour), []);
+		assert.ok(
+			fillZones(board, netlist, defaultBoardRules).every(
+				(fill) => fill.polygons.length > 0,
+			),
+		);
+	});
+
+	test("two GND pours that touch join into one piece of copper", () => {
+		const { shapes, netlist, pour } = dividerBoard();
+		const board = [
+			...shapes,
+			pour("gnd", -6, 16),
+			pour("gnd", 6, 16),
+			pour("gnd", 0, 4, { dy: 12, height: 6 }),
+		];
+		assert.ok(!unroutedNets(board, netlist).includes("gnd"));
+		assert.equal(pourCopper(board, netlist).length, 1);
+	});
+
+	test("a pour keeps its raised clearance, and the full clearance from large round copper", () => {
+		const { shapes, netlist, pour, at } = dividerBoard();
+		const isolated = pour("mid", -9, 8, { clearance: 1.5 });
+		const gndPour = pour("gnd", 3, 20);
+		const mountingRing: EditorShape = {
+			id: 4000,
+			kind: "circle",
+			layer: "F.Cu",
+			...at(6, 4),
+			width: 3,
+			height: 3,
+			rotation: 0,
+			lineWidth: 0.15,
+			filled: true,
+			via: { drill: 1 },
+			net: "mid",
+		};
+		const board = [...shapes, isolated, gndPour, mountingRing];
+		const rules = { ...defaultBoardRules, clearance: 1.2 };
+		assert.deepEqual(
+			spacingProblems(designRulesCheck(board, netlist, rules), gndPour),
+			[],
+		);
+	});
+
+	test("a pour clearance set below the board's uses the board's", () => {
+		const { shapes, netlist, pour } = dividerBoard();
+		const board = [...shapes, pour("gnd", 0, 28, { clearance: 0.05 })];
+		const rules = { ...defaultBoardRules, clearance: 0.4 };
+		assert.deepEqual(kinds(designRulesCheck(board, netlist, rules)), [
+			"unconnected",
+		]);
+	});
+
+	test("a pour stays empty until the board outline closes, and the check says the outline is open", () => {
+		const { footprints, netlist, pour, at } = dividerBoard();
+		const edge = (from: Point, to: Point) =>
+			({
+				...trackSegment(nextId++, from, to, "F.Cu", 0.1, undefined),
+				layer: "Edge.Cuts",
+			}) as EditorShape;
+		const threeSides = [
+			edge(at(-15, -10), at(15, -10)),
+			edge(at(15, -10), at(15, 10)),
+			edge(at(15, 10), at(-15, 10)),
+		];
+		const open = [...footprints, ...threeSides, pour("gnd", 0, 28)];
+		assert.deepEqual(pourCopper(open, netlist), []);
+		assert.ok(kinds(designRulesCheck(open, netlist)).includes("outline"));
+		const closed = [...open, edge(at(-15, 10), at(-15, -10))];
+		assert.equal(pourCopper(closed, netlist).length, 1);
+		assert.ok(!kinds(designRulesCheck(closed, netlist)).includes("outline"));
+	});
+});
+
+describe("the design rules check", () => {
+	test("a track run too close to another net is a clearance finding", () => {
+		const { shapes, netlist, footprints } = dividerBoard();
+		const gndPad = required(
+			boardPads(footprints).find(
+				(pad) => netlist.padNet(pad.component, pad.number) === "gnd",
+			),
+		);
+		const edgeOfPad = gndPad.shape.y + gndPad.shape.height / 2 + 0.2;
+		const tooClose = trackSegments(
+			5000,
+			[
+				{ x: gndPad.shape.x - 3, y: edgeOfPad },
+				{ x: gndPad.shape.x + 3, y: edgeOfPad },
+			],
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		assert.ok(
+			kinds(designRulesCheck([...shapes, ...tooClose], netlist)).includes(
+				"clearance",
+			),
+		);
+	});
+
+	test("copper too close to the board edge is an edge finding", () => {
+		const { shapes, netlist, outline } = dividerBoard();
+		const alongEdge = trackSegments(
+			5100,
+			[
+				{ x: outline.x - 10, y: outline.y - 9.95 },
+				{ x: outline.x + 10, y: outline.y - 9.95 },
+			],
+			"F.Cu",
+			0.25,
+			"mid",
+		);
+		assert.ok(
+			kinds(designRulesCheck([...shapes, ...alongEdge], netlist)).includes(
+				"edge",
+			),
+		);
+	});
+
+	test("two pads of one footprint touching each other is a short", () => {
+		const { netlist, footprints, outline } = dividerBoard();
+		const [r1, r2] = footprints as BoardFootprint[];
+		const shorted = {
+			...r1,
+			children: r1.children.map((child) =>
+				isPad(child as EditorShape) ? { ...child, x: 0, y: 0 } : child,
+			),
+		};
+		assert.ok(
+			kinds(designRulesCheck([shorted, r2, outline], netlist)).includes(
+				"short",
+			),
+		);
+	});
+
+	test("copper on a net the circuit no longer has is reported", () => {
+		const { shapes, netlist, at } = dividerBoard();
+		const orphan = trackSegments(
+			5200,
+			[at(-5, 5), at(-3, 5)],
+			"F.Cu",
+			0.25,
+			"gone",
+		);
+		assert.ok(
+			kinds(designRulesCheck([...shapes, ...orphan], netlist)).includes("net"),
+		);
+	});
+
+	test("names a component with no footprint and a connected pin with no pad", () => {
+		const { circuit, footprints, outline } = dividerBoard();
+		const threePinR1: Circuit = {
+			...circuit,
+			components: circuit.components.map((component) =>
+				component.id === "R1"
+					? { ...component, pins: [...component.pins, pin("R1", "3")] }
+					: component,
+			),
+			nets: circuit.nets.map((net) =>
+				net.id === "gnd" ? { ...net, pinIds: [...net.pinIds, "R1.3"] } : net,
+			),
+		};
+		const messages = designRulesCheck(
+			[footprints[0], outline],
+			boardNetlist(threePinR1),
+		)
+			.filter((finding) => finding.kind === "footprint")
+			.map((finding) => finding.message);
+		assert.equal(messages.length, 2);
+		assert.ok(messages.some((message) => /R1\b.*\b3\b/.test(message)));
+		assert.ok(messages.some((message) => /\bR2\b/.test(message)));
+	});
+});
+
+describe("fabrication files", () => {
+	test("copper inside a hole in a pour is drawn after the hole is cleared, so it reaches the fab", () => {
+		const square = (size: number): [number, number][] => [
+			[-size / 2, -size / 2],
+			[size / 2, -size / 2],
+			[size / 2, size / 2],
+			[-size / 2, size / 2],
+		];
+		const fill = (polygons: [number, number][][][]) =>
+			({ layer: "F.Cu", net: "gnd", polygons }) as unknown as ZoneFill;
+		const island = fill([[square(6)]]);
+		const ring = fill([[square(20), square(10).reverse()]]);
+		const copper = required(
+			exportFabrication("nested", [], [island, ring]).find((file) =>
+				file.name.endsWith("F_Cu.gtl"),
+			),
+		);
+		const objects = parseGerber(copper.content, copper.name).object.objects;
+		const width = (object: (typeof objects)[number]) =>
+			Math.round(object.bounds.maxX - object.bounds.minX);
+		const hole = objects.findIndex(
+			(object) => object.polarity === "clear" && width(object) === 10,
+		);
+		const drawnIsland = Math.max(
+			...objects.map((object, index) =>
+				object.polarity === "dark" && width(object) === 6 ? index : -1,
+			),
+		);
+		assert.ok(hole >= 0 && drawnIsland > hole);
+	});
+});
+
+describe("the board view", () => {
+	test("flipping a footprint puts its copper on the back, mirrored, and flipping again restores it", () => {
+		const { footprints } = dividerBoard();
+		const r1 = footprints[0] as BoardFootprint;
+		const flipped = flipBoardFootprint(r1);
+		const front = boardPads([r1]);
+		const back = boardPads([flipped]);
+		assert.ok(back.every((pad) => pad.shape.layer === "B.Cu"));
+		assert.ok(
+			Math.abs(back[0].shape.x - r1.x + (front[0].shape.x - r1.x)) < 1e-9,
+		);
+		assert.deepEqual(boardPads([flipBoardFootprint(flipped)]), front);
+	});
+
+	test("hiding a layer takes its items off the board, and selecting a footprint highlights all its items", () => {
+		const { footprints } = dividerBoard();
+		const r1 = footprints[0] as BoardFootprint;
+		const display = boardDisplay(
+			boardLayerView(footprints, new Set(), "F.Cu"),
+			new Set([r1.id]),
+			new Set(["F.SilkS"]),
+			"F.Cu",
+		);
+		assert.ok(display.shapes.every((shape) => shape.layer !== "F.SilkS"));
+		assert.ok(display.shapes.some((shape) => shape.layer === "F.Cu"));
+		assert.ok(
+			r1.children.every((_, index) =>
+				display.selected.has(footprintItemId(r1.id, index)),
+			),
+		);
+	});
 });
 
 function memoryDirectory(): ProjectDirectory & {
@@ -350,491 +690,40 @@ function memoryDirectory(): ProjectDirectory & {
 	};
 }
 
-const decode = (bytes: Uint8Array | undefined) =>
-	JSON.parse(new TextDecoder().decode(required(bytes)));
-
-for (const layout of ["files", "revisions"] as const)
-	test(`a board is saved in its drawing file next to the schematic and circuit (${layout})`, async () => {
-		const directory = memoryDirectory();
-		const repository = new ProjectRepository(directory, { layout });
-		await repository.create("Divider");
-		const circuit = twoResistors();
-		const board = {
-			...createBoardFile("Divider", circuit.id),
-			shapes: placed(circuit),
-		};
-		const saved = await repository.save({
-			shapes: [],
-			symbols: [],
-			circuits: [{ ...createCircuit("Divider", circuit.id), circuit }],
-			boards: [board],
+describe("saving a board", () => {
+	for (const layout of ["files", "revisions"] as const)
+		test(`the board is saved inside its drawing's .ecaddraw file and reopens unchanged (${layout} layout)`, async () => {
+			const directory = memoryDirectory();
+			const repository = new ProjectRepository(directory, { layout });
+			await repository.create("Divider");
+			const { circuit, shapes } = dividerBoard();
+			const board = { ...createBoardFile("Divider", circuit.id), shapes };
+			const saved = await repository.save({
+				shapes: [],
+				symbols: [],
+				circuits: [{ ...createCircuit("Divider", circuit.id), circuit }],
+				boards: [board],
+			});
+			const path = required(saved.manifest.drawing);
+			assert.match(path, /Divider\.ecaddraw$/);
+			const file = JSON.parse(
+				new TextDecoder().decode(required(directory.files.get(path))),
+			);
+			assert.equal(file.circuit.id, circuit.id);
+			assert.deepEqual(file.board, {
+				units: "mm",
+				rules: board.rules,
+				shapes: board.shapes,
+			});
+			assert.deepEqual(
+				projectFileSelections(saved)
+					.filter((entry) => entry.path === path)
+					.map((entry) => entry.view),
+				[undefined, "circuit", "pcb"],
+			);
+			const reopened = await new ProjectRepository(directory, {
+				layout,
+			}).load();
+			assert.deepEqual(reopened.boards, [board]);
 		});
-		const path = required(saved.manifest.drawing);
-		assert.match(path, /Divider\.ecaddraw$/);
-		assert.deepEqual(
-			[...directory.files.keys()].filter((name) => name.endsWith(".ecadpcb")),
-			[],
-		);
-		const file = decode(directory.files.get(path));
-		assert.equal(file.circuit.id, circuit.id);
-		assert.deepEqual(file.board, {
-			units: "mm",
-			rules: board.rules,
-			shapes: board.shapes,
-		});
-		assert.equal(
-			projectIndex(saved).boardsByPath.get(path)?.circuitId,
-			"pcb-main",
-		);
-		assert.deepEqual(
-			projectFileSelections(saved)
-				.filter((entry) => entry.path === path)
-				.map((entry) => [entry.id, entry.view]),
-			[
-				["drawing", undefined],
-				["circuit:pcb-main", "circuit"],
-				["board:pcb-main", "pcb"],
-			],
-		);
-		const reopened = await new ProjectRepository(directory, { layout }).load();
-		assert.deepEqual(reopened.boards, [board]);
-	});
-
-function dividerBoard(zones: EditorShape[], outline?: EditorShape[]) {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const centerX = (shapes[0].x + shapes[1].x) / 2;
-	const centerY = shapes[0].y;
-	const edge: EditorShape[] = outline ?? [
-		{
-			id: 50,
-			kind: "rectangle",
-			layer: "Edge.Cuts",
-			x: centerX,
-			y: centerY,
-			width: 30,
-			height: 20,
-			rotation: 0,
-			lineWidth: 0.1,
-		},
-	];
-	return {
-		circuit,
-		netlist: boardNetlist(circuit),
-		centerX,
-		centerY,
-		board: [
-			...shapes,
-			...edge,
-			...zones.map((zone) => ({
-				...zone,
-				x: zone.x + centerX,
-				y: zone.y + centerY,
-			})),
-		],
-	};
-}
-
-const zoneAt = (
-	id: number,
-	net: string,
-	x: number,
-	width: number,
-): EditorShape => ({
-	id,
-	kind: "rectangle",
-	layer: "F.Cu",
-	x,
-	y: 0,
-	width,
-	height: 18,
-	rotation: 0,
-	lineWidth: 0.1,
-	zone: {},
-	net,
-});
-
-test("a zone cut in two by another net keeps a ratsnest line between its islands", () => {
-	const { board, netlist, centerX, centerY } = dividerBoard([
-		zoneAt(51, "gnd", 0, 28),
-	]);
-	const cut = trackSegments(
-		60,
-		[
-			{ x: centerX, y: centerY - 9.5 },
-			{ x: centerX, y: centerY + 9.5 },
-		],
-		"F.Cu",
-		0.25,
-		"mid",
-	);
-	const shapes = [...board, ...cut];
-	const fills = fillZones(shapes, netlist, defaultBoardRules);
-	assert.equal(fills[0].polygons.length, 2);
-	const { ratsnest } = analyzeConnectivity(
-		copperItems(shapes, netlist),
-		fillReach(fills),
-	);
-	assert.ok(ratsnest.some((line) => line.net === "gnd"));
-});
-
-test("a later zone on another net keeps the clearance from an earlier one", () => {
-	const { board, netlist } = dividerBoard([
-		zoneAt(51, "gnd", -6, 16),
-		zoneAt(52, "mid", 6, 16),
-	]);
-	const fills = fillZones(board, netlist, defaultBoardRules);
-	assert.ok(fills.every((fill) => fill.polygons.length > 0));
-	const zoneFindings = checkBoard(board, netlist, defaultBoardRules, {
-		zoneReach: fillReach(fills),
-	}).filter(
-		(finding) => finding.shapeIds.includes(51) && finding.shapeIds.includes(52),
-	);
-	assert.deepEqual(zoneFindings, []);
-	assert.ok(
-		checkBoard(board, netlist, defaultBoardRules).some(
-			(finding) =>
-				finding.kind === "short" &&
-				finding.shapeIds.includes(51) &&
-				finding.shapeIds.includes(52),
-		),
-	);
-});
-
-test("overlapping zones on one net join their islands", () => {
-	const { board, netlist } = dividerBoard([
-		zoneAt(51, "gnd", -6, 16),
-		zoneAt(52, "gnd", 6, 16),
-	]);
-	const fills = fillZones(board, netlist, defaultBoardRules);
-	const { ratsnest } = analyzeConnectivity(
-		copperItems(board, netlist),
-		fillReach(fills),
-	);
-	assert.ok(!ratsnest.some((line) => line.net === "gnd"));
-});
-
-test("DRC reports pads of one footprint that short and copper on a missing net", () => {
-	const circuit = twoResistors();
-	const [first, second] = placed(circuit);
-	assert.ok(isBoardFootprint(first));
-	const shorted = {
-		...first,
-		children: first.children.map((child) =>
-			isPad(child as EditorShape) ? { ...child, x: 0, y: 0 } : child,
-		),
-	};
-	const stale = trackSegments(
-		300,
-		[
-			{ x: 40, y: 40 },
-			{ x: 41, y: 40 },
-		],
-		"F.Cu",
-		0.25,
-		"gone",
-	);
-	const findings = checkBoard(
-		[shorted, second, ...stale],
-		boardNetlist(circuit),
-		defaultBoardRules,
-	);
-	assert.ok(
-		findings.some(
-			(finding) => finding.kind === "short" && finding.message.includes("R1."),
-		),
-	);
-	assert.ok(findings.some((finding) => finding.kind === "net"));
-});
-
-test("a zone stays empty and DRC reports it while the outline is open", () => {
-	const line = (id: number, x1: number, y1: number, x2: number, y2: number) =>
-		({
-			...trackSegment(
-				id,
-				{ x: x1, y: y1 },
-				{ x: x2, y: y2 },
-				"F.Cu",
-				0.1,
-				undefined,
-			),
-			layer: "Edge.Cuts",
-		}) as EditorShape;
-	const probe = dividerBoard([]);
-	const { board, netlist } = dividerBoard(
-		[zoneAt(51, "gnd", 0, 28)],
-		[
-			line(
-				40,
-				probe.centerX - 15,
-				probe.centerY - 10,
-				probe.centerX + 15,
-				probe.centerY - 10,
-			),
-			line(
-				41,
-				probe.centerX + 15,
-				probe.centerY - 10,
-				probe.centerX + 15,
-				probe.centerY + 10,
-			),
-			line(
-				42,
-				probe.centerX + 15,
-				probe.centerY + 10,
-				probe.centerX - 15,
-				probe.centerY + 10,
-			),
-		],
-	);
-	const fills = fillZones(board, netlist, defaultBoardRules);
-	assert.deepEqual(fills[0].polygons, []);
-	assert.ok(
-		checkBoard(board, netlist, defaultBoardRules).some(
-			(finding) => finding.id === "outline-open",
-		),
-	);
-});
-
-test("sync keeps a footprint whose footprint is missing and detaches a second copy", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const copy = { ...shapes[0], id: 9, x: shapes[0].x + 20 };
-	const result = synchronizeBoard({
-		shapes: [...shapes, copy],
-		circuit,
-		footprintOf: (component) =>
-			component.reference === "R2" ? undefined : resistor,
-		source,
-		nextId: 10,
-	});
-	assert.deepEqual(result.remove, []);
-	assert.deepEqual(
-		result.missing.map((entry) => entry.reference),
-		["R2"],
-	);
-	assert.equal(result.replace.length, 1);
-	const detached = result.replace[0];
-	assert.equal(detached.id, 9);
-	assert.equal(detached.kind === "symbol" && detached.component, undefined);
-});
-
-test("a via inside a footprint takes its pad's net and counts as copper", () => {
-	const circuit = twoResistors();
-	const file = required(library.get(resistor.id));
-	const pad = required(
-		file.shapes.find((shape) => isPad(shape as EditorShape)),
-	);
-	const via: EditorShape = {
-		id: 999,
-		kind: "circle",
-		layer: "F.Cu",
-		x: pad.x,
-		y: pad.y,
-		width: 0.6,
-		height: 0.6,
-		rotation: 0,
-		lineWidth: 0.15,
-		filled: true,
-		via: { drill: 0.3 },
-	};
-	const shapes = synchronizeBoard({
-		shapes: [],
-		circuit,
-		footprintOf: () => resistor,
-		source: (reference) => ({
-			reference,
-			name: file.name,
-			shapes: [...file.shapes, via],
-		}),
-		nextId: 1,
-	}).place;
-	const vias = copperItems(shapes, boardNetlist(circuit)).filter(
-		(item) => item.kind === "via",
-	);
-	assert.equal(vias.length, 2);
-	assert.ok(vias.every((item) => item.net === "gnd" || item.net === "mid"));
-});
-
-test("sync moves tracks and zones from a net the circuit renamed to the net of their pads", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const mid = required(
-		analyzeConnectivity(copperItems(shapes, netlist)).ratsnest.find(
-			(line) => line.net === "mid",
-		),
-	);
-	const track = trackSegments(
-		100,
-		trackPath(mid.from, mid.to),
-		"F.Cu",
-		0.25,
-		"mid",
-	);
-	const zone = { ...zoneAt(120, "mid", 0, 4), x: mid.from.x, y: mid.from.y };
-	const renamed: Circuit = {
-		...circuit,
-		nets: circuit.nets.map((net) =>
-			net.id === "mid" ? { ...net, id: "mid-2" } : net,
-		),
-	};
-	const result = synchronizeBoard({
-		shapes: [...shapes, ...track, zone],
-		circuit: renamed,
-		footprintOf: () => resistor,
-		source,
-		nextId: 200,
-	});
-	assert.deepEqual(
-		result.replace.map((shape) => [shape.id, "net" in shape && shape.net]),
-		[...track, zone].map((shape) => [shape.id, "mid-2"]),
-	);
-});
-
-test("DRC reports a component without a footprint and a netted pin without a pad", () => {
-	const circuit = twoResistors();
-	const [first] = placed(circuit);
-	const netlist = boardNetlist({
-		...circuit,
-		components: circuit.components.map((component) =>
-			component.id === "R1"
-				? {
-						...component,
-						pins: [
-							...component.pins,
-							{
-								id: "R1.3",
-								name: "",
-								number: "3",
-								electricalType: "passive" as const,
-							},
-						],
-					}
-				: component,
-		),
-		nets: circuit.nets.map((net) =>
-			net.id === "gnd" ? { ...net, pinIds: [...net.pinIds, "R1.3"] } : net,
-		),
-	});
-	const messages = checkBoard([first], netlist, defaultBoardRules)
-		.filter((finding) => finding.kind === "footprint")
-		.map((finding) => finding.message);
-	assert.deepEqual(messages, [
-		"R1 pin 3 on GND has no pad",
-		"R2 has no footprint on the board",
-	]);
-});
-
-test("sync leaves copper on a dropped net when its pads now disagree", () => {
-	const circuit = twoResistors();
-	const shapes = placed(circuit);
-	const netlist = boardNetlist(circuit);
-	const mid = required(
-		analyzeConnectivity(copperItems(shapes, netlist)).ratsnest.find(
-			(line) => line.net === "mid",
-		),
-	);
-	const track = trackSegments(
-		100,
-		trackPath(mid.from, mid.to),
-		"F.Cu",
-		0.25,
-		"mid",
-	);
-	const split: Circuit = {
-		...circuit,
-		nets: [
-			...circuit.nets.filter((net) => net.id !== "mid"),
-			{ id: "left", names: ["LEFT"], pinIds: ["R1.2"] },
-			{ id: "right", names: ["RIGHT"], pinIds: ["R2.1"] },
-		],
-	};
-	const result = synchronizeBoard({
-		shapes: [...shapes, ...track],
-		circuit: split,
-		footprintOf: () => resistor,
-		source,
-		nextId: 200,
-	});
-	assert.deepEqual(result.replace, []);
-});
-
-test("fills keep the full clearance from large round copper and from a zone with a raised clearance", () => {
-	const { board, netlist, centerX, centerY } = dividerBoard([
-		{ ...zoneAt(51, "mid", -9, 8), zone: { clearance: 1.5 } } as EditorShape,
-		zoneAt(52, "gnd", 3, 20),
-	]);
-	const big: EditorShape = {
-		id: 60,
-		kind: "circle",
-		layer: "F.Cu",
-		x: centerX + 6,
-		y: centerY + 4,
-		width: 3,
-		height: 3,
-		rotation: 0,
-		lineWidth: 0.15,
-		filled: true,
-		via: { drill: 1 },
-		net: "mid",
-	};
-	const shapes = [...board, big];
-	const rules = { ...defaultBoardRules, clearance: 1.2 };
-	const fills = fillZones(shapes, netlist, rules);
-	const findings = checkBoard(shapes, netlist, rules, {
-		zoneReach: fillReach(fills),
-	}).filter(
-		(finding) => finding.kind === "short" || finding.kind === "clearance",
-	);
-	assert.deepEqual(
-		findings.filter(
-			(finding) =>
-				finding.shapeIds.includes(52) &&
-				(finding.shapeIds.includes(51) || finding.shapeIds.includes(60)),
-		),
-		[],
-	);
-});
-
-test("fills on one net keep an island that only touches another zone's kept copper", () => {
-	const { board, netlist } = dividerBoard([
-		zoneAt(51, "gnd", 0, 28),
-		{ ...zoneAt(52, "gnd", 0, 4), y: 12, height: 6 },
-	]);
-	const fills = fillZones(board, netlist, defaultBoardRules);
-	assert.deepEqual(
-		fills.map((fill) => fill.polygons.length > 0),
-		[true, true],
-	);
-	const copper = layerFill(fills, "F.Cu");
-	assert.equal(copper.length, 1);
-});
-
-test("Gerbers draw an island inside a fill's hole after the hole is cleared", () => {
-	const square = (x: number, y: number, size: number): [number, number][] => [
-		[x - size / 2, y - size / 2],
-		[x + size / 2, y - size / 2],
-		[x + size / 2, y + size / 2],
-		[x - size / 2, y + size / 2],
-	];
-	const zone = (polygons: [number, number][][][]) =>
-		({ layer: "F.Cu", net: "gnd", polygons }) as unknown as ZoneFill;
-	const fills = [
-		zone([[square(0, 0, 6)]]),
-		zone([[square(0, 0, 20), square(0, 0, 10).reverse()]]),
-	];
-	const merged = layerFill(fills, "F.Cu");
-	assert.deepEqual(
-		merged.map((polygon) => polygon.length),
-		[2, 1],
-	);
-	const copper = required(
-		exportFabrication("nested", [], fills).find((file) =>
-			file.name.endsWith("F_Cu.gtl"),
-		),
-	).content;
-	const clear = copper.indexOf("%LPC*%");
-	const island = copper.lastIndexOf("%LPD*%");
-	assert.ok(clear >= 0 && island > clear);
 });

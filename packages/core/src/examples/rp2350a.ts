@@ -10,8 +10,12 @@ import { hullDistance } from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
 import type { BoardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
+import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
-import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
+import {
+	schematicFootprints,
+	synchronizeBoard,
+} from "@ecad/drawing-core/board/sync.ts";
 import {
 	type CircuitFile,
 	createCircuit,
@@ -137,7 +141,7 @@ const mcuPins: Record<string, string> = {
  * USB, a 3.3 V regulator, BOOTSEL and RUN buttons, an SWD header and two
  * 20-pin GPIO headers.
  */
-export const rp2350aParts: readonly Part[] = [
+const rp2350aParts: readonly Part[] = [
 	{
 		reference: "U1",
 		symbol: "rp2350a",
@@ -297,7 +301,7 @@ export const rp2350aParts: readonly Part[] = [
 	capacitor("C20", "100nF", "+3V3", [-3.6, 21, 0]),
 ];
 
-export const rp2350aRules: BoardRules = {
+const rp2350aRules: BoardRules = {
 	clearance: 0.15,
 	trackWidth: 0.2,
 	viaDiameter: 0.6,
@@ -305,7 +309,7 @@ export const rp2350aRules: BoardRules = {
 	edgeClearance: 0.3,
 };
 
-export const rp2350aCircuitId = "rp2350a";
+const rp2350aCircuitId = "rp2350a";
 
 const outlineSize = { width: 37, height: 58 };
 
@@ -452,7 +456,7 @@ const degrees = (angle = 0) => (angle * Math.PI) / 180;
  */
 function fanout(
 	footprints: readonly BoardFootprint[],
-	netlist: ReturnType<typeof boardNetlist>,
+	netlist: BoardNetlist,
 	firstId: number,
 	ground: string | undefined,
 ): EditorShape[] {
@@ -495,28 +499,15 @@ export function rp2350aBoard(
 	trace?: (message: string) => void,
 ): { board: BoardFile; failed: number } {
 	const library = footprintLibrary();
-	const symbols = new Map(
-		schematic.flatMap((shape) =>
-			shape.kind === "symbol" ? [[shape.id, shape] as const] : [],
-		),
-	);
 	const synced = synchronizeBoard({
 		shapes: [],
 		circuit: circuit.circuit,
-		footprintOf: (component) => {
-			for (const id of component.schematicShapeIds ?? [
-				component.schematicShapeId ?? 0,
-			])
-				if (symbols.get(id)?.footprint) return symbols.get(id)?.footprint;
-			return undefined;
-		},
+		footprintOf: schematicFootprints(schematic),
 		source: (reference) => footprintSource(library, reference),
 		nextId: 1,
 	});
 	if (synced.missing.length)
-		throw new Error(
-			`No footprint for ${synced.missing.map((entry) => entry.reference).join(", ")}.`,
-		);
+		throw new Error(`No footprint for ${synced.missing.join(", ")}.`);
 	const parts = new Map(rp2350aParts.map((part) => [part.reference, part]));
 	const footprints = synced.place.map((shape) => {
 		const footprint = shape as BoardFootprint;
@@ -633,7 +624,7 @@ function insideBy(
 }
 
 /** @return One via per zone island, where it also lies inside the other side's fill. */
-export function stitchZones(
+function stitchZones(
 	shapes: readonly EditorShape[],
 	netlist: BoardNetlist,
 	rules: BoardRules,
@@ -684,20 +675,7 @@ export function stitchZones(
 				vias.some((via) => Math.hypot(via.x - at.x, via.y - at.y) < 1e-6)
 			)
 				continue;
-			vias.push({
-				id: nextId++,
-				kind: "circle",
-				layer: "F.Cu",
-				x: at.x,
-				y: at.y,
-				width: rules.viaDiameter,
-				height: rules.viaDiameter,
-				rotation: 0,
-				lineWidth: 0.15,
-				filled: true,
-				via: { drill: rules.viaDrill },
-				net: fill.net,
-			});
+			vias.push(ruleVia(nextId++, at, rules, fill.net));
 		}
 	}
 	return vias;

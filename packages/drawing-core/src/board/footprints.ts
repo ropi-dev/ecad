@@ -2,11 +2,10 @@ import type {
 	EditorShape,
 	EditorSymbol,
 	SymbolShape,
-	TextShape,
 } from "#/drawing/schema.ts";
 import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Point } from "#/drawing/types.ts";
-import { type FootprintLayer, flipLayer } from "#/footprint/layers.ts";
+import { flipLayer } from "#/footprint/layers.ts";
 import type { FootprintReference } from "#/footprint/reference.ts";
 import { footprintKey } from "#/footprint/reference.ts";
 import { isPad, type PadShape, shapeLayer } from "#/footprint/shapes.ts";
@@ -56,21 +55,7 @@ const footprintChildren = (shapes: readonly EditorShape[]): SymbolShape[] =>
 	shapes.flatMap((shape, index): SymbolShape[] =>
 		shape.kind === "symbol" || shape.kind === "pin" || shape.kind === "wire"
 			? []
-			: shape.kind === "text"
-				? [
-						{
-							...shape,
-							id: index + 1,
-							layer: shapeLayer(shape),
-						} as SymbolShape,
-					]
-				: [
-						{
-							...shape,
-							id: index + 1,
-							layer: shapeLayer(shape),
-						} as SymbolShape,
-					],
+			: [{ ...shape, id: index + 1, layer: shapeLayer(shape) } as SymbolShape],
 	);
 
 function mirrorChild(child: SymbolShape): SymbolShape {
@@ -210,19 +195,4 @@ export function boardPads(shapes: readonly EditorShape[]): BoardPad[] {
 	return shapes.flatMap((shape) =>
 		isBoardFootprint(shape) ? footprintPads(shape) : [],
 	);
-}
-
-/** A footprint's items and reference text in board coordinates. */
-export function footprintItems(
-	footprint: BoardFootprint,
-): readonly SymbolShape[] {
-	return symbolShapes(footprint);
-}
-
-export function footprintReferenceText(
-	footprint: BoardFootprint,
-	texts: readonly TextShape[],
-): TextShape[] {
-	const layer: FootprintLayer = footprint.flipped ? "B.SilkS" : "F.SilkS";
-	return texts.map((text) => ({ ...text, layer }));
 }

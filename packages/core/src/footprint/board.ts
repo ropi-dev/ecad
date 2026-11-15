@@ -261,7 +261,7 @@ export function boardEdgeBounds(shapes: readonly EditorShape[]): Bounds {
 	);
 }
 
-export type BoardLayerSource = readonly (EditorShape | number | object)[];
+export type BoardLayerSource = readonly (EditorShape | number | BoardRegion)[];
 
 /** Copper regions drawn on a layer besides its shapes, such as zone fills. */
 export interface BoardRegion {
@@ -348,62 +348,55 @@ export function planFootprintBoard(
 	}
 	const edge = boardEdgeBounds(shapes);
 	const colors = darkSchematicTheme.appearance;
-	return [
+	const edgeObjects = (): SceneObject[] =>
 		outline.length
-			? {
-					id: BOARD_LAYER_ID,
-					source: outline,
-					build: () =>
-						planarLayer(
-							BOARD_LAYER_ID,
-							"Board edge",
-							colors["Edge.Cuts"],
-							"Profile,NP",
-							outline.flatMap((shape): SceneObject[] => {
-								const geometry = shapeGeometry({
-									...shape,
-									filled: false,
-								} as EditorShape);
-								return geometry
-									? [
-											{
-												id: `edge:${shape.id}`,
-												geometry,
-												bounds: strokedBounds(shape),
-												polarity: "dark",
-												transform: placement(shape),
-												attributes: {},
-											},
-										]
-									: [];
-							}),
-						),
-				}
-			: {
-					id: BOARD_LAYER_ID,
-					source: [edge.minX, edge.minY, edge.maxX, edge.maxY],
-					build: () =>
-						planarLayer(
-							BOARD_LAYER_ID,
-							"Board edge",
-							colors["F.Fab"],
-							"Profile,NP",
-							[
+			? outline.flatMap((shape): SceneObject[] => {
+					const geometry = shapeGeometry({
+						...shape,
+						filled: false,
+					} as EditorShape);
+					return geometry
+						? [
 								{
-									id: "board-edge",
-									geometry: {
-										type: "path",
-										d: rectanglePath(edge),
-										fill: false,
-										strokeWidth: boardEdgeWidth,
-									},
-									bounds: edge,
+									id: `edge:${shape.id}`,
+									geometry,
+									bounds: strokedBounds(shape),
 									polarity: "dark",
+									transform: placement(shape),
 									attributes: {},
 								},
-							],
-						),
-				},
+							]
+						: [];
+				})
+			: [
+					{
+						id: "board-edge",
+						geometry: {
+							type: "path",
+							d: rectanglePath(edge),
+							fill: false,
+							strokeWidth: boardEdgeWidth,
+						},
+						bounds: edge,
+						polarity: "dark",
+						attributes: {},
+					},
+				];
+	return [
+		{
+			id: BOARD_LAYER_ID,
+			source: outline.length
+				? outline
+				: [edge.minX, edge.minY, edge.maxX, edge.maxY],
+			build: () =>
+				planarLayer(
+					BOARD_LAYER_ID,
+					"Board edge",
+					colors[outline.length ? "Edge.Cuts" : "F.Fab"],
+					"Profile,NP",
+					edgeObjects(),
+				),
+		},
 		...boardLayers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
 			const onLayer = members.get(layer);
 			const layerRegions = regions.get(layer) ?? [];

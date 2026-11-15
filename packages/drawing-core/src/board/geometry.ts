@@ -185,10 +185,6 @@ export function hullDistance(a: Hull, b: Hull): number {
 	return coreDistance(a.points, b.points) - a.radius - b.radius;
 }
 
-export function hullContains(hull: Hull, point: Point): boolean {
-	return hullDistance(hull, { points: [point], radius: 0 }) <= 0;
-}
-
 /**
  * The hull's outline as a closed polygon, grown by `margin`. Rounded parts
  * use about one segment per `step` radians.

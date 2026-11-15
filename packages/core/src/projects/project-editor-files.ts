@@ -1,10 +1,11 @@
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import { createBoardFile } from "#/board/format.ts";
 import { createBoardRulesStore } from "#/board/rules-store.ts";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import type { EditorView } from "#/projects/ProjectSession.ts";
-import { primaryPcbId } from "#/projects/pcb.ts";
+import { pcbDocumentName, primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 
@@ -32,6 +33,15 @@ export function createProjectEditorFiles(
 		setEditorBoard,
 		showError,
 	} = state;
+	const clearEditors = (
+		keep?: "symbol" | "footprint" | "board" | "drawing" | "circuit",
+	) => {
+		if (keep !== "symbol") setEditorSymbol(null);
+		if (keep !== "footprint") setEditorFootprint(null);
+		if (keep !== "board") setEditorBoard(null);
+		if (keep !== "drawing") setEditorDrawing(null);
+		if (keep !== "circuit") setEditorCircuit(null);
+	};
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++state.editorSelection;
 		// The editor waits for this circuit instead of showing the schematic.
@@ -107,10 +117,7 @@ export function createProjectEditorFiles(
 				}),
 			};
 		});
-		setEditorSymbol(null);
-		setEditorFootprint(null);
-		setEditorBoard(null);
-		setEditorDrawing(null);
+		clearEditors("circuit");
 		setEditorCircuit(document);
 		return true;
 	};
@@ -122,10 +129,6 @@ export function createProjectEditorFiles(
 		if (existing) return existing;
 		const circuit = index.circuitsById.get(circuitId)?.file.circuit;
 		if (!circuit) return undefined;
-		const [{ createBoardFile }, { pcbDocumentName }] = await Promise.all([
-			import("#/board/format.ts"),
-			import("#/projects/pcb.ts"),
-		]);
 		await persist(undefined, undefined, undefined, undefined, undefined, [
 			...(snapshot.boards ?? []),
 			createBoardFile(pcbDocumentName(circuit.name), circuitId),
@@ -315,10 +318,7 @@ export function createProjectEditorFiles(
 		const request = ++state.editorSelection;
 		const show = () => {
 			if (request !== state.editorSelection) return false;
-			setEditorSymbol(null);
-			setEditorFootprint(null);
-			setEditorDrawing(null);
-			setEditorCircuit(null);
+			clearEditors("board");
 			setEditorBoard(document);
 			return true;
 		};
@@ -393,10 +393,7 @@ export function createProjectEditorFiles(
 		const snapshot = state.active;
 		if (!snapshot) return false;
 		if (!path || path === snapshot.manifest.drawing) {
-			setEditorSymbol(null);
-			setEditorFootprint(null);
-			setEditorBoard(null);
-			setEditorDrawing(null);
+			clearEditors();
 			return true;
 		}
 		const drawing = projectIndex(snapshot).drawingsByPath.get(path);
@@ -414,9 +411,7 @@ export function createProjectEditorFiles(
 					unsubscribe: subscribeDrawing(drawingStore),
 				};
 			});
-			setEditorSymbol(null);
-			setEditorFootprint(null);
-			setEditorBoard(null);
+			clearEditors("drawing");
 			setEditorDrawing(document);
 			return true;
 		}
@@ -435,9 +430,7 @@ export function createProjectEditorFiles(
 					unsubscribe: subscribeDrawing(footprintStore),
 				};
 			});
-			setEditorSymbol(null);
-			setEditorDrawing(null);
-			setEditorBoard(null);
+			clearEditors("footprint");
 			setEditorFootprint(document);
 			return true;
 		}
@@ -456,9 +449,7 @@ export function createProjectEditorFiles(
 				unsubscribe: subscribeDrawing(symbolStore),
 			};
 		});
-		setEditorDrawing(null);
-		setEditorFootprint(null);
-		setEditorBoard(null);
+		clearEditors("symbol");
 		setEditorSymbol(document);
 		return true;
 	};
