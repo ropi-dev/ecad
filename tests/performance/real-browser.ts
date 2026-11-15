@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeSeededProject } from "../browser/seeded-project";
 
 /**
  * Drives the Firefox or Google Chrome installed on this machine, headless,
@@ -644,6 +645,8 @@ export async function measureZoom(
 	if ("unavailable" in started) return started;
 	const { session, renderer } = started;
 	try {
+		await session.navigate(new URL("/projects", url).href);
+		await session.evaluate(`(${writeSeededProject})()`);
 		await session.preload(preload);
 		await session.navigate(url);
 		const page: { userAgent: string; canvas: [number, number] } = JSON.parse(

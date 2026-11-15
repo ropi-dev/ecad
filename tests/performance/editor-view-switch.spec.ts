@@ -22,7 +22,7 @@ test(
 		await page
 			.getByRole("button", { name: "Switch to schematic view", exact: true })
 			.click();
-		await page.waitForURL(/file=pcbs%2F.*view=circuit/);
+		await page.waitForURL(/file=Circuit\+workload\.ecaddraw&view=circuit/);
 		await expect(page.locator(".circuit-editor")).toHaveAttribute(
 			"data-pending-changes",
 			"false",
