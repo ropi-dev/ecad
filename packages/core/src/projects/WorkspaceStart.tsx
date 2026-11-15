@@ -54,7 +54,9 @@ export function WorkspaceStart() {
 			const kind = added.gerber.length ? "gerber" : "step";
 			const assets = added[kind];
 			if (assets.length) {
-				project.selectAsset(assets.length === 1 ? assets[0] : null);
+				project.selectAsset(assets.length === 1 ? assets[0] : null, {
+					reload: true,
+				});
 				viewerLinks.current[`/${kind}`]?.click();
 			}
 		} catch (cause) {

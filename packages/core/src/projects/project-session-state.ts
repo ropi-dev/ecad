@@ -45,6 +45,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		notificationPending: false,
 		storage: instrumentProjectStorage(rawStorage),
 		selectedAsset: null as ProjectAsset | null,
+		assetReads: 0,
 		project: null as ProjectSnapshot | null,
 		/** The latest snapshot, including saves made while unmounted. */
 		active: null as ProjectSnapshot | null,
@@ -103,8 +104,9 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		});
 	}
 
-	const setSelectedAsset = (next: ProjectAsset | null) => {
-		if (Object.is(next, state.selectedAsset)) return;
+	const setSelectedAsset = (next: ProjectAsset | null, reload = false) => {
+		if (!reload && Object.is(next, state.selectedAsset)) return;
+		if (reload) state.assetReads++;
 		state.selectedAsset = next;
 		publish();
 	};

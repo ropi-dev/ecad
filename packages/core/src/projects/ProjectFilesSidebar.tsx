@@ -506,7 +506,9 @@ export function ProjectFilesSidebar({
 			);
 			setError(problems);
 			if (assets.length && unmoved()) {
-				project.selectAsset(assets.length === 1 ? assets[0] : null);
+				project.selectAsset(assets.length === 1 ? assets[0] : null, {
+					reload: true,
+				});
 				viewerLinks.current[kind]?.click();
 			}
 		} catch (cause) {

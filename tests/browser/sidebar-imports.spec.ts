@@ -59,6 +59,26 @@ test("files imported from the sidebar open in their editor or viewer", async ({
 	await screenshot(page, "gerber.png");
 
 	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open all Gerber layers", exact: true })
+		.click();
+	await closeProjectFiles(page);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(1);
+	await (await openProjectFiles(page))
+		.getByLabel("Add Gerber files", { exact: true })
+		.setInputFiles(
+			demoFiles.slice(1, 3).map((file) => ({
+				name: file.name,
+				mimeType: "text/plain",
+				buffer: Buffer.from(file.source),
+			})),
+		);
+	await closeProjectFiles(page);
+	await expect(page.locator("[data-layer-id]")).toHaveCount(3, {
+		timeout: 30_000,
+	});
+	await screenshot(page, "gerber-all-layers.png");
+
+	await (await openProjectFiles(page))
 		.getByLabel("Add STEP files", { exact: true })
 		.setInputFiles(
 			resolve(
