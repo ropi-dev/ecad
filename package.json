@@ -22,6 +22,7 @@
 		"vite": "^8.3.5",
 		"esbuild": "^0.28.0",
 		"@ecad/cli": "workspace:*",
+		"@ecad/default-footprints": "workspace:*",
 		"@ecad/default-symbols": "workspace:*",
 		"@ecad/drawing-core": "workspace:*",
 		"@modelcontextprotocol/sdk": "^1.32.2",
@@ -71,6 +72,7 @@
 		"perf:budgets": "tsx scripts/performance/run.ts --budgets",
 		"perf:main": "tsx scripts/performance/main.ts",
 		"symbols:generate": "pnpm --filter @ecad/default-symbols run generate",
+		"footprints:generate": "pnpm --filter @ecad/default-footprints run generate",
 		"sandbox": "node scripts/development/sandbox.ts"
 	},
 	"packageManager": "pnpm@10.34.9"

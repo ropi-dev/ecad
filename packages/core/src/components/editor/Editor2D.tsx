@@ -54,6 +54,7 @@ import { editorIssues } from "#/components/editor/editorMessages.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { PageBar, type PageEdit } from "#/components/editor/PageBar.tsx";
 import { SelectionAttributes } from "#/components/editor/SelectionAttributes.tsx";
+import type { FootprintChoices } from "#/components/editor/SymbolFootprintField.tsx";
 import { fitTextShapes } from "#/components/editor/text.ts";
 import {
 	type CanvasTool as Tool,
@@ -86,10 +87,15 @@ import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { boardEdgeBounds, layerSurfaceZ } from "#/footprint/board.ts";
+import { loadBuiltinFootprints } from "#/footprint/library.ts";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
-import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import {
+	useLatestProjectSnapshot,
+	useProjectSelection,
+} from "#/projects/ProjectProvider.tsx";
+import { projectIndex } from "#/projects/project-index.ts";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
 
@@ -156,13 +162,23 @@ function EditorCanvas({
 	const [boardMount, setBoardMount] = useState(0);
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
-		({ store, error, libraryErrors, selectEditorFile }) => ({
+		({
 			store,
 			error,
 			libraryErrors,
 			selectEditorFile,
+			createFootprint,
+			project,
+		}) => ({
+			store,
+			error,
+			libraryErrors,
+			selectEditorFile,
+			createFootprint,
+			footprints: project?.footprints,
 		}),
 	);
+	const latestProject = useLatestProjectSnapshot();
 	const store = suppliedStore ?? project?.store ?? ownedStore;
 	const viewport = useEditorViewport(store, unit);
 	const { cameraView, gridStep } = viewport;
@@ -551,6 +567,33 @@ function EditorCanvas({
 	const attributesShown =
 		attributesFor?.selection === selectedIds &&
 		attributesFor.childKey === selectedChildKey;
+	const footprintChoices = useMemo((): FootprintChoices | undefined => {
+		if (sheetless) return undefined;
+		if (!project || suppliedStore) return { project: [] };
+		const { selectEditorFile, createFootprint } = project;
+		return {
+			project: project.footprints ?? [],
+			onOpen: (id) => {
+				const snapshot = latestProject();
+				const path = snapshot
+					? projectIndex(snapshot).footprintsById.get(id)?.path
+					: undefined;
+				if (path) void selectEditorFile(path);
+			},
+			onCopy: async (id) => {
+				const source = (await loadBuiltinFootprints()).byId.get(id);
+				if (!source)
+					throw new Error("This footprint is not in the built-in library.");
+				const path = await createFootprint(source.file.name, source.file);
+				const snapshot = latestProject();
+				const copy = snapshot
+					? projectIndex(snapshot).footprintsByPath.get(path)
+					: undefined;
+				if (!copy) throw new Error("The copied footprint could not be found.");
+				return copy.id;
+			},
+		};
+	}, [sheetless, project, suppliedStore, latestProject]);
 	const childTextMoved =
 		!!selectedSymbol &&
 		selectedChild?.shape.kind === "text" &&
@@ -579,6 +622,7 @@ function EditorCanvas({
 				onCreateSymbol={sheetless ? undefined : () => setCreatingSymbol(true)}
 				allowNetEdits={!sheetless}
 				footprint={isFootprint}
+				footprintChoices={footprintChoices}
 				hiddenLayers={layers.hidden}
 				unit={unit}
 				snapStep={
@@ -604,6 +648,7 @@ function EditorCanvas({
 			project,
 			sheetless,
 			isFootprint,
+			footprintChoices,
 			layers.hidden,
 			unit,
 			gridStep,

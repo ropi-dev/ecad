@@ -54,3 +54,13 @@ _Avoid_: Through-hole pad, hole
 **Footprint wire**:
 A straight stroke on one layer of a footprint. It forms no net, unlike a wire in a schematic.
 _Avoid_: Track, trace
+
+**Assigned footprint**:
+The footprint a placed symbol names for its component. Its pads match the symbol's pins by number, and a pin without a number counts by its position.
+_Avoid_: Footprint link, footprint property
+
+**Default footprint**:
+The footprint a symbol definition gives each new placement. Several definitions may share one.
+
+**Built-in footprint**:
+A read-only footprint that ships with the app. A project footprint copied from one does not follow it.

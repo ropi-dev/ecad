@@ -9,6 +9,7 @@ Original application code is under the [MIT license](LICENSE). Third-party code 
 | [`@ecad/core`](packages/core) | Shared React editor and viewers, symbol validation, parsers, workers, and rendering. |
 | [`@ecad/drawing-core`](packages/drawing-core) | Headless drawing model, store, Effect commands, schemas, and MCP tools. |
 | [`@ecad/default-symbols`](packages/default-symbols) | Offline generators for 45 KiCad-derived schematic symbols and portable library exports. |
+| [`@ecad/default-footprints`](packages/default-footprints) | Offline generators for 52 KiCad-derived footprints that built-in symbols use by default. |
 | [`@ecad/web`](packages/web) | TanStack Start app, browser project directories, symbol storage, routes, and HTTP services. |
 | [`@ecad/desktop`](packages/desktop) | Electron app, filesystem projects, and symbol storage. |
 | [`@ecad/cli`](packages/cli) | Standalone drawing commands, local file persistence, and an MCP stdio server. |
@@ -36,7 +37,7 @@ ECAD_ALLOWED_HOSTS=devbox.example.ts.net pnpm run dev
 
 Open `http://localhost:3000/editor` for the drawing editor. Manage symbol libraries under **Projects → Symbol libraries**, where you can upload files or directories into user or project libraries. User libraries live in project-independent localStorage. Project libraries save with the project. Uploading a directory copies its current symbols; it does not keep access to that directory.
 
-The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `pnpm run symbols:generate /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API.
+The Symbols picker includes 45 built-in components. Export their standalone `.ecadsym` files with `pnpm run symbols:generate /absolute/path/to/output`. See the [default-symbol package](packages/default-symbols/README.md) for the catalog, source attribution, and generation API. Most built-in symbols name a default footprint from the 52 built-in footprints, which you can change per placement in Attributes. Export the footprints as `.ecadfp` files with `pnpm run footprints:generate /absolute/path/to/output`.
 
 ## Run the desktop app
 

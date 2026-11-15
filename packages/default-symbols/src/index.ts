@@ -135,6 +135,9 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			prefix: source.prefix,
 			value: source.value,
 			...(source.netSymbol ? { netSymbol: true } : {}),
+			...(source.footprint
+				? { footprint: { library: "builtin", id: source.footprint } }
+				: {}),
 			shapes,
 		},
 		texts: [

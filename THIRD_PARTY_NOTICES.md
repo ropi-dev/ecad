@@ -12,6 +12,10 @@ The TanStack Start scaffold in `packages/web` originates from the [TanStack proj
 
 The exception permits use in proprietary electronic designs. It does not exempt redistribution of the symbol library itself from its license conditions.
 
+## Footprints
+
+`packages/default-footprints` includes adaptations of the KiCad library contributors' footprints under the same license and exception. The source commit, the footprints taken and the modifications are recorded in [NOTICE.md](packages/default-footprints/NOTICE.md). Its [LICENSE.md](packages/default-footprints/LICENSE.md) and [CC-BY-SA-4.0.txt](packages/default-footprints/CC-BY-SA-4.0.txt) match the symbol collection's, so distributions ship them once and add the footprint NOTICE.md.
+
 ## Font
 
 The interface is set in Inter, by The Inter Project Authors, from the `@fontsource-variable/inter` package. It remains under the SIL Open Font License 1.1. Builds copy its license into `THIRD_PARTY_NOTICES.txt` with the other dependency notices.

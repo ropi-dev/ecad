@@ -14,6 +14,7 @@ import {
 	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
 import { footprintLayers, padTypes } from "#/footprint/layers.ts";
+import { footprintReferenceSchema } from "#/footprint/reference.ts";
 
 /*
  * The shape types at the end of this file are inferred from these schemas.
@@ -352,6 +353,7 @@ const symbolShapeFields = {
 		})
 		.optional(),
 	strokeOverride: z.number().positive().optional(),
+	footprint: footprintReferenceSchema.optional(),
 	childOverrides: symbolChildOverridesSchema.optional(),
 	textAlignments: z
 		.strictObject(perAttribute(z.strictObject(textAlignmentFields).optional()))

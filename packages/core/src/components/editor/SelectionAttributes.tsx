@@ -57,6 +57,10 @@ import {
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Lock, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
+import {
+	type FootprintChoices,
+	SymbolFootprintField,
+} from "#/components/editor/SymbolFootprintField.tsx";
 import { SymbolInstanceAttributeForm } from "#/components/editor/SymbolInstanceAttributeForm.tsx";
 import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstanceAttributeInput.tsx";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
@@ -253,6 +257,8 @@ interface SelectionAttributesProps {
 	/** Shows the net symbol and label role controls. Reusable symbols have no nets. */
 	allowNetEdits?: boolean;
 	footprint?: boolean;
+	/** Shows a symbol's footprint and the footprints it can use. */
+	footprintChoices?: FootprintChoices;
 	hiddenLayers?: ReadonlySet<FootprintLayer>;
 	unit?: LengthUnit;
 	onEdit: (edit: SelectionEdit) => void;
@@ -494,6 +500,7 @@ function SelectionAttributesPanel({
 	onClear,
 	allowNetEdits = false,
 	footprint = false,
+	footprintChoices,
 	hiddenLayers,
 	unit = "mil",
 	onEdit,
@@ -1002,6 +1009,20 @@ function SelectionAttributesPanel({
 				<Section title="Properties">
 					<Rows rows={properties} />
 				</Section>
+				{symbol &&
+					footprintChoices &&
+					!symbol.netSymbol &&
+					symbol.children.some((child) => child.kind === "pin") && (
+						<Section title="Footprint">
+							<SymbolFootprintField
+								symbol={symbol}
+								choices={footprintChoices}
+								onChange={(next) =>
+									onEdit({ kind: "symbol-footprint", footprint: next })
+								}
+							/>
+						</Section>
+					)}
 				<Section title={single ? "Position and size" : "Selection bounds"}>
 					<Rows rows={geometry} />
 				</Section>

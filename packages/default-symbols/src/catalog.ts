@@ -15,6 +15,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Zigzag resistor",
 		prefix: "R",
 		value: "10k",
+		footprint: "r_0805_2012metric",
 		source: "Device:R_US",
 		rotation: -90,
 		showPinLabels: false,
@@ -80,6 +81,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Three-terminal resistor with a wiper",
 		prefix: "RV",
 		value: "10k",
+		footprint: "potentiometer_bourns_3386p_vertical",
 		source: "Device:R_Potentiometer",
 		rotation: -90,
 		drawing: [
@@ -98,6 +100,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Temperature-dependent resistor",
 		prefix: "TH",
 		value: "10k",
+		footprint: "r_0805_2012metric",
 		source: "Device:Thermistor",
 		rotation: -90,
 		showPinLabels: false,
@@ -122,6 +125,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Light-dependent resistor",
 		prefix: "R",
 		value: "LDR",
+		footprint: "r_ldr_5.1x4.3mm_p3.4mm_vertical",
 		source: "Device:R_Photo",
 		rotation: -90,
 		showPinLabels: false,
@@ -144,6 +148,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Capacitor with positive terminal marked",
 		prefix: "C",
 		value: "10u",
+		footprint: "cp_elec_6.3x5.4",
 		source: "Device:C_Polarized",
 		rotation: -90,
 		showPinLabels: false,
@@ -163,6 +168,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Adjustable capacitor",
 		prefix: "C",
 		value: "100p",
+		footprint: "c_trimmer_murata_tzb4-a",
 		source: "Device:C_Variable",
 		rotation: -90,
 		showPinLabels: false,
@@ -183,6 +189,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Four-loop coil",
 		prefix: "L",
 		value: "10u",
+		footprint: "l_0805_2012metric",
 		source: "Device:L",
 		rotation: -90,
 		showPinLabels: false,
@@ -202,6 +209,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Ferrite impedance for noise suppression",
 		prefix: "FB",
 		value: "600R",
+		footprint: "l_0603_1608metric",
 		source: "Device:FerriteBead",
 		rotation: -90,
 		showPinLabels: false,
@@ -261,6 +269,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Two-terminal quartz resonator",
 		prefix: "Y",
 		value: "16M",
+		footprint: "crystal_hc49-u_vertical",
 		source: "Device:Crystal",
 		rotation: 0,
 		showPinLabels: false,
@@ -281,6 +290,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Two-terminal protective fuse",
 		prefix: "F",
 		value: "1A",
+		footprint: "fuse_1206_3216metric",
 		source: "Device:Fuse",
 		rotation: -90,
 		showPinLabels: false,
@@ -298,6 +308,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Rectifier diode, K is cathode and A is anode",
 		prefix: "D",
 		value: "Diode",
+		footprint: "d_sod-123",
 		source: "Device:D",
 		rotation: 0,
 		drawing: [
@@ -315,6 +326,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Schottky barrier diode",
 		prefix: "D",
 		value: "Schottky",
+		footprint: "d_sod-123",
 		source: "Device:D_Schottky",
 		rotation: 0,
 		drawing: [
@@ -340,6 +352,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Voltage reference diode",
 		prefix: "D",
 		value: "5V1",
+		footprint: "d_sod-123",
 		source: "Device:D_Zener",
 		rotation: 0,
 		drawing: [
@@ -357,6 +370,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Bidirectional transient voltage suppressor",
 		prefix: "D",
 		value: "TVS",
+		footprint: "d_sma",
 		source: "Device:D_TVS",
 		rotation: 0,
 		drawing: [
@@ -381,6 +395,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Light-emitting diode with outward arrows",
 		prefix: "D",
 		value: "LED",
+		footprint: "led_0805_2012metric",
 		source: "Device:LED",
 		rotation: 0,
 		drawing: [
@@ -414,6 +429,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Light-sensitive diode with inward arrows",
 		prefix: "D",
 		value: "Photodiode",
+		footprint: "led_d5.0mm",
 		source: "Device:D_Photo",
 		rotation: 0,
 		drawing: [
@@ -441,6 +457,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Bipolar transistor, emitter arrow points out",
 		prefix: "Q",
 		value: "NPN",
+		footprint: "sot-89-3",
 		source: "Device:Q_NPN_BCE",
 		rotation: 0,
 		drawing: [
@@ -468,6 +485,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Bipolar transistor, emitter arrow points in",
 		prefix: "Q",
 		value: "PNP",
+		footprint: "sot-89-3",
 		source: "Device:Q_PNP_BCE",
 		rotation: 0,
 		drawing: [
@@ -495,6 +513,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Enhancement MOSFET with body diode",
 		prefix: "Q",
 		value: "NMOS",
+		footprint: "sot-23",
 		source: "Device:Q_NMOS_GSD",
 		rotation: 0,
 		drawing: [
@@ -530,6 +549,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Enhancement MOSFET with body diode",
 		prefix: "Q",
 		value: "PMOS",
+		footprint: "sot-23",
 		source: "Device:Q_PMOS_GSD",
 		rotation: 0,
 		drawing: [
@@ -611,6 +631,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single-pole single-throw switch",
 		prefix: "SW",
 		value: "SPST",
+		footprint: "sw_dip_spstx01_slide_9.78x4.72mm_w7.62mm_p2.54mm",
 		source: "Switch:SW_SPST",
 		rotation: 0,
 		showPinLabels: false,
@@ -629,6 +650,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single-pole double-throw switch",
 		prefix: "SW",
 		value: "SPDT",
+		footprint: "sw_slide_spdt_straight_ck_os102011ms2q",
 		source: "Switch:SW_SPDT",
 		rotation: 0,
 		showPinLabels: false,
@@ -649,6 +671,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Normally open momentary switch",
 		prefix: "SW",
 		value: "Push",
+		footprint: "sw_push_6mm",
 		source: "Switch:SW_Push",
 		rotation: 0,
 		showPinLabels: false,
@@ -668,6 +691,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Multiple cells with polarity marked",
 		prefix: "BT",
 		value: "9 V",
+		footprint: "batteryholder_keystone_1060_1x2032",
 		source: "Device:Battery",
 		rotation: 0,
 		drawing: [
@@ -694,6 +718,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single cell with polarity marked",
 		prefix: "BT",
 		value: "1.5 V",
+		footprint: "batteryholder_keystone_1060_1x2032",
 		source: "Device:Battery_Cell",
 		rotation: 0,
 		drawing: [
@@ -821,6 +846,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single-row two-pin connector",
 		prefix: "J",
 		value: "2 pins",
+		footprint: "pinheader_1x02_p2.54mm_vertical",
 		source: "Connector_Generic:Conn_01x02",
 		rotation: 0,
 		drawing: [
@@ -838,6 +864,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single-row three-pin connector",
 		prefix: "J",
 		value: "3 pins",
+		footprint: "pinheader_1x03_p2.54mm_vertical",
 		source: "Connector_Generic:Conn_01x03",
 		rotation: 0,
 		drawing: [
@@ -857,6 +884,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single-row four-pin connector",
 		prefix: "J",
 		value: "4 pins",
+		footprint: "pinheader_1x04_p2.54mm_vertical",
 		source: "Connector_Generic:Conn_01x04",
 		rotation: 0,
 		drawing: [
@@ -878,6 +906,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single-row eight-pin connector",
 		prefix: "J",
 		value: "8 pins",
+		footprint: "pinheader_1x08_p2.54mm_vertical",
 		source: "Connector_Generic:Conn_01x08",
 		rotation: 0,
 		drawing: [
@@ -907,6 +936,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Single amplifier with explicit supply pins, LM321 pinout",
 		prefix: "U",
 		value: "Op amp",
+		footprint: "sot-23-5",
 		source: "Amplifier_Operational:LM321",
 		rotation: 0,
 		pinTypes: {
@@ -942,6 +972,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Two-terminal loudspeaker",
 		prefix: "LS",
 		value: "Speaker",
+		footprint: "pinheader_1x02_p2.54mm_vertical",
 		source: "Device:Speaker",
 		rotation: 0,
 		showPinLabels: false,
@@ -965,6 +996,7 @@ export const catalog: readonly SourceSymbol[] = [
 		description: "Polarized buzzer",
 		prefix: "BZ",
 		value: "Buzzer",
+		footprint: "buzzer_12x9.5rm7.6",
 		source: "Device:Buzzer",
 		rotation: 0,
 		drawing: [

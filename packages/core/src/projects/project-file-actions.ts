@@ -167,16 +167,21 @@ export function createProjectFileActions(
 				});
 			}),
 
-		createFootprint: (name) =>
+		createFootprint: (name, from) =>
 			enqueue(async () => {
 				if (!state.active || state.generation !== epoch)
 					throw new Error("Open a project before creating a footprint.");
 				return measurePerformanceAsync("project.create-footprint", async () => {
-					const { createEmptyFootprintFile } = await import(
-						"#/footprint/format.ts"
-					);
+					const { createEmptyFootprintFile, footprintFileWithShapes } =
+						await import("#/footprint/format.ts");
 					const footprints = state.active?.footprints ?? [];
-					const footprint = createEmptyFootprintFile(name, footprints);
+					const empty = createEmptyFootprintFile(name, footprints);
+					const footprint = from
+						? footprintFileWithShapes(
+								{ ...empty, description: from.description },
+								structuredClone([...from.shapes]),
+							)
+						: empty;
 					await persist(undefined, undefined, undefined, undefined, [
 						...footprints,
 						footprint,
