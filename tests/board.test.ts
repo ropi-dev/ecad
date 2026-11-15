@@ -757,7 +757,7 @@ test("sync leaves copper on a dropped net when its pads now disagree", () => {
 
 test("fills keep the full clearance from large round copper and from a zone with a raised clearance", () => {
 	const { board, netlist, centerX, centerY } = dividerBoard([
-		{ ...zoneAt(51, "mid", -9, 8), zone: { clearance: 1.5 } },
+		{ ...zoneAt(51, "mid", -9, 8), zone: { clearance: 1.5 } } as EditorShape,
 		zoneAt(52, "gnd", 3, 20),
 	]);
 	const big: EditorShape = {
