@@ -44,6 +44,23 @@ const CHUNK_LIMIT = 1024;
 const CHUNK_EXTENT = 64;
 const aligned = (value: number) => Math.ceil(value / ATLAS_ALIGN) * ATLAS_ALIGN;
 
+type AtlasCursor = Pick<Page, "size" | "x" | "y" | "rowHeight">;
+
+export function atlasSlot(
+	page: AtlasCursor | undefined,
+	cellWidth: number,
+	cellHeight: number,
+): Omit<AtlasCursor, "size"> | null {
+	if (!page || cellWidth > page.size) return null;
+	let { x, y, rowHeight } = page;
+	if (x + cellWidth > page.size) {
+		x = 0;
+		y += rowHeight;
+		rowHeight = 0;
+	}
+	return y + cellHeight > page.size ? null : { x, y, rowHeight };
+}
+
 interface Page {
 	texture: CanvasTexture;
 	context: CanvasRenderingContext2D;
@@ -427,12 +444,9 @@ export function createDrawBatcher() {
 		};
 		if (cellWidth <= pageSize && cellHeight <= pageSize) {
 			let page = pages.at(-1);
-			if (page && page.x + cellWidth > page.size) {
-				page.x = 0;
-				page.y += page.rowHeight;
-				page.rowHeight = 0;
-			}
-			if (!page || page.y + cellHeight > page.size)
+			const slot = atlasSlot(page, cellWidth, cellHeight);
+			if (page && slot) Object.assign(page, slot);
+			else
 				page = newPage(
 					Math.min(
 						pageSize,

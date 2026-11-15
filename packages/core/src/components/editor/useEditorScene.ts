@@ -32,37 +32,17 @@ export function useEditorScene(
 ) {
 	const [renderer, setRenderer] = useState<DrawingRenderer>();
 	const theme = useSchematicTheme();
-	const width = sheet?.width;
-	const height = sheet?.height;
-	const name = sheet?.name;
-	const pageName = sheet?.page?.name;
-	const pageNumber = sheet?.page?.number;
-	const pageCount = sheet?.page?.count;
+	const sheetKey = sheet ? JSON.stringify(sheet) : null;
 	useEffect(() => {
 		const next = createDrawingRenderer(
-			width !== undefined && height !== undefined
-				? buildWorksheetDisplay({
-						width,
-						height,
-						name,
-						...(pageName !== undefined &&
-						pageNumber !== undefined &&
-						pageCount !== undefined
-							? {
-									page: {
-										name: pageName,
-										number: pageNumber,
-										count: pageCount,
-									},
-								}
-							: {}),
-					})
-				: null,
+			sheetKey === null
+				? null
+				: buildWorksheetDisplay(JSON.parse(sheetKey) as SheetSize),
 			theme,
 		);
 		setRenderer(next);
 		return () => next.dispose();
-	}, [width, height, name, pageName, pageNumber, pageCount, theme]);
+	}, [sheetKey, theme]);
 	// Wire and symbol previews change on every pointer move; the document does not.
 	const document = useMemo(
 		() =>

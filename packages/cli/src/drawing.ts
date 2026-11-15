@@ -13,6 +13,7 @@ import {
 	pagesReferenced,
 } from "@ecad/drawing-core/drawing/pages.ts";
 import { savedDrawingShapesSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import { sheetSettingsSchema } from "@ecad/drawing-core/drawing/sheet.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import {
 	FileLocked,
@@ -37,6 +38,7 @@ const fileSchema = z
 	.object({
 		shapes: savedDrawingShapesSchema,
 		pages: drawingPagesSchema.optional(),
+		sheet: sheetSettingsSchema.optional(),
 	})
 	.passthrough()
 	.refine(
@@ -101,11 +103,12 @@ async function publish(
 	file: z.infer<typeof fileSchema>,
 	snapshot: DrawingSnapshot,
 ) {
-	const { pages: _pages, ...rest } = file;
+	const { pages: _pages, sheet: _sheet, ...rest } = file;
 	const content = `${JSON.stringify({
 		...rest,
 		shapes: snapshot.shapes,
 		...(snapshot.pages ? { pages: snapshot.pages } : {}),
+		...(snapshot.sheet ? { sheet: snapshot.sheet } : {}),
 	})}\n`;
 	const historyPath = `${path}.history.json`;
 	const history = JSON.stringify({
@@ -242,7 +245,9 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 									(JSON.stringify(saved.snapshot.shapes) !==
 										JSON.stringify(file.shapes) ||
 										JSON.stringify(saved.snapshot.pages) !==
-											JSON.stringify(file.pages))
+											JSON.stringify(file.pages) ||
+										JSON.stringify(saved.snapshot.sheet) !==
+											JSON.stringify(file.sheet))
 								) {
 									throw new LocalDrawingError({
 										code: "DrawingHistoryMismatch",
@@ -257,7 +262,7 @@ export function createLocalDrawing(options: LocalDrawingOptions = {}) {
 										? cachedRead.store
 										: saved?.drawingHash === hash(content)
 											? restoreDrawingStore(saved.snapshot)
-											: createDrawingStore(file.shapes, file.pages);
+											: createDrawingStore(file.shapes, file.pages, file.sheet);
 								if (operation.type === "getDrawing")
 									cachedRead = { path, content, historyContent, store };
 								const before = store.getSnapshot();

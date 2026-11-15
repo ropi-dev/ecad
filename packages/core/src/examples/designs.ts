@@ -1,12 +1,14 @@
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { SheetSettings } from "@ecad/drawing-core/drawing/sheet.ts";
 
 /** A finished design: its schematic, the circuit it describes and its board. */
 export interface ExampleDesign {
 	name: string;
 	/** Saved drawing shapes: library symbols leave out their geometry. */
 	schematic: unknown[];
+	sheet?: SheetSettings;
 	circuit: Circuit;
 	rules: BoardRules;
 	board: EditorShape[];

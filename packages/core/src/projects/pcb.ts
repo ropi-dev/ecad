@@ -7,6 +7,7 @@ export function hasMainDrawing(document: ProjectDocument): boolean {
 	return (
 		document.shapes.length > 0 ||
 		document.pages !== undefined ||
+		document.sheet !== undefined ||
 		!!document.circuits?.some((file) => file.circuit.id === primaryPcbId)
 	);
 }

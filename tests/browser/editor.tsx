@@ -194,6 +194,7 @@ const showDocument = () => {
 			historyId: snapshot.history.currentId,
 			historySize: Object.keys(snapshot.history.nodes).length,
 			nextShapeId: snapshot.nextShapeId,
+			sheet: snapshot.sheet,
 		});
 };
 drawingStore.subscribe(showDocument);

@@ -91,7 +91,11 @@ export function createProjectAutosave(
 					},
 				]),
 		);
-		const { shapes: mainShapes, pages: mainPages } = state.store.getSnapshot();
+		const {
+			shapes: mainShapes,
+			pages: mainPages,
+			sheet: mainSheet,
+		} = state.store.getSnapshot();
 		const circuitInputs = new Map(
 			[...circuitDocuments.values()].map((entry) => [
 				entry.file.circuit.id,
@@ -101,8 +105,8 @@ export function createProjectAutosave(
 		const drawings = nextDrawings ?? previous.drawings;
 		const drawingEdits = new Map(
 			[...drawingDocuments.values()].map((entry) => {
-				const { shapes, pages } = entry.store.getSnapshot();
-				return [entry.file.id, { shapes, pages }] as const;
+				const { shapes, pages, sheet } = entry.store.getSnapshot();
+				return [entry.file.id, { shapes, pages, sheet }] as const;
 			}),
 		);
 		const circuits = nextCircuits ?? previous.circuits;
@@ -124,6 +128,7 @@ export function createProjectAutosave(
 			pending,
 			mainShapes,
 			mainPages,
+			mainSheet,
 			drawings,
 			drawingEdits,
 			savedCircuits,
@@ -164,7 +169,7 @@ export function createProjectAutosave(
 						state.store,
 						document.shapes,
 						externalDrawings.has(primaryPcbId),
-						document.pages,
+						document,
 					)
 				: document.shapes;
 		const savedDrawingShapes = new Map<string, EditorShape[]>();
@@ -181,7 +186,7 @@ export function createProjectAutosave(
 						target.store,
 						drawing.shapes,
 						externalDrawings.has(drawing.id),
-						drawing.pages,
+						drawing,
 					),
 				);
 		}

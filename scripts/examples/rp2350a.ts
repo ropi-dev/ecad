@@ -12,6 +12,7 @@ import {
 	rp2350aBoard,
 	rp2350aCircuit,
 	rp2350aSchematic,
+	rp2350aSheet,
 } from "#/examples/rp2350a.ts";
 import { boardSvg } from "./board-svg.ts";
 
@@ -54,6 +55,7 @@ if (process.argv.includes("--write")) {
 	const design: ExampleDesign = {
 		name: "RP2350A",
 		schematic: persistProjectDrawingShapes({ shapes, symbols: [] }),
+		sheet: rp2350aSheet,
 		circuit: file.circuit,
 		rules: board.rules,
 		board: board.shapes,

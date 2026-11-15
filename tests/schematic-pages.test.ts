@@ -272,7 +272,9 @@ test("loading canonicalizes shapes that name the first page explicitly", () => {
 		[undefined, 1],
 	);
 	const replaced = createDrawingStore([], twoPages);
-	replaceDrawingShapes(replaced, [wire(1, 0, 0, 10, 1)], true, twoPages);
+	replaceDrawingShapes(replaced, [wire(1, 0, 0, 10, 1)], true, {
+		pages: twoPages,
+	});
 	assert.equal(replaced.getSnapshot().shapes[0].page, undefined);
 });
 

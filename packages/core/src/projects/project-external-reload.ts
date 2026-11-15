@@ -63,12 +63,7 @@ export function createProjectExternalReload(
 					changed.has(snapshot.manifest.drawing)) ||
 				snapshot.manifest.drawing !== previous.manifest.drawing
 			) {
-				replaceDrawingShapes(
-					state.store,
-					snapshot.shapes,
-					true,
-					snapshot.pages,
-				);
+				replaceDrawingShapes(state.store, snapshot.shapes, true, snapshot);
 				state.savedMainShapes = state.store.getSnapshot().shapes;
 				names.push(snapshot.manifest.name);
 			}
@@ -82,12 +77,7 @@ export function createProjectExternalReload(
 					continue;
 				}
 				if (!moved(next.path, before.drawingsById.get(id)?.path)) continue;
-				replaceDrawingShapes(
-					document.store,
-					next.file.shapes,
-					true,
-					next.file.pages,
-				);
+				replaceDrawingShapes(document.store, next.file.shapes, true, next.file);
 				const replaced = {
 					...document,
 					file: next.file,

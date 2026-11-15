@@ -61,6 +61,14 @@ test("a designer adds the RP2350A example and gets a routed board in the same fi
 	await expect(page.getByRole("heading", { level: 1 })).toContainText(
 		"Schematic editor · RP2350A",
 	);
+	await page.getByRole("button", { name: "Schematic settings" }).click();
+	const settings = page.getByRole("dialog", { name: "Schematic settings" });
+	await expect(settings.getByLabel("Title", { exact: true })).toHaveValue(
+		"RP2350A QFN-60 Minimal Design Example",
+	);
+	await expect(settings.getByLabel("Revision")).toHaveValue("S1");
+	await page.keyboard.press("Escape");
+	await expect(settings).toHaveCount(0);
 	await page.getByRole("button", { name: "Switch to pcb view" }).click();
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"PCB editor · RP2350A",

@@ -5,6 +5,7 @@ import {
 	type DrawingDocument,
 	type DrawingSnapshot,
 	DrawingStore,
+	drawingDocument,
 } from "#/commands/drawing-store.ts";
 import { createSymbolFromShapes } from "#/drawing/group-symbol.ts";
 import {
@@ -20,7 +21,6 @@ import {
 	drawingPages,
 	drawingPagesSchema,
 	pageId,
-	savedPages,
 	shapesOnPage,
 	withPage,
 } from "#/drawing/pages.ts";
@@ -41,6 +41,7 @@ import {
 	pinTerminals,
 	withFullRouting,
 } from "#/drawing/shapes.ts";
+import { type SheetSettings, sheetSettingsSchema } from "#/drawing/sheet.ts";
 import { freeze } from "#/lib/freeze.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 
@@ -113,6 +114,7 @@ interface CommitOptions {
 	readonly page?: number;
 	/** The drawing's new page list, when the command changes it. */
 	readonly pages?: readonly DrawingPage[];
+	readonly sheet?: SheetSettings;
 }
 
 /**
@@ -155,7 +157,6 @@ function commit(
 	preferredIds: readonly number[] = changedIds,
 	options: CommitOptions = {},
 ): readonly [CommandResult, DrawingSnapshot] {
-	const pages = savedPages(options.pages ?? current.pages);
 	const paged = canonicalPages(current, shapes, options);
 	const normalized = measurePerformance(
 		"editor.wire-normalize",
@@ -170,9 +171,11 @@ function commit(
 			changedIds.flatMap((id) => normalized.idsBySource.get(id) ?? []),
 		),
 	];
-	const document: DrawingDocument = pages
-		? { shapes: normalized.shapes, pages }
-		: { shapes: normalized.shapes };
+	const document = drawingDocument(
+		normalized.shapes,
+		options.pages ?? current.pages,
+		"sheet" in options ? options.sheet : current.sheet,
+	);
 	const history = measurePerformance(
 		"drawing.history-commit",
 		() => commitHistory(current.history, freeze(document), label, sameDrawing),
@@ -543,11 +546,10 @@ function navigate(
 	return command<void>((current) => {
 		const history = next(current.history);
 		if (history === current.history) return [undefined, current];
-		const { pages: _pages, ...rest } = current;
-		const { shapes, pages } = history.nodes[history.currentId].state;
+		const { pages: _pages, sheet: _sheet, ...rest } = current;
 		return [
 			undefined,
-			{ ...rest, shapes, ...(pages ? { pages } : {}), history },
+			{ ...rest, ...history.nodes[history.currentId].state, history },
 		];
 	});
 }
@@ -590,6 +592,28 @@ export function setPagesEffect(
 			return commit(current, shapes, removed, label, current.nextShapeId, [], {
 				pages: next,
 			});
+		}),
+	);
+}
+
+export function setSheetEffect(
+	sheet: SheetSettings,
+	label = "Edit sheet settings",
+) {
+	return capture(sheet, (captured) =>
+		command((current) => {
+			const parsed = sheetSettingsSchema.safeParse(captured);
+			if (!parsed.success)
+				invalid(parsed.error.issues[0]?.message ?? "Invalid sheet settings.");
+			return commit(
+				current,
+				current.shapes,
+				[],
+				label,
+				current.nextShapeId,
+				[],
+				{ sheet: parsed.data },
+			);
 		}),
 	);
 }

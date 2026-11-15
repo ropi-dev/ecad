@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkBoard } from "@ecad/drawing-core/board/drc.ts";
 import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
+import {
+	savedSheet,
+	sheetPaper,
+	sheetSettingsSchema,
+} from "@ecad/drawing-core/drawing/sheet.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
 import { boardFileSchema } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { exampleDesigns } from "#/examples/designs.ts";
+import { rp2350aSheet } from "#/examples/rp2350a.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 
 test("the RP2350A example is a fully routed board that passes the check and exports Gerbers a fab can read", async () => {
@@ -60,4 +66,24 @@ test("the RP2350A example is a fully routed board that passes the check and expo
 	]);
 	const drill = files.find((file) => file.name.endsWith(".drl"));
 	assert.match(drill?.content ?? "", /^T\d+C0\.300$/m);
+});
+
+test("the RP2350A schematic fills in its title block and keeps clear of it", async () => {
+	const design = await exampleDesigns.rp2350a.load();
+	const sheet = sheetSettingsSchema.parse(design.sheet);
+	assert.deepEqual(sheet, rp2350aSheet);
+	assert.deepEqual(savedSheet(sheet), sheet);
+	assert.equal(sheet.title, "RP2350A QFN-60 Minimal Design Example");
+	const { width, height } = sheetPaper(sheet);
+	const titleBlock = {
+		left: width / 2 - 12 - 108,
+		top: -height / 2 + 12 + 32,
+	};
+	for (const shape of design.schematic as { x: number; y: number }[]) {
+		assert.ok(Math.abs(shape.x) < width / 2 && Math.abs(shape.y) < height / 2);
+		assert.ok(
+			shape.x < titleBlock.left || shape.y > titleBlock.top,
+			`shape at ${shape.x}, ${shape.y} is inside the title block`,
+		);
+	}
 });

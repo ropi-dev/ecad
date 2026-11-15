@@ -110,6 +110,7 @@ function mainDrawingBytes(
 		JSON.stringify({
 			shapes: persistProjectDrawingShapes(document),
 			...(document.pages ? { pages: document.pages } : {}),
+			...(document.sheet ? { sheet: document.sheet } : {}),
 			circuit,
 			...embeddedBoard(document, circuit?.id),
 		}),
@@ -410,6 +411,9 @@ export class ProjectRepository {
 				...(drawing?.pages === undefined
 					? {}
 					: { pages: drawing.pages as ProjectDocument["pages"] }),
+				...(drawing?.sheet === undefined
+					? {}
+					: { sheet: drawing.sheet as ProjectDocument["sheet"] }),
 				...(manifest.drawings === undefined
 					? {}
 					: {

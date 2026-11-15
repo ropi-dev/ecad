@@ -73,6 +73,7 @@ const projectDocument = z
 	.object({
 		shapes: z.array(z.unknown()),
 		pages: z.array(z.unknown()).optional(),
+		sheet: z.unknown().optional(),
 		drawings: z.array(z.unknown()).optional(),
 		circuits: z.array(z.unknown()).optional(),
 		footprints: z.array(z.unknown()).optional(),

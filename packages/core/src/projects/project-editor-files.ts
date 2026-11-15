@@ -401,7 +401,8 @@ export function createProjectEditorFiles(
 			const document = documents.openDocument("drawing", drawing.id, () => {
 				const drawingStore = measurePerformance(
 					"editor.open-drawing",
-					() => createDrawingStore(drawing.shapes, drawing.pages),
+					() =>
+						createDrawingStore(drawing.shapes, drawing.pages, drawing.sheet),
 					{ shapes: drawing.shapes.length },
 				);
 				return {

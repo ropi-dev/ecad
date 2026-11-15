@@ -28,6 +28,7 @@ import {
 	type EditorSymbol,
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { SheetSettings } from "@ecad/drawing-core/drawing/sheet.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
@@ -341,6 +342,17 @@ const sheetSlots: Record<string, Point> = {
 	J4: { x: -130, y: -50 },
 	J2: { x: 60, y: 10 },
 	J3: { x: 120, y: 10 },
+};
+
+export const rp2350aSheet: SheetSettings = {
+	title: "RP2350A QFN-60 Minimal Design Example",
+	date: "2026-07-03",
+	revision: "S1",
+	company: "Raspberry Pi Ltd",
+	comments: [
+		"Recreated from RPI-RP2350A-MINIMAL_R4",
+		"Design copyright 2026 Raspberry Pi Ltd, MIT license",
+	],
 };
 
 function gridSlot(index: number): Point {

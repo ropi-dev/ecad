@@ -1,8 +1,9 @@
 import { sameShape } from "@ecad/drawing-core/commands/drawing-equality.ts";
-import type {
-	createDrawingStore,
-	DrawingDocument,
-	DrawingSnapshot,
+import {
+	type createDrawingStore,
+	type DrawingDocument,
+	type DrawingSnapshot,
+	drawingDocument,
 } from "@ecad/drawing-core/commands/drawing-store.ts";
 import { historyOf } from "@ecad/drawing-core/drawing/history.ts";
 import {
@@ -11,6 +12,7 @@ import {
 	savedPages,
 } from "@ecad/drawing-core/drawing/pages.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { SheetSettings } from "@ecad/drawing-core/drawing/sheet.ts";
 
 /**
  * Replaces a drawing store's shapes with saved shapes without recording an
@@ -22,14 +24,26 @@ export function replaceDrawingShapes(
 	target: ReturnType<typeof createDrawingStore>,
 	loaded: EditorShape[],
 	external: boolean,
-	savedPageList?: readonly DrawingPage[],
+	settings: {
+		pages?: readonly DrawingPage[];
+		sheet?: SheetSettings;
+	} = {},
 ): EditorShape[] {
 	const current = target.getSnapshot();
 	const currentShapes = current.shapes;
-	const pages = savedPages(savedPageList);
+	const pages = savedPages(settings.pages);
 	const saved = canonicalShapePages(loaded, pages);
-	const samePages =
-		JSON.stringify(pages) === JSON.stringify(savedPages(current.pages));
+	const { shapes: _shapes, ...loadedRest } = drawingDocument(
+		saved,
+		pages,
+		settings.sheet,
+	);
+	const { shapes: _current, ...currentRest } = drawingDocument(
+		currentShapes,
+		current.pages,
+		current.sheet,
+	);
+	const samePages = JSON.stringify(loadedRest) === JSON.stringify(currentRest);
 	if (currentShapes === saved && samePages) return saved;
 	const byId = new Map(currentShapes.map((shape) => [shape.id, shape]));
 	let unchanged = saved.length === currentShapes.length;
@@ -39,12 +53,12 @@ export function replaceDrawingShapes(
 		if (kept !== currentShapes[index]) unchanged = false;
 		return kept;
 	});
-	// A page change alone still publishes new shapes, as commits do.
+	// A page or sheet change alone still publishes new shapes, as commits do.
 	const shapes = unchanged && samePages ? currentShapes : merged;
 	if (shapes === currentShapes && !external) return shapes;
 	target.transact((current) => {
-		const { pages: _pages, ...rest } = current;
-		const document: DrawingDocument = pages ? { shapes, pages } : { shapes };
+		const { pages: _pages, sheet: _sheet, ...rest } = current;
+		const document: DrawingDocument = { shapes, ...loadedRest };
 		const next: DrawingSnapshot = {
 			...rest,
 			...document,

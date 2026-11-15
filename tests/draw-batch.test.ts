@@ -11,7 +11,7 @@ import {
 	PointsMaterial,
 	type WebGLRenderer,
 } from "three";
-import { createDrawBatcher } from "#/engine/draw-batch.ts";
+import { atlasSlot, createDrawBatcher } from "#/engine/draw-batch.ts";
 import { required } from "./helpers/required.ts";
 
 const renderer = {
@@ -72,4 +72,17 @@ test("an object it cannot draw turns batching off", () => {
 	} finally {
 		batcher.dispose();
 	}
+});
+
+test("a text wider than the current atlas page starts a new page", () => {
+	const page = { size: 1024, x: 320, y: 0, rowHeight: 160 };
+	assert.equal(atlasSlot(page, 1664, 160), null);
+	assert.deepEqual(atlasSlot(page, 800, 160), { x: 0, y: 160, rowHeight: 0 });
+	assert.deepEqual(atlasSlot(page, 640, 160), {
+		x: 320,
+		y: 0,
+		rowHeight: 160,
+	});
+	assert.equal(atlasSlot({ ...page, y: 900 }, 800, 160), null);
+	assert.equal(atlasSlot(undefined, 64, 64), null);
 });

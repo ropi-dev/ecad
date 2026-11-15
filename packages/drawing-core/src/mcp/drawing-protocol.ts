@@ -12,6 +12,7 @@ import {
 	replaceShapesEffect,
 	rotateShapesEffect,
 	setPagesEffect,
+	setSheetEffect,
 	undoEffect,
 } from "#/commands/drawing-commands.ts";
 import {
@@ -27,6 +28,7 @@ import {
 	shapeId,
 	shapeInputSchema,
 } from "#/drawing/schema.ts";
+import { sheetSettingsSchema } from "#/drawing/sheet.ts";
 
 export {
 	drawingShapeSchema,
@@ -80,6 +82,12 @@ export const jumpHistoryInputSchema = z.strictObject({ id: historyId });
 export const setPagesInputSchema = z.strictObject({
 	pages: drawingPagesSchema.describe(
 		"The complete page list in display order. Keep existing IDs to keep their shapes; a new ID adds an empty page. Shapes on pages left out are deleted. Shapes without `page` are on the first page.",
+	),
+	label: z.string().optional(),
+});
+export const setSheetInputSchema = z.strictObject({
+	sheet: sheetSettingsSchema.describe(
+		"The complete paper size and title block. Fields left out return to their defaults: A3 landscape and blank title block text.",
 	),
 	label: z.string().optional(),
 });
@@ -143,6 +151,7 @@ export const drawingOperationSchema = z.discriminatedUnion("type", [
 	z.strictObject({ type: z.literal("redo") }),
 	jumpHistoryInputSchema.extend({ type: z.literal("jumpHistory") }),
 	setPagesInputSchema.extend({ type: z.literal("setPages") }),
+	setSheetInputSchema.extend({ type: z.literal("setSheet") }),
 	moveShapesToPageInputSchema.extend({ type: z.literal("moveShapesToPage") }),
 ]);
 export type DrawingOperation = z.infer<typeof drawingOperationSchema>;
@@ -158,6 +167,7 @@ const drawingStateSchema = z.strictObject({
 	// A drawing may still hold legacy diagonal wires; edits use the strict schemas.
 	shapes: z.array(legacyDrawingShapeSchema),
 	pages: drawingPagesSchema,
+	sheet: sheetSettingsSchema.optional(),
 	nets: z
 		.array(
 			z.strictObject({
@@ -259,6 +269,11 @@ function operationEffect(
 			return jumpHistoryEffect(operation.id).pipe(Effect.as(undefined));
 		case "setPages":
 			return setPagesEffect(operation.pages, operation.label ?? "Edit pages");
+		case "setSheet":
+			return setSheetEffect(
+				operation.sheet,
+				operation.label ?? "Edit sheet settings",
+			);
 		case "moveShapesToPage":
 			return moveShapesToPageEffect(
 				operation.ids,
@@ -403,13 +418,15 @@ function readDrawing(
 	const measured = measureShapes(snapshot.shapes);
 	const pages = drawingPages(snapshot.pages);
 	// Content-derived, so separate processes and external file edits agree on it.
-	const revision = `${measured.hash}${snapshot.nextShapeId.toString(36)}${
-		snapshot.pages
-			? hashText(JSON.stringify(snapshot.pages))
-					.map((value) => value.toString(36))
+	const documentHash = (value: unknown) =>
+		value
+			? hashText(JSON.stringify(value))
+					.map((item) => item.toString(36))
 					.join("")
-			: ""
-	}`;
+			: "";
+	const revision = `${measured.hash}${snapshot.nextShapeId.toString(36)}${documentHash(
+		snapshot.pages,
+	)}${snapshot.sheet ? `s${documentHash(snapshot.sheet)}` : ""}`;
 	if (expected !== undefined && expected !== revision)
 		return failure(
 			"DrawingChanged",
@@ -429,6 +446,7 @@ function readDrawing(
 		drawing: {
 			shapes: [] as DrawingSnapshot["shapes"][number][],
 			pages: pages.map((page) => ({ ...page })),
+			...(snapshot.sheet ? { sheet: structuredClone(snapshot.sheet) } : {}),
 			nextShapeId: snapshot.nextShapeId,
 			history: {
 				currentId: snapshot.history.currentId,

@@ -19,6 +19,7 @@ import {
 	replaceShapesInputSchema,
 	rotateShapesInputSchema,
 	setPagesInputSchema,
+	setSheetInputSchema,
 	utf8ByteLength,
 } from "#/mcp/drawing-protocol.ts";
 
@@ -116,7 +117,7 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 		{
 			title: "Read drawing",
 			description:
-				"Read the drawing's committed shapes, schematic pages, electrical nets, allocated IDs and history branches. drawing.pages lists the schematic pages in display order as { id, name }; a shape's page field names its page, and shapes on the first page omit it. Wires and pins connect only on their own page, while a net in drawing.nets can span pages through net and supply labels with the same name. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews, selection and the page open in the editor are not drawing data. Without arguments, a drawing too large for one tool result fails with DrawingTooLarge. Pass offset 0, and optionally limit, to read drawing.shapes in chunks; the reply's page field describes the chunk, not a schematic page. Continue from page.nextOffset until it is absent, passing the revision from the first chunk with every later chunk. If the drawing changed in between, the call fails with DrawingChanged; read again from offset 0. Only the chunk at offset 0 includes nets.",
+				"Read the drawing's committed shapes, schematic pages, electrical nets, allocated IDs and history branches. drawing.pages lists the schematic pages in display order as { id, name }; a shape's page field names its page, and shapes on the first page omit it. drawing.sheet holds the paper size and title block that every page shares; it is absent while every field has its default. Wires and pins connect only on their own page, while a net in drawing.nets can span pages through net and supply labels with the same name. Positions are shape centers in millimetres with Cartesian positive Y up; rotations are radians. Temporary pointer previews, selection and the page open in the editor are not drawing data. Without arguments, a drawing too large for one tool result fails with DrawingTooLarge. Pass offset 0, and optionally limit, to read drawing.shapes in chunks; the reply's page field describes the chunk, not a schematic page. Continue from page.nextOffset until it is absent, passing the revision from the first chunk with every later chunk. If the drawing changed in between, the call fails with DrawingChanged; read again from offset 0. Only the chunk at offset 0 includes nets.",
 			inputSchema: getDrawingInputSchema,
 			outputSchema: drawingToolReplySchema,
 			annotations: readOnly,
@@ -200,6 +201,19 @@ export function createDrawingMcpServer<E extends DrawingMcpErrorLike>(
 			annotations: edit,
 		},
 		(input, { signal }) => call({ type: "setPages", ...input }, signal),
+	);
+	server.registerTool(
+		"setSheet",
+		{
+			title: "Edit sheet settings",
+			description:
+				"Replace the schematic's paper size and title block in one undo step. Every page uses the same sheet. getDrawing returns drawing.sheet, which is absent while every field has its default. The sheet is centered on the origin, so a size change keeps shapes where they are." +
+				historyEditReply,
+			inputSchema: setSheetInputSchema,
+			outputSchema: drawingToolReplySchema,
+			annotations: edit,
+		},
+		(input, { signal }) => call({ type: "setSheet", ...input }, signal),
 	);
 	server.registerTool(
 		"moveShapesToPage",
