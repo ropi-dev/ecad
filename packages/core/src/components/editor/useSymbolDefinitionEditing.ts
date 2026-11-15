@@ -28,7 +28,7 @@ export function useSymbolDefinitionEditing({
 	symbolLibrary: ReturnType<typeof useSymbolLibrary>;
 }) {
 	const [editTarget, setEditTarget] = useState<SymbolEditTarget | null>(null);
-	const [checked, setChecked] = useState(false);
+	const [projectWritable, setProjectWritable] = useState(false);
 	const [editingDefinition, setEditingDefinition] =
 		useState<SymbolEditTarget | null>(null);
 	const symbolPath = useProjectSelection(({ project }) => {
@@ -46,16 +46,20 @@ export function useSymbolDefinitionEditing({
 	const definitionId = selectedSymbol?.definitionId;
 	const definitionLibrary = selectedSymbol?.library;
 	const prepareEdit = useEffectEvent(symbolLibrary.prepareEdit);
+	const canWriteProject = useEffectEvent(symbolLibrary.canWriteProject);
 	useEffect(() => {
 		let active = true;
 		setEditTarget(null);
-		setChecked(false);
+		setProjectWritable(false);
 		if (definitionId && !symbolLibrary.loading) {
-			void prepareEdit(definitionId, definitionLibrary).then(
-				(target) => {
+			void Promise.all([
+				prepareEdit(definitionId, definitionLibrary),
+				canWriteProject().catch(() => false),
+			]).then(
+				([target, writable]) => {
 					if (!active) return;
 					setEditTarget(target);
-					setChecked(true);
+					setProjectWritable(writable);
 				},
 				(cause) => {
 					if (active)
@@ -95,7 +99,7 @@ export function useSymbolDefinitionEditing({
 	const copyToProject = useCallback(() => copy.current(), []);
 	const canCopy =
 		!!selectedSymbol &&
-		checked &&
+		projectWritable &&
 		!editTarget &&
 		symbolLibrary.canCopyToProject(
 			selectedSymbol.definitionId,

@@ -482,6 +482,10 @@ export function useSymbolLibrary() {
 		sources,
 		canCopyToProject: (id: string, library?: SymbolLibraryReference) =>
 			!!projectStorage && !!copySource(id, library),
+		async canWriteProject() {
+			if (!projectStorage) return false;
+			return (await projectStorage.canWriteConfiguration?.()) ?? true;
+		},
 		copyToProject,
 		async prepareEdit(id: string, library?: SymbolLibraryReference) {
 			const source = library
