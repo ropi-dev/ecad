@@ -5,6 +5,13 @@ export const budgets = {
 		domNodes: 1500,
 		scriptBytes: 3_500_000,
 	},
+	"pcb-board-3d": {
+		interactionP95Ms: 3000,
+		moveFootprintMs: 3000,
+		domNodes: 1500,
+		scriptBytes: 3_500_000,
+		frameP95Ms: 500,
+	},
 	"footprint-board": {
 		interactionP95Ms: 1500,
 		openFootprintMs: 50,

@@ -11,10 +11,24 @@ export interface Bounds {
 }
 export type Matrix = [number, number, number, number, number, number];
 export type Attributes = Record<string, string[]>;
+export type MultiPolygon = [number, number][][][];
 export type Geometry =
 	| { type: "circle"; x: number; y: number; radius: number }
 	| { type: "rect"; x: number; y: number; width: number; height: number }
 	| { type: "path"; d: string; fill: boolean; strokeWidth?: number }
+	| {
+			type: "line";
+			x1: number;
+			y1: number;
+			x2: number;
+			y2: number;
+			width: number;
+	  }
+	| {
+			type: "polygons";
+			polygons: MultiPolygon;
+			triangles?: Float32Array;
+	  }
 	| {
 			type: "group";
 			children: { geometry: Geometry; polarity: "dark" | "clear" }[];

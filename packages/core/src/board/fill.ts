@@ -26,6 +26,7 @@ import {
 	combinePolygons,
 	containsPoint,
 	type MultiPolygon,
+	triangulate,
 } from "#/engine/geometry.ts";
 
 export interface ZoneFill {
@@ -35,6 +36,23 @@ export interface ZoneFill {
 	/** Copper islands that touch an item on the zone's net. */
 	polygons: MultiPolygon;
 }
+
+export interface BoardFill {
+	shapeId: number;
+	layer: CopperLayer;
+	net?: string;
+	polygons: MultiPolygon;
+	triangles: Float32Array;
+}
+
+export const boardFills = (fills: readonly ZoneFill[]): BoardFill[] =>
+	fills.map((fill) => ({
+		shapeId: fill.zone.shapeId,
+		layer: fill.layer,
+		...(fill.net ? { net: fill.net } : {}),
+		polygons: fill.polygons,
+		triangles: triangulate(fill.polygons),
+	}));
 
 type Ring = [number, number][];
 const ring = (points: readonly Point[]): Ring =>
@@ -256,6 +274,25 @@ function fillDistance(
 const touchesFill = (polygons: MultiPolygon, item: CopperItem) =>
 	fillDistance(polygons, item) <= 1e-6;
 
+const islandTouches = new WeakMap<
+	MultiPolygon[number],
+	WeakMap<EditorShape, boolean>
+>();
+
+function touchesIsland(polygon: MultiPolygon[number], item: CopperItem) {
+	let byShape = islandTouches.get(polygon);
+	if (!byShape) {
+		byShape = new WeakMap();
+		islandTouches.set(polygon, byShape);
+	}
+	let touches = byShape.get(item.shape);
+	if (touches === undefined) {
+		touches = touchesFill([polygon], item);
+		byShape.set(item.shape, touches);
+	}
+	return touches;
+}
+
 const arcError = 1e-5;
 
 const circumscribed = (hull: Hull, margin: number) =>
@@ -441,14 +478,14 @@ export function fillReach(fills: readonly ZoneFill[]): ZoneReach {
 			const fill = byZone.get(zone.shapeId);
 			if (!fill) return itemDistance(zone, item) <= 1e-6 ? [0] : [];
 			return fill.polygons.flatMap((polygon, index) =>
-				touchesFill([polygon], item) ? [index] : [],
+				touchesIsland(polygon, item) ? [index] : [],
 			);
 		},
 	};
 }
 
 export function layerFill(
-	fills: readonly ZoneFill[],
+	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
 	layer: CopperLayer,
 ): MultiPolygon {
 	const paths = fills

@@ -128,7 +128,7 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/core/src/components/circuit/**", ["@circuit"]],
 	[
 		"packages/core/src/components/gerber/GerberViewer.tsx",
-		["@import", "@footprint"],
+		["@import", "@footprint", "@pcb"],
 	],
 	["packages/core/src/components/gerber/**", ["@import"]],
 	["packages/core/src/components/step/**", ["@import"]],
@@ -136,7 +136,11 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 		"packages/core/src/components/viewer/**",
 		["@editor", "@circuit", "@import"],
 	],
-	["packages/core/src/engine/**", ["@editor", "@circuit", "@import"]],
+	["packages/core/src/engine/planar-*.ts", ["@import", "@footprint", "@pcb"]],
+	[
+		"packages/core/src/engine/**",
+		["@editor", "@circuit", "@import", "@footprint", "@pcb"],
+	],
 	// Project storage parses, persists and resolves symbols.
 	[
 		"packages/core/src/drawing/symbol*",
@@ -151,6 +155,7 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	],
 	// The Attributes panel loads the built-in footprints for a selected symbol.
 	["packages/core/src/footprint/library.ts", ["@footprint", "@editor"]],
+	["packages/core/src/footprint/board*.ts", ["@footprint", "@pcb"]],
 	["packages/core/src/footprint/**", ["@footprint"]],
 	["packages/core/src/circuit/symbol-components.ts", ["@circuit", "@symbols"]],
 	["packages/core/src/circuit/**", ["@circuit"]],

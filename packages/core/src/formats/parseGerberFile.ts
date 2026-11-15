@@ -26,6 +26,7 @@ export interface ParsedGerberObject
 		SpatialObject {
 	/** Recoverable problems; the layer renders everything else. */
 	diagnostics: readonly Diagnostic[];
+	revision?: number;
 	dispose: () => void;
 }
 export interface ParsedGerberFile extends Omit<ParseResult, "object"> {

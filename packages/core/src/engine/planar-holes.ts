@@ -14,16 +14,21 @@ import { planarRings } from "#/engine/planar-walls.ts";
 import type { Bounds } from "#/engine/types.ts";
 
 const MASK_SIZE = 2048;
+const EDGE_SIZE = 6;
+const REPAINT_MARGIN = 2;
+const LEAST_PADDING = 1;
 
 export interface HoleMask {
 	texture: Texture;
 	bounds: Bounds;
 	contains: (x: number, y: number) => boolean;
+	repaint: (sources: readonly PlanarGeometry[]) => boolean;
 	dispose: () => void;
 }
 
 export function createHoleMask(
 	sources: readonly PlanarGeometry[],
+	createCanvas = () => document.createElement("canvas"),
 ): HoleMask | undefined {
 	const rings = sources.flatMap((source) => planarRings(source.edges));
 	if (!rings.length) return undefined;
@@ -38,7 +43,10 @@ export function createHoleMask(
 			maxX = Math.max(maxX, x);
 			maxY = Math.max(maxY, y);
 		}
-	const padding = Math.max(maxX - minX, maxY - minY, 1) * 0.01;
+	const padding = Math.max(
+		Math.max(maxX - minX, maxY - minY) * 0.01,
+		LEAST_PADDING,
+	);
 	const bounds = {
 		minX: minX - padding,
 		minY: minY - padding,
@@ -50,27 +58,12 @@ export function createHoleMask(
 	const scale = MASK_SIZE / Math.max(sizeX, sizeY);
 	const width = Math.max(1, Math.ceil(sizeX * scale));
 	const height = Math.max(1, Math.ceil(sizeY * scale));
-	const canvas = document.createElement("canvas");
+	const canvas = createCanvas();
 	canvas.width = width;
 	canvas.height = height;
 	const context = canvas.getContext("2d", { willReadFrequently: true });
 	if (!context) return undefined;
-	context.fillStyle = "#fff";
-	context.beginPath();
-	for (const ring of rings)
-		ring.forEach(([x, y], index) => {
-			const px = (x - bounds.minX) * scale,
-				py = (bounds.maxY - y) * scale;
-			if (index) context.lineTo(px, py);
-			else context.moveTo(px, py);
-		});
-	context.fill("evenodd");
-	const pixels = context.getImageData(0, 0, width, height).data;
 	const data = new Uint8Array(width * height);
-	for (let row = 0; row < height; row++)
-		for (let column = 0; column < width; column++)
-			data[(height - 1 - row) * width + column] =
-				pixels[(row * width + column) * 4];
 	const texture = new DataTexture(
 		data,
 		width,
@@ -81,7 +74,38 @@ export function createHoleMask(
 	texture.minFilter = LinearFilter;
 	texture.magFilter = LinearFilter;
 	texture.unpackAlignment = 1;
-	texture.needsUpdate = true;
+	const paint = (
+		holes: readonly (readonly (readonly [number, number])[])[],
+		left: number,
+		top: number,
+		columns: number,
+		rows: number,
+	) => {
+		context.save();
+		context.beginPath();
+		context.rect(left, top, columns, rows);
+		context.clip();
+		context.clearRect(left, top, columns, rows);
+		context.fillStyle = "#fff";
+		context.beginPath();
+		for (const ring of holes)
+			ring.forEach(([x, y], index) => {
+				const px = (x - bounds.minX) * scale,
+					py = (bounds.maxY - y) * scale;
+				if (index) context.lineTo(px, py);
+				else context.moveTo(px, py);
+			});
+		context.fill("nonzero");
+		context.restore();
+		const pixels = context.getImageData(left, top, columns, rows).data;
+		for (let row = 0; row < rows; row++)
+			for (let column = 0; column < columns; column++)
+				data[(height - 1 - top - row) * width + left + column] =
+					pixels[(row * columns + column) * 4];
+		texture.needsUpdate = true;
+	};
+	paint(rings, 0, 0, width, height);
+	const painted = sources.map((source) => source.edges.slice());
 	const contains = (x: number, y: number) => {
 		const column = Math.floor(((x - bounds.minX) / sizeX) * width);
 		const row = Math.floor(((y - bounds.minY) / sizeY) * height);
@@ -93,7 +117,80 @@ export function createHoleMask(
 			data[row * width + column] > 127
 		);
 	};
-	return { texture, bounds, contains, dispose: () => texture.dispose() };
+	const repaint = (next: readonly PlanarGeometry[]) => {
+		if (
+			next.length !== painted.length ||
+			next.some(
+				(source, index) => source.edges.length !== painted[index].length,
+			)
+		)
+			return false;
+		let changedMinX = Infinity,
+			changedMinY = Infinity,
+			changedMaxX = -Infinity,
+			changedMaxY = -Infinity;
+		next.forEach(({ edges }, index) => {
+			const before = painted[index];
+			for (let at = 0; at < edges.length; at += EDGE_SIZE) {
+				if (
+					edges[at] === before[at] &&
+					edges[at + 1] === before[at + 1] &&
+					edges[at + 3] === before[at + 3] &&
+					edges[at + 4] === before[at + 4]
+				)
+					continue;
+				for (const values of [edges, before])
+					for (const point of [at, at + 3]) {
+						changedMinX = Math.min(changedMinX, values[point]);
+						changedMaxX = Math.max(changedMaxX, values[point]);
+						changedMinY = Math.min(changedMinY, values[point + 1]);
+						changedMaxY = Math.max(changedMaxY, values[point + 1]);
+					}
+			}
+		});
+		if (changedMinX > changedMaxX) return true;
+		if (
+			changedMinX < bounds.minX ||
+			changedMinY < bounds.minY ||
+			changedMaxX > bounds.maxX ||
+			changedMaxY > bounds.maxY
+		)
+			return false;
+		const left = Math.max(
+			0,
+			Math.floor((changedMinX - bounds.minX) * scale) - REPAINT_MARGIN,
+		);
+		const top = Math.max(
+			0,
+			Math.floor((bounds.maxY - changedMaxY) * scale) - REPAINT_MARGIN,
+		);
+		const right = Math.min(
+			width,
+			Math.ceil((changedMaxX - bounds.minX) * scale) + REPAINT_MARGIN,
+		);
+		const bottom = Math.min(
+			height,
+			Math.ceil((bounds.maxY - changedMinY) * scale) + REPAINT_MARGIN,
+		);
+		next.forEach((source, index) => {
+			painted[index].set(source.edges);
+		});
+		paint(
+			next.flatMap((source) => planarRings(source.edges)),
+			left,
+			top,
+			right - left,
+			bottom - top,
+		);
+		return true;
+	};
+	return {
+		texture,
+		bounds,
+		contains,
+		repaint,
+		dispose: () => texture.dispose(),
+	};
 }
 
 interface HoleUniforms {
