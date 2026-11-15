@@ -2,7 +2,7 @@ import type { DrcFinding } from "@ecad/drawing-core/board/drc.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { OctagonAlert, TriangleAlert, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
@@ -43,7 +43,7 @@ export function BoardChecksPanel({
 	onSelect,
 }: {
 	revision: unknown;
-	run(): DrcFinding[];
+	run(): Promise<DrcFinding[]>;
 	onClose(): void;
 	onSelect(finding: DrcFinding): void;
 }) {
@@ -52,6 +52,8 @@ export function BoardChecksPanel({
 		findings: DrcFinding[];
 	} | null>(null);
 	const [error, setError] = useState("");
+	const [running, setRunning] = useState(false);
+	const latestRun = useRef(0);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const stale = result !== null && result.revision !== revision;
 	const findings = result?.findings ?? [];
@@ -104,14 +106,26 @@ export function BoardChecksPanel({
 						type="button"
 						className="ui-button shrink-0"
 						data-variant="primary"
+						aria-busy={running}
 						onClick={() => {
-							try {
-								setResult({ revision, findings: run() });
-								setError("");
-								setActiveId(null);
-							} catch (cause) {
-								setError(errorMessage(cause, "DRC failed."));
-							}
+							const started = ++latestRun.current;
+							setRunning(true);
+							run()
+								.then(
+									(findings) => {
+										if (started !== latestRun.current) return;
+										setResult({ revision, findings });
+										setError("");
+										setActiveId(null);
+									},
+									(cause: unknown) => {
+										if (started === latestRun.current)
+											setError(errorMessage(cause, "DRC failed."));
+									},
+								)
+								.finally(() => {
+									if (started === latestRun.current) setRunning(false);
+								});
 						}}
 					>
 						Run DRC
@@ -251,9 +265,11 @@ function RuleField({
 /** How many connections still need a track, above the toolbar. */
 export function BoardStatus({
 	unrouted,
+	failed,
 	layer,
 }: {
-	unrouted: number;
+	unrouted: number | undefined;
+	failed: boolean;
 	layer: string;
 }) {
 	return (
@@ -261,11 +277,15 @@ export function BoardStatus({
 			className="ui-panel pointer-events-none absolute right-[var(--chrome-right)] bottom-[calc(var(--chrome-dock)+0.5rem)] z-2 bg-raised px-2.5 py-1 text-2xs text-fg-muted tabular-nums"
 			aria-live="polite"
 		>
-			{unrouted === 0
-				? "All connections routed"
-				: unrouted === 1
-					? "1 unrouted connection"
-					: `${unrouted} unrouted connections`}
+			{failed
+				? "Connections not checked"
+				: unrouted === undefined
+					? "Checking connections"
+					: unrouted === 0
+						? "All connections routed"
+						: unrouted === 1
+							? "1 unrouted connection"
+							: `${unrouted} unrouted connections`}
 			<span className="text-fg-faint"> · {layer}</span>
 		</output>
 	);

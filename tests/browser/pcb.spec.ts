@@ -38,6 +38,9 @@ test("a designer adds the RP2350A example and gets a routed board in the same fi
 		.poll(async () => (await documentState(page)).boards)
 		.toEqual(["rp2350a"]);
 	await expect(page.getByText("All connections routed")).toBeVisible();
+	expect(
+		page.workers().some((worker) => worker.url().includes("analysis.worker")),
+	).toBe(true);
 	const files = await openProjectFiles(page);
 	await expect(
 		files.getByRole("link", { name: "Open RP2350A.ecaddraw in PCB view" }),

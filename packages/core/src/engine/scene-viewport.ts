@@ -199,14 +199,14 @@ export function createSceneViewport(
 		let group = content.object;
 		// Only a locked top view pans without changing scale or orientation.
 		const panCache =
-			cameraMode === "top" && !content.hasOutlines
+			cameraMode === "top" && !content.planar
 				? lifecycle.acquire(
 						() => createPanCache(output),
 						(cache) => cache.dispose(),
 					)
 				: null;
 		const batcher =
-			cameraMode === "top" && !content.hasOutlines && !selectionEnabled
+			cameraMode === "top" && !content.planar && !selectionEnabled
 				? lifecycle.acquire(createDrawBatcher, (batcher) => batcher.dispose())
 				: null;
 		if (batcher) {
@@ -1111,7 +1111,7 @@ export function createSceneViewport(
 			setScene: (next, update) => {
 				if (panCache || batcher) return false;
 				const display = createSceneDisplay(next);
-				if (display.hasOutlines !== content.hasOutlines) {
+				if (display.planar !== content.planar) {
 					display.dispose();
 					return false;
 				}

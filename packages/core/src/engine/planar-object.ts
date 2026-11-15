@@ -6,6 +6,7 @@ import {
 	BufferGeometry,
 	type Camera,
 	DoubleSide,
+	DynamicDrawUsage,
 	EqualStencilFunc,
 	Group,
 	Mesh,
@@ -122,6 +123,10 @@ export function createPlanarObject3D(
 	source: PlanarObject,
 	compiled: PlanarGeometry = compilePlanarGeometry(source.objects),
 	walls?: PlanarWalls,
+	{
+		outlines = true,
+		rewritten = false,
+	}: { outlines?: boolean; rewritten?: boolean } = {},
 ) {
 	const extrude = walls?.extrude;
 	const object = new Group();
@@ -183,6 +188,15 @@ export function createPlanarObject3D(
 			wallMesh.visible = false;
 			object.add(wallMesh);
 		}
+		if (rewritten)
+			object.traverse((part) => {
+				if (!(part instanceof Mesh)) return;
+				for (const name of ["position", "normal"]) {
+					const attribute = part.geometry.getAttribute(name);
+					if (attribute instanceof BufferAttribute)
+						attribute.setUsage(DynamicDrawUsage);
+				}
+			});
 		if (extrude === "slab") {
 			const sheet = new Mesh(
 				new PlaneGeometry(1, 1),
@@ -192,6 +206,7 @@ export function createPlanarObject3D(
 					opacity: SHEET_OPACITY,
 					depthWrite: false,
 					side: DoubleSide,
+					forceSinglePass: true,
 				}),
 			);
 			sheet.userData.planarPart = "sheet";
@@ -200,7 +215,7 @@ export function createPlanarObject3D(
 			placeSheet(sheet, source.bounds, 0);
 			object.add(sheet);
 		}
-		for (const { linewidth, worldUnits } of compiled.edges.length
+		for (const { linewidth, worldUnits } of outlines && compiled.edges.length
 			? [
 					{ linewidth: UNFOCUSED_OUTLINE_WIDTH * 2, worldUnits: false },
 					{ linewidth: UNFOCUSED_OUTLINE_WIDTH_MM * 2, worldUnits: true },
@@ -234,6 +249,79 @@ export function createPlanarObject3D(
 		disposePlanarObject3D(object);
 		throw error;
 	}
+}
+
+const changedPoint = new Vector3();
+const EDGE_TOUCH = 1e-6;
+
+function followBounds(
+	geometry: BufferGeometry,
+	positions: Float32Array,
+	[start, end]: readonly [number, number],
+	vacated: Bounds | undefined,
+) {
+	const { boundingBox, boundingSphere } = geometry;
+	if (
+		!boundingBox ||
+		!boundingSphere ||
+		!vacated ||
+		vacated.minX <= boundingBox.min.x + EDGE_TOUCH ||
+		vacated.minY <= boundingBox.min.y + EDGE_TOUCH ||
+		vacated.maxX >= boundingBox.max.x - EDGE_TOUCH ||
+		vacated.maxY >= boundingBox.max.y - EDGE_TOUCH
+	) {
+		setBounds(geometry, positions);
+		return;
+	}
+	for (let index = start; index < end; index += 3)
+		boundingBox.expandByPoint(
+			changedPoint.set(
+				positions[index],
+				positions[index + 1],
+				positions[index + 2],
+			),
+		);
+	boundingBox.getBoundingSphere(boundingSphere);
+}
+
+function reupload(
+	mesh: Object3D | undefined,
+	names: readonly string[],
+	range: readonly [number, number] | undefined,
+	vacated: Bounds | undefined,
+) {
+	if (!range || !(mesh instanceof Mesh)) return;
+	const geometry: BufferGeometry = mesh.geometry;
+	for (const name of names) {
+		const attribute = geometry.getAttribute(name);
+		if (!(attribute instanceof BufferAttribute)) continue;
+		attribute.addUpdateRange(range[0], range[1] - range[0]);
+		attribute.needsUpdate = true;
+	}
+	const positions = geometry.getAttribute("position").array;
+	if (positions instanceof Float32Array)
+		followBounds(geometry, positions, range, vacated);
+}
+
+export function reuploadPlanarObject3D(
+	object: Object3D,
+	changes: {
+		positions?: readonly [number, number];
+		walls?: readonly [number, number];
+		vacated?: Bounds;
+	},
+	bounds: Bounds,
+) {
+	object.userData.planarBounds = bounds;
+	const part = (name: string) =>
+		object.children.find((child) => child.userData.planarPart === name);
+	reupload(part("fill"), ["position"], changes.positions, changes.vacated);
+	reupload(
+		part("walls"),
+		["position", "normal"],
+		changes.walls,
+		changes.vacated,
+	);
 }
 
 export function stylePlanarObject3D(

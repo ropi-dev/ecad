@@ -310,6 +310,7 @@ function EditorCanvas({
 		active: layers.active,
 		setActive: layers.activate,
 		selection: selectedIds,
+		ratsnestShown: flatShown,
 	});
 	const pages = drawingPages(drawing.pages);
 	const pageIndex = pages.findIndex(
@@ -519,6 +520,8 @@ function EditorCanvas({
 		viewport.viewerError,
 		boardError,
 		boardBuildError,
+		boardEditor.analysisError &&
+			`Unable to analyse the board: ${boardEditor.analysisError}`,
 		rerouteNotice?.historyId === drawing.history.currentId
 			? rerouteNotice.text
 			: "",
@@ -796,34 +799,43 @@ function EditorCanvas({
 				onExport: () => {
 					if (!board) return;
 					setExporting(true);
-					void Promise.all([import("#/board/gerber.ts"), import("fflate")])
-						.then(([{ exportFabrication }, { zipSync, strToU8 }]) => {
-							const stem =
-								board.file.name.replace(/[^A-Za-z0-9_-]+/g, "_") || "board";
-							const files = exportFabrication(
-								stem,
-								store.getSnapshot().shapes,
-								boardEditor.fills,
-							);
-							const zip = zipSync(
-								Object.fromEntries(
-									files.map((file) => [file.name, strToU8(file.content)]),
-								),
-							);
-							downloadPng(
-								new Blob([zip], { type: "application/zip" }),
-								`${board.file.name} gerber`,
-								"zip",
-							);
-							const findings = boardEditor.runChecks().length;
-							toastManager.add({
-								type: findings ? "warning" : "success",
-								title: "Fabrication files exported",
-								description: findings
-									? `${files.length} Gerber and drill files in a ZIP archive. The design rules check has ${findings} ${findings === 1 ? "finding" : "findings"}. Run it before ordering boards.`
-									: `${files.length} Gerber and drill files in a ZIP archive.`,
-							});
-						})
+					const exported = store.getSnapshot().shapes;
+					void Promise.all([
+						import("#/board/gerber.ts"),
+						import("fflate"),
+						boardEditor.fillsOf(exported),
+						boardEditor.runChecks(exported),
+					])
+						.then(
+							([
+								{ exportFabrication },
+								{ zipSync, strToU8 },
+								fills,
+								checks,
+							]) => {
+								const stem =
+									board.file.name.replace(/[^A-Za-z0-9_-]+/g, "_") || "board";
+								const files = exportFabrication(stem, exported, fills);
+								const zip = zipSync(
+									Object.fromEntries(
+										files.map((file) => [file.name, strToU8(file.content)]),
+									),
+								);
+								downloadPng(
+									new Blob([zip], { type: "application/zip" }),
+									`${board.file.name} gerber`,
+									"zip",
+								);
+								const findings = checks.length;
+								toastManager.add({
+									type: findings ? "warning" : "success",
+									title: "Fabrication files exported",
+									description: findings
+										? `${files.length} Gerber and drill files in a ZIP archive. The design rules check has ${findings} ${findings === 1 ? "finding" : "findings"}. Run it before ordering boards.`
+										: `${files.length} Gerber and drill files in a ZIP archive.`,
+								});
+							},
+						)
 						.catch((cause: unknown) =>
 							toastManager.add({
 								type: "error",
@@ -1069,13 +1081,14 @@ function EditorCanvas({
 					{isBoard && boardEditor.rules && (
 						<BoardStatus
 							unrouted={boardEditor.unrouted}
+							failed={boardEditor.analysisError !== ""}
 							layer={layers.active}
 						/>
 					)}
 					{isBoard && boardPanel === "checks" && (
 						<BoardChecksPanel
 							revision={drawing.shapes}
-							run={boardEditor.runChecks}
+							run={() => boardEditor.runChecks()}
 							onClose={() => setBoardPanel(null)}
 							onSelect={(finding) => {
 								if (!finding.shapeIds.length) return;

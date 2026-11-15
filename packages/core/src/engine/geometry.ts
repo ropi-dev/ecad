@@ -1,11 +1,11 @@
 import earcut from "earcut";
 import libtess from "libtess";
 import svgParser from "svg-path-parser";
-import type { Geometry, Point } from "#/engine/types.ts";
+import type { Geometry, MultiPolygon, Point } from "#/engine/types.ts";
 
+export type { MultiPolygon };
 type Pair = [number, number];
 type Ring = Pair[];
-export type MultiPolygon = Ring[][];
 
 interface Contour {
 	points: Pair[];
@@ -50,6 +50,33 @@ function circleRing(
 		x + radius * Math.cos((index / count) * TAU),
 		y + radius * Math.sin((index / count) * TAU),
 	]);
+}
+
+function capsuleRing(
+	from: Pair,
+	to: Pair,
+	radius: number,
+	tolerance: number,
+): Ring {
+	if (!(radius > 0)) return [];
+	if (distance(from, to) < 1e-12)
+		return circleRing(from[0], from[1], radius, tolerance);
+	const step = 2 * Math.acos(Math.max(-1, 1 - tolerance / radius));
+	const count = Math.max(8, Math.min(4096, Math.ceil(Math.PI / step)));
+	const along = Math.atan2(to[1] - from[1], to[0] - from[0]);
+	const ring: Ring = [];
+	for (const [center, start] of [
+		[to, along - Math.PI / 2],
+		[from, along + Math.PI / 2],
+	] as const)
+		for (let index = 0; index <= count; index++) {
+			const angle = start + (index / count) * Math.PI;
+			ring.push([
+				center[0] + radius * Math.cos(angle),
+				center[1] + radius * Math.sin(angle),
+			]);
+		}
+	return ring;
 }
 
 function flattenCubic(
@@ -375,7 +402,19 @@ export class GeometryCompiler {
 		const cached = this.cache.get(geometry);
 		if (cached && cached.tolerance <= tolerance) return cached;
 		let polygons: MultiPolygon = [];
-		if (geometry.type === "circle") {
+		let vertices: Float32Array | undefined;
+		if (geometry.type === "line") {
+			const ring = capsuleRing(
+				[geometry.x1, geometry.y1],
+				[geometry.x2, geometry.y2],
+				geometry.width / 2,
+				tolerance,
+			);
+			polygons = ring.length ? [[ring]] : [];
+		} else if (geometry.type === "polygons") {
+			polygons = geometry.polygons;
+			if (geometry.triangles?.length) vertices = geometry.triangles;
+		} else if (geometry.type === "circle") {
 			const ring = circleRing(
 				geometry.x,
 				geometry.y,
@@ -424,7 +463,11 @@ export class GeometryCompiler {
 							: childPolygons;
 			}
 		}
-		const result = { polygons, vertices: triangulate(polygons), tolerance };
+		const result = {
+			polygons,
+			vertices: vertices ?? triangulate(polygons),
+			tolerance,
+		};
 		this.cache.set(geometry, result);
 		return result;
 	}
