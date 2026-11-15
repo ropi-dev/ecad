@@ -192,7 +192,11 @@ test("single-key hints fit beside each other and stay aligned with each toolbar 
 		};
 	});
 	expect(layout.overlaps).toEqual([]);
-	expect(layout.keys.every((key) => key?.length === 1)).toBe(true);
+	// Once single characters run out, the last buttons take function keys.
+	expect(
+		layout.keys.every((key) => key?.length === 1 || /^F\d+$/.test(key ?? "")),
+	).toBe(true);
+	expect(layout.keys.filter((key) => key?.length !== 1).length).toBeLessThan(3);
 	expect(layout.text.every((text) => !text?.includes("Ctrl"))).toBe(true);
 	await page.keyboard.up("Control");
 });

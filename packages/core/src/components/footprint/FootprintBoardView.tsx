@@ -26,6 +26,7 @@ import { buildPlanarWalls } from "#/engine/planar-walls.ts";
 import {
 	BOARD_SURFACE_Z,
 	type BoardLayerPlan,
+	type BoardRegion,
 	boardObjectVisible,
 	createBoardBuilder,
 	placeFootprintBoard,
@@ -162,6 +163,9 @@ function buildLayer(
 
 export function FootprintBoardView({
 	shapes,
+	regions,
+	ariaLabel = "Footprint editor",
+	controlsLabel = "Footprint tools",
 	hiddenLayers,
 	flat,
 	onFlatChange,
@@ -183,6 +187,9 @@ export function FootprintBoardView({
 		"controls" | "orbitGesture" | "updateFlatScene"
 	> & {
 		shapes: readonly EditorShape[];
+		regions?: readonly BoardRegion[];
+		ariaLabel?: string;
+		controlsLabel?: string;
 		hiddenLayers: ReadonlySet<FootprintLayer>;
 		flat: boolean;
 		onFlatChange: (flat: boolean) => void;
@@ -199,14 +206,14 @@ export function FootprintBoardView({
 	}, [builder, board]);
 	useEffect(() => {
 		try {
-			setBoard(builder.build(shapes));
+			setBoard(builder.build(shapes, { regions }));
 			onBuildError("");
 		} catch (cause) {
 			if (import.meta.env?.DEV) console.error(cause);
 			setBoard([]);
 			onBuildError("Unable to build the 3D view of this footprint.");
 		}
-	}, [builder, shapes, onBuildError]);
+	}, [builder, shapes, regions, onBuildError]);
 	const scene = useMemo(
 		() =>
 			board?.map((object) => ({
@@ -222,7 +229,7 @@ export function FootprintBoardView({
 	if (!scene) return null;
 	return (
 		<GerberViewer
-			ariaLabel="Footprint editor"
+			ariaLabel={ariaLabel}
 			scene={scene}
 			flat={flat}
 			onFlatChange={(next) => {
@@ -237,7 +244,7 @@ export function FootprintBoardView({
 			selectionEnabled={false}
 			rulerUnit="mm"
 			groupedControls
-			controlsLabel="Footprint tools"
+			controlsLabel={controlsLabel}
 			{...viewer}
 		/>
 	);

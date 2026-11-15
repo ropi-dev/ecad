@@ -1,8 +1,11 @@
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
+import { createBoardFile } from "#/board/format.ts";
+import { createBoardRulesStore } from "#/board/rules-store.ts";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
-import { primaryPcbId } from "#/projects/pcb.ts";
+import type { EditorView } from "#/projects/ProjectSession.ts";
+import { pcbDocumentName, primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 
@@ -15,6 +18,9 @@ import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 export function createProjectEditorFiles(
 	state: ProjectSessionState,
 	autosave: (onlyIfDirty?: boolean) => Promise<void>,
+	persist: ReturnType<
+		typeof import("#/projects/project-autosave.ts")["createProjectAutosave"]
+	>["persist"],
 ) {
 	const {
 		documents,
@@ -24,8 +30,18 @@ export function createProjectEditorFiles(
 		setEditorDrawing,
 		setEditorSymbol,
 		setEditorFootprint,
+		setEditorBoard,
 		showError,
 	} = state;
+	const clearEditors = (
+		keep?: "symbol" | "footprint" | "board" | "drawing" | "circuit",
+	) => {
+		if (keep !== "symbol") setEditorSymbol(null);
+		if (keep !== "footprint") setEditorFootprint(null);
+		if (keep !== "board") setEditorBoard(null);
+		if (keep !== "drawing") setEditorDrawing(null);
+		if (keep !== "circuit") setEditorCircuit(null);
+	};
 	const openCircuit = async (path: string) => {
 		const selectionRequest = ++state.editorSelection;
 		// The editor waits for this circuit instead of showing the schematic.
@@ -101,14 +117,30 @@ export function createProjectEditorFiles(
 				}),
 			};
 		});
-		setEditorSymbol(null);
-		setEditorFootprint(null);
-		setEditorDrawing(null);
+		clearEditors("circuit");
 		setEditorCircuit(document);
 		return true;
 	};
-	const switchEditorView = async (view: "circuit" | "schematic") => {
+	const ensureBoard = async (circuitId: string) => {
+		const snapshot = state.active;
+		if (!snapshot) return undefined;
+		const index = projectIndex(snapshot);
+		const existing = index.boardsByCircuit.get(circuitId)?.path;
+		if (existing) return existing;
+		const circuit = index.circuitsById.get(circuitId)?.file.circuit;
+		if (!circuit) return undefined;
+		await persist(undefined, undefined, undefined, undefined, undefined, [
+			...(snapshot.boards ?? []),
+			createBoardFile(pcbDocumentName(circuit.name), circuitId),
+		]);
+		const current = state.active;
+		return current
+			? projectIndex(current).boardsByCircuit.get(circuitId)?.path
+			: undefined;
+	};
+	const switchEditorView = async (view: EditorView) => {
 		const circuitId =
+			state.editorBoard?.file.circuitId ??
 			state.editorCircuit?.file.circuit.id ??
 			state.editorDrawing?.file.circuitId ??
 			primaryPcbId;
@@ -142,14 +174,23 @@ export function createProjectEditorFiles(
 					? index.drawingsById.get(state.editorDrawing.file.id)?.file.circuitId
 					: undefined) ?? circuitId;
 			const path =
-				view === "circuit"
-					? index.circuitsById.get(selectedCircuitId)?.path
-					: selectedCircuitId === primaryPcbId
-						? current.manifest.drawing
-						: index.drawingsByCircuit.get(selectedCircuitId)?.path;
+				view === "pcb"
+					? await state.enqueue(() => ensureBoard(selectedCircuitId))
+					: view === "circuit"
+						? index.circuitsById.get(selectedCircuitId)?.path
+						: selectedCircuitId === primaryPcbId
+							? current.manifest.drawing
+							: index.drawingsByCircuit.get(selectedCircuitId)?.path;
+			if (
+				request !== state.editorSelection ||
+				openedGeneration !== state.generation ||
+				!state.mounted
+			)
+				return;
 			if (!path) return;
 			const remembered = state.viewSelection;
 			const handoff =
+				view !== "pcb" &&
 				remembered &&
 				remembered.store ===
 					(state.editorCircuit?.store ??
@@ -166,7 +207,9 @@ export function createProjectEditorFiles(
 			const opened =
 				view === "circuit"
 					? await openCircuit(path)
-					: await selectEditorFile(path);
+					: view === "pcb"
+						? await openBoard(path)
+						: await selectEditorFile(path);
 			if (!opened && state.selectionHandoff === handoff)
 				state.selectionHandoff = null;
 		} catch (cause) {
@@ -193,7 +236,10 @@ export function createProjectEditorFiles(
 		const circuitId =
 			view === "circuit"
 				? state.editorCircuit?.file.circuit.id
-				: state.editorCircuit || state.editorSymbol || state.editorFootprint
+				: state.editorCircuit ||
+						state.editorSymbol ||
+						state.editorFootprint ||
+						state.editorBoard
 					? undefined
 					: state.editorDrawing
 						? projectIndex(snapshot).drawingsById.get(
@@ -218,6 +264,78 @@ export function createProjectEditorFiles(
 			setDirty(true);
 			void autosave(true).catch(() => undefined);
 		});
+	};
+	const openBoard = (path: string): boolean | Promise<boolean> => {
+		if (state.needsSave) {
+			const before = state.active;
+			const circuitId = before
+				? projectIndex(before).boardsByPath.get(path)?.circuitId
+				: undefined;
+			const request = ++state.editorSelection;
+			return autosave()
+				.then(() => {
+					if (request !== state.editorSelection) return false;
+					const current = state.active;
+					const next =
+						current && circuitId
+							? projectIndex(current).boardsByCircuit.get(circuitId)?.path
+							: undefined;
+					return next ? openBoard(next) : false;
+				})
+				.catch(() => false);
+		}
+		const snapshot = state.active;
+		const board = snapshot
+			? projectIndex(snapshot).boardsByPath.get(path)
+			: undefined;
+		if (!board) return false;
+		const document = documents.openDocument("board", board.circuitId, () => {
+			const boardStore = measurePerformance(
+				"editor.open-board",
+				() => createDrawingStore(board.shapes),
+				{ shapes: board.shapes.length },
+			);
+			const rules = createBoardRulesStore(board.rules);
+			const stopShapes = subscribeDrawing(boardStore);
+			const stopRules = rules.subscribe(() => {
+				if (state.synchronizing) return;
+				state.needsSave = true;
+				setDirty(true);
+				void autosave(true).catch(() => undefined);
+			});
+			return {
+				file: board,
+				store: boardStore,
+				savedShapes: boardStore.getSnapshot().shapes,
+				rules,
+				savedRules: board.rules,
+				unsubscribe: () => {
+					stopShapes();
+					stopRules();
+				},
+			};
+		});
+		const request = ++state.editorSelection;
+		const show = () => {
+			if (request !== state.editorSelection) return false;
+			clearEditors("board");
+			setEditorBoard(document);
+			return true;
+		};
+		return import("#/board/sync-document.ts")
+			.then(
+				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) =>
+					announceBoardSync(
+						await synchronizeBoardStore(
+							document.store,
+							boardContext(state.active, board.circuitId),
+						),
+					),
+			)
+			.then(show, (cause) => {
+				showError(cause, "Unable to update the board from its schematic.");
+				return show();
+			});
 	};
 	const selectEditorFile = (path?: string): boolean | Promise<boolean> => {
 		const selectedSnapshot = state.active;
@@ -275,9 +393,7 @@ export function createProjectEditorFiles(
 		const snapshot = state.active;
 		if (!snapshot) return false;
 		if (!path || path === snapshot.manifest.drawing) {
-			setEditorSymbol(null);
-			setEditorFootprint(null);
-			setEditorDrawing(null);
+			clearEditors("circuit");
 			return true;
 		}
 		const drawing = projectIndex(snapshot).drawingsByPath.get(path);
@@ -295,8 +411,7 @@ export function createProjectEditorFiles(
 					unsubscribe: subscribeDrawing(drawingStore),
 				};
 			});
-			setEditorSymbol(null);
-			setEditorFootprint(null);
+			clearEditors("drawing");
 			setEditorDrawing(document);
 			return true;
 		}
@@ -315,8 +430,7 @@ export function createProjectEditorFiles(
 					unsubscribe: subscribeDrawing(footprintStore),
 				};
 			});
-			setEditorSymbol(null);
-			setEditorDrawing(null);
+			clearEditors("footprint");
 			setEditorFootprint(document);
 			return true;
 		}
@@ -335,8 +449,7 @@ export function createProjectEditorFiles(
 				unsubscribe: subscribeDrawing(symbolStore),
 			};
 		});
-		setEditorDrawing(null);
-		setEditorFootprint(null);
+		clearEditors("symbol");
 		setEditorSymbol(document);
 		return true;
 	};
@@ -360,6 +473,10 @@ export function createProjectEditorFiles(
 		openCircuit: (path: string) => {
 			state.selectionHandoff = null;
 			return openCircuit(path);
+		},
+		openBoard: (path: string) => {
+			state.selectionHandoff = null;
+			return openBoard(path);
 		},
 		switchEditorView,
 		rememberViewSelection,

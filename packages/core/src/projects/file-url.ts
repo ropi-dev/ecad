@@ -8,7 +8,7 @@ export interface ProjectFileSelection {
 	id: string;
 	path: string;
 	file: string;
-	view?: "circuit";
+	view?: "circuit" | "pcb";
 }
 
 export function projectFileSelections(
@@ -18,7 +18,7 @@ export function projectFileSelections(
 	const selection = (
 		id: string,
 		path: string,
-		view?: "circuit",
+		view?: "circuit" | "pcb",
 	): ProjectFileSelection => ({
 		id,
 		path,
@@ -44,7 +44,18 @@ export function projectFileSelections(
 		...(manifest.circuits ?? []).flatMap((paths, index) => {
 			const circuit = project.circuits?.[index];
 			return circuit
-				? [selection(`circuit:${circuit.circuit.id}`, paths.circuit, "circuit")]
+				? [
+						selection(
+							`circuit:${circuit.circuit.id}`,
+							paths.circuit,
+							"circuit",
+						),
+						...(project.boards?.some(
+							(board) => board.circuitId === circuit.circuit.id,
+						)
+							? [selection(`board:${circuit.circuit.id}`, paths.circuit, "pcb")]
+							: []),
+					]
 				: [];
 		}),
 		...manifest.assets.map((asset) =>

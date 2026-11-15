@@ -86,6 +86,7 @@ const boardDrawOrder: readonly FootprintLayer[] = [
 	"F.SilkS",
 	"F.CrtYd",
 	"F.Fab",
+	"Edge.Cuts",
 ];
 
 export function footprintLayerView(

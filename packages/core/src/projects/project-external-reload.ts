@@ -28,6 +28,7 @@ export function createProjectExternalReload(
 		drawingDocuments,
 		symbolDocuments,
 		footprintDocuments,
+		boardDocuments,
 		circuitDocuments,
 		linkedAssembler,
 		noteConflict,
@@ -36,6 +37,7 @@ export function createProjectExternalReload(
 		setEditorDrawing,
 		setEditorSymbol,
 		setEditorFootprint,
+		setEditorBoard,
 		setSelectedAsset,
 	} = state;
 	const unsaved = () => state.needsSave || state.unsavedEditors.size > 0;
@@ -132,6 +134,27 @@ export function createProjectExternalReload(
 				footprintDocuments.set(id, replaced);
 				if (state.editorFootprint === document) setEditorFootprint(replaced);
 			}
+			for (const [id, document] of boardDocuments) {
+				const next = after.boardsByCircuit.get(id);
+				if (!next?.path) {
+					document.unsubscribe();
+					boardDocuments.delete(id);
+					closed.push(document.file.name);
+					if (state.editorBoard === document) setEditorBoard(null);
+					continue;
+				}
+				if (!moved(next.path, before.boardsByCircuit.get(id)?.path)) continue;
+				replaceDrawingShapes(document.store, next.file.shapes, true);
+				document.rules.set(next.file.rules);
+				const replaced = {
+					...document,
+					file: next.file,
+					savedShapes: document.store.getSnapshot().shapes,
+					savedRules: document.rules.get(),
+				};
+				boardDocuments.set(id, replaced);
+				if (state.editorBoard === document) setEditorBoard(replaced);
+			}
 			for (const [id, document] of circuitDocuments) {
 				const next = after.circuitsById.get(id);
 				if (!next?.path) {
@@ -165,6 +188,13 @@ export function createProjectExternalReload(
 				names.push(entry.file.name);
 		for (const [id, entry] of after.footprintsById)
 			if (entry.path && moved(entry.path, before.footprintsById.get(id)?.path))
+				names.push(entry.file.name);
+		for (const [id, entry] of after.boardsByCircuit)
+			if (
+				entry.path &&
+				moved(entry.path, before.boardsByCircuit.get(id)?.path) &&
+				!names.includes(entry.file.name)
+			)
 				names.push(entry.file.name);
 		if (
 			state.selectedAsset &&

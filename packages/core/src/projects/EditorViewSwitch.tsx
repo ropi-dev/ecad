@@ -1,19 +1,16 @@
-import { CircuitBoard, Workflow } from "lucide-react";
+import { CircuitBoard, Grid2x2, Workflow } from "lucide-react";
 import { useState } from "react";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import type { EditorView } from "#/projects/ProjectSession.ts";
 
 const views = [
 	{ id: "schematic", label: "Schematic", icon: CircuitBoard },
 	{ id: "circuit", label: "Circuit", icon: Workflow },
+	{ id: "pcb", label: "PCB", icon: Grid2x2 },
 ] as const;
 
-/**
- * Two-way switch between the schematic and the circuit view of one design.
- * The pressed side is the view on screen; the other side switches to it.
- * Each side is an icon whose tooltip names its view.
- */
-export function EditorViewSwitch({ view }: { view: "circuit" | "schematic" }) {
+export function EditorViewSwitch({ view }: { view: EditorView }) {
 	const project = useProjectSelection(
 		({ busy, project, switchEditorView }) => ({
 			busy,

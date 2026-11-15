@@ -181,6 +181,8 @@ export function canvasDragStep(
 			...drawShape(original.id, original.kind, start, point, drag.gridStep),
 			lineWidth: original.lineWidth,
 			...(original.layer ? { layer: original.layer } : {}),
+			...("zone" in original && original.zone ? { zone: original.zone } : {}),
+			...("net" in original && original.net ? { net: original.net } : {}),
 		};
 		const scale = context.cameraScale();
 		valid =

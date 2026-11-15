@@ -1,9 +1,11 @@
+import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import type {
 	CircuitFile,
 	GraphLayout,
 } from "@ecad/drawing-core/circuit/model.ts";
 import type { DrawingPage } from "@ecad/drawing-core/drawing/pages.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { type BoardFile, boardFileWith } from "#/board/format.ts";
 import {
 	parseSymbolFile,
 	type SymbolLibrary,
@@ -27,6 +29,8 @@ export function assembleProjectSave({
 	savedCircuits,
 	footprints,
 	footprintEdits,
+	boards,
+	boardEdits,
 }: {
 	symbols: SymbolLibrary;
 	libraries: readonly ConfiguredSymbolLibrary[];
@@ -42,6 +46,11 @@ export function assembleProjectSave({
 	savedCircuits?: CircuitFile[];
 	footprints?: FootprintFile[];
 	footprintEdits?: ReadonlyMap<string, EditorShape[]>;
+	boards?: BoardFile[];
+	boardEdits?: ReadonlyMap<
+		string,
+		{ shapes: EditorShape[]; rules: BoardRules }
+	>;
 }) {
 	let savedSymbols = symbols;
 	if (pending.size) {
@@ -77,6 +86,14 @@ export function assembleProjectSave({
 					footprints: footprints.map((file) => {
 						const shapes = footprintEdits?.get(file.id);
 						return shapes ? footprintFileWithShapes(file, shapes) : file;
+					}),
+				}),
+		...(boards === undefined
+			? {}
+			: {
+					boards: boards.map((file) => {
+						const edit = boardEdits?.get(file.circuitId);
+						return edit ? boardFileWith(file, edit.shapes, edit.rules) : file;
 					}),
 				}),
 		symbolLibraries: libraries.map((library) =>

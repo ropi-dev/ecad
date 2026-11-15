@@ -488,7 +488,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 				icon={Workflow}
 				title={circuit.name}
 				selection={`circuit:${circuit.id}`}
-				circuit
+				view="circuit"
 			>
 				<EditorViewSwitch view="circuit" />
 			</DocumentBar>

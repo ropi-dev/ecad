@@ -1,3 +1,9 @@
+import type {
+	CopperItem,
+	CopperLayer,
+} from "@ecad/drawing-core/board/connectivity.ts";
+import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
+import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
 	canInspectSymbolChild,
@@ -57,6 +63,13 @@ import {
 	useState,
 } from "react";
 import {
+	otherCopperLayer,
+	routeAnchor,
+	type TrackPosture,
+	trackPath,
+	trackSegments,
+} from "#/board/routing.ts";
+import {
 	type CanvasDrag,
 	type CanvasMarquee,
 	canvasDragStep,
@@ -88,7 +101,10 @@ export type CanvasTool =
 	| "pan"
 	| "symbol"
 	| PadTool
-	| "via";
+	| "via"
+	| "track"
+	| "zone"
+	| "outline";
 type PadTool = "smd-pad" | "through-hole-pad";
 const padToolTypes: Record<PadTool, PadType> = {
 	"smd-pad": "smd",
@@ -106,11 +122,33 @@ interface WireChain {
 	heading?: Heading;
 }
 
+interface TrackChain {
+	start: Point;
+	layer: CopperLayer;
+	net?: string;
+	netless: number[];
+	pointerId: number;
+	posture: TrackPosture;
+}
+
 type CanvasGesture =
 	| { kind: "idle" }
 	| { kind: "placing"; tool: CanvasTool }
 	| { kind: "drag"; drag: Drag }
-	| { kind: "wire"; wire: WireChain };
+	| { kind: "wire"; wire: WireChain }
+	| { kind: "track"; track: TrackChain };
+
+/** What the board tools need from the board editor. */
+export interface BoardGestures {
+	/** Copper on the visible layers, in board coordinates. */
+	items(): readonly CopperItem[];
+	rules: BoardRules;
+	/** The copper layer new tracks, zones and copper graphics go on. */
+	copperLayer: CopperLayer;
+	setCopperLayer(layer: CopperLayer): void;
+	/** The net a new zone or via takes at a point. */
+	netAt(point: Point): string | undefined;
+}
 
 interface ToolHandler {
 	press?: (
@@ -143,6 +181,7 @@ interface CanvasGesturesOptions {
 	symbolDefinition: SymbolDefinition | null;
 	sheetless: boolean;
 	footprintLayer?: FootprintLayer;
+	board?: BoardGestures;
 	setTextFocusId: Dispatch<SetStateAction<number | null>>;
 	openAttributes: () => void;
 }
@@ -164,6 +203,7 @@ export function useCanvasGestures({
 	symbolDefinition,
 	sheetless,
 	footprintLayer,
+	board,
 	setTextFocusId,
 	openAttributes,
 }: CanvasGesturesOptions) {
@@ -186,7 +226,12 @@ export function useCanvasGestures({
 		isPlacementTool(tool) ||
 		isPadTool(tool) ||
 		(tool === "symbol" && !!symbolDefinition);
-	const placing = canRotatePlacement || tool === "via";
+	const placing =
+		canRotatePlacement ||
+		tool === "via" ||
+		tool === "track" ||
+		tool === "zone" ||
+		tool === "outline";
 	const onLayer = <Shape extends EditorShape>(shape: Shape): Shape =>
 		footprintLayer ? onFootprintLayer(shape, footprintLayer) : shape;
 	const rotatePlacement = useCallback((angle: number) => {
@@ -224,10 +269,18 @@ export function useCanvasGestures({
 		const active = getGesture();
 		return active.kind === "drag" ? active.drag : null;
 	}, [getGesture]);
-	const getWire = useCallback(() => {
+	const getWireChain = useCallback(() => {
 		const active = getGesture();
 		return active.kind === "wire" ? active.wire : null;
 	}, [getGesture]);
+	const getTrack = useCallback(() => {
+		const active = getGesture();
+		return active.kind === "track" ? active.track : null;
+	}, [getGesture]);
+	const getWire = useCallback(
+		() => getWireChain() ?? getTrack(),
+		[getWireChain, getTrack],
+	);
 	useEffect(() => {
 		if (tool !== "select" || !selected.length) return;
 		if (typeof requestIdleCallback !== "function") return;
@@ -245,18 +298,17 @@ export function useCanvasGestures({
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const heightOf = (shape: EditorShape) =>
 		cameraView.getProjection()?.heightOf(shape) ?? 0;
+	const toolLayers = (): readonly FootprintLayer[] => {
+		if (isPadTool(tool))
+			return newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu");
+		if (tool === "via") return copperLayers;
+		if ((tool === "track" || tool === "zone") && board)
+			return [board.copperLayer];
+		if (tool === "outline") return ["Edge.Cuts"];
+		return footprintLayer ? [footprintLayer] : [];
+	};
 	const toolHeight = () =>
-		cameraView
-			.getProjection()
-			?.layerHeight(
-				isPadTool(tool)
-					? newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu")
-					: tool === "via"
-						? copperLayers
-						: footprintLayer
-							? [footprintLayer]
-							: [],
-			) ?? 0;
+		cameraView.getProjection()?.layerHeight(toolLayers()) ?? 0;
 	const screenPoint = (
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,
@@ -342,7 +394,7 @@ export function useCanvasGestures({
 	} | null>(null);
 	const previewWire = useCallback(
 		(point: Point) => {
-			const active = getWire();
+			const active = getWireChain();
 			if (!active) return null;
 			const snapStep = cameraView.getGridStep();
 			const shapes = session.shapes();
@@ -399,10 +451,11 @@ export function useCanvasGestures({
 			setWirePreview(segments);
 			return { segments, end, connected: !!connection, blocked: false };
 		},
-		[getWire, cameraView, session],
+		[getWireChain, cameraView, session],
 	);
 	const finishWire = useCallback(() => {
-		if (gesture.current.kind === "wire") gesture.current = { kind: "idle" };
+		if (gesture.current.kind === "wire" || gesture.current.kind === "track")
+			gesture.current = { kind: "idle" };
 		setWirePreview(null);
 		setConnectionHover(null);
 		clearPlacementPreview();
@@ -632,18 +685,168 @@ export function useCanvasGestures({
 			return true;
 		},
 	});
+	const boardVia = (id: number, center: Point, net?: string) =>
+		board ? ruleVia(id, center, board.rules, net) : createVia(id, center);
 	const viaHandler: ToolHandler = {
 		press: (_event, _point, start) => {
-			session.place([createVia(session.nextId(), start)], "Place via");
+			session.place(
+				[boardVia(session.nextId(), start, board?.netAt(start))],
+				"Place via",
+			);
 		},
 		hover: (_canvas, point) => {
 			setPlacementPreview({
 				tool,
 				symbolDefinition,
-				shape: createVia(session.nextId(), snapPoint(point, gridStep)),
+				shape: boardVia(session.nextId(), snapPoint(point, gridStep)),
 			});
 			return true;
 		},
+	};
+	const anchorTolerance = () => 4 / (cameraView.getProjection()?.scale ?? 1);
+	/** The preview of the track from the chain's start to `point`, and its end. */
+	const previewTrack = (point: Point) => {
+		const active = getTrack();
+		if (!active || !board) return null;
+		const anchor = routeAnchor(
+			board.items(),
+			point,
+			active.layer,
+			anchorTolerance(),
+		);
+		const joins =
+			anchor &&
+			(active.net === undefined ||
+				anchor.item.net === undefined ||
+				anchor.item.net === active.net)
+				? anchor
+				: undefined;
+		const end = joins?.point ?? snapPoint(point, cameraView.getGridStep());
+		const segments = trackSegments(
+			session.nextId(),
+			trackPath(active.start, end, active.posture),
+			active.layer,
+			board.rules.trackWidth,
+			active.net ?? joins?.item.net,
+		);
+		setWirePreview(segments);
+		setConnectionHover(joins?.point ?? null);
+		return { segments, end, joins };
+	};
+	const placeTrackVia = useEffectEvent(() => {
+		const active = getTrack();
+		if (!active || !board) return false;
+		const via = boardVia(session.nextId(), active.start, active.net);
+		session.place([via], "Place via");
+		if (active.net === undefined) active.netless.push(via.id);
+		active.layer = otherCopperLayer(active.layer);
+		board.setCopperLayer(active.layer);
+		setWirePreview(null);
+		return true;
+	});
+	const flipTrackPosture = useEffectEvent(() => {
+		const active = getTrack();
+		if (!active) return false;
+		active.posture =
+			active.posture === "straight-first" ? "diagonal-first" : "straight-first";
+		setWirePreview(null);
+		return true;
+	});
+	const trackHandler: ToolHandler = {
+		press: (event, point) => {
+			if (!board) return;
+			const active = getTrack();
+			if (!active) {
+				const anchor = routeAnchor(
+					board.items(),
+					point,
+					undefined,
+					anchorTolerance(),
+				);
+				let layer = board.copperLayer;
+				if (anchor && !anchor.item.layers.includes(layer)) {
+					layer = anchor.item.layers[0];
+					board.setCopperLayer(layer);
+				}
+				gesture.current = {
+					kind: "track",
+					track: {
+						start: anchor?.point ?? snapPoint(point, cameraView.getGridStep()),
+						layer,
+						...(anchor?.item.net ? { net: anchor.item.net } : {}),
+						netless: [],
+						pointerId: event.pointerId,
+						posture: "straight-first",
+					},
+				};
+				previewTrack(point);
+				return;
+			}
+			const next = previewTrack(point);
+			if (!next || !next.segments.length) return;
+			const net = next.segments[0]?.net;
+			if (net !== undefined && active.netless.length) {
+				const earlier = new Set(active.netless);
+				session.replace(
+					[
+						...session
+							.shapes()
+							.filter((shape) => earlier.has(shape.id))
+							.map((shape) => ({ ...shape, net })),
+						...next.segments,
+					],
+					"Route track",
+				);
+				active.netless = [];
+			} else {
+				session.place(next.segments, "Route track");
+				if (net === undefined)
+					active.netless.push(...next.segments.map((shape) => shape.id));
+			}
+			if (next.joins) {
+				finishWire();
+				return;
+			}
+			active.net ??= next.segments[0]?.net;
+			active.start = next.end;
+			active.pointerId = event.pointerId;
+			setWirePreview(null);
+		},
+		hover: (canvas, point) => {
+			if (getTrack()) {
+				previewTrack(point);
+				return true;
+			}
+			if (!board) return false;
+			const anchor = routeAnchor(
+				board.items(),
+				point,
+				undefined,
+				anchorTolerance(),
+			);
+			setConnectionHover(anchor?.point ?? null);
+			canvas.style.cursor = "crosshair";
+			return true;
+		},
+	};
+	const zoneHandler: ToolHandler = {
+		create: (start) => {
+			const net = board?.netAt(start);
+			return {
+				...drawShape(session.nextId(), "rectangle", start, start),
+				layer: board?.copperLayer ?? "F.Cu",
+				lineWidth: 0.1,
+				zone: {},
+				...(net ? { net } : {}),
+			};
+		},
+	};
+	const outlineHandler: ToolHandler = {
+		create: (start) => ({
+			...drawShape(session.nextId(), "rectangle", start, start),
+			layer: "Edge.Cuts",
+			lineWidth: 0.1,
+		}),
 	};
 	const drawingHandler = (
 		kind: "rectangle" | "circle" | "triangle" | "line",
@@ -665,6 +868,9 @@ export function useCanvasGestures({
 		"smd-pad": padHandler("smd-pad"),
 		"through-hole-pad": padHandler("through-hole-pad"),
 		via: viaHandler,
+		track: trackHandler,
+		zone: zoneHandler,
+		outline: outlineHandler,
 		symbol: {
 			press: (_event, _point, start) => {
 				if (!symbolDefinition || (sheetless && symbolDefinition.netSymbol))
@@ -695,7 +901,7 @@ export function useCanvasGestures({
 		},
 		wire: {
 			press: (event, point) => {
-				const active = getWire();
+				const active = getWireChain();
 				if (!active) {
 					const connection = findWireConnection(
 						session.shapes(),
@@ -731,7 +937,7 @@ export function useCanvasGestures({
 				return;
 			},
 			hover: (canvas, point) => {
-				if (getWire()) return false;
+				if (getWireChain()) return false;
 
 				const connection = findWireConnection(
 					session.shapes(),
@@ -999,7 +1205,7 @@ export function useCanvasGestures({
 			if (!point) clearPlacementPreview();
 			else if (toolHandlers[tool].hover?.(event.target, point)) return;
 			if (
-				getWire() &&
+				getWireChain() &&
 				event.isPrimary &&
 				(event.buttons & ~1) === 0 &&
 				!event.ctrlKey &&
@@ -1054,6 +1260,8 @@ export function useCanvasGestures({
 		connectionHover,
 		finishDrag,
 		finishWire,
+		placeTrackVia,
+		flipTrackPosture,
 		pointerHandlers,
 	};
 }

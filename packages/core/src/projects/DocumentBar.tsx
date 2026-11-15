@@ -19,7 +19,7 @@ export function DocumentBar({
 	title,
 	selection,
 	path: suppliedPath,
-	circuit = false,
+	view,
 	center,
 	children,
 }: {
@@ -30,8 +30,8 @@ export function DocumentBar({
 	selection?: string;
 	/** The open file's sidebar row, when it is not one of those selections. */
 	path?: string;
-	/** The file is open in its circuit view. */
-	circuit?: boolean;
+	/** The view the file is open in, when it is not the schematic. */
+	view?: "circuit" | "pcb";
 	/**
 	 * A second bar for the top centre of the workspace, such as the page tabs.
 	 * It stays centred while there is room and otherwise sits after this bar.
@@ -55,8 +55,8 @@ export function DocumentBar({
 		[snapshot, selection, suppliedPath],
 	);
 	useEffect(
-		() => registerDocument?.({ path, circuit }),
-		[registerDocument, path, circuit],
+		() => registerDocument?.({ path, view }),
+		[registerDocument, path, view],
 	);
 	if (!project) return null;
 	const name =

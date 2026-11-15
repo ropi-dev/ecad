@@ -22,6 +22,7 @@ const kicadLayerColors = {
 	"B.CrtYd": "#26e9ff",
 	"F.Fab": "#afafaf",
 	"B.Fab": "#6b72a8",
+	"Edge.Cuts": "#d0d239",
 } as const;
 const throughHolePad = "#c9a23c";
 
@@ -47,6 +48,7 @@ export const lightSchematicTheme: SchematicTheme = {
 		via: "#8c8c8c",
 		"pad-hole": "#ffffff",
 		"pad-number": "#1a1a1a",
+		ratsnest: "#3c3c3c",
 	},
 };
 
@@ -72,6 +74,7 @@ export const darkSchematicTheme: SchematicTheme = {
 		via: "#c4c4c4",
 		"pad-hole": "#161a21",
 		"pad-number": "#ffffff",
+		ratsnest: "#e6e6e6",
 	},
 };
 

@@ -6,9 +6,12 @@ import { AppWorkspace } from "#/projects/AppProjects.tsx";
 export const Route = createRootRoute({
 	validateSearch: (
 		search: Record<string, unknown>,
-	): { file?: string; view?: "circuit" } => ({
+	): { file?: string; view?: "circuit" | "pcb" } => ({
 		file: typeof search.file === "string" ? search.file : undefined,
-		view: search.view === "circuit" ? "circuit" : undefined,
+		view:
+			search.view === "circuit" || search.view === "pcb"
+				? search.view
+				: undefined,
 	}),
 	head: () => ({
 		meta: [

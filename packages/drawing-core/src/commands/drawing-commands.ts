@@ -322,14 +322,21 @@ export function replaceAndPlaceShapesEffect(
 	inputs: readonly ShapeInput[],
 	label: string,
 	targetIds?: readonly number[],
+	removeIds: readonly number[] = [],
 ) {
-	return capture({ replacements, inputs, targetIds }, (captured) =>
+	return capture({ replacements, inputs, targetIds, removeIds }, (captured) =>
 		command((current) => {
 			const ids = captured.replacements.map((shape) => shape.id);
 			validateIds(ids);
 			const existing = new Map(
 				current.shapes.map((shape) => [shape.id, shape]),
 			);
+			const removed = new Set(captured.removeIds);
+			validateIds([...removed]);
+			for (const id of removed) {
+				if (!existing.has(id)) invalid(`Shape ${id} does not exist.`);
+				existing.delete(id);
+			}
 			const preferredIds = captured.targetIds ?? ids;
 			validateIds(preferredIds);
 			for (const id of preferredIds)
@@ -358,7 +365,9 @@ export function replaceAndPlaceShapesEffect(
 			return commit(
 				current,
 				[
-					...current.shapes.map((shape) => byId.get(shape.id) ?? shape),
+					...current.shapes
+						.filter((shape) => !removed.has(shape.id))
+						.map((shape) => byId.get(shape.id) ?? shape),
 					...additions,
 				],
 				[...ids, ...additions.map((shape) => shape.id)],

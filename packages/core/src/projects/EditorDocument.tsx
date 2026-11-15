@@ -53,6 +53,7 @@ export function EditorDocument({
 		return openingCircuit;
 	const symbol = props.store ? null : project?.editorSymbol;
 	const footprint = props.store ? null : project?.editorFootprint;
+	const board = props.store ? null : project?.editorBoard;
 	const drawing = props.store ? null : project?.editorDrawing;
 	if (
 		project &&
@@ -60,6 +61,7 @@ export function EditorDocument({
 		!project.mainDrawing &&
 		!symbol &&
 		!footprint &&
+		!board &&
 		!drawing &&
 		project.openingCircuit === null
 	)
@@ -72,24 +74,33 @@ export function EditorDocument({
 		? `symbol:${symbol.file.id}`
 		: footprint
 			? `footprint:${footprint.file.id}`
-			: drawing
-				? `drawing:${drawing.file.id}`
-				: undefined;
+			: board
+				? `board:${board.file.circuitId}`
+				: drawing
+					? `drawing:${drawing.file.id}`
+					: undefined;
 	return (
 		<Canvas
 			key={`${project?.session ?? 0}:${file ?? "schematic"}`}
 			{...props}
-			store={symbol?.store ?? footprint?.store ?? drawing?.store ?? props.store}
+			store={
+				symbol?.store ??
+				footprint?.store ??
+				board?.store ??
+				drawing?.store ??
+				props.store
+			}
 			symbolName={symbol?.file.name}
 			footprintName={footprint?.file.name}
+			board={board ?? undefined}
 			drawingName={drawing?.file.name}
 			documentSelection={props.store ? undefined : (file ?? "drawing")}
 			viewSwitch={
 				!props.store && !symbol && !footprint ? (
-					<EditorViewSwitch view="schematic" />
+					<EditorViewSwitch view={board ? "pcb" : "schematic"} />
 				) : undefined
 			}
-			syncSelection={!props.store && !symbol && !footprint}
+			syncSelection={!props.store && !symbol && !footprint && !board}
 		/>
 	);
 }

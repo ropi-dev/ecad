@@ -13,6 +13,7 @@ import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { ParseResult } from "effect";
 import { parse, stringify } from "smol-toml";
 import { z } from "zod";
+import { type BoardFile, boardFileSchema } from "#/board/format.ts";
 import {
 	parseSavedSymbolLibrary,
 	type SymbolLibrary,
@@ -112,6 +113,7 @@ export interface ProjectDocument {
 	circuits?: CircuitFile[];
 	symbols: SymbolLibrary;
 	footprints?: FootprintFile[];
+	boards?: BoardFile[];
 	symbolLibraries?: readonly ConfiguredSymbolLibrary[];
 }
 export interface ProjectSnapshot extends ProjectDocument {
@@ -161,6 +163,7 @@ export interface ProjectDocumentFiles {
 	drawings?: readonly string[];
 	circuits?: readonly string[];
 	footprints?: readonly string[];
+	boards?: readonly string[];
 }
 
 function invalid(file: string | undefined, reason: string, cause?: unknown) {
@@ -273,6 +276,21 @@ export function validateProjectDocument(
 			files && PROJECT_FILE,
 			"The project contains duplicate footprint IDs.",
 		);
+	const boards =
+		document.boards === undefined
+			? undefined
+			: check(z.array(boardFileSchema), document.boards, {
+					field: "boards",
+					items: files?.boards,
+				});
+	if (
+		boards &&
+		new Set(boards.map((file) => file.circuitId)).size !== boards.length
+	)
+		throw invalid(
+			files && PROJECT_FILE,
+			"The project contains two boards for one circuit.",
+		);
 	let symbolLibraries: readonly ConfiguredSymbolLibrary[] | undefined;
 	try {
 		symbolLibraries =
@@ -300,6 +318,7 @@ export function validateProjectDocument(
 		...(circuits === undefined ? {} : { circuits }),
 		symbols,
 		...(footprints === undefined ? {} : { footprints }),
+		...(boards === undefined ? {} : { boards }),
 		...(symbolLibraries === undefined ? {} : { symbolLibraries }),
 	};
 }

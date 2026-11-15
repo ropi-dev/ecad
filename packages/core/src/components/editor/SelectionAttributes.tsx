@@ -66,7 +66,7 @@ import { SymbolInstanceAttributeInput } from "#/components/editor/SymbolInstance
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { LabelRole } from "#/drawing/placement.ts";
-import type { SelectionEdit } from "#/drawing/selection-edit.ts";
+import { canCarryNet, type SelectionEdit } from "#/drawing/selection-edit.ts";
 
 export const numberInputClassName = "ui-input w-28 pr-8 text-right";
 export const textInputClassName = "ui-input w-36";
@@ -304,6 +304,8 @@ interface SelectionAttributesProps {
 	/** Shows a symbol's footprint and the footprints it can use. */
 	footprintChoices?: FootprintChoices;
 	hiddenLayers?: ReadonlySet<FootprintLayer>;
+	/** The board's nets, for tracks, vias and zones on a board. */
+	boardNets?: readonly { id: string; name: string }[];
 	unit?: LengthUnit;
 	onEdit: (edit: SelectionEdit) => void;
 	textFocusId: number | null;
@@ -516,6 +518,109 @@ function viaRows(
 	];
 }
 
+/** Net, zone and side rows for items on a board. */
+function boardRows(
+	shapes: EditorShape[],
+	nets: readonly { id: string; name: string }[],
+	unit: LengthUnit,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	const rows: [string, ReactNode][] = [];
+	const copper = shapes.filter(
+		(shape) =>
+			canCarryNet(shape) &&
+			(isVia(shape) || shape.layer === "F.Cu" || shape.layer === "B.Cu"),
+	);
+	if (copper.length === shapes.length && copper.length) {
+		const first = "net" in copper[0] ? copper[0].net : undefined;
+		const same = copper.every(
+			(shape) => ("net" in shape ? shape.net : undefined) === first,
+		);
+		const value = same ? (first ?? "") : "mixed";
+		const sorted = [...nets].sort((a, b) =>
+			a.name.localeCompare(b.name, "en", { numeric: true }),
+		);
+		rows.push([
+			"Net",
+			<select
+				key="net"
+				aria-label="Net"
+				className="ui-select w-36"
+				value={value}
+				onChange={(event) =>
+					onEdit({
+						kind: "net",
+						net: event.currentTarget.value || undefined,
+					})
+				}
+			>
+				{value === "mixed" && (
+					<option value="mixed" disabled>
+						Mixed
+					</option>
+				)}
+				<option value="">No net</option>
+				{first && !nets.some((net) => net.id === first) && (
+					<option value={first}>Missing net</option>
+				)}
+				{sorted.map((net) => (
+					<option key={net.id} value={net.id}>
+						{net.name}
+					</option>
+				))}
+			</select>,
+		]);
+	}
+	const zone =
+		shapes.length === 1 && shapes[0].kind === "rectangle"
+			? shapes[0]
+			: undefined;
+	if (zone?.zone)
+		rows.push([
+			"Zone clearance",
+			<AttributeInput
+				key={`${zone.id}:clearance`}
+				label="Zone clearance"
+				value={zone.zone.clearance ?? ""}
+				unit={unit}
+				positive
+				onChange={(clearance) => onEdit({ kind: "zone-clearance", clearance })}
+			/>,
+		]);
+	const footprints = shapes.filter(
+		(shape) => shape.kind === "symbol" && shape.footprint,
+	);
+	if (footprints.length === shapes.length && footprints.length) {
+		const back = footprints.every(
+			(shape) => shape.kind === "symbol" && shape.flipped,
+		);
+		const front = footprints.every(
+			(shape) => shape.kind === "symbol" && !shape.flipped,
+		);
+		rows.push([
+			"Side",
+			<select
+				key="side"
+				aria-label="Side"
+				className="ui-select w-36"
+				value={back ? "back" : front ? "front" : "mixed"}
+				onChange={(event) =>
+					onEdit({ kind: "side", back: event.currentTarget.value === "back" })
+				}
+			>
+				{!back && !front && (
+					<option value="mixed" disabled>
+						Mixed
+					</option>
+				)}
+				<option value="front">Front</option>
+				<option value="back">Back</option>
+			</select>,
+		]);
+	}
+	return rows;
+}
+
 export function SelectionAttributes(props: SelectionAttributesProps) {
 	const symbol = props.shapes.length === 1 ? props.shapes[0] : undefined;
 	if (props.readOnly && symbol)
@@ -530,7 +635,11 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 		);
 	if (symbol?.kind === "symbol")
 		return (
-			<SymbolInstanceAttributeForm key={symbol.id} symbol={symbol}>
+			<SymbolInstanceAttributeForm
+				key={symbol.id}
+				symbol={symbol}
+				millimetres={props.footprint}
+			>
 				<SelectionAttributesPanel {...props} />
 			</SymbolInstanceAttributeForm>
 		);
@@ -547,6 +656,7 @@ function SelectionAttributesPanel({
 	footprint = false,
 	footprintChoices,
 	hiddenLayers,
+	boardNets,
 	unit = "mil",
 	onEdit,
 	onCreateSymbol,
@@ -648,12 +758,12 @@ function SelectionAttributesPanel({
 				name={attribute}
 				label={label}
 				value={value}
-				unit={attribute === "angle" ? "°" : "mil"}
+				unit={attribute === "angle" ? "°" : footprint ? "mm" : "mil"}
 				step={attribute === "angle" ? "90" : "any"}
 				onCommit={(next) =>
 					onAttributeChange(
 						attribute,
-						attribute === "angle" ? next : fromMils(next),
+						attribute === "angle" || footprint ? next : fromMils(next),
 					)
 				}
 			/>
@@ -730,6 +840,7 @@ function SelectionAttributesPanel({
 					]),
 		...(pad ? padRows(pad, unit, onEdit, hiddenLayers) : []),
 		...(via ? viaRows(via, unit, onEdit) : []),
+		...(boardNets ? boardRows(shapes, boardNets, unit, onEdit) : []),
 		...(single?.kind === "pin"
 			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [
 					attribute === "name" ? "Name" : "Number",
@@ -1142,11 +1253,14 @@ function SelectionAttributesPanel({
 										name="lineWidth"
 										label="Line width"
 										value={lineWidth}
-										unit="mil"
+										unit={footprint ? "mm" : "mil"}
 										positive
 										onCommit={(value) => {
 											if (value !== null)
-												onAttributeChange("lineWidth", fromMils(value));
+												onAttributeChange(
+													"lineWidth",
+													footprint ? value : fromMils(value),
+												);
 										}}
 									/>
 								) : (

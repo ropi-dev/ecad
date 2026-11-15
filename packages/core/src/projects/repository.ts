@@ -1,6 +1,7 @@
 import { circuitSchema } from "@ecad/drawing-core/circuit/model.ts";
 import { Predicate } from "effect";
 import { z } from "zod";
+import { type BoardFile, boardData, boardDataSchema } from "#/board/format.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
@@ -20,6 +21,7 @@ import {
 	assetSchema,
 	PROJECT_FILE,
 	type ProjectDocument,
+	type ProjectDrawing,
 	type ProjectManifest,
 	type ProjectSnapshot,
 	parseProjectManifest,
@@ -95,13 +97,44 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const SYMBOL_LIBRARIES_FILE = "symbol-libraries.json";
 
-function mainDrawingBytes(document: ProjectDocument, circuit: unknown) {
+function embeddedBoard(document: ProjectDocument, circuitId?: string) {
+	const board = document.boards?.find((file) => file.circuitId === circuitId);
+	return board ? { board: boardData(board) } : {};
+}
+
+function mainDrawingBytes(
+	document: ProjectDocument,
+	circuit: { id: string } | undefined,
+) {
 	return encoder.encode(
 		JSON.stringify({
 			shapes: persistProjectDrawingShapes(document),
 			...(document.pages ? { pages: document.pages } : {}),
 			circuit,
+			...embeddedBoard(document, circuit?.id),
 		}),
+	);
+}
+
+function drawingBytes(document: ProjectDocument, file: ProjectDrawing) {
+	return encoder.encode(
+		JSON.stringify({
+			...file,
+			circuit: document.circuits?.find(
+				(entry) => entry.circuit.id === file.circuitId,
+			)?.circuit,
+			shapes: persistProjectDrawingShapes({
+				...document,
+				shapes: file.shapes,
+			}),
+			...embeddedBoard(document, file.circuitId),
+		}),
+	);
+}
+
+function savedBoards(document: ProjectDocument): BoardFile[] | undefined {
+	return document.boards?.filter((board) =>
+		document.circuits?.some((file) => file.circuit.id === board.circuitId),
 	);
 }
 
@@ -340,6 +373,37 @@ export class ProjectRepository {
 		const footprints =
 			manifest.footprints &&
 			(await Promise.all(manifest.footprints.map((path) => readJson(path))));
+		const embeddedBoards: ({ path: string; board: BoardFile } | undefined)[] =
+			[];
+		const embed = (
+			index: number,
+			path: string,
+			value: Record<string, unknown>,
+			circuit: { id: string; name: string },
+		) => {
+			if (value.board === undefined) return;
+			const parsed = boardDataSchema.safeParse(value.board);
+			if (!parsed.success)
+				throw new InvalidProjectFile({
+					path,
+					reason: schemaReason(
+						parsed.error.issues.map((issue) => ({
+							...issue,
+							path: ["board", ...issue.path],
+						})),
+					),
+					cause: parsed.error,
+				});
+			embeddedBoards[index] = {
+				path,
+				board: {
+					...parsed.data,
+					circuitId: circuit.id,
+					name: pcbDocumentName(circuit.name),
+				},
+			};
+		};
+		const boards = () => embeddedBoards.filter(Predicate.isNotUndefined);
 		const document = validateProjectDocument(
 			{
 				shapes: (drawing?.shapes ?? []) as ProjectDocument["shapes"],
@@ -353,7 +417,8 @@ export class ProjectRepository {
 								manifest.drawings.map((path) =>
 									readJson(
 										path,
-										({ circuit: _circuit, ...drawing }) => drawing,
+										({ circuit: _circuit, board: _board, ...drawing }) =>
+											drawing,
 									),
 								),
 							),
@@ -362,7 +427,7 @@ export class ProjectRepository {
 					? {}
 					: {
 							circuits: await Promise.all(
-								manifest.circuits.map((paths) =>
+								manifest.circuits.map((paths, index) =>
 									readJson(paths.circuit, (value) => {
 										const parsed = circuitSchema.safeParse(value.circuit);
 										if (!parsed.success)
@@ -383,6 +448,7 @@ export class ProjectRepository {
 												reason:
 													"The schematic circuit identity does not match its circuit data.",
 											});
+										embed(index, paths.circuit, value, circuit);
 										return {
 											circuit,
 											graph: {
@@ -398,6 +464,9 @@ export class ProjectRepository {
 						}),
 				symbols,
 				...(footprints === undefined ? {} : { footprints }),
+				...(!boards().length
+					? {}
+					: { boards: boards().map((entry) => entry.board) }),
 				symbolLibraries:
 					libraries?.symbolLibraries as ProjectDocument["symbolLibraries"],
 			} as ProjectDocument,
@@ -407,6 +476,7 @@ export class ProjectRepository {
 				drawings: manifest.drawings,
 				circuits: manifest.circuits?.map((paths) => paths.circuit),
 				footprints: manifest.footprints,
+				boards: boards().map((entry) => entry.path),
 			},
 		);
 		const snapshot: ProjectSnapshot = {
@@ -469,11 +539,16 @@ export class ProjectRepository {
 		snapshot: ProjectSnapshot,
 		validated?: ProjectDocument,
 	): Promise<ProjectSnapshot> {
-		const document =
+		const paired =
 			validated ??
 			validateProjectDocument(
 				pairPcbDocuments(snapshot, snapshot.manifest.name),
 			);
+		const boards = savedBoards(paired);
+		const document = {
+			...paired,
+			...(boards === undefined ? {} : { boards }),
+		};
 		snapshot = { ...snapshot, ...document };
 		if (this.options.layout === "files")
 			return this.publishFiles({ ...snapshot, ...document });
@@ -523,21 +598,7 @@ export class ProjectRepository {
 				usedNames.add(name.toLowerCase());
 				const path = `${revision}/${name}.ecaddraw`;
 				parseProjectPath(path);
-				await this.directory.write(
-					path,
-					encoder.encode(
-						JSON.stringify({
-							...file,
-							circuit: document.circuits?.find(
-								(entry) => entry.circuit.id === file.circuitId,
-							)?.circuit,
-							shapes: persistProjectDrawingShapes({
-								...document,
-								shapes: file.shapes,
-							}),
-						}),
-					),
-				);
+				await this.directory.write(path, drawingBytes(document, file));
 				drawings.push(path);
 			}
 			const circuits = (document.circuits ?? []).map((file) => ({
@@ -659,21 +720,7 @@ export class ProjectRepository {
 					: await this.unusedPath(`${file.name}.ecaddraw`, reserved);
 			reserved.add(path);
 			drawings.push(path);
-			files.set(
-				path,
-				encoder.encode(
-					JSON.stringify({
-						...file,
-						circuit: snapshot.circuits?.find(
-							(entry) => entry.circuit.id === file.circuitId,
-						)?.circuit,
-						shapes: persistProjectDrawingShapes({
-							...snapshot,
-							shapes: file.shapes,
-						}),
-					}),
-				),
-			);
+			files.set(path, drawingBytes(snapshot, file));
 		}
 		const symbols: string[] = [];
 		for (const symbol of snapshot.symbols) {

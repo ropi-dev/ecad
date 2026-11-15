@@ -1,5 +1,6 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { BoardFile } from "#/board/format.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
 import type { FootprintFile } from "#/footprint/format.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
@@ -32,6 +33,7 @@ export function createProjectAutosave(
 		circuitDocuments,
 		symbolDocuments,
 		footprintDocuments,
+		boardDocuments,
 		drawingDocuments,
 		noteConflict,
 		showError,
@@ -47,6 +49,7 @@ export function createProjectAutosave(
 		nextDrawings?: ProjectDrawing[],
 		nextCircuits?: CircuitFile[],
 		nextFootprints?: FootprintFile[],
+		nextBoards?: BoardFile[],
 	) => {
 		const previous = state.active;
 		const savingLibraryRevision = state.libraryRevision;
@@ -71,6 +74,21 @@ export function createProjectAutosave(
 				.map((document) => [
 					document.file.id,
 					document.store.getSnapshot().shapes,
+				]),
+		);
+		const boardEdits = new Map(
+			[...boardDocuments.values()]
+				.filter(
+					(document) =>
+						document.store.getSnapshot().shapes !== document.savedShapes ||
+						document.rules.get() !== document.savedRules,
+				)
+				.map((document) => [
+					document.file.circuitId,
+					{
+						shapes: document.store.getSnapshot().shapes,
+						rules: document.rules.get(),
+					},
 				]),
 		);
 		const { shapes: mainShapes, pages: mainPages } = state.store.getSnapshot();
@@ -111,6 +129,8 @@ export function createProjectAutosave(
 			savedCircuits,
 			footprints: nextFootprints ?? previous.footprints,
 			footprintEdits,
+			boards: nextBoards ?? previous.boards,
+			boardEdits,
 		});
 
 		const linked = await linkedAssembler.assemble(
@@ -199,6 +219,13 @@ export function createProjectAutosave(
 			const edit = footprintDocuments.get(id);
 			if (edit) edit.savedShapes = shapes;
 		}
+		for (const [id, saved] of boardEdits) {
+			const edit = boardDocuments.get(id);
+			if (edit) {
+				edit.savedShapes = saved.shapes;
+				edit.savedRules = saved.rules;
+			}
+		}
 		for (const file of document.drawings ?? []) {
 			const edit = drawingDocuments.get(file.id);
 			if (edit)
@@ -226,6 +253,11 @@ export function createProjectAutosave(
 				) ||
 				[...footprintDocuments.values()].some(
 					(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,
+				) ||
+				[...boardDocuments.values()].some(
+					(entry) =>
+						entry.store.getSnapshot().shapes !== entry.savedShapes ||
+						entry.rules.get() !== entry.savedRules,
 				) ||
 				[...drawingDocuments.values()].some(
 					(entry) => entry.store.getSnapshot().shapes !== entry.savedShapes,

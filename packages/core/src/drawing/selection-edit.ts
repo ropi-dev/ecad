@@ -1,5 +1,10 @@
+import {
+	flipBoardFootprint,
+	isBoardFootprint,
+} from "@ecad/drawing-core/board/footprints.ts";
 import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
+import type { FillableShapeKind } from "@ecad/drawing-core/drawing/shape-kinds.ts";
 import {
 	boxBorder,
 	type EditorShape,
@@ -80,7 +85,10 @@ export type SelectionEdit =
 			readonly kind: "symbol-label-position";
 			readonly position: SymbolLabelPosition;
 	  }
-	| { readonly kind: "symbol-text-reset" };
+	| { readonly kind: "symbol-text-reset" }
+	| { readonly kind: "net"; readonly net: string | undefined }
+	| { readonly kind: "zone-clearance"; readonly clearance: number }
+	| { readonly kind: "side"; readonly back: boolean };
 
 /**
  * Whether an edit applies to a pin that stays fixed to its symbol. Only the
@@ -149,6 +157,11 @@ const attributeLabels: Partial<Record<ShapeAttribute, string>> = {
 	lineWidth: "line width",
 	fontSize: "font size",
 };
+
+export const canCarryNet = (
+	shape: EditorShape,
+): shape is Extract<EditorShape, { kind: "line" | FillableShapeKind }> =>
+	shape.kind === "line" || (isFillableShape(shape) && !isPad(shape));
 
 /**
  * The replacements and history label for an Attributes panel edit, or
@@ -326,6 +339,39 @@ export function applySelectionEdit(
 						: [],
 				),
 				label: edit.filled ? "Fill shape" : "Clear fill",
+			};
+		case "net":
+			return {
+				replacements: selection.flatMap((shape) => {
+					if (!canCarryNet(shape) || (shape.locked && !context.allowLocked))
+						return [];
+					const { net: _net, ...rest } = shape;
+					return [edit.net ? { ...rest, net: edit.net } : rest];
+				}),
+				label: edit.net ? "Change net" : "Remove net",
+			};
+		case "zone-clearance":
+			return single?.kind === "rectangle" && single.zone && edit.clearance > 0
+				? {
+						replacements: [
+							{
+								...single,
+								zone: { ...single.zone, clearance: edit.clearance },
+							},
+						],
+						label: "Change zone clearance",
+					}
+				: undefined;
+		case "side":
+			return {
+				replacements: selection.flatMap((shape) =>
+					isBoardFootprint(shape) &&
+					(!shape.locked || context.allowLocked) &&
+					(shape.flipped ?? false) !== edit.back
+						? [flipBoardFootprint(shape)]
+						: [],
+				),
+				label: "Flip footprint",
 			};
 		case "symbol-text-reset": {
 			const target = context.child;

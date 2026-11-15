@@ -1,4 +1,5 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type { BoardFile } from "#/board/format.ts";
 import type { SymbolFile } from "#/components/editor/symbolFormat.ts";
 import type { FootprintFile } from "#/footprint/format.ts";
 import type { ProjectDrawing, ProjectSnapshot } from "#/projects/format.ts";
@@ -52,6 +53,13 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 		circuitsById.set(file.circuit.id, { file, path });
 		if (path) circuitsByPath.set(path, file);
 	}
+	const boardsByCircuit = new Map<string, Entry<BoardFile>>();
+	const boardsByPath = new Map<string, BoardFile>();
+	for (const file of snapshot.boards ?? []) {
+		const path = circuitsById.get(file.circuitId)?.path;
+		boardsByCircuit.set(file.circuitId, { file, path });
+		if (path) boardsByPath.set(path, file);
+	}
 	return {
 		symbolsById,
 		symbolsByPath,
@@ -62,5 +70,7 @@ export function createProjectIndex(snapshot: ProjectSnapshot) {
 		circuitsByPath,
 		footprintsById,
 		footprintsByPath,
+		boardsByPath,
+		boardsByCircuit,
 	};
 }

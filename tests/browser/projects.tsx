@@ -54,6 +54,7 @@ function ProjectDocument() {
 	const editorStore =
 		project.editorSymbol?.store ??
 		project.editorFootprint?.store ??
+		project.editorBoard?.store ??
 		project.editorDrawing?.store ??
 		project.store;
 	const editor = useSyncExternalStore(
@@ -71,6 +72,7 @@ function ProjectDocument() {
 				symbols: project.project?.symbols,
 				drawings: project.project?.drawings,
 				footprints: project.project?.footprints,
+				boards: project.project?.boards?.map((board) => board.circuitId),
 				editorDrawing: project.editorDrawing?.file.id,
 				editorShapes: editor.shapes,
 			})}

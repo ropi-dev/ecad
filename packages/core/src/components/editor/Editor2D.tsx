@@ -20,7 +20,8 @@ import {
 	footprintLayerView,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
-import { ArrowLeft, CircuitBoard, Component, Cpu } from "lucide-react";
+import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import { ArrowLeft, CircuitBoard, Component, Cpu, Grid2x2 } from "lucide-react";
 import {
 	lazy,
 	type ReactNode,
@@ -34,6 +35,14 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { announceBoardSync } from "#/board/sync-document.ts";
+import { boardDisplay, boardLayerView } from "#/board/view.ts";
+import {
+	BoardChecksPanel,
+	BoardSetupPanel,
+	BoardStatus,
+} from "#/components/board/BoardPanels.tsx";
+import { useBoardEditor } from "#/components/board/useBoardEditor.ts";
 import { CanvasOverlay } from "#/components/editor/CanvasOverlay.tsx";
 import { CreateSymbolDialog } from "#/components/editor/CreateSymbolDialog.tsx";
 import { CursorReadout } from "#/components/editor/CursorReadout.tsx";
@@ -78,6 +87,8 @@ import {
 	FootprintLayerPanel,
 	useFootprintLayers,
 } from "#/components/footprint/FootprintLayerPanel.tsx";
+import { toastManager } from "#/components/ui/toast.ts";
+import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
@@ -88,6 +99,7 @@ import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
 import { boardEdgeBounds, layerSurfaceZ } from "#/footprint/board.ts";
 import { loadBuiltinFootprints } from "#/footprint/library.ts";
+import { isEditableTarget } from "#/lib/keyboard.ts";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
 import { EditorHeader } from "#/projects/EditorHeader.tsx";
@@ -95,6 +107,7 @@ import {
 	useLatestProjectSnapshot,
 	useProjectSelection,
 } from "#/projects/ProjectProvider.tsx";
+import type { BoardDocument } from "#/projects/ProjectSession.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
@@ -119,6 +132,7 @@ const footprintPixelsPerMmAt100 = 100;
 export type EditorCanvasProps = Editor2DProps & {
 	symbolName?: string;
 	footprintName?: string;
+	board?: BoardDocument;
 	drawingName?: string;
 	headerControls?: ReactNode;
 	viewSwitch?: ReactNode;
@@ -129,6 +143,8 @@ export type EditorCanvasProps = Editor2DProps & {
 
 const NO_SHAPES: EditorShape[] = [];
 const NO_SELECTION: ReadonlySet<number> = new Set();
+const flatBoard = (shapes: readonly EditorShape[]) =>
+	boardDisplay(shapes, NO_SELECTION, noLayers, "F.Cu").shapes;
 
 export function Editor2D(props: Editor2DProps = {}) {
 	return <EditorDocument {...props} Canvas={EditorCanvas} />;
@@ -140,23 +156,29 @@ function EditorCanvas({
 	enableMcp = true,
 	symbolName,
 	footprintName,
+	board,
 	drawingName,
 	headerControls,
 	viewSwitch,
 	documentSelection,
 	syncSelection = false,
 }: EditorCanvasProps) {
-	const isFootprint = footprintName !== undefined;
+	const isBoard = board !== undefined;
+	const isFootprint = footprintName !== undefined || isBoard;
 	const sheetless = symbolName !== undefined || isFootprint;
-	const editorKind = isFootprint
-		? "Footprint"
-		: sheetless
-			? "Symbol"
-			: "Schematic";
+	const editorKind = isBoard
+		? "PCB"
+		: isFootprint
+			? "Footprint"
+			: sheetless
+				? "Symbol"
+				: "Schematic";
 	const unit = isFootprint ? "mm" : "mil";
 	const layers = useFootprintLayers();
-	const [board, setBoard] = useState<"closed" | "open" | "closing">("closed");
-	const flatShown = board === "closed";
+	const [boardView, setBoardView] = useState<"closed" | "open" | "closing">(
+		"closed",
+	);
+	const flatShown = boardView === "closed";
 	const [boardError, setBoardError] = useState("");
 	const [boardBuildError, setBoardBuildError] = useState("");
 	const [boardMount, setBoardMount] = useState(0);
@@ -176,13 +198,14 @@ function EditorCanvas({
 			selectEditorFile,
 			createFootprint,
 			footprints: project?.footprints,
+			snapshot: project,
 		}),
 	);
 	const latestProject = useLatestProjectSnapshot();
 	const store = suppliedStore ?? project?.store ?? ownedStore;
 	const viewport = useEditorViewport(store, unit);
 	const { cameraView, gridStep } = viewport;
-	const ready = viewport.ready && board !== "closing";
+	const ready = viewport.ready && boardView !== "closing";
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
 		() => registerEditor?.(store, enableMcp && !isFootprint),
@@ -198,6 +221,15 @@ function EditorCanvas({
 	const { definitions, byReference } = symbolLibrary;
 	const resolveDocument = useCallback(
 		(shapes: EditorShape[]) => {
+			if (isBoard)
+				return {
+					shapes: boardLayerView(
+						fitTextShapes(shapes),
+						layers.hidden,
+						layers.active,
+					),
+					errors: [] as string[],
+				};
 			const result = resolveDrawingSymbols(
 				fitTextShapes(shapes),
 				definitions,
@@ -214,7 +246,14 @@ function EditorCanvas({
 					}
 				: result;
 		},
-		[definitions, byReference, isFootprint, layers.hidden, layers.active],
+		[
+			definitions,
+			byReference,
+			isBoard,
+			isFootprint,
+			layers.hidden,
+			layers.active,
+		],
 	);
 	const resolveShapes = useCallback(
 		(shapes: EditorShape[]) => resolveDocument(shapes).shapes,
@@ -227,17 +266,19 @@ function EditorCanvas({
 	const layerItemCounts = useMemo(() => {
 		const counts = new Map<FootprintLayer, number>();
 		if (isFootprint)
-			for (const shape of drawing.shapes)
+			for (const shape of isBoard ? flatBoard(drawing.shapes) : drawing.shapes)
 				for (const layer of shapeLayers(shape))
 					counts.set(layer, (counts.get(layer) ?? 0) + 1);
 		return counts;
-	}, [isFootprint, drawing.shapes]);
+	}, [isBoard, isFootprint, drawing.shapes]);
 	const everyLayerShapes = useMemo(
 		() =>
-			isFootprint
-				? footprintLayerView(fitTextShapes(drawing.shapes), noLayers)
-				: [],
-		[isFootprint, drawing.shapes],
+			isBoard
+				? flatBoard(fitTextShapes(drawing.shapes))
+				: isFootprint
+					? footprintLayerView(fitTextShapes(drawing.shapes), noLayers)
+					: [],
+		[isBoard, isFootprint, drawing.shapes],
 	);
 	const [session] = useState(() => createEditorSession(store, resolveShapes));
 	useLayoutEffect(
@@ -259,6 +300,18 @@ function EditorCanvas({
 		error: commandError,
 		allowLocked,
 	} = editor;
+	const boardEditor = useBoardEditor({
+		board,
+		store,
+		session,
+		snapshot: project?.snapshot,
+		committed: drawing.shapes,
+		draft: editor.draft,
+		hidden: layers.hidden,
+		active: layers.active,
+		setActive: layers.activate,
+		selection: selectedIds,
+	});
 	const pages = drawingPages(drawing.pages);
 	const pageIndex = pages.findIndex(
 		(page) => page.id === resolvePage(drawing.pages, editor.page),
@@ -293,14 +346,19 @@ function EditorCanvas({
 	const shapes = editor.draft ?? pageShapes;
 	const boardShapes = useMemo(() => {
 		const draft = editor.draft;
-		if (board === "closed" || !draft) return fitTextShapes(drawing.shapes);
-		const drafted = new Map(draft.map((shape) => [shape.id, shape]));
-		const stored = new Set(drawing.shapes.map((shape) => shape.id));
-		return fitTextShapes([
-			...drawing.shapes.map((shape) => drafted.get(shape.id) ?? shape),
-			...draft.filter((shape) => !stored.has(shape.id)),
-		]);
-	}, [editor.draft, board, drawing.shapes]);
+		let shapes: EditorShape[];
+		if (boardView === "closed" || !draft)
+			shapes = fitTextShapes(drawing.shapes);
+		else {
+			const drafted = new Map(draft.map((shape) => [shape.id, shape]));
+			const stored = new Set(drawing.shapes.map((shape) => shape.id));
+			shapes = fitTextShapes([
+				...drawing.shapes.map((shape) => drafted.get(shape.id) ?? shape),
+				...draft.filter((shape) => !stored.has(shape.id)),
+			]);
+		}
+		return isBoard ? flatBoard(shapes) : shapes;
+	}, [editor.draft, boardView, drawing.shapes, isBoard]);
 	useLayoutEffect(() => {
 		if (!isFootprint) return;
 		cameraView.setSurfaces((onLayers, eyeZ) =>
@@ -322,6 +380,8 @@ function EditorCanvas({
 	}, [session]);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
 	const [ercOpen, setErcOpen] = useState(false);
+	const [boardPanel, setBoardPanel] = useState<"checks" | "setup" | null>(null);
+	const [exporting, setExporting] = useState(false);
 	const canvasArea = useRef<HTMLDivElement>(null);
 	const {
 		selected,
@@ -364,6 +424,7 @@ function EditorCanvas({
 		symbolDefinition,
 		sheetless,
 		footprintLayer: isFootprint ? layers.active : undefined,
+		board: boardEditor.gestures,
 		setTextFocusId,
 		openAttributes,
 	});
@@ -386,11 +447,20 @@ function EditorCanvas({
 		() => wirePreview ?? (placementPreview ? [placementPreview] : []),
 		[wirePreview, placementPreview],
 	);
-	const { scene, updateScene } = useEditorScene(
+	const { scene, updateScene: updateDrawingScene } = useEditorScene(
 		flatShown ? shapes : NO_SHAPES,
 		flatShown ? selectedIds : NO_SELECTION,
 		flatShown ? previews : NO_SHAPES,
 		sheetless ? null : pageSheet,
+		isBoard ? boardEditor.buildDisplay : undefined,
+	);
+	const { updateZones } = boardEditor;
+	const updateScene = useCallback(
+		(root: Parameters<typeof updateDrawingScene>[0]) => {
+			updateDrawingScene(root);
+			updateZones(root);
+		},
+		[updateDrawingScene, updateZones],
 	);
 	const movingShape = shapes.find((shape) => shape.id === movingShapeId);
 	const guideShape = movingShape ?? placementPreview;
@@ -420,6 +490,12 @@ function EditorCanvas({
 		setCreatingSymbol,
 	});
 
+	const { syncReport, clearSyncReport } = boardEditor;
+	useEffect(() => {
+		if (!syncReport) return;
+		clearSyncReport();
+		announceBoardSync(syncReport);
+	}, [syncReport, clearSyncReport]);
 	const cancelGestures = useEffectEvent(() => {
 		finishDrag(true);
 		finishWire();
@@ -511,7 +587,7 @@ function EditorCanvas({
 		finishWire();
 		clearPlacementPreview();
 		setBoardError("");
-		setBoard((current) => (current === "closed" ? "open" : "closing"));
+		setBoardView((current) => (current === "closed" ? "open" : "closing"));
 	}, [finishDrag, finishWire, clearPlacementPreview]);
 	const showBoardFlat = useCallback(
 		(flat: boolean) => {
@@ -521,21 +597,21 @@ function EditorCanvas({
 				clearPlacementPreview();
 				setBoardError("");
 			}
-			setBoard(flat ? "closed" : "open");
+			setBoardView(flat ? "closed" : "open");
 		},
 		[finishDrag, finishWire, clearPlacementPreview],
 	);
 	const reportBoardBuild = useCallback((message: string) => {
 		setBoardBuildError(message);
-		if (message) setBoard("closed");
+		if (message) setBoardView("closed");
 	}, []);
 	const reportBoardError = (message: string) => {
-		if (board === "closed") {
+		if (boardView === "closed") {
 			viewport.onError(message);
 			return;
 		}
 		setBoardError(message);
-		setBoard("closed");
+		setBoardView("closed");
 		setBoardMount((count) => count + 1);
 	};
 	const toggleLayer = (layer: FootprintLayer) => {
@@ -549,13 +625,13 @@ function EditorCanvas({
 		() =>
 			isFootprint
 				? {
-						flat: board !== "open",
+						flat: boardView !== "open",
 						available: !boardBuildError,
 						onToggleFlat: toggleBoard,
 						toggle: viewToggle,
 					}
 				: undefined,
-		[isFootprint, board, boardBuildError, toggleBoard],
+		[isFootprint, boardView, boardBuildError, toggleBoard],
 	);
 
 	const editAttributes = useCallback(
@@ -599,6 +675,10 @@ function EditorCanvas({
 		!!selectedSymbol &&
 		selectedChild?.shape.kind === "text" &&
 		symbolTextMoved(selectedSymbol, selectedChild.key);
+	const boardNets = useMemo(
+		() => (isBoard ? [...boardEditor.netlist.nets.values()] : undefined),
+		[isBoard, boardEditor.netlist],
+	);
 	const selectionAttributes = useMemo(
 		() => (
 			<SelectionAttributes
@@ -626,6 +706,7 @@ function EditorCanvas({
 				footprint={isFootprint}
 				footprintChoices={footprintChoices}
 				hiddenLayers={layers.hidden}
+				boardNets={boardNets}
 				unit={unit}
 				snapStep={
 					selectedChild
@@ -653,6 +734,7 @@ function EditorCanvas({
 			isFootprint,
 			footprintChoices,
 			layers.hidden,
+			boardNets,
 			unit,
 			gridStep,
 			selectionSnapStep,
@@ -685,6 +767,79 @@ function EditorCanvas({
 			/>
 		) : undefined;
 
+	const boardToolbar = isBoard
+		? {
+				onSync: () => {
+					finishDrag(true);
+					finishWire();
+					boardEditor.synchronize().catch((cause: unknown) => {
+						const title = "Unable to update the board from its schematic.";
+						toastManager.add({
+							type: "error",
+							title,
+							description: errorMessage(cause, title),
+						});
+					});
+				},
+				checksOpen: boardPanel === "checks",
+				onChecks: () =>
+					setBoardPanel((open) => (open === "checks" ? null : "checks")),
+				setupOpen: boardPanel === "setup",
+				onSetup: () =>
+					setBoardPanel((open) => (open === "setup" ? null : "setup")),
+				canFlip:
+					flatShown &&
+					selected.some((shape) => shape.kind === "symbol" && !shape.locked),
+				onFlip: () => {
+					finishDrag(true);
+					boardEditor.flipSelection();
+				},
+				onExport: () => {
+					if (!board) return;
+					setExporting(true);
+					void Promise.all([import("#/board/gerber.ts"), import("fflate")])
+						.then(([{ exportFabrication }, { zipSync, strToU8 }]) => {
+							const stem =
+								board.file.name.replace(/[^A-Za-z0-9_-]+/g, "_") || "board";
+							const files = exportFabrication(
+								stem,
+								store.getSnapshot().shapes,
+								boardEditor.fills,
+							);
+							const zip = zipSync(
+								Object.fromEntries(
+									files.map((file) => [file.name, strToU8(file.content)]),
+								),
+							);
+							downloadPng(
+								new Blob([zip], { type: "application/zip" }),
+								`${board.file.name} gerber`,
+								"zip",
+							);
+							const findings = boardEditor.runChecks().length;
+							toastManager.add({
+								type: findings ? "warning" : "success",
+								title: "Fabrication files exported",
+								description: findings
+									? `${files.length} Gerber and drill files in a ZIP archive. The design rules check has ${findings} ${findings === 1 ? "finding" : "findings"}. Run it before ordering boards.`
+									: `${files.length} Gerber and drill files in a ZIP archive.`,
+							});
+						})
+						.catch((cause: unknown) =>
+							toastManager.add({
+								type: "error",
+								title: "Unable to export fabrication files",
+								description: errorMessage(
+									cause,
+									"Unable to export fabrication files",
+								),
+							}),
+						)
+						.finally(() => setExporting(false));
+				},
+				exporting,
+			}
+		: undefined;
 	const toolbar = (
 		<EditorToolbar
 			shapes={
@@ -721,6 +876,7 @@ function EditorCanvas({
 			removeSelected={removeSelected}
 			ercOpen={ercOpen}
 			onErc={sheetless ? undefined : () => setErcOpen((open) => !open)}
+			board={boardToolbar}
 		/>
 	);
 
@@ -729,6 +885,30 @@ function EditorCanvas({
 			className="relative flex h-dvh flex-col overflow-hidden"
 			{...clipboard}
 			onKeyDownCapture={(event) => {
+				if (
+					isBoard &&
+					ready &&
+					!creatingSymbol &&
+					!event.ctrlKey &&
+					!event.metaKey &&
+					!event.altKey &&
+					!isEditableTarget(event)
+				) {
+					const key = event.key.toLowerCase();
+					const handled =
+						key === "v"
+							? gestures.placeTrackVia()
+							: key === "/"
+								? gestures.flipTrackPosture()
+								: key === "f" && flatShown && !getDrag()
+									? boardEditor.flipSelection()
+									: false;
+					if (handled) {
+						event.preventDefault();
+						event.stopPropagation();
+						return;
+					}
+				}
 				handleEditorShortcut(event, {
 					dialogOpen: creatingSymbol,
 					ready,
@@ -736,6 +916,8 @@ function EditorCanvas({
 					canRotatePlacement,
 					placing,
 					clearPlacementPreview,
+					finishWire,
+					finishDrag,
 					setTool,
 					rotateItems,
 					undo,
@@ -745,14 +927,23 @@ function EditorCanvas({
 		>
 			<h1 className="sr-only">
 				{sheetless
-					? `${editorKind} editor · ${footprintName ?? symbolName}`
+					? `${editorKind} editor · ${board?.file.name ?? footprintName ?? symbolName}`
 					: `Schematic editor · ${drawingName ? `${drawingName} · ` : ""}${pages.length > 1 ? `${page.name} (page ${pageIndex + 1} of ${pages.length}) · ` : ""}${sheet.name ? `${sheet.name} · ` : ""}${formatInches(sheet.width)} × ${formatInches(sheet.height)} in`}
 			</h1>
 			{registerEditor ? (
 				<DocumentBar
-					icon={isFootprint ? Cpu : sheetless ? Component : CircuitBoard}
-					title={footprintName ?? symbolName ?? drawingName}
+					icon={
+						isBoard
+							? Grid2x2
+							: isFootprint
+								? Cpu
+								: sheetless
+									? Component
+									: CircuitBoard
+					}
+					title={board?.file.name ?? footprintName ?? symbolName ?? drawingName}
 					selection={documentSelection}
+					view={isBoard ? "pcb" : undefined}
 					center={pageBar(false)}
 				>
 					{headerControls ?? viewSwitch}
@@ -771,7 +962,7 @@ function EditorCanvas({
 					}}
 					data-tool={tool}
 					data-view={
-						isFootprint ? (board === "closed" ? "2d" : "3d") : undefined
+						isFootprint ? (boardView === "closed" ? "2d" : "3d") : undefined
 					}
 					{...pointerHandlers}
 					onKeyDownCapture={(event) => {
@@ -794,8 +985,11 @@ function EditorCanvas({
 						<FootprintBoardView
 							key={boardMount}
 							shapes={boardShapes}
+							regions={isBoard ? boardEditor.fills : undefined}
+							ariaLabel={`${editorKind} editor`}
+							controlsLabel={`${editorKind} tools`}
 							hiddenLayers={layers.hidden}
-							flat={board !== "open"}
+							flat={boardView !== "open"}
 							onFlatChange={showBoardFlat}
 							orbitGesture="alt-shift"
 							updateFlatScene={updateScene}
@@ -804,7 +998,7 @@ function EditorCanvas({
 							fitZoom={1.1}
 							getFitBounds={() =>
 								selectionFitBounds(selected, selectedSymbol, selectedChild) ??
-								(board === "closed"
+								(boardView === "closed" && !isBoard
 									? footprintFitBounds(drawing.shapes)
 									: boardEdgeBounds(boardShapes))
 							}
@@ -878,6 +1072,31 @@ function EditorCanvas({
 							onToggle={toggleLayer}
 						/>
 					)}
+					{isBoard && boardEditor.rules && (
+						<BoardStatus
+							unrouted={boardEditor.unrouted}
+							layer={layers.active}
+						/>
+					)}
+					{isBoard && boardPanel === "checks" && (
+						<BoardChecksPanel
+							revision={drawing.shapes}
+							run={boardEditor.runChecks}
+							onClose={() => setBoardPanel(null)}
+							onSelect={(finding) => {
+								if (!finding.shapeIds.length) return;
+								finishDrag(true);
+								session.reveal(new Set(finding.shapeIds));
+							}}
+						/>
+					)}
+					{isBoard && boardPanel === "setup" && board && boardEditor.rules && (
+						<BoardSetupPanel
+							rules={boardEditor.rules}
+							onChange={(rules) => board.rules.set(rules)}
+							onClose={() => setBoardPanel(null)}
+						/>
+					)}
 					{!registerEditor && pageBar(true)}
 					{ercOpen && !sheetless && (
 						<Suspense
@@ -926,7 +1145,7 @@ function EditorCanvas({
 						canvasArea={canvasArea}
 						unit={unit}
 						layer={isFootprint ? layers.active : undefined}
-						besideAxes={board !== "closed"}
+						besideAxes={boardView !== "closed"}
 					/>
 				</div>
 				{attributesShown && selectionAttributes}

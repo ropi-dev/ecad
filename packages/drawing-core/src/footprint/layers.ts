@@ -11,6 +11,7 @@ export const footprintLayers = [
 	"B.CrtYd",
 	"F.Fab",
 	"B.Fab",
+	"Edge.Cuts",
 ] as const;
 
 export type FootprintLayer = (typeof footprintLayers)[number];
@@ -28,9 +29,34 @@ export const footprintLayerLabels: Record<FootprintLayer, string> = {
 	"B.CrtYd": "Back courtyard",
 	"F.Fab": "Front fabrication",
 	"B.Fab": "Back fabrication",
+	"Edge.Cuts": "Board outline",
 };
 
 export const copperLayers: readonly FootprintLayer[] = ["F.Cu", "B.Cu"];
+
+export type CopperLayer = "F.Cu" | "B.Cu";
+
+export const isCopperLayer = (
+	layer: FootprintLayer | undefined,
+): layer is CopperLayer => layer === "F.Cu" || layer === "B.Cu";
+
+const flippedLayers: Partial<Record<FootprintLayer, FootprintLayer>> = {
+	"F.Cu": "B.Cu",
+	"B.Cu": "F.Cu",
+	"F.SilkS": "B.SilkS",
+	"B.SilkS": "F.SilkS",
+	"F.Mask": "B.Mask",
+	"B.Mask": "F.Mask",
+	"F.Paste": "B.Paste",
+	"B.Paste": "F.Paste",
+	"F.CrtYd": "B.CrtYd",
+	"B.CrtYd": "F.CrtYd",
+	"F.Fab": "B.Fab",
+	"B.Fab": "F.Fab",
+};
+
+export const flipLayer = (layer: FootprintLayer): FootprintLayer =>
+	flippedLayers[layer] ?? layer;
 
 export const padTypes = ["smd", "through-hole"] as const;
 

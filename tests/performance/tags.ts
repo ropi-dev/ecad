@@ -10,6 +10,7 @@ export const areas = {
 	"@editor": "The 2D schematic and drawing editor.",
 	"@symbols": "Symbol libraries, the picker and symbol definitions.",
 	"@footprint": "The footprint editor, its layers and its 3D board view.",
+	"@pcb": "The PCB editor: boards, routing, zones and design rules.",
 	"@circuit": "The circuit graph, ERC and linked schematic synchronization.",
 	"@import": "Gerber, STEP and KiCad imports.",
 	"@storage": "Desktop native project and library storage.",

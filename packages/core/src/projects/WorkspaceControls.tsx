@@ -18,8 +18,8 @@ interface EditorControls {
 export interface WorkspaceDocument {
 	/** Project path of the open file, to mark its row in the sidebar. */
 	path?: string;
-	/** The file is open in its circuit view. A drawing and its circuit can share a path. */
-	circuit: boolean;
+	/** The view the file is open in. A drawing, its circuit and its PCB share a path. */
+	view?: "circuit" | "pcb";
 }
 
 export interface SidebarActions {

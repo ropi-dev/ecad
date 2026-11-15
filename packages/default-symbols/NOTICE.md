@@ -56,6 +56,11 @@ The additional source definitions are:
 - `Connector_Generic:Conn_01x03`
 - `Connector_Generic:Conn_01x04`
 - `Connector_Generic:Conn_01x08`
+- `Connector_Generic:Conn_01x20`
+- `Device:Crystal_GND24`
+- `Memory_Flash:W25Q128JVS`
+- `Regulator_Linear:AMS1117-3.3`
+- `Connector:USB_B_Micro`
 - `Amplifier_Operational:LM321`
 - `Device:Speaker`
 - `Device:Buzzer`

@@ -28,7 +28,7 @@ test("generation is deterministic and returns fresh objects", () => {
 
 test("every footprint has a unique portable ID, numbered pads and unique shape IDs", () => {
 	const footprints = generateDefaultFootprints();
-	assert.equal(footprints.length, 52);
+	assert.equal(footprints.length, 56);
 	assert.equal(
 		new Set(footprints.map(({ file }) => file.id)).size,
 		footprints.length,
@@ -159,7 +159,7 @@ test("CLI writes one portable file per footprint with attribution and refuses ov
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
 		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadfp")).length, 52);
+		assert.equal(files.filter((file) => file.endsWith(".ecadfp")).length, 56);
 		for (const { file } of generateDefaultFootprints())
 			assert.deepEqual(
 				JSON.parse(await readFile(join(output, `${file.id}.ecadfp`), "utf8")),

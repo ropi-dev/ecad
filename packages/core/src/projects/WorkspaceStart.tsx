@@ -18,13 +18,26 @@ import "#/projects/WorkspaceStart.css";
 
 export function WorkspaceStart() {
 	const project = useProjectSelection(
-		({ busy, error, reload, project, importAssets, selectAsset }) => ({
+		({
+			busy,
+			error,
+			reload,
+			project,
+			importAssets,
+			importExample,
+			selectAsset,
+			selectEditorFile,
+			openBoard,
+		}) => ({
 			busy,
 			error,
 			reload,
 			ready: project !== null,
 			importAssets,
+			importExample,
 			selectAsset,
+			selectEditorFile,
+			openBoard,
 		}),
 	);
 	const sidebar = useWorkspaceControls()?.sidebar;
@@ -32,6 +45,24 @@ export function WorkspaceStart() {
 	const fileInput = useRef<HTMLInputElement>(null);
 	const viewerLinks = useRef<Record<string, HTMLAnchorElement | null>>({});
 	const modifier = shortcutModifier().key;
+
+	async function openExample() {
+		if (!project) return;
+		setImporting(true);
+		try {
+			await project.openBoard(await project.importExample("rp2350a"));
+			viewerLinks.current["/editor"]?.click();
+		} catch (cause) {
+			if (!isProjectError(cause, "ProjectConflict"))
+				toastManager.add({
+					type: "error",
+					title: "Unable to add the example.",
+					description: errorMessage(cause, "Unable to add the example."),
+				});
+		} finally {
+			setImporting(false);
+		}
+	}
 
 	async function importBoard(files: File[]) {
 		if (!project || !files.length) return;
@@ -134,6 +165,19 @@ export function WorkspaceStart() {
 								/>
 							</dd>
 						</div>
+						<div>
+							<dt>Open an example</dt>
+							<dd>
+								<button
+									type="button"
+									disabled={!project?.ready || importing}
+									className="workspace-start-action"
+									onClick={() => void openExample()}
+								>
+									RP2350A reference design
+								</button>
+							</dd>
+						</div>
 						<div data-keyboard>
 							<dt>Open settings</dt>
 							<dd>
@@ -163,7 +207,7 @@ export function WorkspaceStart() {
 					</dl>
 				)}
 			</div>
-			{(["/gerber", "/step"] as const).map((href) => (
+			{(["/editor", "/gerber", "/step"] as const).map((href) => (
 				<ProjectLink
 					key={href}
 					href={href}

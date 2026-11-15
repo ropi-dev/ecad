@@ -14,6 +14,7 @@ const groups: Record<string, string> = {
 	"Surface mount pad": "Pads and vias",
 	"Through-hole pad": "Pads and vias",
 	Via: "Pads and vias",
+	Track: "Routing",
 	"Export drawing": "Export",
 	"Export PNG": "Export",
 };
@@ -22,7 +23,7 @@ const groups: Record<string, string> = {
 export async function toolbarButton(page: Page, name: string) {
 	await page
 		.getByRole("toolbar", {
-			name: /^(View controls|3D view controls|Circuit tools|Schematic tools|Symbol tools|Footprint tools)$/,
+			name: /^(View controls|3D view controls|Circuit tools|Schematic tools|Symbol tools|Footprint tools|PCB tools)$/,
 		})
 		.waitFor();
 	const group = groups[name];

@@ -1,6 +1,6 @@
 # Default footprints
 
-`@ecad/default-footprints` generates the 52 built-in footprints that symbols can use. Like `@ecad/default-symbols`, it has no runtime dependencies and works offline.
+`@ecad/default-footprints` generates the 56 built-in footprints that symbols can use. Like `@ecad/default-symbols`, it has no runtime dependencies and works offline.
 
 ```ts
 import { generateDefaultFootprints } from "@ecad/default-footprints";
@@ -17,7 +17,7 @@ The collection covers the default footprint of every built-in symbol that has on
 - an axial resistor, radial and disc capacitors, an SMD electrolytic capacitor and a trimmer capacitor
 - SOD-123, SOD-323 and SMA diodes, a DO-41 diode, and 3 mm and 5 mm LEDs
 - SOT-23, SOT-23-5, SOT-89-3, SOT-223, TO-92 and TO-220 packages
-- an HC49 crystal, a 3215 watch crystal, a trimmer potentiometer, a photoresistor, a buzzer, two coin cell holders, three switches and 2, 3, 4 and 8 pin headers
+- an HC49 crystal, a 3215 watch crystal, a 3225 four-pin crystal, a SOIC-8 208 mil package, a USB Micro-B receptacle, a trimmer potentiometer, a photoresistor, a buzzer, two coin cell holders, three switches and 2, 3, 4, 8 and 20 pin headers
 - QFN-16, QFN-40, QFN-48, QFN-52, QFN-56, QFN-60 and QFN-80 packages with exposed pads
 
 Symbols name their default footprint by ID in `src/catalog.ts`, `src/microcontrollers.ts`, `src/nordic.ts` and `src/legacy.ts` of `@ecad/default-symbols`. Several symbols share one footprint. The diodes all use SOD-123, the battery symbols share a coin cell holder, and the speaker uses the 2-pin header. Pads match pins by number. A pin without a number takes its position among the symbol's pins, counting from 1, as circuit components do, so the diode's K and A pins are pads 1 and 2. `tests/symbol-footprints.test.ts` checks that every default footprint has exactly one pad number for each pin.
