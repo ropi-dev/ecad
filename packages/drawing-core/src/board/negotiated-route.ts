@@ -2,7 +2,6 @@ import {
 	analyzeConnectivity,
 	type CopperItem,
 	copperItems,
-	type ZoneReach,
 } from "#/board/connectivity.ts";
 import type { BoardNetlist } from "#/board/netlist.ts";
 import {
@@ -18,7 +17,6 @@ import type { Point } from "#/drawing/types.ts";
 
 export interface NegotiatedRouteOptions {
 	rules: BoardRules;
-	zoneReach?: ZoneReach;
 	/** Rounds of rerouting every net before giving up on overlaps. */
 	rounds?: number;
 	/** Nets left alone, such as a ground that zones connect. */
@@ -89,7 +87,7 @@ export function negotiatedRoute(
 	const viaOnVia = disk(2 * viaRadius + rules.clearance + margin);
 
 	const wanted = (net: string) => !options.exclude?.has(net);
-	const connectivity = analyzeConnectivity(items, options.zoneReach);
+	const connectivity = analyzeConnectivity(items);
 	const groupsByNet = new Map<string, Map<number, CopperItem[]>>();
 	for (const item of items) {
 		if (!item.net || item.kind === "zone" || !wanted(item.net)) continue;
@@ -302,7 +300,6 @@ export function negotiatedRoute(
 	);
 	const remaining = analyzeConnectivity(
 		copperItems([...shapes, ...output], netlist),
-		options.zoneReach,
 	).ratsnest.filter((line) => wanted(line.net));
 	return { shapes: output, failed: remaining };
 }

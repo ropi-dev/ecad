@@ -23,7 +23,7 @@ export interface FootprintSource {
 	shapes: readonly EditorShape[];
 }
 
-export interface FootprintPart {
+interface FootprintPart {
 	component?: string;
 	reference: string;
 	value: string;

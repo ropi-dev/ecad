@@ -91,7 +91,7 @@ function footprintDisplayItems(
 	return items;
 }
 
-export interface BoardDisplay {
+interface BoardDisplay {
 	shapes: EditorShape[];
 	selected: ReadonlySet<number>;
 }

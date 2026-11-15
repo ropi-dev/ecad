@@ -322,14 +322,21 @@ export function replaceAndPlaceShapesEffect(
 	inputs: readonly ShapeInput[],
 	label: string,
 	targetIds?: readonly number[],
+	removeIds: readonly number[] = [],
 ) {
-	return capture({ replacements, inputs, targetIds }, (captured) =>
+	return capture({ replacements, inputs, targetIds, removeIds }, (captured) =>
 		command((current) => {
 			const ids = captured.replacements.map((shape) => shape.id);
 			validateIds(ids);
 			const existing = new Map(
 				current.shapes.map((shape) => [shape.id, shape]),
 			);
+			const removed = new Set(captured.removeIds);
+			validateIds([...removed]);
+			for (const id of removed) {
+				if (!existing.has(id)) invalid(`Shape ${id} does not exist.`);
+				existing.delete(id);
+			}
 			const preferredIds = captured.targetIds ?? ids;
 			validateIds(preferredIds);
 			for (const id of preferredIds)
@@ -358,64 +365,15 @@ export function replaceAndPlaceShapesEffect(
 			return commit(
 				current,
 				[
-					...current.shapes.map((shape) => byId.get(shape.id) ?? shape),
+					...current.shapes
+						.filter((shape) => !removed.has(shape.id))
+						.map((shape) => byId.get(shape.id) ?? shape),
 					...additions,
 				],
 				[...ids, ...additions.map((shape) => shape.id)],
 				label,
 				current.nextShapeId + additions.length,
 				preferredIds,
-			);
-		}),
-	);
-}
-
-/**
- * Replaces, places and removes shapes in one transaction, such as a board
- * brought up to date with its circuit.
- */
-export function updateShapesEffect(
-	changes: {
-		replace?: readonly EditorShape[];
-		place?: readonly ShapeInput[];
-		remove?: readonly number[];
-	},
-	label: string,
-) {
-	return capture(changes, (captured) =>
-		command((current) => {
-			const removed = new Set(captured.remove ?? []);
-			validateIds([...removed]);
-			const existing = new Set(current.shapes.map((shape) => shape.id));
-			for (const id of removed)
-				if (!existing.has(id)) invalid(`Shape ${id} does not exist.`);
-			const replacements = (captured.replace ?? []).map((shape) => {
-				if (!existing.has(shape.id) || removed.has(shape.id))
-					invalid(`Shape ${shape.id} does not exist.`);
-				return validShape(shape);
-			});
-			validateIds(replacements.map((shape) => shape.id));
-			const byId = new Map(replacements.map((shape) => [shape.id, shape]));
-			const inputs = captured.place ?? [];
-			if (!Number.isSafeInteger(current.nextShapeId + inputs.length))
-				invalid("No more shape IDs are available.");
-			const additions = inputs.map((shape, index) =>
-				validShape({
-					...shape,
-					id: current.nextShapeId + index,
-				} as EditorShape),
-			);
-			return commit(
-				current,
-				[
-					...current.shapes
-						.filter((shape) => !removed.has(shape.id))
-						.map((shape) => byId.get(shape.id) ?? shape),
-					...additions,
-				],
-				[...byId.keys(), ...additions.map((shape) => shape.id)],
-				label,
-				current.nextShapeId + additions.length,
 			);
 		}),
 	);

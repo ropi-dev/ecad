@@ -4,7 +4,7 @@ import {
 	synchronizeBoard,
 } from "@ecad/drawing-core/board/sync.ts";
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
-import { updateShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { replaceAndPlaceShapesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
 	type createDrawingStore,
 	DrawingStore,
@@ -122,13 +122,12 @@ export async function synchronizeBoardStore(
 	if (result.place.length || result.replace.length || result.remove.length) {
 		const outcome = Effect.runSync(
 			Effect.either(
-				updateShapesEffect(
-					{
-						place: result.place.map(({ id: _id, ...shape }) => shape),
-						replace: result.replace,
-						remove: result.remove,
-					},
+				replaceAndPlaceShapesEffect(
+					result.replace,
+					result.place.map(({ id: _id, ...shape }) => shape),
 					"Update from schematic",
+					undefined,
+					result.remove,
 				).pipe(Effect.provideService(DrawingStore, store)),
 			),
 		);

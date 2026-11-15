@@ -125,12 +125,7 @@ function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
 	);
 }
 
-export function segmentDistance(
-	a: Point,
-	b: Point,
-	c: Point,
-	d: Point,
-): number {
+function segmentDistance(a: Point, b: Point, c: Point, d: Point): number {
 	if (segmentsIntersect(a, b, c, d)) return 0;
 	return Math.min(
 		pointSegmentDistance(a, c, d),

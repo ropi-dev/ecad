@@ -187,7 +187,7 @@ const maskLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
 	"B.Cu": "B.Mask",
 };
 
-export interface FabricationFile {
+interface FabricationFile {
 	name: string;
 	content: string;
 }
