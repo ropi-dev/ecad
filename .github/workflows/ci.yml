@@ -87,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ecad-deb
-          path: dist/deb/*.deb
+          path: dist/deb/ecad_*
           retention-days: 7
           if-no-files-found: error
 
@@ -119,6 +119,7 @@ jobs:
           head=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
           latest=$([ "$head" = "$GITHUB_SHA" ] && echo true || echo false)
           gh release create "$tag" "$deb" \
+            "${deb%.deb}.files.json" "${deb%.deb}.files.zst" \
             --target "$GITHUB_SHA" \
             --title "ECAD desktop $version" \
             --generate-notes \

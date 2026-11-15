@@ -1,11 +1,28 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { chmod, lstat, mkdtemp, open, readdir, rm } from "node:fs/promises";
+import {
+	chmod,
+	copyFile,
+	lstat,
+	mkdir,
+	mkdtemp,
+	open,
+	readdir,
+	rm,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { z } from "zod";
 import type { DesktopRelease, DesktopUpdateState } from "#/bridge.ts";
+import {
+	buildPackage,
+	finishTree,
+	type PackageFile,
+	parsePackageManifest,
+	stageInstalledFiles,
+	writePackedFile,
+} from "#/main/update-files.ts";
 
 export const releaseFeedUrl =
 	"https://api.github.com/repos/ropi-dev/ecad/releases?per_page=50";
@@ -112,12 +129,18 @@ export function compareDebianVersions(a: string, b: string) {
 	);
 }
 
+export interface ReleaseFiles {
+	manifest: { url: string; size: number; sha256: string };
+	pack: { url: string; size: number };
+}
+
 export interface ReleasePackage {
 	version: string;
 	url: string;
 	size: number;
 	sha256: string;
 	changes: string[];
+	files?: ReleaseFiles;
 }
 
 export function releaseChanges(body: string | null | undefined) {
@@ -135,6 +158,39 @@ export function releaseChanges(body: string | null | undefined) {
 	});
 }
 
+type ReleaseAsset = z.infer<typeof releaseSchema>["assets"][number];
+
+function assetDownload(asset: ReleaseAsset | undefined, feedUrl: string) {
+	if (!asset) return null;
+	const url = new URL(asset.browser_download_url, feedUrl);
+	if (!isAllowedDownload(url.href, feedUrl)) return null;
+	const sha256 = /^sha256:([0-9a-f]{64})$/.exec(asset.digest ?? "")?.[1];
+	return { url: url.href, size: asset.size, sha256 };
+}
+
+function releaseFiles(
+	release: z.infer<typeof releaseSchema>,
+	base: string,
+	feedUrl: string,
+): ReleaseFiles | null {
+	const find = (name: string) =>
+		assetDownload(
+			release.assets.find((asset) => asset.name === name),
+			feedUrl,
+		);
+	const manifest = find(`${base}.files.json`);
+	const pack = find(`${base}.files.zst`);
+	if (!manifest?.sha256 || !pack) return null;
+	return {
+		manifest: {
+			url: manifest.url,
+			size: manifest.size,
+			sha256: manifest.sha256,
+		},
+		pack: { url: pack.url, size: pack.size },
+	};
+}
+
 function releasePackage(
 	release: z.infer<typeof releaseSchema>,
 	architecture: string,
@@ -145,11 +201,15 @@ function releasePackage(
 		if (!asset.name.startsWith("ecad_") || !asset.name.endsWith(suffix))
 			continue;
 		const version = asset.name.slice("ecad_".length, -suffix.length);
-		const sha256 = /^sha256:([0-9a-f]{64})$/.exec(asset.digest ?? "")?.[1];
-		if (!versionPattern.test(version) || !sha256) continue;
-		const url = new URL(asset.browser_download_url, feedUrl);
-		if (!isAllowedDownload(url.href, feedUrl)) continue;
-		return { version, url: url.href, size: asset.size, sha256 };
+		const download = assetDownload(asset, feedUrl);
+		if (!versionPattern.test(version) || !download?.sha256) continue;
+		const { url, size, sha256 } = download;
+		const files = releaseFiles(
+			release,
+			`ecad_${version}${suffix.slice(0, -4)}`,
+			feedUrl,
+		);
+		return { version, url, size, sha256, ...(files && { files }) };
 	}
 	return null;
 }
@@ -216,8 +276,53 @@ export interface DesktopUpdaterOptions {
 	fetch: Fetch;
 	onChange: (state: DesktopUpdateState) => void;
 	feedUrl?: string;
+	installedRoot?: string;
 	install?: (path: string) => Promise<void>;
 	timeout?: number;
+}
+
+async function* limited(chunks: AsyncIterable<Uint8Array>, size: number) {
+	let received = 0;
+	for await (const chunk of chunks) {
+		received += chunk.byteLength;
+		if (received > size)
+			throw new Error("The update download is larger than expected.");
+		yield chunk;
+	}
+	if (received !== size) throw new Error("The update download ended early.");
+}
+
+async function* counted(
+	chunks: AsyncIterable<Uint8Array>,
+	count: (bytes: number) => void,
+) {
+	for await (const chunk of chunks) {
+		count(chunk.byteLength);
+		yield chunk;
+	}
+}
+
+async function eachLimit<T>(
+	items: T[],
+	limit: number,
+	run: (item: T) => Promise<void>,
+) {
+	let next = 0;
+	let failure: { cause: unknown } | undefined;
+	const worker = async () => {
+		while (!failure && next < items.length) {
+			const item = items[next++] as T;
+			try {
+				await run(item);
+			} catch (cause) {
+				failure ??= { cause };
+			}
+		}
+	};
+	await Promise.all(
+		Array.from({ length: Math.min(limit, items.length) }, worker),
+	);
+	if (failure) throw failure.cause;
 }
 
 export class DesktopUpdater {
@@ -303,8 +408,9 @@ export class DesktopUpdater {
 				join(this.options.temporaryDirectory, "ecad-update-"),
 			);
 			await chmod(directory, 0o755);
-			const path = join(directory, `ecad_${release.version}.deb`);
-			await this.download(release, latest, path);
+			const path =
+				(await this.assemble(release, latest, directory)) ??
+				(await this.download(release, latest, directory));
 			this.set({ status: "installing", latest });
 			await (this.options.install ?? installWithPkexec)(path);
 			this.set({ status: "installed", latest });
@@ -319,10 +425,11 @@ export class DesktopUpdater {
 		}
 	}
 
-	private async download(
-		release: ReleasePackage,
-		latest: DesktopRelease,
-		path: string,
+	private async receive(
+		url: string,
+		headers: Record<string, string>,
+		check: (response: Response) => void,
+		consume: (chunks: AsyncIterable<Uint8Array>) => Promise<void>,
 	) {
 		const controller = new AbortController();
 		let stall: ReturnType<typeof setTimeout> | undefined;
@@ -333,48 +440,173 @@ export class DesktopUpdater {
 				this.options.timeout ?? networkTimeout,
 			);
 		};
-		const hash = createHash("sha256");
-		const file = await open(path, "wx", 0o644);
-		let received = 0;
-		let reported = 0;
 		try {
 			expectData();
-			const response = await this.options.fetch(release.url, {
+			const response = await this.options.fetch(url, {
+				headers,
 				signal: controller.signal,
 			});
 			if (!response.ok || !response.body)
 				throw new Error(
 					`The update download failed with HTTP ${response.status}.`,
 				);
-			if (!isAllowedDownload(response.url || release.url, this.feedUrl))
+			if (!isAllowedDownload(response.url || url, this.feedUrl))
 				throw new Error(
 					"The update download was redirected to an insecure URL.",
 				);
+			check(response);
 			const reader = response.body.getReader();
-			for (;;) {
-				const { done, value: chunk } = await reader.read();
-				if (done) break;
-				expectData();
-				received += chunk.byteLength;
-				if (received > release.size)
-					throw new Error("The update download is larger than expected.");
-				hash.update(chunk);
-				await file.appendFile(chunk);
-				const progress = received / release.size;
+			await consume(
+				(async function* () {
+					for (;;) {
+						const { done, value } = await reader.read();
+						if (done) return;
+						expectData();
+						yield value;
+					}
+				})(),
+			);
+		} finally {
+			clearTimeout(stall);
+			controller.abort();
+		}
+	}
+
+	private async download(
+		release: ReleasePackage,
+		latest: DesktopRelease,
+		directory: string,
+	) {
+		const path = join(directory, `ecad_${release.version}.deb`);
+		const hash = createHash("sha256");
+		const file = await open(path, "wx", 0o644);
+		let received = 0;
+		let reported = 0;
+		try {
+			await this.receive(
+				release.url,
+				{},
+				() => undefined,
+				async (chunks) => {
+					for await (const chunk of limited(chunks, release.size)) {
+						received += chunk.byteLength;
+						hash.update(chunk);
+						await file.appendFile(chunk);
+						const progress = received / release.size;
+						if (progress - reported >= 0.01) {
+							reported = progress;
+							this.set({ status: "downloading", latest, progress });
+						}
+					}
+				},
+			);
+		} finally {
+			await file.close();
+		}
+		if (hash.digest("hex") !== release.sha256)
+			throw new Error("The downloaded update does not match its checksum.");
+		return path;
+	}
+
+	private async manifest(release: ReleasePackage, files: ReleaseFiles) {
+		const chunks: Uint8Array[] = [];
+		await this.receive(
+			files.manifest.url,
+			{},
+			() => undefined,
+			async (body) => {
+				for await (const chunk of limited(body, files.manifest.size))
+					chunks.push(chunk);
+			},
+		);
+		const bytes = Buffer.concat(chunks);
+		if (
+			createHash("sha256").update(bytes).digest("hex") !== files.manifest.sha256
+		)
+			throw new Error("The update manifest does not match its checksum.");
+		return parsePackageManifest(JSON.parse(bytes.toString("utf8")), {
+			version: release.version,
+			architecture: this.options.architecture,
+			packSize: files.pack.size,
+		});
+	}
+
+	/** @return null when the full package has to be downloaded instead. */
+	private async assemble(
+		release: ReleasePackage,
+		latest: DesktopRelease,
+		directory: string,
+	): Promise<string | null> {
+		const { files } = release;
+		if (!files) return null;
+		const work = join(directory, "incremental");
+		try {
+			const manifest = await this.manifest(release, files);
+			await mkdir(work);
+			await chmod(work, 0o755);
+			const tree = join(work, "tree");
+			const groups = new Map<string, PackageFile[]>();
+			for (const file of await stageInstalledFiles(
+				manifest,
+				this.options.installedRoot ?? "/",
+				tree,
+			))
+				groups.set(file.sha256, [...(groups.get(file.sha256) ?? []), file]);
+			const total = [...groups.values()].reduce(
+				(sum, [file]) => sum + (file?.length ?? 0),
+				0,
+			);
+			if (total >= release.size) {
+				await rm(work, { recursive: true, force: true });
+				return null;
+			}
+			let received = 0;
+			let reported = 0;
+			const count = (bytes: number) => {
+				received += bytes;
+				const progress = received / total;
 				if (progress - reported >= 0.01) {
 					reported = progress;
 					this.set({ status: "downloading", latest, progress });
 				}
-			}
-		} finally {
-			clearTimeout(stall);
-			controller.abort();
-			await file.close();
+			};
+			await eachLimit([...groups.values()], 4, async ([first, ...copies]) => {
+				if (!first) return;
+				const end = first.offset + first.length - 1;
+				await this.receive(
+					files.pack.url,
+					{ Range: `bytes=${first.offset}-${end}` },
+					(response) => {
+						const range = response.headers.get("content-range") ?? "";
+						if (
+							response.status !== 206 ||
+							!range.startsWith(`bytes ${first.offset}-${end}/`)
+						)
+							throw new Error("The release server ignored the byte range.");
+					},
+					(chunks) =>
+						writePackedFile(
+							counted(limited(chunks, first.length), count),
+							first,
+							join(tree, first.path),
+						),
+				);
+				for (const copy of copies)
+					await copyFile(join(tree, first.path), join(tree, copy.path));
+			});
+			await finishTree(manifest, tree);
+			const path = join(work, `ecad_${release.version}.deb`);
+			await buildPackage(tree, path);
+			await rm(tree, { recursive: true, force: true });
+			await chmod(path, 0o644);
+			return path;
+		} catch (cause) {
+			console.warn(
+				`The incremental update failed, so ECAD downloads the whole package: ${errorMessage(cause, "unknown error")}`,
+			);
+			await rm(work, { recursive: true, force: true });
+			return null;
 		}
-		if (received !== release.size)
-			throw new Error("The update download ended early.");
-		if (hash.digest("hex") !== release.sha256)
-			throw new Error("The downloaded update does not match its checksum.");
 	}
 
 	private set(state: DesktopUpdateState) {
