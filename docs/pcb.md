@@ -11,7 +11,7 @@ Each time a PCB opens, and when you press **Update from schematic**, the board c
 - A component without a footprint on the board gets one: the footprint its schematic symbol names under **Footprint** in Attributes. New footprints are laid out in rows to the right of the board outline, or around the origin before there is one.
 - A component whose schematic footprint changed gets the new footprint in the same place, rotation and side.
 - References and values follow the circuit.
-- Tracks, vias and zones on a net the circuit no longer has, for example after a schematic edit renamed an unlabelled net, take the net of the pads their tracks and vias touch, when those pads agree. Copper whose pads disagree keeps the old net, and DRC reports it.
+- Tracks, vias and zones on a net the circuit no longer has, for example after a schematic edit renamed an unlabelled net, take the net of the pads their tracks and vias touch, when those pads agree. Copper whose pads disagree, and a zone with no track or via on its net, keeps the old net. The toast counts it and DRC reports it.
 - A footprint whose component left the circuit is removed. A footprint whose component lost its footprint, or whose footprint is missing, stays where it is.
 - A second footprint for the same component, such as a copy, stays on the board without a component, so its pads have no nets.
 
@@ -39,7 +39,7 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 ## Copper zones
 
-**Routing → Copper zone** draws a rectangle on the active copper layer. A zone fills its rectangle with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline. Where zones on different nets overlap, the zone drawn first keeps the copper and the later one keeps its clearance from it. Overlapping zones on one net connect where their fills touch.
+**Routing → Copper zone** draws a rectangle on the active copper layer. A zone fills its rectangle with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline. Where zones on different nets overlap, the zone drawn first keeps the copper and the later one keeps its clearance from it. Overlapping zones on one net connect where their fills touch, and an island that touches another zone's copper on the same net is kept.
 
 ## Board outline
 
@@ -62,7 +62,7 @@ Select a finding to select the items involved. Results go stale after an edit; r
 
 ## Fabrication files
 
-**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and an Excellon drill file for plated holes. Zone fills are exported as regions. Each pad opens the solder mask 0.05 mm past its copper; vias stay covered. Text is not exported yet. The export runs the design rules check and warns when it has findings.
+**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and an Excellon drill file for plated holes. Zone fills on each layer are merged and exported as regions. Each pad opens the solder mask 0.05 mm past its copper; vias stay covered. Text is not exported yet. The export runs the design rules check and warns when it has findings.
 
 ## Autorouting
 

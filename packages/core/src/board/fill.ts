@@ -266,7 +266,8 @@ const circumscribed = (hull: Hull, margin: number) =>
  * Fills each zone: its rectangle inside the board outline, less the edge
  * clearance, the copper of other nets and the fills of earlier zones on other
  * nets, each grown by the clearance. Islands that reach nothing on the zone's
- * net are removed.
+ * net, directly or through a touching island of another zone on that net,
+ * are removed.
  */
 export function fillZones(
 	shapes: readonly EditorShape[],
@@ -278,7 +279,7 @@ export function fillZones(
 		return cached.fills;
 	const items = copperItems(shapes, netlist);
 	const zones = items.filter((item) => item.kind === "zone");
-	const fills: ZoneFill[] = [];
+	const regions: (ZoneFill & { members: CopperItem[] })[] = [];
 	if (zones.length) {
 		const interior = boardInterior(shapes);
 		const edges = boardOutlineSegments(shapes).map((segment) => {
@@ -308,7 +309,7 @@ export function fillZones(
 					obstacles.push(
 						hullPolygon(hull, circumscribed(hull, clearance), arc),
 					);
-			const earlier = fills
+			const earlier = regions
 				.filter(
 					(fill) =>
 						fill.layer === layer &&
@@ -327,22 +328,59 @@ export function fillZones(
 					item.layers.includes(layer) &&
 					boundsOverlap(item.bounds, zone.bounds),
 			);
-			const polygons = region.filter((polygon) =>
-				members.some((item) => touchesFill([polygon], item)),
-			);
-			fills.push({
+			regions.push({
 				zone,
 				layer,
 				...(zone.net ? { net: zone.net } : {}),
-				polygons,
+				polygons: region,
+				members,
 			});
 		}
 	}
+	const kept = regions.map(({ polygons, members }) =>
+		polygons.map((polygon) =>
+			members.some((item) => touchesFill([polygon], item)),
+		),
+	);
+	for (let changed = true; changed; ) {
+		changed = false;
+		regions.forEach((fill, index) => {
+			if (fill.net === undefined) return;
+			fill.polygons.forEach((polygon, island) => {
+				if (kept[index][island]) return;
+				const reaches = regions.some(
+					(other, otherIndex) =>
+						otherIndex !== index &&
+						other.net === fill.net &&
+						other.layer === fill.layer &&
+						other.polygons.some(
+							(candidate, candidateIsland) =>
+								kept[otherIndex][candidateIsland] &&
+								polygonGap([polygon], [candidate]) <= 1e-6,
+						),
+				);
+				if (reaches) {
+					kept[index][island] = true;
+					changed = true;
+				}
+			});
+		});
+	}
+	const fills: ZoneFill[] = regions.map(
+		({ members: _members, polygons, ...fill }, index) => ({
+			...fill,
+			polygons: polygons.filter((_, island) => kept[index][island]),
+		}),
+	);
 	fillCache.set(shapes, { netlist, rules, fills });
 	return fills;
 }
 
-function polygonGap(a: MultiPolygon, b: MultiPolygon): number {
+function polygonGap(
+	a: MultiPolygon,
+	b: MultiPolygon,
+	within = reachLimit,
+): number {
 	const first = (polygons: MultiPolygon) =>
 		polygons.map(([[[x, y]]]) => ({ x, y }));
 	if (
@@ -350,15 +388,26 @@ function polygonGap(a: MultiPolygon, b: MultiPolygon): number {
 		first(b).some((point) => containsPoint(a, point))
 	)
 		return 0;
-	const edges = (polygons: MultiPolygon) =>
-		polygons.flatMap((polygon) =>
-			[...polygonEdges(polygon).cells.values()].flat(),
-		);
-	const right = edges(b);
-	let gap = Infinity;
-	for (const edge of new Set(edges(a)))
-		for (const other of new Set(right))
-			gap = Math.min(gap, hullDistance(edge, other));
+	let gap = within;
+	for (const left of a)
+		for (const edge of new Set([...polygonEdges(left).cells.values()].flat())) {
+			const [p, q] = edge.points;
+			for (const right of b) {
+				const { cells } = polygonEdges(right);
+				for (
+					let cx = Math.floor((Math.min(p.x, q.x) - gap) / gridSize);
+					cx <= Math.floor((Math.max(p.x, q.x) + gap) / gridSize);
+					cx++
+				)
+					for (
+						let cy = Math.floor((Math.min(p.y, q.y) - gap) / gridSize);
+						cy <= Math.floor((Math.max(p.y, q.y) + gap) / gridSize);
+						cy++
+					)
+						for (const other of cells.get(`${cx},${cy}`) ?? [])
+							gap = Math.min(gap, hullDistance(edge, other));
+			}
+		}
 	return gap;
 }
 
@@ -368,7 +417,8 @@ export function fillReach(fills: readonly ZoneFill[]): ZoneReach {
 		gap: (a, b, within) => {
 			const first = a.kind === "zone" ? byZone.get(a.shapeId) : undefined;
 			const second = b.kind === "zone" ? byZone.get(b.shapeId) : undefined;
-			if (first && second) return polygonGap(first.polygons, second.polygons);
+			if (first && second)
+				return polygonGap(first.polygons, second.polygons, within);
 			if (first) return fillDistance(first.polygons, b, within) + arcError;
 			if (second) return fillDistance(second.polygons, a, within) + arcError;
 			return itemDistance(a, b);
@@ -394,4 +444,24 @@ export function fillReach(fills: readonly ZoneFill[]): ZoneReach {
 			);
 		},
 	};
+}
+
+export function layerFill(
+	fills: readonly ZoneFill[],
+	layer: CopperLayer,
+): MultiPolygon {
+	const paths = fills
+		.filter((fill) => fill.layer === layer)
+		.flatMap((fill) => fillPaths(fill.polygons));
+	if (!paths.length) return [];
+	const clipper = new ClipperLib.Clipper();
+	clipper.AddPaths(paths, ClipperLib.PolyType.ptSubject, true);
+	const tree = new ClipperLib.PolyTree();
+	clipper.Execute(
+		ClipperLib.ClipType.ctUnion,
+		tree,
+		ClipperLib.PolyFillType.pftNonZero,
+		ClipperLib.PolyFillType.pftNonZero,
+	);
+	return fromClipper(tree);
 }

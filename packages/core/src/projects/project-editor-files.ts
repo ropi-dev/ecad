@@ -323,11 +323,14 @@ export function createProjectEditorFiles(
 			return true;
 		};
 		return import("#/board/sync-document.ts")
-			.then(({ boardContext, synchronizeBoardStore }) =>
-				synchronizeBoardStore(
-					document.store,
-					boardContext(state.active, board.circuitId),
-				),
+			.then(
+				async ({ announceBoardSync, boardContext, synchronizeBoardStore }) =>
+					announceBoardSync(
+						await synchronizeBoardStore(
+							document.store,
+							boardContext(state.active, board.circuitId),
+						),
+					),
 			)
 			.then(show, (cause) => {
 				showError(cause, "Unable to update the board from its schematic.");

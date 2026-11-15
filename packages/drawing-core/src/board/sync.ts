@@ -36,6 +36,8 @@ export interface BoardSyncResult {
 	remove: number[];
 	/** Components without a footprint, or whose footprint is not available. */
 	missing: { reference: string; footprint?: FootprintReference }[];
+	/** Tracks, vias and zones left on a net the circuit no longer has. */
+	stale: number;
 }
 
 const naturalOrder = new Intl.Collator("en", { numeric: true }).compare;
@@ -56,6 +58,7 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 		replace: [],
 		remove: [],
 		missing: [],
+		stale: 0,
 	};
 	const placed = new Map<string, BoardFootprint>();
 	for (const shape of input.shapes)
@@ -70,7 +73,9 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 	);
 	for (const [id, footprint] of placed)
 		if (!components.has(id)) result.remove.push(footprint.id);
-	result.replace.push(...renamedCopper(input.shapes, input.circuit));
+	const copper = renamedCopper(input.shapes, input.circuit);
+	result.replace.push(...copper.replace);
+	result.stale = copper.stale;
 	const added: { component: CircuitComponent; source: FootprintSource }[] = [];
 	for (const component of input.circuit.components) {
 		const reference = input.footprintOf(component);
@@ -152,12 +157,12 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 function renamedCopper(
 	shapes: readonly EditorShape[],
 	circuit: Circuit,
-): EditorShape[] {
+): { replace: EditorShape[]; stale: number } {
 	const netlist = boardNetlist(circuit);
 	const items = copperItems(shapes, netlist);
 	const stale = (net: string | undefined): net is string =>
 		net !== undefined && !netlist.nets.has(net);
-	if (!items.some((item) => stale(item.net))) return [];
+	if (!items.some((item) => stale(item.net))) return { replace: [], stale: 0 };
 	const votes = new Map<string, Map<string, number>>();
 	nearbyPairs(items, 1e-6, (a, b) => {
 		for (const [own, pad] of [
@@ -175,9 +180,16 @@ function renamedCopper(
 	const renamed = new Map<string, string>();
 	for (const [net, tally] of votes)
 		if (tally.size === 1) renamed.set(net, [...tally.keys()][0]);
-	return shapes.flatMap((shape) => {
+	let left = 0;
+	const replace = shapes.flatMap((shape) => {
 		const net = "net" in shape ? shape.net : undefined;
-		const next = net === undefined ? undefined : renamed.get(net);
-		return next && shape.kind !== "symbol" ? [{ ...shape, net: next }] : [];
+		if (shape.kind === "symbol" || !stale(net)) return [];
+		const next = renamed.get(net);
+		if (!next) {
+			left++;
+			return [];
+		}
+		return [{ ...shape, net: next }];
 	});
+	return { replace, stale: left };
 }

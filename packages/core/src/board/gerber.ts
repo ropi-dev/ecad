@@ -21,7 +21,7 @@ import {
 	shapeLayer,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
-import type { ZoneFill } from "#/board/fill.ts";
+import { layerFill, type ZoneFill } from "#/board/fill.ts";
 
 /** Solder mask grows this far past each pad. */
 const maskExpansion = 0.05;
@@ -211,15 +211,12 @@ export function exportFabrication(
 	for (const target of gerberLayers) {
 		const writer = new GerberWriter(name, target.function, target.polarity);
 		if (target.layer === "F.Cu" || target.layer === "B.Cu") {
-			for (const fill of fills) {
-				if (fill.layer !== target.layer) continue;
-				for (const polygon of fill.polygons) {
-					writer.setPolarity("D");
-					writer.region(polygon[0].map(([x, y]) => ({ x, y })));
-					writer.setPolarity("C");
-					for (const hole of polygon.slice(1))
-						writer.region(hole.map(([x, y]) => ({ x, y })));
-				}
+			for (const polygon of layerFill(fills, target.layer)) {
+				writer.setPolarity("D");
+				writer.region(polygon[0].map(([x, y]) => ({ x, y })));
+				writer.setPolarity("C");
+				for (const hole of polygon.slice(1))
+					writer.region(hole.map(([x, y]) => ({ x, y })));
 			}
 			writer.setPolarity("D");
 		}

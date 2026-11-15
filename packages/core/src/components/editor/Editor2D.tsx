@@ -34,6 +34,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { announceBoardSync } from "#/board/sync-document.ts";
 import { boardDisplay, boardLayerView } from "#/board/view.ts";
 import {
 	BoardChecksPanel,
@@ -500,25 +501,7 @@ function EditorCanvas({
 	useEffect(() => {
 		if (!syncReport) return;
 		clearSyncReport();
-		const changes = [
-			syncReport.placed && `placed ${syncReport.placed}`,
-			syncReport.updated && `updated ${syncReport.updated}`,
-			syncReport.removed && `removed ${syncReport.removed}`,
-		].filter(Boolean);
-		if (!changes.length && !syncReport.missing.length) return;
-		toastManager.add({
-			id: "board-sync",
-			type: syncReport.missing.length ? "warning" : "success",
-			title: "Updated from schematic",
-			description: [
-				changes.length ? `Footprints ${changes.join(", ")}.` : "",
-				syncReport.missing.length
-					? `No footprint for ${syncReport.missing.slice(0, 8).join(", ")}${syncReport.missing.length > 8 ? ` and ${syncReport.missing.length - 8} more` : ""}.`
-					: "",
-			]
-				.filter(Boolean)
-				.join(" "),
-		});
+		announceBoardSync(syncReport);
 	}, [syncReport, clearSyncReport]);
 	const cancelGestures = useEffectEvent(() => {
 		finishDrag(true);

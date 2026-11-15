@@ -8,6 +8,7 @@ import {
 } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { Effect, Either } from "effect";
+import { toastManager } from "#/components/ui/toast.ts";
 import type { FootprintFile } from "#/footprint/format.ts";
 import { loadBuiltinFootprints } from "#/footprint/library.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
@@ -79,6 +80,34 @@ export interface BoardSyncReport {
 	updated: number;
 	removed: number;
 	missing: string[];
+	stale: number;
+}
+
+export function announceBoardSync(report: BoardSyncReport | null) {
+	if (!report) return;
+	const changes = [
+		report.placed && `placed ${report.placed}`,
+		report.updated && `updated ${report.updated}`,
+		report.removed && `removed ${report.removed}`,
+	].filter(Boolean);
+	const warning = report.missing.length > 0 || report.stale > 0;
+	if (!changes.length && !warning) return;
+	toastManager.add({
+		id: "board-sync",
+		type: warning ? "warning" : "success",
+		title: "Updated from schematic",
+		description: [
+			changes.length ? `Footprints ${changes.join(", ")}.` : "",
+			report.missing.length
+				? `No footprint for ${report.missing.slice(0, 8).join(", ")}${report.missing.length > 8 ? ` and ${report.missing.length - 8} more` : ""}.`
+				: "",
+			report.stale
+				? `${report.stale} ${report.stale === 1 ? "track, via or zone is" : "tracks, vias or zones are"} on a net the circuit no longer has. Choose a net for them in Attributes.`
+				: "",
+		]
+			.filter(Boolean)
+			.join(" "),
+	});
 }
 
 /**
@@ -122,5 +151,6 @@ export async function synchronizeBoardStore(
 		updated: result.replace.length,
 		removed: result.remove.length,
 		missing: result.missing.map((entry) => entry.reference),
+		stale: result.stale,
 	};
 }

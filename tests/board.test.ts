@@ -24,7 +24,7 @@ import {
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
-import { fillReach, fillZones } from "#/board/fill.ts";
+import { fillReach, fillZones, layerFill } from "#/board/fill.ts";
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { trackPath, trackSegment, trackSegments } from "#/board/routing.ts";
@@ -790,4 +790,18 @@ test("fills keep the full clearance from large round copper and from a zone with
 		),
 		[],
 	);
+});
+
+test("fills on one net keep an island that only touches another zone's kept copper", () => {
+	const { board, netlist } = dividerBoard([
+		zoneAt(51, "gnd", 0, 28),
+		{ ...zoneAt(52, "gnd", 0, 4), y: 12, height: 6 },
+	]);
+	const fills = fillZones(board, netlist, defaultBoardRules);
+	assert.deepEqual(
+		fills.map((fill) => fill.polygons.length > 0),
+		[true, true],
+	);
+	const copper = layerFill(fills, "F.Cu");
+	assert.equal(copper.length, 1);
 });
