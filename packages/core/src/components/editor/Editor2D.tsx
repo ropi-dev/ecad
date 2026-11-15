@@ -340,6 +340,7 @@ function EditorCanvas({
 		gridStep,
 	});
 	const {
+		copyToProject,
 		definitionId,
 		editTarget,
 		editingDefinition,
@@ -619,6 +620,7 @@ function EditorCanvas({
 							}
 						: undefined
 				}
+				onCopySymbol={copyToProject}
 				onCreateSymbol={sheetless ? undefined : () => setCreatingSymbol(true)}
 				allowNetEdits={!sheetless}
 				footprint={isFootprint}
@@ -642,6 +644,7 @@ function EditorCanvas({
 			selected,
 			editAttributes,
 			editTarget,
+			copyToProject,
 			symbolPath,
 			suppliedStore,
 			definitionId,

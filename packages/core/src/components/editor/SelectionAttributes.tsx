@@ -56,7 +56,7 @@ import {
 	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Lock, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
 	type FootprintChoices,
 	SymbolFootprintField,
@@ -180,6 +180,49 @@ function Tips({ children }: { children: ReactNode }) {
 const actionClassName = "ui-button w-full";
 const noDefinition = "This symbol's definition is read-only or unavailable.";
 
+function SymbolDefinitionAction({
+	onEditSymbol,
+	onCopySymbol,
+}: {
+	onEditSymbol?: () => void;
+	onCopySymbol?: () => Promise<void>;
+}) {
+	const [copying, setCopying] = useState(false);
+	if (!onEditSymbol && onCopySymbol)
+		return (
+			<button
+				type="button"
+				onClick={() => {
+					setCopying(true);
+					void onCopySymbol().finally(() => setCopying(false));
+				}}
+				disabled={copying}
+				title="Copy the definition into this project's symbols to edit it"
+				className={actionClassName}
+				data-variant="secondary"
+			>
+				{copying ? "Copying…" : "Copy symbol to project"}
+			</button>
+		);
+	return (
+		<>
+			<button
+				type="button"
+				onClick={onEditSymbol}
+				disabled={!onEditSymbol}
+				title={onEditSymbol ? "Open the library definition" : noDefinition}
+				className={actionClassName}
+				data-variant="secondary"
+			>
+				Edit symbol
+			</button>
+			{!onEditSymbol && (
+				<p className="m-0 text-xs text-fg-faint">{noDefinition}</p>
+			)}
+		</>
+	);
+}
+
 function AttributeInput({
 	label,
 	value,
@@ -254,6 +297,7 @@ interface SelectionAttributesProps {
 	onClear: () => void;
 	onCreateSymbol?: () => void;
 	onEditSymbol?: () => void;
+	onCopySymbol?: () => Promise<void>;
 	/** Shows the net symbol and label role controls. Reusable symbols have no nets. */
 	allowNetEdits?: boolean;
 	footprint?: boolean;
@@ -480,6 +524,7 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 				shape={symbol}
 				onClear={props.onClear}
 				onEditSymbol={props.onEditSymbol}
+				onCopySymbol={props.onCopySymbol}
 				onEdit={props.onEdit}
 			/>
 		);
@@ -506,6 +551,7 @@ function SelectionAttributesPanel({
 	onEdit,
 	onCreateSymbol,
 	onEditSymbol,
+	onCopySymbol,
 	textFocusId,
 	onTextFocus,
 }: SelectionAttributesProps) {
@@ -904,21 +950,10 @@ function SelectionAttributesPanel({
 				{(symbol || (!single && onCreateSymbol) || single?.kind === "text") && (
 					<div className="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
 						{symbol && (
-							<button
-								type="button"
-								onClick={onEditSymbol}
-								disabled={!onEditSymbol}
-								title={
-									onEditSymbol ? "Open the library definition" : noDefinition
-								}
-								className={actionClassName}
-								data-variant="secondary"
-							>
-								Edit symbol
-							</button>
-						)}
-						{symbol && !onEditSymbol && (
-							<p className="m-0 text-xs text-fg-faint">{noDefinition}</p>
+							<SymbolDefinitionAction
+								onEditSymbol={onEditSymbol}
+								onCopySymbol={onCopySymbol}
+							/>
 						)}
 						{!single && onCreateSymbol && (
 							<>
@@ -1152,11 +1187,13 @@ function FixedChildAttributes({
 	shape,
 	onClear,
 	onEditSymbol,
+	onCopySymbol,
 	onEdit,
 }: {
 	shape: EditorShape;
 	onClear: () => void;
 	onEditSymbol?: () => void;
+	onCopySymbol?: () => Promise<void>;
 	onEdit: (edit: SelectionEdit) => void;
 }) {
 	const degrees = (((shape.rotation * 180) / Math.PI) % 360) + 360;
@@ -1201,20 +1238,11 @@ function FixedChildAttributes({
 				subtitle={<span>Fixed by the symbol definition</span>}
 			/>
 			<div className="m-0 min-h-0 overflow-y-auto overscroll-contain">
-				<div className="px-3 pt-3 pb-2.5">
-					<button
-						type="button"
-						onClick={onEditSymbol}
-						disabled={!onEditSymbol}
-						title={onEditSymbol ? "Open the library definition" : noDefinition}
-						className={actionClassName}
-						data-variant="secondary"
-					>
-						Edit symbol
-					</button>
-					{!onEditSymbol && (
-						<p className="m-0 mt-2.5 text-xs text-fg-faint">{noDefinition}</p>
-					)}
+				<div className="flex flex-col gap-2.5 px-3 pt-3 pb-2.5">
+					<SymbolDefinitionAction
+						onEditSymbol={onEditSymbol}
+						onCopySymbol={onCopySymbol}
+					/>
 				</div>
 				<Section title="Properties">
 					<Rows rows={attributes} />

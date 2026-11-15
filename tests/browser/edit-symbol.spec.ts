@@ -163,3 +163,66 @@ test("reusable symbol editing excludes net-symbol placement and role changes", a
 			),
 		});
 });
+
+test("a read-only symbol copies to the project and becomes editable", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/projects.html");
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
+		.click();
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("searchbox", { name: "Search symbols", exact: true })
+		.fill("Resistor");
+	await page
+		.getByRole("button", { name: "Insert Resistor", exact: true })
+		.click();
+	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await openPlacedShape(page);
+	await expect(
+		page.getByRole("button", { name: "Edit symbol", exact: true }),
+	).toHaveCount(0);
+	const copy = page.getByRole("button", {
+		name: "Copy symbol to project",
+		exact: true,
+	});
+	await expect(copy).toBeEnabled();
+	if (captureArtifacts)
+		await page.screenshot({
+			path: resolve(
+				"/tmp/ecad-browser-artifacts",
+				test.info().testId,
+				"copy-to-project.png",
+			),
+		});
+	const placed = (await documentState(page)).shapes.at(-1);
+	await copy.click();
+	await expect(
+		page.getByRole("button", { name: "Edit symbol", exact: true }),
+	).toBeEnabled();
+	const state = await documentState(page);
+	expect(state.symbols).toEqual([
+		expect.objectContaining({ id: "resistor-copy", name: "Resistor" }),
+	]);
+	expect(state.shapes.at(-1)).toEqual({
+		...placed,
+		definitionId: "resistor-copy",
+		library: { scope: "project", id: "project-symbols" },
+	});
+	if (captureArtifacts)
+		await page.screenshot({
+			path: resolve(
+				"/tmp/ecad-browser-artifacts",
+				test.info().testId,
+				"copied-to-project.png",
+			),
+		});
+	await page.getByRole("button", { name: "Edit symbol", exact: true }).click();
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+		"Symbol editor · Resistor",
+	);
+	expect(errors).toEqual([]);
+});

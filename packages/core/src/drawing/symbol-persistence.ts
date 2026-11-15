@@ -4,8 +4,10 @@ import {
 	type EditorSymbol,
 	fitBoxToBorder,
 	normalizeNetSymbol,
+	type SymbolText,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
+import { SYMBOL_TEXT_SIZE } from "@ecad/drawing-core/drawing/units.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import {
 	createSymbol,
@@ -52,6 +54,22 @@ export function persistProjectDrawingShapes(document: ProjectDocument) {
 			);
 	}
 	return persistDrawingShapes(document.shapes, definitions);
+}
+
+function placementTexts(shape: EditorSymbol): SymbolText[] {
+	return Object.entries(shape.textPositions ?? {}).flatMap(
+		([attribute, position]) =>
+			position
+				? [
+						{
+							attribute: attribute as SymbolText["attribute"],
+							x: position.x,
+							y: position.y,
+							fontSize: SYMBOL_TEXT_SIZE,
+						},
+					]
+				: [],
+	);
 }
 
 const resolvedSymbols = new WeakMap<
@@ -129,7 +147,9 @@ export function resolveDrawingSymbols(
 									}
 								: {}),
 							children,
-							texts: resolved.texts,
+							texts: resolved.texts.length
+								? resolved.texts
+								: placementTexts(shape),
 						} satisfies EditorSymbol),
 						{ preserveChildWorldPositions: true },
 					);

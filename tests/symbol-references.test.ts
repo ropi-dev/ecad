@@ -21,7 +21,11 @@ import {
 	persistProjectDrawingShapes,
 	resolveDrawingSymbols,
 } from "#/drawing/symbol-persistence.ts";
-import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import {
+	builtinSymbolFiles,
+	createSymbol,
+	symbolDefinitions,
+} from "#/drawing/symbols.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { ProjectRepository } from "#/projects/repository.ts";
 import {
@@ -122,6 +126,47 @@ test("definition edits refresh geometry while preserving instance attributes and
 	assert.equal(restored.children[0].x, -4);
 	assert.equal(restored.children[0].lineWidth, 0.6);
 	assert.deepEqual(pinTerminals(restored), [{ x: 10, y: 16 }]);
+});
+
+test("a built-in placement copied to a project library keeps its labels", async () => {
+	const builtin = required(builtinSymbolFiles.get("resistor"));
+	const copy = parseSymbolFile(
+		JSON.stringify({ ...builtin, id: "resistor-copy" }),
+	);
+	const instance = createSymbol(
+		1,
+		required(symbolDefinitions.find((symbol) => symbol.id === "resistor")),
+		{ x: 10, y: 20 },
+	);
+	assert.notDeepEqual(instance.texts, []);
+	const resolved = await resolveSymbolLibraries(
+		[],
+		[
+			{
+				id: "project-symbols",
+				name: "Project symbols",
+				enabled: true,
+				source: { kind: "embedded", symbols: [copy] },
+			},
+		],
+	);
+	const result = resolveDrawingSymbols(
+		[
+			drawingShapeSchema.parse(
+				persistDrawingShapes([
+					{
+						...instance,
+						definitionId: copy.id,
+						library: { scope: "project", id: "project-symbols" },
+					},
+				])[0],
+			),
+		],
+		resolved.definitions,
+		resolved.byReference,
+	);
+	assert.deepEqual(result.errors, []);
+	assert.deepEqual((result.shapes[0] as EditorSymbol).texts, instance.texts);
 });
 
 test("resolving the same instance against the same definition returns the same symbol", async () => {
