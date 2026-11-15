@@ -117,7 +117,7 @@ export interface RoutingResult {
 	failed: RatsnestLine[];
 }
 
-export interface SearchRequest {
+interface SearchRequest {
 	owner: number;
 	sources: readonly number[];
 	targets: { has(state: number): boolean };
@@ -459,10 +459,8 @@ export function routingGrid(
 		viaRadius,
 		margin,
 		base,
-		near,
 		grids,
 		indexOf,
-		center,
 		mark,
 		cellsInside,
 		pathShapes,

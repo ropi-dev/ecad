@@ -34,6 +34,13 @@ interface Route {
 	alive: boolean;
 }
 
+const atPoint = (point: Point, item: CopperItem) =>
+	item.points.some(
+		(candidate) =>
+			Math.abs(candidate.x - point.x) < 1e-9 &&
+			Math.abs(candidate.y - point.y) < 1e-9,
+	);
+
 /**
  * Routes unrouted connections one at a time with an A* search over a grid
  * on both copper layers. A cell is open to a net when it keeps the track,
@@ -43,13 +50,6 @@ interface Route {
  * crosses are ripped up and routed again later. Each rip-up makes crossing
  * that net dearer, so two nets cannot keep evicting each other.
  */
-const atPoint = (point: Point, item: CopperItem) =>
-	item.points.some(
-		(candidate) =>
-			Math.abs(candidate.x - point.x) < 1e-9 &&
-			Math.abs(candidate.y - point.y) < 1e-9,
-	);
-
 export function autoroute(
 	shapes: readonly EditorShape[],
 	netlist: BoardNetlist,

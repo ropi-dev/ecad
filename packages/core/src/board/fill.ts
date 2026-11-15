@@ -83,7 +83,7 @@ function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
 		ClipperLib.EndType.etClosedPolygon,
 	);
 	const result: ClipperLib.Paths = [];
-	offset.Execute(result, (margin + offsetTolerance) * scale);
+	offset.Execute(result, (margin + 3 * offsetTolerance) * scale);
 	return result;
 }
 

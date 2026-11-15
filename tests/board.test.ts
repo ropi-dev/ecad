@@ -440,6 +440,11 @@ describe("copper pours", () => {
 				overlap,
 			);
 		assert.deepEqual([copperAt(gndPour), copperAt(midPour)], [true, false]);
+		assert.ok(
+			fillZones(board, netlist, defaultBoardRules).every(
+				(fill) => fill.polygons.length,
+			),
+		);
 		assert.deepEqual(
 			spacingProblems(designRulesCheck(board, netlist), midPour),
 			[],
@@ -463,8 +468,8 @@ describe("copper pours", () => {
 
 	test("a GND pour keeps 1.5 mm from a pour that raised its clearance to that, and the full board clearance from a large mounting ring", () => {
 		const { shapes, netlist, pour, at } = dividerBoard();
-		const isolated = pour("mid", -9, 8, { clearance: 1.5 });
-		const gndPour = pour("gnd", 3, 20);
+		const isolated = pour("mid", 0, 4, { clearance: 1.5 });
+		const gndPour = pour("gnd", 0, 28);
 		const mountingRing: EditorShape = {
 			id: 4000,
 			kind: "circle",
@@ -480,6 +485,9 @@ describe("copper pours", () => {
 		};
 		const board = [...shapes, isolated, gndPour, mountingRing];
 		const rules = { ...defaultBoardRules, clearance: 1.2 };
+		assert.ok(
+			fillZones(board, netlist, rules).every((fill) => fill.polygons.length),
+		);
 		assert.deepEqual(
 			spacingProblems(designRulesCheck(board, netlist, rules), gndPour),
 			[],
