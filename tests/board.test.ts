@@ -486,6 +486,10 @@ describe("copper pours", () => {
 		const board = [...shapes, isolated, gndPour, mountingRing];
 		const rules = { ...defaultBoardRules, clearance: 1.2 };
 		assert.ok(
+			Math.abs(mountingRing.x - gndPour.x) < gndPour.width / 2 - 3 &&
+				Math.abs(mountingRing.y - gndPour.y) < gndPour.height / 2 - 3,
+		);
+		assert.ok(
 			fillZones(board, netlist, rules).every((fill) => fill.polygons.length),
 		);
 		assert.deepEqual(
