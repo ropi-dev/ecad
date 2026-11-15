@@ -24,6 +24,7 @@ import {
 	Settings2,
 	Shapes,
 	ShieldCheck,
+	SlidersHorizontal,
 	Spline,
 	Square,
 	SquareDashed,
@@ -151,6 +152,8 @@ interface EditorToolbarProps {
 	ercOpen: boolean;
 	/** Toggles the electrical rules check. Symbol drawings have none. */
 	onErc?: () => void;
+	settingsOpen: boolean;
+	onSettings?: () => void;
 	board?: {
 		onSync: () => void;
 		checksOpen: boolean;
@@ -193,6 +196,8 @@ export const EditorToolbar = memo(function EditorToolbar({
 	removeSelected,
 	ercOpen,
 	onErc,
+	settingsOpen,
+	onSettings,
 	board,
 }: EditorToolbarProps) {
 	const [exportOpen, setExportOpen] = useState(false);
@@ -381,12 +386,18 @@ export const EditorToolbar = memo(function EditorToolbar({
 				children: <SquareDashedMousePointer size={18} aria-hidden="true" />,
 			})}
 			<ToolbarSeparator />
-			{onErc && (
-				<>
-					<ErcButton open={ercOpen} disabled={!ready} onClick={onErc} />
-					<ToolbarSeparator />
-				</>
-			)}
+			{onErc && <ErcButton open={ercOpen} disabled={!ready} onClick={onErc} />}
+			{onSettings &&
+				toggle({
+					disabled: !ready,
+					"aria-label": "Schematic settings",
+					"aria-haspopup": "dialog",
+					"aria-expanded": settingsOpen,
+					tooltip: "Schematic settings",
+					onClick: onSettings,
+					children: <SlidersHorizontal size={18} aria-hidden="true" />,
+				})}
+			{(onErc || onSettings) && <ToolbarSeparator />}
 			{board && (
 				<>
 					{toggle({

@@ -9,6 +9,10 @@ import {
 } from "@ecad/drawing-core/drawing/pages.ts";
 import { savedDrawingShapesSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	type SheetSettings,
+	sheetSettingsSchema,
+} from "@ecad/drawing-core/drawing/sheet.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { ParseResult } from "effect";
 import { parse, stringify } from "smol-toml";
@@ -94,6 +98,7 @@ export const drawingFileSchema = z
 		circuitId: z.string().min(1).optional(),
 		shapes: savedDrawingShapesSchema,
 		pages: drawingPagesSchema.optional(),
+		sheet: sheetSettingsSchema.optional(),
 	})
 	.refine(
 		(file) =>
@@ -109,6 +114,7 @@ export interface ProjectDocument {
 	shapes: EditorShape[];
 	/** Pages of the main drawing; absent for the single default page. */
 	pages?: readonly DrawingPage[];
+	sheet?: SheetSettings;
 	drawings?: ProjectDrawing[];
 	circuits?: CircuitFile[];
 	symbols: SymbolLibrary;
@@ -224,6 +230,13 @@ export function validateProjectDocument(
 			files?.drawing,
 			"A drawing shape is on a page that the drawing does not have.",
 		);
+	const sheet =
+		document.sheet === undefined
+			? undefined
+			: check(sheetSettingsSchema, document.sheet, {
+					file: files?.drawing,
+					field: "sheet",
+				});
 	const drawings =
 		document.drawings === undefined
 			? undefined
@@ -314,6 +327,7 @@ export function validateProjectDocument(
 	return {
 		shapes,
 		...(pages === undefined ? {} : { pages }),
+		...(sheet === undefined ? {} : { sheet }),
 		...(drawings === undefined ? {} : { drawings }),
 		...(circuits === undefined ? {} : { circuits }),
 		symbols,

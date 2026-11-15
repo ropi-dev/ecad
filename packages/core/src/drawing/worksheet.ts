@@ -7,6 +7,16 @@ export interface SheetSize {
 	name?: string;
 	/** The schematic page the title block describes. */
 	page?: SheetPage;
+	titleBlock?: TitleBlockText;
+}
+
+export interface TitleBlockText {
+	file?: string;
+	title?: string;
+	date?: string;
+	revision?: string;
+	company?: string;
+	comments?: readonly string[];
 }
 
 export interface SheetPage {
@@ -157,13 +167,20 @@ export function buildWorksheetDisplay(
 		titleLine(0, offset, 108, offset);
 	titleLine(20, 3.5, 20, 6.5);
 	titleLine(84, 0, 84, 6.5);
+	const block = sheet.titleBlock ?? {};
+	const field = (name: string, value: string | undefined) =>
+		value ? `${name}: ${value}` : `${name}:`;
+	const upper: [string, number, number, number, number][] = [];
+	if (block.company) upper.push([block.company, 1, 18.6, 1.8, 106]);
+	for (const [index, comment] of (block.comments ?? []).entries())
+		if (comment) upper.push([comment, 1, 21.6 + index * 2.8, 1.5, 106]);
 	for (const [text, x, y, size, maxWidth] of [
 		[`Sheet: /${sheet.page?.name ?? ""}`, 1, 15, 1.5, 106],
-		["File:", 1, 12.3, 1.5, 106],
-		["Title:", 1, 8.7, 2, 106],
+		[field("File", block.file), 1, 12.3, 1.5, 106],
+		[field("Title", block.title), 1, 8.7, 2, 106],
 		[`Size: ${sheet.name || `${width} × ${height} mm`}`, 1, 4.9, 1.5, 18],
-		["Date:", 23, 4.9, 1.5, 60],
-		["Rev:", 86, 4.9, 1.5, 21],
+		[field("Date", block.date), 23, 4.9, 1.5, 60],
+		[field("Rev", block.revision), 86, 4.9, 1.5, 21],
 		["ECAD", 1, 2.1, 1.5, 82],
 		[
 			`Id: ${sheet.page?.number ?? 1}/${sheet.page?.count ?? 1}`,
@@ -172,6 +189,7 @@ export function buildWorksheetDisplay(
 			1.5,
 			21,
 		],
+		...upper,
 	] as const)
 		label(
 			text,

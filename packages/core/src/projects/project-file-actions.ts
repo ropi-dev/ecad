@@ -158,11 +158,13 @@ export function createProjectFileActions(
 					{ uniquePcbName },
 					format,
 					{ savedDrawingShapesSchema },
+					{ sheetSettingsSchema },
 				] = await Promise.all([
 					import("#/examples/designs.ts"),
 					import("#/projects/pcb.ts"),
 					import("#/board/format.ts"),
 					import("@ecad/drawing-core/drawing/schema.ts"),
+					import("@ecad/drawing-core/drawing/sheet.ts"),
 				]);
 				const design = await exampleDesigns[example].load();
 				const current = state.active;
@@ -200,6 +202,9 @@ export function createProjectFileActions(
 							name,
 							circuitId,
 							shapes: savedDrawingShapesSchema.parse(design.schematic),
+							...(design.sheet
+								? { sheet: sheetSettingsSchema.parse(design.sheet) }
+								: {}),
 						},
 					],
 					[

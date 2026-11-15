@@ -6,6 +6,7 @@ import {
 	savedPages,
 } from "#/drawing/pages.ts";
 import type { EditorShape } from "#/drawing/shapes.ts";
+import { type SheetSettings, savedSheet } from "#/drawing/sheet.ts";
 import { freeze } from "#/lib/freeze.ts";
 
 export interface DrawingDocument {
@@ -16,6 +17,7 @@ export interface DrawingDocument {
 	 * array, so callers can detect any document change by `shapes` identity.
 	 */
 	readonly pages?: readonly DrawingPage[];
+	readonly sheet?: SheetSettings;
 }
 
 export interface DrawingSnapshot extends DrawingDocument {
@@ -41,13 +43,15 @@ export class DrawingStore extends Context.Tag("ecad/DrawingStore")<
 export function createDrawingStore(
 	shapes: EditorShape[] = [],
 	pages?: readonly DrawingPage[],
+	sheet?: SheetSettings,
 ): DrawingStoreService {
 	const saved = savedPages(pages);
 	// Loaded files may name the first page explicitly; commits never do.
-	const canonical = canonicalShapePages(shapes, saved);
-	const document: DrawingDocument = saved
-		? { shapes: canonical, pages: saved }
-		: { shapes: canonical };
+	const document = drawingDocument(
+		canonicalShapePages(shapes, saved),
+		saved,
+		sheet,
+	);
 	return restoreDrawingStore({
 		...document,
 		history: historyOf<DrawingDocument>(
@@ -57,6 +61,20 @@ export function createDrawingStore(
 		nextShapeId:
 			shapes.reduce((maximum, shape) => Math.max(maximum, shape.id), 0) + 1,
 	});
+}
+
+export function drawingDocument(
+	shapes: EditorShape[],
+	pages: readonly DrawingPage[] | undefined,
+	sheet: SheetSettings | undefined,
+): DrawingDocument {
+	const savedPageList = savedPages(pages);
+	const saved = savedSheet(sheet);
+	return {
+		shapes,
+		...(savedPageList ? { pages: savedPageList } : {}),
+		...(saved ? { sheet: saved } : {}),
+	};
 }
 
 export function restoreDrawingStore(

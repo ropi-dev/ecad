@@ -34,6 +34,9 @@ An editable document that presents a circuit through component symbols, wires, l
 **Page**:
 One named sheet of a schematic. Wires and pins connect only within a page; net labels with the same name connect across pages.
 
+**Sheet settings**:
+The paper size and title block text of a schematic: title, date, revision, company and comment lines. Every page of the schematic uses them. The title block also shows the file name, the page name and the page number, which come from the schematic itself.
+
 ### Footprints
 
 **Footprint**:

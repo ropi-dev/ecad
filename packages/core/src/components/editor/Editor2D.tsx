@@ -1,4 +1,7 @@
-import { setPagesEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import {
+	setPagesEffect,
+	setSheetEffect,
+} from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import {
 	drawingPages,
@@ -10,6 +13,10 @@ import {
 	shapeBounds,
 	symbolTextMoved,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	type SheetSettings,
+	sheetPaper,
+} from "@ecad/drawing-core/drawing/sheet.ts";
 import {
 	formatInches,
 	SCHEMATIC_STEP,
@@ -62,6 +69,7 @@ import {
 import { editorIssues } from "#/components/editor/editorMessages.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { PageBar, type PageEdit } from "#/components/editor/PageBar.tsx";
+import { SchematicSettingsDialog } from "#/components/editor/SchematicSettingsDialog.tsx";
 import { SelectionAttributes } from "#/components/editor/SelectionAttributes.tsx";
 import type { FootprintChoices } from "#/components/editor/SymbolFootprintField.tsx";
 import { fitTextShapes } from "#/components/editor/text.ts";
@@ -95,7 +103,7 @@ import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
-import { defaultSheet, type SheetSize } from "#/drawing/worksheet.ts";
+import type { SheetSize } from "#/drawing/worksheet.ts";
 import { boardEdgeBounds, layerSurfaceZ } from "#/footprint/board.ts";
 import { loadBuiltinFootprints } from "#/footprint/library.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
@@ -150,7 +158,7 @@ export function Editor2D(props: Editor2DProps = {}) {
 }
 
 function EditorCanvas({
-	sheet = defaultSheet,
+	sheet: sheetOverride,
 	store: suppliedStore,
 	enableMcp = true,
 	symbolName,
@@ -216,6 +224,11 @@ function EditorCanvas({
 		store.getSnapshot,
 	);
 	const history = drawing.history;
+	const sheetSettings = drawing.sheet;
+	const sheet = useMemo(
+		() => sheetOverride ?? sheetPaper(sheetSettings),
+		[sheetOverride, sheetSettings],
+	);
 	const symbolLibrary = useSymbolLibrary();
 	const { definitions, byReference } = symbolLibrary;
 	const resolveDocument = useCallback(
@@ -340,8 +353,24 @@ function EditorCanvas({
 							number: pageIndex + 1,
 							count: pages.length,
 						},
+						titleBlock: {
+							file: drawingName,
+							title: sheetSettings?.title,
+							date: sheetSettings?.date,
+							revision: sheetSettings?.revision,
+							company: sheetSettings?.company,
+							comments: sheetSettings?.comments,
+						},
 					},
-		[sheetless, sheet, page.name, pageIndex, pages.length],
+		[
+			sheetless,
+			sheet,
+			page.name,
+			pageIndex,
+			pages.length,
+			drawingName,
+			sheetSettings,
+		],
 	);
 	const shapes = editor.draft ?? pageShapes;
 	const boardShapes = useMemo(() => {
@@ -380,6 +409,7 @@ function EditorCanvas({
 	}, [session]);
 	const [creatingSymbol, setCreatingSymbol] = useState(false);
 	const [ercOpen, setErcOpen] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [boardPanel, setBoardPanel] = useState<"checks" | "setup" | null>(null);
 	const [exporting, setExporting] = useState(false);
 	const canvasArea = useRef<HTMLDivElement>(null);
@@ -544,6 +574,18 @@ function EditorCanvas({
 			clearPlacementPreview();
 			setTextFocusId(null);
 			return !!session.commit(setPagesEffect(next, label), new Set());
+		},
+		[session, finishDrag, finishWire, clearPlacementPreview],
+	);
+	const saveSheet = useCallback(
+		(next: SheetSettings) => {
+			finishDrag(true);
+			finishWire();
+			clearPlacementPreview();
+			return !!session.commit(
+				setSheetEffect(next, "Edit schematic settings"),
+				new Set(),
+			);
 		},
 		[session, finishDrag, finishWire, clearPlacementPreview],
 	);
@@ -887,6 +929,8 @@ function EditorCanvas({
 			removeSelected={removeSelected}
 			ercOpen={ercOpen}
 			onErc={sheetless ? undefined : () => setErcOpen((open) => !open)}
+			settingsOpen={settingsOpen}
+			onSettings={sheetless ? undefined : () => setSettingsOpen(true)}
 			board={boardToolbar}
 		/>
 	);
@@ -921,7 +965,7 @@ function EditorCanvas({
 					}
 				}
 				handleEditorShortcut(event, {
-					dialogOpen: creatingSymbol,
+					dialogOpen: creatingSymbol || settingsOpen,
 					ready,
 					session,
 					canRotatePlacement,
@@ -1157,6 +1201,13 @@ function EditorCanvas({
 				</div>
 				{attributesShown && selectionAttributes}
 			</div>
+			{settingsOpen && !sheetless && (
+				<SchematicSettingsDialog
+					sheet={sheetSettings}
+					onSave={saveSheet}
+					onClose={() => setSettingsOpen(false)}
+				/>
+			)}
 			{creatingSymbol && (
 				<CreateSymbolDialog
 					onClose={() => setCreatingSymbol(false)}

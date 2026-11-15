@@ -84,6 +84,7 @@ test("MCP lists complete drawing tools and reads the provided store without UI s
 		"replaceShapes",
 		"rotateShapes",
 		"setPages",
+		"setSheet",
 		"undo",
 	]);
 	const place = required(tools.find((tool) => tool.name === "placeRectangle"));

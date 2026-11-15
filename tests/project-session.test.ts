@@ -5,6 +5,7 @@ import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	redoEffect,
 	setPagesEffect,
+	setSheetEffect,
 	undoEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
@@ -728,6 +729,25 @@ test("a page-only edit marks the project dirty and saves the pages", async () =>
 	assert.equal(f.session.getSnapshot().dirty, true);
 	await f.session.getSnapshot().save();
 	assert.equal(required(await f.storage.load()).pages?.[0].name, "Inputs");
+	disconnect();
+	stop();
+});
+
+test("a sheet-only edit marks the project dirty and saves the sheet", async () => {
+	const f = fixture();
+	const stop = f.session.connect();
+	await loaded(f.session);
+	const store = f.session.getSnapshot().store;
+	const editor = createEditorSession(store);
+	const disconnect = editor.connect(store, () => undefined);
+	editor.execute(setSheetEffect({ paper: "A4", title: "Amplifier" }));
+	assert.equal(f.session.getSnapshot().dirty, true);
+	await f.session.getSnapshot().save();
+	assert.equal(f.session.getSnapshot().dirty, false);
+	assert.deepEqual(required(await f.storage.load()).sheet, {
+		paper: "A4",
+		title: "Amplifier",
+	});
 	disconnect();
 	stop();
 });

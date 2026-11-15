@@ -158,6 +158,7 @@ test("CLI executes every drawing tool and preserves history between processes", 
 		"replaceShapes",
 		"rotateShapes",
 		"setPages",
+		"setSheet",
 		"undo",
 	]);
 	assert.deepEqual((await readDrawing(fixture.env)).shapes, []);
@@ -188,6 +189,12 @@ test("CLI executes every drawing tool and preserves history between processes", 
 	assert.equal(branched.history.nodes.length, 7);
 	assert.equal(branched.history.nodes[1].childIds.length, 2);
 	assert.deepEqual((await fixture.read()).shapes, branched.shapes);
+	await call(fixture.env, "setSheet", { sheet: { paper: "A4", title: "CLI" } });
+	assert.deepEqual((await fixture.read()).sheet, { paper: "A4", title: "CLI" });
+	assert.deepEqual((await readDrawing(fixture.env)).sheet, {
+		paper: "A4",
+		title: "CLI",
+	});
 	assert.deepEqual(
 		new Set(await readdir(fixture.directory)),
 		new Set(["drawing.ecaddraw", "drawing.ecaddraw.history.json"]),
