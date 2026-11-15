@@ -13,6 +13,7 @@ import {
 	type FootprintSource,
 	flipBoardFootprint,
 } from "@ecad/drawing-core/board/footprints.ts";
+import { trackSegment } from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
 import {
 	type BoardNetlist,
@@ -39,7 +40,7 @@ import {
 } from "#/board/fill.ts";
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { trackPath, trackSegment, trackSegments } from "#/board/routing.ts";
+import { trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";

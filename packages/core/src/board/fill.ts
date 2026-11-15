@@ -4,6 +4,7 @@ import {
 	copperItems,
 	itemDistance,
 	type ZoneReach,
+	zoneClearance,
 } from "@ecad/drawing-core/board/connectivity.ts";
 import {
 	boardOutlineSegments,
@@ -256,9 +257,6 @@ const touchesFill = (polygons: MultiPolygon, item: CopperItem) =>
 	fillDistance(polygons, item) <= 1e-6;
 
 const arcError = 1e-5;
-
-const zoneClearance = (zone: CopperItem) =>
-	(zone.shape.kind === "rectangle" && zone.shape.zone?.clearance) || 0;
 
 const circumscribed = (hull: Hull, margin: number) =>
 	(hull.radius + margin) / Math.cos(arc / 2) - hull.radius;

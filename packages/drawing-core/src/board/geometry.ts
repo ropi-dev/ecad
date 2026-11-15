@@ -1,5 +1,6 @@
-import type { EditorShape } from "#/drawing/schema.ts";
+import type { EditorShape, LineShape } from "#/drawing/schema.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import type { CopperLayer } from "#/footprint/layers.ts";
 
 /**
  * A convex outline grown by `radius`: one point is a disc, two points a
@@ -239,4 +240,28 @@ function convexOrder(points: readonly Point[]): Point[] {
 		area += a.x * b.y - b.x * a.y;
 	}
 	return area < 0 ? [...points].reverse() : [...points];
+}
+
+export function trackSegment(
+	id: number,
+	from: Point,
+	to: Point,
+	layer: CopperLayer,
+	width: number,
+	net: string | undefined,
+): LineShape {
+	const dx = to.x - from.x;
+	const dy = to.y - from.y;
+	return {
+		id,
+		kind: "line",
+		layer,
+		x: (from.x + to.x) / 2,
+		y: (from.y + to.y) / 2,
+		width: Math.hypot(dx, dy),
+		height: 1,
+		rotation: Math.atan2(dy, dx),
+		lineWidth: width,
+		...(net ? { net } : {}),
+	};
 }

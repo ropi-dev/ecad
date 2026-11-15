@@ -2,10 +2,12 @@ import {
 	analyzeConnectivity,
 	type CopperItem,
 	copperItems,
+	endsAt,
 	itemDistance,
 	nearbyPairs,
 	sharesLayer,
 	type ZoneReach,
+	zoneClearance,
 } from "#/board/connectivity.ts";
 import {
 	type BoardFootprint,
@@ -144,10 +146,6 @@ export function checkBoard(
 ): DrcFinding[] {
 	const findings: DrcFinding[] = [];
 	const items = copperItems(shapes, netlist);
-	const zoneClearance = (item: CopperItem) =>
-		item.kind === "zone" && item.shape.kind === "rectangle"
-			? (item.shape.zone?.clearance ?? 0)
-			: 0;
 	const widest = Math.max(rules.clearance, ...items.map(zoneClearance));
 	nearbyPairs(items, widest, (a, b) => {
 		const zone = a.kind === "zone" || b.kind === "zone";
@@ -280,15 +278,7 @@ export function checkBoard(
 	}
 	const { ratsnest } = analyzeConnectivity(items, options.zoneReach);
 	const ends = (net: string, point: Point) =>
-		items.filter(
-			(item) =>
-				item.net === net &&
-				item.points.some(
-					(candidate) =>
-						Math.abs(candidate.x - point.x) < 1e-9 &&
-						Math.abs(candidate.y - point.y) < 1e-9,
-				),
-		);
+		items.filter((item) => item.net === net && endsAt(item, point));
 	ratsnest.forEach((line, index) => {
 		findings.push({
 			id: `unconnected:${line.net}:${index}`,

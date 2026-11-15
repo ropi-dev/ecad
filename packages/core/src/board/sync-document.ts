@@ -119,7 +119,6 @@ export async function synchronizeBoardStore(
 		source,
 		nextId: current.nextShapeId,
 	});
-	if (store.getSnapshot() !== current) return null;
 	if (result.place.length || result.replace.length || result.remove.length) {
 		const outcome = Effect.runSync(
 			Effect.either(

@@ -6,7 +6,10 @@ import {
 	createBoardFootprint,
 	type FootprintSource,
 } from "@ecad/drawing-core/board/footprints.ts";
-import { hullDistance } from "@ecad/drawing-core/board/geometry.ts";
+import {
+	hullDistance,
+	trackSegment,
+} from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
 import type { BoardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
@@ -30,7 +33,6 @@ import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
 import { type BoardFile, createBoardFile } from "#/board/format.ts";
-import { trackSegment } from "#/board/routing.ts";
 import {
 	estimateLabelTextWidth,
 	synchronizePcb,

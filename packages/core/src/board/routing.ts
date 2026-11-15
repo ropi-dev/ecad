@@ -3,7 +3,7 @@ import {
 	type CopperLayer,
 	copperAt,
 } from "@ecad/drawing-core/board/connectivity.ts";
-import { lineEnds } from "@ecad/drawing-core/board/geometry.ts";
+import { lineEnds, trackSegment } from "@ecad/drawing-core/board/geometry.ts";
 import type { LineShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 
@@ -33,30 +33,6 @@ export function trackPath(
 			? { x: start.x + straight.x, y: start.y + straight.y }
 			: { x: end.x - straight.x, y: end.y - straight.y };
 	return [start, corner, end];
-}
-
-export function trackSegment(
-	id: number,
-	from: Point,
-	to: Point,
-	layer: CopperLayer,
-	width: number,
-	net: string | undefined,
-): LineShape {
-	const dx = to.x - from.x;
-	const dy = to.y - from.y;
-	return {
-		id,
-		kind: "line",
-		layer,
-		x: (from.x + to.x) / 2,
-		y: (from.y + to.y) / 2,
-		width: Math.hypot(dx, dy),
-		height: 1,
-		rotation: Math.atan2(dy, dx),
-		lineWidth: width,
-		...(net ? { net } : {}),
-	};
 }
 
 export function trackSegments(

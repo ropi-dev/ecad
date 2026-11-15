@@ -2,6 +2,7 @@ import type {
 	CopperItem,
 	CopperLayer,
 } from "@ecad/drawing-core/board/connectivity.ts";
+import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
 import {
@@ -689,18 +690,8 @@ export function useCanvasGestures({
 			return true;
 		},
 	});
-	const boardVia = (id: number, center: Point, net?: string) => {
-		const via = createVia(id, center);
-		if (!board) return via;
-		const { viaDiameter, viaDrill } = board.rules;
-		return {
-			...via,
-			width: viaDiameter,
-			height: viaDiameter,
-			via: { drill: viaDrill < viaDiameter ? viaDrill : viaDiameter * 0.6 },
-			...(net ? { net } : {}),
-		};
-	};
+	const boardVia = (id: number, center: Point, net?: string) =>
+		board ? ruleVia(id, center, board.rules, net) : createVia(id, center);
 	const viaHandler: ToolHandler = {
 		press: (_event, _point, start) => {
 			session.place(

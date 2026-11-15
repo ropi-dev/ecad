@@ -158,15 +158,15 @@ const attributeLabels: Partial<Record<ShapeAttribute, string>> = {
 	fontSize: "font size",
 };
 
-/**
- * The replacements and history label for an Attributes panel edit, or
- * `undefined` when the edit does not apply to the selection.
- */
 export const canCarryNet = (
 	shape: EditorShape,
 ): shape is Extract<EditorShape, { kind: "line" | FillableShapeKind }> =>
 	shape.kind === "line" || (isFillableShape(shape) && !isPad(shape));
 
+/**
+ * The replacements and history label for an Attributes panel edit, or
+ * `undefined` when the edit does not apply to the selection.
+ */
 export function applySelectionEdit(
 	edit: SelectionEdit,
 	context: SelectionEditContext,

@@ -169,9 +169,7 @@ export function useBoardEditor({
 		},
 		[enabled, zoneScene, fills, layerOrder, hidden],
 	);
-	const copperLayer: CopperLayer = isCopperLayer(active)
-		? (active as CopperLayer)
-		: "F.Cu";
+	const copperLayer: CopperLayer = isCopperLayer(active) ? active : "F.Cu";
 	const visibleItems = useCallback(
 		() =>
 			copperItems(session.shapes(), netlist).filter((item) =>

@@ -34,8 +34,11 @@ export const footprintLayerLabels: Record<FootprintLayer, string> = {
 
 export const copperLayers: readonly FootprintLayer[] = ["F.Cu", "B.Cu"];
 
-export const isCopperLayer = (layer: FootprintLayer | undefined) =>
-	layer === "F.Cu" || layer === "B.Cu";
+export type CopperLayer = "F.Cu" | "B.Cu";
+
+export const isCopperLayer = (
+	layer: FootprintLayer | undefined,
+): layer is CopperLayer => layer === "F.Cu" || layer === "B.Cu";
 
 const flippedLayers: Partial<Record<FootprintLayer, FootprintLayer>> = {
 	"F.Cu": "B.Cu",

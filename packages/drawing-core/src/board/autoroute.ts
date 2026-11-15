@@ -1,8 +1,8 @@
 import {
 	analyzeConnectivity,
-	type CopperItem,
 	type CopperLayer,
 	copperItems,
+	endsAt,
 	type RatsnestLine,
 	type ZoneReach,
 } from "#/board/connectivity.ts";
@@ -33,13 +33,6 @@ interface Route {
 	shapes: EditorShape[];
 	alive: boolean;
 }
-
-const atPoint = (point: Point, item: CopperItem) =>
-	item.points.some(
-		(candidate) =>
-			Math.abs(candidate.x - point.x) < 1e-9 &&
-			Math.abs(candidate.y - point.y) < 1e-9,
-	);
 
 /**
  * Routes unrouted connections one at a time with an A* search over a grid
@@ -207,10 +200,10 @@ export function autoroute(
 		const tries = (attempts.get(key(line)) ?? 0) + 1;
 		attempts.set(key(line), tries);
 		const sourceItem = items.find(
-			(item) => item.net === line.net && atPoint(line.from, item),
+			(item) => item.net === line.net && endsAt(item, line.from),
 		);
 		const targetItem = items.find(
-			(item) => item.net === line.net && atPoint(line.to, item),
+			(item) => item.net === line.net && endsAt(item, line.to),
 		);
 		if (!sourceItem || !targetItem) {
 			given.add(key(line));

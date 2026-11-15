@@ -16,11 +16,15 @@ import type { EditorShape } from "#/drawing/schema.ts";
 import { mergeBounds } from "#/drawing/shape-geometry.ts";
 import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
-import { copperLayers, isCopperLayer } from "#/footprint/layers.ts";
+import {
+	type CopperLayer,
+	copperLayers,
+	isCopperLayer,
+} from "#/footprint/layers.ts";
 import { isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
-export type CopperLayer = "F.Cu" | "B.Cu";
+export type { CopperLayer };
 export type CopperKind = "pad" | "track" | "via" | "zone" | "graphic";
 
 export interface CopperItem {
@@ -42,6 +46,18 @@ const touching = 1e-6;
 
 const isTrack = (shape: EditorShape) =>
 	shape.kind === "line" && isCopperLayer(shape.layer);
+
+export const zoneClearance = (item: CopperItem) =>
+	item.kind === "zone" && item.shape.kind === "rectangle"
+		? (item.shape.zone?.clearance ?? 0)
+		: 0;
+
+export const endsAt = (item: CopperItem, point: Point) =>
+	item.points.some(
+		(candidate) =>
+			Math.abs(candidate.x - point.x) < 1e-9 &&
+			Math.abs(candidate.y - point.y) < 1e-9,
+	);
 
 export const isZone = (shape: EditorShape) =>
 	shape.kind === "rectangle" && shape.zone !== undefined;
@@ -115,7 +131,7 @@ export function copperItems(
 						shapeId: shape.id,
 						kind: "graphic",
 						shape: part,
-						layers: [part.layer as CopperLayer],
+						layers: [part.layer],
 						hulls: shapeHulls(part),
 						points: [],
 					});
@@ -135,7 +151,7 @@ export function copperItems(
 			continue;
 		}
 		if (!isCopperLayer(shape.layer) || shape.kind === "text") continue;
-		const layer = shape.layer as CopperLayer;
+		const layer = shape.layer;
 		const kind: CopperKind = isTrack(shape)
 			? "track"
 			: isZone(shape)

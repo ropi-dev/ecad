@@ -9,14 +9,10 @@ import {
 	insideOutline,
 	outlineBounds,
 } from "#/board/drc.ts";
-import { type Hull, hullDistance } from "#/board/geometry.ts";
+import { type Hull, hullDistance, trackSegment } from "#/board/geometry.ts";
 import type { BoardNetlist } from "#/board/netlist.ts";
 import type { BoardRules } from "#/board/rules.ts";
-import type {
-	EditorShape,
-	FillableShape,
-	LineShape,
-} from "#/drawing/schema.ts";
+import type { EditorShape, FillableShape } from "#/drawing/schema.ts";
 import type { Point } from "#/drawing/types.ts";
 
 export const layers: readonly CopperLayer[] = ["F.Cu", "B.Cu"];
@@ -40,7 +36,7 @@ export const ruleVia = (
 	id: number,
 	at: Point,
 	rules: BoardRules,
-	net: string,
+	net?: string,
 ): FillableShape => ({
 	id,
 	kind: "circle",
@@ -52,8 +48,13 @@ export const ruleVia = (
 	rotation: 0,
 	lineWidth: 0.15,
 	filled: true,
-	via: { drill: rules.viaDrill },
-	net,
+	via: {
+		drill:
+			rules.viaDrill < rules.viaDiameter
+				? rules.viaDrill
+				: rules.viaDiameter * 0.6,
+	},
+	...(net ? { net } : {}),
 });
 
 const open = (grid: Int32Array, cell: number, owner: number) =>
@@ -282,27 +283,6 @@ export function routingGrid(
 		}
 		return result;
 	};
-	const track = (
-		from: Point,
-		to: Point,
-		layer: CopperLayer,
-		net: string,
-	): LineShape => {
-		const dx = to.x - from.x;
-		const dy = to.y - from.y;
-		return {
-			id: 0,
-			kind: "line",
-			layer,
-			x: (from.x + to.x) / 2,
-			y: (from.y + to.y) / 2,
-			width: Math.hypot(dx, dy),
-			height: 1,
-			rotation: Math.atan2(dy, dx),
-			lineWidth: width,
-			net,
-		};
-	};
 	const pathShapes = (path: readonly number[], net: string): EditorShape[] => {
 		const result: EditorShape[] = [];
 		let run: Point[] = [];
@@ -325,7 +305,14 @@ export function routingGrid(
 			}
 			for (let index = 1; index < corners.length; index++)
 				result.push(
-					track(corners[index - 1], corners[index], layers[runLayer], net),
+					trackSegment(
+						0,
+						corners[index - 1],
+						corners[index],
+						layers[runLayer],
+						width,
+						net,
+					),
 				);
 		};
 		for (const state of path) {
