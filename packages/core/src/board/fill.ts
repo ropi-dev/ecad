@@ -56,10 +56,17 @@ function clipperPath(points: readonly Point[] | Ring): ClipperLib.Path {
 function fromClipper(tree: ClipperLib.PolyTree): MultiPolygon {
 	const back = (path: ClipperLib.Path): Ring =>
 		path.map(({ X, Y }) => [X / scale, Y / scale]);
-	return ClipperLib.JS.PolyTreeToExPolygons(tree).map(({ outer, holes }) => [
-		back(outer),
-		...holes.map(back),
-	]);
+	const polygons: MultiPolygon = [];
+	const visit = (outer: ClipperLib.PolyNode) => {
+		const holes = outer.Childs();
+		polygons.push([
+			back(outer.Contour()),
+			...holes.map((hole) => back(hole.Contour())),
+		]);
+		for (const hole of holes) for (const island of hole.Childs()) visit(island);
+	};
+	for (const outer of tree.Childs()) visit(outer);
+	return polygons;
 }
 
 function fillPaths(polygons: MultiPolygon): ClipperLib.Paths {

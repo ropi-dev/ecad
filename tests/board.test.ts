@@ -24,7 +24,12 @@ import {
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
-import { fillReach, fillZones, layerFill } from "#/board/fill.ts";
+import {
+	fillReach,
+	fillZones,
+	layerFill,
+	type ZoneFill,
+} from "#/board/fill.ts";
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { trackPath, trackSegment, trackSegments } from "#/board/routing.ts";
@@ -804,4 +809,32 @@ test("fills on one net keep an island that only touches another zone's kept copp
 	);
 	const copper = layerFill(fills, "F.Cu");
 	assert.equal(copper.length, 1);
+});
+
+test("Gerbers draw an island inside a fill's hole after the hole is cleared", () => {
+	const square = (x: number, y: number, size: number): [number, number][] => [
+		[x - size / 2, y - size / 2],
+		[x + size / 2, y - size / 2],
+		[x + size / 2, y + size / 2],
+		[x - size / 2, y + size / 2],
+	];
+	const zone = (polygons: [number, number][][][]) =>
+		({ layer: "F.Cu", net: "gnd", polygons }) as unknown as ZoneFill;
+	const fills = [
+		zone([[square(0, 0, 6)]]),
+		zone([[square(0, 0, 20), square(0, 0, 10).reverse()]]),
+	];
+	const merged = layerFill(fills, "F.Cu");
+	assert.deepEqual(
+		merged.map((polygon) => polygon.length),
+		[2, 1],
+	);
+	const copper = required(
+		exportFabrication("nested", [], fills).find((file) =>
+			file.name.endsWith("F_Cu.gtl"),
+		),
+	).content;
+	const clear = copper.indexOf("%LPC*%");
+	const island = copper.lastIndexOf("%LPD*%");
+	assert.ok(clear >= 0 && island > clear);
 });
