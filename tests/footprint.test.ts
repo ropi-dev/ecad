@@ -644,12 +644,13 @@ test("the board has one object per layer, one per layer's text, drills for throu
 			["footprint:F.Paste", 2],
 			["footprint:F.CrtYd", 1],
 			["footprint:F.SilkS:text", 0],
+			["footprint:F.Cu:pad-numbers", 0],
+			["footprint:B.Cu:pad-numbers", 0],
 			[DRILL_LAYER_ID, 1],
 		],
 	);
-	const profileTopCopperBottomCopperTopLegendTopPasteUnknownTopLegendDrill = [
-		9, 3, 5, 0, 1, 11, 0, 10,
-	];
+	const profileTopCopperBottomCopperTopLegendTopPasteUnknownTopLegendUnknownUnknownDrill =
+		[9, 3, 5, 0, 1, 11, 0, 11, 11, 10];
 	assert.deepEqual(
 		board.map(
 			(layer) =>
@@ -658,7 +659,7 @@ test("the board has one object per layer, one per layer's text, drills for throu
 					layer.metadata[".FileFunction"]?.join(","),
 				)[0],
 		),
-		profileTopCopperBottomCopperTopLegendTopPasteUnknownTopLegendDrill,
+		profileTopCopperBottomCopperTopLegendTopPasteUnknownTopLegendUnknownUnknownDrill,
 	);
 	const edge = required(board[0]).bounds;
 	assert.deepEqual(
@@ -797,6 +798,44 @@ test("courtyard and fabrication drawings lie flat outside the stack, and a pad t
 	const bottom = layerSurfaceZ(bothSides, noLayers, -10);
 	assert.ok(top > bottom);
 	assert.equal(layerSurfaceZ(bothSides, new Set(["F.Cu"]), 10), bottom);
+});
+
+test("pad numbers lie outside each side's stack and drawings and hide with that copper", () => {
+	const smd = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
+	const through = createPad(2, { x: 2, y: 0 }, "through-hole", "2", "F.Cu");
+	const unnumbered = createPad(3, { x: 4, y: 0 }, "smd", "", "B.Cu");
+	const plans = planFootprintBoard([smd, through, unnumbered]);
+	const numbers = (layer: FootprintLayer) =>
+		plans.find((plan) => plan.id === `footprint:${layer}:pad-numbers`)
+			?.padNumbers;
+	assert.deepEqual(required(numbers("F.Cu")).pads, [smd, through]);
+	assert.equal(required(numbers("F.Cu")).bottom, false);
+	assert.deepEqual(required(numbers("B.Cu")).pads, [through]);
+	assert.equal(required(numbers("B.Cu")).bottom, true);
+
+	const board = plans.map((plan) => plan.build());
+	const placed = new Map(
+		placeFootprintBoard(board).map((placement, index) => [
+			required(board[index]).id,
+			placement.z,
+		]),
+	);
+	const z = (id: string) => required(placed.get(id));
+	const drawing = (layer: FootprintLayer) =>
+		required(placeFootprintBoard([{ name: layer, metadata: {} }])[0]).z;
+	assert.ok(z("footprint:F.Cu:pad-numbers") > z("footprint:F.Paste"));
+	for (const layer of ["F.Fab", "F.CrtYd"] as const)
+		assert.ok(z("footprint:F.Cu:pad-numbers") > drawing(layer), layer);
+	for (const layer of ["B.Fab", "B.CrtYd"] as const)
+		assert.ok(z("footprint:B.Cu:pad-numbers") < drawing(layer), layer);
+	assert.equal(
+		boardObjectVisible("footprint:F.Cu:pad-numbers", new Set(["F.Cu"])),
+		false,
+	);
+	assert.equal(
+		boardObjectVisible("footprint:B.Cu:pad-numbers", new Set(["F.Cu"])),
+		true,
+	);
 });
 
 test("a rotated pad's copper turns with it on the board", () => {
