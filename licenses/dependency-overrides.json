@@ -10,5 +10,9 @@
 	"react-remove-scroll-bar@2.3.8": {
 		"files": ["react-remove-scroll-bar-MIT.txt"],
 		"source": "https://github.com/theKashey/react-remove-scroll-bar/blob/8ca9ba5ea52de03308fe8ced94f7b159a44d28ff/LICENSE"
+	},
+	"clipper-lib@6.4.2": {
+		"files": ["clipper-lib-BSL-1.0.txt", "clipper-lib-jsbn.txt"],
+		"source": "https://www.npmjs.com/package/clipper-lib/v/6.4.2 (license header of clipper.js; Boost Software License 1.0 from https://www.boost.org/LICENSE_1_0.txt; JSBN license by Tom Wu)"
 	}
 }

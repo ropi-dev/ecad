@@ -12,6 +12,8 @@ const kindLabels: Record<DrcFinding["kind"], string> = {
 	unconnected: "Unrouted",
 	edge: "Board edge",
 	outline: "Outline",
+	footprint: "Footprint",
+	net: "Net",
 };
 
 const pageSize = 100;

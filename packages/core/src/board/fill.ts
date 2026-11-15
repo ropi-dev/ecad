@@ -20,6 +20,7 @@ import type { BoardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import ClipperLib from "clipper-lib";
 import {
 	combinePolygons,
 	containsPoint,
@@ -37,6 +38,78 @@ export interface ZoneFill {
 type Ring = [number, number][];
 const ring = (points: readonly Point[]): Ring =>
 	points.map((point) => [point.x, point.y]);
+const scale = 1e6;
+const offsetTolerance = 0.002;
+
+function clipperPath(points: readonly Point[] | Ring): ClipperLib.Path {
+	const path = points.map((point) =>
+		Array.isArray(point)
+			? { X: Math.round(point[0] * scale), Y: Math.round(point[1] * scale) }
+			: {
+					X: Math.round((point as Point).x * scale),
+					Y: Math.round((point as Point).y * scale),
+				},
+	);
+	return ClipperLib.Clipper.Orientation(path) ? path : path.reverse();
+}
+
+function fromClipper(tree: ClipperLib.PolyTree): MultiPolygon {
+	const back = (path: ClipperLib.Path): Ring =>
+		path.map(({ X, Y }) => [X / scale, Y / scale]);
+	return ClipperLib.JS.PolyTreeToExPolygons(tree).map(({ outer, holes }) => [
+		back(outer),
+		...holes.map(back),
+	]);
+}
+
+function fillPaths(polygons: MultiPolygon): ClipperLib.Paths {
+	return polygons.flatMap((polygon) =>
+		polygon.map((path, index) => {
+			const converted = clipperPath(path);
+			return index === 0 ? converted : converted.reverse();
+		}),
+	);
+}
+
+function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
+	if (!polygons.length) return [];
+	const offset = new ClipperLib.ClipperOffset(2, offsetTolerance * scale);
+	offset.AddPaths(
+		fillPaths(polygons),
+		ClipperLib.JoinType.jtRound,
+		ClipperLib.EndType.etClosedPolygon,
+	);
+	const result: ClipperLib.Paths = [];
+	offset.Execute(result, (margin + offsetTolerance) * scale);
+	return result;
+}
+
+/** @return `region` less the union of `obstacles` and `keepOut`, computed in integer nanometres. */
+function subtractObstacles(
+	region: MultiPolygon,
+	obstacles: readonly (readonly Point[])[],
+	keepOut: ClipperLib.Paths = [],
+): MultiPolygon {
+	const clipper = new ClipperLib.Clipper();
+	clipper.AddPaths(
+		region.flatMap((polygon) => polygon.map(clipperPath)),
+		ClipperLib.PolyType.ptSubject,
+		true,
+	);
+	clipper.AddPaths(
+		[...obstacles.map(clipperPath), ...keepOut],
+		ClipperLib.PolyType.ptClip,
+		true,
+	);
+	const tree = new ClipperLib.PolyTree();
+	clipper.Execute(
+		ClipperLib.ClipType.ctDifference,
+		tree,
+		ClipperLib.PolyFillType.pftEvenOdd,
+		ClipperLib.PolyFillType.pftNonZero,
+	);
+	return fromClipper(tree);
+}
 const arc = Math.PI / 16;
 
 /** Closed loops chained from outline segments whose ends meet. */
@@ -102,20 +175,88 @@ const fillCache = new WeakMap<
 	{ netlist: BoardNetlist; rules: BoardRules; fills: ZoneFill[] }
 >();
 
-function touchesFill(polygons: MultiPolygon, item: CopperItem): boolean {
-	for (const hull of item.hulls) {
-		for (const point of hull.points)
-			if (containsPoint(polygons, point, hull.radius)) return true;
-		const outline = hullPolygon(hull, 0, Math.PI / 4);
-		if (outline.some((point) => containsPoint(polygons, point))) return true;
-	}
-	return false;
+interface EdgeGrid {
+	cells: Map<string, Hull[]>;
 }
+
+const gridSize = 1;
+const reachLimit = 1;
+const edgeCache = new WeakMap<MultiPolygon[number], EdgeGrid>();
+
+function polygonEdges(polygon: MultiPolygon[number]): EdgeGrid {
+	let grid = edgeCache.get(polygon);
+	if (grid) return grid;
+	const cells = new Map<string, Hull[]>();
+	for (const path of polygon)
+		path.forEach(([x, y], index) => {
+			const [nx, ny] = path[(index + 1) % path.length];
+			const hull: Hull = {
+				points: [
+					{ x, y },
+					{ x: nx, y: ny },
+				],
+				radius: 0,
+			};
+			for (
+				let cx = Math.floor(Math.min(x, nx) / gridSize);
+				cx <= Math.floor(Math.max(x, nx) / gridSize);
+				cx++
+			)
+				for (
+					let cy = Math.floor(Math.min(y, ny) / gridSize);
+					cy <= Math.floor(Math.max(y, ny) / gridSize);
+					cy++
+				) {
+					const key = `${cx},${cy}`;
+					const list = cells.get(key);
+					if (list) list.push(hull);
+					else cells.set(key, [hull]);
+				}
+		});
+	grid = { cells };
+	edgeCache.set(polygon, grid);
+	return grid;
+}
+
+/** @return The gap from `item` to the fill, at most `reachLimit`; below zero inside it. */
+function fillDistance(polygons: MultiPolygon, item: CopperItem): number {
+	if (
+		item.hulls.some((hull) =>
+			hull.points.some((point) => containsPoint(polygons, point)),
+		)
+	)
+		return -Infinity;
+	let distance = reachLimit;
+	const { minX, minY, maxX, maxY } = item.bounds;
+	for (const polygon of polygons) {
+		const { cells } = polygonEdges(polygon);
+		for (
+			let cx = Math.floor((minX - reachLimit) / gridSize);
+			cx <= Math.floor((maxX + reachLimit) / gridSize);
+			cx++
+		)
+			for (
+				let cy = Math.floor((minY - reachLimit) / gridSize);
+				cy <= Math.floor((maxY + reachLimit) / gridSize);
+				cy++
+			)
+				for (const edge of cells.get(`${cx},${cy}`) ?? [])
+					for (const hull of item.hulls)
+						distance = Math.min(distance, hullDistance(edge, hull));
+	}
+	return distance;
+}
+
+const touchesFill = (polygons: MultiPolygon, item: CopperItem) =>
+	fillDistance(polygons, item) <= 1e-6;
+
+const arcError = 0.01;
 
 /**
  * Fills each zone: its rectangle inside the board outline, less the edge
- * clearance and the copper of other nets grown by the clearance. Islands
- * that reach nothing on the zone's net are removed.
+ * clearance, the copper of other nets and the fills of earlier zones on other
+ * nets, each grown by the clearance. Islands that reach nothing on the zone's
+ * net are removed.
  */
 export function fillZones(
 	shapes: readonly EditorShape[],
@@ -130,11 +271,9 @@ export function fillZones(
 	const fills: ZoneFill[] = [];
 	if (zones.length) {
 		const interior = boardInterior(shapes);
-		const edges = boardOutlineSegments(shapes).map((segment) => [
-			ring(
-				hullPolygon({ points: segment, radius: 0 }, rules.edgeClearance, arc),
-			),
-		]);
+		const edges = boardOutlineSegments(shapes).map((segment) =>
+			hullPolygon({ points: segment, radius: 0 }, rules.edgeClearance, arc),
+		);
 		for (const zone of zones) {
 			const layer = zone.layers[0];
 			const clearance = Math.max(
@@ -147,25 +286,26 @@ export function fillZones(
 			region = interior.length
 				? combinePolygons(region, combinePolygons(region, interior, true), true)
 				: [];
-			const obstacles: MultiPolygon = [...edges];
-			for (const item of items) {
-				if (item === zone || !item.layers.includes(layer)) continue;
-				if (item.kind === "zone") continue;
-				if (!boundsOverlap(item.bounds, zone.bounds, clearance)) continue;
-				if (zone.net !== undefined && item.net === zone.net) continue;
+			const obstacles: Point[][] = [...edges];
+			const others = items.filter(
+				(item) =>
+					item !== zone &&
+					item.layers.includes(layer) &&
+					item.kind !== "zone" &&
+					boundsOverlap(item.bounds, zone.bounds, clearance) &&
+					!(zone.net !== undefined && item.net === zone.net),
+			);
+			for (const item of others)
 				for (const hull of item.hulls)
-					obstacles.push([ring(hullPolygon(hull, clearance, arc))]);
-			}
-			for (
-				let start = 0;
-				start < obstacles.length && region.length;
-				start += 64
-			)
-				region = combinePolygons(
-					region,
-					combinePolygons(obstacles.slice(start, start + 64)),
-					true,
-				);
+					obstacles.push(hullPolygon(hull, clearance, arc));
+			const earlier = fills
+				.filter(
+					(fill) =>
+						fill.layer === layer &&
+						(zone.net === undefined || fill.net !== zone.net),
+				)
+				.flatMap((fill) => grown(fill.polygons, clearance));
+			if (region.length) region = subtractObstacles(region, obstacles, earlier);
 			const members = items.filter(
 				(item) =>
 					item !== zone &&
@@ -200,39 +340,42 @@ function polygonGap(a: MultiPolygon, b: MultiPolygon): number {
 		return 0;
 	const edges = (polygons: MultiPolygon) =>
 		polygons.flatMap((polygon) =>
-			polygon.flatMap((path) =>
-				path.map(([x, y], index): Hull => {
-					const [nx, ny] = path[(index + 1) % path.length];
-					return {
-						points: [
-							{ x, y },
-							{ x: nx, y: ny },
-						],
-						radius: 0,
-					};
-				}),
-			),
+			[...polygonEdges(polygon).cells.values()].flat(),
 		);
-	let gap = Infinity;
 	const right = edges(b);
-	for (const edge of edges(a))
-		for (const other of right) gap = Math.min(gap, hullDistance(edge, other));
+	let gap = Infinity;
+	for (const edge of new Set(edges(a)))
+		for (const other of new Set(right))
+			gap = Math.min(gap, hullDistance(edge, other));
 	return gap;
 }
 
 export function fillReach(fills: readonly ZoneFill[]): ZoneReach {
-	const byZone = new Map(fills.map((fill) => [fill.zone.index, fill]));
+	const byZone = new Map(fills.map((fill) => [fill.zone.shapeId, fill]));
 	return {
 		gap: (a, b) => {
-			const first = byZone.get(a.index);
-			const second = byZone.get(b.index);
-			return first && second
-				? polygonGap(first.polygons, second.polygons)
-				: itemDistance(a, b);
+			const first = a.kind === "zone" ? byZone.get(a.shapeId) : undefined;
+			const second = b.kind === "zone" ? byZone.get(b.shapeId) : undefined;
+			if (first && second) return polygonGap(first.polygons, second.polygons);
+			if (first) return fillDistance(first.polygons, b) + arcError;
+			if (second) return fillDistance(second.polygons, a) + arcError;
+			return itemDistance(a, b);
 		},
-		islands: (zone) => byZone.get(zone.index)?.polygons.length ?? 1,
+		joined: (a, b) => {
+			const first = byZone.get(a.shapeId);
+			const second = byZone.get(b.shapeId);
+			if (!first || !second) return [];
+			const pairs: [number, number][] = [];
+			first.polygons.forEach((left, i) => {
+				second.polygons.forEach((right, j) => {
+					if (polygonGap([left], [right]) <= 1e-6) pairs.push([i, j]);
+				});
+			});
+			return pairs;
+		},
+		islands: (zone) => byZone.get(zone.shapeId)?.polygons.length ?? 1,
 		touched: (zone, item) => {
-			const fill = byZone.get(zone.index);
+			const fill = byZone.get(zone.shapeId);
 			if (!fill) return itemDistance(zone, item) <= 1e-6 ? [0] : [];
 			return fill.polygons.flatMap((polygon, index) =>
 				touchesFill([polygon], item) ? [index] : [],

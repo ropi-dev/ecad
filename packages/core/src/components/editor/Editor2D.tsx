@@ -833,10 +833,13 @@ function EditorCanvas({
 								`${board.file.name} gerber`,
 								"zip",
 							);
+							const findings = boardEditor.runChecks().length;
 							toastManager.add({
-								type: "success",
+								type: findings ? "warning" : "success",
 								title: "Fabrication files exported",
-								description: `${files.length} Gerber and drill files in a ZIP archive.`,
+								description: findings
+									? `${files.length} Gerber and drill files in a ZIP archive. The design rules check has ${findings} ${findings === 1 ? "finding" : "findings"}. Run it before ordering boards.`
+									: `${files.length} Gerber and drill files in a ZIP archive.`,
 							});
 						})
 						.catch((cause: unknown) =>
@@ -900,6 +903,7 @@ function EditorCanvas({
 				if (
 					isBoard &&
 					ready &&
+					!creatingSymbol &&
 					!event.ctrlKey &&
 					!event.metaKey &&
 					!event.altKey &&

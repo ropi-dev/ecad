@@ -125,6 +125,7 @@ interface TrackChain {
 	start: Point;
 	layer: CopperLayer;
 	net?: string;
+	netless: number[];
 	pointerId: number;
 	posture: TrackPosture;
 }
@@ -749,10 +750,9 @@ export function useCanvasGestures({
 	const placeTrackVia = useEffectEvent(() => {
 		const active = getTrack();
 		if (!active || !board) return false;
-		session.place(
-			[boardVia(session.nextId(), active.start, active.net)],
-			"Place via",
-		);
+		const via = boardVia(session.nextId(), active.start, active.net);
+		session.place([via], "Place via");
+		if (active.net === undefined) active.netless.push(via.id);
 		active.layer = otherCopperLayer(active.layer);
 		board.setCopperLayer(active.layer);
 		setWirePreview(null);
@@ -788,6 +788,7 @@ export function useCanvasGestures({
 						start: anchor?.point ?? snapPoint(point, cameraView.getGridStep()),
 						layer,
 						...(anchor?.item.net ? { net: anchor.item.net } : {}),
+						netless: [],
 						pointerId: event.pointerId,
 						posture: "straight-first",
 					},
@@ -797,7 +798,25 @@ export function useCanvasGestures({
 			}
 			const next = previewTrack(point);
 			if (!next || !next.segments.length) return;
-			session.place(next.segments, "Route track");
+			const net = next.segments[0]?.net;
+			if (net !== undefined && active.netless.length) {
+				const earlier = new Set(active.netless);
+				session.replace(
+					[
+						...session
+							.shapes()
+							.filter((shape) => earlier.has(shape.id))
+							.map((shape) => ({ ...shape, net })),
+						...next.segments,
+					],
+					"Route track",
+				);
+				active.netless = [];
+			} else {
+				session.place(next.segments, "Route track");
+				if (net === undefined)
+					active.netless.push(...next.segments.map((shape) => shape.id));
+			}
 			if (next.joins) {
 				finishWire();
 				return;

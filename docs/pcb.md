@@ -11,6 +11,7 @@ Each time a PCB opens, and when you press **Update from schematic**, the board c
 - A component without a footprint on the board gets one: the footprint its schematic symbol names under **Footprint** in Attributes. New footprints are laid out in rows to the right of the board outline, or around the origin before there is one.
 - A component whose schematic footprint changed gets the new footprint in the same place, rotation and side.
 - References and values follow the circuit.
+- Tracks, vias and zones on a net the circuit no longer has, for example after a schematic edit renamed an unlabelled net, take the net of the pads their tracks and vias touch.
 - A footprint whose component left the circuit is removed. A footprint whose component lost its footprint, or whose footprint is missing, stays where it is.
 - A second footprint for the same component, such as a copy, stays on the board without a component, so its pads have no nets.
 
@@ -26,7 +27,7 @@ Selecting a track, via or zone highlights the rest of its net.
 
 ## Tracks
 
-Open **Routing** in the toolbar and choose **Track**. Click a pad, via or track to start; the track takes its net and goes on the active copper layer. Starting on a surface mount pad on the other side switches the active layer. Each click places the track up to the pointer as one straight run and one 45 degree run. Press **/** to put the diagonal run first. Clicking on a pad, via or track of the same net, or with no net, finishes the track there. Escape ends it.
+Open **Routing** in the toolbar and choose **Track**. Click a pad, via or track to start; the track takes its net and goes on the active copper layer. Starting on a surface mount pad on the other side switches the active layer. Each click places the track up to the pointer as one straight run and one 45 degree run. Press **/** to put the diagonal run first. Clicking on a pad, via or track of the same net, or with no net, finishes the track there. Escape ends it and returns to Select. Segments placed before the track reaches anything take its net once it does.
 
 Press **V** while routing to place a via at the end of the last placed run and continue on the other copper layer.
 
@@ -38,7 +39,7 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 ## Copper zones
 
-**Routing → Copper zone** draws a rectangle on the active copper layer. A zone fills its rectangle with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline.
+**Routing → Copper zone** draws a rectangle on the active copper layer. A zone fills its rectangle with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline. Where zones on different nets overlap, the zone drawn first keeps the copper and the later one keeps its clearance from it. Overlapping zones on one net connect where their fills touch.
 
 ## Board outline
 
@@ -50,16 +51,18 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 **Design rules check** runs on demand and lists:
 
-- shorts and clearance violations between copper on different nets on a shared layer. Pads, vias and copper of one footprint are not checked against each other. A via inside a footprint takes the net of the pad it touches.
+- shorts and clearance violations between copper on different nets on a shared layer, zone fills included. Pads, vias and copper of one footprint are only checked for shorts between pads on different nets. A via inside a footprint takes the net of the pad it touches.
 - copper outside the board outline or closer than the edge clearance.
-- a missing board outline.
+- a missing board outline, or one whose ends don't meet.
+- a component with no footprint on the board, and a pin on a net whose footprint has no pad with its number.
+- copper on a net the circuit no longer has, and a zone with no copper because nothing on its net is inside it.
 - each unrouted connection.
 
 Select a finding to select the items involved. Results go stale after an edit; run the check again.
 
 ## Fabrication files
 
-**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and an Excellon drill file for plated holes. Zone fills are exported as regions. Each pad opens the solder mask 0.05 mm past its copper; vias stay covered. Text is not exported yet.
+**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and an Excellon drill file for plated holes. Zone fills are exported as regions. Each pad opens the solder mask 0.05 mm past its copper; vias stay covered. Text is not exported yet. The export runs the design rules check and warns when it has findings.
 
 ## Autorouting
 

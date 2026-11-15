@@ -473,23 +473,73 @@ test("a zone cut in two by another net keeps a ratsnest line between its islands
 	assert.ok(ratsnest.some((line) => line.net === "gnd"));
 });
 
-test("DRC reports zones on different nets whose fills overlap", () => {
+test("a later zone on another net keeps the clearance from an earlier one", () => {
 	const { board, netlist } = dividerBoard([
 		zoneAt(51, "gnd", -6, 16),
 		zoneAt(52, "mid", 6, 16),
 	]);
 	const fills = fillZones(board, netlist, defaultBoardRules);
-	const findings = checkBoard(board, netlist, defaultBoardRules, {
+	assert.ok(fills.every((fill) => fill.polygons.length > 0));
+	const zoneFindings = checkBoard(board, netlist, defaultBoardRules, {
 		zoneReach: fillReach(fills),
-	});
+	}).filter(
+		(finding) => finding.shapeIds.includes(51) && finding.shapeIds.includes(52),
+	);
+	assert.deepEqual(zoneFindings, []);
 	assert.ok(
-		findings.some(
+		checkBoard(board, netlist, defaultBoardRules).some(
 			(finding) =>
 				finding.kind === "short" &&
 				finding.shapeIds.includes(51) &&
 				finding.shapeIds.includes(52),
 		),
 	);
+});
+
+test("overlapping zones on one net join their islands", () => {
+	const { board, netlist } = dividerBoard([
+		zoneAt(51, "gnd", -6, 16),
+		zoneAt(52, "gnd", 6, 16),
+	]);
+	const fills = fillZones(board, netlist, defaultBoardRules);
+	const { ratsnest } = analyzeConnectivity(
+		copperItems(board, netlist),
+		fillReach(fills),
+	);
+	assert.ok(!ratsnest.some((line) => line.net === "gnd"));
+});
+
+test("DRC reports pads of one footprint that short and copper on a missing net", () => {
+	const circuit = twoResistors();
+	const [first, second] = placed(circuit);
+	assert.ok(isBoardFootprint(first));
+	const shorted = {
+		...first,
+		children: first.children.map((child) =>
+			isPad(child as EditorShape) ? { ...child, x: 0, y: 0 } : child,
+		),
+	};
+	const stale = trackSegments(
+		300,
+		[
+			{ x: 40, y: 40 },
+			{ x: 41, y: 40 },
+		],
+		"F.Cu",
+		0.25,
+		"gone",
+	);
+	const findings = checkBoard(
+		[shorted, second, ...stale],
+		boardNetlist(circuit),
+		defaultBoardRules,
+	);
+	assert.ok(
+		findings.some(
+			(finding) => finding.kind === "short" && finding.message.includes("R1."),
+		),
+	);
+	assert.ok(findings.some((finding) => finding.kind === "net"));
 });
 
 test("a zone stays empty and DRC reports it while the outline is open", () => {
@@ -599,4 +649,74 @@ test("a via inside a footprint takes its pad's net and counts as copper", () => 
 	);
 	assert.equal(vias.length, 2);
 	assert.ok(vias.every((item) => item.net === "gnd" || item.net === "mid"));
+});
+
+test("sync moves tracks and zones from a net the circuit renamed to the net of their pads", () => {
+	const circuit = twoResistors();
+	const shapes = placed(circuit);
+	const netlist = boardNetlist(circuit);
+	const mid = required(
+		analyzeConnectivity(copperItems(shapes, netlist)).ratsnest.find(
+			(line) => line.net === "mid",
+		),
+	);
+	const track = trackSegments(
+		100,
+		trackPath(mid.from, mid.to),
+		"F.Cu",
+		0.25,
+		"mid",
+	);
+	const zone = { ...zoneAt(120, "mid", 0, 4), x: mid.from.x, y: mid.from.y };
+	const renamed: Circuit = {
+		...circuit,
+		nets: circuit.nets.map((net) =>
+			net.id === "mid" ? { ...net, id: "mid-2" } : net,
+		),
+	};
+	const result = synchronizeBoard({
+		shapes: [...shapes, ...track, zone],
+		circuit: renamed,
+		footprintOf: () => resistor,
+		source,
+		nextId: 200,
+	});
+	assert.deepEqual(
+		result.replace.map((shape) => [shape.id, "net" in shape && shape.net]),
+		[...track, zone].map((shape) => [shape.id, "mid-2"]),
+	);
+});
+
+test("DRC reports a component without a footprint and a netted pin without a pad", () => {
+	const circuit = twoResistors();
+	const [first] = placed(circuit);
+	const netlist = boardNetlist({
+		...circuit,
+		components: circuit.components.map((component) =>
+			component.id === "R1"
+				? {
+						...component,
+						pins: [
+							...component.pins,
+							{
+								id: "R1.3",
+								name: "",
+								number: "3",
+								electricalType: "passive" as const,
+							},
+						],
+					}
+				: component,
+		),
+		nets: circuit.nets.map((net) =>
+			net.id === "gnd" ? { ...net, pinIds: [...net.pinIds, "R1.3"] } : net,
+		),
+	});
+	const messages = checkBoard([first], netlist, defaultBoardRules)
+		.filter((finding) => finding.kind === "footprint")
+		.map((finding) => finding.message);
+	assert.deepEqual(messages, [
+		"R1 pin 3 on GND has no pad",
+		"R2 has no footprint on the board",
+	]);
 });

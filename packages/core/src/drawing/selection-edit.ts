@@ -338,8 +338,9 @@ export function applySelectionEdit(
 			return {
 				replacements: selection.flatMap((shape) => {
 					if (
-						shape.kind !== "line" &&
-						!(isFillableShape(shape) && !isPad(shape))
+						(shape.kind !== "line" &&
+							!(isFillableShape(shape) && !isPad(shape))) ||
+						(shape.locked && !context.allowLocked)
 					)
 						return [];
 					const { net: _net, ...rest } = shape;
@@ -362,7 +363,9 @@ export function applySelectionEdit(
 		case "side":
 			return {
 				replacements: selection.flatMap((shape) =>
-					isBoardFootprint(shape) && (shape.flipped ?? false) !== edit.back
+					isBoardFootprint(shape) &&
+					(!shape.locked || context.allowLocked) &&
+					(shape.flipped ?? false) !== edit.back
 						? [flipBoardFootprint(shape)]
 						: [],
 				),

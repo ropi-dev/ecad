@@ -1,3 +1,9 @@
+import {
+	copperItems,
+	itemDistance,
+	nearbyPairs,
+	sharesLayer,
+} from "#/board/connectivity.ts";
 import { boardOutlineSegments, outlineBounds } from "#/board/drc.ts";
 import {
 	type BoardFootprint,
@@ -6,6 +12,7 @@ import {
 	isBoardFootprint,
 	replaceBoardFootprintSource,
 } from "#/board/footprints.ts";
+import { boardNetlist } from "#/board/netlist.ts";
 import type { Circuit, CircuitComponent } from "#/circuit/model.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import { mergeBounds, shapeBounds } from "#/drawing/shape-geometry.ts";
@@ -39,7 +46,9 @@ const gap = 1.5;
  * component, swaps footprints the schematic changed, updates references and
  * values, and removes footprints whose component is gone. Placed footprints
  * keep their position, rotation and side. A footprint whose component has
- * another footprint loses its component instead of being removed.
+ * another footprint loses its component instead of being removed. Tracks,
+ * vias and zones on a net the circuit no longer has take the net of the pads
+ * their tracks and vias touch.
  */
 export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 	const result: BoardSyncResult = {
@@ -61,6 +70,7 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 	);
 	for (const [id, footprint] of placed)
 		if (!components.has(id)) result.remove.push(footprint.id);
+	result.replace.push(...renamedCopper(input.shapes, input.circuit));
 	const added: { component: CircuitComponent; source: FootprintSource }[] = [];
 	for (const component of input.circuit.components) {
 		const reference = input.footprintOf(component);
@@ -137,4 +147,42 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 		rowHeight = Math.max(rowHeight, height);
 	}
 	return result;
+}
+
+function renamedCopper(
+	shapes: readonly EditorShape[],
+	circuit: Circuit,
+): EditorShape[] {
+	const netlist = boardNetlist(circuit);
+	const items = copperItems(shapes, netlist);
+	const stale = (net: string | undefined): net is string =>
+		net !== undefined && !netlist.nets.has(net);
+	if (!items.some((item) => stale(item.net))) return [];
+	const votes = new Map<string, Map<string, number>>();
+	nearbyPairs(items, 1e-6, (a, b) => {
+		for (const [own, pad] of [
+			[a, b],
+			[b, a],
+		]) {
+			if (own.kind !== "track" && own.kind !== "via") continue;
+			if (!stale(own.net) || pad.kind !== "pad" || !pad.net) continue;
+			if (!sharesLayer(own, pad) || itemDistance(own, pad) > 1e-6) continue;
+			const tally = votes.get(own.net) ?? new Map<string, number>();
+			tally.set(pad.net, (tally.get(pad.net) ?? 0) + 1);
+			votes.set(own.net, tally);
+		}
+	});
+	const renamed = new Map<string, string>();
+	for (const [net, tally] of votes)
+		renamed.set(
+			net,
+			[...tally].reduce((best, entry) =>
+				entry[1] > best[1] ? entry : best,
+			)[0],
+		);
+	return shapes.flatMap((shape) => {
+		const net = "net" in shape ? shape.net : undefined;
+		const next = net === undefined ? undefined : renamed.get(net);
+		return next && shape.kind !== "symbol" ? [{ ...shape, net: next }] : [];
+	});
 }

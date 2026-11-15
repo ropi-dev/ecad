@@ -239,8 +239,10 @@ export interface ZoneReach {
 	islands(zone: CopperItem): number;
 	/** @return The indices of the zone's islands that `item` touches. */
 	touched(zone: CopperItem, item: CopperItem): readonly number[];
-	/** @return The gap between two zones' copper. */
+	/** @return The gap between a zone's copper and another item's. */
 	gap?(a: CopperItem, b: CopperItem): number;
+	/** @return Pairs of island indices of two zones that touch. */
+	joined?(a: CopperItem, b: CopperItem): readonly (readonly [number, number])[];
 }
 
 const defaultZoneReach: ZoneReach = {
@@ -266,7 +268,13 @@ export function analyzeConnectivity(
 	const sets = unionFind(nodes);
 	nearbyPairs(items, touching, (a, b) => {
 		if (!a.net || a.net !== b.net || !sharesLayer(a, b)) return;
-		if (a.kind === "zone" && b.kind === "zone") return;
+		if (a.kind === "zone" && b.kind === "zone") {
+			const first = islandBase.get(a.index) ?? 0;
+			const second = islandBase.get(b.index) ?? 0;
+			for (const [i, j] of zoneReach.joined?.(a, b) ?? [])
+				sets.union(first + i, second + j);
+			return;
+		}
 		if (a.kind === "zone" || b.kind === "zone") {
 			const [zone, other] = a.kind === "zone" ? [a, b] : [b, a];
 			const base = islandBase.get(zone.index) ?? 0;

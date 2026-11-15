@@ -7,7 +7,11 @@ import {
 	sharesLayer,
 	type ZoneReach,
 } from "#/board/connectivity.ts";
-import { isBoardFootprint } from "#/board/footprints.ts";
+import {
+	type BoardFootprint,
+	footprintPads,
+	isBoardFootprint,
+} from "#/board/footprints.ts";
 import {
 	type Hull,
 	hullDistance,
@@ -25,7 +29,9 @@ export type DrcKind =
 	| "clearance"
 	| "unconnected"
 	| "edge"
-	| "outline";
+	| "outline"
+	| "footprint"
+	| "net";
 
 export interface DrcFinding {
 	id: string;
@@ -139,13 +145,17 @@ export function checkBoard(
 	const findings: DrcFinding[] = [];
 	const items = copperItems(shapes, netlist);
 	nearbyPairs(items, rules.clearance, (a, b) => {
-		const zones = a.kind === "zone" && b.kind === "zone";
-		if (!zones && (a.kind === "zone" || b.kind === "zone")) return;
+		const zone = a.kind === "zone" || b.kind === "zone";
+		if (zone && !options.zoneReach?.gap && a.kind !== b.kind) return;
 		if (a.net !== undefined && a.net === b.net) return;
-		if (a.shapeId === b.shapeId) return;
 		if (!sharesLayer(a, b)) return;
+		if (
+			a.shapeId === b.shapeId &&
+			(a.net === undefined || b.net === undefined || itemDistance(a, b) > 1e-6)
+		)
+			return;
 		const distance =
-			zones && options.zoneReach?.gap
+			zone && options.zoneReach?.gap
 				? options.zoneReach.gap(a, b)
 				: itemDistance(a, b);
 		if (distance >= rules.clearance - 1e-6) return;
@@ -210,13 +220,78 @@ export function checkBoard(
 			});
 		}
 	}
+	for (const item of items) {
+		if (item.net !== undefined && !netlist.nets.has(item.net))
+			findings.push({
+				id: `net:${item.index}`,
+				kind: "net",
+				message: `${describe(item)} is on a net the circuit no longer has`,
+				shapeIds: [item.shapeId],
+				at: center(item.bounds),
+			});
+		else if (item.kind === "zone" && options.zoneReach?.islands(item) === 0)
+			findings.push({
+				id: `zone:${item.index}`,
+				kind: "net",
+				message: `zone on ${netName(netlist, item.net)} has no copper: nothing on its net is inside it`,
+				shapeIds: [item.shapeId],
+				at: center(item.bounds),
+			});
+	}
+	const placed = new Map<string, BoardFootprint>();
+	for (const shape of shapes)
+		if (isBoardFootprint(shape) && shape.component)
+			placed.set(shape.component, shape as BoardFootprint);
+	for (const component of netlist.components.values()) {
+		const netted = component.pins.filter((pin) =>
+			netlist.padNet(component.id, pin.number),
+		);
+		if (!netted.length) continue;
+		const footprint = placed.get(component.id);
+		if (!footprint) {
+			findings.push({
+				id: `footprint:${component.id}`,
+				kind: "footprint",
+				message: `${component.reference} has no footprint on the board`,
+				shapeIds: [],
+				at: { x: 0, y: 0 },
+			});
+			continue;
+		}
+		const pads = new Set(footprintPads(footprint).map((pad) => pad.number));
+		for (const pin of netted)
+			if (!pads.has(pin.number))
+				findings.push({
+					id: `pad:${component.id}:${pin.number}`,
+					kind: "footprint",
+					message: `${component.reference} pin ${pin.number} on ${netName(netlist, netlist.padNet(component.id, pin.number))} has no pad`,
+					shapeIds: [footprint.id],
+					at: { x: footprint.x, y: footprint.y },
+				});
+	}
 	const { ratsnest } = analyzeConnectivity(items, options.zoneReach);
+	const ends = (net: string, point: Point) =>
+		items.filter(
+			(item) =>
+				item.net === net &&
+				item.points.some(
+					(candidate) =>
+						Math.abs(candidate.x - point.x) < 1e-9 &&
+						Math.abs(candidate.y - point.y) < 1e-9,
+				),
+		);
 	ratsnest.forEach((line, index) => {
 		findings.push({
 			id: `unconnected:${line.net}:${index}`,
 			kind: "unconnected",
 			message: `Unrouted connection on ${netName(netlist, line.net)}`,
-			shapeIds: [],
+			shapeIds: [
+				...new Set(
+					[...ends(line.net, line.from), ...ends(line.net, line.to)].map(
+						(item) => item.shapeId,
+					),
+				),
+			],
 			at: {
 				x: (line.from.x + line.to.x) / 2,
 				y: (line.from.y + line.to.y) / 2,
