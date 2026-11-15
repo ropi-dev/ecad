@@ -18,7 +18,7 @@ import type { ProjectSnapshot } from "#/projects/format.ts";
 import { primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 
-export interface BoardContext {
+interface BoardContext {
 	circuit?: Circuit;
 	/** Each circuit component's schematic footprint. */
 	footprintOf(componentId: string): FootprintReference | undefined;

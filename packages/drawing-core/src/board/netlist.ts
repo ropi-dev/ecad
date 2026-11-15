@@ -1,7 +1,7 @@
 import type { Circuit, CircuitComponent } from "#/circuit/model.ts";
 import { circuitNetLabels } from "#/circuit/net-labels.ts";
 
-export interface BoardNet {
+interface BoardNet {
 	id: string;
 	name: string;
 }

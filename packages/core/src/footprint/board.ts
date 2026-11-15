@@ -269,7 +269,7 @@ export interface BoardRegion {
 	polygons: readonly (readonly (readonly [number, number])[])[][];
 }
 
-export interface BoardPlanOptions {
+interface BoardPlanOptions {
 	regions?: readonly BoardRegion[];
 }
 

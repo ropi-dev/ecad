@@ -25,7 +25,7 @@ import { isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
 export type { CopperLayer };
-export type CopperKind = "pad" | "track" | "via" | "zone" | "graphic";
+type CopperKind = "pad" | "track" | "via" | "zone" | "graphic";
 
 export interface CopperItem {
 	index: number;
@@ -235,7 +235,7 @@ export interface RatsnestLine {
 	to: Point;
 }
 
-export interface BoardConnectivity {
+interface BoardConnectivity {
 	items: readonly CopperItem[];
 	/** The representative item of each item's connected group. */
 	group: readonly number[];

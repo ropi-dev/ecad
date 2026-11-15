@@ -22,7 +22,7 @@ import {
 	sameFootprint,
 } from "#/footprint/reference.ts";
 
-export interface BoardSyncInput {
+interface BoardSyncInput {
 	shapes: readonly EditorShape[];
 	circuit: Circuit;
 	footprintOf(component: CircuitComponent): FootprintReference | undefined;
@@ -30,7 +30,7 @@ export interface BoardSyncInput {
 	nextId: number;
 }
 
-export interface BoardSyncResult {
+interface BoardSyncResult {
 	place: EditorShape[];
 	replace: EditorShape[];
 	remove: number[];

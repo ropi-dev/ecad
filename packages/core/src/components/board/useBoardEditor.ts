@@ -204,11 +204,9 @@ export function useBoardEditor({
 		const selection = session.getState().selection;
 		const flipped = session
 			.shapes()
-			.filter(
-				(shape) =>
-					selection.has(shape.id) && isBoardFootprint(shape) && !shape.locked,
-			)
-			.map((shape) => flipBoardFootprint(shape as never));
+			.filter(isBoardFootprint)
+			.filter((shape) => selection.has(shape.id) && !shape.locked)
+			.map(flipBoardFootprint);
 		if (flipped.length) session.replace(flipped, "Flip footprint");
 		return flipped.length > 0;
 	}, [session]);

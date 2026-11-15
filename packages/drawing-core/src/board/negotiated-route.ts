@@ -15,7 +15,7 @@ import type { BoardRules } from "#/board/rules.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import type { Point } from "#/drawing/types.ts";
 
-export interface NegotiatedRouteOptions {
+interface NegotiatedRouteOptions {
 	rules: BoardRules;
 	/** Rounds of rerouting every net before giving up on overlaps. */
 	rounds?: number;

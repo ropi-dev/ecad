@@ -298,22 +298,17 @@ export function useCanvasGestures({
 	const [connectionHover, setConnectionHover] = useState<Point | null>(null);
 	const heightOf = (shape: EditorShape) =>
 		cameraView.getProjection()?.heightOf(shape) ?? 0;
+	const toolLayers = (): readonly FootprintLayer[] => {
+		if (isPadTool(tool))
+			return newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu");
+		if (tool === "via") return copperLayers;
+		if ((tool === "track" || tool === "zone") && board)
+			return [board.copperLayer];
+		if (tool === "outline") return ["Edge.Cuts"];
+		return footprintLayer ? [footprintLayer] : [];
+	};
 	const toolHeight = () =>
-		cameraView
-			.getProjection()
-			?.layerHeight(
-				isPadTool(tool)
-					? newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu")
-					: tool === "via"
-						? copperLayers
-						: (tool === "track" || tool === "zone") && board
-							? [board.copperLayer]
-							: tool === "outline"
-								? ["Edge.Cuts"]
-								: footprintLayer
-									? [footprintLayer]
-									: [],
-			) ?? 0;
+		cameraView.getProjection()?.layerHeight(toolLayers()) ?? 0;
 	const screenPoint = (
 		event: Pick<ReactPointerEvent, "clientX" | "clientY">,
 		canvas: HTMLCanvasElement,

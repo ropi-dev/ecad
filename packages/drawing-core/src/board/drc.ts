@@ -134,7 +134,7 @@ const describe = (item: CopperItem) =>
 		? `pad ${item.pad.footprint.attributes.reference}.${item.pad.number}`
 		: item.kind;
 
-export interface DrcOptions {
+interface DrcOptions {
 	zoneReach?: ZoneReach;
 }
 

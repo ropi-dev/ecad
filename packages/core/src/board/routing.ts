@@ -54,7 +54,7 @@ export function trackSegments(
 	return segments;
 }
 
-export interface RouteAnchor {
+interface RouteAnchor {
 	point: Point;
 	item: CopperItem;
 }

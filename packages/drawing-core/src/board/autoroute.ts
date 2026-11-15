@@ -19,7 +19,7 @@ import type { BoardRules } from "#/board/rules.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import type { Point } from "#/drawing/types.ts";
 
-export interface AutorouteOptions {
+interface AutorouteOptions {
 	rules: BoardRules;
 	zoneReach?: ZoneReach;
 	rippable?: readonly EditorShape[];
