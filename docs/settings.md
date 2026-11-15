@@ -6,12 +6,23 @@ Each setting is global, per project, or both:
 
 | Setting | Global | Project |
 | --- | --- | --- |
+| Theme (System, Light, Dark) | yes | no |
 | Antialiasing (Automatic, On, Off) | yes | no |
 | Show debug stats (off by default, Ctrl+Shift+D toggles) | yes | no |
 | Electrical rule levels (Error, Warning, Off per rule) | yes | yes |
 | Symbol libraries | user libraries | project libraries |
 
 A project value wins over the global value. Rule levels merge rule by rule, so a project can turn off one rule and keep the global levels for the rest. In the dialog, **All projects** edits the global levels and **This project** edits the open project's.
+
+## Theme
+
+**System** follows the device's light or dark setting and switches with it. **Light** and **Dark** stay put. The theme covers the interface and every canvas: schematic, symbol, footprint, PCB, circuit graph, Gerber and STEP. Open views recolour in place and keep their camera and selection. Exported drawings ignore it. **Export drawing** has its own white, dark and transparent backgrounds.
+
+Interface colours are `light-dark()` pairs in `packages/core/src/styles.css`, picked by the root's `color-scheme`. Canvas colours are the light and dark palettes in `packages/core/src/drawing/schematic-theme.ts`. `settings/theme.ts` resolves the setting, writes `data-theme` on the root element and tells the canvases. `tests/theme.test.ts` checks that the accent, paper, desk and app background tokens match the canvas palettes, and that every canvas colour has at least 3:1 contrast against its paper.
+
+The web app names the theme in an inline script before the first paint, so a saved theme does not flash the other one. The desktop main process reads the setting before it opens the window and sets Electron's `nativeTheme.themeSource`, which the page sees as the system setting.
+
+In the light theme, unfocused Gerber layers blend normally in a darker film tone. The dark theme adds their light to the backdrop, which would wash out on a light one.
 
 ## Where they are stored
 

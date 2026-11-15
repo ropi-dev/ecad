@@ -14,6 +14,7 @@ import {
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
+import { useSchematicTheme } from "#/settings/theme.ts";
 
 type DrawingRenderer = ReturnType<typeof createDrawingRenderer>;
 
@@ -30,6 +31,7 @@ export function useEditorScene(
 	) => StaticDrawingDisplay = buildStaticDisplay,
 ) {
 	const [renderer, setRenderer] = useState<DrawingRenderer>();
+	const theme = useSchematicTheme();
 	const width = sheet?.width;
 	const height = sheet?.height;
 	const name = sheet?.name;
@@ -56,10 +58,11 @@ export function useEditorScene(
 							: {}),
 					})
 				: null,
+			theme,
 		);
 		setRenderer(next);
 		return () => next.dispose();
-	}, [width, height, name, pageName, pageNumber, pageCount]);
+	}, [width, height, name, pageName, pageNumber, pageCount, theme]);
 	// Wire and symbol previews change on every pointer move; the document does not.
 	const document = useMemo(
 		() =>

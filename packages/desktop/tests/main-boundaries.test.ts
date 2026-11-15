@@ -18,7 +18,10 @@ async function boot() {
 		(event: unknown, ...args: unknown[]) => Promise<unknown>
 	>();
 	let protocolHandler!: (request: { url: string }) => Promise<Response>;
-	let ready!: Promise<void>;
+	let opened!: () => void;
+	const ready = new Promise<void>((resolve) => {
+		opened = resolve;
+	});
 	let loads = 0;
 	const fetched: string[] = [];
 	const frame = { url: "ecad://app/index.html" };
@@ -30,7 +33,11 @@ async function boot() {
 	};
 	class Window {
 		webContents = contents;
+		constructor() {
+			opened();
+		}
 		on() {}
+		setBackgroundColor() {}
 		loadURL() {}
 		removeMenu() {}
 		maximize() {}
@@ -50,11 +57,9 @@ async function boot() {
 			isPackaged: true,
 			getPath: () => "/tmp/ecad-test-user",
 			on() {},
-			whenReady: () => {
-				ready = Promise.resolve();
-				return ready;
-			},
+			whenReady: () => Promise.resolve(),
 		},
+		nativeTheme: { themeSource: "system", shouldUseDarkColors: true, on() {} },
 		BrowserWindow: Window,
 		dialog: {},
 		screen: { on() {} },
@@ -86,6 +91,13 @@ async function boot() {
 		"#/main/display-calibration.ts": {},
 		"#/main/library-approvals.ts": { ExternalLibraryApprovals: class {} },
 		"#/main/projects.ts": { DesktopProjects: class {} },
+		"#/main/settings.ts": {
+			DesktopSettings: class {
+				async load() {
+					return { path: "", settings: { version: 1, theme: "light" } };
+				}
+			},
+		},
 		"#/main/symbol-library.ts": { DesktopSymbolLibrary: Library },
 		"#/main/updates.ts": { readPackagedDistribution: () => null },
 	};
@@ -108,6 +120,7 @@ async function boot() {
 	await ready;
 	return {
 		handlers,
+		theme: electron.nativeTheme.themeSource,
 		protocolHandler,
 		contents,
 		frame,
@@ -133,6 +146,10 @@ test("IPC accepts only the editor's main frame and validates arguments before di
 	assert.equal(app.loads(), 0);
 	assert.deepEqual(await invoke(valid), []);
 	assert.equal(app.loads(), 1);
+});
+
+test("the window opens in the saved theme", async () => {
+	assert.equal((await boot()).theme, "light");
 });
 
 test("the packaged protocol confines requests and applies separate worker CSP", async () => {

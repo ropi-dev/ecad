@@ -45,9 +45,9 @@ import { createZoneScene } from "#/board/zone-scene.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import type { BoardGestures } from "#/components/editor/useCanvasGestures.ts";
 import { buildBoardStaticDisplay } from "#/drawing/display.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import type { BoardDocument } from "#/projects/ProjectSession.ts";
+import { useSchematicTheme } from "#/settings/theme.ts";
 
 type Store = ReturnType<typeof createDrawingStore>;
 
@@ -172,6 +172,7 @@ export function useBoardEditor({
 		[hidden, active, ratsnest, highlighted],
 	);
 	const [zoneScene] = useState(() => createZoneScene());
+	const layerColors = useSchematicTheme().appearance;
 	useEffect(() => () => zoneScene.dispose(), [zoneScene]);
 	const layerOrder = useMemo(() => {
 		const flat = boardDisplay(
@@ -190,15 +191,9 @@ export function useBoardEditor({
 	const updateZones = useCallback(
 		(root: Object3D) => {
 			if (!enabled) return;
-			zoneScene.update(
-				root,
-				fills,
-				darkSchematicTheme.appearance,
-				layerOrder,
-				hidden,
-			);
+			zoneScene.update(root, fills, layerColors, layerOrder, hidden);
 		},
-		[enabled, zoneScene, fills, layerOrder, hidden],
+		[enabled, zoneScene, fills, layerColors, layerOrder, hidden],
 	);
 	const copperLayer: CopperLayer = isCopperLayer(active) ? active : "F.Cu";
 	const visibleItems = useCallback(

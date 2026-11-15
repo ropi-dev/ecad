@@ -7,7 +7,7 @@ import {
 } from "#/drawing/display.ts";
 import {
 	darkSchematicTheme,
-	lightSchematicTheme,
+	printSchematicTheme,
 } from "#/drawing/schematic-theme.ts";
 import {
 	drawingFontStack,
@@ -65,7 +65,7 @@ export function exportDrawingSvg(
 				((text: string) => text.length * fontPixels * 0.6);
 			const display = buildDrawingDisplay(shapes, new Set(), [], measure);
 			const dark = background === "dark";
-			const theme = dark ? darkSchematicTheme : lightSchematicTheme;
+			const theme = dark ? darkSchematicTheme : printSchematicTheme;
 			const colors = theme.appearance;
 			const elements: { order: number; svg: string }[] = [];
 			let minX = Infinity,

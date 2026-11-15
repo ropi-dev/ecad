@@ -12,6 +12,7 @@ import {
 	type ErcSeverityLevel,
 	type ErcSeverityOverrides,
 	ercSeverityLevels,
+	type ThemeMode,
 	withErcSeverity,
 } from "#/settings/schema.ts";
 import {
@@ -19,6 +20,7 @@ import {
 	useAppSettings,
 	useSettingsStatus,
 } from "#/settings/store.ts";
+import { useTheme } from "#/settings/theme.ts";
 
 const SymbolLibrarySettings = lazy(() =>
 	import("#/projects/SymbolLibrarySettings.tsx").then((module) => ({
@@ -167,9 +169,36 @@ function SettingRow({
 function DisplaySettings() {
 	const settings = useAppSettings();
 	const automatic = automaticAntialiasing();
+	const theme = useTheme();
+	const followsSystem = (settings.theme ?? "system") === "system";
 	return (
 		<section aria-label="Display" className="flex flex-col">
 			<h3 className="ui-section-label m-0 mb-1">Display</h3>
+			<SettingRow
+				label="Theme"
+				description="Colours of the interface and the canvases. Exported drawings keep their own."
+			>
+				{(id) => (
+					<select
+						id={id}
+						className="ui-select h-8 w-40 shrink-0 max-[420px]:w-full"
+						value={settings.theme ?? "system"}
+						onChange={(event) => {
+							const next = event.currentTarget.value as ThemeMode;
+							void updateAppSettings((current) => ({
+								...current,
+								theme: next,
+							})).catch(() => undefined);
+						}}
+					>
+						<option value="system">
+							System{followsSystem ? ` (${theme})` : ""}
+						</option>
+						<option value="light">Light</option>
+						<option value="dark">Dark</option>
+					</select>
+				)}
+			</SettingRow>
 			<SettingRow
 				label="Antialiasing"
 				description="Smooths edges in the drawing, schematic and Gerber views. Applies to all projects."

@@ -27,7 +27,7 @@ import type {
 	CanvasTool as Tool,
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { useSchematicTheme } from "#/settings/theme.ts";
 
 const selectionIcons: Record<Exclude<SelectionMode, "replace">, typeof Plus> = {
 	add: Plus,
@@ -79,6 +79,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 		[readTextAnchors, shapes, selected],
 	);
 	const turned = projection?.turned === true;
+	const layerColors = useSchematicTheme().appearance;
 	return (
 		<>
 			{view && projection && (
@@ -107,13 +108,9 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 									points={polygonPoints(
 										projection.screenOutline(placementPreview),
 									)}
-									fill={
-										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
-									}
+									fill={layerColors[shapeLayer(placementPreview)]}
 									fillOpacity={0.4}
-									stroke={
-										darkSchematicTheme.appearance[shapeLayer(placementPreview)]
-									}
+									stroke={layerColors[shapeLayer(placementPreview)]}
 									strokeWidth={1}
 								/>
 							)}

@@ -21,6 +21,7 @@ import {
 	createBoardObjects,
 } from "#/footprint/board-objects.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
+import { useSchematicTheme } from "#/settings/theme.ts";
 
 export function FootprintBoardView({
 	shapes,
@@ -62,12 +63,13 @@ export function FootprintBoardView({
 	useEffect(() => {
 		if (board) builder.release(board);
 	}, [builder, board]);
+	const colors = useSchematicTheme().appearance;
 	useEffect(() => {
 		try {
 			setBoard(
 				measurePerformance(
 					"footprint.board-build",
-					() => builder.build(shapes, { regions }),
+					() => builder.build(shapes, { regions, colors }),
 					{ shapes: shapes.length },
 				),
 			);
@@ -77,7 +79,7 @@ export function FootprintBoardView({
 			setBoard([]);
 			onBuildError("Unable to build the 3D view of this footprint.");
 		}
-	}, [builder, shapes, regions, onBuildError]);
+	}, [builder, shapes, regions, colors, onBuildError]);
 	const scene = useMemo(
 		() =>
 			board?.map((object) => ({

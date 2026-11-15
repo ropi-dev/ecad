@@ -51,12 +51,16 @@ test("settings from another build keep unknown keys and drop only invalid fields
 		parseAppSettings(
 			JSON.stringify({
 				version: 1,
-				theme: "dark",
+				density: "compact",
 				antialiasing: "sometimes",
 				ercSeverity: { "unconnected-pin": "off", "similar-net-names": "info" },
 			}),
 		),
-		{ version: 1, theme: "dark", ercSeverity: { "unconnected-pin": "off" } },
+		{
+			version: 1,
+			density: "compact",
+			ercSeverity: { "unconnected-pin": "off" },
+		},
 	);
 	assert.throws(() => parseAppSettings('{"version":2}'), {
 		message: /^version: /,

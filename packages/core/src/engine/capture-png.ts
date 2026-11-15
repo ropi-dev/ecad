@@ -10,7 +10,7 @@ export function capturePng(
 	const context = canvas.getContext("2d", { willReadFrequently: true });
 	if (!context) throw new Error("Unable to create the PNG image.");
 	if (options?.background !== null) {
-		context.fillStyle = options?.background ?? viewerTheme.background;
+		context.fillStyle = options?.background ?? viewerTheme().background;
 		context.fillRect(0, 0, canvas.width, canvas.height);
 	}
 	context.drawImage(source, 0, 0, canvas.width, canvas.height);

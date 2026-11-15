@@ -16,7 +16,10 @@ import {
 	type DrawingTransform,
 	rotatesFreeOfParentScale,
 } from "#/drawing/display.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import {
+	type SchematicTheme,
+	schematicTheme,
+} from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
 import {
 	createRoundGeometry,
@@ -120,7 +123,10 @@ interface KeyResources {
  * Converts display data to Three objects and owns their shared GPU resources.
  * Meshes persist per display key, so an update only touches changed displays.
  */
-export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
+export function createDrawingRenderer(
+	worksheet: WorksheetDisplay | null,
+	theme: SchematicTheme = schematicTheme(),
+) {
 	const lifetime = createLifecycle();
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
 		lifetime.acquire(acquire, (resource) => resource.dispose());
@@ -198,9 +204,10 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 		};
 		const palette = (create: (color: string) => MeshBasicMaterial) =>
 			Object.fromEntries(
-				Object.entries(darkSchematicTheme.appearance).map(
-					([appearance, color]) => [appearance, own(() => create(color))],
-				),
+				Object.entries(theme.appearance).map(([appearance, color]) => [
+					appearance,
+					own(() => create(color)),
+				]),
 			) as Record<DrawingAppearance, MeshBasicMaterial>;
 		const colors = palette(
 			(color) => new MeshBasicMaterial({ color, depthTest: false }),
@@ -384,7 +391,8 @@ export function createDrawingRenderer(worksheet: WorksheetDisplay | null) {
 			? [
 					{
 						type: "spatial",
-						object: own(() => createWorksheetFromDisplay(worksheet)).paper,
+						object: own(() => createWorksheetFromDisplay(worksheet, theme))
+							.paper,
 					},
 				]
 			: [];

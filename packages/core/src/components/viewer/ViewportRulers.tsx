@@ -12,7 +12,6 @@ import {
 	createTickLayer,
 	type TickLayer,
 } from "#/components/viewer/rulerTickLayer.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { rulerTicks } from "#/engine/ruler.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 
@@ -228,8 +227,7 @@ export function ViewportRulers({
 					<div
 						ref={paperElement}
 						data-testid="viewport-paper"
-						className="absolute top-0 left-0 will-change-transform"
-						style={{ backgroundColor: darkSchematicTheme.paper }}
+						className="absolute top-0 left-0 bg-paper will-change-transform"
 					/>
 				</div>
 			)}

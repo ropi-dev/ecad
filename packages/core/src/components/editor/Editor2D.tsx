@@ -92,7 +92,6 @@ import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
@@ -966,12 +965,7 @@ function EditorCanvas({
 			<div className="relative flex min-h-0 flex-1">
 				<div
 					ref={canvasArea}
-					className={`relative min-w-0 flex-1 touch-none ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
-					style={{
-						backgroundColor: sheetless
-							? darkSchematicTheme.paper
-							: darkSchematicTheme.desk,
-					}}
+					className={`relative min-w-0 flex-1 touch-none ${sheetless ? "bg-paper" : "bg-desk"} ${tool === "pan" ? "[&_canvas]:cursor-grab" : tool === "select" ? "" : "[&_canvas]:cursor-crosshair"}`}
 					data-tool={tool}
 					data-view={
 						isFootprint ? (boardView === "closed" ? "2d" : "3d") : undefined

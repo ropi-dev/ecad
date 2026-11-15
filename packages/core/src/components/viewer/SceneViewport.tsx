@@ -29,7 +29,7 @@ import {
 	ViewportRulers,
 	type ViewportRulersHandle,
 } from "#/components/viewer/ViewportRulers.tsx";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { schematicThemes } from "#/drawing/schematic-theme.ts";
 import type { OrbitGesture } from "#/engine/controls3d.ts";
 import type { ViewerScene } from "#/engine/scene.ts";
 import {
@@ -39,6 +39,7 @@ import {
 } from "#/engine/scene-viewport.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
+import { useTheme } from "#/settings/theme.ts";
 
 /** The shortest time between two updates of the toolbar's zoom label. */
 const ZOOM_LABEL_MS = 100;
@@ -189,13 +190,16 @@ export function SceneViewport({
 	const gridMaxX = gridBounds?.maxX;
 	const gridMinY = gridBounds?.minY;
 	const gridMaxY = gridBounds?.maxY;
+	const theme = useTheme();
+	const { grid: gridColor, gridMajor } = schematicThemes[theme];
 	// Callers pass new bounds objects on every render; key the grid on values.
 	const grid = useMemo(
 		() =>
 			cameraMode === "top"
 				? {
 						unit: rulerUnit ?? "mm",
-						color: darkSchematicTheme.grid,
+						color: gridColor,
+						majorColor: gridMajor,
 						bounds:
 							gridMinX === undefined ||
 							gridMaxX === undefined ||
@@ -210,7 +214,16 @@ export function SceneViewport({
 									},
 					}
 				: null,
-		[cameraMode, rulerUnit, gridMinX, gridMaxX, gridMinY, gridMaxY],
+		[
+			cameraMode,
+			rulerUnit,
+			gridColor,
+			gridMajor,
+			gridMinX,
+			gridMaxX,
+			gridMinY,
+			gridMaxY,
+		],
 	);
 	const configureDisplay = useEffectEvent((viewport: SceneViewportRuntime) => {
 		viewport.setPhysicalScale(zoomScale);
@@ -357,6 +370,12 @@ export function SceneViewport({
 	useEffect(() => {
 		runtime.current?.setGrid(grid);
 	}, [grid]);
+	const shownTheme = useRef(theme);
+	useEffect(() => {
+		if (shownTheme.current === theme) return;
+		shownTheme.current = theme;
+		runtime.current?.refreshTheme();
+	}, [theme]);
 	useEffect(() => {
 		if (size) runtime.current?.resize(size.width, size.height);
 	}, [size]);

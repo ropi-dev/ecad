@@ -23,6 +23,7 @@ import {
 	placeBoardLayers,
 } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
+import { useViewerTheme } from "#/settings/theme.ts";
 
 const visibleDrills = (scene: readonly (PlanarObject | ParsedGerberObject)[]) =>
 	scene.filter(
@@ -80,7 +81,7 @@ export function GerberViewer({
 		geometryScene.length !== scene.length ||
 		geometryScene.some((previous) => {
 			const next = current.get(previous.id);
-			if (!next || next.color !== previous.color) return true;
+			if (!next) return true;
 			return next.type === "spatial" && previous.type === "spatial"
 				? next.object !== previous.object
 				: next.objects !== previous.objects || next.bounds !== previous.bounds;
@@ -98,6 +99,7 @@ export function GerberViewer({
 	);
 	const repainted = useRef("");
 	useEffect(() => () => holes?.dispose(), [holes]);
+	const film = useViewerTheme();
 	const styleLayers = useCallback(
 		(meshes: readonly Object3D[]) => {
 			const drilled = `${drillKey}:${maskEpoch}:${drillRevision}`;
@@ -140,6 +142,7 @@ export function GerberViewer({
 					object.opacity,
 					focused && object.id !== focusedLayerId,
 					placement && { ...placement, sheet, holes },
+					film,
 				);
 			});
 		},
@@ -152,6 +155,7 @@ export function GerberViewer({
 			drillKey,
 			drillRevision,
 			maskEpoch,
+			film,
 		],
 	);
 	const updateScene = useCallback(
