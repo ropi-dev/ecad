@@ -26,7 +26,9 @@ export function projectFileSelections(
 		view,
 	});
 	return [
-		selection("drawing", manifest.drawing),
+		...(manifest.drawing === undefined
+			? []
+			: [selection("drawing", manifest.drawing)]),
 		...(manifest.drawings ?? []).flatMap((path, index) => {
 			const drawing = project.drawings?.[index];
 			return drawing ? [selection(`drawing:${drawing.id}`, path)] : [];

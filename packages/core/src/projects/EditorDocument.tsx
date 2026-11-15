@@ -7,6 +7,11 @@ import { useDrawingFonts } from "#/components/editor/useDrawingFonts.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import { useProjectEditor } from "#/projects/ProjectProvider.tsx";
 
+const WorkspaceStart = lazy(() =>
+	import("#/projects/WorkspaceStart.tsx").then((module) => ({
+		default: module.WorkspaceStart,
+	})),
+);
 const CircuitEditor = lazy(() =>
 	import("#/components/circuit/CircuitEditor.tsx").then((module) => ({
 		default: module.CircuitEditor,
@@ -49,6 +54,20 @@ export function EditorDocument({
 	const symbol = props.store ? null : project?.editorSymbol;
 	const footprint = props.store ? null : project?.editorFootprint;
 	const drawing = props.store ? null : project?.editorDrawing;
+	if (
+		project &&
+		!props.store &&
+		!project.mainDrawing &&
+		!symbol &&
+		!footprint &&
+		!drawing &&
+		project.openingCircuit === null
+	)
+		return (
+			<Suspense fallback={null}>
+				<WorkspaceStart />
+			</Suspense>
+		);
 	const file = symbol
 		? `symbol:${symbol.file.id}`
 		: footprint

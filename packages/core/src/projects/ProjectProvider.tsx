@@ -85,6 +85,7 @@ export const useProjectStatus = () =>
 export const useProjectEditor = () =>
 	useProjectSelection(
 		({
+			project,
 			session,
 			store,
 			editorSymbol,
@@ -94,6 +95,7 @@ export const useProjectEditor = () =>
 			openingCircuit,
 			selectedAsset,
 		}) => ({
+			mainDrawing: project?.manifest.drawing !== undefined,
 			session,
 			store,
 			editorSymbol,

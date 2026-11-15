@@ -1,7 +1,6 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import { expect, test } from "@playwright/test";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import {
 	referenceNetGroups,
@@ -10,6 +9,7 @@ import {
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
 const fixture = resolve(

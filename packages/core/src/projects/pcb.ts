@@ -3,13 +3,24 @@ import { type ProjectDocument, projectNameSchema } from "#/projects/format.ts";
 
 export const primaryPcbId = "pcb-main";
 
+export function hasMainDrawing(document: ProjectDocument): boolean {
+	return (
+		document.shapes.length > 0 ||
+		document.pages !== undefined ||
+		!!document.circuits?.some((file) => file.circuit.id === primaryPcbId)
+	);
+}
+
 export function pairPcbDocuments(
 	document: ProjectDocument,
 	name: string,
 ): ProjectDocument {
 	const circuits = [...(document.circuits ?? [])];
 	const drawings = (document.drawings ?? []).map((drawing) => ({ ...drawing }));
-	if (!circuits.some((file) => file.circuit.id === primaryPcbId))
+	if (
+		hasMainDrawing(document) &&
+		!circuits.some((file) => file.circuit.id === primaryPcbId)
+	)
 		circuits.push(createCircuit(name, primaryPcbId));
 	for (const drawing of drawings) {
 		if (!drawing.circuitId || drawing.circuitId === primaryPcbId) {
@@ -17,7 +28,7 @@ export function pairPcbDocuments(
 			let id = base;
 			for (
 				let suffix = 2;
-				circuits.some((file) => file.circuit.id === id);
+				id === primaryPcbId || circuits.some((file) => file.circuit.id === id);
 				suffix++
 			)
 				id = `${base}-${suffix}`;

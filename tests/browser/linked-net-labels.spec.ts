@@ -1,6 +1,5 @@
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
@@ -8,6 +7,7 @@ import { rulerSpacing } from "#/engine/ruler.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 
 type LabelView = { x: number; y: number; scale: number };
 type LabelWindow = typeof window & { labelView: LabelView };

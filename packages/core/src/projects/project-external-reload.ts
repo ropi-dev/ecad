@@ -57,7 +57,8 @@ export function createProjectExternalReload(
 		try {
 			// A manifest can also point a document at another existing file.
 			if (
-				changed.has(snapshot.manifest.drawing) ||
+				(snapshot.manifest.drawing !== undefined &&
+					changed.has(snapshot.manifest.drawing)) ||
 				snapshot.manifest.drawing !== previous.manifest.drawing
 			) {
 				replaceDrawingShapes(
@@ -183,7 +184,9 @@ export function createProjectExternalReload(
 			state.viewSelection = current;
 		}
 		if (
-			changed.has(snapshot.manifest.drawing) ||
+			[snapshot.manifest.drawing, snapshot.manifest.symbolLibraries].some(
+				(path) => path !== undefined && changed.has(path),
+			) ||
 			changed.has(PROJECT_FILE) ||
 			snapshot.manifest.symbols.some((path) => changed.has(path))
 		)

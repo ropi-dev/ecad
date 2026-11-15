@@ -145,7 +145,8 @@ test("a changed or deleted project file names that file in ProjectConflict", asy
 	const repository = new ProjectRepository(directory, { layout: "files" });
 	await repository.create("Project");
 	const saved = await repository.save({ shapes: [rectangle(1)], symbols: [] });
-	edit(saved.manifest.drawing, (content) => content.replace('"x":0', '"x":5'));
+	const drawing = required(saved.manifest.drawing);
+	edit(drawing, (content) => content.replace('"x":0', '"x":5'));
 	assert.equal(
 		(
 			await rejection(
@@ -153,10 +154,10 @@ test("a changed or deleted project file names that file in ProjectConflict", asy
 				ProjectConflict,
 			)
 		).path,
-		saved.manifest.drawing,
+		drawing,
 	);
 	await repository.load();
-	files.delete(saved.manifest.drawing);
+	files.delete(drawing);
 	assert.equal(
 		(
 			await rejection(
@@ -164,7 +165,7 @@ test("a changed or deleted project file names that file in ProjectConflict", asy
 				ProjectConflict,
 			)
 		).path,
-		saved.manifest.drawing,
+		drawing,
 	);
 });
 
@@ -207,7 +208,7 @@ test("invalid project files reject with InvalidProjectFile naming the file and a
 			shapes: [rectangle(1)],
 			symbols: [],
 		});
-		change(project, saved.manifest.drawing);
+		change(project, required(saved.manifest.drawing));
 		return rejection(
 			new ProjectRepository(project.directory, { layout: "files" }).load(),
 			InvalidProjectFile,
@@ -230,22 +231,22 @@ test("invalid project files reject with InvalidProjectFile naming the file and a
 	const json = await load(({ files }, drawing) =>
 		files.set(drawing, encoder.encode("{ not json")),
 	);
-	assert.equal(json.path, "Project/Project.ecaddraw");
+	assert.equal(json.path, "Project.ecaddraw");
 	assert.equal(json.reason, "The file is not valid JSON.");
 
 	const shape = await load(({ edit }, drawing) =>
 		edit(drawing, (content) => content.replace('"width":10', '"width":"wide"')),
 	);
-	assert.equal(shape.path, "Project/Project.ecaddraw");
+	assert.equal(shape.path, "Project.ecaddraw");
 	assert.match(shape.reason, /^shapes\.0\b/);
 	assert.doesNotMatch(shape.message, /[[{]\s*"/);
 	assert.match(
 		shape.message,
-		/^The project file "Project\/Project\.ecaddraw" is invalid\. shapes\.0/,
+		/^The project file "Project\.ecaddraw" is invalid\. shapes\.0/,
 	);
 
 	const missing = await load(({ files }, drawing) => files.delete(drawing));
-	assert.equal(missing.path, "Project/Project.ecaddraw");
+	assert.equal(missing.path, "Project.ecaddraw");
 	assert.match(missing.reason, /missing/);
 
 	const notObject = await load(({ files }, drawing) =>

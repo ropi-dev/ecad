@@ -285,14 +285,14 @@ test("file URL selections survive autosave revisions and resolve the latest phys
 		shapes: [],
 	};
 	const before = await storage.save("Controller", {
-		shapes: [],
+		shapes: [shape],
 		symbols: [symbol],
 		drawings: [{ id: "power", name: "Power", shapes: [] }],
 	});
 	const selected = projectFileSelections(before);
 	const after = await storage.save("Controller", {
 		...before,
-		shapes: [shape],
+		shapes: [],
 	});
 	assert.notEqual(before.manifest.drawing, after.manifest.drawing);
 	const current = projectFileSelections(after);

@@ -340,7 +340,7 @@ test("save cache never bypasses disk conflict checks in either repository layout
 			},
 		};
 		const first = await assembler.assemble(
-			{ ...previous, symbolLibraries: [] },
+			{ ...previous, shapes: [rectangle], symbolLibraries: [] },
 			previous,
 			symbols,
 			() => {},
@@ -348,7 +348,7 @@ test("save cache never bypasses disk conflict checks in either repository layout
 		previous = await repository.save(first.document);
 		assembler.accept(previous);
 		const diskPath =
-			layout === "files" ? previous.manifest.drawing : ".ecadprj";
+			layout === "files" ? required(previous.manifest.drawing) : ".ecadprj";
 		memory.files.set(diskPath, new TextEncoder().encode("external edit"));
 		const second = await assembler.assemble(
 			{ ...previous, symbolLibraries: [] },

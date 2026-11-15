@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
 import type { Camera } from "three";
 import { demoFiles } from "../fixtures/demo-gerbers";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 
 test("reorders layers and preserves focus, visibility and camera", async ({
 	page,

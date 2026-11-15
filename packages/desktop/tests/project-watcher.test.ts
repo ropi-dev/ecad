@@ -13,6 +13,7 @@ import { PROJECT_FILE } from "@ecad/core/projects/format.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { createProjectWatcher } from "#/main/project-watcher.ts";
 import { DesktopProjects } from "#/main/projects.ts";
+import { required } from "../../../tests/helpers/required.ts";
 
 const shape: EditorShape = {
 	id: 7,
@@ -46,7 +47,10 @@ async function fixture(t: { after(done: () => Promise<void>): void }) {
 	});
 	await settle();
 	changes.length = 0;
-	const drawing = join(saved.directory, ...saved.manifest.drawing.split("/"));
+	const drawing = join(
+		saved.directory,
+		...required(saved.manifest.drawing).split("/"),
+	);
 	return { projects, changes, saved, drawing };
 }
 

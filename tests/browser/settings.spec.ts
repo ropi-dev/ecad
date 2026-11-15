@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./seeded-project";
 
 test("Ctrl+, opens settings and Escape closes them", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");

@@ -116,7 +116,10 @@ test("PCB pairing is stable and leaves inputs untouched", () => {
 		drawings: [{ id: "board", name: "Board", shapes: [] }],
 	};
 	const paired = pairPcbDocuments(input, "Project");
-	assert.equal(paired.circuits?.length, 2);
+	assert.deepEqual(
+		paired.circuits?.map((file) => file.circuit.id),
+		["pcb-board"],
+	);
 	assert.deepEqual(pairPcbDocuments(paired, "Project"), paired);
 	assert.equal("circuitId" in input.drawings[0], false);
 });
@@ -624,7 +627,7 @@ test("new drawing circuit IDs avoid the primary PCB and existing unpaired circui
 	);
 	assert.equal(
 		new Set(paired.circuits?.map((file) => file.circuit.id)).size,
-		4,
+		3,
 	);
 	assert.deepEqual(
 		paired.circuits?.find((file) => file.circuit.id === existing.circuit.id),

@@ -1,12 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { captureArtifacts } from "./artifacts";
 import {
 	closeProjectFiles,
 	openProjectFiles,
 	projectRail,
 } from "./project-files";
+import { expect, test } from "./seeded-project";
 
 const state = async (page: Page) =>
 	JSON.parse((await page.locator("#circuit-document").textContent()) ?? "{}");

@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
+import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
 const hints = '[data-slot="button-shortcut"]';

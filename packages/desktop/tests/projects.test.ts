@@ -93,7 +93,7 @@ test("additional drawing files preserve paths, reject external edits and roll ba
 			{ id: "power", circuitId: "pcb-power", name: "Power", shapes: [shape] },
 		];
 		const saved = await repository.save({ shapes: [], symbols: [], drawings });
-		assert.deepEqual(saved.manifest.drawings, ["Power/Power.ecaddraw"]);
+		assert.deepEqual(saved.manifest.drawings, ["Power.ecaddraw"]);
 		assert.deepEqual(
 			(await new ProjectRepository(directory).load()).drawings,
 			drawings,
@@ -114,12 +114,15 @@ test("additional drawing files preserve paths, reject external edits and roll ba
 			(await new ProjectRepository(directory).load()).drawings,
 			drawings,
 		);
-		assert.deepEqual(await readdir(join(parent, "Power")), ["Power.ecaddraw"]);
+		assert.deepEqual(
+			(await readdir(parent)).filter((name) => name.endsWith(".ecaddraw")),
+			["Power.ecaddraw"],
+		);
 		fail = false;
 		const next = await repository.save({ shapes: [shape], symbols: [] });
 		assert.deepEqual(next.manifest.drawings, saved.manifest.drawings);
 		await writeFile(
-			join(parent, "Power/Power.ecaddraw"),
+			join(parent, "Power.ecaddraw"),
 			JSON.stringify({ ...drawings[0], shapes: [] }),
 		);
 		await assert.rejects(
@@ -179,16 +182,11 @@ test("desktop projects round trip TOML, drawing IDs, standalone symbols and bina
 			createDrawingStore(reopened?.shapes).getSnapshot().nextShapeId,
 			8,
 		);
-		assert.equal(
-			created.manifest.drawing,
-			"Motor controller/Motor controller.ecaddraw",
-		);
-		assert.equal(saved.manifest.drawing, created.manifest.drawing);
 		assert.deepEqual(saved.manifest.symbols, ["symbols/test-point.ecadsym"]);
 		assert.equal(imported.manifest.assets[0].path, "assets/board.zip");
 		assert.deepEqual((await readdir(saved.directory)).sort(), [
 			PROJECT_FILE,
-			"Motor controller",
+			"Motor controller.ecaddraw",
 			"assets",
 			"symbols",
 		]);
@@ -258,7 +256,7 @@ test("a failed desktop manifest write restores the previous drawing and symbols"
 		]);
 		assert.deepEqual((await readdir(parent)).sort(), [
 			PROJECT_FILE,
-			"Controller",
+			"Controller.ecaddraw",
 			"symbols",
 		]);
 		await assert.rejects(
@@ -424,7 +422,7 @@ test(
 						// Another app saves right after the main drawing was read.
 						read: async (path) => {
 							const bytes = await disk.read(path);
-							if (path === "Torn/Torn.ecaddraw" && interruptions > 0) {
+							if (path === "Torn.ecaddraw" && interruptions > 0) {
 								interruptions--;
 								await saveElsewhere();
 							}
@@ -789,7 +787,7 @@ test("direct drawing and symbol edits reject stale desktop saves and imports", a
 			shapes: [shape],
 			symbols: [symbol],
 		});
-		const drawingPath = join(saved.directory, saved.manifest.drawing);
+		const drawingPath = join(saved.directory, required(saved.manifest.drawing));
 		const symbolPath = join(saved.directory, saved.manifest.symbols[0]);
 		await writeFile(
 			drawingPath,
@@ -1251,7 +1249,10 @@ test("edits writable relative project directory symbols and checks project file 
 			false,
 		);
 		assert.equal(
-			await projects.canWriteFile(project.directory, snapshot.manifest.drawing),
+			await projects.canWriteFile(
+				project.directory,
+				required(snapshot.manifest.symbolLibraries),
+			),
 			true,
 		);
 		await chmod(join(project.directory, symbolPath), 0o644);
@@ -1271,7 +1272,7 @@ test("untitled desktop projects stay in isolated memory until explicitly saved",
 	assert.notEqual(first.directory, second.directory);
 	assert.deepEqual(await projects.load(), second);
 	assert.equal(
-		await projects.canWriteFile(second.directory, second.manifest.drawing),
+		await projects.canWriteFile(second.directory, PROJECT_FILE),
 		true,
 	);
 	assert.equal(await new DesktopProjects().load(), null);

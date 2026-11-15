@@ -415,3 +415,60 @@ test("every symbol that fails to resolve is unavailable, whatever fails first", 
 	);
 	assert.deepEqual(nested.unavailableSymbols, []);
 });
+
+for (const layout of ["files", "revisions"] as const)
+	test(`project library settings survive reopening a project without drawings with ${layout} storage`, async () => {
+		const memory = memoryDirectory();
+		const repository = new ProjectRepository(memory.directory, { layout });
+		await repository.create("Libraries");
+		const libraries = [
+			{
+				id: "parts",
+				name: "Parts",
+				enabled: true,
+				source: { kind: "directory" as const, path: "parts" },
+			},
+		];
+		await repository.save({
+			shapes: [],
+			symbols: [],
+			symbolLibraries: libraries,
+		});
+		assert.deepEqual(
+			(await new ProjectRepository(memory.directory, { layout }).load())
+				.symbolLibraries,
+			libraries,
+		);
+	});
+
+test("project library settings from a legacy main drawing survive a save", async () => {
+	const memory = memoryDirectory();
+	const libraries = [
+		{
+			id: "parts",
+			name: "Parts",
+			enabled: true,
+			source: { kind: "directory", path: "parts" },
+		},
+	];
+	const encode = (text: string) => new TextEncoder().encode(text);
+	memory.files.set(
+		".ecadprj",
+		encode(
+			'format = "ecad-project"\nversion = 1\nname = "Legacy"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n',
+		),
+	);
+	memory.files.set(
+		"drawing.ecaddraw",
+		encode(JSON.stringify({ shapes: [], symbolLibraries: libraries })),
+	);
+	const repository = new ProjectRepository(memory.directory, {
+		layout: "files",
+	});
+	await repository.save(await repository.load());
+	assert.deepEqual(
+		(await new ProjectRepository(memory.directory, { layout: "files" }).load())
+			.symbolLibraries,
+		libraries,
+	);
+});
