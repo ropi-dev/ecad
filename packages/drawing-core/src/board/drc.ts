@@ -144,7 +144,12 @@ export function checkBoard(
 ): DrcFinding[] {
 	const findings: DrcFinding[] = [];
 	const items = copperItems(shapes, netlist);
-	nearbyPairs(items, rules.clearance, (a, b) => {
+	const zoneClearance = (item: CopperItem) =>
+		item.kind === "zone" && item.shape.kind === "rectangle"
+			? (item.shape.zone?.clearance ?? 0)
+			: 0;
+	const widest = Math.max(rules.clearance, ...items.map(zoneClearance));
+	nearbyPairs(items, widest, (a, b) => {
 		const zone = a.kind === "zone" || b.kind === "zone";
 		if (zone && !options.zoneReach?.gap && a.kind !== b.kind) return;
 		if (a.net !== undefined && a.net === b.net) return;
@@ -154,11 +159,16 @@ export function checkBoard(
 			(a.net === undefined || b.net === undefined || itemDistance(a, b) > 1e-6)
 		)
 			return;
+		const needed = Math.max(
+			rules.clearance,
+			zoneClearance(a),
+			zoneClearance(b),
+		);
 		const distance =
 			zone && options.zoneReach?.gap
-				? options.zoneReach.gap(a, b)
+				? options.zoneReach.gap(a, b, needed)
 				: itemDistance(a, b);
-		if (distance >= rules.clearance - 1e-6) return;
+		if (distance >= needed - 1e-6) return;
 		const short = distance <= 1e-6;
 		const at = center({
 			minX: Math.max(a.bounds.minX, b.bounds.minX),
@@ -171,7 +181,7 @@ export function checkBoard(
 			kind: short ? "short" : "clearance",
 			message: short
 				? `Short between ${describe(a)} on ${netName(netlist, a.net)} and ${describe(b)} on ${netName(netlist, b.net)}`
-				: `Clearance ${Math.max(0, distance).toFixed(3)} mm between ${describe(a)} on ${netName(netlist, a.net)} and ${describe(b)} on ${netName(netlist, b.net)}, needs ${rules.clearance} mm`,
+				: `Clearance ${Math.max(0, distance).toFixed(3)} mm between ${describe(a)} on ${netName(netlist, a.net)} and ${describe(b)} on ${netName(netlist, b.net)}, needs ${needed} mm`,
 			shapeIds: [...new Set([a.shapeId, b.shapeId])],
 			at,
 		});
@@ -246,7 +256,6 @@ export function checkBoard(
 		const netted = component.pins.filter((pin) =>
 			netlist.padNet(component.id, pin.number),
 		);
-		if (!netted.length) continue;
 		const footprint = placed.get(component.id);
 		if (!footprint) {
 			findings.push({

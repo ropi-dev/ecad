@@ -720,3 +720,74 @@ test("DRC reports a component without a footprint and a netted pin without a pad
 		"R2 has no footprint on the board",
 	]);
 });
+
+test("sync leaves copper on a dropped net when its pads now disagree", () => {
+	const circuit = twoResistors();
+	const shapes = placed(circuit);
+	const netlist = boardNetlist(circuit);
+	const mid = required(
+		analyzeConnectivity(copperItems(shapes, netlist)).ratsnest.find(
+			(line) => line.net === "mid",
+		),
+	);
+	const track = trackSegments(
+		100,
+		trackPath(mid.from, mid.to),
+		"F.Cu",
+		0.25,
+		"mid",
+	);
+	const split: Circuit = {
+		...circuit,
+		nets: [
+			...circuit.nets.filter((net) => net.id !== "mid"),
+			{ id: "left", names: ["LEFT"], pinIds: ["R1.2"] },
+			{ id: "right", names: ["RIGHT"], pinIds: ["R2.1"] },
+		],
+	};
+	const result = synchronizeBoard({
+		shapes: [...shapes, ...track],
+		circuit: split,
+		footprintOf: () => resistor,
+		source,
+		nextId: 200,
+	});
+	assert.deepEqual(result.replace, []);
+});
+
+test("fills keep the full clearance from large round copper and from a zone with a raised clearance", () => {
+	const { board, netlist, centerX, centerY } = dividerBoard([
+		{ ...zoneAt(51, "mid", -9, 8), zone: { clearance: 1.5 } },
+		zoneAt(52, "gnd", 3, 20),
+	]);
+	const big: EditorShape = {
+		id: 60,
+		kind: "circle",
+		layer: "F.Cu",
+		x: centerX + 6,
+		y: centerY + 4,
+		width: 3,
+		height: 3,
+		rotation: 0,
+		lineWidth: 0.15,
+		filled: true,
+		via: { drill: 1 },
+		net: "mid",
+	};
+	const shapes = [...board, big];
+	const rules = { ...defaultBoardRules, clearance: 1.2 };
+	const fills = fillZones(shapes, netlist, rules);
+	const findings = checkBoard(shapes, netlist, rules, {
+		zoneReach: fillReach(fills),
+	}).filter(
+		(finding) => finding.kind === "short" || finding.kind === "clearance",
+	);
+	assert.deepEqual(
+		findings.filter(
+			(finding) =>
+				finding.shapeIds.includes(52) &&
+				(finding.shapeIds.includes(51) || finding.shapeIds.includes(60)),
+		),
+		[],
+	);
+});

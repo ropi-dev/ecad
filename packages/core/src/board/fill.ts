@@ -218,26 +218,30 @@ function polygonEdges(polygon: MultiPolygon[number]): EdgeGrid {
 	return grid;
 }
 
-/** @return The gap from `item` to the fill, at most `reachLimit`; below zero inside it. */
-function fillDistance(polygons: MultiPolygon, item: CopperItem): number {
+/** @return The gap from `item` to the fill, at most `within`; below zero inside it. */
+function fillDistance(
+	polygons: MultiPolygon,
+	item: CopperItem,
+	within = reachLimit,
+): number {
 	if (
 		item.hulls.some((hull) =>
 			hull.points.some((point) => containsPoint(polygons, point)),
 		)
 	)
 		return -Infinity;
-	let distance = reachLimit;
+	let distance = within;
 	const { minX, minY, maxX, maxY } = item.bounds;
 	for (const polygon of polygons) {
 		const { cells } = polygonEdges(polygon);
 		for (
-			let cx = Math.floor((minX - reachLimit) / gridSize);
-			cx <= Math.floor((maxX + reachLimit) / gridSize);
+			let cx = Math.floor((minX - within) / gridSize);
+			cx <= Math.floor((maxX + within) / gridSize);
 			cx++
 		)
 			for (
-				let cy = Math.floor((minY - reachLimit) / gridSize);
-				cy <= Math.floor((maxY + reachLimit) / gridSize);
+				let cy = Math.floor((minY - within) / gridSize);
+				cy <= Math.floor((maxY + within) / gridSize);
 				cy++
 			)
 				for (const edge of cells.get(`${cx},${cy}`) ?? [])
@@ -250,7 +254,13 @@ function fillDistance(polygons: MultiPolygon, item: CopperItem): number {
 const touchesFill = (polygons: MultiPolygon, item: CopperItem) =>
 	fillDistance(polygons, item) <= 1e-6;
 
-const arcError = 0.01;
+const arcError = 1e-5;
+
+const zoneClearance = (zone: CopperItem) =>
+	(zone.shape.kind === "rectangle" && zone.shape.zone?.clearance) || 0;
+
+const circumscribed = (hull: Hull, margin: number) =>
+	(hull.radius + margin) / Math.cos(arc / 2) - hull.radius;
 
 /**
  * Fills each zone: its rectangle inside the board outline, less the edge
@@ -271,15 +281,13 @@ export function fillZones(
 	const fills: ZoneFill[] = [];
 	if (zones.length) {
 		const interior = boardInterior(shapes);
-		const edges = boardOutlineSegments(shapes).map((segment) =>
-			hullPolygon({ points: segment, radius: 0 }, rules.edgeClearance, arc),
-		);
+		const edges = boardOutlineSegments(shapes).map((segment) => {
+			const hull = { points: segment, radius: 0 };
+			return hullPolygon(hull, circumscribed(hull, rules.edgeClearance), arc);
+		});
 		for (const zone of zones) {
 			const layer = zone.layers[0];
-			const clearance = Math.max(
-				(zone.shape.kind === "rectangle" && zone.shape.zone?.clearance) || 0,
-				rules.clearance,
-			);
+			const clearance = Math.max(zoneClearance(zone), rules.clearance);
 			let region: MultiPolygon = combinePolygons([
 				[ring(rectangleCorners(zone.shape))],
 			]);
@@ -297,14 +305,18 @@ export function fillZones(
 			);
 			for (const item of others)
 				for (const hull of item.hulls)
-					obstacles.push(hullPolygon(hull, clearance, arc));
+					obstacles.push(
+						hullPolygon(hull, circumscribed(hull, clearance), arc),
+					);
 			const earlier = fills
 				.filter(
 					(fill) =>
 						fill.layer === layer &&
 						(zone.net === undefined || fill.net !== zone.net),
 				)
-				.flatMap((fill) => grown(fill.polygons, clearance));
+				.flatMap((fill) =>
+					grown(fill.polygons, Math.max(clearance, zoneClearance(fill.zone))),
+				);
 			if (region.length) region = subtractObstacles(region, obstacles, earlier);
 			const members = items.filter(
 				(item) =>
@@ -353,12 +365,12 @@ function polygonGap(a: MultiPolygon, b: MultiPolygon): number {
 export function fillReach(fills: readonly ZoneFill[]): ZoneReach {
 	const byZone = new Map(fills.map((fill) => [fill.zone.shapeId, fill]));
 	return {
-		gap: (a, b) => {
+		gap: (a, b, within) => {
 			const first = a.kind === "zone" ? byZone.get(a.shapeId) : undefined;
 			const second = b.kind === "zone" ? byZone.get(b.shapeId) : undefined;
 			if (first && second) return polygonGap(first.polygons, second.polygons);
-			if (first) return fillDistance(first.polygons, b) + arcError;
-			if (second) return fillDistance(second.polygons, a) + arcError;
+			if (first) return fillDistance(first.polygons, b, within) + arcError;
+			if (second) return fillDistance(second.polygons, a, within) + arcError;
 			return itemDistance(a, b);
 		},
 		joined: (a, b) => {

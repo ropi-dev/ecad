@@ -48,7 +48,7 @@ const gap = 1.5;
  * keep their position, rotation and side. A footprint whose component has
  * another footprint loses its component instead of being removed. Tracks,
  * vias and zones on a net the circuit no longer has take the net of the pads
- * their tracks and vias touch.
+ * their tracks and vias touch, when those pads agree on one net.
  */
 export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 	const result: BoardSyncResult = {
@@ -174,12 +174,7 @@ function renamedCopper(
 	});
 	const renamed = new Map<string, string>();
 	for (const [net, tally] of votes)
-		renamed.set(
-			net,
-			[...tally].reduce((best, entry) =>
-				entry[1] > best[1] ? entry : best,
-			)[0],
-		);
+		if (tally.size === 1) renamed.set(net, [...tally.keys()][0]);
 	return shapes.flatMap((shape) => {
 		const net = "net" in shape ? shape.net : undefined;
 		const next = net === undefined ? undefined : renamed.get(net);

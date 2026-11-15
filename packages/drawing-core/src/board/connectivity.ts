@@ -240,7 +240,7 @@ export interface ZoneReach {
 	/** @return The indices of the zone's islands that `item` touches. */
 	touched(zone: CopperItem, item: CopperItem): readonly number[];
 	/** @return The gap between a zone's copper and another item's. */
-	gap?(a: CopperItem, b: CopperItem): number;
+	gap?(a: CopperItem, b: CopperItem, within: number): number;
 	/** @return Pairs of island indices of two zones that touch. */
 	joined?(a: CopperItem, b: CopperItem): readonly (readonly [number, number])[];
 }
