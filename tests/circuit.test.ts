@@ -800,16 +800,6 @@ for (const layout of ["files", "revisions"] as const) {
 			required(saved.circuits).map((file) => file.circuit),
 		);
 		await repository.save({ shapes: [], symbols: [], circuits: [] });
-		assert.equal(
-			(await new ProjectRepository(memory.directory, { layout }).load())
-				.circuits?.length,
-			1,
-		);
-		assert.equal(
-			(await new ProjectRepository(memory.directory, { layout }).load())
-				.circuits?.[0].circuit.id,
-			"pcb-main",
-		);
 		assert.ok(!memory.files.has(paths.circuit));
 	});
 }

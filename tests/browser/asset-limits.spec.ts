@@ -1,12 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { captureArtifacts } from "./artifacts";
-import {
-	closeProjectFiles,
-	openProjectActions,
-	openProjectFiles,
-} from "./project-files";
+import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 
 const cube = readFileSync(
 	resolve(
@@ -25,7 +22,7 @@ async function screenshot(page: Page, name: string) {
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 
-test("an oversized stored STEP asset is named while valid assets still restore, and project copies say what they left out", async ({
+test("an oversized stored STEP asset is named while valid assets still restore", async ({
 	page,
 }) => {
 	test.setTimeout(120_000);
@@ -88,25 +85,6 @@ test("an oversized stored STEP asset is named while valid assets still restore, 
 	await expect(
 		page.getByRole("alert").filter({ hasText: problem }),
 	).toHaveCount(0);
-
-	await openProjectActions(page);
-	await page
-		.getByRole("menuitem", { name: "New untitled project", exact: true })
-		.click();
-	const notice =
-		"The new project leaves out an asset over the size limit, which stays in the original project. b.step: STEP files must be 256 MiB or smaller.";
-	await expect(page.getByRole("alert")).toContainText(notice);
-	await expect
-		.poll(async () =>
-			(await documentState(page)).assets?.map(
-				(asset: { name: string }) => asset.name,
-			),
-		)
-		.toEqual(["small.step"]);
-	await expect(
-		page.getByRole("button", { name: "Fit model", exact: true }),
-	).toBeEnabled({ timeout: 30_000 });
-	await screenshot(page, "copy-notice.png");
 });
 
 test("sidebar rejection toasts distinguish a rejected batch from partial success", async ({

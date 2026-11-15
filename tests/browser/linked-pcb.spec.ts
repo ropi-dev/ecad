@@ -1,5 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import {
@@ -7,6 +6,7 @@ import {
 	openProjectFiles,
 	projectRail,
 } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
 test("one schematic opens both editors and saves edits in both directions", async ({

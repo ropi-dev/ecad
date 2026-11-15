@@ -20,6 +20,7 @@ import {
 	assetSchema,
 	PROJECT_FILE,
 	type ProjectDocument,
+	type ProjectManifest,
 	type ProjectSnapshot,
 	parseProjectManifest,
 	parseProjectName,
@@ -92,6 +93,58 @@ export function withLocalLock<T>(
 }
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const SYMBOL_LIBRARIES_FILE = "symbol-libraries.json";
+
+function mainDrawingBytes(document: ProjectDocument, circuit: unknown) {
+	return encoder.encode(
+		JSON.stringify({
+			shapes: persistProjectDrawingShapes(document),
+			...(document.pages ? { pages: document.pages } : {}),
+			circuit,
+		}),
+	);
+}
+
+function symbolLibrariesBytes(document: ProjectDocument) {
+	return encoder.encode(
+		JSON.stringify({
+			version: 1,
+			symbolLibraries: document.symbolLibraries ?? [],
+		}),
+	);
+}
+
+function manifestPaths(manifest: ProjectManifest): string[] {
+	return [
+		...(manifest.drawing === undefined ? [] : [manifest.drawing]),
+		...(manifest.symbolLibraries === undefined
+			? []
+			: [manifest.symbolLibraries]),
+		...(manifest.drawings ?? []),
+		...manifest.symbols,
+		...(manifest.footprints ?? []),
+		...(manifest.circuits ?? []).map((paths) => paths.circuit),
+	];
+}
+
+function withDocumentPaths(
+	manifest: ProjectManifest,
+	paths: Pick<ProjectManifest, "drawing" | "symbolLibraries" | "symbols"> &
+		Partial<Pick<ProjectManifest, "circuits" | "footprints" | "drawings">>,
+): ProjectManifest {
+	const {
+		drawing: _drawing,
+		symbolLibraries: _symbolLibraries,
+		...rest
+	} = manifest;
+	const { drawing, symbolLibraries, ...lists } = paths;
+	return {
+		...rest,
+		...lists,
+		...(drawing === undefined ? {} : { drawing }),
+		...(symbolLibraries === undefined ? {} : { symbolLibraries }),
+	};
+}
 
 function isMissing(cause: unknown) {
 	return (
@@ -267,7 +320,14 @@ export class ProjectRepository {
 				throw invalidFile(path, cause);
 			}
 		};
-		const drawing = await readJson(manifest.drawing);
+		const drawing =
+			manifest.drawing === undefined
+				? undefined
+				: await readJson(manifest.drawing);
+		const libraries =
+			manifest.symbolLibraries === undefined
+				? drawing
+				: await readJson(manifest.symbolLibraries);
 		const symbols = await Promise.all(
 			manifest.symbols.map(async (path) => {
 				try {
@@ -282,8 +342,8 @@ export class ProjectRepository {
 			(await Promise.all(manifest.footprints.map((path) => readJson(path))));
 		const document = validateProjectDocument(
 			{
-				shapes: drawing.shapes as ProjectDocument["shapes"],
-				...(drawing.pages === undefined
+				shapes: (drawing?.shapes ?? []) as ProjectDocument["shapes"],
+				...(drawing?.pages === undefined
 					? {}
 					: { pages: drawing.pages as ProjectDocument["pages"] }),
 				...(manifest.drawings === undefined
@@ -339,10 +399,11 @@ export class ProjectRepository {
 				symbols,
 				...(footprints === undefined ? {} : { footprints }),
 				symbolLibraries:
-					drawing.symbolLibraries as ProjectDocument["symbolLibraries"],
+					libraries?.symbolLibraries as ProjectDocument["symbolLibraries"],
 			} as ProjectDocument,
 			{
 				drawing: manifest.drawing,
+				symbolLibraries: manifest.symbolLibraries,
 				drawings: manifest.drawings,
 				circuits: manifest.circuits?.map((paths) => paths.circuit),
 				footprints: manifest.footprints,
@@ -369,7 +430,6 @@ export class ProjectRepository {
 						format: "ecad-project",
 						version: 1,
 						name,
-						drawing: "drawing.ecaddraw",
 						symbols: [],
 						assets: [],
 					},
@@ -418,30 +478,26 @@ export class ProjectRepository {
 		if (this.options.layout === "files")
 			return this.publishFiles({ ...snapshot, ...document });
 		const revision = `.ecad/${globalThis.crypto.randomUUID()}`;
-		const mainName = pcbDocumentName(
-			document.circuits?.find((file) => file.circuit.id === primaryPcbId)
-				?.circuit.name ?? snapshot.manifest.name,
-		);
-		const drawing = `${revision}/${mainName}/${mainName}.ecaddraw`;
+		const mainCircuit = document.circuits?.find(
+			(file) => file.circuit.id === primaryPcbId,
+		)?.circuit;
+		const mainName = mainCircuit && pcbDocumentName(mainCircuit.name);
+		const drawing = mainName && `${revision}/${mainName}.ecaddraw`;
+		const libraries = document.symbolLibraries?.length
+			? `${revision}/${SYMBOL_LIBRARIES_FILE}`
+			: undefined;
+		const usedNames = new Set(mainName ? [mainName.toLowerCase()] : []);
 		const symbols: string[] = [];
 		const footprints: string[] = [];
 		const drawings: string[] = [];
 		try {
-			await this.directory.write(
-				drawing,
-				encoder.encode(
-					JSON.stringify({
-						shapes: persistProjectDrawingShapes(document),
-						...(document.pages ? { pages: document.pages } : {}),
-						circuit: document.circuits?.find(
-							(file) => file.circuit.id === primaryPcbId,
-						)?.circuit,
-						...(document.symbolLibraries === undefined
-							? {}
-							: { symbolLibraries: document.symbolLibraries }),
-					}),
-				),
-			);
+			if (drawing)
+				await this.directory.write(
+					drawing,
+					mainDrawingBytes(document, mainCircuit),
+				);
+			if (libraries)
+				await this.directory.write(libraries, symbolLibrariesBytes(document));
 			for (const symbol of document.symbols) {
 				const path = `${revision}/symbols/${symbol.id}.ecadsym`;
 				parseProjectPath(path);
@@ -461,7 +517,11 @@ export class ProjectRepository {
 				footprints.push(path);
 			}
 			for (const file of document.drawings ?? []) {
-				const path = `${revision}/pcbs/${file.id}/${file.name}.ecaddraw`;
+				let name = file.name;
+				for (let suffix = 2; usedNames.has(name.toLowerCase()); suffix++)
+					name = `${file.name}-${suffix}`;
+				usedNames.add(name.toLowerCase());
+				const path = `${revision}/${name}.ecaddraw`;
 				parseProjectPath(path);
 				await this.directory.write(
 					path,
@@ -482,7 +542,7 @@ export class ProjectRepository {
 			}
 			const circuits = (document.circuits ?? []).map((file) => ({
 				circuit:
-					file.circuit.id === primaryPcbId
+					file.circuit.id === primaryPcbId && drawing
 						? drawing
 						: drawings[
 								(document.drawings ?? []).findIndex(
@@ -490,22 +550,24 @@ export class ProjectRepository {
 								)
 							],
 			}));
-			const manifest = {
-				...snapshot.manifest,
+			const manifest = withDocumentPaths(snapshot.manifest, {
 				...(document.circuits === undefined ? {} : { circuits }),
 				drawing,
+				symbolLibraries: libraries,
 				symbols,
 				...(document.footprints === undefined ? {} : { footprints }),
 				...(document.drawings === undefined ? {} : { drawings }),
-			};
+			});
 			const content = serializeProjectManifest(manifest);
 			await this.directory.write(PROJECT_FILE, encoder.encode(content));
 			const previous = this.snapshot;
 			this.snapshot = { ...snapshot, ...document, manifest };
 			this.savedManifest = content;
-			const previousRevision = previous?.manifest.drawing.match(
-				/^(\.ecad\/[0-9a-f-]{36})\//,
-			)?.[1];
+			const previousRevision = previous
+				? manifestPaths(previous.manifest)
+						.map((path) => path.match(/^(\.ecad\/[0-9a-f-]{36})\//)?.[1])
+						.find((match) => match !== undefined)
+				: undefined;
 			if (
 				previousRevision &&
 				!snapshot.manifest.assets.some((asset) =>
@@ -550,31 +612,32 @@ export class ProjectRepository {
 			PROJECT_FILE,
 			...snapshot.manifest.assets.map((asset) => asset.path),
 		]);
-		const drawing =
-			previous && !reserved.has(previous.manifest.drawing)
-				? previous.manifest.drawing
-				: await this.unusedPath(
-						`${snapshot.manifest.name}/${snapshot.manifest.name}.ecaddraw`,
-						reserved,
-					);
-		reserved.add(drawing);
-		const files = new Map<string, Uint8Array>([
-			[
-				drawing,
-				encoder.encode(
-					JSON.stringify({
-						shapes: persistProjectDrawingShapes(snapshot),
-						...(snapshot.pages ? { pages: snapshot.pages } : {}),
-						circuit: snapshot.circuits?.find(
-							(file) => file.circuit.id === primaryPcbId,
-						)?.circuit,
-						...(snapshot.symbolLibraries === undefined
-							? {}
-							: { symbolLibraries: snapshot.symbolLibraries }),
-					}),
-				),
-			],
-		]);
+		const mainCircuit = snapshot.circuits?.find(
+			(file) => file.circuit.id === primaryPcbId,
+		)?.circuit;
+		const files = new Map<string, Uint8Array>();
+		let drawing: string | undefined;
+		if (mainCircuit) {
+			drawing =
+				previous?.manifest.drawing && !reserved.has(previous.manifest.drawing)
+					? previous.manifest.drawing
+					: await this.unusedPath(
+							`${pcbDocumentName(mainCircuit.name)}.ecaddraw`,
+							reserved,
+						);
+			reserved.add(drawing);
+			files.set(drawing, mainDrawingBytes(snapshot, mainCircuit));
+		}
+		let libraries: string | undefined;
+		if (snapshot.symbolLibraries?.length) {
+			libraries =
+				previous?.manifest.symbolLibraries &&
+				!reserved.has(previous.manifest.symbolLibraries)
+					? previous.manifest.symbolLibraries
+					: await this.unusedPath(SYMBOL_LIBRARIES_FILE, reserved);
+			reserved.add(libraries);
+			files.set(libraries, symbolLibrariesBytes(snapshot));
+		}
 		const previousSymbols = new Map(
 			previous?.symbols.map((symbol, index) => [
 				symbol.id,
@@ -593,10 +656,7 @@ export class ProjectRepository {
 			const path =
 				existing && !reserved.has(existing)
 					? existing
-					: await this.unusedPath(
-							`${file.name}/${file.name}.ecaddraw`,
-							reserved,
-						);
+					: await this.unusedPath(`${file.name}.ecaddraw`, reserved);
 			reserved.add(path);
 			drawings.push(path);
 			files.set(
@@ -648,7 +708,7 @@ export class ProjectRepository {
 		}
 		const circuits = (snapshot.circuits ?? []).map((file) => ({
 			circuit:
-				file.circuit.id === primaryPcbId
+				file.circuit.id === primaryPcbId && drawing
 					? drawing
 					: drawings[
 							(snapshot.drawings ?? []).findIndex(
@@ -656,14 +716,14 @@ export class ProjectRepository {
 							)
 						],
 		}));
-		const manifest = {
-			...snapshot.manifest,
+		const manifest = withDocumentPaths(snapshot.manifest, {
 			...(snapshot.circuits === undefined ? {} : { circuits }),
 			drawing,
+			symbolLibraries: libraries,
 			symbols,
 			...(snapshot.footprints === undefined ? {} : { footprints }),
 			...(snapshot.drawings === undefined ? {} : { drawings }),
-		};
+		});
 		const content = serializeProjectManifest(manifest);
 		files.set(PROJECT_FILE, encoder.encode(content));
 		const changes: { path: string; before: Uint8Array | null }[] = [];
@@ -703,15 +763,9 @@ export class ProjectRepository {
 		files.delete(PROJECT_FILE);
 		this.savedFiles = files;
 		if (previous) {
-			const obsolete = [
-				previous.manifest.drawing,
-				...(previous.manifest.drawings ?? []),
-				...previous.manifest.symbols,
-				...(previous.manifest.footprints ?? []),
-				...(previous.manifest.circuits ?? []).flatMap((paths) => [
-					paths.circuit,
-				]),
-			].filter((path) => !reserved.has(path));
+			const obsolete = manifestPaths(previous.manifest).filter(
+				(path) => !reserved.has(path),
+			);
 			for (const path of obsolete)
 				await this.directory.remove(path).catch(() => undefined);
 		}
@@ -748,13 +802,7 @@ export class ProjectRepository {
 			const created: string[] = [];
 			const reserved = new Set([
 				PROJECT_FILE,
-				current.manifest.drawing,
-				...(current.manifest.drawings ?? []),
-				...current.manifest.symbols,
-				...(current.manifest.footprints ?? []),
-				...(current.manifest.circuits ?? []).flatMap((paths) => [
-					paths.circuit,
-				]),
+				...manifestPaths(current.manifest),
 				...current.manifest.assets.map((asset) => asset.path),
 			]);
 			try {

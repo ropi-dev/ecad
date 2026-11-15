@@ -223,9 +223,10 @@ export function createProjectSession(
 					symbolLibraries: state.libraries,
 				};
 				const source = state.active;
-				const assets = [...state.pendingAssets];
+				const copying = creating && !!source?.inMemory;
+				const assets = copying ? [...state.pendingAssets] : [];
 				skipped = [];
-				if (creating && source) {
+				if (copying && source) {
 					for (const asset of source.manifest.assets) {
 						let bytes: Uint8Array;
 						try {
@@ -252,7 +253,7 @@ export function createProjectSession(
 					skipped = [];
 					return;
 				}
-				if (creating) {
+				if (copying) {
 					update(next);
 					state.conflict = null;
 					setHasConflict(false);

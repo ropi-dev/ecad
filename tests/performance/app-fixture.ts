@@ -1,10 +1,11 @@
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { openProjectFiles } from "../browser/project-files";
+import { seedDrawingProject } from "../browser/seeded-project";
 import { pthGerber } from "../fixtures/pth-gerber";
 import { ready, report } from "./app-helpers.ts";
 
-export function setupAppTests() {
+export function setupAppTests({ seed = true } = {}) {
 	test.beforeAll(async ({ browser }) => {
 		if (process.env.ECAD_PERF_MODE !== "development") return;
 		const page = await browser.newPage();
@@ -62,5 +63,6 @@ export function setupAppTests() {
 		await session.send("Emulation.setCPUThrottlingRate", {
 			rate: Number(process.env.ECAD_PERF_CPU ?? 4),
 		});
+		if (seed) await seedDrawingProject(page);
 	});
 }

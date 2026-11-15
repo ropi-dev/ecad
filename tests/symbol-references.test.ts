@@ -298,7 +298,9 @@ for (const layout of ["files", "revisions"] as const)
 			symbols: [nested],
 		});
 		const drawing = JSON.parse(
-			new TextDecoder().decode(entries.get(snapshot.manifest.drawing)),
+			new TextDecoder().decode(
+				entries.get(required(snapshot.manifest.drawing)),
+			),
 		);
 		assert.ok(!("children" in drawing.shapes[0]));
 		assert.ok(!("texts" in drawing.shapes[0]));

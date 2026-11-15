@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
+import { expect, test } from "./seeded-project";
 
 const open = async (page: Page) => {
 	// The shortcut flips the saved setting, so press it only while hidden.

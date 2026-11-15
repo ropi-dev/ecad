@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
@@ -15,6 +15,7 @@ import {
 	openProjectFiles,
 	projectRail,
 } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
@@ -297,24 +298,13 @@ test("a conflict found by an explicit save or an import alone does not claim uns
 	await expect(notice).toHaveCount(0);
 });
 
-test("creating a project from one with a conflict carries its assets and leaves the conflict behind", async ({
+test("creating a project from one with a conflict leaves the conflict behind", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
 	await expect
 		.poll(async () => (await documentState(page)).name)
 		.toBe("Untitled");
-	await (await openProjectFiles(page))
-		.getByLabel("Add STEP files", { exact: true })
-		.setInputFiles({
-			name: "board.step",
-			mimeType: "application/step",
-			buffer: Buffer.from("ISO-10303-21;"),
-		});
-	await expect
-		.poll(async () => (await documentState(page)).assets?.length)
-		.toBe(1);
-	await closeProjectFiles(page);
 	const original = await page.evaluate(() =>
 		localStorage.getItem("ecad.active-project"),
 	);
@@ -342,66 +332,12 @@ test("creating a project from one with a conflict carries its assets and leaves 
 		)
 		.not.toBe(original);
 	await expect(notice).toHaveCount(0);
-	await expect
-		.poll(async () => (await documentState(page)).assets?.length)
-		.toBe(1);
 	expect((await documentState(page)).dirty).toBe(false);
 	await expect(
 		page
 			.getByRole("alert")
 			.filter({ hasText: "Reload it from disk before saving" }),
 	).toHaveCount(0);
-});
-
-test("a conflict found by a new project's first save shows the notice", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects.html");
-	await expect
-		.poll(async () => (await documentState(page)).name)
-		.toBe("Untitled");
-	await openSchematic(page);
-	await drawRectangle(page);
-	await expect.poll(async () => (await documentState(page)).dirty).toBe(false);
-	const original = await page.evaluate(() =>
-		localStorage.getItem("ecad.active-project"),
-	);
-	await page.evaluate((original) => {
-		const createWritable = FileSystemFileHandle.prototype.createWritable;
-		FileSystemFileHandle.prototype.createWritable = async function (...args) {
-			const writable = await createWritable.apply(this, args);
-			if (
-				this.name !== ".ecadprj" ||
-				localStorage.getItem("ecad.active-project") !== original
-			)
-				return writable;
-			FileSystemFileHandle.prototype.createWritable = createWritable;
-			const write = writable.write.bind(writable);
-			writable.write = async (data: FileSystemWriteChunkType) =>
-				write(new Blob([data as BlobPart, "\n# Edited in another window\n"]));
-			return writable;
-		};
-	}, original);
-	await openProjectActions(page);
-	await page
-		.getByRole("menuitem", { name: "New untitled project", exact: true })
-		.click();
-	await expect
-		.poll(() =>
-			page.evaluate(() => localStorage.getItem("ecad.active-project")),
-		)
-		.not.toBe(original);
-	const notice = page.getByRole("alert").filter({
-		hasText: "This project changed on disk",
-	});
-	await expect(notice).toBeVisible();
-	await expect(notice).toContainText("Your unsaved changes are still here.");
-	expect((await documentState(page)).dirty).toBe(true);
-	expect((await documentState(page)).shapes).toHaveLength(1);
-	await notice
-		.getByRole("button", { name: "Reload from disk", exact: true })
-		.click();
-	await expect(notice).toHaveCount(0);
 });
 
 test("unsaved edits in the library symbol editor are named by the conflict notice", async ({

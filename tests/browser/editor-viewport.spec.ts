@@ -1,11 +1,12 @@
 import { mkdir } from "node:fs/promises";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
 	openProjectFiles,
 	projectRail,
 } from "./project-files";
+import { expect, test } from "./seeded-project";
 
 const schematicCamera = async (page: Page) => {
 	const value = await page.locator("html").getAttribute("data-editor-camera");

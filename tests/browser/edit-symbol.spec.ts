@@ -1,8 +1,9 @@
 import { resolve } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 

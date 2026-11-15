@@ -7,7 +7,7 @@ MCP clients can also read and edit the drawing open in the desktop app's editor.
 ## Connect a client to the desktop app
 
 1. Start the desktop app, for example with `pnpm run dev:desktop`.
-2. Click **Enable MCP** (the plug icon) in the sidebar. With no drawing open, it opens the project's main drawing first. Wait for **Connected to the open drawing**.
+2. Click **Enable MCP** (the plug icon) in the sidebar. With no drawing open, it opens the project's first drawing. A project with no drawings disables the button until you create one. Wait for **Connected to the open drawing**.
 3. Click **Copy configuration**. Add the copied endpoint and authorization header to an MCP client that supports Streamable HTTP and custom headers.
 4. Keep ECAD open while using the client. Click **MCP connected** to hide or show settings without disconnecting. Click **Disable MCP** in the settings panel to revoke access.
 

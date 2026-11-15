@@ -68,7 +68,7 @@ export const manifestSchema = z.strictObject({
 	format: z.literal("ecad-project"),
 	version: z.literal(1),
 	name: projectNameSchema,
-	drawing: projectPathSchema,
+	drawing: projectPathSchema.optional(),
 	drawings: z.array(projectPathSchema).optional(),
 	circuits: z
 		.array(
@@ -79,6 +79,7 @@ export const manifestSchema = z.strictObject({
 		.optional(),
 	symbols: z.array(projectPathSchema),
 	footprints: z.array(projectPathSchema).optional(),
+	symbolLibraries: projectPathSchema.optional(),
 	assets: z.array(assetSchema).default([]),
 	settings: readProjectSettingsSchema.optional(),
 });
@@ -155,7 +156,8 @@ export function serializeProjectManifest(manifest: ProjectManifest): string {
 }
 
 export interface ProjectDocumentFiles {
-	drawing: string;
+	drawing?: string;
+	symbolLibraries?: string;
 	drawings?: readonly string[];
 	circuits?: readonly string[];
 	footprints?: readonly string[];
@@ -279,7 +281,7 @@ export function validateProjectDocument(
 				: validateSymbolLibraries(document.symbolLibraries);
 	} catch (cause) {
 		throw invalid(
-			files?.drawing,
+			files?.symbolLibraries ?? files?.drawing,
 			ParseResult.isParseError(cause)
 				? schemaReason(
 						ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) => ({

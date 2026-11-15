@@ -1,10 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import {
 	closeProjectFiles,
 	openProjectFiles,
 	projectRail,
 } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>

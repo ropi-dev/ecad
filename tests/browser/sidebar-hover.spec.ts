@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { openProjectFiles, projectRail } from "./project-files";
+import { expect, test } from "./seeded-project";
 
 test("opening a file closes the sidebar", async ({ page }) => {
 	await page.goto("/tests/browser/projects.html");

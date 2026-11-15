@@ -1,10 +1,11 @@
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { openPlacedShape } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 

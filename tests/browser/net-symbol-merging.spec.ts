@@ -1,11 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import { pinTerminals } from "@ecad/drawing-core/drawing/shapes.ts";
-import { expect, test } from "@playwright/test";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "../helpers/required.ts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
+import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
 // tests/linked-schematic.test.ts covers standalone and partly connected symbols.

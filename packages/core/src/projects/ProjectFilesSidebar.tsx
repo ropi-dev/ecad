@@ -8,8 +8,6 @@ import {
 	Cpu,
 	FileCog,
 	FileUp,
-	Folder,
-	FolderOpen,
 	House,
 	Layers,
 	type LucideIcon,
@@ -23,7 +21,6 @@ import {
 } from "lucide-react";
 import { DropdownMenu, Tooltip } from "radix-ui";
 import {
-	Fragment,
 	lazy,
 	type ReactNode,
 	Suspense,
@@ -134,7 +131,6 @@ interface ProjectFile {
 	type: string;
 	href?: ProjectPath;
 	asset?: ProjectAsset;
-	group?: string;
 	circuitPath?: string;
 	/** Opens the Gerber viewer with every layer instead of one file. */
 	allLayers?: boolean;
@@ -208,7 +204,6 @@ export function ProjectFilesSidebar({
 	}, []);
 	useEffect(() => () => clearTimeout(hoverTimer.current), []);
 	const [query, setQuery] = useState("");
-	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 	const [filter, setFilter] = useState<(typeof filters)[number]>("All files");
 	const [page, setPage] = useState(0);
 	const [importing, setImporting] = useState(false);
@@ -353,55 +348,45 @@ export function ProjectFilesSidebar({
 	const navigations = useRef(0);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
+	const firstDrawing = manifest?.drawing ?? manifest?.drawings?.[0];
 	const files = useMemo<ProjectFile[]>(
 		() =>
 			manifest
 				? [
 						{ path: PROJECT_FILE, name: PROJECT_FILE, type: "Project" },
-						...(snapshot?.circuits?.length
-							? snapshot.circuits.flatMap((file, index) => {
-									const paths = manifest.circuits?.[index];
-									if (!paths) return [];
-									const name = file.circuit.name;
-									const drawingIndex =
-										snapshot.drawings?.findIndex(
-											(drawing) => drawing.circuitId === file.circuit.id,
-										) ?? -1;
-									const drawingPath =
-										file.circuit.id === primaryPcbId
-											? manifest.drawing
-											: manifest.drawings?.[drawingIndex];
-									return drawingPath
-										? [
-												{
-													path: drawingPath,
-													name: `${name}.ecaddraw`,
-													type: "Drawing",
-													href: "/editor" as const,
-													group: name,
-													circuitPath: paths.circuit,
-												},
-											]
-										: [
-												{
-													path: paths.circuit,
-													name: `${name}.ecaddraw`,
-													type: "Circuit",
-													href: "/editor" as const,
-													group: name,
-												},
-											];
-								})
-							: [
-									{
-										path: manifest.drawing,
-										name: "Drawing",
-										type: "Drawing",
-										href: "/editor" as const,
-									},
-								]),
-						...(snapshot?.circuits?.length &&
-						!snapshot.circuits.some(
+						...(snapshot?.circuits ?? []).flatMap((file, index) => {
+							const paths = manifest.circuits?.[index];
+							if (!paths) return [];
+							const name = file.circuit.name;
+							const drawingIndex =
+								snapshot?.drawings?.findIndex(
+									(drawing) => drawing.circuitId === file.circuit.id,
+								) ?? -1;
+							const drawingPath =
+								file.circuit.id === primaryPcbId
+									? manifest.drawing
+									: manifest.drawings?.[drawingIndex];
+							return drawingPath
+								? [
+										{
+											path: drawingPath,
+											name: `${name}.ecaddraw`,
+											type: "Drawing",
+											href: "/editor" as const,
+											circuitPath: paths.circuit,
+										},
+									]
+								: [
+										{
+											path: paths.circuit,
+											name: `${name}.ecaddraw`,
+											type: "Circuit",
+											href: "/editor" as const,
+										},
+									];
+						}),
+						...(manifest.drawing &&
+						!snapshot?.circuits?.some(
 							(file, index) =>
 								file.circuit.id === primaryPcbId && manifest.circuits?.[index],
 						)
@@ -845,14 +830,15 @@ export function ProjectFilesSidebar({
 									<PlugZap size={18} aria-hidden="true" />
 								</TooltipButton>
 							))
-						: mcp && (
+						: mcp &&
+							(firstDrawing ? (
 								<TooltipTrigger tooltip="Enable MCP" side="right">
 									<ProjectLink
 										href="/editor"
 										aria-label="Enable MCP"
 										onClick={() => {
 											setMcpRequested(true);
-											project.selectEditorFile();
+											project.selectEditorFile(firstDrawing);
 										}}
 										className={railButton}
 										data-variant="ghost"
@@ -861,7 +847,19 @@ export function ProjectFilesSidebar({
 										<PlugZap size={18} aria-hidden="true" />
 									</ProjectLink>
 								</TooltipTrigger>
-							)}
+							) : (
+								<TooltipButton
+									aria-label="Enable MCP"
+									tooltip="Create a drawing to use MCP"
+									side="right"
+									disabled
+									className={railButton}
+									data-variant="ghost"
+									data-icon
+								>
+									<PlugZap size={18} aria-hidden="true" />
+								</TooltipButton>
+							))}
 					<div className="flex-1" />
 					{saveProject && (
 						<TooltipButton
@@ -1103,153 +1101,88 @@ export function ProjectFilesSidebar({
 										</tr>
 									</thead>
 									<tbody>
-										{filtered
-											.slice(first, first + pageSize)
-											.map((file, index) => {
-												const Icon = fileIcons[file.type] ?? FileCog;
-												const circuitActive =
-													circuitOpen &&
-													activePath === (file.circuitPath ?? file.path);
-												const active = isActive(file);
-												const content = (
-													<>
-														<Icon
-															size={15}
-															className="ui-toggle-faint shrink-0"
-															aria-hidden="true"
-														/>
-														<span className="truncate">{file.name}</span>
-													</>
-												);
-												return (
-													<Fragment key={file.path}>
-														{file.group &&
-															(index === 0 ||
-																filtered[first + index - 1]?.group !==
-																	file.group) && (
-																<tr>
-																	<td className="p-0">
-																		<button
-																			type="button"
-																			aria-expanded={!collapsed.has(file.group)}
-																			className={`${row} w-full cursor-pointer px-1.5 font-medium text-fg hover:bg-hover`}
-																			onClick={() =>
-																				setCollapsed((current) => {
-																					const next = new Set(current);
-																					const group = file.group;
-																					if (group === undefined) return next;
-																					if (next.has(group))
-																						next.delete(group);
-																					else next.add(group);
-																					return next;
-																				})
-																			}
-																		>
-																			<ChevronRight
-																				size={14}
-																				aria-hidden="true"
-																				className={`shrink-0 text-fg-faint transition-transform duration-100 ${
-																					collapsed.has(file.group)
-																						? ""
-																						: "rotate-90"
-																				}`}
-																			/>
-																			{collapsed.has(file.group) ? (
-																				<Folder
-																					size={15}
-																					aria-hidden="true"
-																					className="shrink-0 text-fg-faint"
-																				/>
-																			) : (
-																				<FolderOpen
-																					size={15}
-																					aria-hidden="true"
-																					className="shrink-0 text-fg-faint"
-																				/>
-																			)}
-																			<span className="truncate">
-																				{file.group}
-																			</span>
-																		</button>
-																	</td>
-																</tr>
-															)}
-														<tr
-															hidden={!!file.group && collapsed.has(file.group)}
-														>
-															<td
-																className={`p-0 ${file.group ? "pl-[22px]" : ""}`}
+										{filtered.slice(first, first + pageSize).map((file) => {
+											const Icon = fileIcons[file.type] ?? FileCog;
+											const circuitActive =
+												circuitOpen &&
+												activePath === (file.circuitPath ?? file.path);
+											const active = isActive(file);
+											const content = (
+												<>
+													<Icon
+														size={15}
+														className="ui-toggle-faint shrink-0"
+														aria-hidden="true"
+													/>
+													<span className="truncate">{file.name}</span>
+												</>
+											);
+											return (
+												<tr key={file.path}>
+													<td className="p-0">
+														{file.href ? (
+															<ProjectLink
+																href={file.href}
+																file={file.allLayers ? undefined : file.path}
+																view={
+																	file.type === "Circuit"
+																		? "circuit"
+																		: undefined
+																}
+																aria-label={
+																	file.allLayers
+																		? "Open all Gerber layers"
+																		: `Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`
+																}
+																aria-current={active ? "page" : undefined}
+																title={`${file.name} · ${file.type}`}
+																className={`ui-toggle ${row} px-1.5 aria-[current=page]:font-medium`}
+																onClick={() => openFile(file)}
 															>
-																{file.href ? (
-																	<ProjectLink
-																		href={file.href}
-																		file={
-																			file.allLayers ? undefined : file.path
-																		}
-																		view={
-																			file.type === "Circuit"
-																				? "circuit"
-																				: undefined
-																		}
-																		aria-label={
-																			file.allLayers
-																				? "Open all Gerber layers"
-																				: `Open ${file.name}${file.type === "Circuit" ? " in circuit view" : ""}`
-																		}
-																		aria-current={active ? "page" : undefined}
-																		title={`${file.name} · ${file.type}`}
-																		className={`ui-toggle ${row} px-1.5 aria-[current=page]:font-medium`}
-																		onClick={() => openFile(file)}
-																	>
-																		{content}
-																	</ProjectLink>
-																) : (
-																	<div
-																		title={`${file.name} · ${file.type}`}
-																		className={`${row} px-1.5 text-fg-faint`}
-																	>
-																		{content}
-																	</div>
-																)}
-																{file.circuitPath && (
-																	<ProjectLink
-																		href="/editor"
-																		file={file.circuitPath ?? file.path}
-																		view="circuit"
-																		aria-label={`Open ${file.name} in circuit view`}
-																		aria-current={
-																			circuitActive ? "page" : undefined
-																		}
-																		className={`ui-toggle ${row} ml-[11px] border-l pr-1.5 pl-[11px] [--toggle-line:var(--color-line)] [--toggle-on-line:var(--color-line)] aria-[current=page]:font-medium`}
-																		onClick={() => {
-																			closeDrawer();
-																			void project
-																				.openCircuit(
-																					file.circuitPath ?? file.path,
-																				)
-																				.catch((cause) =>
-																					showError(
-																						cause,
-																						"Unable to open circuit.",
-																					),
-																				);
-																		}}
-																	>
-																		<Workflow
-																			size={15}
-																			aria-hidden="true"
-																			className="ui-toggle-faint shrink-0"
-																		/>
-																		<span className="truncate">
-																			Circuit view
-																		</span>
-																	</ProjectLink>
-																)}
-															</td>
-														</tr>
-													</Fragment>
-												);
-											})}
+																{content}
+															</ProjectLink>
+														) : (
+															<div
+																title={`${file.name} · ${file.type}`}
+																className={`${row} px-1.5 text-fg-faint`}
+															>
+																{content}
+															</div>
+														)}
+														{file.circuitPath && (
+															<ProjectLink
+																href="/editor"
+																file={file.circuitPath ?? file.path}
+																view="circuit"
+																aria-label={`Open ${file.name} in circuit view`}
+																aria-current={
+																	circuitActive ? "page" : undefined
+																}
+																className={`ui-toggle ${row} ml-[11px] border-l pr-1.5 pl-[11px] [--toggle-line:var(--color-line)] [--toggle-on-line:var(--color-line)] aria-[current=page]:font-medium`}
+																onClick={() => {
+																	closeDrawer();
+																	void project
+																		.openCircuit(file.circuitPath ?? file.path)
+																		.catch((cause) =>
+																			showError(
+																				cause,
+																				"Unable to open circuit.",
+																			),
+																		);
+																}}
+															>
+																<Workflow
+																	size={15}
+																	aria-hidden="true"
+																	className="ui-toggle-faint shrink-0"
+																/>
+																<span className="truncate">Circuit view</span>
+															</ProjectLink>
+														)}
+													</td>
+												</tr>
+											);
+										})}
 									</tbody>
 								</table>
 								{!filtered.length && (

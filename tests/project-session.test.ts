@@ -557,8 +557,8 @@ test("importing project assets resolves to the assets it added", async (t) => {
 	);
 });
 
-test("a new project copies the source project's assets except those over the size limit", async (t) => {
-	const source = snapshot();
+test("a project created from unsaved Untitled work copies its assets except those over the size limit", async (t) => {
+	const source = { ...snapshot(), inMemory: true };
 	source.manifest.assets = [
 		{ path: "assets/huge.step", name: "huge.step", kind: "step" },
 		{ path: "assets/top.gbr", name: "top.gbr", kind: "gerber" },

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { setupAppTests } from "./app-fixture.ts";
 import { finish, ready } from "./app-helpers.ts";
 
-setupAppTests();
+setupAppTests({ seed: false });
 
 test(
 	"projects-empty",

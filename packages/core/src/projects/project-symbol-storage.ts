@@ -2,7 +2,11 @@ import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { SymbolLibrary } from "#/components/editor/symbolFormat.ts";
 import type { SerialQueue } from "#/lib/serial-queue.ts";
 import { ProjectClosed } from "#/projects/errors.ts";
-import type { ProjectDrawing, ProjectSnapshot } from "#/projects/format.ts";
+import {
+	PROJECT_FILE,
+	type ProjectDrawing,
+	type ProjectSnapshot,
+} from "#/projects/format.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import type { ProjectStorage } from "#/projects/storage.ts";
 import type {
@@ -48,7 +52,7 @@ export function createProjectSymbolStorage(
 					return storage.canWriteFile
 						? storage.canWriteFile(
 								snapshot.directory,
-								snapshot.manifest.drawing,
+								snapshot.manifest.symbolLibraries ?? PROJECT_FILE,
 							)
 						: true;
 				},
