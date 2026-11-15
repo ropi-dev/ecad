@@ -80,7 +80,11 @@ export interface ProjectContextValue {
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
 	save(): Promise<boolean>;
-	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
+	/** Resolves to the assets the import added to the project. */
+	importAssets(
+		files: readonly File[],
+		kind: AssetKind,
+	): Promise<ProjectAsset[]>;
 	/**
 	 * Reads the stored assets of one kind. Assets over their size limit are
 	 * not read; `problems` names each of them, and the others still load.

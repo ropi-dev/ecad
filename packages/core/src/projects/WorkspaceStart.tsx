@@ -10,6 +10,7 @@ import { revealButtonShortcuts } from "#/components/viewer/useButtonShortcuts.ts
 import { addProjectFiles } from "#/projects/add-project-files.ts";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import { isProjectError } from "#/projects/errors.ts";
+import type { ProjectAsset } from "#/projects/format.ts";
 import { ProjectLink } from "#/projects/ProjectLink.tsx";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
 import { useWorkspaceControls } from "#/projects/WorkspaceControls.tsx";
@@ -17,12 +18,13 @@ import "#/projects/WorkspaceStart.css";
 
 export function WorkspaceStart() {
 	const project = useProjectSelection(
-		({ busy, error, reload, project, importAssets }) => ({
+		({ busy, error, reload, project, importAssets, selectAsset }) => ({
 			busy,
 			error,
 			reload,
 			ready: project !== null,
 			importAssets,
+			selectAsset,
 		}),
 	);
 	const sidebar = useWorkspaceControls()?.sidebar;
@@ -37,16 +39,24 @@ export function WorkspaceStart() {
 		const gerber = files.filter((file) => !step.includes(file));
 		setImporting(true);
 		try {
-			let added = 0;
+			const added = {
+				gerber: [] as ProjectAsset[],
+				step: [] as ProjectAsset[],
+			};
 			for (const [kind, group] of [
 				["gerber", gerber],
 				["step", step],
 			] as const)
 				if (group.length)
-					added += (await addProjectFiles(project.importAssets, group, kind))
-						.added;
-			if (added)
-				viewerLinks.current[gerber.length ? "/gerber" : "/step"]?.click();
+					added[kind] = (
+						await addProjectFiles(project.importAssets, group, kind)
+					).assets;
+			const kind = added.gerber.length ? "gerber" : "step";
+			const assets = added[kind];
+			if (assets.length) {
+				project.selectAsset(assets.length === 1 ? assets[0] : null);
+				viewerLinks.current[`/${kind}`]?.click();
+			}
 		} catch (cause) {
 			if (!isProjectError(cause, "ProjectConflict"))
 				toastManager.add({
