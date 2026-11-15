@@ -79,14 +79,6 @@ export const boardFileSchema = boardDataSchema.extend({
 
 export type BoardFile = z.output<typeof boardFileSchema>;
 
-export const legacyBoardFileSchema = boardDataSchema.extend({
-	format: z.literal("ecad-board"),
-	version: z.literal(1),
-	id: z.string(),
-	name: boardName,
-	circuitId: z.string().min(1).max(200),
-});
-
 export function boardData(file: BoardFile): BoardData {
 	return { units: file.units, rules: file.rules, shapes: file.shapes };
 }

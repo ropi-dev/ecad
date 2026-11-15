@@ -33,6 +33,8 @@ export function handleEditorShortcut(
 		canRotatePlacement,
 		placing,
 		clearPlacementPreview,
+		finishWire,
+		finishDrag,
 		setTool,
 		rotateItems,
 		undo,
@@ -44,6 +46,8 @@ export function handleEditorShortcut(
 		canRotatePlacement: boolean;
 		placing: boolean;
 		clearPlacementPreview: Gestures["clearPlacementPreview"];
+		finishWire: Gestures["finishWire"];
+		finishDrag: Gestures["finishDrag"];
 		setTool: Dispatch<SetStateAction<CanvasTool>>;
 		rotateItems: (angle: number) => void;
 		undo: () => void;
@@ -59,6 +63,8 @@ export function handleEditorShortcut(
 	});
 	if (!shortcut) return;
 	if (shortcut.kind === "cancel-placement") {
+		finishDrag(true);
+		finishWire();
 		clearPlacementPreview();
 		setTool("select");
 	} else if (shortcut.kind === "rotate") rotateItems(shortcut.angle);

@@ -1260,11 +1260,14 @@ function SelectionAttributesPanel({
 										name="lineWidth"
 										label="Line width"
 										value={lineWidth}
-										unit="mil"
+										unit={footprint ? "mm" : "mil"}
 										positive
 										onCommit={(value) => {
 											if (value !== null)
-												onAttributeChange("lineWidth", fromMils(value));
+												onAttributeChange(
+													"lineWidth",
+													footprint ? value : fromMils(value),
+												);
 										}}
 									/>
 								) : (

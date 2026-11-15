@@ -58,3 +58,22 @@ test("the RP2350A example opens as a routed PCB that passes DRC and switches vie
 		.poll(async () => (await documentState(page)).editorShapes.length)
 		.toBeGreaterThan(100);
 });
+
+test("the start page's example opens its PCB in the editor", async ({
+	page,
+}) => {
+	await page.goto("/tests/browser/projects.html");
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Workspace home", exact: true })
+		.click();
+	await closeProjectFiles(page);
+	await page
+		.getByRole("button", { name: "RP2350A reference design", exact: true })
+		.click();
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+		"PCB editor · RP2350A",
+	);
+	await expect
+		.poll(async () => (await documentState(page)).boards)
+		.toEqual(["rp2350a"]);
+});

@@ -77,6 +77,17 @@ export function boardOutlineSegments(
 	return segments;
 }
 
+export function outlineClosed(segments: readonly Segment[]): boolean {
+	if (!segments.length) return false;
+	const degree = new Map<string, number>();
+	for (const segment of segments)
+		for (const point of segment) {
+			const key = `${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`;
+			degree.set(key, (degree.get(key) ?? 0) + 1);
+		}
+	return [...degree.values()].every((count) => count % 2 === 0);
+}
+
 export function outlineBounds(
 	segments: readonly Segment[],
 ): Bounds | undefined {
@@ -128,11 +139,15 @@ export function checkBoard(
 	const findings: DrcFinding[] = [];
 	const items = copperItems(shapes, netlist);
 	nearbyPairs(items, rules.clearance, (a, b) => {
-		if (a.kind === "zone" || b.kind === "zone") return;
+		const zones = a.kind === "zone" && b.kind === "zone";
+		if (!zones && (a.kind === "zone" || b.kind === "zone")) return;
 		if (a.net !== undefined && a.net === b.net) return;
-		if (a.kind === "pad" && b.kind === "pad" && a.shapeId === b.shapeId) return;
+		if (a.shapeId === b.shapeId) return;
 		if (!sharesLayer(a, b)) return;
-		const distance = itemDistance(a, b);
+		const distance =
+			zones && options.zoneReach?.gap
+				? options.zoneReach.gap(a, b)
+				: itemDistance(a, b);
 		if (distance >= rules.clearance - 1e-6) return;
 		const short = distance <= 1e-6;
 		const at = center({
@@ -161,6 +176,15 @@ export function checkBoard(
 			at: { x: 0, y: 0 },
 		});
 	else {
+		if (!outlineClosed(outline))
+			findings.push({
+				id: "outline-open",
+				kind: "outline",
+				message:
+					"The board outline is not closed. Zones stay unfilled until its ends meet.",
+				shapeIds: [],
+				at: outline[0][0],
+			});
 		const strokes: Hull[] = outline.map((segment) => ({
 			points: segment,
 			radius: 0,

@@ -51,6 +51,7 @@ export function WorkspaceStart() {
 		setImporting(true);
 		try {
 			await project.openBoard(await project.importExample("rp2350a"));
+			viewerLinks.current["/editor"]?.click();
 		} catch (cause) {
 			if (!isProjectError(cause, "ProjectConflict"))
 				toastManager.add({
@@ -206,7 +207,7 @@ export function WorkspaceStart() {
 					</dl>
 				)}
 			</div>
-			{(["/gerber", "/step"] as const).map((href) => (
+			{(["/editor", "/gerber", "/step"] as const).map((href) => (
 				<ProjectLink
 					key={href}
 					href={href}

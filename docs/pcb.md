@@ -11,11 +11,12 @@ Each time a PCB opens, and when you press **Update from schematic**, the board c
 - A component without a footprint on the board gets one: the footprint its schematic symbol names under **Footprint** in Attributes. New footprints are laid out in rows to the right of the board outline, or around the origin before there is one.
 - A component whose schematic footprint changed gets the new footprint in the same place, rotation and side.
 - References and values follow the circuit.
-- A footprint whose component left the circuit is removed.
+- A footprint whose component left the circuit is removed. A footprint whose component lost its footprint, or whose footprint is missing, stays where it is.
+- A second footprint for the same component, such as a copy, stays on the board without a component, so its pads have no nets.
 
 A toast lists what changed and names components without a footprint, or whose footprint is missing from the project and the built-in library.
 
-A placed footprint moves, rotates and locks as one item. Its pads take their nets from the circuit: a pad gets the net of the component pin with the same number. Press **F**, or **Flip to the other side** in the toolbar, to move the selected footprints to the back. Flipping mirrors a footprint about its origin and moves each item to the matching back layer. The **Side** field in Attributes does the same.
+A placed footprint moves, rotates and locks as one item. Its pads take their nets from the circuit: a pad gets the net of the component pin with the same number. In the flat view, press **F**, or **Flip to the other side** in the toolbar, to move the selected footprints to the back. Locked footprints stay put. In the 3D view F fits the view instead. Flipping mirrors a footprint about its origin and moves each item to the matching back layer. The **Side** field in Attributes does the same.
 
 ## Ratsnest
 
@@ -37,7 +38,7 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 ## Copper zones
 
-**Routing → Copper zone** draws a rectangle on the active copper layer. A zone fills its rectangle with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** overrides the board clearance for one zone. Fills are recomputed after each edit and draw under the other items of their layer.
+**Routing → Copper zone** draws a rectangle on the active copper layer. A zone fills its rectangle with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline.
 
 ## Board outline
 
@@ -49,7 +50,7 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 **Design rules check** runs on demand and lists:
 
-- shorts and clearance violations between copper on different nets on a shared layer. Pads of one footprint are not checked against each other.
+- shorts and clearance violations between copper on different nets on a shared layer. Pads, vias and copper of one footprint are not checked against each other. A via inside a footprint takes the net of the pad it touches.
 - copper outside the board outline or closer than the edge clearance.
 - a missing board outline.
 - each unrouted connection.
@@ -66,11 +67,11 @@ Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over both copp
 
 `negotiatedRoute` (`negotiated-route.ts`) is the main one. It routes every net in turn, letting routes share space with other nets at a price. After each round the price rises and cells that were shared keep a history cost, until no two nets share space. Nets that still overlap after the last round are left unrouted.
 
-`autoroute` (`autoroute.ts`) routes the remaining connections one at a time. When earlier routes block one, it searches again across them at a cost, removes the routes it crosses and routes those again later.
+`autoroute` (`autoroute.ts`) routes the remaining connections one at a time. When earlier routes block one, it searches again across them at a cost, removes the routes it crosses and routes those again later. Tracks and vias passed as `rippable` count as earlier routes, so it can move them too.
 
 ## Reference design
 
-**Add file → Examples → RP2350A reference design**, or **Open an example** on the start page, adds the Raspberry Pi RP2350A minimal design to the project: a schematic, its circuit and a routed two-layer board with ground zones on both sides. It has the chip and its switching core regulator, W25Q128JVS flash, a 12 MHz crystal, a Micro-B USB connector with 27 Ω series resistors, an AMS1117 3.3 V regulator, BOOTSEL and RUN buttons, an SWD header and two 20-pin GPIO headers.
+**Add file → Examples → RP2350A reference design**, or **Open an example** on the start page, adds the Raspberry Pi RP2350A minimal design to the project: a schematic, its circuit and a routed two-layer board with ground zones on both sides, joined by a via in each island of copper. It has the chip and its switching core regulator, W25Q128JVS flash, a 12 MHz crystal, a Micro-B USB connector with 27 Ω series resistors, an AMS1117 3.3 V regulator, BOOTSEL and RUN buttons, an SWD header and two 20-pin GPIO headers.
 
 `pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about three minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
 
@@ -103,8 +104,6 @@ The board belongs to the file's circuit and takes its name. A drawing without a 
 | `net` | On a copper line (a track), via or zone: the circuit net ID. |
 | `zone` | Makes a copper rectangle a zone. `clearance` optionally overrides the board clearance. |
 | `kind: "symbol"` with `footprint` | A placed footprint. `children` are its items in footprint coordinates, `component` is the circuit component ID, and `flipped` marks a footprint on the back, whose children are already mirrored. |
-
-Earlier versions saved each board in its own `.ecadpcb` file listed under `boards` in the project manifest. The app still opens such a project, and the next save moves each board into its drawing and deletes the `.ecadpcb` file.
 
 ## Code
 

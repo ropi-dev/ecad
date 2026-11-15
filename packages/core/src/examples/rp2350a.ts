@@ -6,7 +6,9 @@ import {
 	createBoardFootprint,
 	type FootprintSource,
 } from "@ecad/drawing-core/board/footprints.ts";
+import { hullDistance } from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
+import type { BoardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
@@ -37,6 +39,7 @@ import {
 	symbolDefinitions,
 } from "#/drawing/symbols.ts";
 import { updateText } from "#/drawing/text.ts";
+import { containsPoint, type MultiPolygon } from "#/engine/geometry.ts";
 
 /** A part in the reference design: its symbol, value, footprint and pin nets. */
 interface Part {
@@ -279,9 +282,9 @@ export const rp2350aParts: readonly Part[] = [
 	capacitor("C5", "4.7uF", "VREG_AVDD", [6.4, 11.4, 0], "0603"),
 	capacitor("C6", "4.7uF", "+3V3", [-0.2, 13.4, 90, true]),
 	capacitor("C7", "4.7uF", "DVDD", [4.6, 14.2, 0], "0603"),
-	capacitor("C8", "100nF", "DVDD", [-5.2, 6.6, 90, true]),
+	capacitor("C8", "100nF", "DVDD", [-5.2, 6.6, 270, true]),
 	capacitor("C9", "100nF", "DVDD", [0.2, 3.4, 0, true]),
-	capacitor("C10", "100nF", "DVDD", [5.2, 6.2, 90, true]),
+	capacitor("C10", "100nF", "DVDD", [5.2, 6.2, 270, true]),
 	capacitor("C11", "100nF", "+3V3", [-5.2, 8.8, 90, true]),
 	capacitor("C12", "100nF", "+3V3", [-5.2, 4.4, 90, true]),
 	capacitor("C13", "100nF", "+3V3", [-1.9, 3.4, 0, true]),
@@ -560,22 +563,13 @@ export function rp2350aBoard(
 			: undefined,
 	});
 	nextId += negotiated.shapes.length;
-	const finished = autoroute(
-		[...board, ...negotiated.shapes],
-		netlist,
-		nextId,
-		{
-			rules: rp2350aRules,
-			trace: trace
-				? (event, line) =>
-						trace(`${netlist.nets.get(line.net)?.name}: ${event}`)
-				: undefined,
-		},
-	);
-	const routed = {
-		shapes: [...negotiated.shapes, ...finished.shapes],
-		failed: finished.failed,
-	};
+	const finished = autoroute(board, netlist, nextId, {
+		rules: rp2350aRules,
+		rippable: negotiated.shapes,
+		trace: trace
+			? (event, line) => trace(`${netlist.nets.get(line.net)?.name}: ${event}`)
+			: undefined,
+	});
 	nextId += finished.shapes.length;
 	const zones: EditorShape[] = (["F.Cu", "B.Cu"] as const).map((layer) => ({
 		id: nextId++,
@@ -590,12 +584,121 @@ export function rp2350aBoard(
 		zone: {},
 		...(ground ? { net: ground.id } : {}),
 	}));
-	const shapes = [...board, ...routed.shapes, ...zones];
-	const fills = fillZones(shapes, netlist, rp2350aRules);
-	void fillReach(fills);
+	const poured = [...board, ...zones];
+	const stitches = stitchZones(
+		[...poured, ...finished.shapes],
+		netlist,
+		rp2350aRules,
+		nextId,
+	);
+	nextId += stitches.length;
+	const fixed = [...poured, ...stitches];
+	const repaired = autoroute(fixed, netlist, nextId, {
+		rules: rp2350aRules,
+		rippable: finished.shapes,
+		zoneReach: fillReach(
+			fillZones([...fixed, ...finished.shapes], netlist, rp2350aRules),
+		),
+	});
+	const shapes = [...fixed, ...repaired.shapes];
 	const file = createBoardFile("RP2350A", circuit.circuit.id);
 	return {
 		board: { ...file, rules: rp2350aRules, shapes },
-		failed: routed.failed.length,
+		failed: repaired.failed.length,
 	};
+}
+
+function insideBy(
+	polygon: MultiPolygon[number],
+	point: Point,
+	margin: number,
+): boolean {
+	if (!containsPoint([polygon], point)) return false;
+	const probe = { points: [point], radius: 0 };
+	return polygon.every((path) =>
+		path.every(
+			([x, y], index) =>
+				hullDistance(probe, {
+					points: [
+						{ x, y },
+						{
+							x: path[(index + 1) % path.length][0],
+							y: path[(index + 1) % path.length][1],
+						},
+					],
+					radius: 0,
+				}) >= margin,
+		),
+	);
+}
+
+/** @return One via per zone island, where it also lies inside the other side's fill. */
+export function stitchZones(
+	shapes: readonly EditorShape[],
+	netlist: BoardNetlist,
+	rules: BoardRules,
+	nextId: number,
+): EditorShape[] {
+	const fills = fillZones(shapes, netlist, rules);
+	const vias: EditorShape[] = [];
+	const margin = rules.viaDiameter / 2 + 0.01;
+	for (const fill of fills) {
+		if (!fill.net) continue;
+		const others = fills.filter(
+			(other) => other.net === fill.net && other.layer !== fill.layer,
+		);
+		for (const island of fill.polygons) {
+			const xs = island[0].map(([x]) => x);
+			const ys = island[0].map(([, y]) => y);
+			const center = {
+				x: (Math.min(...xs) + Math.max(...xs)) / 2,
+				y: (Math.min(...ys) + Math.max(...ys)) / 2,
+			};
+			let best: Point | undefined;
+			for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.1)
+				for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.1) {
+					const point = {
+						x: Math.round(x * 20) / 20,
+						y: Math.round(y * 20) / 20,
+					};
+					if (
+						best &&
+						Math.hypot(point.x - center.x, point.y - center.y) >=
+							Math.hypot(best.x - center.x, best.y - center.y)
+					)
+						continue;
+					if (!insideBy(island, point, margin)) continue;
+					if (
+						!others.some((other) =>
+							other.polygons.some((polygon) =>
+								insideBy(polygon, point, margin),
+							),
+						)
+					)
+						continue;
+					best = point;
+				}
+			const at = best;
+			if (
+				!at ||
+				vias.some((via) => Math.hypot(via.x - at.x, via.y - at.y) < 1e-6)
+			)
+				continue;
+			vias.push({
+				id: nextId++,
+				kind: "circle",
+				layer: "F.Cu",
+				x: at.x,
+				y: at.y,
+				width: rules.viaDiameter,
+				height: rules.viaDiameter,
+				rotation: 0,
+				lineWidth: 0.15,
+				filled: true,
+				via: { drill: rules.viaDrill },
+				net: fill.net,
+			});
+		}
+	}
+	return vias;
 }

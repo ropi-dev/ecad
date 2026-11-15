@@ -23,17 +23,13 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
+import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { trackPath, trackSegments } from "#/board/routing.ts";
+import { trackPath, trackSegment, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView } from "#/board/view.ts";
 import { projectFileSelections } from "#/projects/file-url.ts";
-import {
-	PROJECT_FILE,
-	parseProjectManifest,
-	serializeProjectManifest,
-} from "#/projects/format.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import {
 	type ProjectDirectory,
@@ -370,7 +366,6 @@ for (const layout of ["files", "revisions"] as const)
 		});
 		const path = required(saved.manifest.drawing);
 		assert.match(path, /Divider\.ecaddraw$/);
-		assert.equal(saved.manifest.boards, undefined);
 		assert.deepEqual(
 			[...directory.files.keys()].filter((name) => name.endsWith(".ecadpcb")),
 			[],
@@ -400,49 +395,208 @@ for (const layout of ["files", "revisions"] as const)
 		assert.deepEqual(reopened.boards, [board]);
 	});
 
-test("a project with a separate .ecadpcb file loads it and moves the board into the drawing", async () => {
-	const directory = memoryDirectory();
-	const repository = new ProjectRepository(directory, { layout: "files" });
-	await repository.create("Divider");
+function dividerBoard(zones: EditorShape[], outline?: EditorShape[]) {
 	const circuit = twoResistors();
-	await repository.save({
-		shapes: [],
-		symbols: [],
-		circuits: [{ ...createCircuit("Divider", circuit.id), circuit }],
-	});
-	const encode = (value: unknown) =>
-		new TextEncoder().encode(JSON.stringify(value));
 	const shapes = placed(circuit);
-	directory.files.set(
-		"Divider.ecadpcb",
-		encode({
-			format: "ecad-board",
-			version: 1,
-			units: "mm",
-			id: "divider",
-			name: "Divider",
-			circuitId: circuit.id,
-			rules: defaultBoardRules,
-			shapes,
-		}),
+	const centerX = (shapes[0].x + shapes[1].x) / 2;
+	const centerY = shapes[0].y;
+	const edge: EditorShape[] = outline ?? [
+		{
+			id: 50,
+			kind: "rectangle",
+			layer: "Edge.Cuts",
+			x: centerX,
+			y: centerY,
+			width: 30,
+			height: 20,
+			rotation: 0,
+			lineWidth: 0.1,
+		},
+	];
+	return {
+		circuit,
+		netlist: boardNetlist(circuit),
+		centerX,
+		centerY,
+		board: [
+			...shapes,
+			...edge,
+			...zones.map((zone) => ({
+				...zone,
+				x: zone.x + centerX,
+				y: zone.y + centerY,
+			})),
+		],
+	};
+}
+
+const zoneAt = (
+	id: number,
+	net: string,
+	x: number,
+	width: number,
+): EditorShape => ({
+	id,
+	kind: "rectangle",
+	layer: "F.Cu",
+	x,
+	y: 0,
+	width,
+	height: 18,
+	rotation: 0,
+	lineWidth: 0.1,
+	zone: {},
+	net,
+});
+
+test("a zone cut in two by another net keeps a ratsnest line between its islands", () => {
+	const { board, netlist, centerX, centerY } = dividerBoard([
+		zoneAt(51, "gnd", 0, 28),
+	]);
+	const cut = trackSegments(
+		60,
+		[
+			{ x: centerX, y: centerY - 9.5 },
+			{ x: centerX, y: centerY + 9.5 },
+		],
+		"F.Cu",
+		0.25,
+		"mid",
 	);
-	const manifest = parseProjectManifest(
-		new TextDecoder().decode(required(directory.files.get(PROJECT_FILE))),
+	const shapes = [...board, ...cut];
+	const fills = fillZones(shapes, netlist, defaultBoardRules);
+	assert.equal(fills[0].polygons.length, 2);
+	const { ratsnest } = analyzeConnectivity(
+		copperItems(shapes, netlist),
+		fillReach(fills),
 	);
-	directory.files.set(
-		PROJECT_FILE,
-		new TextEncoder().encode(
-			serializeProjectManifest({ ...manifest, boards: ["Divider.ecadpcb"] }),
+	assert.ok(ratsnest.some((line) => line.net === "gnd"));
+});
+
+test("DRC reports zones on different nets whose fills overlap", () => {
+	const { board, netlist } = dividerBoard([
+		zoneAt(51, "gnd", -6, 16),
+		zoneAt(52, "mid", 6, 16),
+	]);
+	const fills = fillZones(board, netlist, defaultBoardRules);
+	const findings = checkBoard(board, netlist, defaultBoardRules, {
+		zoneReach: fillReach(fills),
+	});
+	assert.ok(
+		findings.some(
+			(finding) =>
+				finding.kind === "short" &&
+				finding.shapeIds.includes(51) &&
+				finding.shapeIds.includes(52),
 		),
 	);
-	const legacy = new ProjectRepository(directory, { layout: "files" });
-	const loaded = await legacy.load();
-	assert.deepEqual(loaded.boards?.[0]?.shapes, shapes);
-	const saved = await legacy.save({ shapes: [], symbols: [] });
-	assert.equal(saved.manifest.boards, undefined);
-	assert.equal(directory.files.has("Divider.ecadpcb"), false);
-	assert.deepEqual(
-		decode(directory.files.get(required(saved.manifest.drawing))).board.shapes,
-		shapes,
+});
+
+test("a zone stays empty and DRC reports it while the outline is open", () => {
+	const line = (id: number, x1: number, y1: number, x2: number, y2: number) =>
+		({
+			...trackSegment(
+				id,
+				{ x: x1, y: y1 },
+				{ x: x2, y: y2 },
+				"F.Cu",
+				0.1,
+				undefined,
+			),
+			layer: "Edge.Cuts",
+		}) as EditorShape;
+	const probe = dividerBoard([]);
+	const { board, netlist } = dividerBoard(
+		[zoneAt(51, "gnd", 0, 28)],
+		[
+			line(
+				40,
+				probe.centerX - 15,
+				probe.centerY - 10,
+				probe.centerX + 15,
+				probe.centerY - 10,
+			),
+			line(
+				41,
+				probe.centerX + 15,
+				probe.centerY - 10,
+				probe.centerX + 15,
+				probe.centerY + 10,
+			),
+			line(
+				42,
+				probe.centerX + 15,
+				probe.centerY + 10,
+				probe.centerX - 15,
+				probe.centerY + 10,
+			),
+		],
 	);
+	const fills = fillZones(board, netlist, defaultBoardRules);
+	assert.deepEqual(fills[0].polygons, []);
+	assert.ok(
+		checkBoard(board, netlist, defaultBoardRules).some(
+			(finding) => finding.id === "outline-open",
+		),
+	);
+});
+
+test("sync keeps a footprint whose footprint is missing and detaches a second copy", () => {
+	const circuit = twoResistors();
+	const shapes = placed(circuit);
+	const copy = { ...shapes[0], id: 9, x: shapes[0].x + 20 };
+	const result = synchronizeBoard({
+		shapes: [...shapes, copy],
+		circuit,
+		footprintOf: (component) =>
+			component.reference === "R2" ? undefined : resistor,
+		source,
+		nextId: 10,
+	});
+	assert.deepEqual(result.remove, []);
+	assert.deepEqual(
+		result.missing.map((entry) => entry.reference),
+		["R2"],
+	);
+	assert.equal(result.replace.length, 1);
+	const detached = result.replace[0];
+	assert.equal(detached.id, 9);
+	assert.equal(detached.kind === "symbol" && detached.component, undefined);
+});
+
+test("a via inside a footprint takes its pad's net and counts as copper", () => {
+	const circuit = twoResistors();
+	const file = required(library.get(resistor.id));
+	const pad = required(
+		file.shapes.find((shape) => isPad(shape as EditorShape)),
+	);
+	const via: EditorShape = {
+		id: 999,
+		kind: "circle",
+		layer: "F.Cu",
+		x: pad.x,
+		y: pad.y,
+		width: 0.6,
+		height: 0.6,
+		rotation: 0,
+		lineWidth: 0.15,
+		filled: true,
+		via: { drill: 0.3 },
+	};
+	const shapes = synchronizeBoard({
+		shapes: [],
+		circuit,
+		footprintOf: () => resistor,
+		source: (reference) => ({
+			reference,
+			name: file.name,
+			shapes: [...file.shapes, via],
+		}),
+		nextId: 1,
+	}).place;
+	const vias = copperItems(shapes, boardNetlist(circuit)).filter(
+		(item) => item.kind === "via",
+	);
+	assert.equal(vias.length, 2);
+	assert.ok(vias.every((item) => item.net === "gnd" || item.net === "mid"));
 });

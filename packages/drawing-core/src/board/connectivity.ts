@@ -1,6 +1,8 @@
 import {
+	type BoardFootprint,
 	type BoardPad,
 	boardPads,
+	footprintItems,
 	isBoardFootprint,
 } from "#/board/footprints.ts";
 import {
@@ -16,7 +18,7 @@ import type { EditorShape } from "#/drawing/schema.ts";
 import { mergeBounds } from "#/drawing/shape-geometry.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import { copperLayers, isCopperLayer } from "#/footprint/layers.ts";
-import { isVia, shapeLayer } from "#/footprint/shapes.ts";
+import { isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
 export type CopperLayer = "F.Cu" | "B.Cu";
@@ -82,8 +84,46 @@ export function copperItems(
 			points: [{ x: pad.shape.x, y: pad.shape.y }],
 		});
 	}
+	const padsOf = new Map<number, CopperItem[]>();
+	for (const item of items) {
+		const list = padsOf.get(item.shapeId);
+		if (list) list.push(item);
+		else padsOf.set(item.shapeId, [item]);
+	}
 	for (const shape of shapes) {
-		if (isBoardFootprint(shape)) continue;
+		if (isBoardFootprint(shape)) {
+			const pads = padsOf.get(shape.id) ?? [];
+			for (const child of footprintItems(shape as BoardFootprint)) {
+				const part = child as EditorShape;
+				if (isPad(part) || part.kind === "text") continue;
+				if (isVia(part)) {
+					const hulls = shapeHulls(part);
+					const pad = pads.find((item) =>
+						item.hulls.some((hull) =>
+							hulls.some((own) => hullDistance(hull, own) <= touching),
+						),
+					);
+					add({
+						shapeId: shape.id,
+						kind: "via",
+						shape: part,
+						...(pad?.net ? { net: pad.net } : {}),
+						layers: copperLayers as CopperLayer[],
+						hulls,
+						points: [{ x: part.x, y: part.y }],
+					});
+				} else if (isCopperLayer(part.layer))
+					add({
+						shapeId: shape.id,
+						kind: "graphic",
+						shape: part,
+						layers: [part.layer as CopperLayer],
+						hulls: shapeHulls(part),
+						points: [],
+					});
+			}
+			continue;
+		}
 		if (isVia(shape)) {
 			add({
 				shapeId: shape.id,
@@ -195,10 +235,18 @@ export interface BoardConnectivity {
 	ratsnest: readonly RatsnestLine[];
 }
 
-export type ZoneReach = (zone: CopperItem, item: CopperItem) => boolean;
+export interface ZoneReach {
+	islands(zone: CopperItem): number;
+	/** @return The indices of the zone's islands that `item` touches. */
+	touched(zone: CopperItem, item: CopperItem): readonly number[];
+	/** @return The gap between two zones' copper. */
+	gap?(a: CopperItem, b: CopperItem): number;
+}
 
-const defaultZoneReach: ZoneReach = (zone, item) =>
-	itemDistance(zone, item) <= touching;
+const defaultZoneReach: ZoneReach = {
+	islands: () => 1,
+	touched: (zone, item) => (itemDistance(zone, item) <= touching ? [0] : []),
+};
 
 /**
  * Groups copper on the same net that touches on a shared layer, then joins
@@ -208,18 +256,25 @@ export function analyzeConnectivity(
 	items: readonly CopperItem[],
 	zoneReach: ZoneReach = defaultZoneReach,
 ): BoardConnectivity {
-	const sets = unionFind(items.length);
+	const islandBase = new Map<number, number>();
+	let nodes = items.length;
+	for (const item of items)
+		if (item.kind === "zone") {
+			islandBase.set(item.index, nodes);
+			nodes += zoneReach.islands(item);
+		}
+	const sets = unionFind(nodes);
 	nearbyPairs(items, touching, (a, b) => {
 		if (!a.net || a.net !== b.net || !sharesLayer(a, b)) return;
+		if (a.kind === "zone" && b.kind === "zone") return;
 		if (a.kind === "zone" || b.kind === "zone") {
 			const [zone, other] = a.kind === "zone" ? [a, b] : [b, a];
-			if (
-				other.kind === "zone"
-					? itemDistance(a, b) > touching
-					: !zoneReach(zone, other)
-			)
-				return;
-		} else if (itemDistance(a, b) > touching) return;
+			const base = islandBase.get(zone.index) ?? 0;
+			for (const island of zoneReach.touched(zone, other))
+				sets.union(other.index, base + island);
+			return;
+		}
+		if (itemDistance(a, b) > touching) return;
 		sets.union(b.index, a.index);
 	});
 	const group = items.map((item) => sets.find(item.index));

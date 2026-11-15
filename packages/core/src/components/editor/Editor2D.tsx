@@ -804,7 +804,9 @@ function EditorCanvas({
 				setupOpen: boardPanel === "setup",
 				onSetup: () =>
 					setBoardPanel((open) => (open === "setup" ? null : "setup")),
-				canFlip: selected.some((shape) => shape.kind === "symbol"),
+				canFlip:
+					flatShown &&
+					selected.some((shape) => shape.kind === "symbol" && !shape.locked),
 				onFlip: () => {
 					finishDrag(true);
 					boardEditor.flipSelection();
@@ -909,7 +911,7 @@ function EditorCanvas({
 							? gestures.placeTrackVia()
 							: key === "/"
 								? gestures.flipTrackPosture()
-								: key === "f" && !getDrag()
+								: key === "f" && flatShown && !getDrag()
 									? boardEditor.flipSelection()
 									: false;
 					if (handled) {
@@ -925,6 +927,8 @@ function EditorCanvas({
 					canRotatePlacement,
 					placing,
 					clearPlacementPreview,
+					finishWire,
+					finishDrag,
 					setTool,
 					rotateItems,
 					undo,

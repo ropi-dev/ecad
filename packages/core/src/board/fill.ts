@@ -5,9 +5,14 @@ import {
 	itemDistance,
 	type ZoneReach,
 } from "@ecad/drawing-core/board/connectivity.ts";
-import { boardOutlineSegments } from "@ecad/drawing-core/board/drc.ts";
+import {
+	boardOutlineSegments,
+	outlineClosed,
+} from "@ecad/drawing-core/board/drc.ts";
 import {
 	boundsOverlap,
+	type Hull,
+	hullDistance,
 	hullPolygon,
 	rectangleCorners,
 } from "@ecad/drawing-core/board/geometry.ts";
@@ -75,11 +80,10 @@ export function outlineLoops(
 	return loops;
 }
 
-function boardInterior(
-	shapes: readonly EditorShape[],
-): MultiPolygon | undefined {
-	const loops = outlineLoops(boardOutlineSegments(shapes));
-	if (!loops.length) return undefined;
+function boardInterior(shapes: readonly EditorShape[]): MultiPolygon {
+	const segments = boardOutlineSegments(shapes);
+	if (!outlineClosed(segments)) return [];
+	const loops = outlineLoops(segments);
 	// Even-odd: an outline inside another one cuts a hole.
 	let interior: MultiPolygon = [];
 	for (const loop of loops) {
@@ -133,18 +137,16 @@ export function fillZones(
 		]);
 		for (const zone of zones) {
 			const layer = zone.layers[0];
-			const clearance =
-				(zone.shape.kind === "rectangle" && zone.shape.zone?.clearance) ||
-				rules.clearance;
+			const clearance = Math.max(
+				(zone.shape.kind === "rectangle" && zone.shape.zone?.clearance) || 0,
+				rules.clearance,
+			);
 			let region: MultiPolygon = combinePolygons([
 				[ring(rectangleCorners(zone.shape))],
 			]);
-			if (interior)
-				region = combinePolygons(
-					region,
-					combinePolygons(region, interior, true),
-					true,
-				);
+			region = interior.length
+				? combinePolygons(region, combinePolygons(region, interior, true), true)
+				: [];
 			const obstacles: MultiPolygon = [...edges];
 			for (const item of items) {
 				if (item === zone || !item.layers.includes(layer)) continue;
@@ -188,12 +190,53 @@ export function fillZones(
 	return fills;
 }
 
-/** Zone connectivity that follows the computed fill, islands removed. */
+function polygonGap(a: MultiPolygon, b: MultiPolygon): number {
+	const first = (polygons: MultiPolygon) =>
+		polygons.map(([[[x, y]]]) => ({ x, y }));
+	if (
+		first(a).some((point) => containsPoint(b, point)) ||
+		first(b).some((point) => containsPoint(a, point))
+	)
+		return 0;
+	const edges = (polygons: MultiPolygon) =>
+		polygons.flatMap((polygon) =>
+			polygon.flatMap((path) =>
+				path.map(([x, y], index): Hull => {
+					const [nx, ny] = path[(index + 1) % path.length];
+					return {
+						points: [
+							{ x, y },
+							{ x: nx, y: ny },
+						],
+						radius: 0,
+					};
+				}),
+			),
+		);
+	let gap = Infinity;
+	const right = edges(b);
+	for (const edge of edges(a))
+		for (const other of right) gap = Math.min(gap, hullDistance(edge, other));
+	return gap;
+}
+
 export function fillReach(fills: readonly ZoneFill[]): ZoneReach {
 	const byZone = new Map(fills.map((fill) => [fill.zone.index, fill]));
-	return (zone, item) => {
-		const fill = byZone.get(zone.index);
-		if (!fill) return itemDistance(zone, item) <= 1e-6;
-		return touchesFill(fill.polygons, item);
+	return {
+		gap: (a, b) => {
+			const first = byZone.get(a.index);
+			const second = byZone.get(b.index);
+			return first && second
+				? polygonGap(first.polygons, second.polygons)
+				: itemDistance(a, b);
+		},
+		islands: (zone) => byZone.get(zone.index)?.polygons.length ?? 1,
+		touched: (zone, item) => {
+			const fill = byZone.get(zone.index);
+			if (!fill) return itemDistance(zone, item) <= 1e-6 ? [0] : [];
+			return fill.polygons.flatMap((polygon, index) =>
+				touchesFill([polygon], item) ? [index] : [],
+			);
+		},
 	};
 }

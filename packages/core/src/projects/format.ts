@@ -80,7 +80,6 @@ export const manifestSchema = z.strictObject({
 		.optional(),
 	symbols: z.array(projectPathSchema),
 	footprints: z.array(projectPathSchema).optional(),
-	boards: z.array(projectPathSchema).optional(),
 	symbolLibraries: projectPathSchema.optional(),
 	assets: z.array(assetSchema).default([]),
 	settings: readProjectSettingsSchema.optional(),

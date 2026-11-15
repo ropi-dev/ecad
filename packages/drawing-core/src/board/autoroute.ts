@@ -36,6 +36,7 @@ export interface AutorouteOptions {
 	/** Extra cost per change of direction, in millimetres. */
 	bendCost?: number;
 	zoneReach?: ZoneReach;
+	rippable?: readonly EditorShape[];
 	/** Search steps per connection before it is given up. */
 	budget?: number;
 	/** Connections tried in total, counting retries after rip-ups. */
@@ -260,6 +261,26 @@ export function autoroute(
 	}
 
 	const routes: Route[] = [];
+	if (options.rippable?.length) {
+		const items = copperItems(options.rippable, netlist);
+		const { group } = analyzeConnectivity(items);
+		const chains = new Map<number, Route>();
+		for (const item of items) {
+			if (!item.net) continue;
+			let route = chains.get(group[item.index]);
+			if (!route) {
+				route = {
+					net: item.net,
+					owner: indexOf(item.net),
+					shapes: [],
+					alive: true,
+				};
+				chains.set(group[item.index], route);
+				routes.push(route);
+			}
+			route.shapes.push(item.shape);
+		}
+	}
 	const routeHulls = (route: Route) =>
 		route.shapes.flatMap((shape) =>
 			shape.kind === "line"

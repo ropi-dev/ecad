@@ -38,7 +38,8 @@ const gap = 1.5;
  * Brings a board up to date with its circuit: places a footprint for each new
  * component, swaps footprints the schematic changed, updates references and
  * values, and removes footprints whose component is gone. Placed footprints
- * keep their position, rotation and side.
+ * keep their position, rotation and side. A footprint whose component has
+ * another footprint loses its component instead of being removed.
  */
 export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 	const result: BoardSyncResult = {
@@ -50,8 +51,10 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 	const placed = new Map<string, BoardFootprint>();
 	for (const shape of input.shapes)
 		if (isBoardFootprint(shape) && shape.component) {
-			if (placed.has(shape.component)) result.remove.push(shape.id);
-			else placed.set(shape.component, shape);
+			if (placed.has(shape.component)) {
+				const { component: _component, ...detached } = shape;
+				result.replace.push(detached);
+			} else placed.set(shape.component, shape);
 		}
 	const components = new Map(
 		input.circuit.components.map((component) => [component.id, component]),
@@ -68,7 +71,6 @@ export function synchronizeBoard(input: BoardSyncInput): BoardSyncResult {
 				reference: component.reference,
 				...(reference ? { footprint: reference } : {}),
 			});
-			if (existing) result.remove.push(existing.id);
 			continue;
 		}
 		if (!existing) {

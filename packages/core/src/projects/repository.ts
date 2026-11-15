@@ -1,12 +1,7 @@
 import { circuitSchema } from "@ecad/drawing-core/circuit/model.ts";
 import { Predicate } from "effect";
 import { z } from "zod";
-import {
-	type BoardFile,
-	boardData,
-	boardDataSchema,
-	legacyBoardFileSchema,
-} from "#/board/format.ts";
+import { type BoardFile, boardData, boardDataSchema } from "#/board/format.ts";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { persistProjectDrawingShapes } from "#/drawing/symbol-persistence.ts";
 import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
@@ -161,7 +156,6 @@ function manifestPaths(manifest: ProjectManifest): string[] {
 		...(manifest.drawings ?? []),
 		...manifest.symbols,
 		...(manifest.footprints ?? []),
-		...(manifest.boards ?? []),
 		...(manifest.circuits ?? []).map((paths) => paths.circuit),
 	];
 }
@@ -174,7 +168,6 @@ function withDocumentPaths(
 	const {
 		drawing: _drawing,
 		symbolLibraries: _symbolLibraries,
-		boards: _boards,
 		...rest
 	} = manifest;
 	const { drawing, symbolLibraries, ...lists } = paths;
@@ -380,20 +373,6 @@ export class ProjectRepository {
 		const footprints =
 			manifest.footprints &&
 			(await Promise.all(manifest.footprints.map((path) => readJson(path))));
-		const legacyBoards = await Promise.all(
-			(manifest.boards ?? []).map(async (path) => ({
-				path,
-				board: await readJson(path, (value): BoardFile => {
-					const {
-						format: _format,
-						version: _version,
-						id: _id,
-						...board
-					} = legacyBoardFileSchema.parse(value);
-					return board;
-				}),
-			})),
-		);
 		const embeddedBoards: ({ path: string; board: BoardFile } | undefined)[] =
 			[];
 		const embed = (
@@ -424,18 +403,7 @@ export class ProjectRepository {
 				},
 			};
 		};
-		const boards = () => {
-			const embedded = embeddedBoards.filter(Predicate.isNotUndefined);
-			return [
-				...legacyBoards.filter(
-					(legacy) =>
-						!embedded.some(
-							(entry) => entry.board.circuitId === legacy.board.circuitId,
-						),
-				),
-				...embedded,
-			];
-		};
+		const boards = () => embeddedBoards.filter(Predicate.isNotUndefined);
 		const document = validateProjectDocument(
 			{
 				shapes: (drawing?.shapes ?? []) as ProjectDocument["shapes"],
@@ -496,7 +464,7 @@ export class ProjectRepository {
 						}),
 				symbols,
 				...(footprints === undefined ? {} : { footprints }),
-				...(manifest.boards === undefined && !boards().length
+				...(!boards().length
 					? {}
 					: { boards: boards().map((entry) => entry.board) }),
 				symbolLibraries:
