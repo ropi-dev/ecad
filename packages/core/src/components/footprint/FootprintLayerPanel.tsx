@@ -7,7 +7,7 @@ import { ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
 import { useCallback, useId, useState } from "react";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import { useSchematicTheme } from "#/settings/theme.ts";
 
 export function useFootprintLayers() {
 	const [active, setActive] = useState<FootprintLayer>("F.Cu");
@@ -48,6 +48,7 @@ export function FootprintLayerPanel({
 	onToggle: (layer: FootprintLayer) => void;
 }) {
 	const [collapsed, setCollapsed] = useState(false);
+	const layerColors = useSchematicTheme().appearance;
 	const listId = useId();
 	return (
 		<FloatingPanel label="Layers" position="top-left" narrow>
@@ -84,7 +85,7 @@ export function FootprintLayerPanel({
 				{footprintLayers.map((layer) => {
 					const visible = !hidden.has(layer);
 					const count = itemCounts.get(layer) ?? 0;
-					const color = darkSchematicTheme.appearance[layer];
+					const color = layerColors[layer];
 					return (
 						<li
 							key={layer}

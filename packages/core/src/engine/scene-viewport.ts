@@ -17,7 +17,7 @@ import {
 	Vector3,
 	WebGLRenderer,
 } from "three";
-import { viewerTheme } from "#/drawing/schematic-theme.ts";
+import { sharedViewerColors, viewerTheme } from "#/drawing/schematic-theme.ts";
 import { getSceneBounds } from "#/engine/camera.ts";
 import { capturePng } from "#/engine/capture-png.ts";
 import { create3DControls, type OrbitGesture } from "#/engine/controls3d.ts";
@@ -104,6 +104,7 @@ export interface SceneViewportRuntime extends Viewer3DHandle {
 	setPhysicalScale: (scale: number | null) => void;
 	/** Shows a dot grid under a top view, or hides it with null. */
 	setGrid: (grid: ViewportGridOptions | null) => void;
+	refreshTheme: () => void;
 	actualSize: () => void;
 	setProjection: (projection: "perspective" | "orthographic") => void;
 	setOrbit: (enabled: boolean) => void;
@@ -229,7 +230,7 @@ export function createSceneViewport(
 		const scene = new Scene();
 		scene.add(
 			group,
-			new HemisphereLight("white", viewerTheme.ambientGround, 2.5),
+			new HemisphereLight("white", sharedViewerColors.ambientGround, 2.5),
 		);
 		if (batcher) scene.add(batcher.object);
 		/**
@@ -327,29 +328,30 @@ export function createSceneViewport(
 			board.setFromObject(group);
 			planeZ = (board.isEmpty() ? 0 : board.min.z) - radius * 0.002;
 		};
-		if (!topView) {
-			const grid = lifecycle.acquire(
-				() =>
-					new GridHelper(
-						radius * 6,
-						60,
-						viewerTheme.gridMajor,
-						viewerTheme.gridMinor,
-					),
-				(grid) => grid.dispose(),
-			);
-			grid.rotation.x = Math.PI / 2;
-			grid.position.set(
+		let floor: GridHelper | undefined;
+		const removeFloor = () => {
+			floor?.removeFromParent();
+			floor?.dispose();
+			floor = undefined;
+		};
+		lifecycle.addFinalizer(removeFloor);
+		const placeFloor = () => {
+			removeFloor();
+			const theme = viewerTheme();
+			floor = new GridHelper(radius * 6, 60, theme.gridMajor, theme.gridMinor);
+			floor.rotation.x = Math.PI / 2;
+			floor.position.set(
 				sphere.center.x,
 				sphere.center.y,
 				bounds.min.z - radius * 0.002,
 			);
-			grid.material.transparent = true;
-			grid.material.opacity = 0.6;
-			grid.material.depthWrite = false;
-			grid.renderOrder = -1;
-			scene.add(grid);
-		}
+			floor.material.transparent = true;
+			floor.material.opacity = 0.6;
+			floor.material.depthWrite = false;
+			floor.renderOrder = -1;
+			scene.add(floor);
+		};
+		if (!topView) placeFloor();
 		camera.near = radius / 1000;
 		camera.far = radius * 1000;
 		let zoomReferenceDistance = 0;
@@ -1063,6 +1065,10 @@ export function createSceneViewport(
 				grid?.set(options);
 				planeGrid?.set(options);
 				showGrid();
+				schedule();
+			},
+			refreshTheme: () => {
+				if (!topView) placeFloor();
 				schedule();
 			},
 			actualSize: () => {

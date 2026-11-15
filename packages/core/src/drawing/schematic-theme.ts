@@ -9,7 +9,7 @@ export interface SchematicTheme {
 	appearance: Record<DrawingAppearance, string>;
 }
 
-const kicadLayerColors = {
+const darkLayerColors = {
 	"F.Cu": "#c83434",
 	"B.Cu": "#4d7fc4",
 	"F.SilkS": "#f2eda1",
@@ -24,9 +24,24 @@ const kicadLayerColors = {
 	"B.Fab": "#6b72a8",
 	"Edge.Cuts": "#d0d239",
 } as const;
+const lightLayerColors: Record<keyof typeof darkLayerColors, string> = {
+	"F.Cu": "#c83434",
+	"B.Cu": "#3b6fb8",
+	"F.SilkS": "#3f3c0f",
+	"B.SilkS": "#5e3028",
+	"F.Mask": "#9a4fba",
+	"B.Mask": "#1f9288",
+	"F.Paste": "#8f776f",
+	"B.Paste": "#2f8f8f",
+	"F.CrtYd": "#d318bb",
+	"B.CrtYd": "#0e9fb3",
+	"F.Fab": "#757575",
+	"B.Fab": "#5a61a0",
+	"Edge.Cuts": "#8d8f12",
+};
 const throughHolePad = "#c9a23c";
 
-export const lightSchematicTheme: SchematicTheme = {
+export const printSchematicTheme: SchematicTheme = {
 	desk: "#e2e1db",
 	paper: "#f5f4ef",
 	paperEdge: "#b5b5b5",
@@ -43,12 +58,38 @@ export const lightSchematicTheme: SchematicTheme = {
 		"pin-number": "#a90000",
 		note: "#0000c2",
 		label: "#0f0f0f",
-		...kicadLayerColors,
+		...darkLayerColors,
 		"pad-through": throughHolePad,
 		via: "#8c8c8c",
 		"pad-hole": "#ffffff",
 		"pad-number": "#1a1a1a",
 		ratsnest: "#3c3c3c",
+	},
+};
+
+export const lightSchematicTheme: SchematicTheme = {
+	desk: "#e2e5e9",
+	paper: "#fcfcfa",
+	paperEdge: "#b4bbc5",
+	grid: "#c5cbd3",
+	sheet: "#a85454",
+	appearance: {
+		stroke: "#157a74",
+		pin: "#157a74",
+		fill: "#dff0ee",
+		wire: "#cf3f58",
+		highlighted: "#8c1230",
+		selected: "#9a5510",
+		text: "#2d6461",
+		"pin-number": "#a05060",
+		note: "#2458c9",
+		label: "#181c22",
+		...lightLayerColors,
+		"pad-through": "#a8801a",
+		via: "#8a8a8a",
+		"pad-hole": "#30353d",
+		"pad-number": "#ffffff",
+		ratsnest: "#3a3a3a",
 	},
 };
 
@@ -69,7 +110,7 @@ export const darkSchematicTheme: SchematicTheme = {
 		"pin-number": "#c99aa1",
 		note: "#8fb3ff",
 		label: "#e8edf5",
-		...kicadLayerColors,
+		...darkLayerColors,
 		"pad-through": throughHolePad,
 		via: "#c4c4c4",
 		"pad-hole": "#161a21",
@@ -79,20 +120,31 @@ export const darkSchematicTheme: SchematicTheme = {
 };
 
 /** Colours the Gerber and STEP viewers draw with, outside any drawing. */
-export const viewerTheme = {
+export interface ViewerTheme {
 	/** The app background: a captured PNG's backdrop and the desktop window's. */
+	background: string;
+	hover: string;
+	selection: string;
+	selectionGlow: string;
+	/** Layers behind the focused Gerber layer. */
+	unfocusedLayer: string;
+	unfocusedAdditive: boolean;
+	gridMajor: string;
+	gridMinor: string;
+	layerPalette: readonly string[];
+	/** Fill of a symbol thumbnail's body. */
+	thumbnailFill: string;
+}
+
+export const darkViewerTheme: ViewerTheme = {
 	background: "#0f1115",
 	hover: "#ffd166",
 	selection: "#ffcc33",
 	selectionGlow: "#805000",
-	/** Layers behind the focused Gerber layer. */
 	unfocusedLayer: "#467386",
-	ambientGround: "#566173",
+	unfocusedAdditive: true,
 	gridMajor: "#64748b",
 	gridMinor: "#334155",
-	/** STEP parts and Gerber layers that carry no colour of their own. */
-	model: "#e8b77e",
-	layer: "#dc9d51",
 	layerPalette: [
 		"#e8b77e",
 		"#76b8e8",
@@ -101,6 +153,52 @@ export const viewerTheme = {
 		"#e88ea1",
 		"#d2cf7d",
 	],
-	/** Fill of a symbol thumbnail's body. */
 	thumbnailFill: "#18282b",
+};
+
+export const lightViewerTheme: ViewerTheme = {
+	background: "#eceef1",
+	hover: "#f59e0b",
+	selection: "#e07b00",
+	selectionGlow: "#7a3c00",
+	unfocusedLayer: "#3f6a7c",
+	unfocusedAdditive: false,
+	gridMajor: "#8e9aab",
+	gridMinor: "#c4ccd6",
+	layerPalette: [
+		"#b9772a",
+		"#2f7fc0",
+		"#6f5bd0",
+		"#2f9469",
+		"#c94b68",
+		"#8f8b1f",
+	],
+	thumbnailFill: "#dff0ee",
+};
+
+export const sharedViewerColors = {
+	ambientGround: "#566173",
+	/** STEP parts and Gerber layers that carry no colour of their own. */
+	model: "#e8b77e",
+	layer: "#dc9d51",
 } as const;
+
+export type ThemeName = "light" | "dark";
+
+export const schematicThemes: Record<ThemeName, SchematicTheme> = {
+	light: lightSchematicTheme,
+	dark: darkSchematicTheme,
+};
+export const viewerThemes: Record<ThemeName, ViewerTheme> = {
+	light: lightViewerTheme,
+	dark: darkViewerTheme,
+};
+
+let active: ThemeName = "dark";
+
+export const activeTheme = (): ThemeName => active;
+export function setActiveTheme(next: ThemeName) {
+	active = next;
+}
+export const schematicTheme = (): SchematicTheme => schematicThemes[active];
+export const viewerTheme = (): ViewerTheme => viewerThemes[active];

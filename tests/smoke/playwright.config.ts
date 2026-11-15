@@ -20,6 +20,7 @@ export default defineConfig({
 	reporter: [["list"]],
 	use: {
 		viewport: { width: 1280, height: 800 },
+		colorScheme: "dark",
 		trace: "retain-on-failure",
 	},
 	projects: [

@@ -8,7 +8,10 @@ import {
 	PlaneGeometry,
 	Vector3,
 } from "three";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import {
+	type SchematicTheme,
+	schematicTheme,
+} from "#/drawing/schematic-theme.ts";
 import { updateText } from "#/drawing/text.ts";
 import {
 	buildWorksheetDisplay,
@@ -24,7 +27,10 @@ export function createWorksheet(sheet: SheetSize = defaultSheet) {
 }
 
 /** Owns the GPU resources for a resolved worksheet layout. */
-export function createWorksheetFromDisplay(display: WorksheetDisplay) {
+export function createWorksheetFromDisplay(
+	display: WorksheetDisplay,
+	theme: SchematicTheme = schematicTheme(),
+) {
 	const lifetime = createLifecycle();
 	const resources: { dispose(): void }[] = [];
 	lifetime.addFinalizer(() => {
@@ -38,7 +44,7 @@ export function createWorksheetFromDisplay(display: WorksheetDisplay) {
 	try {
 		const paper = new Group();
 		paper.name = display.name;
-		const color = darkSchematicTheme.sheet;
+		const color = theme.sheet;
 		const glyphPlane = own(() => new PlaneGeometry(1, 1));
 		const labels = new Map<string, ReturnType<typeof createTextMaterial>>();
 		for (const { text, x, y, fontSize, align, maxWidth } of display.labels) {
@@ -97,7 +103,7 @@ export function createWorksheetFromDisplay(display: WorksheetDisplay) {
 			paper.add(lines);
 		};
 		addLines("Worksheet frame", display.frame, color);
-		addLines("Paper edge", display.edge, darkSchematicTheme.paperEdge);
+		addLines("Paper edge", display.edge, theme.paperEdge);
 		return { paper, dispose: lifetime.dispose };
 	} catch (error) {
 		lifetime.dispose();

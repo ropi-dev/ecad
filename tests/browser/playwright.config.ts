@@ -14,6 +14,7 @@ export default defineConfig({
 	projects: [{ name: "chromium" }],
 	use: {
 		baseURL: `http://127.0.0.1:${port}`,
+		colorScheme: "dark",
 		storageState: {
 			cookies: [],
 			origins: [

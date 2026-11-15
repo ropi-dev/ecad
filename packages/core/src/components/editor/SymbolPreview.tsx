@@ -1,24 +1,39 @@
 import { PIN_RADIUS, shapeBounds } from "@ecad/drawing-core/drawing/shapes.ts";
 import { textCenter } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import { memo } from "react";
-import { darkSchematicTheme, viewerTheme } from "#/drawing/schematic-theme.ts";
+import { schematicThemes, viewerThemes } from "#/drawing/schematic-theme.ts";
 import { createSymbol, type SymbolDefinition } from "#/drawing/symbols.ts";
 import { drawingFontStack } from "#/drawing/text.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
+import { useTheme } from "#/settings/theme.ts";
 
 export default memo(function SymbolPreview({
 	definition,
 }: {
 	definition: SymbolDefinition;
 }) {
+	const theme = useTheme();
 	return measurePerformance(
 		"symbol.thumbnail",
-		() => buildSymbolPreview({ definition }),
+		() =>
+			buildSymbolPreview({
+				definition,
+				stroke: schematicThemes[theme].appearance.stroke,
+				thumbnailFill: viewerThemes[theme].thumbnailFill,
+			}),
 		{ shapes: definition.children.length },
 	);
 });
 
-function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
+function buildSymbolPreview({
+	definition,
+	stroke,
+	thumbnailFill,
+}: {
+	definition: SymbolDefinition;
+	stroke: string;
+	thumbnailFill: string;
+}) {
 	if (!definition.children.length)
 		return (
 			<span
@@ -55,7 +70,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 		<svg
 			viewBox={`${bounds.minX - padding} ${-bounds.maxY - padding} ${width + 2 * padding} ${height + 2 * padding}`}
 			className="h-7 w-11 shrink-0"
-			style={{ color: darkSchematicTheme.appearance.stroke }}
+			style={{ color: stroke }}
 			aria-hidden="true"
 		>
 			{lines && (
@@ -81,7 +96,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 						transform={`translate(${child.kind === "text" ? textCenter(child).x : child.x} ${-(child.kind === "text" ? textCenter(child).y : child.y)}) rotate(${(-child.rotation * 180) / Math.PI})`}
 						fill={
 							child.kind !== "line" && "filled" in child && child.filled
-								? viewerTheme.thumbnailFill
+								? thumbnailFill
 								: "none"
 						}
 						stroke="currentColor"
@@ -134,7 +149,7 @@ function buildSymbolPreview({ definition }: { definition: SymbolDefinition }) {
 									child.kind === "pin"
 										? "currentColor"
 										: child.filled
-											? viewerTheme.thumbnailFill
+											? thumbnailFill
 											: "none"
 								}
 								stroke={child.kind === "pin" ? "none" : "currentColor"}

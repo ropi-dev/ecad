@@ -15,7 +15,10 @@ import {
 	shapeLayer,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
+import {
+	type SchematicTheme,
+	schematicTheme,
+} from "#/drawing/schematic-theme.ts";
 import type {
 	Bounds,
 	Geometry,
@@ -271,6 +274,7 @@ export interface BoardRegion {
 
 interface BoardPlanOptions {
 	regions?: readonly BoardRegion[];
+	colors?: SchematicTheme["appearance"];
 }
 
 const regionPath = (polygons: BoardRegion["polygons"]) =>
@@ -347,7 +351,7 @@ export function planFootprintBoard(
 		if (shapeDrill(shape) !== undefined) drilled.push(shape);
 	}
 	const edge = boardEdgeBounds(shapes);
-	const colors = darkSchematicTheme.appearance;
+	const colors = options.colors ?? schematicTheme().appearance;
 	const edgeObjects = (): SceneObject[] =>
 		outline.length
 			? outline.flatMap((shape): SceneObject[] => {
@@ -546,15 +550,18 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 	type Built = { source: BoardLayerSource; layer: Layer };
 	let layers = new Map<string, Built>();
 	let retired: Layer[] = [];
+	let builtColors: SchematicTheme["appearance"] | undefined;
 	return {
 		build(shapes: readonly EditorShape[], options?: BoardPlanOptions): Layer[] {
 			const next = new Map<string, Built>();
+			const colors = options?.colors ?? schematicTheme().appearance;
+			const recoloured = colors !== builtColors;
 			try {
-				for (const plan of planFootprintBoard(shapes, options)) {
+				for (const plan of planFootprintBoard(shapes, { ...options, colors })) {
 					const kept = layers.get(plan.id);
 					next.set(
 						plan.id,
-						kept && sameSource(kept.source, plan.source)
+						kept && !recoloured && sameSource(kept.source, plan.source)
 							? kept
 							: { source: plan.source, layer: buildLayer(plan) },
 					);
@@ -567,6 +574,7 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 			for (const [id, built] of layers)
 				if (next.get(id) !== built) retired.push(built.layer);
 			layers = next;
+			builtColors = colors;
 			return [...next.values()].map((built) => built.layer);
 		},
 		release(shown: readonly Layer[]) {

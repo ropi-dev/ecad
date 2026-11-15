@@ -23,13 +23,13 @@ import {
 } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import { type ViewerTheme, viewerTheme } from "#/drawing/schematic-theme.ts";
 import {
 	UNFOCUSED_CAMERA_OUTLINE_OPACITY,
 	UNFOCUSED_FILL_OPACITY,
 	UNFOCUSED_OUTLINE_OPACITY,
 	UNFOCUSED_OUTLINE_WIDTH,
 	UNFOCUSED_OUTLINE_WIDTH_MM,
-	UNFOCUSED_XRAY_COLOR,
 } from "#/engine/layer-style.ts";
 import {
 	compilePlanarGeometry,
@@ -210,12 +210,14 @@ export function createPlanarObject3D(
 				compiled.edges,
 			);
 			const edgeMaterial = new LineMaterial({
-				color: UNFOCUSED_XRAY_COLOR,
+				color: viewerTheme().unfocusedLayer,
 				linewidth,
 				worldUnits,
 				transparent: true,
 				depthWrite: false,
-				blending: AdditiveBlending,
+				blending: viewerTheme().unfocusedAdditive
+					? AdditiveBlending
+					: NormalBlending,
 				stencilWrite: true,
 				stencilRef: 1,
 				stencilFunc: EqualStencilFunc,
@@ -247,6 +249,7 @@ export function stylePlanarObject3D(
 		sheet?: Bounds;
 		holes?: HoleMask;
 	},
+	film: ViewerTheme = viewerTheme(),
 ) {
 	const solid = !!stack && !stack.through && !xray;
 	const extrude = object.userData.planarExtrude;
@@ -254,6 +257,9 @@ export function stylePlanarObject3D(
 	const slab = extrude === "slab" && solid && (stack?.thickness ?? 0) > 0;
 	const holes = stack && !stack.through ? stack.holes : undefined;
 	const bias = solid ? (stack?.depthBias ?? 0) * Math.sign(stack?.z ?? 0) : 0;
+	const filmBlending = film.unfocusedAdditive
+		? AdditiveBlending
+		: NormalBlending;
 	object.traverse((part) => {
 		if (!(part instanceof Mesh)) return;
 		if (
@@ -263,9 +269,9 @@ export function stylePlanarObject3D(
 			part.visible = !barrel;
 			part.userData.pickWhenHidden = barrel;
 			pickThroughHoles(part, holes);
-			part.material.color.set(xray ? UNFOCUSED_XRAY_COLOR : color);
+			part.material.color.set(xray ? film.unfocusedLayer : color);
 			part.material.opacity = opacity * (xray ? UNFOCUSED_FILL_OPACITY : 1);
-			part.material.blending = xray ? AdditiveBlending : NormalBlending;
+			part.material.blending = xray ? filmBlending : NormalBlending;
 			part.material.depthWrite = solid;
 			part.material.depthTest = !stack?.through;
 			part.userData.depthBias = bias;
@@ -309,6 +315,8 @@ export function stylePlanarObject3D(
 		) {
 			part.visible = xray;
 			part.material.depthTest = !stack?.through;
+			part.material.color.set(film.unfocusedLayer);
+			part.material.blending = filmBlending;
 			const outlineOpacity = part.material.worldUnits
 				? UNFOCUSED_OUTLINE_OPACITY
 				: UNFOCUSED_CAMERA_OUTLINE_OPACITY;

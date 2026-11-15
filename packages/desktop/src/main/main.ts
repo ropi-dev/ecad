@@ -1,14 +1,16 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { viewerTheme } from "@ecad/core/drawing/schematic-theme.ts";
+import { viewerThemes } from "@ecad/core/drawing/schematic-theme.ts";
 import type { ProjectSnapshot } from "@ecad/core/projects/format.ts";
+import type { AppSettings } from "@ecad/core/settings/schema.ts";
 import {
 	app,
 	BrowserWindow,
 	dialog,
 	type IpcMainInvokeEvent,
 	ipcMain,
+	nativeTheme,
 	net,
 	protocol,
 	screen,
@@ -298,9 +300,20 @@ function registerProjectHandlers() {
 	handle(projectChannels.refresh, (directory) => projects.refresh(directory));
 }
 
+const windowBackground = () =>
+	viewerThemes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].background;
+
+function applyTheme(theme: AppSettings["theme"]) {
+	nativeTheme.themeSource = theme ?? "system";
+	window?.setBackgroundColor(windowBackground());
+}
+
 function registerSettingsHandlers() {
 	handle(settingsChannels.load, () => settings.load());
-	handle(settingsChannels.save, (next) => settings.save(next));
+	handle(settingsChannels.save, async (next) => {
+		await settings.save(next);
+		applyTheme(next.theme);
+	});
 }
 
 function createUpdater() {
@@ -411,7 +424,7 @@ function createWindow() {
 		title: "ECAD desktop",
 		show: false,
 		// The app background, so the window does not flash before the page paints.
-		backgroundColor: viewerTheme.background,
+		backgroundColor: windowBackground(),
 		// Linux and Windows drop the title bar and its buttons: the sidebar's
 		// Exit button closes the app, and a strip along the page's top edge
 		// moves the window (see renderer/window.css). macOS keeps its title bar.
@@ -465,7 +478,7 @@ function createWindow() {
 	void window.loadURL(rendererUrl);
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
 	const rendererDirectory = resolve(__dirname, "renderer");
 	protocol.handle("ecad", async (request) => {
 		const url = new URL(request.url);
@@ -501,6 +514,10 @@ void app.whenReady().then(() => {
 	registerUpdateHandlers();
 	registerMcpHandlers();
 	handle(appChannels.quit, () => app.quit());
+	applyTheme((await settings.load()).settings.theme);
+	nativeTheme.on("updated", () =>
+		window?.setBackgroundColor(windowBackground()),
+	);
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();

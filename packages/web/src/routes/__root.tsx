@@ -1,6 +1,12 @@
 import { ProjectShell } from "@ecad/core/projects/ProjectShell.tsx";
+import { SETTINGS_STORAGE_KEY } from "@ecad/core/settings/store.ts";
 import appCss from "@ecad/core/styles.css?url";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+	createRootRoute,
+	HeadContent,
+	ScriptOnce,
+	Scripts,
+} from "@tanstack/react-router";
 import { AppWorkspace } from "#/projects/AppProjects.tsx";
 
 export const Route = createRootRoute({
@@ -37,10 +43,13 @@ export const Route = createRootRoute({
 	component: AppWorkspace,
 });
 
+const themeScript = `(()=>{let t;try{t=JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_STORAGE_KEY)})).theme}catch{}document.documentElement.dataset.theme=t==="light"||t==="dark"?t:matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"})()`;
+
 function RootDocument({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="en" className="dark">
+		<html lang="en" suppressHydrationWarning>
 			<head>
+				<ScriptOnce>{themeScript}</ScriptOnce>
 				<HeadContent />
 			</head>
 			<body>

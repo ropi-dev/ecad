@@ -33,6 +33,7 @@ import {
 } from "#/footprint/board.ts";
 import { DRILL_WALL } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
+import { useSchematicTheme } from "#/settings/theme.ts";
 
 const TEXT_RENDER_ORDER = 4;
 
@@ -204,16 +205,17 @@ export function FootprintBoardView({
 	useEffect(() => {
 		if (board) builder.release(board);
 	}, [builder, board]);
+	const colors = useSchematicTheme().appearance;
 	useEffect(() => {
 		try {
-			setBoard(builder.build(shapes, { regions }));
+			setBoard(builder.build(shapes, { regions, colors }));
 			onBuildError("");
 		} catch (cause) {
 			if (import.meta.env?.DEV) console.error(cause);
 			setBoard([]);
 			onBuildError("Unable to build the 3D view of this footprint.");
 		}
-	}, [builder, shapes, regions, onBuildError]);
+	}, [builder, shapes, regions, colors, onBuildError]);
 	const scene = useMemo(
 		() =>
 			board?.map((object) => ({

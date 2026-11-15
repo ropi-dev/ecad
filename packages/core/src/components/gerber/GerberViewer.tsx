@@ -22,6 +22,7 @@ import {
 	placeBoardLayers,
 } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
+import { useViewerTheme } from "#/settings/theme.ts";
 
 /** Applies Gerber layer controls to planar objects in the shared viewport. */
 export function GerberViewer({
@@ -73,8 +74,7 @@ export function GerberViewer({
 			return (
 				!next ||
 				next.objects !== previous.objects ||
-				next.bounds !== previous.bounds ||
-				next.color !== previous.color
+				next.bounds !== previous.bounds
 			);
 		})
 	)
@@ -93,6 +93,7 @@ export function GerberViewer({
 		[drillKey],
 	);
 	useEffect(() => () => holes?.dispose(), [holes]);
+	const film = useViewerTheme();
 	const styleLayers = useCallback(
 		(meshes: readonly Object3D[]) => {
 			const entries = new Map(
@@ -129,10 +130,11 @@ export function GerberViewer({
 					object.opacity,
 					focused && object.id !== focusedLayerId,
 					placement && { ...placement, sheet, holes },
+					film,
 				);
 			});
 		},
-		[scene, geometryScene, focusedLayerId, holes, placeLayers],
+		[scene, geometryScene, focusedLayerId, holes, placeLayers, film],
 	);
 	const updateScene = useCallback(
 		(group: Object3D) => {

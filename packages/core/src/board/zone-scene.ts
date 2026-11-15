@@ -67,6 +67,7 @@ export function createZoneScene() {
 			}
 			for (const [fill, mesh] of meshes) {
 				mesh.visible = !hidden.has(fill.layer);
+				mesh.material.color.set(colors[fill.layer]);
 				mesh.renderOrder = order(fill.layer);
 			}
 			if (group.parent !== root) root.add(group);

@@ -9,7 +9,7 @@ import {
 	MeshStandardMaterial,
 	SRGBColorSpace,
 } from "three";
-import { viewerTheme } from "#/drawing/schematic-theme.ts";
+import { sharedViewerColors } from "#/drawing/schematic-theme.ts";
 import type { StepModel } from "#/formats/step/types/StepModel.ts";
 
 function addMaterialGroup(
@@ -34,7 +34,7 @@ export function createStepGroup(model: StepModel) {
 		for (const part of model.meshes) {
 			const geometry = new BufferGeometry();
 			const material = new MeshStandardMaterial({
-				color: new Color(viewerTheme.model),
+				color: new Color(sharedViewerColors.model),
 				roughness: 0.55,
 				metalness: 0.15,
 				side: DoubleSide,

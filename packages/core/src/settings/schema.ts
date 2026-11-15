@@ -6,6 +6,9 @@ export const SETTINGS_FILE_LIMIT = 1024 * 1024;
 export const antialiasingModes = ["auto", "on", "off"] as const;
 export type AntialiasingMode = (typeof antialiasingModes)[number];
 
+export const themeModes = ["system", "light", "dark"] as const;
+export type ThemeMode = (typeof themeModes)[number];
+
 export const ercSeverityLevels = ["error", "warning", "off"] as const;
 export type ErcSeverityLevel = (typeof ercSeverityLevels)[number];
 
@@ -28,6 +31,7 @@ const readErcSeveritySchema = z.record(z.string(), z.unknown()).transform(
 
 const appShape = {
 	version: z.literal(1),
+	theme: z.enum(themeModes).optional(),
 	antialiasing: z.enum(antialiasingModes).optional(),
 	debugStats: z.boolean().optional(),
 	ercSeverity: ercSeveritySchema.optional(),

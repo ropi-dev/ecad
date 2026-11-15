@@ -36,6 +36,7 @@ export default defineConfig({
 	],
 	use: {
 		baseURL: url ?? `http://127.0.0.1:${port}`,
+		colorScheme: "dark",
 		storageState: {
 			cookies: [],
 			origins: [

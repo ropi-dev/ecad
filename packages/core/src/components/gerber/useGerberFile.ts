@@ -8,7 +8,7 @@ import {
 	useState,
 } from "react";
 import { useFileImport } from "#/components/viewer/useFileImport.ts";
-import { viewerTheme } from "#/drawing/schematic-theme.ts";
+import { viewerTheme, viewerThemes } from "#/drawing/schematic-theme.ts";
 import { expandGerberFileEffect } from "#/formats/expandGerberFile.ts";
 import { ImportOwnership } from "#/formats/import-ownership.ts";
 import {
@@ -16,8 +16,12 @@ import {
 	parseGerberFileEffect,
 } from "#/formats/parseGerberFile.ts";
 import { useProjectActions } from "#/projects/ProjectProvider.tsx";
+import { useTheme } from "#/settings/theme.ts";
 
-const COLORS = viewerTheme.layerPalette;
+const paletteColor = (index: number) => {
+	const palette = viewerTheme().layerPalette;
+	return palette[index % palette.length];
+};
 
 // Diagnostics stay on the layer, which shows them for as long as it exists.
 function readGerber(file: File) {
@@ -47,6 +51,20 @@ export function useGerberFile() {
 		ownership.commit(layers.map((object) => object.dispose));
 	}, [layers, ownership]);
 	useEffect(() => () => ownership.dispose(), [ownership]);
+	const theme = useTheme();
+	const shownTheme = useRef(theme);
+	useEffect(() => {
+		const from = viewerThemes[shownTheme.current].layerPalette;
+		const to = viewerThemes[theme].layerPalette;
+		shownTheme.current = theme;
+		if (from === to) return;
+		setLayers((current) =>
+			current.map((layer) => {
+				const index = from.indexOf(layer.color);
+				return index < 0 ? layer : { ...layer, color: to[index] };
+			}),
+		);
+	}, [theme, setLayers]);
 	const { loading, messages, readFiles } = useFileImport(
 		readGerber,
 		release,
@@ -60,7 +78,7 @@ export function useGerberFile() {
 					...previous,
 					...imported.map((layer, index) => ({
 						...layer,
-						color: COLORS[(previous.length + index) % COLORS.length],
+						color: paletteColor(previous.length + index),
 					})),
 				]);
 			});
@@ -83,7 +101,7 @@ export function useGerberFile() {
 							setLayers(
 								imported.map((layer, index) => ({
 									...layer,
-									color: COLORS[index % COLORS.length],
+									color: paletteColor(index),
 								})),
 							),
 						false,

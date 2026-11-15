@@ -156,4 +156,4 @@ Coordinates must be between -1000 and 1000 mm. Widths, heights, and radii must b
 
 Older point-only pins also accept an optional `labelOffset` in millimetres. It sets the distance from the terminal center to the nearest name label edge. Positive values place names to the right, negative values to the left, before pin rotation. With an explicit offset, the name sits level with the terminal and the number sits above the lead, centered between the terminal and a body edge 0.5 mm before the name. Pins with a `length` compute label placement from their lead and rotation instead.
 
-Rectangles, circles, and triangles accept an optional `filled` boolean. A filled shape uses the editor's opaque dark blue-grey body color behind its outline and text.
+Rectangles, circles, and triangles accept an optional `filled` boolean. A filled shape uses the editor's opaque body color behind its outline and text: dark blue-grey in the dark theme, pale teal in the light one.
