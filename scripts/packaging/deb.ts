@@ -5,16 +5,19 @@ import {
 	cp,
 	lstat,
 	mkdir,
+	open,
 	readdir,
 	readFile,
+	readlink,
 	rename,
 	rm,
 	symlink,
 	writeFile,
 } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { parseArgs, promisify } from "node:util";
+import { constants, zstdCompress } from "node:zlib";
 
 /**
  * Builds `ecad_<version>_<arch>.deb`, which installs the desktop app and the
@@ -186,6 +189,98 @@ async function md5sums(directory: string) {
 	return `${lines.join("\n")}\n`;
 }
 
+const compress = promisify(zstdCompress);
+
+export async function writeUpdateFiles(
+	tree: string,
+	release: { version: string; architecture: string },
+	paths: { manifest: string; pack: string },
+	level = 19,
+) {
+	const entries = (
+		await readdir(tree, { recursive: true, withFileTypes: true })
+	)
+		.map((entry) => ({
+			entry,
+			path: relative(tree, join(entry.parentPath, entry.name))
+				.split(sep)
+				.join("/"),
+		}))
+		.filter(({ path }) => path !== "DEBIAN" && !path.startsWith("DEBIAN/"))
+		.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+	const directories: string[] = [];
+	const links: { path: string; target: string }[] = [];
+	const contents = new Map<string, string>();
+	const listed: { path: string; mode: number; size: number; sha256: string }[] =
+		[];
+	for (const { entry, path } of entries) {
+		const full = join(tree, path);
+		if (entry.isDirectory()) directories.push(path);
+		else if (entry.isSymbolicLink())
+			links.push({ path, target: await readlink(full) });
+		else if (entry.isFile()) {
+			const bytes = await readFile(full);
+			const sha256 = createHash("sha256").update(bytes).digest("hex");
+			contents.set(sha256, full);
+			listed.push({
+				path,
+				mode: (await lstat(full)).mode & 0o7777,
+				size: bytes.length,
+				sha256,
+			});
+		} else throw new Error(`The package has an unsupported file: ${path}`);
+	}
+
+	const frames = new Map<string, Buffer>();
+	const queue = [...contents];
+	await Promise.all(
+		Array.from({ length: 4 }, async () => {
+			for (let item = queue.shift(); item; item = queue.shift()) {
+				const [sha256, full] = item;
+				frames.set(
+					sha256,
+					await compress(await readFile(full), {
+						params: { [constants.ZSTD_c_compressionLevel]: level },
+					}),
+				);
+			}
+		}),
+	);
+	const ranges = new Map<string, { offset: number; length: number }>();
+	const pack = await open(paths.pack, "w");
+	let offset = 0;
+	try {
+		for (const sha256 of contents.keys()) {
+			const frame = frames.get(sha256);
+			if (!frame) throw new Error(`No compressed frame for ${sha256}.`);
+			await pack.write(frame);
+			ranges.set(sha256, { offset, length: frame.length });
+			offset += frame.length;
+		}
+	} finally {
+		await pack.close();
+	}
+	const files = listed.map((file) => {
+		const range = ranges.get(file.sha256);
+		if (!range) throw new Error(`No pack range for ${file.path}.`);
+		return { ...file, ...range };
+	});
+	const control = join(tree, "DEBIAN");
+	await writeFile(
+		paths.manifest,
+		`${JSON.stringify({
+			format: 1,
+			version: release.version,
+			architecture: release.architecture,
+			control: await readFile(join(control, "control"), "utf8"),
+			md5sums: await readFile(join(control, "md5sums"), "utf8"),
+			directories,
+			files,
+			links,
+		})}\n`,
+	);
+}
+
 async function main() {
 	const { values } = parseArgs({
 		options: {
@@ -309,7 +404,13 @@ ${installDirectory}/LICENSES.chromium.html.
 		await writeFile(join(control, "md5sums"), await md5sums(tree));
 		await normalizeModes(control);
 
-		const deb = join(out, `ecad_${version}_${architecture}.deb`);
+		const base = join(out, `ecad_${version}_${architecture}`);
+		await writeUpdateFiles(
+			tree,
+			{ version, architecture },
+			{ manifest: `${base}.files.json`, pack: `${base}.files.zst` },
+		);
+		const deb = `${base}.deb`;
 		exec(
 			"dpkg-deb",
 			["--root-owner-group", "-Zxz", "--build", tree, deb],
@@ -319,7 +420,7 @@ ${installDirectory}/LICENSES.chromium.html.
 				SOURCE_DATE_EPOCH: String(commitTime.getTime() / 1000),
 			},
 		);
-		console.log(`Built ${relative(root, deb)}`);
+		console.log(`Built ${relative(root, deb)} and its update files`);
 	} finally {
 		await rm(work, { recursive: true, force: true });
 	}
