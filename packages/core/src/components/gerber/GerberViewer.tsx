@@ -3,6 +3,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { Box3, type Object3D, Vector3 } from "three";
@@ -22,6 +23,15 @@ import {
 	placeBoardLayers,
 } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
+
+const visibleDrills = (scene: readonly (PlanarObject | ParsedGerberObject)[]) =>
+	scene.filter(
+		(object): object is ParsedGerberObject =>
+			object.type === "spatial" && object.visible && isDrillLayer(object),
+	);
+
+const drillGeometry = (drills: readonly ParsedGerberObject[]) =>
+	drills.flatMap((object) => getPlanarGeometry(object.object) ?? []);
 
 /** Applies Gerber layer controls to planar objects in the shared viewport. */
 export function GerberViewer({
@@ -70,31 +80,32 @@ export function GerberViewer({
 		geometryScene.length !== scene.length ||
 		geometryScene.some((previous) => {
 			const next = current.get(previous.id);
-			return (
-				!next ||
-				next.objects !== previous.objects ||
-				next.bounds !== previous.bounds ||
-				next.color !== previous.color
-			);
+			if (!next || next.color !== previous.color) return true;
+			return next.type === "spatial" && previous.type === "spatial"
+				? next.object !== previous.object
+				: next.objects !== previous.objects || next.bounds !== previous.bounds;
 		})
 	)
 		setGeometryScene(scene);
-	const drills = scene.filter(
-		(object): object is ParsedGerberObject =>
-			object.type === "spatial" && object.visible && isDrillLayer(object),
-	);
+	const drills = visibleDrills(scene);
 	const drillKey = drills.map((object) => object.object.uuid).join(",");
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the mask follows the visible drill layers, which drillKey names
+	const drillRevision = drills.map((object) => object.revision ?? 0).join(",");
+	const [maskEpoch, setMaskEpoch] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the mask follows the visible drill layers, which drillKey names; maskEpoch replaces a mask its holes outgrew
 	const holes = useMemo(
-		() =>
-			createHoleMask(
-				drills.flatMap((object) => getPlanarGeometry(object.object) ?? []),
-			),
-		[drillKey],
+		() => createHoleMask(drillGeometry(visibleDrills(scene))),
+		[drillKey, maskEpoch],
 	);
+	const repainted = useRef("");
 	useEffect(() => () => holes?.dispose(), [holes]);
 	const styleLayers = useCallback(
 		(meshes: readonly Object3D[]) => {
+			const drilled = `${drillKey}:${maskEpoch}:${drillRevision}`;
+			if (holes && repainted.current !== drilled) {
+				repainted.current = drilled;
+				if (!holes.repaint(drillGeometry(visibleDrills(scene))))
+					setMaskEpoch((epoch) => epoch + 1);
+			}
 			const entries = new Map(
 				scene.map((object, index) => [object.id, { object, index }]),
 			);
@@ -132,7 +143,16 @@ export function GerberViewer({
 				);
 			});
 		},
-		[scene, geometryScene, focusedLayerId, holes, placeLayers],
+		[
+			scene,
+			geometryScene,
+			focusedLayerId,
+			holes,
+			placeLayers,
+			drillKey,
+			drillRevision,
+			maskEpoch,
+		],
 	);
 	const updateScene = useCallback(
 		(group: Object3D) => {

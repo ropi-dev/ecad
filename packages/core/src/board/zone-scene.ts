@@ -7,8 +7,7 @@ import {
 	MeshBasicMaterial,
 	type Object3D,
 } from "three";
-import type { ZoneFill } from "#/board/fill.ts";
-import { triangulate } from "#/engine/geometry.ts";
+import type { BoardFill } from "#/board/fill.ts";
 
 const fillOpacity = 0.6;
 
@@ -16,11 +15,11 @@ const fillOpacity = 0.6;
 export function createZoneScene() {
 	const group = new Group();
 	group.name = "zone fills";
-	let shown: readonly ZoneFill[] = [];
-	const meshes = new Map<ZoneFill, Mesh<BufferGeometry, MeshBasicMaterial>>();
-	const build = (fill: ZoneFill, color: string) => {
+	let shown: readonly BoardFill[] = [];
+	const meshes = new Map<BoardFill, Mesh<BufferGeometry, MeshBasicMaterial>>();
+	const build = (fill: BoardFill, color: string) => {
 		const geometry = new BufferGeometry();
-		const triangles = triangulate(fill.polygons);
+		const { triangles } = fill;
 		const positions = new Float32Array((triangles.length / 2) * 3);
 		for (let index = 0; index < triangles.length / 2; index++) {
 			positions[index * 3] = triangles[index * 2];
@@ -35,14 +34,14 @@ export function createZoneScene() {
 			depthWrite: false,
 		});
 		const mesh = new Mesh(geometry, material);
-		mesh.name = `zone fill ${fill.zone.shapeId}`;
+		mesh.name = `zone fill ${fill.shapeId}`;
 		mesh.matrixAutoUpdate = false;
 		return mesh;
 	};
 	return {
 		update(
 			root: Object3D,
-			fills: readonly ZoneFill[],
+			fills: readonly BoardFill[],
 			colors: Readonly<Record<FootprintLayer, string>>,
 			order: (layer: FootprintLayer) => number,
 			hidden: ReadonlySet<FootprintLayer>,

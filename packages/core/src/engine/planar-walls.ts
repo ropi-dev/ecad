@@ -141,9 +141,11 @@ function barrelPositions(edges: Float32Array, wall: number) {
 	return vertices;
 }
 
-function slabPositions(edges: Float32Array) {
-	const vertices = new Float32Array(edges.length * 3);
-	let offset = 0;
+export function writeSlabWalls(
+	edges: Float32Array,
+	vertices: Float32Array,
+	offset = 0,
+) {
 	const push = (x: number, y: number, z: number) => {
 		vertices[offset++] = x;
 		vertices[offset++] = y;
@@ -161,6 +163,11 @@ function slabPositions(edges: Float32Array) {
 		push(bx, by, 0.5);
 		push(ax, ay, 0.5);
 	}
+}
+
+function slabPositions(edges: Float32Array) {
+	const vertices = new Float32Array(edges.length * 3);
+	writeSlabWalls(edges, vertices);
 	return vertices;
 }
 

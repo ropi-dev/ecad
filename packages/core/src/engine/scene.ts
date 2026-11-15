@@ -71,19 +71,21 @@ export function createSceneDisplay(source: ViewerScene) {
 				entries.push({ object, planar: getPlanarGeometry(object) });
 			}
 		}
-		let hasOutlines = false;
+		let planar = false;
+		let outlined = false;
 		group.traverse((part) => {
-			if (part instanceof PlanarOutline) hasOutlines = true;
+			if (part instanceof PlanarOutline) outlined = true;
+			if (part.userData.planarObject) planar = true;
 		});
 		const update = (renderer: WebGLRenderer, camera: Camera) => {
-			if (!hasOutlines) return;
+			if (!outlined) return;
 			group.updateWorldMatrix(true, true);
 			camera.updateWorldMatrix(true, false);
 			group.traverseVisible((part) => {
 				if (part instanceof PlanarOutline) part.updateDetail(renderer, camera);
 			});
 		};
-		return { object: group, entries, dispose, update, hasOutlines };
+		return { object: group, entries, dispose, update, planar };
 	} catch (error) {
 		dispose();
 		throw error;

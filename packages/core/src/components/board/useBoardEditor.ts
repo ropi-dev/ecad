@@ -1,10 +1,8 @@
 import {
-	analyzeConnectivity,
 	type CopperLayer,
 	copperAt,
 	copperItems,
 } from "@ecad/drawing-core/board/connectivity.ts";
-import { checkBoard } from "@ecad/drawing-core/board/drc.ts";
 import {
 	flipBoardFootprint,
 	isBoardFootprint,
@@ -26,7 +24,12 @@ import {
 	useSyncExternalStore,
 } from "react";
 import type { Object3D } from "three";
-import { fillReach, fillZones } from "#/board/fill.ts";
+import {
+	type BoardAnalysisClient,
+	type BoardAnalysisState,
+	createBoardAnalysisClient,
+	startBoardAnalysisWorker,
+} from "#/board/analysis-client.ts";
 import {
 	type BoardSyncReport,
 	boardContext,
@@ -61,6 +64,7 @@ export function useBoardEditor({
 	active,
 	setActive,
 	selection,
+	ratsnestShown,
 }: {
 	board: BoardDocument | undefined;
 	store: Store;
@@ -72,6 +76,7 @@ export function useBoardEditor({
 	active: FootprintLayer;
 	setActive: (layer: FootprintLayer) => void;
 	selection: ReadonlySet<number>;
+	ratsnestShown: boolean;
 }) {
 	const enabled = board !== undefined;
 	const rulesStore = board?.rules;
@@ -89,27 +94,66 @@ export function useBoardEditor({
 		[context.circuit],
 	);
 	const live = enabled ? (draft ?? committed) : noShapes;
-	const fills = useMemo(
-		() => (enabled && rules ? fillZones(committed, netlist, rules) : []),
-		[enabled, committed, netlist, rules],
+	const [analysis, setAnalysis] = useState<BoardAnalysisClient>();
+	useEffect(() => {
+		if (!enabled) return;
+		const client = createBoardAnalysisClient(startBoardAnalysisWorker);
+		setAnalysis(client);
+		return () => {
+			setAnalysis(undefined);
+			client.dispose();
+		};
+	}, [enabled]);
+	useEffect(() => {
+		if (rules) analysis?.configure(context.circuit, rules);
+	}, [analysis, context.circuit, rules]);
+	useEffect(() => {
+		analysis?.show(committed, live);
+	}, [analysis, committed, live]);
+	const subscribe = analysis?.subscribe ?? noSubscribe;
+	const state = analysis?.getState ?? idleAnalysis;
+	const fills = useSyncExternalStore(
+		subscribe,
+		() => state().fills,
+		() => state().fills,
 	);
-	const connectivity = useMemo(
-		() =>
-			enabled
-				? analyzeConnectivity(copperItems(live, netlist), fillReach(fills))
-				: undefined,
-		[enabled, live, netlist, fills],
+	const unrouted = useSyncExternalStore(
+		subscribe,
+		() => state().ratsnest?.length,
+		() => state().ratsnest?.length,
 	);
-	const ratsnest = useMemo(
-		() => ratsnestShapes(connectivity?.ratsnest ?? []),
-		[connectivity],
+	const lines = useSyncExternalStore(
+		subscribe,
+		() => (ratsnestShown ? state().ratsnest : undefined),
+		() => undefined,
 	);
+	const analysisError = useSyncExternalStore(
+		subscribe,
+		() => state().error,
+		() => state().error,
+	);
+	const ratsnest = useMemo(() => ratsnestShapes(lines ?? []), [lines]);
 	const highlight = useMemo(() => {
 		if (!enabled || selection.size !== 1) return undefined;
 		const [id] = selection;
 		const shape = committed.find((item) => item.id === id);
 		return shape && "net" in shape ? shape.net : undefined;
 	}, [enabled, selection, committed]);
+	const highlighted = useMemo(() => {
+		const ids = new Set<number>();
+		if (!highlight) return ids;
+		for (const item of copperItems(committed, netlist)) {
+			if (item.net !== highlight) continue;
+			if (item.kind === "pad" && item.pad) {
+				const footprint = item.pad.footprint;
+				const local = footprint.children.findIndex(
+					(child) => `${footprint.id}:${child.id}` === item.pad?.key,
+				);
+				if (local >= 0) ids.add(footprintItemId(footprint.id, local));
+			} else ids.add(item.shapeId);
+		}
+		return ids;
+	}, [highlight, committed, netlist]);
 	const buildDisplay = useCallback(
 		(
 			shapes: EditorShape[],
@@ -117,19 +161,6 @@ export function useBoardEditor({
 			measure: Parameters<typeof buildBoardStaticDisplay>[4],
 		) => {
 			const flat = boardDisplay(shapes, selected, hidden, active);
-			const highlighted = new Set<number>();
-			if (highlight && connectivity)
-				for (const item of connectivity.items)
-					if (item.net === highlight) {
-						if (item.kind === "pad" && item.pad) {
-							const footprint = item.pad.footprint;
-							const local = footprint.children.findIndex(
-								(child) => `${footprint.id}:${child.id}` === item.pad?.key,
-							);
-							if (local >= 0)
-								highlighted.add(footprintItemId(footprint.id, local));
-						} else highlighted.add(item.shapeId);
-					}
 			return buildBoardStaticDisplay(
 				flat.shapes,
 				flat.selected,
@@ -138,7 +169,7 @@ export function useBoardEditor({
 				measure,
 			);
 		},
-		[hidden, active, ratsnest, highlight, connectivity],
+		[hidden, active, ratsnest, highlighted],
 	);
 	const [zoneScene] = useState(() => createZoneScene());
 	useEffect(() => () => zoneScene.dispose(), [zoneScene]);
@@ -212,21 +243,21 @@ export function useBoardEditor({
 	}, [session]);
 
 	const runChecks = useCallback(
-		() =>
-			rules
-				? checkBoard(store.getSnapshot().shapes, netlist, rules, {
-						zoneReach: fillReach(
-							fillZones(store.getSnapshot().shapes, netlist, rules),
-						),
-					})
-				: [],
-		[store, netlist, rules],
+		async (shapes: readonly EditorShape[] = store.getSnapshot().shapes) =>
+			(await analysis?.check(shapes)) ?? [],
+		[analysis, store],
+	);
+	const fillsOf = useCallback(
+		async (shapes: readonly EditorShape[]) =>
+			(await analysis?.fills(shapes)) ?? [],
+		[analysis],
 	);
 
 	return {
 		rules,
 		netlist,
 		fills,
+		fillsOf,
 		buildDisplay,
 		updateZones,
 		gestures,
@@ -235,8 +266,15 @@ export function useBoardEditor({
 		clearSyncReport: () => setSyncReport(null),
 		flipSelection,
 		runChecks,
-		unrouted: connectivity?.ratsnest.length ?? 0,
+		unrouted,
+		analysisError,
 	};
 }
 
+const idleState: BoardAnalysisState = {
+	fills: [],
+	ratsnest: undefined,
+	error: "",
+};
+const idleAnalysis = () => idleState;
 const noSubscribe = () => () => {};

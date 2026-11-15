@@ -201,7 +201,7 @@ interface FabricationFile {
 export function exportFabrication(
 	name: string,
 	shapes: readonly EditorShape[],
-	fills: readonly ZoneFill[],
+	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
 ): FabricationFile[] {
 	const items = flatItems(shapes);
 	const files: FabricationFile[] = [];
