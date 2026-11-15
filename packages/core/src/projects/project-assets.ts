@@ -1,6 +1,6 @@
 import { assetFormat, fileSizeProblem } from "#/formats/import-limits.ts";
 import { isProjectError, ProjectAssetTooLarge } from "#/projects/errors.ts";
-import type { AssetKind } from "#/projects/format.ts";
+import type { AssetKind, ProjectAsset } from "#/projects/format.ts";
 import type { RestoredAssets } from "#/projects/ProjectSession.ts";
 import type { ProjectSessionState } from "#/projects/project-session-state.ts";
 
@@ -11,15 +11,17 @@ import type { ProjectSessionState } from "#/projects/project-session-state.ts";
  */
 export function createProjectAssets(state: ProjectSessionState) {
 	const { storage, enqueue, noteConflict, update } = state;
-	const transferAssets = async (files: { file: File; kind: AssetKind }[]) => {
+	const transferAssets = async (
+		files: { file: File; kind: AssetKind }[],
+	): Promise<ProjectAsset[]> => {
 		const previous = state.active;
 		if (!previous) {
 			state.pendingAssets.push(...files);
-			return;
+			return [];
 		}
 		const staged = state.pendingAssets.length;
 		const pending = [...state.pendingAssets, ...files];
-		if (!pending.length) return;
+		if (!pending.length) return [];
 		if (state.conflict) throw state.conflict;
 		const assets = await Promise.all(
 			pending.map(async ({ file, kind }) => ({
@@ -28,13 +30,17 @@ export function createProjectAssets(state: ProjectSessionState) {
 				bytes: new Uint8Array(await file.arrayBuffer()),
 			})),
 		);
+		let next: Awaited<ReturnType<typeof storage.importAssets>>;
 		try {
-			update(await storage.importAssets(previous.directory, assets));
+			next = await storage.importAssets(previous.directory, assets);
+			update(next);
 		} catch (cause) {
 			noteConflict(cause);
 			throw cause;
 		}
 		state.pendingAssets.splice(0, staged);
+		const existing = new Set(previous.manifest.assets.map(({ path }) => path));
+		return next.manifest.assets.filter(({ path }) => !existing.has(path));
 	};
 	const importAssets = async (
 		files: readonly File[],

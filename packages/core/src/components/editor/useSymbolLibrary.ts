@@ -335,28 +335,31 @@ export function useSymbolLibrary() {
 			});
 	}
 
+	/** Resolves to the IDs of the symbols added, or none when the upload fails. */
 	async function upload(
 		files: readonly File[],
 		directoryUpload = false,
 		scope = defaultScope,
 		name = "",
-	) {
+	): Promise<string[]> {
 		try {
-			await perform(async (signal) => {
+			return await perform(async (signal) => {
 				const incoming = await runEffect(
 					importSymbolFiles(files, directoryUpload),
 					signal,
 				);
-				if (signal.aborted) return;
+				if (signal.aborted) return [];
 				const directoryName = directoryUpload
 					? files[0]?.webkitRelativePath?.split("/")[0]
 					: "";
 				const next = addition(incoming, scope, name || directoryName || "");
 				await save(next, scope, incoming, signal);
 				setMessage("Symbols added.");
+				return incoming.map((symbol) => symbol.id);
 			});
 		} catch {
 			/* perform reports failures. */
+			return [];
 		}
 	}
 

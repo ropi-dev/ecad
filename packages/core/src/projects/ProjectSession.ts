@@ -41,7 +41,8 @@ export interface ProjectContextValue {
 	project: ProjectSnapshot | null;
 	LinkComponent?: ComponentType<ProjectLinkProps>;
 	selectedAsset: ProjectAsset | null;
-	selectAsset(asset: ProjectAsset | null): void;
+	/** `reload` reads the assets again even when the selection is unchanged. */
+	selectAsset(asset: ProjectAsset | null, options?: { reload?: boolean }): void;
 	store: ReturnType<typeof createDrawingStore>;
 	editorSymbol: SymbolDocument | null;
 	editorFootprint: FootprintDocument | null;
@@ -80,7 +81,11 @@ export interface ProjectContextValue {
 	reload(): Promise<void>;
 	list(): Promise<string[]>;
 	save(): Promise<boolean>;
-	importAssets(files: readonly File[], kind: AssetKind): Promise<void>;
+	/** Resolves to the assets the import added to the project. */
+	importAssets(
+		files: readonly File[],
+		kind: AssetKind,
+	): Promise<ProjectAsset[]>;
 	/**
 	 * Reads the stored assets of one kind. Assets over their size limit are
 	 * not read; `problems` names each of them, and the others still load.
@@ -297,9 +302,9 @@ export function createProjectSession(
 		project: state.project,
 		LinkComponent,
 		selectedAsset: state.selectedAsset,
-		selectAsset: (asset) => {
+		selectAsset: (asset, options) => {
 			state.editorSelection++;
-			setSelectedAsset(asset);
+			setSelectedAsset(asset, options?.reload);
 		},
 		store: state.store,
 		editorSymbol: state.editorSymbol,
@@ -367,6 +372,7 @@ export function createProjectSession(
 	let stableActions: Partial<ProjectContextValue> | undefined;
 	let actionEpoch = -1;
 	let readAssetSelection: ProjectAsset | null | undefined;
+	let readAssetRevision = -1;
 	let selectedReadAssets = readAssets;
 	return {
 		subscribe(listener: () => void) {
@@ -400,8 +406,12 @@ export function createProjectSession(
 					stableActions = actions;
 					actionEpoch = state.epoch;
 				}
-				if (readAssetSelection !== state.selectedAsset) {
+				if (
+					readAssetSelection !== state.selectedAsset ||
+					readAssetRevision !== state.assetReads
+				) {
 					readAssetSelection = state.selectedAsset;
+					readAssetRevision = state.assetReads;
 					selectedReadAssets = (kind) => readAssets(kind);
 				}
 				state.cached = {

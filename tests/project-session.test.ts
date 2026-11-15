@@ -523,6 +523,40 @@ test("project assets over the size limit are rejected before they are read or st
 	assert.deepEqual(imported, [[{ name: "top.gbr", kind: "gerber", size: 4 }]]);
 });
 
+test("importing project assets resolves to the assets it added", async (t) => {
+	const initial = snapshot();
+	initial.manifest.assets = [
+		{ path: "assets/old.gbr", name: "old.gbr", kind: "gerber" },
+	];
+	const f = fixture(initial);
+	f.storage.importAssets = async (_directory, assets) => {
+		const current = required(await f.storage.load());
+		return {
+			...current,
+			manifest: {
+				...current.manifest,
+				assets: [
+					...current.manifest.assets,
+					...assets.map(({ name, kind }) => ({
+						path: `assets/${name}`,
+						name,
+						kind,
+					})),
+				],
+			},
+		};
+	};
+	const stop = f.session.connect();
+	t.after(stop);
+	await loaded(f.session);
+	assert.deepEqual(
+		await f.session
+			.getSnapshot()
+			.importAssets([new File(["x"], "cube.step")], "step"),
+		[{ path: "assets/cube.step", name: "cube.step", kind: "step" }],
+	);
+});
+
 test("a new project copies the source project's assets except those over the size limit", async (t) => {
 	const source = snapshot();
 	source.manifest.assets = [

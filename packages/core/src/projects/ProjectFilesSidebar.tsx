@@ -61,8 +61,12 @@ import {
 import { OpenProjectButton } from "#/projects/OpenProjectButton.tsx";
 import { ProjectLink, type ProjectPath } from "#/projects/ProjectLink.tsx";
 import { ProjectMenu } from "#/projects/ProjectMenu.tsx";
-import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
+import {
+	useLatestProjectSnapshot,
+	useProjectSelection,
+} from "#/projects/ProjectProvider.tsx";
 import { primaryPcbId } from "#/projects/pcb.ts";
+import { projectIndex } from "#/projects/project-index.ts";
 import {
 	sidebarMenuContent,
 	sidebarMenuItem,
@@ -341,6 +345,12 @@ export function ProjectFilesSidebar({
 		return () => document.removeEventListener("pointerdown", dismiss, true);
 	}, [touchOpen, overlayOpen, closeDrawer]);
 	const editorLink = useRef<HTMLAnchorElement>(null);
+	const viewerLinks = useRef<Record<AssetKind, HTMLAnchorElement | null>>({
+		gerber: null,
+		step: null,
+	});
+	const latestProject = useLatestProjectSnapshot();
+	const navigations = useRef(0);
 	const snapshot = project?.project;
 	const manifest = snapshot?.manifest;
 	const files = useMemo<ProjectFile[]>(
@@ -477,19 +487,45 @@ export function ProjectFilesSidebar({
 			toastManager.add({ type: "error", title: fallback, description });
 		}
 	}
+	function stayedPut() {
+		const count = navigations.current;
+		const href = globalThis.location?.href;
+		return () =>
+			count === navigations.current && href === globalThis.location?.href;
+	}
 	async function upload(files: File[], kind: AssetKind) {
 		if (!project || !files.length) return;
+		const unmoved = stayedPut();
 		setImporting(true);
 		setError("");
 		try {
-			setError(
-				(await addProjectFiles(project.importAssets, files, kind)).problems,
+			const { assets, problems } = await addProjectFiles(
+				project.importAssets,
+				files,
+				kind,
 			);
+			setError(problems);
+			if (assets.length && unmoved()) {
+				project.selectAsset(assets.length === 1 ? assets[0] : null, {
+					reload: true,
+				});
+				viewerLinks.current[kind]?.click();
+			}
 		} catch (cause) {
 			showError(cause, "Unable to add project files.");
 		} finally {
 			setImporting(false);
 		}
+	}
+	async function uploadSymbols(files: File[]) {
+		const unmoved = stayedPut();
+		const [id] = await library.upload(files);
+		const latest = latestProject();
+		const path =
+			id && latest ? projectIndex(latest).symbolsById.get(id)?.path : undefined;
+		if (!project || !path || !unmoved()) return;
+		project.selectEditorFile(path);
+		editorLink.current?.click();
 	}
 	async function uploadSchematic(file: File) {
 		if (!project) return;
@@ -523,6 +559,7 @@ export function ProjectFilesSidebar({
 			: !circuitOpen && activePath === file.path;
 	function openFile(file: ProjectFile) {
 		if (!project) return;
+		navigations.current++;
 		closeDrawer();
 		if (file.href === "/editor") {
 			if (file.type === "Circuit")
@@ -945,7 +982,7 @@ export function ProjectFilesSidebar({
 							const files = Array.from(event.target.files ?? []);
 							if (kind === "kicad") {
 								if (files[0]) void uploadSchematic(files[0]);
-							} else if (kind === "symbol") void library.upload(files);
+							} else if (kind === "symbol") void uploadSymbols(files);
 							else void upload(files, kind);
 							event.target.value = "";
 						}}
@@ -1271,6 +1308,19 @@ export function ProjectFilesSidebar({
 				<ProjectLink href="/editor" ref={editorLink} hidden tabIndex={-1}>
 					Open new file
 				</ProjectLink>
+				{(["gerber", "step"] as const).map((kind) => (
+					<ProjectLink
+						key={kind}
+						href={`/${kind}`}
+						ref={(node) => {
+							viewerLinks.current[kind] = node;
+						}}
+						hidden
+						tabIndex={-1}
+					>
+						Open new {kind} file
+					</ProjectLink>
+				))}
 			</aside>
 			<LazySettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 			{creatingFile && (
