@@ -50,6 +50,11 @@ export const symbolDefinitions: SymbolDefinition[] = libraryDefinitions(
 	texts: generatedSymbols[index].texts,
 }));
 
+export const builtinSymbolFiles: ReadonlyMap<
+	string,
+	(typeof generatedSymbols)[number]["file"]
+> = new Map(generatedSymbols.map(({ file }) => [file.id, file]));
+
 export function createSymbol(
 	id: number,
 	definition: SymbolDefinition,

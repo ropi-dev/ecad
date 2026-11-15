@@ -8,10 +8,15 @@ import { useEffect, useRef, useState } from "react";
 import {
 	importSymbolFiles,
 	mergeSymbolLibraries,
+	parseSymbolFile,
 	type SymbolFile,
 	type SymbolLibrary,
 } from "#/components/editor/symbolFormat.ts";
-import { type SymbolDefinition, symbolDefinitions } from "#/drawing/symbols.ts";
+import {
+	builtinSymbolFiles,
+	type SymbolDefinition,
+	symbolDefinitions,
+} from "#/drawing/symbols.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 import { isProjectError } from "#/projects/errors.ts";
 import {
@@ -424,10 +429,60 @@ export function useSymbolLibrary() {
 		}
 	}
 
+	function copySource(id: string, library?: SymbolLibraryReference) {
+		const source = library
+			? referenceSources.get(symbolReferenceKey(library, id))
+			: sources.get(id);
+		if (!source) return undefined;
+		return (
+			source.file ??
+			(source.library.source.kind === "builtin"
+				? builtinSymbolFiles.get(id)
+				: undefined)
+		);
+	}
+
+	async function copyToProject(id: string, library?: SymbolLibraryReference) {
+		const file = copySource(id, library);
+		if (!file || !projectStorage)
+			throw new Error("This symbol cannot be copied to the project.");
+		const taken = new Set([
+			...[...byReference.values()].map((definition) => definition.id),
+			...config("project").symbolLibraries.flatMap((entry) =>
+				entry.source.kind === "embedded"
+					? entry.source.symbols.map((symbol) => symbol.id)
+					: [],
+			),
+		]);
+		const base = `${file.id.slice(0, 54).replace(/[-.]+$/, "")}-copy`;
+		let copyId = base;
+		for (let suffix = 2; taken.has(copyId); suffix++)
+			copyId = `${base}-${suffix}`;
+		const copy = parseSymbolFile(JSON.stringify({ ...file, id: copyId }));
+		const next = addition([copy], "project", "");
+		const added = next.symbolLibraries.find(
+			(entry) =>
+				entry.source.kind === "embedded" &&
+				entry.source.symbols.some((symbol) => symbol.id === copyId),
+		);
+		if (!added) throw new Error("The project symbol library is unavailable.");
+		return perform(async (signal) => {
+			await save(next, "project", [copy], signal);
+			setMessage("Symbol copied to the project.");
+			return {
+				definitionId: copyId,
+				library: { scope: "project", id: added.id } as const,
+			};
+		});
+	}
+
 	return {
 		definitions,
 		byReference,
 		sources,
+		canCopyToProject: (id: string, library?: SymbolLibraryReference) =>
+			!!projectStorage && !!copySource(id, library),
+		copyToProject,
 		async prepareEdit(id: string, library?: SymbolLibraryReference) {
 			const source = library
 				? referenceSources.get(symbolReferenceKey(library, id))

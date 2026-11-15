@@ -1,6 +1,12 @@
 import type { EditorSymbol } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { useEffect, useEffectEvent, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useEffectEvent,
+	useRef,
+	useState,
+} from "react";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import type { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
@@ -22,6 +28,7 @@ export function useSymbolDefinitionEditing({
 	symbolLibrary: ReturnType<typeof useSymbolLibrary>;
 }) {
 	const [editTarget, setEditTarget] = useState<SymbolEditTarget | null>(null);
+	const [checked, setChecked] = useState(false);
 	const [editingDefinition, setEditingDefinition] =
 		useState<SymbolEditTarget | null>(null);
 	const symbolPath = useProjectSelection(({ project }) => {
@@ -42,10 +49,13 @@ export function useSymbolDefinitionEditing({
 	useEffect(() => {
 		let active = true;
 		setEditTarget(null);
+		setChecked(false);
 		if (definitionId && !symbolLibrary.loading) {
 			void prepareEdit(definitionId, definitionLibrary).then(
 				(target) => {
-					if (active) setEditTarget(target);
+					if (!active) return;
+					setEditTarget(target);
+					setChecked(true);
 				},
 				(cause) => {
 					if (active)
@@ -59,7 +69,40 @@ export function useSymbolDefinitionEditing({
 			active = false;
 		};
 	}, [session, definitionId, definitionLibrary, symbolLibrary.loading]);
+	const copy = useRef(async () => {});
+	copy.current = async () => {
+		if (!selectedSymbol) return;
+		try {
+			const copied = await symbolLibrary.copyToProject(
+				selectedSymbol.definitionId,
+				selectedSymbol.library,
+			);
+			const current = session
+				.drawing()
+				.shapes.find((shape) => shape.id === selectedSymbol.id);
+			if (
+				current?.kind !== "symbol" ||
+				current.definitionId !== selectedSymbol.definitionId
+			)
+				return;
+			session.replace([{ ...current, ...copied }], "Copy symbol to project");
+		} catch (cause) {
+			session.setError(
+				errorMessage(cause, "Unable to copy the symbol to the project."),
+			);
+		}
+	};
+	const copyToProject = useCallback(() => copy.current(), []);
+	const canCopy =
+		!!selectedSymbol &&
+		checked &&
+		!editTarget &&
+		symbolLibrary.canCopyToProject(
+			selectedSymbol.definitionId,
+			selectedSymbol.library,
+		);
 	return {
+		copyToProject: canCopy ? copyToProject : undefined,
 		definitionId,
 		editTarget,
 		editingDefinition,
