@@ -69,7 +69,7 @@ export function rectangleCorners(shape: EditorShape, inset = 0): Point[] {
 function roundedRectangleHull(shape: EditorShape, radius: number): Hull {
 	const w = shape.width / 2 - radius;
 	const h = shape.height / 2 - radius;
-	const flat = 1e-9;
+	const flat = 1e-6;
 	if (w <= flat && h <= flat) return { points: [rotate(shape, 0, 0)], radius };
 	if (w <= flat)
 		return { points: [rotate(shape, 0, -h), rotate(shape, 0, h)], radius };

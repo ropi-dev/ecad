@@ -281,6 +281,12 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 	assert.match(copper.content, /%ADD12O,2X1\*%/);
 	assert.match(copper.content, /%ADD13O,1X2\*%/);
 	assert.match(copper.content, /%ADD15C,1\*%/);
+	const [nearlyRound] = exportFabrication(
+		"sliver",
+		[roundedPad(0.4999999)],
+		[],
+	);
+	assert.match(nearlyRound.content, /%ADD10O,2X1\*%/);
 });
 
 test("the flat view and the board view draw the corners", () => {
