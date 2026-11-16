@@ -88,7 +88,16 @@ const padSchema = z
 			.number()
 			.positive()
 			.optional()
-			.describe("Hole diameter in millimetres. Surface mount pads omit it."),
+			.describe(
+				"Hole diameter in millimetres, or the width of a slot. Surface mount pads omit it.",
+			),
+		slot: z
+			.number()
+			.positive()
+			.optional()
+			.describe(
+				"Makes the hole a slot this many millimetres long along the pad's width, its x axis before rotation. It must be longer than the drill and shorter than the width. Omit it for a round hole.",
+			),
 		paste: z
 			.boolean()
 			.optional()
@@ -261,16 +270,18 @@ const validPad = (shape: {
 	if (!pad) return true;
 	if (shape.kind !== "rectangle" && shape.kind !== "circle") return false;
 	if (pad.cornerRatio !== undefined && shape.kind !== "rectangle") return false;
-	if (pad.type === "smd") return pad.drill === undefined;
+	if (pad.type === "smd")
+		return pad.drill === undefined && pad.slot === undefined;
 	return (
 		pad.paste === undefined &&
 		pad.drill !== undefined &&
-		pad.drill < Math.min(shape.width, shape.height)
+		pad.drill < Math.min(shape.width, shape.height) &&
+		(pad.slot === undefined || (pad.slot > pad.drill && pad.slot < shape.width))
 	);
 };
 const validPadError = {
 	error:
-		"A pad must be a rectangle or a circle, and only a rectangle has rounded corners. A through-hole pad needs a drill smaller than the pad and has no paste setting. A surface mount pad has no drill.",
+		"A pad must be a rectangle or a circle, and only a rectangle has rounded corners. A through-hole pad needs a drill smaller than the pad, a slot longer than the drill and shorter than the pad's width, and no paste setting. A surface mount pad has no drill or slot.",
 };
 const validVia = (shape: {
 	kind: string;

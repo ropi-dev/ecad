@@ -70,6 +70,28 @@ export const shapeDrill = (shape: EditorShape): number | undefined =>
 				? shape.hole.drill
 				: undefined;
 
+export const slotReach = (shape: EditorShape): number =>
+	isPad(shape) && shape.pad.slot !== undefined && shape.pad.drill !== undefined
+		? (shape.pad.slot - shape.pad.drill) / 2
+		: 0;
+
+export function shapeHole(
+	shape: EditorShape,
+): { diameter: number; ends: [Point, Point] } | undefined {
+	const diameter = shapeDrill(shape);
+	if (diameter === undefined) return undefined;
+	const reach = slotReach(shape);
+	const dx = reach * Math.cos(shape.rotation);
+	const dy = reach * Math.sin(shape.rotation);
+	return {
+		diameter,
+		ends: [
+			{ x: shape.x - dx, y: shape.y - dy },
+			{ x: shape.x + dx, y: shape.y + dy },
+		],
+	};
+}
+
 export const isFootprintShape = (shape: EditorShape) =>
 	footprintShapeKinds.has(shape.kind) &&
 	!(shape.kind === "text" && shape.electrical);
@@ -249,14 +271,26 @@ export const padCornerRadius = (shape: EditorShape): number =>
 		? (shape.pad.cornerRatio ?? 0) * padMinorSize(shape)
 		: 0;
 
+export type PadOutline = PadShape["kind"] | "oval";
+
+export const padOutline = (pad: PadShape): PadOutline =>
+	pad.kind === "rectangle" && pad.pad.cornerRatio === 0.5 ? "oval" : pad.kind;
+
+export const fittingSlot = (pad: PadShape, drill: number): number =>
+	Math.max(pad.width - (pad.height - drill), (drill + pad.width) / 2);
+
 function fitDrill(shape: PadShape): PadShape {
-	const { drill } = shape.pad;
-	return drill === undefined || drill < padMinorSize(shape)
-		? shape
-		: {
-				...shape,
-				pad: { ...shape.pad, drill: padMinorSize(shape) * drillShareOfPad },
-			};
+	let { drill, slot } = shape.pad;
+	if (drill === undefined) return shape;
+	if (drill >= padMinorSize(shape))
+		drill = padMinorSize(shape) * drillShareOfPad;
+	if (slot !== undefined && (slot >= shape.width || slot <= drill))
+		slot = fittingSlot(shape, drill);
+	if (drill === shape.pad.drill && slot === shape.pad.slot) return shape;
+	return {
+		...shape,
+		pad: { ...shape.pad, drill, ...(slot === undefined ? {} : { slot }) },
+	};
 }
 
 export function fitHole<Shape extends EditorShape>(shape: Shape): Shape {
@@ -271,8 +305,10 @@ export function fitHole<Shape extends EditorShape>(shape: Shape): Shape {
 export type PadEdit =
 	| { attribute: "number"; value: string }
 	| { attribute: "type"; value: PadType }
-	| { attribute: "shape"; value: PadShape["kind"] }
+	| { attribute: "shape"; value: PadOutline }
 	| { attribute: "drill"; value: number }
+	| { attribute: "hole"; value: "round" | "slot" }
+	| { attribute: "slot"; value: number }
 	| { attribute: "paste"; value: boolean }
 	| { attribute: "cornerRadius"; value: number };
 
@@ -286,7 +322,7 @@ export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 		case "type": {
 			if (edit.value === shape.pad.type) return shape;
 			if (edit.value === "smd") {
-				const { drill: _drill, ...pad } = shape.pad;
+				const { drill: _drill, slot: _slot, ...pad } = shape.pad;
 				return { ...shape, pad: { ...pad, type: "smd", paste: true } };
 			}
 			const { paste: _paste, ...pad } = shape.pad;
@@ -300,20 +336,62 @@ export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 			};
 		}
 		case "shape": {
-			if (edit.value === shape.kind) return shape;
+			const outline = padOutline(shape);
+			if (edit.value === outline) return shape;
 			const size = padMinorSize(shape);
 			const { cornerRatio: _cornerRatio, ...pad } = shape.pad;
-			return fitDrill(
-				edit.value === "circle"
-					? { ...shape, kind: "circle", width: size, height: size, pad }
-					: { ...shape, kind: "rectangle" },
-			);
+			if (edit.value === "circle")
+				return fitDrill({
+					...shape,
+					kind: "circle",
+					width: size,
+					height: size,
+					pad,
+				});
+			if (edit.value === "oval")
+				return fitDrill({
+					...shape,
+					kind: "rectangle",
+					pad: { ...pad, cornerRatio: 0.5 },
+				});
+			return fitDrill({ ...shape, kind: "rectangle", pad });
 		}
 		case "drill":
 			return shape.pad.type === "through-hole" &&
 				edit.value > 0 &&
-				edit.value < padMinorSize(shape)
+				edit.value < padMinorSize(shape) &&
+				(shape.pad.slot === undefined || edit.value < shape.pad.slot)
 				? { ...shape, pad: { ...shape.pad, drill: edit.value } }
+				: shape;
+		case "hole": {
+			const { drill, slot: _slot, ...pad } = shape.pad;
+			if (shape.pad.type !== "through-hole" || drill === undefined)
+				return shape;
+			if (edit.value === "round")
+				return shape.pad.slot === undefined
+					? shape
+					: { ...shape, pad: { ...pad, drill } };
+			if (shape.pad.slot !== undefined) return shape;
+			const turned =
+				shape.height > shape.width
+					? {
+							...shape,
+							width: shape.height,
+							height: shape.width,
+							rotation: (shape.rotation + Math.PI / 2) % (2 * Math.PI),
+						}
+					: shape;
+			return {
+				...turned,
+				pad: { ...pad, drill, slot: fittingSlot(turned, drill) },
+			};
+		}
+		case "slot":
+			return shape.pad.slot !== undefined &&
+				shape.pad.drill !== undefined &&
+				edit.value > shape.pad.drill &&
+				edit.value < shape.width
+				? { ...shape, pad: { ...shape.pad, slot: edit.value } }
 				: shape;
 		case "paste":
 			return shape.pad.type === "smd"

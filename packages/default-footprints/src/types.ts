@@ -2,7 +2,7 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 
 type Point = readonly [x: number, y: number];
-type PadShape = "rect" | "circle";
+type PadShape = "rect" | "circle" | "oval";
 
 export type SourceItem =
 	| readonly [
@@ -26,6 +26,7 @@ export type SourceItem =
 			height: number,
 			angle: number,
 			drill: number,
+			slot?: number,
 	  ]
 	| readonly ["npth", x: number, y: number, size: number, drill: number]
 	/** A paste opening drawn on its own, such as the windows over an exposed pad. */

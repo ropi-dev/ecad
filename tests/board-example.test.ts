@@ -77,6 +77,7 @@ test("the RP2350A example is a fully routed single-sided board that passes the c
 	);
 	const drill = files.find((file) => file.name.endsWith(".drl"));
 	assert.match(drill?.content ?? "", /^T\d+C0\.300$/m);
+	assert.equal(drill?.content.match(/G85/g)?.length, 4);
 });
 
 test("the RP2350A schematic fills in its title block and keeps clear of it", async () => {

@@ -586,3 +586,60 @@ test("the unplated hole tool places mounting holes, and a hole's drill is edited
 	await drill.press("Enter");
 	await expect.poll(holes).toEqual([["circle", 4, 4]]);
 });
+
+test("a through-hole pad becomes an oval with a slot in Attributes", async ({
+	page,
+}) => {
+	await createFootprint(page);
+	await (await toolbarButton(page, "Through-hole pad")).click();
+	const point = await screenPointOfMillimetres(page, 0, 0);
+	await page.mouse.move(point.x, point.y);
+	await page.mouse.click(point.x, point.y);
+	await page.keyboard.press("Escape");
+	const attributes = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	await page.mouse.dblclick(point.x, point.y);
+	await attributes.getByLabel("Pad shape").selectOption("oval");
+	const height = attributes.getByLabel("Height");
+	await height.fill("2.6");
+	await height.press("Enter");
+	await expect
+		.poll(async () => {
+			const [pad] = (await documentState(page)).editorShapes;
+			return [pad.kind, pad.width, pad.height, pad.pad];
+		})
+		.toEqual([
+			"rectangle",
+			1.7,
+			2.6,
+			{ number: "1", type: "through-hole", drill: 1, cornerRatio: 0.5 },
+		]);
+	await attributes.getByLabel("Hole").selectOption("slot");
+	await expect
+		.poll(async () => {
+			const [pad] = (await documentState(page)).editorShapes;
+			return [pad.width, pad.height, pad.rotation, pad.pad.slot];
+		})
+		.toEqual([2.6, 1.7, Math.PI / 2, expect.closeTo(1.9)]);
+	await expect(attributes.getByLabel("Width", { exact: true })).toHaveValue(
+		"2.6",
+	);
+	const length = attributes.getByLabel("Slot length");
+	for (const invalid of ["0.8", "2.6"]) {
+		await length.fill(invalid);
+		await length.press("Enter");
+		await expect(length).toHaveValue("1.9");
+	}
+	await length.fill("1.6");
+	await length.press("Enter");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes[0].pad.slot)
+		.toBe(1.6);
+	await expect(attributes.getByLabel("Slot width")).toHaveValue("1");
+	await attributes.getByLabel("Hole").selectOption("round");
+	await expect
+		.poll(async () => (await documentState(page)).editorShapes[0].pad.slot)
+		.toBeUndefined();
+	await expect(attributes.getByLabel("Drill")).toHaveValue("1");
+});

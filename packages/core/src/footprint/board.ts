@@ -17,6 +17,7 @@ import {
 	type PadShape,
 	padCornerRadius,
 	shapeDrill,
+	shapeHole,
 	shapeLayer,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -376,15 +377,31 @@ const edgeObjects = (shape: EditorShape) =>
 
 const drillObjects = (shape: EditorShape) =>
 	cachedObjects(shape, DRILL_GROUP, () => {
-		const drill = shapeDrill(shape);
-		if (drill === undefined) return [];
-		const radius = drill / 2;
+		const hole = shapeHole(shape);
+		if (hole === undefined) return [];
+		const radius = hole.diameter / 2;
+		const [from, to] = hole.ends;
 		return [
 			{
 				id: `drill:${shape.id}`,
-				geometry: { type: "circle", x: shape.x, y: shape.y, radius },
+				geometry:
+					from.x === to.x && from.y === to.y
+						? { type: "circle", x: shape.x, y: shape.y, radius }
+						: {
+								type: "line",
+								x1: from.x,
+								y1: from.y,
+								x2: to.x,
+								y2: to.y,
+								width: hole.diameter,
+							},
 				bounds: expandBounds(
-					{ minX: shape.x, minY: shape.y, maxX: shape.x, maxY: shape.y },
+					{
+						minX: Math.min(from.x, to.x),
+						minY: Math.min(from.y, to.y),
+						maxX: Math.max(from.x, to.x),
+						maxY: Math.max(from.y, to.y),
+					},
 					radius,
 				),
 				polarity: "dark",
