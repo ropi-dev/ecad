@@ -416,6 +416,35 @@ describe("routing and the ratsnest", () => {
 		);
 	});
 
+	test("a track under the cursor beats a nearby pad it may not share a net with", () => {
+		const { shapes, netlist } = dividerBoard();
+		const mid = required(
+			copperItems(shapes, netlist).find(
+				(item) => item.kind === "pad" && item.net === "mid",
+			),
+		);
+		const y = mid.bounds.maxY + 0.3;
+		const gnd = trackSegment(
+			950,
+			{ x: mid.shape.x - 3, y },
+			{ x: mid.shape.x + 3, y },
+			"F.Cu",
+			0.25,
+			"gnd",
+		);
+		const items = copperItems([...shapes, gnd], netlist);
+		const onTrack = { x: mid.shape.x, y };
+		const reach = { padReach: 0.5, tolerance: 0.05 };
+		const hit = required(trackAnchor(items, onTrack, reach));
+		assert.equal(hit.item.kind, "track");
+		assert.equal(hit.item.net, "gnd");
+		assert.ok(Math.hypot(hit.point.x - onTrack.x, hit.point.y - y) < 1e-9);
+		assert.deepEqual(
+			trackAnchor(items, onTrack, { ...reach, net: "mid" })?.point,
+			{ x: mid.shape.x, y: mid.shape.y },
+		);
+	});
+
 	test("a via placed on a footprint pad takes that pad's net", () => {
 		const circuit = dividerCircuit();
 		const file = required(library.get(r0805.id));

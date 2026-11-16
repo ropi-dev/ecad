@@ -138,11 +138,10 @@ export function trackAnchor(
 		)
 			best = { anchor: { point: centre, item }, gap, distance };
 	}
-	if (best) return best.anchor;
-	const anchor = routeAnchor(items, point, layer, tolerance);
-	return anchor && joins(anchor.item) && !excluded(anchor.point)
-		? anchor
-		: undefined;
+	if (best?.gap === 0) return best.anchor;
+	const hit = routeAnchor(items, point, layer, tolerance);
+	if (hit && joins(hit.item) && !excluded(hit.point)) return hit;
+	return best?.anchor;
 }
 
 export const otherCopperLayer = (layer: CopperLayer): CopperLayer =>
