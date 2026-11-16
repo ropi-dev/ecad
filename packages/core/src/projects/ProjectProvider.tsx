@@ -23,8 +23,10 @@ import {
 } from "#/symbol-library/storage.tsx";
 
 export type {
+	BoardDocument,
 	CircuitDocument,
 	DrawingDocument,
+	EditorViews,
 	SymbolDocument,
 } from "#/projects/ProjectSession.ts";
 
@@ -93,6 +95,7 @@ export const useProjectEditor = () =>
 			editorBoard,
 			editorDrawing,
 			editorCircuit,
+			editorViews,
 			openingCircuit,
 			selectedAsset,
 		}) => ({
@@ -104,6 +107,7 @@ export const useProjectEditor = () =>
 			editorBoard,
 			editorDrawing,
 			editorCircuit,
+			editorViews,
 			openingCircuit,
 			selectedAsset,
 		}),
@@ -125,6 +129,7 @@ export const useProjectActions = () =>
 			editorBoard: _editorBoard,
 			editorDrawing: _editorDrawing,
 			editorCircuit: _editorCircuit,
+			editorViews: _editorViews,
 			openingCircuit: _openingCircuit,
 			selectedAsset: _selectedAsset,
 			...actions

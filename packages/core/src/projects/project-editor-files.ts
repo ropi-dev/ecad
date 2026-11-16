@@ -1,9 +1,11 @@
+import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
-import { createBoardFile } from "#/board/format.ts";
+import { type BoardFile, createBoardFile } from "#/board/format.ts";
 import { createBoardRulesStore } from "#/board/rules-store.ts";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
+import type { ProjectDrawing } from "#/projects/format.ts";
 import type { EditorView } from "#/projects/ProjectSession.ts";
 import { pcbDocumentName, primaryPcbId } from "#/projects/pcb.ts";
 import { projectIndex } from "#/projects/project-index.ts";
@@ -24,6 +26,7 @@ export function createProjectEditorFiles(
 ) {
 	const {
 		documents,
+		circuitDocuments,
 		setDirty,
 		setEditorCircuit,
 		setOpeningCircuit,
@@ -31,8 +34,47 @@ export function createProjectEditorFiles(
 		setEditorSymbol,
 		setEditorFootprint,
 		setEditorBoard,
+		setEditorViews,
 		showError,
 	} = state;
+	const circuitModules = () =>
+		Promise.all([
+			import("@ecad/drawing-core/circuit/store.ts"),
+			import("@ecad/drawing-core/circuit/untangle.ts"),
+		]);
+	const openCircuitDocument = (
+		file: CircuitFile,
+		[{ createCircuitStore }, { createCircuitView }]: Awaited<
+			ReturnType<typeof circuitModules>
+		>,
+	) =>
+		documents.openDocument("circuit", file.circuit.id, () => {
+			const circuitStore = measurePerformance(
+				"editor.open-circuit",
+				() =>
+					createCircuitStore(
+						file.graph.positions.length
+							? file
+							: createCircuitView(file.circuit),
+					),
+				{ components: file.circuit.components.length },
+			);
+			let lastCircuit = circuitStore.getSnapshot().circuit;
+			return {
+				file,
+				store: circuitStore,
+				savedFile: circuitStore.getSnapshot(),
+				unsubscribe: circuitStore.subscribe(() => {
+					const nextCircuit = circuitStore.getSnapshot().circuit;
+					if (nextCircuit === lastCircuit) return;
+					lastCircuit = nextCircuit;
+					if (state.synchronizing) return;
+					state.needsSave = true;
+					setDirty(true);
+					void autosave(true).catch(() => undefined);
+				}),
+			};
+		});
 	const clearEditors = (
 		keep?: "symbol" | "footprint" | "board" | "drawing" | "circuit",
 	) => {
@@ -73,10 +115,7 @@ export function createProjectEditorFiles(
 			openedGeneration !== state.generation
 		)
 			return false;
-		const [{ createCircuitStore }, { createCircuitView }] = await Promise.all([
-			import("@ecad/drawing-core/circuit/store.ts"),
-			import("@ecad/drawing-core/circuit/untangle.ts"),
-		]);
+		const modules = await circuitModules();
 		if (
 			openedGeneration !== state.generation ||
 			selectionRequest !== state.editorSelection ||
@@ -90,33 +129,7 @@ export function createProjectEditorFiles(
 				? projectIndex(snapshot).circuitsById.get(circuitId)?.file
 				: undefined;
 		if (!file) throw new Error("Circuit file no longer exists.");
-		const document = documents.openDocument("circuit", file.circuit.id, () => {
-			const circuitStore = measurePerformance(
-				"editor.open-circuit",
-				() =>
-					createCircuitStore(
-						file.graph.positions.length
-							? file
-							: createCircuitView(file.circuit),
-					),
-				{ components: file.circuit.components.length },
-			);
-			let lastCircuit = circuitStore.getSnapshot().circuit;
-			return {
-				file,
-				store: circuitStore,
-				savedFile: circuitStore.getSnapshot(),
-				unsubscribe: circuitStore.subscribe(() => {
-					const nextCircuit = circuitStore.getSnapshot().circuit;
-					if (nextCircuit === lastCircuit) return;
-					lastCircuit = nextCircuit;
-					if (state.synchronizing) return;
-					state.needsSave = true;
-					setDirty(true);
-					void autosave(true).catch(() => undefined);
-				}),
-			};
-		});
+		const document = openCircuitDocument(file, modules);
 		clearEditors("circuit");
 		setEditorCircuit(document);
 		return true;
@@ -190,10 +203,10 @@ export function createProjectEditorFiles(
 			if (!path) return;
 			const remembered = state.viewSelection;
 			const handoff =
-				view !== "pcb" &&
 				remembered &&
 				remembered.store ===
 					(state.editorCircuit?.store ??
+						state.editorBoard?.store ??
 						state.editorDrawing?.store ??
 						state.store)
 					? {
@@ -203,6 +216,7 @@ export function createProjectEditorFiles(
 							source: remembered.origin ?? remembered,
 						}
 					: null;
+			keepOpenViews();
 			state.selectionHandoff = handoff;
 			const opened =
 				view === "circuit"
@@ -236,19 +250,26 @@ export function createProjectEditorFiles(
 		const circuitId =
 			view === "circuit"
 				? state.editorCircuit?.file.circuit.id
-				: state.editorCircuit ||
-						state.editorSymbol ||
-						state.editorFootprint ||
-						state.editorBoard
-					? undefined
-					: state.editorDrawing
-						? projectIndex(snapshot).drawingsById.get(
-								state.editorDrawing.file.id,
-							)?.file.circuitId
-						: primaryPcbId;
+				: view === "pcb"
+					? state.editorBoard?.file.circuitId
+					: state.editorCircuit ||
+							state.editorSymbol ||
+							state.editorFootprint ||
+							state.editorBoard
+						? undefined
+						: state.editorDrawing
+							? projectIndex(snapshot).drawingsById.get(
+									state.editorDrawing.file.id,
+								)?.file.circuitId
+							: primaryPcbId;
 		if (circuitId !== handoff.circuitId) return null;
 		state.selectionOrigins.add(handoff.source);
-		return handoff.source;
+		return {
+			source: handoff.source,
+			circuit:
+				circuitDocuments.get(circuitId)?.store.getSnapshot().circuit ??
+				projectIndex(snapshot).circuitsById.get(circuitId)?.file.circuit,
+		};
 	};
 
 	const subscribeDrawing = (
@@ -265,31 +286,8 @@ export function createProjectEditorFiles(
 			void autosave(true).catch(() => undefined);
 		});
 	};
-	const openBoard = (path: string): boolean | Promise<boolean> => {
-		if (state.needsSave) {
-			const before = state.active;
-			const circuitId = before
-				? projectIndex(before).boardsByPath.get(path)?.circuitId
-				: undefined;
-			const request = ++state.editorSelection;
-			return autosave()
-				.then(() => {
-					if (request !== state.editorSelection) return false;
-					const current = state.active;
-					const next =
-						current && circuitId
-							? projectIndex(current).boardsByCircuit.get(circuitId)?.path
-							: undefined;
-					return next ? openBoard(next) : false;
-				})
-				.catch(() => false);
-		}
-		const snapshot = state.active;
-		const board = snapshot
-			? projectIndex(snapshot).boardsByPath.get(path)
-			: undefined;
-		if (!board) return false;
-		const document = documents.openDocument("board", board.circuitId, () => {
+	const openBoardDocument = (board: BoardFile) =>
+		documents.openDocument("board", board.circuitId, () => {
 			const boardStore = measurePerformance(
 				"editor.open-board",
 				() => createDrawingStore(board.shapes),
@@ -315,6 +313,45 @@ export function createProjectEditorFiles(
 				},
 			};
 		});
+	const openDrawingDocument = (drawing: ProjectDrawing) =>
+		documents.openDocument("drawing", drawing.id, () => {
+			const drawingStore = measurePerformance(
+				"editor.open-drawing",
+				() => createDrawingStore(drawing.shapes, drawing.pages, drawing.sheet),
+				{ shapes: drawing.shapes.length },
+			);
+			return {
+				file: drawing,
+				store: drawingStore,
+				savedShapes: drawingStore.getSnapshot().shapes,
+				unsubscribe: subscribeDrawing(drawingStore),
+			};
+		});
+	const openBoard = (path: string): boolean | Promise<boolean> => {
+		if (state.needsSave) {
+			const before = state.active;
+			const circuitId = before
+				? projectIndex(before).boardsByPath.get(path)?.circuitId
+				: undefined;
+			const request = ++state.editorSelection;
+			return autosave()
+				.then(() => {
+					if (request !== state.editorSelection) return false;
+					const current = state.active;
+					const next =
+						current && circuitId
+							? projectIndex(current).boardsByCircuit.get(circuitId)?.path
+							: undefined;
+					return next ? openBoard(next) : false;
+				})
+				.catch(() => false);
+		}
+		const snapshot = state.active;
+		const board = snapshot
+			? projectIndex(snapshot).boardsByPath.get(path)
+			: undefined;
+		if (!board) return false;
+		const document = openBoardDocument(board);
 		const request = ++state.editorSelection;
 		const show = () => {
 			if (request !== state.editorSelection) return false;
@@ -398,20 +435,7 @@ export function createProjectEditorFiles(
 		}
 		const drawing = projectIndex(snapshot).drawingsByPath.get(path);
 		if (drawing) {
-			const document = documents.openDocument("drawing", drawing.id, () => {
-				const drawingStore = measurePerformance(
-					"editor.open-drawing",
-					() =>
-						createDrawingStore(drawing.shapes, drawing.pages, drawing.sheet),
-					{ shapes: drawing.shapes.length },
-				);
-				return {
-					file: drawing,
-					store: drawingStore,
-					savedShapes: drawingStore.getSnapshot().shapes,
-					unsubscribe: subscribeDrawing(drawingStore),
-				};
-			});
+			const document = openDrawingDocument(drawing);
 			clearEditors("drawing");
 			setEditorDrawing(document);
 			return true;
@@ -455,6 +479,83 @@ export function createProjectEditorFiles(
 		return true;
 	};
 
+	const currentCircuitId = () => {
+		const snapshot = state.active;
+		if (!snapshot || state.editorSymbol || state.editorFootprint) return;
+		const index = projectIndex(snapshot);
+		const circuitId =
+			state.editorCircuit?.file.circuit.id ??
+			state.editorBoard?.file.circuitId ??
+			(state.editorDrawing
+				? index.drawingsById.get(state.editorDrawing.file.id)?.file.circuitId
+				: snapshot.manifest.drawing === undefined
+					? undefined
+					: primaryPcbId);
+		return circuitId && index.circuitsById.has(circuitId)
+			? circuitId
+			: undefined;
+	};
+	const keepOpenViews = () => {
+		const circuitId = currentCircuitId();
+		if (!circuitId) return;
+		const kept =
+			state.editorViews?.circuitId === circuitId
+				? state.editorViews
+				: { circuitId, schematic: null, circuit: null, board: null };
+		setEditorViews({
+			...kept,
+			schematic:
+				state.editorCircuit || state.editorBoard
+					? kept.schematic
+					: (state.editorDrawing ?? "main"),
+			circuit: state.editorCircuit ?? kept.circuit,
+			board: state.editorBoard ?? kept.board,
+		});
+	};
+	const preloadEditorViews = async () => {
+		const circuitId = currentCircuitId();
+		const snapshot = state.active;
+		if (!circuitId || !snapshot) {
+			setEditorViews(null);
+			return;
+		}
+		const index = projectIndex(snapshot);
+		const drawing =
+			circuitId === primaryPcbId
+				? undefined
+				: index.drawingsByCircuit.get(circuitId)?.file;
+		const board = index.boardsByCircuit.get(circuitId)?.file;
+		const views = {
+			circuitId,
+			schematic:
+				circuitId === primaryPcbId
+					? ("main" as const)
+					: drawing
+						? openDrawingDocument(drawing)
+						: null,
+			circuit: circuitDocuments.get(circuitId) ?? null,
+			board: board ? openBoardDocument(board) : null,
+		};
+		setEditorViews(views);
+		if (views.circuit) return;
+		const generation = state.generation;
+		const modules = await circuitModules();
+		if (
+			generation !== state.generation ||
+			!state.mounted ||
+			state.editorViews?.circuitId !== circuitId
+		)
+			return;
+		const file = state.active
+			? projectIndex(state.active).circuitsById.get(circuitId)?.file
+			: undefined;
+		if (file)
+			setEditorViews({
+				...state.editorViews,
+				circuit: openCircuitDocument(file, modules),
+			});
+	};
+
 	let stopMain = () => {};
 	const subscribeMain = () => {
 		stopMain();
@@ -480,6 +581,7 @@ export function createProjectEditorFiles(
 			return openBoard(path);
 		},
 		switchEditorView,
+		preloadEditorViews,
 		rememberViewSelection,
 		takeSelectionHandoff,
 		selectEditorFile: (path?: string) => {

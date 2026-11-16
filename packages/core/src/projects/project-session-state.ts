@@ -17,6 +17,7 @@ import type {
 	BoardDocument,
 	CircuitDocument,
 	DrawingDocument,
+	EditorViews,
 	FootprintDocument,
 	ProjectContextValue,
 	SymbolDocument,
@@ -65,6 +66,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		editorFootprint: null as FootprintDocument | null,
 		editorBoard: null as BoardDocument | null,
 		editorDrawing: null as DrawingDocument | null,
+		editorViews: null as EditorViews | null,
 		symbols: [] as SymbolLibrary,
 		libraries: [] as readonly ConfiguredSymbolLibrary[],
 		epoch: 0,
@@ -152,6 +154,21 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 	const setEditorDrawing = (next: DrawingDocument | null) => {
 		if (Object.is(next, state.editorDrawing)) return;
 		state.editorDrawing = next;
+		publish();
+	};
+	const setEditorViews = (next: EditorViews | null) => {
+		const current = state.editorViews;
+		if (
+			current === next ||
+			(current &&
+				next &&
+				current.circuitId === next.circuitId &&
+				current.schematic === next.schematic &&
+				current.circuit === next.circuit &&
+				current.board === next.board)
+		)
+			return;
+		state.editorViews = next;
 		publish();
 	};
 	const setEpoch = (next: number) => {
@@ -247,6 +264,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		setEditorFootprint,
 		setEditorBoard,
 		setEditorDrawing,
+		setEditorViews,
 		setEpoch,
 		setBusy,
 		setDirty,

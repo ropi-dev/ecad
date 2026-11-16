@@ -2,6 +2,8 @@
 
 A PCB is the board view of a circuit. Open a schematic or a circuit and press the **PCB** side of the view switch in the document bar, next to Schematic and Circuit. The first time, the circuit gets an empty board and the PCB opens. The schematic, its circuit and its board are one `.ecaddraw` file. In the project's file list, a drawing with a board has a **PCB view** row under **Circuit view**.
 
+Once any of the three views is open, the other two load in the background during the first pause in your work and stay loaded, so the switch shows them without rebuilding the board or its 3D view. Each keeps its camera and tool. The switch also carries the selected components: footprints selected on the board are selected as symbols in the schematic, or as the component in the circuit view when there is one, and the other way round.
+
 The editor is the footprint editor's canvas with a board added: the same layers, selection, moves, rotation, locks, undo, history panel and 3D view. Lengths are in millimetres.
 
 ## Footprints from the schematic

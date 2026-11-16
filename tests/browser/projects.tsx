@@ -11,12 +11,15 @@ import { createWebProjectStorage } from "#web/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import "#/styles.css";
 
-Scene.prototype.onAfterRender = function (_renderer, _scene, camera) {
-	document.documentElement.dataset.editorCamera = JSON.stringify({
+Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
+	const editorCamera = JSON.stringify({
 		x: camera.position.x,
 		y: camera.position.y,
 		projection: camera.projectionMatrix.toArray(),
 	});
+	renderer.domElement.dataset.editorCamera = editorCamera;
+	if (renderer.domElement.closest('[data-editor-pane="hidden"]')) return;
+	document.documentElement.dataset.editorCamera = editorCamera;
 	const pinLabels: string[] = [];
 	this.getObjectByName("editor-shapes")?.traverse((child) => {
 		if (/^pin (name|number) /.test(child.name)) pinLabels.push(child.name);

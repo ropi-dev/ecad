@@ -79,6 +79,7 @@ import {
 	useCanvasGestures,
 } from "#/components/editor/useCanvasGestures.ts";
 import { useDrawingClipboard } from "#/components/editor/useDrawingClipboard.ts";
+import { useDrawingSelectionSync } from "#/components/editor/useDrawingSelectionSync.ts";
 import { useEditorCommands } from "#/components/editor/useEditorCommands.ts";
 import { useEditorScene } from "#/components/editor/useEditorScene.ts";
 import {
@@ -88,7 +89,6 @@ import {
 import { useEditorViewport } from "#/components/editor/useEditorViewport.ts";
 import { useLegacyWireReroute } from "#/components/editor/useLegacyWireReroute.ts";
 import { useLibrarySymbolSave } from "#/components/editor/useLibrarySymbolSave.ts";
-import { useSchematicSelectionSync } from "#/components/editor/useSchematicSelectionSync.ts";
 import { useSymbolDefinitionEditing } from "#/components/editor/useSymbolDefinitionEditing.ts";
 import { useSymbolLibrary } from "#/components/editor/useSymbolLibrary.ts";
 import { FootprintBoardView } from "#/components/footprint/FootprintBoardView.tsx";
@@ -148,6 +148,7 @@ export type EditorCanvasProps = Editor2DProps & {
 	/** Id of the open file among the project's file selections. */
 	documentSelection?: string;
 	syncSelection?: boolean;
+	active?: boolean;
 };
 
 const NO_SHAPES: EditorShape[] = [];
@@ -171,6 +172,7 @@ function EditorCanvas({
 	viewSwitch,
 	documentSelection,
 	syncSelection = false,
+	active = true,
 }: EditorCanvasProps) {
 	const isBoard = board !== undefined;
 	const isFootprint = footprintName !== undefined || isBoard;
@@ -217,8 +219,9 @@ function EditorCanvas({
 	const ready = viewport.ready && boardView !== "closing";
 	const registerEditor = useEditorControlsRegistration();
 	useEffect(
-		() => registerEditor?.(store, enableMcp && !isFootprint),
-		[registerEditor, store, enableMcp, isFootprint],
+		() =>
+			active ? registerEditor?.(store, enableMcp && !isFootprint) : undefined,
+		[active, registerEditor, store, enableMcp, isFootprint],
 	);
 	const drawing = useSyncExternalStore(
 		store.subscribe,
@@ -547,8 +550,9 @@ function EditorCanvas({
 		finishWire();
 	});
 	useEffect(() => session.connect(store, cancelGestures), [session, store]);
-	useSchematicSelectionSync({
-		enabled: syncSelection,
+	useDrawingSelectionSync({
+		enabled: syncSelection && active,
+		view: isBoard ? "pcb" : "schematic",
 		store,
 		session,
 		selection: selectedIds,
@@ -1017,6 +1021,7 @@ function EditorCanvas({
 					selection={documentSelection}
 					view={isBoard ? "pcb" : undefined}
 					center={pageBar(false)}
+					active={active}
 				>
 					{headerControls ?? viewSwitch}
 				</DocumentBar>

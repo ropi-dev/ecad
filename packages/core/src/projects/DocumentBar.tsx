@@ -21,6 +21,7 @@ export function DocumentBar({
 	path: suppliedPath,
 	view,
 	center,
+	active = true,
 	children,
 }: {
 	icon: LucideIcon;
@@ -37,6 +38,7 @@ export function DocumentBar({
 	 * It stays centred while there is room and otherwise sits after this bar.
 	 */
 	center?: ReactNode;
+	active?: boolean;
 	/** Controls for this document, such as the view switch. */
 	children?: ReactNode;
 }) {
@@ -55,8 +57,8 @@ export function DocumentBar({
 		[snapshot, selection, suppliedPath],
 	);
 	useEffect(
-		() => registerDocument?.({ path, view }),
-		[registerDocument, path, view],
+		() => (active ? registerDocument?.({ path, view }) : undefined),
+		[active, registerDocument, path, view],
 	);
 	if (!project) return null;
 	const name =
