@@ -19,6 +19,7 @@ interface NegotiatedRouteOptions {
 	rules: BoardRules;
 	/** Rounds of rerouting every net before giving up on overlaps. */
 	rounds?: number;
+	patience?: number;
 	/** Nets left alone, such as a ground that zones connect. */
 	exclude?: ReadonlySet<string>;
 	/** Called once per round with the number of overlapping nets. */
@@ -261,6 +262,9 @@ export function negotiatedRoute(
 
 	const routes = new Map<string, NetRoute>();
 	const rounds = options.rounds ?? 40;
+	const patience = options.patience ?? rounds;
+	let fewest = Infinity;
+	let improved = 0;
 	for (let round = 0; round < rounds; round++) {
 		for (const entry of nets) {
 			const previous = routes.get(entry.net);
@@ -279,6 +283,10 @@ export function negotiatedRoute(
 		}
 		options.progress?.(round, contested);
 		if (!contested) break;
+		if (contested < fewest) {
+			fewest = contested;
+			improved = round;
+		} else if (round - improved >= patience) break;
 		present *= 1.5;
 	}
 

@@ -9,7 +9,11 @@ import {
 	insideOutline,
 	outlineBounds,
 } from "#/board/drc.ts";
-import { type Hull, hullDistance, trackSegment } from "#/board/geometry.ts";
+import {
+	type Hull,
+	pointHullDistance,
+	trackSegment,
+} from "#/board/geometry.ts";
 import type { BoardNetlist } from "#/board/netlist.ts";
 import type { BoardRules } from "#/board/rules.ts";
 import type { EditorShape, FillableShape } from "#/drawing/schema.ts";
@@ -61,16 +65,23 @@ const open = (grid: Int32Array, cell: number, owner: number) =>
 	grid[cell] === free || grid[cell] === owner;
 
 class Heap {
-	readonly keys: number[] = [];
-	readonly values: number[] = [];
+	private keys = new Float64Array(1024);
+	private values = new Int32Array(1024);
+	private length = 0;
 	get size() {
-		return this.keys.length;
+		return this.length;
 	}
 	push(value: number, key: number) {
+		if (this.length === this.keys.length) {
+			const keys = new Float64Array(this.length * 2);
+			const values = new Int32Array(this.length * 2);
+			keys.set(this.keys);
+			values.set(this.values);
+			this.keys = keys;
+			this.values = values;
+		}
 		const { keys, values } = this;
-		let index = keys.length;
-		keys.push(key);
-		values.push(value);
+		let index = this.length++;
 		while (index > 0) {
 			const parent = (index - 1) >> 1;
 			if (keys[parent] <= key) break;
@@ -84,16 +95,16 @@ class Heap {
 	pop(): number {
 		const { keys, values } = this;
 		const top = values[0];
-		const lastKey = keys.pop() as number;
-		const lastValue = values.pop() as number;
-		if (keys.length) {
+		const last = --this.length;
+		const lastKey = keys[last];
+		const lastValue = values[last];
+		if (last) {
 			let index = 0;
 			for (;;) {
 				const left = 2 * index + 1;
-				if (left >= keys.length) break;
+				if (left >= last) break;
 				const right = left + 1;
-				const child =
-					right < keys.length && keys[right] < keys[left] ? right : left;
+				const child = right < last && keys[right] < keys[left] ? right : left;
 				if (keys[child] >= lastKey) break;
 				keys[index] = keys[child];
 				values[index] = values[child];
@@ -205,13 +216,12 @@ export function routingGrid(
 			rows - 1,
 			Math.ceil((maxY + extent - originY) / pitch),
 		);
-		const probe: Hull = { points: [{ x: 0, y: 0 }], radius: 0 };
-		const point = probe.points[0] as Point;
+		const point = { x: 0, y: 0 };
 		for (let row = firstRow; row <= lastRow; row++)
 			for (let column = firstColumn; column <= lastColumn; column++) {
 				point.x = originX + column * pitch;
 				point.y = originY + row * pitch;
-				const distance = hullDistance(hull, probe);
+				const distance = pointHullDistance(hull, point);
 				if (distance >= reach) continue;
 				const cell = row * columns + column;
 				if (pad && distance < nearReach) claim(near[layer], cell, owner);
@@ -244,10 +254,7 @@ export function routingGrid(
 		for (const [a, b] of outline)
 			edge = Math.min(
 				edge,
-				hullDistance(
-					{ points: [a, b], radius: 0 },
-					{ points: [point], radius: 0 },
-				),
+				pointHullDistance({ points: [a, b], radius: 0 }, point),
 			);
 		const inside = insideOutline(point, outline);
 		for (let layer = 0; layer < layers.length; layer++) {
@@ -272,12 +279,7 @@ export function routingGrid(
 				) {
 					const cell = row * columns + column;
 					const point = center(cell);
-					if (
-						item.hulls.some(
-							(hull) =>
-								hullDistance(hull, { points: [point], radius: 0 }) <= 1e-9,
-						)
-					)
+					if (item.hulls.some((hull) => pointHullDistance(hull, point) <= 1e-9))
 						result.push(z * cells + cell);
 				}
 		}
@@ -345,16 +347,18 @@ export function routingGrid(
 		}
 		visited.length = 0;
 		const heap = new Heap();
+		const goalXs = goals.map((goal) => goal.x);
+		const goalYs = goals.map((goal) => goal.y);
 		const estimate = (cell: number) => {
-			const point = center(cell);
+			const x = originX + (cell % columns) * pitch;
+			const y = originY + Math.floor(cell / columns) * pitch;
 			let best = Infinity;
-			for (const goal of goals) {
-				const dx = Math.abs(point.x - goal.x);
-				const dy = Math.abs(point.y - goal.y);
-				best = Math.min(
-					best,
-					Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy),
-				);
+			for (let index = 0; index < goalXs.length; index++) {
+				const dx = Math.abs(x - goalXs[index]);
+				const dy = Math.abs(y - goalYs[index]);
+				const distance =
+					dx > dy ? dx + (Math.SQRT2 - 1) * dy : dy + (Math.SQRT2 - 1) * dx;
+				if (distance < best) best = distance;
 			}
 			return best;
 		};
@@ -370,8 +374,21 @@ export function routingGrid(
 		}
 		const limit = request.limit ?? Infinity;
 		let steps = 0;
+		let state = 0;
+		let reached = 0;
+		let from = 0;
+		const relax = (next: number, step: number, direction: number) => {
+			const total =
+				reached + step + (from !== 8 && direction !== from ? bendCost : 0);
+			if (closed[next] || (cost[next] && cost[next] <= total)) return;
+			if (!cost[next]) visited.push(next);
+			cost[next] = total;
+			parent[next] = state;
+			heading[next] = direction;
+			heap.push(next, total + estimate(next % cells));
+		};
 		while (heap.size && steps < limit) {
-			const state = heap.pop();
+			state = heap.pop();
 			if (closed[state]) continue;
 			closed[state] = 1;
 			steps++;
@@ -384,18 +401,8 @@ export function routingGrid(
 			const cell = state % cells;
 			const column = cell % columns;
 			const row = Math.floor(cell / columns);
-			const reached = cost[state];
-			const from = heading[state];
-			const relax = (next: number, step: number, direction: number) => {
-				const total =
-					reached + step + (from !== 8 && direction !== from ? bendCost : 0);
-				if (closed[next] || (cost[next] && cost[next] <= total)) return;
-				if (!cost[next]) visited.push(next);
-				cost[next] = total;
-				parent[next] = state;
-				heading[next] = direction;
-				heap.push(next, total + estimate(next % cells));
-			};
+			reached = cost[state];
+			from = heading[state];
 			const layer = track[z];
 			for (let direction = 0; direction < 8; direction++) {
 				const [dx, dy] = directions[direction];

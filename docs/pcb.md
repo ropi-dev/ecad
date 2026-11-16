@@ -80,7 +80,7 @@ The schematic is Raspberry Pi's RPI-RP2350A-MINIMAL R4-S1 schematic, imported fr
 
 Each component gets the built-in footprint for the land pattern the source names. The vendor parts use footprints converted from Raspberry Pi's board, and the 0402 and 0805 passives, the QFN-60, the SOIC-8 and the crystal use KiCad's generic ones. Footprints sit where Raspberry Pi's 52 x 51 mm board puts them, with its 0.15 mm tracks and its ground vias: nine in the chip's exposed pad, as in Raspberry Pi's chip footprint, and its 27 others, most of them beside decoupling capacitors. A via that would come within the clearance of another net's pad is left out. The tracks are ECAD's own routing, not a copy of Raspberry Pi's. After the main routing passes, any connection still open is routed again after ripping up the routes near it.
 
-`pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about 15 minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
+`pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about two minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
 
 ## File format
 
