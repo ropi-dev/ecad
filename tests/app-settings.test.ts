@@ -91,7 +91,6 @@ test("browser settings carry over the old antialiasing key until the next save",
 	const browser = fakeStorage({ "ecad.antialias": "0" });
 	setSettingsStorage(createBrowserSettingsStorage(browser));
 	assert.equal(getAppSettings().antialiasing, "off");
-	assert.equal(getSettingsStatus().location, "in this browser");
 	assert.equal(getSettingsStatus().updates, false);
 	await updateAppSettings((settings) => settings);
 	assert.equal(browser.values.has("ecad.antialias"), false);
@@ -105,7 +104,6 @@ test("settings apply at once, save in order and report failed reads and saves", 
 	const saved: unknown[] = [];
 	let fail = false;
 	const storage: SettingsStorage = {
-		location: "to /config/ecad/settings.json",
 		load: () => ({ version: 1 }),
 		async save(settings) {
 			await new Promise((resolve) => setTimeout(resolve, 5));
@@ -114,7 +112,7 @@ test("settings apply at once, save in order and report failed reads and saves", 
 		},
 	};
 	setSettingsStorage(storage);
-	assert.equal(getSettingsStatus().location, "to /config/ecad/settings.json");
+	assert.equal(getSettingsStatus().error, "");
 	const first = updateAppSettings((settings) => ({
 		...settings,
 		antialiasing: "on",

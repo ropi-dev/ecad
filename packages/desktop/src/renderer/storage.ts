@@ -112,7 +112,6 @@ export async function createDesktopSettingsStorage(
 	let { settings, error } = loaded;
 	const save = decodeIpcErrors((next: AppSettings) => bridge.save(next));
 	return {
-		location: `to ${loaded.path}`,
 		updates: await selfUpdating,
 		load() {
 			if (error) throw new Error(error);

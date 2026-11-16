@@ -77,7 +77,7 @@ export function SettingsDialog({
 			title="Settings"
 			footer={
 				<>
-					<SettingsLocation />
+					<SettingsError />
 					<button
 						type="button"
 						className="ui-button"
@@ -141,14 +141,14 @@ export function SettingsDialog({
 	);
 }
 
-function SettingsLocation() {
-	const status = useSettingsStatus();
+function SettingsError() {
+	const { error } = useSettingsStatus();
 	return (
 		<p
-			role={status.error ? "alert" : undefined}
-			className={`m-0 mr-auto min-w-0 self-center text-xs break-words ${status.error ? "text-danger" : "text-fg-faint"}`}
+			role={error ? "alert" : undefined}
+			className="m-0 mr-auto min-w-0 self-center text-xs break-words text-danger"
 		>
-			{status.error || `Global settings are saved ${status.location}.`}
+			{error}
 		</p>
 	);
 }
