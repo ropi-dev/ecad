@@ -421,10 +421,10 @@ export function exportFabrication(
 			if (isZone(shape)) continue;
 			const layers = shapeLayers(shape);
 			if (isHole(shape)) {
-				if (layers.includes(target.layer))
+				if (layers.includes(target.layer) && shape.width + 2 * maskMargin > 0)
 					writer.flashCircle(
 						{ x: shape.x, y: shape.y },
-						shape.width + 2 * maskExpansion,
+						shape.width + 2 * maskMargin,
 					);
 				continue;
 			}

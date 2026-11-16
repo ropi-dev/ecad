@@ -58,7 +58,7 @@ import {
 	type ZoneFill,
 } from "#/board/fill.ts";
 import { boardFileSchema, createBoardFile } from "#/board/format.ts";
-import { exportFabrication } from "#/board/gerber.ts";
+import { exportFabrication, maskOpenings } from "#/board/gerber.ts";
 import { trackAnchor, trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";
@@ -1008,9 +1008,9 @@ describe("unplated holes", () => {
 	const fabricationFile = (
 		shapes: readonly EditorShape[],
 		suffix: string,
-		fills: readonly ZoneFill[] = [],
+		maskMargin = defaultBoardRules.solderMaskMargin,
 	) =>
-		exportFabrication("board", shapes, fills).find((file) =>
+		exportFabrication("board", shapes, [], maskMargin).find((file) =>
 			file.name.endsWith(suffix),
 		);
 	const objectsAt = (content: string, name: string, point: Point) =>
@@ -1067,6 +1067,28 @@ describe("unplated holes", () => {
 			const file = required(fabricationFile(board, suffix));
 			assert.deepEqual(objectsAt(file.content, file.name, hole), [], suffix);
 		}
+	});
+
+	test("a hole's mask opening follows the board's mask margin like a pad's", () => {
+		const { at } = dividerBoard();
+		const center = at(6, 4);
+		const board = [{ ...boardHole(center, 3.15), hole: { drill: 2.75 } }];
+		const openings = (maskMargin: number) =>
+			["F_Mask.gts", "B_Mask.gbs"].map((suffix) => {
+				const mask = required(fabricationFile(board, suffix, maskMargin));
+				return objectsAt(mask.content, mask.name, center).map(({ bounds }) =>
+					Number((bounds.maxX - bounds.minX).toFixed(6)),
+				);
+			});
+		assert.deepEqual(openings(0), [[3.15], [3.15]]);
+		assert.deepEqual(openings(0.1), [[3.35], [3.35]]);
+		assert.deepEqual(openings(-0.2), [[2.75], [2.75]]);
+		assert.deepEqual(openings(-1.6), [[], []]);
+		const [top] = maskOpenings(board, 0).top;
+		const radius = Math.max(
+			...top.map(([x, y]) => Math.hypot(x - center.x, y - center.y)),
+		);
+		assert.ok(Math.abs(radius - 3.15 / 2) < 0.01);
 	});
 
 	test("a GND pour keeps the board clearance from a mounting hole without a keepout zone", () => {
