@@ -36,9 +36,13 @@ function modelBounds(url: string) {
 	return { min, max };
 }
 
-test("every built-in footprint links a built-in model that sits over its pads", () => {
+test("every built-in footprint links a built-in model that sits over its pads, except a bare mounting hole", () => {
 	const models = new Map(defaultModels().map((model) => [model.id, model]));
-	for (const { file } of generateDefaultFootprints()) {
+	for (const { category, file } of generateDefaultFootprints()) {
+		if (category === "MountingHole") {
+			assert.equal(file.model, undefined, file.id);
+			continue;
+		}
 		assert.equal(file.model?.library, "builtin", file.id);
 		const model = models.get(file.model.id);
 		assert.ok(model, `${file.id} names ${file.model.id}`);

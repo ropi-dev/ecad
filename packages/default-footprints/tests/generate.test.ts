@@ -26,9 +26,9 @@ test("generation is deterministic and returns fresh objects", () => {
 	assert.deepEqual(generateDefaultFootprints(), second);
 });
 
-test("every footprint has a unique portable ID, numbered pads and unique shape IDs", () => {
+test("every footprint has a unique portable ID, numbered pads or a mounting hole and unique shape IDs", () => {
 	const footprints = generateDefaultFootprints();
-	assert.equal(footprints.length, 62);
+	assert.equal(footprints.length, 64);
 	assert.equal(
 		new Set(footprints.map(({ file }) => file.id)).size,
 		footprints.length,
@@ -43,7 +43,11 @@ test("every footprint has a unique portable ID, numbered pads and unique shape I
 			file.shapes.map((_, index) => index + 1),
 		);
 		assert.ok(
-			file.shapes.some((shape) => "pad" in shape && shape.pad?.number),
+			file.shapes.some(
+				(shape) =>
+					("pad" in shape && shape.pad?.number) ||
+					(category === "MountingHole" && "hole" in shape && shape.hole),
+			),
 			file.id,
 		);
 	}
@@ -148,6 +152,39 @@ test("pin 1 markers become filled triangles and arcs become short lines", () => 
 		assert.ok(length <= (2 * Math.PI * 2.9) / 24 + 1e-3, String(length));
 });
 
+test("KiCad's unplated mounting hole keeps its drill and mask opening", () => {
+	const shapes = footprint("mountinghole_2.7mm_m2.5").shapes;
+	assert.deepEqual(
+		shapes.map((shape) => ({ ...shape, id: 0 })),
+		[
+			{
+				id: 0,
+				kind: "circle",
+				layer: "F.CrtYd",
+				x: 0,
+				y: 0,
+				width: 5.9,
+				height: 5.9,
+				rotation: 0,
+				lineWidth: 0.05,
+			},
+			{
+				id: 0,
+				kind: "circle",
+				layer: "F.Mask",
+				x: 0,
+				y: 0,
+				width: 2.7,
+				height: 2.7,
+				rotation: 0,
+				lineWidth: 0.15,
+				filled: true,
+				hole: { drill: 2.7 },
+			},
+		],
+	);
+});
+
 test("CLI writes one portable file per footprint with attribution and refuses overwrites", async () => {
 	const output = await mkdtemp(join(tmpdir(), "ecad-default-footprints-"));
 	const cli = new URL("../scripts/generate.ts", import.meta.url);
@@ -159,7 +196,7 @@ test("CLI writes one portable file per footprint with attribution and refuses ov
 		const result = run();
 		assert.equal(result.status, 0, result.stderr);
 		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadfp")).length, 62);
+		assert.equal(files.filter((file) => file.endsWith(".ecadfp")).length, 64);
 		for (const { file } of generateDefaultFootprints())
 			assert.deepEqual(
 				JSON.parse(await readFile(join(output, `${file.id}.ecadfp`), "utf8")),

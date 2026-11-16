@@ -84,7 +84,10 @@ export function shapeHulls(shape: EditorShape): Hull[] {
 		return [{ points: lineEnds(shape), radius: shape.lineWidth / 2 }];
 	if (shape.kind === "circle") {
 		const solid =
-			shape.filled || shape.pad !== undefined || shape.via !== undefined;
+			shape.filled ||
+			shape.pad !== undefined ||
+			shape.via !== undefined ||
+			shape.hole !== undefined;
 		return [
 			{
 				points: [{ x: shape.x, y: shape.y }],

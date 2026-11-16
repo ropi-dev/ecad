@@ -14,6 +14,7 @@ const groups: Record<string, string> = {
 	"Surface mount pad": "Pads and vias",
 	"Through-hole pad": "Pads and vias",
 	Via: "Pads and vias",
+	"Unplated hole": "Pads and vias",
 	Track: "Routing",
 	"Export drawing": "Export",
 	"Export PNG": "Export",

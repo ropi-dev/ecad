@@ -21,11 +21,11 @@ import {
 	copperLayers,
 	isCopperLayer,
 } from "#/footprint/layers.ts";
-import { isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
+import { isHole, isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
 export type { CopperLayer };
-type CopperKind = "pad" | "track" | "via" | "zone" | "graphic";
+type CopperKind = "pad" | "track" | "via" | "zone" | "graphic" | "hole";
 
 export interface CopperItem {
 	index: number;
@@ -109,7 +109,7 @@ export function copperItems(
 		if (isBoardFootprint(shape)) {
 			const pads = padsOf.get(shape.id) ?? [];
 			for (const part of symbolShapes(shape) as EditorShape[]) {
-				if (isPad(part) || part.kind === "text") continue;
+				if (isPad(part) || isHole(part) || part.kind === "text") continue;
 				if (isVia(part)) {
 					const hulls = shapeHulls(part);
 					const pad = pads.find((item) =>
@@ -150,7 +150,8 @@ export function copperItems(
 			});
 			continue;
 		}
-		if (!isCopperLayer(shape.layer) || shape.kind === "text") continue;
+		if (!isCopperLayer(shape.layer) || shape.kind === "text" || isHole(shape))
+			continue;
 		const layer = shape.layer;
 		const kind: CopperKind = isTrack(shape)
 			? "track"
@@ -175,6 +176,33 @@ export function copperItems(
 	}
 	itemCache.set(shapes, { netlist, items });
 	return items;
+}
+
+const holeCache = new WeakMap<readonly EditorShape[], CopperItem[]>();
+
+export function boardHoles(shapes: readonly EditorShape[]): CopperItem[] {
+	const cached = holeCache.get(shapes);
+	if (cached) return cached;
+	const holes: CopperItem[] = [];
+	for (const shape of shapes)
+		for (const part of isBoardFootprint(shape)
+			? (symbolShapes(shape) as EditorShape[])
+			: [shape])
+			if (isHole(part)) {
+				const hulls = shapeHulls(part);
+				holes.push({
+					index: holes.length,
+					shapeId: shape.id,
+					kind: "hole",
+					shape: part,
+					layers: copperLayers as CopperLayer[],
+					hulls,
+					bounds: mergeBounds(hulls.map(hullBounds)),
+					points: [],
+				});
+			}
+	holeCache.set(shapes, holes);
+	return holes;
 }
 
 export const sharesLayer = (a: CopperItem, b: CopperItem) =>

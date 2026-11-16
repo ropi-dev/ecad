@@ -32,8 +32,9 @@ import {
 	isCopperLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
+	isDrilled,
+	isHole,
 	isPad,
-	isPadOrVia,
 	isVia,
 	padCornerRadius,
 	shapeDrill,
@@ -141,7 +142,7 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
-	if (isPadOrVia(shape)) {
+	if (isDrilled(shape)) {
 		const cornerRadius = padCornerRadius(shape);
 		return {
 			kind: shape.kind,
@@ -205,6 +206,9 @@ export function padNumberSize(
 	};
 }
 
+const holeEdge = (shape: EditorShape) =>
+	Math.min(Math.max(shape.lineWidth, 0.05), shape.width / 4);
+
 function displayShape(
 	shape: EditorShape,
 	key: string,
@@ -248,7 +252,7 @@ function displayShape(
 		shape.kind === "symbol" &&
 		shape.children.some((child) => isFillableShape(child) && child.filled)
 			? symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
-			: isFillableShape(shape) && shape.filled && !isPadOrVia(shape)
+			: isFillableShape(shape) && shape.filled && !isDrilled(shape)
 				? [shape]
 				: [];
 	const fills = fillChildren
@@ -271,7 +275,7 @@ function displayShape(
 			renderOrder: renderOrder - 0.5,
 		}));
 	if (fills.length) display.children = fills;
-	if (isPadOrVia(shape)) {
+	if (isDrilled(shape)) {
 		const drill = shapeDrill(shape);
 		const number = isPad(shape) ? shape.pad.number : "";
 		const { width: labelWidth, height: labelHeight } = padNumberSize(
@@ -285,7 +289,7 @@ function displayShape(
 				: [
 						{
 							key: `${key}:hole`,
-							name: `${isPad(shape) ? "pad" : "via"} hole ${shape.id}`,
+							name: `${isPad(shape) ? "pad" : isVia(shape) ? "via" : "unplated"} hole ${shape.id}`,
 							geometry: {
 								kind: "circle" as const,
 								width: drill,
@@ -302,6 +306,28 @@ function displayShape(
 							renderOrder: renderOrder + 0.25,
 						},
 					]),
+			...(isHole(shape)
+				? [
+						{
+							key: `${key}:edge`,
+							name: `unplated hole edge ${shape.id}`,
+							geometry: {
+								kind: "circle" as const,
+								width: shape.width - holeEdge(shape),
+								height: shape.width - holeEdge(shape),
+								lineWidth: holeEdge(shape),
+								filled: false,
+							},
+							x: 0,
+							y: 0,
+							width: 1 - holeEdge(shape) / shape.width,
+							height: 1 - holeEdge(shape) / shape.width,
+							rotation: 0,
+							appearance,
+							renderOrder: renderOrder + 0.3,
+						},
+					]
+				: []),
 			...(number
 				? [
 						{

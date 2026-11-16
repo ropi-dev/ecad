@@ -14,8 +14,9 @@ rectangle and oval pads as rectangles (or circles when an oval is round), split
 custom pads into rectangles that share the pad number, approximate arcs with
 lines, draw pin 1 markers as triangles and other polygons as outlines, link a
 model from ECAD's 3D model library in place of KiCad's model path, and omit
-text, solder mask openings, and the User.Drawings layer. Separate
-paste openings over exposed pads become filled rectangles on the paste layer.
+text, solder mask openings, and the User.Drawings and User.Comments layers.
+Separate paste openings over exposed pads become filled rectangles on the paste
+layer. An unplated hole keeps its pad size as its solder mask opening.
 
 The source footprints are:
 
@@ -75,6 +76,8 @@ The source footprints are:
 - `Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm`
 - `Connector_USB:USB_Micro-B_Molex-105017-0001`
 - `Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical`
+- `MountingHole:MountingHole_2.7mm_M2.5`
+- `MountingHole:MountingHole_3.2mm_M3`
 
 The USB Micro-B receptacle's oval shell holes are round drills here, the
 smallest dimension of each oval.

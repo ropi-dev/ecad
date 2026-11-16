@@ -547,3 +547,42 @@ test("a footprint links a built-in 3D model, which the realistic board draws unt
 		)
 		.toEqual([undefined]);
 });
+
+test("the unplated hole tool places mounting holes, and a hole's drill is edited in Attributes", async ({
+	page,
+}) => {
+	await createFootprint(page);
+	await (await toolbarButton(page, "Unplated hole")).click();
+	await expect(page.locator("[data-view]")).toHaveAttribute(
+		"data-tool",
+		"hole",
+	);
+	const point = await screenPointOfMillimetres(page, 0, 0);
+	await page.mouse.move(point.x, point.y);
+	await page.mouse.click(point.x, point.y);
+	await page.keyboard.press("Escape");
+	const holes = async () =>
+		(await documentState(page)).editorShapes.map(
+			(shape: { kind: string; width: number; hole?: { drill: number } }) => [
+				shape.kind,
+				shape.width,
+				shape.hole?.drill,
+			],
+		);
+	await expect.poll(holes).toEqual([["circle", 3.2, 3.2]]);
+
+	const attributes = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	await page.mouse.dblclick(point.x, point.y);
+	await expect(attributes.getByText("Through the board")).toBeVisible();
+	await expect(attributes.getByLabel("Pad number")).toHaveCount(0);
+	const drill = attributes.getByLabel("Drill");
+	await expect(drill).toHaveValue("3.2");
+	await drill.fill("2.75");
+	await drill.press("Enter");
+	await expect.poll(holes).toEqual([["circle", 3.2, 2.75]]);
+	await drill.fill("4");
+	await drill.press("Enter");
+	await expect.poll(holes).toEqual([["circle", 4, 4]]);
+});

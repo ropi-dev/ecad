@@ -11,8 +11,9 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	footprintFitBounds,
+	isDrilled,
+	isHole,
 	isPad,
-	isPadOrVia,
 	type PadShape,
 	padCornerRadius,
 	shapeDrill,
@@ -42,6 +43,7 @@ const boardMargin = 1;
 const boardEdgeWidth = 0.1;
 const drawingGap = 0.02;
 export const DRILL_LAYER_ID = "footprint:drill";
+export const NPTH_LAYER_ID = "footprint:npth";
 export const BOARD_LAYER_ID = "footprint:board";
 
 const stackLayers: readonly (readonly [FootprintLayer, string])[] = [
@@ -239,7 +241,7 @@ function shapeGeometry(shape: EditorShape): Geometry | undefined {
 		};
 	if (shape.kind === "circle") {
 		const radius = width / 2;
-		if (isPadOrVia(shape)) return { type: "circle", x: 0, y: 0, radius };
+		if (isDrilled(shape)) return { type: "circle", x: 0, y: 0, radius };
 		const outer: Geometry = {
 			type: "circle",
 			x: 0,
@@ -308,7 +310,7 @@ const hasGeometry = (shape: EditorShape) =>
 const strokedBounds = (shape: EditorShape) =>
 	expandBounds(
 		shapeBounds(shape),
-		isPadOrVia(shape) || shape.kind === "line" || shape.kind === "text"
+		isDrilled(shape) || shape.kind === "line" || shape.kind === "text"
 			? 0
 			: shape.lineWidth / 2,
 	);
@@ -496,6 +498,7 @@ export function planFootprintBoard(
 	const members = new Map<FootprintLayer, EditorShape[]>();
 	const texts = new Map<FootprintLayer, TextShape[]>();
 	const drilled: EditorShape[] = [];
+	const unplated: EditorShape[] = [];
 	const numbered = new Map<FootprintLayer, PadShape[]>();
 	for (const shape of shapes) {
 		if (isPad(shape) && shape.pad.number)
@@ -518,7 +521,8 @@ export function planFootprintBoard(
 			onLayer.push(shape);
 			members.set(layer, onLayer);
 		}
-		if (shapeDrill(shape) !== undefined) drilled.push(shape);
+		if (isHole(shape)) unplated.push(shape);
+		else if (shapeDrill(shape) !== undefined) drilled.push(shape);
 	}
 	const edge = boardEdgeBounds(shapes);
 	const colors = options.colors ?? schematicTheme().appearance;
@@ -638,6 +642,23 @@ export function planFootprintBoard(
 					},
 				]
 			: []),
+		...(unplated.length
+			? [
+					{
+						id: NPTH_LAYER_ID,
+						source: unplated,
+						extrude: "barrel" as const,
+						build: () =>
+							planarLayer(
+								NPTH_LAYER_ID,
+								"Unplated holes",
+								colors["pad-hole"],
+								"NonPlated,1,2,NPTH",
+								unplated.flatMap(drillObjects),
+							),
+					},
+				]
+			: []),
 	];
 }
 
@@ -699,6 +720,7 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 
 export function boardObjectOnLayer(id: string, layer: FootprintLayer) {
 	if (id === DRILL_LAYER_ID) return isCopperLayer(layer);
+	if (id === NPTH_LAYER_ID) return layer === "F.Mask" || layer === "B.Mask";
 	if (id === BOARD_LAYER_ID) return layer === "Edge.Cuts";
 	return layersByObjectId.get(id) === layer;
 }
@@ -708,6 +730,8 @@ export function boardObjectVisible(
 	hidden: ReadonlySet<FootprintLayer>,
 ): boolean {
 	if (id === DRILL_LAYER_ID) return !hidden.has("F.Cu") || !hidden.has("B.Cu");
+	if (id === NPTH_LAYER_ID)
+		return !hidden.has("F.Mask") || !hidden.has("B.Mask");
 	const layer = layersByObjectId.get(id);
 	return layer === undefined || !hidden.has(layer);
 }

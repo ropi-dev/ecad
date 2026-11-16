@@ -31,6 +31,7 @@ import {
 	boardLayerRole,
 	boardOutline,
 	isDrillLayer,
+	isUnplatedDrillLayer,
 	placeBoardLayers,
 } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
@@ -253,7 +254,9 @@ export function GerberViewer({
 				const { object, index: order } = entry;
 				const placement = placements[order];
 				const role = boardLayerRole(object).role;
-				const look = realistic ? realisticLayerStyle(role) : undefined;
+				const look = realistic
+					? realisticLayerStyle(role, isUnplatedDrillLayer(object))
+					: undefined;
 				mesh.visible = object.visible && (look?.visible ?? true);
 				mesh.userData.hoverEnabled = inFocus(object.id);
 				mesh.position.z = placement?.z ?? 0;
