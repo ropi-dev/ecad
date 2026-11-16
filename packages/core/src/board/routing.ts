@@ -3,7 +3,12 @@ import {
 	type CopperLayer,
 	copperAt,
 } from "@ecad/drawing-core/board/connectivity.ts";
-import { lineEnds, trackSegment } from "@ecad/drawing-core/board/geometry.ts";
+import {
+	boundsOverlap,
+	lineEnds,
+	pointHullDistance,
+	trackSegment,
+} from "@ecad/drawing-core/board/geometry.ts";
 import type { LineShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 
@@ -88,6 +93,62 @@ export function routeAnchor(
 		Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length),
 	);
 	return { point: { x: a.x + t * dx, y: a.y + t * dy }, item };
+}
+
+export function trackAnchor(
+	items: readonly CopperItem[],
+	point: Point,
+	{
+		layer,
+		net,
+		exclude,
+		padReach,
+		tolerance,
+	}: {
+		layer?: CopperLayer;
+		net?: string;
+		exclude?: Point;
+		padReach: number;
+		tolerance: number;
+	},
+): RouteAnchor | undefined {
+	const joins = (item: CopperItem) =>
+		net === undefined || item.net === undefined || item.net === net;
+	const excluded = (at: Point) =>
+		exclude !== undefined &&
+		Math.hypot(at.x - exclude.x, at.y - exclude.y) < 1e-6;
+	const area = { minX: point.x, minY: point.y, maxX: point.x, maxY: point.y };
+	let best: { anchor: RouteAnchor; gap: number; distance: number } | undefined;
+	let start: RouteAnchor | undefined;
+	for (const item of items) {
+		if (item.kind !== "pad" && item.kind !== "via") continue;
+		if (layer && !item.layers.includes(layer)) continue;
+		if (!joins(item) || !boundsOverlap(item.bounds, area, padReach)) continue;
+		const centre = { x: item.shape.x, y: item.shape.y };
+		const gap = Math.max(
+			0,
+			Math.min(...item.hulls.map((hull) => pointHullDistance(hull, point))),
+		);
+		if (excluded(centre)) {
+			if (gap === 0) start = { point: centre, item };
+			continue;
+		}
+		if (gap > padReach) continue;
+		const distance = Math.hypot(centre.x - point.x, centre.y - point.y);
+		if (
+			!best ||
+			gap < best.gap ||
+			(gap === best.gap && distance < best.distance)
+		)
+			best = { anchor: { point: centre, item }, gap, distance };
+	}
+	if (best?.gap === 0) return best.anchor;
+	const hit = routeAnchor(items, point, layer, tolerance);
+	if (hit && joins(hit.item)) {
+		if (!excluded(hit.point)) return hit;
+		start ??= hit;
+	}
+	return start ?? best?.anchor;
 }
 
 export const otherCopperLayer = (layer: CopperLayer): CopperLayer =>

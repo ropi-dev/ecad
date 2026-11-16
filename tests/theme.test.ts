@@ -65,7 +65,7 @@ function contrast(first: string, second: string) {
 }
 
 test("everything drawn on the paper stands out from it in both themes", () => {
-	const onShapes = new Set(["fill", "pad-hole", "pad-number"]);
+	const onShapes = new Set(["fill", "pad-hole", "pad-number", "clearance"]);
 	for (const theme of ["light", "dark"] as const) {
 		const { paper, sheet, appearance } = schematicThemes[theme];
 		for (const [name, color] of [

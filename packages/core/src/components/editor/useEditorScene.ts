@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildPreviewDisplay,
 	buildStaticDisplay,
+	type DisplayShape,
 	type DrawingDisplay,
 	type StaticDrawingDisplay,
 } from "#/drawing/display.ts";
@@ -29,6 +30,11 @@ export function useEditorScene(
 		selectedIds: ReadonlySet<number>,
 		measure: typeof measureText,
 	) => StaticDrawingDisplay = buildStaticDisplay,
+	buildPreview: (
+		previews: EditorShape[],
+		shapeCount: number,
+		measure: typeof measureText,
+	) => DisplayShape[] = buildPreviewDisplay,
 ) {
 	const [renderer, setRenderer] = useState<DrawingRenderer>();
 	const theme = useSchematicTheme();
@@ -55,8 +61,8 @@ export function useEditorScene(
 	);
 	const shapeCount = shapes.length;
 	const preview = useMemo(
-		() => buildPreviewDisplay(previews, shapeCount, measureText),
-		[previews, shapeCount],
+		() => buildPreview(previews, shapeCount, measureText),
+		[previews, shapeCount, buildPreview],
 	);
 	const display = useMemo<DrawingDisplay>(
 		() => ({ ...document, previews: preview }),

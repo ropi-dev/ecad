@@ -48,7 +48,7 @@ import {
 } from "#/board/fill.ts";
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { trackPath, trackSegments } from "#/board/routing.ts";
+import { trackAnchor, trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
@@ -335,6 +335,113 @@ describe("routing and the ratsnest", () => {
 		assert.deepEqual(
 			unroutedNets([...shapes, ...routeMid(shapes, netlist)], netlist),
 			["gnd"],
+		);
+	});
+
+	test("a track end snaps to the centre of a nearby pad on its net, never to another net's pad", () => {
+		const { shapes, netlist } = dividerBoard();
+		const items = copperItems(shapes, netlist);
+		const mid = required(
+			items.find((item) => item.kind === "pad" && item.net === "mid"),
+		);
+		const centre = { x: mid.shape.x, y: mid.shape.y };
+		const beside = { x: mid.bounds.maxX + 0.3, y: centre.y };
+		const reach = { padReach: 0.5, tolerance: 0.05 };
+		assert.equal(
+			trackAnchor(items, beside, { ...reach, padReach: 0.05 }),
+			undefined,
+		);
+		assert.deepEqual(
+			trackAnchor(items, beside, { ...reach, layer: "F.Cu", net: "mid" })
+				?.point,
+			centre,
+		);
+		assert.deepEqual(trackAnchor(items, beside, reach)?.point, centre);
+		assert.equal(
+			trackAnchor(items, beside, { ...reach, net: "gnd" }),
+			undefined,
+		);
+		assert.equal(
+			trackAnchor(items, beside, { ...reach, layer: "B.Cu" }),
+			undefined,
+		);
+	});
+
+	test("a track end snaps to the nearest via it may join, and stays put on the copper it started from", () => {
+		const { shapes, netlist } = dividerBoard();
+		const via = (id: number, x: number, net?: string): EditorShape => ({
+			id,
+			kind: "circle",
+			layer: "F.Cu",
+			x,
+			y: 40,
+			width: 0.6,
+			height: 0.6,
+			rotation: 0,
+			lineWidth: 0.15,
+			filled: true,
+			via: { drill: 0.3 },
+			...(net ? { net } : {}),
+		});
+		const items = copperItems(
+			[...shapes, via(901, 100, "gnd"), via(902, 101.5), via(903, 103, "mid")],
+			netlist,
+		);
+		const reach = { padReach: 0.6, tolerance: 0.2 };
+		const at = (x: number) => ({ x, y: 40.1 });
+		assert.deepEqual(trackAnchor(items, at(100.9), reach)?.point, {
+			x: 101.5,
+			y: 40,
+		});
+		assert.deepEqual(
+			trackAnchor(items, at(102.4), { ...reach, net: "mid" })?.point,
+			{ x: 103, y: 40 },
+		);
+		assert.deepEqual(
+			trackAnchor(items, at(100.8), { ...reach, net: "mid" })?.point,
+			{ x: 101.5, y: 40 },
+		);
+		const start = { x: 101.5, y: 40 };
+		assert.deepEqual(
+			trackAnchor(items, at(101.55), { ...reach, exclude: start })?.point,
+			start,
+		);
+		assert.deepEqual(
+			trackAnchor(items, at(101), {
+				...reach,
+				padReach: 0.8,
+				exclude: start,
+			})?.point,
+			{ x: 100, y: 40 },
+		);
+	});
+
+	test("a track under the cursor beats a nearby pad it may not share a net with", () => {
+		const { shapes, netlist } = dividerBoard();
+		const mid = required(
+			copperItems(shapes, netlist).find(
+				(item) => item.kind === "pad" && item.net === "mid",
+			),
+		);
+		const y = mid.bounds.maxY + 0.3;
+		const gnd = trackSegment(
+			950,
+			{ x: mid.shape.x - 3, y },
+			{ x: mid.shape.x + 3, y },
+			"F.Cu",
+			0.25,
+			"gnd",
+		);
+		const items = copperItems([...shapes, gnd], netlist);
+		const onTrack = { x: mid.shape.x, y };
+		const reach = { padReach: 0.5, tolerance: 0.05 };
+		const hit = required(trackAnchor(items, onTrack, reach));
+		assert.equal(hit.item.kind, "track");
+		assert.equal(hit.item.net, "gnd");
+		assert.ok(Math.hypot(hit.point.x - onTrack.x, hit.point.y - y) < 1e-9);
+		assert.deepEqual(
+			trackAnchor(items, onTrack, { ...reach, net: "mid" })?.point,
+			{ x: mid.shape.x, y: mid.shape.y },
 		);
 	});
 

@@ -227,6 +227,15 @@ export function createDrawingRenderer(
 					depthWrite: false,
 				}),
 		);
+		const overlays = palette(
+			(color) =>
+				new MeshBasicMaterial({
+					color,
+					transparent: true,
+					depthTest: false,
+					depthWrite: false,
+				}),
+		);
 		const rounds = palette((color) => createRoundMaterial({ color }));
 		const dimRounds = palette((color) => createRoundMaterial({ color }), true);
 		const roundHalos = palette((color) =>
@@ -242,11 +251,12 @@ export function createDrawingRenderer(
 				entry.text?.dispose();
 				entry.text = undefined;
 			}
-			if (display.geometry.kind === "pin-halo")
+			if (display.geometry.kind === "pin-halo" || display.halo)
 				return (round ? roundHalos : halos)[display.appearance];
 			if (round)
 				return (display.dimmed ? dimRounds : rounds)[display.appearance];
-			if (display.text === undefined) return color;
+			if (display.text === undefined)
+				return display.overlay ? overlays[display.appearance] : color;
 			if (display.pinLabel) {
 				const atlasEntry = pinAtlas?.entries.get(display.text);
 				if (!atlasEntry)

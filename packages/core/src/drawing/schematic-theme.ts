@@ -66,6 +66,7 @@ export const printSchematicTheme: SchematicTheme = {
 		"pad-hole": "#ffffff",
 		"pad-number": "#1a1a1a",
 		ratsnest: "#3c3c3c",
+		clearance: "#f5f4ef",
 	},
 };
 
@@ -93,6 +94,7 @@ export const lightSchematicTheme: SchematicTheme = {
 		"pad-hole": "#30353d",
 		"pad-number": "#ffffff",
 		ratsnest: "#3a3a3a",
+		clearance: "#fcfcfa",
 	},
 };
 
@@ -120,6 +122,7 @@ export const darkSchematicTheme: SchematicTheme = {
 		"pad-hole": "#161a21",
 		"pad-number": "#ffffff",
 		ratsnest: "#e6e6e6",
+		clearance: "#161a21",
 	},
 };
 
