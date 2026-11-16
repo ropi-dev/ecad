@@ -224,7 +224,11 @@ test("Gerber copper, paste and mask draw the rounded outline", () => {
 	assert.equal(containsPoint(mask, { x: 1.03, y: 0.53 }), false);
 	const ends = exportFabrication(
 		"ends",
-		[roundedPad(0.5), { ...roundedPad(0.5), id: 2, x: 5, width: 1 }],
+		[
+			roundedPad(0.5),
+			{ ...roundedPad(0.5), id: 2, x: 5, width: 1 },
+			{ ...roundedPad(0.5), id: 3, x: 10, rotation: Math.PI / 4 },
+		],
 		[],
 	);
 	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp", "F_Mask.gts"]) {
@@ -235,6 +239,8 @@ test("Gerber copper, paste and mask draw the rounded outline", () => {
 			[{ x: 0.95, y: 0.45 }, false],
 			[{ x: 5, y: 0.49 + grown }, true],
 			[{ x: 5.4, y: 0.4 }, false],
+			[{ x: 10.672, y: 0.672 }, true],
+			[{ x: 10.354, y: 0.99 }, false],
 		] as const)
 			assert.equal(
 				containsPoint(drawn, point),
@@ -245,6 +251,36 @@ test("Gerber copper, paste and mask draw the rounded outline", () => {
 	const openings = [maskOpenings([roundedPad()]).top];
 	assert.equal(containsPoint(openings, { x: 1.04, y: 0 }), true);
 	assert.equal(containsPoint(openings, { x: 1.03, y: 0.53 }), false);
+});
+
+test("rounded pads are flashed on copper, paste and mask, never drawn as regions", () => {
+	const pads = [
+		roundedPad(),
+		{ ...roundedPad(), id: 2, x: 5, rotation: Math.PI / 6 },
+		{ ...roundedPad(0.5), id: 3, x: 10 },
+		{ ...roundedPad(0.5), id: 4, x: 15, rotation: Math.PI / 2 },
+		{ ...roundedPad(0.5), id: 5, x: 20, rotation: Math.PI / 4 },
+		{ ...roundedPad(0.5), id: 6, x: 25, width: 1 },
+	];
+	const files = exportFabrication("flash", pads, []);
+	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp", "F_Mask.gts"]) {
+		const { content } = required(
+			files.find(({ name }) => name.endsWith(suffix)),
+		);
+		assert.equal(content.includes("G36"), false, suffix);
+		assert.equal(content.match(/D03\*/g)?.length, pads.length, suffix);
+		assert.equal(content.match(/D01\*/g), null, suffix);
+	}
+	const copper = required(files.find(({ name }) => name.endsWith("F_Cu.gtl")));
+	const apertures = copper.content.match(/^%ADD\d+[^,*]+/gm) ?? [];
+	assert.deepEqual(
+		apertures.map((line) => line.replace(/^%ADD\d+/, "")),
+		["RoundRect", "RoundRect", "O", "O", "Oval", "C"],
+	);
+	assert.match(copper.content, /%TA\.AperFunction,SMDPad,CuDef\*%/);
+	assert.match(copper.content, /%ADD12O,2X1\*%/);
+	assert.match(copper.content, /%ADD13O,1X2\*%/);
+	assert.match(copper.content, /%ADD15C,1\*%/);
 });
 
 test("the flat view and the board view draw the corners", () => {

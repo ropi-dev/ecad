@@ -69,6 +69,7 @@ type ApertureFunction =
 
 const apertureMacros = {
 	RotRect: ["21,1,$1,$2,0,0,$3"],
+	Oval: ["1,1,$1,$2,$3", "1,1,$1,$4,$5", "20,1,$1,$2,$3,$4,$5,0"],
 	RoundRect: [
 		"4,1,4,$2,$3,$4,$5,$6,$7,$8,$9,$2,$3,0",
 		"1,1,$1+$1,$2,$3",
@@ -217,6 +218,40 @@ class GerberWriter {
 			);
 	}
 
+	flashStadium(
+		ends: readonly [Point, Point],
+		diameter: number,
+		apertureFunction?: ApertureFunction,
+	) {
+		const [a, b] = ends;
+		const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+		const length = Math.hypot(b.x - a.x, b.y - a.y);
+		const direction = Math.atan2(b.y - a.y, b.x - a.x);
+		const turns = Math.round(direction / (Math.PI / 2));
+		if (Math.abs(direction - (turns * Math.PI) / 2) < angleTolerance) {
+			const [width, height] =
+				turns % 2
+					? [diameter, length + diameter]
+					: [length + diameter, diameter];
+			this.flash(
+				`O,${decimal(width)}X${decimal(height)}`,
+				center,
+				apertureFunction,
+			);
+		} else
+			this.flash(
+				this.macro("Oval", [
+					diameter,
+					a.x - center.x,
+					a.y - center.y,
+					b.x - center.x,
+					b.y - center.y,
+				]),
+				center,
+				apertureFunction,
+			);
+	}
+
 	region(ring: readonly Point[]) {
 		if (ring.length < 3) return;
 		this.body.push("G36*", `${xy(ring[0])}D02*`, "G01*");
@@ -322,8 +357,18 @@ function flashPad(
 			);
 		return;
 	}
-	if (margin >= 0) {
-		writer.flashRectangle(rectangleCorners(shape), margin, apertureFunction);
+	const [{ points, radius }] = shapeHulls(shape);
+	const grown = radius + margin;
+	if (points.length < 3) {
+		if (grown <= 0) return;
+		if (points.length === 1)
+			writer.flashCircle(points[0], 2 * grown, apertureFunction);
+		else
+			writer.flashStadium([points[0], points[1]], 2 * grown, apertureFunction);
+		return;
+	}
+	if (grown >= 0) {
+		writer.flashRectangle(points, grown, apertureFunction);
 		return;
 	}
 	const width = shape.width + 2 * margin;
