@@ -10,6 +10,7 @@ import {
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
+	attributeNameError,
 	attributesError,
 	extraAttributes,
 } from "@ecad/drawing-core/drawing/symbol-attributes.ts";
@@ -50,6 +51,22 @@ const attributeValues = Schema.Record({
 	key: Schema.String,
 	value: Schema.String,
 });
+const withoutProto = <A, I>(schema: Schema.Schema<A, I>) =>
+	Schema.compose(
+		Schema.Unknown.pipe(
+			Schema.filter(
+				(input) =>
+					!input ||
+					typeof input !== "object" ||
+					!Object.hasOwn(input, "__proto__") || {
+						path: ["__proto__"],
+						message: attributeNameError("__proto__") ?? "",
+					},
+			),
+		),
+		schema,
+		{ strict: false },
+	);
 const checkAttributes =
 	(definition: boolean) => (attributes: Readonly<Record<string, string>>) => {
 		const error = attributesError(attributes, { definition });
@@ -119,14 +136,16 @@ const shapeSchema = Schema.Union(
 		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
 		lineWidth,
 		attributes: Schema.optional(
-			Schema.Struct(
-				{
-					name: Schema.String,
-					reference: Schema.String,
-					value: Schema.String,
-				},
-				attributeValues,
-			).pipe(Schema.filter(checkAttributes(false))),
+			withoutProto(
+				Schema.Struct(
+					{
+						name: Schema.String,
+						reference: Schema.String,
+						value: Schema.String,
+					},
+					attributeValues,
+				).pipe(Schema.filter(checkAttributes(false))),
+			),
 		),
 		textAlignments: Schema.optional(
 			Schema.Struct({
@@ -217,7 +236,7 @@ const symbolFileSchema = Schema.Struct({
 		}),
 	),
 	attributes: Schema.optional(
-		attributeValues.pipe(Schema.filter(checkAttributes(true))),
+		withoutProto(attributeValues.pipe(Schema.filter(checkAttributes(true)))),
 	),
 	shapes: Schema.Array(shapeSchema).pipe(Schema.maxItems(256)),
 });
