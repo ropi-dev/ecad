@@ -77,6 +77,27 @@ test("the solder mask opens over pads on its side and tents vias", () => {
 	assert.ok(Math.abs(y) <= pad.height / 2 + 0.06);
 });
 
+test("the board view's mask openings follow the board's solder mask margin", () => {
+	const pad = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
+	const width = (margin?: number) => {
+		const xs = maskOpenings([pad], margin).top[0].map(([x]) => x);
+		return Number((Math.max(...xs) - Math.min(...xs)).toFixed(6));
+	};
+	assert.equal(width(), Number((pad.width + 0.1).toFixed(6)));
+	for (const margin of [0.05, 0, 0.1, -0.05])
+		assert.equal(width(margin), Number((pad.width + 2 * margin).toFixed(6)));
+	assert.deepEqual(maskOpenings([pad], -pad.width).top, []);
+	const through = createPad(2, { x: 0, y: 0 }, "through-hole", "2", "F.Cu");
+	const radius = (margin: number) =>
+		Math.max(
+			...maskOpenings([through], margin).top[0].map(([x, y]) =>
+				Math.hypot(x, y),
+			),
+		);
+	assert.ok(Math.abs(radius(-0.05) - (through.width / 2 - 0.05)) < 1e-9);
+	assert.deepEqual(maskOpenings([through], -through.width / 2).top, []);
+});
+
 test("the realistic board covers its outline with laminate and mask, and leaves holes to its masks", () => {
 	const board = createRealisticBoard(
 		boundsPolygon({ minX: 0, minY: 0, maxX: 10, maxY: 10 }),

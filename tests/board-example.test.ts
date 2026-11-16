@@ -39,7 +39,13 @@ test("the RP2350A example is a fully routed single-sided board that passes the c
 		}),
 		[],
 	);
-	const files = exportFabrication("rp2350a", board.shapes, fills);
+	assert.equal(board.rules.solderMaskMargin, 0);
+	const files = exportFabrication(
+		"rp2350a",
+		board.shapes,
+		fills,
+		board.rules.solderMaskMargin,
+	);
 	const functions = files
 		.filter((file) => !file.name.endsWith(".drl"))
 		.map((file) => {
@@ -63,7 +69,7 @@ test("the RP2350A example is a fully routed single-sided board that passes the c
 	const flashes = (suffix: string) =>
 		files.find((file) => file.name.endsWith(suffix))?.content.match(/D03\*/g)
 			?.length;
-	const openings = maskOpenings(board.shapes);
+	const openings = maskOpenings(board.shapes, board.rules.solderMaskMargin);
 	assert.deepEqual(
 		[flashes("F_Mask.gts"), flashes("B_Mask.gbs")],
 		[openings.top.length, openings.bottom.length],

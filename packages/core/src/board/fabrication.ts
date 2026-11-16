@@ -12,8 +12,9 @@ export function fabricationArchive(
 	name: string,
 	shapes: readonly EditorShape[],
 	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
+	maskMargin: number,
 ): FabricationArchive {
-	const files = exportFabrication(name, shapes, fills);
+	const files = exportFabrication(name, shapes, fills, maskMargin);
 	return {
 		archive: zipSync(
 			Object.fromEntries(
