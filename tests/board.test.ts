@@ -367,7 +367,7 @@ describe("routing and the ratsnest", () => {
 		);
 	});
 
-	test("a track end snaps to the nearest via it may join, but never back to where the track started", () => {
+	test("a track end snaps to the nearest via it may join, and stays put on the copper it started from", () => {
 		const { shapes, netlist } = dividerBoard();
 		const via = (id: number, x: number, net?: string): EditorShape => ({
 			id,
@@ -402,9 +402,9 @@ describe("routing and the ratsnest", () => {
 			{ x: 101.5, y: 40 },
 		);
 		const start = { x: 101.5, y: 40 };
-		assert.equal(
-			trackAnchor(items, at(101.55), { ...reach, exclude: start }),
-			undefined,
+		assert.deepEqual(
+			trackAnchor(items, at(101.55), { ...reach, exclude: start })?.point,
+			start,
 		);
 		assert.deepEqual(
 			trackAnchor(items, at(101), {

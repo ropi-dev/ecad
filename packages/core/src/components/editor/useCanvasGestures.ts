@@ -731,7 +731,7 @@ export function useCanvasGestures({
 			active.net ?? joins?.item.net,
 		);
 		setWirePreview(segments);
-		setConnectionHover(joins?.point ?? null);
+		setConnectionHover(joins && segments.length ? joins.point : null);
 		return { segments, end, joins };
 	};
 	const placeTrackVia = useEffectEvent(() => {
