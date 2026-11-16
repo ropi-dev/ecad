@@ -44,12 +44,9 @@ test("the RP2350A example is a fully routed single-sided board that passes the c
 		.filter((file) => !file.name.endsWith(".drl"))
 		.map((file) => {
 			const result = parseGerber(file.content, file.name);
-			assert.ok(
-				result.diagnostics.every(
-					(diagnostic) => diagnostic.severity === "warning",
-				),
-				`${file.name}: ${result.diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`,
-			);
+			assert.deepEqual(result.diagnostics, [], file.name);
+			if (/_Mask\./.test(file.name))
+				assert.doesNotMatch(file.content, /G36/, file.name);
 			const bottomOnly = /-B_(Paste|Silkscreen)\./.test(file.name);
 			assert.equal(result.object.objects.length > 0, !bottomOnly, file.name);
 			return /%TF\.FileFunction,([^*]+)\*%/.exec(file.content)?.[1];

@@ -12,13 +12,18 @@ import {
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
-import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	type FootprintLayer,
+	isCopperLayer,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	isPad,
 	isVia,
+	type PadShape,
 	shapeDrill,
 	shapeLayer,
 	shapeLayers,
+	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { layerFill, type ZoneFill } from "#/board/fill.ts";
 
@@ -58,9 +63,38 @@ const coordinate = (value: number) => Math.round(value * 1e6).toString();
 const xy = (point: Point) => `X${coordinate(point.x)}Y${coordinate(point.y)}`;
 const decimal = (value: number) => Number(value.toFixed(6)).toString();
 
+type ApertureFunction =
+	| "SMDPad,CuDef"
+	| "ComponentPad"
+	| "ViaPad"
+	| "Conductor";
+
+const apertureMacros = {
+	RotRect: ["21,1,$1,$2,0,0,$3"],
+	RoundRect: [
+		"4,1,4,$2,$3,$4,$5,$6,$7,$8,$9,$2,$3,0",
+		"1,1,$1+$1,$2,$3",
+		"1,1,$1+$1,$4,$5",
+		"1,1,$1+$1,$6,$7",
+		"1,1,$1+$1,$8,$9",
+		"20,1,$1+$1,$2,$3,$4,$5,0",
+		"20,1,$1+$1,$4,$5,$6,$7,0",
+		"20,1,$1+$1,$6,$7,$8,$9,0",
+		"20,1,$1+$1,$8,$9,$2,$3,0",
+	],
+};
+
+type ApertureMacro = keyof typeof apertureMacros;
+
+const angleTolerance = 1e-9;
+
 class GerberWriter {
 	private lines: string[] = [];
-	private apertures = new Map<string, number>();
+	private apertures = new Map<
+		string,
+		{ code: number; definition: string; function?: ApertureFunction }
+	>();
+	private macros = new Set<ApertureMacro>();
 	private body: string[] = [];
 	private polarity: "D" | "C" = "D";
 	private current = -1;
@@ -81,16 +115,26 @@ class GerberWriter {
 		);
 	}
 
-	private aperture(definition: string) {
-		let code = this.apertures.get(definition);
-		if (code === undefined) {
-			code = 10 + this.apertures.size;
-			this.apertures.set(definition, code);
+	private aperture(definition: string, apertureFunction?: ApertureFunction) {
+		const key = `${apertureFunction ?? ""}|${definition}`;
+		let aperture = this.apertures.get(key);
+		if (aperture === undefined) {
+			aperture = {
+				code: 10 + this.apertures.size,
+				definition,
+				function: apertureFunction,
+			};
+			this.apertures.set(key, aperture);
 		}
-		if (code !== this.current) {
-			this.body.push(`D${code}*`);
-			this.current = code;
+		if (aperture.code !== this.current) {
+			this.body.push(`D${aperture.code}*`);
+			this.current = aperture.code;
 		}
+	}
+
+	private macro(name: ApertureMacro, parameters: readonly number[]) {
+		this.macros.add(name);
+		return `${name},${parameters.map(decimal).join("X")}`;
 	}
 
 	setPolarity(polarity: "D" | "C") {
@@ -99,16 +143,80 @@ class GerberWriter {
 		this.body.push(`%LP${polarity}*%`);
 	}
 
-	stroke(points: readonly Point[], width: number) {
+	stroke(
+		points: readonly Point[],
+		width: number,
+		apertureFunction?: ApertureFunction,
+	) {
 		if (points.length < 2) return;
-		this.aperture(`C,${decimal(Math.max(width, 0.001))}`);
+		this.aperture(`C,${decimal(Math.max(width, 0.001))}`, apertureFunction);
 		this.body.push(`${xy(points[0])}D02*`);
 		for (const point of points.slice(1)) this.body.push(`${xy(point)}D01*`);
 	}
 
-	flashCircle(center: Point, diameter: number) {
-		this.aperture(`C,${decimal(diameter)}`);
+	flash(
+		definition: string,
+		center: Point,
+		apertureFunction?: ApertureFunction,
+	) {
+		this.aperture(definition, apertureFunction);
 		this.body.push(`${xy(center)}D03*`);
+	}
+
+	flashCircle(
+		center: Point,
+		diameter: number,
+		apertureFunction?: ApertureFunction,
+	) {
+		this.flash(`C,${decimal(diameter)}`, center, apertureFunction);
+	}
+
+	flashRectangle(
+		corners: readonly Point[],
+		radius: number,
+		apertureFunction?: ApertureFunction,
+	) {
+		const [a, b, c, d] = corners;
+		const center = { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 };
+		let width = Math.hypot(b.x - a.x, b.y - a.y);
+		let height = Math.hypot(d.x - a.x, d.y - a.y);
+		const direction = Math.atan2(b.y - a.y, b.x - a.x);
+		const turns = Math.round(direction / (Math.PI / 2));
+		let angle = direction - (turns * Math.PI) / 2;
+		if (Math.abs(angle) < angleTolerance) angle = 0;
+		if (turns % 2) [width, height] = [height, width];
+		if (radius > 0) {
+			const cos = Math.cos(angle);
+			const sin = Math.sin(angle);
+			this.flash(
+				this.macro("RoundRect", [
+					radius,
+					...[
+						[-1, -1],
+						[1, -1],
+						[1, 1],
+						[-1, 1],
+					].flatMap(([sx, sy]) => {
+						const x = (sx * width) / 2;
+						const y = (sy * height) / 2;
+						return [x * cos - y * sin, x * sin + y * cos];
+					}),
+				]),
+				center,
+				apertureFunction,
+			);
+		} else if (angle === 0)
+			this.flash(
+				`R,${decimal(width)}X${decimal(height)}`,
+				center,
+				apertureFunction,
+			);
+		else
+			this.flash(
+				this.macro("RotRect", [width, height, (angle * 180) / Math.PI]),
+				center,
+				apertureFunction,
+			);
 	}
 
 	region(ring: readonly Point[]) {
@@ -118,20 +226,35 @@ class GerberWriter {
 		this.body.push(`${xy(ring[0])}D01*`, "G37*");
 	}
 
-	hull(hull: Hull, margin = 0) {
+	hull(hull: Hull) {
 		if (hull.points.length === 1)
-			this.flashCircle(hull.points[0], 2 * (hull.radius + margin));
-		else if (hull.points.length === 2 && margin === 0)
+			this.flashCircle(hull.points[0], 2 * hull.radius);
+		else if (hull.points.length === 2)
 			this.stroke(hull.points, 2 * hull.radius);
-		else this.region(hullPolygon(hull, margin, Math.PI / 16));
+		else this.region(hullPolygon(hull, 0, Math.PI / 16));
 	}
 
 	toString() {
-		const definitions = [...this.apertures].map(
-			([definition, code]) => `%ADD${code}${definition}*%`,
+		const macros = [...this.macros].map(
+			(name) => `%AM${name}*\n${apertureMacros[name].join("*\n")}*%`,
 		);
+		const definitions: string[] = [];
+		let attribute: ApertureFunction | undefined;
+		for (const aperture of this.apertures.values()) {
+			if (aperture.function !== attribute) {
+				definitions.push(
+					aperture.function
+						? `%TA.AperFunction,${aperture.function}*%`
+						: "%TD.AperFunction*%",
+				);
+				attribute = aperture.function;
+			}
+			definitions.push(`%ADD${aperture.code}${aperture.definition}*%`);
+		}
+		if (attribute) definitions.push("%TD.AperFunction*%");
 		return [
 			...this.lines,
+			...macros,
 			...definitions,
 			"G01*",
 			...this.body,
@@ -176,6 +299,28 @@ function drawGraphic(writer: GerberWriter, shape: EditorShape) {
 		return;
 	}
 	for (const hull of shapeHulls(shape)) writer.hull(hull);
+}
+
+const padFunction = (shape: PadShape | ViaShape): ApertureFunction =>
+	isVia(shape)
+		? "ViaPad"
+		: shape.pad.type === "through-hole"
+			? "ComponentPad"
+			: "SMDPad,CuDef";
+
+function flashPad(
+	writer: GerberWriter,
+	shape: PadShape | ViaShape,
+	margin: number,
+	apertureFunction?: ApertureFunction,
+) {
+	if (shape.kind === "circle")
+		writer.flashCircle(
+			{ x: shape.x, y: shape.y },
+			shape.width + 2 * margin,
+			apertureFunction,
+		);
+	else writer.flashRectangle(rectangleCorners(shape), margin, apertureFunction);
 }
 
 const pasteLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
@@ -233,11 +378,17 @@ export function exportFabrication(
 	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
 ): FabricationFile[] {
 	const items = flatItems(shapes);
+	const tracks = new Set(
+		shapes.filter(
+			(shape) => shape.kind === "line" && isCopperLayer(shape.layer),
+		),
+	);
 	const files: FabricationFile[] = [];
 	for (const target of gerberLayers) {
 		const writer = new GerberWriter(name, target.function, target.polarity);
-		if (target.layer === "F.Cu" || target.layer === "B.Cu") {
-			for (const polygon of layerFill(fills, target.layer)) {
+		const copperLayer = isCopperLayer(target.layer) ? target.layer : undefined;
+		if (copperLayer) {
+			for (const polygon of layerFill(fills, copperLayer)) {
 				writer.setPolarity("D");
 				writer.region(polygon[0].map(([x, y]) => ({ x, y })));
 				writer.setPolarity("C");
@@ -262,14 +413,19 @@ export function exportFabrication(
 					(shape as { pad: { paste?: boolean } }).pad.paste &&
 					pasteLayer[copper] === target.layer;
 				if (onCopper || pasteSide)
-					for (const hull of shapeHulls(shape)) writer.hull(hull);
-				else if (pad && maskSide)
-					for (const hull of shapeHulls(shape))
-						writer.hull(hull, maskExpansion);
+					flashPad(
+						writer,
+						shape,
+						0,
+						copperLayer ? padFunction(shape) : undefined,
+					);
+				else if (pad && maskSide) flashPad(writer, shape, maskExpansion);
 				continue;
 			}
 			if (shape.layer !== target.layer) continue;
-			drawGraphic(writer, shape);
+			if (tracks.has(shape))
+				writer.stroke(lineEnds(shape), shape.lineWidth, "Conductor");
+			else drawGraphic(writer, shape);
 		}
 		files.push({ name: `${name}-${target.file}`, content: writer.toString() });
 	}
