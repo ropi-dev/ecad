@@ -1,5 +1,8 @@
 import type { DrcFinding } from "@ecad/drawing-core/board/drc.ts";
-import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
+import {
+	type BoardRules,
+	boardRulesSchema,
+} from "@ecad/drawing-core/board/rules.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { OctagonAlert, TriangleAlert, X } from "lucide-react";
 import { useRef, useState } from "react";
@@ -184,6 +187,7 @@ const ruleFields: readonly {
 	{ key: "viaDiameter", label: "Via diameter" },
 	{ key: "viaDrill", label: "Via drill" },
 	{ key: "edgeClearance", label: "Edge clearance" },
+	{ key: "solderMaskMargin", label: "Mask margin" },
 ];
 
 /** The board's design rules. New tracks and vias use their sizes. */
@@ -216,6 +220,8 @@ export function BoardSetupPanel({
 						label={label}
 						value={rules[key]}
 						onCommit={(value) => {
+							if (!boardRulesSchema.shape[key].safeParse(value).success)
+								return false;
 							const next = { ...rules, [key]: value };
 							if (next.viaDrill >= next.viaDiameter) return false;
 							onChange(next);
@@ -240,7 +246,8 @@ function RuleField({
 	const [text, setText] = useState(String(value));
 	const commit = () => {
 		const next = Number(text);
-		if (!(next > 0 && next <= 100) || !onCommit(next)) setText(String(value));
+		if (!text.trim() || !Number.isFinite(next) || !onCommit(next))
+			setText(String(value));
 	};
 	return (
 		<label className="contents">

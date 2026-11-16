@@ -48,6 +48,7 @@ export type Fabricate = (
 	name: string,
 	shapes: readonly EditorShape[],
 	fills: readonly ZoneFill[],
+	maskMargin: number,
 ) => FabricationArchive | Promise<FabricationArchive>;
 
 const STALE_SHAPES = 64;
@@ -128,6 +129,7 @@ export function createBoardAnalysis(fabricate: Fabricate): BoardAnalysis {
 					request.name,
 					current,
 					fillZones(current, netlist, rules),
+					rules.solderMaskMargin,
 				);
 				return made instanceof Promise
 					? made.then((archive) => ({ type, id, ...archive }), failed)

@@ -213,6 +213,7 @@ test("the worker fills the pour and packs the Gerber and drill files without the
 		"divider",
 		shapes,
 		fillZones(shapes, netlist, defaultBoardRules),
+		defaultBoardRules.solderMaskMargin,
 	);
 	assert.deepEqual(filesIn(archive), expected);
 	assert.equal(files, expected.length);
@@ -237,6 +238,7 @@ test("an export in the air when the worker crashes is packed in the page", async
 		"divider",
 		shapes,
 		fillZones(shapes, netlist, defaultBoardRules),
+		defaultBoardRules.solderMaskMargin,
 	);
 	assert.deepEqual(filesIn(archive), expected);
 	assert.equal(files, expected.length);
@@ -256,6 +258,7 @@ test("without a worker the page loads the exporter and packs the same archive", 
 			"divider",
 			moved,
 			fillZones(moved, netlist, defaultBoardRules),
+			defaultBoardRules.solderMaskMargin,
 		),
 	);
 	assert.notDeepEqual(
@@ -456,6 +459,24 @@ test("a saved edit asks for the pour once and the connections once", async () =>
 	assert.deepEqual(
 		[worker.asked("fills").length, worker.asked("connectivity").length],
 		[3, 4],
+	);
+	client.dispose();
+});
+
+test("the export opens the mask by the board's solder mask margin", async () => {
+	const client = createBoardAnalysisClient(undefined);
+	const { circuit, shapes, netlist } = await opened(client);
+	const rules = { ...defaultBoardRules, solderMaskMargin: 0 };
+	client.configure(circuit, rules);
+	const { archive } = await client.fabricate("divider", shapes);
+	const fills = fillZones(shapes, netlist, rules);
+	assert.deepEqual(
+		filesIn(archive),
+		exportFabrication("divider", shapes, fills, 0),
+	);
+	assert.notDeepEqual(
+		filesIn(archive),
+		exportFabrication("divider", shapes, fills, 0.05),
 	);
 	client.dispose();
 });

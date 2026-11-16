@@ -193,8 +193,9 @@ export function pointHullDistance(hull: Hull, point: Point): number {
 }
 
 /**
- * The hull's outline as a closed polygon, grown by `margin`. Rounded parts
- * use about one segment per `step` radians.
+ * The hull's outline as a closed polygon, grown by `margin`, or shrunk when
+ * `margin` is negative. Rounded parts use about one segment per `step`
+ * radians. A hull that shrinks away has no outline.
  */
 export function hullPolygon(
 	hull: Hull,
@@ -203,7 +204,8 @@ export function hullPolygon(
 ): Point[] {
 	const radius = hull.radius + margin;
 	const points = convexOrder(hull.points);
-	if (radius <= 0) return points.length >= 3 ? points : [];
+	if (radius < 0) return points.length >= 3 ? insetConvex(points, -radius) : [];
+	if (radius === 0) return points.length >= 3 ? points : [];
 	const outline: Point[] = [];
 	const count = points.length;
 	for (let index = 0; index < count; index++) {
@@ -237,6 +239,38 @@ export function hullPolygon(
 		}
 	}
 	return outline;
+}
+
+function insetConvex(points: readonly Point[], distance: number): Point[] {
+	const count = points.length;
+	const normals = points.map((point, index) => {
+		const next = points[(index + 1) % count];
+		const length = Math.hypot(next.x - point.x, next.y - point.y) || 1;
+		return {
+			x: -(next.y - point.y) / length,
+			y: (next.x - point.x) / length,
+		};
+	});
+	const inset = points.map((point, index) => {
+		const before = normals[(index + count - 1) % count];
+		const after = normals[index];
+		const scale = distance / (1 + before.x * after.x + before.y * after.y);
+		return {
+			x: point.x + (before.x + after.x) * scale,
+			y: point.y + (before.y + after.y) * scale,
+		};
+	});
+	const collapsed = inset.some((point, index) => {
+		const next = inset[(index + 1) % count];
+		const from = points[index];
+		const to = points[(index + 1) % count];
+		return (
+			(next.x - point.x) * (to.x - from.x) +
+				(next.y - point.y) * (to.y - from.y) <=
+			0
+		);
+	});
+	return collapsed ? [] : inset;
 }
 
 /** Points in counterclockwise order. Two points stay as they are. */

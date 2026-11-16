@@ -25,6 +25,7 @@ import {
 } from "@ecad/drawing-core/board/netlist.ts";
 import {
 	type BoardRules,
+	boardRulesSchema,
 	defaultBoardRules,
 } from "@ecad/drawing-core/board/rules.ts";
 import { synchronizeBoard } from "@ecad/drawing-core/board/sync.ts";
@@ -43,14 +44,14 @@ import {
 } from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
-import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
+import { createPad, isPad } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
 	fillReach,
 	fillZones,
 	layerFill,
 	type ZoneFill,
 } from "#/board/fill.ts";
-import { createBoardFile } from "#/board/format.ts";
+import { boardFileSchema, createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
 import { trackAnchor, trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
@@ -761,7 +762,7 @@ describe("fabrication files", () => {
 		const island = fill([[square(6)]]);
 		const ring = fill([[square(20), square(10).reverse()]]);
 		const copper = required(
-			exportFabrication("nested", [], [island, ring]).find((file) =>
+			exportFabrication("nested", [], [island, ring], 0.05).find((file) =>
 				file.name.endsWith("F_Cu.gtl"),
 			),
 		);
@@ -836,7 +837,7 @@ describe("fabrication files", () => {
 				lineWidth: 0.25,
 			},
 		];
-		const files = exportFabrication("pads", shapes, []);
+		const files = exportFabrication("pads", shapes, [], 0.05);
 		const layer = (suffix: string) => {
 			const file = required(files.find((file) => file.name.endsWith(suffix)));
 			assert.doesNotMatch(file.content, /G36/);
@@ -901,6 +902,86 @@ describe("fabrication files", () => {
 		const paste = layer("F_Paste.gtp");
 		assert.equal(paste.length, 2);
 		assert.ok(near(paste[1].bounds, corners(upright)));
+	});
+});
+
+describe("solder mask margin", () => {
+	const qfnPad = {
+		...createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu"),
+		width: 0.23,
+		height: 0.8,
+	};
+	const throughHole = createPad(2, { x: 5, y: 0 }, "through-hole", "2", "F.Cu");
+	const mm = (value: number) => Number(value.toFixed(6));
+	const sizes = (margin: number) => [
+		[mm(0.23 + 2 * margin), mm(0.8 + 2 * margin)],
+		[mm(throughHole.width + 2 * margin), mm(throughHole.width + 2 * margin)],
+	];
+	const exportedOpenings = (margin: number) => {
+		const mask = required(
+			exportFabrication("mask", [qfnPad, throughHole], [], margin).find(
+				(file) => file.name.endsWith("F_Mask.gts"),
+			),
+		);
+		return parseGerber(mask.content, mask.name).object.objects.map(
+			({ bounds }) => [
+				mm(bounds.maxX - bounds.minX),
+				mm(bounds.maxY - bounds.minY),
+			],
+		);
+	};
+
+	test("boards saved before the setting existed keep the 0.05 mm margin", () => {
+		const board = boardFileSchema.parse({
+			...createBoardFile("Old", "circuit"),
+			rules: {
+				clearance: 0.2,
+				trackWidth: 0.25,
+				viaDiameter: 0.6,
+				viaDrill: 0.3,
+				edgeClearance: 0.3,
+			},
+		});
+		assert.equal(board.rules.solderMaskMargin, 0.05);
+	});
+
+	test("the mask Gerber opens each pad by the margin, including none and a negative one", () => {
+		for (const margin of [0.05, 0, 0.1, -0.05])
+			assert.deepEqual(exportedOpenings(margin), sizes(margin), `${margin}`);
+	});
+
+	test("a negative margin shrinks a rotated pad about its centre", () => {
+		const tilted = { ...qfnPad, rotation: Math.PI / 4 };
+		const mask = required(
+			exportFabrication("mask", [tilted], [], -0.05).find((file) =>
+				file.name.endsWith("F_Mask.gts"),
+			),
+		);
+		const [opening] = parseGerber(mask.content, mask.name).object.objects;
+		const expected = hullBounds({
+			points: rectangleCorners({ ...tilted, width: 0.13, height: 0.7 }),
+			radius: 0,
+		});
+		for (const side of ["minX", "minY", "maxX", "maxY"] as const)
+			assert.ok(Math.abs(opening.bounds[side] - expected[side]) < 1e-6, side);
+	});
+
+	test("a margin that shrinks a pad away leaves it covered", () => {
+		assert.deepEqual(exportedOpenings(-0.2), [sizes(-0.2)[1]]);
+		assert.deepEqual(exportedOpenings(-throughHole.width / 2), []);
+	});
+
+	test("the rules accept margins from -0.5 mm to 0.5 mm", () => {
+		const rules = (solderMaskMargin: number) =>
+			boardRulesSchema.safeParse({ ...defaultBoardRules, solderMaskMargin })
+				.success;
+		assert.deepEqual([-0.6, -0.5, 0, 0.5, 0.6].map(rules), [
+			false,
+			true,
+			true,
+			true,
+			false,
+		]);
 	});
 });
 

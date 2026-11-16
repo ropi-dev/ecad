@@ -150,6 +150,7 @@ const rp2350aRules: BoardRules = {
 	viaDiameter: 0.6,
 	viaDrill: 0.3,
 	edgeClearance: 0.3,
+	solderMaskMargin: 0,
 };
 
 const rp2350aCircuitId = "rp2350a";

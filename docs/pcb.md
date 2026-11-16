@@ -53,7 +53,7 @@ The sparkle button in the Layers panel header draws the board as manufactured, i
 
 ## Design rules
 
-**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, and the clearance between copper and the board edge. The board saves them with its items.
+**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, the clearance between copper and the board edge, and the solder mask margin. The board saves them with its items.
 
 **Design rules check** runs on demand and lists:
 
@@ -68,7 +68,7 @@ Select a finding to select the items involved. Results go stale after an edit; r
 
 ## Fabrication files
 
-**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and an Excellon drill file for plated holes. Zone fills on each layer are merged and exported as regions. Each pad opens the solder mask 0.05 mm past its copper; vias stay covered. Text is not exported yet. The export runs the design rules check and warns when it has findings.
+**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and an Excellon drill file for plated holes. Zone fills on each layer are merged and exported as regions. Each pad opens the solder mask by the board's mask margin past its copper, 0.05 mm unless Board setup says otherwise. It can be anything from -0.5 mm to 0.5 mm. A negative margin makes the opening smaller than the pad, and a pad that shrinks away stays covered. Vias stay covered. Text is not exported yet. The export runs the design rules check and warns when it has findings.
 
 ## Autorouting
 
@@ -102,7 +102,8 @@ A board is the `board` field of its drawing's `.ecaddraw` file, next to the sche
       "trackWidth": 0.2,
       "viaDiameter": 0.6,
       "viaDrill": 0.3,
-      "edgeClearance": 0.3
+      "edgeClearance": 0.3,
+      "solderMaskMargin": 0.05
     },
     "shapes": []
   }

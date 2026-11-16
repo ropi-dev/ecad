@@ -1093,6 +1093,9 @@ function EditorCanvas({
 							realistic={realisticBoard}
 							models={modelPlacements}
 							onModelError={reportModelError}
+							maskMargin={
+								isBoard ? boardEditor.rules?.solderMaskMargin : undefined
+							}
 							orbitGesture="alt-shift"
 							updateFlatScene={updateScene}
 							cameraState={viewport.cameraState}

@@ -7,6 +7,7 @@ import {
 	rectangleCorners,
 	shapeHulls,
 } from "@ecad/drawing-core/board/geometry.ts";
+import { defaultBoardRules } from "@ecad/drawing-core/board/rules.ts";
 import {
 	type EditorShape,
 	symbolShapes,
@@ -26,9 +27,6 @@ import {
 	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { layerFill, type ZoneFill } from "#/board/fill.ts";
-
-/** Solder mask grows this far past each pad. */
-const maskExpansion = 0.05;
 
 interface GerberLayer {
 	layer: FootprintLayer;
@@ -314,13 +312,28 @@ function flashPad(
 	margin: number,
 	apertureFunction?: ApertureFunction,
 ) {
-	if (shape.kind === "circle")
-		writer.flashCircle(
-			{ x: shape.x, y: shape.y },
-			shape.width + 2 * margin,
+	if (shape.kind === "circle") {
+		const diameter = shape.width + 2 * margin;
+		if (diameter > 0)
+			writer.flashCircle(
+				{ x: shape.x, y: shape.y },
+				diameter,
+				apertureFunction,
+			);
+		return;
+	}
+	if (margin >= 0) {
+		writer.flashRectangle(rectangleCorners(shape), margin, apertureFunction);
+		return;
+	}
+	const width = shape.width + 2 * margin;
+	const height = shape.height + 2 * margin;
+	if (width > 0 && height > 0)
+		writer.flashRectangle(
+			rectangleCorners({ ...shape, width, height }),
+			0,
 			apertureFunction,
 		);
-	else writer.flashRectangle(rectangleCorners(shape), margin, apertureFunction);
 }
 
 const pasteLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
@@ -333,7 +346,10 @@ const maskLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
 };
 
 /** @return Each side's pad openings in the solder mask, as the mask Gerber draws them. */
-export function maskOpenings(shapes: readonly EditorShape[]): {
+export function maskOpenings(
+	shapes: readonly EditorShape[],
+	margin = defaultBoardRules.solderMaskMargin,
+): {
 	top: [number, number][][];
 	bottom: [number, number][][];
 } {
@@ -350,12 +366,10 @@ export function maskOpenings(shapes: readonly EditorShape[]): {
 			),
 		);
 		if (!sides.length) continue;
-		const rings = shapeHulls(shape).map((hull) =>
-			hullPolygon(hull, maskExpansion).map(({ x, y }): [number, number] => [
-				x,
-				y,
-			]),
-		);
+		const rings = shapeHulls(shape)
+			.map((hull) => hullPolygon(hull, margin))
+			.filter((ring) => ring.length >= 3)
+			.map((ring) => ring.map(({ x, y }): [number, number] => [x, y]));
 		for (const side of sides) openings[side].push(...rings);
 	}
 	return openings;
@@ -370,12 +384,13 @@ interface FabricationFile {
  * Gerber X2 files for copper, mask, paste, silkscreen and the outline, and
  * an Excellon drill file for plated holes. Zone fills come first on their
  * copper layer, with their holes cut, so later copper draws over them.
- * Text is not exported.
+ * Mask openings reach `maskMargin` past each pad. Text is not exported.
  */
 export function exportFabrication(
 	name: string,
 	shapes: readonly EditorShape[],
 	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
+	maskMargin: number,
 ): FabricationFile[] {
 	const items = flatItems(shapes);
 	const tracks = new Set(
@@ -419,7 +434,7 @@ export function exportFabrication(
 						0,
 						copperLayer ? padFunction(shape) : undefined,
 					);
-				else if (pad && maskSide) flashPad(writer, shape, maskExpansion);
+				else if (pad && maskSide) flashPad(writer, shape, maskMargin);
 				continue;
 			}
 			if (shape.layer !== target.layer) continue;

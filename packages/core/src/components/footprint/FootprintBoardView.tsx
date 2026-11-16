@@ -44,6 +44,7 @@ export function FootprintBoardView({
 	realistic = false,
 	models = [],
 	onModelError,
+	maskMargin,
 	...viewer
 }: Pick<
 	Viewer2DProps,
@@ -72,6 +73,7 @@ export function FootprintBoardView({
 		realistic?: boolean;
 		models?: readonly ModelPlacement[];
 		onModelError?: (message: string) => void;
+		maskMargin?: number;
 	}) {
 	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
 	useEffect(() => () => builder.dispose(), [builder]);
@@ -130,9 +132,9 @@ export function FootprintBoardView({
 		() =>
 			outline && {
 				outline,
-				openings: maskOpenings(shapes),
+				openings: maskOpenings(shapes, maskMargin),
 			},
-		[outline, shapes],
+		[outline, shapes, maskMargin],
 	);
 	const modelObjects = useFootprintModels(
 		models,
