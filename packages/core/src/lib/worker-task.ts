@@ -10,9 +10,74 @@ export type AskWorker = <Result>(
 	transfer?: Transferable[],
 ) => Promise<Result>;
 
+export interface TaskWorker {
+	onmessage: ((event: MessageEvent) => void) | null;
+	onerror: ((event: ErrorEvent) => void) | null;
+	onmessageerror: ((event: MessageEvent) => void) | null;
+	postMessage(message: unknown, transfer: Transferable[]): void;
+	terminate(): void;
+}
+
 class WorkerUnavailable extends Error {}
 
 const SILENT_WORKER_MS = 30_000;
+const WARM_WORKER_MS = 60_000;
+
+export function keepWarm(
+	start: () => TaskWorker,
+	idle = WARM_WORKER_MS,
+): () => TaskWorker {
+	let parked:
+		| { worker: TaskWorker; timer: ReturnType<typeof setTimeout> }
+		| undefined;
+	return () => {
+		const worker = parked?.worker ?? start();
+		clearTimeout(parked?.timer);
+		parked = undefined;
+		let pending = 0;
+		let broken = false;
+		let released = false;
+		const task: TaskWorker = {
+			onmessage: null,
+			onerror: null,
+			onmessageerror: null,
+			postMessage(message, transfer) {
+				pending++;
+				worker.postMessage(message, transfer);
+			},
+			terminate() {
+				if (released) return;
+				released = true;
+				worker.onmessage = null;
+				worker.onerror = null;
+				worker.onmessageerror = null;
+				if (pending || broken || parked) {
+					worker.terminate();
+					return;
+				}
+				const timer = setTimeout(() => {
+					if (parked?.worker === worker) parked = undefined;
+					worker.terminate();
+				}, idle);
+				(timer as { unref?: () => void }).unref?.();
+				parked = { worker, timer };
+			},
+		};
+		worker.onmessage = (event) => {
+			pending--;
+			task.onmessage?.(event);
+		};
+		worker.onerror = (event) => {
+			broken = true;
+			task.onerror?.(event);
+		};
+		worker.onmessageerror = (event) => {
+			broken = true;
+			task.onmessageerror?.(event);
+		};
+		return task;
+	};
+}
 
 export async function workerReply<Result>(
 	work: () => Result | Promise<Result>,
@@ -26,7 +91,7 @@ export async function workerReply<Result>(
 }
 
 export async function inWorkerOrHere<Result>(
-	start: (() => Worker) | undefined,
+	start: (() => TaskWorker) | undefined,
 	inWorker: (ask: AskWorker) => Promise<Result>,
 	here: () => Result | Promise<Result>,
 	{
@@ -36,7 +101,7 @@ export async function inWorkerOrHere<Result>(
 ): Promise<Result> {
 	signal?.throwIfAborted();
 	if (!start) return here();
-	let worker: Worker;
+	let worker: TaskWorker;
 	try {
 		worker = start();
 	} catch {

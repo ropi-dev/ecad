@@ -48,13 +48,19 @@ export function createProjectEditorFiles(
 				circuit: CircuitFile["circuit"];
 				controller: AbortController;
 				view: Promise<CircuitFile | undefined>;
+				opening: boolean;
 		  }
 		| undefined;
-	const laidOut = (
+	const laidOut = async (
 		circuit: CircuitFile["circuit"],
 		[, { untangledCircuitView }]: CircuitModules,
+		opening: boolean,
 	) => {
-		if (layout?.circuit === circuit) return layout.view;
+		if (layout?.circuit === circuit) {
+			layout.opening ||= opening;
+			return layout.view;
+		}
+		if (layout?.opening && !opening) return undefined;
 		layout?.controller.abort();
 		const controller = new AbortController();
 		state.circuitLayout = controller;
@@ -69,7 +75,7 @@ export function createProjectEditorFiles(
 				state.circuitLayout = undefined;
 			});
 		view.catch(() => undefined);
-		layout = { circuit, controller, view };
+		layout = { circuit, controller, view, opening };
 		return view;
 	};
 	const openCircuitDocument = (
@@ -179,7 +185,7 @@ export function createProjectEditorFiles(
 		let view = file;
 		while (file && needsLayout(file)) {
 			const { circuit } = file;
-			const arranged = await laidOut(circuit, modules);
+			const arranged = await laidOut(circuit, modules, true);
 			if (!arranged || stale()) return false;
 			file = read();
 			view = file;
@@ -618,7 +624,7 @@ export function createProjectEditorFiles(
 		let view: CircuitFile | undefined = file;
 		if (needsLayout(file)) {
 			const { circuit } = file;
-			view = await laidOut(circuit, modules);
+			view = await laidOut(circuit, modules, false);
 			file = read();
 			if (!view || superseded() || file?.circuit !== circuit) return;
 			if (file.graph.positions.length) view = file;

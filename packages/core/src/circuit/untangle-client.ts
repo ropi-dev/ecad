@@ -3,18 +3,19 @@ import type {
 	CircuitFile,
 	GraphLayout,
 } from "@ecad/drawing-core/circuit/model.ts";
-import { inWorkerOrHere } from "#/lib/worker-task.ts";
+import { inWorkerOrHere, keepWarm } from "#/lib/worker-task.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 type Positions = GraphLayout["positions"];
 
+const warmUntangleWorker = keepWarm(
+	() =>
+		new Worker(new URL("./untangle.worker.ts", import.meta.url), {
+			type: "module",
+		}),
+);
 const untangleWorker = () =>
-	typeof Worker === "undefined"
-		? undefined
-		: () =>
-				new Worker(new URL("./untangle.worker.ts", import.meta.url), {
-					type: "module",
-				});
+	typeof Worker === "undefined" ? undefined : warmUntangleWorker;
 
 export function untangleCircuit(
 	file: CircuitFile,

@@ -11,6 +11,8 @@ import {
 } from "#/circuit/untangle-client.ts";
 import {
 	inWorkerOrHere,
+	keepWarm,
+	type TaskWorker,
 	type WorkerReply,
 	workerReply,
 } from "#/lib/worker-task.ts";
@@ -256,4 +258,69 @@ test("untangling in a worker lays the circuit out as the page would", async () =
 	);
 	assert.equal(workers.length, 3);
 	assert.ok(workers.every((worker) => worker.terminated));
+});
+
+test("a warm worker serves the next task, and one that was stopped mid-request, crashed or sat idle is replaced", async () => {
+	const workers: FakeWorker[] = [];
+	const start = keepWarm(() => {
+		const worker = new FakeWorker((request) =>
+			request === "hang" ? new Promise(() => undefined) : doubled(request),
+		);
+		workers.push(worker);
+		return worker as unknown as TaskWorker;
+	}, 30);
+	const double = (value: number) =>
+		inWorkerOrHere(
+			start,
+			(ask) => ask<number>(value),
+			() => assert.fail("The worker should answer."),
+		);
+
+	assert.equal(await double(2), 4);
+	assert.equal(await double(5), 10);
+	assert.equal(workers.length, 1);
+	assert.deepEqual(workers[0]?.posted, [2, 5]);
+	assert.equal(workers[0]?.terminated, false);
+
+	assert.deepEqual(await Promise.all([double(1), double(3)]), [2, 6]);
+	assert.equal(workers.length, 2);
+	assert.equal(
+		workers.filter((worker) => worker.terminated).length,
+		1,
+		"Only one worker stays warm.",
+	);
+
+	const controller = new AbortController();
+	const hung = inWorkerOrHere(
+		start,
+		(ask) => ask<number>("hang"),
+		() => 0,
+		{ signal: controller.signal },
+	);
+	controller.abort(new Error("The circuit was closed."));
+	await assert.rejects(hung, /The circuit was closed\./);
+	assert.equal(
+		workers.every((worker) => worker.terminated),
+		true,
+	);
+	assert.equal(await double(4), 8);
+	assert.equal(workers.length, 3);
+
+	await new Promise((resolve) => setTimeout(resolve, 60));
+	assert.equal(workers[2]?.terminated, true);
+	assert.equal(await double(6), 12);
+	assert.equal(workers.length, 4);
+
+	const crashing = keepWarm(
+		() => new FakeWorker(() => "crash") as unknown as TaskWorker,
+		30,
+	);
+	assert.equal(
+		await inWorkerOrHere(
+			crashing,
+			(ask) => ask<string>("job"),
+			() => "page",
+		),
+		"page",
+	);
 });
