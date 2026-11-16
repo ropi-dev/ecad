@@ -115,6 +115,7 @@ export interface DisplayShape extends DrawingTransform, TextAlignment {
 	appearance: DrawingAppearance;
 	text?: string;
 	bold?: true;
+	mirrored?: true;
 	pinLabel?: true;
 	dimmed?: true;
 	halo?: true;
@@ -248,6 +249,7 @@ function displayShape(
 			? {
 					text: shape.text,
 					...(shape.bold ? { bold: true as const } : {}),
+					...(shape.layer?.startsWith("B.") ? { mirrored: true as const } : {}),
 					horizontalAlign: shape.horizontalAlign,
 					verticalAlign: shape.verticalAlign,
 				}

@@ -70,7 +70,8 @@ import {
 	type ZoneFill,
 } from "#/board/fill.ts";
 import { boardFileSchema, createBoardFile } from "#/board/format.ts";
-import { exportFabrication, maskOpenings } from "#/board/gerber.ts";
+import { exportFabrication } from "#/board/gerber.ts";
+import { maskOpenings } from "#/board/mask.ts";
 import { trackAnchor, trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";

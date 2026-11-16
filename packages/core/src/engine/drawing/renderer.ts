@@ -42,10 +42,14 @@ function touch(object: Object3D) {
 
 function applyTransform(
 	object: Object3D,
-	display: DrawingTransform & { renderOrder: number },
+	display: DrawingTransform & { renderOrder: number; mirrored?: true },
 ) {
 	object.position.set(display.x, display.y, 0);
-	object.scale.set(display.width, display.height, 1);
+	object.scale.set(
+		display.mirrored ? -display.width : display.width,
+		display.height,
+		1,
+	);
 	object.rotation.z = display.rotation;
 	object.renderOrder = display.renderOrder;
 	object.matrixAutoUpdate = false;
@@ -332,7 +336,7 @@ export function createDrawingRenderer(
 					.multiply(rotation.makeRotationZ(display.rotation))
 					.multiply(
 						size.makeScale(
-							display.width * parent.width,
+							display.width * parent.width * (display.mirrored ? -1 : 1),
 							display.height * parent.height,
 							1,
 						),

@@ -7,10 +7,10 @@ import {
 	rectangleCorners,
 	shapeHulls,
 } from "@ecad/drawing-core/board/geometry.ts";
-import { defaultBoardRules } from "@ecad/drawing-core/board/rules.ts";
 import {
 	type EditorShape,
 	symbolShapes,
+	symbolTextShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
@@ -28,6 +28,9 @@ import {
 	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { layerFill, type ZoneFill } from "#/board/fill.ts";
+import { maskLayer } from "#/board/mask.ts";
+import { textPolygons } from "#/board/text-outline.ts";
+import type { MultiPolygon } from "#/engine/geometry.ts";
 
 interface GerberLayer {
 	layer: FootprintLayer;
@@ -260,6 +263,15 @@ class GerberWriter {
 		this.body.push(`${xy(ring[0])}D01*`, "G37*");
 	}
 
+	polygon(rings: MultiPolygon[number]) {
+		const points = fracture(rings).map(([x, y]) => ({ x, y }));
+		this.region(
+			points.filter(
+				(point, index) => xy(point) !== xy(points.at(index - 1) ?? point),
+			),
+		);
+	}
+
 	hull(hull: Hull) {
 		if (hull.points.length === 1)
 			this.flashCircle(hull.points[0], 2 * hull.radius);
@@ -298,10 +310,65 @@ class GerberWriter {
 	}
 }
 
+type Ring = MultiPolygon[number][number];
+
+const signedArea = (ring: Ring) =>
+	ring.reduce((area, [x, y], index) => {
+		const [nextX, nextY] = ring[(index + 1) % ring.length];
+		return area + x * nextY - nextX * y;
+	}, 0);
+
+function fracture([outer, ...holes]: MultiPolygon[number]): Ring {
+	let ring = [...outer];
+	const sense = Math.sign(signedArea(outer));
+	const leftmost = (hole: Ring) =>
+		hole.reduce((best, [x], index) => (x < hole[best][0] ? index : best), 0);
+	const ordered = holes
+		.map((hole) =>
+			Math.sign(signedArea(hole)) === sense ? [...hole].reverse() : hole,
+		)
+		.map((hole) => ({ hole, start: leftmost(hole) }))
+		.sort((a, b) => a.hole[a.start][0] - b.hole[b.start][0]);
+	for (const { hole, start } of ordered) {
+		const [px, py] = hole[start];
+		let edge = -1;
+		let reach = -Infinity;
+		for (let index = 0; index < ring.length; index++) {
+			const [ax, ay] = ring[index];
+			const [bx, by] = ring[(index + 1) % ring.length];
+			if (ay > py === by > py) continue;
+			const x = ax + ((py - ay) * (bx - ax)) / (by - ay);
+			if (x <= px && x > reach) {
+				reach = x;
+				edge = index;
+			}
+		}
+		if (edge < 0) continue;
+		const bridge: [number, number] = [reach, py];
+		ring = [
+			...ring.slice(0, edge + 1),
+			bridge,
+			...hole.slice(start),
+			...hole.slice(0, start + 1),
+			bridge,
+			...ring.slice(edge + 1),
+		];
+	}
+	return ring;
+}
+
 /** Board items with each footprint taken apart, in board coordinates. */
 function flatItems(shapes: readonly EditorShape[]): EditorShape[] {
-	return shapes.flatMap((shape) =>
-		isBoardFootprint(shape) ? (symbolShapes(shape) as EditorShape[]) : [shape],
+	return shapes.flatMap((shape): EditorShape[] =>
+		isBoardFootprint(shape)
+			? [
+					...(symbolShapes(shape) as EditorShape[]),
+					...symbolTextShapes(shape).map((text) => ({
+						...text,
+						layer: shape.layer ?? "F.SilkS",
+					})),
+				]
+			: [shape],
 	);
 }
 
@@ -386,43 +453,6 @@ const pasteLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
 	"F.Cu": "F.Paste",
 	"B.Cu": "B.Paste",
 };
-const maskLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
-	"F.Cu": "F.Mask",
-	"B.Cu": "B.Mask",
-};
-
-/** @return Each side's pad and unplated hole openings in the solder mask, as the mask Gerber draws them. */
-export function maskOpenings(
-	shapes: readonly EditorShape[],
-	margin = defaultBoardRules.solderMaskMargin,
-): {
-	top: [number, number][][];
-	bottom: [number, number][][];
-} {
-	const openings = {
-		top: [] as [number, number][][],
-		bottom: [] as [number, number][][],
-	};
-	for (const shape of flatItems(shapes)) {
-		if (!isPad(shape) && !isHole(shape)) continue;
-		const layers = shapeLayers(shape);
-		const sides = (["top", "bottom"] as const).filter((side) =>
-			layers.some(
-				(layer) =>
-					(isHole(shape) ? layer : maskLayer[layer]) ===
-					(side === "top" ? "F.Mask" : "B.Mask"),
-			),
-		);
-		if (!sides.length) continue;
-		const rings = shapeHulls(shape)
-			.map((hull) => hullPolygon(hull, margin))
-			.filter((ring) => ring.length >= 3)
-			.map((ring) => ring.map(({ x, y }): [number, number] => [x, y]));
-		for (const side of sides) openings[side].push(...rings);
-	}
-	return openings;
-}
-
 interface FabricationFile {
 	name: string;
 	content: string;
@@ -433,7 +463,7 @@ interface FabricationFile {
  * Excellon drill file for plated holes, and one for unplated holes when the
  * board has any. Zone fills come first on their copper layer, with their
  * holes cut, so later copper draws over them. Mask openings reach
- * `maskMargin` past each pad and unplated hole. Text is not exported.
+ * `maskMargin` past each pad and unplated hole.
  */
 export function exportFabrication(
 	name: string,
@@ -462,7 +492,15 @@ export function exportFabrication(
 			writer.setPolarity("D");
 		}
 		for (const shape of items) {
-			if (shape.kind === "text") continue;
+			if (shape.kind === "text") {
+				if (shapeLayer(shape) !== target.layer) continue;
+				if (isCopperLayer(target.layer) || target.layer === "Edge.Cuts")
+					continue;
+				const mirrored = target.layer.startsWith("B.");
+				for (const polygon of textPolygons(shape, { mirrored }))
+					writer.polygon(polygon);
+				continue;
+			}
 			if (isZone(shape)) continue;
 			const layers = shapeLayers(shape);
 			if (isHole(shape)) {

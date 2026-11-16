@@ -180,3 +180,27 @@ test("native pin name and number visibility survive standalone and symbol overri
 			}
 		}
 });
+
+test("back-side board text exports mirrored, as the editor draws it", () => {
+	const text = (layer: "F.SilkS" | "B.SilkS"): EditorShape => ({
+		id: 1,
+		kind: "text",
+		layer,
+		x: 0,
+		y: 0,
+		width: 20,
+		height: 10,
+		lineWidth: 0,
+		fontSize: 2,
+		rotation: 0,
+		text: "R1",
+	});
+	const scaleX = (layer: "F.SilkS" | "B.SilkS") =>
+		Number(
+			/<g transform="matrix\(([-\d.e]+) /.exec(
+				exportDrawingSvg([text(layer)], { ...options, area: "drawing" }),
+			)?.[1],
+		);
+	assert.ok(scaleX("F.SilkS") > 0);
+	assert.equal(scaleX("B.SilkS"), -scaleX("F.SilkS"));
+});
