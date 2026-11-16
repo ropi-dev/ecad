@@ -133,6 +133,7 @@ export function resolveDrawingSymbols(
 					const result = fitBoxToBorder(
 						normalizeNetSymbol({
 							...shape,
+							attributes: { ...resolved.attributes, ...shape.attributes },
 							library: definition.library,
 							width: resolved.width,
 							height: resolved.height,

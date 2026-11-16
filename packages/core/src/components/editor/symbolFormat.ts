@@ -9,6 +9,10 @@ import {
 	type EditorSymbol,
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	attributesError,
+	extraAttributes,
+} from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import { symbolLibraryScopes } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import {
 	horizontalAlignments,
@@ -42,6 +46,20 @@ const textAlignmentFields = {
 };
 const textAlignment = Schema.Struct(textAlignmentFields);
 const locked = Schema.optional(Schema.Boolean);
+const attributeValues = Schema.Record({
+	key: Schema.String,
+	value: Schema.String,
+});
+const checkAttributes =
+	(definition: boolean) => (attributes: Readonly<Record<string, string>>) => {
+		const error = attributesError(attributes, { definition });
+		return error
+			? {
+					path: error.name === undefined ? [] : [error.name],
+					message: error.message,
+				}
+			: true;
+	};
 /** Drawings and symbol files share one child-override schema and its limits. */
 const childOverrides = Schema.optional(
 	Schema.declare(
@@ -101,11 +119,14 @@ const shapeSchema = Schema.Union(
 		rotation: Schema.optional(Schema.Number.pipe(Schema.between(-360, 360))),
 		lineWidth,
 		attributes: Schema.optional(
-			Schema.Struct({
-				name: Schema.String,
-				reference: Schema.String,
-				value: Schema.String,
-			}),
+			Schema.Struct(
+				{
+					name: Schema.String,
+					reference: Schema.String,
+					value: Schema.String,
+				},
+				attributeValues,
+			).pipe(Schema.filter(checkAttributes(false))),
 		),
 		textAlignments: Schema.optional(
 			Schema.Struct({
@@ -194,6 +215,9 @@ const symbolFileSchema = Schema.Struct({
 			library: Schema.Literal(...footprintLibraries),
 			id: Schema.String.pipe(Schema.pattern(footprintIdPattern)),
 		}),
+	),
+	attributes: Schema.optional(
+		attributeValues.pipe(Schema.filter(checkAttributes(true))),
 	),
 	shapes: Schema.Array(shapeSchema).pipe(Schema.maxItems(256)),
 });
@@ -332,6 +356,13 @@ export function symbolFileFromSymbol(symbol: EditorSymbol): SymbolFile {
 					prefix: "U",
 					value: symbol.attributes.value,
 					...(symbol.footprint ? { footprint: { ...symbol.footprint } } : {}),
+					...(extraAttributes(symbol.attributes).length
+						? {
+								attributes: Object.fromEntries(
+									extraAttributes(symbol.attributes),
+								),
+							}
+						: {}),
 					shapes: [],
 				},
 				[...symbolShapes({ ...symbol, x: 0, y: 0, rotation: 0 })],

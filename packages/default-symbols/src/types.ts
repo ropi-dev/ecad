@@ -1,4 +1,5 @@
 import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
+import type { PartAttribute } from "./part-attributes.ts";
 
 /** Portable version 1 geometry. This package has no editor or renderer dependencies. */
 export type SymbolPrimitive =
@@ -55,6 +56,7 @@ export interface DefaultSymbolFile {
 	netSymbol?: boolean;
 	/** The default footprint, from the built-in footprint library. */
 	footprint?: { library: "builtin"; id: string };
+	attributes?: Record<string, string>;
 	shapes: SymbolPrimitive[];
 }
 
@@ -125,6 +127,7 @@ export interface SourceSymbol {
 	netSymbol?: boolean;
 	/** The ID of a footprint in `@ecad/default-footprints`. */
 	footprint?: string;
+	attributes?: Readonly<Partial<Record<PartAttribute, string>>>;
 	source: string;
 	rotation: number;
 	filled?: boolean;

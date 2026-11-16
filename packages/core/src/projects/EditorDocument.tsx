@@ -3,9 +3,13 @@ import type {
 	Editor2DProps,
 	EditorCanvasProps,
 } from "#/components/editor/Editor2D.tsx";
+import { SymbolAttributesButton } from "#/components/editor/SymbolAttributesDialog.tsx";
 import { useDrawingFonts } from "#/components/editor/useDrawingFonts.ts";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
-import { useProjectEditor } from "#/projects/ProjectProvider.tsx";
+import {
+	useProjectActions,
+	useProjectEditor,
+} from "#/projects/ProjectProvider.tsx";
 
 const WorkspaceStart = lazy(() =>
 	import("#/projects/WorkspaceStart.tsx").then((module) => ({
@@ -23,6 +27,7 @@ export function EditorDocument({
 	...props
 }: Editor2DProps & { Canvas: ComponentType<EditorCanvasProps> }) {
 	const project = useProjectEditor();
+	const actions = useProjectActions();
 	// A circuit link opens this route while its circuit is still loading.
 	// Showing the schematic for that moment would start its viewer, which
 	// then keeps that camera, so wait for the circuit that was opening on
@@ -91,6 +96,16 @@ export function EditorDocument({
 				props.store
 			}
 			symbolName={symbol?.file.name}
+			headerControls={
+				symbol && actions ? (
+					<SymbolAttributesButton
+						attributes={symbol.file.attributes}
+						onSave={(attributes) =>
+							actions.saveSymbolAttributes(symbol.file.id, attributes)
+						}
+					/>
+				) : undefined
+			}
 			footprintName={footprint?.file.name}
 			board={board ?? undefined}
 			drawingName={drawing?.file.name}

@@ -36,12 +36,16 @@ export function useLibrarySymbolSave(target: SymbolEditTarget) {
 		store.getSnapshot,
 		store.getSnapshot,
 	);
-	const saved = useRef(drawing.shapes);
-	const [savedShapes, setSavedShapes] = useState(drawing.shapes);
+	const [attributes, setAttributes] = useState(target.file.attributes);
+	const latestAttributes = useRef(attributes);
+	const saved = useRef({ shapes: drawing.shapes, attributes });
+	const [savedContent, setSavedContent] = useState(saved.current);
 	const pending = useRef<Promise<void> | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
-	const dirty = drawing.shapes !== savedShapes;
+	const dirty =
+		drawing.shapes !== savedContent.shapes ||
+		attributes !== savedContent.attributes;
 	const reportUnsavedEdits = useProjectActions()?.reportUnsavedEdits;
 	const editorKey = useId();
 	useEffect(() => {
@@ -51,21 +55,38 @@ export function useLibrarySymbolSave(target: SymbolEditTarget) {
 		() => () => reportUnsavedEdits?.(editorKey, false),
 		[reportUnsavedEdits, editorKey],
 	);
+	const unsaved = useCallback(
+		() =>
+			store.getSnapshot().shapes !== saved.current.shapes ||
+			latestAttributes.current !== saved.current.attributes,
+		[store],
+	);
 	const save = useCallback(
 		async function persist(): Promise<void> {
 			while (pending.current) await pending.current;
-			const shapes = store.getSnapshot().shapes;
-			if (shapes === saved.current) return;
+			if (!unsaved()) return;
+			const next = {
+				shapes: store.getSnapshot().shapes,
+				attributes: latestAttributes.current,
+			};
 			setSaving(true);
 			const work = Promise.resolve().then(async () => {
 				try {
+					const { attributes: _attributes, ...file } = symbolFileWithShapes(
+						target.file,
+						next.shapes,
+					);
 					await target.save(
 						parseSymbolFile(
-							JSON.stringify(symbolFileWithShapes(target.file, shapes)),
+							JSON.stringify(
+								next.attributes && Object.keys(next.attributes).length
+									? { ...file, attributes: next.attributes }
+									: file,
+							),
 						),
 					);
-					saved.current = shapes;
-					setSavedShapes(shapes);
+					saved.current = next;
+					setSavedContent(next);
 					setError("");
 				} catch (cause) {
 					if (!isProjectError(cause, "ProjectConflict"))
@@ -80,19 +101,27 @@ export function useLibrarySymbolSave(target: SymbolEditTarget) {
 			});
 			pending.current = work;
 			await work;
-			if (store.getSnapshot().shapes !== saved.current) await persist();
+			if (unsaved()) await persist();
 		},
-		[store, target],
+		[store, target, unsaved],
 	);
+	const changeAttributes = useCallback((next: Record<string, string>) => {
+		latestAttributes.current = next;
+		setAttributes(next);
+	}, []);
 	useEffect(() => {
-		if (drawing.shapes === saved.current) return;
+		if (
+			drawing.shapes === saved.current.shapes &&
+			attributes === saved.current.attributes
+		)
+			return;
 		void save().catch(() => undefined);
-	}, [drawing.shapes, save]);
+	}, [drawing.shapes, attributes, save]);
 	useEffect(() => {
 		if (!dirty) return;
 		const warn = (event: BeforeUnloadEvent) => event.preventDefault();
 		window.addEventListener("beforeunload", warn);
 		return () => window.removeEventListener("beforeunload", warn);
 	}, [dirty]);
-	return { store, save, saving, error };
+	return { store, save, saving, error, attributes, changeAttributes };
 }

@@ -6,8 +6,10 @@ import {
 import { annotationSymbols } from "./annotations.ts";
 import { catalog } from "./catalog.ts";
 import { legacySymbols } from "./legacy.ts";
+import { partAttributeValues } from "./part-attributes.ts";
 import type { DefaultSymbol, SourceSymbol, SymbolPrimitive } from "./types.ts";
 
+export { type PartAttribute, partAttributes } from "./part-attributes.ts";
 export type {
 	DefaultSymbol,
 	DefaultSymbolFile,
@@ -108,6 +110,8 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			}
 		}
 	}
+	if (source.netSymbol && source.attributes)
+		throw new Error(`${source.id} is a net symbol, which has no part.`);
 	for (const name of Object.keys(source.pinTypes ?? {}))
 		if (!shapes.some((shape) => shape.kind === "pin" && shape.name === name))
 			throw new Error(`${source.id} has a type for missing pin ${name}.`);
@@ -138,6 +142,9 @@ function generate(source: SourceSymbol): DefaultSymbol {
 			...(source.footprint
 				? { footprint: { library: "builtin", id: source.footprint } }
 				: {}),
+			...(source.netSymbol
+				? {}
+				: { attributes: partAttributeValues(source.attributes) }),
 			shapes,
 		},
 		texts: [

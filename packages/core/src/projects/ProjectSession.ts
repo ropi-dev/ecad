@@ -73,6 +73,10 @@ export interface ProjectContextValue {
 	reportUnsavedEdits(key: string, unsaved: boolean): void;
 	create(name: string): Promise<void>;
 	createSymbol(name: string): Promise<string>;
+	saveSymbolAttributes(
+		id: string,
+		attributes: Readonly<Record<string, string>>,
+	): Promise<void>;
 	/** Creates a footprint file, empty or with a copy of `from`'s description and shapes. */
 	createFootprint(
 		name: string,

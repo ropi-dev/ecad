@@ -82,7 +82,7 @@ If browser storage is unavailable, imports remain usable in the open editor and 
 }
 ```
 
-All fields above are required except `footprint`. `description` and `value` may be empty strings. Unknown fields are rejected to catch misspellings.
+All fields above are required except `footprint` and `attributes`. `description` and `value` may be empty strings. Unknown fields are rejected to catch misspellings.
 
 | Symbol field | Meaning |
 | --- | --- |
@@ -92,7 +92,20 @@ All fields above are required except `footprint`. `description` and `value` may 
 | `prefix` | Reference prefix, 1–16 characters: ASCII letter first, then letters, digits, or `_`. Instances receive references such as `J1`. |
 | `value` | Default editable value, up to 100 characters. |
 | `footprint` | Optional default footprint for new placements: `{ "library": "builtin", "id": "r_0805_2012metric" }`, or `"library": "project"` for a footprint file in the project. Omit it for a symbol with no default. See [Built-in footprints and symbols](footprints.md#built-in-footprints-and-symbols). |
+| `attributes` | Optional attributes beyond name, reference and value, such as `{ "Manufacturer": "Winbond", "Part number": "W25Q128JVSIQ" }`. Each key is an attribute name and its value is what new placements start with. See [Attributes](#attributes). |
 | `shapes` | Up to 256 primitives, described below. An empty array represents a symbol with no shapes yet. |
+
+## Attributes
+
+Every placement has a name, a reference and a value. A symbol can add more attributes of its own in `attributes`, for example a manufacturer, a part number or a datasheet link. Nothing in the editor depends on a particular attribute name.
+
+A symbol has at most 32 attributes besides the three built-in ones. Names have 1 to 64 characters and no space at either end. A name can't be only digits, and it can't be `name`, `reference` or `value` in any letter case. Two names that differ only in case count as the same name. Values are strings of up to 2000 characters and may be empty. The editor lists attributes in the order the file gives them.
+
+A new placement copies the attributes with their values. Select it and edit them in Attributes under Properties, after Value. An edit changes that placement only, and the placement saves every attribute in its own `attributes` object. If a definition gains an attribute after a placement was saved, the placement shows it with the definition's value. Net symbols show no extra attributes.
+
+To change the attributes of a symbol you can edit, open it with **Edit symbol** and choose **Attributes** in the header. Add, rename or remove attributes and set their default values there. The changes save with the definition and apply to new placements. Existing placements keep the values they have.
+
+Built-in component symbols define Manufacturer, Part number, Datasheet and Distributor part number. See [the built-in symbol package](../packages/default-symbols/README.md#attributes).
 
 ## Drawing primitives
 
@@ -132,7 +145,7 @@ Schematics and symbol files refer to library definitions by the library's scope 
 
 `scope` is `user` or `project`. `id` identifies an entry in that scope's symbol library configuration. The default built-in library uses `user` and `builtin`; project symbol files use `project` and `project-symbols`. Rotation in symbol files uses degrees, while schematic drawing geometry uses radians.
 
-Placements do not save the referenced definition's shapes. The editor resolves geometry and label styles from the library, so definition edits appear in existing placements. Schematics retain instance positions, rotations, attribute values, footprints, explicit stroke overrides, and `textPositions`. This optional object maps `name`, `reference`, and `value` to label anchors with `x` and `y` in millimetres relative to the symbol origin before rotation. New placements copy their initial text positions from the definition. Older drawings without a position use the library's default for that label. Drag any item on an unselected symbol to move the whole symbol. Select the symbol first, then drag a child to move it independently. Select a child on the canvas to edit its local coordinates, dimensions, text, pin fields or appearance in Attributes. A child at X = 0 and Y = 0 sits at the symbol center. Label positions survive saving, undo and redo, and moving or rotating the symbol. Nested placements accept optional `attributes` with `name`, `reference`, and `value`, optional `textPositions` in the same local coordinates, and an optional `lineWidth` override. The optional `textAlignments` object maps each label attribute to `horizontalAlign` and `verticalAlign` overrides. Each placement saves these overrides independently of the library definition.
+Placements do not save the referenced definition's shapes. The editor resolves geometry and label styles from the library, so definition edits appear in existing placements. Schematics retain instance positions, rotations, attribute values, footprints, explicit stroke overrides, and `textPositions`. This optional object maps `name`, `reference`, and `value` to label anchors with `x` and `y` in millimetres relative to the symbol origin before rotation. New placements copy their initial text positions from the definition. Older drawings without a position use the library's default for that label. Drag any item on an unselected symbol to move the whole symbol. Select the symbol first, then drag a child to move it independently. Select a child on the canvas to edit its local coordinates, dimensions, text, pin fields or appearance in Attributes. A child at X = 0 and Y = 0 sits at the symbol center. Label positions survive saving, undo and redo, and moving or rotating the symbol. Nested placements accept optional `attributes` with `name`, `reference`, `value` and any of the symbol's own attributes, optional `textPositions` in the same local coordinates, and an optional `lineWidth` override. The optional `textAlignments` object maps each label attribute to `horizontalAlign` and `verticalAlign` overrides. Each placement saves these overrides independently of the library definition.
 
 The optional `childOverrides` object stores instance edits to individual children. Keys such as `shape:2` refer to a child's local ID. Attribute labels use `attribute:name`, `attribute:reference` and `attribute:value`. Each entry contains only changed fields, such as `x`, `y`, `fontSize`, `text`, `number` or `lineStyle`. Coordinates are relative to the symbol center before rotation. Override rotations use radians, matching drawing shapes. Nested placements preserve the same overrides. The library definition and other placements keep their original children.
 

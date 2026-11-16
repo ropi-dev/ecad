@@ -71,6 +71,7 @@ import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { PageBar, type PageEdit } from "#/components/editor/PageBar.tsx";
 import { SchematicSettingsDialog } from "#/components/editor/SchematicSettingsDialog.tsx";
 import { SelectionAttributes } from "#/components/editor/SelectionAttributes.tsx";
+import { SymbolAttributesButton } from "#/components/editor/SymbolAttributesDialog.tsx";
 import type { FootprintChoices } from "#/components/editor/SymbolFootprintField.tsx";
 import { fitTextShapes } from "#/components/editor/text.ts";
 import {
@@ -1226,7 +1227,8 @@ function LibrarySymbolEditor({
 	target: SymbolEditTarget;
 	onClose: () => void;
 }) {
-	const { store, save, saving, error } = useLibrarySymbolSave(target);
+	const { store, save, saving, error, attributes, changeAttributes } =
+		useLibrarySymbolSave(target);
 	return (
 		<EditorCanvas
 			store={store}
@@ -1248,6 +1250,10 @@ function LibrarySymbolEditor({
 						<ArrowLeft size={14} aria-hidden="true" />
 						Back to schematic
 					</button>
+					<SymbolAttributesButton
+						attributes={attributes}
+						onSave={changeAttributes}
+					/>
 					{error && (
 						<p
 							role="alert"

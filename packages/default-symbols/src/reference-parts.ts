@@ -73,6 +73,12 @@ export const referenceSymbols: readonly SourceSymbol[] = [
 		prefix: "U",
 		value: "W25Q128JVS",
 		footprint: "soic-8_5.23x5.23mm_p1.27mm",
+		attributes: {
+			Manufacturer: "Winbond",
+			"Part number": "W25Q128JVSIQ",
+			Datasheet:
+				"https://www.winbond.com/resource-files/w25q128jv_dtr%20revc%2003272018%20plus.pdf",
+		},
 		source: "Memory_Flash:W25Q128JVS",
 		rotation: 0,
 		filled: true,
@@ -109,6 +115,11 @@ export const referenceSymbols: readonly SourceSymbol[] = [
 		prefix: "U",
 		value: "AMS1117-3.3",
 		footprint: "sot-223-3_tabpin2",
+		attributes: {
+			Manufacturer: "Advanced Monolithic Systems",
+			"Part number": "AMS1117-3.3",
+			Datasheet: "http://www.advanced-monolithic.com/pdf/ds1117.pdf",
+		},
 		source: "Regulator_Linear:AMS1117-3.3",
 		rotation: 0,
 		filled: true,
@@ -133,6 +144,11 @@ export const referenceSymbols: readonly SourceSymbol[] = [
 		prefix: "J",
 		value: "USB_B_Micro",
 		footprint: "usb_micro-b_molex-105017-0001",
+		attributes: {
+			Manufacturer: "Molex",
+			"Part number": "105017-0001",
+			Datasheet: "http://www.molex.com/pdm_docs/sd/1050170001_sd.pdf",
+		},
 		source: "Connector:USB_B_Micro",
 		rotation: 0,
 		filled: true,

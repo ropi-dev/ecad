@@ -13,6 +13,7 @@ import {
 	type SymbolText,
 	shapeBounds,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import { extraAttributes } from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
@@ -30,6 +31,7 @@ export interface SymbolDefinition {
 	value: string;
 	netSymbol?: boolean;
 	footprint?: FootprintReference;
+	attributes?: Readonly<Record<string, string>>;
 	children: SymbolShape[];
 	texts: SymbolText[];
 }
@@ -98,7 +100,12 @@ export function createSymbol(
 			textPositions: Object.fromEntries(
 				definition.texts.map(({ attribute, x, y }) => [attribute, { x, y }]),
 			),
-			attributes: { name: definition.name, reference, value: definition.value },
+			attributes: {
+				name: definition.name,
+				reference,
+				value: definition.value,
+				...Object.fromEntries(extraAttributes(definition.attributes)),
+			},
 		}),
 	);
 }

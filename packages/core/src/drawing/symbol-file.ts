@@ -86,7 +86,9 @@ export function symbolFileShapes(
 					library: shape.library,
 					definitionId: shape.definitionId,
 					rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
-					...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
+					...(shape.attributes
+						? { attributes: { ...instance.attributes, ...shape.attributes } }
+						: {}),
 					...(shape.textAlignments
 						? { textAlignments: structuredClone(shape.textAlignments) }
 						: {}),

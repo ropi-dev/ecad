@@ -7,7 +7,7 @@
 | Schematic drawing, previews, symbol creation, text, and undo | 6 | `tests/editor-shapes.test.ts`, `tests/editor-commands.test.ts`, `tests/editor-history.test.ts`, `tests/editor-display.test.ts` |
 | Circuit connectivity, pointer and keyboard input, persistence, and navigation races | 5 | `tests/circuit.test.ts`, `tests/circuit-symbol-components.test.ts`, `tests/circuit-net-labels.test.ts` |
 | Project files, independent drawings and symbols, save recovery, search, mobile layout, and menus | 8 | `packages/web/tests/projects.test.ts`, `packages/web/tests/symbol-storage.test.ts`, `packages/desktop/tests/projects.test.ts`, `packages/desktop/tests/storage.test.ts` |
-| Symbols, labels, attributes, locks, rotation, thumbnails, and reusable definitions | 13 | `tests/default-symbols.test.ts`, `tests/symbol-library-editing.test.ts`, `tests/symbol-children.test.ts`, `tests/item-locks.test.ts`, `tests/text-alignment.test.ts`, `tests/symbol-text-positions.test.ts`, `tests/pin-label-visibility.test.ts` |
+| Symbols, labels, attributes, locks, rotation, thumbnails, and reusable definitions | 14 | `tests/default-symbols.test.ts`, `tests/symbol-attributes.test.ts`, `tests/symbol-library-editing.test.ts`, `tests/symbol-children.test.ts`, `tests/item-locks.test.ts`, `tests/text-alignment.test.ts`, `tests/symbol-text-positions.test.ts`, `tests/pin-label-visibility.test.ts` |
 | Footprint pads, layer graphics, hidden layers, and selecting, moving and placing in the 3D board | 1 | `tests/footprint.test.ts` |
 | The RP2350A example PCB: routing state, design rules check and view switches | 1 | `tests/board.test.ts`, `tests/board-example.test.ts` |
 | Toolbar keyboard and touch input | 2 | `tests/navigation.test.ts` |

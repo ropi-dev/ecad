@@ -2,6 +2,10 @@ import {
 	type EditorSymbol,
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	extraAttributes,
+	SYMBOL_ATTRIBUTE_VALUE_LIMIT,
+} from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import { toMils } from "@ecad/drawing-core/drawing/units.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ReactNode, useMemo } from "react";
@@ -15,6 +19,14 @@ const schema = z.object({
 		reference: z.string(),
 		value: z.string(),
 	}),
+	extraAttributes: z.array(
+		z
+			.string()
+			.max(
+				SYMBOL_ATTRIBUTE_VALUE_LIMIT,
+				`Use at most ${SYMBOL_ATTRIBUTE_VALUE_LIMIT} characters.`,
+			),
+	),
 	x: number,
 	y: number,
 	angle: number.refine((value) => value % 90 === 0, {
@@ -47,7 +59,14 @@ export function SymbolInstanceAttributeForm({
 			(child) => child.kind !== "text",
 		);
 		return {
-			attributes: { ...symbol.attributes },
+			attributes: {
+				name: symbol.attributes.name,
+				reference: symbol.attributes.reference,
+				value: symbol.attributes.value,
+			},
+			extraAttributes: extraAttributes(symbol.attributes).map(
+				([, value]) => value,
+			),
 			x: length(symbol.x),
 			y: length(symbol.y),
 			angle: displayNumber((symbol.rotation * 180) / Math.PI),

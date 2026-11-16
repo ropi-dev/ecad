@@ -23,6 +23,10 @@ Select Box to change its dimensions, line style, or line width. Dragging the bor
 
 Text starts 1 mm inside the top-left corner, at local X = 1 and Y = -1, with left and top alignment. Select the text block to edit its content, position, size, or alignment. Box has no pins or visible reference and value labels. Each placement saves its own edits.
 
+## Attributes
+
+Each component symbol defines four attributes in `file.attributes`: Manufacturer, Part number, Datasheet and Distributor part number. Symbols for one maker's part fill in the first three. These are RP2040, RP2350A, RP2350B, the nRF54L15, nRF54L10 and nRF54L05 packages, the nPM2100 packages, W25Q128JVS, AMS1117-3.3 and the Molex USB Micro-B receptacle. Generic parts such as resistors, transistors and connectors leave all four empty, and so does the LM321-style op amp, because none of them names one maker's part. Distributor part numbers are empty on every symbol. The ground and supply symbols and Box define no attributes. A source entry sets its values in `attributes`. The generator adds the four names to every entry that isn't a net symbol and fills in any value the entry leaves out with an empty string.
+
 ## Export files
 
 From the repository root:

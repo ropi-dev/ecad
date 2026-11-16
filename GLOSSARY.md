@@ -10,6 +10,10 @@ An instance of an electrical part that owns its pins.
 **Symbol definition**:
 A reusable description of a component's graphical representation and pins.
 
+**Symbol attribute**:
+A named text value on a component, such as its reference, value, manufacturer or datasheet link. Every component has a name, reference and value. A symbol definition adds its own attributes with default values, and each placement keeps its own copy.
+_Avoid_: Field, property
+
 **Pin**:
 An electrical connection point owned by a component, identified by its name and package number.
 
