@@ -13,7 +13,11 @@ import {
 	type FootprintSource,
 	flipBoardFootprint,
 } from "@ecad/drawing-core/board/footprints.ts";
-import { trackSegment } from "@ecad/drawing-core/board/geometry.ts";
+import {
+	hullBounds,
+	rectangleCorners,
+	trackSegment,
+} from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
 import {
 	type BoardNetlist,
@@ -37,7 +41,7 @@ import {
 	replaceSymbolChild,
 	symbolChildren,
 } from "@ecad/drawing-core/drawing/symbol-instances.ts";
-import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import { isPad } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
@@ -773,6 +777,130 @@ describe("fabrication files", () => {
 			),
 		);
 		assert.ok(hole >= 0 && drawnIsland > hole);
+	});
+
+	test("pads and vias are flashed as pads, with the copper and mask openings they had as regions", () => {
+		const smd = (x: number, rotation: number): EditorShape => ({
+			id: nextId++,
+			kind: "rectangle",
+			layer: "F.Cu",
+			x,
+			y: 5,
+			width: 2,
+			height: 1,
+			rotation,
+			lineWidth: 0,
+			filled: true,
+			pad: { number: "1", type: "smd", paste: true },
+		});
+		const tilted = smd(10, Math.PI / 6);
+		const upright = smd(20, -Math.PI / 2);
+		const shapes: EditorShape[] = [
+			tilted,
+			upright,
+			{
+				id: nextId++,
+				kind: "circle",
+				layer: "F.Cu",
+				x: 30,
+				y: 5,
+				width: 1.7,
+				height: 1.7,
+				rotation: 0,
+				lineWidth: 0,
+				filled: true,
+				pad: { number: "2", type: "through-hole", drill: 1 },
+			},
+			{
+				id: nextId++,
+				kind: "circle",
+				layer: "F.Cu",
+				x: 40,
+				y: 5,
+				width: 0.6,
+				height: 0.6,
+				rotation: 0,
+				lineWidth: 0,
+				filled: true,
+				via: { drill: 0.3 },
+			},
+			{
+				id: nextId++,
+				kind: "line",
+				layer: "F.Cu",
+				x: 15,
+				y: 5,
+				width: 10,
+				height: 0,
+				rotation: 0,
+				lineWidth: 0.25,
+			},
+		];
+		const files = exportFabrication("pads", shapes, []);
+		const layer = (suffix: string) => {
+			const file = required(files.find((file) => file.name.endsWith(suffix)));
+			assert.doesNotMatch(file.content, /G36/);
+			const parsed = parseGerber(file.content, file.name);
+			assert.deepEqual(parsed.diagnostics, []);
+			return parsed.object.objects;
+		};
+		const near = (a: Bounds, b: Bounds) =>
+			(["minX", "minY", "maxX", "maxY"] as const).every(
+				(side) => Math.abs(a[side] - b[side]) < 1e-6,
+			);
+		const corners = (shape: EditorShape, grow = 0) => {
+			const bounds = hullBounds({ points: rectangleCorners(shape), radius: 0 });
+			return {
+				minX: bounds.minX - grow,
+				minY: bounds.minY - grow,
+				maxX: bounds.maxX + grow,
+				maxY: bounds.maxY + grow,
+			};
+		};
+
+		const copper = layer("F_Cu.gtl");
+		assert.deepEqual(
+			copper.map((object) => object.attributes[".AperFunction"]?.join(",")),
+			["SMDPad,CuDef", "SMDPad,CuDef", "ComponentPad", "ViaPad", "Conductor"],
+		);
+		assert.ok(near(copper[0].bounds, corners(tilted)));
+		assert.ok(near(copper[1].bounds, corners(upright)));
+		const outline = JSON.stringify(copper[0].geometry)
+			.match(/-?\d+\.\d+ -?\d+\.\d+/g)
+			?.map((pair) => pair.split(" ").map(Number));
+		assert.ok(
+			rectangleCorners(tilted).every((corner) =>
+				outline?.some(
+					([x, y]) => Math.hypot(x + 10 - corner.x, y + 5 - corner.y) < 1e-6,
+				),
+			),
+		);
+
+		const mask = layer("F_Mask.gts");
+		assert.equal(mask.length, 3);
+		assert.ok(near(mask[0].bounds, corners(tilted, 0.05)));
+		assert.ok(near(mask[1].bounds, corners(upright, 0.05)));
+		const opening = mask[0].geometry;
+		const roundedCorners =
+			opening.type === "group"
+				? opening.children.flatMap(({ geometry }) =>
+						geometry.type === "circle" ? [geometry] : [],
+					)
+				: [];
+		assert.ok(
+			roundedCorners.length === 4 &&
+				rectangleCorners(tilted).every((corner) =>
+					roundedCorners.some(
+						(circle) =>
+							Math.abs(circle.radius - 0.05) < 1e-9 &&
+							Math.hypot(circle.x + 10 - corner.x, circle.y + 5 - corner.y) <
+								1e-6,
+					),
+				),
+		);
+		const paste = layer("F_Paste.gtp");
+		assert.equal(paste.length, 2);
+		assert.ok(near(paste[1].bounds, corners(upright)));
 	});
 });
 
