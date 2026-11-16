@@ -158,8 +158,20 @@ function run(command: string, args: string[]) {
 	});
 }
 
-function signingArgs(key: string | undefined) {
-	return key ? ["--local-user", key] : [];
+export function signingKey(listing: string) {
+	const lines = listing.split("\n");
+	const fingerprints = lines.flatMap((line, index) =>
+		line.startsWith("sec:") && lines[index + 1]?.startsWith("fpr:")
+			? [lines[index + 1].split(":")[9]]
+			: [],
+	);
+	if (fingerprints.length === 0)
+		throw new Error("The GnuPG keyring has no secret key to sign with.");
+	if (fingerprints.length > 1)
+		throw new Error(
+			`The GnuPG keyring has ${fingerprints.length} secret keys. Choose one with --key.`,
+		);
+	return fingerprints[0];
 }
 
 function downloadPackages(tag: string, directory: string): PackageFile[] {
@@ -194,7 +206,7 @@ function buildChannel(options: {
 	directory: string;
 	packages: PackageFile[];
 	keyring: Buffer;
-	key: string | undefined;
+	key: string;
 	date: Date;
 }) {
 	const { directory } = options;
@@ -220,7 +232,8 @@ function buildChannel(options: {
 	const gpg = ["--batch", "--yes", "--digest-algo", "SHA512"];
 	run("gpg", [
 		...gpg,
-		...signingArgs(options.key),
+		"--local-user",
+		options.key,
 		"--clearsign",
 		"--output",
 		join(directory, "InRelease"),
@@ -228,7 +241,8 @@ function buildChannel(options: {
 	]);
 	run("gpg", [
 		...gpg,
-		...signingArgs(options.key),
+		"--local-user",
+		options.key,
 		"--armor",
 		"--detach-sign",
 		"--output",
@@ -327,12 +341,19 @@ function main() {
 		},
 	});
 	const directory = values.directory;
-	const key = values.key || undefined;
-	const keyring = execFileSync("gpg", ["--export", ...(key ? [key] : [])]);
-	if (!keyring.length)
-		throw new Error(
-			"The GnuPG keyring has no key to sign the repository with.",
-		);
+	const key = signingKey(
+		run("gpg", [
+			"--list-secret-keys",
+			"--with-colons",
+			...(values.key ? [values.key] : []),
+		]),
+	);
+	const keyring = execFileSync("gpg", [
+		"--export",
+		"--export-options",
+		"export-minimal",
+		key,
+	]);
 
 	const releases = JSON.parse(
 		run("gh", [

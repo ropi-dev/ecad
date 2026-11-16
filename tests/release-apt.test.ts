@@ -7,6 +7,7 @@ import {
 	type PackageFile,
 	packagesIndex,
 	releaseFile,
+	signingKey,
 	sourcesFile,
 } from "../scripts/release/apt.ts";
 
@@ -122,5 +123,27 @@ test("the sources file names the channel's release as a flat repository", () => 
 	assert.equal(
 		sourcesFile("stable"),
 		"Types: deb\nURIs: https://github.com/ropi-dev/ecad/releases/download/apt-stable/\nSuites: ./\nSigned-By: /usr/share/keyrings/ecad-archive-keyring.gpg\n",
+	);
+});
+
+const secretKey = (fingerprint: string) =>
+	`sec:u:255:22:${fingerprint.slice(-16)}:1763300000:::u:::scESC:::+:::ed25519:::0:\nfpr:::::::::${fingerprint}:\ngrp:::::::::ABCD:\nuid:u::::1763300000::HASH::ECAD apt repository::::::::::0:\n`;
+
+test("signs with the keyring's only secret key", () => {
+	const fingerprint = "F39E7F460B2611233681DEFFC723FF591786C814";
+	assert.equal(signingKey(secretKey(fingerprint)), fingerprint);
+	assert.equal(
+		signingKey(
+			`${secretKey(fingerprint)}ssb:u:255:22:AAAA:1763300000::::::s:::+:::ed25519::\nfpr:::::::::${"B".repeat(40)}:\n`,
+		),
+		fingerprint,
+	);
+});
+
+test("refuses a keyring without exactly one secret key", () => {
+	assert.throws(() => signingKey(""), /no secret key/);
+	assert.throws(
+		() => signingKey(secretKey("A".repeat(40)) + secretKey("B".repeat(40))),
+		/2 secret keys\. Choose one with --key/,
 	);
 });
