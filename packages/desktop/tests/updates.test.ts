@@ -172,7 +172,7 @@ test("the nightly channel adds nightly pre-releases and skips the apt releases",
 	});
 	const feed = [
 		build("0.1.0", "* Stable change", { tag_name: "v0.1.0" }),
-		build(nightly, "* Nightly change", {
+		build("0.1.1-nightly.20261116", "* Nightly change", {
 			tag_name: "v0.1.1-nightly.20261116",
 			prerelease: true,
 		}),
@@ -193,6 +193,53 @@ test("the nightly channel adds nightly pre-releases and skips the apt releases",
 	assert.equal(selected.version, nightly);
 	assert.deepEqual(selected.changes, ["Nightly change", "Stable change"]);
 	assert.equal(selectReleasePackage(feed, "amd64", nightly).version, "0.1.0");
+	const installed = selectReleasePackage(
+		feed,
+		"amd64",
+		nightly,
+		undefined,
+		"nightly",
+	);
+	assert.equal(installed.version, nightly);
+	assert.deepEqual(installed.changes, []);
+	const asset = (name: string) => ({
+		name,
+		browser_download_url: `https://github.com/ropi-dev/ecad/${name}`,
+		size: 10,
+		digest: `sha256:${sha256}`,
+	});
+	const tagged = "ecad_0.1.1-nightly.20261116_amd64";
+	const files = selectReleasePackage(
+		{
+			tag_name: "v0.1.1-nightly.20261116",
+			prerelease: true,
+			assets: [
+				asset(`${tagged}.deb`),
+				asset(`${tagged}.files.json`),
+				asset(`${tagged}.files.zst`),
+			],
+		},
+		"amd64",
+		"0.1.0",
+		undefined,
+		"nightly",
+	);
+	assert.equal(files.version, nightly);
+	assert.equal(
+		files.files?.manifest.url,
+		`https://github.com/ropi-dev/ecad/${tagged}.files.json`,
+	);
+	const stable = build("0.1.1", "* Release", { tag_name: "v0.1.1" });
+	assert.equal(
+		selectReleasePackage(
+			[...feed, stable],
+			"amd64",
+			nightly,
+			undefined,
+			"nightly",
+		).version,
+		"0.1.1",
+	);
 });
 
 test("release notes become a list of changes", () => {

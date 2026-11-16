@@ -202,13 +202,14 @@ function releasePackage(
 	for (const asset of release.assets) {
 		if (!asset.name.startsWith("ecad_") || !asset.name.endsWith(suffix))
 			continue;
-		const version = asset.name.slice("ecad_".length, -suffix.length);
+		const name = asset.name.slice("ecad_".length, -suffix.length);
+		const version = name.replace(/-nightly\.(?=\d{8}$)/, "~nightly.");
 		const download = assetDownload(asset, feedUrl);
 		if (!versionPattern.test(version) || !download?.sha256) continue;
 		const { url, size, sha256 } = download;
 		const files = releaseFiles(
 			release,
-			`ecad_${version}${suffix.slice(0, -4)}`,
+			`ecad_${name}${suffix.slice(0, -4)}`,
 			feedUrl,
 		);
 		return { version, url, size, sha256, ...(files && { files }) };
