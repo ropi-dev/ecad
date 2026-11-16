@@ -5,6 +5,7 @@ import { autoroute } from "@ecad/drawing-core/board/autoroute.ts";
 import {
 	analyzeConnectivity,
 	boardHoles,
+	copperAt,
 	copperItems,
 } from "@ecad/drawing-core/board/connectivity.ts";
 import { checkBoard, type DrcKind } from "@ecad/drawing-core/board/drc.ts";
@@ -17,6 +18,7 @@ import {
 } from "@ecad/drawing-core/board/footprints.ts";
 import {
 	hullBounds,
+	outlineEncloses,
 	rectangleCorners,
 	trackSegment,
 } from "@ecad/drawing-core/board/geometry.ts";
@@ -36,8 +38,13 @@ import {
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import {
+	containsSelection,
 	type EditorShape,
+	intersectsSelection,
+	resizeHandles,
+	resizeShape,
 	type SymbolShape,
+	shapeAt,
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
@@ -45,6 +52,11 @@ import {
 	symbolChildren,
 } from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
+import {
+	isPolygonZone,
+	withZoneOutline,
+	zoneOutlinePoints,
+} from "@ecad/drawing-core/drawing/zone-outline.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import {
 	createHole,
@@ -160,6 +172,18 @@ function dividerBoard() {
 			zone: extra.clearance === undefined ? {} : { clearance: extra.clearance },
 			net,
 		}) as EditorShape;
+	const polygonPour = (
+		net: string,
+		corners: readonly Point[],
+		priority?: number,
+	): EditorShape => {
+		const base = rectangleOn("F.Cu", corners[0], 1, 1);
+		if (base.kind !== "rectangle") throw new Error("Expected a rectangle.");
+		return withZoneOutline(
+			{ ...base, zone: priority ? { priority } : {}, net },
+			corners,
+		);
+	};
 	return {
 		circuit,
 		netlist: boardNetlist(circuit),
@@ -168,6 +192,7 @@ function dividerBoard() {
 		shapes: [...footprints, outline],
 		at,
 		pour,
+		polygonPour,
 	};
 }
 
@@ -632,6 +657,163 @@ describe("copper pours", () => {
 		assert.deepEqual(kinds(designRulesCheck(board, netlist, rules)), [
 			"unconnected",
 		]);
+	});
+
+	test("a polygon pour fills its polygon, not the rectangle around it", () => {
+		const { shapes, netlist, polygonPour, at } = dividerBoard();
+		const lShape = polygonPour("gnd", [
+			at(-14, -9),
+			at(14, -9),
+			at(14, 3),
+			at(4, 3),
+			at(4, 9),
+			at(-14, 9),
+		]);
+		const board = [...shapes, lShape];
+		const copper = pourCopper(board, netlist);
+		assert.ok(containsPoint(copper, at(-10, 6)));
+		assert.ok(containsPoint(copper, at(10, -6)));
+		assert.ok(!containsPoint(copper, at(9, 6)));
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+		assert.deepEqual(kinds(designRulesCheck(board, netlist)), ["unconnected"]);
+	});
+
+	test("a turned polygon pour fills, connects and is picked where its turned polygon is", () => {
+		const { shapes, netlist, polygonPour, at } = dividerBoard();
+		const lShape = polygonPour("gnd", [
+			at(-14, -9),
+			at(14, -9),
+			at(14, 3),
+			at(4, 3),
+			at(4, 9),
+			at(-14, 9),
+		]);
+		const center = { x: lShape.x, y: lShape.y };
+		const halfTurn = { ...lShape, rotation: Math.PI };
+		const turned = (point: Point) => ({
+			x: 2 * center.x - point.x,
+			y: 2 * center.y - point.y,
+		});
+		const notch = turned(at(9, 6));
+		const copper = pourCopper([...shapes, halfTurn], netlist);
+		assert.ok(!containsPoint(copper, notch));
+		assert.ok(containsPoint(copper, turned(at(-10, 6))));
+		assert.equal(shapeAt([halfTurn], notch, 0.1), undefined);
+		assert.equal(shapeAt([halfTurn], turned(at(-10, 6)), 0.1), halfTurn);
+		assert.deepEqual(kinds(designRulesCheck([...shapes, halfTurn], netlist)), [
+			"unconnected",
+		]);
+	});
+
+	test("a polygon pour whose edges cross fills both of its lobes, as it is picked", () => {
+		const { shapes, netlist, polygonPour, at } = dividerBoard();
+		const bowtie = polygonPour("gnd", [
+			at(-14, -9),
+			at(14, 9),
+			at(14, -9),
+			at(-14, 9),
+		]);
+		const copper = pourCopper([...shapes, bowtie], netlist);
+		const items = copperItems([...shapes, bowtie], netlist);
+		for (const lobe of [at(-12, 0), at(12, 0)]) {
+			assert.equal(shapeAt([bowtie], lobe, 0.1), bowtie);
+			assert.ok(containsPoint(copper, lobe));
+			assert.equal(copperAt(items, lobe, "F.Cu", 0.05)?.shapeId, bowtie.id);
+		}
+		assert.equal(copperAt(items, at(0, 7), "F.Cu", 0.05), undefined);
+		assert.ok(!containsPoint(copper, at(0, 7)));
+		const zone = required(
+			copperItems([...shapes, bowtie], netlist).find(
+				(item) => item.shapeId === bowtie.id,
+			),
+		);
+		assert.ok(zone.hulls.every((hull) => hull.points.length === 2));
+		const wrapped = polygonPour(
+			"gnd",
+			[
+				[0, 0],
+				[10, 0],
+				[10, 10],
+				[0, 10],
+				[0, 5],
+				[2, 5],
+				[2, 2],
+				[8, 2],
+				[8, 8],
+				[2, 8],
+				[2, 5],
+				[0, 5],
+			].map(([x, y]) => at(x - 15, y - 9)),
+		);
+		const hole = at(-10, -4);
+		assert.equal(shapeAt([wrapped], hole, 0.1), undefined);
+		const wrappedZone = required(
+			copperItems([...shapes, wrapped], netlist).find(
+				(item) => item.shapeId === wrapped.id,
+			),
+		);
+		assert.ok(wrappedZone.hulls.every((hull) => hull.points.length === 2));
+		assert.deepEqual(
+			[zone.bounds.minX, zone.bounds.maxX],
+			[at(-14, 0).x, at(14, 0).x],
+		);
+	});
+
+	test("a higher-priority pour keeps its copper inside a pour on another net drawn before it, which keeps clear of it", () => {
+		const { shapes, netlist, footprints, pour, polygonPour } = dividerBoard();
+		const midPad = required(
+			boardPads(footprints).find(
+				(pad) => netlist.padNet(pad.component, pad.number) === "mid",
+			),
+		).shape;
+		const around = (dx: number, dy: number) => ({
+			x: midPad.x + dx,
+			y: midPad.y + dy,
+		});
+		const gndPour = pour("gnd", 0, 28);
+		const island = polygonPour(
+			"mid",
+			[around(0, -3), around(3, 0), around(0, 3), around(-3, 0)],
+			1,
+		);
+		const board = [...shapes, gndPour, island];
+		const fills = fillZones(board, netlist, defaultBoardRules);
+		const copperAt = (zone: EditorShape, point: Point) =>
+			containsPoint(
+				required(fills.find((fill) => fill.zone.shapeId === zone.id)).polygons,
+				point,
+			);
+		const inside = around(0, 2);
+		assert.deepEqual(
+			[copperAt(island, inside), copperAt(gndPour, inside)],
+			[true, false],
+		);
+		assert.ok(copperAt(gndPour, around(0, 5)));
+		assert.deepEqual(
+			[
+				...spacingProblems(designRulesCheck(board, netlist), gndPour),
+				...spacingProblems(designRulesCheck(board, netlist), island),
+			],
+			[],
+		);
+		const unprioritised = {
+			...island,
+			zone: { ...(island.kind === "rectangle" ? island.zone : {}) },
+		} as EditorShape;
+		if (unprioritised.kind === "rectangle" && unprioritised.zone)
+			delete unprioritised.zone.priority;
+		const listOrder = fillZones(
+			[...shapes, gndPour, unprioritised],
+			netlist,
+			defaultBoardRules,
+		);
+		assert.ok(
+			containsPoint(
+				required(listOrder.find((fill) => fill.zone.shapeId === gndPour.id))
+					.polygons,
+				inside,
+			),
+		);
 	});
 
 	test("a pour stays empty until the board outline closes, and the check says the outline is open", () => {
@@ -1113,6 +1295,46 @@ describe("unplated holes", () => {
 		);
 	});
 
+	test("a priority polygon pour around an unplated hole keeps the board clearance from it, as does the pour under it", () => {
+		const { shapes, netlist, pour, polygonPour, at } = dividerBoard();
+		const center = at(-9, 5);
+		const midPour = pour("mid", 0, 28);
+		const gndPolygon = polygonPour(
+			"gnd",
+			[at(-14, -9), at(14, -9), at(14, 3), at(4, 3), at(4, 9), at(-14, 9)],
+			2,
+		);
+		const board = [...shapes, midPour, gndPolygon, boardHole(center, 3)];
+		const fills = fillZones(board, netlist, defaultBoardRules);
+		const copperOf = (zone: EditorShape) =>
+			required(fills.find((fill) => fill.zone.shapeId === zone.id)).polygons;
+		const ring = (radius: number) =>
+			Array.from({ length: 32 }, (_, index) => ({
+				x: center.x + radius * Math.cos((index * Math.PI) / 16),
+				y: center.y + radius * Math.sin((index * Math.PI) / 16),
+			}));
+		const keepout = 1.5 + defaultBoardRules.clearance;
+		for (const zone of [gndPolygon, midPour])
+			assert.ok(
+				ring(keepout - 0.01).every(
+					(point) => !containsPoint(copperOf(zone), point),
+				),
+			);
+		assert.ok(
+			ring(keepout + 0.1).every((point) =>
+				containsPoint(copperOf(gndPolygon), point),
+			),
+		);
+		const findings = designRulesCheck(board, netlist);
+		assert.deepEqual(
+			[
+				...spacingProblems(findings, gndPolygon),
+				...spacingProblems(findings, midPour),
+			],
+			[],
+		);
+	});
+
 	test("copper run into or too close to an unplated hole is a clearance finding", () => {
 		const { shapes, netlist, at } = dividerBoard();
 		const center = at(6, 4);
@@ -1424,14 +1646,224 @@ function memoryDirectory(): ProjectDirectory & {
 	};
 }
 
+test("corners close into a zone once they enclose an area or their edges cross", () => {
+	const points = (corners: [number, number][]) =>
+		corners.map(([x, y]) => ({ x, y }));
+	assert.equal(
+		outlineEncloses(
+			points([
+				[0, 0],
+				[4, 0],
+			]),
+			1,
+		),
+		false,
+	);
+	assert.equal(
+		outlineEncloses(
+			points([
+				[0, 0],
+				[4, 0],
+				[8, 0],
+			]),
+			1,
+		),
+		false,
+	);
+	assert.equal(
+		outlineEncloses(
+			points([
+				[0, 0],
+				[4, 0],
+				[0, 4],
+			]),
+			1,
+		),
+		true,
+	);
+	assert.equal(
+		outlineEncloses(
+			points([
+				[0, 0],
+				[4, 0],
+				[0, 4],
+			]),
+			9,
+		),
+		false,
+	);
+	assert.equal(
+		outlineEncloses(
+			points([
+				[0, 0],
+				[4, 4],
+				[4, 0],
+				[0, 4],
+			]),
+			1,
+		),
+		true,
+	);
+	const collinear = points([
+		[0, 0],
+		[2, 0],
+		[1, 0],
+		[3, 0],
+	]);
+	assert.equal(outlineEncloses(collinear, 1), false);
+	const diagonal = points([
+		[0, 0],
+		[10, 10],
+		[5, 5],
+		[8, 8],
+	]);
+	assert.equal(outlineEncloses(diagonal, 1), false);
+	const backOnFirst = points([
+		[0, 0],
+		[0.1, 0],
+		[0, 0],
+		[0, 0.1],
+	]);
+	assert.equal(outlineEncloses(backOnFirst, 1), false);
+});
+
+describe("editing a polygon pour", () => {
+	const { polygonPour, at } = dividerBoard();
+	const triangle = polygonPour("gnd", [at(0, 0), at(10, 0), at(0, 10)]);
+	const corners = (shape: EditorShape) =>
+		isPolygonZone(shape)
+			? zoneOutlinePoints(shape).map(({ x, y }) => ({
+					x: Number((x - at(0, 0).x).toFixed(6)),
+					y: Number((y - at(0, 0).y).toFixed(6)),
+				}))
+			: [];
+	const handle = (id: string) =>
+		required(resizeHandles(triangle).find((item) => item.id === id));
+
+	test("dragging a corner moves it, and the pour's box follows", () => {
+		const moved = resizeShape(triangle, handle("corner:1"), { x: 5, y: 2 });
+		assert.deepEqual(corners(moved), [
+			{ x: 0, y: 0 },
+			{ x: 15, y: 2 },
+			{ x: 0, y: 10 },
+		]);
+		assert.deepEqual([moved.width, moved.height], [15, 10]);
+	});
+
+	test("dragging an edge's midpoint adds a corner, and dropping a corner on its neighbour removes it", () => {
+		const added = resizeShape(triangle, handle("edge:0"), { x: 0, y: -3 });
+		assert.deepEqual(corners(added), [
+			{ x: 0, y: 0 },
+			{ x: 5, y: -3 },
+			{ x: 10, y: 0 },
+			{ x: 0, y: 10 },
+		]);
+		const removed = resizeShape(
+			added,
+			required(resizeHandles(added).find((item) => item.id === "corner:1")),
+			{ x: 5, y: 3 },
+		);
+		assert.deepEqual(corners(removed), corners(triangle));
+		assert.deepEqual(
+			corners(resizeShape(triangle, handle("edge:0"), { x: 5, y: 0 })),
+			corners(triangle),
+		);
+		assert.deepEqual(
+			corners(resizeShape(triangle, handle("corner:1"), { x: -10, y: 0 })),
+			corners(triangle),
+		);
+	});
+
+	test("a corner of a turned pour, off the grid, is removed when dropped next to its neighbour", () => {
+		const square = polygonPour("gnd", [at(0, 0), at(4, 0), at(4, 4), at(0, 4)]);
+		const turned = { ...square, rotation: Math.PI / 6 };
+		const [first, second] = isPolygonZone(turned)
+			? zoneOutlinePoints(turned)
+			: [];
+		const corner = required(
+			resizeHandles(turned).find((item) => item.id === "corner:1"),
+		);
+		const dropped = resizeShape(
+			turned,
+			corner,
+			{ x: first.x - second.x, y: first.y - second.y },
+			1,
+		);
+		assert.equal(corners(dropped).length, 3);
+		const kept = resizeShape(
+			turned,
+			corner,
+			{ x: first.x - second.x + 2, y: first.y - second.y },
+			1,
+		);
+		assert.equal(corners(kept).length, 4);
+	});
+
+	test("a marquee selects the pour by its polygon, not the rectangle around it", () => {
+		const lShape = polygonPour("gnd", [
+			at(0, 0),
+			at(10, 0),
+			at(10, 4),
+			at(4, 4),
+			at(4, 10),
+			at(0, 10),
+		]);
+		const box = (from: Point, to: Point) => ({
+			minX: Math.min(from.x, to.x),
+			maxX: Math.max(from.x, to.x),
+			minY: Math.min(from.y, to.y),
+			maxY: Math.max(from.y, to.y),
+		});
+		assert.equal(intersectsSelection(lShape, box(at(6, 6), at(9, 9))), false);
+		assert.equal(intersectsSelection(lShape, box(at(1, 1), at(2, 2))), true);
+		assert.equal(intersectsSelection(lShape, box(at(3, 6), at(5, 7))), true);
+		const turned = { ...lShape, rotation: Math.PI / 4 };
+		const [minX, maxX, minY, maxY] = isPolygonZone(turned)
+			? (() => {
+					const points = zoneOutlinePoints(turned);
+					const xs = points.map((point) => point.x);
+					const ys = points.map((point) => point.y);
+					return [
+						Math.min(...xs),
+						Math.max(...xs),
+						Math.min(...ys),
+						Math.max(...ys),
+					];
+				})()
+			: [0, 0, 0, 0];
+		assert.equal(
+			containsSelection(turned, {
+				minX: minX - 0.01,
+				maxX: maxX + 0.01,
+				minY: minY - 0.01,
+				maxY: maxY + 0.01,
+			}),
+			true,
+		);
+	});
+
+	test("clicking outside the polygon but inside its box does not select it", () => {
+		assert.equal(shapeAt([triangle], at(8, 8), 0.1), undefined);
+		assert.equal(shapeAt([triangle], at(2, 2), 0.1), triangle);
+		assert.equal(shapeAt([triangle], at(5, 5), 0.1), triangle);
+	});
+});
+
 describe("saving a board", () => {
 	for (const layout of ["files", "revisions"] as const)
 		test(`the board is saved inside its drawing's .ecaddraw file and reopens unchanged (${layout} layout)`, async () => {
 			const directory = memoryDirectory();
 			const repository = new ProjectRepository(directory, { layout });
 			await repository.create("Divider");
-			const { circuit, shapes } = dividerBoard();
-			const board = { ...createBoardFile("Divider", circuit.id), shapes };
+			const { circuit, shapes, pour, polygonPour, at } = dividerBoard();
+			const board = {
+				...createBoardFile("Divider", circuit.id),
+				shapes: [
+					...shapes,
+					pour("gnd", 0, 28),
+					polygonPour("mid", [at(0, 0), at(4, 0), at(0, 4)], 2),
+				],
+			};
 			const saved = await repository.save({
 				shapes: [],
 				symbols: [],
@@ -1460,4 +1892,28 @@ describe("saving a board", () => {
 			}).load();
 			assert.deepEqual(reopened.boards, [board]);
 		});
+
+	test("a zone corner outside its rectangle or a fractional priority is refused", () => {
+		const { circuit, polygonPour, at } = dividerBoard();
+		const zone = polygonPour("mid", [at(0, 0), at(4, 0), at(0, 4)]);
+		if (zone.kind !== "rectangle" || !zone.zone?.outline)
+			throw new Error("Expected a polygon zone.");
+		const file = (shape: EditorShape) =>
+			boardFileSchema.safeParse({
+				...createBoardFile("Divider", circuit.id),
+				shapes: [shape],
+			}).success;
+		assert.ok(file(zone));
+		assert.ok(
+			!file({
+				...zone,
+				zone: { outline: [...zone.zone.outline.slice(1), { x: 0.7, y: 0 }] },
+			}),
+		);
+		assert.ok(!file({ ...zone, zone: { ...zone.zone, priority: 1.5 } }));
+		assert.ok(!file({ ...zone, zone: { ...zone.zone, priority: 1001 } }));
+		assert.ok(
+			!file({ ...zone, zone: { outline: zone.zone.outline.slice(0, 2) } }),
+		);
+	});
 });

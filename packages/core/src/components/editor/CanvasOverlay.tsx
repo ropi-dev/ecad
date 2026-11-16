@@ -200,7 +200,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						return (
 							<span
 								key={`${shape.id}:${handle.id}`}
-								className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 border border-accent bg-paper"
+								className={`absolute -translate-x-1/2 -translate-y-1/2 border border-accent bg-paper ${handle.inserts ? "size-2 rounded-full" : "size-2.5"}`}
 								data-testid="resize-handle"
 								data-shape-id={shape.id}
 								data-handle={handle.id}

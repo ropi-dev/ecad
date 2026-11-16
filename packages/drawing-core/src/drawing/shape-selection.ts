@@ -19,6 +19,11 @@ import {
 	symbolTextShapes,
 } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import {
+	isPolygonZone,
+	outlineOutsideBy,
+	zoneOutlinePoints,
+} from "#/drawing/zone-outline.ts";
 import { padCornerRadius } from "#/footprint/shapes.ts";
 
 export function selectionSize(shape: EditorShape) {
@@ -165,6 +170,17 @@ function hitHollowBoardShape(
 	const y = -dx * Math.sin(shape.rotation) + dy * Math.cos(shape.rotation);
 	const right = shape.width / 2;
 	const top = shape.height / 2;
+	if (isPolygonZone(shape)) {
+		const outsideBy = outlineOutsideBy(
+			shape.zone.outline.map((corner) => ({
+				x: corner.x * shape.width,
+				y: corner.y * shape.height,
+			})),
+			{ x, y },
+		);
+		if (outsideBy > reach) return undefined;
+		return outsideBy < -reach ? "inside" : "stroke";
+	}
 	const counterclockwiseCorners =
 		shape.kind === "triangle"
 			? [
@@ -296,7 +312,54 @@ export function hitShape(
 	);
 }
 
+const inBounds = (point: Point, bounds: Bounds) =>
+	point.x >= bounds.minX &&
+	point.x <= bounds.maxX &&
+	point.y >= bounds.minY &&
+	point.y <= bounds.maxY;
+
+function edgeIntersectsBounds(a: Point, b: Point, bounds: Bounds): boolean {
+	let low = 0;
+	let high = 1;
+	const dx = b.x - a.x;
+	const dy = b.y - a.y;
+	for (const [delta, start, min, max] of [
+		[dx, a.x, bounds.minX, bounds.maxX],
+		[dy, a.y, bounds.minY, bounds.maxY],
+	]) {
+		if (Math.abs(delta) < 1e-12) {
+			if (start < min || start > max) return false;
+			continue;
+		}
+		const first = (min - start) / delta;
+		const second = (max - start) / delta;
+		low = Math.max(low, Math.min(first, second));
+		high = Math.min(high, Math.max(first, second));
+		if (low > high) return false;
+	}
+	return true;
+}
+
+function polygonTouchesBounds(corners: readonly Point[], bounds: Bounds) {
+	const center = {
+		x: (bounds.minX + bounds.maxX) / 2,
+		y: (bounds.minY + bounds.maxY) / 2,
+	};
+	return (
+		outlineOutsideBy(corners, center) < 0 ||
+		corners.some((corner, index) =>
+			edgeIntersectsBounds(
+				corner,
+				corners[(index + 1) % corners.length],
+				bounds,
+			),
+		)
+	);
+}
+
 export function containsSelection(shape: EditorShape, bounds: Bounds): boolean {
+	if (isPolygonZone(shape))
+		return zoneOutlinePoints(shape).every((corner) => inBounds(corner, bounds));
 	if (shape.kind === "symbol") {
 		const fits = [...symbolTextShapes(shape), ...symbolShapes(shape)].every(
 			(child) => containsSelection(child, bounds),
@@ -323,6 +386,8 @@ export function intersectsSelection(
 	shape: EditorShape,
 	bounds: Bounds,
 ): boolean {
+	if (isPolygonZone(shape))
+		return polygonTouchesBounds(zoneOutlinePoints(shape), bounds);
 	if (shape.kind === "symbol")
 		return (
 			[...symbolTextShapes(shape), ...symbolShapes(shape)].some((child) =>

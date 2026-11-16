@@ -178,6 +178,36 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 			for (const child of children) child.dispose();
 		}
 	}
+	if (shape.kind === "rectangle" && shape.outline) {
+		const { width, height, lineWidth, outline } = shape;
+		if (width <= 0 || height <= 0 || lineWidth <= 0)
+			return new BufferGeometry();
+		const corners = outline.map(
+			(corner) => new Vector2(corner.x * width, corner.y * height),
+		);
+		const edges = corners.map((corner, index) => {
+			const next = corners[(index + 1) % corners.length];
+			const length = corner.distanceTo(next);
+			return createShapeGeometry({
+				kind: "line",
+				width: Math.max(length, 1e-6),
+				height: lineWidth,
+				lineWidth,
+			})
+				.scale(Math.max(length, 1e-6), lineWidth, 1)
+				.rotateZ(Math.atan2(next.y - corner.y, next.x - corner.x))
+				.translate((corner.x + next.x) / 2, (corner.y + next.y) / 2, 0);
+		});
+		try {
+			return mergeShapeGeometries(edges, shape.kind).scale(
+				1 / width,
+				1 / height,
+				1,
+			);
+		} finally {
+			for (const edge of edges) edge.dispose();
+		}
+	}
 	if (
 		shape.lineStyle &&
 		shape.lineStyle !== "solid" &&

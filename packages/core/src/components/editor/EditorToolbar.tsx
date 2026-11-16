@@ -18,6 +18,7 @@ import {
 	MapPin,
 	Minus,
 	MousePointer2,
+	Pentagon,
 	RectangleVertical,
 	RefreshCw,
 	RotateCcw,
@@ -107,6 +108,12 @@ const tools = [
 		icon: CircleDashed,
 	},
 	{ group: "routing", kind: "zone", label: "Copper zone", icon: SquareDashed },
+	{
+		group: "routing",
+		kind: "zone-polygon",
+		label: "Polygon copper zone",
+		icon: Pentagon,
+	},
 	{
 		group: "routing",
 		kind: "outline",

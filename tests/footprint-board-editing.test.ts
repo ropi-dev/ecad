@@ -193,6 +193,46 @@ test("an outline follows its item's kind, size and rotation", () => {
 	for (const point of circle) near(Math.hypot(point.x - 2, point.y), 1);
 });
 
+test("a polygon zone's outline is its turned polygon, and a marquee reads that polygon", () => {
+	const zone: EditorShape = {
+		id: 3,
+		kind: "rectangle",
+		layer: "F.Cu",
+		x: 0,
+		y: 0,
+		width: 10,
+		height: 10,
+		rotation: Math.PI / 2,
+		lineWidth: 0.1,
+		zone: {
+			outline: [
+				{ x: -0.5, y: -0.5 },
+				{ x: 0.5, y: -0.5 },
+				{ x: -0.5, y: 0.5 },
+			],
+		},
+	};
+	const corners = shapeOutline(zone);
+	const expected = [
+		[5, -5],
+		[5, 5],
+		[-5, -5],
+	];
+	assert.equal(corners.length, 3);
+	corners.forEach((corner, index) => {
+		near(corner.x, expected[index][0]);
+		near(corner.y, expected[index][1]);
+	});
+	const box = (minX: number, minY: number, maxX: number, maxY: number) => ({
+		minX,
+		minY,
+		maxX,
+		maxY,
+	});
+	assert.equal(outlineInBox(corners, box(-4, 2, -2, 4), "crossing"), false);
+	assert.equal(outlineInBox(corners, box(2, -1, 3, 1), "crossing"), true);
+});
+
 test("a window rectangle needs a whole outline and a crossing one any part of it", () => {
 	const square = [
 		{ x: 10, y: 10 },

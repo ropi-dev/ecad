@@ -105,7 +105,7 @@ test("choosing a layer focuses it as the Gerber viewer does, and choosing it aga
 	const drawOnBack = layers.getByRole("button", {
 		name: "Draw on Back copper",
 	});
-	const canvas = page.locator("canvas");
+	const canvas = page.locator('canvas[aria-label^="PCB editor"]');
 	const capture = async () => {
 		await page.mouse.move(700, 120);
 		return canvas.screenshot();
@@ -161,6 +161,94 @@ test("a designer deletes a routed track and draws it again with the Track tool",
 		await page.mouse.click(point.x, point.y);
 	}
 	await expect(page.getByText("All connections routed")).toBeVisible();
+});
+
+test("a designer draws a polygon copper zone corner by corner, drags a corner and raises its priority", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const shapes = async () =>
+		(await documentState(page)).editorShapes as EditorShape[];
+	const outline = required(
+		(await shapes()).find(
+			(shape) => shape.kind === "rectangle" && shape.layer === "Edge.Cuts",
+		),
+	);
+	const at = (dx: number, dy: number) =>
+		screenPointOfMillimetres(
+			page,
+			outline.x + dx * outline.width,
+			outline.y + dy * outline.height,
+		);
+	const corners = [
+		await at(-0.4, 0.4),
+		await at(-0.2, 0.4),
+		await at(-0.2, 0.3),
+		await at(-0.3, 0.3),
+		await at(-0.3, 0.2),
+		await at(-0.4, 0.2),
+	];
+	const zones = async () =>
+		(await shapes()).flatMap((shape) =>
+			shape.kind === "rectangle" && shape.zone?.outline ? [shape] : [],
+		);
+
+	await (await toolbarButton(page, "Polygon copper zone")).click();
+	for (const corner of corners.slice(0, 3)) {
+		await page.mouse.move(corner.x, corner.y);
+		await page.mouse.click(corner.x, corner.y);
+	}
+	await page.keyboard.press("Escape");
+	await expect(
+		page.getByRole("button", { name: "Select", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
+	expect(await zones()).toEqual([]);
+	await (await toolbarButton(page, "Polygon copper zone")).click();
+	for (const corner of corners) {
+		await page.mouse.move(corner.x, corner.y);
+		await page.mouse.click(corner.x, corner.y);
+	}
+	await page.keyboard.press("Enter");
+	await expect.poll(async () => (await zones()).length).toBe(1);
+	const [drawn] = await zones();
+	expect(drawn.zone?.outline).toHaveLength(6);
+	expect(drawn.width).toBeCloseTo(outline.width * 0.2, 0);
+
+	const handle = page.locator(
+		`[data-testid="resize-handle"][data-shape-id="${drawn.id}"][data-handle="corner:2"]`,
+	);
+	await expect(handle).toBeVisible();
+	const from = required(await handle.boundingBox());
+	const to = await at(-0.25, 0.25);
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to.x, to.y, { steps: 4 });
+	await page.mouse.up();
+	await expect
+		.poll(async () => (await zones())[0]?.zone?.outline?.length)
+		.toBe(6);
+	await expect
+		.poll(async () => (await zones())[0]?.height)
+		.toBeCloseTo(drawn.height, 1);
+	await expect
+		.poll(async () => (await zones())[0]?.width)
+		.toBeCloseTo(drawn.width, 1);
+	expect((await zones())[0]?.zone?.outline).not.toEqual(drawn.zone?.outline);
+
+	const inside = await at(-0.35, 0.35);
+	await page.mouse.dblclick(inside.x, inside.y);
+	const priority = page.getByLabel("Zone priority");
+	await expect(priority).toHaveValue("0");
+	await priority.fill("2");
+	await priority.press("Enter");
+	await expect.poll(async () => (await zones())[0]?.zone?.priority).toBe(2);
+	for (const refused of ["2000", "1.5"]) {
+		await priority.fill(refused);
+		await priority.press("Enter");
+		await expect(priority).toHaveValue("2");
+	}
+	expect((await zones())[0]?.zone?.priority).toBe(2);
 });
 
 test("the schematic, circuit and PCB of a circuit stay open together and keep the same component selected", async ({
@@ -253,7 +341,9 @@ test("the realistic board draws each footprint's 3D model, and the cube button h
 	await expect(models).toHaveCount(0);
 	await page.getByRole("button", { name: "Realistic board" }).click();
 	await expect(models).toHaveAttribute("aria-pressed", "true");
-	const box = required(await page.locator("canvas").boundingBox());
+	const box = required(
+		await page.locator('canvas[aria-label^="PCB editor"]').boundingBox(),
+	);
 	const panel = required(
 		await page.getByRole("complementary", { name: "Layers" }).boundingBox(),
 	);
@@ -281,12 +371,26 @@ test("the realistic board draws each footprint's 3D model, and the cube button h
 			.toBe(true);
 		return required(previous);
 	};
-	const shown = await settled();
 	await models.click();
 	await expect(models).toHaveAttribute("aria-pressed", "false");
-	expect((await settled()).equals(shown)).toBe(false);
+	const hidden = await settled();
 	await models.click();
-	expect((await settled()).equals(shown)).toBe(true);
+	await expect(models).toHaveAttribute("aria-pressed", "true");
+	let shown: Buffer | undefined;
+	await expect
+		.poll(async () => {
+			shown = await settled();
+			return shown.equals(hidden);
+		})
+		.toBe(false);
+	await models.click();
+	await expect(models).toHaveAttribute("aria-pressed", "false");
+	await expect.poll(async () => (await settled()).equals(hidden)).toBe(true);
+	await models.click();
+	await expect(models).toHaveAttribute("aria-pressed", "true");
+	await expect
+		.poll(async () => (await settled()).equals(required(shown)))
+		.toBe(true);
 	await page.getByRole("button", { name: "Realistic board" }).click();
 	await expect(models).toHaveCount(0);
 });
@@ -299,7 +403,9 @@ test("the realistic toggle shows the board with its solder mask in the flat and 
 	const realistic = page.getByRole("button", { name: "Realistic board" });
 	const area = page.locator("div[data-view]");
 	const flat = page.getByRole("button", { name: "2D", exact: true });
-	const box = required(await page.locator("canvas").boundingBox());
+	const box = required(
+		await page.locator('canvas[aria-label^="PCB editor"]').boundingBox(),
+	);
 	const toolbar = required(await flat.boundingBox());
 	const panel = required(
 		await page.getByRole("complementary", { name: "Layers" }).boundingBox(),

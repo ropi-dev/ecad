@@ -21,6 +21,11 @@ import {
 } from "#/drawing/symbol-instances.ts";
 import { textCenter } from "#/drawing/text-alignment.ts";
 import type { Point } from "#/drawing/types.ts";
+import {
+	isPolygonZone,
+	withZoneOutline,
+	zoneOutlinePoints,
+} from "#/drawing/zone-outline.ts";
 import { fitHole } from "#/footprint/shapes.ts";
 
 export function moveSymbolChild(
@@ -201,9 +206,75 @@ export interface ResizeHandle extends Point {
 	xDirection: number;
 	yDirection: number;
 	cursor: string;
+	/** The polygon zone corner the handle moves, or adds a corner after. */
+	corner?: number;
+	/** The handle sits on an edge and dragging it adds a corner there. */
+	inserts?: true;
+}
+
+/** Edge handles come first, so a corner wins where the two overlap. */
+function cornerHandles(corners: readonly Point[]): ResizeHandle[] {
+	return [
+		...corners.map((corner, index): ResizeHandle => {
+			const next = corners[(index + 1) % corners.length];
+			return {
+				x: (corner.x + next.x) / 2,
+				y: (corner.y + next.y) / 2,
+				id: `edge:${index}`,
+				xDirection: 0,
+				yDirection: 0,
+				cursor: "copy",
+				corner: index,
+				inserts: true,
+			};
+		}),
+		...corners.map(
+			(corner, index): ResizeHandle => ({
+				...corner,
+				id: `corner:${index}`,
+				xDirection: 0,
+				yDirection: 0,
+				cursor: "move",
+				corner: index,
+			}),
+		),
+	];
+}
+
+/**
+ * Moves or adds a polygon corner. A corner dropped within `reach` of a
+ * neighbour is removed, or stays where it was when only three remain. A
+ * corner added within `reach` of either end of its edge is not added.
+ */
+function editCorner(
+	corners: readonly Point[],
+	handle: ResizeHandle & { corner: number },
+	point: Point,
+	reach: number,
+): Point[] {
+	const near = (other: Point) =>
+		Math.hypot(point.x - other.x, point.y - other.y) < reach;
+	const edited = [...corners];
+	if (handle.inserts) {
+		if (
+			!near(corners[handle.corner]) &&
+			!near(corners[(handle.corner + 1) % corners.length])
+		)
+			edited.splice(handle.corner + 1, 0, point);
+		return edited;
+	}
+	edited[handle.corner] = point;
+	const count = edited.length;
+	const previous = edited[(handle.corner + count - 1) % count];
+	const next = edited[(handle.corner + 1) % count];
+	if (!near(previous) && !near(next)) return edited;
+	if (count === 3) return [...corners];
+	edited.splice(handle.corner, 1);
+	return edited;
 }
 
 export function resizeHandles(shape: EditorShape): ResizeHandle[] {
+	if (isPolygonZone(shape)) return cornerHandles(zoneOutlinePoints(shape));
 	if (isBoxSymbol(shape)) {
 		const border = boxBorder(shape);
 		return border ? resizeHandles(symbolChildWorld(shape, border.shape)) : [];
@@ -286,6 +357,19 @@ export function resizeShape(
 	)
 		return shape;
 	const target = { x: handle.x + delta.x, y: handle.y + delta.y };
+	if (isPolygonZone(shape)) {
+		const { corner } = handle;
+		if (corner === undefined) return shape;
+		return withZoneOutline(
+			shape,
+			editCorner(
+				zoneOutlinePoints(shape),
+				{ ...handle, corner },
+				snapPoint(target, gridStep),
+				Math.max(0.75 * gridStep, 1e-6),
+			),
+		);
+	}
 	if (shape.kind === "circle") {
 		const radius = Math.max(
 			gridStep,

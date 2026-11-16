@@ -1,5 +1,7 @@
+import earcut from "earcut";
 import type { EditorShape, LineShape } from "#/drawing/schema.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import { isPolygonZone, zoneOutlinePoints } from "#/drawing/zone-outline.ts";
 import type { CopperLayer } from "#/footprint/layers.ts";
 import { padCornerRadius } from "#/footprint/shapes.ts";
 
@@ -78,6 +80,103 @@ function roundedRectangleHull(shape: EditorShape, radius: number): Hull {
 	return { points: rectangleCorners(shape, radius), radius };
 }
 
+/** @return The corners of a zone's area: its polygon, or its rectangle. */
+export const zoneCorners = (shape: EditorShape): Point[] =>
+	isPolygonZone(shape) ? zoneOutlinePoints(shape) : rectangleCorners(shape);
+
+/**
+ * Whether two edges of a closed outline that are not neighbours cross, or
+ * also touch unless `properly` is set.
+ */
+export function selfCrossing(
+	points: readonly Point[],
+	properly = false,
+): boolean {
+	const count = points.length;
+	const edges = points.map((point, index) => {
+		const next = points[(index + 1) % count];
+		return {
+			minX: Math.min(point.x, next.x),
+			minY: Math.min(point.y, next.y),
+			maxX: Math.max(point.x, next.x),
+			maxY: Math.max(point.y, next.y),
+		};
+	});
+	for (let first = 0; first < count; first++)
+		for (let second = first + 2; second < count; second++) {
+			if (first === 0 && second === count - 1) continue;
+			if (!boundsOverlap(edges[first], edges[second], 1e-9)) continue;
+			const a = points[first];
+			const b = points[(first + 1) % count];
+			const c = points[second];
+			const d = points[(second + 1) % count];
+			if (
+				properly
+					? segmentsIntersect(a, b, c, d)
+					: segmentDistance(a, b, c, d) < 1e-9
+			)
+				return true;
+		}
+	return false;
+}
+
+/**
+ * Whether corners drawn so far make a zone: three or more that enclose at
+ * least `minimumArea`, or whose edges properly cross over a box of that area,
+ * since crossing lobes cancel in the signed area.
+ */
+export function outlineEncloses(
+	points: readonly Point[],
+	minimumArea: number,
+): boolean {
+	if (points.length < 3) return false;
+	const area =
+		Math.abs(
+			points.reduce((sum, point, index) => {
+				const next = points[(index + 1) % points.length];
+				return sum + point.x * next.y - next.x * point.y;
+			}, 0),
+		) / 2;
+	if (area >= minimumArea) return true;
+	const xs = points.map((point) => point.x);
+	const ys = points.map((point) => point.y);
+	const box =
+		(Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+	return box >= minimumArea && selfCrossing(points, true);
+}
+
+const edgeHulls = (points: readonly Point[]): Hull[] =>
+	points.map((point, index) => ({
+		points: [point, points[(index + 1) % points.length]],
+		radius: 0,
+	}));
+
+/**
+ * Triangles covering a simple polygon. A self-crossing outline keeps only its
+ * edges, since triangulating it can claim area the even-odd fill leaves empty.
+ */
+function polygonHulls(corners: readonly Point[]): Hull[] {
+	const points = corners.filter((point, index) => {
+		const previous = corners[(index + corners.length - 1) % corners.length];
+		return (
+			Math.abs(point.x - previous.x) > 1e-9 ||
+			Math.abs(point.y - previous.y) > 1e-9
+		);
+	});
+	if (points.length < 3 || selfCrossing(points)) return edgeHulls(corners);
+	const indices = earcut(points.flatMap((point) => [point.x, point.y]));
+	const hulls: Hull[] = [];
+	for (let index = 0; index < indices.length; index += 3) {
+		const a = points[indices[index]];
+		const b = points[indices[index + 1]];
+		const c = points[indices[index + 2]];
+		const turn = cross(a, b, c);
+		if (Math.abs(turn) > 1e-12)
+			hulls.push({ points: turn > 0 ? [a, b, c] : [a, c, b], radius: 0 });
+	}
+	return hulls.length ? hulls : edgeHulls(points);
+}
+
 /** The copper a board shape covers, in board coordinates. */
 export function shapeHulls(shape: EditorShape): Hull[] {
 	if (shape.kind === "line" || shape.kind === "wire")
@@ -95,6 +194,7 @@ export function shapeHulls(shape: EditorShape): Hull[] {
 			},
 		];
 	}
+	if (isPolygonZone(shape)) return polygonHulls(zoneOutlinePoints(shape));
 	if (shape.kind === "rectangle") {
 		const radius = padCornerRadius(shape);
 		if (radius > 0) return [roundedRectangleHull(shape, radius)];

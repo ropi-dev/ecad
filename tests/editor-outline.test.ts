@@ -46,6 +46,43 @@ for (const kind of ["rectangle", "circle", "triangle"] as const) {
 	});
 }
 
+test("a polygon zone's outline mesh follows its polygon, not its rectangle", () => {
+	const width = 40;
+	const height = 40;
+	const geometry = createShapeGeometry({
+		kind: "rectangle",
+		width,
+		height,
+		lineWidth: 2,
+		outline: [
+			{ x: -0.5, y: -0.5 },
+			{ x: 0.5, y: -0.5 },
+			{ x: 0.5, y: 0 },
+			{ x: 0, y: 0 },
+			{ x: 0, y: 0.5 },
+			{ x: -0.5, y: 0.5 },
+		],
+	});
+	const material = new MeshBasicMaterial();
+	const mesh = new Mesh(geometry, material);
+	mesh.scale.set(width, height, 1);
+	mesh.updateMatrixWorld();
+	const hits = (x: number, y: number) =>
+		new Raycaster(new Vector3(x, y, 10), new Vector3(0, 0, -1)).intersectObject(
+			mesh,
+		).length > 0;
+	try {
+		assert.equal(hits(10, 0), true);
+		assert.equal(hits(0, 10), true);
+		assert.equal(hits(20, 10), false);
+		assert.equal(hits(10, 20), false);
+		assert.equal(hits(-10, -10), false);
+	} finally {
+		geometry.dispose();
+		material.dispose();
+	}
+});
+
 test("wire width survives resizing, connected movement and merging", () => {
 	const line = {
 		...drawShape(1, "wire", { x: 0, y: 0 }, { x: 20, y: 0 }),

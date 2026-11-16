@@ -2,6 +2,7 @@ import type {
 	CopperItem,
 	CopperLayer,
 } from "@ecad/drawing-core/board/connectivity.ts";
+import { outlineEncloses } from "@ecad/drawing-core/board/geometry.ts";
 import { ruleVia } from "@ecad/drawing-core/board/routing-grid.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { isNetLabel } from "@ecad/drawing-core/drawing/named-nets.ts";
@@ -37,6 +38,7 @@ import {
 	type WireRoutingContext,
 	wireEnds,
 } from "@ecad/drawing-core/drawing/wire-routing.ts";
+import { withZoneOutline } from "@ecad/drawing-core/drawing/zone-outline.ts";
 import {
 	copperLayers,
 	type FootprintLayer,
@@ -106,6 +108,7 @@ export type CanvasTool =
 	| "hole"
 	| "track"
 	| "zone"
+	| "zone-polygon"
 	| "outline";
 type PadTool = "smd-pad" | "through-hole-pad";
 const padToolTypes: Record<PadTool, PadType> = {
@@ -133,12 +136,21 @@ interface TrackChain {
 	posture: TrackPosture;
 }
 
+interface ZoneChain {
+	/** The corners placed so far. */
+	points: Point[];
+	layer: CopperLayer;
+	net?: string;
+	pointerId: number;
+}
+
 type CanvasGesture =
 	| { kind: "idle" }
 	| { kind: "placing"; tool: CanvasTool }
 	| { kind: "drag"; drag: Drag }
 	| { kind: "wire"; wire: WireChain }
-	| { kind: "track"; track: TrackChain };
+	| { kind: "track"; track: TrackChain }
+	| { kind: "zone"; zone: ZoneChain };
 
 /** What the board tools need from the board editor. */
 export interface BoardGestures {
@@ -234,6 +246,7 @@ export function useCanvasGestures({
 		tool === "hole" ||
 		tool === "track" ||
 		tool === "zone" ||
+		tool === "zone-polygon" ||
 		tool === "outline";
 	const onLayer = <Shape extends EditorShape>(shape: Shape): Shape =>
 		footprintLayer ? onFootprintLayer(shape, footprintLayer) : shape;
@@ -280,9 +293,13 @@ export function useCanvasGestures({
 		const active = getGesture();
 		return active.kind === "track" ? active.track : null;
 	}, [getGesture]);
+	const getZoneChain = useCallback(() => {
+		const active = getGesture();
+		return active.kind === "zone" ? active.zone : null;
+	}, [getGesture]);
 	const getWire = useCallback(
-		() => getWireChain() ?? getTrack(),
-		[getWireChain, getTrack],
+		() => getWireChain() ?? getTrack() ?? getZoneChain(),
+		[getWireChain, getTrack, getZoneChain],
 	);
 	useEffect(() => {
 		if (tool !== "select" || !selected.length) return;
@@ -306,7 +323,10 @@ export function useCanvasGestures({
 			return newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu");
 		if (tool === "via") return copperLayers;
 		if (tool === "hole") return ["F.Mask", "B.Mask"];
-		if ((tool === "track" || tool === "zone") && board)
+		if (
+			(tool === "track" || tool === "zone" || tool === "zone-polygon") &&
+			board
+		)
 			return [board.copperLayer];
 		if (tool === "outline") return ["Edge.Cuts"];
 		return footprintLayer ? [footprintLayer] : [];
@@ -458,7 +478,11 @@ export function useCanvasGestures({
 		[getWireChain, cameraView, session],
 	);
 	const finishWire = useCallback(() => {
-		if (gesture.current.kind === "wire" || gesture.current.kind === "track")
+		if (
+			gesture.current.kind === "wire" ||
+			gesture.current.kind === "track" ||
+			gesture.current.kind === "zone"
+		)
 			gesture.current = { kind: "idle" };
 		setWirePreview(null);
 		setConnectionHover(null);
@@ -588,7 +612,9 @@ export function useCanvasGestures({
 				const kind =
 					original.kind === "text" && original.electrical
 						? `${original.electrical} label`
-						: original.kind;
+						: original.kind === "rectangle" && original.zone
+							? "zone"
+							: original.kind;
 				const createdIds = new Set(active.originals.map((shape) => shape.id));
 				session.place(
 					session.shapes().filter((shape) => createdIds.has(shape.id)),
@@ -620,7 +646,9 @@ export function useCanvasGestures({
 								: "Move symbol child"
 							: active.mode === "move"
 								? "Move selection"
-								: `Resize ${active.originals[0].kind}`,
+								: active.handle?.corner !== undefined
+									? "Edit zone outline"
+									: `Resize ${active.originals[0].kind}`,
 					);
 			}
 			if (active.canvas.hasPointerCapture(active.pointerId))
@@ -849,6 +877,95 @@ export function useCanvasGestures({
 			};
 		},
 	};
+	const polygonZone = (chain: ZoneChain, points: readonly Point[]) =>
+		withZoneOutline(
+			{
+				id: session.nextId(),
+				kind: "rectangle",
+				layer: chain.layer,
+				...points[0],
+				width: 1,
+				height: 1,
+				rotation: 0,
+				lineWidth: 0.1,
+				zone: {},
+				...(chain.net ? { net: chain.net } : {}),
+			},
+			points,
+		);
+	const closable = (points: readonly Point[]) => {
+		const scale = cameraView.getProjection()?.scale ?? 1;
+		return outlineEncloses(points, 9 / (scale * scale));
+	};
+	/** Places the zone drawn so far once its corners enclose an area. A zone still too small keeps drawing. */
+	const closeZone = useEffectEvent(() => {
+		const active = getZoneChain();
+		if (!active) return false;
+		if (!closable(active.points)) return true;
+		session.place([polygonZone(active, active.points)], "Draw zone");
+		finishWire();
+		setTool("select");
+		return true;
+	});
+	const previewZone = (point: Point) => {
+		const active = getZoneChain();
+		if (!active) return;
+		const end = snapPoint(point, cameraView.getGridStep());
+		const points = [...active.points, end];
+		setWirePreview(
+			points.length > 2
+				? [polygonZone(active, points)]
+				: [
+						{
+							...drawShape(session.nextId(), "line", points[0], end),
+							layer: active.layer,
+							lineWidth: 0.1,
+						},
+					],
+		);
+	};
+	const zonePolygonHandler: ToolHandler = {
+		press: (event, _point, start) => {
+			const active = getZoneChain();
+			if (!active) {
+				if (!board) return;
+				const net = board.netAt(start);
+				gesture.current = {
+					kind: "zone",
+					zone: {
+						points: [start],
+						layer: board.copperLayer,
+						...(net ? { net } : {}),
+						pointerId: event.pointerId,
+					},
+				};
+				previewZone(start);
+				return;
+			}
+			const scale = cameraView.getProjection()?.scale ?? 1;
+			const near = (point: Point) =>
+				Math.hypot(point.x - start.x, point.y - start.y) * scale < 8;
+			const last = active.points[active.points.length - 1];
+			active.pointerId = event.pointerId;
+			if (closable(active.points) && (near(active.points[0]) || near(last))) {
+				closeZone();
+				return;
+			}
+			if (
+				active.points.some(
+					(point) => point.x === start.x && point.y === start.y,
+				)
+			)
+				return;
+			active.points.push(start);
+			previewZone(start);
+		},
+		hover: (canvas, point) => {
+			canvas.style.cursor = "crosshair";
+			previewZone(point);
+			return true;
+		},
+	};
 	const outlineHandler: ToolHandler = {
 		create: (start) => ({
 			...drawShape(session.nextId(), "rectangle", start, start),
@@ -879,6 +996,7 @@ export function useCanvasGestures({
 		hole: holeHandler,
 		track: trackHandler,
 		zone: zoneHandler,
+		"zone-polygon": zonePolygonHandler,
 		outline: outlineHandler,
 		symbol: {
 			press: (_event, _point, start) => {
@@ -1271,6 +1389,7 @@ export function useCanvasGestures({
 		finishWire,
 		placeTrackVia,
 		flipTrackPosture,
+		closeZone,
 		pointerHandlers,
 	};
 }

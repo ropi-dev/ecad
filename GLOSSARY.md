@@ -93,7 +93,7 @@ A straight copper line on one copper layer of a PCB, on a net.
 _Avoid_: Trace, footprint wire
 
 **Zone**:
-A copper area on a PCB that fills a rectangle on one net, keeping clear of other nets' copper.
+A copper area on a PCB that fills a rectangle or a polygon on one net, keeping clear of other nets' copper. Where zones on different nets overlap, the one with the higher priority keeps the copper.
 _Avoid_: Pour, polygon
 
 **Ratsnest**:

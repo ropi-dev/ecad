@@ -22,6 +22,7 @@ import {
 	type TextAlignment,
 	textCenter,
 } from "@ecad/drawing-core/drawing/text-alignment.ts";
+import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	PIN_BUBBLE_RADIUS,
 	PIN_LABEL_GAP,
@@ -58,6 +59,8 @@ interface GeometrySize {
 	filled?: boolean;
 	length?: number;
 	cornerRadius?: number;
+	/** A polygon zone's corners as fractions of the width and height. */
+	outline?: readonly Point[];
 }
 
 export interface DrawingTransform {
@@ -164,6 +167,9 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 				: {}),
 			...(isBasicShape(shape) && shape.lineStyle
 				? { lineStyle: shape.lineStyle }
+				: {}),
+			...(shape.kind === "rectangle" && shape.zone?.outline
+				? { outline: shape.zone.outline }
 				: {}),
 		};
 	return {
