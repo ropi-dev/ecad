@@ -1,3 +1,4 @@
+import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
 import type { Bounds, MultiPolygon } from "#/engine/types.ts";
 import type { BoardLayerRole } from "#/formats/gerber/board-stack.ts";
 
@@ -53,3 +54,18 @@ export const boundsPolygon = ({
 		],
 	],
 ];
+
+/** Closed rings as the edge list a hole mask paints from. */
+export function ringGeometry(rings: readonly Ring[]): PlanarGeometry {
+	const edges = new Float32Array(
+		rings.reduce((count, ring) => count + ring.length * 6, 0),
+	);
+	let at = 0;
+	for (const ring of rings)
+		ring.forEach(([ax, ay], index) => {
+			const [bx, by] = ring[(index + 1) % ring.length];
+			edges.set([ax, ay, 0, bx, by, 0], at);
+			at += 6;
+		});
+	return { positions: new Float32Array(), edges, regions: [] };
+}

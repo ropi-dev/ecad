@@ -18,7 +18,7 @@ const EDGE_SIZE = 6;
 const REPAINT_MARGIN = 2;
 const LEAST_PADDING = 1;
 /** Texels on each side of a hole's edge that hold its distance. */
-const BAND = 4;
+const BAND = 2;
 
 type Ring = readonly (readonly [number, number])[];
 
@@ -125,7 +125,8 @@ export function createHoleMask(
 			const near = new Float32Array(spanColumns * (toRow - fromRow)).fill(
 				band * band,
 			);
-			ring.forEach(([ax, ay], at) => {
+			for (let at = 0; at < ring.length; at++) {
+				const [ax, ay] = ring[at];
 				const [bx, by] = ring[(at + 1) % ring.length];
 				const dx = bx - ax,
 					dy = by - ay;
@@ -163,16 +164,17 @@ export function createHoleMask(
 						if (squared < near[cell]) near[cell] = squared;
 					}
 				}
-			});
+			}
 			const crossings: number[] = [];
 			for (let row = fromRow; row < toRow; row++) {
 				const y = bounds.minY + (row + 0.5) * texelY;
 				crossings.length = 0;
-				ring.forEach(([ax, ay], at) => {
+				for (let at = 0; at < ring.length; at++) {
+					const [ax, ay] = ring[at];
 					const [bx, by] = ring[(at + 1) % ring.length];
 					if (ay > y !== by > y)
 						crossings.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
-				});
+				}
 				crossings.sort((a, b) => a - b);
 				let crossed = 0;
 				for (let column = fromColumn; column < toColumn; column++) {

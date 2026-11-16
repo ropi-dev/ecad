@@ -7,21 +7,22 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Box3, Mesh, type Object3D, Vector3 } from "three";
+import { Box3, Matrix4, Mesh, type Object3D, Vector3 } from "three";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { Viewer2D, type Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { OrbitGesture } from "#/engine/controls3d.ts";
-import { createHoleMask } from "#/engine/planar-holes.ts";
+import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
+import { createHoleMask, cutHoles } from "#/engine/planar-holes.ts";
 import {
 	getPlanarGeometry,
 	stylePlanarObject3D,
 } from "#/engine/planar-object.ts";
-import { planarRings } from "#/engine/planar-walls.ts";
 import {
 	type BoardShape,
 	boundsPolygon,
 	realisticLayerStyle,
+	ringGeometry,
 } from "#/engine/realistic-board.ts";
 import type { createRealisticBoard } from "#/engine/realistic-board-mesh.ts";
 import type { PlanarObject } from "#/engine/types.ts";
@@ -55,11 +56,8 @@ const roleObjects = (
 		return layer.role === role && (side === undefined || layer.side === side);
 	});
 
-const layerRings = (objects: readonly ParsedGerberObject[]) =>
-	objects.flatMap((object) => {
-		const geometry = getPlanarGeometry(object.object);
-		return geometry ? planarRings(geometry.edges) : [];
-	});
+const SIDES = ["top", "bottom"] as const;
+const IDENTITY = new Matrix4();
 
 const tintParts = (object: Object3D, color: string | undefined) =>
 	object.traverse((part) => {
@@ -151,14 +149,43 @@ export function GerberViewer({
 	);
 	const repainted = useRef("");
 	useEffect(() => () => holes?.dispose(), [holes]);
-	const realisticSources = realistic
-		? [...roleObjects(scene, "mask"), ...visibleDrills(scene)]
-		: [];
-	const realisticKey = realisticSources
-		.map(
-			(object) => `${object.id}:${object.object.uuid}:${object.revision ?? 0}`,
-		)
-		.join(",");
+	const openings = boardShape?.openings;
+	const openingSources = useMemo(
+		() =>
+			realistic
+				? Object.fromEntries(
+						SIDES.map((side): [string, PlanarGeometry[]] => [
+							side,
+							[
+								...drillGeometry(
+									roleObjects(scene, "mask", side === "top" ? 1 : -1),
+								),
+								ringGeometry(openings?.[side] ?? []),
+							],
+						]),
+					)
+				: undefined,
+		[realistic, scene, openings],
+	);
+	const openingLayout = SIDES.map((side) =>
+		openingSources?.[side]?.map((source) => source.edges.length).join(","),
+	).join("|");
+	const [openingEpoch, setOpeningEpoch] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a mask follows its openings' layout, which openingLayout names, and repaints moved openings in place; openingEpoch replaces a mask its openings outgrew
+	const openingMasks = useMemo(
+		() =>
+			openingSources &&
+			Object.fromEntries(
+				SIDES.map((side) => [side, createHoleMask(openingSources[side] ?? [])]),
+			),
+		[openingLayout, openingEpoch],
+	);
+	useEffect(
+		() => () => {
+			for (const side of SIDES) openingMasks?.[side]?.dispose();
+		},
+		[openingMasks],
+	);
 	const profile =
 		realistic && !boardShape?.outline.length ? boardOutline(scene) : undefined;
 	const profileKey = profile
@@ -182,28 +209,13 @@ export function GerberViewer({
 			current = false;
 		};
 	}, [realistic, buildRealistic, reportError]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: realisticKey names the mask and drill geometry the board is cut from, and profileKey its fallback outline
+	const outline = boardShape?.outline;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: profileKey names the fallback outline
 	const realisticBoard = useMemo(() => {
 		if (!realistic || !buildRealistic) return undefined;
-		const outline = boardShape?.outline.length
-			? boardShape.outline
-			: profile && boundsPolygon(profile);
-		if (!outline) return undefined;
-		return buildRealistic({
-			outline,
-			drills: layerRings(visibleDrills(scene)),
-			openings: {
-				top: [
-					...layerRings(roleObjects(scene, "mask", 1)),
-					...(boardShape?.openings.top ?? []),
-				],
-				bottom: [
-					...layerRings(roleObjects(scene, "mask", -1)),
-					...(boardShape?.openings.bottom ?? []),
-				],
-			},
-		});
-	}, [realistic, buildRealistic, realisticKey, boardShape, profileKey]);
+		const shape = outline?.length ? outline : profile && boundsPolygon(profile);
+		return shape ? buildRealistic(shape) : undefined;
+	}, [realistic, buildRealistic, outline, profileKey]);
 	useEffect(() => () => realisticBoard?.dispose(), [realisticBoard]);
 	const film = useViewerTheme();
 	const styleLayers = useCallback(
@@ -291,13 +303,26 @@ export function GerberViewer({
 				if (board.parent !== group) group.add(board);
 				board.visible = layersShown;
 				board.renderOrder = 2 * scene.length + 1;
-				const maskShown = (side: -1 | 1) =>
-					roleObjects(scene, "mask", side).every((mask) => mask.visible);
-				for (const part of board.children)
-					if (part.userData.realisticMask)
-						part.visible = maskShown(
-							part.userData.realisticMask === "top" ? 1 : -1,
-						);
+				for (const side of SIDES) {
+					const mask = openingMasks?.[side];
+					const sources = openingSources?.[side];
+					if (mask && sources && !mask.repaint(sources))
+						setOpeningEpoch((epoch) => epoch + 1);
+				}
+				for (const part of board.children) {
+					if (!(part instanceof Mesh)) continue;
+					const side: (typeof SIDES)[number] | undefined =
+						part.userData.realisticMask;
+					if (side) {
+						part.visible = roleObjects(
+							scene,
+							"mask",
+							side === "top" ? 1 : -1,
+						).every((mask) => mask.visible);
+						cutHoles(part.material, IDENTITY, openingMasks?.[side]);
+					} else if (part.userData.realisticPart === "laminate")
+						cutHoles(part.material, IDENTITY, holes);
+				}
 			}
 			group.position.set(0, 0, 0);
 			if (surfaceZ !== undefined) {
@@ -320,6 +345,9 @@ export function GerberViewer({
 			updateFlatScene,
 			surfaceZ,
 			realisticBoard,
+			openingMasks,
+			openingSources,
+			holes,
 		],
 	);
 	const toggle = geometryScene.length > 0 && (

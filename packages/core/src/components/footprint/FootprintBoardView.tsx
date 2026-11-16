@@ -1,3 +1,4 @@
+import { boardOutlineSegments } from "@ecad/drawing-core/board/drc.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
@@ -108,16 +109,25 @@ export function FootprintBoardView({
 				: undefined,
 		[board, focusedLayer],
 	);
-	const boardShape = useMemo(() => {
+	const segments = realistic ? boardOutlineSegments(shapes) : [];
+	const edge = realistic && !segments.length ? boardEdgeBounds(shapes) : null;
+	const outlineKey = edge
+		? `${edge.minX},${edge.minY},${edge.maxX},${edge.maxY}`
+		: JSON.stringify(segments);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: outlineKey names the Edge.Cuts strokes, or the drawing's bounds without them, so other edits keep the outline
+	const outline = useMemo(() => {
 		if (!realistic) return undefined;
 		const interior = boardInterior(shapes);
-		return {
-			outline: interior.length
-				? interior
-				: boundsPolygon(boardEdgeBounds(shapes)),
-			openings: maskOpenings(shapes),
-		};
-	}, [realistic, shapes]);
+		return interior.length ? interior : boundsPolygon(boardEdgeBounds(shapes));
+	}, [realistic, outlineKey]);
+	const boardShape = useMemo(
+		() =>
+			outline && {
+				outline,
+				openings: maskOpenings(shapes),
+			},
+		[outline, shapes],
+	);
 	const shownFlat = useRef(true);
 	useEffect(() => {
 		if (flat && shownFlat.current) onFlatChange(true);

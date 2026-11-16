@@ -107,7 +107,7 @@ function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
 }
 
 /** @return `region` less the union of `obstacles` and `keepOut`, computed in integer nanometres. */
-export function subtractObstacles(
+function subtractObstacles(
 	region: MultiPolygon,
 	obstacles: readonly Ring[],
 	keepOut: ClipperLib.Paths = [],

@@ -6,13 +6,8 @@ import {
 	Mesh,
 	MeshStandardMaterial,
 } from "three";
-import { subtractObstacles } from "#/board/fill.ts";
 import { triangulate } from "#/engine/geometry.ts";
-import {
-	type MaskOpenings,
-	REALISTIC_COLORS,
-	type Ring,
-} from "#/engine/realistic-board.ts";
+import { REALISTIC_COLORS } from "#/engine/realistic-board.ts";
 import type { MultiPolygon } from "#/engine/types.ts";
 import {
 	BOARD_MASK_TOP,
@@ -68,73 +63,64 @@ function meshGeometry(positions: number[]) {
 	return geometry;
 }
 
-export interface RealisticBoardSource {
-	outline: MultiPolygon;
-	drills: readonly Ring[];
-	openings: MaskOpenings;
-}
-
 export interface RealisticBoard {
 	object: Group;
 	dispose: () => void;
 }
 
 /**
- * The bare laminate with its drill holes, and a solder mask sheet on each side
- * with its openings cut out. The mask tents holes outside the openings, as it
- * does over vias.
+ * The bare laminate and a solder mask sheet on each side, covering the whole
+ * outline. Drill holes and mask openings are cut when drawing, with hole masks.
  */
-export function createRealisticBoard({
-	outline,
-	drills,
-	openings,
-}: RealisticBoardSource): RealisticBoard {
+export function createRealisticBoard(outline: MultiPolygon): RealisticBoard {
 	const group = new Group();
 	group.name = "Realistic board";
 	group.userData.realisticBoard = true;
-	const laminate = subtractObstacles(outline, [...drills]);
 	const top = BOARD_SUBSTRATE_TOP;
-	const laminateTriangles = triangulate(laminate);
+	const triangles = triangulate(outline);
 	const facePositions: number[] = [];
-	faces(laminateTriangles, top, facePositions);
-	faces(laminateTriangles, -top, facePositions);
-	const faceMaterial = new MeshStandardMaterial({
-		color: REALISTIC_COLORS.substrateFace,
-		roughness: 0.85,
-		side: DoubleSide,
-	});
-	const edgeMaterial = new MeshStandardMaterial({
-		color: REALISTIC_COLORS.substrateEdge,
-		roughness: 0.9,
-		side: DoubleSide,
-	});
-	const laminateFaces = new Mesh(meshGeometry(facePositions), faceMaterial);
+	faces(triangles, top, facePositions);
+	faces(triangles, -top, facePositions);
+	const laminateFaces = new Mesh(
+		meshGeometry(facePositions),
+		new MeshStandardMaterial({
+			color: REALISTIC_COLORS.substrateFace,
+			roughness: 0.85,
+			side: DoubleSide,
+		}),
+	);
+	laminateFaces.userData.realisticPart = "laminate";
 	const laminateEdges = new Mesh(
-		meshGeometry(walls(laminate, -top, top)),
-		edgeMaterial,
+		meshGeometry(walls(outline, -top, top)),
+		new MeshStandardMaterial({
+			color: REALISTIC_COLORS.substrateEdge,
+			roughness: 0.9,
+			side: DoubleSide,
+		}),
 	);
 	group.add(laminateFaces, laminateEdges);
 	const masks = (["top", "bottom"] as const).map((side) => {
-		const sheet = subtractObstacles(outline, [...openings[side]]);
 		const positions: number[] = [];
 		faces(
-			triangulate(sheet),
+			triangles,
 			side === "top" ? BOARD_MASK_TOP : -BOARD_MASK_TOP,
 			positions,
 		);
-		const material = new MeshStandardMaterial({
-			color: REALISTIC_COLORS.mask,
-			roughness: 0.35,
-			metalness: 0.05,
-			transparent: true,
-			opacity: MASK_OPACITY,
-			depthWrite: false,
-			side: DoubleSide,
-			polygonOffset: true,
-			polygonOffsetFactor: -1,
-			polygonOffsetUnits: -1,
-		});
-		const mesh = new Mesh(meshGeometry(positions), material);
+		const mesh = new Mesh(
+			meshGeometry(positions),
+			new MeshStandardMaterial({
+				color: REALISTIC_COLORS.mask,
+				roughness: 0.35,
+				metalness: 0.05,
+				transparent: true,
+				opacity: MASK_OPACITY,
+				depthWrite: false,
+				side: DoubleSide,
+				polygonOffset: true,
+				polygonOffsetFactor: -1,
+				polygonOffsetUnits: -1,
+			}),
+		);
 		mesh.name = `${side} solder mask`;
 		mesh.userData.realisticMask = side;
 		return mesh;

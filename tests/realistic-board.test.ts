@@ -3,15 +3,18 @@ import { test } from "node:test";
 import { createPad, createVia } from "@ecad/drawing-core/footprint/shapes.ts";
 import type { BufferGeometry, Mesh } from "three";
 import { maskOpenings } from "#/board/gerber.ts";
+import { createHoleMask } from "#/engine/planar-holes.ts";
 import {
 	boundsPolygon,
 	realisticLayerStyle,
+	ringGeometry,
 } from "#/engine/realistic-board.ts";
 import { createRealisticBoard } from "#/engine/realistic-board-mesh.ts";
 import {
 	BOARD_MASK_TOP,
 	boardLayerRole,
 } from "#/formats/gerber/board-stack.ts";
+import { required } from "./helpers/required.ts";
 
 const layer = (name: string, fileFunction: string) => ({
 	name,
@@ -74,29 +77,46 @@ test("the solder mask opens over pads on its side and tents vias", () => {
 	assert.ok(Math.abs(y) <= pad.height / 2 + 0.06);
 });
 
-test("the realistic board cuts drills through the laminate and openings through each side's mask", () => {
-	const board = createRealisticBoard({
-		outline: boundsPolygon({ minX: 0, minY: 0, maxX: 10, maxY: 10 }),
-		drills: [square(5, 5, 0.5)],
-		openings: { top: [square(2, 2, 1)], bottom: [] },
-	});
+test("the realistic board covers its outline with laminate and mask, and leaves holes to its masks", () => {
+	const board = createRealisticBoard(
+		boundsPolygon({ minX: 0, minY: 0, maxX: 10, maxY: 10 }),
+	);
 	try {
 		const meshes = board.object.children as Mesh[];
-		const mask = (side: string) =>
-			meshes.find((mesh) => mesh.userData.realisticMask === side)?.geometry;
-		const [laminate] = meshes;
-		const top = laminate.geometry.boundingBox?.max.z ?? 0;
-		assert.ok(Math.abs(faceArea(laminate.geometry, top) - 99) < 1e-6);
-		assert.ok(
-			Math.abs(faceArea(mask("top") as BufferGeometry, BOARD_MASK_TOP) - 96) <
-				1e-6,
-		);
-		assert.ok(
-			Math.abs(
-				faceArea(mask("bottom") as BufferGeometry, -BOARD_MASK_TOP) - 100,
-			) < 1e-6,
-		);
+		const part = (find: (mesh: Mesh) => boolean) =>
+			required(meshes.find(find)).geometry;
+		const laminate = part((mesh) => mesh.userData.realisticPart === "laminate");
+		const top = laminate.boundingBox?.max.z ?? 0;
+		assert.ok(Math.abs(faceArea(laminate, top) - 100) < 1e-6);
+		for (const [side, z] of [
+			["top", BOARD_MASK_TOP],
+			["bottom", -BOARD_MASK_TOP],
+		] as const)
+			assert.ok(
+				Math.abs(
+					faceArea(
+						part((mesh) => mesh.userData.realisticMask === side),
+						z,
+					) - 100,
+				) < 1e-6,
+			);
 	} finally {
 		board.dispose();
 	}
+});
+
+test("pad openings become a hole mask that cuts the mask sheet only inside them", () => {
+	const mask = required(
+		createHoleMask([ringGeometry([square(2, 2, 1), square(6, 6, 0.5)])]),
+	);
+	assert.deepEqual(
+		[
+			[2, 2],
+			[6, 6],
+			[4, 4],
+			[2, 3.2],
+		].map(([x, y]) => mask.contains(x, y)),
+		[true, true, false, false],
+	);
+	mask.dispose();
 });
