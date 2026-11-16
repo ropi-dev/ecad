@@ -79,7 +79,9 @@ function App() {
 }
 const root = document.getElementById("root");
 if (!root) throw new Error("The desktop editor root element is missing.");
-void createDesktopSettingsStorage(window.ecadSettings).then((settings) => {
-	setSettingsStorage(settings);
-	createRoot(root).render(<App />);
-});
+void createDesktopSettingsStorage(window.ecadSettings, window.ecadUpdates).then(
+	(settings) => {
+		setSettingsStorage(settings);
+		createRoot(root).render(<App />);
+	},
+);

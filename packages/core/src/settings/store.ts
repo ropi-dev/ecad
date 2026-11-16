@@ -14,6 +14,7 @@ const LEGACY_ANTIALIAS_KEY = "ecad.antialias";
 
 export interface SettingsStorage {
 	location: string;
+	updates?: boolean;
 	load(): AppSettings;
 	save(settings: AppSettings): Promise<void>;
 	subscribe?(listener: () => void): () => void;
@@ -71,16 +72,25 @@ export function createBrowserSettingsStorage(
 export interface SettingsStatus {
 	location: string;
 	error: string;
+	updates: boolean;
 }
 
 const listeners = new Set<() => void>();
 const queue = createSerialQueue();
 let storage = createBrowserSettingsStorage();
 let current: AppSettings | undefined;
-let status: SettingsStatus = { location: storage.location, error: "" };
+let status: SettingsStatus = {
+	location: storage.location,
+	error: "",
+	updates: false,
+};
 let stopExternal: (() => void) | undefined;
 const serverSettings = defaultAppSettings();
-const serverStatus: SettingsStatus = { location: storage.location, error: "" };
+const serverStatus: SettingsStatus = {
+	location: storage.location,
+	error: "",
+	updates: false,
+};
 
 const notify = () => {
 	for (const listener of listeners) listener();
@@ -89,11 +99,16 @@ const notify = () => {
 function read() {
 	try {
 		current = storage.load();
-		status = { location: storage.location, error: "" };
+		status = {
+			location: storage.location,
+			error: "",
+			updates: !!storage.updates,
+		};
 	} catch (cause) {
 		current = defaultAppSettings();
 		status = {
 			location: storage.location,
+			updates: !!storage.updates,
 			error: `Saved settings could not be read: ${errorMessage(cause)} The next change replaces them.`,
 		};
 	}

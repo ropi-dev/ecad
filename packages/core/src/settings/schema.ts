@@ -9,6 +9,9 @@ export type AntialiasingMode = (typeof antialiasingModes)[number];
 export const themeModes = ["system", "light", "dark"] as const;
 export type ThemeMode = (typeof themeModes)[number];
 
+export const releaseChannels = ["stable", "nightly"] as const;
+export type ReleaseChannel = (typeof releaseChannels)[number];
+
 export const ercSeverityLevels = ["error", "warning", "off"] as const;
 export type ErcSeverityLevel = (typeof ercSeverityLevels)[number];
 
@@ -34,6 +37,7 @@ const appShape = {
 	theme: z.enum(themeModes).optional(),
 	antialiasing: z.enum(antialiasingModes).optional(),
 	debugStats: z.boolean().optional(),
+	releaseChannel: z.enum(releaseChannels).optional(),
 	ercSeverity: ercSeveritySchema.optional(),
 };
 const projectShape = {

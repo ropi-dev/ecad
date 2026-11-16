@@ -313,10 +313,11 @@ function registerSettingsHandlers() {
 	handle(settingsChannels.save, async (next) => {
 		await settings.save(next);
 		applyTheme(next.theme);
+		void updater?.setChannel(next.releaseChannel ?? "stable");
 	});
 }
 
-function createUpdater() {
+function createUpdater(channel: AppSettings["releaseChannel"]) {
 	const distribution =
 		app.isPackaged &&
 		process.platform === "linux" &&
@@ -326,6 +327,7 @@ function createUpdater() {
 		currentVersion: app.getVersion(),
 		architecture: distribution.architecture,
 		temporaryDirectory: app.getPath("temp"),
+		channel,
 		feedUrl: process.env.ECAD_UPDATE_FEED_URL || undefined,
 		fetch: (url, init) => net.fetch(url, init),
 		onChange: (state) => {
@@ -335,8 +337,8 @@ function createUpdater() {
 	});
 }
 
-function registerUpdateHandlers() {
-	updater = createUpdater();
+function registerUpdateHandlers(channel: AppSettings["releaseChannel"]) {
+	updater = createUpdater(channel);
 	updater?.start();
 	app.on("will-quit", () => {
 		if (relaunchOnQuit)
@@ -511,10 +513,11 @@ void app.whenReady().then(async () => {
 	registerProjectHandlers();
 	registerSettingsHandlers();
 	registerDisplayHandlers();
-	registerUpdateHandlers();
+	const initial = (await settings.load()).settings;
+	registerUpdateHandlers(initial.releaseChannel);
 	registerMcpHandlers();
 	handle(appChannels.quit, () => app.quit());
-	applyTheme((await settings.load()).settings.theme);
+	applyTheme(initial.theme);
 	nativeTheme.on("updated", () =>
 		window?.setBackgroundColor(windowBackground()),
 	);

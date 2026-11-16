@@ -163,6 +163,38 @@ test("the changes cover only the releases newer than the installed one", () => {
 	]);
 });
 
+test("the nightly channel adds nightly pre-releases and skips the apt releases", () => {
+	const nightly = "0.1.1~nightly.20261116";
+	const build = (version: string, body: string, extra = {}) => ({
+		...release({ name: `ecad_${version}_amd64.deb` }),
+		body,
+		...extra,
+	});
+	const feed = [
+		build("0.1.0", "* Stable change", { tag_name: "v0.1.0" }),
+		build(nightly, "* Nightly change", {
+			tag_name: "v0.1.1-nightly.20261116",
+			prerelease: true,
+		}),
+		build("0.1.2", "* Apt copy", { tag_name: "apt-nightly", prerelease: true }),
+		build("0.1.3", "* Beta change", {
+			tag_name: "v0.1.3-beta",
+			prerelease: true,
+		}),
+	];
+	assert.equal(selectReleasePackage(feed, "amd64", "0.0.9").version, "0.1.0");
+	const selected = selectReleasePackage(
+		feed,
+		"amd64",
+		"0.0.9",
+		undefined,
+		"nightly",
+	);
+	assert.equal(selected.version, nightly);
+	assert.deepEqual(selected.changes, ["Nightly change", "Stable change"]);
+	assert.equal(selectReleasePackage(feed, "amd64", nightly).version, "0.1.0");
+});
+
 test("release notes become a list of changes", () => {
 	assert.deepEqual(releaseChanges(notes), changes);
 	assert.deepEqual(releaseChanges("- Plain item\r\nText"), ["Plain item"]);
@@ -309,6 +341,35 @@ test("checks report failures, current releases and newer ones", () =>
 			(updater.state as { checkError?: string }).checkError ?? "",
 			/no package for amd64/,
 		);
+	}));
+
+test("switching the channel checks the release feed again", () =>
+	withUpdater(async ({ updater, feed }) => {
+		const status = (): string => updater.state.status;
+		feed.body = {
+			...release(),
+			tag_name: "v0.1.1-nightly.20261116",
+			prerelease: true,
+		};
+		await updater.check();
+		assert.match(
+			(updater.state as { checkError?: string }).checkError ?? "",
+			/no package for amd64/,
+		);
+		await updater.setChannel("nightly");
+		assert.deepEqual(updater.state, {
+			status: "available",
+			latest: { version: next, changes },
+		});
+		await updater.setChannel("stable");
+		assert.equal(status(), "idle");
+		assert.match(
+			(updater.state as { checkError?: string }).checkError ?? "",
+			/no package for amd64/,
+		);
+		feed.body = [feed.body, release({ name: `ecad_${current}_amd64.deb` })];
+		await Promise.all([updater.check(), updater.setChannel("nightly")]);
+		assert.equal(status(), "available");
 	}));
 
 test("a retry after a failure reads the release again", () =>

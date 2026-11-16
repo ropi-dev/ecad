@@ -1,6 +1,6 @@
 import { schematicErcRules } from "@ecad/drawing-core/erc/schematic-rules.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { CircuitBoard, Library, Monitor } from "lucide-react";
+import { CircleArrowUp, CircuitBoard, Library, Monitor } from "lucide-react";
 import { Tabs } from "radix-ui";
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { AppDialog } from "#/components/ui/Dialog.tsx";
@@ -12,6 +12,7 @@ import {
 	type ErcSeverityLevel,
 	type ErcSeverityOverrides,
 	ercSeverityLevels,
+	type ReleaseChannel,
 	type ThemeMode,
 	withErcSeverity,
 } from "#/settings/schema.ts";
@@ -28,7 +29,7 @@ const SymbolLibrarySettings = lazy(() =>
 	})),
 );
 
-export type SettingsSection = "display" | "erc" | "libraries";
+export type SettingsSection = "display" | "erc" | "libraries" | "updates";
 
 const sections: {
 	id: SettingsSection;
@@ -38,6 +39,7 @@ const sections: {
 	{ id: "display", label: "Display", icon: Monitor },
 	{ id: "erc", label: "Electrical rules", icon: CircuitBoard },
 	{ id: "libraries", label: "Symbol libraries", icon: Library },
+	{ id: "updates", label: "Updates", icon: CircleArrowUp },
 ];
 
 const levelLabels: Record<ErcSeverityLevel, string> = {
@@ -55,11 +57,16 @@ export function SettingsDialog({
 	onOpenChange(open: boolean): void;
 	section?: SettingsSection;
 }) {
-	const [active, setActive] = useState(section);
+	const { updates } = useSettingsStatus();
+	const shown = sections.filter(({ id }) => id !== "updates" || updates);
+	const requested = shown.some(({ id }) => id === section)
+		? section
+		: "display";
+	const [active, setActive] = useState(requested);
 	const [opened, setOpened] = useState(open);
 	if (open !== opened) {
 		setOpened(open);
-		if (open) setActive(section);
+		if (open) setActive(requested);
 	}
 	return (
 		<AppDialog
@@ -93,7 +100,7 @@ export function SettingsDialog({
 					aria-label="Settings sections"
 					className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-line-subtle p-2 max-[640px]:w-auto max-[640px]:flex-row max-[640px]:overflow-x-auto max-[640px]:border-r-0 max-[640px]:border-b"
 				>
-					{sections.map(({ id, label, icon: Icon }) => (
+					{shown.map(({ id, label, icon: Icon }) => (
 						<Tabs.Trigger
 							key={id}
 							value={id}
@@ -123,6 +130,11 @@ export function SettingsDialog({
 							<SymbolLibrarySettings />
 						</Suspense>
 					</Tabs.Content>
+					{updates && (
+						<Tabs.Content value="updates" className="outline-none">
+							<UpdateSettings />
+						</Tabs.Content>
+					)}
 				</div>
 			</Tabs.Root>
 		</AppDialog>
@@ -244,6 +256,49 @@ function DisplaySettings() {
 					/>
 				)}
 			</SettingRow>
+		</section>
+	);
+}
+
+const channelDescriptions: Record<ReleaseChannel, string> = {
+	stable: "Installs stable releases only.",
+	nightly:
+		"Also installs nightly builds, which come out before each stable release and get less testing.",
+};
+
+function UpdateSettings() {
+	const settings = useAppSettings();
+	const channel = settings.releaseChannel ?? "stable";
+	return (
+		<section aria-label="Updates" className="flex flex-col">
+			<h3 className="ui-section-label m-0 mb-1">Updates</h3>
+			<SettingRow
+				label="Release channel"
+				description={channelDescriptions[channel]}
+			>
+				{(id) => (
+					<select
+						id={id}
+						className="ui-select h-8 w-40 shrink-0 max-[420px]:w-full"
+						value={channel}
+						onChange={(event) => {
+							const releaseChannel = event.currentTarget
+								.value as ReleaseChannel;
+							void updateAppSettings((current) => ({
+								...current,
+								releaseChannel,
+							})).catch(() => undefined);
+						}}
+					>
+						<option value="stable">Stable</option>
+						<option value="nightly">Nightly</option>
+					</select>
+				)}
+			</SettingRow>
+			<p className="m-0 mt-1 text-xs text-fg-faint">
+				ECAD checks the new channel as soon as you switch. Going back to stable
+				keeps an installed nightly until a newer stable release comes out.
+			</p>
 		</section>
 	);
 }
