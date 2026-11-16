@@ -101,6 +101,7 @@ import { downloadPng } from "#/components/viewer/exportPng.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { Viewer2D } from "#/components/viewer/Viewer2D.tsx";
+import { buildStaticDisplay } from "#/drawing/display.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
@@ -322,6 +323,7 @@ function EditorCanvas({
 		draft: editor.draft,
 		hidden: layers.hidden,
 		active: layers.active,
+		focused: layers.focused,
 		setActive: layers.activate,
 		selection: selectedIds,
 		ratsnestShown: flatShown,
@@ -478,12 +480,25 @@ function EditorCanvas({
 		() => wirePreview ?? (placementPreview ? [placementPreview] : []),
 		[wirePreview, placementPreview],
 	);
+	const focusedLayer = isFootprint ? layers.focused : undefined;
+	const buildFootprintDisplay = useCallback(
+		(
+			shapes: EditorShape[],
+			selected: ReadonlySet<number>,
+			measure: Parameters<typeof buildStaticDisplay>[2],
+		) => buildStaticDisplay(shapes, selected, measure, focusedLayer),
+		[focusedLayer],
+	);
 	const { scene, updateScene: updateDrawingScene } = useEditorScene(
 		flatShown ? shapes : NO_SHAPES,
 		flatShown ? selectedIds : NO_SELECTION,
 		flatShown ? previews : NO_SHAPES,
 		sheetless ? null : pageSheet,
-		isBoard ? boardEditor.buildDisplay : undefined,
+		isBoard
+			? boardEditor.buildDisplay
+			: focusedLayer
+				? buildFootprintDisplay
+				: undefined,
 	);
 	const { updateZones } = boardEditor;
 	const updateScene = useCallback(
@@ -1041,6 +1056,7 @@ function EditorCanvas({
 							ariaLabel={`${editorKind} editor`}
 							controlsLabel={`${editorKind} tools`}
 							hiddenLayers={layers.hidden}
+							focusedLayer={layers.focused}
 							flat={boardView !== "open"}
 							onFlatChange={showBoardFlat}
 							orbitGesture="alt-shift"
@@ -1120,7 +1136,8 @@ function EditorCanvas({
 							active={layers.active}
 							hidden={layers.hidden}
 							itemCounts={layerItemCounts}
-							onActivate={layers.activate}
+							focused={layers.focused}
+							onSelect={layers.select}
 							onToggle={toggleLayer}
 						/>
 					)}

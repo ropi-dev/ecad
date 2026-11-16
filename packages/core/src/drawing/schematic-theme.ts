@@ -123,6 +123,25 @@ export const darkSchematicTheme: SchematicTheme = {
 	},
 };
 
+const UNFOCUSED_LAYER_STRENGTH = 0.3;
+
+const channels = (color: string) =>
+	[1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
+
+export function unfocusedLayerColor(color: string, theme: SchematicTheme) {
+	const background = channels(theme.desk);
+	return `#${channels(color)
+		.map((channel, index) =>
+			Math.round(
+				background[index] +
+					(channel - background[index]) * UNFOCUSED_LAYER_STRENGTH,
+			)
+				.toString(16)
+				.padStart(2, "0"),
+		)
+		.join("")}`;
+}
+
 /** Colours the Gerber and STEP viewers draw with, outside any drawing. */
 export interface ViewerTheme {
 	/** The app background: a captured PNG's backdrop and the desktop window's. */

@@ -30,6 +30,7 @@ import {
 	isPadOrVia,
 	isVia,
 	shapeDrill,
+	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { analyzeDrawing } from "#/drawing/drawing-analysis.ts";
 import {
@@ -101,6 +102,7 @@ export interface DisplayShape extends DrawingTransform, TextAlignment {
 	text?: string;
 	bold?: true;
 	pinLabel?: true;
+	dimmed?: true;
 	renderOrder: number;
 	children?: DisplayShape[];
 }
@@ -471,6 +473,7 @@ const shapeDisplays = new WeakMap<
 		renderOrder: number;
 		measure: MeasureText;
 		crossing: WireCrossings | undefined;
+		dimmed: boolean;
 		display: DisplayShape;
 	}
 >();
@@ -490,12 +493,14 @@ function documentShapeDisplay(
 	renderOrder: number,
 	measure: MeasureText,
 	crossing: WireCrossings | undefined,
+	dimmed = false,
 ) {
 	const cached = shapeDisplays.get(shape);
 	if (
 		cached?.appearance === appearance &&
 		cached.renderOrder === renderOrder &&
 		cached.measure === measure &&
+		cached.dimmed === dimmed &&
 		sameCrossings(cached.crossing, crossing)
 	)
 		return cached.display;
@@ -509,15 +514,32 @@ function documentShapeDisplay(
 	);
 	if (display.geometry.kind === "wire" && crossing)
 		display.geometry = { ...display.geometry, ...crossing };
+	if (dimmed) dim(display);
 	shapeDisplays.set(shape, {
 		appearance,
 		renderOrder,
 		measure,
 		crossing,
+		dimmed,
 		display,
 	});
 	return display;
 }
+
+function dim(display: DisplayShape) {
+	display.dimmed = true;
+	for (const child of display.children ?? []) dim(child);
+}
+
+const outsideFocus = (
+	shape: EditorShape,
+	appearance: DrawingAppearance,
+	focusedLayer: FootprintLayer | undefined,
+) =>
+	focusedLayer !== undefined &&
+	appearance !== "selected" &&
+	appearance !== "highlighted" &&
+	!shapeLayers(shape).includes(focusedLayer);
 
 function symbolConnectionDisplays(
 	shape: EditorShape,
@@ -565,6 +587,7 @@ export function buildStaticDisplay(
 	shapes: EditorShape[],
 	selectedIds: ReadonlySet<number>,
 	measure: MeasureText = estimateText,
+	focusedLayer?: FootprintLayer,
 ): StaticDrawingDisplay {
 	const highlightedWires = new Set<number>();
 	const netSelections = new Set(
@@ -600,19 +623,21 @@ export function buildStaticDisplay(
 	};
 	const { junctions, crossings, openEnds, openPins } = analyzeDrawing(shapes);
 	return {
-		shapes: shapes.map((shape, index) =>
-			documentShapeDisplay(
+		shapes: shapes.map((shape, index) => {
+			const appearance = selectedIds.has(shape.id)
+				? "selected"
+				: highlightedWires.has(shape.id)
+					? "highlighted"
+					: unselectedAppearance(shape);
+			return documentShapeDisplay(
 				shape,
-				selectedIds.has(shape.id)
-					? "selected"
-					: highlightedWires.has(shape.id)
-						? "highlighted"
-						: unselectedAppearance(shape),
+				appearance,
 				index + 1,
 				measure,
 				crossings.get(shape.id),
-			),
-		),
+				outsideFocus(shape, appearance, focusedLayer),
+			);
+		}),
 		terminals: openEnds.map(({ shape, point }) =>
 			junctionDisplay(
 				{ ...terminal, ...point },
@@ -683,22 +708,25 @@ export function buildBoardStaticDisplay(
 	highlightedIds: ReadonlySet<number>,
 	ratsnest: readonly EditorShape[],
 	measure: MeasureText = estimateText,
+	focusedLayer?: FootprintLayer,
 ): StaticDrawingDisplay {
 	return {
 		shapes: [
-			...shapes.map((shape, index) =>
-				documentShapeDisplay(
+			...shapes.map((shape, index) => {
+				const appearance = selectedIds.has(shape.id)
+					? "selected"
+					: highlightedIds.has(shape.id)
+						? "highlighted"
+						: unselectedAppearance(shape);
+				return documentShapeDisplay(
 					shape,
-					selectedIds.has(shape.id)
-						? "selected"
-						: highlightedIds.has(shape.id)
-							? "highlighted"
-							: unselectedAppearance(shape),
+					appearance,
 					index + 1,
 					measure,
 					undefined,
-				),
-			),
+					outsideFocus(shape, appearance, focusedLayer),
+				);
+			}),
 			...ratsnest.map((shape) =>
 				documentShapeDisplay(
 					shape,

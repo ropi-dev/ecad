@@ -5,7 +5,10 @@ import {
 	shapeBounds,
 	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	type FootprintLayer,
+	isCopperLayer,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	footprintFitBounds,
 	isPad,
@@ -663,6 +666,12 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 			layers = new Map();
 		},
 	};
+}
+
+export function boardObjectOnLayer(id: string, layer: FootprintLayer) {
+	if (id === DRILL_LAYER_ID) return isCopperLayer(layer);
+	if (id === BOARD_LAYER_ID) return layer === "Edge.Cuts";
+	return layersByObjectId.get(id) === layer;
 }
 
 export function boardObjectVisible(

@@ -27,8 +27,12 @@ import {
 import { canvasDragStep } from "#/components/editor/canvasDrag.ts";
 import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
+import { buildDrawingDisplay, buildStaticDisplay } from "#/drawing/display.ts";
 import { exportDrawingSvg } from "#/drawing/export.ts";
+import {
+	lightSchematicTheme,
+	unfocusedLayerColor,
+} from "#/drawing/schematic-theme.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";
 import { createTextShape } from "#/drawing/text.ts";
 import { defaultSheet } from "#/drawing/worksheet.ts";
@@ -37,6 +41,7 @@ import {
 	BOARD_LAYER_ID,
 	BOARD_SURFACE_Z,
 	boardEdgeBounds,
+	boardObjectOnLayer,
 	boardObjectVisible,
 	createBoardBuilder,
 	DRILL_LAYER_ID,
@@ -524,6 +529,46 @@ test("the display colours items by layer and draws a pad as solid copper with it
 	);
 	const hole = required(through.children?.[0]);
 	assert.ok(Math.abs(hole.width * through.width - 1) < 1e-9);
+});
+
+test("a focused layer dims every item off it, except the selection", () => {
+	const shapes = twoPadsWireCourtyardAndThroughHole();
+	const dimmed = (focused?: FootprintLayer) =>
+		buildStaticDisplay(shapes, new Set([4]), measure, focused).shapes.map(
+			(shape) => shape.dimmed === true,
+		);
+	assert.deepEqual(dimmed(), [false, false, false, false, false]);
+	assert.deepEqual(dimmed("F.SilkS"), [true, true, false, false, true]);
+	assert.deepEqual(dimmed("B.Cu"), [true, true, true, false, false]);
+	const [pad] = buildStaticDisplay(
+		shapes,
+		new Set(),
+		measure,
+		"F.SilkS",
+	).shapes;
+	assert.deepEqual(
+		pad.children?.map((child) => child.dimmed),
+		[true],
+	);
+});
+
+test("a dimmed layer colour sits most of the way to the desk colour", () => {
+	assert.equal(unfocusedLayerColor("#c83434", lightSchematicTheme), "#dab0b3");
+	assert.equal(
+		unfocusedLayerColor(lightSchematicTheme.desk, lightSchematicTheme),
+		lightSchematicTheme.desk,
+	);
+});
+
+test("focusing a layer in 3D keeps its text, pad numbers and, for copper, the drills", () => {
+	assert.ok(boardObjectOnLayer("footprint:F.Cu", "F.Cu"));
+	assert.ok(boardObjectOnLayer("footprint:F.Cu:text", "F.Cu"));
+	assert.ok(boardObjectOnLayer("footprint:F.Cu:pad-numbers", "F.Cu"));
+	assert.ok(boardObjectOnLayer(DRILL_LAYER_ID, "B.Cu"));
+	assert.ok(!boardObjectOnLayer(DRILL_LAYER_ID, "F.SilkS"));
+	assert.ok(!boardObjectOnLayer(BOARD_LAYER_ID, "F.Cu"));
+	assert.ok(!boardObjectOnLayer("footprint:B.Cu", "F.Cu"));
+	assert.ok(boardObjectOnLayer(BOARD_LAYER_ID, "Edge.Cuts"));
 });
 
 test("a filled footprint graphic is solid in its layer's colour, and a rotated pad keeps its number level", () => {
