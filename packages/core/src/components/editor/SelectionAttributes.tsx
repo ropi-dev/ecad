@@ -47,8 +47,10 @@ import {
 	padTypes,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
+	type HoleShape,
+	isDrilled,
+	isHole,
 	isPad,
-	isPadOrVia,
 	isVia,
 	type PadShape,
 	padMinorSize,
@@ -414,6 +416,7 @@ function pinLabelRows(
 function selectionType(shape: EditorShape, footprint: boolean): string {
 	if (isPad(shape)) return "pad";
 	if (isVia(shape)) return "via";
+	if (isHole(shape)) return "unplated hole";
 	if (shape.kind === "text" && shape.electrical)
 		return `${shape.electrical} label`;
 	if (shape.kind === "symbol" && shape.netSymbol) return "net symbol";
@@ -556,6 +559,26 @@ function viaRows(
 				positive
 				below={via.width}
 				onChange={(drill) => onEdit({ kind: "via-drill", drill })}
+			/>,
+		],
+	];
+}
+
+function holeRows(
+	hole: HoleShape,
+	unit: LengthUnit,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	return [
+		[
+			"Drill",
+			<AttributeInput
+				key={`${hole.id}:drill`}
+				label="Drill"
+				value={hole.hole.drill}
+				unit={unit}
+				positive
+				onChange={(drill) => onEdit({ kind: "hole-drill", drill })}
 			/>,
 		],
 	];
@@ -711,7 +734,7 @@ function SelectionAttributesPanel({
 	const basicShapes = shapes.flatMap((shape) => {
 		const border =
 			shape.kind === "symbol" ? boxBorder(shape)?.shape : undefined;
-		if (isPadOrVia(shape)) return [];
+		if (isDrilled(shape)) return [];
 		return isBasicShape(shape)
 			? [shape]
 			: border && isBasicShape(border)
@@ -730,12 +753,12 @@ function SelectionAttributesPanel({
 	const outlinedShapes = shapes.flatMap((shape) =>
 		shape.kind === "symbol"
 			? symbolShapes(shape).filter((child) => child.kind !== "text")
-			: shape.kind === "text" || isPadOrVia(shape)
+			: shape.kind === "text" || isDrilled(shape)
 				? []
 				: [shape],
 	);
 	const fillable = footprint
-		? shapes.filter(isFillableShape).filter((shape) => !isPadOrVia(shape))
+		? shapes.filter(isFillableShape).filter((shape) => !isDrilled(shape))
 		: [];
 	const lineWidth =
 		outlinedShapes.length &&
@@ -782,6 +805,7 @@ function SelectionAttributesPanel({
 			: (value: number) => `${Number(value.toFixed(4))} mm`;
 	const pad = single && isPad(single) ? single : undefined;
 	const via = single && isVia(single) ? single : undefined;
+	const hole = single && isHole(single) ? single : undefined;
 	const layer =
 		footprint && shapes.every((shape) => shape.kind !== "symbol")
 			? shapes.every((shape) => shapeLayer(shape) === shapeLayer(shapes[0]))
@@ -846,43 +870,46 @@ function SelectionAttributesPanel({
 			: single &&
 					copperLayers.every((copper) => shapeLayers(single).includes(copper))
 				? [["Layer", "Both copper layers"] as [string, ReactNode]]
-				: [
-						[
-							"Layer",
-							<select
-								key="layer"
-								aria-label="Layer"
-								className="ui-select w-36"
-								value={layer}
-								onChange={(event) =>
-									onEdit({
-										kind: "layer",
-										layer: event.currentTarget.value as FootprintLayer,
-									})
-								}
-							>
-								{layer === "" && (
-									<option value="" disabled>
-										Mixed
-									</option>
-								)}
-								{footprintLayers
-									.filter((item) => !pad || copperLayers.includes(item))
-									.map((item) => (
-										<option
-											key={item}
-											value={item}
-											disabled={hiddenLayers?.has(item)}
-										>
-											{footprintLayerLabels[item]}
-											{hiddenLayers?.has(item) ? " (hidden)" : ""}
+				: shapes.every(isHole)
+					? [["Layer", "Through the board"] as [string, ReactNode]]
+					: [
+							[
+								"Layer",
+								<select
+									key="layer"
+									aria-label="Layer"
+									className="ui-select w-36"
+									value={layer}
+									onChange={(event) =>
+										onEdit({
+											kind: "layer",
+											layer: event.currentTarget.value as FootprintLayer,
+										})
+									}
+								>
+									{layer === "" && (
+										<option value="" disabled>
+											Mixed
 										</option>
-									))}
-							</select>,
-						] as [string, ReactNode],
-					]),
+									)}
+									{footprintLayers
+										.filter((item) => !pad || copperLayers.includes(item))
+										.map((item) => (
+											<option
+												key={item}
+												value={item}
+												disabled={hiddenLayers?.has(item)}
+											>
+												{footprintLayerLabels[item]}
+												{hiddenLayers?.has(item) ? " (hidden)" : ""}
+											</option>
+										))}
+								</select>,
+							] as [string, ReactNode],
+						]),
 		...(pad ? padRows(pad, unit, onEdit, hiddenLayers) : []),
 		...(via ? viaRows(via, unit, onEdit) : []),
+		...(hole ? holeRows(hole, unit, onEdit) : []),
 		...(boardNets ? boardRows(shapes, boardNets, unit, onEdit) : []),
 		...(single?.kind === "pin"
 			? (["name", "number"] as const).map((attribute): [string, ReactNode] => [

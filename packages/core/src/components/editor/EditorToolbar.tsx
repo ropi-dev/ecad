@@ -4,6 +4,7 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	Cable,
 	Circle,
+	CircleDashed,
 	CircleDot,
 	CircleSmall,
 	Download,
@@ -96,8 +97,15 @@ const tools = [
 		icon: CircleDot,
 	},
 	{ group: "pads", kind: "via", label: "Via", icon: CircleSmall },
+	{ group: "pads", kind: "hole", label: "Unplated hole", icon: CircleDashed },
 	{ group: "routing", kind: "track", label: "Track", icon: Spline },
 	{ group: "routing", kind: "via", label: "Via", icon: CircleSmall },
+	{
+		group: "routing",
+		kind: "hole",
+		label: "Unplated hole",
+		icon: CircleDashed,
+	},
 	{ group: "routing", kind: "zone", label: "Copper zone", icon: SquareDashed },
 	{
 		group: "routing",

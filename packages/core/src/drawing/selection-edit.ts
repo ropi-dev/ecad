@@ -29,10 +29,12 @@ import type { TextAlignment } from "@ecad/drawing-core/drawing/text-alignment.ts
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
 import {
+	editHole,
 	editPad,
 	editVia,
+	isDrilled,
+	isHole,
 	isPad,
-	isPadOrVia,
 	isVia,
 	type PadEdit,
 	setShapeLayer,
@@ -80,6 +82,7 @@ export type SelectionEdit =
 	| { readonly kind: "layer"; readonly layer: FootprintLayer }
 	| { readonly kind: "pad"; readonly edit: PadEdit }
 	| { readonly kind: "via-drill"; readonly drill: number }
+	| { readonly kind: "hole-drill"; readonly drill: number }
 	| { readonly kind: "fill"; readonly filled: boolean }
 	| {
 			readonly kind: "symbol-label-position";
@@ -163,7 +166,8 @@ const attributeLabels: Partial<Record<ShapeAttribute, string>> = {
 export const canCarryNet = (
 	shape: EditorShape,
 ): shape is Extract<EditorShape, { kind: "line" | FillableShapeKind }> =>
-	shape.kind === "line" || (isFillableShape(shape) && !isPad(shape));
+	shape.kind === "line" ||
+	(isFillableShape(shape) && !isPad(shape) && !isHole(shape));
 
 /**
  * The replacements and history label for an Attributes panel edit, or
@@ -339,10 +343,17 @@ export function applySelectionEdit(
 						label: "Change via drill",
 					}
 				: undefined;
+		case "hole-drill":
+			return single && isHole(single)
+				? {
+						replacements: [editHole(single, edit.drill)],
+						label: "Change hole drill",
+					}
+				: undefined;
 		case "fill":
 			return {
 				replacements: selection.flatMap((shape) =>
-					isFillableShape(shape) && !isPadOrVia(shape)
+					isFillableShape(shape) && !isDrilled(shape)
 						? [{ ...shape, filled: edit.filled }]
 						: [],
 				),

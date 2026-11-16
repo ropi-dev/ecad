@@ -43,6 +43,7 @@ import {
 	type PadType,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
+	createHole,
 	createPad,
 	createVia,
 	newPadLayers,
@@ -102,6 +103,7 @@ export type CanvasTool =
 	| "symbol"
 	| PadTool
 	| "via"
+	| "hole"
 	| "track"
 	| "zone"
 	| "outline";
@@ -229,6 +231,7 @@ export function useCanvasGestures({
 	const placing =
 		canRotatePlacement ||
 		tool === "via" ||
+		tool === "hole" ||
 		tool === "track" ||
 		tool === "zone" ||
 		tool === "outline";
@@ -302,6 +305,7 @@ export function useCanvasGestures({
 		if (isPadTool(tool))
 			return newPadLayers(padToolTypes[tool], footprintLayer ?? "F.Cu");
 		if (tool === "via") return copperLayers;
+		if (tool === "hole") return ["F.Mask", "B.Mask"];
 		if ((tool === "track" || tool === "zone") && board)
 			return [board.copperLayer];
 		if (tool === "outline") return ["Edge.Cuts"];
@@ -703,6 +707,19 @@ export function useCanvasGestures({
 			return true;
 		},
 	};
+	const holeHandler: ToolHandler = {
+		press: (_event, _point, start) => {
+			session.place([createHole(session.nextId(), start)], "Place hole");
+		},
+		hover: (_canvas, point) => {
+			setPlacementPreview({
+				tool,
+				symbolDefinition,
+				shape: createHole(session.nextId(), snapPoint(point, gridStep)),
+			});
+			return true;
+		},
+	};
 	const anchorAt = (
 		point: Point,
 		chain?: Pick<TrackChain, "layer" | "net" | "start">,
@@ -859,6 +876,7 @@ export function useCanvasGestures({
 		"smd-pad": padHandler("smd-pad"),
 		"through-hole-pad": padHandler("through-hole-pad"),
 		via: viaHandler,
+		hole: holeHandler,
 		track: trackHandler,
 		zone: zoneHandler,
 		outline: outlineHandler,

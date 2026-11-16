@@ -29,13 +29,21 @@ export interface RealisticLayerStyle {
 	color?: string;
 }
 
-export function realisticLayerStyle(role: BoardLayerRole): RealisticLayerStyle {
+export function realisticLayerStyle(
+	role: BoardLayerRole,
+	unplated = false,
+): RealisticLayerStyle {
 	if (role === "copper")
 		return { visible: true, color: REALISTIC_COLORS.copper };
 	if (role === "legend")
 		return { visible: true, color: REALISTIC_COLORS.legend };
 	if (role === "drill")
-		return { visible: true, color: REALISTIC_COLORS.plating };
+		return {
+			visible: true,
+			color: unplated
+				? REALISTIC_COLORS.substrateEdge
+				: REALISTIC_COLORS.plating,
+		};
 	return { visible: false };
 }
 

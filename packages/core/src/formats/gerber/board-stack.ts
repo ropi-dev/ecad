@@ -80,6 +80,17 @@ export function boardOutline(
 export const isDrillLayer = (layer: { name: string; metadata: Attributes }) =>
 	GROUPS[classify(layer)[0]] === DRILL;
 
+export const isUnplatedDrillLayer = (layer: {
+	name: string;
+	metadata: Attributes;
+}) => {
+	if (!isDrillLayer(layer)) return false;
+	const fileFunction = layer.metadata[".FileFunction"];
+	return fileFunction
+		? fileFunction[0]?.toLowerCase() === "nonplated"
+		: /(?:^|[._ -])npth(?:[._ -]|$)/i.test(layer.name);
+};
+
 export const BOARD_SUBSTRATE_TOP = COPPER_Z;
 export const BOARD_COPPER_TOP = TOP_COPPER.z;
 export const BOARD_MASK_TOP = TOP_MASK.z;

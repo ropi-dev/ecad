@@ -131,10 +131,22 @@ const viaSchema = z
 		"Makes a footprint circle a plated via through both copper layers. The circle is its copper.",
 	);
 
+const holeSchema = z
+	.strictObject({
+		drill: z
+			.number()
+			.positive()
+			.describe("Hole diameter in millimetres, at most the circle's diameter."),
+	})
+	.describe(
+		"Makes a footprint or board circle an unplated hole: drilled through the board with no copper. The circle is its solder mask opening on both sides, and copper keeps the board clearance from it.",
+	);
+
 const fillableShapeFields = {
 	filled: z.boolean().optional(),
 	pad: padSchema.optional(),
 	via: viaSchema.optional(),
+	hole: holeSchema.optional(),
 	zone: zoneSchema.optional(),
 	net: netField,
 	...geometryFields,
@@ -245,17 +257,39 @@ const validViaError = {
 	error:
 		"A via must be a circle that is not a pad, with a drill smaller than the circle.",
 };
+const validHole = (shape: {
+	kind: string;
+	width: number;
+	layer?: string;
+	net?: string;
+	pad?: unknown;
+	via?: unknown;
+	hole?: z.output<typeof holeSchema>;
+}) =>
+	!shape.hole ||
+	(shape.kind === "circle" &&
+		(shape.layer === "F.Mask" || shape.layer === "B.Mask") &&
+		shape.net === undefined &&
+		shape.pad === undefined &&
+		shape.via === undefined &&
+		shape.hole.drill <= shape.width);
+const validHoleError = {
+	error:
+		"An unplated hole must be a circle on F.Mask or B.Mask with no net that is not a pad or via, with a drill no larger than the circle.",
+};
 const validZone = (shape: {
 	kind: string;
 	layer?: string;
 	pad?: unknown;
 	via?: unknown;
+	hole?: unknown;
 	zone?: unknown;
 }) =>
 	!shape.zone ||
 	(shape.kind === "rectangle" &&
 		shape.pad === undefined &&
 		shape.via === undefined &&
+		shape.hole === undefined &&
 		(shape.layer === "F.Cu" || shape.layer === "B.Cu"));
 const validZoneError = {
 	error:
@@ -272,12 +306,14 @@ const fillableInputSchema = z
 	.refine(roundCircle, roundCircleError)
 	.refine(validPad, validPadError)
 	.refine(validVia, validViaError)
+	.refine(validHole, validHoleError)
 	.refine(validZone, validZoneError);
 const fillableShapeSchema = z
 	.strictObject({ ...fillableShapeFields, id: shapeId })
 	.refine(roundCircle, roundCircleError)
 	.refine(validPad, validPadError)
 	.refine(validVia, validViaError)
+	.refine(validHole, validHoleError)
 	.refine(validZone, validZoneError);
 const lineInputSchema = z.strictObject(lineShapeFields);
 const lineShapeSchema = z.strictObject({ ...lineShapeFields, id: shapeId });
@@ -700,6 +736,7 @@ export const savedDrawingShapesSchema = z.preprocess(
 export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export type ShapePad = z.output<typeof padSchema>;
 export type ShapeVia = z.output<typeof viaSchema>;
+export type ShapeHole = z.output<typeof holeSchema>;
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
 export interface PinShape extends z.output<typeof pinShapeSchema> {}

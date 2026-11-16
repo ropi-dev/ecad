@@ -1,5 +1,6 @@
 import {
 	analyzeConnectivity,
+	boardHoles,
 	type CopperItem,
 	copperItems,
 	endsAt,
@@ -15,6 +16,7 @@ import {
 	isBoardFootprint,
 } from "#/board/footprints.ts";
 import {
+	boundsOverlap,
 	type Hull,
 	hullDistance,
 	lineEnds,
@@ -184,6 +186,41 @@ export function checkBoard(
 			at,
 		});
 	});
+	const holes = boardHoles(shapes);
+	holes.forEach((hole, index) => {
+		for (const other of holes.slice(index + 1))
+			if (other.shapeId !== hole.shapeId && itemDistance(hole, other) <= 1e-6)
+				findings.push({
+					id: `holes:${hole.index}:${other.index}`,
+					kind: "clearance",
+					message: "Two unplated holes overlap",
+					shapeIds: [hole.shapeId, other.shapeId],
+					at: center(hole.bounds),
+				});
+	});
+	for (const hole of holes)
+		for (const item of items) {
+			if (item.shapeId === hole.shapeId) continue;
+			const zone = item.kind === "zone";
+			if (zone && !options.zoneReach?.gap) continue;
+			const needed = Math.max(rules.clearance, zoneClearance(item));
+			if (!boundsOverlap(item.bounds, hole.bounds, needed)) continue;
+			const distance =
+				zone && options.zoneReach?.gap
+					? options.zoneReach.gap(item, hole, needed)
+					: itemDistance(item, hole);
+			if (distance >= needed - 1e-6) continue;
+			findings.push({
+				id: `hole:${hole.index}:${item.index}`,
+				kind: "clearance",
+				message:
+					distance <= 1e-6
+						? `${describe(item)} on ${netName(netlist, item.net)} overlaps an unplated hole`
+						: `Clearance ${distance.toFixed(3)} mm between ${describe(item)} on ${netName(netlist, item.net)} and an unplated hole, needs ${needed} mm`,
+				shapeIds: [...new Set([item.shapeId, hole.shapeId])],
+				at: center(hole.bounds),
+			});
+		}
 	const outline = boardOutlineSegments(shapes);
 	if (!outline.length)
 		findings.push({
@@ -225,6 +262,25 @@ export function checkBoard(
 					: `${describe(item)} is outside the board outline`,
 				shapeIds: [item.shapeId],
 				at: center(item.bounds),
+			});
+		}
+		for (const hole of holes) {
+			const inside = insideOutline(
+				{ x: hole.shape.x, y: hole.shape.y },
+				outline,
+			);
+			const crosses = strokes.some(
+				(stroke) => hullDistance(hole.hulls[0], stroke) <= 1e-6,
+			);
+			if (inside && !crosses) continue;
+			findings.push({
+				id: `edge-hole:${hole.index}`,
+				kind: "edge",
+				message: crosses
+					? "An unplated hole crosses the board edge"
+					: "An unplated hole is outside the board outline",
+				shapeIds: [hole.shapeId],
+				at: center(hole.bounds),
 			});
 		}
 	}

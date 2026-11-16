@@ -348,3 +348,31 @@ test("the realistic toggle shows the board with its solder mask in the flat and 
 	await expect(area).toHaveAttribute("data-view", "3d");
 	await toggleBothWays();
 });
+
+test("the PCB's Unplated hole tool places a hole through the board with no net", async ({
+	page,
+}) => {
+	await addExample(page);
+	await page.getByRole("button", { name: "Routing", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Unplated hole", exact: true })
+		.click();
+	const point = await screenPointOfMillimetres(page, -12, -22);
+	await page.mouse.move(point.x, point.y);
+	await page.mouse.click(point.x, point.y);
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(async () =>
+			((await documentState(page)).editorShapes as EditorShape[])
+				.filter((shape) => shape.kind === "circle" && shape.hole)
+				.map((shape) => [shape.width, shape.kind === "circle" && shape.hole]),
+		)
+		.toEqual([[3.2, { drill: 3.2 }]]);
+	await page.mouse.dblclick(point.x, point.y);
+	const attributes = page.getByRole("complementary", {
+		name: "Selection attributes",
+	});
+	await expect(attributes.getByText("Through the board")).toBeVisible();
+	await expect(attributes.getByLabel("Drill")).toHaveValue("3.2");
+	await expect(attributes.getByLabel("Net")).toHaveCount(0);
+});
