@@ -66,6 +66,7 @@ test("the schema accepts an unplated hole only on a mask-layer circle with no ne
 		{ ...pad, hole: { drill: 0.5 } },
 		{ ...via, hole: { drill: 0.3 } },
 		{ ...hole, layer: "F.Cu" as const },
+		{ ...hole, layer: undefined },
 		{ ...hole, net: "gnd" },
 	];
 	for (const shape of rejected)

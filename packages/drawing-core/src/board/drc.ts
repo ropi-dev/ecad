@@ -269,15 +269,14 @@ export function checkBoard(
 				{ x: hole.shape.x, y: hole.shape.y },
 				outline,
 			);
-			if (
-				inside &&
-				strokes.every((stroke) => hullDistance(hole.hulls[0], stroke) > 1e-6)
-			)
-				continue;
+			const crosses = strokes.some(
+				(stroke) => hullDistance(hole.hulls[0], stroke) <= 1e-6,
+			);
+			if (inside && !crosses) continue;
 			findings.push({
 				id: `edge-hole:${hole.index}`,
 				kind: "edge",
-				message: inside
+				message: crosses
 					? "An unplated hole crosses the board edge"
 					: "An unplated hole is outside the board outline",
 				shapeIds: [hole.shapeId],

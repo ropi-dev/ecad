@@ -1026,7 +1026,11 @@ describe("unplated holes", () => {
 		const { shapes, at } = dividerBoard();
 		const hole = at(6, 4);
 		const small = at(-6, 4);
-		const board = [...shapes, mountingHole(hole), boardHole(small, 1)];
+		const board = [
+			...shapes,
+			mountingHole(hole),
+			{ ...boardHole(small, 1.2), hole: { drill: 1 } },
+		];
 		const drill = required(fabricationFile(board, "-NPTH.drl")).content;
 		assert.match(drill, /^; #@! TF\.FileFunction,NonPlated,1,2,NPTH$/m);
 		assert.deepEqual(
@@ -1048,11 +1052,16 @@ describe("unplated holes", () => {
 		assert.equal(fabricationFile(shapes, "-NPTH.drl"), undefined);
 		for (const suffix of ["F_Mask.gts", "B_Mask.gbs"]) {
 			const mask = required(fabricationFile(board, suffix));
-			const [opening] = objectsAt(mask.content, mask.name, hole);
-			assert.ok(
-				Math.abs(opening.bounds.maxX - opening.bounds.minX - 3.3) < 1e-6,
-				suffix,
-			);
+			for (const [center, width] of [
+				[hole, 3.3],
+				[small, 1.3],
+			] as const) {
+				const [opening] = objectsAt(mask.content, mask.name, center);
+				assert.ok(
+					Math.abs(opening.bounds.maxX - opening.bounds.minX - width) < 1e-6,
+					suffix,
+				);
+			}
 		}
 		for (const suffix of ["F_Cu.gtl", "B_Cu.gbl", "F_Paste.gtp"]) {
 			const file = required(fabricationFile(board, suffix));
@@ -1156,9 +1165,11 @@ describe("unplated holes", () => {
 		assert.deepEqual(
 			holeFindings([
 				boardHole({ x: outline.x + 14.5, y: outline.y }, 2),
+				boardHole({ x: outline.x + 15.5, y: outline.y + 5 }, 2),
 				boardHole({ x: outline.x + 20, y: outline.y }, 2),
 			]),
 			[
+				["edge", "An unplated hole crosses the board edge"],
 				["edge", "An unplated hole crosses the board edge"],
 				["edge", "An unplated hole is outside the board outline"],
 			],

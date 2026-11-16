@@ -302,9 +302,9 @@ const circumscribed = (hull: Hull, margin: number) =>
 /**
  * Fills each zone: its rectangle inside the board outline, less the edge
  * clearance, the copper of other nets, unplated holes and the fills of earlier
- * zones on other nets, each grown by the clearance. Islands that reach nothing on the zone's
- * net, directly or through a touching island of another zone on that net,
- * are removed.
+ * zones on other nets, each grown by the clearance. Islands that reach nothing
+ * on the zone's net, directly or through a touching island of another zone on
+ * that net, are removed.
  */
 export function fillZones(
 	shapes: readonly EditorShape[],
