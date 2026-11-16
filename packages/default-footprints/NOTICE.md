@@ -77,3 +77,41 @@ The source footprints are:
 
 The USB Micro-B receptacle's oval shell holes are round drills here, the
 smallest dimension of each oval.
+
+## Raspberry Pi minimal design footprints
+
+`src/raspberry-pi-minimal.ts` adapts six land patterns from Raspberry Pi's
+RPI-RP2350A-MINIMAL R4 board, `RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb` in
+https://datasheets.raspberrypi.com/rp2350/Minimal-KiCAD.zip, downloaded on
+2026-11-15. They are under the MIT license below, not CC BY-SA 4.0. The
+conversion is the same as for the KiCad footprints. The USB receptacle's
+custom shell pads become two rectangles each.
+
+- `RPI_COMPILED:amphenol_10103594-0001lf` as `USB_Micro-B_Amphenol_10103594-0001LF`
+- `RPI_COMPILED:samtec_tsw-118-07-l-d` as `PinHeader_2x18_Samtec_TSW-118-07-L-D`
+- `RPI_COMPILED:jst_sm03b-srss-tb-lf--sn-` as `JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal`
+- `RPI_COMPILED:wurthelek_434133025816` as `SW_Push_1P1T_NO_Wuerth_434133025816`
+- `RPI_COMPILED:onsemi_ncp1117st33t3g` as `SOT-223-3_TabPin4`
+- `RPI_COMPILED:abracon_aota-b201610s3r3-101-t` as `L_Abracon_AOTA-B201610`
+
+Copyright (c) 2026 Raspberry Pi Ltd
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Raspberry Pi provides the design for guidance only and without guarantee. Check
+the land patterns against the manufacturers' drawings before ordering boards.

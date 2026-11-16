@@ -74,9 +74,13 @@ Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over both copp
 
 ## Reference design
 
-**Add file → Examples → RP2350A reference design**, or **Open an example** on the start page, adds the Raspberry Pi RP2350A minimal design to the project: a schematic, its circuit and a routed two-layer board with ground zones on both sides, joined by a via in each island of copper. It has the chip and its switching core regulator, W25Q128JVS flash, a 12 MHz crystal, a Micro-B USB connector with 27 Ω series resistors, an AMS1117 3.3 V regulator, BOOTSEL and RUN buttons, an SWD header and two 20-pin GPIO headers.
+**Add file → Examples → RP2350A reference design**, or **Open an example** on the start page, adds the Raspberry Pi RP2350A minimal design to the project: a schematic, its circuit and a routed two-layer board with ground zones on both sides, joined by a via in each island of copper.
 
-`pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about five minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
+The schematic is Raspberry Pi's RPI-RP2350A-MINIMAL R4-S1 schematic, imported from `tests/fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch` with the KiCad importer, so its parts, wires, junctions, labels and notes match the source sheet. Every item then snaps to the 50 mil (1.27 mm) grid. Centring the A3 sheet leaves the source's grid 0.45 mm and 0.09 mm off ours, and one ground symbol in the source sits half a step off it. It has the chip and its switching core regulator, W25Q128JVSIQ flash, a 12 MHz crystal, a Micro-B USB connector with 27 Ω series resistors, an NCP1117 3.3 V regulator, BOOTSEL and RUN buttons, a JST SH debug connector and two 2x18 headers. The mounting holes and the PCB, variant and revision symbols have no pins, so they stay off the board.
+
+Each component gets the built-in footprint for the land pattern the source names. The vendor parts use footprints converted from Raspberry Pi's board, and the 0402 and 0805 passives, the QFN-60, the SOIC-8 and the crystal use KiCad's generic ones. Footprints sit where Raspberry Pi's 52 x 51 mm board puts them, with its 0.15 mm tracks and its ground vias: nine in the chip's exposed pad, as in Raspberry Pi's chip footprint, and its 27 others, most of them beside decoupling capacitors. A via that would come within the clearance of another net's pad is left out. The tracks are ECAD's own routing, not a copy of Raspberry Pi's. After the main routing passes, any connection still open is routed again after ripping up the routes near it.
+
+`pnpm run example:rp2350a` regenerates it from `packages/core/src/examples/rp2350a.ts` in about 15 minutes and prints its DRC result. `--write` saves the design the app loads, and `ECAD_BOARD_SVG=<file>` writes a top view of the board as SVG.
 
 ## File format
 

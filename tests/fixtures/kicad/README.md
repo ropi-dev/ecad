@@ -7,3 +7,5 @@ The originating reference downloaded [Minimal-KiCAD.zip](https://datasheets.rasp
 The tests compare every imported terminal name, package number and position, plus source component values and wire endpoints. They also check the 87 instances, 346 wires, 83 junctions and 94 visible labels. The performance scenario uses this same source through the app's file picker.
 
 `source-nets.json` is the coordinating reference task's independently derived source connectivity oracle. It contains 51 named and five unnamed pin groups, with 231 non-power component terminals. Import tests exclude `#PWR` terminals before comparing the native net graph. The tests repeat that comparison after project save/reopen and then export the reopened drawing as SVG and PNG.
+
+`pnpm run example:rp2350a` also imports this schematic to build the RP2350A example design in `packages/core/src/examples`, so changing the file changes the example.

@@ -14,7 +14,7 @@ import { exampleDesigns } from "#/examples/designs.ts";
 import { rp2350aSheet } from "#/examples/rp2350a.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 
-test("the RP2350A example is a fully routed board that passes the check and exports Gerbers a fab can read", async () => {
+test("the RP2350A example is a fully routed single-sided board that passes the check and exports Gerbers a fab can read", async () => {
 	const design = await exampleDesigns.rp2350a.load();
 	const board = boardFileSchema.parse({
 		units: "mm",
@@ -50,7 +50,8 @@ test("the RP2350A example is a fully routed board that passes the check and expo
 				),
 				`${file.name}: ${result.diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`,
 			);
-			assert.ok(result.object.objects.length > 0, file.name);
+			const bottomOnly = /-B_(Paste|Silkscreen)\./.test(file.name);
+			assert.equal(result.object.objects.length > 0, !bottomOnly, file.name);
 			return /%TF\.FileFunction,([^*]+)\*%/.exec(file.content)?.[1];
 		});
 	assert.deepEqual(functions.sort(), [

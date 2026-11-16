@@ -1,6 +1,6 @@
 # Default footprints
 
-`@ecad/default-footprints` generates the 56 built-in footprints that symbols can use. Like `@ecad/default-symbols`, it has no runtime dependencies and works offline.
+`@ecad/default-footprints` generates the 62 built-in footprints that symbols can use. Like `@ecad/default-symbols`, it has no runtime dependencies and works offline.
 
 ```ts
 import { generateDefaultFootprints } from "@ecad/default-footprints";
@@ -19,6 +19,7 @@ The collection covers the default footprint of every built-in symbol that has on
 - SOT-23, SOT-23-5, SOT-89-3, SOT-223, TO-92 and TO-220 packages
 - an HC49 crystal, a 3215 watch crystal, a 3225 four-pin crystal, a SOIC-8 208 mil package, a USB Micro-B receptacle, a trimmer potentiometer, a photoresistor, a buzzer, two coin cell holders, three switches and 2, 3, 4, 8 and 20 pin headers
 - QFN-16, QFN-40, QFN-48, QFN-52, QFN-56, QFN-60 and QFN-80 packages with exposed pads
+- the vendor parts of Raspberry Pi's RP2350A minimal design: an Amphenol Micro-B receptacle, a Samtec 2x18 header, a JST SH 3-pin connector, a Würth tactile switch, a SOT-223 with the tab as pad 4 and an Abracon 2016 inductor
 
 Symbols name their default footprint by ID in `src/catalog.ts`, `src/microcontrollers.ts`, `src/nordic.ts` and `src/legacy.ts` of `@ecad/default-symbols`. Several symbols share one footprint. The diodes all use SOD-123, the battery symbols share a coin cell holder, and the speaker uses the 2-pin header. Pads match pins by number. A pin without a number takes its position among the symbol's pins, counting from 1, as circuit components do, so the diode's K and A pins are pads 1 and 2. `tests/symbol-footprints.test.ts` checks that every default footprint has exactly one pad number for each pin.
 
@@ -44,4 +45,4 @@ The editor has rectangle and circle pads, so rounded rectangle and oval pads bec
 
 To add a footprint, convert its `.kicad_mod` file into a catalog entry with the same item kinds, add it to NOTICE.md, and run `pnpm --filter @ecad/default-footprints test` and `tests/symbol-footprints.test.ts`.
 
-The collection uses the KiCad library license, CC BY-SA 4.0 with its electronic-design exception. See [LICENSE.md](LICENSE.md) and [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt).
+The collection uses the KiCad library license, CC BY-SA 4.0 with its electronic-design exception. The Raspberry Pi footprints in `src/raspberry-pi-minimal.ts` are under Raspberry Pi's MIT license instead, reproduced in NOTICE.md. See [LICENSE.md](LICENSE.md) and [CC-BY-SA-4.0.txt](CC-BY-SA-4.0.txt).

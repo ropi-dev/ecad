@@ -1,6 +1,7 @@
 // Adapted from the KiCad footprint libraries, commit a0dcd398e7ea4b00cdeb91efc35f09cceaa9097d.
 // Copyright KiCad library contributors. See ../LICENSE.md and ../NOTICE.md.
 // Coordinates are KiCad's: millimetres, Y down, angles in degrees.
+import { raspberryPiMinimalFootprints } from "./raspberry-pi-minimal.ts";
 import { referenceFootprints } from "./reference-parts.ts";
 import type { SourceFootprint } from "./types.ts";
 
@@ -2261,4 +2262,5 @@ export const catalog: readonly SourceFootprint[] = [
 		],
 	},
 	...referenceFootprints,
+	...raspberryPiMinimalFootprints,
 ];

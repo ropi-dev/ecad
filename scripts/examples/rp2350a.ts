@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
 	analyzeConnectivity,
 	copperItems,
@@ -17,7 +17,15 @@ import {
 import { boardSvg } from "./board-svg.ts";
 
 const started = performance.now();
-const schematic = rp2350aSchematic();
+const schematic = rp2350aSchematic(
+	readFileSync(
+		new URL(
+			"../../tests/fixtures/kicad/RPI-RP2350A-MINIMAL_R4-S1.kicad_sch",
+			import.meta.url,
+		),
+		"utf8",
+	),
+);
 const { shapes, file } = rp2350aCircuit(schematic);
 console.log(
 	`schematic: ${shapes.length} shapes, ${file.circuit.components.length} components, ${file.circuit.nets.length} nets`,
