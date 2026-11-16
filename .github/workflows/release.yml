@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: A stable release, or a nightly published as a pre-release
+        type: choice
+        options: [stable, nightly]
+        default: stable
+      version:
+        description: >-
+          MAJOR.MINOR.PATCH. Empty raises the patch version of the latest
+          stable release, or gives 0.1.0 before the first one. A nightly adds
+          -nightly.YYYYMMDD.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  version:
+    name: Choose version
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      debian_version: ${{ steps.version.outputs.debian_version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      replaces: ${{ steps.version.outputs.replaces }}
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run releases from main, not $GITHUB_REF."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          check-latest: true
+      - id: version
+        name: Choose version
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: node scripts/release/version.ts --channel "$CHANNEL" --version "$VERSION"
+
+  checks:
+    name: Checks
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  deb:
+    name: Debian package
+    needs: version
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DEBIAN_VERSION: ${{ needs.version.outputs.debian_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          check-latest: true
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # The packager downloads its own Electron build for the package.
+      - name: Build package
+        run: pnpm run package:deb --version "$DEBIAN_VERSION"
+      - name: Install package
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes "./dist/deb/ecad_${DEBIAN_VERSION}_amd64.deb"
+          test "$(dpkg-query --showformat '${Version}' --show ecad)" = "$DEBIAN_VERSION"
+      - name: Run the installed CLI
+        run: |
+          test "$(ecad --version)" = "$DEBIAN_VERSION"
+          ecad --drawing "$RUNNER_TEMP/check.ecaddraw" placeRectangle \
+            '{"x":0,"y":0,"width":20,"height":10,"rotation":0,"lineWidth":0.25}'
+      # GitHub turns ~ in asset names into a period, so nightly files use the
+      # tag's version. The package inside keeps the Debian version.
+      - name: Name files after the release
+        if: env.VERSION != env.DEBIAN_VERSION
+        run: |
+          for file in dist/deb/ecad_"${DEBIAN_VERSION}"_*; do
+            mv "$file" "dist/deb/ecad_${VERSION}_${file#dist/deb/ecad_"${DEBIAN_VERSION}"_}"
+          done
+      - name: Upload package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ecad-deb
+          path: dist/deb/ecad_*
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [version, checks, deb]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      PREVIOUS_TAG: ${{ needs.version.outputs.previous_tag }}
+      REPLACES: ${{ needs.version.outputs.replaces }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ecad-deb
+          path: dist/deb
+      - name: Remove the earlier nightly from today
+        if: env.REPLACES == 'true'
+        run: gh release delete "$TAG" --yes --cleanup-tag
+      - name: Publish release
+        run: |
+          deb="dist/deb/ecad_${VERSION}_amd64.deb"
+          options=(--target "$GITHUB_SHA" --title "ECAD $VERSION" --generate-notes)
+          if [ -n "$PREVIOUS_TAG" ]; then
+            options+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
+          if [ "$PRERELEASE" = true ]; then
+            options+=(--prerelease --latest=false)
+          else
+            options+=(--latest)
+          fi
+          gh release create "$TAG" "$deb" \
+            "${deb%.deb}.files.json" "${deb%.deb}.files.zst" "${options[@]}"
+      # The desktop app reads the 50 newest releases, so nightlies must not
+      # push the latest stable release out of that page.
+      - name: Remove old nightlies
+        run: |
+          gh release list --limit 200 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))]
+              | sort_by(.createdAt) | reverse | .[14:] | .[].tagName' |
+            while read -r tag; do
+              gh release delete "$tag" --yes --cleanup-tag
+            done

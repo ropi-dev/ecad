@@ -11,7 +11,11 @@ const cli = fileURLToPath(new URL("../", import.meta.url));
  * Builds the CLI into `outdir`, relative to the CLI package. A `standalone`
  * build also bundles the npm dependencies, so it runs without node_modules.
  */
-export async function buildCli({ outdir = "dist", standalone = false } = {}) {
+export async function buildCli({
+	outdir = "dist",
+	standalone = false,
+	version,
+} = {}) {
 	outdir = resolve(cli, outdir);
 	await rm(outdir, { recursive: true, force: true });
 	await build({
@@ -33,6 +37,7 @@ export async function buildCli({ outdir = "dist", standalone = false } = {}) {
 		platform: "node",
 		format: "esm",
 		target: "node24",
+		define: version ? { ECAD_VERSION: JSON.stringify(version) } : undefined,
 		logLevel: "info",
 	});
 	await writeDistributionLicenses("cli", outdir);
@@ -40,7 +45,11 @@ export async function buildCli({ outdir = "dist", standalone = false } = {}) {
 
 if (import.meta.main) {
 	const { values } = parseArgs({
-		options: { outdir: { type: "string" }, standalone: { type: "boolean" } },
+		options: {
+			outdir: { type: "string" },
+			standalone: { type: "boolean" },
+			version: { type: "string" },
+		},
 	});
 	await buildCli(values);
 }

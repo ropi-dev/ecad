@@ -233,6 +233,8 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	["packages/desktop/scripts/**", "none"],
 	["packages/desktop/index.html", "none"],
 	["packages/desktop/vite.config.ts", "none"],
+	// Release versioning runs only in the release workflow.
+	["scripts/release/**", "none"],
 
 	// Shared dependencies, build configuration and the app shell.
 	["package.json", "all"],
