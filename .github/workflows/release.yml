@@ -116,6 +116,9 @@ jobs:
   publish:
     name: Publish release
     needs: [version, checks, deb]
+    # The release environment accepts deployments from main only, so GitHub
+    # refuses this job on any other ref even if the check above is removed.
+    environment: release
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
