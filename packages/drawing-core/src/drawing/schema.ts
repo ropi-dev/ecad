@@ -95,6 +95,14 @@ const padSchema = z
 			.describe(
 				"Adds a solder paste opening the size of the pad on the paste layer of its copper side. Surface mount pads only.",
 			),
+		cornerRatio: z
+			.number()
+			.gt(0)
+			.max(0.5)
+			.optional()
+			.describe(
+				"Rounds a rectangular pad's corners. The radius is this share of the pad's shorter side, as KiCad's roundrect_rratio: 0.25 is KiCad's default and 0.5 makes the short ends fully round. Omit it for square corners.",
+			),
 	})
 	.describe(
 		"Makes a footprint rectangle or circle a pad. The shape is its copper.",
@@ -220,6 +228,7 @@ const validPad = (shape: {
 	const { pad } = shape;
 	if (!pad) return true;
 	if (shape.kind !== "rectangle" && shape.kind !== "circle") return false;
+	if (pad.cornerRatio !== undefined && shape.kind !== "rectangle") return false;
 	if (pad.type === "smd") return pad.drill === undefined;
 	return (
 		pad.paste === undefined &&
@@ -229,7 +238,7 @@ const validPad = (shape: {
 };
 const validPadError = {
 	error:
-		"A pad must be a rectangle or a circle. A through-hole pad needs a drill smaller than the pad and has no paste setting. A surface mount pad has no drill.",
+		"A pad must be a rectangle or a circle, and only a rectangle has rounded corners. A through-hole pad needs a drill smaller than the pad and has no paste setting. A surface mount pad has no drill.",
 };
 const validVia = (shape: {
 	kind: string;

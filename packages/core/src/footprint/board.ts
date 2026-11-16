@@ -14,6 +14,7 @@ import {
 	isPad,
 	isPadOrVia,
 	type PadShape,
+	padCornerRadius,
 	shapeDrill,
 	shapeLayer,
 	shapeLayers,
@@ -206,6 +207,25 @@ function rectangleGeometry(
 	};
 }
 
+function roundedRectanglePath(width: number, height: number, radius: number) {
+	const x = width / 2;
+	const y = height / 2;
+	const arc = (toX: number, toY: number) =>
+		`A${radius} ${radius} 0 0 1 ${toX} ${toY}`;
+	return [
+		`M${-x + radius} ${-y}`,
+		`H${x - radius}`,
+		arc(x, -y + radius),
+		`V${y - radius}`,
+		arc(x - radius, y),
+		`H${-x + radius}`,
+		arc(-x, y - radius),
+		`V${-y + radius}`,
+		arc(-x + radius, -y),
+		"Z",
+	].join(" ");
+}
+
 function shapeGeometry(shape: EditorShape): Geometry | undefined {
 	const { width, height, lineWidth } = shape;
 	if (shape.kind === "line")
@@ -244,8 +264,16 @@ function shapeGeometry(shape: EditorShape): Geometry | undefined {
 					],
 				};
 	}
-	if (shape.kind === "rectangle" && isPad(shape))
-		return { type: "rect", x: 0, y: 0, width, height };
+	if (shape.kind === "rectangle" && isPad(shape)) {
+		const radius = padCornerRadius(shape);
+		return radius > 0
+			? {
+					type: "path",
+					d: roundedRectanglePath(width, height, radius),
+					fill: true,
+				}
+			: { type: "rect", x: 0, y: 0, width, height };
+	}
 	if (shape.kind === "rectangle")
 		return rectangleGeometry(
 			{

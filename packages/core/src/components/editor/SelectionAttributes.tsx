@@ -51,6 +51,7 @@ import {
 	isPadOrVia,
 	isVia,
 	type PadShape,
+	padCornerRadius,
 	padMinorSize,
 	shapeLayer,
 	shapeLayers,
@@ -490,6 +491,26 @@ function padRows(
 				<option value="circle">Circle</option>
 			</select>,
 		],
+		...(pad.kind === "rectangle"
+			? [
+					[
+						"Corner radius",
+						<AttributeInput
+							key={`${pad.id}:corner-radius`}
+							label="Corner radius"
+							value={padCornerRadius(pad)}
+							unit={unit}
+							nonNegative
+							onChange={(value) =>
+								onEdit({
+									kind: "pad",
+									edit: { attribute: "cornerRadius", value },
+								})
+							}
+						/>,
+					] as [string, ReactNode],
+				]
+			: []),
 		...(pad.pad.type === "smd"
 			? [
 					[

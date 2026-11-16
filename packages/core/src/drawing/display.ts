@@ -34,6 +34,7 @@ import {
 import {
 	isPad,
 	isPadOrVia,
+	padCornerRadius,
 	isVia,
 	shapeDrill,
 	shapeLayers,
@@ -55,6 +56,7 @@ interface GeometrySize {
 	lineStyle?: LineStyle;
 	filled?: boolean;
 	length?: number;
+	cornerRadius?: number;
 }
 
 export interface DrawingTransform {
@@ -139,8 +141,17 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
-	if (isPadOrVia(shape))
-		return { kind: shape.kind, width, height, lineWidth: 0, filled: true };
+	if (isPadOrVia(shape)) {
+		const cornerRadius = padCornerRadius(shape);
+		return {
+			kind: shape.kind,
+			width,
+			height,
+			lineWidth: 0,
+			filled: true,
+			...(cornerRadius > 0 ? { cornerRadius } : {}),
+		};
+	}
 	if (kind !== "symbol")
 		return {
 			kind,

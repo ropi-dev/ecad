@@ -200,6 +200,11 @@ export const editVia = (shape: ViaShape, drill: number): ViaShape =>
 
 export const padMinorSize = (pad: PadShape) => Math.min(pad.width, pad.height);
 
+export const padCornerRadius = (shape: EditorShape): number =>
+	isPad(shape) && shape.kind === "rectangle"
+		? (shape.pad.cornerRatio ?? 0) * padMinorSize(shape)
+		: 0;
+
 function fitDrill(shape: PadShape): PadShape {
 	const { drill } = shape.pad;
 	return drill === undefined || drill < padMinorSize(shape)
@@ -222,7 +227,8 @@ export type PadEdit =
 	| { attribute: "type"; value: PadType }
 	| { attribute: "shape"; value: PadShape["kind"] }
 	| { attribute: "drill"; value: number }
-	| { attribute: "paste"; value: boolean };
+	| { attribute: "paste"; value: boolean }
+	| { attribute: "cornerRadius"; value: number };
 
 export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 	switch (edit.attribute) {
@@ -250,9 +256,10 @@ export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 		case "shape": {
 			if (edit.value === shape.kind) return shape;
 			const size = padMinorSize(shape);
+			const { cornerRatio: _cornerRatio, ...pad } = shape.pad;
 			return fitDrill(
 				edit.value === "circle"
-					? { ...shape, kind: "circle", width: size, height: size }
+					? { ...shape, kind: "circle", width: size, height: size, pad }
 					: { ...shape, kind: "rectangle" },
 			);
 		}
@@ -266,6 +273,15 @@ export function editPad(shape: PadShape, edit: PadEdit): PadShape {
 			return shape.pad.type === "smd"
 				? { ...shape, pad: { ...shape.pad, paste: edit.value } }
 				: shape;
+		case "cornerRadius": {
+			if (shape.kind !== "rectangle" || !(edit.value >= 0)) return shape;
+			const ratio = Math.min(0.5, edit.value / padMinorSize(shape));
+			const { cornerRatio: _cornerRatio, ...pad } = shape.pad;
+			return {
+				...shape,
+				pad: ratio > 0 ? { ...pad, cornerRatio: ratio } : pad,
+			};
+		}
 	}
 }
 
