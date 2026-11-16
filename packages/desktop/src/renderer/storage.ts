@@ -6,6 +6,7 @@ import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type {
 	DesktopSettingsBridge,
 	DesktopSymbolLibraryBridge,
+	DesktopUpdatesBridge,
 	LoadedDesktopSettings,
 } from "#/bridge.ts";
 import { decodeIpcErrors } from "#/ipc-errors.ts";
@@ -90,7 +91,14 @@ export function createDesktopProjectStorage(
 
 export async function createDesktopSettingsStorage(
 	bridge: DesktopSettingsBridge,
+	updates?: DesktopUpdatesBridge,
 ): Promise<SettingsStorage> {
+	const selfUpdating = updates
+		? updates.getState().then(
+				(state) => state !== null,
+				() => false,
+			)
+		: false;
 	let loaded: LoadedDesktopSettings;
 	try {
 		loaded = await decodeIpcErrors(() => bridge.load())();
@@ -104,7 +112,7 @@ export async function createDesktopSettingsStorage(
 	let { settings, error } = loaded;
 	const save = decodeIpcErrors((next: AppSettings) => bridge.save(next));
 	return {
-		location: `to ${loaded.path}`,
+		updates: await selfUpdating,
 		load() {
 			if (error) throw new Error(error);
 			return settings;

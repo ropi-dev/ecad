@@ -12,6 +12,7 @@ import {
 	rm,
 } from "node:fs/promises";
 import { join } from "node:path";
+import type { ReleaseChannel } from "@ecad/core/settings/schema.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { z } from "zod";
 import type { DesktopRelease, DesktopUpdateState } from "#/bridge.ts";
@@ -51,6 +52,7 @@ export function readPackagedDistribution(appPath: string) {
 }
 
 const releaseSchema = z.object({
+	tag_name: z.string().optional(),
 	draft: z.boolean().optional(),
 	prerelease: z.boolean().optional(),
 	body: z.string().nullish(),
@@ -200,13 +202,14 @@ function releasePackage(
 	for (const asset of release.assets) {
 		if (!asset.name.startsWith("ecad_") || !asset.name.endsWith(suffix))
 			continue;
-		const version = asset.name.slice("ecad_".length, -suffix.length);
+		const name = asset.name.slice("ecad_".length, -suffix.length);
+		const version = name.replace(/-nightly\.(?=\d{8}$)/, "~nightly.");
 		const download = assetDownload(asset, feedUrl);
 		if (!versionPattern.test(version) || !download?.sha256) continue;
 		const { url, size, sha256 } = download;
 		const files = releaseFiles(
 			release,
-			`ecad_${version}${suffix.slice(0, -4)}`,
+			`ecad_${name}${suffix.slice(0, -4)}`,
 			feedUrl,
 		);
 		return { version, url, size, sha256, ...(files && { files }) };
@@ -214,11 +217,23 @@ function releasePackage(
 	return null;
 }
 
+const nightlyTag = /^v\d+\.\d+\.\d+-nightly\.\d{8}$/;
+
+function inChannel(
+	release: z.infer<typeof releaseSchema>,
+	channel: ReleaseChannel,
+) {
+	if (release.draft) return false;
+	if (!release.prerelease) return true;
+	return channel === "nightly" && nightlyTag.test(release.tag_name ?? "");
+}
+
 export function selectReleasePackage(
 	value: unknown,
 	architecture: string,
 	currentVersion: string,
 	feedUrl = releaseFeedUrl,
+	channel: ReleaseChannel = "stable",
 ): ReleasePackage {
 	const parsed = z
 		.union([
@@ -229,7 +244,7 @@ export function selectReleasePackage(
 	if (!parsed.success)
 		throw new Error("The release feed sent an unexpected response.");
 	const releases = parsed.data
-		.filter((release) => !release.draft && !release.prerelease)
+		.filter((release) => inChannel(release, channel))
 		.flatMap((release) => {
 			const found = releasePackage(release, architecture, feedUrl);
 			return found ? [{ found, body: release.body }] : [];
@@ -275,6 +290,7 @@ export interface DesktopUpdaterOptions {
 	temporaryDirectory: string;
 	fetch: Fetch;
 	onChange: (state: DesktopUpdateState) => void;
+	channel?: ReleaseChannel;
 	feedUrl?: string;
 	installedRoot?: string;
 	install?: (path: string) => Promise<void>;
@@ -329,9 +345,23 @@ export class DesktopUpdater {
 	state: DesktopUpdateState = { status: "idle" };
 	private available: ReleasePackage | null = null;
 	private readonly feedUrl: string;
+	private channel: ReleaseChannel;
+	private pending: Promise<void> | null = null;
+	private recheck = false;
 
 	constructor(private readonly options: DesktopUpdaterOptions) {
 		this.feedUrl = options.feedUrl ?? releaseFeedUrl;
+		this.channel = options.channel ?? "stable";
+	}
+
+	setChannel(channel: ReleaseChannel) {
+		if (channel === this.channel) return Promise.resolve();
+		this.channel = channel;
+		if (this.state.status === "idle" || this.state.status === "available") {
+			this.available = null;
+			this.set({ status: "idle" });
+		}
+		return this.check();
 	}
 
 	private status(): DesktopUpdateState["status"] {
@@ -348,7 +378,24 @@ export class DesktopUpdater {
 		}, firstCheckDelay);
 	}
 
-	async check() {
+	check(): Promise<void> {
+		if (this.pending) {
+			this.recheck = true;
+			return this.pending;
+		}
+		const run = async () => {
+			do {
+				this.recheck = false;
+				await this.read();
+			} while (this.recheck);
+		};
+		this.pending = run().finally(() => {
+			this.pending = null;
+		});
+		return this.pending;
+	}
+
+	private async read() {
 		const before = this.status();
 		if (before !== "idle" && before !== "available" && before !== "failed")
 			return;
@@ -369,6 +416,7 @@ export class DesktopUpdater {
 				this.options.architecture,
 				this.options.currentVersion,
 				this.feedUrl,
+				this.channel,
 			);
 		} catch (cause) {
 			const message = errorMessage(cause, "unknown error");
@@ -397,6 +445,7 @@ export class DesktopUpdater {
 	}
 
 	async install() {
+		if (this.pending) await this.pending;
 		if (this.state.status === "failed") await this.check();
 		const release = this.available;
 		if (!release || this.state.status !== "available") return;
