@@ -40,12 +40,13 @@ export function writeGlb(mesh: ModelMesh, name: string): Uint8Array {
 	};
 	const primitives = parts.map((part, material) => {
 		const positions = new Float32Array(part.positions.map(round));
-		const min = [0, 1, 2].map((axis) =>
-			Math.min(...positions.filter((_, index) => index % 3 === axis)),
-		);
-		const max = [0, 1, 2].map((axis) =>
-			Math.max(...positions.filter((_, index) => index % 3 === axis)),
-		);
+		const min = [Infinity, Infinity, Infinity];
+		const max = [-Infinity, -Infinity, -Infinity];
+		positions.forEach((value, index) => {
+			const axis = index % 3;
+			min[axis] = Math.min(min[axis], value);
+			max[axis] = Math.max(max[axis], value);
+		});
 		const count = positions.length / 3;
 		accessors.push({
 			bufferView: add(positions, 34962),

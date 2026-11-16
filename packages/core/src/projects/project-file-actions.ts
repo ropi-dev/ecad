@@ -316,8 +316,11 @@ export function createProjectFileActions(
 				const current = footprints.find((footprint) => footprint.id === id);
 				if (!current)
 					throw new Error("This footprint is no longer in the project.");
+				const { footprintFileSchema } = await import("#/footprint/format.ts");
 				const { model: _model, ...rest } = current;
-				const file = model ? { ...rest, model: { ...model } } : rest;
+				const file = footprintFileSchema.parse(
+					model ? { ...rest, model: { ...model } } : rest,
+				);
 				await persist(
 					undefined,
 					undefined,

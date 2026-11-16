@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -228,6 +229,12 @@ await writeFile(
 	join(root, "src/catalog.ts"),
 	`import type { DefaultModel } from "./types.ts";\n\nexport const catalog: readonly DefaultModel[] = [\n${sourceModels.map(entry).join("")}];\n`,
 );
+const format = spawnSync(
+	"pnpm",
+	["exec", "biome", "format", "--write", join(root, "src/catalog.ts")],
+	{ stdio: "inherit" },
+);
+if (format.status !== 0) throw new Error("Unable to format src/catalog.ts");
 console.log(
 	`Wrote ${sourceModels.length} models. Raspberry Pi archive sha256 ${raspberryPi.sha256}`,
 );
