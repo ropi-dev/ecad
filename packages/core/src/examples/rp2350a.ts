@@ -480,20 +480,13 @@ export function rp2350aBoard(
 		rules: rp2350aRules,
 		exclude: new Set(ground ? [ground.id] : []),
 		rounds: 60,
+		patience: 10,
 		progress: trace
 			? (round, overlapping) =>
 					trace(`round ${round}: ${overlapping} nets overlap`)
 			: undefined,
 	});
 	nextId += negotiated.shapes.length;
-	const finished = autoroute(board, netlist, nextId, {
-		rules: rp2350aRules,
-		rippable: negotiated.shapes,
-		trace: trace
-			? (event, line) => trace(`${netlist.nets.get(line.net)?.name}: ${event}`)
-			: undefined,
-	});
-	nextId += finished.shapes.length;
 	const zones: EditorShape[] = (["F.Cu", "B.Cu"] as const).map((layer) => ({
 		id: nextId++,
 		kind: "rectangle",
@@ -508,6 +501,17 @@ export function rp2350aBoard(
 		...(ground ? { net: ground.id } : {}),
 	}));
 	const poured = [...board, ...zones];
+	const finished = autoroute(poured, netlist, nextId, {
+		rules: rp2350aRules,
+		rippable: negotiated.shapes,
+		zoneReach: fillReach(
+			fillZones([...poured, ...negotiated.shapes], netlist, rp2350aRules),
+		),
+		trace: trace
+			? (event, line) => trace(`${netlist.nets.get(line.net)?.name}: ${event}`)
+			: undefined,
+	});
+	nextId += finished.shapes.length;
 	const stitches = stitchZones(
 		[...poured, ...finished.shapes],
 		netlist,
@@ -617,30 +621,28 @@ function stitchZones(
 				x: (Math.min(...xs) + Math.max(...xs)) / 2,
 				y: (Math.min(...ys) + Math.max(...ys)) / 2,
 			};
-			let best: Point | undefined;
-			for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.1)
-				for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.1) {
+			const candidates: { point: Point; distance: number }[] = [];
+			const [minX, maxX] = [Math.min(...xs), Math.max(...xs)];
+			const [minY, maxY] = [Math.min(...ys), Math.max(...ys)];
+			for (let x = minX; x <= maxX; x += 0.1)
+				for (let y = minY; y <= maxY; y += 0.1) {
 					const point = {
 						x: Math.round(x * 20) / 20,
 						y: Math.round(y * 20) / 20,
 					};
-					if (
-						best &&
-						Math.hypot(point.x - center.x, point.y - center.y) >=
-							Math.hypot(best.x - center.x, best.y - center.y)
-					)
-						continue;
-					if (!insideBy(island, point, margin)) continue;
-					if (
-						!others.some((other) =>
-							other.polygons.some((polygon) =>
-								insideBy(polygon, point, margin),
-							),
-						)
-					)
-						continue;
-					best = point;
+					candidates.push({
+						point,
+						distance: Math.hypot(point.x - center.x, point.y - center.y),
+					});
 				}
+			candidates.sort((a, b) => a.distance - b.distance);
+			const best = candidates.find(
+				({ point }) =>
+					insideBy(island, point, margin) &&
+					others.some((other) =>
+						other.polygons.some((polygon) => insideBy(polygon, point, margin)),
+					),
+			)?.point;
 			const at = best;
 			if (
 				!at ||

@@ -104,20 +104,28 @@ export function autoroute(
 					],
 		);
 	const live = { track: trackGrid, via: viaGrid };
+	let marked = 0;
+	let ripUp = true;
 	const rebuild = () => {
-		for (let layer = 0; layer < layers.length; layer++) {
-			trackGrid[layer].set(base.track[layer]);
-			viaGrid[layer].set(base.via[layer]);
-			routeGrid[layer].fill(free);
+		if (ripUp) {
+			for (let layer = 0; layer < layers.length; layer++) {
+				trackGrid[layer].set(base.track[layer]);
+				viaGrid[layer].set(base.via[layer]);
+				routeGrid[layer].fill(free);
+			}
+			marked = 0;
+			ripUp = false;
 		}
-		routes.forEach((route, index) => {
-			if (!route.alive) return;
+		for (let index = marked; index < routes.length; index++) {
+			const route = routes[index];
+			if (!route.alive) continue;
 			for (const { layers: on, hull } of routeHulls(route.shapes))
 				for (const layer of on)
 					mark(hull, layer, route.owner, live, false, (cell) => {
 						routeGrid[layer][cell] = index;
 					});
-		});
+		}
+		marked = routes.length;
 	};
 
 	const budget = 2 * cells * layers.length;
@@ -234,6 +242,7 @@ export function autoroute(
 			if (added)
 				for (const route of crossedRoutes(added, owner)) {
 					routes[route].alive = false;
+					ripUp = true;
 					ripped.set(
 						routes[route].owner,
 						(ripped.get(routes[route].owner) ?? 0) + 1,
