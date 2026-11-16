@@ -30,6 +30,8 @@ import { DRILL_WALL } from "#/formats/gerber/board-stack.ts";
 import type { ParsedGerberObject } from "#/formats/parseGerberFile.ts";
 
 const TEXT_RENDER_ORDER = 4;
+/** Copies of each label stacked through the layer's thickness. */
+const TEXT_SLICES = 12;
 const QUAD_CORNERS = [
 	[-0.5, 0.5, 0, 1],
 	[0.5, 0.5, 1, 1],
@@ -53,6 +55,7 @@ interface Label extends Pick<TextShape, "text" | "horizontalAlign" | "bold"> {
 interface Glyph {
 	key: string;
 	drawn: ReturnType<typeof createTextMaterial>;
+	wall: Material;
 	users: number;
 }
 
@@ -67,6 +70,7 @@ type State =
 			labels: readonly Label[];
 			glyphs: readonly Glyph[];
 			geometry: BufferGeometry;
+			walls: BufferGeometry;
 	  };
 
 const textLabels = new WeakMap<TextShape, Label>();
@@ -139,6 +143,21 @@ function placeLabel(positions: Float32Array, index: number, label: Label) {
 		positions[out + 1] = label.y + x * sin + y * cos;
 		out += 3;
 	}
+}
+
+function placeWalls(faces: Float32Array, walls: Float32Array) {
+	const labels = faces.length / QUAD_POSITIONS;
+	let out = 0;
+	for (let label = 0; label < labels; label++)
+		for (let slice = 0; slice < TEXT_SLICES; slice++) {
+			const z = (slice + 0.5) / TEXT_SLICES - 0.5;
+			for (let corner = 0; corner < QUAD_CORNERS.length; corner++) {
+				const at = label * QUAD_POSITIONS + corner * 3;
+				walls[out++] = faces[at];
+				walls[out++] = faces[at + 1];
+				walls[out++] = z;
+			}
+		}
 }
 
 export function createBoardObjects({
@@ -245,6 +264,16 @@ export function createBoardObjects({
 				position.needsUpdate = true;
 				state.geometry.computeBoundingBox();
 				state.geometry.computeBoundingSphere();
+				const wall = state.walls.getAttribute("position");
+				if (wall instanceof BufferAttribute) {
+					placeWalls(
+						position.array as Float32Array,
+						wall.array as Float32Array,
+					);
+					wall.needsUpdate = true;
+					state.walls.computeBoundingBox();
+					state.walls.computeBoundingSphere();
+				}
 				state.labels = labels;
 				previous.bounds = layer.bounds;
 				return previous;
@@ -274,7 +303,7 @@ export function createBoardObjects({
 				drawn.material.polygonOffset = true;
 				drawn.material.polygonOffsetFactor = -2;
 				drawn.material.polygonOffsetUnits = -2;
-				glyph = { key, drawn, users: 0 };
+				glyph = { key, drawn, wall: drawn.material.clone(), users: 0 };
 				glyphCache.set(key, glyph);
 			}
 			glyph.users++;
@@ -304,7 +333,47 @@ export function createBoardObjects({
 		geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
 		const mesh = new Mesh(geometry, materials);
 		mesh.renderOrder = TEXT_RENDER_ORDER;
-		group.add(mesh);
+		const walls = new BufferGeometry();
+		const corners = QUAD_CORNERS.length * TEXT_SLICES;
+		const wallPositions = new Float32Array(labels.length * corners * 3);
+		placeWalls(positions, wallPositions);
+		const wallUvs = new Float32Array(labels.length * corners * 2);
+		const wallIndices = new Uint32Array(
+			labels.length * QUAD_INDICES.length * TEXT_SLICES,
+		);
+		const wallMaterials: Material[] = [];
+		const wallIndex = new Map<Glyph, number>();
+		glyphs.forEach((glyph, label) => {
+			let material = wallIndex.get(glyph);
+			if (material === undefined) {
+				material = wallMaterials.push(glyph.wall) - 1;
+				wallIndex.set(glyph, material);
+			}
+			for (let slice = 0; slice < TEXT_SLICES; slice++) {
+				const quad = label * TEXT_SLICES + slice;
+				QUAD_CORNERS.forEach(([, , u, v], corner) => {
+					wallUvs[(quad * QUAD_CORNERS.length + corner) * 2] = u;
+					wallUvs[(quad * QUAD_CORNERS.length + corner) * 2 + 1] = v;
+				});
+				QUAD_INDICES.forEach((corner, at) => {
+					wallIndices[quad * QUAD_INDICES.length + at] =
+						quad * QUAD_CORNERS.length + corner;
+				});
+			}
+			walls.addGroup(
+				label * TEXT_SLICES * QUAD_INDICES.length,
+				TEXT_SLICES * QUAD_INDICES.length,
+				material,
+			);
+		});
+		walls.setIndex(new BufferAttribute(wallIndices, 1));
+		walls.setAttribute("position", new BufferAttribute(wallPositions, 3));
+		walls.setAttribute("uv", new BufferAttribute(wallUvs, 2));
+		const wallMesh = new Mesh(walls, wallMaterials);
+		wallMesh.userData.planarPart = "text-walls";
+		wallMesh.renderOrder = TEXT_RENDER_ORDER - 1;
+		wallMesh.visible = false;
+		group.add(mesh, wallMesh);
 		const built: BoardObject = {
 			...layer,
 			type: "spatial",
@@ -312,14 +381,16 @@ export function createBoardObjects({
 			diagnostics: [],
 			dispose: () => {
 				geometry.dispose();
+				walls.dispose();
 				for (const glyph of glyphs) {
 					if (--glyph.users > 0) continue;
 					glyphCache.delete(glyph.key);
 					glyph.drawn.dispose();
+					glyph.wall.dispose();
 				}
 			},
 		};
-		states.set(built, { kind: "text", labels, glyphs, geometry });
+		states.set(built, { kind: "text", labels, glyphs, geometry, walls });
 		return built;
 	};
 

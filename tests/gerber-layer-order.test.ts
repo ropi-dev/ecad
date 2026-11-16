@@ -139,7 +139,7 @@ test("3D board heights follow layer names and file functions", () => {
 	]);
 	assert.deepEqual(
 		placements.map(({ z }) => Number(z.toFixed(3))),
-		[1, 0.92, 0.87, 0.267, -0.267, -0.87, -0.92, 0, 0, 1.04],
+		[0.87, 0.855, 0.835, 0.267, -0.267, -0.835, -0.855, 0, 0, 0.95],
 	);
 	assert.deepEqual(
 		placements.map(({ through }) => through),
@@ -201,8 +201,8 @@ test("drill layers become barrels that span the board in 3D", () => {
 	assert.equal(barrel.visible, true);
 	assert.equal(part("fill").visible, false);
 	const bounds = new Box3().setFromObject(barrel);
-	assert.ok(Math.abs(bounds.min.z + 1.01) < 1e-6);
-	assert.ok(Math.abs(bounds.max.z - 1.01) < 1e-6);
+	assert.ok(Math.abs(bounds.min.z + 0.835) < 1e-6);
+	assert.ok(Math.abs(bounds.max.z - 0.835) < 1e-6);
 	stylePlanarObject3D(object, "#ffaa00", 1, false);
 	assert.equal(barrel.visible, false);
 	assert.equal(part("fill").visible, true);
@@ -221,8 +221,8 @@ test("surface layers extrude inward from their outer face in 3D", () => {
 	];
 	const compiled = compilePlanarGeometry(objects);
 	for (const [name, top, bottom] of [
-		["board-F_Cu.gbr", 0.87, 0.8],
-		["board-B_Mask.gbr", -0.87, -0.92],
+		["board-F_Cu.gbr", 0.835, 0.8],
+		["board-B_Mask.gbr", -0.835, -0.855],
 	] as const) {
 		const layer = { name, metadata: {} };
 		const object = createPlanarObject3D(

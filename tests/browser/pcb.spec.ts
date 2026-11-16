@@ -243,3 +243,61 @@ test("the schematic, circuit and PCB of a circuit stay open together and keep th
 	await expect(active.locator('canvas[data-kept="true"]')).toHaveCount(1);
 	await expect(panes).toHaveCount(3);
 });
+
+test("the realistic toggle shows the board with its solder mask in the flat and 3D views, and turning it off brings back the layer colors", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const realistic = page.getByRole("button", { name: "Realistic board" });
+	const area = page.locator("div[data-view]");
+	const flat = page.getByRole("button", { name: "2D", exact: true });
+	const box = required(await page.locator("canvas").boundingBox());
+	const toolbar = required(await flat.boundingBox());
+	const panel = required(
+		await page.getByRole("complementary", { name: "Layers" }).boundingBox(),
+	);
+	const left = panel.x + panel.width + 8;
+	const capture = async () => {
+		await page.mouse.move(700, 120);
+		return page.screenshot({
+			clip: {
+				x: left,
+				y: box.y,
+				width: box.x + box.width - left,
+				height: toolbar.y - box.y - 16,
+			},
+		});
+	};
+	const settled = async () => {
+		let previous: Buffer | undefined;
+		await expect
+			.poll(async () => {
+				const next = await capture();
+				const same = previous?.equals(next) ?? false;
+				previous = next;
+				return same;
+			})
+			.toBe(true);
+		return required(previous);
+	};
+	const toggleBothWays = async () => {
+		await expect(realistic).toHaveAttribute("aria-pressed", "false");
+		const layered = await settled();
+		await realistic.click();
+		await expect(realistic).toHaveAttribute("aria-pressed", "true");
+		await expect
+			.poll(async () => (await capture()).equals(layered))
+			.toBe(false);
+		await realistic.click();
+		await expect(realistic).toHaveAttribute("aria-pressed", "false");
+		await expect.poll(async () => (await capture()).equals(layered)).toBe(true);
+	};
+
+	await expect(area).toHaveAttribute("data-view", "2d");
+	await toggleBothWays();
+
+	await flat.click();
+	await expect(area).toHaveAttribute("data-view", "3d");
+	await toggleBothWays();
+});

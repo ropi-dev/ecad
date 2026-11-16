@@ -138,6 +138,10 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	],
 	["packages/core/src/engine/planar-*.ts", ["@import", "@footprint", "@pcb"]],
 	[
+		"packages/core/src/engine/realistic-board*.ts",
+		["@import", "@footprint", "@pcb"],
+	],
+	[
 		"packages/core/src/engine/**",
 		["@editor", "@circuit", "@import", "@footprint", "@pcb"],
 	],

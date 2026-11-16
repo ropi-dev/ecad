@@ -31,6 +31,7 @@ import type {
 	SceneObject,
 } from "#/engine/types.ts";
 import {
+	BOARD_LEGEND_TOP,
 	BOARD_STACK_TOP,
 	type BoardPlacement,
 	placeBoardLayers,
@@ -123,7 +124,7 @@ const layersByObjectId = new Map([
 	),
 ]);
 
-export const BOARD_SURFACE_Z = BOARD_STACK_TOP;
+export const BOARD_SURFACE_Z = BOARD_LEGEND_TOP;
 
 export const placeFootprintBoard: typeof placeBoardLayers = (layers) => {
 	const stack = placeBoardLayers(layers);

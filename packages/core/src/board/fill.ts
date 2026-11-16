@@ -175,7 +175,7 @@ function outlineLoops(
 	return loops;
 }
 
-function boardInterior(shapes: readonly EditorShape[]): MultiPolygon {
+export function boardInterior(shapes: readonly EditorShape[]): MultiPolygon {
 	const segments = boardOutlineSegments(shapes);
 	if (!outlineClosed(segments)) return [];
 	const loops = outlineLoops(segments);

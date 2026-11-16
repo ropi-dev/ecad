@@ -269,9 +269,9 @@ test("the 3D camera orbits the same viewport and layer stack and returns to the 
 	const flatHeight = (await state()).camera[2];
 	await expect(axes).toHaveCount(0);
 	const stack = {
-		"atlas-F_Cu.gbr": 0.87,
-		"atlas-B_Cu.gbr": -0.87,
-		"atlas-F_Mask.gbr": 0.92,
+		"atlas-F_Cu.gbr": 0.835,
+		"atlas-B_Cu.gbr": -0.835,
+		"atlas-F_Mask.gbr": 0.855,
 	};
 	await expect.poll(heights).toEqual(stack);
 	await toggle.click();
@@ -394,7 +394,7 @@ test("an orbit drag leaves the 2D view in perspective from the current camera", 
 		.poll(async () =>
 			(await state()).objects.map((object) => Number(object.z.toFixed(3))),
 		)
-		.toEqual([0.87, -0.87, 0.92]);
+		.toEqual([0.835, -0.835, 0.855]);
 	const [x, y, z] = (await state()).camera;
 	expect(Math.hypot(x, y)).toBeGreaterThan(0);
 	expect(Math.hypot(x, y)).toBeLessThan(0.3 * z);

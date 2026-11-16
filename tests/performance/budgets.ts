@@ -12,6 +12,14 @@ export const budgets = {
 		scriptBytes: 3_500_000,
 		frameP95Ms: 500,
 	},
+	"pcb-board-realistic": {
+		interactionP95Ms: 3000,
+		realisticOnMs: 1000,
+		moveFootprintMs: 3000,
+		domNodes: 1500,
+		scriptBytes: 3_500_000,
+		frameP95Ms: 500,
+	},
 	"footprint-board": {
 		interactionP95Ms: 1500,
 		openFootprintMs: 50,

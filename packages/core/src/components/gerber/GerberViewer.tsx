@@ -1,3 +1,4 @@
+import { Sparkles } from "lucide-react";
 import {
 	type ReactNode,
 	useCallback,
@@ -6,18 +7,28 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Box3, type Object3D, Vector3 } from "three";
+import { Box3, Matrix4, Mesh, type Object3D, Vector3 } from "three";
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { Viewer2D, type Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import type { OrbitGesture } from "#/engine/controls3d.ts";
-import { createHoleMask } from "#/engine/planar-holes.ts";
+import type { PlanarGeometry } from "#/engine/planar-geometry.ts";
+import { createHoleMask, cutHoles } from "#/engine/planar-holes.ts";
 import {
 	getPlanarGeometry,
 	stylePlanarObject3D,
 } from "#/engine/planar-object.ts";
+import {
+	type BoardShape,
+	boundsPolygon,
+	realisticLayerStyle,
+	ringGeometry,
+} from "#/engine/realistic-board.ts";
+import type { createRealisticBoard } from "#/engine/realistic-board-mesh.ts";
 import type { PlanarObject } from "#/engine/types.ts";
 import {
+	type BoardLayerRole,
+	boardLayerRole,
 	boardOutline,
 	isDrillLayer,
 	placeBoardLayers,
@@ -34,6 +45,38 @@ const visibleDrills = (scene: readonly (PlanarObject | ParsedGerberObject)[]) =>
 const drillGeometry = (drills: readonly ParsedGerberObject[]) =>
 	drills.flatMap((object) => getPlanarGeometry(object.object) ?? []);
 
+const roleObjects = (
+	scene: readonly (PlanarObject | ParsedGerberObject)[],
+	role: BoardLayerRole,
+	side?: -1 | 1,
+) =>
+	scene.filter((object): object is ParsedGerberObject => {
+		if (object.type !== "spatial") return false;
+		const layer = boardLayerRole(object);
+		return layer.role === role && (side === undefined || layer.side === side);
+	});
+
+const SIDES = ["top", "bottom"] as const;
+const IDENTITY = new Matrix4();
+
+const tintParts = (object: Object3D, color: string | undefined) =>
+	object.traverse((part) => {
+		if (!(part instanceof Mesh) || part.userData.planarPart !== undefined)
+			return;
+		for (const material of Array.isArray(part.material)
+			? part.material
+			: [part.material]) {
+			if (!("color" in material)) continue;
+			if (color) {
+				material.userData.untinted ??= material.color.getHex();
+				material.color.set(color);
+			} else if (material.userData.untinted !== undefined) {
+				material.color.setHex(material.userData.untinted);
+				delete material.userData.untinted;
+			}
+		}
+	});
+
 /** Applies Gerber layer controls to planar objects in the shared viewport. */
 export function GerberViewer({
 	scene,
@@ -45,6 +88,8 @@ export function GerberViewer({
 	orbitGesture = "shift",
 	updateFlatScene,
 	controls,
+	realistic: controlledRealistic,
+	boardShape,
 	...props
 }: Omit<
 	Viewer2DProps,
@@ -65,11 +110,16 @@ export function GerberViewer({
 	orbitGesture?: OrbitGesture;
 	updateFlatScene?: (object: Object3D) => void;
 	controls?: ReactNode;
+	realistic?: boolean;
+	/** The board's shape for the realistic view; the profile layer's bounds otherwise. */
+	boardShape?: BoardShape;
 }) {
 	const [ownFlat, setOwnFlat] = useState(true);
 	const flat = controlledFlat ?? ownFlat;
+	const [ownRealistic, setOwnRealistic] = useState(false);
+	const realistic = controlledRealistic ?? ownRealistic;
 	const [orbiting, setOrbiting] = useState(false);
-	const layersShown = !updateFlatScene || orbiting;
+	const layersShown = !updateFlatScene || orbiting || realistic;
 	const setFlat = (next: boolean) => {
 		setOwnFlat(next);
 		onFlatChange?.(next);
@@ -99,6 +149,74 @@ export function GerberViewer({
 	);
 	const repainted = useRef("");
 	useEffect(() => () => holes?.dispose(), [holes]);
+	const openings = boardShape?.openings;
+	const openingSources = useMemo(
+		() =>
+			realistic
+				? Object.fromEntries(
+						SIDES.map((side): [string, PlanarGeometry[]] => [
+							side,
+							[
+								...drillGeometry(
+									roleObjects(scene, "mask", side === "top" ? 1 : -1),
+								),
+								ringGeometry(openings?.[side] ?? []),
+							],
+						]),
+					)
+				: undefined,
+		[realistic, scene, openings],
+	);
+	const openingLayout = SIDES.map((side) =>
+		openingSources?.[side]?.map((source) => source.edges.length).join(","),
+	).join("|");
+	const [openingEpoch, setOpeningEpoch] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a mask follows its openings' layout, which openingLayout names, and repaints moved openings in place; openingEpoch replaces a mask its openings outgrew
+	const openingMasks = useMemo(
+		() =>
+			openingSources &&
+			Object.fromEntries(
+				SIDES.map((side) => [side, createHoleMask(openingSources[side] ?? [])]),
+			),
+		[openingLayout, openingEpoch],
+	);
+	useEffect(
+		() => () => {
+			for (const side of SIDES) openingMasks?.[side]?.dispose();
+		},
+		[openingMasks],
+	);
+	const profile =
+		realistic && !boardShape?.outline.length ? boardOutline(scene) : undefined;
+	const profileKey = profile
+		? `${profile.minX},${profile.minY},${profile.maxX},${profile.maxY}`
+		: "";
+	const [buildRealistic, setBuildRealistic] =
+		useState<typeof createRealisticBoard>();
+	const reportError = props.onError;
+	useEffect(() => {
+		if (!realistic || buildRealistic) return;
+		let current = true;
+		import("#/engine/realistic-board-mesh.ts").then(
+			(module) => {
+				if (current) setBuildRealistic(() => module.createRealisticBoard);
+			},
+			() => {
+				if (current) reportError?.("Unable to load the realistic board view.");
+			},
+		);
+		return () => {
+			current = false;
+		};
+	}, [realistic, buildRealistic, reportError]);
+	const outline = boardShape?.outline;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: profileKey names the fallback outline
+	const realisticBoard = useMemo(() => {
+		if (!realistic || !buildRealistic) return undefined;
+		const shape = outline?.length ? outline : profile && boundsPolygon(profile);
+		return shape ? buildRealistic(shape) : undefined;
+	}, [realistic, buildRealistic, outline, profileKey]);
+	useEffect(() => () => realisticBoard?.dispose(), [realisticBoard]);
 	const film = useViewerTheme();
 	const styleLayers = useCallback(
 		(meshes: readonly Object3D[]) => {
@@ -117,9 +235,11 @@ export function GerberViewer({
 					object.visible &&
 					object.opacity > 0,
 			);
-			const inFocus = (id: string) => !focused || !!focusedLayerIds?.has(id);
+			const inFocus = (id: string) =>
+				realistic || !focused || !!focusedLayerIds?.has(id);
 			const placements = placeLayers(scene);
-			const sheet = boardOutline(scene);
+			const sheet = realistic ? undefined : boardOutline(scene);
+			const finish = 2 * scene.length + 1;
 			meshes.forEach((mesh, index) => {
 				const source = geometryScene[index];
 				const entry = source && entries.get(source.id);
@@ -129,24 +249,29 @@ export function GerberViewer({
 				}
 				const { object, index: order } = entry;
 				const placement = placements[order];
-				mesh.visible = object.visible;
+				const role = boardLayerRole(object).role;
+				const look = realistic ? realisticLayerStyle(role) : undefined;
+				mesh.visible = object.visible && (look?.visible ?? true);
 				mesh.userData.hoverEnabled = inFocus(object.id);
 				mesh.position.z = placement?.z ?? 0;
 				// Draw the focused fill last so other layers' X-ray contours cannot tint it.
 				mesh.renderOrder =
-					focused && inFocus(object.id)
+					focused && inFocus(object.id) && !realistic
 						? 2 * scene.length
 						: placement?.through
 							? scene.length + order
-							: 0;
+							: realistic && role === "legend"
+								? finish + 1
+								: 0;
 				stylePlanarObject3D(
 					mesh,
-					object.color,
-					object.opacity,
+					look?.color ?? object.color,
+					realistic ? 1 : object.opacity,
 					!inFocus(object.id),
 					placement && { ...placement, sheet, holes },
 					film,
 				);
+				tintParts(mesh, look?.color);
 			});
 		},
 		[
@@ -159,6 +284,7 @@ export function GerberViewer({
 			drillRevision,
 			maskEpoch,
 			film,
+			realistic,
 		],
 	);
 	const updateScene = useCallback(
@@ -166,9 +292,38 @@ export function GerberViewer({
 			const layers = group.children.slice(0, geometryScene.length);
 			if (layersShown) styleLayers(layers);
 			else for (const mesh of layers) mesh.visible = false;
+			for (const child of group.children.slice(geometryScene.length))
+				if (child.userData.realisticBoard && child !== realisticBoard?.object)
+					group.remove(child);
 			updateFlatScene?.(group);
 			for (const flatObject of group.children.slice(geometryScene.length))
 				flatObject.visible = !layersShown;
+			if (realisticBoard) {
+				const board = realisticBoard.object;
+				if (board.parent !== group) group.add(board);
+				board.visible = layersShown;
+				board.renderOrder = 2 * scene.length + 1;
+				for (const side of SIDES) {
+					const mask = openingMasks?.[side];
+					const sources = openingSources?.[side];
+					if (mask && sources && !mask.repaint(sources))
+						setOpeningEpoch((epoch) => epoch + 1);
+				}
+				for (const part of board.children) {
+					if (!(part instanceof Mesh)) continue;
+					const side: (typeof SIDES)[number] | undefined =
+						part.userData.realisticMask;
+					if (side) {
+						part.visible = roleObjects(
+							scene,
+							"mask",
+							side === "top" ? 1 : -1,
+						).every((mask) => mask.visible);
+						cutHoles(part.material, IDENTITY, openingMasks?.[side]);
+					} else if (part.userData.realisticPart === "laminate")
+						cutHoles(part.material, IDENTITY, holes);
+				}
+			}
 			group.position.set(0, 0, 0);
 			if (surfaceZ !== undefined) {
 				group.position.z = -surfaceZ;
@@ -182,18 +337,35 @@ export function GerberViewer({
 				group.position.set(-center.x, -center.y, -center.z);
 			}
 		},
-		[geometryScene, layersShown, styleLayers, updateFlatScene, surfaceZ],
+		[
+			scene,
+			geometryScene,
+			layersShown,
+			styleLayers,
+			updateFlatScene,
+			surfaceZ,
+			realisticBoard,
+			openingMasks,
+			openingSources,
+			holes,
+		],
 	);
 	const toggle = geometryScene.length > 0 && (
-		<TooltipButton
-			type="button"
-			className={`${viewControlButtonClassName} px-2.5`}
-			aria-pressed={flat}
-			tooltip={flat ? "Show layers in 3D" : "Show the flat top view"}
-			onClick={() => setFlat(!flat)}
-		>
-			2D
-		</TooltipButton>
+		<>
+			<TooltipButton
+				type="button"
+				className={`${viewControlButtonClassName} px-2.5`}
+				aria-pressed={flat}
+				tooltip={flat ? "Show layers in 3D" : "Show the flat top view"}
+				onClick={() => setFlat(!flat)}
+			>
+				2D
+			</TooltipButton>
+			<RealisticToggle
+				realistic={realistic}
+				onToggle={() => setOwnRealistic(!realistic)}
+			/>
+		</>
 	);
 	return (
 		<Viewer2D
@@ -203,6 +375,7 @@ export function GerberViewer({
 			selectionPosition="top-left"
 			scrollableControls={controls === undefined}
 			{...props}
+			showGrid={!realistic}
 			scene={geometryScene}
 			updateScene={updateScene}
 			orbit={!flat && geometryScene.length > 0}
@@ -218,5 +391,31 @@ export function GerberViewer({
 			}}
 			extraControls={controls ?? toggle}
 		/>
+	);
+}
+
+function RealisticToggle({
+	realistic,
+	onToggle,
+	disabled,
+}: {
+	realistic: boolean;
+	onToggle: () => void;
+	disabled?: boolean;
+}) {
+	return (
+		<TooltipButton
+			type="button"
+			className={viewControlButtonClassName}
+			aria-label="Realistic board"
+			aria-pressed={realistic}
+			disabled={disabled}
+			tooltip={
+				realistic ? "Show the layer colors" : "Show the board as manufactured"
+			}
+			onClick={onToggle}
+		>
+			<Sparkles size={18} aria-hidden="true" />
+		</TooltipButton>
 	);
 }

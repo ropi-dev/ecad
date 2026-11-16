@@ -1,3 +1,4 @@
+import { boardOutlineSegments } from "@ecad/drawing-core/board/drc.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
@@ -7,11 +8,15 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { boardInterior } from "#/board/fill.ts";
+import { maskOpenings } from "#/board/gerber.ts";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
+import { boundsPolygon } from "#/engine/realistic-board.ts";
 import {
 	BOARD_SURFACE_Z,
 	type BoardRegion,
+	boardEdgeBounds,
 	boardObjectOnLayer,
 	boardObjectVisible,
 	createBoardBuilder,
@@ -34,6 +39,7 @@ export function FootprintBoardView({
 	flat,
 	onFlatChange,
 	onBuildError,
+	realistic = false,
 	...viewer
 }: Pick<
 	Viewer2DProps,
@@ -59,6 +65,7 @@ export function FootprintBoardView({
 		flat: boolean;
 		onFlatChange: (flat: boolean) => void;
 		onBuildError: (message: string) => void;
+		realistic?: boolean;
 	}) {
 	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
 	useEffect(() => () => builder.dispose(), [builder]);
@@ -102,6 +109,25 @@ export function FootprintBoardView({
 				: undefined,
 		[board, focusedLayer],
 	);
+	const segments = realistic ? boardOutlineSegments(shapes) : [];
+	const edge = realistic && !segments.length ? boardEdgeBounds(shapes) : null;
+	const outlineKey = edge
+		? `${edge.minX},${edge.minY},${edge.maxX},${edge.maxY}`
+		: JSON.stringify(segments);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: outlineKey names the Edge.Cuts strokes, or the drawing's bounds without them, so other edits keep the outline
+	const outline = useMemo(() => {
+		if (!realistic) return undefined;
+		const interior = boardInterior(shapes);
+		return interior.length ? interior : boundsPolygon(boardEdgeBounds(shapes));
+	}, [realistic, outlineKey]);
+	const boardShape = useMemo(
+		() =>
+			outline && {
+				outline,
+				openings: maskOpenings(shapes),
+			},
+		[outline, shapes],
+	);
 	const shownFlat = useRef(true);
 	useEffect(() => {
 		if (flat && shownFlat.current) onFlatChange(true);
@@ -118,6 +144,8 @@ export function FootprintBoardView({
 				onFlatChange(next);
 			}}
 			surfaceZ={BOARD_SURFACE_Z}
+			realistic={realistic}
+			boardShape={boardShape}
 			placeLayers={placeFootprintBoard}
 			keepView
 			projection="orthographic"
