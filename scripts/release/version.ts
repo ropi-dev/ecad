@@ -18,12 +18,12 @@ export const firstVersion = "0.1.0";
 const versionPattern =
 	/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-nightly\.(\d{8}))?$/;
 
-interface Parsed {
+export interface Parsed {
 	numbers: [number, number, number];
 	nightly: string | null;
 }
 
-function parse(version: string): Parsed | null {
+export function parse(version: string): Parsed | null {
 	const match = versionPattern.exec(version);
 	if (!match) return null;
 	return {
@@ -32,7 +32,7 @@ function parse(version: string): Parsed | null {
 	};
 }
 
-function compare(a: Parsed, b: Parsed) {
+export function compare(a: Parsed, b: Parsed) {
 	for (let i = 0; i < 3; i++) {
 		const difference = a.numbers[i] - b.numbers[i];
 		if (difference) return difference;
