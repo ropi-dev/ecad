@@ -12,6 +12,7 @@ import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import {
 	BOARD_SURFACE_Z,
 	type BoardRegion,
+	boardObjectOnLayer,
 	boardObjectVisible,
 	createBoardBuilder,
 	placeFootprintBoard,
@@ -29,6 +30,7 @@ export function FootprintBoardView({
 	ariaLabel = "Footprint editor",
 	controlsLabel = "Footprint tools",
 	hiddenLayers,
+	focusedLayer,
 	flat,
 	onFlatChange,
 	onBuildError,
@@ -53,6 +55,7 @@ export function FootprintBoardView({
 		ariaLabel?: string;
 		controlsLabel?: string;
 		hiddenLayers: ReadonlySet<FootprintLayer>;
+		focusedLayer?: FootprintLayer;
 		flat: boolean;
 		onFlatChange: (flat: boolean) => void;
 		onBuildError: (message: string) => void;
@@ -88,6 +91,17 @@ export function FootprintBoardView({
 			})),
 		[board, hiddenLayers],
 	);
+	const focusedLayerIds = useMemo(
+		() =>
+			focusedLayer && board
+				? new Set(
+						board
+							.filter((object) => boardObjectOnLayer(object.id, focusedLayer))
+							.map((object) => object.id),
+					)
+				: undefined,
+		[board, focusedLayer],
+	);
 	const shownFlat = useRef(true);
 	useEffect(() => {
 		if (flat && shownFlat.current) onFlatChange(true);
@@ -97,6 +111,7 @@ export function FootprintBoardView({
 		<GerberViewer
 			ariaLabel={ariaLabel}
 			scene={scene}
+			focusedLayerIds={focusedLayerIds}
 			flat={flat}
 			onFlatChange={(next) => {
 				shownFlat.current = next;

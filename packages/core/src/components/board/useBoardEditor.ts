@@ -13,6 +13,7 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	type FootprintLayer,
+	footprintLayers,
 	isCopperLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -45,6 +46,7 @@ import { createZoneScene } from "#/board/zone-scene.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import type { BoardGestures } from "#/components/editor/useCanvasGestures.ts";
 import { buildBoardStaticDisplay } from "#/drawing/display.ts";
+import { unfocusedLayerColor } from "#/drawing/schematic-theme.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import type { BoardDocument } from "#/projects/ProjectSession.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
@@ -62,6 +64,7 @@ export function useBoardEditor({
 	draft,
 	hidden,
 	active,
+	focused,
 	setActive,
 	selection,
 	ratsnestShown,
@@ -74,6 +77,7 @@ export function useBoardEditor({
 	draft: EditorShape[] | null;
 	hidden: ReadonlySet<FootprintLayer>;
 	active: FootprintLayer;
+	focused: FootprintLayer | undefined;
 	setActive: (layer: FootprintLayer) => void;
 	selection: ReadonlySet<number>;
 	ratsnestShown: boolean;
@@ -167,12 +171,27 @@ export function useBoardEditor({
 				highlighted,
 				ratsnest,
 				measure,
+				focused,
 			);
 		},
-		[hidden, active, ratsnest, highlighted],
+		[hidden, active, focused, ratsnest, highlighted],
 	);
 	const [zoneScene] = useState(() => createZoneScene());
-	const layerColors = useSchematicTheme().appearance;
+	const theme = useSchematicTheme();
+	const layerColors = useMemo(
+		() =>
+			focused
+				? (Object.fromEntries(
+						footprintLayers.map((layer) => [
+							layer,
+							layer === focused
+								? theme.appearance[layer]
+								: unfocusedLayerColor(theme.appearance[layer], theme),
+						]),
+					) as Record<FootprintLayer, string>)
+				: theme.appearance,
+		[theme, focused],
+	);
 	useEffect(() => () => zoneScene.dispose(), [zoneScene]);
 	const layerOrder = useMemo(() => {
 		const flat = boardDisplay(

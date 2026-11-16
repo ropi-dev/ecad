@@ -19,6 +19,7 @@ import {
 import {
 	type SchematicTheme,
 	schematicTheme,
+	unfocusedLayerColor,
 } from "#/drawing/schematic-theme.ts";
 import type { WorksheetDisplay } from "#/drawing/worksheet.ts";
 import {
@@ -154,7 +155,7 @@ export function createDrawingRenderer(
 		let atlasVersion = 0;
 		const pinMaterials = new Map<
 			CanvasTexture,
-			Map<DrawingAppearance, MeshBasicMaterial>
+			Map<MeshBasicMaterial, MeshBasicMaterial>
 		>();
 		const clearPinAtlas = () => {
 			for (const materials of pinMaterials.values())
@@ -202,16 +203,20 @@ export function createDrawingRenderer(
 			entry.geometry = { source: display.geometry, uv, value: geometry };
 			return geometry;
 		};
-		const palette = (create: (color: string) => MeshBasicMaterial) =>
+		const palette = (
+			create: (color: string) => MeshBasicMaterial,
+			dimmed = false,
+		) =>
 			Object.fromEntries(
 				Object.entries(theme.appearance).map(([appearance, color]) => [
 					appearance,
-					own(() => create(color)),
+					own(() => create(dimmed ? unfocusedLayerColor(color, theme) : color)),
 				]),
 			) as Record<DrawingAppearance, MeshBasicMaterial>;
-		const colors = palette(
-			(color) => new MeshBasicMaterial({ color, depthTest: false }),
-		);
+		const flatMaterial = (color: string) =>
+			new MeshBasicMaterial({ color, depthTest: false });
+		const colors = palette(flatMaterial);
+		const dimColors = palette(flatMaterial, true);
 		const halos = palette(
 			(color) =>
 				new MeshBasicMaterial({
@@ -223,6 +228,7 @@ export function createDrawingRenderer(
 				}),
 		);
 		const rounds = palette((color) => createRoundMaterial({ color }));
+		const dimRounds = palette((color) => createRoundMaterial({ color }), true);
 		const roundHalos = palette((color) =>
 			createRoundMaterial({ color, opacity: 0.6 }),
 		);
@@ -231,14 +237,15 @@ export function createDrawingRenderer(
 			entry: KeyResources,
 			round: boolean,
 		): Material => {
-			const color = colors[display.appearance];
+			const color = (display.dimmed ? dimColors : colors)[display.appearance];
 			if (display.text === undefined || display.pinLabel) {
 				entry.text?.dispose();
 				entry.text = undefined;
 			}
 			if (display.geometry.kind === "pin-halo")
 				return (round ? roundHalos : halos)[display.appearance];
-			if (round) return rounds[display.appearance];
+			if (round)
+				return (display.dimmed ? dimRounds : rounds)[display.appearance];
 			if (display.text === undefined) return color;
 			if (display.pinLabel) {
 				const atlasEntry = pinAtlas?.entries.get(display.text);
@@ -249,7 +256,7 @@ export function createDrawingRenderer(
 					materials = new Map();
 					pinMaterials.set(atlasEntry.texture, materials);
 				}
-				let material = materials.get(display.appearance);
+				let material = materials.get(color);
 				if (!material) {
 					material = new MeshBasicMaterial({
 						alphaMap: atlasEntry.texture,
@@ -258,7 +265,7 @@ export function createDrawingRenderer(
 						depthTest: false,
 						depthWrite: false,
 					});
-					materials.set(display.appearance, material);
+					materials.set(color, material);
 				}
 				return material;
 			}

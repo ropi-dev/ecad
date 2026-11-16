@@ -410,7 +410,7 @@ export function stylePlanarObject3D(
 				: UNFOCUSED_CAMERA_OUTLINE_OPACITY;
 			part.material.opacity =
 				opacity * (outlineOpacity - UNFOCUSED_FILL_OPACITY);
-		}
+		} else if (part.userData.planarPart === undefined) part.visible = !xray;
 	});
 }
 

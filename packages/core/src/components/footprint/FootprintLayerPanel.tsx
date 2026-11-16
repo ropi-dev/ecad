@@ -23,6 +23,7 @@ export function useFootprintLayers() {
 			}),
 		[],
 	);
+	const [focused, setFocused] = useState(false);
 	const activate = useCallback((layer: FootprintLayer) => {
 		setActive(layer);
 		setHidden((current) =>
@@ -31,25 +32,45 @@ export function useFootprintLayers() {
 				: current,
 		);
 	}, []);
-	return { active, hidden, activate, toggle };
+	const select = useCallback(
+		(layer: FootprintLayer) => {
+			if (layer === active) setFocused((current) => !current);
+			else {
+				activate(layer);
+				setFocused(true);
+			}
+		},
+		[active, activate],
+	);
+	return {
+		active,
+		hidden,
+		focused: focused ? active : undefined,
+		activate,
+		select,
+		toggle,
+	};
 }
 
 export function FootprintLayerPanel({
 	active,
 	hidden,
+	focused,
 	itemCounts,
-	onActivate,
+	onSelect,
 	onToggle,
 }: {
 	active: FootprintLayer;
 	hidden: ReadonlySet<FootprintLayer>;
+	focused: FootprintLayer | undefined;
 	itemCounts: ReadonlyMap<FootprintLayer, number>;
-	onActivate: (layer: FootprintLayer) => void;
+	onSelect: (layer: FootprintLayer) => void;
 	onToggle: (layer: FootprintLayer) => void;
 }) {
 	const [collapsed, setCollapsed] = useState(false);
 	const layerColors = useSchematicTheme().appearance;
 	const listId = useId();
+	const focusNoteId = useId();
 	return (
 		<FloatingPanel label="Layers" position="top-left" narrow>
 			<header
@@ -89,9 +110,10 @@ export function FootprintLayerPanel({
 					return (
 						<li
 							key={layer}
-							className="group relative grid min-h-7 grid-cols-[minmax(0,1fr)_auto_28px] items-center gap-1.5 rounded-md border border-transparent px-1.5 hover:bg-hover data-[active=true]:border-accent-line data-[active=true]:bg-accent-tint pointer-coarse:min-h-11"
+							className="group relative grid min-h-7 grid-cols-[minmax(0,1fr)_auto_28px] items-center gap-1.5 rounded-md border border-transparent px-1.5 hover:bg-hover data-[active=true]:border-accent-line data-[focused=true]:bg-accent-tint pointer-coarse:min-h-11"
 							data-layer={layer}
 							data-active={active === layer}
+							data-focused={focused === layer}
 							data-hidden={!visible}
 						>
 							<button
@@ -99,8 +121,15 @@ export function FootprintLayerPanel({
 								className="grid w-full min-w-0 cursor-pointer grid-cols-[7px_minmax(0,1fr)] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit before:absolute before:inset-0 before:rounded-[inherit] before:content-[''] focus-visible:outline-none focus-visible:before:outline-2 focus-visible:before:-outline-offset-2 focus-visible:before:outline-accent"
 								aria-label={`Draw on ${footprintLayerLabels[layer]}`}
 								aria-pressed={active === layer}
-								title={`${footprintLayerLabels[layer]} (${layer})`}
-								onClick={() => onActivate(layer)}
+								aria-describedby={focused === layer ? focusNoteId : undefined}
+								title={
+									focused === layer
+										? "Exit layer focus"
+										: active === layer
+											? `Focus ${footprintLayerLabels[layer]} (${layer})`
+											: `Draw on and focus ${footprintLayerLabels[layer]} (${layer})`
+								}
+								onClick={() => onSelect(layer)}
 							>
 								<span
 									className="block h-4 w-[7px] shrink-0 rounded-xs group-data-[hidden=true]:opacity-40"
@@ -141,6 +170,9 @@ export function FootprintLayerPanel({
 					);
 				})}
 			</ol>
+			<p id={focusNoteId} className="sr-only">
+				Focused. The other layers are dimmed.
+			</p>
 		</FloatingPanel>
 	);
 }

@@ -5,7 +5,10 @@ import {
 	shapeBounds,
 	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	type FootprintLayer,
+	isCopperLayer,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	footprintFitBounds,
 	isPad,
@@ -38,6 +41,7 @@ const boardEdgeWidth = 0.1;
 const drawingGap = 0.02;
 export const DRILL_LAYER_ID = "footprint:drill";
 export const BOARD_LAYER_ID = "footprint:board";
+const BOARD_EDGE_ID = "board-edge";
 
 const stackLayers: readonly (readonly [FootprintLayer, string])[] = [
 	["F.Cu", "Copper,L1,Top"],
@@ -495,7 +499,7 @@ export function planFootprintBoard(
 			? outline.flatMap(edgeObjects)
 			: [
 					{
-						id: "board-edge",
+						id: BOARD_EDGE_ID,
 						geometry: rectangleGeometry(edge, boardEdgeWidth, false),
 						bounds: edge,
 						polarity: "dark",
@@ -663,6 +667,12 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 			layers = new Map();
 		},
 	};
+}
+
+export function boardObjectOnLayer(id: string, layer: FootprintLayer) {
+	if (id === DRILL_LAYER_ID) return isCopperLayer(layer);
+	if (id === BOARD_EDGE_ID) return layer === "Edge.Cuts";
+	return layersByObjectId.get(id) === layer;
 }
 
 export function boardObjectVisible(

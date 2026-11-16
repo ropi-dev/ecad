@@ -1,5 +1,5 @@
 import { Layers } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { GerberHeader } from "#/components/gerber/GerberHeader.tsx";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import { LayerPanel } from "#/components/gerber/LayerPanel.tsx";
@@ -24,6 +24,10 @@ export function GerberWorkspace() {
 		setLayers,
 	} = useGerberFile();
 	const [focusedLayerId, setFocusedLayerId] = useState<string>();
+	const focusedLayerIds = useMemo(
+		() => (focusedLayerId ? new Set([focusedLayerId]) : undefined),
+		[focusedLayerId],
+	);
 	const [rendererError, setRendererError] = useState("");
 	const message = [projectError, ...fileMessages, rendererError]
 		.filter(Boolean)
@@ -106,7 +110,7 @@ export function GerberWorkspace() {
 				<div className="relative min-h-0 min-w-0 flex-1">
 					<GerberViewer
 						scene={layers}
-						focusedLayerId={focusedLayerId}
+						focusedLayerIds={focusedLayerIds}
 						onError={setRendererError}
 					/>
 				</div>

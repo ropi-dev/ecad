@@ -37,7 +37,7 @@ const drillGeometry = (drills: readonly ParsedGerberObject[]) =>
 /** Applies Gerber layer controls to planar objects in the shared viewport. */
 export function GerberViewer({
 	scene,
-	focusedLayerId,
+	focusedLayerIds,
 	flat: controlledFlat,
 	onFlatChange,
 	surfaceZ,
@@ -57,7 +57,7 @@ export function GerberViewer({
 	| "ref"
 > & {
 	scene: readonly (PlanarObject | ParsedGerberObject)[];
-	focusedLayerId?: string;
+	focusedLayerIds?: ReadonlySet<string>;
 	flat?: boolean;
 	onFlatChange?: (flat: boolean) => void;
 	surfaceZ?: number;
@@ -113,8 +113,11 @@ export function GerberViewer({
 			);
 			const focused = scene.some(
 				(object) =>
-					object.id === focusedLayerId && object.visible && object.opacity > 0,
+					focusedLayerIds?.has(object.id) &&
+					object.visible &&
+					object.opacity > 0,
 			);
+			const inFocus = (id: string) => !focused || !!focusedLayerIds?.has(id);
 			const placements = placeLayers(scene);
 			const sheet = boardOutline(scene);
 			meshes.forEach((mesh, index) => {
@@ -127,11 +130,11 @@ export function GerberViewer({
 				const { object, index: order } = entry;
 				const placement = placements[order];
 				mesh.visible = object.visible;
-				mesh.userData.hoverEnabled = !focused || object.id === focusedLayerId;
+				mesh.userData.hoverEnabled = inFocus(object.id);
 				mesh.position.z = placement?.z ?? 0;
 				// Draw the focused fill last so other layers' X-ray contours cannot tint it.
 				mesh.renderOrder =
-					focused && object.id === focusedLayerId
+					focused && inFocus(object.id)
 						? 2 * scene.length
 						: placement?.through
 							? scene.length + order
@@ -140,7 +143,7 @@ export function GerberViewer({
 					mesh,
 					object.color,
 					object.opacity,
-					focused && object.id !== focusedLayerId,
+					!inFocus(object.id),
 					placement && { ...placement, sheet, holes },
 					film,
 				);
@@ -149,7 +152,7 @@ export function GerberViewer({
 		[
 			scene,
 			geometryScene,
-			focusedLayerId,
+			focusedLayerIds,
 			holes,
 			placeLayers,
 			drillKey,

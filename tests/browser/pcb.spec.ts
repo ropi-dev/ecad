@@ -95,6 +95,39 @@ test("opening the RP2350A example from the start page lands in its PCB", async (
 		.toEqual(["rp2350a"]);
 });
 
+test("choosing a layer focuses it as the Gerber viewer does, and choosing it again shows every layer", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const layers = page.getByRole("complementary", { name: "Layers" });
+	const backCopper = layers.locator('[data-layer="B.Cu"]');
+	const drawOnBack = layers.getByRole("button", {
+		name: "Draw on Back copper",
+	});
+	const canvas = page.locator("canvas");
+	const capture = async () => {
+		await page.mouse.move(700, 120);
+		return canvas.screenshot();
+	};
+	await expect(layers.locator("[data-focused=true]")).toHaveCount(0);
+
+	await drawOnBack.click();
+	await expect(drawOnBack).toHaveAttribute("aria-pressed", "true");
+	await expect(backCopper).toHaveAttribute("data-focused", "true");
+	await expect(drawOnBack).toHaveAccessibleDescription(
+		"Focused. The other layers are dimmed.",
+	);
+	await expect(page.getByText("All connections routed · B.Cu")).toBeVisible();
+	const focused = await capture();
+
+	await drawOnBack.click();
+	await expect(backCopper).toHaveAttribute("data-focused", "false");
+	await expect(drawOnBack).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByText("All connections routed · B.Cu")).toBeVisible();
+	await expect.poll(async () => (await capture()).equals(focused)).toBe(false);
+});
+
 test("a designer deletes a routed track and draws it again with the Track tool", async ({
 	page,
 }) => {
