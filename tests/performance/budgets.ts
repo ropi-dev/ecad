@@ -166,6 +166,14 @@ export const budgets = {
 		domNodes: 2500,
 		scriptBytes: 3_000_000,
 	},
+	"circuit-example": {
+		openMs: 3000,
+		interactionP95Ms: 3500,
+		panFrameP95Ms: 34,
+		zoomFrameP95Ms: 67,
+		domNodes: 4500,
+		scriptBytes: 3_500_000,
+	},
 	"circuit-graph": {
 		openMs: 1500,
 		interactionP95Ms: 750,

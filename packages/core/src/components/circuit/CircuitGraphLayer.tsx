@@ -8,6 +8,7 @@ import type {
 	CircuitNet,
 	CircuitPin,
 } from "@ecad/drawing-core/circuit/model.ts";
+import { memo } from "react";
 import { CircuitComponentNode } from "#/components/circuit/CircuitComponentNode.tsx";
 import { CircuitConnection } from "#/components/circuit/CircuitConnection.tsx";
 import { CircuitNetNode } from "#/components/circuit/CircuitNetNode.tsx";
@@ -18,14 +19,13 @@ import type {
 	CircuitSelection,
 	ConnectionDrag,
 } from "#/components/circuit/circuitEditorState.ts";
-import { selectionMode } from "#/components/editor/selectionMode.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 
 /**
  * The circuit graph's SVG content: connections, components, nets, the
  * connection being dragged and the placement preview.
  */
-export function CircuitGraphLayer({
+export const CircuitGraphLayer = memo(function CircuitGraphLayer({
 	graph,
 	pins,
 	pinNets,
@@ -75,51 +75,72 @@ export function CircuitGraphLayer({
 				: undefined
 		: undefined;
 	const connectionEnd = connectionTarget ?? connectionDrag?.point;
+	const targetId = connectionDrag?.active ? connectionDrag.target : null;
+	const pinOf = (componentId: string, pinId: string | null | undefined) =>
+		pinId && graph.pinNodes.get(pinId)?.componentId === componentId
+			? pinId
+			: null;
 	return (
 		<>
 			{graph.edges.map((edge) => (
 				<CircuitConnection
 					key={`${edge.netId}:${edge.pinId}`}
-					pin={edge.pin}
-					net={edge.net}
+					pinId={edge.pinId}
+					pinX={edge.pin.x}
+					pinY={edge.pin.y}
+					side={edge.pin.side}
+					netX={edge.net.x}
+					netY={edge.net.y}
 					label={`Connection ${pins.get(edge.pinId)?.component.reference}.${pins.get(edge.pinId)?.number}`}
 					selected={checkedPins.includes(edge.pinId)}
 					highlighted={selectedNetId === edge.netId}
-					onSelect={(event) => {
-						event.stopPropagation();
-						actions.selectConnection(edge.pinId, selectionMode(event));
-					}}
-					onContextMenu={(event) =>
-						actions.openMenu(event, { kind: "connection", id: edge.pinId })
-					}
+					actions={actions}
 				/>
 			))}
 			{graph.components.map((node) => (
 				<CircuitComponentNode
-					key={node.component.id}
-					node={node}
-					pinNodes={graph.pinNodes}
+					key={node.id}
+					component={node.component}
+					x={node.x}
+					y={node.y}
+					height={node.height}
+					collapsed={node.collapsed}
+					connectsLeft={node.connectionSides.includes("left")}
+					connectsRight={node.connectionSides.includes("right")}
+					pinSides={node.component.pins
+						.map((pin) =>
+							graph.pinNodes.get(pin.id)?.side === "left" ? "l" : "r",
+						)
+						.join("")}
 					pinNets={pinNets}
 					noConnectPinIds={noConnectPinIds}
 					tool={tool}
 					gridStep={gridStep}
-					selection={selection}
-					editing={editing}
-					pendingPin={pendingPin}
-					connectionDrag={connectionDrag}
-					connectionStarted={!!connectionStart}
+					selected={selection?.id === node.id}
+					isEditing={editing?.kind === "component" && editing.id === node.id}
+					selectedPinId={pinOf(node.id, selection?.id)}
+					pendingPinId={pinOf(node.id, pendingPin)}
+					dragSourcePinId={
+						connectionStart ? pinOf(node.id, connectionDrag?.pinId) : null
+					}
+					targetPinId={
+						targetId?.kind === "pin" ? pinOf(node.id, targetId.id) : null
+					}
 					actions={actions}
 				/>
 			))}
 			{graph.nets.map((node) => (
 				<CircuitNetNode
-					key={node.net.id}
-					node={node}
+					key={node.id}
+					net={node.net}
+					x={node.x}
+					y={node.y}
+					label={node.label}
 					tool={tool}
 					gridStep={gridStep}
-					selectedNetId={selectedNetId}
-					editing={editing}
-					connectionDrag={connectionDrag}
+					selected={selectedNetId === node.id}
+					isEditing={editing?.kind === "net" && editing.id === node.id}
+					isTarget={targetId?.kind === "net" && targetId.id === node.id}
 					actions={actions}
 				/>
 			))}
@@ -160,4 +181,4 @@ export function CircuitGraphLayer({
 			)}
 		</>
 	);
-}
+});

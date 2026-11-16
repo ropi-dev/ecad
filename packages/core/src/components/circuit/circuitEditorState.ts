@@ -11,6 +11,9 @@ import {
 	type SetStateAction,
 	useEffect,
 	useEffectEvent,
+	useLayoutEffect,
+	useMemo,
+	useRef,
 } from "react";
 import {
 	type CircuitSelectionItem,
@@ -62,6 +65,25 @@ export interface CircuitGraphActions {
 	): void;
 	run(command: CircuitCommand): boolean;
 	snap<T extends { x: number; y: number }>(position: T): T;
+}
+
+export function useStableHandlers<T extends object>(handlers: T): T {
+	const latest = useRef(handlers);
+	useLayoutEffect(() => {
+		latest.current = handlers;
+	});
+	return useMemo(() => {
+		const call = (key: string, args: unknown[]) =>
+			(latest.current as Record<string, (...args: unknown[]) => unknown>)[key](
+				...args,
+			);
+		return Object.fromEntries(
+			Object.keys(latest.current).map((key) => [
+				key,
+				(...args: unknown[]) => call(key, args),
+			]),
+		) as T;
+	}, []);
 }
 
 /**
