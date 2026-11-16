@@ -71,6 +71,7 @@ export function createProjectSessionState(rawStorage: ProjectStorage) {
 		libraries: [] as readonly ConfiguredSymbolLibrary[],
 		epoch: 0,
 		generation: 0,
+		circuitLayout: undefined as AbortController | undefined,
 		editorSelection: 0,
 		viewSelection: null as ViewSelection | null,
 		selectionOrigins: new WeakSet<object>(),

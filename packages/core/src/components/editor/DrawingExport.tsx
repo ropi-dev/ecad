@@ -13,10 +13,7 @@ import {
 } from "#/components/ui/Dialog.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
-import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
-import { captureSvgPng } from "#/engine/capture-png.ts";
-import { measureText } from "#/engine/drawing/text.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 /** Export dialog. It stays mounted while closed to keep the chosen settings. */
@@ -39,7 +36,7 @@ export function DrawingExport({
 	const [background, setBackground] = useState<
 		"white" | "dark" | "transparent"
 	>("white");
-	const [format, setFormat] = useState("png");
+	const [format, setFormat] = useState<"svg" | "png">("png");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 	const titleId = useId();
@@ -76,31 +73,18 @@ export function DrawingExport({
 									await measurePerformanceAsync(
 										"drawing.export",
 										async () => {
-											const { exportDrawingSvg } = await import(
-												"#/drawing/export.ts"
+											const { exportDrawing } = await import(
+												"#/drawing/export-client.ts"
 											);
-											const svg = exportDrawingSvg(shapes, {
-												width,
-												height,
-												area,
-												background,
-												sheet,
-												measureText,
-											});
-											const blob =
-												format === "svg"
-													? new Blob([svg], { type: "image/svg+xml" })
-													: await captureSvgPng(
-															svg,
-															width,
-															height,
-															background === "transparent"
-																? null
-																: background === "dark"
-																	? darkSchematicTheme.paper
-																	: "white",
-														);
-											downloadPng(blob, label, format);
+											downloadPng(
+												await exportDrawing(
+													shapes,
+													{ width, height, area, background, sheet },
+													format,
+												),
+												label,
+												format,
+											);
 										},
 										{ shapes: shapes.length, width, height, format },
 									);
@@ -148,7 +132,9 @@ export function DrawingExport({
 										<select
 											className="ui-select h-8 w-full"
 											value={format}
-											onChange={(e) => setFormat(e.target.value)}
+											onChange={(e) =>
+												setFormat(e.target.value as typeof format)
+											}
 										>
 											<option value="png">PNG</option>
 											<option value="svg">SVG vector</option>

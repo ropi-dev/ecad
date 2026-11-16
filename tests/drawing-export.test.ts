@@ -32,6 +32,43 @@ test("reference export covers every symbol child and rotation without changing t
 	assert.doesNotMatch(svg, /<image|NaN|Infinity/);
 	assert.equal(JSON.stringify(fixture), original);
 });
+test("an export for a PNG widens the view box to the image, so its background reaches the edges and the drawing stays centred", () => {
+	const svg = exportDrawingSvg(fixture.shapes, {
+		...options,
+		coverOutput: true,
+	});
+	const [x, y, width, height] = (/viewBox="([^"]+)"/.exec(svg)?.[1] ?? "")
+		.split(" ")
+		.map(Number);
+	assert.deepEqual([y, height], [-148.5, 297]);
+	assert.ok(Math.abs(width / height - 9600 / 6400) < 1e-12);
+	assert.ok(Math.abs(x + width / 2) < 1e-9);
+	assert.ok(
+		svg.includes(
+			`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="white"/>`,
+		),
+	);
+	const body = (text: string) => text.slice(text.indexOf("</rect>") + 1);
+	assert.equal(
+		body(svg.replace(/<rect [^>]+\/>/, "</rect>")),
+		body(
+			exportDrawingSvg(fixture.shapes, options).replace(
+				/<rect [^>]+\/>/,
+				"</rect>",
+			),
+		),
+	);
+	const tall = exportDrawingSvg(fixture.shapes, {
+		...options,
+		width: 2000,
+		height: 6400,
+		background: "transparent",
+		coverOutput: true,
+	});
+	assert.match(tall, /viewBox="-210 -672 420 1344"/);
+	assert.doesNotMatch(tall, /<rect/);
+});
+
 test("export validates allocation sizes and handles empty drawings and XML text", () => {
 	assert.throws(
 		() => exportDrawingSvg([], { ...options, width: 16000, height: 16000 }),

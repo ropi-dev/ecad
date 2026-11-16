@@ -13,7 +13,10 @@ import {
 	textLayout,
 } from "#/drawing/text.ts";
 
-let measureContext: CanvasRenderingContext2D | null = null;
+let measureContext:
+	| CanvasRenderingContext2D
+	| OffscreenCanvasRenderingContext2D
+	| null = null;
 const atlasGutter = 8;
 
 function glyphTexture(canvas: HTMLCanvasElement) {
@@ -26,7 +29,10 @@ function glyphTexture(canvas: HTMLCanvasElement) {
 
 /** Browser measurement adapter shared by editor text sizing and glyph textures. */
 export function measureText(text: string, bold?: boolean): number {
-	measureContext ??= document.createElement("canvas").getContext("2d");
+	measureContext ??=
+		typeof document === "undefined"
+			? new OffscreenCanvas(1, 1).getContext("2d")
+			: document.createElement("canvas").getContext("2d");
 	if (!measureContext) throw new Error("Text drawing is unavailable.");
 	measureContext.font = bold ? boldFont : font;
 	return measureContext.measureText(text).width;

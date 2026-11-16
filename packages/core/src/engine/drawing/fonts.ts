@@ -47,19 +47,25 @@ const subsets = [
 	},
 ] as const;
 
-let loading: Promise<void> | undefined;
+let loading: Promise<boolean> | undefined;
 let loaded = false;
 
+const fontFaces = () =>
+	typeof document === "undefined"
+		? (globalThis as { fonts?: FontFaceSet }).fonts
+		: document.fonts;
+
 export const drawingFontsLoaded = () =>
-	typeof document === "undefined" || typeof FontFace === "undefined" || loaded;
+	!fontFaces() || typeof FontFace === "undefined" || loaded;
 
 /**
  * Loads every subset before the editor measures or paints text. Canvas text
  * does not wait for web fonts, so text drawn earlier would use the fallback.
  * A failed load resolves too, and drawing continues with the fallback font.
  */
-export function loadDrawingFonts(): Promise<void> {
-	if (drawingFontsLoaded()) return Promise.resolve();
+export function loadDrawingFonts(): Promise<boolean> {
+	const faces = fontFaces();
+	if (!faces || typeof FontFace === "undefined") return Promise.resolve(false);
 	loading ??= Promise.all(
 		subsets.flatMap(({ unicodeRange, urls }) =>
 			Object.entries(urls).map(([weight, url]) => {
@@ -68,18 +74,20 @@ export function loadDrawingFonts(): Promise<void> {
 					unicodeRange,
 					display: "block",
 				});
-				document.fonts.add(face);
+				faces.add(face);
 				return face.load();
 			}),
 		),
-	).then(
-		() => {
+	)
+		.then(
+			() => true,
+			(error: unknown) => {
+				console.warn("The schematic font could not be loaded.", error);
+				return false;
+			},
+		)
+		.finally(() => {
 			loaded = true;
-		},
-		(error: unknown) => {
-			loaded = true;
-			console.warn("The schematic font could not be loaded.", error);
-		},
-	);
+		});
 	return loading;
 }

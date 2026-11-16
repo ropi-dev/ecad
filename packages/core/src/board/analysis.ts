@@ -12,6 +12,7 @@ import {
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
+import type { FabricationArchive } from "#/board/fabrication.ts";
 import {
 	type BoardFill,
 	boardFills,
@@ -25,17 +26,29 @@ export interface ShapesPatch {
 	changed?: readonly EditorShape[];
 }
 
-export type AnalysisKind = "fills" | "connectivity" | "check";
+export type AnalysisKind = "fills" | "connectivity" | "check" | "fabrication";
 
 export type AnalysisRequest =
 	| { type: "board"; circuit: Circuit | undefined; rules: BoardRules }
-	| { type: AnalysisKind; id: number; shapes: ShapesPatch };
+	| {
+			type: "fills" | "connectivity" | "check";
+			id: number;
+			shapes: ShapesPatch;
+	  }
+	| { type: "fabrication"; id: number; shapes: ShapesPatch; name: string };
 
 export type AnalysisReply =
 	| { type: "fills"; id: number; fills: BoardFill[] }
 	| { type: "connectivity"; id: number; ratsnest: RatsnestLine[] }
 	| { type: "check"; id: number; findings: DrcFinding[] }
+	| ({ type: "fabrication"; id: number } & FabricationArchive)
 	| { type: "error"; id: number; message: string };
+
+export type Fabricate = (
+	name: string,
+	shapes: readonly EditorShape[],
+	fills: readonly ZoneFill[],
+) => FabricationArchive | Promise<FabricationArchive>;
 
 const STALE_SHAPES = 64;
 
@@ -82,20 +95,44 @@ function createShapesReceiver() {
 	};
 }
 
-export function createBoardAnalysis() {
+export interface BoardAnalysis {
+	(
+		request: Exclude<AnalysisRequest, { type: "fabrication" }>,
+	): AnalysisReply | undefined;
+	(
+		request: AnalysisRequest,
+	): AnalysisReply | Promise<AnalysisReply> | undefined;
+}
+
+export function createBoardAnalysis(fabricate: Fabricate): BoardAnalysis {
 	const receive = createShapesReceiver();
 	let netlist = boardNetlist(undefined);
 	let rules: BoardRules = defaultBoardRules;
 	let fills: ZoneFill[] = [];
-	return (request: AnalysisRequest): AnalysisReply | undefined => {
+	return ((request: AnalysisRequest) => {
 		if (request.type === "board") {
 			netlist = boardNetlist(request.circuit);
 			rules = request.rules;
 			return undefined;
 		}
 		const { type, id } = request;
+		const failed = (cause: unknown): AnalysisReply => ({
+			type: "error",
+			id,
+			message: errorMessage(cause, "The analysis stopped."),
+		});
 		try {
 			const current = receive(request.shapes);
+			if (type === "fabrication") {
+				const made = fabricate(
+					request.name,
+					current,
+					fillZones(current, netlist, rules),
+				);
+				return made instanceof Promise
+					? made.then((archive) => ({ type, id, ...archive }), failed)
+					: { type, id, ...made };
+			}
 			if (type === "fills") {
 				fills = fillZones(current, netlist, rules);
 				return { type, id, fills: boardFills(fills) };
@@ -119,11 +156,7 @@ export function createBoardAnalysis() {
 				}),
 			};
 		} catch (cause) {
-			return {
-				type: "error",
-				id,
-				message: errorMessage(cause, "The analysis stopped."),
-			};
+			return failed(cause);
 		}
-	};
+	}) as BoardAnalysis;
 }

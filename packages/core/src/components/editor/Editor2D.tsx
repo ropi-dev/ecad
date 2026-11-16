@@ -865,41 +865,27 @@ function EditorCanvas({
 					setExporting(true);
 					const exported = store.getSnapshot().shapes;
 					void Promise.all([
-						import("#/board/gerber.ts"),
-						import("fflate"),
-						boardEditor.fillsOf(exported),
+						boardEditor.fabricate(
+							board.file.name.replace(/[^A-Za-z0-9_-]+/g, "_") || "board",
+							exported,
+						),
 						boardEditor.runChecks(exported),
 					])
-						.then(
-							([
-								{ exportFabrication },
-								{ zipSync, strToU8 },
-								fills,
-								checks,
-							]) => {
-								const stem =
-									board.file.name.replace(/[^A-Za-z0-9_-]+/g, "_") || "board";
-								const files = exportFabrication(stem, exported, fills);
-								const zip = zipSync(
-									Object.fromEntries(
-										files.map((file) => [file.name, strToU8(file.content)]),
-									),
-								);
-								downloadPng(
-									new Blob([zip], { type: "application/zip" }),
-									`${board.file.name} gerber`,
-									"zip",
-								);
-								const findings = checks.length;
-								toastManager.add({
-									type: findings ? "warning" : "success",
-									title: "Fabrication files exported",
-									description: findings
-										? `${files.length} Gerber and drill files in a ZIP archive. The design rules check has ${findings} ${findings === 1 ? "finding" : "findings"}. Run it before ordering boards.`
-										: `${files.length} Gerber and drill files in a ZIP archive.`,
-								});
-							},
-						)
+						.then(([{ archive, files }, checks]) => {
+							downloadPng(
+								new Blob([archive], { type: "application/zip" }),
+								`${board.file.name} gerber`,
+								"zip",
+							);
+							const findings = checks.length;
+							toastManager.add({
+								type: findings ? "warning" : "success",
+								title: "Fabrication files exported",
+								description: findings
+									? `${files} Gerber and drill files in a ZIP archive. The design rules check has ${findings} ${findings === 1 ? "finding" : "findings"}. Run it before ordering boards.`
+									: `${files} Gerber and drill files in a ZIP archive.`,
+							});
+						})
 						.catch((cause: unknown) =>
 							toastManager.add({
 								type: "error",

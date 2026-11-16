@@ -40,23 +40,53 @@ export function createProjectEditorFiles(
 	const circuitModules = () =>
 		Promise.all([
 			import("@ecad/drawing-core/circuit/store.ts"),
-			import("@ecad/drawing-core/circuit/untangle.ts"),
+			import("#/circuit/untangle-client.ts"),
 		]);
+	type CircuitModules = Awaited<ReturnType<typeof circuitModules>>;
+	let layout:
+		| {
+				circuit: CircuitFile["circuit"];
+				controller: AbortController;
+				view: Promise<CircuitFile | undefined>;
+				opening: boolean;
+		  }
+		| undefined;
+	const laidOut = async (
+		circuit: CircuitFile["circuit"],
+		[, { untangledCircuitView }]: CircuitModules,
+		opening: boolean,
+	) => {
+		if (layout?.circuit === circuit) {
+			layout.opening ||= opening;
+			return layout.view;
+		}
+		if (layout?.opening && !opening) return undefined;
+		layout?.controller.abort();
+		const controller = new AbortController();
+		state.circuitLayout = controller;
+		const view = untangledCircuitView(circuit, controller.signal)
+			.catch((cause: unknown) => {
+				if (controller.signal.aborted) return undefined;
+				throw cause;
+			})
+			.finally(() => {
+				if (layout?.controller !== controller) return;
+				layout = undefined;
+				state.circuitLayout = undefined;
+			});
+		view.catch(() => undefined);
+		layout = { circuit, controller, view, opening };
+		return view;
+	};
 	const openCircuitDocument = (
 		file: CircuitFile,
-		[{ createCircuitStore }, { createCircuitView }]: Awaited<
-			ReturnType<typeof circuitModules>
-		>,
+		view: CircuitFile,
+		[{ createCircuitStore }]: CircuitModules,
 	) =>
 		documents.openDocument("circuit", file.circuit.id, () => {
 			const circuitStore = measurePerformance(
 				"editor.open-circuit",
-				() =>
-					createCircuitStore(
-						file.graph.positions.length
-							? file
-							: createCircuitView(file.circuit),
-					),
+				() => createCircuitStore(view),
 				{ components: file.circuit.components.length },
 			);
 			let lastCircuit = circuitStore.getSnapshot().circuit;
@@ -75,6 +105,9 @@ export function createProjectEditorFiles(
 				}),
 			};
 		});
+	const needsLayout = (file: CircuitFile) =>
+		!file.graph.positions.length &&
+		!documents.collection("circuit").has(file.circuit.id);
 	const clearEditors = (
 		keep?: "symbol" | "footprint" | "board" | "drawing" | "circuit",
 	) => {
@@ -84,15 +117,35 @@ export function createProjectEditorFiles(
 		if (keep !== "drawing") setEditorDrawing(null);
 		if (keep !== "circuit") setEditorCircuit(null);
 	};
-	const openCircuit = async (path: string) => {
+	let opening:
+		| {
+				path: string;
+				request: number;
+				generation: number;
+				opened: Promise<boolean>;
+		  }
+		| undefined;
+	const openCircuit = (path: string) => {
+		if (
+			opening?.path === path &&
+			opening.request === state.editorSelection &&
+			opening.generation === state.generation
+		)
+			return opening.opened;
 		const selectionRequest = ++state.editorSelection;
 		// The editor waits for this circuit instead of showing the schematic.
 		setOpeningCircuit(selectionRequest);
-		try {
-			return await loadCircuit(path, selectionRequest);
-		} finally {
+		const opened = loadCircuit(path, selectionRequest).finally(() => {
+			if (opening?.request === selectionRequest) opening = undefined;
 			if (state.openingCircuit === selectionRequest) setOpeningCircuit(null);
-		}
+		});
+		opening = {
+			path,
+			request: selectionRequest,
+			generation: state.generation,
+			opened,
+		};
+		return opened;
 	};
 	const loadCircuit = async (path: string, selectionRequest: number) => {
 		const before = state.active;
@@ -116,20 +169,32 @@ export function createProjectEditorFiles(
 		)
 			return false;
 		const modules = await circuitModules();
-		if (
+		const stale = () =>
 			openedGeneration !== state.generation ||
 			selectionRequest !== state.editorSelection ||
-			!state.mounted
-		)
-			return false;
-		// Read the file after the import, which a reload from disk may span.
-		const snapshot = state.active;
-		const file =
-			snapshot && circuitId
+			!state.mounted;
+		if (stale()) return false;
+		// Read the file after each wait, which a reload from disk may span.
+		const read = () => {
+			const snapshot = state.active;
+			return snapshot && circuitId
 				? projectIndex(snapshot).circuitsById.get(circuitId)?.file
 				: undefined;
-		if (!file) throw new Error("Circuit file no longer exists.");
-		const document = openCircuitDocument(file, modules);
+		};
+		let file = read();
+		let view = file;
+		while (file && needsLayout(file)) {
+			const { circuit } = file;
+			const arranged = await laidOut(circuit, modules, true);
+			if (!arranged || stale()) return false;
+			file = read();
+			view = file;
+			if (file?.circuit !== circuit) continue;
+			if (!file.graph.positions.length) view = arranged;
+			break;
+		}
+		if (!file || !view) throw new Error("Circuit file no longer exists.");
+		const document = openCircuitDocument(file, view, modules);
 		clearEditors("circuit");
 		setEditorCircuit(document);
 		return true;
@@ -546,14 +611,28 @@ export function createProjectEditorFiles(
 			state.editorViews?.circuitId !== circuitId
 		)
 			return;
-		const file = state.active
-			? projectIndex(state.active).circuitsById.get(circuitId)?.file
-			: undefined;
-		if (file)
-			setEditorViews({
-				...state.editorViews,
-				circuit: openCircuitDocument(file, modules),
-			});
+		const superseded = () =>
+			generation !== state.generation ||
+			!state.mounted ||
+			state.editorViews?.circuitId !== circuitId;
+		const read = () =>
+			state.active
+				? projectIndex(state.active).circuitsById.get(circuitId)?.file
+				: undefined;
+		let file = read();
+		if (!file) return;
+		let view: CircuitFile | undefined = file;
+		if (needsLayout(file)) {
+			const { circuit } = file;
+			view = await laidOut(circuit, modules, false);
+			file = read();
+			if (!view || superseded() || file?.circuit !== circuit) return;
+			if (file.graph.positions.length) view = file;
+		}
+		setEditorViews({
+			...state.editorViews,
+			circuit: openCircuitDocument(file, view, modules),
+		});
 	};
 
 	let stopMain = () => {};
