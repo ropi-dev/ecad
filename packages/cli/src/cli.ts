@@ -2,6 +2,8 @@ import { addAbortSignal, type Readable, type Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 
+declare const ECAD_VERSION: string | undefined;
+
 const help = `Usage: ecad [options] <command> [json|-]
 
 Commands:
@@ -51,7 +53,9 @@ export async function runCli(args: string[], options: CliOptions = {}) {
 			},
 		});
 		if (values.version) {
-			output.write("0.0.0\n");
+			output.write(
+				`${typeof ECAD_VERSION === "string" ? ECAD_VERSION : "0.0.0"}\n`,
+			);
 			return 0;
 		}
 		if (values.help || positionals.length === 0) {

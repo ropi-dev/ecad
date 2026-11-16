@@ -362,6 +362,8 @@ async function main() {
 			"--standalone",
 			"--outdir",
 			join(lib, "cli"),
+			"--version",
+			version,
 		]);
 
 		const bin = join(tree, "usr/bin");
