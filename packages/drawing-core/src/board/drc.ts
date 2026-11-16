@@ -265,7 +265,10 @@ export function checkBoard(
 			});
 		}
 		for (const hole of holes) {
-			const inside = insideOutline(hole.shape, outline);
+			const inside = insideOutline(
+				{ x: hole.shape.x, y: hole.shape.y },
+				outline,
+			);
 			if (
 				inside &&
 				strokes.every((stroke) => hullDistance(hole.hulls[0], stroke) > 1e-6)

@@ -56,7 +56,7 @@ test("a new unplated hole is a 3.2 mm drill with a mask opening its size on both
 	assert.deepEqual(footprintLayerView([hole], masks), []);
 });
 
-test("the schema accepts an unplated hole only on a circle that is not a pad or via, with a drill no larger than the circle", () => {
+test("the schema accepts an unplated hole only on a mask-layer circle with no net that is not a pad or via, with a drill no larger than the circle", () => {
 	const hole = createHole(1, { x: 0, y: 0 });
 	const pad = createPad(2, { x: 0, y: 0 }, "through-hole", "1", "F.Cu");
 	const via = createVia(3, { x: 0, y: 0 });
@@ -65,13 +65,16 @@ test("the schema accepts an unplated hole only on a circle that is not a pad or 
 		{ ...hole, kind: "rectangle" as const },
 		{ ...pad, hole: { drill: 0.5 } },
 		{ ...via, hole: { drill: 0.3 } },
+		{ ...hole, layer: "F.Cu" as const },
+		{ ...hole, net: "gnd" },
 	];
 	for (const shape of rejected)
 		assert.equal(editorShapeSchema.safeParse(shape).success, false);
-	assert.equal(
-		editorShapeSchema.safeParse({ ...hole, hole: { drill: 2.75 } }).success,
-		true,
-	);
+	for (const accepted of [
+		{ ...hole, hole: { drill: 2.75 } },
+		{ ...hole, layer: "B.Mask" as const },
+	])
+		assert.equal(editorShapeSchema.safeParse(accepted).success, true);
 });
 
 test("a larger drill widens the mask opening, and shrinking the opening shrinks the drill", () => {

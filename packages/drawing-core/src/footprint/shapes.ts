@@ -237,7 +237,7 @@ export const editHole = (shape: HoleShape, drill: number): HoleShape =>
 		? {
 				...shape,
 				width: Math.max(shape.width, drill),
-				height: Math.max(shape.width, drill),
+				height: Math.max(shape.height, drill),
 				hole: { drill },
 			}
 		: shape;

@@ -260,18 +260,22 @@ const validViaError = {
 const validHole = (shape: {
 	kind: string;
 	width: number;
+	layer?: string;
+	net?: string;
 	pad?: unknown;
 	via?: unknown;
 	hole?: z.output<typeof holeSchema>;
 }) =>
 	!shape.hole ||
 	(shape.kind === "circle" &&
+		(shape.layer === "F.Mask" || shape.layer === "B.Mask") &&
+		shape.net === undefined &&
 		shape.pad === undefined &&
 		shape.via === undefined &&
 		shape.hole.drill <= shape.width);
 const validHoleError = {
 	error:
-		"An unplated hole must be a circle that is not a pad or via, with a drill no larger than the circle.",
+		"An unplated hole must be a circle on F.Mask or B.Mask with no net that is not a pad or via, with a drill no larger than the circle.",
 };
 const validZone = (shape: {
 	kind: string;

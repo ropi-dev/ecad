@@ -196,7 +196,7 @@ export function padNumberSize(
 }
 
 const holeEdge = (shape: EditorShape) =>
-	Math.min(shape.lineWidth, shape.width / 4);
+	Math.min(Math.max(shape.lineWidth, 0.05), shape.width / 4);
 
 function displayShape(
 	shape: EditorShape,
