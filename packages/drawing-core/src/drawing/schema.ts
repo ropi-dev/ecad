@@ -42,6 +42,12 @@ const pinElectricalType = z
 	.describe(
 		"Electrical type used by ERC, as in KiCad. Omit it for a passive pin.",
 	);
+const pinActiveLow = z
+	.boolean()
+	.optional()
+	.describe(
+		"True when the pin's signal is asserted low, drawn with an inversion bubble and a line over the name. Omit it for an active-high pin. In a placement override, false makes an active-low pin active high.",
+	);
 
 /** One field per symbol attribute, such as name, reference and value. */
 function perAttribute<T extends z.ZodType>(value: T) {
@@ -157,6 +163,7 @@ const pinShapeFields = {
 	name: z.string().describe("Pin name, such as VCC or GND."),
 	number: z.string().describe("Pin number, such as 1, 01 or A1."),
 	electricalType: pinElectricalType,
+	activeLow: pinActiveLow,
 	length: pinLength.optional(),
 	labelOffset: z.number().min(-1000).max(1000).optional(),
 	showLabels: z.boolean().optional(),
@@ -354,6 +361,7 @@ export const symbolChildOverrideSchema = z.strictObject({
 	name: z.string().optional(),
 	number: z.string().optional(),
 	electricalType: pinElectricalType,
+	activeLow: pinActiveLow,
 	showLabels: z.boolean().optional(),
 	showName: z.boolean().optional(),
 	showNumber: z.boolean().optional(),

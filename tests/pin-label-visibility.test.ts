@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { overbarText } from "@ecad/drawing-core/drawing/overbar.ts";
 import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	DEFAULT_LINE_WIDTH,
@@ -156,7 +157,7 @@ test("built-ins hide redundant terminal labels and retain pinout and polarity la
 		const symbol = createSymbol(1, definition, { x: 0, y: 0 });
 		const pins = definition.children.filter((child) => child.kind === "pin");
 		const labels = buildDrawingDisplay([symbol], new Set()).connections.flatMap(
-			(pin) => pin.children ?? [],
+			(pin) => pin.children?.filter((child) => child.pinLabel) ?? [],
 		);
 		if (hidden.has(definition.id)) {
 			assert.ok(pins.length > 0);
@@ -168,7 +169,11 @@ test("built-ins hide redundant terminal labels and retain pinout and polarity la
 		} else {
 			assert.deepEqual(
 				labels.map((label) => label.text),
-				pins.flatMap((pin) => [pin.name, pin.number].filter(Boolean)),
+				pins.flatMap((pin) =>
+					[pin.activeLow ? overbarText(pin.name) : pin.name, pin.number].filter(
+						Boolean,
+					),
+				),
 			);
 		}
 	}

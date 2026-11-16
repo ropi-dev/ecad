@@ -273,6 +273,7 @@ export function symbolFileWithShapes(
 					...(shape.electricalType === undefined
 						? {}
 						: { electricalType: shape.electricalType }),
+					...(shape.activeLow ? { activeLow: true } : {}),
 					...(shape.length === undefined ? {} : { length: shape.length }),
 					...(shape.rotation === 0
 						? {}

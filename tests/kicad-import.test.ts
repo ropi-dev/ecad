@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { parseOverbars } from "@ecad/drawing-core/drawing/overbar.ts";
 import { symbolTextShapes } from "@ecad/drawing-core/drawing/shapes.ts";
 import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 import { node, nodes, parseSExpr } from "#/formats/kicad/sexpr.ts";
@@ -19,12 +20,21 @@ test("RP2350A imports all instances, terminal positions, values, wires and visib
 	const result = importKiCadSchematic(source);
 	const symbols = result.shapes.filter((s) => s.kind === "symbol");
 	assert.equal(symbols.length, 87);
-	const expected = JSON.parse(
-		readFileSync(
-			new URL("./fixtures/kicad/pins.json", import.meta.url),
-			"utf8",
-		),
-	);
+	const expected = (
+		JSON.parse(
+			readFileSync(
+				new URL("./fixtures/kicad/pins.json", import.meta.url),
+				"utf8",
+			),
+		) as { name: string }[]
+	).map((pin) => {
+		const { text, overbars } = parseOverbars(pin.name);
+		return {
+			...pin,
+			name: text,
+			activeLow: overbars.length ? true : undefined,
+		};
+	});
 	const actual = symbols.flatMap((s, index) =>
 		s.children
 			.filter((c) => c.kind === "pin")
@@ -32,11 +42,25 @@ test("RP2350A imports all instances, terminal positions, values, wires and visib
 				reference: result.report.components[index].properties.Reference,
 				number: p.number,
 				name: p.name,
+				activeLow: p.activeLow,
 				x: Number((s.x + p.x).toFixed(6)),
 				y: Number((s.y + p.y).toFixed(6)),
 			})),
 	);
 	assert.equal(actual.length, 272);
+	const pin = (reference: string, number: string) =>
+		actual.find((p) => p.reference === reference && p.number === number);
+	assert.deepEqual(
+		[pin("U3", "1"), pin("U3", "3")].map((p) => [p?.name, p?.activeLow]),
+		[
+			["CS", true],
+			["WP_IO2", true],
+		],
+	);
+	assert.deepEqual(
+		[pin("U3", "6")].map((p) => [p?.name, p?.activeLow]),
+		[["CLK", undefined]],
+	);
 	assert.deepEqual(actual, expected);
 	assert.equal(
 		new Set(actual.filter((p) => p.reference === "U1").map((p) => p.number))

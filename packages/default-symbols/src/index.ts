@@ -93,6 +93,7 @@ function generate(source: SourceSymbol): DefaultSymbol {
 					kind: "pin",
 					name,
 					...electricalType(source.pinTypes?.[name] ?? source.pinType),
+					...(source.activeLowPins?.includes(name) ? { activeLow: true } : {}),
 					...(number === undefined
 						? {}
 						: {
@@ -115,6 +116,9 @@ function generate(source: SourceSymbol): DefaultSymbol {
 	for (const name of Object.keys(source.pinTypes ?? {}))
 		if (!shapes.some((shape) => shape.kind === "pin" && shape.name === name))
 			throw new Error(`${source.id} has a type for missing pin ${name}.`);
+	for (const name of source.activeLowPins ?? [])
+		if (!shapes.some((shape) => shape.kind === "pin" && shape.name === name))
+			throw new Error(`${source.id} marks missing pin ${name} active low.`);
 	// Keep labels clear of the geometry, including tall connectors and power pins.
 	const ys = shapes.flatMap((shape) => {
 		if ("x1" in shape) return [shape.y1, shape.y2];

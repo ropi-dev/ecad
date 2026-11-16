@@ -12,6 +12,8 @@ is included in CC-BY-SA-4.0.txt. The electronic-design exception is retained.
 ECAD modifications convert coordinates to the editor grid, rotate passive
 components, approximate arcs with lines, use polygon outlines, omit unsupported
 electrical metadata, preserve terminal names, and add reference and value labels.
+Active-low terminals drop their `/`, `_N` or `n` marker and are flagged active
+low, which draws a line over the name instead: W25Q128JVS `/CS` is `CS`.
 The operational amplifier also has drawn input polarity marks. Existing ECAD
 resistor, capacitor, and ground dimensions remain unchanged.
 
@@ -72,7 +74,8 @@ library contributors at commit `c2457f8bcea241d7b85c34ab025fe52315febd2f`:
 https://gitlab.com/kicad/libraries/kicad-symbols/-/tree/c2457f8bcea241d7b85c34ab025fe52315febd2f/MCU_RaspberryPi.kicad_symdir
 These definitions preserve package pin numbers and exposed ground pads. ECAD
 separates stacked supply pins, arranges GPIO and other pins in two columns,
-and preserves native pin names and numbers. QSPI_SS_N denotes active-low QSPI_SS.
+and preserves pin numbers and native pin names, except that the active-low
+QSPI_SS drops its _N suffix and draws with an overbar, as in KiCad.
 
 The nRF54L15, nRF54L10, nRF54L05, and nPM2100 definitions are not adapted from
 the KiCad libraries, which have no symbols for these parts. ECAD drew them from
@@ -92,4 +95,5 @@ sold in CAAA. Packages with the same code share one layout. The QFN exposed pad
 is VSS, numbered 41, 49, or 53. The nPM2100 QFN exposed pad is AVSS1, numbered
 17. Ball-grid packages use ball names as pin numbers, and CSP47 has no B2 or C1
 ball. GPIO names carry the crystal, NFC, analog input, and external reference
-functions from the datasheet. nRESET denotes active-low reset.
+functions from the datasheet. The datasheet's nRESET is named RESET and marked
+active low, so it draws with an overbar.

@@ -14,6 +14,8 @@ import {
 	fontPixels,
 	lineHeight,
 	type MeasureText,
+	overbarRise,
+	overbarThickness,
 	padding,
 	textLayout,
 } from "#/drawing/text.ts";
@@ -29,6 +31,26 @@ export interface DrawingExportOptions {
 	sheet: SheetSize;
 	measureText?: MeasureText;
 	coverOutput?: boolean;
+}
+function overbarPath(
+	line: string,
+	overbars: readonly (readonly [number, number])[],
+	x: number,
+	align: "left" | "center" | "right",
+	baseline: number,
+	measure: (text: string) => number,
+) {
+	if (!overbars.length) return "";
+	const width = measure(line);
+	const left =
+		align === "center" ? x - width / 2 : align === "right" ? x - width : x;
+	const top = baseline - overbarRise - overbarThickness / 2;
+	return `<path d="${overbars
+		.map(([start, end]) => {
+			const from = measure(line.slice(0, start));
+			return `M${left + from} ${top}h${measure(line.slice(0, end)) - from}v${overbarThickness}h${from - measure(line.slice(0, end))}Z`;
+		})
+		.join("")}"/>`;
 }
 const escapeXml = (value: string) =>
 	value.replace(
@@ -132,7 +154,7 @@ export function exportDrawingSvg(
 							(layout.lines.length - 1) * lineHeight +
 							fontPixels * 0.72) /
 						2;
-					svg = `<g transform="matrix(${[m[0], -m[1], m[4], -m[5], m[12], -m[13]].map(number).join(" ")})" fill="${color}" font-family="${drawingFontStack}" font-size="${fontPixels}"${shape.bold ? ' font-weight="bold"' : ""} text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${layout.lines.map((line, i) => `<text x="${x}" y="${baseline + i * lineHeight}"${line ? ` textLength="${measure(line, shape.bold)}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line)}</text>`).join("")}</g>`;
+					svg = `<g transform="matrix(${[m[0], -m[1], m[4], -m[5], m[12], -m[13]].map(number).join(" ")})" fill="${color}" font-family="${drawingFontStack}" font-size="${fontPixels}"${shape.bold ? ' font-weight="bold"' : ""} text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${layout.lines.map((line, i) => `<text x="${x}" y="${baseline + i * lineHeight}"${line ? ` textLength="${measure(line, shape.bold)}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line)}</text>${overbarPath(line, layout.overbars[i], x, align, baseline + i * lineHeight, (part) => measure(part, shape.bold))}`).join("")}</g>`;
 				} else {
 					const geometry = createShapeGeometry(shape.geometry);
 					try {

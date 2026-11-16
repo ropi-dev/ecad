@@ -1,3 +1,4 @@
+import { parseOverbars } from "@ecad/drawing-core/drawing/overbar.ts";
 import type { TextShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
@@ -10,6 +11,8 @@ import {
 export const fontPixels = 96;
 export const padding = 12;
 export const lineHeight = 120;
+export const overbarRise = fontPixels * 0.86;
+export const overbarThickness = fontPixels * 0.07;
 /** Schematic text uses one bundled monospace face so widths match on every machine. */
 export const drawingFontFamily = "JetBrains Mono";
 export const drawingFontStack = `'${drawingFontFamily}', ui-monospace, monospace`;
@@ -24,12 +27,22 @@ export function textLayout(
 	measureText: MeasureText,
 	bold?: boolean,
 ) {
-	const lines = text.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n");
+	const parsed = text
+		.replace(/\r\n?/g, "\n")
+		.replace(/\t/g, "    ")
+		.split("\n")
+		.map(parseOverbars);
+	const lines = parsed.map((line) => line.text);
 	const width =
 		Math.max(fontPixels / 2, ...lines.map((line) => measureText(line, bold))) +
 		padding * 2;
 	const height = lines.length * lineHeight + padding * 2;
-	return { lines, width, height };
+	return {
+		lines,
+		overbars: parsed.map((line) => line.overbars),
+		width,
+		height,
+	};
 }
 
 export function updateText(

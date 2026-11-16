@@ -1,3 +1,4 @@
+import { parseOverbars } from "#/drawing/overbar.ts";
 import type {
 	BasicShape,
 	EditorSymbol,
@@ -302,7 +303,7 @@ function resolveSymbolTextShapes(symbol: EditorSymbol): TextShape[] {
 			.split("\n");
 		const width = Math.max(
 			fontSize / 2,
-			...lines.map((line) => line.length * fontSize * 0.6),
+			...lines.map((line) => parseOverbars(line).text.length * fontSize * 0.6),
 		);
 		return [
 			{

@@ -208,6 +208,7 @@ const shapeSchema = Schema.Union(
 		name: Schema.optional(Schema.String),
 		number: Schema.optional(Schema.String),
 		electricalType: Schema.optional(Schema.Literal(...pinElectricalTypes)),
+		activeLow: Schema.optional(Schema.Boolean),
 		showLabels: Schema.optional(Schema.Boolean),
 		showName: Schema.optional(Schema.Boolean),
 		showNumber: Schema.optional(Schema.Boolean),

@@ -84,14 +84,15 @@ export const referenceSymbols: readonly SourceSymbol[] = [
 		filled: true,
 		pinType: "bidirectional",
 		pinTypes: {
-			"/CS": "input",
+			CS: "input",
 			CLK: "input",
 			VCC: "power-in",
 			GND: "power-in",
 		},
+		activeLowPins: ["CS"],
 		drawing: [
 			["rectangle", -500, 400, 500, -400],
-			["pin", "/CS", -700, 200, 200, "R", "1"],
+			["pin", "CS", -700, 200, 200, "R", "1"],
 			["pin", "CLK", -700, 0, 200, "R", "6"],
 			["pin", "DI(IO0)", 700, 200, 200, "L", "5"],
 			["pin", "DO(IO1)", 700, 100, 200, "L", "2"],

@@ -1,4 +1,5 @@
 import type { ShapeInput } from "@ecad/drawing-core/commands/drawing-commands.ts";
+import { parseOverbars } from "@ecad/drawing-core/drawing/overbar.ts";
 import {
 	type PinElectricalType,
 	pinElectricalTypes,
@@ -36,6 +37,14 @@ function kicadPinType(token: SExpr[number] | undefined): {
 		? { electricalType: type as PinElectricalType }
 		: {};
 }
+
+const activeLowPinStyles = new Set([
+	"inverted",
+	"inverted_clock",
+	"input_low",
+	"clock_low",
+	"output_low",
+]);
 
 export interface KiCadImportReport {
 	version: string;
@@ -149,7 +158,9 @@ function text(n: SExpr, at: XY, content: string): TextShape {
 	return {
 		...geometry(
 			...at,
-			Math.max(...lines.map((s) => s.length), 1) * size * 0.65,
+			Math.max(...lines.map((s) => parseOverbars(s).text.length), 1) *
+				size *
+				0.65,
 			size * 1.4 * lines.length,
 			radians(numbers(n, "at")[2] ?? 0),
 		),
@@ -202,7 +213,7 @@ function convert(source: string): KiCadImportResult {
 	const warnings = new Set<string>([
 		"Net names apply throughout this drawing. KiCad hierarchical and local power scopes are not represented.",
 		"Footprints, simulation settings, and other source metadata are retained in the import report, not applied to electrical analysis.",
-		"Pin names and numbers use native visibility fields. KiCad label placement, font styling and overbars are approximated.",
+		"Pin names and numbers use native visibility fields. KiCad label placement and font styling are approximated. A pin with a ~{…} overbar anywhere in its name imports as active low, without the markup.",
 		"No-connect markers are graphics only. Wire and pin connectivity uses ECAD geometry. Hierarchical sheets and buses are not imported.",
 		"KiCad colors, line patterns, font styling, text mirroring, label outlines and pin decoration shapes are approximated. Download the import report to retain source metadata, which is not saved in the drawing.",
 		"Symbol arcs use line segments. Filled polygons use outlines. No ERC or PCB validation is performed.",
@@ -411,7 +422,8 @@ function convert(source: string): KiCadImportResult {
 						p = transform(px, py),
 						direction = transform(Math.cos(radians(pa)), Math.sin(radians(pa)));
 					const length = Number(value(g, "length", "0")),
-						name = value(g, "name"),
+						source = parseOverbars(value(g, "name")),
+						name = source.text,
 						number = value(g, "number");
 					children.push({
 						...geometry(
@@ -424,6 +436,9 @@ function convert(source: string): KiCadImportResult {
 						name,
 						number,
 						...kicadPinType(g[1]),
+						...(source.overbars.length || activeLowPinStyles.has(String(g[2]))
+							? { activeLow: true }
+							: {}),
 						length,
 						showName:
 							!hidden(g) &&

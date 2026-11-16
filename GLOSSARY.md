@@ -20,6 +20,9 @@ An electrical connection point owned by a component, identified by its name and 
 **Electrical type**:
 A pin's electrical role, such as input, output, passive or power input, using KiCad's pin types. The electrical rules check uses it to decide which pins drive a net.
 
+**Active level**:
+Whether a pin's signal is asserted high or low. Pins are active high unless marked active low, which draws a line over the pin name and an inversion bubble where the lead meets the body.
+
 **Terminal**:
 The exposed end of a pin where a wire connects.
 

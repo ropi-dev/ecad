@@ -331,6 +331,12 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 		}
 	}
 	if (shape.kind === "pin-halo") return new RingGeometry(0.35, 0.5, 32);
+	if (shape.kind === "pin-bubble")
+		return new RingGeometry(
+			Math.max(0, shape.width - shape.lineWidth) / (2 * shape.width),
+			(shape.width + shape.lineWidth) / (2 * shape.width),
+			48,
+		);
 	const { width, height, lineWidth } = shape;
 	if (width <= 0 || height <= 0) return new BufferGeometry();
 	const halfStroke = lineWidth / 2;
