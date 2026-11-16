@@ -349,6 +349,13 @@ test("a negative mask margin shrinks a rounded pad's corners, then its sides", (
 		mask(-0.5, { ...roundedPad(0.5), width: 1 }),
 	])
 		assert.equal(covered.includes("D03"), false);
+	assert.deepEqual(
+		maskOpenings(
+			[roundedPad(0.5), { ...roundedPad(0.5), id: 2, x: 5, width: 1 }],
+			-0.5,
+		).top,
+		[],
+	);
 	const openings = maskOpenings([roundedPad()], -0.1).top;
 	assert.equal(containsPoint([openings], { x: 0.89, y: 0 }), true);
 	assert.equal(containsPoint([openings], { x: 0.88, y: 0.38 }), false);

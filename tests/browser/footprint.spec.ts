@@ -534,8 +534,9 @@ test("a footprint links a built-in 3D model, which the realistic board draws unt
 	await models.click();
 	await expect(models).toHaveAttribute("aria-pressed", "true");
 	const shownAgain = await settled();
-	expect(await differingShare(hidden, shown)).toBeGreaterThan(0.01);
-	expect(await differingShare(shownAgain, shown)).toBeLessThan(0.005);
+	const hiddenShare = await differingShare(hidden, shown);
+	expect(hiddenShare).toBeGreaterThan(0.01);
+	expect(await differingShare(shownAgain, shown)).toBeLessThan(hiddenShare / 5);
 
 	await field.selectOption("");
 	await expect
