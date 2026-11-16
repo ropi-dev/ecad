@@ -44,6 +44,12 @@ test(
 				mimeType: "application/json",
 				buffer: Buffer.from(JSON.stringify(symbol)),
 			});
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+			"Symbol editor · Editable package",
+		);
+		await expect(
+			page.getByRole("button", { name: "Select", exact: true }),
+		).toBeEnabled();
 		for (let repeat = 0; repeat < 3; repeat++) {
 			await (await openProjectFiles(page))
 				.getByRole("link", {
