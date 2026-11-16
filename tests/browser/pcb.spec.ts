@@ -163,6 +163,87 @@ test("a designer deletes a routed track and draws it again with the Track tool",
 	await expect(page.getByText("All connections routed")).toBeVisible();
 });
 
+test("the schematic, circuit and PCB of a circuit stay open together and keep the same component selected", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const panes = page.locator("[data-editor-pane]");
+	await expect(panes).toHaveCount(3);
+	const active = page.locator('[data-editor-pane="active"]');
+	const selectedReferences = async () => {
+		const ids = await active
+			.getByTestId("text-anchor")
+			.evaluateAll((anchors) =>
+				anchors.map((anchor) =>
+					Number(anchor.getAttribute("data-anchor-id")?.split(":")[0]),
+				),
+			);
+		const shapes: {
+			id: number;
+			kind: string;
+			attributes?: { reference?: string };
+		}[] = (await documentState(page)).editorShapes;
+		return [
+			...new Set(
+				shapes
+					.filter((shape) => shape.kind === "symbol" && ids.includes(shape.id))
+					.map((shape) => shape.attributes?.reference),
+			),
+		].sort();
+	};
+	const footprint = required(
+		((await documentState(page)).editorShapes as EditorShape[]).find(
+			(shape) =>
+				shape.kind === "symbol" &&
+				shape.footprint !== undefined &&
+				shape.attributes?.reference === "U1",
+		),
+	);
+	await page
+		.getByRole("button", { name: "Draw on Front fabrication", exact: true })
+		.click();
+	for (const layer of ["Front copper", "Back copper"])
+		await page
+			.getByRole("button", { name: `Hide ${layer}`, exact: true })
+			.click();
+	const point = await screenPointOfMillimetres(page, footprint.x, footprint.y);
+	await page.mouse.click(point.x, point.y);
+	await expect.poll(selectedReferences).toEqual(["U1"]);
+	await page
+		.locator('[data-editor-pane="active"] canvas')
+		.first()
+		.evaluate((canvas) => {
+			canvas.dataset.kept = "true";
+		});
+
+	await page.getByRole("button", { name: "Switch to schematic view" }).click();
+	await expect(page.getByRole("heading", { level: 1 })).toContainText(
+		"Schematic editor · RP2350A",
+	);
+	await expect.poll(selectedReferences).toEqual(["U1"]);
+
+	await page.getByRole("button", { name: "Switch to circuit view" }).click();
+	const selectedComponent = active.locator(".circuit-component.is-selected");
+	await expect(
+		selectedComponent.getByRole("button", { name: "Select component U1" }),
+	).toBeVisible();
+	await active
+		.getByRole("button", { name: "Select component X1", exact: true })
+		.click();
+	await expect(
+		selectedComponent.getByRole("button", { name: "Select component X1" }),
+	).toBeVisible();
+
+	await page.getByRole("button", { name: "Switch to pcb view" }).click();
+	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+		"PCB editor · RP2350A",
+	);
+	await expect.poll(selectedReferences).toEqual(["X1"]);
+	await expect(active.locator('canvas[data-kept="true"]')).toHaveCount(1);
+	await expect(panes).toHaveCount(3);
+});
+
 test("the realistic toggle shows the board with its solder mask in the flat and 3D views, and turning it off brings back the layer colors", async ({
 	page,
 }) => {

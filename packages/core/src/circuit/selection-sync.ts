@@ -1,3 +1,4 @@
+import { isBoardFootprint } from "@ecad/drawing-core/board/footprints.ts";
 import type { Circuit, CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
@@ -31,7 +32,7 @@ export interface CircuitViewSelection {
 
 type ViewState =
 	| {
-			view: "schematic";
+			view: "schematic" | "pcb";
 			store: ReturnType<typeof createDrawingStore>;
 			selection: SchematicSelection;
 	  }
@@ -184,6 +185,104 @@ export function schematicSelectionFromCircuit(
 		}
 	}
 	return { shapeIds: [...ids].sort((a, b) => a - b), childKey };
+}
+
+export function componentsOfSchematicSelection(
+	circuit: Circuit,
+	selection: SchematicSelection,
+): string[] {
+	const owners = componentsByShapeId(circuit.components);
+	return [
+		...new Set(
+			selection.shapeIds.flatMap((id) => {
+				const owner = owners.get(id);
+				return owner ? [owner.id] : [];
+			}),
+		),
+	];
+}
+
+export function componentsOfCircuitSelection(
+	circuit: Circuit,
+	{ item, checkedPins }: CircuitViewSelection,
+): string[] {
+	if (item?.kind === "component") return [item.id];
+	if (item?.kind !== "pin" && item?.kind !== "connection") return [];
+	const pinIds = new Set(
+		item.kind === "connection" && checkedPins.includes(item.id)
+			? checkedPins
+			: [item.id],
+	);
+	return circuit.components
+		.filter((component) => component.pins.some((pin) => pinIds.has(pin.id)))
+		.map((component) => component.id);
+}
+
+export function componentsOfBoardSelection(
+	shapes: readonly EditorShape[],
+	selection: SchematicSelection,
+): string[] {
+	const selected = new Set(selection.shapeIds);
+	return [
+		...new Set(
+			shapes.flatMap((shape) =>
+				selected.has(shape.id) && isBoardFootprint(shape) && shape.component
+					? [shape.component]
+					: [],
+			),
+		),
+	];
+}
+
+export function boardSelectionFromComponents(
+	shapes: readonly EditorShape[],
+	componentIds: readonly string[],
+): SchematicSelection {
+	const wanted = new Set(componentIds);
+	return {
+		shapeIds: shapes
+			.filter(
+				(shape) =>
+					isBoardFootprint(shape) &&
+					shape.component !== undefined &&
+					wanted.has(shape.component),
+			)
+			.map((shape) => shape.id)
+			.sort((a, b) => a - b),
+		childKey: null,
+	};
+}
+
+export function schematicSelectionFromComponents(
+	shapes: readonly EditorShape[],
+	circuit: Circuit,
+	componentIds: readonly string[],
+): SchematicSelection {
+	const existing = new Set(shapes.map((shape) => shape.id));
+	const wanted = new Set(componentIds);
+	return {
+		shapeIds: [
+			...new Set(
+				circuit.components
+					.filter((component) => wanted.has(component.id))
+					.flatMap(componentShapeIds)
+					.filter((id) => existing.has(id)),
+			),
+		].sort((a, b) => a - b),
+		childKey: null,
+	};
+}
+
+export function circuitSelectionFromComponents(
+	componentIds: readonly string[],
+): CircuitViewSelection {
+	return {
+		item:
+			componentIds.length === 1
+				? { kind: "component", id: componentIds[0] }
+				: null,
+		checkedPins: [],
+	};
 }
 
 export function sameSchematicSelection(

@@ -10,11 +10,17 @@ import {
 import { symbolShapes } from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import {
+	boardSelectionFromComponents,
+	circuitSelectionFromComponents,
 	circuitSelectionFromSchematic,
+	componentsOfBoardSelection,
+	componentsOfCircuitSelection,
+	componentsOfSchematicSelection,
 	pruneCircuitSelection,
 	sameCircuitSelection,
 	sameSchematicSelection,
 	schematicSelectionFromCircuit,
+	schematicSelectionFromComponents,
 } from "#/circuit/selection-sync.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
@@ -282,4 +288,62 @@ test("selection equality compares contents, not identity", () => {
 			{ item: null, checkedPins: [] },
 		),
 	);
+});
+
+test("PCB footprints select the same components in the schematic and circuit", () => {
+	const { file, shapes, symbolOf } = linkedPair();
+	const [a, b] = file.circuit.components;
+	const footprint = (id: number, component?: string): EditorShape => ({
+		...symbolOf(0),
+		id,
+		footprint: { library: "builtin", id: "R_0603" },
+		...(component ? { component } : {}),
+	});
+	const board = [
+		footprint(1, a.id),
+		footprint(2, b.id),
+		footprint(3),
+		drawShape(4, "rectangle", { x: 0, y: 0 }, { x: 1, y: 1 }),
+	];
+	assert.deepEqual(
+		componentsOfBoardSelection(board, { shapeIds: [1, 3, 4], childKey: null }),
+		[a.id],
+	);
+	assert.deepEqual(boardSelectionFromComponents(board, [b.id, a.id]), {
+		shapeIds: [1, 2],
+		childKey: null,
+	});
+	assert.deepEqual(
+		schematicSelectionFromComponents(shapes, file.circuit, [b.id]),
+		{ shapeIds: [symbolOf(1).id], childKey: null },
+	);
+	assert.deepEqual(
+		componentsOfSchematicSelection(file.circuit, {
+			shapeIds: [symbolOf(0).id, symbolOf(1).id],
+			childKey: null,
+		}),
+		[a.id, b.id],
+	);
+	assert.deepEqual(
+		componentsOfCircuitSelection(file.circuit, {
+			item: { kind: "pin", id: b.pins[1].id },
+			checkedPins: [],
+		}),
+		[b.id],
+	);
+	assert.deepEqual(
+		componentsOfCircuitSelection(file.circuit, {
+			item: { kind: "connection", id: a.pins[0].id },
+			checkedPins: [a.pins[0].id, b.pins[0].id],
+		}),
+		[a.id, b.id],
+	);
+	assert.deepEqual(circuitSelectionFromComponents([a.id]), {
+		item: { kind: "component", id: a.id },
+		checkedPins: [],
+	});
+	assert.deepEqual(circuitSelectionFromComponents([a.id, b.id]), {
+		item: null,
+		checkedPins: [],
+	});
 });

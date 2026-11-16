@@ -1,4 +1,4 @@
-import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
+import type { Circuit, CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import type { CircuitStore } from "@ecad/drawing-core/circuit/store.ts";
 import { createProjectSymbolStorage } from "#/projects/project-symbol-storage.ts";
 import "#/performance/initialize.ts";
@@ -52,6 +52,7 @@ export interface ProjectContextValue {
 	editorBoard: BoardDocument | null;
 	editorDrawing: DrawingDocument | null;
 	editorCircuit: CircuitDocument | null;
+	editorViews: EditorViews | null;
 	/** Identifies the circuit being opened, or null when none is. */
 	openingCircuit: number | null;
 	selectEditorFile(path?: string): boolean | Promise<boolean>;
@@ -59,8 +60,11 @@ export interface ProjectContextValue {
 	/** Opens the PCB view of the drawing at `path`. */
 	openBoard(path: string): boolean | Promise<boolean>;
 	switchEditorView(view: EditorView): Promise<void>;
+	preloadEditorViews(): Promise<void>;
 	rememberViewSelection(selection: ViewSelection): void;
-	takeSelectionHandoff(view: ViewSelection["view"]): ViewSelection | null;
+	takeSelectionHandoff(
+		view: ViewSelection["view"],
+	): { source: ViewSelection; circuit: Circuit | undefined } | null;
 	createCircuit(name: string): Promise<string>;
 	importCircuit(file: CircuitFile): Promise<string>;
 	mode: ProjectStorage["mode"];
@@ -136,6 +140,12 @@ export interface BoardDocument {
 	unsubscribe(): void;
 }
 export type EditorView = "schematic" | "circuit" | "pcb";
+export interface EditorViews {
+	circuitId: string;
+	schematic: DrawingDocument | "main" | null;
+	circuit: CircuitDocument | null;
+	board: BoardDocument | null;
+}
 export interface DrawingDocument {
 	file: ProjectDrawing;
 	store: ReturnType<typeof createDrawingStore>;
@@ -161,6 +171,7 @@ export function createProjectSession(
 		setEditorFootprint,
 		setEditorBoard,
 		setEditorDrawing,
+		setEditorViews,
 		setEpoch,
 		setBusy,
 		setDirty,
@@ -182,6 +193,7 @@ export function createProjectSession(
 		openCircuit,
 		openBoard,
 		switchEditorView,
+		preloadEditorViews,
 		rememberViewSelection,
 		takeSelectionHandoff,
 		selectEditorFile,
@@ -202,6 +214,7 @@ export function createProjectSession(
 		setEditorFootprint(null);
 		setEditorBoard(null);
 		setEditorDrawing(null);
+		setEditorViews(null);
 		update(snapshot);
 		setSelectedAsset(null);
 		state.symbols = snapshot.symbols;
@@ -343,10 +356,12 @@ export function createProjectSession(
 		editorBoard: state.editorBoard,
 		editorDrawing: state.editorDrawing,
 		editorCircuit: state.editorCircuit,
+		editorViews: state.editorViews,
 		openingCircuit: state.openingCircuit,
 		openCircuit,
 		openBoard,
 		switchEditorView,
+		preloadEditorViews,
 		rememberViewSelection,
 		takeSelectionHandoff,
 		selectEditorFile,
@@ -433,6 +448,7 @@ export function createProjectSession(
 						editorBoard: _editorBoard,
 						editorDrawing: _editorDrawing,
 						editorCircuit: _editorCircuit,
+						editorViews: _editorViews,
 						openingCircuit: _openingCircuit,
 						selectedAsset: _selectedAsset,
 						...actions

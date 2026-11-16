@@ -659,7 +659,7 @@ test("view switches hand the remembered selection only to the paired destination
 	project().rememberViewSelection(schematic);
 	await project().switchEditorView("schematic");
 	await project().switchEditorView("circuit");
-	assert.equal(project().takeSelectionHandoff("circuit"), schematic);
+	assert.equal(project().takeSelectionHandoff("circuit")?.source, schematic);
 	assert.equal(project().takeSelectionHandoff("circuit"), null);
 
 	const derived = {
@@ -669,7 +669,10 @@ test("view switches hand the remembered selection only to the paired destination
 	};
 	project().rememberViewSelection({ ...derived, origin: { ...schematic } });
 	await project().switchEditorView("schematic");
-	assert.deepEqual(project().takeSelectionHandoff("schematic"), derived);
+	assert.deepEqual(
+		project().takeSelectionHandoff("schematic")?.source,
+		derived,
+	);
 
 	project().rememberViewSelection({ ...derived, origin: schematic });
 	await project().switchEditorView("circuit");
@@ -677,7 +680,7 @@ test("view switches hand the remembered selection only to the paired destination
 
 	project().rememberViewSelection({ ...derived, origin: schematic });
 	await project().switchEditorView("schematic");
-	assert.equal(project().takeSelectionHandoff("schematic"), schematic);
+	assert.equal(project().takeSelectionHandoff("schematic")?.source, schematic);
 
 	project().rememberViewSelection(schematic);
 	await project().switchEditorView("circuit");
@@ -689,6 +692,43 @@ test("view switches hand the remembered selection only to the paired destination
 	await project().switchEditorView("circuit");
 	await project().reload();
 	assert.equal(project().takeSelectionHandoff("circuit"), null);
+	stop();
+});
+
+test("a circuit's schematic, circuit and PCB load together and the PCB takes the selection", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	await project().preloadEditorViews();
+	const views = required(project().editorViews);
+	assert.equal(views.circuitId, primaryPcbId);
+	assert.equal(views.schematic, "main");
+	assert.equal(views.board, null);
+	const circuit = required(views.circuit);
+
+	const schematic = {
+		view: "schematic" as const,
+		store: project().store,
+		selection: { shapeIds: [1], childKey: null },
+	};
+	project().rememberViewSelection(schematic);
+	await project().switchEditorView("pcb");
+	const board = required(project().editorBoard);
+	const handoff = required(project().takeSelectionHandoff("pcb"));
+	assert.equal(handoff.source, schematic);
+	assert.equal(handoff.circuit?.id, primaryPcbId);
+
+	await project().preloadEditorViews();
+	assert.equal(project().editorViews?.board, board);
+	assert.equal(project().editorViews?.circuit, circuit);
+	await project().switchEditorView("circuit");
+	assert.equal(project().editorCircuit, circuit);
 	stop();
 });
 

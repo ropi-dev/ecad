@@ -9,7 +9,12 @@ import {
 import { expect, test } from "./seeded-project";
 
 const schematicCamera = async (page: Page) => {
-	const value = await page.locator("html").getAttribute("data-editor-camera");
+	const value = await page.evaluate(
+		() =>
+			document
+				.querySelector('[data-editor-pane="active"] canvas')
+				?.getAttribute("data-editor-camera") ?? null,
+	);
 	if (!value) return null;
 	return JSON.stringify(JSON.parse(value), (_key, entry) =>
 		typeof entry === "number" ? Number(entry.toFixed(9)) : entry,
@@ -21,10 +26,6 @@ const circuitCamera = (page: Page) =>
 		.getAttribute("viewBox");
 
 async function switchTo(page: Page, view: "schematic" | "circuit") {
-	if (view === "schematic")
-		await page.locator("html").evaluate((element) => {
-			delete element.dataset.editorCamera;
-		});
 	await page
 		.getByRole("button", { name: `Switch to ${view} view`, exact: true })
 		.click();
@@ -44,7 +45,7 @@ async function moveCamera(
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
 	const canvas =
 		view === "schematic"
-			? page.locator("canvas")
+			? page.locator('[data-editor-pane="active"] canvas')
 			: page.getByLabel("Circuit connections graph", { exact: true });
 	const box = required(await canvas.boundingBox());
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
