@@ -48,7 +48,7 @@ import {
 } from "#/board/fill.ts";
 import { createBoardFile } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { trackPath, trackSegments } from "#/board/routing.ts";
+import { trackAnchor, trackPath, trackSegments } from "#/board/routing.ts";
 import { boardDisplay, boardLayerView, footprintItemId } from "#/board/view.ts";
 import { containsPoint } from "#/engine/geometry.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
@@ -335,6 +335,35 @@ describe("routing and the ratsnest", () => {
 		assert.deepEqual(
 			unroutedNets([...shapes, ...routeMid(shapes, netlist)], netlist),
 			["gnd"],
+		);
+	});
+
+	test("a track end snaps to the centre of a nearby pad on its net, never to another net's pad", () => {
+		const { shapes, netlist } = dividerBoard();
+		const items = copperItems(shapes, netlist);
+		const mid = required(
+			items.find((item) => item.kind === "pad" && item.net === "mid"),
+		);
+		const centre = { x: mid.shape.x, y: mid.shape.y };
+		const beside = { x: mid.bounds.maxX + 0.3, y: centre.y };
+		const reach = { padReach: 0.5, tolerance: 0.05 };
+		assert.equal(
+			trackAnchor(items, beside, { ...reach, padReach: 0.05 }),
+			undefined,
+		);
+		assert.deepEqual(
+			trackAnchor(items, beside, { ...reach, layer: "F.Cu", net: "mid" })
+				?.point,
+			centre,
+		);
+		assert.deepEqual(trackAnchor(items, beside, reach)?.point, centre);
+		assert.equal(
+			trackAnchor(items, beside, { ...reach, net: "gnd" }),
+			undefined,
+		);
+		assert.equal(
+			trackAnchor(items, beside, { ...reach, layer: "B.Cu" }),
+			undefined,
 		);
 	});
 

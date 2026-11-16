@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { trackSegment } from "@ecad/drawing-core/board/geometry.ts";
 import {
 	drawShape,
 	type EditorShape,
@@ -16,6 +17,7 @@ import {
 	Texture,
 } from "three";
 import {
+	buildBoardPreviewDisplay,
 	buildPreviewDisplay,
 	buildStaticDisplay,
 	type DrawingDisplay,
@@ -342,6 +344,52 @@ test("previews update in their own group without touching document meshes", () =
 		renderer.update(root, { ...document, previews: [] });
 		assert.equal(root.getObjectByName("editor-wire-preview"), undefined);
 		assert.ok(disposed.has((preview as Mesh).geometry));
+	} finally {
+		renderer.dispose();
+	}
+});
+
+test("a track preview draws in its copper colour over a clearance band, above translucent zones", () => {
+	const renderer = createDrawingRenderer(null);
+	const root = new Group();
+	try {
+		const track = trackSegment(
+			7,
+			{ x: 0, y: 0 },
+			{ x: 10, y: 0 },
+			"B.Cu",
+			0.25,
+			"gnd",
+		);
+		const previews = buildBoardPreviewDisplay(
+			[track],
+			40,
+			(text) => text.length,
+			0.2,
+		);
+		renderer.update(root, {
+			...buildStaticDisplay([], new Set()),
+			previews,
+		});
+		const band = required(
+			root.getObjectByName("editor-track-clearance-preview"),
+		) as Mesh;
+		const line = required(root.getObjectByName("editor-track-preview")) as Mesh;
+		assert.deepEqual(
+			previews.map(({ appearance, height, renderOrder }) => ({
+				appearance,
+				height,
+				renderOrder,
+			})),
+			[
+				{ appearance: "clearance", height: 0.65, renderOrder: 41 },
+				{ appearance: "B.Cu", height: 0.25, renderOrder: 42 },
+			],
+		);
+		for (const mesh of [band, line])
+			assert.ok((mesh.material as MeshBasicMaterial).transparent);
+		assert.ok((band.material as MeshBasicMaterial).opacity < 1);
+		assert.equal((line.material as MeshBasicMaterial).opacity, 1);
 	} finally {
 		renderer.dispose();
 	}

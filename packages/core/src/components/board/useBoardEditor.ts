@@ -45,7 +45,10 @@ import {
 import { createZoneScene } from "#/board/zone-scene.ts";
 import type { EditorSession } from "#/components/editor/editorSession.ts";
 import type { BoardGestures } from "#/components/editor/useCanvasGestures.ts";
-import { buildBoardStaticDisplay } from "#/drawing/display.ts";
+import {
+	buildBoardPreviewDisplay,
+	buildBoardStaticDisplay,
+} from "#/drawing/display.ts";
 import { unfocusedLayerColor } from "#/drawing/schematic-theme.ts";
 import type { ProjectSnapshot } from "#/projects/format.ts";
 import type { BoardDocument } from "#/projects/ProjectSession.ts";
@@ -193,7 +196,7 @@ export function useBoardEditor({
 		[theme, focused],
 	);
 	useEffect(() => () => zoneScene.dispose(), [zoneScene]);
-	const layerOrder = useMemo(() => {
+	const { layerOrder, displayCount } = useMemo(() => {
 		const flat = boardDisplay(
 			boardLayerView(committed, hidden, active),
 			new Set(),
@@ -205,8 +208,26 @@ export function useBoardEditor({
 			for (const layer of shapeLayers(shape))
 				if (!first.has(layer)) first.set(layer, index + 1);
 		});
-		return (layer: FootprintLayer) => (first.get(layer) ?? 1) - 0.5;
-	}, [committed, hidden, active]);
+		return {
+			layerOrder: (layer: FootprintLayer) => (first.get(layer) ?? 1) - 0.5,
+			displayCount: flat.length + ratsnest.length,
+		};
+	}, [committed, hidden, active, ratsnest]);
+	const clearance = rules?.clearance ?? 0;
+	const buildPreview = useCallback(
+		(
+			previews: EditorShape[],
+			shapeCount: number,
+			measure: Parameters<typeof buildBoardPreviewDisplay>[2],
+		) =>
+			buildBoardPreviewDisplay(
+				previews,
+				Math.max(shapeCount, displayCount),
+				measure,
+				clearance,
+			),
+		[displayCount, clearance],
+	);
 	const updateZones = useCallback(
 		(root: Object3D) => {
 			if (!enabled) return;
@@ -275,6 +296,7 @@ export function useBoardEditor({
 		fills,
 		fabricate,
 		buildDisplay,
+		buildPreview,
 		updateZones,
 		gestures,
 		synchronize,

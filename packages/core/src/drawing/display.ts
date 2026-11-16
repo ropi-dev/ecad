@@ -27,7 +27,10 @@ import {
 	PIN_LABEL_GAP,
 	PIN_NUMBER_GAP,
 } from "@ecad/drawing-core/drawing/units.ts";
-import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	type FootprintLayer,
+	isCopperLayer,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	isPad,
 	isPadOrVia,
@@ -90,7 +93,8 @@ export type DrawingAppearance =
 	| "via"
 	| "pad-hole"
 	| "pad-number"
-	| "ratsnest";
+	| "ratsnest"
+	| "clearance";
 
 const maximumPadNumberSize = 0.8;
 
@@ -107,6 +111,8 @@ export interface DisplayShape extends DrawingTransform, TextAlignment {
 	bold?: true;
 	pinLabel?: true;
 	dimmed?: true;
+	halo?: true;
+	overlay?: true;
 	renderOrder: number;
 	children?: DisplayShape[];
 }
@@ -817,6 +823,56 @@ export function buildPreviewDisplay(
 				: []),
 		];
 	});
+}
+
+const asOverlay = (display: DisplayShape): DisplayShape => ({
+	...display,
+	overlay: true,
+	...(display.children ? { children: display.children.map(asOverlay) } : {}),
+});
+
+export function buildBoardPreviewDisplay(
+	previews: EditorShape[],
+	shapeCount: number,
+	measure: MeasureText,
+	clearance: number,
+): DisplayShape[] {
+	const tracks = previews.filter(
+		(preview) =>
+			preview.kind === "line" &&
+			preview.layer !== undefined &&
+			isCopperLayer(preview.layer),
+	);
+	return [
+		...tracks.map(
+			(track): DisplayShape => ({
+				...displayShape(
+					{ ...track, lineWidth: track.lineWidth + 2 * clearance },
+					`preview:${track.id}:clearance`,
+					"editor-track-clearance-preview",
+					"clearance",
+					shapeCount + 1,
+					measure,
+				),
+				halo: true,
+			}),
+		),
+		...tracks.map((track) =>
+			displayShape(
+				track,
+				`preview:${track.id}`,
+				"editor-track-preview",
+				unselectedAppearance(track),
+				shapeCount + 2,
+				measure,
+			),
+		),
+		...buildPreviewDisplay(
+			previews.filter((preview) => !tracks.includes(preview)),
+			shapeCount,
+			measure,
+		),
+	].map(asOverlay);
 }
 
 /** Resolve document, selection, and temporary previews without a renderer or UI. */

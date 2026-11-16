@@ -130,7 +130,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 						</svg>
 					)}
 					{connectionHover &&
-						tool === "wire" &&
+						(tool === "wire" || tool === "track") &&
 						(() => {
 							const point = projection.toScreen(connectionHover);
 							if (!point) return null;

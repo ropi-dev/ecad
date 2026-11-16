@@ -64,8 +64,8 @@ import {
 } from "react";
 import {
 	otherCopperLayer,
-	routeAnchor,
 	type TrackPosture,
+	trackAnchor,
 	trackPath,
 	trackSegments,
 } from "#/board/routing.ts";
@@ -703,24 +703,25 @@ export function useCanvasGestures({
 			return true;
 		},
 	};
-	const anchorTolerance = () => 4 / (cameraView.getProjection()?.scale ?? 1);
+	const anchorAt = (
+		point: Point,
+		chain?: Pick<TrackChain, "layer" | "net" | "start">,
+	) => {
+		if (!board) return undefined;
+		const scale = cameraView.getProjection()?.scale ?? 1;
+		return trackAnchor(board.items(), point, {
+			layer: chain?.layer,
+			net: chain?.net,
+			exclude: chain?.start,
+			padReach: 16 / scale,
+			tolerance: 4 / scale,
+		});
+	};
 	/** The preview of the track from the chain's start to `point`, and its end. */
 	const previewTrack = (point: Point) => {
 		const active = getTrack();
 		if (!active || !board) return null;
-		const anchor = routeAnchor(
-			board.items(),
-			point,
-			active.layer,
-			anchorTolerance(),
-		);
-		const joins =
-			anchor &&
-			(active.net === undefined ||
-				anchor.item.net === undefined ||
-				anchor.item.net === active.net)
-				? anchor
-				: undefined;
+		const joins = anchorAt(point, active);
 		const end = joins?.point ?? snapPoint(point, cameraView.getGridStep());
 		const segments = trackSegments(
 			session.nextId(),
@@ -757,12 +758,7 @@ export function useCanvasGestures({
 			if (!board) return;
 			const active = getTrack();
 			if (!active) {
-				const anchor = routeAnchor(
-					board.items(),
-					point,
-					undefined,
-					anchorTolerance(),
-				);
+				const anchor = anchorAt(point);
 				let layer = board.copperLayer;
 				if (anchor && !anchor.item.layers.includes(layer)) {
 					layer = anchor.item.layers[0];
@@ -818,12 +814,7 @@ export function useCanvasGestures({
 				return true;
 			}
 			if (!board) return false;
-			const anchor = routeAnchor(
-				board.items(),
-				point,
-				undefined,
-				anchorTolerance(),
-			);
+			const anchor = anchorAt(point);
 			setConnectionHover(anchor?.point ?? null);
 			canvas.style.cursor = "crosshair";
 			return true;

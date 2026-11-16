@@ -503,6 +503,7 @@ function EditorCanvas({
 			: focusedLayer
 				? buildFootprintDisplay
 				: undefined,
+		isBoard ? boardEditor.buildPreview : undefined,
 	);
 	const { updateZones } = boardEditor;
 	const updateScene = useCallback(
