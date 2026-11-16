@@ -17,6 +17,10 @@ const MASK_SIZE = 2048;
 const EDGE_SIZE = 6;
 const REPAINT_MARGIN = 2;
 const LEAST_PADDING = 1;
+/** Texels on each side of a hole's edge that hold its distance. */
+const BAND = 4;
+
+type Ring = readonly (readonly [number, number])[];
 
 export interface HoleMask {
 	texture: Texture;
@@ -26,23 +30,41 @@ export interface HoleMask {
 	dispose: () => void;
 }
 
-export function createHoleMask(
-	sources: readonly PlanarGeometry[],
-	createCanvas = () => document.createElement("canvas"),
-): HoleMask | undefined {
-	const rings = sources.flatMap((source) => planarRings(source.edges));
-	if (!rings.length) return undefined;
+function ringBounds(ring: Ring): Bounds {
 	let minX = Infinity,
 		minY = Infinity,
 		maxX = -Infinity,
 		maxY = -Infinity;
-	for (const ring of rings)
-		for (const [x, y] of ring) {
-			minX = Math.min(minX, x);
-			minY = Math.min(minY, y);
-			maxX = Math.max(maxX, x);
-			maxY = Math.max(maxY, y);
-		}
+	for (const [x, y] of ring) {
+		minX = Math.min(minX, x);
+		minY = Math.min(minY, y);
+		maxX = Math.max(maxX, x);
+		maxY = Math.max(maxY, y);
+	}
+	return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Each texel holds the signed distance to the nearest hole edge, so linear
+ * filtering keeps the cut round at any zoom. Values above half are inside.
+ */
+export function createHoleMask(
+	sources: readonly PlanarGeometry[],
+	onPaint?: (columns: number, rows: number) => void,
+): HoleMask | undefined {
+	let rings = sources.flatMap((source) => planarRings(source.edges));
+	if (!rings.length) return undefined;
+	let extents = rings.map(ringBounds);
+	let minX = Infinity,
+		minY = Infinity,
+		maxX = -Infinity,
+		maxY = -Infinity;
+	for (const extent of extents) {
+		minX = Math.min(minX, extent.minX);
+		minY = Math.min(minY, extent.minY);
+		maxX = Math.max(maxX, extent.maxX);
+		maxY = Math.max(maxY, extent.maxY);
+	}
 	const padding = Math.max(
 		Math.max(maxX - minX, maxY - minY) * 0.01,
 		LEAST_PADDING,
@@ -58,11 +80,9 @@ export function createHoleMask(
 	const scale = MASK_SIZE / Math.max(sizeX, sizeY);
 	const width = Math.max(1, Math.ceil(sizeX * scale));
 	const height = Math.max(1, Math.ceil(sizeY * scale));
-	const canvas = createCanvas();
-	canvas.width = width;
-	canvas.height = height;
-	const context = canvas.getContext("2d", { willReadFrequently: true });
-	if (!context) return undefined;
+	const texelX = sizeX / width,
+		texelY = sizeY / height;
+	const band = BAND * Math.max(texelX, texelY);
 	const data = new Uint8Array(width * height);
 	const texture = new DataTexture(
 		data,
@@ -74,41 +94,115 @@ export function createHoleMask(
 	texture.minFilter = LinearFilter;
 	texture.magFilter = LinearFilter;
 	texture.unpackAlignment = 1;
-	const paint = (
-		holes: readonly (readonly (readonly [number, number])[])[],
-		left: number,
-		top: number,
-		columns: number,
-		rows: number,
-	) => {
-		context.save();
-		context.beginPath();
-		context.rect(left, top, columns, rows);
-		context.clip();
-		context.clearRect(left, top, columns, rows);
-		context.fillStyle = "#fff";
-		context.beginPath();
-		for (const ring of holes)
-			ring.forEach(([x, y], index) => {
-				const px = (x - bounds.minX) * scale,
-					py = (bounds.maxY - y) * scale;
-				if (index) context.lineTo(px, py);
-				else context.moveTo(px, py);
+	const paint = (left: number, bottom: number, right: number, top: number) => {
+		left = Math.max(0, left);
+		bottom = Math.max(0, bottom);
+		right = Math.min(width, right);
+		top = Math.min(height, top);
+		if (left >= right || bottom >= top) return;
+		const columns = right - left;
+		const distances = new Float32Array(columns * (top - bottom)).fill(band);
+		rings.forEach((ring, index) => {
+			const extent = extents[index];
+			const fromColumn = Math.max(
+				left,
+				Math.floor((extent.minX - band - bounds.minX) / texelX),
+			);
+			const toColumn = Math.min(
+				right,
+				Math.ceil((extent.maxX + band - bounds.minX) / texelX),
+			);
+			const fromRow = Math.max(
+				bottom,
+				Math.floor((extent.minY - band - bounds.minY) / texelY),
+			);
+			const toRow = Math.min(
+				top,
+				Math.ceil((extent.maxY + band - bounds.minY) / texelY),
+			);
+			if (fromColumn >= toColumn || fromRow >= toRow) return;
+			const spanColumns = toColumn - fromColumn;
+			const near = new Float32Array(spanColumns * (toRow - fromRow)).fill(
+				band * band,
+			);
+			ring.forEach(([ax, ay], at) => {
+				const [bx, by] = ring[(at + 1) % ring.length];
+				const dx = bx - ax,
+					dy = by - ay;
+				const length = dx * dx + dy * dy;
+				const firstColumn = Math.max(
+					fromColumn,
+					Math.floor((Math.min(ax, bx) - band - bounds.minX) / texelX),
+				);
+				const lastColumn = Math.min(
+					toColumn,
+					Math.ceil((Math.max(ax, bx) + band - bounds.minX) / texelX),
+				);
+				const firstRow = Math.max(
+					fromRow,
+					Math.floor((Math.min(ay, by) - band - bounds.minY) / texelY),
+				);
+				const lastRow = Math.min(
+					toRow,
+					Math.ceil((Math.max(ay, by) + band - bounds.minY) / texelY),
+				);
+				for (let row = firstRow; row < lastRow; row++) {
+					const y = bounds.minY + (row + 0.5) * texelY;
+					for (let column = firstColumn; column < lastColumn; column++) {
+						const x = bounds.minX + (column + 0.5) * texelX;
+						const t = length
+							? Math.max(
+									0,
+									Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length),
+								)
+							: 0;
+						const px = ax + t * dx - x,
+							py = ay + t * dy - y;
+						const squared = px * px + py * py;
+						const cell = (row - fromRow) * spanColumns + column - fromColumn;
+						if (squared < near[cell]) near[cell] = squared;
+					}
+				}
 			});
-		context.fill("nonzero");
-		context.restore();
-		const pixels = context.getImageData(left, top, columns, rows).data;
-		for (let row = 0; row < rows; row++)
-			for (let column = 0; column < columns; column++)
-				data[(height - 1 - top - row) * width + left + column] =
-					pixels[(row * columns + column) * 4];
+			const crossings: number[] = [];
+			for (let row = fromRow; row < toRow; row++) {
+				const y = bounds.minY + (row + 0.5) * texelY;
+				crossings.length = 0;
+				ring.forEach(([ax, ay], at) => {
+					const [bx, by] = ring[(at + 1) % ring.length];
+					if (ay > y !== by > y)
+						crossings.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+				});
+				crossings.sort((a, b) => a - b);
+				let crossed = 0;
+				for (let column = fromColumn; column < toColumn; column++) {
+					const x = bounds.minX + (column + 0.5) * texelX;
+					while (crossed < crossings.length && crossings[crossed] < x)
+						crossed++;
+					const distance = Math.sqrt(
+						near[(row - fromRow) * spanColumns + column - fromColumn],
+					);
+					const at = (row - bottom) * columns + column - left;
+					const signed = crossed % 2 ? -distance : distance;
+					if (signed < distances[at]) distances[at] = signed;
+				}
+			}
+		});
+		for (let row = bottom; row < top; row++)
+			for (let column = left; column < right; column++) {
+				const distance = distances[(row - bottom) * columns + column - left];
+				data[row * width + column] = Math.round(
+					255 * Math.max(0, Math.min(1, 0.5 - distance / (2 * band))),
+				);
+			}
+		onPaint?.(columns, top - bottom);
 		texture.needsUpdate = true;
 	};
-	paint(rings, 0, 0, width, height);
+	paint(0, 0, width, height);
 	const painted = sources.map((source) => source.edges.slice());
 	const contains = (x: number, y: number) => {
-		const column = Math.floor(((x - bounds.minX) / sizeX) * width);
-		const row = Math.floor(((y - bounds.minY) / sizeY) * height);
+		const column = Math.floor((x - bounds.minX) / texelX);
+		const row = Math.floor((y - bounds.minY) / texelY);
 		return (
 			column >= 0 &&
 			row >= 0 &&
@@ -156,31 +250,17 @@ export function createHoleMask(
 			changedMaxY > bounds.maxY
 		)
 			return false;
-		const left = Math.max(
-			0,
-			Math.floor((changedMinX - bounds.minX) * scale) - REPAINT_MARGIN,
-		);
-		const top = Math.max(
-			0,
-			Math.floor((bounds.maxY - changedMaxY) * scale) - REPAINT_MARGIN,
-		);
-		const right = Math.min(
-			width,
-			Math.ceil((changedMaxX - bounds.minX) * scale) + REPAINT_MARGIN,
-		);
-		const bottom = Math.min(
-			height,
-			Math.ceil((bounds.maxY - changedMinY) * scale) + REPAINT_MARGIN,
-		);
 		next.forEach((source, index) => {
 			painted[index].set(source.edges);
 		});
+		rings = next.flatMap((source) => planarRings(source.edges));
+		extents = rings.map(ringBounds);
+		const margin = REPAINT_MARGIN + BAND;
 		paint(
-			next.flatMap((source) => planarRings(source.edges)),
-			left,
-			top,
-			right - left,
-			bottom - top,
+			Math.floor((changedMinX - bounds.minX) / texelX) - margin,
+			Math.floor((changedMinY - bounds.minY) / texelY) - margin,
+			Math.ceil((changedMaxX - bounds.minX) / texelX) + margin,
+			Math.ceil((changedMaxY - bounds.minY) / texelY) + margin,
 		);
 		return true;
 	};

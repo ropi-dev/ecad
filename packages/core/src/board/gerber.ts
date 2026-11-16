@@ -187,6 +187,35 @@ const maskLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
 	"B.Cu": "B.Mask",
 };
 
+/** @return Each side's pad openings in the solder mask, as the mask Gerber draws them. */
+export function maskOpenings(shapes: readonly EditorShape[]): {
+	top: [number, number][][];
+	bottom: [number, number][][];
+} {
+	const openings = {
+		top: [] as [number, number][][],
+		bottom: [] as [number, number][][],
+	};
+	for (const shape of flatItems(shapes)) {
+		if (!isPad(shape)) continue;
+		const layers = shapeLayers(shape);
+		const sides = (["top", "bottom"] as const).filter((side) =>
+			layers.some(
+				(layer) => maskLayer[layer] === (side === "top" ? "F.Mask" : "B.Mask"),
+			),
+		);
+		if (!sides.length) continue;
+		const rings = shapeHulls(shape).map((hull) =>
+			hullPolygon(hull, maskExpansion).map(({ x, y }): [number, number] => [
+				x,
+				y,
+			]),
+		);
+		for (const side of sides) openings[side].push(...rings);
+	}
+	return openings;
+}
+
 interface FabricationFile {
 	name: string;
 	content: string;

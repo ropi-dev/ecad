@@ -179,7 +179,6 @@ export function createPlanarObject3D(
 							metalness: 0.15,
 							side: DoubleSide,
 							polygonOffset: true,
-							polygonOffsetFactor: -4,
 							polygonOffsetUnits: -4,
 						})
 					: new MeshBasicMaterial({ color: source.color, side: DoubleSide }),
@@ -410,6 +409,16 @@ export function stylePlanarObject3D(
 				: UNFOCUSED_CAMERA_OUTLINE_OPACITY;
 			part.material.opacity =
 				opacity * (outlineOpacity - UNFOCUSED_FILL_OPACITY);
+		} else if (part.userData.planarPart === "text-walls") {
+			const thickness = stack?.thickness ?? 0;
+			part.visible = solid && thickness > 0;
+			part.scale.z = thickness || 1;
+			part.position.z = (-(Math.sign(stack?.z ?? 0) || 1) * thickness) / 2;
+			for (const material of Array.isArray(part.material)
+				? part.material
+				: [part.material])
+				if (material instanceof MeshBasicMaterial)
+					material.color.set(color).multiplyScalar(WALL_SHADE);
 		} else if (part.userData.planarPart === undefined) part.visible = !xray;
 	});
 }

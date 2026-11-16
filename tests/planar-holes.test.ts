@@ -7,7 +7,6 @@ import {
 	layoutParts,
 	type PlacedPart,
 } from "#/engine/planar-parts.ts";
-import { createFakeCanvas } from "./helpers/fake-canvas.ts";
 import { required } from "./helpers/required.ts";
 
 const drill = compilePart({ type: "circle", x: 0, y: 0, radius: 0.5 });
@@ -26,9 +25,11 @@ function drilledBoard() {
 		edges: layout.edges,
 		regions: [],
 	};
-	const canvas = createFakeCanvas();
+	const canvas = { reads: [] as { width: number; height: number }[] };
 	const mask = required(
-		createHoleMask([drills], () => canvas as unknown as HTMLCanvasElement),
+		createHoleMask([drills], (width, height) =>
+			canvas.reads.push({ width, height }),
+		),
 	);
 	return { layout, drills, canvas, mask };
 }
@@ -67,12 +68,7 @@ test("a moved drill takes its hole with it, and only the area it left and entere
 		repainted.width * repainted.height < (whole.width * whole.height) / 10,
 	);
 
-	const fresh = required(
-		createHoleMask(
-			[drills],
-			() => createFakeCanvas() as unknown as HTMLCanvasElement,
-		),
-	);
+	const fresh = required(createHoleMask([drills]));
 	assert.deepEqual(mask.bounds, fresh.bounds);
 	assert.deepEqual(pixels(mask), pixels(fresh));
 });
@@ -101,10 +97,9 @@ test("a board that gains or loses a drill needs a new mask", () => {
 test("overlapping drills cut one hole between them", () => {
 	const layout = layoutParts([at(0, 0), at(0.6, 0), at(40, 0)]);
 	const mask = required(
-		createHoleMask(
-			[{ positions: layout.positions, edges: layout.edges, regions: [] }],
-			() => createFakeCanvas() as unknown as HTMLCanvasElement,
-		),
+		createHoleMask([
+			{ positions: layout.positions, edges: layout.edges, regions: [] },
+		]),
 	);
 	assert.deepEqual(
 		[mask.contains(0.3, 0), mask.contains(-0.3, 0), mask.contains(0.9, 0)],

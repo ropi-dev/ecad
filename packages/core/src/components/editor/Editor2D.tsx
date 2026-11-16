@@ -191,6 +191,7 @@ function EditorCanvas({
 	const [boardError, setBoardError] = useState("");
 	const [boardBuildError, setBoardBuildError] = useState("");
 	const [boardMount, setBoardMount] = useState(0);
+	const [realisticBoard, setRealisticBoard] = useState(false);
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
 		({
@@ -1059,6 +1060,7 @@ function EditorCanvas({
 							focusedLayer={layers.focused}
 							flat={boardView !== "open"}
 							onFlatChange={showBoardFlat}
+							realistic={realisticBoard}
 							orbitGesture="alt-shift"
 							updateFlatScene={updateScene}
 							cameraState={viewport.cameraState}
@@ -1126,6 +1128,7 @@ function EditorCanvas({
 						connectionHover={connectionHover}
 						marquee={marquee}
 						placementPreview={placementPreview}
+						layered={isFootprint && realisticBoard}
 					/>
 					<EditorMessages
 						{...messages}
@@ -1139,6 +1142,10 @@ function EditorCanvas({
 							focused={layers.focused}
 							onSelect={layers.select}
 							onToggle={toggleLayer}
+							realistic={{
+								shown: realisticBoard,
+								onToggle: () => setRealisticBoard((shown) => !shown),
+							}}
 						/>
 					)}
 					{isBoard && boardEditor.rules && (

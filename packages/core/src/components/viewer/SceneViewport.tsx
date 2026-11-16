@@ -69,6 +69,7 @@ export interface SceneViewportProps {
 	interactionHint?: string;
 	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
 	gridBounds?: Bounds;
+	showGrid?: boolean;
 	rulerUnit?: "mm" | "mil";
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
@@ -105,6 +106,7 @@ export function SceneViewport({
 	selectionPosition = "top-right",
 	interactionHint,
 	gridBounds,
+	showGrid = true,
 	rulerUnit,
 	onChange,
 	updateScene,
@@ -195,7 +197,7 @@ export function SceneViewport({
 	// Callers pass new bounds objects on every render; key the grid on values.
 	const grid = useMemo(
 		() =>
-			cameraMode === "top"
+			cameraMode === "top" && showGrid
 				? {
 						unit: rulerUnit ?? "mm",
 						color: gridColor,
@@ -219,6 +221,7 @@ export function SceneViewport({
 			rulerUnit,
 			gridColor,
 			gridMajor,
+			showGrid,
 			gridMinX,
 			gridMaxX,
 			gridMinY,

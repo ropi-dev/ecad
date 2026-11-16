@@ -9,6 +9,7 @@ import {
 	onFootprintLayer,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import {
+	Box3,
 	type BufferAttribute,
 	DynamicDrawUsage,
 	type Mesh,
@@ -16,7 +17,10 @@ import {
 	type Object3D,
 } from "three";
 import { createTextShape } from "#/drawing/text.ts";
-import { getPlanarGeometry } from "#/engine/planar-object.ts";
+import {
+	getPlanarGeometry,
+	stylePlanarObject3D,
+} from "#/engine/planar-object.ts";
 import { PlanarOutline } from "#/engine/planar-outline.ts";
 import { createSceneDisplay } from "#/engine/scene.ts";
 import {
@@ -24,6 +28,7 @@ import {
 	type BoardRegion,
 	createBoardBuilder,
 	DRILL_LAYER_ID,
+	placeFootprintBoard,
 } from "#/footprint/board.ts";
 import {
 	type BoardObject,
@@ -406,5 +411,35 @@ test("a zone fill draws from the triangles it arrives with and stays put while a
 		positions(untriangulated.object).count,
 		positions(split.object).count,
 	);
+	builder.dispose();
+});
+
+test("silkscreen text stands as thick as its layer, and pad numbers stay flat", () => {
+	const { builder, shapes } = boardWithText();
+	const layers = builder.build(shapes);
+	const placements = placeFootprintBoard(layers);
+	const walls = (id: string) => {
+		const index = layers.findIndex((layer) => layer.id === id);
+		const layer = required(layers[index]);
+		const placement = required(placements[index]);
+		layer.object.position.z = placement.z;
+		stylePlanarObject3D(layer.object, layer.color, 1, false, placement);
+		layer.object.updateMatrixWorld(true);
+		const part = required(
+			layer.object.children.find(
+				(child) => child.userData.planarPart === "text-walls",
+			),
+		);
+		return { part, placement };
+	};
+	const silk = walls("footprint:F.SilkS:text");
+	assert.equal(silk.part.visible, true);
+	const bounds = new Box3().setFromObject(silk.part);
+	assert.ok(bounds.max.z < silk.placement.z);
+	assert.ok(
+		Math.abs(bounds.min.z - (silk.placement.z - silk.placement.thickness)) <
+			silk.placement.thickness / 10,
+	);
+	assert.equal(walls("footprint:F.Cu:pad-numbers").part.visible, false);
 	builder.dispose();
 });

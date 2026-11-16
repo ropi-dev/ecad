@@ -3,7 +3,7 @@ import {
 	footprintLayerLabels,
 	footprintLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
-import { ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Sparkles } from "lucide-react";
 import { useCallback, useId, useState } from "react";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
@@ -59,6 +59,7 @@ export function FootprintLayerPanel({
 	itemCounts,
 	onSelect,
 	onToggle,
+	realistic,
 }: {
 	active: FootprintLayer;
 	hidden: ReadonlySet<FootprintLayer>;
@@ -66,6 +67,7 @@ export function FootprintLayerPanel({
 	itemCounts: ReadonlyMap<FootprintLayer, number>;
 	onSelect: (layer: FootprintLayer) => void;
 	onToggle: (layer: FootprintLayer) => void;
+	realistic?: { shown: boolean; onToggle: () => void };
 }) {
 	const [collapsed, setCollapsed] = useState(false);
 	const layerColors = useSchematicTheme().appearance;
@@ -82,6 +84,22 @@ export function FootprintLayerPanel({
 						{footprintLayerLabels[active]}
 					</span>
 				</h2>
+				{realistic && (
+					<button
+						type="button"
+						className={`${panelIconButtonClassName} -mr-2 ml-auto aria-pressed:bg-pressed aria-pressed:text-accent`}
+						aria-label="Realistic board"
+						aria-pressed={realistic.shown}
+						title={
+							realistic.shown
+								? "Show the layer colors"
+								: "Show the board as manufactured"
+						}
+						onClick={realistic.onToggle}
+					>
+						<Sparkles size={16} aria-hidden="true" />
+					</button>
+				)}
 				<button
 					type="button"
 					className={panelIconButtonClassName}

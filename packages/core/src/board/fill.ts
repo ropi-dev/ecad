@@ -107,7 +107,7 @@ function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
 }
 
 /** @return `region` less the union of `obstacles` and `keepOut`, computed in integer nanometres. */
-function subtractObstacles(
+export function subtractObstacles(
 	region: MultiPolygon,
 	obstacles: readonly Ring[],
 	keepOut: ClipperLib.Paths = [],
@@ -175,7 +175,7 @@ function outlineLoops(
 	return loops;
 }
 
-function boardInterior(shapes: readonly EditorShape[]): MultiPolygon {
+export function boardInterior(shapes: readonly EditorShape[]): MultiPolygon {
 	const segments = boardOutlineSegments(shapes);
 	if (!outlineClosed(segments)) return [];
 	const loops = outlineLoops(segments);

@@ -11,10 +11,10 @@ export interface BoardPlacement {
 
 const BOARD_THICKNESS = 1.6;
 const COPPER_Z = BOARD_THICKNESS / 2;
-const COPPER_THICKNESS = 0.07;
-const MASK_THICKNESS = 0.05;
-const PASTE_THICKNESS = 0.04;
-const LEGEND_THICKNESS = 0.04;
+const COPPER_THICKNESS = 0.035;
+const MASK_THICKNESS = 0.02;
+const LEGEND_THICKNESS = 0.015;
+const PASTE_THICKNESS = 0.1;
 export const DRILL_WALL = COPPER_THICKNESS;
 
 const surface = (
@@ -34,14 +34,15 @@ const mirror = (placement: BoardPlacement) => ({
 
 const TOP_COPPER = surface(COPPER_Z, COPPER_THICKNESS, 0);
 const TOP_MASK = surface(TOP_COPPER.z, MASK_THICKNESS, 1);
-const TOP_PASTE = surface(TOP_MASK.z, PASTE_THICKNESS, 2);
-const TOP_LEGEND = surface(TOP_PASTE.z, LEGEND_THICKNESS, 3);
-const UNKNOWN = surface(TOP_LEGEND.z, LEGEND_THICKNESS, 4);
-export const BOARD_STACK_TOP = TOP_LEGEND.z;
+const TOP_LEGEND = surface(TOP_MASK.z, LEGEND_THICKNESS, 2);
+const TOP_PASTE = surface(TOP_COPPER.z, PASTE_THICKNESS, 3);
+export const BOARD_LEGEND_TOP = TOP_LEGEND.z;
+export const BOARD_STACK_TOP = Math.max(TOP_LEGEND.z, TOP_PASTE.z);
+const UNKNOWN = surface(BOARD_STACK_TOP, LEGEND_THICKNESS, 4);
 const PROFILE = { z: 0, thickness: 0, depthBias: 0, through: true };
 const DRILL = {
 	z: 0,
-	thickness: 2 * TOP_LEGEND.z + 0.02,
+	thickness: 2 * TOP_COPPER.z,
 	depthBias: 0,
 	through: true,
 };
@@ -78,6 +79,41 @@ export function boardOutline(
 
 export const isDrillLayer = (layer: { name: string; metadata: Attributes }) =>
 	GROUPS[classify(layer)[0]] === DRILL;
+
+export const BOARD_SUBSTRATE_TOP = COPPER_Z;
+export const BOARD_MASK_TOP = TOP_MASK.z;
+
+export type BoardLayerRole =
+	| "copper"
+	| "inner"
+	| "mask"
+	| "paste"
+	| "legend"
+	| "profile"
+	| "drill"
+	| "other";
+
+const ROLES: Readonly<Record<number, readonly [BoardLayerRole, -1 | 0 | 1]>> = {
+	0: ["legend", 1],
+	1: ["paste", 1],
+	2: ["mask", 1],
+	3: ["copper", 1],
+	4: ["inner", 0],
+	5: ["copper", -1],
+	6: ["mask", -1],
+	7: ["paste", -1],
+	8: ["legend", -1],
+	9: ["profile", 0],
+	10: ["drill", 0],
+};
+
+export function boardLayerRole(layer: { name: string; metadata: Attributes }): {
+	role: BoardLayerRole;
+	side: -1 | 0 | 1;
+} {
+	const [role, side] = ROLES[classify(layer)[0]] ?? ["other", 0];
+	return { role, side };
+}
 
 export function placeBoardLayers(
 	layers: readonly { name: string; metadata: Attributes }[],

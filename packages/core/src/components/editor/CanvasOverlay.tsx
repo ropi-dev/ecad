@@ -48,6 +48,8 @@ interface CanvasOverlayProps {
 	connectionHover: Point | null;
 	marquee: ReturnType<typeof useCanvasGestures>["marquee"];
 	placementPreview?: EditorShape | null;
+	/** The board's layers replace the flat drawing, so selections show as outlines. */
+	layered?: boolean;
 }
 
 const polygonPoints = (outline: readonly Point[] | null) =>
@@ -66,6 +68,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 	connectionHover,
 	marquee,
 	placementPreview,
+	layered = false,
 }: CanvasOverlayProps) {
 	const projection = useSyncExternalStore(
 		cameraView.subscribe,
@@ -96,7 +99,7 @@ export const CanvasOverlay = memo(function CanvasOverlay({
 							canvasArea={canvasArea}
 						/>
 					)}
-					{turned && (
+					{(turned || layered) && (
 						<svg
 							className="absolute inset-0 size-full overflow-visible"
 							data-testid="board-outlines"
