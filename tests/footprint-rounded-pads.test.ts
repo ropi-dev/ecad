@@ -283,6 +283,45 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 	assert.match(copper.content, /%ADD\d+O,2X1\*%/);
 	assert.match(copper.content, /%ADD\d+O,1X2\*%/);
 	assert.match(copper.content, /%ADD\d+C,1\*%/);
+	assert.match(
+		copper.content,
+		/%AMOval\*\n1,1,\$1,\$2,\$3\*\n1,1,\$1,\$4,\$5\*\n20,1,\$1,\$2,\$3,\$4,\$5,0\*%/,
+	);
+	assert.match(
+		copper.content,
+		/%ADD\d+Oval,1X-0\.353553X-0\.353553X0\.353553X0\.353553\*%/,
+	);
+	const through = {
+		...createPad(7, { x: 0, y: 0 }, "through-hole", "1", "F.Cu"),
+		kind: "rectangle" as const,
+		width: 2,
+		height: 1.6,
+	};
+	const throughFiles = exportFabrication(
+		"through",
+		[{ ...through, pad: { ...through.pad, drill: 0.8, cornerRatio: 0.25 } }],
+		[],
+	);
+	for (const suffix of ["F_Cu.gtl", "B_Cu.gbl", "F_Mask.gts", "B_Mask.gbs"]) {
+		const { content } = required(
+			throughFiles.find(({ name }) => name.endsWith(suffix)),
+		);
+		const radius = suffix.includes("Mask") ? "0.45" : "0.4";
+		assert.match(content, new RegExp(`%ADD\\d+RoundRect,${radius}X`), suffix);
+		assert.equal(content.match(/D03\*/g)?.length, 1, suffix);
+		assert.equal(content.includes("G36"), false, suffix);
+	}
+	assert.match(
+		required(throughFiles.find(({ name }) => name.endsWith("F_Cu.gtl")))
+			.content,
+		/%TA\.AperFunction,ComponentPad\*%/,
+	);
+	assert.equal(
+		required(
+			throughFiles.find(({ name }) => name.endsWith("F_Paste.gtp")),
+		).content.includes("D03"),
+		false,
+	);
 	const [nearlyRound] = exportFabrication(
 		"sliver",
 		[roundedPad(0.4999999)],
