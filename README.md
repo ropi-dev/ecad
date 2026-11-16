@@ -121,6 +121,8 @@ Run the **Release** workflow from the Actions tab on `main`. It asks for a chann
 
 A version you give must be newer than the latest stable release. Write it as `0.2.0` or `v0.2.0`. A run from another branch fails before it builds anything.
 
+Two tag rulesets protect the release tags, with no bypass for anyone, admins included. **Release tags: never move** rejects moving any `v*` tag. **Stable release tags: never delete** rejects deleting any `v*` tag except `v*-nightly.*`, which the workflow deletes when it prunes or replaces nightlies. To remove a stable tag, disable that ruleset in the repository settings first. Tag creation stays open, because GitHub doesn't accept the GitHub Actions app as a ruleset bypass actor, so a creation rule would also block the workflow's `GITHUB_TOKEN`.
+
 The workflow runs the CI checks and builds the package with the release's version in its control file, in the desktop app and in `ecad --version`. It installs the package and runs the CLI before publishing. A nightly's Debian version is `0.1.1~nightly.20261116`, so dpkg sorts it after `0.1.0` and before `0.1.1`. GitHub replaces `~` in asset names, so the nightly's files are named after the tag instead: `ecad_0.1.1-nightly.20261116_amd64.deb`. Release notes list the pull requests since the previous stable release, or since the previous release of either kind for a nightly. The package and its update files also stay on the run as the `ecad-deb` artifact for seven days.
 
 #### Updates
