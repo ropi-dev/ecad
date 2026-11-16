@@ -7,7 +7,7 @@ const defaultSolderMaskMargin = 0.05;
 
 export const boardRulesSchema = z.strictObject({
 	clearance: length.describe(
-		"Smallest gap in millimetres between copper on different nets.",
+		"Smallest gap in millimetres between copper on different nets, and between copper and an unplated hole.",
 	),
 	trackWidth: length.describe("Width in millimetres of new tracks."),
 	viaDiameter: length.describe("Copper diameter in millimetres of new vias."),

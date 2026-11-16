@@ -1,6 +1,7 @@
 import type {
 	EditorShape,
 	FillableShape,
+	ShapeHole,
 	ShapePad,
 	ShapeVia,
 } from "#/drawing/schema.ts";
@@ -27,6 +28,7 @@ const throughHoleDrill = 1;
 const drillShareOfPad = 0.6;
 const viaSize = 0.6;
 const viaDrill = 0.3;
+const holeDrill = 3.2;
 const emptyFootprintFit: Bounds = { minX: -2, minY: -1.5, maxX: 2, maxY: 1.5 };
 
 const lineWidth = 0.15;
@@ -49,8 +51,24 @@ export const isVia = (shape: EditorShape): shape is ViaShape =>
 export const isPadOrVia = (shape: EditorShape): shape is PadShape | ViaShape =>
 	isPad(shape) || isVia(shape);
 
+export type HoleShape = FillableShape & { kind: "circle"; hole: ShapeHole };
+
+export const isHole = (shape: EditorShape): shape is HoleShape =>
+	shape.kind === "circle" && shape.hole !== undefined;
+
+export const isDrilled = (
+	shape: EditorShape,
+): shape is PadShape | ViaShape | HoleShape =>
+	isPadOrVia(shape) || isHole(shape);
+
 export const shapeDrill = (shape: EditorShape): number | undefined =>
-	isPad(shape) ? shape.pad.drill : isVia(shape) ? shape.via.drill : undefined;
+	isPad(shape)
+		? shape.pad.drill
+		: isVia(shape)
+			? shape.via.drill
+			: isHole(shape)
+				? shape.hole.drill
+				: undefined;
 
 export const isFootprintShape = (shape: EditorShape) =>
 	footprintShapeKinds.has(shape.kind) &&
@@ -59,6 +77,8 @@ export const isFootprintShape = (shape: EditorShape) =>
 export const shapeLayer = (shape: EditorShape): FootprintLayer =>
 	shape.layer ?? layerWithoutOne;
 
+const maskLayers: readonly FootprintLayer[] = ["F.Mask", "B.Mask"];
+
 const pasteLayers: Partial<Record<FootprintLayer, FootprintLayer>> = {
 	"F.Cu": "F.Paste",
 	"B.Cu": "B.Paste",
@@ -66,6 +86,7 @@ const pasteLayers: Partial<Record<FootprintLayer, FootprintLayer>> = {
 
 export function shapeLayers(shape: EditorShape): readonly FootprintLayer[] {
 	if (isVia(shape)) return copperLayers;
+	if (isHole(shape)) return maskLayers;
 	if (!isPad(shape)) return [shapeLayer(shape)];
 	if (shape.pad.type === "through-hole") return copperLayers;
 	const copper = shapeLayer(shape);
@@ -198,6 +219,29 @@ export const createVia = (id: number, center: Point): ViaShape => ({
 export const editVia = (shape: ViaShape, drill: number): ViaShape =>
 	drill > 0 && drill < shape.width ? { ...shape, via: { drill } } : shape;
 
+export const createHole = (id: number, center: Point): HoleShape => ({
+	id,
+	kind: "circle",
+	...center,
+	width: holeDrill,
+	height: holeDrill,
+	rotation: 0,
+	lineWidth,
+	filled: true,
+	layer: "F.Mask",
+	hole: { drill: holeDrill },
+});
+
+export const editHole = (shape: HoleShape, drill: number): HoleShape =>
+	drill > 0
+		? {
+				...shape,
+				width: Math.max(shape.width, drill),
+				height: Math.max(shape.width, drill),
+				hole: { drill },
+			}
+		: shape;
+
 export const padMinorSize = (pad: PadShape) => Math.min(pad.width, pad.height);
 
 function fitDrill(shape: PadShape): PadShape {
@@ -214,6 +258,8 @@ export function fitHole<Shape extends EditorShape>(shape: Shape): Shape {
 	if (isPad(shape)) return fitDrill(shape) as Shape;
 	if (isVia(shape) && shape.via.drill >= shape.width)
 		return { ...shape, via: { drill: shape.width * drillShareOfPad } } as Shape;
+	if (isHole(shape) && shape.hole.drill > shape.width)
+		return { ...shape, hole: { drill: shape.width } } as Shape;
 	return shape;
 }
 
@@ -273,7 +319,7 @@ export function setShapeLayer(
 	shape: EditorShape,
 	layer: FootprintLayer,
 ): EditorShape {
-	if (shape.kind === "symbol" || isVia(shape)) return shape;
+	if (shape.kind === "symbol" || isVia(shape) || isHole(shape)) return shape;
 	if (isPad(shape))
 		return shape.pad.type === "smd" && copperLayers.includes(layer)
 			? { ...shape, layer }

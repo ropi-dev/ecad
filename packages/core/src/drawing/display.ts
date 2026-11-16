@@ -32,8 +32,8 @@ import {
 	isCopperLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
+	isDrilled,
 	isPad,
-	isPadOrVia,
 	isVia,
 	shapeDrill,
 	shapeLayers,
@@ -139,7 +139,7 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
-	if (isPadOrVia(shape))
+	if (isDrilled(shape))
 		return { kind: shape.kind, width, height, lineWidth: 0, filled: true };
 	if (kind !== "symbol")
 		return {
@@ -237,7 +237,7 @@ function displayShape(
 		shape.kind === "symbol" &&
 		shape.children.some((child) => isFillableShape(child) && child.filled)
 			? symbolShapes({ ...shape, x: 0, y: 0, rotation: 0 })
-			: isFillableShape(shape) && shape.filled && !isPadOrVia(shape)
+			: isFillableShape(shape) && shape.filled && !isDrilled(shape)
 				? [shape]
 				: [];
 	const fills = fillChildren
@@ -260,7 +260,7 @@ function displayShape(
 			renderOrder: renderOrder - 0.5,
 		}));
 	if (fills.length) display.children = fills;
-	if (isPadOrVia(shape)) {
+	if (isDrilled(shape)) {
 		const drill = shapeDrill(shape);
 		const number = isPad(shape) ? shape.pad.number : "";
 		const { width: labelWidth, height: labelHeight } = padNumberSize(
@@ -274,7 +274,7 @@ function displayShape(
 				: [
 						{
 							key: `${key}:hole`,
-							name: `${isPad(shape) ? "pad" : "via"} hole ${shape.id}`,
+							name: `${isPad(shape) ? "pad" : isVia(shape) ? "via" : "unplated"} hole ${shape.id}`,
 							geometry: {
 								kind: "circle" as const,
 								width: drill,

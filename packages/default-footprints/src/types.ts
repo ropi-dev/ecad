@@ -27,6 +27,7 @@ export type SourceItem =
 			angle: number,
 			drill: number,
 	  ]
+	| readonly ["npth", x: number, y: number, size: number, drill: number]
 	/** A paste opening drawn on its own, such as the windows over an exposed pad. */
 	| readonly [
 			"paste",

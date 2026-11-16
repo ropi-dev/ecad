@@ -10,6 +10,7 @@ import { checkBoard, type DrcKind } from "@ecad/drawing-core/board/drc.ts";
 import {
 	type BoardFootprint,
 	boardPads,
+	createBoardFootprint,
 	type FootprintSource,
 	flipBoardFootprint,
 } from "@ecad/drawing-core/board/footprints.ts";
@@ -44,7 +45,11 @@ import {
 } from "@ecad/drawing-core/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
-import { createPad, isPad } from "@ecad/drawing-core/footprint/shapes.ts";
+import {
+	createHole,
+	createPad,
+	isPad,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import {
 	fillReach,
 	fillZones,
@@ -982,6 +987,143 @@ describe("solder mask margin", () => {
 			true,
 			false,
 		]);
+	});
+});
+
+describe("unplated holes", () => {
+	const mountingHole = (at: Point) =>
+		createBoardFootprint(
+			nextId++,
+			required(source({ library: "builtin", id: "mountinghole_3.2mm_m3" })),
+			{ reference: "H1", value: "MountingHole" },
+			at,
+		);
+	const boardHole = (at: Point, drill: number): EditorShape => ({
+		...createHole(nextId++, at),
+		width: drill,
+		height: drill,
+		hole: { drill },
+	});
+	const fabricationFile = (
+		shapes: readonly EditorShape[],
+		suffix: string,
+		fills: readonly ZoneFill[] = [],
+	) =>
+		exportFabrication("board", shapes, fills).find((file) =>
+			file.name.endsWith(suffix),
+		);
+	const objectsAt = (content: string, name: string, point: Point) =>
+		parseGerber(content, name).object.objects.filter(
+			({ bounds }) =>
+				bounds.minX <= point.x &&
+				point.x <= bounds.maxX &&
+				bounds.minY <= point.y &&
+				point.y <= bounds.maxY,
+		);
+
+	test("a mounting hole goes in its own NPTH drill file with a mask opening on both sides and no copper", () => {
+		const { shapes, at } = dividerBoard();
+		const hole = at(6, 4);
+		const small = at(-6, 4);
+		const board = [...shapes, mountingHole(hole), boardHole(small, 1)];
+		const drill = required(fabricationFile(board, "-NPTH.drl")).content;
+		assert.match(drill, /^; #@! TF\.FileFunction,NonPlated,1,2,NPTH$/m);
+		assert.deepEqual(
+			drill.split("\n").filter((line) => /^(T\d|X)/.test(line)),
+			[
+				"T1C1.000",
+				"T2C3.200",
+				"T1",
+				`X${small.x.toFixed(3)}Y${small.y.toFixed(3)}`,
+				"T2",
+				`X${hole.x.toFixed(3)}Y${hole.y.toFixed(3)}`,
+				"T0",
+			],
+		);
+		assert.equal(
+			required(fabricationFile(board, "-PTH.drl")).content,
+			required(fabricationFile(shapes, "-PTH.drl")).content,
+		);
+		assert.equal(fabricationFile(shapes, "-NPTH.drl"), undefined);
+		for (const suffix of ["F_Mask.gts", "B_Mask.gbs"]) {
+			const mask = required(fabricationFile(board, suffix));
+			const [opening] = objectsAt(mask.content, mask.name, hole);
+			assert.ok(
+				Math.abs(opening.bounds.maxX - opening.bounds.minX - 3.3) < 1e-6,
+				suffix,
+			);
+		}
+		for (const suffix of ["F_Cu.gtl", "B_Cu.gbl", "F_Paste.gtp"]) {
+			const file = required(fabricationFile(board, suffix));
+			assert.deepEqual(objectsAt(file.content, file.name, hole), [], suffix);
+		}
+	});
+
+	test("a GND pour keeps the board clearance from a mounting hole without a keepout zone", () => {
+		const { shapes, netlist, pour, at } = dividerBoard();
+		const center = at(6, 4);
+		const gndPour = pour("gnd", 0, 28);
+		const board = [...shapes, gndPour, mountingHole(center)];
+		const fill = pourCopper(board, netlist);
+		const ring = (radius: number) =>
+			Array.from({ length: 32 }, (_, index) => ({
+				x: center.x + radius * Math.cos((index * Math.PI) / 16),
+				y: center.y + radius * Math.sin((index * Math.PI) / 16),
+			}));
+		const keepout = 1.6 + defaultBoardRules.clearance;
+		assert.ok(
+			ring(keepout - 0.01).every((point) => !containsPoint(fill, point)),
+		);
+		assert.ok(ring(keepout + 0.1).every((point) => containsPoint(fill, point)));
+		assert.deepEqual(
+			spacingProblems(designRulesCheck(board, netlist), gndPour),
+			[],
+		);
+	});
+
+	test("copper run into or too close to an unplated hole is a clearance finding", () => {
+		const { shapes, netlist, at } = dividerBoard();
+		const center = at(6, 4);
+		const footprint = mountingHole(center);
+		const across = (y: number) =>
+			trackSegments(
+				nextId++ * 10,
+				[
+					{ x: center.x - 3, y },
+					{ x: center.x + 3, y },
+				],
+				"B.Cu",
+				0.2,
+				"mid",
+			);
+		const findings = (y: number) =>
+			spacingProblems(
+				designRulesCheck([...shapes, footprint, ...across(y)], netlist),
+				footprint,
+			).map((finding) => [finding.kind, finding.message]);
+		assert.deepEqual(findings(center.y), [
+			["clearance", "track on MID overlaps an unplated hole"],
+		]);
+		assert.deepEqual(findings(center.y + 1.6 + 0.1 + 0.15), [
+			[
+				"clearance",
+				"Clearance 0.150 mm between track on MID and an unplated hole, needs 0.2 mm",
+			],
+		]);
+		assert.deepEqual(findings(center.y + 1.6 + 0.1 + 0.25), []);
+	});
+
+	test("the autorouter routes around an unplated hole in its way", () => {
+		const { shapes, netlist, at } = dividerBoard();
+		const board = [...shapes, boardHole(at(0, 0), 1)];
+		const routed = autoroute(board, netlist, 2000, {
+			rules: defaultBoardRules,
+		});
+		assert.deepEqual(routed.failed, []);
+		assert.deepEqual(
+			designRulesCheck([...board, ...routed.shapes], netlist),
+			[],
+		);
 	});
 });
 

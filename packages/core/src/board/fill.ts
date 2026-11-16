@@ -1,4 +1,5 @@
 import {
+	boardHoles,
 	type CopperItem,
 	type CopperLayer,
 	copperItems,
@@ -300,8 +301,8 @@ const circumscribed = (hull: Hull, margin: number) =>
 
 /**
  * Fills each zone: its rectangle inside the board outline, less the edge
- * clearance, the copper of other nets and the fills of earlier zones on other
- * nets, each grown by the clearance. Islands that reach nothing on the zone's
+ * clearance, the copper of other nets, unplated holes and the fills of earlier
+ * zones on other nets, each grown by the clearance. Islands that reach nothing on the zone's
  * net, directly or through a touching island of another zone on that net,
  * are removed.
  */
@@ -342,7 +343,10 @@ export function fillZones(
 					boundsOverlap(item.bounds, zone.bounds, clearance) &&
 					!(zone.net !== undefined && item.net === zone.net),
 			);
-			for (const item of others)
+			const holes = boardHoles(shapes).filter((hole) =>
+				boundsOverlap(hole.bounds, zone.bounds, clearance),
+			);
+			for (const item of [...others, ...holes])
 				for (const hull of item.hulls)
 					obstacles.push(
 						ring(hullPolygon(hull, circumscribed(hull, clearance), arc)),

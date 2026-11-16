@@ -1,5 +1,6 @@
 import {
 	analyzeConnectivity,
+	boardHoles,
 	type CopperItem,
 	copperItems,
 	endsAt,
@@ -15,6 +16,7 @@ import {
 	isBoardFootprint,
 } from "#/board/footprints.ts";
 import {
+	boundsOverlap,
 	type Hull,
 	hullDistance,
 	lineEnds,
@@ -184,6 +186,29 @@ export function checkBoard(
 			at,
 		});
 	});
+	for (const hole of boardHoles(shapes))
+		for (const item of items) {
+			if (item.shapeId === hole.shapeId) continue;
+			const zone = item.kind === "zone";
+			if (zone && !options.zoneReach?.gap) continue;
+			const needed = Math.max(rules.clearance, zoneClearance(item));
+			if (!boundsOverlap(item.bounds, hole.bounds, needed)) continue;
+			const distance =
+				zone && options.zoneReach?.gap
+					? options.zoneReach.gap(item, hole, needed)
+					: itemDistance(item, hole);
+			if (distance >= needed - 1e-6) continue;
+			findings.push({
+				id: `hole:${hole.index}:${item.index}`,
+				kind: "clearance",
+				message:
+					distance <= 1e-6
+						? `${describe(item)} on ${netName(netlist, item.net)} overlaps an unplated hole`
+						: `Clearance ${distance.toFixed(3)} mm between ${describe(item)} on ${netName(netlist, item.net)} and an unplated hole, needs ${needed} mm`,
+				shapeIds: [...new Set([item.shapeId, hole.shapeId])],
+				at: center(hole.bounds),
+			});
+		}
 	const outline = boardOutlineSegments(shapes);
 	if (!outline.length)
 		findings.push({

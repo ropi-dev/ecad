@@ -166,6 +166,16 @@ function convert(item: SourceItem): ShapeWithoutId[] {
 				},
 			];
 		}
+		case "npth": {
+			const [, x, y, size, drill] = item;
+			return [
+				{
+					...pad("circle", x, y, size, size, 0),
+					layer: "F.Mask",
+					hole: { drill },
+				},
+			];
+		}
 		case "paste": {
 			const [, x, y, width, height, angle] = item;
 			return [

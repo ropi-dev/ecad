@@ -18,6 +18,7 @@ import {
 	isCopperLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
+	isHole,
 	isPad,
 	isVia,
 	type PadShape,
@@ -358,11 +359,13 @@ export function maskOpenings(
 		bottom: [] as [number, number][][],
 	};
 	for (const shape of flatItems(shapes)) {
-		if (!isPad(shape)) continue;
+		if (!isPad(shape) && !isHole(shape)) continue;
 		const layers = shapeLayers(shape);
 		const sides = (["top", "bottom"] as const).filter((side) =>
 			layers.some(
-				(layer) => maskLayer[layer] === (side === "top" ? "F.Mask" : "B.Mask"),
+				(layer) =>
+					(isHole(shape) ? layer : maskLayer[layer]) ===
+					(side === "top" ? "F.Mask" : "B.Mask"),
 			),
 		);
 		if (!sides.length) continue;
@@ -381,8 +384,9 @@ interface FabricationFile {
 }
 
 /**
- * Gerber X2 files for copper, mask, paste, silkscreen and the outline, and
- * an Excellon drill file for plated holes. Zone fills come first on their
+ * Gerber X2 files for copper, mask, paste, silkscreen and the outline, an
+ * Excellon drill file for plated holes, and one for unplated holes when the
+ * board has any. Zone fills come first on their
  * copper layer, with their holes cut, so later copper draws over them.
  * Mask openings reach `maskMargin` past each pad. Text is not exported.
  */
@@ -416,6 +420,12 @@ export function exportFabrication(
 			if (shape.kind === "text") continue;
 			if (isZone(shape)) continue;
 			const layers = shapeLayers(shape);
+			if (isHole(shape)) {
+				if (layers.includes(target.layer))
+					for (const hull of shapeHulls(shape))
+						writer.hull(hull, maskExpansion);
+				continue;
+			}
 			const copper = shapeLayer(shape);
 			if (isPad(shape) || isVia(shape)) {
 				const onCopper = layers.includes(target.layer);
@@ -444,11 +454,26 @@ export function exportFabrication(
 		}
 		files.push({ name: `${name}-${target.file}`, content: writer.toString() });
 	}
-	files.push({ name: `${name}-PTH.drl`, content: drillFile(items) });
+	files.push({
+		name: `${name}-PTH.drl`,
+		content: drillFile(
+			items.filter((shape) => !isHole(shape)),
+			"Plated,1,2,PTH",
+		),
+	});
+	const unplated = items.filter(isHole);
+	if (unplated.length)
+		files.push({
+			name: `${name}-NPTH.drl`,
+			content: drillFile(unplated, "NonPlated,1,2,NPTH"),
+		});
 	return files;
 }
 
-function drillFile(items: readonly EditorShape[]): string {
+function drillFile(
+	items: readonly EditorShape[],
+	fileFunction: string,
+): string {
 	const holes = new Map<string, Point[]>();
 	for (const shape of items) {
 		const drill = shapeDrill(shape);
@@ -463,7 +488,7 @@ function drillFile(items: readonly EditorShape[]): string {
 		"M48",
 		"; DRILL file from ECAD",
 		"; FORMAT={-:-/ absolute / metric / decimal}",
-		"; #@! TF.FileFunction,Plated,1,2,PTH",
+		`; #@! TF.FileFunction,${fileFunction}`,
 		"FMAT,2",
 		"METRIC",
 		...tools.map((tool, index) => `T${index + 1}C${tool}`),

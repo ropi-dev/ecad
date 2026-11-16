@@ -1,4 +1,5 @@
 import {
+	boardHoles,
 	type CopperItem,
 	type CopperLayer,
 	copperItems,
@@ -233,7 +234,7 @@ export function routingGrid(
 			}
 	};
 	const items = copperItems(shapes, netlist);
-	for (const item of items) {
+	for (const item of [...items, ...boardHoles(shapes)]) {
 		if (item.kind === "zone") continue;
 		const owner = indexOf(item.net);
 		for (const layer of item.layers)

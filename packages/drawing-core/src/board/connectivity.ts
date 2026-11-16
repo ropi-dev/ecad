@@ -21,11 +21,11 @@ import {
 	copperLayers,
 	isCopperLayer,
 } from "#/footprint/layers.ts";
-import { isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
+import { isHole, isPad, isVia, shapeLayer } from "#/footprint/shapes.ts";
 import { unionFind } from "#/lib/union-find.ts";
 
 export type { CopperLayer };
-type CopperKind = "pad" | "track" | "via" | "zone" | "graphic";
+type CopperKind = "pad" | "track" | "via" | "zone" | "graphic" | "hole";
 
 export interface CopperItem {
 	index: number;
@@ -175,6 +175,33 @@ export function copperItems(
 	}
 	itemCache.set(shapes, { netlist, items });
 	return items;
+}
+
+const holeCache = new WeakMap<readonly EditorShape[], CopperItem[]>();
+
+export function boardHoles(shapes: readonly EditorShape[]): CopperItem[] {
+	const cached = holeCache.get(shapes);
+	if (cached) return cached;
+	const holes: CopperItem[] = [];
+	for (const shape of shapes)
+		for (const part of isBoardFootprint(shape)
+			? (symbolShapes(shape) as EditorShape[])
+			: [shape])
+			if (isHole(part)) {
+				const hulls = shapeHulls(part);
+				holes.push({
+					index: holes.length,
+					shapeId: shape.id,
+					kind: "hole",
+					shape: part,
+					layers: copperLayers as CopperLayer[],
+					hulls,
+					bounds: mergeBounds(hulls.map(hullBounds)),
+					points: [],
+				});
+			}
+	holeCache.set(shapes, holes);
+	return holes;
 }
 
 export const sharesLayer = (a: CopperItem, b: CopperItem) =>
