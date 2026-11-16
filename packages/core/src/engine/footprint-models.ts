@@ -32,17 +32,21 @@ export function modelMatrix(placement: ModelPlacement, target = new Matrix4()) {
 	return target;
 }
 
+export interface PlacedModels {
+	readonly object: Group;
+}
+
 export type ModelPlacer = (
 	placements: readonly ModelPlacement[],
 	templateFor: (placement: ModelPlacement) => Object3D | undefined,
-) => Group;
+) => PlacedModels;
 
 export function createModelPlacer(): ModelPlacer {
 	let copies = new Map<string, { template: Object3D; copy: Object3D }>();
+	const group = new Group();
+	group.name = "Footprint models";
+	group.userData.footprintModels = true;
 	return (placements, templateFor) => {
-		const group = new Group();
-		group.name = "Footprint models";
-		group.userData.footprintModels = true;
 		const kept = new Map<string, { template: Object3D; copy: Object3D }>();
 		placements.forEach((placement, index) => {
 			const template = templateFor(placement);
@@ -57,9 +61,11 @@ export function createModelPlacer(): ModelPlacer {
 			modelMatrix(placement, entry.copy.matrix);
 			entry.copy.matrixWorldNeedsUpdate = true;
 			kept.set(key, entry);
-			group.add(entry.copy);
 		});
 		copies = kept;
-		return group;
+		const shown = [...kept.values()].map(({ copy }) => copy);
+		group.remove(...group.children.filter((copy) => !shown.includes(copy)));
+		for (const copy of shown) if (copy.parent !== group) group.add(copy);
+		return { object: group };
 	};
 }

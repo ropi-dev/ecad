@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Object3D } from "three";
+import type { PlacedModels } from "#/engine/footprint-models.ts";
 import {
 	type BuiltinModelLibrary,
 	loadBuiltinModels,
@@ -24,7 +25,7 @@ export function useFootprintModels(
 	placements: readonly ModelPlacement[],
 	enabled: boolean,
 	onError?: (message: string) => void,
-): Object3D | undefined {
+): PlacedModels | undefined {
 	const [engine, setEngine] = useState<ModelEngine>();
 	const [library, setLibrary] = useState<BuiltinModelLibrary>();
 	const [templates, setTemplates] = useState<ReadonlyMap<string, Object3D>>(

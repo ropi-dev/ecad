@@ -114,7 +114,7 @@ export function GerberViewer({
 	realistic?: boolean;
 	/** The board's shape for the realistic view; the profile layer's bounds otherwise. */
 	boardShape?: BoardShape;
-	models?: Object3D;
+	models?: { readonly object: Object3D };
 }) {
 	const [ownFlat, setOwnFlat] = useState(true);
 	const flat = controlledFlat ?? ownFlat;
@@ -298,7 +298,7 @@ export function GerberViewer({
 			for (const child of group.children.slice(geometryScene.length))
 				if (
 					(child.userData.realisticBoard && child !== realisticBoard?.object) ||
-					(child.userData.footprintModels && child !== shownModels)
+					(child.userData.footprintModels && child !== shownModels?.object)
 				)
 					group.remove(child);
 			updateFlatScene?.(group);
@@ -331,8 +331,9 @@ export function GerberViewer({
 				}
 			}
 			if (shownModels) {
-				if (shownModels.parent !== group) group.add(shownModels);
-				shownModels.visible = layersShown;
+				const models = shownModels.object;
+				if (models.parent !== group) group.add(models);
+				models.visible = layersShown;
 			}
 			group.position.set(0, 0, 0);
 			if (surfaceZ !== undefined) {

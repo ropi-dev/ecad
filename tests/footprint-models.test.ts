@@ -166,21 +166,23 @@ test("a model turns with its footprint and a flipped one hangs mirrored under th
 	]);
 	const template = new Group().add(new Mesh());
 	const place = createModelPlacer();
-	const placed = place(
-		[
-			{ model, x: 1, y: 2, rotation: 0, flipped: false },
-			{
-				model: { ...model, id: "missing" },
-				x: 0,
-				y: 0,
-				rotation: 0,
-				flipped: false,
-			},
-		],
-		(placement) => (placement.model.id === "m" ? template : undefined),
-	);
-	assert.equal(placed.children.length, 1);
-	const placedCopy = placed.children[0];
+	const placements = [
+		{ model, x: 1, y: 2, rotation: 0, flipped: false },
+		{
+			model: { ...model, id: "missing" },
+			x: 0,
+			y: 0,
+			rotation: 0,
+			flipped: false,
+		},
+	];
+	const templateFor = (placement: (typeof placements)[number]) =>
+		placement.model.id === "m" ? template : undefined;
+	const placed = place(placements, templateFor);
+	const again = place(placements, templateFor);
+	assert.notEqual(again, placed);
+	assert.equal(placed.object.children.length, 1);
+	const placedCopy = placed.object.children[0];
 	const copy = placedCopy.children[0] as Mesh;
 	assert.equal(copy.geometry, (template.children[0] as Mesh).geometry);
 	assert.equal(copy.material, (template.children[0] as Mesh).material);
@@ -188,6 +190,7 @@ test("a model turns with its footprint and a flipped one hangs mirrored under th
 		[{ model, x: 5, y: 2, rotation: 0, flipped: false }],
 		() => template,
 	);
-	assert.equal(moved.children[0], placedCopy);
-	assert.equal(moved.children[0].matrix.elements[12], 5);
+	assert.deepEqual(moved.object.children, [placedCopy]);
+	assert.equal(placedCopy.matrix.elements[12], 5);
+	assert.deepEqual(place([], () => template).object.children, []);
 });
