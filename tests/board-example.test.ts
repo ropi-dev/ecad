@@ -9,7 +9,7 @@ import {
 } from "@ecad/drawing-core/drawing/sheet.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
 import { boardFileSchema } from "#/board/format.ts";
-import { exportFabrication } from "#/board/gerber.ts";
+import { exportFabrication, maskOpenings } from "#/board/gerber.ts";
 import { exampleDesigns } from "#/examples/designs.ts";
 import { rp2350aSheet } from "#/examples/rp2350a.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
@@ -45,8 +45,6 @@ test("the RP2350A example is a fully routed single-sided board that passes the c
 		.map((file) => {
 			const result = parseGerber(file.content, file.name);
 			assert.deepEqual(result.diagnostics, [], file.name);
-			if (/_Mask\./.test(file.name))
-				assert.doesNotMatch(file.content, /G36/, file.name);
 			const bottomOnly = /-B_(Paste|Silkscreen)\./.test(file.name);
 			assert.equal(result.object.objects.length > 0, !bottomOnly, file.name);
 			return /%TF\.FileFunction,([^*]+)\*%/.exec(file.content)?.[1];
@@ -62,6 +60,14 @@ test("the RP2350A example is a fully routed single-sided board that passes the c
 		"Soldermask,Bot",
 		"Soldermask,Top",
 	]);
+	const flashes = (suffix: string) =>
+		files.find((file) => file.name.endsWith(suffix))?.content.match(/D03\*/g)
+			?.length;
+	const openings = maskOpenings(board.shapes);
+	assert.deepEqual(
+		[flashes("F_Mask.gts"), flashes("B_Mask.gbs")],
+		[openings.top.length, openings.bottom.length],
+	);
 	const drill = files.find((file) => file.name.endsWith(".drl"));
 	assert.match(drill?.content ?? "", /^T\d+C0\.300$/m);
 });

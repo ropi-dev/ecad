@@ -880,6 +880,24 @@ describe("fabrication files", () => {
 		assert.equal(mask.length, 3);
 		assert.ok(near(mask[0].bounds, corners(tilted, 0.05)));
 		assert.ok(near(mask[1].bounds, corners(upright, 0.05)));
+		const opening = mask[0].geometry;
+		const roundedCorners =
+			opening.type === "group"
+				? opening.children.flatMap(({ geometry }) =>
+						geometry.type === "circle" ? [geometry] : [],
+					)
+				: [];
+		assert.ok(
+			roundedCorners.length === 4 &&
+				rectangleCorners(tilted).every((corner) =>
+					roundedCorners.some(
+						(circle) =>
+							Math.abs(circle.radius - 0.05) < 1e-9 &&
+							Math.hypot(circle.x + 10 - corner.x, circle.y + 5 - corner.y) <
+								1e-6,
+					),
+				),
+		);
 		const paste = layer("F_Paste.gtp");
 		assert.equal(paste.length, 2);
 		assert.ok(near(paste[1].bounds, corners(upright)));
