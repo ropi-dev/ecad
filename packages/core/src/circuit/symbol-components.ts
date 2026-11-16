@@ -25,6 +25,7 @@ export function componentFromSymbol(
 										number: child.number,
 										sourcePinId: String(child.id),
 										electricalType: child.electricalType,
+										...(child.activeLow ? { activeLow: true as const } : {}),
 									},
 								]
 							: [],

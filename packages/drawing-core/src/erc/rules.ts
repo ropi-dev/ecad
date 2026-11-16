@@ -17,7 +17,11 @@ const pinSubject = ({ pin }: ErcPin): ErcSubject => ({
 	id: pin.id,
 });
 const pinLabel = ({ pin, component }: ErcPin) =>
-	`${component.reference} pin ${pin.number}${pin.name ? ` (${pin.name})` : ""}`;
+	`${component.reference} pin ${pin.number}${
+		pin.name || pin.activeLow
+			? ` (${[pin.name, pin.activeLow && "active low"].filter(Boolean).join(", ")})`
+			: ""
+	}`;
 const netLabel = (names: readonly string[]) =>
 	names.join(" / ") || "Unnamed net";
 

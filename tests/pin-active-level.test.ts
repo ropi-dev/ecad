@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	circuitPinSchema,
+	createCircuit,
+} from "@ecad/drawing-core/circuit/model.ts";
+import {
 	overbarText,
 	parseOverbars,
 } from "@ecad/drawing-core/drawing/overbar.ts";
@@ -21,6 +25,9 @@ import {
 	PIN_BUBBLE_RADIUS,
 	PIN_NUMBER_GAP,
 } from "@ecad/drawing-core/drawing/units.ts";
+import { runErc } from "@ecad/drawing-core/erc/engine.ts";
+import { defaultErcRules } from "@ecad/drawing-core/erc/rules.ts";
+import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import {
 	parseSymbolFile,
 	symbolFileFromSymbol,
@@ -419,4 +426,65 @@ test("every pin number on a lead sits a bubble radius above the usual gap", () =
 			label(pointOnly).y * pointOnly.height - (height / 2 - PIN_NUMBER_GAP),
 		) < 1e-9,
 	);
+});
+
+test("circuit pins carry the active level, and ERC names an active-low pin", () => {
+	const nrf = required(
+		symbolDefinitions.find(({ id }) => id === "nrf54l15-qfaa"),
+	);
+	const placed = createSymbol(1, nrf, { x: 0, y: 0 });
+	const resetChild = required(
+		symbolChildren(placed).find(
+			({ shape }) => shape.kind === "pin" && shape.name === "RESET",
+		),
+	);
+	const reset = (symbol: EditorSymbol) =>
+		required(
+			componentFromSymbol(
+				{
+					...nrf,
+					children: symbol.children.map((child) => ({
+						...child,
+						...symbol.childOverrides?.[`shape:${child.id}`],
+					})),
+				},
+				[],
+			).pins.find(({ name }) => name === "RESET"),
+		);
+	assert.equal(reset(placed).activeLow, true);
+	const [high] = required(
+		applySelectionEdit(
+			{ kind: "pin", attribute: "activeLow", value: false },
+			{
+				...editContext([placed]),
+				child: { symbol: placed, child: resetChild },
+			},
+		),
+	).replacements as EditorSymbol[];
+	assert.ok(!("activeLow" in reset(high)));
+	const circuit = createCircuit("ERC", "circuit").circuit;
+	circuit.components = [
+		{
+			id: "u1",
+			reference: "U1",
+			value: "",
+			part: { id: "test", name: "Test" },
+			pins: [
+				{
+					id: "p1",
+					name: "RESET",
+					number: "25",
+					electricalType: "input",
+					activeLow: true,
+				},
+			],
+		},
+	];
+	assert.deepEqual(
+		runErc(circuit, defaultErcRules).map(({ message }) => message),
+		[
+			"U1 pin 25 (RESET, active low) is unconnected. Connect it or mark it no-connect.",
+		],
+	);
+	assert.ok(circuitPinSchema.safeParse(circuit.components[0].pins[0]).success);
 });
