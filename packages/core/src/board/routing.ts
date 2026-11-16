@@ -114,6 +114,9 @@ export function trackAnchor(
 ): RouteAnchor | undefined {
 	const joins = (item: CopperItem) =>
 		net === undefined || item.net === undefined || item.net === net;
+	const excluded = (at: Point) =>
+		exclude !== undefined &&
+		Math.hypot(at.x - exclude.x, at.y - exclude.y) < 1e-6;
 	const area = { minX: point.x, minY: point.y, maxX: point.x, maxY: point.y };
 	let best: { anchor: RouteAnchor; gap: number; distance: number } | undefined;
 	for (const item of items) {
@@ -121,11 +124,7 @@ export function trackAnchor(
 		if (layer && !item.layers.includes(layer)) continue;
 		if (!joins(item) || !boundsOverlap(item.bounds, area, padReach)) continue;
 		const centre = { x: item.shape.x, y: item.shape.y };
-		if (
-			exclude &&
-			Math.hypot(centre.x - exclude.x, centre.y - exclude.y) < 1e-6
-		)
-			continue;
+		if (excluded(centre)) continue;
 		const gap = Math.max(
 			0,
 			Math.min(...item.hulls.map((hull) => pointHullDistance(hull, point))),
@@ -141,7 +140,9 @@ export function trackAnchor(
 	}
 	if (best) return best.anchor;
 	const anchor = routeAnchor(items, point, layer, tolerance);
-	return anchor && joins(anchor.item) ? anchor : undefined;
+	return anchor && joins(anchor.item) && !excluded(anchor.point)
+		? anchor
+		: undefined;
 }
 
 export const otherCopperLayer = (layer: CopperLayer): CopperLayer =>

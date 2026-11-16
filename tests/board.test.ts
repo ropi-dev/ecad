@@ -367,6 +367,55 @@ describe("routing and the ratsnest", () => {
 		);
 	});
 
+	test("a track end snaps to the nearest via it may join, but never back to where the track started", () => {
+		const { shapes, netlist } = dividerBoard();
+		const via = (id: number, x: number, net?: string): EditorShape => ({
+			id,
+			kind: "circle",
+			layer: "F.Cu",
+			x,
+			y: 40,
+			width: 0.6,
+			height: 0.6,
+			rotation: 0,
+			lineWidth: 0.15,
+			filled: true,
+			via: { drill: 0.3 },
+			...(net ? { net } : {}),
+		});
+		const items = copperItems(
+			[...shapes, via(901, 100, "gnd"), via(902, 101.5), via(903, 103, "mid")],
+			netlist,
+		);
+		const reach = { padReach: 0.6, tolerance: 0.2 };
+		const at = (x: number) => ({ x, y: 40.1 });
+		assert.deepEqual(trackAnchor(items, at(100.9), reach)?.point, {
+			x: 101.5,
+			y: 40,
+		});
+		assert.deepEqual(
+			trackAnchor(items, at(102.4), { ...reach, net: "mid" })?.point,
+			{ x: 103, y: 40 },
+		);
+		assert.deepEqual(
+			trackAnchor(items, at(100.8), { ...reach, net: "mid" })?.point,
+			{ x: 101.5, y: 40 },
+		);
+		const start = { x: 101.5, y: 40 };
+		assert.equal(
+			trackAnchor(items, at(101.55), { ...reach, exclude: start }),
+			undefined,
+		);
+		assert.deepEqual(
+			trackAnchor(items, at(101), {
+				...reach,
+				padReach: 0.8,
+				exclude: start,
+			})?.point,
+			{ x: 100, y: 40 },
+		);
+	});
+
 	test("a via placed on a footprint pad takes that pad's net", () => {
 		const circuit = dividerCircuit();
 		const file = required(library.get(r0805.id));
