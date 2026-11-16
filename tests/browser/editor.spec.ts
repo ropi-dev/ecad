@@ -851,11 +851,30 @@ test("schematic pins are selectable but stay fixed to their symbol", async ({
 	await expect(panel.getByText("Pin 1", { exact: true })).toBeVisible();
 	await expect(panel.getByRole("textbox")).toHaveCount(0);
 	await expect(panel.getByRole("spinbutton")).toHaveCount(0);
-	// Only label visibility and the electrical type change on a placed pin.
+	// Only label visibility, the electrical type and the active level change on a placed pin.
 	await expect(panel.getByRole("checkbox")).toHaveCount(2);
 	await expect(
 		panel.getByRole("combobox", { name: "Electrical type", exact: true }),
 	).toBeVisible();
+	const activeLevel = panel.getByRole("combobox", {
+		name: "Active level",
+		exact: true,
+	});
+	await expect(activeLevel).toHaveValue("high");
+	await activeLevel.selectOption("low");
+	await expect(activeLevel).toHaveValue("low");
+	await expect
+		.poll(async () =>
+			Object.values((await documentSymbol()).childOverrides ?? {}).some(
+				(override) => (override as { activeLow?: boolean }).activeLow === true,
+			),
+		)
+		.toBe(true);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect
+		.poll(async () => (await documentSymbol()).childOverrides ?? {})
+		.toEqual({});
+	await expect(activeLevel).toHaveValue("high");
 	await expect(
 		page.getByRole("button", { name: "Unlock selection", exact: true }),
 	).toBeDisabled();

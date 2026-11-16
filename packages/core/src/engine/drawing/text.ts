@@ -9,6 +9,8 @@ import {
 	boldFont,
 	font,
 	lineHeight,
+	overbarRise,
+	overbarThickness,
 	padding,
 	textLayout,
 } from "#/drawing/text.ts";
@@ -72,8 +74,28 @@ function paintText(
 			: horizontalAlign === "right"
 				? layout.width - padding
 				: padding;
-	for (const [index, line] of layout.lines.entries())
-		context.fillText(line, x, baseline + index * lineHeight);
+	for (const [index, line] of layout.lines.entries()) {
+		const y = baseline + index * lineHeight;
+		context.fillText(line, x, y);
+		const overbars = layout.overbars[index];
+		if (!overbars.length) continue;
+		const width = context.measureText(line).width;
+		const left =
+			horizontalAlign === "center"
+				? x - width / 2
+				: horizontalAlign === "right"
+					? x - width
+					: x;
+		for (const [start, end] of overbars) {
+			const from = context.measureText(line.slice(0, start)).width;
+			context.fillRect(
+				left + from,
+				Math.max(0, y - overbarRise - overbarThickness / 2),
+				context.measureText(line.slice(0, end)).width - from,
+				overbarThickness,
+			);
+		}
+	}
 }
 
 /** One transparent glyph texture per text object, reused through moves and resizing. */

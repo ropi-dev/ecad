@@ -4,6 +4,8 @@ import {
 	electricalNets,
 	isNetLabel,
 } from "@ecad/drawing-core/drawing/named-nets.ts";
+import { overbarText } from "@ecad/drawing-core/drawing/overbar.ts";
+import { pinBubbleRadius } from "@ecad/drawing-core/drawing/pin-types.ts";
 import {
 	drawShape,
 	type EditorShape,
@@ -21,6 +23,7 @@ import {
 	textCenter,
 } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import {
+	PIN_BUBBLE_RADIUS,
 	PIN_LABEL_GAP,
 	PIN_NUMBER_GAP,
 } from "@ecad/drawing-core/drawing/units.ts";
@@ -64,6 +67,7 @@ export type DrawingGeometry =
 	| (GeometrySize & { kind: Exclude<ShapeKind, "wire"> })
 	| (GeometrySize & { kind: "wire" } & Partial<WireCrossings>)
 	| (GeometrySize & { kind: "pin-halo" })
+	| (GeometrySize & { kind: "pin-bubble" })
 	| (GeometrySize & { kind: "junction" })
 	| (GeometrySize & {
 			kind: "symbol";
@@ -138,7 +142,7 @@ function geometryFor(shape: EditorShape): DrawingGeometry {
 			height,
 			lineWidth,
 			...(shape.kind === "pin" && shape.length !== undefined
-				? { length: shape.length }
+				? { length: shape.length - 2 * pinBubbleRadius(shape) }
 				: {}),
 			...(isBasicShape(shape) && shape.lineStyle
 				? { lineStyle: shape.lineStyle }
@@ -344,8 +348,12 @@ function displayShape(
 	if (shape.kind === "pin") {
 		const cosine = Math.cos(shape.rotation);
 		const sine = Math.sin(shape.rotation);
+		const bubble = pinBubbleRadius(shape);
 		display.children = (["name", "number"] as const).flatMap((attribute) => {
-			const text = shape[attribute];
+			const text =
+				attribute === "name" && shape.activeLow
+					? overbarText(shape.name)
+					: shape[attribute];
 			const visible =
 				(attribute === "name" ? shape.showName : shape.showNumber) ??
 				shape.showLabels ??
@@ -372,7 +380,9 @@ function displayShape(
 			const y =
 				shape.length !== undefined || shape.labelOffset !== undefined
 					? leadNumber
-						? height / 2 - PIN_NUMBER_GAP
+						? height / 2 -
+							PIN_NUMBER_GAP +
+							(shape.length === undefined ? 0 : PIN_BUBBLE_RADIUS)
 						: 0
 					: attribute === "name"
 						? height / 2
@@ -410,6 +420,24 @@ function displayShape(
 				},
 			];
 		});
+		if (bubble)
+			display.children.push({
+				key: `${key}:bubble`,
+				name: `pin bubble ${shape.id}`,
+				geometry: {
+					kind: "pin-bubble",
+					width: 2 * bubble,
+					height: 2 * bubble,
+					lineWidth: shape.lineWidth,
+				},
+				x: ((shape.length ?? 0) - bubble) / shape.width,
+				y: 0,
+				width: (2 * bubble) / shape.width,
+				height: (2 * bubble) / shape.height,
+				rotation: 0,
+				appearance,
+				renderOrder,
+			});
 	}
 	return display;
 }

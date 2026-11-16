@@ -16,6 +16,7 @@ export const circuitPinSchema = z.strictObject({
 	name: z.string().max(200),
 	number: name,
 	electricalType: z.enum(pinElectricalTypes).default(defaultPinElectricalType),
+	activeLow: z.literal(true).optional(),
 });
 export const circuitComponentSchema = z.strictObject({
 	id,

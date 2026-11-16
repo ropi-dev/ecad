@@ -12,6 +12,7 @@ export const PIN_NAME_SIZE = fromMils(75);
 export const PIN_LABEL_GAP = fromMils(20);
 export const PIN_NUMBER_GAP = fromMils(10);
 export const PIN_NUMBER_SIZE = fromMils(50);
+export const PIN_BUBBLE_RADIUS = fromMils(25);
 export const DEFAULT_STROKE_WIDTH = fromMils(5);
 export const CONNECTION_RADIUS = fromMils(10);
 export const formatMils = (millimeters: number) => `${toMils(millimeters)} mil`;

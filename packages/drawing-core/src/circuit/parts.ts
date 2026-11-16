@@ -17,6 +17,7 @@ export interface CircuitPartDefinition {
 		number: string;
 		sourcePinId?: string;
 		electricalType?: CircuitPin["electricalType"];
+		activeLow?: true;
 	}[];
 }
 

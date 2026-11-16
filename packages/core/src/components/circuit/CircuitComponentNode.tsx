@@ -259,7 +259,11 @@ export const CircuitComponentNode = memo(function CircuitComponentNode({
 						/>
 						<text x="18" y={89 + index * 30}>
 							{pin.number}
-							<tspan className="circuit-pin-name" dx="10">
+							<tspan
+								className="circuit-pin-name"
+								dx="10"
+								textDecoration={pin.activeLow ? "overline" : undefined}
+							>
 								{pin.name}
 							</tspan>
 						</text>

@@ -28,6 +28,13 @@ function roundOutline(shape: DrawingGeometry): RoundOutline | undefined {
 		return { outer: width / 2, inner: 0, length: 0, radius: 0 };
 	if (shape.kind === "pin-halo")
 		return { outer: width / 2, inner: width * 0.35, length: 0, radius: 0 };
+	if (shape.kind === "pin-bubble")
+		return {
+			outer: (width + shape.lineWidth) / 2,
+			inner: Math.max(0, (width - shape.lineWidth) / 2),
+			length: 0,
+			radius: 0,
+		};
 	if (shape.kind !== "pin") return undefined;
 	const length = shape.length ?? 0;
 	const lead = length > 0 && shape.lineWidth > 0;

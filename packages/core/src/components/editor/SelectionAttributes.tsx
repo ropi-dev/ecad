@@ -342,6 +342,48 @@ function PinTypeSelect({
 	);
 }
 
+function PinActiveLevelSelect({
+	pin,
+	onEdit,
+}: {
+	pin: { readonly activeLow?: boolean };
+	onEdit: (edit: SelectionEdit) => void;
+}) {
+	return (
+		<select
+			aria-label="Active level"
+			className="ui-select w-36"
+			value={pin.activeLow ? "low" : "high"}
+			onChange={(event) =>
+				onEdit({
+					kind: "pin",
+					attribute: "activeLow",
+					value: event.currentTarget.value === "low",
+				})
+			}
+		>
+			<option value="high">High</option>
+			<option value="low">Low</option>
+		</select>
+	);
+}
+
+function pinSignalRows(
+	pin: Pick<PinShape, "electricalType" | "activeLow">,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	return [
+		[
+			"Electrical type",
+			<PinTypeSelect key="electricalType" pin={pin} onEdit={onEdit} />,
+		],
+		[
+			"Active level",
+			<PinActiveLevelSelect key="activeLow" pin={pin} onEdit={onEdit} />,
+		],
+	];
+}
+
 /** Show name and Show number checkboxes for one pin. */
 function pinLabelRows(
 	pin: Pick<PinShape, "showLabels" | "showName" | "showNumber">,
@@ -860,14 +902,7 @@ function SelectionAttributesPanel({
 					/>,
 				])
 			: []),
-		...(single?.kind === "pin"
-			? [
-					[
-						"Electrical type",
-						<PinTypeSelect key="electricalType" pin={single} onEdit={onEdit} />,
-					] as [string, ReactNode],
-				]
-			: []),
+		...(single?.kind === "pin" ? pinSignalRows(single, onEdit) : []),
 		...(symbol
 			? [
 					...(allowNetEdits
@@ -1346,10 +1381,7 @@ function FixedChildAttributes({
 					["Type", "pin"],
 					["Number", shape.number || "—"],
 					["Name", shape.name || "—"],
-					[
-						"Electrical type",
-						<PinTypeSelect key="electricalType" pin={shape} onEdit={onEdit} />,
-					],
+					...pinSignalRows(shape, onEdit),
 					["Center X", formatMils(shape.x)],
 					["Center Y", formatMils(shape.y)],
 					["Lead length", formatMils(shape.length ?? 0)],
@@ -1396,9 +1428,9 @@ function FixedChildAttributes({
 				)}
 				<Tips>
 					Pins are fixed by the symbol definition. Edit the symbol to change
-					them. Electrical type and label visibility changes apply to this
-					placement only. Positions are relative to the symbol center. Dragging,
-					arrow keys and rotation act on the whole symbol.
+					them. Electrical type, active level and label visibility changes apply
+					to this placement only. Positions are relative to the symbol center.
+					Dragging, arrow keys and rotation act on the whole symbol.
 				</Tips>
 			</div>
 		</FloatingPanel>

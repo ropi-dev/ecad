@@ -54,7 +54,7 @@ export type SelectionEdit =
 	| { readonly kind: "label-role"; readonly role: LabelRole | undefined }
 	| {
 			readonly kind: "pin";
-			readonly attribute: "showName" | "showNumber";
+			readonly attribute: "showName" | "showNumber" | "activeLow";
 			readonly value: boolean;
 	  }
 	| {
@@ -92,12 +92,14 @@ export type SelectionEdit =
 
 /**
  * Whether an edit applies to a pin that stays fixed to its symbol. Only the
- * electrical type and label visibility change, as overrides on that placement.
+ * electrical type, active level and label visibility change, as overrides on
+ * that placement.
  */
 export function editsFixedPin(edit: SelectionEdit): boolean {
 	return (
 		edit.kind === "pin" &&
 		(edit.attribute === "electricalType" ||
+			edit.attribute === "activeLow" ||
 			edit.attribute === "showName" ||
 			edit.attribute === "showNumber")
 	);
@@ -261,11 +263,17 @@ export function applySelectionEdit(
 		case "pin":
 			return single?.kind === "pin"
 				? {
-						replacements: [{ ...single, [edit.attribute]: edit.value }],
+						replacements: [
+							edit.attribute === "activeLow" && !edit.value
+								? (({ activeLow: _, ...pin }) => pin)(single)
+								: { ...single, [edit.attribute]: edit.value },
+						],
 						label:
 							edit.attribute === "electricalType"
 								? "Change pin type"
-								: `Change pin ${edit.attribute}`,
+								: edit.attribute === "activeLow"
+									? "Change pin active level"
+									: `Change pin ${edit.attribute}`,
 					}
 				: undefined;
 		case "symbol-attribute":

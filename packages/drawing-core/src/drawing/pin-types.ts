@@ -1,3 +1,5 @@
+import { PIN_BUBBLE_RADIUS } from "#/drawing/units.ts";
+
 /** Pin electrical types, matching KiCad's, in its pin editor order. */
 export const pinElectricalTypes = [
 	"input",
@@ -38,4 +40,13 @@ export function pinElectricalType(pin: {
 	readonly electricalType?: PinElectricalType;
 }): PinElectricalType {
 	return pin.electricalType ?? defaultPinElectricalType;
+}
+
+export function pinBubbleRadius(pin: {
+	readonly activeLow?: boolean;
+	readonly length?: number;
+}): number {
+	return pin.activeLow && pin.length
+		? Math.min(PIN_BUBBLE_RADIUS, pin.length / 2)
+		: 0;
 }

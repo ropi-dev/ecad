@@ -36,6 +36,7 @@ export type SymbolPrimitive =
 			number?: string;
 			/** Omitted for a passive pin. */
 			electricalType?: PinElectricalType;
+			activeLow?: boolean;
 			length?: number;
 			rotation?: number;
 			labelOffset?: number;
@@ -136,5 +137,6 @@ export interface SourceSymbol {
 	pinType?: PinElectricalType;
 	/** Electrical types by pin name. Every key must name a pin. */
 	pinTypes?: Readonly<Record<string, PinElectricalType>>;
+	activeLowPins?: readonly string[];
 	drawing: readonly SourceShape[];
 }

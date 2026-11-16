@@ -21,10 +21,13 @@ import {
 	type DrawingDisplay,
 } from "#/drawing/display.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
+import { createTextShape } from "#/drawing/text.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
+import { createRoundGeometry } from "#/engine/drawing/roundGeometry.ts";
 import { required } from "./helpers/required.ts";
 
 // Glyph textures need a 2D canvas. This stand-in measures text by its length.
+const filledRects: [number, number, number, number][] = [];
 const context = {
 	font: "",
 	textBaseline: "",
@@ -36,6 +39,9 @@ const context = {
 		actualBoundingBoxDescent: 2,
 	}),
 	fillText() {},
+	fillRect(x: number, y: number, width: number, height: number) {
+		filledRects.push([x, y, width, height]);
+	},
 	save() {},
 	restore() {},
 	translate() {},
@@ -380,6 +386,60 @@ test("an nRF54L15 QFN-52 symbol with all 53 pins open draws in a few hundred tri
 		// One triangle for each pin with its lead, one for each halo, and two
 		// for each label. Tessellated circles and caps took about 7,800.
 		assert.ok(triangles < 400, `${triangles} triangles`);
+	} finally {
+		renderer.dispose();
+	}
+});
+
+test("an active-low pin draws its overbar into the label atlas and its bubble as one round triangle", () => {
+	filledRects.length = 0;
+	const display = buildStaticDisplay(
+		[createSymbol(1, part("nrf54l15-qgaa"), { x: 0, y: 0 })],
+		new Set(),
+	);
+	const renderer = createDrawingRenderer(null);
+	try {
+		renderer.update(new Group(), { ...display, previews: [] });
+		assert.equal(filledRects.length, 1);
+		const [[x, y, width, height]] = filledRects;
+		assert.equal(x, 12);
+		assert.equal(width, "RESET".length * 7);
+		const glyphTop = (144 + 8 - 2) / 2 - 8;
+		assert.ok(y >= 0 && height > 0 && y + height <= glyphTop);
+	} finally {
+		renderer.dispose();
+	}
+	const bubble = required(
+		createRoundGeometry({
+			kind: "pin-bubble",
+			width: 1.27,
+			height: 1.27,
+			lineWidth: 0.127,
+		}),
+	);
+	const [outer, inner] = bubble.getAttribute("roundOutline").array;
+	assert.ok(Math.abs(outer - 0.6985) < 1e-6);
+	assert.ok(Math.abs(inner - 0.5715) < 1e-6);
+	assert.equal(bubble.getAttribute("position").count, 3);
+});
+
+test("centred free text paints its overbar over the centred glyphs", () => {
+	filledRects.length = 0;
+	const label = {
+		...createTextShape(1, { x: 0, y: 0 }, (text) => text.length * 7),
+		text: "~{AB}",
+		horizontalAlign: "center" as const,
+	};
+	const renderer = createDrawingRenderer(null);
+	try {
+		renderer.update(new Group(), {
+			...buildStaticDisplay([label], new Set()),
+			previews: [],
+		});
+		assert.deepEqual(
+			filledRects.map(([x, , width]) => [x, width]),
+			[[29, 14]],
+		);
 	} finally {
 		renderer.dispose();
 	}

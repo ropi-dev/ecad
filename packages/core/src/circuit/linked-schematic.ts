@@ -1452,6 +1452,7 @@ function fallbackDefinition(
 			...(pin.electricalType === defaultPinElectricalType
 				? {}
 				: { electricalType: pin.electricalType }),
+			...(pin.activeLow ? { activeLow: true } : {}),
 			x: fromMils(-200),
 			y: -index * DEFAULT_PIN_LENGTH,
 			width: 1,

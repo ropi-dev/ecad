@@ -79,7 +79,7 @@ test("the Attributes panel edit changes a pin's type in one step", () => {
 	assert.equal(edited.kind === "pin" && edited.electricalType, "power-out");
 });
 
-test("a pin fixed to its placed symbol accepts only type and label visibility edits", () => {
+test("a pin fixed to its placed symbol accepts only type, active level and label visibility edits", () => {
 	assert.ok(
 		editsFixedPin({
 			kind: "pin",

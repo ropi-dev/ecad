@@ -155,7 +155,7 @@ test("every built-in pin has an electrical type that fits its role", () => {
 	assert.equal(types("rp2040").get("VREG_VOUT"), "power-out");
 	assert.equal(types("rp2350a").get("VREG_LX"), "power-out");
 	assert.equal(types("nrf54l15-qfaa").get("DECD"), "power-out");
-	assert.equal(types("nrf54l15-qfaa").get("nRESET"), "input");
+	assert.equal(types("nrf54l15-qfaa").get("RESET"), "input");
 	assert.equal(types("npm2100-qeaa").get("VOUT"), "power-out");
 	assert.equal(types("npm2100-qeaa").get("PG/RESET"), "open-collector");
 	assert.equal(types("battery").get("+"), "passive");
@@ -208,7 +208,7 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 				45: "VREG_VOUT",
 				46: "USB_DM",
 				47: "USB_DP",
-				56: "QSPI_SS_N",
+				56: "QSPI_SS",
 			},
 		],
 		[
@@ -226,7 +226,7 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 				50: "VREG_FB",
 				51: "USB_DM",
 				52: "USB_DP",
-				60: "QSPI_SS_N",
+				60: "QSPI_SS",
 			},
 		],
 		[
@@ -245,7 +245,7 @@ test("Raspberry Pi chips preserve package numbers, GPIOs, and exposed ground pad
 				65: "VREG_FB",
 				66: "USB_DM",
 				67: "USB_DP",
-				75: "QSPI_SS_N",
+				75: "QSPI_SS",
 				77: "GPIO0",
 			},
 		],
@@ -314,7 +314,7 @@ test("Nordic chips have one symbol per package with that package's pin numbers",
 				22: "SWDIO",
 				23: "SWDCLK",
 				24: "P0.04",
-				25: "nRESET",
+				25: "RESET",
 				26: "ANT",
 				27: "VSS_PA",
 				29: "XC1",
@@ -335,7 +335,7 @@ test("Nordic chips have one symbol per package with that package's pin numbers",
 				21: "P2.10",
 				25: "SWDIO",
 				26: "SWDCLK",
-				30: "nRESET",
+				30: "RESET",
 				31: "ANT",
 				32: "VSS_PA",
 				33: "DECRF",
@@ -356,7 +356,7 @@ test("Nordic chips have one symbol per package with that package's pin numbers",
 				27: "SWDIO",
 				28: "SWDCLK",
 				32: "P0.05",
-				33: "nRESET",
+				33: "RESET",
 				34: "ANT",
 				46: "P1.15",
 				48: "VSS",
@@ -377,7 +377,7 @@ test("Nordic chips have one symbol per package with that package's pin numbers",
 				C2: "VSS_PA",
 				C5: "P1.00/XL1",
 				D1: "ANT",
-				D2: "nRESET",
+				D2: "RESET",
 				E3: "SWDCLK",
 				F2: "SWDIO",
 				F7: "P1.08/EXTREF",
@@ -537,4 +537,41 @@ test("package-specific chips group their packages under one part", () => {
 			?.packaging?.name,
 		"changed",
 	);
+});
+
+test("active-low chip pins draw an overbar instead of a name prefix or suffix", () => {
+	const activeLow = new Map(
+		generateDefaultSymbols().flatMap(({ file }) => {
+			const names = file.shapes.flatMap((shape) =>
+				shape.kind === "pin" && shape.activeLow ? [shape.name] : [],
+			);
+			return names.length ? [[file.id, names] as const] : [];
+		}),
+	);
+	assert.deepEqual(Object.fromEntries(activeLow), {
+		w25q128jvs: ["CS"],
+		"npm2100-qeaa": ["SHPHLD"],
+		"npm2100-caaa": ["SHPHLD"],
+		rp2040: ["QSPI_SS"],
+		rp2350a: ["QSPI_SS"],
+		rp2350b: ["QSPI_SS"],
+		...Object.fromEntries(
+			[
+				"nrf54l15-qdaa",
+				"nrf54l15-qfaa",
+				"nrf54l15-qgaa",
+				"nrf54l10-qdaa",
+				"nrf54l10-qfaa",
+				"nrf54l10-qgaa",
+				"nrf54l05-qdaa",
+				"nrf54l05-qfaa",
+				"nrf54l05-qgaa",
+				"nrf54l15-caaa",
+			].map((id) => [id, ["RESET"]]),
+		),
+	});
+	for (const { file } of generateDefaultSymbols())
+		for (const shape of file.shapes)
+			if (shape.kind === "pin")
+				assert.doesNotMatch(shape.name, /^(n[A-Z]|\/)|_N$/, file.id);
 });
