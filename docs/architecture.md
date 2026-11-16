@@ -98,6 +98,25 @@ A PCB reuses the footprint editor's canvas with placed footprints, tracks, vias 
 
 The viewport runtime owns the renderer, camera, controls, input listeners, and animation scheduling. React creates and disposes that runtime with the component lifetime and updates it through explicit methods. React effects handle this resource binding; they do not trigger document commands.
 
+## Work that runs in workers
+
+Computation that needs no DOM and can take longer than a frame runs in a Web Worker, so the page keeps painting and answering input.
+
+| Work | Worker | Lifetime |
+| --- | --- | --- |
+| Gerber, ZIP, STEP and KiCad import | `formats/**/*.worker.ts` | One import |
+| Zone fills, ratsnest, design rules check, Gerber and drill export | `board/analysis.worker.ts` | An open board |
+| Circuit graph layout, for **Untangle** and for a circuit opened without saved positions | `circuit/untangle.worker.ts` | One layout |
+| Drawing export: SVG serialization and PNG encoding | `drawing/export.worker.ts` | One export |
+
+`inWorkerOrHere` in `packages/core/src/lib/worker-task.ts` runs a one-off task. It starts the worker, lets the task post any number of requests, and terminates the worker when the task settles or its `AbortSignal` fires. A worker answers each request with `{ result }`, `{ error }` or `{ unavailable: true }`. An error is the task's own failure and rejects. When there is no `Worker`, the worker cannot start, it crashes, it answers `unavailable`, or it gives no answer within 30 seconds of a request, the helper terminates the worker at once and the same function runs in the page instead, loaded on demand. Node tests take that path. An aborted task never falls back to the page.
+
+Opening a circuit without saved positions waits for its layout. The background preload of a circuit's views and an explicit open share one layout, and a second request for the circuit that is already opening joins the first. Asking for another circuit's layout, reloading the project or closing it aborts the pending layout and stops its worker. **Untangle** stays focusable while it runs, so Ctrl+Z still reaches the editor, and ignores further clicks until the result arrives. A result for a graph that changed in the meantime is dropped.
+
+The export worker loads the schematic font into its own font set and measures text on an `OffscreenCanvas`, so it lays text out exactly as the page does. It answers `unavailable` when it has no canvas or the font fails to load. A PNG still needs the page for one step: only a document can decode an SVG, so the page turns the worker's SVG into an `ImageBitmap` and transfers it back. The worker's canvas takes that bitmap over without copying it and encodes the PNG, which keeps peak memory where it was when the page did the work. Nothing paints behind the bitmap, so for a PNG the worker widens the SVG's view box to the image's aspect ratio (`coverOutput`) and the SVG's own background reaches the edges. If the browser cannot make the bitmap, or the worker cannot encode it, the page paints and encodes the PNG from the SVG the worker already built.
+
+Three costs stay on the page because they are tied to the frame or to WebGL objects: wire rerouting during a move, which the same event must commit, building the 3D board's meshes, and rendering. Electrical rules checks and autosave measured 25 ms or less on the RP2350A reference design and stay too.
+
 ## Circuit documents and the graph editor
 
 The circuit editor is the first stage of separating electrical connectivity from schematic geometry. Circuit files contain electrical data. Graph layouts are temporary view state. Existing `.ecaddraw` files retain their geometry-based connectivity and do not yet share connectivity with circuit files.

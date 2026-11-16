@@ -585,6 +585,14 @@ test("fitting the circuit graph keeps a wide net label inside the fitted view", 
 		await page.screenshot({
 			path: "/tmp/ecad-shared-helpers/circuit-fit-wide-net.png",
 		});
-	await page.getByRole("button", { name: "Untangle", exact: true }).click();
+	const untangle = page.getByRole("button", { name: "Untangle", exact: true });
+	const redo = page.getByRole("button", { name: "Redo", exact: true });
+	await page.locator(".circuit-node-handle button").first().dragTo(net);
+	await untangle.click();
+	await expect(untangle).toHaveAttribute("aria-busy", "false");
 	await expect.poll(contained).toBe(true);
+	await expect(untangle).toBeFocused();
+	await expect(redo).toBeDisabled();
+	await page.keyboard.press("Control+z");
+	await expect(redo).toBeEnabled();
 });

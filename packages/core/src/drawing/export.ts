@@ -28,6 +28,7 @@ export interface DrawingExportOptions {
 	background: "white" | "dark" | "transparent";
 	sheet: SheetSize;
 	measureText?: MeasureText;
+	coverOutput?: boolean;
 }
 const escapeXml = (value: string) =>
 	value.replace(
@@ -190,13 +191,24 @@ export function exportDrawingSvg(
 			minY -= margin;
 			maxX += margin;
 			maxY += margin;
-			const viewWidth = Math.max(1, maxX - minX),
+			let viewX = minX,
+				viewY = -maxY,
+				viewWidth = Math.max(1, maxX - minX),
 				viewHeight = Math.max(1, maxY - minY);
+			if (options.coverOutput) {
+				const unitsPerPixel = Math.max(viewWidth / width, viewHeight / height);
+				const padX = (width * unitsPerPixel - viewWidth) / 2;
+				const padY = (height * unitsPerPixel - viewHeight) / 2;
+				viewX -= padX;
+				viewY -= padY;
+				viewWidth += 2 * padX;
+				viewHeight += 2 * padY;
+			}
 			const rect =
 				background === "transparent"
 					? ""
-					: `<rect x="${minX}" y="${-maxY}" width="${viewWidth}" height="${viewHeight}" fill="${dark ? theme.paper : "white"}"/>`;
-			return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" style="background:${background === "transparent" ? "transparent" : dark ? theme.paper : "white"}" viewBox="${minX} ${-maxY} ${viewWidth} ${viewHeight}">${rect}${worksheet}${elements
+					: `<rect x="${viewX}" y="${viewY}" width="${viewWidth}" height="${viewHeight}" fill="${dark ? theme.paper : "white"}"/>`;
+			return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" style="background:${background === "transparent" ? "transparent" : dark ? theme.paper : "white"}" viewBox="${viewX} ${viewY} ${viewWidth} ${viewHeight}">${rect}${worksheet}${elements
 				.sort((a, b) => a.order - b.order)
 				.map((e) => e.svg)
 				.join("")}</svg>`;

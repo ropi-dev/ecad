@@ -261,9 +261,11 @@ export function useBoardEditor({
 			(await analysis?.check(shapes)) ?? [],
 		[analysis, store],
 	);
-	const fillsOf = useCallback(
-		async (shapes: readonly EditorShape[]) =>
-			(await analysis?.fills(shapes)) ?? [],
+	const fabricate = useCallback(
+		async (name: string, shapes: readonly EditorShape[]) => {
+			if (!analysis) throw new Error("The board is not open.");
+			return analysis.fabricate(name, shapes);
+		},
 		[analysis],
 	);
 
@@ -271,7 +273,7 @@ export function useBoardEditor({
 		rules,
 		netlist,
 		fills,
-		fillsOf,
+		fabricate,
 		buildDisplay,
 		updateZones,
 		gestures,

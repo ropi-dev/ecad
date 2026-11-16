@@ -16,6 +16,7 @@ import {
 } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintReference } from "@ecad/drawing-core/footprint/reference.ts";
+import { strFromU8, unzipSync } from "fflate";
 import {
 	type AnalysisReply,
 	type AnalysisRequest,
@@ -26,7 +27,9 @@ import {
 	type BoardAnalysisClient,
 	createBoardAnalysisClient,
 } from "#/board/analysis-client.ts";
+import { fabricationArchive } from "#/board/fabrication.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
+import { exportFabrication } from "#/board/gerber.ts";
 import { required } from "./helpers/required.ts";
 
 const library = new Map(
@@ -114,7 +117,7 @@ class FakeWorker {
 	onmessage: ((event: MessageEvent<AnalysisReply>) => void) | null = null;
 	onerror: (() => void) | null = null;
 	onmessageerror: (() => void) | null = null;
-	private analyse = createBoardAnalysis();
+	private analyse = createBoardAnalysis(fabricationArchive);
 	private answered = 0;
 	postMessage(request: AnalysisRequest) {
 		this.requests.push(structuredClone(request));
@@ -126,7 +129,10 @@ class FakeWorker {
 		while (this.answered < this.requests.length) {
 			const reply = this.analyse(this.requests[this.answered++]);
 			if (!reply) continue;
-			this.onmessage?.({ data: reply } as MessageEvent<AnalysisReply>);
+			const deliver = (data: AnalysisReply) =>
+				this.onmessage?.({ data } as MessageEvent<AnalysisReply>);
+			if (reply instanceof Promise) void reply.then(deliver);
+			else deliver(reply);
 			return;
 		}
 	}
@@ -188,8 +194,76 @@ test("opening a board brings its zone fills, unrouted connections and design rul
 			zoneReach: fillReach(expected),
 		}),
 	);
-	assert.equal(await client.fills(shapes), fills);
 	client.dispose();
+});
+
+const filesIn = (archive: Uint8Array) =>
+	Object.entries(unzipSync(archive)).map(([name, content]) => ({
+		name,
+		content: strFromU8(content),
+	}));
+
+test("the worker fills the pour and packs the Gerber and drill files without the page sending the board again", async () => {
+	const { worker, client } = withWorker();
+	const { shapes, netlist } = await opened(client, worker);
+	const exported = client.fabricate("divider", shapes);
+	worker.answerNext();
+	const { archive, files } = await exported;
+	const expected = exportFabrication(
+		"divider",
+		shapes,
+		fillZones(shapes, netlist, defaultBoardRules),
+	);
+	assert.deepEqual(filesIn(archive), expected);
+	assert.equal(files, expected.length);
+	assert.ok(
+		expected.some((file) => file.name.endsWith(".drl")) &&
+			expected.some((file) => /%TF\.FileFunction,Copper/.test(file.content)),
+	);
+	assert.deepEqual(worker.asked("fabrication"), [
+		{ type: "fabrication", id: 3, shapes: {}, name: "divider" },
+	]);
+	client.dispose();
+});
+
+test("an export in the air when the worker crashes is packed in the page", async () => {
+	const { worker, client } = withWorker();
+	const { shapes, netlist } = await opened(client, worker);
+	const exported = client.fabricate("divider", shapes);
+	worker.onerror?.();
+	assert.equal(worker.terminated, true);
+	const { archive, files } = await exported;
+	const expected = exportFabrication(
+		"divider",
+		shapes,
+		fillZones(shapes, netlist, defaultBoardRules),
+	);
+	assert.deepEqual(filesIn(archive), expected);
+	assert.equal(files, expected.length);
+	client.dispose();
+});
+
+test("without a worker the page loads the exporter and packs the same archive", async () => {
+	const client = createBoardAnalysisClient(undefined);
+	const { shapes, netlist } = await opened(client);
+	const moved = shapes.map((shape, at) =>
+		at === 0 ? { ...shape, x: shape.x - 2 } : shape,
+	);
+	const { archive } = await client.fabricate("divider", moved);
+	assert.deepEqual(
+		filesIn(archive),
+		exportFabrication(
+			"divider",
+			moved,
+			fillZones(moved, netlist, defaultBoardRules),
+		),
+	);
+	assert.notDeepEqual(
+		filesIn(archive),
+		filesIn((await client.fabricate("divider", shapes)).archive),
+	);
+	client.dispose();
+	await assert.rejects(client.fabricate("divider", shapes));
 });
 
 test("dragging a footprint sends the worker only that footprint, whatever order the editor lists the board in", () => {
@@ -216,7 +290,7 @@ test("dragging a footprint sends the worker only that footprint, whatever order 
 
 test("the worker follows a drag from patches and keeps the pour of the saved board", () => {
 	const { circuit, netlist, shapes } = dividerWithGroundPour();
-	const analyse = createBoardAnalysis();
+	const analyse = createBoardAnalysis(fabricationArchive);
 	const sender = createShapesSender();
 	assert.equal(
 		analyse({ type: "board", circuit, rules: defaultBoardRules }),
@@ -341,7 +415,7 @@ test("a board the analysis cannot read says so instead of checking forever, and 
 	assert.equal(client.getState().ratsnest, undefined);
 	assert.deepEqual(client.getState().fills, []);
 	await assert.rejects(client.check(broken));
-	await assert.rejects(client.fills(broken));
+	await assert.rejects(client.fabricate("divider", broken));
 	await new Promise((resolve) => setTimeout(resolve, 5));
 	assert.equal(client.getState().ratsnest, undefined);
 
@@ -405,7 +479,6 @@ test("design rules changed while the pour is being filled refill it with the new
 		filled(wider),
 	);
 	assert.equal(worker.asked("fills").length, 3);
-	assert.equal(await client.fills(dropped), client.getState().fills);
 	assert.deepEqual(
 		client.getState().ratsnest,
 		analyzeConnectivity(

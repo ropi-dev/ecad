@@ -9,7 +9,9 @@ import {
 	type AnalysisRequest,
 	createBoardAnalysis,
 	createShapesSender,
+	type Fabricate,
 } from "#/board/analysis.ts";
+import type { FabricationArchive } from "#/board/fabrication.ts";
 import type { BoardFill } from "#/board/fill.ts";
 
 export interface BoardAnalysisState {
@@ -21,8 +23,11 @@ export interface BoardAnalysisState {
 export interface BoardAnalysisClient {
 	configure(circuit: Circuit | undefined, rules: BoardRules): void;
 	show(committed: readonly EditorShape[], live: readonly EditorShape[]): void;
-	fills(shapes: readonly EditorShape[]): Promise<readonly BoardFill[]>;
 	check(shapes: readonly EditorShape[]): Promise<DrcFinding[]>;
+	fabricate(
+		name: string,
+		shapes: readonly EditorShape[],
+	): Promise<FabricationArchive>;
 	getState(): BoardAnalysisState;
 	subscribe(listener: () => void): () => void;
 	dispose(): void;
@@ -36,9 +41,13 @@ type Settle = {
 interface Flight extends Settle {
 	type: AnalysisKind;
 	shapes: Shapes;
+	name: string;
 }
 
 const CLOSED = "The board was closed.";
+
+const fabricateHere: Fabricate = async (...board) =>
+	(await import("#/board/fabrication.ts")).fabricationArchive(...board);
 
 const sameLines = (
 	a: readonly RatsnestLine[] | undefined,
@@ -96,15 +105,21 @@ export function createBoardAnalysisClient(
 			setTimeout(() => {
 				if (disposed) return;
 				const reply = analyse(request);
-				if (reply) receive(reply);
+				if (reply instanceof Promise) void reply.then(receive);
+				else if (reply) receive(reply);
 			});
 			return;
 		}
 		worker?.postMessage(request);
 	};
 
-	const send = (id: number, { type, shapes }: Flight) => {
-		post({ type, id, shapes: sender.patch(shapes) });
+	const send = (id: number, { type, shapes, name }: Flight) => {
+		const patch = sender.patch(shapes);
+		post(
+			type === "fabrication"
+				? { type, id, shapes: patch, name }
+				: { type, id, shapes: patch },
+		);
 	};
 
 	const runHere = () => {
@@ -113,14 +128,14 @@ export function createBoardAnalysisClient(
 			console.warn("The board analysis worker failed. Analysing in the page.");
 		worker?.terminate();
 		worker = undefined;
-		analyseHere = createBoardAnalysis();
+		analyseHere = createBoardAnalysis(fabricateHere);
 		sender.reset();
 		if (board) post({ type: "board", ...board });
 		for (const [id, flight] of flights) send(id, flight);
 		restart();
 	};
 
-	const requested = (type: AnalysisKind, shapes: Shapes) =>
+	const requested = (type: AnalysisKind, shapes: Shapes, name = "") =>
 		new Promise<AnalysisReply>((resolve, reject) => {
 			if (disposed) {
 				reject(new Error(CLOSED));
@@ -128,7 +143,7 @@ export function createBoardAnalysisClient(
 			}
 			const id = nextId++;
 			if (type === "fills") fillsRequested++;
-			const flight = { type, shapes, resolve, reject };
+			const flight = { type, shapes, name, resolve, reject };
 			flights.set(id, flight);
 			send(id, flight);
 		});
@@ -211,15 +226,15 @@ export function createBoardAnalysisClient(
 			pump("fills");
 			pump("connectivity");
 		},
-		async fills(shapes) {
-			if (shown.fills === shapes && !pending.fills && !failed.fills)
-				return state.fills;
-			const reply = await requested("fills", shapes);
-			return reply.type === "fills" ? reply.fills : [];
-		},
 		async check(shapes) {
 			const reply = await requested("check", shapes);
 			return reply.type === "check" ? reply.findings : [];
+		},
+		async fabricate(name, shapes) {
+			const reply = await requested("fabrication", shapes, name);
+			if (reply.type !== "fabrication")
+				throw new Error("Unable to export fabrication files");
+			return { archive: reply.archive, files: reply.files };
 		},
 		getState: () => state,
 		subscribe(listener) {

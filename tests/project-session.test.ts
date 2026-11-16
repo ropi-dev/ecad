@@ -732,6 +732,113 @@ test("a circuit's schematic, circuit and PCB load together and the PCB takes the
 	stop();
 });
 
+test("a circuit link's click and its route open the circuit once, and the editor waits for it throughout", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	const waiting: (number | null)[] = [];
+	const unsubscribe = session.subscribe(() => {
+		const request = project().openingCircuit;
+		if (waiting.at(-1) !== request) waiting.push(request);
+	});
+	const clicked = project().openCircuit("main.ecaddraw");
+	const routed = project().openCircuit("main.ecaddraw");
+	assert.equal(routed, clicked);
+	assert.deepEqual(await Promise.all([clicked, routed]), [true, true]);
+	assert.equal(waiting.length, 2);
+	assert.equal(typeof waiting[0], "number");
+	assert.equal(waiting[1], null);
+	const circuit = required(project().editorCircuit);
+
+	const reopened = project().openCircuit("main.ecaddraw");
+	assert.notEqual(reopened, clicked);
+	void project().selectEditorFile();
+	assert.equal(await reopened, false);
+	assert.equal(await project().openCircuit("main.ecaddraw"), true);
+	assert.equal(project().editorCircuit, circuit);
+	unsubscribe();
+	stop();
+});
+
+test("a circuit is laid out once for its preload and its open, and reloading or closing the project stops a pending layout", async () => {
+	class LayoutWorker {
+		onmessage: ((event: MessageEvent) => void) | null = null;
+		onerror = null;
+		onmessageerror = null;
+		terminated = false;
+		postMessage() {}
+		terminate() {
+			this.terminated = true;
+		}
+		finish() {
+			this.onmessage?.({ data: { result: [] } } as MessageEvent);
+		}
+	}
+	const workers: LayoutWorker[] = [];
+	const previous = globalThis.Worker;
+	globalThis.Worker = class extends LayoutWorker {
+		constructor() {
+			super();
+			workers.push(this);
+		}
+	} as unknown as typeof Worker;
+	const started = async (count: number) => {
+		for (let turn = 0; turn < 200 && workers.length < count; turn++)
+			await new Promise((resolve) => setTimeout(resolve, 1));
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		assert.equal(workers.length, count);
+	};
+	try {
+		const initial = snapshot();
+		const { session } = fixture({
+			...initial,
+			manifest: {
+				...initial.manifest,
+				circuits: [{ circuit: "main.ecaddraw" }],
+			},
+			circuits: [createCircuit("Main", primaryPcbId)],
+		});
+		const stop = session.connect();
+		await loaded(session);
+		const project = () => session.getSnapshot();
+
+		const preloaded = project().preloadEditorViews();
+		const opened = project().openCircuit("main.ecaddraw");
+		await started(1);
+		void project().selectEditorFile();
+		assert.equal(workers[0]?.terminated, false);
+		workers[0]?.finish();
+		await preloaded;
+		assert.equal(await opened, false);
+		assert.equal(workers[0]?.terminated, true);
+		const circuit = required(project().editorViews?.circuit);
+		assert.equal(await project().openCircuit("main.ecaddraw"), true);
+		assert.equal(project().editorCircuit, circuit);
+		assert.equal(workers.length, 1);
+
+		await project().reload();
+		const reloaded = project().openCircuit("main.ecaddraw");
+		await started(2);
+		await project().reload();
+		assert.equal(await reloaded, false);
+		assert.equal(workers[1]?.terminated, true);
+
+		const closed = project().openCircuit("main.ecaddraw");
+		await started(3);
+		stop();
+		assert.equal(await closed, false);
+		assert.equal(workers[2]?.terminated, true);
+	} finally {
+		globalThis.Worker = previous;
+	}
+});
+
 test("a page-only edit marks the project dirty and saves the pages", async () => {
 	const f = fixture();
 	const stop = f.session.connect();

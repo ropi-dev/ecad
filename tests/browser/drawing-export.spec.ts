@@ -19,6 +19,10 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 		if (request.url().includes("/drawing/export.ts"))
 			serializerRequests.push(request.url());
 	});
+	const workers: string[] = [];
+	page.on("worker", (worker) => workers.push(worker.url()));
+	const exportWorkers = () =>
+		workers.filter((url) => url.includes("export.worker"));
 	await page.goto("/tests/browser/editor.html");
 	await page.evaluate(async (shapes) => {
 		const editorUrl = "/tests/browser/editor.tsx";
@@ -47,6 +51,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	await dialog.getByRole("button", { name: "Download", exact: true }).click();
 	const svgDownload = await pending;
 	expect(serializerRequests).toHaveLength(1);
+	expect(exportWorkers()).toHaveLength(1);
 	await svgDownload.saveAs(`${artifacts}/rp2350a-sheet.svg`);
 	const svg = await readFile(required(await svgDownload.path()), "utf8");
 	expect(svg).not.toMatch(/<image|data:image|selection|editor-wire-preview/);
@@ -73,6 +78,8 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	pending = page.waitForEvent("download");
 	await dialog.getByRole("button", { name: "Download", exact: true }).click();
 	const png = await pending;
+	expect(serializerRequests).toHaveLength(2);
+	expect(exportWorkers()).toHaveLength(2);
 	await png.saveAs(`${artifacts}/rp2350a-sheet-9600x6400.png`);
 	const bytes = await readFile(required(await png.path()));
 	expect(bytes.readUInt32BE(16)).toBe(9600);
@@ -122,4 +129,28 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	await expect(dialog).not.toBeVisible();
 	if (captureArtifacts)
 		await page.screenshot({ path: `${artifacts}/rp2350a-editor.png` });
+
+	await page.evaluate(() => {
+		const Real = window.Worker;
+		window.Worker = class extends Real {
+			constructor(url: string | URL, options?: WorkerOptions) {
+				if (String(url).includes("export.worker"))
+					throw new Error("Workers are blocked.");
+				super(url, options);
+			}
+		};
+	});
+	await (await toolbarButton(page, "Export drawing")).click();
+	await dialog
+		.getByRole("combobox", { name: "Format", exact: true })
+		.selectOption("svg");
+	pending = page.waitForEvent("download");
+	await dialog.getByRole("button", { name: "Download", exact: true }).click();
+	const pageSvg = await readFile(
+		required(await (await pending).path()),
+		"utf8",
+	);
+	expect(exportWorkers()).toHaveLength(2);
+	expect(serializerRequests).toHaveLength(3);
+	expect(pageSvg === svg).toBe(true);
 });

@@ -204,6 +204,7 @@ export function createProjectSession(
 	const reloadExternalChanges = createProjectExternalReload(state, autosave);
 	const adopt = (snapshot: ProjectSnapshot) => {
 		state.editorSelection++;
+		state.circuitLayout?.abort();
 		state.viewSelection = null;
 		state.selectionHandoff = null;
 		state.selectionOrigins = new WeakSet();
@@ -515,6 +516,7 @@ export function createProjectSession(
 				stopExternalChanges?.();
 				linkedAssembler.invalidate();
 				state.mounted = false;
+				state.circuitLayout?.abort();
 				stopMain();
 				documents.clear();
 				globalThis.removeEventListener?.("beforeunload", warn);

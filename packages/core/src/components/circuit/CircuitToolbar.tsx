@@ -39,6 +39,7 @@ export const CircuitToolbar = memo(function CircuitToolbar({
 	zoomLevel,
 	onZoom,
 	onFit,
+	untangling,
 	onUntangle,
 	ercOpen,
 	onErc,
@@ -55,6 +56,7 @@ export const CircuitToolbar = memo(function CircuitToolbar({
 	zoomLevel: number;
 	onZoom(factor: number): void;
 	onFit(): void;
+	untangling: boolean;
 	onUntangle(): void;
 	ercOpen: boolean;
 	onErc(): void;
@@ -132,6 +134,8 @@ export const CircuitToolbar = memo(function CircuitToolbar({
 				className={button}
 				tooltip="Untangle"
 				aria-label="Untangle"
+				aria-busy={untangling}
+				aria-disabled={untangling}
 				onClick={onUntangle}
 			>
 				<Shuffle size={18} aria-hidden="true" />

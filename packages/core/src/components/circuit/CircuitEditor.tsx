@@ -5,7 +5,6 @@ import {
 } from "@ecad/drawing-core/circuit/graph.ts";
 import { snapCircuitPoint } from "@ecad/drawing-core/circuit/grid.ts";
 import type { CircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
-import { untangleCircuitGraph } from "@ecad/drawing-core/circuit/untangle.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Workflow } from "lucide-react";
 import {
@@ -21,6 +20,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
+import { untangleCircuit } from "#/circuit/untangle-client.ts";
 import {
 	type CircuitTool,
 	CircuitToolbar,
@@ -158,6 +158,9 @@ export function CircuitEditor({
 	const { drag, setDrag, connectionDrag, setConnectionDrag, setPan } = pointer;
 	const [checkedPins, setCheckedPins] = useState<string[]>([]);
 	const [error, setError] = useState("");
+	const untangle = useRef<AbortController>(null);
+	const [untangling, setUntangling] = useState(false);
+	useEffect(() => () => untangle.current?.abort(), []);
 	const circuitMessages = [
 		...new Set(
 			[error || project?.error, ...(project?.libraryErrors ?? [])].filter(
@@ -465,19 +468,37 @@ export function CircuitEditor({
 		onZoom: zoom,
 		onFit: () => fit(),
 		onUntangle: () => {
+			if (untangle.current) return;
 			cancelConnectionDrag();
 			setDrag(null);
 			setPendingPin(null);
-			if (
-				run({
-					type: "move",
-					positions: untangleCircuitGraph({
-						circuit,
-						graph: snapshot.graph,
-					}),
-				})
-			)
-				fit(buildCircuitGraph(store.getSnapshot()), false);
+			const controller = new AbortController();
+			untangle.current = controller;
+			const { circuit, graph } = store.getSnapshot();
+			setUntangling(true);
+			void untangleCircuit({ circuit, graph }, controller.signal)
+				.then(
+					(positions) => {
+						const current = store.getSnapshot();
+						if (
+							controller.signal.aborted ||
+							current.circuit !== circuit ||
+							current.graph !== graph
+						)
+							return;
+						if (run({ type: "move", positions }))
+							fit(buildCircuitGraph(store.getSnapshot()), false);
+					},
+					(cause: unknown) => {
+						if (!controller.signal.aborted)
+							setError(errorMessage(cause, "Unable to untangle circuit."));
+					},
+				)
+				.finally(() => {
+					if (untangle.current !== controller) return;
+					untangle.current = null;
+					setUntangling(false);
+				});
 		},
 		onChooseComponent: (definition: SymbolDefinition) => {
 			setEditing(null);
@@ -673,6 +694,7 @@ export function CircuitEditor({
 				canRedo={snapshot.canRedo}
 				canDelete={Boolean(removable)}
 				zoomLevel={scale}
+				untangling={untangling}
 				{...toolbarHandlers}
 			/>
 			{connecting && (

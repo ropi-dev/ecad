@@ -22,19 +22,28 @@ export function capturePng(
 	});
 }
 
-export async function captureSvgPng(
+export async function loadSvgImage<Result>(
 	svg: string,
-	width: number,
-	height: number,
-	background: string | null,
-): Promise<Blob> {
+	use: (image: HTMLImageElement) => Result | Promise<Result>,
+): Promise<Result> {
 	const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
 	try {
 		const image = new Image();
 		image.src = url;
 		await image.decode();
-		return await capturePng(image, { width, height, background });
+		return await use(image);
 	} finally {
 		URL.revokeObjectURL(url);
 	}
+}
+
+export function captureSvgPng(
+	svg: string,
+	width: number,
+	height: number,
+	background: string | null,
+): Promise<Blob> {
+	return loadSvgImage(svg, (image) =>
+		capturePng(image, { width, height, background }),
+	);
 }

@@ -321,7 +321,7 @@
 		);
 		transition: --active 160ms var(--ease-out);
 	}
-	.ui-toggle:hover:not(:disabled) {
+	.ui-toggle:hover:not(:disabled, [aria-disabled="true"]) {
 		--toggle-bg: var(--color-hover);
 		--toggle-fg: var(--color-fg);
 		--toggle-on-bg: var(--color-accent-tint-strong);
@@ -330,7 +330,8 @@
 		--toggle-bg: var(--color-pressed);
 		--toggle-fg: var(--color-fg);
 	}
-	.ui-toggle:disabled {
+	.ui-toggle:disabled,
+	.ui-toggle[aria-disabled="true"] {
 		--toggle-fg: var(--color-fg-disabled);
 	}
 	.ui-toggle:is(
