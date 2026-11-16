@@ -270,6 +270,8 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 		assert.equal(content.includes("G36"), false, suffix);
 		assert.equal(content.match(/D03\*/g)?.length, pads.length, suffix);
 		assert.equal(content.match(/D01\*/g), null, suffix);
+		if (suffix !== "F_Cu.gtl")
+			assert.doesNotMatch(content, /%TA\.AperFunction/, suffix);
 	}
 	const copper = required(files.find(({ name }) => name.endsWith("F_Cu.gtl")));
 	const apertures = copper.content.match(/^%ADD\d+[^,*]+/gm) ?? [];
@@ -278,15 +280,15 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 		["RoundRect", "RoundRect", "O", "O", "Oval", "C"],
 	);
 	assert.match(copper.content, /%TA\.AperFunction,SMDPad,CuDef\*%/);
-	assert.match(copper.content, /%ADD12O,2X1\*%/);
-	assert.match(copper.content, /%ADD13O,1X2\*%/);
-	assert.match(copper.content, /%ADD15C,1\*%/);
+	assert.match(copper.content, /%ADD\d+O,2X1\*%/);
+	assert.match(copper.content, /%ADD\d+O,1X2\*%/);
+	assert.match(copper.content, /%ADD\d+C,1\*%/);
 	const [nearlyRound] = exportFabrication(
 		"sliver",
 		[roundedPad(0.4999999)],
 		[],
 	);
-	assert.match(nearlyRound.content, /%ADD10O,2X1\*%/);
+	assert.match(nearlyRound.content, /%ADD\d+O,2X1\*%/);
 });
 
 test("the flat view and the board view draw the corners", () => {
