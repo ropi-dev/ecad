@@ -6,6 +6,7 @@ import {
 	normalizeNetSymbol,
 	type SymbolText,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import { mergeAttributes } from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import { SYMBOL_TEXT_SIZE } from "@ecad/drawing-core/drawing/units.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
@@ -133,6 +134,10 @@ export function resolveDrawingSymbols(
 					const result = fitBoxToBorder(
 						normalizeNetSymbol({
 							...shape,
+							attributes: mergeAttributes(
+								shape.attributes,
+								definition.attributes,
+							),
 							library: definition.library,
 							width: resolved.width,
 							height: resolved.height,

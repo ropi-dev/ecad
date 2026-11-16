@@ -227,3 +227,110 @@ test("a read-only symbol copies to the project and becomes editable", async ({
 	);
 	expect(errors).toEqual([]);
 });
+
+test("a symbol defines its own attributes and each placement edits its copy", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/browser/projects.html");
+	await (await openProjectFiles(page))
+		.getByLabel("Add symbol files")
+		.setInputFiles({
+			name: "sensor.ecadsym",
+			mimeType: "application/json",
+			buffer: Buffer.from(
+				JSON.stringify({
+					format: "ecad-symbol",
+					version: 1,
+					units: "mm",
+					id: "sensor",
+					name: "Sensor",
+					description: "",
+					prefix: "U",
+					value: "TMP117",
+					attributes: { Manufacturer: "Texas Instruments" },
+					shapes: [
+						{ kind: "rectangle", x: 0, y: 0, width: 10, height: 6 },
+						{ kind: "pin", name: "SDA", x: -6, y: 0 },
+					],
+				}),
+			),
+		});
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open sensor.ecadsym", exact: true })
+		.click();
+	await page.getByRole("button", { name: "Attributes", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Symbol attributes" });
+	await expect(dialog.getByLabel("Attribute 1 name")).toHaveValue(
+		"Manufacturer",
+	);
+	await dialog.getByRole("button", { name: "Add attribute" }).click();
+	await expect(dialog.getByLabel("Attribute 2 name")).toBeFocused();
+	await dialog.getByLabel("Attribute 2 name").fill("Datasheet");
+	await dialog
+		.getByLabel("Attribute 2 default value")
+		.fill("https://www.ti.com/lit/ds/symlink/tmp117.pdf");
+	await dialog.getByRole("button", { name: "Add attribute" }).click();
+	await dialog.getByLabel("Attribute 3 name").fill("value");
+	await dialog.getByRole("button", { name: "Save", exact: true }).click();
+	await expect(dialog.getByRole("alert")).toHaveText(
+		"value is already an attribute of every symbol.",
+	);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: resolve(
+				"/tmp/ecad-browser-artifacts",
+				test.info().testId,
+				"symbol-attributes-dialog.png",
+			),
+		});
+	await dialog.getByRole("button", { name: "Remove attribute 3" }).click();
+	await dialog.getByRole("button", { name: "Save", exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+	const defined = {
+		Manufacturer: "Texas Instruments",
+		Datasheet: "https://www.ti.com/lit/ds/symlink/tmp117.pdf",
+	};
+	await expect
+		.poll(async () => (await documentState(page)).symbols[0].attributes)
+		.toEqual(defined);
+	await (await openProjectFiles(page))
+		.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true })
+		.click();
+	await page.getByRole("button", { name: "Symbols", exact: true }).click();
+	await page
+		.getByRole("button", { name: "Insert Sensor", exact: true })
+		.click();
+	await page.locator("canvas").click({ position: { x: 600, y: 450 } });
+	await openPlacedShape(page);
+	const manufacturer = page.getByRole("textbox", {
+		name: "Manufacturer",
+		exact: true,
+	});
+	await expect(manufacturer).toHaveValue("Texas Instruments");
+	await expect(
+		page.getByRole("textbox", { name: "Datasheet", exact: true }),
+	).toHaveValue(defined.Datasheet);
+	await manufacturer.fill("TI");
+	await manufacturer.press("Tab");
+	await expect
+		.poll(async () => (await documentState(page)).shapes.at(-1).attributes)
+		.toEqual({
+			name: "Sensor",
+			reference: expect.any(String),
+			value: "TMP117",
+			...defined,
+			Manufacturer: "TI",
+		});
+	expect((await documentState(page)).symbols[0].attributes).toEqual(defined);
+	if (captureArtifacts)
+		await page.screenshot({
+			path: resolve(
+				"/tmp/ecad-browser-artifacts",
+				test.info().testId,
+				"placed-symbol-attributes.png",
+			),
+		});
+	expect(errors).toEqual([]);
+});

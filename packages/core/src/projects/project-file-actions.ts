@@ -12,6 +12,7 @@ type FileActions = Pick<
 	| "createDrawing"
 	| "importSchematic"
 	| "createSymbol"
+	| "saveSymbolAttributes"
 	| "createFootprint"
 	| "importExample"
 >;
@@ -246,6 +247,32 @@ export function createProjectFileActions(
 					if (!path) throw new Error("Unable to open the new symbol file.");
 					return path;
 				});
+			}),
+
+		saveSymbolAttributes: (id, attributes) =>
+			enqueue(async () => {
+				if (!state.active || state.generation !== epoch)
+					throw new Error("Open a project before editing a symbol.");
+				const { parseSymbolFile } = await import(
+					"#/components/editor/symbolFormat.ts"
+				);
+				const current = state.symbols.find((symbol) => symbol.id === id);
+				if (!current)
+					throw new Error("This symbol is no longer in the project.");
+				const { attributes: _attributes, ...rest } = current;
+				const file = parseSymbolFile(
+					JSON.stringify(
+						Object.keys(attributes).length ? { ...rest, attributes } : rest,
+					),
+				);
+				await persist(
+					state.symbols.map((symbol) => (symbol.id === id ? file : symbol)),
+				);
+				const document = state.symbolDocuments.get(id);
+				if (!document) return;
+				const replaced = { ...document, file };
+				state.symbolDocuments.set(id, replaced);
+				if (state.editorSymbol === document) state.setEditorSymbol(replaced);
 			}),
 
 		createFootprint: (name, from) =>

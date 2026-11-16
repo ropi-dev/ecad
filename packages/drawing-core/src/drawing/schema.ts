@@ -8,6 +8,10 @@ import {
 	type SymbolAttribute,
 	symbolAttributes,
 } from "#/drawing/shape-kinds.ts";
+import {
+	attributesError,
+	SYMBOL_ATTRIBUTE_VALUE_LIMIT,
+} from "#/drawing/symbol-attributes.ts";
 import { symbolLibraryScopes } from "#/drawing/symbol-reference.ts";
 import {
 	horizontalAlignments,
@@ -428,7 +432,12 @@ const symbolShapeFields = {
 		.describe(
 			"Attribute labels in coordinates relative to the symbol center, in millimetres.",
 		),
-	attributes: z.strictObject(perAttribute(z.string())),
+	attributes: z
+		.object(perAttribute(z.string()))
+		.catchall(z.string().max(SYMBOL_ATTRIBUTE_VALUE_LIMIT))
+		.describe(
+			"Name, reference and value, followed by the attributes the symbol definition adds, such as Manufacturer or Datasheet.",
+		),
 };
 const savedSymbolFields = {
 	...symbolShapeFields,
@@ -449,6 +458,16 @@ function checkSymbol(
 		context.addIssue({
 			code: "custom",
 			message: "Symbols require a library reference or inline geometry.",
+		});
+	const attributes = attributesError(symbol.attributes);
+	if (attributes)
+		context.addIssue({
+			code: "custom",
+			message: attributes.message,
+			path: [
+				"attributes",
+				...(attributes.name === undefined ? [] : [attributes.name]),
+			],
 		});
 	const ids = new Set<number>();
 	for (const [index, child] of symbol.children.entries()) {

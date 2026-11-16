@@ -3,6 +3,7 @@ import {
 	fromMils,
 	SYMBOL_TEXT_SIZE,
 } from "@ecad/drawing-core/drawing/units.ts";
+import { partAttributeValues } from "./part-attributes.ts";
 import type { DefaultSymbol, SymbolPrimitive } from "./types.ts";
 
 export function legacySymbols(): DefaultSymbol[] {
@@ -42,6 +43,7 @@ export function legacySymbols(): DefaultSymbol[] {
 				prefix: "R",
 				value: "10k",
 				footprint: { library: "builtin", id: "r_0805_2012metric" },
+				attributes: partAttributeValues(),
 				shapes: [
 					line(-150, 0, -100, 0),
 					{
@@ -83,6 +85,7 @@ export function legacySymbols(): DefaultSymbol[] {
 				prefix: "C",
 				value: "100n",
 				footprint: { library: "builtin", id: "c_0805_2012metric" },
+				attributes: partAttributeValues(),
 				shapes: [
 					line(-150, 0, -30, 0),
 					line(-30, -80, -30, 80),

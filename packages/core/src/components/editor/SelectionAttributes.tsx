@@ -10,11 +10,11 @@ import {
 	pinElectricalTypeLabels,
 	pinElectricalTypes,
 } from "@ecad/drawing-core/drawing/pin-types.ts";
+import type { SymbolAttribute } from "@ecad/drawing-core/drawing/shape-kinds.ts";
 import {
 	boxBorder,
 	boxText,
 	type EditorShape,
-	type EditorSymbol,
 	isBasicShape,
 	isFillableShape,
 	type PinShape,
@@ -24,6 +24,7 @@ import {
 	symbolLabelPosition,
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import { extraAttributes } from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import {
 	horizontalAlignments,
 	type TextAlignment,
@@ -891,7 +892,7 @@ function SelectionAttributesPanel({
 						: []),
 					...(symbol.netSymbol ? ["name"] : ["name", "reference", "value"]).map(
 						(attribute) => {
-							const key = attribute as keyof EditorSymbol["attributes"];
+							const key = attribute as SymbolAttribute;
 							const label = attribute[0].toUpperCase() + attribute.slice(1);
 							return [
 								label,
@@ -910,6 +911,25 @@ function SelectionAttributesPanel({
 								/>,
 							] as [string, ReactNode];
 						},
+					),
+					...(symbol.netSymbol ? [] : extraAttributes(symbol.attributes)).map(
+						([attribute, value], index) =>
+							[
+								attribute,
+								<SymbolInstanceAttributeInput
+									key={`extra:${attribute}`}
+									name={`extraAttributes.${index}`}
+									label={attribute}
+									value={value}
+									onCommit={(next) =>
+										onEdit({
+											kind: "symbol-attribute",
+											attribute,
+											value: next,
+										})
+									}
+								/>,
+							] as [string, ReactNode],
 					),
 				]
 			: []),

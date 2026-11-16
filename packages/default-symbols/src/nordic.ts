@@ -387,6 +387,12 @@ const nrf54l = (
 	prefix: "U",
 	value: `${part}-${code}`,
 	...(footprint ? { footprint } : {}),
+	attributes: {
+		Manufacturer: "Nordic Semiconductor",
+		"Part number": `${part}-${code}`,
+		Datasheet:
+			"https://docs-be.nordicsemi.com/bundle/ps_nrf54L15/page/pdf/nRF54L15_nRF54L10_nRF54L05_Datasheet_v1.0.pdf",
+	},
 	source: `Nordic nRF54L15, nRF54L10, and nRF54L05 datasheet v1.0, ${code} package pin assignments`,
 	rotation: 0,
 	filled: true,
@@ -455,6 +461,11 @@ const npm2100 = (
 	prefix: "U",
 	value: `nPM2100-${code}`,
 	...(footprint ? { footprint } : {}),
+	attributes: {
+		Manufacturer: "Nordic Semiconductor",
+		"Part number": `nPM2100-${code}`,
+		Datasheet: "https://docs.nordicsemi.com/bundle/ps_npm2100/page/about.html",
+	},
 	source: `Nordic nPM2100 datasheet v1.0, ${code} pin assignment`,
 	rotation: 0,
 	filled: true,

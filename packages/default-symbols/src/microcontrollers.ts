@@ -39,6 +39,12 @@ export const microcontrollers: readonly SourceSymbol[] = [
 		prefix: "U",
 		value: "RP2040",
 		footprint: "qfn-56-1ep_7x7mm_p0.4mm_ep3.2x3.2mm",
+		attributes: {
+			Manufacturer: "Raspberry Pi",
+			"Part number": "RP2040",
+			Datasheet:
+				"https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+		},
 		source: "MCU_RaspberryPi:RP2040",
 		rotation: 0,
 		filled: true,
@@ -124,6 +130,12 @@ export const microcontrollers: readonly SourceSymbol[] = [
 		prefix: "U",
 		value: "RP2350A",
 		footprint: "qfn-60-1ep_7x7mm_p0.4mm_ep3.4x3.4mm",
+		attributes: {
+			Manufacturer: "Raspberry Pi",
+			"Part number": "RP2350A",
+			Datasheet:
+				"https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf",
+		},
 		source: "MCU_RaspberryPi:RP2350A",
 		rotation: 0,
 		filled: true,
@@ -208,6 +220,12 @@ export const microcontrollers: readonly SourceSymbol[] = [
 		prefix: "U",
 		value: "RP2350B",
 		footprint: "qfn-80-1ep_10x10mm_p0.4mm_ep3.4x3.4mm",
+		attributes: {
+			Manufacturer: "Raspberry Pi",
+			"Part number": "RP2350B",
+			Datasheet:
+				"https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf",
+		},
 		source: "MCU_RaspberryPi:RP2350B",
 		rotation: 0,
 		filled: true,

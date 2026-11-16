@@ -9,6 +9,7 @@ import {
 	PIN_RADIUS,
 	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
+import { mergeAttributes } from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import type { SymbolLibraryReference } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import type {
 	SymbolFile,
@@ -86,7 +87,14 @@ export function symbolFileShapes(
 					library: shape.library,
 					definitionId: shape.definitionId,
 					rotation: ((shape.rotation ?? 0) * Math.PI) / 180,
-					...(shape.attributes ? { attributes: { ...shape.attributes } } : {}),
+					...(shape.attributes
+						? {
+								attributes: mergeAttributes(
+									shape.attributes,
+									definition?.attributes,
+								),
+							}
+						: {}),
 					...(shape.textAlignments
 						? { textAlignments: structuredClone(shape.textAlignments) }
 						: {}),
