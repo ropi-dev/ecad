@@ -34,8 +34,8 @@ import {
 import {
 	isPad,
 	isPadOrVia,
-	padCornerRadius,
 	isVia,
+	padCornerRadius,
 	shapeDrill,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
