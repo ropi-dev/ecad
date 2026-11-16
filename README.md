@@ -110,7 +110,7 @@ pnpm run package:deb
 sudo apt install ./dist/deb/ecad_*_amd64.deb
 ```
 
-The package depends on the libraries Electron links, and lists both names of the libraries that Debian 13 and Ubuntu 24.04 renamed to `t64`. It installs on Debian 12 and Ubuntu 26.04. `chrome-sandbox` is installed setuid root, so Chromium's sandbox also works where unprivileged user namespaces are restricted. Only the release workflow builds and publishes the package. Pushes to `main` run the checks but build no `.deb`.
+The package depends on the libraries Electron links, and lists both names of the libraries that Debian 13 and Ubuntu 24.04 renamed to `t64`. It installs on Debian 12 and Ubuntu 26.04. `chrome-sandbox` is installed setuid root, so Chromium's sandbox also works where unprivileged user namespaces are restricted. Only the release workflow builds and publishes the package, on the release and in the [apt repository](#apt-repository). Pushes to `main` run the checks but build no `.deb`.
 
 #### Releases
 
@@ -125,11 +125,33 @@ Two tag rulesets protect the release tags, with no bypass for anyone, admins inc
 
 The workflow runs the CI checks and builds the package with the release's version in its control file, in the desktop app and in `ecad --version`. It installs the package and runs the CLI before publishing. A nightly's Debian version is `0.1.1~nightly.20261116`, so dpkg sorts it after `0.1.0` and before `0.1.1`. GitHub replaces `~` in asset names, so the nightly's files are named after the tag instead: `ecad_0.1.1-nightly.20261116_amd64.deb`. Release notes list the pull requests since the previous stable release, or since the previous release of either kind for a nightly. The package and its update files also stay on the run as the `ecad-deb` artifact for seven days.
 
+#### Apt repository
+
+Each channel is a flat apt repository stored as the assets of a pre-release that stays in place: `apt-stable` and `apt-nightly`. The stable channel holds the three newest stable releases. The nightly channel holds the three newest nightlies and the newest stable release, so someone on a nightly still gets a stable release that comes out before the next nightly. apt installs whichever version is highest. To install from the stable channel:
+
+```bash
+sudo curl -fsSLo /usr/share/keyrings/ecad-archive-keyring.gpg \
+  https://github.com/ropi-dev/ecad/releases/download/apt-stable/ecad-archive-keyring.gpg
+sudo tee /etc/apt/sources.list.d/ecad.sources <<'EOF'
+Types: deb
+URIs: https://github.com/ropi-dev/ecad/releases/download/apt-stable/
+Suites: ./
+Signed-By: /usr/share/keyrings/ecad-archive-keyring.gpg
+EOF
+sudo apt update && sudo apt install ecad
+```
+
+Replace `apt-stable` with `apt-nightly` in the `URIs` line to get nightlies. The key's fingerprint is `F39E 7F46 0B26 1123 3681  DEFF C723 FF59 1786 C814`.
+
+After each release, the Release workflow calls the **Apt repository** workflow. You can also run it on its own from the Actions tab on `main`, which rebuilds both channels from the current releases. `scripts/release/apt.ts` downloads each channel's packages from their releases, writes `Packages`, `Packages.gz` and a `Release` file with their SHA-256 digests, and signs it as `InRelease` and `Release.gpg`. It uploads the packages the channel doesn't have yet, or whose digest changed because a nightly was replaced. Then it uploads the indexes, then `InRelease`, and deletes packages that left the channel. GitHub replaces an asset by deleting it first, so an `apt update` during those few seconds can fail. It works on the next try. Run `node scripts/release/apt.ts --no-publish --directory <dir>` to build both channels locally, signed with the key in your GnuPG keyring, without uploading anything.
+
+The workflow signs with the `APT_SIGNING_KEY` secret in the `release` environment, an ASCII-armored ed25519 secret key with no passphrase and no expiry. To replace it, generate a new key, export it with `gpg --armor --export-secret-keys <fingerprint>`, store it with `gh secret set APT_SIGNING_KEY --env release`, run the Apt repository workflow, and update the fingerprint above. Everyone who installed the old key has to download the new keyring.
+
 #### Updates
 
 The installed desktop app checks GitHub's latest release 10 seconds after it starts and every six hours after that. The update button sits in the sidebar footer next to Settings, and hovering it shows the latest release's changes. Clicking it checks for updates right away. When the release has a newer package for the machine's architecture, the icon turns amber and a click installs it. ECAD downloads the release's `.files.json` manifest and checks it against its SHA-256 digest from GitHub. It copies each installed file whose digest matches the manifest, fetches the rest from the `.files.zst` pack with HTTP range requests, and checks each one's digest. Then it builds the package locally with `dpkg-deb`. A release that changes only the app code downloads a few hundred kilobytes instead of the whole 148 MB package. If the release has no update files, the server ignores the range, a digest doesn't match, or the missing files add up to more than the package, ECAD downloads the whole package and checks its size and digest instead. Either way it runs `pkexec apt-get install --no-remove` on the package, so the system asks for an administrator password and apt stops rather than remove other packages. The next click restarts ECAD into the new version. Unsaved changes still ask before the window closes, and choosing **Keep working** cancels the restart. A failed installation turns the icon red, its tooltip shows the error, and a click reads the latest release again before retrying. A locally built package differs byte for byte from the published one, so apt installs it on the strength of the per-file digests. The digests come from the same GitHub response as the download, so they catch a damaged download but not a bad release: anyone who can publish releases to the repository can ship code that runs as root after the password prompt.
 
-Only the app installed from the package checks for updates: `pnpm run package:deb` marks the app's `package.json` with `"updates": {"format": "deb"}` and sets its version to the package version. `pnpm run dev:desktop` and `pnpm run start:desktop` never check. Set `ECAD_UPDATE_FEED_URL` to read the releases from another URL that answers like GitHub's [list releases API](https://docs.github.com/en/rest/releases/releases#list-releases). The update installs the stable release with the highest version and lists the changes from every release newer than the installed one. It skips pre-releases, so nightlies reach only the people who install them by hand. An installed nightly updates to the next stable release. The package URLs it lists must use HTTPS or the feed's own origin.
+Only the app installed from the package checks for updates: `pnpm run package:deb` marks the app's `package.json` with `"updates": {"format": "deb"}` and sets its version to the package version. `pnpm run dev:desktop` and `pnpm run start:desktop` never check. Set `ECAD_UPDATE_FEED_URL` to read the releases from another URL that answers like GitHub's [list releases API](https://docs.github.com/en/rest/releases/releases#list-releases). The update installs the stable release with the highest version and lists the changes from every release newer than the installed one. It skips pre-releases, so nightlies reach only the people who install them by hand or from the nightly apt channel. An installed nightly updates to the next stable release. The package URLs it lists must use HTTPS or the feed's own origin.
 
 Use `pnpm run preview` to preview the web build. Biome provides `pnpm run format`, `pnpm run lint`, and `pnpm run check`. It respects `.gitignore`, so generated builds and test reports stay out of lint results.
 

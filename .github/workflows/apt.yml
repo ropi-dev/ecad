@@ -1,0 +1,44 @@
+name: Apt repository
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apt:
+    name: Apt repository
+    # The release environment holds the signing key and accepts deployments
+    # from main only.
+    environment: release
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    concurrency:
+      group: apt-repository
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          check-latest: true
+      - name: Import signing key
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          if [ -z "$APT_SIGNING_KEY" ]; then
+            echo "::error::Add the APT_SIGNING_KEY secret to the release environment."
+            exit 1
+          fi
+          gpg --batch --import <<< "$APT_SIGNING_KEY"
+      - name: Publish apt repository
+        run: node scripts/release/apt.ts --directory "$RUNNER_TEMP/apt"

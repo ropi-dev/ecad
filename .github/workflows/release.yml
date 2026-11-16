@@ -163,3 +163,10 @@ jobs:
             while read -r tag; do
               gh release delete "$tag" --yes --cleanup-tag
             done
+
+  apt:
+    name: Apt repository
+    needs: publish
+    permissions:
+      contents: write
+    uses: ./.github/workflows/apt.yml
