@@ -100,6 +100,11 @@ export const budgets = {
 		domNodes: 2200,
 		scriptBytes: 3_000_000,
 	},
+	"pcb-view-switch": {
+		interactionP95Ms: 3000,
+		domNodes: 1500,
+		scriptBytes: 3_500_000,
+	},
 	"pcb-linked-documents": { interactionP95Ms: 3000, syncP95Ms: 150 },
 	"desktop-untitled": {
 		createMs: 1000,

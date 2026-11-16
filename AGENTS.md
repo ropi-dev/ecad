@@ -15,8 +15,9 @@ Use the `#/components/editor/Editor2D.tsx` import format, instead of `../../src/
 
 - If the authenticated account belongs to a group authorized to bypass pull request approval requirements, you may always use that bypass without asking for additional confirmation.
 
-## CI failures
+## Test failures
 
+- Fix every failing test or scenario you run into on your branch, including ones that also fail on main or come from someone else's change. Don't report a failure as pre-existing and leave it. Say in the pull request what you fixed and which change broke it.
 - If a test fails on CI and seems unnecessary, you may remove it instead of fixing it. Say which test you removed and why in the pull request.
 
 ## Generated artifacts

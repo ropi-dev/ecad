@@ -438,7 +438,7 @@ test("an external change drops the selection a view switch would restore", async
 	};
 	project().rememberViewSelection(schematic);
 	await project().switchEditorView("circuit");
-	const origin = project().takeSelectionHandoff("circuit");
+	const origin = project().takeSelectionHandoff("circuit")?.source;
 	const circuit = project().editorCircuit;
 	assert.ok(origin && circuit);
 	const derived = {
@@ -451,6 +451,9 @@ test("an external change drops the selection a view switch would restore", async
 	await until(() => main.getSnapshot().shapes.length === 1);
 	project().rememberViewSelection({ ...derived, origin });
 	await project().switchEditorView("schematic");
-	assert.deepEqual(project().takeSelectionHandoff("schematic"), derived);
+	assert.deepEqual(
+		project().takeSelectionHandoff("schematic")?.source,
+		derived,
+	);
 	stop();
 });

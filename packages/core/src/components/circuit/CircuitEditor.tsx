@@ -83,9 +83,11 @@ const viewStates = new WeakMap<CircuitDocument["store"], CircuitView>();
 const CircuitDocumentBar = memo(function CircuitDocumentBar({
 	name,
 	id,
+	active,
 }: {
 	name: string;
 	id: string;
+	active: boolean;
 }) {
 	return (
 		<DocumentBar
@@ -93,13 +95,20 @@ const CircuitDocumentBar = memo(function CircuitDocumentBar({
 			title={name}
 			selection={`circuit:${id}`}
 			view="circuit"
+			active={active}
 		>
 			<EditorViewSwitch view="circuit" />
 		</DocumentBar>
 	);
 });
 
-export function CircuitEditor({ document }: { document: CircuitDocument }) {
+export function CircuitEditor({
+	document,
+	active = true,
+}: {
+	document: CircuitDocument;
+	active?: boolean;
+}) {
 	const project = useProjectSelection(({ dirty, error, libraryErrors }) => ({
 		dirty,
 		error,
@@ -217,6 +226,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 		setPendingPin,
 	});
 	useCircuitSelectionSync({
+		enabled: active,
 		store,
 		selection,
 		checkedPins,
@@ -557,7 +567,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			}}
 		>
 			<h1 className="sr-only">{circuit.name}</h1>
-			<CircuitDocumentBar name={circuit.name} id={circuit.id} />
+			<CircuitDocumentBar name={circuit.name} id={circuit.id} active={active} />
 			{circuitMessages.length > 0 && (
 				<div
 					role="alert"
@@ -589,24 +599,26 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 						{...svgHandlers}
 					>
 						<title>Components, pins, and shared electrical nets</title>
-						<CircuitGraphLayer
-							graph={graph}
-							pins={pins}
-							pinNets={pinNets}
-							noConnectPinIds={circuit.noConnectPinIds}
-							tool={tool}
-							gridStep={gridStep}
-							selection={selection}
-							selectedNetId={selectedNetId}
-							checkedPins={checkedPins}
-							editing={editing}
-							pendingPin={pendingPin}
-							connectionDrag={connectionDrag}
-							placement={placement}
-							placementPoint={placementPoint}
-							placementPinCount={placementPinCount}
-							actions={graphActions}
-						/>
+						{active && (
+							<CircuitGraphLayer
+								graph={graph}
+								pins={pins}
+								pinNets={pinNets}
+								noConnectPinIds={circuit.noConnectPinIds}
+								tool={tool}
+								gridStep={gridStep}
+								selection={selection}
+								selectedNetId={selectedNetId}
+								checkedPins={checkedPins}
+								editing={editing}
+								pendingPin={pendingPin}
+								connectionDrag={connectionDrag}
+								placement={placement}
+								placementPoint={placementPoint}
+								placementPinCount={placementPinCount}
+								actions={graphActions}
+							/>
+						)}
 					</svg>
 					{menu && (
 						<CircuitContextMenu

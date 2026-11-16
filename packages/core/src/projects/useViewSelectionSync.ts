@@ -1,3 +1,4 @@
+import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import { useEffect, useEffectEvent, useRef } from "react";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { useProjectSelection } from "#/projects/ProjectProvider.tsx";
@@ -20,7 +21,7 @@ export function useViewSelectionSync<V extends View>({
 	store: Of<V>["store"];
 	selection: Selection<V>;
 	equal(a: Selection<V>, b: Selection<V>): boolean;
-	receive(source: Exclude<ViewSelection, { view: V }>): Selection<V>;
+	receive(source: ViewSelection, circuit: Circuit | undefined): Selection<V>;
 	apply(selection: Selection<V>): Selection<V>;
 }) {
 	const project = useProjectSelection(
@@ -46,16 +47,14 @@ export function useViewSelectionSync<V extends View>({
 			} as ViewSelection),
 	);
 	const take = useEffectEvent(() => {
-		const source = project?.takeSelectionHandoff(view);
-		if (!source) return null;
+		const handed = project?.takeSelectionHandoff(view);
+		if (!handed) return null;
+		const { source, circuit } = handed;
 		if (source.view === view)
 			return source.store === store
 				? { selection: source.selection as Selection<V> }
 				: null;
-		return {
-			selection: receive(source as Exclude<ViewSelection, { view: V }>),
-			origin: source,
-		};
+		return { selection: receive(source, circuit), origin: source };
 	});
 	const applyHandoff = useEffectEvent(() => {
 		if (handoff.current === undefined) handoff.current = take();
@@ -74,6 +73,11 @@ export function useViewSelectionSync<V extends View>({
 		remember(selection, applied.current?.origin);
 	}, [enabled, project, selection, equal]);
 	useEffect(() => {
-		if (enabled && project) applyHandoff();
+		if (!project) return;
+		if (enabled) applyHandoff();
+		else {
+			handoff.current = undefined;
+			applied.current = null;
+		}
 	}, [enabled, project]);
 }
