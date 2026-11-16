@@ -188,6 +188,8 @@ const ruleFields: readonly {
 	{ key: "viaDrill", label: "Via drill" },
 	{ key: "edgeClearance", label: "Edge clearance" },
 	{ key: "solderMaskMargin", label: "Mask margin" },
+	{ key: "thermalGap", label: "Thermal gap" },
+	{ key: "thermalSpokeWidth", label: "Spoke width" },
 ];
 
 /** The board's design rules. New tracks and vias use their sizes. */

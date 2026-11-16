@@ -96,6 +96,14 @@ _Avoid_: Trace, footprint wire
 A copper area on a PCB that fills a rectangle or a polygon on one net, keeping clear of other nets' copper. Where zones on different nets overlap, the one with the higher priority keeps the copper.
 _Avoid_: Pour, polygon
 
+**Thermal relief**:
+How a zone joins a pad on its net: a gap around the pad crossed by a few narrow spokes, so the pad heats evenly when soldered. A zone set to solid pad connection fills up to the pad instead.
+_Avoid_: Thermal pad (that is a footprint's exposed pad)
+
+**Spoke**:
+One of the narrow copper bridges of a thermal relief between a pad and the zone around it.
+_Avoid_: Bridge, tie
+
 **Ratsnest**:
 The lines that join copper on one net that is not yet connected.
 

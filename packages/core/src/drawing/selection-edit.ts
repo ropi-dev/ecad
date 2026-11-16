@@ -4,6 +4,10 @@ import {
 } from "@ecad/drawing-core/board/footprints.ts";
 import type { LineStyle } from "@ecad/drawing-core/drawing/line-style.ts";
 import type { PinElectricalType } from "@ecad/drawing-core/drawing/pin-types.ts";
+import {
+	type ShapeZone,
+	zoneSchema,
+} from "@ecad/drawing-core/drawing/schema.ts";
 import type { FillableShapeKind } from "@ecad/drawing-core/drawing/shape-kinds.ts";
 import {
 	boxBorder,
@@ -90,9 +94,23 @@ export type SelectionEdit =
 	  }
 	| { readonly kind: "symbol-text-reset" }
 	| { readonly kind: "net"; readonly net: string | undefined }
-	| { readonly kind: "zone-clearance"; readonly clearance: number }
 	| { readonly kind: "zone-priority"; readonly priority: number }
+	| {
+			readonly kind: "zone";
+			readonly zone: {
+				readonly [K in keyof ShapeZone]?: ShapeZone[K] | undefined;
+			};
+	  }
 	| { readonly kind: "side"; readonly back: boolean };
+
+const zoneEditLabels: Record<keyof ShapeZone, string> = {
+	clearance: "Change zone clearance",
+	padConnection: "Change zone pad connection",
+	thermalGap: "Change zone thermal gap",
+	thermalSpokeWidth: "Change zone spoke width",
+	priority: "Change zone priority",
+	outline: "Change zone outline",
+};
 
 /**
  * Whether an edit applies to a pin that stays fixed to its symbol. Only the
@@ -370,18 +388,31 @@ export function applySelectionEdit(
 				}),
 				label: edit.net ? "Change net" : "Remove net",
 			};
-		case "zone-clearance":
-			return single?.kind === "rectangle" && single.zone && edit.clearance > 0
+		case "zone": {
+			if (single?.kind !== "rectangle" || !single.zone) return undefined;
+			const key = Object.keys(edit.zone)[0] as keyof ShapeZone | undefined;
+			const zone = zoneSchema.safeParse(
+				Object.fromEntries(
+					Object.entries({ ...single.zone, ...edit.zone }).filter(
+						([, value]) => value !== undefined,
+					),
+				),
+			);
+			const current = single.zone;
+			const changed =
+				zone.success &&
+				Object.keys({ ...current, ...zone.data }).some(
+					(name) =>
+						JSON.stringify(current[name as keyof ShapeZone]) !==
+						JSON.stringify(zone.data[name as keyof ShapeZone]),
+				);
+			return key && zone.success && changed
 				? {
-						replacements: [
-							{
-								...single,
-								zone: { ...single.zone, clearance: edit.clearance },
-							},
-						],
-						label: "Change zone clearance",
+						replacements: [{ ...single, zone: zone.data }],
+						label: zoneEditLabels[key],
 					}
 				: undefined;
+		}
 		case "zone-priority": {
 			if (
 				single?.kind !== "rectangle" ||

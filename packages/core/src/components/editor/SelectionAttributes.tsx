@@ -238,7 +238,9 @@ function AttributeInput({
 	above = Number.NEGATIVE_INFINITY,
 	below = Number.POSITIVE_INFINITY,
 	step = "any",
+	placeholder = "Mixed",
 	onChange,
+	onClear,
 }: {
 	label: string;
 	value: number | "";
@@ -248,7 +250,9 @@ function AttributeInput({
 	above?: number;
 	below?: number;
 	step?: string;
+	placeholder?: string;
 	onChange: (value: number) => void;
+	onClear?: () => void;
 }) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const converted = value === "" ? "" : unit === "mil" ? toMils(value) : value;
@@ -269,11 +273,19 @@ function AttributeInput({
 				min={positive || nonNegative ? 0 : undefined}
 				step={step}
 				title={step === "90" ? "Angle in 90° increments" : undefined}
-				placeholder="Mixed"
+				placeholder={placeholder}
 				defaultValue={displayValue}
 				data-committed-value={value}
 				className={numberInputClassName}
 				onBlur={(event) => {
+					if (
+						onClear &&
+						event.currentTarget.value === "" &&
+						!event.currentTarget.validity.badInput
+					) {
+						if (value !== "") onClear();
+						return;
+					}
 					const entered = event.currentTarget.valueAsNumber;
 					const next = unit === "mil" ? fromMils(entered) : entered;
 					if (
@@ -718,19 +730,51 @@ function boardRows(
 		shapes.length === 1 && shapes[0].kind === "rectangle"
 			? shapes[0]
 			: undefined;
-	if (zone?.zone)
-		rows.push([
-			"Zone clearance",
+	if (zone?.zone) {
+		const settings = zone.zone;
+		const length = (
+			label: string,
+			key: "clearance" | "thermalGap" | "thermalSpokeWidth",
+		): [string, ReactNode] => [
+			label,
 			<AttributeInput
-				key={`${zone.id}:clearance`}
-				label="Zone clearance"
-				value={zone.zone.clearance ?? ""}
+				key={`${zone.id}:${key}`}
+				label={label}
+				value={settings[key] ?? ""}
 				unit={unit}
 				positive
-				onChange={(clearance) => onEdit({ kind: "zone-clearance", clearance })}
+				below={key === "clearance" ? undefined : 100 + 1e-9}
+				placeholder="Board"
+				onChange={(value) => onEdit({ kind: "zone", zone: { [key]: value } })}
+				onClear={() => onEdit({ kind: "zone", zone: { [key]: undefined } })}
 			/>,
+		];
+		rows.push(length("Zone clearance", "clearance"), [
+			"Pad connection",
+			<select
+				key={`${zone.id}:padConnection`}
+				aria-label="Pad connection"
+				className="ui-select w-36"
+				value={settings.padConnection ?? "thermal"}
+				onChange={(event) =>
+					onEdit({
+						kind: "zone",
+						zone: {
+							padConnection:
+								event.currentTarget.value === "solid" ? "solid" : undefined,
+						},
+					})
+				}
+			>
+				<option value="thermal">Thermal relief</option>
+				<option value="solid">Solid</option>
+			</select>,
 		]);
-	if (zone?.zone)
+		if (settings.padConnection !== "solid")
+			rows.push(
+				length("Thermal gap", "thermalGap"),
+				length("Spoke width", "thermalSpokeWidth"),
+			);
 		rows.push([
 			"Zone priority",
 			<AttributeInput
@@ -744,6 +788,7 @@ function boardRows(
 				onChange={(priority) => onEdit({ kind: "zone-priority", priority })}
 			/>,
 		]);
+	}
 	const footprints = shapes.filter(
 		(shape) => shape.kind === "symbol" && shape.footprint,
 	);

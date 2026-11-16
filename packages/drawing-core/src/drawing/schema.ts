@@ -129,7 +129,7 @@ const netField = z
 const zoneFraction = z.number().min(-0.5).max(0.5);
 const zoneVertex = z.strictObject({ x: zoneFraction, y: zoneFraction });
 
-const zoneSchema = z
+export const zoneSchema = z
 	.strictObject({
 		clearance: z
 			.number()
@@ -154,6 +154,28 @@ const zoneSchema = z
 			.optional()
 			.describe(
 				"Polygon corners in order, as fractions of the width and height from -0.5 to 0.5 around the center, before rotation. The zone fills this polygon instead of the whole rectangle. Omit it for a rectangular zone.",
+			),
+		padConnection: z
+			.enum(["thermal", "solid"])
+			.optional()
+			.describe(
+				"How pads on the zone's net join the fill: through a gap and spokes, or with solid copper. Omit it for thermal. Vias always join solid.",
+			),
+		thermalGap: z
+			.number()
+			.positive()
+			.max(100)
+			.optional()
+			.describe(
+				"Gap in millimetres between a pad and the fill around it. Omit it for the board's thermal gap.",
+			),
+		thermalSpokeWidth: z
+			.number()
+			.positive()
+			.max(100)
+			.optional()
+			.describe(
+				"Width in millimetres of the spokes from a pad to the fill. Omit it for the board's spoke width.",
 			),
 	})
 	.describe(

@@ -592,3 +592,40 @@ test("resetting a selected symbol text returns it to the definition", () => {
 	});
 	assert.equal(reset(locked, first.key), undefined);
 });
+
+test("a zone's thermal settings change, clear back to the board's, and reject sizes of zero", () => {
+	const zone = {
+		...rectangle,
+		layer: "F.Cu",
+		zone: { clearance: 0.3 },
+	} as EditorShape;
+	const edit = (settings: Record<string, unknown>, shape = zone) =>
+		applySelectionEdit({ kind: "zone", zone: settings }, context([shape]));
+	const changed = required(edit({ thermalGap: 0.25 }));
+	assert.equal(changed.label, "Change zone thermal gap");
+	const gapped = required(changed.replacements[0]);
+	assert.deepEqual(gapped.kind === "rectangle" && gapped.zone, {
+		clearance: 0.3,
+		thermalGap: 0.25,
+	});
+	const cleared = required(
+		required(edit({ thermalGap: undefined }, gapped)).replacements[0],
+	);
+	assert.deepEqual(cleared.kind === "rectangle" && cleared.zone, {
+		clearance: 0.3,
+	});
+	assert.equal(edit({ thermalSpokeWidth: 0 }), undefined);
+	assert.equal(edit({ thermalGap: 150 }), undefined);
+	const unclear = required(
+		required(edit({ clearance: undefined })).replacements[0],
+	);
+	assert.deepEqual(unclear.kind === "rectangle" && unclear.zone, {});
+	assert.equal(edit({ padConnection: "partial" }), undefined);
+	assert.equal(edit({}), undefined);
+	assert.equal(edit({ thermalGap: undefined }), undefined);
+	assert.equal(edit({ clearance: 0.3 }), undefined);
+	assert.equal(
+		edit({ padConnection: "solid" })?.label,
+		"Change zone pad connection",
+	);
+});
