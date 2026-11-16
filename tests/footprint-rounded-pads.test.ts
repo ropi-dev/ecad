@@ -4,6 +4,7 @@ import {
 	copperItems,
 	itemDistance,
 } from "@ecad/drawing-core/board/connectivity.ts";
+import { createBoardFootprint } from "@ecad/drawing-core/board/footprints.ts";
 import {
 	pointHullDistance,
 	shapeHulls,
@@ -16,11 +17,13 @@ import { hitShape } from "@ecad/drawing-core/drawing/shape-selection.ts";
 import {
 	type EditorShape,
 	editShapeAttribute,
+	symbolShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	createPad,
 	createVia,
 	editPad,
+	isPad,
 	type PadShape,
 	padCornerRadius,
 } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -31,6 +34,11 @@ import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { containsPoint, GeometryCompiler } from "#/engine/geometry.ts";
 import type { MultiPolygon } from "#/engine/types.ts";
 import { planFootprintBoard } from "#/footprint/board.ts";
+import {
+	createEmptyFootprintFile,
+	footprintFileSchema,
+	footprintFileWithShapes,
+} from "#/footprint/format.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { required } from "./helpers/required.ts";
 
@@ -282,4 +290,47 @@ test("a click in a rounded-off corner misses the pad", () => {
 	const turned = { ...pad, rotation: Math.PI / 2 };
 	assert.equal(hitShape(turned, { x: 0.45, y: 0.95 }, 0), false);
 	assert.equal(hitShape(turned, { x: 0, y: 0.95 }, 0), true);
+});
+
+test("a footprint file keeps the corner ratio, and a flipped footprint keeps its rounded copper", () => {
+	const file = footprintFileWithShapes(
+		createEmptyFootprintFile("Rounded", []),
+		[roundedPad()],
+	);
+	const loaded = footprintFileSchema.parse(JSON.parse(JSON.stringify(file)));
+	const [saved] = loaded.shapes;
+	assert.ok(isPad(saved) && saved.pad.cornerRatio === 0.25);
+
+	const flipped = createBoardFootprint(
+		30,
+		{
+			reference: { library: "project", id: loaded.id },
+			name: loaded.name,
+			shapes: loaded.shapes,
+		},
+		{ reference: "U1", value: "" },
+		{ x: 10, y: 0 },
+		{ flipped: true },
+	);
+	const pad = required(symbolShapes(flipped).find(isPad));
+	assert.equal(pad.layer, "B.Cu");
+	const [hull] = shapeHulls(pad);
+	assert.ok(
+		pointHullDistance(hull, { x: 10 - insideCorner.x, y: insideCorner.y }) < 0,
+	);
+	assert.ok(
+		pointHullDistance(hull, { x: 10 - squareCorner.x, y: squareCorner.y }) > 0,
+	);
+	const back = gerberCoverage(
+		exportFabrication("back", [flipped], []),
+		"B_Cu.gbl",
+	);
+	assert.equal(
+		containsPoint(back, { x: 10 - insideCorner.x, y: insideCorner.y }),
+		true,
+	);
+	assert.equal(
+		containsPoint(back, { x: 10 - squareCorner.x, y: squareCorner.y }),
+		false,
+	);
 });
