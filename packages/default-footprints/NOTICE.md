@@ -16,7 +16,7 @@ lines, draw pin 1 markers as triangles and other polygons as outlines, link a
 model from ECAD's 3D model library in place of KiCad's model path, and omit
 text, solder mask openings, and the User.Drawings and User.Comments layers.
 Separate paste openings over exposed pads become filled rectangles on the paste
-layer.
+layer. An unplated hole keeps its pad size as its solder mask opening.
 
 The source footprints are:
 

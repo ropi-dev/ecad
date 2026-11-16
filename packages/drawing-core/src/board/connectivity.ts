@@ -109,7 +109,7 @@ export function copperItems(
 		if (isBoardFootprint(shape)) {
 			const pads = padsOf.get(shape.id) ?? [];
 			for (const part of symbolShapes(shape) as EditorShape[]) {
-				if (isPad(part) || part.kind === "text") continue;
+				if (isPad(part) || isHole(part) || part.kind === "text") continue;
 				if (isVia(part)) {
 					const hulls = shapeHulls(part);
 					const pad = pads.find((item) =>
@@ -150,7 +150,8 @@ export function copperItems(
 			});
 			continue;
 		}
-		if (!isCopperLayer(shape.layer) || shape.kind === "text") continue;
+		if (!isCopperLayer(shape.layer) || shape.kind === "text" || isHole(shape))
+			continue;
 		const layer = shape.layer;
 		const kind: CopperKind = isTrack(shape)
 			? "track"

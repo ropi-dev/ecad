@@ -33,6 +33,7 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	isDrilled,
+	isHole,
 	isPad,
 	isVia,
 	shapeDrill,
@@ -194,6 +195,9 @@ export function padNumberSize(
 	};
 }
 
+const holeEdge = (shape: EditorShape) =>
+	Math.min(shape.lineWidth, shape.width / 4);
+
 function displayShape(
 	shape: EditorShape,
 	key: string,
@@ -291,6 +295,28 @@ function displayShape(
 							renderOrder: renderOrder + 0.25,
 						},
 					]),
+			...(isHole(shape)
+				? [
+						{
+							key: `${key}:edge`,
+							name: `unplated hole edge ${shape.id}`,
+							geometry: {
+								kind: "circle" as const,
+								width: shape.width - holeEdge(shape),
+								height: shape.width - holeEdge(shape),
+								lineWidth: holeEdge(shape),
+								filled: false,
+							},
+							x: 0,
+							y: 0,
+							width: 1 - holeEdge(shape) / shape.width,
+							height: 1 - holeEdge(shape) / shape.width,
+							rotation: 0,
+							appearance,
+							renderOrder: renderOrder + 0.3,
+						},
+					]
+				: []),
 			...(number
 				? [
 						{

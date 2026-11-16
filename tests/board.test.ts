@@ -4,6 +4,7 @@ import { generateDefaultFootprints } from "@ecad/default-footprints";
 import { autoroute } from "@ecad/drawing-core/board/autoroute.ts";
 import {
 	analyzeConnectivity,
+	boardHoles,
 	copperItems,
 } from "@ecad/drawing-core/board/connectivity.ts";
 import { checkBoard, type DrcKind } from "@ecad/drawing-core/board/drc.ts";
@@ -1111,6 +1112,57 @@ describe("unplated holes", () => {
 			],
 		]);
 		assert.deepEqual(findings(center.y + 1.6 + 0.1 + 0.25), []);
+	});
+
+	test("a flipped mounting hole still drills through, opens both masks and keeps the pour clear", () => {
+		const { shapes, netlist, pour, at } = dividerBoard();
+		const center = at(6, 4);
+		const flipped = flipBoardFootprint(mountingHole(center));
+		const board = [...shapes, pour("gnd", 0, 28), flipped];
+		assert.match(
+			required(fabricationFile(board, "-NPTH.drl")).content,
+			new RegExp(`^X${center.x.toFixed(3)}Y${center.y.toFixed(3)}$`, "m"),
+		);
+		for (const suffix of ["F_Mask.gts", "B_Mask.gbs"]) {
+			const mask = required(fabricationFile(board, suffix));
+			assert.equal(objectsAt(mask.content, mask.name, center).length, 1);
+		}
+		assert.equal(containsPoint(pourCopper(board, netlist), center), false);
+	});
+
+	test("a hole is never copper, whatever layer a file gives it", () => {
+		const { shapes, netlist, at } = dividerBoard();
+		const onCopper = { ...boardHole(at(6, 4), 1), layer: "F.Cu" as const };
+		assert.deepEqual(
+			copperItems([...shapes, onCopper], netlist).filter(
+				(item) => item.shape === onCopper,
+			),
+			[],
+		);
+		assert.equal(boardHoles([...shapes, onCopper]).length, 1);
+	});
+
+	test("holes that overlap each other or the board edge are findings", () => {
+		const { shapes, netlist, outline, at } = dividerBoard();
+		const holeFindings = (holes: EditorShape[]) =>
+			designRulesCheck([...shapes, ...holes], netlist)
+				.filter((finding) => /unplated hole/i.test(finding.message))
+				.map((finding) => [finding.kind, finding.message]);
+		assert.deepEqual(holeFindings([boardHole(at(6, 4), 2)]), []);
+		assert.deepEqual(
+			holeFindings([boardHole(at(6, 4), 2), boardHole(at(7.5, 4), 2)]),
+			[["clearance", "Two unplated holes overlap"]],
+		);
+		assert.deepEqual(
+			holeFindings([
+				boardHole({ x: outline.x + 14.5, y: outline.y }, 2),
+				boardHole({ x: outline.x + 20, y: outline.y }, 2),
+			]),
+			[
+				["edge", "An unplated hole crosses the board edge"],
+				["edge", "An unplated hole is outside the board outline"],
+			],
+		);
 	});
 
 	test("the autorouter routes around an unplated hole in its way", () => {

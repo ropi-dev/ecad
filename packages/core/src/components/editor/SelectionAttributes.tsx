@@ -870,7 +870,7 @@ function SelectionAttributesPanel({
 			: single &&
 					copperLayers.every((copper) => shapeLayers(single).includes(copper))
 				? [["Layer", "Both copper layers"] as [string, ReactNode]]
-				: hole
+				: shapes.every(isHole)
 					? [["Layer", "Through the board"] as [string, ReactNode]]
 					: [
 							[

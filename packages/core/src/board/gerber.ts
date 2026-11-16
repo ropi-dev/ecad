@@ -346,7 +346,7 @@ const maskLayer: Partial<Record<FootprintLayer, FootprintLayer>> = {
 	"B.Cu": "B.Mask",
 };
 
-/** @return Each side's pad openings in the solder mask, as the mask Gerber draws them. */
+/** @return Each side's pad and unplated hole openings in the solder mask, as the mask Gerber draws them. */
 export function maskOpenings(
 	shapes: readonly EditorShape[],
 	margin = defaultBoardRules.solderMaskMargin,

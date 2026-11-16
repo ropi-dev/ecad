@@ -186,7 +186,19 @@ export function checkBoard(
 			at,
 		});
 	});
-	for (const hole of boardHoles(shapes))
+	const holes = boardHoles(shapes);
+	holes.forEach((hole, index) => {
+		for (const other of holes.slice(index + 1))
+			if (other.shapeId !== hole.shapeId && itemDistance(hole, other) <= 1e-6)
+				findings.push({
+					id: `holes:${hole.index}:${other.index}`,
+					kind: "clearance",
+					message: "Two unplated holes overlap",
+					shapeIds: [hole.shapeId, other.shapeId],
+					at: center(hole.bounds),
+				});
+	});
+	for (const hole of holes)
 		for (const item of items) {
 			if (item.shapeId === hole.shapeId) continue;
 			const zone = item.kind === "zone";
@@ -250,6 +262,23 @@ export function checkBoard(
 					: `${describe(item)} is outside the board outline`,
 				shapeIds: [item.shapeId],
 				at: center(item.bounds),
+			});
+		}
+		for (const hole of holes) {
+			const inside = insideOutline(hole.shape, outline);
+			if (
+				inside &&
+				strokes.every((stroke) => hullDistance(hole.hulls[0], stroke) > 1e-6)
+			)
+				continue;
+			findings.push({
+				id: `edge-hole:${hole.index}`,
+				kind: "edge",
+				message: inside
+					? "An unplated hole crosses the board edge"
+					: "An unplated hole is outside the board outline",
+				shapeIds: [hole.shapeId],
+				at: center(hole.bounds),
 			});
 		}
 	}

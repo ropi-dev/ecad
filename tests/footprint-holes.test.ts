@@ -113,7 +113,7 @@ test("an unplated hole stays through the board, is never hollow and carries no n
 	assert.equal(shapeAt([hole], { x: 0.5, y: 0 }, 0.01)?.id, 1);
 });
 
-test("the display draws an unplated hole as its mask opening with the drill inside", () => {
+test("the display draws an unplated hole as its mask opening with the drill inside and its edge on top", () => {
 	const hole = { ...createHole(1, { x: 0, y: 0 }), hole: { drill: 2.75 } };
 	const [shape] = buildDrawingDisplay([hole], new Set(), [], measure).shapes;
 	assert.equal(shape.appearance, "F.Mask");
@@ -126,7 +126,10 @@ test("the display draws an unplated hole as its mask opening with the drill insi
 	});
 	assert.deepEqual(
 		shape.children?.map((child) => [child.name, child.appearance]),
-		[["unplated hole 1", "pad-hole"]],
+		[
+			["unplated hole 1", "pad-hole"],
+			["unplated hole edge 1", "F.Mask"],
+		],
 	);
 	assert.ok(
 		Math.abs(required(shape.children?.[0]).width * shape.width - 2.75) < 1e-9,
