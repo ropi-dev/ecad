@@ -5,6 +5,7 @@ import "#/performance/initialize.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { ModelReference } from "@ecad/drawing-core/footprint/model.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { ComponentType } from "react";
 import type { BoardFile } from "#/board/format.ts";
@@ -81,11 +82,19 @@ export interface ProjectContextValue {
 		id: string,
 		attributes: Readonly<Record<string, string>>,
 	): Promise<void>;
-	/** Creates a footprint file, empty or with a copy of `from`'s description and shapes. */
+	/** Creates a footprint file, empty or with a copy of `from`'s description, model and shapes. */
 	createFootprint(
 		name: string,
-		from?: { description: string; shapes: readonly EditorShape[] },
+		from?: {
+			description: string;
+			model?: ModelReference;
+			shapes: readonly EditorShape[];
+		},
 	): Promise<string>;
+	saveFootprintModel(
+		id: string,
+		model: ModelReference | undefined,
+	): Promise<void>;
 	createDrawing(name: string): Promise<string>;
 	/** Adds an example design's schematic, circuit and board. Resolves to its drawing's path. */
 	importExample(

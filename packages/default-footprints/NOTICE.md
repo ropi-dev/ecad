@@ -12,8 +12,9 @@ is included in CC-BY-SA-4.0.txt. The electronic-design exception is retained.
 ECAD modifications flip the Y axis, store rotations in radians, draw rounded
 rectangle and oval pads as rectangles (or circles when an oval is round), split
 custom pads into rectangles that share the pad number, approximate arcs with
-lines, draw pin 1 markers as triangles and other polygons as outlines, and omit
-text, 3D models, solder mask openings, and the User.Drawings layer. Separate
+lines, draw pin 1 markers as triangles and other polygons as outlines, link a
+model from ECAD's 3D model library in place of KiCad's model path, and omit
+text, solder mask openings, and the User.Drawings layer. Separate
 paste openings over exposed pads become filled rectangles on the paste layer.
 
 The source footprints are:

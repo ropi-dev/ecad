@@ -224,6 +224,9 @@ export const rules: readonly (readonly [pattern: string, target: Target])[] = [
 	// panel, and copies of them become project footprints.
 	["packages/default-footprints/src/**", ["@editor", "@footprint"]],
 	["packages/default-footprints/scripts/**", ["@editor", "@footprint"]],
+	["packages/default-models/src/**", ["@pcb", "@footprint"]],
+	["packages/default-models/models/**", ["@pcb", "@footprint"]],
+	["packages/default-models/scripts/**", "none"],
 	["packages/cli/src/**", ["@cli"]],
 	["packages/cli/bin/**", ["@cli"]],
 	["packages/cli/scripts/**", ["@cli"]],

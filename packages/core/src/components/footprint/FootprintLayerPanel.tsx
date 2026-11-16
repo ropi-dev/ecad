@@ -3,7 +3,14 @@ import {
 	footprintLayerLabels,
 	footprintLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Sparkles } from "lucide-react";
+import {
+	Box,
+	ChevronDown,
+	ChevronUp,
+	Eye,
+	EyeOff,
+	Sparkles,
+} from "lucide-react";
 import { useCallback, useId, useState } from "react";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
@@ -60,6 +67,7 @@ export function FootprintLayerPanel({
 	onSelect,
 	onToggle,
 	realistic,
+	models,
 }: {
 	active: FootprintLayer;
 	hidden: ReadonlySet<FootprintLayer>;
@@ -68,6 +76,7 @@ export function FootprintLayerPanel({
 	onSelect: (layer: FootprintLayer) => void;
 	onToggle: (layer: FootprintLayer) => void;
 	realistic?: { shown: boolean; onToggle: () => void };
+	models?: { shown: boolean; onToggle: () => void };
 }) {
 	const [collapsed, setCollapsed] = useState(false);
 	const layerColors = useSchematicTheme().appearance;
@@ -98,6 +107,18 @@ export function FootprintLayerPanel({
 						onClick={realistic.onToggle}
 					>
 						<Sparkles size={16} aria-hidden="true" />
+					</button>
+				)}
+				{realistic?.shown && models && (
+					<button
+						type="button"
+						className={`${panelIconButtonClassName} -mr-2 aria-pressed:bg-pressed aria-pressed:text-accent`}
+						aria-label="3D models"
+						aria-pressed={models.shown}
+						title={models.shown ? "Hide the 3D models" : "Show the 3D models"}
+						onClick={models.onToggle}
+					>
+						<Box size={16} aria-hidden="true" />
 					</button>
 				)}
 				<button

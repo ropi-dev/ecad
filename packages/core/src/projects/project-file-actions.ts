@@ -14,6 +14,7 @@ type FileActions = Pick<
 	| "createSymbol"
 	| "saveSymbolAttributes"
 	| "createFootprint"
+	| "saveFootprintModel"
 	| "importExample"
 >;
 
@@ -286,7 +287,11 @@ export function createProjectFileActions(
 					const empty = createEmptyFootprintFile(name, footprints);
 					const footprint = from
 						? footprintFileWithShapes(
-								{ ...empty, description: from.description },
+								{
+									...empty,
+									description: from.description,
+									...(from.model ? { model: { ...from.model } } : {}),
+								},
 								structuredClone([...from.shapes]),
 							)
 						: empty;
@@ -301,6 +306,36 @@ export function createProjectFileActions(
 					if (!path) throw new Error("Unable to open the new footprint file.");
 					return path;
 				});
+			}),
+
+		saveFootprintModel: (id, model) =>
+			enqueue(async () => {
+				if (!state.active || state.generation !== epoch)
+					throw new Error("Open a project before editing a footprint.");
+				const footprints = state.active.footprints ?? [];
+				const current = footprints.find((footprint) => footprint.id === id);
+				if (!current)
+					throw new Error("This footprint is no longer in the project.");
+				const { footprintFileSchema } = await import("#/footprint/format.ts");
+				const { model: _model, ...rest } = current;
+				const file = footprintFileSchema.parse(
+					model ? { ...rest, model: { ...model } } : rest,
+				);
+				await persist(
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					footprints.map((footprint) =>
+						footprint.id === id ? file : footprint,
+					),
+				);
+				const document = state.footprintDocuments.get(id);
+				if (!document) return;
+				const replaced = { ...document, file };
+				state.footprintDocuments.set(id, replaced);
+				if (state.editorFootprint === document)
+					state.setEditorFootprint(replaced);
 			}),
 	});
 }

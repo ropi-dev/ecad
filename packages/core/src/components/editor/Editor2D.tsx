@@ -22,6 +22,7 @@ import {
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import type { ModelReference } from "@ecad/drawing-core/footprint/model.ts";
 import {
 	footprintFitBounds,
 	footprintLayerView,
@@ -107,7 +108,14 @@ import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { boardEdgeBounds, layerSurfaceZ } from "#/footprint/board.ts";
-import { loadBuiltinFootprints } from "#/footprint/library.ts";
+import {
+	loadBuiltinFootprints,
+	useBuiltinFootprints,
+} from "#/footprint/library.ts";
+import {
+	boardModelPlacements,
+	footprintModelPlacements,
+} from "#/footprint/models.ts";
 import { isEditableTarget } from "#/lib/keyboard.ts";
 import { DocumentBar } from "#/projects/DocumentBar.tsx";
 import { EditorDocument } from "#/projects/EditorDocument.tsx";
@@ -141,6 +149,7 @@ const footprintPixelsPerMmAt100 = 100;
 export type EditorCanvasProps = Editor2DProps & {
 	symbolName?: string;
 	footprintName?: string;
+	footprintModel?: ModelReference;
 	board?: BoardDocument;
 	drawingName?: string;
 	headerControls?: ReactNode;
@@ -166,6 +175,7 @@ function EditorCanvas({
 	enableMcp = true,
 	symbolName,
 	footprintName,
+	footprintModel,
 	board,
 	drawingName,
 	headerControls,
@@ -194,6 +204,7 @@ function EditorCanvas({
 	const [boardBuildError, setBoardBuildError] = useState("");
 	const [boardMount, setBoardMount] = useState(0);
 	const [realisticBoard, setRealisticBoard] = useState(false);
+	const [modelsShown, setModelsShown] = useState(true);
 	const [ownedStore] = useState(() => createDrawingStore());
 	const project = useProjectSelection(
 		({
@@ -380,21 +391,45 @@ function EditorCanvas({
 		],
 	);
 	const shapes = editor.draft ?? pageShapes;
-	const boardShapes = useMemo(() => {
+	const liveShapes = useMemo(() => {
 		const draft = editor.draft;
-		let shapes: EditorShape[];
-		if (boardView === "closed" || !draft)
-			shapes = fitTextShapes(drawing.shapes);
-		else {
-			const drafted = new Map(draft.map((shape) => [shape.id, shape]));
-			const stored = new Set(drawing.shapes.map((shape) => shape.id));
-			shapes = fitTextShapes([
-				...drawing.shapes.map((shape) => drafted.get(shape.id) ?? shape),
-				...draft.filter((shape) => !stored.has(shape.id)),
-			]);
-		}
-		return isBoard ? flatBoard(shapes) : shapes;
-	}, [editor.draft, boardView, drawing.shapes, isBoard]);
+		if (boardView === "closed" || !draft) return fitTextShapes(drawing.shapes);
+		const drafted = new Map(draft.map((shape) => [shape.id, shape]));
+		const stored = new Set(drawing.shapes.map((shape) => shape.id));
+		return fitTextShapes([
+			...drawing.shapes.map((shape) => drafted.get(shape.id) ?? shape),
+			...draft.filter((shape) => !stored.has(shape.id)),
+		]);
+	}, [editor.draft, boardView, drawing.shapes]);
+	const boardShapes = useMemo(
+		() => (isBoard ? flatBoard(liveShapes) : liveShapes),
+		[liveShapes, isBoard],
+	);
+	const modelsWanted = isFootprint && realisticBoard && modelsShown;
+	const { library: builtinFootprints } = useBuiltinFootprints(
+		isBoard && modelsWanted,
+	);
+	const projectFootprints = project?.footprints;
+	const modelPlacements = useMemo(
+		() =>
+			!modelsWanted
+				? []
+				: isBoard
+					? boardModelPlacements(
+							liveShapes,
+							builtinFootprints,
+							projectFootprints ?? [],
+						)
+					: footprintModelPlacements(footprintModel),
+		[
+			modelsWanted,
+			isBoard,
+			liveShapes,
+			builtinFootprints,
+			projectFootprints,
+			footprintModel,
+		],
+	);
 	useLayoutEffect(() => {
 		if (!isFootprint) return;
 		cameraView.setSurfaces((onLayers, eyeZ) =>
@@ -680,6 +715,9 @@ function EditorCanvas({
 		setBoardView("closed");
 		setBoardMount((count) => count + 1);
 	};
+	const reportModelError = useCallback((message: string) => {
+		toastManager.add({ type: "error", title: message });
+	}, []);
 	const toggleLayer = (layer: FootprintLayer) => {
 		if (!layers.hidden.has(layer)) {
 			finishDrag(true);
@@ -1053,6 +1091,8 @@ function EditorCanvas({
 							flat={boardView !== "open"}
 							onFlatChange={showBoardFlat}
 							realistic={realisticBoard}
+							models={modelPlacements}
+							onModelError={reportModelError}
 							orbitGesture="alt-shift"
 							updateFlatScene={updateScene}
 							cameraState={viewport.cameraState}
@@ -1137,6 +1177,10 @@ function EditorCanvas({
 							realistic={{
 								shown: realisticBoard,
 								onToggle: () => setRealisticBoard((shown) => !shown),
+							}}
+							models={{
+								shown: modelsShown,
+								onToggle: () => setModelsShown((shown) => !shown),
 							}}
 						/>
 					)}

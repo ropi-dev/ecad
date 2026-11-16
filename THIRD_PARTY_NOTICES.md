@@ -16,6 +16,10 @@ The exception permits use in proprietary electronic designs. It does not exempt 
 
 `packages/default-footprints` includes adaptations of the KiCad library contributors' footprints under the same license and exception. The source commit, the footprints taken and the modifications are recorded in [NOTICE.md](packages/default-footprints/NOTICE.md). Its [LICENSE.md](packages/default-footprints/LICENSE.md) and [CC-BY-SA-4.0.txt](packages/default-footprints/CC-BY-SA-4.0.txt) match the symbol collection's, so distributions ship them once and add the footprint NOTICE.md.
 
+## 3D models
+
+`packages/default-models` includes 3D models by the KiCad library contributors, converted to binary glTF, under CC BY-SA 4.0 with the same exception. Six models come from Raspberry Pi's RP2350A minimal board under Raspberry Pi's MIT license, and five are ECAD's own. The source commit, archive checksum, the models taken and the modifications are recorded in [NOTICE.md](packages/default-models/NOTICE.md), which carries the Raspberry Pi notice. Its [LICENSE.md](packages/default-models/LICENSE.md) and [CC-BY-SA-4.0.txt](packages/default-models/CC-BY-SA-4.0.txt) match the symbol collection's, so distributions ship them once and add the model NOTICE.md.
+
 ## Font
 
 The interface is set in Inter, by The Inter Project Authors, from the `@fontsource-variable/inter` package. It remains under the SIL Open Font License 1.1. Builds copy its license into `THIRD_PARTY_NOTICES.txt` with the other dependency notices.

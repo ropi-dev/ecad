@@ -10,6 +10,7 @@ import {
 } from "react";
 import { boardInterior } from "#/board/fill.ts";
 import { maskOpenings } from "#/board/gerber.ts";
+import { useFootprintModels } from "#/components/footprint/useFootprintModels.ts";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";
 import { boundsPolygon } from "#/engine/realistic-board.ts";
@@ -26,6 +27,7 @@ import {
 	type BoardObject,
 	createBoardObjects,
 } from "#/footprint/board-objects.ts";
+import type { ModelPlacement } from "#/footprint/models.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
 
@@ -40,6 +42,8 @@ export function FootprintBoardView({
 	onFlatChange,
 	onBuildError,
 	realistic = false,
+	models = [],
+	onModelError,
 	...viewer
 }: Pick<
 	Viewer2DProps,
@@ -66,6 +70,8 @@ export function FootprintBoardView({
 		onFlatChange: (flat: boolean) => void;
 		onBuildError: (message: string) => void;
 		realistic?: boolean;
+		models?: readonly ModelPlacement[];
+		onModelError?: (message: string) => void;
 	}) {
 	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
 	useEffect(() => () => builder.dispose(), [builder]);
@@ -128,6 +134,11 @@ export function FootprintBoardView({
 			},
 		[outline, shapes],
 	);
+	const modelObjects = useFootprintModels(
+		models,
+		realistic && models.length > 0,
+		onModelError,
+	);
 	const shownFlat = useRef(true);
 	useEffect(() => {
 		if (flat && shownFlat.current) onFlatChange(true);
@@ -146,6 +157,7 @@ export function FootprintBoardView({
 			surfaceZ={BOARD_SURFACE_Z}
 			realistic={realistic}
 			boardShape={boardShape}
+			models={modelObjects}
 			placeLayers={placeFootprintBoard}
 			keepView
 			projection="orthographic"

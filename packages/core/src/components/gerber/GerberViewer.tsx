@@ -90,6 +90,7 @@ export function GerberViewer({
 	controls,
 	realistic: controlledRealistic,
 	boardShape,
+	models,
 	...props
 }: Omit<
 	Viewer2DProps,
@@ -113,6 +114,7 @@ export function GerberViewer({
 	realistic?: boolean;
 	/** The board's shape for the realistic view; the profile layer's bounds otherwise. */
 	boardShape?: BoardShape;
+	models?: { readonly object: Object3D };
 }) {
 	const [ownFlat, setOwnFlat] = useState(true);
 	const flat = controlledFlat ?? ownFlat;
@@ -217,6 +219,7 @@ export function GerberViewer({
 		return shape ? buildRealistic(shape) : undefined;
 	}, [realistic, buildRealistic, outline, profileKey]);
 	useEffect(() => () => realisticBoard?.dispose(), [realisticBoard]);
+	const shownModels = realistic ? models : undefined;
 	const film = useViewerTheme();
 	const styleLayers = useCallback(
 		(meshes: readonly Object3D[]) => {
@@ -293,7 +296,10 @@ export function GerberViewer({
 			if (layersShown) styleLayers(layers);
 			else for (const mesh of layers) mesh.visible = false;
 			for (const child of group.children.slice(geometryScene.length))
-				if (child.userData.realisticBoard && child !== realisticBoard?.object)
+				if (
+					(child.userData.realisticBoard && child !== realisticBoard?.object) ||
+					(child.userData.footprintModels && child !== shownModels?.object)
+				)
 					group.remove(child);
 			updateFlatScene?.(group);
 			for (const flatObject of group.children.slice(geometryScene.length))
@@ -324,6 +330,11 @@ export function GerberViewer({
 						cutHoles(part.material, IDENTITY, holes);
 				}
 			}
+			if (shownModels) {
+				const models = shownModels.object;
+				if (models.parent !== group) group.add(models);
+				models.visible = layersShown;
+			}
 			group.position.set(0, 0, 0);
 			if (surfaceZ !== undefined) {
 				group.position.z = -surfaceZ;
@@ -345,6 +356,7 @@ export function GerberViewer({
 			updateFlatScene,
 			surfaceZ,
 			realisticBoard,
+			shownModels,
 			openingMasks,
 			openingSources,
 			holes,

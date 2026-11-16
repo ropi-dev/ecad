@@ -13,6 +13,7 @@ import type {
 } from "#/components/editor/Editor2D.tsx";
 import { SymbolAttributesButton } from "#/components/editor/SymbolAttributesDialog.tsx";
 import { useDrawingFonts } from "#/components/editor/useDrawingFonts.ts";
+import { FootprintModelField } from "#/components/footprint/FootprintModelField.tsx";
 import { quietFocus } from "#/components/viewer/ToolbarGroup.tsx";
 import { EditorViewSwitch } from "#/projects/EditorViewSwitch.tsx";
 import {
@@ -208,9 +209,17 @@ export function EditorDocument({
 									actions.saveSymbolAttributes(symbol.file.id, attributes)
 								}
 							/>
+						) : footprint && actions ? (
+							<FootprintModelField
+								model={footprint.file.model}
+								onChange={(model) =>
+									actions.saveFootprintModel(footprint.file.id, model)
+								}
+							/>
 						) : undefined
 					}
 					footprintName={footprint?.file.name}
+					footprintModel={footprint?.file.model}
 					documentSelection={
 						symbol
 							? `symbol:${symbol.file.id}`

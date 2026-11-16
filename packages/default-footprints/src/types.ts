@@ -99,6 +99,7 @@ export interface DefaultFootprintFile {
 	id: string;
 	name: string;
 	description: string;
+	model?: { library: "builtin"; id: string };
 	shapes: EditorShape[];
 }
 

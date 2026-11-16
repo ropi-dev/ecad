@@ -1,6 +1,7 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import { catalog } from "./catalog.ts";
+import { footprintModels } from "./models.ts";
 import type { DefaultFootprint, SourceFootprint, SourceItem } from "./types.ts";
 
 export type {
@@ -229,6 +230,7 @@ function convert(item: SourceItem): ShapeWithoutId[] {
 }
 
 function generate(source: SourceFootprint): DefaultFootprint {
+	const model = footprintModels[source.id];
 	return {
 		category: source.category,
 		file: {
@@ -238,6 +240,7 @@ function generate(source: SourceFootprint): DefaultFootprint {
 			id: source.id,
 			name: source.name,
 			description: source.description,
+			...(model ? { model: { library: "builtin", id: model } } : {}),
 			shapes: source.items
 				.flatMap(convert)
 				.map((shape, index) => ({ ...shape, id: index + 1 }) as EditorShape),
