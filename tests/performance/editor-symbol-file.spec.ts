@@ -40,23 +40,17 @@ test(
 		await expect(
 			(await openProjectFiles(page)).getByLabel("Add symbol files"),
 		).toBeEnabled();
-		await (await openProjectFiles(page))
-			.getByLabel("Add symbol files")
-			.setInputFiles({
-				name: "package.ecadsym",
-				mimeType: "application/json",
-				buffer: Buffer.from(JSON.stringify(symbol)),
-			});
 		const coldOpenMs = await interaction(
 			page,
 			"editor.open-symbol-cold",
 			async () => {
 				await (await openProjectFiles(page))
-					.getByRole("link", {
-						name: "Open editable-package.ecadsym",
-						exact: true,
-					})
-					.click();
+					.getByLabel("Add symbol files")
+					.setInputFiles({
+						name: "package.ecadsym",
+						mimeType: "application/json",
+						buffer: Buffer.from(JSON.stringify(symbol)),
+					});
 				await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 					"Symbol editor · Editable package",
 				);

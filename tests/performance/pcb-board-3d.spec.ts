@@ -15,7 +15,7 @@ import {
 
 setupAppTests();
 
-const tactileSwitch = { x: -3.25, y: -11.8 };
+const flashChip = { x: 5.07, y: 13.5 };
 
 test(
 	"pcb-board-3d",
@@ -32,11 +32,7 @@ test(
 		await editorReady(page, "PCB editor · RP2350A");
 		const routed = page.getByText("All connections routed");
 		await expect(routed).toBeVisible();
-		const body = await screenPointOfMillimetres(
-			page,
-			tactileSwitch.x,
-			tactileSwitch.y,
-		);
+		const body = await screenPointOfMillimetres(page, flashChip.x, flashChip.y);
 		await page.mouse.click(body.x, body.y);
 		const flat = page.getByRole("button", { name: "2D", exact: true });
 		const area = page.locator("[data-tool][data-view]");
