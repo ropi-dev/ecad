@@ -186,15 +186,7 @@ export function pointHullDistance(hull: Hull, point: Point): number {
 	for (let index = 0; index < count; index++) {
 		const a = points[index];
 		const b = points.length === 1 ? a : points[(index + 1) % points.length];
-		distance = Math.min(
-			distance,
-			Math.min(
-				pointSegmentDistance(a, point, point),
-				pointSegmentDistance(b, point, point),
-				pointSegmentDistance(point, a, b),
-				pointSegmentDistance(point, a, b),
-			),
-		);
+		distance = Math.min(distance, pointSegmentDistance(point, a, b));
 		if (distance === 0) return -hull.radius;
 	}
 	return distance - hull.radius;
