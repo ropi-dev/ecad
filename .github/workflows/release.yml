@@ -170,3 +170,4 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/apt.yml
+    secrets: inherit
