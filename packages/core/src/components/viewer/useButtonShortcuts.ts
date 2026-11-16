@@ -156,7 +156,9 @@ function listen() {
 				);
 				const scope = dialogs.at(-1) ?? document;
 				const buttons = [
-					...scope.querySelectorAll<HTMLButtonElement>("button"),
+					...scope.querySelectorAll<HTMLButtonElement>(
+						'button:not([data-shortcut-scope="none"] *)',
+					),
 				].filter(visible);
 				for (const button of keys.keys()) {
 					if (!button.isConnected) keys.delete(button);

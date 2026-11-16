@@ -10,7 +10,7 @@ import {
 	Trash2,
 	Undo2,
 } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, memo, Suspense } from "react";
 import { ErcButton } from "#/components/editor/ErcButton.tsx";
 import {
 	ToolbarDock,
@@ -29,7 +29,7 @@ const CircuitComponentPicker = lazy(() =>
 
 export type CircuitTool = "select" | "connect" | "pan" | "component" | "net";
 
-export function CircuitToolbar({
+export const CircuitToolbar = memo(function CircuitToolbar({
 	tool,
 	onToolChange,
 	canDelete,
@@ -163,4 +163,4 @@ export function CircuitToolbar({
 			</ZoomControls>
 		</ToolbarDock>
 	);
-}
+});

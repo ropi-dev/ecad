@@ -311,7 +311,7 @@ for (const tool of ["component", "net"] as const) {
 		const gridStep =
 			Number.parseFloat(
 				await page
-					.locator(".circuit-canvas")
+					.locator(".circuit-grid")
 					.evaluate((element) => getComputedStyle(element).backgroundSize),
 			) / scale;
 		const moved = await previewAt();
@@ -406,6 +406,75 @@ test("net connections use a lighter highlight than the selected connection", asy
 	await expect(
 		page.locator(".circuit-edge.is-highlighted, .circuit-edge.is-selected"),
 	).toHaveCount(0);
+});
+
+test("Ctrl hints skip graph buttons, and a Ctrl wheel zoom does not rebuild them", async ({
+	page,
+}) => {
+	await createCircuit(page);
+	await placeComponent(page, "Resistor", { x: 280, y: 200 });
+	await placeComponent(page, "Resistor", { x: 620, y: 350 });
+	await dragPins(page, "R1.1", "R2.1");
+	await page.mouse.up();
+	const hints = '[data-slot="button-shortcut"]';
+	await page.keyboard.down("Control");
+	await expect(page.locator(`${hints}[title="Untangle"]`)).toBeVisible();
+	const { graphButtons, hinted } = await page.evaluate((hints) => {
+		const labels = [
+			...document.querySelectorAll(
+				'[aria-label="Circuit connections graph"] button',
+			),
+		].map((button) => button.getAttribute("aria-label"));
+		const titles = new Set(
+			[...document.querySelectorAll<HTMLElement>(hints)].map(
+				(hint) => hint.title,
+			),
+		);
+		return {
+			graphButtons: labels.length,
+			hinted: labels.filter((label) => label && titles.has(label)),
+		};
+	}, hints);
+	expect(graphButtons).toBeGreaterThan(8);
+	expect(hinted).toEqual([]);
+	const rebuilds = await page.evaluate(
+		() =>
+			new Promise<number>((resolve) => {
+				const graph = document.querySelector(
+					'[aria-label="Circuit connections graph"]',
+				);
+				const overlay = document.querySelector(".button-shortcuts");
+				if (!graph || !overlay) throw new Error("Expected the circuit graph");
+				let rebuilds = 0;
+				const observer = new MutationObserver(() => rebuilds++);
+				observer.observe(overlay, { childList: true });
+				let frame = 0;
+				const tick = () => {
+					if (frame === 40) {
+						if (observer.takeRecords().length) rebuilds++;
+						observer.disconnect();
+						resolve(rebuilds);
+						return;
+					}
+					graph.dispatchEvent(
+						new WheelEvent("wheel", {
+							deltaY: frame < 20 ? -10 : 10,
+							ctrlKey: true,
+							clientX: innerWidth / 2,
+							clientY: innerHeight / 2,
+							bubbles: true,
+							cancelable: true,
+						}),
+					);
+					frame++;
+					requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			}),
+	);
+	expect(rebuilds).toBeLessThanOrEqual(1);
+	await expect(page.locator(`${hints}[title="Untangle"]`)).toBeVisible();
+	await page.keyboard.up("Control");
 });
 
 test("Ctrl+Y redoes circuit edits, and history keys typed into inputs stay with the input", async ({

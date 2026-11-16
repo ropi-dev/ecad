@@ -10,6 +10,7 @@ import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { Workflow } from "lucide-react";
 import {
 	lazy,
+	memo,
 	type MouseEvent as ReactMouseEvent,
 	Suspense,
 	useEffect,
@@ -42,8 +43,10 @@ import { CircuitContextMenu } from "#/components/circuit/CircuitContextMenu.tsx"
 import { CircuitGraphLayer } from "#/components/circuit/CircuitGraphLayer.tsx";
 import {
 	type CircuitGraph,
+	type CircuitGraphActions,
 	type CircuitSelection as Selection,
 	usePruneToSnapshot,
+	useStableHandlers,
 } from "#/components/circuit/circuitEditorState.ts";
 import {
 	type CircuitMenu,
@@ -76,6 +79,25 @@ const ErcPanel = lazy(() =>
 );
 
 const viewStates = new WeakMap<CircuitDocument["store"], CircuitView>();
+
+const CircuitDocumentBar = memo(function CircuitDocumentBar({
+	name,
+	id,
+}: {
+	name: string;
+	id: string;
+}) {
+	return (
+		<DocumentBar
+			icon={Workflow}
+			title={name}
+			selection={`circuit:${id}`}
+			view="circuit"
+		>
+			<EditorViewSwitch view="circuit" />
+		</DocumentBar>
+	);
+});
 
 export function CircuitEditor({ document }: { document: CircuitDocument }) {
 	const project = useProjectSelection(({ dirty, error, libraryErrors }) => ({
@@ -406,6 +428,57 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			placeAt,
 			run,
 		});
+	const graphActions = useStableHandlers<CircuitGraphActions>({
+		select,
+		edit,
+		finishEditing,
+		openMenu,
+		selectPin,
+		selectNet,
+		selectConnection,
+		startDrag,
+		startConnectionDrag,
+		run,
+		snap,
+	});
+	const toolbarHandlers = useStableHandlers({
+		onErc: () => setErcOpen((open) => !open),
+		onToolChange: (next: CircuitTool) => {
+			cancelConnectionDrag();
+			setEditing(null);
+			setTool(next);
+			setPlacement(null);
+			setPlacementPoint(next === "net" ? placementCenter() : null);
+			setPendingPin(null);
+		},
+		onDelete: () => deleteSelection(),
+		onZoom: zoom,
+		onFit: () => fit(),
+		onUntangle: () => {
+			cancelConnectionDrag();
+			setDrag(null);
+			setPendingPin(null);
+			if (
+				run({
+					type: "move",
+					positions: untangleCircuitGraph({
+						circuit,
+						graph: snapshot.graph,
+					}),
+				})
+			)
+				fit(buildCircuitGraph(store.getSnapshot()), false);
+		},
+		onChooseComponent: (definition: SymbolDefinition) => {
+			setEditing(null);
+			setPlacement(definition);
+			setPlacementPoint(placementCenter(definition));
+			setTool("component");
+			setPendingPin(null);
+		},
+		onUndo: () => store.undo(),
+		onRedo: () => store.redo(),
+	});
 	useLayoutEffect(() => {
 		if (fittedStore.current === store) return;
 		fittedStore.current = store;
@@ -484,14 +557,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			}}
 		>
 			<h1 className="sr-only">{circuit.name}</h1>
-			<DocumentBar
-				icon={Workflow}
-				title={circuit.name}
-				selection={`circuit:${circuit.id}`}
-				view="circuit"
-			>
-				<EditorViewSwitch view="circuit" />
-			</DocumentBar>
+			<CircuitDocumentBar name={circuit.name} id={circuit.id} />
 			{circuitMessages.length > 0 && (
 				<div
 					role="alert"
@@ -506,13 +572,19 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			<div className="circuit-workspace">
 				<div
 					className={`circuit-canvas ${collapseMotion.active ? "is-collapsing" : ""} ${tool === "pan" ? "is-panning" : tool === "component" || tool === "net" ? "is-placing" : ""}`}
-					style={gridStyle}
 				>
+					<div
+						className="circuit-grid"
+						data-shortcut-mutations="ignore"
+						style={gridStyle}
+					/>
 					<svg
 						ref={svg}
 						role="application"
 						tabIndex={-1}
 						aria-label="Circuit connections graph"
+						data-shortcut-scope="none"
+						data-shortcut-mutations="ignore"
 						viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
 						{...svgHandlers}
 					>
@@ -533,19 +605,7 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 							placement={placement}
 							placementPoint={placementPoint}
 							placementPinCount={placementPinCount}
-							actions={{
-								select,
-								edit,
-								finishEditing,
-								openMenu,
-								selectPin,
-								selectNet,
-								selectConnection,
-								startDrag,
-								startConnectionDrag,
-								run,
-								snap,
-							}}
+							actions={graphActions}
 						/>
 					</svg>
 					{menu && (
@@ -596,47 +656,12 @@ export function CircuitEditor({ document }: { document: CircuitDocument }) {
 			)}
 			<CircuitToolbar
 				ercOpen={ercOpen}
-				onErc={() => setErcOpen((open) => !open)}
 				tool={tool}
-				onToolChange={(next) => {
-					cancelConnectionDrag();
-					setEditing(null);
-					setTool(next);
-					setPlacement(null);
-					setPlacementPoint(next === "net" ? placementCenter() : null);
-					setPendingPin(null);
-				}}
 				canUndo={snapshot.canUndo}
 				canRedo={snapshot.canRedo}
 				canDelete={Boolean(removable)}
-				onDelete={() => deleteSelection()}
 				zoomLevel={scale}
-				onZoom={zoom}
-				onFit={() => fit()}
-				onUntangle={() => {
-					cancelConnectionDrag();
-					setDrag(null);
-					setPendingPin(null);
-					if (
-						run({
-							type: "move",
-							positions: untangleCircuitGraph({
-								circuit,
-								graph: snapshot.graph,
-							}),
-						})
-					)
-						fit(buildCircuitGraph(store.getSnapshot()), false);
-				}}
-				onChooseComponent={(definition) => {
-					setEditing(null);
-					setPlacement(definition);
-					setPlacementPoint(placementCenter(definition));
-					setTool("component");
-					setPendingPin(null);
-				}}
-				onUndo={() => store.undo()}
-				onRedo={() => store.redo()}
+				{...toolbarHandlers}
 			/>
 			{connecting && (
 				<footer className="circuit-status">

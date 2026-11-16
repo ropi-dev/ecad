@@ -1,12 +1,9 @@
 import { netNodeBox } from "@ecad/drawing-core/circuit/graph.ts";
+import type { CircuitNet } from "@ecad/drawing-core/circuit/model.ts";
+import { memo } from "react";
 import { CircuitInlineFields } from "#/components/circuit/CircuitInlineFields.tsx";
 import type { CircuitTool } from "#/components/circuit/CircuitToolbar.tsx";
-import type {
-	CircuitGraph,
-	CircuitGraphActions,
-	CircuitSelection,
-	ConnectionDrag,
-} from "#/components/circuit/circuitEditorState.ts";
+import type { CircuitGraphActions } from "#/components/circuit/circuitEditorState.ts";
 import { GraphButton } from "#/components/circuit/GraphButton.tsx";
 import { arrowDelta } from "#/lib/keyboard.ts";
 
@@ -14,30 +11,35 @@ import { arrowDelta } from "#/lib/keyboard.ts";
  * One net node on the circuit graph, with inline editing of the net name and
  * its aliases.
  */
-export function CircuitNetNode({
-	node: { net, x, y, label },
+export const CircuitNetNode = memo(function CircuitNetNode({
+	net,
+	x,
+	y,
+	label,
 	tool,
 	gridStep,
-	selectedNetId,
-	editing,
-	connectionDrag,
+	selected,
+	isEditing,
+	isTarget,
 	actions: { edit, finishEditing, openMenu, selectNet, startDrag, run, snap },
 }: {
-	node: CircuitGraph["nets"][number];
+	net: CircuitNet;
+	x: number;
+	y: number;
+	label: string;
 	tool: CircuitTool;
 	gridStep: number;
-	selectedNetId: string | undefined;
-	editing: CircuitSelection;
-	connectionDrag: ConnectionDrag | null;
+	selected: boolean;
+	isEditing: boolean;
+	isTarget: boolean;
 	actions: CircuitGraphActions;
 }) {
-	const isEditing = editing?.kind === "net" && editing.id === net.id;
 	return (
 		<g>
 			<GraphButton
 				{...netNodeBox(label)}
 				key={net.id}
-				className={`circuit-net ${selectedNetId === net.id ? "is-selected" : ""} ${connectionDrag?.active && connectionDrag.target?.kind === "net" && connectionDrag.target.id === net.id ? "is-target" : ""}`}
+				className={`circuit-net ${selected ? "is-selected" : ""} ${isTarget ? "is-target" : ""}`}
 				aria-label={`Net ${label}`}
 				data-circuit-net-id={net.id}
 				onDoubleClick={() => {
@@ -121,4 +123,4 @@ export function CircuitNetNode({
 			)}
 		</g>
 	);
-}
+});
