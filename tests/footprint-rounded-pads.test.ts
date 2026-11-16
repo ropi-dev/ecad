@@ -209,7 +209,7 @@ function gerberCoverage(
 
 test("Gerber copper, paste and mask draw the rounded outline", () => {
 	const turned = { ...roundedPad(), id: 2, x: 5, rotation: Math.PI / 2 };
-	const files = exportFabrication("pad", [roundedPad(), turned], []);
+	const files = exportFabrication("pad", [roundedPad(), turned], [], 0.05);
 	const layer = (suffix: string) => gerberCoverage(files, suffix);
 	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp"]) {
 		const copper = layer(suffix);
@@ -230,6 +230,7 @@ test("Gerber copper, paste and mask draw the rounded outline", () => {
 			{ ...roundedPad(0.5), id: 3, x: 10, rotation: Math.PI / 4 },
 		],
 		[],
+		0.05,
 	);
 	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp", "F_Mask.gts"]) {
 		const drawn = gerberCoverage(ends, suffix);
@@ -262,7 +263,7 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 		{ ...roundedPad(0.5), id: 5, x: 20, rotation: Math.PI / 4 },
 		{ ...roundedPad(0.5), id: 6, x: 25, width: 1 },
 	];
-	const files = exportFabrication("flash", pads, []);
+	const files = exportFabrication("flash", pads, [], 0.05);
 	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp", "F_Mask.gts"]) {
 		const { content } = required(
 			files.find(({ name }) => name.endsWith(suffix)),
@@ -301,6 +302,7 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 		"through",
 		[{ ...through, pad: { ...through.pad, drill: 0.8, cornerRatio: 0.25 } }],
 		[],
+		0.05,
 	);
 	for (const suffix of ["F_Cu.gtl", "B_Cu.gbl", "F_Mask.gts", "B_Mask.gbs"]) {
 		const { content } = required(
@@ -326,8 +328,30 @@ test("rounded pads are flashed on copper, paste and mask, never drawn as regions
 		"sliver",
 		[roundedPad(0.4999999)],
 		[],
+		0.05,
 	);
 	assert.match(nearlyRound.content, /%ADD\d+O,2X1\*%/);
+});
+
+test("a negative mask margin shrinks a rounded pad's corners, then its sides", () => {
+	const mask = (margin: number, pad: PadShape = roundedPad()) =>
+		required(
+			exportFabrication("shrunk", [pad], [], margin).find(({ name }) =>
+				name.endsWith("F_Mask.gts"),
+			),
+		).content;
+	assert.match(mask(-0.1), /%ADD\d+RoundRect,0\.15X-0\.75X-0\.25X/);
+	assert.match(mask(-0.3), /%ADD\d+R,1\.4X0\.4\*%/);
+	assert.match(mask(-0.2, roundedPad(0.5)), /%ADD\d+O,1\.6X0\.6\*%/);
+	for (const covered of [
+		mask(-0.6),
+		mask(-0.5, roundedPad(0.5)),
+		mask(-0.5, { ...roundedPad(0.5), width: 1 }),
+	])
+		assert.equal(covered.includes("D03"), false);
+	const openings = maskOpenings([roundedPad()], -0.1).top;
+	assert.equal(containsPoint([openings], { x: 0.89, y: 0 }), true);
+	assert.equal(containsPoint([openings], { x: 0.88, y: 0.38 }), false);
 });
 
 test("the flat view and the board view draw the corners", () => {
@@ -405,7 +429,7 @@ test("a footprint file keeps the corner ratio, and a flipped footprint keeps its
 		pointHullDistance(hull, { x: 10 - squareCorner.x, y: squareCorner.y }) > 0,
 	);
 	const back = gerberCoverage(
-		exportFabrication("back", [flipped], []),
+		exportFabrication("back", [flipped], [], 0.05),
 		"B_Cu.gbl",
 	);
 	assert.equal(
