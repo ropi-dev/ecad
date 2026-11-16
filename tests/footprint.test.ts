@@ -568,7 +568,7 @@ test("focusing a layer in 3D keeps its text, pad numbers and, for copper, the dr
 	assert.ok(!boardObjectOnLayer(DRILL_LAYER_ID, "F.SilkS"));
 	assert.ok(!boardObjectOnLayer(BOARD_LAYER_ID, "F.Cu"));
 	assert.ok(!boardObjectOnLayer("footprint:B.Cu", "F.Cu"));
-	assert.ok(boardObjectOnLayer("board-edge", "Edge.Cuts"));
+	assert.ok(boardObjectOnLayer(BOARD_LAYER_ID, "Edge.Cuts"));
 });
 
 test("a filled footprint graphic is solid in its layer's colour, and a rotated pad keeps its number level", () => {

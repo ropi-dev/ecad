@@ -41,7 +41,6 @@ const boardEdgeWidth = 0.1;
 const drawingGap = 0.02;
 export const DRILL_LAYER_ID = "footprint:drill";
 export const BOARD_LAYER_ID = "footprint:board";
-const BOARD_EDGE_ID = "board-edge";
 
 const stackLayers: readonly (readonly [FootprintLayer, string])[] = [
 	["F.Cu", "Copper,L1,Top"],
@@ -499,7 +498,7 @@ export function planFootprintBoard(
 			? outline.flatMap(edgeObjects)
 			: [
 					{
-						id: BOARD_EDGE_ID,
+						id: "board-edge",
 						geometry: rectangleGeometry(edge, boardEdgeWidth, false),
 						bounds: edge,
 						polarity: "dark",
@@ -671,7 +670,7 @@ export function createBoardBuilder<Layer extends { dispose(): void }>(
 
 export function boardObjectOnLayer(id: string, layer: FootprintLayer) {
 	if (id === DRILL_LAYER_ID) return isCopperLayer(layer);
-	if (id === BOARD_EDGE_ID) return layer === "Edge.Cuts";
+	if (id === BOARD_LAYER_ID) return layer === "Edge.Cuts";
 	return layersByObjectId.get(id) === layer;
 }
 
