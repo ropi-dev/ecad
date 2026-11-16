@@ -386,9 +386,9 @@ interface FabricationFile {
 /**
  * Gerber X2 files for copper, mask, paste, silkscreen and the outline, an
  * Excellon drill file for plated holes, and one for unplated holes when the
- * board has any. Zone fills come first on their
- * copper layer, with their holes cut, so later copper draws over them.
- * Mask openings reach `maskMargin` past each pad. Text is not exported.
+ * board has any. Zone fills come first on their copper layer, with their
+ * holes cut, so later copper draws over them. Mask openings reach
+ * `maskMargin` past each pad and unplated hole. Text is not exported.
  */
 export function exportFabrication(
 	name: string,
@@ -422,8 +422,10 @@ export function exportFabrication(
 			const layers = shapeLayers(shape);
 			if (isHole(shape)) {
 				if (layers.includes(target.layer))
-					for (const hull of shapeHulls(shape))
-						writer.hull(hull, maskExpansion);
+					writer.flashCircle(
+						{ x: shape.x, y: shape.y },
+						shape.width + 2 * maskExpansion,
+					);
 				continue;
 			}
 			const copper = shapeLayer(shape);
