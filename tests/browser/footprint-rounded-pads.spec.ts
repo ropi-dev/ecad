@@ -9,8 +9,9 @@ import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
 const padState = async (page: Page) =>
-	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}")
-		.editorShapes[0];
+	JSON.parse(
+		(await page.locator("#project-document").textContent()) ?? "{}",
+	).editorShapes.find((shape: { pad?: unknown }) => shape.pad);
 
 test("a rectangular pad's corner radius is edited in Attributes and scales with the pad", async ({
 	page,

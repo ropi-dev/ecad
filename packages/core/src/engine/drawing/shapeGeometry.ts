@@ -92,7 +92,6 @@ export function mergeShapeGeometries(
 	);
 }
 
-/** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 const cornerSegments = 12;
 
 function roundedRectangle(
@@ -102,8 +101,8 @@ function roundedRectangle(
 	offset: number,
 ): Vector2[] {
 	const radius = Math.max(0, corner + offset);
-	const x = width / 2 - corner;
-	const y = height / 2 - corner;
+	const x = width / 2 - corner + Math.min(0, corner + offset);
+	const y = height / 2 - corner + Math.min(0, corner + offset);
 	const centers = [
 		[x, -y],
 		[x, y],
@@ -125,6 +124,7 @@ function roundedRectangle(
 	);
 }
 
+/** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
 		const drawn = shape.children.filter((child) => child.kind !== "text");

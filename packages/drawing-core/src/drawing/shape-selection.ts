@@ -19,6 +19,7 @@ import {
 	symbolTextShapes,
 } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import { padCornerRadius } from "#/footprint/shapes.ts";
 
 export function selectionSize(shape: EditorShape) {
 	if (shape.kind === "pin" && (shape.length ?? 0) > 0) {
@@ -277,6 +278,14 @@ export function hitShape(
 			x <= (width / 2) * (0.5 - y / height)
 		);
 	}
+	const corner = padCornerRadius(shape);
+	if (corner > 0)
+		return (
+			Math.hypot(
+				Math.max(0, x - width / 2 + corner),
+				Math.max(0, Math.abs(y) - height / 2 + corner),
+			) <= corner
+		);
 	return (
 		x <= width / 2 &&
 		Math.abs(y) <=

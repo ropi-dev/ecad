@@ -12,6 +12,7 @@ import {
 import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import { defaultBoardRules } from "@ecad/drawing-core/board/rules.ts";
 import { editorShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
+import { hitShape } from "@ecad/drawing-core/drawing/shape-selection.ts";
 import {
 	type EditorShape,
 	editShapeAttribute,
@@ -123,7 +124,7 @@ test("rounded corners take copper off the pad's outline, down to a stadium or a 
 	assert.ok(pointHullDistance(turned, { x: 0.48, y: 0.98 }) > 0);
 });
 
-test("connectivity, DRC and zone fills measure from the rounded corner", () => {
+test("copper distances, which connectivity and DRC use, and zone fills measure from the rounded corner", () => {
 	const track = trackSegment(
 		7,
 		{ x: 1.15, y: 0.65 },
@@ -178,25 +179,61 @@ test("connectivity, DRC and zone fills measure from the rounded corner", () => {
 	assert.equal(containsPoint(fill(roundedPad(0.5)), pastCorner), true);
 });
 
-test("Gerber copper, paste and mask draw the rounded outline", () => {
-	const files = exportFabrication("pad", [roundedPad()], []);
-	const layer = (suffix: string) => {
-		const file = required(files.find(({ name }) => name.endsWith(suffix)));
-		const { object, diagnostics } = parseGerber(file.content, file.name);
-		assert.deepEqual(diagnostics, []);
-		return object.objects.flatMap(
-			(item) => compiled(item.geometry) as MultiPolygon,
+function gerberCoverage(
+	files: readonly { name: string; content: string }[],
+	suffix: string,
+): MultiPolygon {
+	const file = required(files.find(({ name }) => name.endsWith(suffix)));
+	const { object, diagnostics } = parseGerber(file.content, file.name);
+	assert.deepEqual(diagnostics, []);
+	return object.objects.flatMap((item) => {
+		const [a, b, c, d, e, f] = item.transform ?? [1, 0, 0, 1, 0, 0];
+		return compiled(item.geometry).map((polygon) =>
+			polygon.map((ring) =>
+				ring.map(([x, y]): [number, number] => [
+					a * x + c * y + e,
+					b * x + d * y + f,
+				]),
+			),
 		);
-	};
+	});
+}
+
+test("Gerber copper, paste and mask draw the rounded outline", () => {
+	const turned = { ...roundedPad(), id: 2, x: 5, rotation: Math.PI / 2 };
+	const files = exportFabrication("pad", [roundedPad(), turned], []);
+	const layer = (suffix: string) => gerberCoverage(files, suffix);
 	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp"]) {
 		const copper = layer(suffix);
 		assert.equal(containsPoint(copper, insideCorner), true, suffix);
 		assert.equal(containsPoint(copper, squareCorner), false, suffix);
 		assert.equal(containsPoint(copper, { x: 0.99, y: 0 }), true, suffix);
+		assert.equal(containsPoint(copper, { x: 5.3, y: 0.9 }), true, suffix);
+		assert.equal(containsPoint(copper, { x: 5.48, y: 0.98 }), false, suffix);
 	}
 	const mask = layer("F_Mask.gts");
 	assert.equal(containsPoint(mask, { x: 1.04, y: 0 }), true);
 	assert.equal(containsPoint(mask, { x: 1.03, y: 0.53 }), false);
+	const ends = exportFabrication(
+		"ends",
+		[roundedPad(0.5), { ...roundedPad(0.5), id: 2, x: 5, width: 1 }],
+		[],
+	);
+	for (const suffix of ["F_Cu.gtl", "F_Paste.gtp", "F_Mask.gts"]) {
+		const drawn = gerberCoverage(ends, suffix);
+		const grown = suffix === "F_Mask.gts" ? 0.05 : 0;
+		for (const [point, inside] of [
+			[{ x: 0.99 + grown, y: 0 }, true],
+			[{ x: 0.95, y: 0.45 }, false],
+			[{ x: 5, y: 0.49 + grown }, true],
+			[{ x: 5.4, y: 0.4 }, false],
+		] as const)
+			assert.equal(
+				containsPoint(drawn, point),
+				inside,
+				`${suffix} ${point.x},${point.y}`,
+			);
+	}
 	const openings = [maskOpenings([roundedPad()]).top];
 	assert.equal(containsPoint(openings, { x: 1.04, y: 0 }), true);
 	assert.equal(containsPoint(openings, { x: 1.03, y: 0.53 }), false);
@@ -228,4 +265,21 @@ test("the flat view and the board view draw the corners", () => {
 	const outline = compiled(object.geometry);
 	assert.equal(containsPoint(outline, insideCorner), true);
 	assert.equal(containsPoint(outline, squareCorner), false);
+});
+
+test("a click in a rounded-off corner misses the pad", () => {
+	const pad = roundedPad(0.5);
+	assert.equal(hitShape(pad, { x: 0.95, y: 0.45 }, 0), false);
+	assert.equal(hitShape(pad, { x: 0.95, y: 0 }, 0), true);
+	assert.equal(
+		hitShape(
+			{ ...pad, pad: { number: "1", type: "smd" } },
+			{ x: 0.95, y: 0.45 },
+			0,
+		),
+		true,
+	);
+	const turned = { ...pad, rotation: Math.PI / 2 };
+	assert.equal(hitShape(turned, { x: 0.45, y: 0.95 }, 0), false);
+	assert.equal(hitShape(turned, { x: 0, y: 0.95 }, 0), true);
 });
