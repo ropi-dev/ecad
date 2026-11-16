@@ -28,7 +28,7 @@ The matching source archives, revisions, checksums, and rebuild instructions acc
 
 ## Reference designs
 
-The RP2350A fixtures in `tests/fixtures/kicad` and `tests/fixtures/rp2350a-reference` derive from Raspberry Pi's minimal reference design. Copyright 2026 Raspberry Pi Ltd. Both fixture directories retain the supplied MIT license and design disclaimer in `LICENSE.txt`.
+The RP2350A fixtures in `tests/fixtures/kicad` and `tests/fixtures/rp2350a-reference` derive from Raspberry Pi's minimal reference design. Copyright 2026 Raspberry Pi Ltd. Both fixture directories retain the supplied MIT license and design disclaimer in `LICENSE.txt`. The RP2350A example design in `packages/core/src/examples` is generated from the same schematic, and six footprints in `packages/default-footprints/src/raspberry-pi-minimal.ts` come from Raspberry Pi's board. The footprint NOTICE.md carries their MIT notice.
 
 ## Dependency notices in builds
 

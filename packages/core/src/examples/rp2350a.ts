@@ -1,6 +1,10 @@
 import { generateDefaultFootprints } from "@ecad/default-footprints";
 import { autoroute } from "@ecad/drawing-core/board/autoroute.ts";
 import {
+	analyzeConnectivity,
+	copperItems,
+} from "@ecad/drawing-core/board/connectivity.ts";
+import {
 	type BoardFootprint,
 	boardPads,
 	createBoardFootprint,
@@ -8,6 +12,7 @@ import {
 } from "@ecad/drawing-core/board/footprints.ts";
 import {
 	hullDistance,
+	shapeHulls,
 	trackSegment,
 } from "@ecad/drawing-core/board/geometry.ts";
 import { negotiatedRoute } from "@ecad/drawing-core/board/negotiated-route.ts";
@@ -23,11 +28,7 @@ import {
 	type CircuitFile,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
-import {
-	type EditorShape,
-	type EditorSymbol,
-	symbolShapes,
-} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { SheetSettings } from "@ecad/drawing-core/drawing/sheet.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
@@ -38,275 +39,114 @@ import {
 	estimateLabelTextWidth,
 	synchronizePcb,
 } from "#/circuit/linked-schematic.ts";
-import { createLabelShape } from "#/drawing/placement.ts";
 import { resolveDrawingSymbols } from "#/drawing/symbol-persistence.ts";
-import {
-	createSymbol,
-	type SymbolDefinition,
-	symbolDefinitions,
-} from "#/drawing/symbols.ts";
-import { updateText } from "#/drawing/text.ts";
+import { symbolDefinitions } from "#/drawing/symbols.ts";
 import { containsPoint, type MultiPolygon } from "#/engine/geometry.ts";
+import { importKiCadSchematic } from "#/formats/kicad/import.ts";
 
-/** A part in the reference design: its symbol, value, footprint and pin nets. */
-interface Part {
-	reference: string;
-	symbol: string;
-	value: string;
-	footprint?: string;
-	/** Net by pin number. Pins left out are not connected. */
-	pins: Record<string, string>;
-	/** Board placement: centre in millimetres, angle in degrees, side. */
-	at: [x: number, y: number, angle?: number, back?: boolean];
-}
-
-const gpioPins = [
-	2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 27, 28, 29, 31, 32,
-	33, 34, 35, 36, 37, 40, 41, 42, 43,
-];
-
-const two = (a: string, b: string) => ({ "1": a, "2": b });
-
-const capacitor = (
-	reference: string,
-	value: string,
-	net: string,
-	at: Part["at"],
-	size = "0402",
-): Part => ({
-	reference,
-	symbol: "capacitor",
-	value,
-	footprint: `c_${size}_${size === "0402" ? "1005" : size === "0603" ? "1608" : "2012"}metric`,
-	pins: two(net, "GND"),
-	at,
-});
-
-const resistor = (
-	reference: string,
-	value: string,
-	a: string,
-	b: string,
-	at: Part["at"],
-): Part => ({
-	reference,
-	symbol: "resistor",
-	value,
-	footprint: "r_0402_1005metric",
-	pins: two(a, b),
-	at,
-});
-
-const header = (reference: string, nets: string[], at: Part["at"]): Part => ({
-	reference,
-	symbol: "connector-20",
-	value: "GPIO",
-	pins: Object.fromEntries(nets.map((net, index) => [String(index + 1), net])),
-	at,
-});
-
-const mcuPins: Record<string, string> = {
-	...Object.fromEntries(
-		gpioPins.map((pin, index) => [String(pin), `GPIO${index}`]),
-	),
-	...Object.fromEntries(
-		["1", "11", "20", "30", "38", "45", "44", "49", "53", "54"].map((pin) => [
-			pin,
-			"+3V3",
-		]),
-	),
-	"6": "DVDD",
-	"23": "DVDD",
-	"39": "DVDD",
-	"50": "DVDD",
-	"46": "VREG_AVDD",
-	"47": "GND",
-	"48": "VREG_LX",
-	"61": "GND",
-	"56": "QSPI_SCLK",
-	"57": "QSPI_SD0",
-	"59": "QSPI_SD1",
-	"58": "QSPI_SD2",
-	"55": "QSPI_SD3",
-	"60": "QSPI_SS",
-	"26": "RUN",
-	"24": "SWCLK",
-	"25": "SWDIO",
-	"51": "USB_DM",
-	"52": "USB_DP",
-	"21": "XIN",
-	"22": "XOUT",
+/** The built-in footprint for each footprint the source schematic names. */
+const footprintIds: Record<string, string> = {
+	"RPI_COMPILED:rpi_rp2350a": "qfn-60-1ep_7x7mm_p0.4mm_ep3.4x3.4mm",
+	"RPI_COMPILED:rpi_rp2350a_vias": "qfn-60-1ep_7x7mm_p0.4mm_ep3.4x3.4mm",
+	"RPI_COMPILED:generic_capc2012x125": "c_0805_2012metric",
+	"RPI_COMPILED:generic_capc1005x50": "c_0402_1005metric",
+	"RPI_COMPILED:generic_capc1005x50_wide": "c_0402_1005metric",
+	"RPI_COMPILED:generic_resc1005x35": "r_0402_1005metric",
+	"RPI_COMPILED:generic_soic127p790x195-8": "soic-8_5.23x5.23mm_p1.27mm",
+	"RPI_COMPILED:generic_xtalcc320x250x80-4": "crystal_smd_3225-4pin_3.2x2.5mm",
+	"RPI_COMPILED:amphenol_10103594-0001lf":
+		"usb_micro-b_amphenol_10103594-0001lf",
+	"RPI_COMPILED:samtec_tsw-118-07-l-d": "pinheader_2x18_samtec_tsw-118-07-l-d",
+	"RPI_COMPILED:jst_sm03b-srss-tb-lf--sn-":
+		"jst_sh_sm03b-srss-tb_1x03-1mp_p1.00mm_horizontal",
+	"RPI_COMPILED:wurthelek_434133025816": "sw_push_1p1t_no_wuerth_434133025816",
+	"RPI_COMPILED:onsemi_ncp1117st33t3g": "sot-223-3_tabpin4",
+	"RPI_COMPILED:abracon_aota-b201610s3r3-101-t": "l_abracon_aota-b201610",
 };
 
 /**
- * The RP2350A minimal design from Raspberry Pi's hardware design guide:
- * the chip with its switching core regulator, a QSPI flash, a 12 MHz crystal,
- * USB, a 3.3 V regulator, BOOTSEL and RUN buttons, an SWD header and two
- * 20-pin GPIO headers.
+ * Footprint placements on Raspberry Pi's RPI-RP2350A-MINIMAL R4 board, in
+ * the source's coordinates: millimetres, Y down, angles in degrees.
  */
-const rp2350aParts: readonly Part[] = [
-	{
-		reference: "U1",
-		symbol: "rp2350a",
-		value: "RP2350A",
-		pins: mcuPins,
-		at: [0, 6],
-	},
-	{
-		reference: "U2",
-		symbol: "w25q128jvs",
-		value: "W25Q128JVS",
-		pins: {
-			"1": "QSPI_SS",
-			"2": "QSPI_SD1",
-			"3": "QSPI_SD2",
-			"4": "GND",
-			"5": "QSPI_SD0",
-			"6": "QSPI_SCLK",
-			"7": "QSPI_SD3",
-			"8": "+3V3",
-		},
-		at: [-7, 17],
-	},
-	{
-		reference: "U3",
-		symbol: "ams1117-3.3",
-		value: "AMS1117-3.3",
-		pins: { "1": "GND", "2": "+3V3", "3": "VBUS" },
-		at: [8.2, 18.5],
-	},
-	{
-		reference: "J1",
-		symbol: "usb-b-micro",
-		value: "USB_B_Micro",
-		pins: {
-			"1": "VBUS",
-			"2": "USB_CONN_DM",
-			"3": "USB_CONN_DP",
-			"5": "GND",
-			"6": "GND",
-		},
-		at: [0, 26, 180],
-	},
-	{
-		reference: "Y1",
-		symbol: "crystal-gnd24",
-		value: "12MHz",
-		pins: { "1": "XIN", "2": "GND", "3": "XOSC", "4": "GND" },
-		at: [-1, -2.4, 0, true],
-	},
-	{
-		reference: "L1",
-		symbol: "inductor",
-		value: "3.3uH",
-		footprint: "l_0805_2012metric",
-		pins: two("VREG_LX", "DVDD"),
-		at: [2.0, 12.6, 90],
-	},
-	{
-		reference: "SW1",
-		symbol: "switch-push",
-		value: "BOOTSEL",
-		pins: two("BOOTSEL", "GND"),
-		at: [-3.25, -11.8],
-	},
-	{
-		reference: "SW2",
-		symbol: "switch-push",
-		value: "RUN",
-		pins: two("RUN", "GND"),
-		at: [-3.25, -20.2],
-	},
-	{
-		reference: "J4",
-		symbol: "connector-3",
-		value: "SWD",
-		pins: { "1": "SWCLK", "2": "GND", "3": "SWDIO" },
-		at: [-2.54, -7, 90],
-	},
-	header(
-		"J2",
-		[
-			"GPIO0",
-			"GPIO1",
-			"GND",
-			"GPIO2",
-			"GPIO3",
-			"GPIO4",
-			"GPIO5",
-			"GND",
-			"GPIO6",
-			"GPIO7",
-			"GPIO8",
-			"GPIO9",
-			"GND",
-			"GPIO10",
-			"GPIO11",
-			"GPIO12",
-			"GPIO13",
-			"GND",
-			"GPIO14",
-			"GPIO15",
-		],
-		[-16.51, 24.13],
-	),
-	header(
-		"J3",
-		[
-			"VBUS",
-			"GND",
-			"+3V3",
-			"GND",
-			"GPIO29",
-			"GPIO28",
-			"GND",
-			"GPIO27",
-			"GPIO26",
-			"GPIO25",
-			"GPIO24",
-			"GPIO23",
-			"GND",
-			"GPIO22",
-			"GPIO21",
-			"GPIO20",
-			"GPIO19",
-			"GPIO18",
-			"GPIO17",
-			"GPIO16",
-		],
-		[16.51, 24.13],
-	),
-	resistor("R1", "27R", "USB_CONN_DM", "USB_DM", [0.9, 18, 90]),
-	resistor("R2", "27R", "USB_CONN_DP", "USB_DP", [-0.3, 18, 90]),
-	resistor("R3", "1k", "XOUT", "XOSC", [1.1, -0.4, 0, true]),
-	resistor("R4", "33R", "+3V3", "VREG_AVDD", [4.2, 11.4, 0]),
-	resistor("R5", "10k", "+3V3", "QSPI_SS", [-7, 21.2, 0]),
-	resistor("R6", "1k", "QSPI_SS", "BOOTSEL", [-7, 13, 0]),
-	capacitor("C1", "10uF", "VBUS", [8.2, 23, 0], "0805"),
-	capacitor("C2", "10uF", "+3V3", [10.6, 13, 90], "0805"),
-	capacitor("C3", "15pF", "XIN", [-3.9, -2.4, 90, true]),
-	capacitor("C4", "15pF", "XOSC", [1.9, -2.4, 90, true]),
-	capacitor("C5", "4.7uF", "VREG_AVDD", [6.4, 11.4, 0], "0603"),
-	capacitor("C6", "4.7uF", "+3V3", [-0.2, 13.4, 90, true]),
-	capacitor("C7", "4.7uF", "DVDD", [4.6, 14.2, 0], "0603"),
-	capacitor("C8", "100nF", "DVDD", [-5.2, 6.6, 270, true]),
-	capacitor("C9", "100nF", "DVDD", [0.2, 3.4, 0, true]),
-	capacitor("C10", "100nF", "DVDD", [5.2, 6.2, 270, true]),
-	capacitor("C11", "100nF", "+3V3", [-5.2, 8.8, 90, true]),
-	capacitor("C12", "100nF", "+3V3", [-5.2, 4.4, 90, true]),
-	capacitor("C13", "100nF", "+3V3", [-1.9, 3.4, 0, true]),
-	capacitor("C14", "100nF", "+3V3", [5.2, 4, 90, true]),
-	capacitor("C15", "100nF", "+3V3", [2.3, 3.4, 0, true]),
-	capacitor("C16", "100nF", "+3V3", [3.4, 10.2, 0, true]),
-	capacitor("C17", "100nF", "+3V3", [-1.6, 11.4, 0, true]),
-	capacitor("C18", "100nF", "+3V3", [1.4, 11.0, 90, true]),
-	capacitor("C19", "100nF", "+3V3", [5.2, 8.6, 90, true]),
-	capacitor("C20", "100nF", "+3V3", [-3.6, 21, 0]),
+const placements: Record<string, [x: number, y: number, angle: number]> = {
+	U1: [100, 100, 0],
+	U2: [108, 82.85, 180],
+	U3: [93.05, 87.275, 0],
+	J1: [100, 71.7, 180],
+	J2: [77.14, 95.59, -90],
+	J3: [122.86, 95.59, -90],
+	J4: [107.6, 115.375, 0],
+	X1: [100, 112.4, 0],
+	L1: [102, 92.8, 0],
+	SW1: [91.2, 75.2, -90],
+	SW2: [111.8, 107.475, 180],
+	R1: [93, 82.2, -90],
+	R2: [99.6, 106.9, -90],
+	R3: [104.2, 93.1, -90],
+	R4: [115.4, 109.1, -90],
+	R6: [88.9, 81.3, 0],
+	R7: [98.9, 92.6, -90],
+	R8: [99.9, 92.6, -90],
+	R9: [91.3, 82.2, -90],
+	R10: [88.9, 82.7, 0],
+	C1: [107.9375, 76.5, 0],
+	C2: [96.185, 82.83, 180],
+	C3: [98.6, 109, 180],
+	C4: [101.58, 109, 0],
+	C5: [109.025, 89, 0],
+	C6: [102, 95.39, 0],
+	C7: [102, 94.45, 0],
+	C8: [93.52, 99, 180],
+	C9: [104.2, 94.95, -90],
+	C10: [100.8, 106.88, -90],
+	C11: [107.08, 99.4, 0],
+	C12: [97.9, 92.6, 90],
+	C13: [93.515, 96.6, 180],
+	C14: [107.085, 100.4, 0],
+	C15: [93.515, 101.4, 180],
+	C16: [105.685, 104, 0],
+	C17: [106.485, 97, 0],
+	C18: [98.2, 106.08, -90],
+	C19: [85.115, 78, 0],
+};
+
+/** Raspberry Pi's ground vias, in the source's coordinates. */
+const groundVias: [x: number, y: number][] = [
+	[97.4, 111.5],
+	[103.1, 95.1],
+	[107.6, 112.1],
+	[94.9, 82.8],
+	[97.9, 91.4],
+	[98.2, 107.3],
+	[110, 78],
+	[116.4, 109.6],
+	[107.6, 114.7],
+	[101.6, 107.4],
+	[86.14, 79.25],
+	[90.8, 89.2],
+	[92.3, 99],
+	[111.1, 89],
+	[102.8, 109],
+	[103.85, 96.15],
+	[106.9, 104],
+	[108.3, 100.4],
+	[98.7, 76],
+	[107.6, 96.5],
+	[102.7, 113.2],
+	[108.3, 99.4],
+	[92.3, 96.6],
+	[103.1, 94.5],
+	[97.4, 109],
+	[92.3, 101.4],
+	[92.275, 75.075],
 ];
+
+/** The source board's centre: board coordinates have it as their origin, Y up. */
+const sourceCentre = { x: 100, y: 95.5 };
 
 const rp2350aRules: BoardRules = {
 	clearance: 0.15,
-	trackWidth: 0.2,
+	trackWidth: 0.15,
 	viaDiameter: 0.6,
 	viaDrill: 0.3,
 	edgeClearance: 0.3,
@@ -314,35 +154,7 @@ const rp2350aRules: BoardRules = {
 
 const rp2350aCircuitId = "rp2350a";
 
-const outlineSize = { width: 37, height: 58 };
-
-const definitionsById = new Map(
-	symbolDefinitions.map((definition) => [definition.id, definition]),
-);
-
-function definition(id: string): SymbolDefinition {
-	const found = definitionsById.get(id);
-	if (!found) throw new Error(`No built-in symbol ${id}.`);
-	return found;
-}
-
-const pinNumber = (pin: { number?: string }, index: number) =>
-	pin.number?.trim() || String(index + 1);
-
-/** Where each schematic part goes, in a grid of columns on an A3 sheet. */
-const sheetSlots: Record<string, Point> = {
-	U1: { x: -40, y: 10 },
-	U2: { x: -130, y: 80 },
-	U3: { x: 90, y: 100 },
-	J1: { x: 20, y: 100 },
-	Y1: { x: -130, y: -10 },
-	L1: { x: 90, y: 60 },
-	SW1: { x: -130, y: 40 },
-	SW2: { x: -130, y: 20 },
-	J4: { x: -130, y: -50 },
-	J2: { x: 60, y: 10 },
-	J3: { x: 120, y: 10 },
-};
+const outlineSize = { width: 52, height: 51 };
 
 export const rp2350aSheet: SheetSettings = {
 	title: "RP2350A QFN-60 Minimal Design Example",
@@ -350,75 +162,72 @@ export const rp2350aSheet: SheetSettings = {
 	revision: "S1",
 	company: "Raspberry Pi Ltd",
 	comments: [
-		"Recreated from RPI-RP2350A-MINIMAL_R4",
+		"Imported from RPI-RP2350A-MINIMAL_R4-S1",
 		"Design copyright 2026 Raspberry Pi Ltd, MIT license",
 	],
 };
 
-function gridSlot(index: number): Point {
-	const column = index % 10;
-	const row = Math.floor(index / 10);
-	return { x: -180 + column * 24, y: -80 - row * 24 };
+const schematicGrid = 1.27;
+
+const onGrid = (value: number) =>
+	Math.round(Math.round(value / schematicGrid) * schematicGrid * 1e4) / 1e4;
+
+/** A shape moved onto the schematic grid; a wire moves by its two ends. */
+function snapToGrid(shape: EditorShape): EditorShape {
+	if (shape.kind !== "wire")
+		return { ...shape, x: onGrid(shape.x), y: onGrid(shape.y) };
+	const half = shape.width / 2;
+	const dx = Math.cos(shape.rotation) * half;
+	const dy = Math.sin(shape.rotation) * half;
+	const start = { x: onGrid(shape.x - dx), y: onGrid(shape.y - dy) };
+	const end = { x: onGrid(shape.x + dx), y: onGrid(shape.y + dy) };
+	return {
+		...shape,
+		x: (start.x + end.x) / 2,
+		y: (start.y + end.y) / 2,
+		width: Math.hypot(end.x - start.x, end.y - start.y),
+		rotation: Math.atan2(end.y - start.y, end.x - start.x),
+	};
 }
 
 /**
- * The schematic: each part's symbol with a net label on every connected
- * pin, so the circuit follows from the labels' names.
+ * Raspberry Pi's PCB revision, schematic revision and variant boxes sit in
+ * the corner the sheet's title block takes, so they move up above it.
  */
-export function rp2350aSchematic(): EditorShape[] {
-	const shapes: EditorShape[] = [];
-	let id = 1;
-	let free = 0;
-	for (const part of rp2350aParts) {
-		const symbolDefinition = definition(part.symbol);
-		const symbol: EditorSymbol = {
-			...createSymbol(
-				id++,
-				symbolDefinition,
-				sheetSlots[part.reference] ?? gridSlot(free++),
-				part.reference,
-			),
-			...(part.footprint
-				? { footprint: { library: "builtin", id: part.footprint } }
-				: {}),
-		};
-		symbol.attributes = {
-			...symbol.attributes,
-			reference: part.reference,
-			value: part.value,
-		};
-		shapes.push(symbol);
-		const pins = symbolShapes(symbol).filter((child) => child.kind === "pin");
-		pins.forEach((pin, pinIndex) => {
-			if (pin.kind !== "pin") return;
-			const net = part.pins[pinNumber(pin, pinIndex)];
-			if (!net) return;
-			const outward = Math.cos(pin.rotation);
-			const label = createLabelShape(
-				id++,
-				{ x: pin.x, y: pin.y },
-				"net",
-				estimateLabelTextWidth,
-			);
-			shapes.push(
-				updateText(
-					{
-						...label,
-						horizontalAlign:
-							Math.abs(outward) < 0.5
-								? "center"
-								: outward > 0
-									? "right"
-									: "left",
-						verticalAlign: Math.sin(pin.rotation) > 0.5 ? "top" : "bottom",
-					},
-					net,
-					estimateLabelTextWidth,
-				),
-			);
-		});
-	}
-	return shapes;
+const revisionBoxes = new Set(["PCB1", "SBREV1", "VARIANT1"]);
+
+function clearTitleBlock(shape: EditorShape): EditorShape {
+	return shape.kind === "symbol" &&
+		revisionBoxes.has(shape.attributes.reference)
+		? { ...shape, y: onGrid(shape.y + 25 * schematicGrid) }
+		: shape;
+}
+
+/**
+ * The schematic: Raspberry Pi's RPI-RP2350A-MINIMAL R4 schematic as the
+ * KiCad import converts it, wires, junctions and labels as drawn, with each
+ * component's footprint set to the built-in one for its source footprint.
+ * The import centres the A3 sheet on the origin, which leaves the source's
+ * 50 mil grid 0.45 mm and 0.09 mm off ours, and one ground symbol in the
+ * source sits half a step off it, so every item moves onto the grid.
+ */
+export function rp2350aSchematic(source: string): EditorShape[] {
+	const { shapes, report } = importKiCadSchematic(source);
+	let index = 0;
+	return shapes.map((shape) => {
+		const moved = clearTitleBlock(snapToGrid(shape));
+		if (moved.kind !== "symbol") return moved;
+		const sourceFootprint = report.components[index++]?.properties.Footprint;
+		const id = sourceFootprint ? footprintIds[sourceFootprint] : undefined;
+		if (
+			sourceFootprint &&
+			!id &&
+			moved.children.some((child) => child.kind === "pin") &&
+			!moved.netSymbol
+		)
+			throw new Error(`No built-in footprint for ${sourceFootprint}.`);
+		return id ? { ...moved, footprint: { library: "builtin", id } } : moved;
+	});
 }
 
 /** The circuit the schematic describes, and the schematic as the sync saves it. */
@@ -467,6 +276,7 @@ const degrees = (angle = 0) => (angle * Math.PI) / 180;
 /**
  * Short straight tracks from each signal pad of the chip outward, past the
  * pad row, as a hand layout starts. Later routes then keep clear of the row.
+ * A pad whose stub would pass too close to another part's pad gets none.
  */
 function fanout(
 	footprints: readonly BoardFootprint[],
@@ -478,6 +288,10 @@ function fanout(
 		(footprint) => footprint.attributes.reference === "U1",
 	);
 	if (!chip) return [];
+	const others = boardPads(
+		footprints.filter((footprint) => footprint !== chip),
+	).flatMap((pad) => shapeHulls(pad.shape));
+	const gap = rp2350aRules.clearance + rp2350aRules.trackWidth / 2;
 	const stubs: EditorShape[] = [];
 	let id = firstId;
 	for (const pad of boardPads([chip])) {
@@ -496,11 +310,111 @@ function fanout(
 			x: Number((from.x + outward.x * 1.2).toFixed(4)),
 			y: Number((from.y + outward.y * 1.2).toFixed(4)),
 		};
+		const reach = { points: [from, to], radius: 0 };
+		if (others.some((hull) => hullDistance(reach, hull) < gap)) continue;
 		stubs.push(
 			trackSegment(id++, from, to, "F.Cu", rp2350aRules.trackWidth, net),
 		);
 	}
 	return stubs;
+}
+
+/**
+ * A 3 x 3 grid of ground vias in the chip's exposed pad, as on Raspberry
+ * Pi's board. The pad ring walls the exposed pad in on the top layer, so it
+ * reaches ground through the bottom zone.
+ */
+function exposedPadVias(
+	footprints: readonly BoardFootprint[],
+	firstId: number,
+	ground: string | undefined,
+): EditorShape[] {
+	const chip = footprints.find(
+		(footprint) => footprint.attributes.reference === "U1",
+	);
+	if (!chip || !ground) return [];
+	let id = firstId;
+	return [-1.1, 0, 1.1].flatMap((dx) =>
+		[-1.1, 0, 1.1].map((dy) =>
+			ruleVia(id++, { x: chip.x + dx, y: chip.y + dy }, rp2350aRules, ground),
+		),
+	);
+}
+
+/**
+ * Raspberry Pi's ground vias, left out where one would come within the
+ * clearance of another net's pad.
+ */
+function sourceGroundVias(
+	footprints: readonly BoardFootprint[],
+	netlist: BoardNetlist,
+	firstId: number,
+	ground: string | undefined,
+): EditorShape[] {
+	if (!ground) return [];
+	const others = boardPads(footprints)
+		.filter((pad) => netlist.padNet(pad.component, pad.number) !== ground)
+		.flatMap((pad) => shapeHulls(pad.shape));
+	let id = firstId;
+	return groundVias.flatMap(([x, y]) => {
+		const at = { x: x - sourceCentre.x, y: sourceCentre.y - y };
+		const hull = { points: [at], radius: rp2350aRules.viaDiameter / 2 };
+		return others.some(
+			(other) => hullDistance(hull, other) < rp2350aRules.clearance,
+		)
+			? []
+			: [ruleVia(id++, at, rp2350aRules, ground)];
+	});
+}
+
+/**
+ * Routes each connection still open again, after ripping up the tracks and
+ * vias within a growing distance of it, until every connection is routed. Zone
+ * reach comes from the fill with the ripped routes still in place, so a
+ * ground pad the new routes would cut off again still counts as open.
+ * @return The routes, with the repaired ones in place of those ripped up.
+ */
+function repairLocally(
+	fixed: readonly EditorShape[],
+	routes: readonly EditorShape[],
+	netlist: BoardNetlist,
+	firstId: number,
+): { routes: EditorShape[]; failed: number } {
+	let current = [...routes];
+	let id = firstId;
+	const open = () => {
+		const shapes = [...fixed, ...current];
+		return analyzeConnectivity(
+			copperItems(shapes, netlist),
+			fillReach(fillZones(shapes, netlist, rp2350aRules)),
+		).ratsnest;
+	};
+	for (const radius of [2, 3, 4, 6]) {
+		const ratsnest = open();
+		if (!ratsnest.length) break;
+		const lines = ratsnest.map((line) => ({
+			points: [line.from, line.to],
+			radius,
+		}));
+		const near = new Set(
+			current.filter((shape) =>
+				shapeHulls(shape).some((hull) =>
+					lines.some((line) => hullDistance(hull, line) <= 0),
+				),
+			),
+		);
+		const kept = current.filter((shape) => !near.has(shape));
+		const repaired = autoroute([...fixed, ...kept], netlist, id, {
+			rules: rp2350aRules,
+			rippable: [...near],
+			zoneReach: fillReach(
+				fillZones([...fixed, ...current], netlist, rp2350aRules),
+			),
+		});
+		id += repaired.shapes.length;
+		current = [...kept, ...repaired.shapes];
+	}
+	return { routes: current, failed: open().length };
 }
 
 /**
@@ -522,14 +436,13 @@ export function rp2350aBoard(
 	});
 	if (synced.missing.length)
 		throw new Error(`No footprint for ${synced.missing.join(", ")}.`);
-	const parts = new Map(rp2350aParts.map((part) => [part.reference, part]));
 	const footprints = synced.place.map((shape) => {
 		const footprint = shape as BoardFootprint;
-		const part = parts.get(footprint.attributes.reference);
-		if (!part) return footprint;
-		const [x, y, angle, back] = part.at;
+		const placement = placements[footprint.attributes.reference];
 		const source = footprintSource(library, footprint.footprint);
-		if (!source) return footprint;
+		if (!placement || !source)
+			throw new Error(`No placement for ${footprint.attributes.reference}.`);
+		const [x, y, angle] = placement;
 		return createBoardFootprint(
 			footprint.id,
 			source,
@@ -538,8 +451,8 @@ export function rp2350aBoard(
 				reference: footprint.attributes.reference,
 				value: footprint.attributes.value,
 			},
-			{ x, y },
-			{ rotation: degrees(angle), flipped: back },
+			{ x: x - sourceCentre.x, y: sourceCentre.y - y },
+			{ rotation: degrees(angle) },
 		);
 	});
 	let nextId = footprints.length + 1;
@@ -557,7 +470,12 @@ export function rp2350aBoard(
 	const ground = [...netlist.nets.values()].find((net) => net.name === "GND");
 	const stubs = fanout(footprints, netlist, nextId, ground?.id);
 	nextId += stubs.length;
-	const board = [...footprints, outline, ...stubs];
+	const padVias = exposedPadVias(footprints, nextId, ground?.id);
+	nextId += padVias.length;
+	const besideVias = sourceGroundVias(footprints, netlist, nextId, ground?.id);
+	nextId += besideVias.length;
+	const thermal = [...padVias, ...besideVias];
+	const board = [...footprints, outline, ...stubs, ...thermal];
 	const negotiated = negotiatedRoute(board, netlist, nextId, {
 		rules: rp2350aRules,
 		exclude: new Set(ground ? [ground.id] : []),
@@ -605,11 +523,37 @@ export function rp2350aBoard(
 			fillZones([...fixed, ...finished.shapes], netlist, rp2350aRules),
 		),
 	});
-	const shapes = [...fixed, ...repaired.shapes];
+	nextId += repaired.shapes.length;
+	const routed = [...fixed, ...repaired.shapes];
+	const pockets = stitchZones(routed, netlist, rp2350aRules, nextId, true);
+	nextId += pockets.length;
+	const final = pockets.length
+		? autoroute([...fixed, ...pockets], netlist, nextId, {
+				rules: rp2350aRules,
+				rippable: repaired.shapes,
+				zoneReach: fillReach(
+					fillZones([...routed, ...pockets], netlist, rp2350aRules),
+				),
+			})
+		: repaired;
+	nextId += final.shapes.length;
+	const local = repairLocally(
+		[...footprints, outline, ...padVias, ...zones],
+		[...stubs, ...besideVias, ...stitches, ...pockets, ...final.shapes],
+		netlist,
+		nextId,
+	);
+	const shapes = [
+		...footprints,
+		outline,
+		...padVias,
+		...zones,
+		...local.routes,
+	];
 	const file = createBoardFile("RP2350A", circuit.circuit.id);
 	return {
 		board: { ...file, rules: rp2350aRules, shapes },
-		failed: repaired.failed.length,
+		failed: local.failed,
 	};
 }
 
@@ -637,14 +581,21 @@ function insideBy(
 	);
 }
 
-/** @return One via per zone island, where it also lies inside the other side's fill. */
+/**
+ * @param unstitched Only islands that hold no via of their net yet.
+ * @return One via per zone island, where it also lies inside the other side's fill.
+ */
 function stitchZones(
 	shapes: readonly EditorShape[],
 	netlist: BoardNetlist,
 	rules: BoardRules,
 	nextId: number,
+	unstitched = false,
 ): EditorShape[] {
 	const fills = fillZones(shapes, netlist, rules);
+	const existing = shapes.flatMap((shape) =>
+		shape.kind === "circle" && shape.via !== undefined ? [shape] : [],
+	);
 	const vias: EditorShape[] = [];
 	const margin = rules.viaDiameter / 2 + 0.01;
 	for (const fill of fills) {
@@ -653,6 +604,13 @@ function stitchZones(
 			(other) => other.net === fill.net && other.layer !== fill.layer,
 		);
 		for (const island of fill.polygons) {
+			if (
+				unstitched &&
+				existing.some(
+					(via) => via.net === fill.net && containsPoint([island], via),
+				)
+			)
+				continue;
 			const xs = island[0].map(([x]) => x);
 			const ys = island[0].map(([, y]) => y);
 			const center = {

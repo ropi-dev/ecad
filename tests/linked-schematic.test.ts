@@ -5,6 +5,7 @@ import {
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
 import { applyCircuitCommand } from "@ecad/drawing-core/circuit/store.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
@@ -38,6 +39,42 @@ test("schematic instances keep component and pin identities through edits and du
 	);
 	assert.equal(second.file.circuit.components[0].value, "10k");
 	circuitFileSchema.parse(second.file);
+});
+test("a circuit added with a drawing that already describes it keeps the drawing's wires", () => {
+	const first = createSymbol(1, resistor, { x: 0, y: 0 }, "R1");
+	const second = createSymbol(2, resistor, { x: 20, y: 0 }, "R2");
+	const terminal = (symbol: typeof first) => {
+		const pin = required(symbol.children.find((child) => child.kind === "pin"));
+		return { x: symbol.x + pin.x, y: symbol.y + pin.y };
+	};
+	const from = terminal(first);
+	const to = terminal(second);
+	const wire: EditorShape = {
+		id: 3,
+		kind: "wire",
+		x: (from.x + to.x) / 2,
+		y: (from.y + to.y) / 2,
+		width: Math.hypot(to.x - from.x, to.y - from.y),
+		height: 0.2,
+		rotation: Math.atan2(to.y - from.y, to.x - from.x),
+		lineWidth: 0.2,
+	};
+	const empty = createCircuit("Board");
+	const drawn = synchronizePcb(
+		empty,
+		[first, second, wire],
+		empty,
+		symbolDefinitions,
+	);
+	assert.equal(drawn.file.circuit.nets.length, 1);
+	const added = synchronizePcb(
+		drawn.file,
+		drawn.shapes,
+		undefined,
+		symbolDefinitions,
+	);
+	assert.equal(added.source, "schematic");
+	assert.deepEqual(added.shapes, drawn.shapes);
 });
 test("circuit placements, connections, renames and deletion reach the schematic and round trip", () => {
 	let file = createCircuit("Board");

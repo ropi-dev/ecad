@@ -213,7 +213,7 @@ function synchronize(
 	definitions: readonly SymbolDefinition[],
 	environment: Partial<LinkedSchematicEnvironment>,
 ): Synchronized {
-	const imported =
+	let imported =
 		previous === undefined &&
 		(file.circuit.components.length > 0 || file.circuit.nets.length > 0);
 	const base = previous ?? file;
@@ -228,6 +228,11 @@ function synchronize(
 		isSymbolUnavailable: environment.isSymbolUnavailable ?? (() => false),
 	};
 	const bound = bindNetLabels(shapes, context);
+	if (imported) {
+		const drawn = structuredClone(file.circuit);
+		extractCircuitFromSchematic(drawn, bound, context);
+		if (jsonEqual(drawn, file.circuit)) imported = false;
+	}
 	const unplaced = file.circuit.components.some(
 		(component) => component.schematicShapeId === undefined,
 	);
