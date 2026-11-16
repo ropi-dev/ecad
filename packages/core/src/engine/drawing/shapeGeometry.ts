@@ -92,6 +92,38 @@ export function mergeShapeGeometries(
 	);
 }
 
+const cornerSegments = 12;
+
+function roundedRectangle(
+	width: number,
+	height: number,
+	corner: number,
+	offset: number,
+): Vector2[] {
+	const radius = Math.max(0, corner + offset);
+	const x = width / 2 - corner + Math.min(0, corner + offset);
+	const y = height / 2 - corner + Math.min(0, corner + offset);
+	const centers = [
+		[x, -y],
+		[x, y],
+		[-x, y],
+		[-x, -y],
+	];
+	const points = centers.flatMap(([cx, cy], quarter) =>
+		Array.from({ length: cornerSegments + 1 }, (_, index) => {
+			const angle = ((quarter - 1 + index / cornerSegments) * Math.PI) / 2;
+			return new Vector2(
+				cx + radius * Math.cos(angle),
+				cy + radius * Math.sin(angle),
+			);
+		}),
+	);
+	return points.filter(
+		(point, index) =>
+			point.distanceTo(points[(index + 1) % points.length]) > 1e-9,
+	);
+}
+
 /** Mesh strokes keep their millimeter width on every renderer and at every zoom. */
 export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 	if (shape.kind === "symbol") {
@@ -352,6 +384,10 @@ export function createShapeGeometry(shape: DrawingGeometry): BufferGeometry {
 					Math.sin(angle) * (inradius + offset),
 				);
 			});
+	} else if (shape.kind === "rectangle" && shape.cornerRadius) {
+		inradius = Math.min(width, height) / 2;
+		const corner = Math.min(shape.cornerRadius, inradius);
+		contour = (offset) => roundedRectangle(width, height, corner, offset);
 	} else if (shape.kind === "rectangle") {
 		inradius = Math.min(width, height) / 2;
 		contour = (offset) => [

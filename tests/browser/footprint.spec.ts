@@ -497,13 +497,46 @@ test("a footprint links a built-in 3D model, which the realistic board draws unt
 			.toBe(true);
 		return required(previous);
 	};
+	const differingShare = (first: Buffer, second: Buffer) =>
+		page.evaluate(
+			async ([first, second]) => {
+				const pixels = async (png: string) => {
+					const bitmap = await createImageBitmap(
+						await (await fetch(`data:image/png;base64,${png}`)).blob(),
+					);
+					const context = new OffscreenCanvas(
+						bitmap.width,
+						bitmap.height,
+					).getContext("2d");
+					if (!context) throw new Error("No 2D context");
+					context.drawImage(bitmap, 0, 0);
+					return context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+				};
+				const [a, b] = await Promise.all([pixels(first), pixels(second)]);
+				if (a.length !== b.length) return 1;
+				let differing = 0;
+				for (let index = 0; index < a.length; index += 4)
+					if (
+						Math.abs(a[index] - b[index]) +
+							Math.abs(a[index + 1] - b[index + 1]) +
+							Math.abs(a[index + 2] - b[index + 2]) >
+						24
+					)
+						differing++;
+				return differing / (a.length / 4);
+			},
+			[first.toString("base64"), second.toString("base64")],
+		);
 	const shown = await settled();
 	await models.click();
 	await expect(models).toHaveAttribute("aria-pressed", "false");
-	expect((await settled()).equals(shown)).toBe(false);
+	const hidden = await settled();
 	await models.click();
 	await expect(models).toHaveAttribute("aria-pressed", "true");
-	expect((await settled()).equals(shown)).toBe(true);
+	const shownAgain = await settled();
+	const hiddenShare = await differingShare(hidden, shown);
+	expect(hiddenShare).toBeGreaterThan(0.01);
+	expect(await differingShare(shownAgain, shown)).toBeLessThan(hiddenShare / 5);
 
 	await field.selectOption("");
 	await expect

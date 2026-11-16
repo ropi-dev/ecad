@@ -1,6 +1,7 @@
 import type { EditorShape, LineShape } from "#/drawing/schema.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import type { CopperLayer } from "#/footprint/layers.ts";
+import { padCornerRadius } from "#/footprint/shapes.ts";
 
 /**
  * A convex outline grown by `radius`: one point is a disc, two points a
@@ -50,15 +51,31 @@ export function lineEnds(shape: EditorShape): [Point, Point] {
 	];
 }
 
-export function rectangleCorners(shape: EditorShape): Point[] {
-	const w = shape.width / 2;
-	const h = shape.height / 2;
+export function rectangleCorners(shape: EditorShape, inset = 0): Point[] {
+	const w = shape.width / 2 - inset;
+	const h = shape.height / 2 - inset;
 	return [
 		rotate(shape, -w, -h),
 		rotate(shape, w, -h),
 		rotate(shape, w, h),
 		rotate(shape, -w, h),
 	];
+}
+
+/**
+ * A rounded rectangle is its rectangle shrunk by the corner radius and grown
+ * back by it. A side that shrinks to nothing leaves a stadium or a disc.
+ */
+function roundedRectangleHull(shape: EditorShape, radius: number): Hull {
+	const w = shape.width / 2 - radius;
+	const h = shape.height / 2 - radius;
+	const flat = 1e-6;
+	if (w <= flat && h <= flat) return { points: [rotate(shape, 0, 0)], radius };
+	if (w <= flat)
+		return { points: [rotate(shape, 0, -h), rotate(shape, 0, h)], radius };
+	if (h <= flat)
+		return { points: [rotate(shape, -w, 0), rotate(shape, w, 0)], radius };
+	return { points: rectangleCorners(shape, radius), radius };
 }
 
 /** The copper a board shape covers, in board coordinates. */
@@ -79,6 +96,8 @@ export function shapeHulls(shape: EditorShape): Hull[] {
 		];
 	}
 	if (shape.kind === "rectangle") {
+		const radius = padCornerRadius(shape);
+		if (radius > 0) return [roundedRectangleHull(shape, radius)];
 		const corners = rectangleCorners(shape);
 		if (shape.filled || shape.pad || shape.zone)
 			return [{ points: corners, radius: 0 }];

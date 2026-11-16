@@ -36,6 +36,7 @@ import {
 	isHole,
 	isPad,
 	isVia,
+	padCornerRadius,
 	shapeDrill,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -56,6 +57,7 @@ interface GeometrySize {
 	lineStyle?: LineStyle;
 	filled?: boolean;
 	length?: number;
+	cornerRadius?: number;
 }
 
 export interface DrawingTransform {
@@ -140,8 +142,17 @@ export interface DrawingDisplay {
 
 function geometryFor(shape: EditorShape): DrawingGeometry {
 	const { kind, width, height, lineWidth } = shape;
-	if (isDrilled(shape))
-		return { kind: shape.kind, width, height, lineWidth: 0, filled: true };
+	if (isDrilled(shape)) {
+		const cornerRadius = padCornerRadius(shape);
+		return {
+			kind: shape.kind,
+			width,
+			height,
+			lineWidth: 0,
+			filled: true,
+			...(cornerRadius > 0 ? { cornerRadius } : {}),
+		};
+	}
 	if (kind !== "symbol")
 		return {
 			kind,
