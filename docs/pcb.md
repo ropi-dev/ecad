@@ -47,6 +47,10 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 **Routing → Board outline** draws a rectangle on the Edge.Cuts layer. Lines, rectangles and circles on Edge.Cuts make the outline; lines that join end to end form a closed shape. The 3D view draws the board to the outline.
 
+## Realistic board
+
+The sparkle button in the Layers panel header draws the board as manufactured, in the flat view and in 3D, with each placed footprint's 3D model on its pads. A footprint on the back hangs under the board, mirrored. The cube button beside the sparkle button shows or hides the models. A placed footprint takes the model its footprint file links when the board is drawn, so a new model for a project footprint shows at once, unlike new pads. See [Realistic board and 3D models](footprints.md#realistic-board-and-3d-models).
+
 ## Design rules
 
 **Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, and the clearance between copper and the board edge. The board saves them with its items.

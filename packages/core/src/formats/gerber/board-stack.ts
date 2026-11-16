@@ -81,6 +81,7 @@ export const isDrillLayer = (layer: { name: string; metadata: Attributes }) =>
 	GROUPS[classify(layer)[0]] === DRILL;
 
 export const BOARD_SUBSTRATE_TOP = COPPER_Z;
+export const BOARD_COPPER_TOP = TOP_COPPER.z;
 export const BOARD_MASK_TOP = TOP_MASK.z;
 
 export type BoardLayerRole =

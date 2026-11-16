@@ -23,6 +23,7 @@
 		"esbuild": "^0.28.0",
 		"@ecad/cli": "workspace:*",
 		"@ecad/default-footprints": "workspace:*",
+		"@ecad/default-models": "workspace:*",
 		"@ecad/default-symbols": "workspace:*",
 		"@ecad/drawing-core": "workspace:*",
 		"@modelcontextprotocol/sdk": "^1.32.2",
@@ -73,6 +74,7 @@
 		"perf:main": "tsx scripts/performance/main.ts",
 		"symbols:generate": "pnpm --filter @ecad/default-symbols run generate",
 		"footprints:generate": "pnpm --filter @ecad/default-footprints run generate",
+		"models:build": "pnpm --filter @ecad/default-models run build-models",
 		"example:rp2350a": "tsx scripts/examples/rp2350a.ts",
 		"sandbox": "node scripts/development/sandbox.ts"
 	},

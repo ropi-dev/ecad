@@ -3,6 +3,7 @@ import {
 	upgradeSavedShapes,
 } from "@ecad/drawing-core/drawing/schema.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { modelReferenceSchema } from "@ecad/drawing-core/footprint/model.ts";
 import {
 	isFootprintShape,
 	shapeLayer,
@@ -64,6 +65,7 @@ export const footprintFileSchema = z.strictObject({
 			"Use a name without control characters.",
 		),
 	description: z.string().max(500).default(""),
+	model: modelReferenceSchema.optional(),
 	shapes: footprintShapesSchema,
 });
 

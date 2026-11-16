@@ -72,6 +72,10 @@ _Avoid_: Footprint link, footprint property
 **Default footprint**:
 The footprint a symbol definition gives each new placement. Several definitions may share one.
 
+**3D model**:
+The solid body of a component, drawn on its footprint's pads in the realistic board view. A footprint links at most one, from the built-in 3D model library.
+_Avoid_: Package model, STEP model
+
 **Built-in footprint**:
 A read-only footprint that ships with the app. A project footprint copied from one does not follow it.
 

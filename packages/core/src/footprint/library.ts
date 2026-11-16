@@ -43,11 +43,11 @@ export interface BuiltinFootprints {
 	readonly failed: boolean;
 }
 
-export function useBuiltinFootprints(): BuiltinFootprints {
+export function useBuiltinFootprints(enabled = true): BuiltinFootprints {
 	const [library, setLibrary] = useState(loaded);
 	const [failed, setFailed] = useState(false);
 	useEffect(() => {
-		if (library) return;
+		if (library || !enabled) return;
 		let current = true;
 		loadBuiltinFootprints().then(
 			(next) => {
@@ -60,7 +60,7 @@ export function useBuiltinFootprints(): BuiltinFootprints {
 		return () => {
 			current = false;
 		};
-	}, [library]);
+	}, [library, enabled]);
 	return { library, failed };
 }
 

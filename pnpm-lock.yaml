@@ -17,6 +17,9 @@ importers:
       '@ecad/default-footprints':
         specifier: workspace:*
         version: link:packages/default-footprints
+      '@ecad/default-models':
+        specifier: workspace:*
+        version: link:packages/default-models
       '@ecad/default-symbols':
         specifier: workspace:*
         version: link:packages/default-symbols
@@ -129,6 +132,9 @@ importers:
       '@ecad/default-footprints':
         specifier: workspace:*
         version: link:../default-footprints
+      '@ecad/default-models':
+        specifier: workspace:*
+        version: link:../default-models
       '@ecad/default-symbols':
         specifier: workspace:*
         version: link:../default-symbols
@@ -202,6 +208,18 @@ importers:
       '@ecad/drawing-core':
         specifier: workspace:*
         version: link:../drawing-core
+
+  packages/default-models:
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      occt-import-js:
+        specifier: ^0.0.23
+        version: 0.0.23
+      three:
+        specifier: ^0.186.0
+        version: 0.186.0
 
   packages/default-symbols:
     dependencies:

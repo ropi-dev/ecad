@@ -14,7 +14,7 @@ A [PCB](pcb.md) places footprints on a board. There is no import or export for o
 
 ## Built-in footprints and symbols
 
-The app has a library of 56 built-in footprints adapted from KiCad's, such as 0805 chip resistors, SOT-23, pin headers and the QFN packages of the built-in microcontrollers. See the [default-footprints package](../packages/default-footprints/README.md) for the list and how they were converted. Built-in footprints are read-only.
+The app has a library of 62 built-in footprints adapted from KiCad's, such as 0805 chip resistors, SOT-23, pin headers and the QFN packages of the built-in microcontrollers. See the [default-footprints package](../packages/default-footprints/README.md) for the list and how they were converted. Built-in footprints are read-only.
 
 A symbol placed in a schematic can name the footprint its component is soldered with. Select one placed symbol and choose it under **Footprint** in Attributes. The list has **None**, the project's footprints, and the built-in footprints grouped by their KiCad library. Undo restores the previous footprint. The symbol editor has no Footprint section, because a nested placement inside a symbol is not a component.
 
@@ -74,6 +74,12 @@ Shift + drag orbits, as in the Gerber viewer, so Shift alone does not add to the
 
 In a nearly edge-on view the pointer has no place on the board above the horizon, or within about one degree below it, where a pixel covers a long stretch of board. The readout is empty there, the placement outline hides, and a click with a pad, shape or text tool places nothing. With the Select tool a click there clears the selection, as a click on any empty space does, and a drag that starts there still draws a selection rectangle.
 
+## Realistic board and 3D models
+
+The sparkle button in the Layers panel header shows the board as manufactured, in the flat view and in 3D: green solder mask with openings over the pads, gold copper and white silkscreen. While it is on, the cube button beside it shows or hides the footprint's 3D model, the component's body sitting on its pads. Models start shown. The cube button only appears while the board is realistic.
+
+A footprint links its model under **3D model** in the document bar. The list has **No 3D model** and the built-in models grouped by KiCad library. The choice saves with the project and shows on the board at once. Each built-in footprint links the model of its own package from the [built-in 3D model library](../packages/default-models/README.md), and **Copy to project** keeps the link. Models are read-only, and there is no import for other models yet.
+
 ## File format
 
 A `.ecadfp` file is UTF-8 JSON:
@@ -86,6 +92,7 @@ A `.ecadfp` file is UTF-8 JSON:
   "id": "r-0805",
   "name": "R 0805",
   "description": "",
+  "model": { "library": "builtin", "id": "r_0805_2012metric" },
   "shapes": [
     {
       "id": 1,
@@ -115,7 +122,7 @@ A `.ecadfp` file is UTF-8 JSON:
 }
 ```
 
-`id` is 1 to 64 characters: a lowercase letter or digit first, then lowercase letters, digits, `.`, `_` or `-`. It comes from the name when the footprint is created. `name` is 1 to 100 characters. Unknown fields are rejected.
+`id` is 1 to 64 characters: a lowercase letter or digit first, then lowercase letters, digits, `.`, `_` or `-`. It comes from the name when the footprint is created. `name` is 1 to 100 characters. `model` is optional and links the footprint's 3D model by the model's ID. `builtin` is its only library. Unknown fields are rejected.
 
 `shapes` holds up to 4096 items in the drawing shape format: positions are shape centres in millimetres with positive Y up, and `rotation` is in radians. A footprint accepts the kinds `rectangle`, `circle`, `triangle`, `line` and `text`. Pins, schematic wires, symbols, net labels and pages are rejected. Shape IDs must be unique.
 
@@ -133,6 +140,8 @@ The project manifest lists footprint paths in `footprints`. Web storage writes t
 ## Code
 
 `packages/drawing-core/src/footprint/` holds the layer list, pad and via creation and edits, and `footprintLayerView`, which filters and orders shapes for the editor. Its `reference.ts` has the footprint reference schema and `matchPinsToPads`. Its `text-variables.ts` resolves the text variables. `symbolShapes` and `symbolChildren` apply them to a footprint placed on a board and scale the text box to the new length, so the flat view, the 3D view and hit testing see the same text. An edit to that text, such as a new font size, is saved against the variables, so they keep working. `packages/core/src/footprint/library.ts` loads `@ecad/default-footprints` on demand, and `SymbolFootprintField` in `components/editor/` is the Attributes panel's Footprint section. The optional `layer`, `pad` and `via` fields are part of the shared shape schema in `packages/drawing-core/src/drawing/schema.ts`, so the drawing store, commands and history take footprint items unchanged. `packages/core/src/footprint/format.ts` validates the file, and `packages/core/src/footprint/board.ts` turns the shapes into the planar layers the board stack renders. `Editor2D` runs in footprint mode when the project opens a footprint: it adds `FootprintLayerPanel`, the pad and via tools, and `FootprintBoardView`, which hands the board to `GerberViewer`. The flat view and the 3D view are one `GerberViewer` viewport. Its `updateFlatScene` option adds the editor's flat drawing, which shows in place of the board layers until an orbit starts, so the Gerber viewer's orbit gesture, camera turn and return to the top view all apply. `orbitGesture="alt-shift"` makes that gesture need Alt as well as Shift while the view is flat. `pasteSelection` in `packages/core/src/drawing/clipboard.ts` takes a footprint destination. The viewport's `pixelsPerMmAt100` option fixes what 100% zoom means. Layer focus lives in `useFootprintLayers`. `buildStaticDisplay` and `buildBoardStaticDisplay` take the focused layer and mark each display off it as `dimmed`. The drawing renderer keeps a second set of materials for those, in `unfocusedLayerColor`, which is 30% of the layer colour over the desk colour. `FootprintBoardView` hands `GerberViewer` the focused layer's board objects as `focusedLayerIds`.
+
+The model reference schema is `modelReferenceSchema` in `packages/drawing-core/src/footprint/model.ts`. `packages/core/src/footprint/models.ts` loads `@ecad/default-models` on demand and turns the open footprint, or a board's placed footprints, into `ModelPlacement`s: a model with a position, rotation and side. `useFootprintModels` in `components/footprint/` loads the three.js side, `packages/core/src/engine/footprint-models.ts`, only once the realistic board shows models. It loads each model's glTF file once with three.js's `GLTFLoader` and gives every placement a copy that shares the file's geometry and materials. A copy sits on the top copper, or turned over about the Y axis under the bottom copper for a flipped footprint, which mirrors it the way flipping mirrors the footprint's items. `GerberViewer` takes the copies as `models` and draws them while the board is realistic. `FootprintModelField` is the document bar's **3D model** list, and the project action `saveFootprintModel` writes the field.
 
 The 3D view runs the same gestures, commands and session as the flat view. Three things differ:
 

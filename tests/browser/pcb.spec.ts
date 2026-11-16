@@ -244,6 +244,53 @@ test("the schematic, circuit and PCB of a circuit stay open together and keep th
 	await expect(panes).toHaveCount(3);
 });
 
+test("the realistic board draws each footprint's 3D model, and the cube button hides and shows them", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const models = page.getByRole("button", { name: "3D models" });
+	await expect(models).toHaveCount(0);
+	await page.getByRole("button", { name: "Realistic board" }).click();
+	await expect(models).toHaveAttribute("aria-pressed", "true");
+	const box = required(await page.locator("canvas").boundingBox());
+	const panel = required(
+		await page.getByRole("complementary", { name: "Layers" }).boundingBox(),
+	);
+	const left = panel.x + panel.width + 8;
+	const capture = async () => {
+		await page.mouse.move(700, 120);
+		return page.screenshot({
+			clip: {
+				x: left,
+				y: box.y,
+				width: box.x + box.width - left,
+				height: box.height / 2,
+			},
+		});
+	};
+	const settled = async () => {
+		let previous: Buffer | undefined;
+		await expect
+			.poll(async () => {
+				const next = await capture();
+				const same = previous?.equals(next) ?? false;
+				previous = next;
+				return same;
+			})
+			.toBe(true);
+		return required(previous);
+	};
+	const shown = await settled();
+	await models.click();
+	await expect(models).toHaveAttribute("aria-pressed", "false");
+	expect((await settled()).equals(shown)).toBe(false);
+	await models.click();
+	expect((await settled()).equals(shown)).toBe(true);
+	await page.getByRole("button", { name: "Realistic board" }).click();
+	await expect(models).toHaveCount(0);
+});
+
 test("the realistic toggle shows the board with its solder mask in the flat and 3D views, and turning it off brings back the layer colors", async ({
 	page,
 }) => {

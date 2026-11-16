@@ -283,7 +283,14 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		String(throughHole.id),
 	);
 	await expect(page.getByTestId("resize-handle")).not.toHaveCount(0);
+	const readout = page.getByTestId("cursor-readout");
+	const pointer = async () =>
+		((await readout.textContent()) ?? "")
+			.match(/-?\d+(?:\.\d+)?/g)
+			?.map(Number) ?? [];
 	await page.mouse.move(grip.x, grip.y);
+	await expect.poll(pointer).toHaveLength(2);
+	const grabbed = await pointer();
 	await page.mouse.down();
 	await page.mouse.move(grip.x - 40, grip.y - 10, { steps: 3 });
 	await page.mouse.move(grip.x - 90, grip.y - 30, { steps: 3 });
@@ -298,10 +305,18 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 			return moved.x !== throughHole.x || moved.y !== throughHole.y;
 		})
 		.toBe(true);
-	const dropped = required((await boardSelection(page))[throughHole.id]);
-	expect(Math.abs(dropped.x - (grip.x - 90))).toBeLessThan(8);
-	expect(Math.abs(dropped.y - (grip.y - 30))).toBeLessThan(8);
+	await page.mouse.move(grip.x - 90, grip.y - 29);
+	await page.mouse.move(grip.x - 90, grip.y - 30);
+	await expect.poll(pointer).not.toEqual(grabbed);
+	const released = await pointer();
 	const moved = (await documentState(page)).editorShapes[0];
+	const gridStep = 0.2;
+	expect(
+		Math.abs(moved.x - throughHole.x - (released[0] - grabbed[0])),
+	).toBeLessThanOrEqual(gridStep);
+	expect(
+		Math.abs(moved.y - throughHole.y - (released[1] - grabbed[1])),
+	).toBeLessThanOrEqual(gridStep);
 	for (const coordinate of [moved.x, moved.y])
 		expect(
 			Math.abs(coordinate * 10 - Math.round(coordinate * 10)),
@@ -446,4 +461,56 @@ test("the via tool places vias through both copper layers, and a via's drill is 
 	await drill.fill("0.6");
 	await drill.press("Enter");
 	await expect(drill).toHaveValue("0.4");
+});
+
+test("a footprint links a built-in 3D model, which the realistic board draws until the cube button hides it", async ({
+	page,
+}) => {
+	await createFootprint(page);
+	const field = page.getByRole("combobox", { name: "3D model" });
+	await expect(field).toHaveValue("");
+	await field.selectOption({ label: "R_0805_2012Metric" });
+	await expect
+		.poll(async () =>
+			(await documentState(page)).footprints.map(
+				(footprint: { model?: unknown }) => footprint.model,
+			),
+		)
+		.toEqual([{ library: "builtin", id: "r_0805_2012metric" }]);
+
+	const models = page.getByRole("button", { name: "3D models" });
+	await expect(models).toHaveCount(0);
+	await page.getByRole("button", { name: "Realistic board" }).click();
+	await expect(models).toHaveAttribute("aria-pressed", "true");
+	const canvas = page
+		.getByRole("application", { name: "Footprint editor" })
+		.locator("canvas");
+	const settled = async () => {
+		let previous: Buffer | undefined;
+		await expect
+			.poll(async () => {
+				const next = await canvas.screenshot();
+				const same = previous?.equals(next) ?? false;
+				previous = next;
+				return same;
+			})
+			.toBe(true);
+		return required(previous);
+	};
+	const shown = await settled();
+	await models.click();
+	await expect(models).toHaveAttribute("aria-pressed", "false");
+	expect((await settled()).equals(shown)).toBe(false);
+	await models.click();
+	await expect(models).toHaveAttribute("aria-pressed", "true");
+	expect((await settled()).equals(shown)).toBe(true);
+
+	await field.selectOption("");
+	await expect
+		.poll(async () =>
+			(await documentState(page)).footprints.map(
+				(footprint: { model?: unknown }) => footprint.model,
+			),
+		)
+		.toEqual([undefined]);
 });
