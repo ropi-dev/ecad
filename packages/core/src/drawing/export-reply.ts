@@ -13,12 +13,14 @@ export type DrawingExportRequest =
 			shapes: EditorShape[];
 			options: Omit<DrawingExportOptions, "measureText">;
 	  }
-	| { type: "png"; image: ImageBitmap };
+	| { type: "png"; image: ImageBitmap }
+	| { type: "warm" };
 
 export async function drawingExportReply(
 	request: DrawingExportRequest,
-): Promise<WorkerReply<string | Blob>> {
+): Promise<WorkerReply<string | Blob | boolean>> {
 	if (typeof OffscreenCanvas === "undefined") return { unavailable: true };
+	if (request.type === "warm") return { result: await loadDrawingFonts() };
 	if (request.type === "svg") {
 		if (!(await loadDrawingFonts())) return { unavailable: true };
 		return workerReply(

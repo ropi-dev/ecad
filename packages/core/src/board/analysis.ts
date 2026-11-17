@@ -105,7 +105,12 @@ export interface BoardAnalysis {
 	): AnalysisReply | Promise<AnalysisReply> | undefined;
 }
 
-export function createBoardAnalysis(fabricate: Fabricate): BoardAnalysis {
+const fabricateOnDemand: Fabricate = async (...board) =>
+	(await import("#/board/fabrication.ts")).fabricationArchive(...board);
+
+export function createBoardAnalysis(
+	fabricate: Fabricate = fabricateOnDemand,
+): BoardAnalysis {
 	const receive = createShapesReceiver();
 	let netlist = boardNetlist(undefined);
 	let rules: BoardRules = defaultBoardRules;

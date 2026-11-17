@@ -27,6 +27,7 @@ const config = defineConfig(({ mode }) => ({
 	// Only the Gerber archive worker imports fflate, and the dev dependency scan
 	// does not follow workers; without this the first ZIP import reloads the page.
 	optimizeDeps: { include: ["@ecad/core > fflate"] },
+	worker: { format: "es" },
 	ssr: { noExternal: [/^@tanstack\//] },
 	plugins: [
 		tailwindcss(),

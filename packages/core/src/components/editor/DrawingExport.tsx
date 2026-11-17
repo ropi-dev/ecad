@@ -1,7 +1,7 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { X } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import {
 	DialogHeader,
@@ -40,6 +40,12 @@ export function DrawingExport({
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 	const titleId = useId();
+	useEffect(() => {
+		if (open)
+			void import("#/drawing/export-client.ts")
+				.then(({ warmDrawingExport }) => warmDrawingExport())
+				.catch(() => undefined);
+	}, [open]);
 	const fieldLabel =
 		"flex min-w-0 flex-col gap-1.5 text-xs font-medium text-fg-muted";
 	return (

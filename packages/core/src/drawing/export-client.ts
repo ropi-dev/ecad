@@ -4,23 +4,41 @@ import type { DrawingExportRequest } from "#/drawing/export-reply.ts";
 import { darkSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { captureSvgPng, loadSvgImage } from "#/engine/capture-png.ts";
 import { measureText } from "#/engine/drawing/text.ts";
-import { inWorkerOrHere } from "#/lib/worker-task.ts";
+import { inWorkerOrHere, keepWarm } from "#/lib/worker-task.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
 
 const startExportWorker =
 	typeof Worker === "undefined"
 		? undefined
-		: () =>
-				new Worker(new URL("./export.worker.ts", import.meta.url), {
-					type: "module",
-				});
+		: keepWarm(
+				() =>
+					new Worker(new URL("./export.worker.ts", import.meta.url), {
+						type: "module",
+					}),
+			);
 
-export function exportDrawing(
+let warming: Promise<unknown> | undefined;
+
+export function warmDrawingExport(startWorker = startExportWorker) {
+	warming ??= inWorkerOrHere(
+		startWorker,
+		(ask) => ask<boolean>({ type: "warm" } satisfies DrawingExportRequest),
+		() => false,
+	)
+		.catch(() => undefined)
+		.finally(() => {
+			warming = undefined;
+		});
+	return warming;
+}
+
+export async function exportDrawing(
 	shapes: EditorShape[],
 	options: Omit<DrawingExportOptions, "measureText" | "coverOutput">,
 	format: "svg" | "png",
 	startWorker = startExportWorker,
 ): Promise<Blob> {
+	await warming;
 	const { width, height } = options;
 	const paper =
 		options.background === "transparent"

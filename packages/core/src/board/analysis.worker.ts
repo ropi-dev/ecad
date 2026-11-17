@@ -3,9 +3,8 @@ import {
 	type AnalysisRequest,
 	createBoardAnalysis,
 } from "#/board/analysis.ts";
-import { fabricationArchive } from "#/board/fabrication.ts";
 
-const analyse = createBoardAnalysis(fabricationArchive);
+const analyse = createBoardAnalysis();
 
 const post = (reply: AnalysisReply) =>
 	self.postMessage(reply, {

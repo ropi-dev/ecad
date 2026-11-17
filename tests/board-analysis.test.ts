@@ -117,7 +117,7 @@ class FakeWorker {
 	onmessage: ((event: MessageEvent<AnalysisReply>) => void) | null = null;
 	onerror: (() => void) | null = null;
 	onmessageerror: (() => void) | null = null;
-	private analyse = createBoardAnalysis(fabricationArchive);
+	private analyse = createBoardAnalysis();
 	private answered = 0;
 	postMessage(request: AnalysisRequest) {
 		this.requests.push(structuredClone(request));
