@@ -4,5 +4,11 @@ import {
 } from "#/drawing/export-reply.ts";
 
 self.onmessage = async (event: MessageEvent<DrawingExportRequest>) => {
-	self.postMessage(await drawingExportReply(event.data));
+	const reply = await drawingExportReply(event.data);
+	self.postMessage(reply, {
+		transfer:
+			"result" in reply && reply.result instanceof Uint8Array
+				? [reply.result.buffer]
+				: [],
+	});
 };

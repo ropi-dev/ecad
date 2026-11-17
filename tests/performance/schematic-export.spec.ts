@@ -39,7 +39,7 @@ test("schematic-export", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 		page.getByRole("button", { name: "Export", exact: true }),
 	).toBeEnabled();
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
-	for (const format of ["svg", "png"]) {
+	for (const format of ["svg", "png", "pdf"]) {
 		await (await toolbarButton(page, "Export drawing")).click();
 		await dialog
 			.getByRole("combobox", { name: "Format", exact: true })
@@ -56,5 +56,6 @@ test("schematic-export", { tag: ["@editor"] }, async ({ page }, testInfo) => {
 	await finish(page, testInfo, "schematic-export", {
 		exportSvgMs: required(metric(value, "drawing.export-svg")),
 		exportPngMs: required(metric(value, "drawing.export")),
+		exportPdfMs: required(metric(value, "drawing.export-pdf")),
 	});
 });

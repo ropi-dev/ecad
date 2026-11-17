@@ -950,7 +950,11 @@ function EditorCanvas({
 						: pageShapes
 			}
 			sheet={pageSheet}
-			drawingName={drawingName}
+			drawingName={
+				board
+					? `${board.file.name} PCB`
+					: (footprintName ?? symbolName ?? drawingName)
+			}
 			ready={ready}
 			history={history}
 			undo={undo}

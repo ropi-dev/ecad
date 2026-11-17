@@ -60,7 +60,7 @@ export const printSchematicTheme: SchematicTheme = {
 		"pin-number": "#a90000",
 		note: "#0000c2",
 		label: "#0f0f0f",
-		...darkLayerColors,
+		...lightLayerColors,
 		"pad-through": throughHolePad,
 		via: "#8c8c8c",
 		"pad-hole": "#ffffff",

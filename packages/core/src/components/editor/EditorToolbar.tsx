@@ -480,6 +480,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				shapes={shapes}
 				sheet={sheet}
 				label={drawingName || "Schematic drawing"}
+				layered={footprint !== undefined}
 				open={exportOpen}
 				onClose={() => setExportOpen(false)}
 			/>
