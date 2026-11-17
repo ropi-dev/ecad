@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { exportDrawing } from "#/drawing/export-client.ts";
+import { exportDrawing, warmDrawingExport } from "#/drawing/export-client.ts";
 import {
 	type DrawingExportRequest,
 	drawingExportReply,
 } from "#/drawing/export-reply.ts";
-import type { WorkerReply } from "#/lib/worker-task.ts";
+import {
+	keepWarm,
+	type TaskWorker,
+	type WorkerReply,
+} from "#/lib/worker-task.ts";
 
 const options = {
 	width: 100,
@@ -25,8 +29,12 @@ class ExportWorker {
 	constructor(private readonly png: WorkerReply<Blob>) {}
 	postMessage(request: DrawingExportRequest) {
 		this.posted.push(request);
-		const reply: WorkerReply<string | Blob> =
-			request.type === "svg" ? { result: workerSvg } : this.png;
+		const reply: WorkerReply<string | Blob | boolean> =
+			request.type === "svg"
+				? { result: workerSvg }
+				: request.type === "warm"
+					? { result: true }
+					: this.png;
 		setTimeout(() => this.onmessage?.({ data: reply } as MessageEvent));
 	}
 	terminate() {
@@ -110,6 +118,27 @@ test("a PNG is encoded by the worker from the bitmap of the SVG it built", async
 	const [request] = vector.worker.posted;
 	assert.equal(request.type === "svg" && request.options.coverOutput, false);
 	assert.equal(vector.worker.posted.length, 1);
+});
+
+test("an export started while the worker warms up waits for that worker and leaves it warm", async () => {
+	const workers: ExportWorker[] = [];
+	const start = keepWarm(() => {
+		const worker = new ExportWorker({ result: new Blob() });
+		workers.push(worker);
+		return worker as unknown as TaskWorker;
+	}, 30);
+	const warmed = warmDrawingExport(start);
+	const svg = await exportDrawing([], options, "svg", start);
+	assert.equal(await svg.text(), workerSvg);
+	assert.equal(await warmed, true);
+	assert.equal(workers.length, 1);
+	assert.deepEqual(
+		workers[0]?.posted.map((request) => request.type),
+		["warm", "svg"],
+	);
+	assert.equal(workers[0]?.terminated, false);
+	await exportDrawing([], options, "svg", start);
+	assert.equal(workers.length, 1);
 });
 
 test("when the worker cannot encode the PNG the page paints the SVG the worker already built", async () => {

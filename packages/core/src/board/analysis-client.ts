@@ -9,7 +9,6 @@ import {
 	type AnalysisRequest,
 	createBoardAnalysis,
 	createShapesSender,
-	type Fabricate,
 } from "#/board/analysis.ts";
 import type { FabricationArchive } from "#/board/fabrication.ts";
 import type { BoardFill } from "#/board/fill.ts";
@@ -45,9 +44,6 @@ interface Flight extends Settle {
 }
 
 const CLOSED = "The board was closed.";
-
-const fabricateHere: Fabricate = async (...board) =>
-	(await import("#/board/fabrication.ts")).fabricationArchive(...board);
 
 const sameLines = (
 	a: readonly RatsnestLine[] | undefined,
@@ -94,8 +90,13 @@ export function createBoardAnalysisClient(
 	const receive = (reply: AnalysisReply) => {
 		const flight = flights.get(reply.id);
 		if (!flight) return;
+		if (reply.type === "unavailable" && !analyseHere) {
+			runHere();
+			return;
+		}
 		flights.delete(reply.id);
-		if (reply.type === "error") flight.reject(new Error(reply.message));
+		if (reply.type === "error" || reply.type === "unavailable")
+			flight.reject(new Error(reply.message));
 		else flight.resolve(reply);
 	};
 
@@ -128,7 +129,7 @@ export function createBoardAnalysisClient(
 			console.warn("The board analysis worker failed. Analysing in the page.");
 		worker?.terminate();
 		worker = undefined;
-		analyseHere = createBoardAnalysis(fabricateHere);
+		analyseHere = createBoardAnalysis();
 		sender.reset();
 		if (board) post({ type: "board", ...board });
 		for (const [id, flight] of flights) send(id, flight);
