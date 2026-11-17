@@ -100,8 +100,8 @@ export function createHoleMask(
 		right = Math.min(width, right);
 		top = Math.min(height, top);
 		if (left >= right || bottom >= top) return;
-		const columns = right - left;
-		const distances = new Float32Array(columns * (top - bottom)).fill(band);
+		for (let row = bottom; row < top; row++)
+			data.fill(0, row * width + left, row * width + right);
 		rings.forEach((ring, index) => {
 			const extent = extents[index];
 			const fromColumn = Math.max(
@@ -184,20 +184,16 @@ export function createHoleMask(
 					const distance = Math.sqrt(
 						near[(row - fromRow) * spanColumns + column - fromColumn],
 					);
-					const at = (row - bottom) * columns + column - left;
-					const signed = crossed % 2 ? -distance : distance;
-					if (signed < distances[at]) distances[at] = signed;
+					const signed = Math.fround(crossed % 2 ? -distance : distance);
+					const value = Math.round(
+						255 * Math.max(0, Math.min(1, 0.5 - signed / (2 * band))),
+					);
+					const at = row * width + column;
+					if (value > data[at]) data[at] = value;
 				}
 			}
 		});
-		for (let row = bottom; row < top; row++)
-			for (let column = left; column < right; column++) {
-				const distance = distances[(row - bottom) * columns + column - left];
-				data[row * width + column] = Math.round(
-					255 * Math.max(0, Math.min(1, 0.5 - distance / (2 * band))),
-				);
-			}
-		onPaint?.(columns, top - bottom);
+		onPaint?.(right - left, top - bottom);
 		texture.needsUpdate = true;
 	};
 	paint(0, 0, width, height);

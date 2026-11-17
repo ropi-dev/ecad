@@ -78,6 +78,19 @@ const tintParts = (object: Object3D, color: string | undefined) =>
 		}
 	});
 
+function useOpeningMask(sources: readonly PlanarGeometry[] | undefined) {
+	const layout = sources?.map((source) => source.edges.length).join(",");
+	const [epoch, setEpoch] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a mask follows its openings' layout, which layout names, and repaints moved openings in place; epoch replaces a mask its openings outgrew
+	const mask = useMemo(
+		() => sources && createHoleMask(sources),
+		[layout, epoch],
+	);
+	useEffect(() => () => mask?.dispose(), [mask]);
+	const outgrow = useCallback(() => setEpoch((next) => next + 1), []);
+	return [mask, outgrow] as const;
+}
+
 /** Applies Gerber layer controls to planar objects in the shared viewport. */
 export function GerberViewer({
 	scene,
@@ -170,24 +183,9 @@ export function GerberViewer({
 				: undefined,
 		[realistic, scene, openings],
 	);
-	const openingLayout = SIDES.map((side) =>
-		openingSources?.[side]?.map((source) => source.edges.length).join(","),
-	).join("|");
-	const [openingEpoch, setOpeningEpoch] = useState(0);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a mask follows its openings' layout, which openingLayout names, and repaints moved openings in place; openingEpoch replaces a mask its openings outgrew
-	const openingMasks = useMemo(
-		() =>
-			openingSources &&
-			Object.fromEntries(
-				SIDES.map((side) => [side, createHoleMask(openingSources[side] ?? [])]),
-			),
-		[openingLayout, openingEpoch],
-	);
-	useEffect(
-		() => () => {
-			for (const side of SIDES) openingMasks?.[side]?.dispose();
-		},
-		[openingMasks],
+	const [topOpenings, outgrowTop] = useOpeningMask(openingSources?.top);
+	const [bottomOpenings, outgrowBottom] = useOpeningMask(
+		openingSources?.bottom,
 	);
 	const profile =
 		realistic && !boardShape?.outline.length ? boardOutline(scene) : undefined;
@@ -313,10 +311,10 @@ export function GerberViewer({
 				board.visible = layersShown;
 				board.renderOrder = 2 * scene.length + 1;
 				for (const side of SIDES) {
-					const mask = openingMasks?.[side];
+					const mask = side === "top" ? topOpenings : bottomOpenings;
 					const sources = openingSources?.[side];
 					if (mask && sources && !mask.repaint(sources))
-						setOpeningEpoch((epoch) => epoch + 1);
+						(side === "top" ? outgrowTop : outgrowBottom)();
 				}
 				for (const part of board.children) {
 					if (!(part instanceof Mesh)) continue;
@@ -328,7 +326,11 @@ export function GerberViewer({
 							"mask",
 							side === "top" ? 1 : -1,
 						).every((mask) => mask.visible);
-						cutHoles(part.material, IDENTITY, openingMasks?.[side]);
+						cutHoles(
+							part.material,
+							IDENTITY,
+							side === "top" ? topOpenings : bottomOpenings,
+						);
 					} else if (part.userData.realisticPart === "laminate")
 						cutHoles(part.material, IDENTITY, holes);
 				}
@@ -360,7 +362,10 @@ export function GerberViewer({
 			surfaceZ,
 			realisticBoard,
 			shownModels,
-			openingMasks,
+			topOpenings,
+			bottomOpenings,
+			outgrowTop,
+			outgrowBottom,
 			openingSources,
 			holes,
 		],
