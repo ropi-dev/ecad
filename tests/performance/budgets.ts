@@ -220,6 +220,7 @@ export const budgets = {
 	"schematic-export": {
 		exportSvgMs: 5000,
 		exportPngMs: 15000,
+		exportPdfMs: 5000,
 		domNodes: 1500,
 		scriptBytes: 3_000_000,
 	},

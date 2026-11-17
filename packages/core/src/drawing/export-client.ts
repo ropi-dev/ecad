@@ -32,13 +32,18 @@ export function warmDrawingExport(startWorker = startExportWorker) {
 	return warming;
 }
 
+export type DrawingExportFormat = "svg" | "png" | "pdf";
+
 export async function exportDrawing(
 	shapes: EditorShape[],
-	options: Omit<DrawingExportOptions, "measureText" | "coverOutput">,
-	format: "svg" | "png",
+	options: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
+		title?: string;
+	},
+	format: DrawingExportFormat,
 	startWorker = startExportWorker,
 ): Promise<Blob> {
 	await warming;
+	if (format === "pdf") return exportPdf(shapes, options, startWorker);
 	const { width, height } = options;
 	const paper =
 		options.background === "transparent"
@@ -85,6 +90,43 @@ export async function exportDrawing(
 			return format === "svg"
 				? svgBlob(svg)
 				: captureSvgPng(svg, width, height, paper);
+		},
+	);
+}
+
+function exportPdf(
+	shapes: EditorShape[],
+	{
+		area,
+		background,
+		sheet,
+		title = "Drawing",
+	}: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
+		title?: string;
+	},
+	startWorker = startExportWorker,
+): Promise<Blob> {
+	const options = { area, background, sheet, title };
+	const pdfBlob = (bytes: Uint8Array<ArrayBuffer>) =>
+		new Blob([bytes], { type: "application/pdf" });
+	return inWorkerOrHere(
+		startWorker,
+		async (ask) =>
+			pdfBlob(
+				await measurePerformanceAsync(
+					"drawing.export-pdf",
+					() =>
+						ask<Uint8Array<ArrayBuffer>>({
+							type: "pdf",
+							shapes,
+							options,
+						} satisfies DrawingExportRequest),
+					{ shapes: shapes.length },
+				),
+			),
+		async () => {
+			const { exportDrawingPdf } = await import("#/drawing/export-pdf.ts");
+			return pdfBlob(exportDrawingPdf(shapes, { ...options, measureText }));
 		},
 	);
 }

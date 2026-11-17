@@ -26,10 +26,10 @@ class ExportWorker {
 	onmessageerror: (() => void) | null = null;
 	terminated = false;
 	readonly posted: DrawingExportRequest[] = [];
-	constructor(private readonly png: WorkerReply<Blob>) {}
+	constructor(private readonly png: WorkerReply<Blob | Uint8Array>) {}
 	postMessage(request: DrawingExportRequest) {
 		this.posted.push(request);
-		const reply: WorkerReply<string | Blob | boolean> =
+		const reply: WorkerReply<string | Blob | Uint8Array | boolean> =
 			request.type === "svg"
 				? { result: workerSvg }
 				: request.type === "warm"
@@ -42,7 +42,7 @@ class ExportWorker {
 	}
 }
 
-const started = (png: WorkerReply<Blob>) => {
+const started = (png: WorkerReply<Blob | Uint8Array>) => {
 	const worker = new ExportWorker(png);
 	return { worker, start: () => worker as unknown as Worker };
 };
@@ -225,4 +225,39 @@ test("the export worker encodes the bitmap it is given, and hands the export bac
 	assert.equal(await reply.result.text(), "100x50");
 	assert.deepEqual(taken, [image]);
 	assert.equal(closed, 2);
+});
+
+test("a PDF comes from the worker in one request, or from the page when the worker gives it back", async () => {
+	const { worker, start } = started({
+		result: new Uint8Array([37, 80, 68, 70]),
+	});
+	const pdf = await exportDrawing(
+		[],
+		{ ...options, title: "Board" },
+		"pdf",
+		start,
+	);
+	assert.equal(pdf.type, "application/pdf");
+	assert.equal(await pdf.text(), "%PDF");
+	assert.deepEqual(worker.posted, [
+		{
+			type: "pdf",
+			shapes: [],
+			options: {
+				area: "sheet",
+				background: "white",
+				sheet: options.sheet,
+				title: "Board",
+			},
+		},
+	]);
+
+	const refused = started({ unavailable: true });
+	const page = await exportDrawing([], options, "pdf", refused.start);
+	assert.equal(page.type, "application/pdf");
+	assert.match(
+		await page.text(),
+		/^%PDF-1\.4\n[\s\S]*\/Title <feff00440072006100770069006e0067>/,
+	);
+	assert.equal(refused.worker.terminated, true);
 });

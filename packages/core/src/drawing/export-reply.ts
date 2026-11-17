@@ -3,6 +3,7 @@ import {
 	type DrawingExportOptions,
 	exportDrawingSvg,
 } from "#/drawing/export.ts";
+import type { DrawingPdfOptions } from "#/drawing/export-pdf.ts";
 import { loadDrawingFonts } from "#/engine/drawing/fonts.ts";
 import { measureText } from "#/engine/drawing/text.ts";
 import { type WorkerReply, workerReply } from "#/lib/worker-task.ts";
@@ -13,12 +14,17 @@ export type DrawingExportRequest =
 			shapes: EditorShape[];
 			options: Omit<DrawingExportOptions, "measureText">;
 	  }
+	| {
+			type: "pdf";
+			shapes: EditorShape[];
+			options: Omit<DrawingPdfOptions, "measureText">;
+	  }
 	| { type: "png"; image: ImageBitmap }
 	| { type: "warm" };
 
 export async function drawingExportReply(
 	request: DrawingExportRequest,
-): Promise<WorkerReply<string | Blob | boolean>> {
+): Promise<WorkerReply<string | Blob | Uint8Array | boolean>> {
 	if (typeof OffscreenCanvas === "undefined") return { unavailable: true };
 	if (request.type === "warm")
 		return (await loadDrawingFonts())
@@ -29,6 +35,20 @@ export async function drawingExportReply(
 		return workerReply(
 			() =>
 				exportDrawingSvg(request.shapes, { ...request.options, measureText }),
+			"Export failed.",
+		);
+	}
+	if (request.type === "pdf") {
+		const writer = await import("#/drawing/export-pdf.ts").catch(
+			() => undefined,
+		);
+		if (!writer || !(await loadDrawingFonts())) return { unavailable: true };
+		return workerReply(
+			() =>
+				writer.exportDrawingPdf(request.shapes, {
+					...request.options,
+					measureText,
+				}),
 			"Export failed.",
 		);
 	}

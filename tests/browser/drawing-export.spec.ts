@@ -9,7 +9,7 @@ const fixture = JSON.parse(
 );
 const artifacts = "perf-artifacts/exports";
 
-test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing", async ({
+test("RP2350A full-sheet SVG, 9600 by 6400 PNG and A3 PDF preserve the complete drawing", async ({
 	page,
 }) => {
 	test.setTimeout(120_000);
@@ -133,6 +133,29 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	await expect(dialog).not.toBeVisible();
 	if (captureArtifacts)
 		await page.screenshot({ path: `${artifacts}/rp2350a-editor.png` });
+
+	await (await toolbarButton(page, "Export drawing")).click();
+	await dialog
+		.getByRole("combobox", { name: "Format", exact: true })
+		.selectOption("pdf");
+	await expect(
+		dialog.getByRole("spinbutton", { name: "Width in pixels" }),
+	).toHaveCount(0);
+	await expect(
+		dialog.getByText("The page is the 420 × 297 mm sheet at 1:1 scale."),
+	).toBeVisible();
+	pending = page.waitForEvent("download");
+	await dialog.getByRole("button", { name: "Download", exact: true }).click();
+	const pdfDownload = await pending;
+	expect(pdfDownload.suggestedFilename()).toBe("schematic-drawing.pdf");
+	expect(exportWorkers()).toHaveLength(1);
+	const pdf = (await readFile(required(await pdfDownload.path()))).toString(
+		"latin1",
+	);
+	expect(pdf.startsWith("%PDF-1.4\n")).toBe(true);
+	expect(pdf).toContain("/MediaBox [0 0 1190.5512 841.8898]");
+	expect(pdf).toContain("/Subtype /Type3");
+	expect(pdf.endsWith("%%EOF\n")).toBe(true);
 
 	await page.addInitScript(() => {
 		const Real = window.Worker;
