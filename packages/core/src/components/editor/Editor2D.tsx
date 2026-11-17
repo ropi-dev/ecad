@@ -938,6 +938,7 @@ function EditorCanvas({
 						.finally(() => setExporting(false));
 				},
 				exporting,
+				zoneFills: () => boardEditor.drawingFills(store.getSnapshot().shapes),
 			}
 		: undefined;
 	const toolbar = (

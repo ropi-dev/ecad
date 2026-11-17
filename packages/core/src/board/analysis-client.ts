@@ -12,6 +12,7 @@ import {
 } from "#/board/analysis.ts";
 import type { FabricationArchive } from "#/board/fabrication.ts";
 import type { BoardFill } from "#/board/fill.ts";
+import type { DrawingZoneFill } from "#/drawing/export.ts";
 
 export interface BoardAnalysisState {
 	fills: readonly BoardFill[];
@@ -23,6 +24,7 @@ export interface BoardAnalysisClient {
 	configure(circuit: Circuit | undefined, rules: BoardRules): void;
 	show(committed: readonly EditorShape[], live: readonly EditorShape[]): void;
 	check(shapes: readonly EditorShape[]): Promise<DrcFinding[]>;
+	drawingFills(shapes: readonly EditorShape[]): Promise<DrawingZoneFill[]>;
 	fabricate(
 		name: string,
 		shapes: readonly EditorShape[],
@@ -230,6 +232,10 @@ export function createBoardAnalysisClient(
 		async check(shapes) {
 			const reply = await requested("check", shapes);
 			return reply.type === "check" ? reply.findings : [];
+		},
+		async drawingFills(shapes) {
+			const reply = await requested("drawing-fills", shapes);
+			return reply.type === "drawing-fills" ? reply.fills : [];
 		},
 		async fabricate(name, shapes) {
 			const reply = await requested("fabrication", shapes, name);

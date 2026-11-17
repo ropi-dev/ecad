@@ -289,12 +289,20 @@ export function useBoardEditor({
 		},
 		[analysis],
 	);
+	const drawingFills = useCallback(
+		async (shapes: readonly EditorShape[]) => {
+			if (!analysis) throw new Error("The board is not open.");
+			return analysis.drawingFills(shapes);
+		},
+		[analysis],
+	);
 
 	return {
 		rules,
 		netlist,
 		fills,
 		fabricate,
+		drawingFills,
 		buildDisplay,
 		buildPreview,
 		updateZones,

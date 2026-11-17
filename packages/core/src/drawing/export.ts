@@ -1,8 +1,10 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
+	type CopperLayer,
 	type FootprintLayer,
 	footprintLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
+import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Matrix4, Vector3 } from "three";
 import {
 	buildDrawingDisplay,
@@ -25,7 +27,14 @@ import {
 } from "#/drawing/text.ts";
 import { buildWorksheetDisplay, type SheetSize } from "#/drawing/worksheet.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
+import type { MultiPolygon } from "#/engine/types.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
+
+export interface DrawingZoneFill {
+	shapeId: number;
+	layer: CopperLayer;
+	polygons: MultiPolygon;
+}
 
 export interface DrawingExportOptions {
 	width: number;
@@ -35,11 +44,12 @@ export interface DrawingExportOptions {
 	sheet: SheetSize;
 	measureText?: MeasureText;
 	coverOutput?: boolean;
+	zoneFills?: readonly DrawingZoneFill[];
 }
 
 export type DrawingSceneOptions = Pick<
 	DrawingExportOptions,
-	"area" | "background" | "sheet" | "measureText"
+	"area" | "background" | "sheet" | "measureText" | "zoneFills"
 > & { layer?: FootprintLayer };
 
 const layerAppearances = new Set<string>([
@@ -57,6 +67,7 @@ export interface SceneTextLine {
 
 export type SceneItem = { order: number; name: string; color: string } & (
 	| { kind: "triangles"; points: number[] }
+	| { kind: "rings"; rings: number[][] }
 	| {
 			kind: "text";
 			matrix: readonly [number, number, number, number, number, number];
@@ -122,7 +133,19 @@ export function buildDrawingScene(
 	const { background, sheet, area } = options;
 	const measure =
 		options.measureText ?? ((text: string) => text.length * fontPixels * 0.6);
-	const display = buildDrawingDisplay(shapes, new Set(), [], measure);
+	const zones = new Set(
+		shapes.flatMap((shape) =>
+			shape.kind === "rectangle" && shape.zone ? [shape.id] : [],
+		),
+	);
+	const fills = (options.zoneFills ?? []).filter((fill) =>
+		zones.has(fill.shapeId),
+	);
+	const filled = new Set(fills.map((fill) => fill.shapeId));
+	const drawn = filled.size
+		? shapes.filter((shape) => !filled.has(shape.id))
+		: shapes;
+	const display = buildDrawingDisplay(drawn, new Set(), [], measure);
 	const dark = background === "dark";
 	const theme = dark ? darkSchematicTheme : printSchematicTheme;
 	const colors = theme.appearance;
@@ -246,6 +269,25 @@ export function buildDrawingScene(
 		...display.junctions,
 	])
 		visit(shape);
+	for (const fill of fills) {
+		const first = drawn.findIndex((shape) =>
+			shapeLayers(shape).includes(fill.layer),
+		);
+		const rings = fill.polygons.flat().map((ring) =>
+			ring.flatMap(([x, y]) => {
+				include(new Vector3(x, y, 0));
+				return [x, y];
+			}),
+		);
+		items.push({
+			order: first + 0.5,
+			name: `zone fill ${fill.shapeId}`,
+			color: colors[options.layer ?? fill.layer],
+			...(rings.length
+				? { kind: "rings" as const, rings }
+				: { kind: "empty" as const }),
+		});
+	}
 	let worksheet: DrawingScene["worksheet"];
 	if (area === "sheet") {
 		worksheet = buildWorksheetDisplay(sheet);
@@ -341,6 +383,13 @@ function svgItem(item: SceneItem) {
 			paths.push(`M${at(i)}L${at(i + 2)}L${at(i + 4)}Z`);
 		return `<path fill="${item.color}" d="${paths.join("")}"/>`;
 	}
+	if (item.kind === "rings")
+		return `<path fill="${item.color}" fill-rule="evenodd" d="${item.rings
+			.map(
+				(ring) =>
+					`M${ring.map((value, i) => number(i % 2 ? -value : value)).join(" ")}Z`,
+			)
+			.join("")}"/>`;
 	const m = item.matrix;
 	const { align, x } = item;
 	return `<g transform="matrix(${[m[0], -m[1], m[2], -m[3], m[4], -m[5]].map(number).join(" ")})" fill="${item.color}" font-family="${drawingFontStack}" font-size="${fontPixels}"${item.bold ? ' font-weight="bold"' : ""} text-anchor="${align === "center" ? "middle" : align === "right" ? "end" : "start"}">${item.lines.map((line) => `<text x="${x}" y="${line.baseline}"${line.text ? ` textLength="${line.width}" lengthAdjust="spacingAndGlyphs"` : ""} xml:space="preserve">${escapeXml(line.text)}</text>${overbarPath(line, x, align)}`).join("")}</g>`;

@@ -20,18 +20,24 @@ import {
 	fillZones,
 	type ZoneFill,
 } from "#/board/fill.ts";
+import type { DrawingZoneFill } from "#/drawing/export.ts";
 
 export interface ShapesPatch {
 	ids?: readonly number[];
 	changed?: readonly EditorShape[];
 }
 
-export type AnalysisKind = "fills" | "connectivity" | "check" | "fabrication";
+export type AnalysisKind =
+	| "fills"
+	| "drawing-fills"
+	| "connectivity"
+	| "check"
+	| "fabrication";
 
 export type AnalysisRequest =
 	| { type: "board"; circuit: Circuit | undefined; rules: BoardRules }
 	| {
-			type: "fills" | "connectivity" | "check";
+			type: "fills" | "drawing-fills" | "connectivity" | "check";
 			id: number;
 			shapes: ShapesPatch;
 	  }
@@ -39,6 +45,7 @@ export type AnalysisRequest =
 
 export type AnalysisReply =
 	| { type: "fills"; id: number; fills: BoardFill[] }
+	| { type: "drawing-fills"; id: number; fills: DrawingZoneFill[] }
 	| { type: "connectivity"; id: number; ratsnest: RatsnestLine[] }
 	| { type: "check"; id: number; findings: DrcFinding[] }
 	| ({ type: "fabrication"; id: number } & FabricationArchive)
@@ -161,6 +168,16 @@ export function createBoardAnalysis(
 				fills = fillZones(current, netlist, rules);
 				return { type, id, fills: boardFills(fills) };
 			}
+			if (type === "drawing-fills")
+				return {
+					type,
+					id,
+					fills: fillZones(current, netlist, rules).map((fill) => ({
+						shapeId: fill.zone.shapeId,
+						layer: fill.layer,
+						polygons: fill.polygons,
+					})),
+				};
 			if (type === "connectivity")
 				return {
 					type,

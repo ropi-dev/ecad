@@ -103,13 +103,21 @@ function exportPdf(
 		sheet,
 		title = "Drawing",
 		layers = false,
+		zoneFills,
 	}: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
 		title?: string;
 		layers?: boolean;
 	},
 	startWorker = startExportWorker,
 ): Promise<Blob> {
-	const options = { area, background, sheet, title, layers };
+	const options = {
+		area,
+		background,
+		sheet,
+		title,
+		layers,
+		...(zoneFills ? { zoneFills } : {}),
+	};
 	const pdfBlob = (bytes: Uint8Array<ArrayBuffer>) =>
 		new Blob([bytes], { type: "application/pdf" });
 	return inWorkerOrHere(
