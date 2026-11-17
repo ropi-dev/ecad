@@ -88,8 +88,9 @@ smallest dimension of each oval.
 RPI-RP2350A-MINIMAL R4 board, `RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb` in
 https://datasheets.raspberrypi.com/rp2350/Minimal-KiCAD.zip, downloaded on
 2026-11-15. They are under the MIT license below, not CC BY-SA 4.0. The
-conversion is the same as for the KiCad footprints. The USB receptacle's
-custom shell pads become two rectangles each.
+conversion is the same as for the KiCad footprints, except that the USB
+receptacle's oval shell pads stay oval with slotted holes. Its custom shell
+pads become two rectangles each.
 
 - `RPI_COMPILED:amphenol_10103594-0001lf` as `USB_Micro-B_Amphenol_10103594-0001LF`
 - `RPI_COMPILED:samtec_tsw-118-07-l-d` as `PinHeader_2x18_Samtec_TSW-118-07-L-D`

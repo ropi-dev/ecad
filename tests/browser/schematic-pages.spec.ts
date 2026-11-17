@@ -115,9 +115,13 @@ test("page tabs show each page's shapes, and the page list edits pages with undo
 
 	await page.keyboard.press("Escape");
 	await page.locator("canvas").focus();
-	await page.keyboard.press("ControlOrMeta+z");
-	await page.keyboard.press("ControlOrMeta+z");
-	await page.keyboard.press("ControlOrMeta+z");
+	for (let step = 0; step < 3; step++) {
+		const before = JSON.stringify(await drawingPages(page));
+		await page.keyboard.press("ControlOrMeta+z");
+		await expect
+			.poll(async () => JSON.stringify(await drawingPages(page)))
+			.not.toBe(before);
+	}
 	await expect
 		.poll(() => drawingPages(page))
 		.toMatchObject({

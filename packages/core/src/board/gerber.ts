@@ -22,7 +22,7 @@ import {
 	isPad,
 	isVia,
 	type PadShape,
-	shapeDrill,
+	shapeHole,
 	shapeLayer,
 	shapeLayers,
 	type ViaShape,
@@ -555,17 +555,26 @@ export function exportFabrication(
 	return files;
 }
 
+const drillMillimetres = (value: number) => {
+	const text = value.toFixed(3);
+	return text === "-0.000" ? "0.000" : text;
+};
+const drillXY = (point: Point) =>
+	`X${drillMillimetres(point.x)}Y${drillMillimetres(point.y)}`;
+
 function drillFile(
 	items: readonly EditorShape[],
 	fileFunction: string,
 ): string {
-	const holes = new Map<string, Point[]>();
+	const holes = new Map<string, string[]>();
 	for (const shape of items) {
-		const drill = shapeDrill(shape);
-		if (drill === undefined) continue;
-		const key = drill.toFixed(3);
+		const hole = shapeHole(shape);
+		if (hole === undefined) continue;
+		const key = hole.diameter.toFixed(3);
 		const list = holes.get(key) ?? [];
-		list.push({ x: shape.x, y: shape.y });
+		const [from, to] = hole.ends.map(drillXY);
+		if (from === to) list.push(from);
+		else list.push(`${from}G85${to}`, "G05");
 		holes.set(key, list);
 	}
 	const tools = [...holes.keys()].sort((a, b) => Number(a) - Number(b));
@@ -583,8 +592,7 @@ function drillFile(
 	];
 	tools.forEach((tool, index) => {
 		lines.push(`T${index + 1}`);
-		for (const point of holes.get(tool) ?? [])
-			lines.push(`X${point.x.toFixed(3)}Y${point.y.toFixed(3)}`);
+		lines.push(...(holes.get(tool) ?? []));
 	});
 	lines.push("T0", "M30", "");
 	return lines.join("\n");

@@ -40,6 +40,7 @@ import {
 	padCornerRadius,
 	shapeDrill,
 	shapeLayers,
+	slotReach,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { analyzeDrawing } from "#/drawing/drawing-analysis.ts";
 import {
@@ -285,6 +286,24 @@ function displayShape(
 	if (fills.length) display.children = fills;
 	if (isDrilled(shape)) {
 		const drill = shapeDrill(shape);
+		const slot = 2 * slotReach(shape) + (drill ?? 0);
+		const holeGeometry: DrawingGeometry =
+			slot > (drill ?? 0)
+				? {
+						kind: "rectangle",
+						width: slot,
+						height: drill ?? 0,
+						lineWidth: 0,
+						filled: true,
+						cornerRadius: (drill ?? 0) / 2,
+					}
+				: {
+						kind: "circle",
+						width: drill ?? 0,
+						height: drill ?? 0,
+						lineWidth: 0,
+						filled: true,
+					};
 		const number = isPad(shape) ? shape.pad.number : "";
 		const { width: labelWidth, height: labelHeight } = padNumberSize(
 			shape,
@@ -298,17 +317,11 @@ function displayShape(
 						{
 							key: `${key}:hole`,
 							name: `${isPad(shape) ? "pad" : isVia(shape) ? "via" : "unplated"} hole ${shape.id}`,
-							geometry: {
-								kind: "circle" as const,
-								width: drill,
-								height: drill,
-								lineWidth: 0,
-								filled: true,
-							},
+							geometry: holeGeometry,
 							x: 0,
 							y: 0,
-							width: drill / shape.width,
-							height: drill / shape.height,
+							width: holeGeometry.width / shape.width,
+							height: holeGeometry.height / shape.height,
 							rotation: 0,
 							appearance: "pad-hole" as const,
 							renderOrder: renderOrder + 0.25,

@@ -106,6 +106,30 @@ test("through-hole pads keep their drills and square pad 1", () => {
 	);
 });
 
+test("the Raspberry Pi USB receptacle's shell legs are oval pads with slots along their long side", () => {
+	const legs = pads("usb_micro-b_amphenol_10103594-0001lf").filter(
+		(shape) => shape.pad.slot !== undefined,
+	);
+	assert.deepEqual(
+		legs.map(({ kind, width, height, rotation, pad }) => [
+			kind,
+			width,
+			height,
+			Number(rotation.toFixed(6)),
+			pad.number,
+			pad.cornerRatio,
+			pad.drill,
+			pad.slot,
+		]),
+		[
+			["rectangle", 1.45, 1.05, 1.570796, "6", 0.5, 0.65, 1.05],
+			["rectangle", 1.8, 1.1, 1.570796, "7", 0.5, 0.7, 1.2],
+			["rectangle", 1.45, 1.05, 1.570796, "9", 0.5, 0.65, 1.05],
+			["rectangle", 1.8, 1.1, 1.570796, "10", 0.5, 0.7, 1.2],
+		],
+	);
+});
+
 test("exposed pads leave paste to separate openings on the paste layer", () => {
 	const file = footprint("qfn-48-1ep_6x6mm_p0.4mm_ep4.6x4.6mm");
 	const exposed = pads(file.id).find(({ pad }) => pad.number === "49");

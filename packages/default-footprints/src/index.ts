@@ -126,21 +126,22 @@ function triangle(
 }
 
 function pad(
-	shape: "rect" | "circle",
+	shape: "rect" | "circle" | "oval",
 	x: number,
 	y: number,
 	width: number,
 	height: number,
 	angle: number,
 ) {
+	const circle = shape === "circle";
 	return {
-		kind: shape === "rect" ? ("rectangle" as const) : ("circle" as const),
+		kind: circle ? ("circle" as const) : ("rectangle" as const),
 		layer: "F.Cu" as const,
 		x,
 		y: round(-y),
 		width,
-		height: shape === "rect" ? height : width,
-		rotation: shape === "rect" ? radians(angle) : 0,
+		height: circle ? width : height,
+		rotation: circle ? 0 : radians(angle),
 		lineWidth: padStroke,
 		filled: true,
 	};
@@ -153,16 +154,30 @@ function convert(item: SourceItem): ShapeWithoutId[] {
 			return [
 				{
 					...pad(shape, x, y, width, height, angle),
-					pad: { number, type: "smd", ...(paste ? { paste } : {}) },
+					pad: {
+						number,
+						type: "smd",
+						...(paste ? { paste } : {}),
+						...(shape === "oval" ? { cornerRatio: 0.5 } : {}),
+					},
 				},
 			];
 		}
 		case "tht": {
-			const [, number, shape, x, y, width, height, angle, drill] = item;
+			const [, number, shape, x, y, width, height, angle, drill, slot] = item;
+			const turned = slot !== undefined && height > width;
 			return [
 				{
-					...pad(shape, x, y, width, height, angle),
-					pad: { number, type: "through-hole", drill },
+					...(turned
+						? pad(shape, x, y, height, width, angle + 90)
+						: pad(shape, x, y, width, height, angle)),
+					pad: {
+						number,
+						type: "through-hole",
+						drill,
+						...(slot === undefined ? {} : { slot }),
+						...(shape === "oval" ? { cornerRatio: 0.5 } : {}),
+					},
 				},
 			];
 		}

@@ -52,9 +52,11 @@ import {
 	isHole,
 	isPad,
 	isVia,
+	type PadOutline,
 	type PadShape,
 	padCornerRadius,
 	padMinorSize,
+	padOutline,
 	shapeLayer,
 	shapeLayers,
 	type ViaShape,
@@ -233,6 +235,7 @@ function AttributeInput({
 	unit = "mil",
 	positive = false,
 	nonNegative = false,
+	above = Number.NEGATIVE_INFINITY,
 	below = Number.POSITIVE_INFINITY,
 	step = "any",
 	onChange,
@@ -242,6 +245,7 @@ function AttributeInput({
 	unit?: string;
 	positive?: boolean;
 	nonNegative?: boolean;
+	above?: number;
 	below?: number;
 	step?: string;
 	onChange: (value: number) => void;
@@ -276,6 +280,7 @@ function AttributeInput({
 						Number.isFinite(next) &&
 						(!positive || next > 0) &&
 						(!nonNegative || next >= 0) &&
+						next > above &&
 						next < below &&
 						(step !== "90" || next % 90 === 0) &&
 						(step !== "1" || Number.isInteger(next))
@@ -480,19 +485,20 @@ function padRows(
 				key="shape"
 				aria-label="Pad shape"
 				className="ui-select w-36"
-				value={pad.kind}
+				value={padOutline(pad)}
 				onChange={(event) =>
 					onEdit({
 						kind: "pad",
 						edit: {
 							attribute: "shape",
-							value: event.currentTarget.value as PadShape["kind"],
+							value: event.currentTarget.value as PadOutline,
 						},
 					})
 				}
 			>
 				<option value="rectangle">Rectangle</option>
 				<option value="circle">Circle</option>
+				<option value="oval">Oval</option>
 			</select>,
 		],
 		...(pad.kind === "rectangle"
@@ -546,18 +552,67 @@ function padRows(
 			: []),
 		...(pad.pad.drill === undefined
 			? []
+			: padHoleRows(pad, pad.pad.drill, unit, onEdit)),
+	];
+}
+
+function padHoleRows(
+	pad: PadShape,
+	drill: number,
+	unit: LengthUnit,
+	onEdit: (edit: SelectionEdit) => void,
+): [string, ReactNode][] {
+	const { slot } = pad.pad;
+	return [
+		[
+			"Hole",
+			<select
+				key="hole"
+				aria-label="Hole"
+				className="ui-select w-36"
+				value={slot === undefined ? "round" : "slot"}
+				onChange={(event) =>
+					onEdit({
+						kind: "pad",
+						edit: {
+							attribute: "hole",
+							value: event.currentTarget.value === "slot" ? "slot" : "round",
+						},
+					})
+				}
+			>
+				<option value="round">Round</option>
+				<option value="slot">Slot</option>
+			</select>,
+		],
+		[
+			slot === undefined ? "Drill" : "Slot width",
+			<AttributeInput
+				key={`${pad.id}:drill`}
+				label={slot === undefined ? "Drill" : "Slot width"}
+				value={drill}
+				unit={unit}
+				positive
+				below={Math.min(padMinorSize(pad), slot ?? Number.POSITIVE_INFINITY)}
+				onChange={(value) =>
+					onEdit({ kind: "pad", edit: { attribute: "drill", value } })
+				}
+			/>,
+		],
+		...(slot === undefined
+			? []
 			: [
 					[
-						"Drill",
+						"Slot length",
 						<AttributeInput
-							key={`${pad.id}:drill`}
-							label="Drill"
-							value={pad.pad.drill}
+							key={`${pad.id}:slot`}
+							label="Slot length"
+							value={slot}
 							unit={unit}
-							positive
-							below={padMinorSize(pad)}
+							above={drill}
+							below={pad.width}
 							onChange={(value) =>
-								onEdit({ kind: "pad", edit: { attribute: "drill", value } })
+								onEdit({ kind: "pad", edit: { attribute: "slot", value } })
 							}
 						/>,
 					] as [string, ReactNode],
