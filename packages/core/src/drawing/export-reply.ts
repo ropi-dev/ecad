@@ -20,7 +20,10 @@ export async function drawingExportReply(
 	request: DrawingExportRequest,
 ): Promise<WorkerReply<string | Blob | boolean>> {
 	if (typeof OffscreenCanvas === "undefined") return { unavailable: true };
-	if (request.type === "warm") return { result: await loadDrawingFonts() };
+	if (request.type === "warm")
+		return (await loadDrawingFonts())
+			? { result: true }
+			: { unavailable: true };
 	if (request.type === "svg") {
 		if (!(await loadDrawingFonts())) return { unavailable: true };
 		return workerReply(

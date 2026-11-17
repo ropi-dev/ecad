@@ -4,7 +4,15 @@ import {
 	createBoardAnalysis,
 } from "#/board/analysis.ts";
 
-const analyse = createBoardAnalysis();
+const analyse = createBoardAnalysis(async (...board) => {
+	const fabrication = await import("#/board/fabrication.ts").catch(
+		(cause: unknown) => {
+			self.reportError(cause);
+			return new Promise<never>(() => undefined);
+		},
+	);
+	return fabrication.fabricationArchive(...board);
+});
 
 const post = (reply: AnalysisReply) =>
 	self.postMessage(reply, {
