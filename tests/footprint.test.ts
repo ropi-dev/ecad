@@ -588,7 +588,7 @@ test("a filled footprint graphic is solid in its layer's colour, and a rotated p
 	assert.equal(rotated.shapes[0].children?.[0].rotation, -Math.PI / 2);
 });
 
-test("an exported footprint keeps its layer colours and pad holes", () => {
+test("an exported footprint keeps its layer colours and marks its pad holes", () => {
 	const svg = exportDrawingSvg(twoPadsWireCourtyardAndThroughHole(), {
 		width: 400,
 		height: 300,

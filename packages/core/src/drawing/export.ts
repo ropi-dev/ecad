@@ -327,6 +327,7 @@ export function buildDrawingScene(
 	).entries()) {
 		if (!holeMarked(hole, options.layer)) continue;
 		const ring = holeOutline(hole);
+		if (ring.length < 6) continue;
 		for (let i = 0; i + 1 < ring.length; i += 2)
 			include(new Vector3(ring[i], ring[i + 1], 0));
 		items.push({

@@ -25,7 +25,7 @@ export interface DrillHole {
 	ends: [Point, Point];
 }
 
-/** @return Every drilled hole on the board, in the order the Excellon files list them. */
+/** @return Every hole the Excellon files drill, plated and unplated. */
 export function drillHoles(shapes: readonly EditorShape[]): DrillHole[] {
 	const holes: DrillHole[] = [];
 	for (const shape of shapes) {
