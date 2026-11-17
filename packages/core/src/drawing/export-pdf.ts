@@ -5,6 +5,7 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import { zlibSync } from "fflate";
+import { maskOpenings } from "#/board/mask.ts";
 import {
 	buildDrawingScene,
 	type DrawingScene,
@@ -28,7 +29,10 @@ interface GlyphOutlines {
 	>;
 }
 
-export type DrawingPdfOptions = Omit<DrawingSceneOptions, "layer"> & {
+export type DrawingPdfOptions = Omit<
+	DrawingSceneOptions,
+	"layer" | "maskOpenings"
+> & {
 	title: string;
 	layers?: boolean;
 };
@@ -348,10 +352,13 @@ function layerPages(
 	options: DrawingPdfOptions,
 ): PdfPage[] {
 	const layers = shapes.map(shapeLayers);
+	const mask = maskOpenings(shapes, options.maskMargin);
 	const pages = footprintLayers.flatMap((layer): PdfPage[] => {
+		const openings =
+			layer === "F.Mask" ? mask.top : layer === "B.Mask" ? mask.bottom : [];
 		if (
 			layer === "Edge.Cuts" ||
-			!layers.some((onLayers) => onLayers.includes(layer))
+			(!openings.length && !layers.some((onLayers) => onLayers.includes(layer)))
 		)
 			return [];
 		return [
@@ -363,7 +370,11 @@ function layerPages(
 							layers[index].includes(layer) ||
 							layers[index].includes("Edge.Cuts"),
 					),
-					{ ...options, layer },
+					{
+						...options,
+						layer,
+						...(openings.length ? { maskOpenings: openings } : {}),
+					},
 				),
 			},
 		];

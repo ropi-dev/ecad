@@ -25,6 +25,7 @@ export function DrawingExport({
 	label,
 	layered = false,
 	zoneFills,
+	maskMargin,
 	open,
 	onClose,
 }: {
@@ -33,6 +34,7 @@ export function DrawingExport({
 	label: string;
 	layered?: boolean;
 	zoneFills?: () => Promise<readonly DrawingZoneFill[]>;
+	maskMargin?: number | undefined;
 	open: boolean;
 	onClose: () => void;
 }) {
@@ -101,6 +103,7 @@ export function DrawingExport({
 														title: label,
 														layers: layered,
 														...(fills ? { zoneFills: fills } : {}),
+														...(maskMargin === undefined ? {} : { maskMargin }),
 													},
 													format,
 												),

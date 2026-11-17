@@ -48,12 +48,16 @@ export interface DrawingExportOptions {
 	measureText?: MeasureText;
 	coverOutput?: boolean;
 	zoneFills?: readonly DrawingZoneFill[];
+	maskMargin?: number;
 }
 
 export type DrawingSceneOptions = Pick<
 	DrawingExportOptions,
-	"area" | "background" | "sheet" | "measureText" | "zoneFills"
-> & { layer?: FootprintLayer };
+	"area" | "background" | "sheet" | "measureText" | "zoneFills" | "maskMargin"
+> & {
+	layer?: FootprintLayer;
+	maskOpenings?: readonly (readonly [number, number])[][];
+};
 
 const layerAppearances = new Set<string>([
 	...footprintLayers.filter((layer) => layer !== "Edge.Cuts"),
@@ -293,6 +297,19 @@ export function buildDrawingScene(
 				: { kind: "empty" as const }),
 		});
 	}
+	for (const [index, ring] of (options.maskOpenings ?? []).entries())
+		items.push({
+			order: -1,
+			name: `mask opening ${index}`,
+			color: colors[options.layer ?? "F.Mask"],
+			kind: "rings",
+			rings: [
+				ring.flatMap(([x, y]) => {
+					include(new Vector3(x, y, 0));
+					return [x, y];
+				}),
+			],
+		});
 	let worksheet: DrawingScene["worksheet"];
 	if (area === "sheet") {
 		worksheet = buildWorksheetDisplay(sheet);

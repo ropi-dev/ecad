@@ -8,6 +8,7 @@ import {
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { unzlibSync } from "fflate";
 import { createBoardAnalysis, createShapesSender } from "#/board/analysis.ts";
+import { exportFabrication } from "#/board/gerber.ts";
 import { boardDisplay, boardExportShapes } from "#/board/view.ts";
 import { exportDrawingSvg } from "#/drawing/export.ts";
 import {
@@ -251,6 +252,8 @@ test("a board export puts each layer with items on its own page, the same size, 
 		"Front copper",
 		"Back copper",
 		"Front silkscreen",
+		"Front solder mask",
+		"Back solder mask",
 		"Front paste",
 		"Front courtyard",
 		"Front fabrication",
@@ -386,7 +389,8 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 		assert.doesNotMatch(bare.pages[page].content, /\nf\*/);
 	}
 	for (const page of pdf.pages.slice(2))
-		assert.doesNotMatch(page.content, /\nf\*/, page.text[0]);
+		if (!page.text[0].endsWith("solder mask"))
+			assert.doesNotMatch(page.content, /\nf\*/, page.text[0]);
 	const backOnly = (shape: EditorShape) =>
 		!zones.includes(shape) &&
 		shapeLayers(shape).length === 1 &&
@@ -429,4 +433,76 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 			}
 		}
 	}
+});
+
+test("a board export opens the solder mask pages at each pad and unplated hole, where the mask Gerber flashes them", async () => {
+	const design = await exampleDesigns.rp2350a.load();
+	const shapes = boardExportShapes(design.board);
+	const openings = (maskMargin: number) => {
+		const pdf = parsePdf(
+			exportDrawingPdf(shapes, {
+				...options,
+				area: "drawing",
+				title: design.name,
+				layers: true,
+				maskMargin,
+			}),
+		);
+		return ["Front solder mask", "Back solder mask"].map((label) => {
+			const page = pdf.pages.find(({ text }) => text[0] === label);
+			assert.ok(page, label);
+			const lines = page.content.split("\n");
+			return lines.flatMap((line, index) =>
+				lines[index + 1] === "f*" && line.endsWith(" h")
+					? [
+							(line.match(/-?[\d.]+ -?[\d.]+ [ml]/g) ?? []).map((point) =>
+								point.split(" ").slice(0, 2).map(Number),
+							),
+						]
+					: [],
+			);
+		});
+	};
+	const inside = (ring: number[][], [x, y]: number[]) => {
+		let crossings = 0;
+		for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+			const [xi, yi] = ring[i];
+			const [xj, yj] = ring[j];
+			if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+				crossings++;
+		}
+		return crossings % 2 === 1;
+	};
+	const extent = (rings: number[][][]) =>
+		rings.map((ring) => {
+			const xs = ring.map(([x]) => x);
+			return Math.max(...xs) - Math.min(...xs);
+		});
+	const margin = 0.05;
+	const sides = openings(margin);
+	const files = exportFabrication("rp2350a", design.board, [], margin);
+	for (const [side, suffix] of [
+		[0, "F_Mask.gts"],
+		[1, "B_Mask.gbs"],
+	] as const) {
+		const flashes = [
+			...(files
+				.find((file) => file.name.endsWith(suffix))
+				?.content.matchAll(/X(-?\d+)Y(-?\d+)D03\*/g) ?? []),
+		].map(([, x, y]) => [Number(x) / 1e6, Number(y) / 1e6]);
+		assert.ok(flashes.length > 0, suffix);
+		assert.equal(sides[side].length, flashes.length, suffix);
+		for (const flash of flashes)
+			assert.ok(
+				sides[side].some((ring) => inside(ring, flash)),
+				`${suffix} flash at ${flash}`,
+			);
+	}
+	const bare = openings(0);
+	for (const side of [0, 1])
+		for (const [index, width] of extent(sides[side]).entries())
+			assert.ok(
+				Math.abs(width - extent(bare[side])[index] - 2 * margin) < 2e-3,
+				`opening ${index} grows by the margin on each side`,
+			);
 });
