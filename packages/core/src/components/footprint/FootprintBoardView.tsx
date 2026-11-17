@@ -9,7 +9,7 @@ import {
 	useState,
 } from "react";
 import { boardInterior } from "#/board/fill.ts";
-import { maskOpenings } from "#/board/gerber.ts";
+import { maskOpenings } from "#/board/mask.ts";
 import { useFootprintModels } from "#/components/footprint/useFootprintModels.ts";
 import { GerberViewer } from "#/components/gerber/GerberViewer.tsx";
 import type { Viewer2DProps } from "#/components/viewer/Viewer2D.tsx";

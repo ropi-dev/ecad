@@ -11,6 +11,7 @@ import {
 import {
 	Box3,
 	type BufferAttribute,
+	DoubleSide,
 	DynamicDrawUsage,
 	type Mesh,
 	MeshBasicMaterial,
@@ -322,6 +323,39 @@ test("moving silkscreen text keeps its layer, rewording it draws a new glyph and
 	assert.deepEqual(freed, [label.kind === "text" ? label.text : ""]);
 	builder.dispose();
 	assert.deepEqual([...freed].sort(), [...drawn].sort());
+});
+
+test("back silkscreen text is drawn mirrored about its own axis and stays visible from both sides", () => {
+	const { builder, shapes, label } = boardWithText();
+	const rotation = Math.PI / 3;
+	const turned = (layer: "F.SilkS" | "B.SilkS") =>
+		shapes.map((shape) =>
+			shape.id === 7 ? { ...label, rotation, layer } : shape,
+		);
+	const front = corners(
+		layerOf(builder.build(turned("F.SilkS")), "footprint:F.SilkS:text"),
+	).array.slice();
+	const back = layerOf(
+		builder.build(turned("B.SilkS")),
+		"footprint:B.SilkS:text",
+	);
+	const along = { x: Math.cos(rotation), y: Math.sin(rotation) };
+	const center = { x: label.x, y: label.y };
+	const backCorners = corners(back).array;
+	for (let at = 0; at < front.length; at += 3) {
+		const offset =
+			(front[at] - center.x) * along.x + (front[at + 1] - center.y) * along.y;
+		assert.ok(
+			Math.abs(backCorners[at] - (front[at] - 2 * offset * along.x)) < 1e-6,
+		);
+		assert.ok(
+			Math.abs(backCorners[at + 1] - (front[at + 1] - 2 * offset * along.y)) <
+				1e-6,
+		);
+	}
+	const materials = textMesh(back).material as MeshBasicMaterial[];
+	assert.ok(materials.every((material) => material.side === DoubleSide));
+	builder.dispose();
 });
 
 test("a zone fill draws from the triangles it arrives with and stays put while a pad is dragged over it", () => {

@@ -4,6 +4,7 @@ import type {
 	SymbolShape,
 } from "#/drawing/schema.ts";
 import { symbolShapes } from "#/drawing/symbol-instances.ts";
+import type { TextAlignment } from "#/drawing/text-alignment.ts";
 import type { Point } from "#/drawing/types.ts";
 import { flipLayer } from "#/footprint/layers.ts";
 import type { FootprintReference } from "#/footprint/reference.ts";
@@ -59,14 +60,25 @@ const footprintChildren = (shapes: readonly EditorShape[]): SymbolShape[] =>
 			: [{ ...shape, id: index + 1, layer: shapeLayer(shape) } as SymbolShape],
 	);
 
+function mirrorAlignment<T extends TextAlignment>(alignment: T): T {
+	const { horizontalAlign } = alignment;
+	return horizontalAlign === "left" || horizontalAlign === "right"
+		? {
+				...alignment,
+				horizontalAlign: horizontalAlign === "left" ? "right" : "left",
+			}
+		: alignment;
+}
+
 function mirrorChild(child: SymbolShape): SymbolShape {
 	const layer = child.layer ? flipLayer(child.layer) : child.layer;
-	return {
+	const mirrored = {
 		...child,
 		x: -child.x,
 		rotation: -child.rotation,
 		...(layer ? { layer } : {}),
 	};
+	return mirrored.kind === "text" ? mirrorAlignment(mirrored) : mirrored;
 }
 
 /** A footprint placed on a board, as a group of its items. */
@@ -133,7 +145,19 @@ export function flipBoardFootprint(footprint: BoardFootprint): BoardFootprint {
 				...footprint.childOverrides?.[`shape:${child.id}`],
 			} as SymbolShape),
 		),
-		texts: footprint.texts.map((text) => ({ ...text, x: -text.x })),
+		texts: footprint.texts.map((text) =>
+			mirrorAlignment({ ...text, x: -text.x }),
+		),
+		...(footprint.textAlignments
+			? {
+					textAlignments: Object.fromEntries(
+						Object.entries(footprint.textAlignments).map(([key, alignment]) => [
+							key,
+							alignment && mirrorAlignment(alignment),
+						]),
+					),
+				}
+			: {}),
 		...(footprint.textPositions
 			? {
 					textPositions: Object.fromEntries(

@@ -28,7 +28,8 @@ import {
 	padCornerRadius,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { fillZones, layerFill } from "#/board/fill.ts";
-import { exportFabrication, maskOpenings } from "#/board/gerber.ts";
+import { exportFabrication } from "#/board/gerber.ts";
+import { maskOpenings } from "#/board/mask.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { createShapeGeometry } from "#/engine/drawing/shapeGeometry.ts";
 import { containsPoint, GeometryCompiler } from "#/engine/geometry.ts";

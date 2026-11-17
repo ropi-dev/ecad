@@ -50,6 +50,7 @@ interface Label extends Pick<TextShape, "text" | "horizontalAlign" | "bold"> {
 	height: number;
 	rotation: number;
 	facing?: "top" | "bottom";
+	mirrored?: boolean;
 }
 
 interface Glyph {
@@ -87,6 +88,7 @@ function textLabel(text: TextShape): Label {
 			width: text.width,
 			height: text.height,
 			rotation: uprightTextRotation(text.rotation),
+			...(text.layer?.startsWith("B.") ? { mirrored: true } : {}),
 		};
 		textLabels.set(text, label);
 	}
@@ -134,12 +136,12 @@ const glyphKey = (label: Label, color: string) =>
 function placeLabel(positions: Float32Array, index: number, label: Label) {
 	const cos = Math.cos(label.rotation);
 	const sin = Math.sin(label.rotation);
-	const mirror = label.facing === "bottom" ? -1 : 1;
+	const mirror = label.facing === "bottom" || label.mirrored ? -1 : 1;
 	let out = index * QUAD_POSITIONS;
 	for (const [cornerX, cornerY] of QUAD_CORNERS) {
-		const x = cornerX * label.width;
+		const x = mirror * cornerX * label.width;
 		const y = cornerY * label.height;
-		positions[out] = label.x + mirror * (x * cos - y * sin);
+		positions[out] = label.x + x * cos - y * sin;
 		positions[out + 1] = label.y + x * sin + y * cos;
 		out += 3;
 	}

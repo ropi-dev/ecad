@@ -119,7 +119,7 @@ export function exportDrawingSvg(
 						.multiply(new Matrix4().makeRotationZ(shape.rotation))
 						.multiply(
 							new Matrix4().makeScale(
-								shape.width * parentShape.width,
+								shape.width * parentShape.width * (shape.mirrored ? -1 : 1),
 								shape.height * parentShape.height,
 								1,
 							),
@@ -127,7 +127,13 @@ export function exportDrawingSvg(
 				} else
 					local
 						.multiply(new Matrix4().makeRotationZ(shape.rotation))
-						.multiply(new Matrix4().makeScale(shape.width, shape.height, 1));
+						.multiply(
+							new Matrix4().makeScale(
+								shape.mirrored ? -shape.width : shape.width,
+								shape.height,
+								1,
+							),
+						);
 				const matrix = parent.clone().multiply(local);
 				const color = colors[shape.appearance];
 				let svg = "";

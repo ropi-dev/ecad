@@ -15,7 +15,7 @@ import {
 	isHole,
 	setShapeLayer,
 } from "@ecad/drawing-core/footprint/shapes.ts";
-import { maskOpenings } from "#/board/gerber.ts";
+import { maskOpenings } from "#/board/mask.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";

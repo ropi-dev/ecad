@@ -9,7 +9,8 @@ import {
 } from "@ecad/drawing-core/drawing/sheet.ts";
 import { fillReach, fillZones } from "#/board/fill.ts";
 import { boardFileSchema } from "#/board/format.ts";
-import { exportFabrication, maskOpenings } from "#/board/gerber.ts";
+import { exportFabrication } from "#/board/gerber.ts";
+import { maskOpenings } from "#/board/mask.ts";
 import { exampleDesigns } from "#/examples/designs.ts";
 import { rp2350aSheet } from "#/examples/rp2350a.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";

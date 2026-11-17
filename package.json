@@ -10,6 +10,7 @@
 		"@playwright/test": "^1.63.0",
 		"@tanstack/router-cli": "1.167.46",
 		"@types/earcut": "^3.0.0",
+		"@types/fontkit": "2.0.8",
 		"@types/libtess": "^1.2.0",
 		"@types/node": "^24.19.2",
 		"@types/react": "^19.2.0",
@@ -30,6 +31,7 @@
 		"@tailwindcss/vite": "^4.1.18",
 		"effect": "^3.22.2",
 		"fflate": "^0.8.3",
+		"fontkit": "2.0.4",
 		"occt-import-js": "^0.0.23",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",
@@ -75,6 +77,7 @@
 		"symbols:generate": "pnpm --filter @ecad/default-symbols run generate",
 		"footprints:generate": "pnpm --filter @ecad/default-footprints run generate",
 		"models:build": "pnpm --filter @ecad/default-models run build-models",
+		"fonts:outlines": "tsx scripts/fonts/glyph-outlines.ts",
 		"example:rp2350a": "tsx scripts/examples/rp2350a.ts",
 		"sandbox": "node scripts/development/sandbox.ts"
 	},

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createPad, createVia } from "@ecad/drawing-core/footprint/shapes.ts";
 import type { BufferGeometry, Mesh } from "three";
-import { maskOpenings } from "#/board/gerber.ts";
+import { maskOpenings } from "#/board/mask.ts";
 import { createHoleMask } from "#/engine/planar-holes.ts";
 import {
 	boundsPolygon,
