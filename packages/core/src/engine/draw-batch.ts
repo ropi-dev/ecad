@@ -8,6 +8,7 @@ import {
 	DataTexture,
 	DoubleSide,
 	Group,
+	type InterleavedBufferAttribute,
 	Line,
 	LinearFilter,
 	LinearMipmapLinearFilter,
@@ -20,6 +21,7 @@ import {
 	type Object3D,
 	OneFactor,
 	OneMinusSrcAlphaFactor,
+	Sphere,
 	SRGBColorSpace,
 	SrcAlphaFactor,
 	type Texture,
@@ -94,6 +96,7 @@ interface Item {
 	renderOrder: number;
 	state: number[];
 	stamp: number;
+	content: number;
 	box: Box3 | null;
 }
 
@@ -202,19 +205,25 @@ function createTriangleMaterial(texture: Texture, transparent: boolean) {
 	return material;
 }
 
-const indicesOf = (item: Item) => {
+const indicesOf = (item: Item): ArrayLike<number> | null => {
 	const index = item.geometry.getIndex();
-	const count = item.geometry.getAttribute("position").count;
-	const source = index
-		? Array.from({ length: index.count }, (_, i) => index.getX(i))
-		: Array.from({ length: count }, (_, i) => i);
+	const source = index ? index.array : null;
 	if (item.kind !== "line" || item.object instanceof LineSegments)
 		return source;
-	const segments: number[] = [];
-	for (let i = 0; i + 1 < source.length; i++)
-		segments.push(source[i], source[i + 1]);
-	if (item.object instanceof LineLoop && source.length > 1)
-		segments.push(source[source.length - 1], source[0]);
+	const count = index
+		? index.count
+		: item.geometry.getAttribute("position").count;
+	const loop = item.object instanceof LineLoop && count > 1;
+	const segments = new Uint32Array(2 * Math.max(count - 1, 0) + (loop ? 2 : 0));
+	let cursor = 0;
+	for (let i = 0; i + 1 < count; i++) {
+		segments[cursor++] = source ? source[i] : i;
+		segments[cursor++] = source ? source[i + 1] : i + 1;
+	}
+	if (loop) {
+		segments[cursor++] = source ? source[count - 1] : count - 1;
+		segments[cursor] = source ? source[0] : 0;
+	}
 	return segments;
 };
 
@@ -231,17 +240,26 @@ const outputColors = <T extends Material>(material: T) => {
 
 const converted = new Color();
 
+const plainArray = (attribute: BufferAttribute | InterleavedBufferAttribute) =>
+	attribute instanceof BufferAttribute && !attribute.normalized
+		? attribute.array
+		: null;
+
 function buildGeometry(items: Item[], rich: boolean, srgb: boolean) {
 	const parts = items.map((item) => {
 		const capsules = rich ? (capsuleData(item.geometry)?.capsules ?? []) : [];
-		let list = indicesOf(item);
+		const list = indicesOf(item);
+		const length = list?.length ?? item.geometry.getAttribute("position").count;
+		let kept: Uint8Array | null = null;
+		let count = length;
 		if (capsules.length) {
-			const kept = new Uint8Array(list.length).fill(1);
+			kept = new Uint8Array(length).fill(1);
 			for (const { start, count } of capsules)
 				kept.fill(0, start, start + count);
-			list = list.filter((_, index) => kept[index]);
+			count = 0;
+			for (let i = 0; i < length; i++) count += kept[i];
 		}
-		return { list, capsules };
+		return { list, length, kept, count, capsules };
 	});
 	let vertices = 0;
 	let indices = 0;
@@ -249,7 +267,7 @@ function buildGeometry(items: Item[], rich: boolean, srgb: boolean) {
 		vertices +=
 			item.geometry.getAttribute("position").count +
 			parts[n].capsules.length * 4;
-		indices += parts[n].list.length + parts[n].capsules.length * 6;
+		indices += parts[n].count + parts[n].capsules.length * 6;
 	}
 	const extra = rich ? vertices : 0;
 	const position = new Float32Array(vertices * 3);
@@ -261,26 +279,44 @@ function buildGeometry(items: Item[], rich: boolean, srgb: boolean) {
 	const roundAxes = new Float32Array(extra * 4);
 	const roundOutline = new Float32Array(extra * 4);
 	const index = new Uint32Array(indices);
+	const bounds = new Box3();
+	const { min, max } = bounds;
 	let vertex = 0;
 	let cursor = 0;
+	let m: number[] = [];
+	let r = 0;
+	let g = 0;
+	let b = 0;
+	let a = 0;
+	const put = (x: number, y: number, z: number, itemMode: number) => {
+		const p = vertex * 3;
+		position[p] = m[0] * x + m[4] * y + m[8] * z + m[12];
+		position[p + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+		position[p + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+		if (position[p] < min.x) min.x = position[p];
+		if (position[p] > max.x) max.x = position[p];
+		if (position[p + 1] < min.y) min.y = position[p + 1];
+		if (position[p + 1] > max.y) max.y = position[p + 1];
+		if (position[p + 2] < min.z) min.z = position[p + 2];
+		if (position[p + 2] > max.z) max.z = position[p + 2];
+		const c = vertex * 4;
+		color[c] = r;
+		color[c + 1] = g;
+		color[c + 2] = b;
+		color[c + 3] = a;
+		if (rich) mode[vertex] = itemMode;
+		return vertex++;
+	};
 	for (const [n, item] of items.entries()) {
 		const { geometry, material, kind } = item;
-		const m = item.object.matrixWorld.elements;
-		const { r, g, b } = srgb
+		m = item.object.matrixWorld.elements;
+		({ r, g, b } = srgb
 			? converted.copy(material.color).convertLinearToSRGB()
-			: material.color;
-		const put = (x: number, y: number, z: number, itemMode: number) => {
-			position[vertex * 3] = m[0] * x + m[4] * y + m[8] * z + m[12];
-			position[vertex * 3 + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
-			position[vertex * 3 + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
-			color[vertex * 4] = r;
-			color[vertex * 4 + 1] = g;
-			color[vertex * 4 + 2] = b;
-			color[vertex * 4 + 3] = material.opacity;
-			if (rich) mode[vertex] = itemMode;
-			return vertex++;
-		};
+			: material.color);
+		a = material.opacity;
 		const source = geometry.getAttribute("position");
+		const sourceArray = plainArray(source);
+		const size = source.itemSize;
 		const textureUv = kind === "text" ? geometry.getAttribute("uv") : null;
 		const point = kind === "round" ? geometry.getAttribute("roundPoint") : null;
 		const margin =
@@ -288,35 +324,46 @@ function buildGeometry(items: Item[], rich: boolean, srgb: boolean) {
 		const outline =
 			kind === "round" ? geometry.getAttribute("roundOutline") : null;
 		const [u0, v0, us, vs] = item.entry?.uv ?? [0, 0, 1, 1];
+		const itemMode = kind === "text" ? 1 : kind === "round" ? 2 : 0;
 		const first = vertex;
 		for (let i = 0; i < source.count; i++) {
-			const v = put(
-				source.getX(i),
-				source.getY(i),
-				source.itemSize > 2 ? source.getZ(i) : 0,
-				kind === "text" ? 1 : kind === "round" ? 2 : 0,
-			);
-			if (textureUv)
-				uv.set(
-					[u0 + textureUv.getX(i) * us, v0 + textureUv.getY(i) * vs],
-					v * 2,
-				);
+			const v = sourceArray
+				? put(
+						sourceArray[i * size],
+						sourceArray[i * size + 1],
+						size > 2 ? sourceArray[i * size + 2] : 0,
+						itemMode,
+					)
+				: put(
+						source.getX(i),
+						source.getY(i),
+						size > 2 ? source.getZ(i) : 0,
+						itemMode,
+					);
+			if (textureUv) {
+				uv[v * 2] = u0 + textureUv.getX(i) * us;
+				uv[v * 2 + 1] = v0 + textureUv.getY(i) * vs;
+			}
 			if (point && margin && outline) {
-				roundPoint.set([point.getX(i), point.getY(i)], v * 2);
-				roundMargin.set([margin.getX(i), margin.getY(i)], v * 2);
+				roundPoint[v * 2] = point.getX(i);
+				roundPoint[v * 2 + 1] = point.getY(i);
+				roundMargin[v * 2] = margin.getX(i);
+				roundMargin[v * 2 + 1] = margin.getY(i);
 				const along = margin.getZ(i);
 				const across = margin.getW(i);
-				roundAxes.set(
-					[m[0] * along, m[1] * along, m[4] * across, m[5] * across],
-					v * 4,
-				);
-				roundOutline.set(
-					[outline.getX(i), outline.getY(i), outline.getZ(i), outline.getW(i)],
-					v * 4,
-				);
+				roundAxes[v * 4] = m[0] * along;
+				roundAxes[v * 4 + 1] = m[1] * along;
+				roundAxes[v * 4 + 2] = m[4] * across;
+				roundAxes[v * 4 + 3] = m[5] * across;
+				roundOutline[v * 4] = outline.getX(i);
+				roundOutline[v * 4 + 1] = outline.getY(i);
+				roundOutline[v * 4 + 2] = outline.getZ(i);
+				roundOutline[v * 4 + 3] = outline.getW(i);
 			}
 		}
-		for (const i of parts[n].list) index[cursor++] = first + i;
+		const { list, length, kept } = parts[n];
+		for (let i = 0; i < length; i++)
+			if (!kept || kept[i]) index[cursor++] = first + (list ? list[i] : i);
 		const { scaleX = 1, scaleY = 1 } = capsuleData(geometry) ?? {};
 		for (const capsule of parts[n].capsules) {
 			const length = Math.hypot(
@@ -365,8 +412,8 @@ function buildGeometry(items: Item[], rich: boolean, srgb: boolean) {
 		result.setAttribute("roundOutline", new BufferAttribute(roundOutline, 4));
 	}
 	result.setIndex(new BufferAttribute(index, 1));
-	result.computeBoundingBox();
-	result.computeBoundingSphere();
+	result.boundingBox = bounds;
+	result.boundingSphere = bounds.getBoundingSphere(new Sphere());
 	return result;
 }
 
@@ -527,6 +574,7 @@ export function createDrawBatcher() {
 				renderOrder: node.renderOrder,
 				state: [],
 				stamp: 0,
+				content: 0,
 				box: null,
 			};
 			items.set(node, item);
@@ -537,16 +585,21 @@ export function createDrawBatcher() {
 			color.g,
 			color.b,
 			opacity,
-			groupOrder,
-			node.renderOrder,
 			...node.matrixWorld.elements,
 		];
 		if (state.some((value, index) => value !== item.state[index])) {
 			item.state = state;
+			item.content = ++stamps;
+			item.stamp = stamps;
+			item.box = null;
+		}
+		if (
+			item.groupOrder !== groupOrder ||
+			item.renderOrder !== node.renderOrder
+		) {
 			item.stamp = ++stamps;
 			item.groupOrder = groupOrder;
 			item.renderOrder = node.renderOrder;
-			item.box = null;
 		}
 		return item;
 	};
@@ -666,7 +719,7 @@ export function createDrawBatcher() {
 							: triangleMaterial(program, texture),
 					);
 		mesh.matrixAutoUpdate = false;
-		return { mesh, items: run, stamps: run.map((item) => item.stamp) };
+		return { mesh, items: run, stamps: run.map((item) => item.content) };
 	};
 
 	const drawn = new Map<Object3D, { stamp: number; box: Box3 }>();
@@ -734,7 +787,7 @@ export function createDrawBatcher() {
 					old?.items.length === run.length &&
 					run.every(
 						(item, index) =>
-							old.items[index] === item && old.stamps[index] === item.stamp,
+							old.items[index] === item && old.stamps[index] === item.content,
 					)
 				) {
 					previous.delete(run[0]);
