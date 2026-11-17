@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
+import {
+	boardDrawOrder,
+	shapeLayers,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { unzlibSync } from "fflate";
 import { createBoardAnalysis, createShapesSender } from "#/board/analysis.ts";
 import { boardDisplay, boardExportShapes } from "#/board/view.ts";
@@ -384,40 +387,46 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 	}
 	for (const page of pdf.pages.slice(2))
 		assert.doesNotMatch(page.content, /\nf\*/, page.text[0]);
-	const svg = exportDrawingSvg(shapes, {
-		...options,
-		area: "drawing",
-		width: 1000,
-		height: 1000,
-		zoneFills,
-	});
-	assert.equal(svg.match(/fill-rule="evenodd"/g)?.length, zones.length);
-	const names = [...svg.matchAll(/data-name="([^"]*)"/g)].map(
-		([, name]) => name,
-	);
-	for (const fill of zoneFills) {
-		assert.ok(!names.includes(`rectangle ${fill.shapeId}`));
-		const first = shapes.find(
-			(shape) =>
-				!zones.includes(shape) && shapeLayers(shape).includes(fill.layer),
+	const backOnly = (shape: EditorShape) =>
+		!zones.includes(shape) &&
+		shapeLayers(shape).length === 1 &&
+		shapeLayers(shape)[0] === "B.Cu";
+	assert.ok(design.board.some(backOnly));
+	for (const board of [
+		design.board,
+		design.board.filter((shape) => !backOnly(shape)),
+	]) {
+		const stacked = boardExportShapes(board);
+		const svg = exportDrawingSvg(stacked, {
+			...options,
+			area: "drawing",
+			width: 1000,
+			height: 1000,
+			zoneFills,
+		});
+		assert.equal(svg.match(/fill-rule="evenodd"/g)?.length, zones.length);
+		const names = [...svg.matchAll(/data-name="([^"]*)"/g)].map(
+			([, name]) => name,
 		);
-		assert.equal(
-			names[names.indexOf(`zone fill ${fill.shapeId}`) + 1],
-			`${first?.kind} ${first?.id}`,
-			`${fill.layer} fill sits under the first item on its layer`,
-		);
+		const top = (shape: EditorShape) =>
+			Math.max(
+				-1,
+				...shapeLayers(shape).map((layer) => boardDrawOrder.indexOf(layer)),
+			);
+		for (const fill of zoneFills) {
+			assert.ok(!names.includes(`rectangle ${fill.shapeId}`));
+			const at = names.indexOf(`zone fill ${fill.shapeId}`);
+			const rank = boardDrawOrder.indexOf(fill.layer);
+			for (const shape of stacked) {
+				if (zones.includes(shape)) continue;
+				const index = names.indexOf(`${shape.kind} ${shape.id}`);
+				assert.ok(index >= 0, `${shape.kind} ${shape.id}`);
+				assert.equal(
+					index > at,
+					top(shape) >= rank,
+					`${shape.kind} ${shape.id} on ${shapeLayers(shape).join(", ")} against the ${fill.layer} fill`,
+				);
+			}
+		}
 	}
-	const frontFills = zoneFills.filter((fill) => fill.layer === "F.Cu");
-	const lastFrontFill = Math.max(
-		...frontFills.map((fill) => names.indexOf(`zone fill ${fill.shapeId}`)),
-	);
-	const silkscreen = shapes.filter((shape) =>
-		shapeLayers(shape).includes("F.SilkS"),
-	);
-	assert.ok(silkscreen.length > 0);
-	for (const shape of silkscreen)
-		assert.ok(
-			names.indexOf(`${shape.kind} ${shape.id}`) > lastFrontFill,
-			`front silkscreen ${shape.kind} ${shape.id} prints over the front fill`,
-		);
 });

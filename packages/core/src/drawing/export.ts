@@ -4,7 +4,10 @@ import {
 	type FootprintLayer,
 	footprintLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
-import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
+import {
+	boardDrawOrder,
+	shapeLayers,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { Matrix4, Vector3 } from "three";
 import {
 	buildDrawingDisplay,
@@ -270,9 +273,11 @@ export function buildDrawingScene(
 	])
 		visit(shape);
 	for (const fill of fills) {
-		const first = drawn.findIndex((shape) =>
-			shapeLayers(shape).includes(fill.layer),
+		const rank = boardDrawOrder.indexOf(fill.layer);
+		const above = drawn.findIndex((shape) =>
+			shapeLayers(shape).some((layer) => boardDrawOrder.indexOf(layer) >= rank),
 		);
+		const first = above < 0 ? drawn.length : above;
 		const rings = fill.polygons.flat().map((ring) =>
 			ring.flatMap(([x, y]) => {
 				include(new Vector3(x, y, 0));
