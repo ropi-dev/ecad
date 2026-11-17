@@ -10,6 +10,13 @@ import {
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Matrix4, Vector3 } from "three";
 import {
+	type DrillHole,
+	drillHoles,
+	holeCutsLayer,
+	holeMarked,
+	holeOutline,
+} from "#/board/drill.ts";
+import {
 	buildDrawingDisplay,
 	type DisplayShape,
 	rotatesFreeOfParentScale,
@@ -57,6 +64,7 @@ export type DrawingSceneOptions = Pick<
 > & {
 	layer?: FootprintLayer;
 	maskOpenings?: readonly (readonly [number, number])[][];
+	drillHoles?: readonly DrillHole[];
 };
 
 const layerAppearances = new Set<string>([
@@ -157,6 +165,7 @@ export function buildDrawingScene(
 	const theme = dark ? darkSchematicTheme : printSchematicTheme;
 	const colors = theme.appearance;
 	const items: SceneItem[] = [];
+	const padNumbers: SceneItem[] = [];
 	let minX = Infinity,
 		minY = Infinity,
 		maxX = -Infinity,
@@ -172,6 +181,7 @@ export function buildDrawingScene(
 		parent = new Matrix4(),
 		parentShape?: DisplayShape,
 	) => {
+		if (shape.appearance === "pad-hole") return;
 		const local = new Matrix4().makeTranslation(shape.x, shape.y, 0);
 		if (rotatesFreeOfParentScale(shape, parentShape)) {
 			local
@@ -268,6 +278,7 @@ export function buildDrawingScene(
 			}
 		}
 		items.push(item);
+		if (shape.appearance === "pad-number") padNumbers.push(item);
 		for (const child of shape.children ?? []) visit(child, matrix, shape);
 	};
 	for (const shape of [
@@ -310,6 +321,27 @@ export function buildDrawingScene(
 				}),
 			],
 		});
+	const top = items.reduce((most, item) => Math.max(most, item.order), 0) + 1;
+	for (const [index, hole] of (
+		options.drillHoles ?? drillHoles(shapes)
+	).entries()) {
+		if (!holeMarked(hole, options.layer)) continue;
+		const ring = holeOutline(hole);
+		for (let i = 0; i + 1 < ring.length; i += 2)
+			include(new Vector3(ring[i], ring[i + 1], 0));
+		items.push({
+			order: top,
+			name: `drill mark ${index}`,
+			color: holeCutsLayer(hole, options.layer)
+				? colors["pad-hole"]
+				: dark
+					? "#ffffff"
+					: "#000000",
+			kind: "rings",
+			rings: [ring],
+		});
+	}
+	for (const label of padNumbers) label.order += top + 1;
 	let worksheet: DrawingScene["worksheet"];
 	if (area === "sheet") {
 		worksheet = buildWorksheetDisplay(sheet);

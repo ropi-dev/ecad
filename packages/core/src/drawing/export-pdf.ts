@@ -5,6 +5,7 @@ import {
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import { zlibSync } from "fflate";
+import { drillHoles } from "#/board/drill.ts";
 import { maskOpenings } from "#/board/mask.ts";
 import {
 	buildDrawingScene,
@@ -31,7 +32,7 @@ interface GlyphOutlines {
 
 export type DrawingPdfOptions = Omit<
 	DrawingSceneOptions,
-	"layer" | "maskOpenings"
+	"layer" | "maskOpenings" | "drillHoles"
 > & {
 	title: string;
 	layers?: boolean;
@@ -353,6 +354,7 @@ function layerPages(
 ): PdfPage[] {
 	const layers = shapes.map(shapeLayers);
 	const mask = maskOpenings(shapes, options.maskMargin);
+	const holes = drillHoles(shapes);
 	const pages = footprintLayers.flatMap((layer): PdfPage[] => {
 		const openings =
 			layer === "F.Mask" ? mask.top : layer === "B.Mask" ? mask.bottom : [];
@@ -373,6 +375,7 @@ function layerPages(
 					{
 						...options,
 						layer,
+						drillHoles: holes,
 						...(openings.length ? { maskOpenings: openings } : {}),
 					},
 				),
