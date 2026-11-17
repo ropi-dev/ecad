@@ -479,25 +479,33 @@ test("a board export opens the solder mask pages at each pad and unplated hole, 
 			return Math.max(...xs) - Math.min(...xs);
 		});
 	const margin = 0.05;
-	const sides = openings(margin);
-	const files = exportFabrication("rp2350a", design.board, [], margin);
-	for (const [side, suffix] of [
-		[0, "F_Mask.gts"],
-		[1, "B_Mask.gbs"],
-	] as const) {
-		const flashes = [
-			...(files
-				.find((file) => file.name.endsWith(suffix))
-				?.content.matchAll(/X(-?\d+)Y(-?\d+)D03\*/g) ?? []),
-		].map(([, x, y]) => [Number(x) / 1e6, Number(y) / 1e6]);
-		assert.ok(flashes.length > 0, suffix);
-		assert.equal(sides[side].length, flashes.length, suffix);
-		for (const flash of flashes)
-			assert.ok(
-				sides[side].some((ring) => inside(ring, flash)),
-				`${suffix} flash at ${flash}`,
-			);
+	for (const tested of [margin, -0.02]) {
+		const sides = openings(tested);
+		const files = exportFabrication("rp2350a", design.board, [], tested);
+		for (const [side, suffix] of [
+			[0, "F_Mask.gts"],
+			[1, "B_Mask.gbs"],
+		] as const) {
+			const flashes = [
+				...(files
+					.find((file) => file.name.endsWith(suffix))
+					?.content.matchAll(/X(-?\d+)Y(-?\d+)D03\*/g) ?? []),
+			].map(([, x, y]) => [Number(x) / 1e6, Number(y) / 1e6]);
+			assert.ok(flashes.length > 0, suffix);
+			assert.equal(sides[side].length, flashes.length, suffix);
+			for (const flash of flashes)
+				assert.ok(
+					sides[side].some((ring) => inside(ring, flash)),
+					`${suffix} flash at ${flash} with margin ${tested}`,
+				);
+			for (const ring of sides[side])
+				assert.ok(
+					flashes.some((flash) => inside(ring, flash)),
+					`${suffix} opening at ${ring[0]} with margin ${tested}`,
+				);
+		}
 	}
+	const sides = openings(margin);
 	const bare = openings(0);
 	for (const side of [0, 1])
 		for (const [index, width] of extent(sides[side]).entries())
