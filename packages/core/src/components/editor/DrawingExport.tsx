@@ -126,8 +126,9 @@ export function DrawingExport({
 								}
 								description={
 									<p className={dialogDescriptionClassName}>
-										Content is fitted without stretching. The grid, selection
-										and editor controls are left out.
+										{format === "pdf"
+											? "The grid, selection and editor controls are left out."
+											: "Content is fitted without stretching. The grid, selection and editor controls are left out."}
 									</p>
 								}
 							/>

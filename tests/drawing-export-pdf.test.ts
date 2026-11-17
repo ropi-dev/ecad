@@ -293,3 +293,36 @@ test("a schematic stays on one page without bookmarks", () => {
 	assert.equal(pdf.pages.length, 1);
 	assert.deepEqual(pdf.bookmarks, []);
 });
+
+test("a footprint smaller than its layer caption gets a page wide enough for the caption", () => {
+	const line: EditorShape = {
+		id: 1,
+		kind: "line",
+		x: 0,
+		y: 0,
+		width: 1,
+		height: 1,
+		rotation: 0,
+		lineWidth: 0.12,
+		layer: "F.SilkS",
+	};
+	const pdf = parsePdf(
+		exportDrawingPdf([line], {
+			...options,
+			area: "drawing",
+			title: "Tiny",
+			layers: true,
+		}),
+	);
+	assert.deepEqual(
+		pdf.pages.map((page) => page.text[0]),
+		["Front silkscreen"],
+	);
+	const caption = "Front silkscreen".length * 0.6 * 2 + 2;
+	const [, width, height] =
+		/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(pdf.page.dictionary) ?? [];
+	assert.equal(Number(width), points(caption));
+	assert.ok(Number(height) < points(10));
+	const [, tx] = /^[\d.]+ 0 0 [\d.]+ ([\d.]+) /.exec(pdf.page.content) ?? [];
+	assert.equal(Number(tx), points(caption / 2));
+});

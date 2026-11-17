@@ -44,6 +44,7 @@ const captionInset = 1;
 const encoder = new TextEncoder();
 
 const n = (value: number) => String(Math.round(value * 1e4) / 1e4);
+const fine = (value: number) => value.toFixed(8).replace(/\.?0+$/, "");
 
 function rgb(color: string) {
 	if (color === "white") return [1, 1, 1];
@@ -316,7 +317,7 @@ function itemContent(item: SceneItem, fonts: GlyphFonts) {
 			const natural = textWidth(line.text, weight, fontPixels);
 			const stretch = natural > 0 ? line.width / natural : 1;
 			text.push(
-				`${n(stretch)} 0 0 -1 ${n(start)} ${n(line.baseline)} Tm ${fonts.show(line.text, weight, fontPixels)}`,
+				`${fine(stretch)} 0 0 -1 ${n(start)} ${n(line.baseline)} Tm ${fonts.show(line.text, weight, fontPixels)}`,
 			);
 		}
 		const top = overbarTop(line.baseline);
@@ -325,7 +326,7 @@ function itemContent(item: SceneItem, fonts: GlyphFonts) {
 				`${n(start + from)} ${n(top)} ${n(to - from)} ${n(overbarThickness)} re`,
 			);
 	}
-	return `q ${[a, b, c, d, e, f].map(n).join(" ")} cm${text.length ? `\nBT\n${text.join("\n")}\nET` : ""}${bars.length ? `\n${bars.join("\n")}\nf` : ""}\nQ`;
+	return `q ${[a, b, c, d, e, f].map(fine).join(" ")} cm${text.length ? `\nBT\n${text.join("\n")}\nET` : ""}${bars.length ? `\n${bars.join("\n")}\nf` : ""}\nQ`;
 }
 
 interface PdfPage {
@@ -367,7 +368,18 @@ function layerPages(
 	const bottom = Math.max(
 		...pages.map(({ scene }) => scene.view.y + scene.view.height),
 	);
-	const view = { x: left, y: top, width: right - left, height: bottom - top };
+	const caption =
+		Math.max(
+			...pages.map(({ label = "" }) => textWidth(label, "700", captionSize)),
+		) +
+		2 * captionInset;
+	const widen = Math.max(0, caption - (right - left)) / 2;
+	const view = {
+		x: left - widen,
+		y: top,
+		width: right - left + 2 * widen,
+		height: bottom - top,
+	};
 	return pages.map((page) => ({ ...page, scene: { ...page.scene, view } }));
 }
 
