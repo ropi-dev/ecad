@@ -86,3 +86,40 @@ test("a text wider than the current atlas page starts a new page", () => {
 	assert.equal(atlasSlot({ ...page, y: 900 }, 800, 160), null);
 	assert.equal(atlasSlot(undefined, 64, 64), null);
 });
+
+test("a draw order shift keeps the batch geometry", () => {
+	const batcher = createDrawBatcher();
+	const root = new Group();
+	const material = new MeshBasicMaterial({ depthTest: false });
+	const meshes = [0, 1, 2].map((index) => {
+		const mesh = new Mesh(new PlaneGeometry(1, 1), material);
+		mesh.position.x = index * 2;
+		mesh.renderOrder = index + 1;
+		mesh.userData.batchVersion = 1;
+		root.add(mesh);
+		return mesh;
+	});
+	try {
+		batcher.sync(root, renderer);
+		const before = (required(batcher.object.children[0]) as Mesh).geometry;
+		for (const mesh of meshes) {
+			mesh.renderOrder += 10;
+			mesh.userData.batchVersion = 2;
+		}
+		const { damage } = batcher.sync(root, renderer);
+		assert.equal(
+			(required(batcher.object.children[0]) as Mesh).geometry,
+			before,
+		);
+		assert.ok(damage?.length, "an order change still damages its extent");
+		meshes[1].position.x = 9;
+		meshes[1].userData.batchVersion = 3;
+		batcher.sync(root, renderer);
+		assert.notEqual(
+			(required(batcher.object.children[0]) as Mesh).geometry,
+			before,
+		);
+	} finally {
+		batcher.dispose();
+	}
+});
