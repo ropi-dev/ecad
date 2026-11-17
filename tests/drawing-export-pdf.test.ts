@@ -399,7 +399,7 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 		assert.ok(!names.includes(`rectangle ${fill.shapeId}`));
 		const first = shapes.find(
 			(shape) =>
-				shape.id !== fill.shapeId && shapeLayers(shape).includes(fill.layer),
+				!zones.includes(shape) && shapeLayers(shape).includes(fill.layer),
 		);
 		assert.equal(
 			names[names.indexOf(`zone fill ${fill.shapeId}`) + 1],
