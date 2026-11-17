@@ -4,7 +4,6 @@ import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	type ComponentProps,
 	useEffect,
-	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -32,8 +31,6 @@ import type { ModelPlacement } from "#/footprint/models.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
 
-const NO_MODELS: readonly ModelPlacement[] = [];
-
 export function FootprintBoardView({
 	shapes,
 	regions,
@@ -45,7 +42,7 @@ export function FootprintBoardView({
 	onFlatChange,
 	onBuildError,
 	realistic = false,
-	models = NO_MODELS,
+	models = [],
 	onModelError,
 	maskMargin,
 	...viewer
@@ -81,14 +78,11 @@ export function FootprintBoardView({
 	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
 	useEffect(() => () => builder.dispose(), [builder]);
 	const [board, setBoard] = useState<BoardObject[]>();
-	const [built, setBuilt] = useState({ shapes, models });
 	useEffect(() => {
 		if (board) builder.release(board);
 	}, [builder, board]);
 	const colors = useSchematicTheme().appearance;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: models change with the shapes they are placed from, and a change of models alone is taken over in render without building the board again
-	useLayoutEffect(() => {
-		setBuilt({ shapes, models });
+	useEffect(() => {
 		try {
 			setBoard(
 				measurePerformance(
@@ -123,33 +117,28 @@ export function FootprintBoardView({
 				: undefined,
 		[board, focusedLayer],
 	);
-	if (built.shapes === shapes && built.models !== models)
-		setBuilt({ shapes, models });
-	const segments = realistic ? boardOutlineSegments(built.shapes) : [];
-	const edge =
-		realistic && !segments.length ? boardEdgeBounds(built.shapes) : null;
+	const segments = realistic ? boardOutlineSegments(shapes) : [];
+	const edge = realistic && !segments.length ? boardEdgeBounds(shapes) : null;
 	const outlineKey = edge
 		? `${edge.minX},${edge.minY},${edge.maxX},${edge.maxY}`
 		: JSON.stringify(segments);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: outlineKey names the Edge.Cuts strokes, or the drawing's bounds without them, so other edits keep the outline
 	const outline = useMemo(() => {
 		if (!realistic) return undefined;
-		const interior = boardInterior(built.shapes);
-		return interior.length
-			? interior
-			: boundsPolygon(boardEdgeBounds(built.shapes));
+		const interior = boardInterior(shapes);
+		return interior.length ? interior : boundsPolygon(boardEdgeBounds(shapes));
 	}, [realistic, outlineKey]);
 	const boardShape = useMemo(
 		() =>
 			outline && {
 				outline,
-				openings: maskOpenings(built.shapes, maskMargin),
+				openings: maskOpenings(shapes, maskMargin),
 			},
-		[outline, built.shapes, maskMargin],
+		[outline, shapes, maskMargin],
 	);
 	const modelObjects = useFootprintModels(
-		built.models,
-		realistic && built.models.length > 0,
+		models,
+		realistic && models.length > 0,
 		onModelError,
 	);
 	const shownFlat = useRef(true);
