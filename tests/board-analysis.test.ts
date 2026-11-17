@@ -22,6 +22,8 @@ import {
 	type AnalysisRequest,
 	createBoardAnalysis,
 	createShapesSender,
+	type Fabricate,
+	FabricationUnavailable,
 } from "#/board/analysis.ts";
 import {
 	type BoardAnalysisClient,
@@ -117,8 +119,11 @@ class FakeWorker {
 	onmessage: ((event: MessageEvent<AnalysisReply>) => void) | null = null;
 	onerror: (() => void) | null = null;
 	onmessageerror: (() => void) | null = null;
-	private analyse = createBoardAnalysis();
+	private analyse: ReturnType<typeof createBoardAnalysis>;
 	private answered = 0;
+	constructor(fabricate?: Fabricate) {
+		this.analyse = createBoardAnalysis(fabricate);
+	}
 	postMessage(request: AnalysisRequest) {
 		this.requests.push(structuredClone(request));
 	}
@@ -141,8 +146,8 @@ class FakeWorker {
 	}
 }
 
-const withWorker = () => {
-	const worker = new FakeWorker();
+const withWorker = (fabricate?: Fabricate) => {
+	const worker = new FakeWorker(fabricate);
 	const client = createBoardAnalysisClient(() => worker as unknown as Worker);
 	return { worker, client };
 };
@@ -242,6 +247,28 @@ test("an export in the air when the worker crashes is packed in the page", async
 	);
 	assert.deepEqual(filesIn(archive), expected);
 	assert.equal(files, expected.length);
+	client.dispose();
+});
+
+test("an export whose worker cannot load the Gerber writer is packed in the page, and so are later ones", async () => {
+	const { worker, client } = withWorker(async () => {
+		throw new FabricationUnavailable("Failed to fetch the Gerber writer.");
+	});
+	const { shapes, netlist } = await opened(client, worker);
+	const exported = client.fabricate("divider", shapes);
+	worker.answerNext();
+	const expected = exportFabrication(
+		"divider",
+		shapes,
+		fillZones(shapes, netlist, defaultBoardRules),
+		defaultBoardRules.solderMaskMargin,
+	);
+	assert.deepEqual(filesIn((await exported).archive), expected);
+	assert.equal(worker.terminated, true);
+	assert.deepEqual(
+		filesIn((await client.fabricate("divider", shapes)).archive),
+		expected,
+	);
 	client.dispose();
 });
 

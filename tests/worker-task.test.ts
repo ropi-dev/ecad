@@ -311,6 +311,29 @@ test("a warm worker serves the next task, and one that was stopped mid-request, 
 	assert.equal(await double(6), 12);
 	assert.equal(workers.length, 4);
 
+	const declining: FakeWorker[] = [];
+	const declines = keepWarm(() => {
+		const worker = new FakeWorker(() => ({ unavailable: true }));
+		declining.push(worker);
+		return worker as unknown as TaskWorker;
+	}, 30);
+	for (const round of [1, 2]) {
+		assert.equal(
+			await inWorkerOrHere(
+				declines,
+				(ask) => ask<string>("job"),
+				() => "page",
+			),
+			"page",
+		);
+		assert.equal(
+			declining.length,
+			round,
+			"A worker that declined is not kept.",
+		);
+		assert.equal(declining[round - 1]?.terminated, true);
+	}
+
 	const crashing = keepWarm(
 		() => new FakeWorker(() => "crash") as unknown as TaskWorker,
 		30,

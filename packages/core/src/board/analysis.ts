@@ -42,7 +42,8 @@ export type AnalysisReply =
 	| { type: "connectivity"; id: number; ratsnest: RatsnestLine[] }
 	| { type: "check"; id: number; findings: DrcFinding[] }
 	| ({ type: "fabrication"; id: number } & FabricationArchive)
-	| { type: "error"; id: number; message: string };
+	| { type: "error"; id: number; message: string }
+	| { type: "unavailable"; id: number; message: string };
 
 export type Fabricate = (
 	name: string,
@@ -105,8 +106,18 @@ export interface BoardAnalysis {
 	): AnalysisReply | Promise<AnalysisReply> | undefined;
 }
 
-const fabricateOnDemand: Fabricate = async (...board) =>
-	(await import("#/board/fabrication.ts")).fabricationArchive(...board);
+export class FabricationUnavailable extends Error {}
+
+const fabricateOnDemand: Fabricate = async (...board) => {
+	const fabrication = await import("#/board/fabrication.ts").catch(
+		(cause: unknown) => {
+			throw new FabricationUnavailable(
+				errorMessage(cause, "Unable to load the Gerber writer."),
+			);
+		},
+	);
+	return fabrication.fabricationArchive(...board);
+};
 
 export function createBoardAnalysis(
 	fabricate: Fabricate = fabricateOnDemand,
@@ -137,7 +148,13 @@ export function createBoardAnalysis(
 					rules.solderMaskMargin,
 				);
 				return made instanceof Promise
-					? made.then((archive) => ({ type, id, ...archive }), failed)
+					? made.then(
+							(archive): AnalysisReply => ({ type, id, ...archive }),
+							(cause: unknown): AnalysisReply =>
+								cause instanceof FabricationUnavailable
+									? { type: "unavailable", id, message: cause.message }
+									: failed(cause),
+						)
 					: { type, id, ...made };
 			}
 			if (type === "fills") {

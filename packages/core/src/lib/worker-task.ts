@@ -63,8 +63,9 @@ export function keepWarm(
 				parked = { worker, timer };
 			},
 		};
-		worker.onmessage = (event) => {
+		worker.onmessage = (event: MessageEvent<WorkerReply<unknown>>) => {
 			pending--;
+			if ("unavailable" in event.data) broken = true;
 			task.onmessage?.(event);
 		};
 		worker.onerror = (event) => {

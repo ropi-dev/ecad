@@ -90,8 +90,13 @@ export function createBoardAnalysisClient(
 	const receive = (reply: AnalysisReply) => {
 		const flight = flights.get(reply.id);
 		if (!flight) return;
+		if (reply.type === "unavailable" && !analyseHere) {
+			runHere();
+			return;
+		}
 		flights.delete(reply.id);
-		if (reply.type === "error") flight.reject(new Error(reply.message));
+		if (reply.type === "error" || reply.type === "unavailable")
+			flight.reject(new Error(reply.message));
 		else flight.resolve(reply);
 	};
 
