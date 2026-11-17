@@ -23,25 +23,29 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	page.on("worker", (worker) => workers.push(worker.url()));
 	const exportWorkers = () =>
 		workers.filter((url) => url.includes("export.worker"));
-	await page.goto("/tests/browser/editor.html");
-	await page.evaluate(async (shapes) => {
-		const editorUrl = "/tests/browser/editor.tsx";
-		const editor = (await import(editorUrl)) as typeof import("./editor.tsx");
-		const storeUrl = "/packages/drawing-core/src/commands/drawing-store.ts";
-		const { createDrawingStore } = (await import(
-			storeUrl
-		)) as typeof import("@ecad/drawing-core/commands/drawing-store.ts");
-		editor.drawingStore.transact(() => [
-			undefined,
-			createDrawingStore(shapes).getSnapshot(),
-		]);
-	}, fixture.shapes);
+	const open = async () => {
+		await page.goto("/tests/browser/editor.html");
+		await page.evaluate(async (shapes) => {
+			const editorUrl = "/tests/browser/editor.tsx";
+			const editor = (await import(editorUrl)) as typeof import("./editor.tsx");
+			const storeUrl = "/packages/drawing-core/src/commands/drawing-store.ts";
+			const { createDrawingStore } = (await import(
+				storeUrl
+			)) as typeof import("@ecad/drawing-core/commands/drawing-store.ts");
+			editor.drawingStore.transact(() => [
+				undefined,
+				createDrawingStore(shapes).getSnapshot(),
+			]);
+		}, fixture.shapes);
+	};
+	await open();
 	const button = await toolbarButton(page, "Export drawing");
 	await expect(button).toBeEnabled();
+	expect(serializerRequests).toEqual([]);
+	expect(exportWorkers()).toEqual([]);
 	await button.click();
 	const dialog = page.getByRole("dialog", { name: "Export drawing" });
 	await expect(dialog).toBeVisible();
-	expect(serializerRequests).toEqual([]);
 	if (captureArtifacts)
 		await page.screenshot({ path: `${artifacts}/export-options.png` });
 	await dialog
@@ -78,8 +82,8 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	pending = page.waitForEvent("download");
 	await dialog.getByRole("button", { name: "Download", exact: true }).click();
 	const png = await pending;
-	expect(serializerRequests).toHaveLength(2);
-	expect(exportWorkers()).toHaveLength(2);
+	expect(serializerRequests).toHaveLength(1);
+	expect(exportWorkers()).toHaveLength(1);
 	await png.saveAs(`${artifacts}/rp2350a-sheet-9600x6400.png`);
 	const bytes = await readFile(required(await png.path()));
 	expect(bytes.readUInt32BE(16)).toBe(9600);
@@ -130,7 +134,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 	if (captureArtifacts)
 		await page.screenshot({ path: `${artifacts}/rp2350a-editor.png` });
 
-	await page.evaluate(() => {
+	await page.addInitScript(() => {
 		const Real = window.Worker;
 		window.Worker = class extends Real {
 			constructor(url: string | URL, options?: WorkerOptions) {
@@ -140,6 +144,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 			}
 		};
 	});
+	await open();
 	await (await toolbarButton(page, "Export drawing")).click();
 	await dialog
 		.getByRole("combobox", { name: "Format", exact: true })
@@ -150,7 +155,7 @@ test("RP2350A full-sheet SVG and 9600 by 6400 PNG preserve the complete drawing"
 		required(await (await pending).path()),
 		"utf8",
 	);
-	expect(exportWorkers()).toHaveLength(2);
-	expect(serializerRequests).toHaveLength(3);
+	expect(exportWorkers()).toHaveLength(1);
+	expect(serializerRequests).toHaveLength(2);
 	expect(pageSvg === svg).toBe(true);
 });
