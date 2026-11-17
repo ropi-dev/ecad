@@ -70,10 +70,14 @@ export function ringGeometry(rings: readonly Ring[]): PlanarGeometry {
 	);
 	let at = 0;
 	for (const ring of rings)
-		ring.forEach(([ax, ay], index) => {
+		for (let index = 0; index < ring.length; index++) {
+			const [ax, ay] = ring[index];
 			const [bx, by] = ring[(index + 1) % ring.length];
-			edges.set([ax, ay, 0, bx, by, 0], at);
+			edges[at] = ax;
+			edges[at + 1] = ay;
+			edges[at + 3] = bx;
+			edges[at + 4] = by;
 			at += 6;
-		});
+		}
 	return { positions: new Float32Array(), edges, regions: [] };
 }

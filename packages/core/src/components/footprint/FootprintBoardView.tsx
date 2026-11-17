@@ -31,6 +31,8 @@ import type { ModelPlacement } from "#/footprint/models.ts";
 import { measurePerformance } from "#/performance/runtime.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
 
+const NO_MODELS: readonly ModelPlacement[] = [];
+
 export function FootprintBoardView({
 	shapes,
 	regions,
@@ -42,7 +44,7 @@ export function FootprintBoardView({
 	onFlatChange,
 	onBuildError,
 	realistic = false,
-	models = [],
+	models = NO_MODELS,
 	onModelError,
 	maskMargin,
 	...viewer
@@ -78,11 +80,13 @@ export function FootprintBoardView({
 	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
 	useEffect(() => () => builder.dispose(), [builder]);
 	const [board, setBoard] = useState<BoardObject[]>();
+	const [built, setBuilt] = useState(shapes);
 	useEffect(() => {
 		if (board) builder.release(board);
 	}, [builder, board]);
 	const colors = useSchematicTheme().appearance;
 	useEffect(() => {
+		setBuilt(shapes);
 		try {
 			setBoard(
 				measurePerformance(
@@ -117,28 +121,30 @@ export function FootprintBoardView({
 				: undefined,
 		[board, focusedLayer],
 	);
-	const segments = realistic ? boardOutlineSegments(shapes) : [];
-	const edge = realistic && !segments.length ? boardEdgeBounds(shapes) : null;
+	const segments = realistic ? boardOutlineSegments(built) : [];
+	const edge = realistic && !segments.length ? boardEdgeBounds(built) : null;
 	const outlineKey = edge
 		? `${edge.minX},${edge.minY},${edge.maxX},${edge.maxY}`
 		: JSON.stringify(segments);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: outlineKey names the Edge.Cuts strokes, or the drawing's bounds without them, so other edits keep the outline
 	const outline = useMemo(() => {
 		if (!realistic) return undefined;
-		const interior = boardInterior(shapes);
-		return interior.length ? interior : boundsPolygon(boardEdgeBounds(shapes));
+		const interior = boardInterior(built);
+		return interior.length ? interior : boundsPolygon(boardEdgeBounds(built));
 	}, [realistic, outlineKey]);
 	const boardShape = useMemo(
 		() =>
 			outline && {
 				outline,
-				openings: maskOpenings(shapes, maskMargin),
+				openings: maskOpenings(built, maskMargin),
 			},
-		[outline, shapes, maskMargin],
+		[outline, built, maskMargin],
 	);
+	const [placed, setPlaced] = useState(models);
+	if (built === shapes && placed !== models) setPlaced(models);
 	const modelObjects = useFootprintModels(
-		models,
-		realistic && models.length > 0,
+		placed,
+		realistic && placed.length > 0,
 		onModelError,
 	);
 	const shownFlat = useRef(true);
