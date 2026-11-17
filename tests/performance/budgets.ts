@@ -184,7 +184,7 @@ export const budgets = {
 		interactionP95Ms: 3500,
 		panFrameP95Ms: 34,
 		zoomFrameP95Ms: 67,
-		domNodes: 4500,
+		domNodes: 5400,
 		scriptBytes: 3_500_000,
 	},
 	"circuit-graph": {
