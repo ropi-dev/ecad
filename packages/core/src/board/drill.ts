@@ -45,9 +45,11 @@ export function drillHoles(shapes: readonly EditorShape[]): DrillHole[] {
 const markStep = Math.PI / 32;
 
 /** @return The hole's outline, as a flat list of x, y pairs. */
-export function holeOutline({ diameter, ends: [from, to] }: DrillHole): number[] {
-	const points =
-		from.x === to.x && from.y === to.y ? [from] : [from, to];
+export function holeOutline({
+	diameter,
+	ends: [from, to],
+}: DrillHole): number[] {
+	const points = from.x === to.x && from.y === to.y ? [from] : [from, to];
 	return hullPolygon({ points, radius: diameter / 2 }, 0, markStep).flatMap(
 		({ x, y }) => [x, y],
 	);
