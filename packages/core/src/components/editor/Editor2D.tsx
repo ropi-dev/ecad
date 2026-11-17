@@ -943,6 +943,7 @@ function EditorCanvas({
 				},
 				exporting,
 				zoneFills: () => boardEditor.drawingFills(drawing.shapes),
+				maskMargin: boardEditor.rules?.solderMaskMargin,
 			}
 		: undefined;
 	const toolbar = (

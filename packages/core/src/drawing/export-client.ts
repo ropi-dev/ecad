@@ -104,6 +104,7 @@ function exportPdf(
 		title = "Drawing",
 		layers = false,
 		zoneFills,
+		maskMargin,
 	}: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
 		title?: string;
 		layers?: boolean;
@@ -117,6 +118,7 @@ function exportPdf(
 		title,
 		layers,
 		...(zoneFills ? { zoneFills } : {}),
+		...(maskMargin === undefined ? {} : { maskMargin }),
 	};
 	const pdfBlob = (bytes: Uint8Array<ArrayBuffer>) =>
 		new Blob([bytes], { type: "application/pdf" });

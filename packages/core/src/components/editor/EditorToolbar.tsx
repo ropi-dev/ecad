@@ -181,6 +181,7 @@ interface EditorToolbarProps {
 		onExport: () => void;
 		exporting: boolean;
 		zoneFills: () => Promise<readonly DrawingZoneFill[]>;
+		maskMargin?: number | undefined;
 	};
 }
 
@@ -484,6 +485,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				label={drawingName || "Schematic drawing"}
 				layered={footprint !== undefined}
 				zoneFills={board?.zoneFills}
+				maskMargin={board?.maskMargin}
 				open={exportOpen}
 				onClose={() => setExportOpen(false)}
 			/>
