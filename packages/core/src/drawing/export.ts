@@ -1,4 +1,8 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	type FootprintLayer,
+	footprintLayers,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import { Matrix4, Vector3 } from "three";
 import {
 	buildDrawingDisplay,
@@ -36,7 +40,13 @@ export interface DrawingExportOptions {
 export type DrawingSceneOptions = Pick<
 	DrawingExportOptions,
 	"area" | "background" | "sheet" | "measureText"
->;
+> & { layer?: FootprintLayer };
+
+const layerAppearances = new Set<string>([
+	...footprintLayers.filter((layer) => layer !== "Edge.Cuts"),
+	"pad-through",
+	"via",
+]);
 
 export interface SceneTextLine {
 	text: string;
@@ -62,6 +72,7 @@ export interface DrawingScene {
 	view: { x: number; y: number; width: number; height: number };
 	paper: string | null;
 	sheetColor: string;
+	layerColor?: string;
 	worksheet?: ReturnType<typeof buildWorksheetDisplay>;
 	items: SceneItem[];
 }
@@ -160,7 +171,10 @@ export function buildDrawingScene(
 					),
 				);
 		const matrix = parent.clone().multiply(local);
-		const color = colors[shape.appearance];
+		const color =
+			options.layer && layerAppearances.has(shape.appearance)
+				? colors[options.layer]
+				: colors[shape.appearance];
 		const base = { order: shape.renderOrder, name: shape.name, color };
 		let item: SceneItem = { ...base, kind: "empty" };
 		if (shape.text !== undefined) {
@@ -260,6 +274,7 @@ export function buildDrawingScene(
 		},
 		paper: background === "transparent" ? null : dark ? theme.paper : "white",
 		sheetColor: theme.sheet,
+		...(options.layer ? { layerColor: colors[options.layer] } : {}),
 		worksheet,
 		items: items.sort((a, b) => a.order - b.order),
 	};

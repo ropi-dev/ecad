@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { unzlibSync } from "fflate";
+import { boardDisplay } from "#/board/view.ts";
 import {
 	type DrawingPdfOptions,
 	exportDrawingPdf,
@@ -21,11 +22,24 @@ const fixture: { shapes: EditorShape[] } = JSON.parse(
 const points = (millimetres: number) =>
 	Math.round(((millimetres * 72) / 25.4) * 1e4) / 1e4;
 
-interface ParsedPdf {
-	objects: Map<number, { dictionary: string; stream?: string }>;
-	page: { dictionary: string; content: string };
+interface ParsedPage {
+	dictionary: string;
+	content: string;
 	text: string[];
 }
+
+interface ParsedPdf {
+	objects: Map<number, { dictionary: string; stream?: string }>;
+	pages: ParsedPage[];
+	page: ParsedPage;
+	text: string[];
+	bookmarks: { title: string; page: number }[];
+}
+
+const utf16 = (hex: string) =>
+	String.fromCharCode(
+		...(hex.match(/.{4}/g) ?? []).map((unit) => Number.parseInt(unit, 16)),
+	);
 
 function parsePdf(bytes: Uint8Array): ParsedPdf {
 	const source = new TextDecoder("latin1").decode(bytes);
@@ -71,45 +85,74 @@ function parsePdf(bytes: Uint8Array): ParsedPdf {
 	const pages = Number(
 		/\/Pages (\d+) 0 R/.exec(objects.get(root)?.dictionary ?? "")?.[1],
 	);
-	const pageId = Number(
-		/\/Kids \[(\d+) 0 R\]/.exec(objects.get(pages)?.dictionary ?? "")?.[1],
+	const pageIds = [
+		...(/\/Kids \[([^\]]*)\]/
+			.exec(objects.get(pages)?.dictionary ?? "")?.[1]
+			.matchAll(/(\d+) 0 R/g) ?? []),
+	].map(([, id]) => Number(id));
+	assert.match(
+		objects.get(pages)?.dictionary ?? "",
+		new RegExp(`/Count ${pageIds.length} >>`),
 	);
-	const page = objects.get(pageId)?.dictionary ?? "";
-	const content =
-		objects.get(Number(/\/Contents (\d+) 0 R/.exec(page)?.[1]))?.stream ?? "";
-	const fonts = new Map<string, Map<number, string>>();
-	for (const [, name, id] of page.matchAll(/\/(F\d+) (\d+) 0 R/g)) {
-		const font = objects.get(Number(id))?.dictionary ?? "";
-		assert.match(font, /\/Subtype \/Type3/);
-		const cmap =
-			objects.get(Number(/\/ToUnicode (\d+) 0 R/.exec(font)?.[1]))?.stream ??
-			"";
-		const codes = new Map<number, string>();
-		for (const [, code, unicode] of cmap.matchAll(
-			/<([0-9a-f]{2})> <([0-9a-f]+)>/g,
-		))
-			codes.set(
-				Number.parseInt(code, 16),
-				String.fromCharCode(
-					...(unicode.match(/.{4}/g) ?? []).map((unit) =>
-						Number.parseInt(unit, 16),
-					),
-				),
+	const parsed = pageIds.map((id) => {
+		const dictionary = objects.get(id)?.dictionary ?? "";
+		const content =
+			objects.get(Number(/\/Contents (\d+) 0 R/.exec(dictionary)?.[1]))
+				?.stream ?? "";
+		const fonts = new Map<string, Map<number, string>>();
+		for (const [, name, fontId] of dictionary.matchAll(/\/(F\d+) (\d+) 0 R/g)) {
+			const font = objects.get(Number(fontId))?.dictionary ?? "";
+			assert.match(font, /\/Subtype \/Type3/);
+			const cmap =
+				objects.get(Number(/\/ToUnicode (\d+) 0 R/.exec(font)?.[1]))?.stream ??
+				"";
+			const codes = new Map<number, string>();
+			for (const [, code, unicode] of cmap.matchAll(
+				/<([0-9a-f]{2})> <([0-9a-f]+)>/g,
+			))
+				codes.set(Number.parseInt(code, 16), utf16(unicode));
+			fonts.set(name, codes);
+		}
+		const text = content
+			.split("\n")
+			.filter((line) => line.includes("Tm"))
+			.map((line) =>
+				[...line.matchAll(/\/(F\d+) [\d.]+ Tf <([0-9a-f]*)> Tj/g)]
+					.map(([, font, hex]) =>
+						(hex.match(/../g) ?? [])
+							.map((code) => fonts.get(font)?.get(Number.parseInt(code, 16)))
+							.join(""),
+					)
+					.join(""),
 			);
-		fonts.set(name, codes);
+		return { dictionary, content, text };
+	});
+	const outlines = /\/Outlines (\d+) 0 R/.exec(
+		objects.get(root)?.dictionary ?? "",
+	)?.[1];
+	const bookmarks: ParsedPdf["bookmarks"] = [];
+	let entry = Number(
+		/\/First (\d+) 0 R/.exec(
+			objects.get(Number(outlines))?.dictionary ?? "",
+		)?.[1],
+	);
+	while (outlines && entry) {
+		const dictionary = objects.get(entry)?.dictionary ?? "";
+		bookmarks.push({
+			title: utf16(/\/Title <feff([0-9a-f]*)>/.exec(dictionary)?.[1] ?? ""),
+			page: pageIds.indexOf(
+				Number(/\/Dest \[(\d+) 0 R \/Fit\]/.exec(dictionary)?.[1]),
+			),
+		});
+		entry = Number(/\/Next (\d+) 0 R/.exec(dictionary)?.[1]);
 	}
-	const text: string[] = [];
-	for (const line of content.split("\n").filter((line) => line.includes("Tm")))
-		text.push(
-			[...line.matchAll(/\/(F\d+) [\d.]+ Tf <([0-9a-f]*)> Tj/g)]
-				.map(([, font, hex]) =>
-					(hex.match(/../g) ?? [])
-						.map((code) => fonts.get(font)?.get(Number.parseInt(code, 16)))
-						.join(""),
-				)
-				.join(""),
-		);
-	return { objects, page: { dictionary: page, content }, text };
+	return {
+		objects,
+		pages: parsed,
+		page: parsed[0],
+		text: parsed[0].text,
+		bookmarks,
+	};
 }
 
 test("a sheet export is one page the size of the sheet, with the drawing's text searchable", () => {
@@ -182,19 +225,71 @@ test("text past 255 different characters spreads over more fonts and reads back 
 	assert.doesNotMatch(pdf.page.content, /^[\d. ]+ rg [\d. -]+ re f$/m);
 });
 
-test("the RP2350A board exports its footprint references at 1:1", async () => {
+test("a board export puts each layer with items on its own page, the same size, with the outline on every page", async () => {
 	const design = await exampleDesigns.rp2350a.load();
+	const shapes = boardDisplay(
+		design.board,
+		new Set(),
+		new Set(),
+		"F.Cu",
+	).shapes;
 	const pdf = parsePdf(
-		exportDrawingPdf(design.board, {
+		exportDrawingPdf(shapes, {
 			...options,
 			area: "drawing",
 			title: design.name,
+			layers: true,
 		}),
 	);
-	for (const reference of ["U1", "C19", "J2", "SW1"])
-		assert.ok(pdf.text.includes(reference), reference);
+	const labels = [
+		"Front copper",
+		"Back copper",
+		"Front silkscreen",
+		"Front paste",
+		"Front courtyard",
+		"Front fabrication",
+	];
+	assert.deepEqual(
+		pdf.pages.map((page) => page.text[0]),
+		labels,
+	);
+	assert.deepEqual(
+		pdf.bookmarks,
+		labels.map((title, page) => ({ title, page })),
+	);
+	assert.match(
+		[...pdf.objects.values()].find(({ dictionary }) =>
+			dictionary.includes("/Type /Catalog"),
+		)?.dictionary ?? "",
+		/\/PageMode \/UseOutlines/,
+	);
+	const boxes = new Set(
+		pdf.pages.map((page) => /\/MediaBox \[[^\]]+\]/.exec(page.dictionary)?.[0]),
+	);
+	assert.equal(boxes.size, 1);
 	const [, width, height] =
 		/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(pdf.page.dictionary) ?? [];
 	assert.ok(Number(width) > points(50) && Number(width) < points(70));
 	assert.ok(Number(height) > points(50) && Number(height) < points(70));
+	const fill = (hex: string) =>
+		`${[1, 3, 5].map((at) => String(Math.round((Number.parseInt(hex.slice(at, at + 2), 16) / 255) * 1e4) / 1e4)).join(" ")} rg`;
+	for (const page of pdf.pages)
+		assert.ok(page.content.includes(fill("#8d8f12")), page.text[0]);
+	const [front, back, silk] = pdf.pages;
+	assert.ok(front.content.includes(fill("#c83434")));
+	assert.ok(!front.content.includes(fill("#c9a23c")));
+	assert.ok(back.content.includes(fill("#3b6fb8")));
+	for (const reference of ["U1", "C19", "J2", "SW1"]) {
+		assert.ok(silk.text.includes(reference), reference);
+		assert.ok(!back.text.includes(reference), reference);
+	}
+	assert.ok(silk.content.includes(fill("#3f3c0f")));
+});
+
+test("a schematic stays on one page without bookmarks", () => {
+	const pdf = parsePdf(
+		exportDrawingPdf(fixture.shapes, { ...options, layers: false }),
+	);
+	assert.equal(pdf.pages.length, 1);
+	assert.deepEqual(pdf.bookmarks, []);
 });

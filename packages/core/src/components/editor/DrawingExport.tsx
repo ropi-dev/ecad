@@ -22,12 +22,14 @@ export function DrawingExport({
 	shapes,
 	sheet,
 	label,
+	layered = false,
 	open,
 	onClose,
 }: {
 	shapes: EditorShape[];
 	sheet: SheetSize;
 	label: string;
+	layered?: boolean;
 	open: boolean;
 	onClose: () => void;
 }) {
@@ -93,6 +95,7 @@ export function DrawingExport({
 														background,
 														sheet,
 														title: label,
+														layers: layered,
 													},
 													format,
 												),
@@ -172,9 +175,10 @@ export function DrawingExport({
 								</div>
 								{format === "pdf" ? (
 									<p className="m-0 text-xs text-fg-faint">
+										{layered ? "Each layer gets its own page. " : ""}
 										{area === "sheet"
-											? `The page is the ${sheet.width} × ${sheet.height} mm sheet at 1:1 scale.`
-											: "The page fits the drawing at 1:1 scale in millimetres."}{" "}
+											? `${layered ? "Pages are" : "The page is"} the ${sheet.width} × ${sheet.height} mm sheet at 1:1 scale.`
+											: `${layered ? "Pages fit" : "The page fits"} the drawing at 1:1 scale in millimetres.`}{" "}
 										Text can be searched and copied.
 									</p>
 								) : (

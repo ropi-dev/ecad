@@ -1,7 +1,13 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	footprintLayerLabels,
+	footprintLayers,
+} from "@ecad/drawing-core/footprint/layers.ts";
+import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import { zlibSync } from "fflate";
 import {
 	buildDrawingScene,
+	type DrawingScene,
 	type DrawingSceneOptions,
 	lineStart,
 	overbarTop,
@@ -22,9 +28,10 @@ interface GlyphOutlines {
 	>;
 }
 
-export interface DrawingPdfOptions extends DrawingSceneOptions {
+export type DrawingPdfOptions = Omit<DrawingSceneOptions, "layer"> & {
 	title: string;
-}
+	layers?: boolean;
+};
 
 const outlines = outlineData as GlyphOutlines;
 const pointsPerMillimetre = 72 / 25.4;
@@ -32,6 +39,8 @@ const largestPage = 14400;
 const glyphsPerFont = 255;
 const worksheetStroke = 0.15;
 const centralBaseline = 0.36;
+const captionSize = 2;
+const captionInset = 1;
 const encoder = new TextEncoder();
 
 const n = (value: number) => String(Math.round(value * 1e4) / 1e4);
@@ -319,6 +328,100 @@ function itemContent(item: SceneItem, fonts: GlyphFonts) {
 	return `q ${[a, b, c, d, e, f].map(n).join(" ")} cm${text.length ? `\nBT\n${text.join("\n")}\nET` : ""}${bars.length ? `\n${bars.join("\n")}\nf` : ""}\nQ`;
 }
 
+interface PdfPage {
+	label?: string;
+	scene: DrawingScene;
+}
+
+function layerPages(
+	shapes: EditorShape[],
+	options: DrawingPdfOptions,
+): PdfPage[] {
+	const layers = shapes.map(shapeLayers);
+	const pages = footprintLayers.flatMap((layer): PdfPage[] => {
+		if (
+			layer === "Edge.Cuts" ||
+			!layers.some((onLayers) => onLayers.includes(layer))
+		)
+			return [];
+		return [
+			{
+				label: footprintLayerLabels[layer],
+				scene: buildDrawingScene(
+					shapes.filter(
+						(_, index) =>
+							layers[index].includes(layer) ||
+							layers[index].includes("Edge.Cuts"),
+					),
+					{ ...options, layer },
+				),
+			},
+		];
+	});
+	if (!pages.length) return [{ scene: buildDrawingScene(shapes, options) }];
+	const left = Math.min(...pages.map(({ scene }) => scene.view.x));
+	const top = Math.min(...pages.map(({ scene }) => scene.view.y));
+	const right = Math.max(
+		...pages.map(({ scene }) => scene.view.x + scene.view.width),
+	);
+	const bottom = Math.max(
+		...pages.map(({ scene }) => scene.view.y + scene.view.height),
+	);
+	const view = { x: left, y: top, width: right - left, height: bottom - top };
+	return pages.map((page) => ({ ...page, scene: { ...page.scene, view } }));
+}
+
+function pageContent(
+	{ label, scene }: PdfPage,
+	scale: number,
+	fonts: GlyphFonts,
+) {
+	const { view } = scene;
+	const content: string[] = [
+		`${n(scale)} 0 0 ${n(scale)} ${n(-view.x * scale)} ${n((view.y + view.height) * scale)} cm`,
+	];
+	if (scene.paper)
+		content.push(
+			`${fillColor(scene.paper)} ${n(view.x)} ${n(-view.y - view.height)} ${n(view.width)} ${n(view.height)} re f`,
+		);
+	if (scene.worksheet) {
+		const { frame, labels } = scene.worksheet;
+		const segments: string[] = [];
+		for (let i = 0; i + 1 < frame.length; i += 2)
+			segments.push(
+				`${n(frame[i].x)} ${n(frame[i].y)} m ${n(frame[i + 1].x)} ${n(frame[i + 1].y)} l`,
+			);
+		content.push(
+			`${strokeColor(scene.sheetColor)} ${worksheetStroke} w\n${segments.join("\n")}\nS`,
+		);
+		if (labels.length)
+			content.push(
+				`${fillColor(scene.sheetColor)}\nBT\n${labels
+					.map((label) => {
+						const width = textWidth(label.text, "400", label.fontSize);
+						const x = label.align === "center" ? label.x - width / 2 : label.x;
+						return `1 0 0 1 ${n(x)} ${n(label.y - centralBaseline * label.fontSize)} Tm ${fonts.show(label.text, "400", label.fontSize)}`;
+					})
+					.join("\n")}\nET`,
+			);
+	}
+	if (label)
+		content.push(
+			`${fillColor(scene.layerColor ?? scene.sheetColor)}\nBT\n1 0 0 1 ${n(view.x + captionInset)} ${n(-view.y - captionInset - captionSize * 0.75)} Tm ${fonts.show(label, "700", captionSize)}\nET`,
+		);
+	let color = "";
+	for (const item of scene.items) {
+		const operations = itemContent(item, fonts);
+		if (!operations) continue;
+		if (item.color !== color) {
+			color = item.color;
+			content.push(fillColor(color));
+		}
+		content.push(operations);
+	}
+	return content.join("\n");
+}
+
 export function exportDrawingPdf(
 	shapes: EditorShape[],
 	options: DrawingPdfOptions,
@@ -326,66 +429,54 @@ export function exportDrawingPdf(
 	return measurePerformance(
 		"drawing.export-pdf",
 		() => {
-			const scene = buildDrawingScene(shapes, options);
-			const { view } = scene;
+			const pages = options.layers
+				? layerPages(shapes, options)
+				: [{ scene: buildDrawingScene(shapes, options) }];
+			const { view } = pages[0].scene;
 			const scale = Math.min(
 				pointsPerMillimetre,
 				largestPage / view.width,
 				largestPage / view.height,
 			);
 			const fonts = new GlyphFonts();
-			const content: string[] = [
-				`${n(scale)} 0 0 ${n(scale)} ${n(-view.x * scale)} ${n((view.y + view.height) * scale)} cm`,
-			];
-			if (scene.paper)
-				content.push(
-					`${fillColor(scene.paper)} ${n(view.x)} ${n(-view.y - view.height)} ${n(view.width)} ${n(view.height)} re f`,
-				);
-			if (scene.worksheet) {
-				const { frame, labels } = scene.worksheet;
-				const segments: string[] = [];
-				for (let i = 0; i + 1 < frame.length; i += 2)
-					segments.push(
-						`${n(frame[i].x)} ${n(frame[i].y)} m ${n(frame[i + 1].x)} ${n(frame[i + 1].y)} l`,
-					);
-				content.push(
-					`${strokeColor(scene.sheetColor)} ${worksheetStroke} w\n${segments.join("\n")}\nS`,
-				);
-				if (labels.length)
-					content.push(
-						`${fillColor(scene.sheetColor)}\nBT\n${labels
-							.map((label) => {
-								const width = textWidth(label.text, "400", label.fontSize);
-								const x =
-									label.align === "center" ? label.x - width / 2 : label.x;
-								return `1 0 0 1 ${n(x)} ${n(label.y - centralBaseline * label.fontSize)} Tm ${fonts.show(label.text, "400", label.fontSize)}`;
-							})
-							.join("\n")}\nET`,
-					);
-			}
-			let color = "";
-			for (const item of scene.items) {
-				const operations = itemContent(item, fonts);
-				if (!operations) continue;
-				if (item.color !== color) {
-					color = item.color;
-					content.push(fillColor(color));
-				}
-				content.push(operations);
-			}
+			const contents = pages.map((page) => pageContent(page, scale, fonts));
 
 			const pdf = new PdfDocument();
 			const catalog = pdf.reserve();
-			const pages = pdf.reserve();
+			const tree = pdf.reserve();
 			const fontResources = fonts.fonts.map(
 				(font) => `/${font.name} ${addFont(pdf, font)} 0 R`,
 			);
-			const contents = pdf.add("<< >>", content.join("\n"));
-			const page = pdf.add(
-				`<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${n(view.width * scale)} ${n(view.height * scale)}] /Resources << /Font << ${fontResources.join(" ")} >> >> /Contents ${contents} 0 R >>`,
+			const pageIds = contents.map((content) => {
+				const stream = pdf.add("<< >>", content);
+				return pdf.add(
+					`<< /Type /Page /Parent ${tree} 0 R /MediaBox [0 0 ${n(view.width * scale)} ${n(view.height * scale)}] /Resources << /Font << ${fontResources.join(" ")} >> >> /Contents ${stream} 0 R >>`,
+				);
+			});
+			pdf.set(
+				tree,
+				`<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`,
 			);
-			pdf.set(catalog, `<< /Type /Catalog /Pages ${pages} 0 R >>`);
-			pdf.set(pages, `<< /Type /Pages /Kids [${page} 0 R] /Count 1 >>`);
+			const labelled = pages.flatMap((page, index) =>
+				page.label ? [{ label: page.label, page: pageIds[index] }] : [],
+			);
+			if (labelled.length) {
+				const outlines = pdf.reserve();
+				const entries = labelled.map(() => pdf.reserve());
+				for (const [index, { label, page }] of labelled.entries())
+					pdf.set(
+						entries[index],
+						`<< /Title <feff${utf16Hex(label)}> /Parent ${outlines} 0 R${index ? ` /Prev ${entries[index - 1]} 0 R` : ""}${index + 1 < entries.length ? ` /Next ${entries[index + 1]} 0 R` : ""} /Dest [${page} 0 R /Fit] >>`,
+					);
+				pdf.set(
+					outlines,
+					`<< /Type /Outlines /First ${entries[0]} 0 R /Last ${entries[entries.length - 1]} 0 R /Count ${entries.length} >>`,
+				);
+				pdf.set(
+					catalog,
+					`<< /Type /Catalog /Pages ${tree} 0 R /Outlines ${outlines} 0 R /PageMode /UseOutlines >>`,
+				);
+			} else pdf.set(catalog, `<< /Type /Catalog /Pages ${tree} 0 R >>`);
 			const info = pdf.add(
 				`<< /Title <feff${utf16Hex(options.title)}> /Producer (ECAD) >>`,
 			);

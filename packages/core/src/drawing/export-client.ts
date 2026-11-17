@@ -38,6 +38,7 @@ export async function exportDrawing(
 	shapes: EditorShape[],
 	options: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
 		title?: string;
+		layers?: boolean;
 	},
 	format: DrawingExportFormat,
 	startWorker = startExportWorker,
@@ -101,12 +102,14 @@ function exportPdf(
 		background,
 		sheet,
 		title = "Drawing",
+		layers = false,
 	}: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
 		title?: string;
+		layers?: boolean;
 	},
 	startWorker = startExportWorker,
 ): Promise<Blob> {
-	const options = { area, background, sheet, title };
+	const options = { area, background, sheet, title, layers };
 	const pdfBlob = (bytes: Uint8Array<ArrayBuffer>) =>
 		new Blob([bytes], { type: "application/pdf" });
 	return inWorkerOrHere(

@@ -248,6 +248,7 @@ test("a PDF comes from the worker in one request, or from the page when the work
 				background: "white",
 				sheet: options.sheet,
 				title: "Board",
+				layers: false,
 			},
 		},
 	]);
