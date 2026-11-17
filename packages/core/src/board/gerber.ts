@@ -22,11 +22,11 @@ import {
 	isPad,
 	isVia,
 	type PadShape,
-	shapeHole,
 	shapeLayer,
 	shapeLayers,
 	type ViaShape,
 } from "@ecad/drawing-core/footprint/shapes.ts";
+import { type DrillHole, drillHoles } from "#/board/drill.ts";
 import { layerFill, type ZoneFill } from "#/board/fill.ts";
 import { maskLayer } from "#/board/mask.ts";
 import { textPolygons } from "#/board/text-outline.ts";
@@ -539,14 +539,15 @@ export function exportFabrication(
 		}
 		files.push({ name: `${name}-${target.file}`, content: writer.toString() });
 	}
+	const holes = drillHoles(shapes);
 	files.push({
 		name: `${name}-PTH.drl`,
 		content: drillFile(
-			items.filter((shape) => !isHole(shape)),
+			holes.filter((hole) => hole.plated),
 			"Plated,1,2,PTH",
 		),
 	});
-	const unplated = items.filter(isHole);
+	const unplated = holes.filter((hole) => !hole.plated);
 	if (unplated.length)
 		files.push({
 			name: `${name}-NPTH.drl`,
@@ -563,13 +564,11 @@ const drillXY = (point: Point) =>
 	`X${drillMillimetres(point.x)}Y${drillMillimetres(point.y)}`;
 
 function drillFile(
-	items: readonly EditorShape[],
+	drilled: readonly DrillHole[],
 	fileFunction: string,
 ): string {
 	const holes = new Map<string, string[]>();
-	for (const shape of items) {
-		const hole = shapeHole(shape);
-		if (hole === undefined) continue;
+	for (const hole of drilled) {
 		const key = hole.diameter.toFixed(3);
 		const list = holes.get(key) ?? [];
 		const [from, to] = hole.ends.map(drillXY);

@@ -588,7 +588,7 @@ test("a filled footprint graphic is solid in its layer's colour, and a rotated p
 	assert.equal(rotated.shapes[0].children?.[0].rotation, -Math.PI / 2);
 });
 
-test("an exported footprint keeps its layer colours and pad holes", () => {
+test("an exported footprint keeps its layer colours and marks its pad holes", () => {
 	const svg = exportDrawingSvg(twoPadsWireCourtyardAndThroughHole(), {
 		width: 400,
 		height: 300,
@@ -598,7 +598,11 @@ test("an exported footprint keeps its layer colours and pad holes", () => {
 		measureText: measure,
 	});
 	assert.match(svg, /fill="#c83434"/);
-	assert.match(svg, /data-name="pad hole 5"/);
+	assert.match(
+		svg,
+		/data-name="drill mark 0"><path fill="#161a21" fill-rule="evenodd"/,
+	);
+	assert.doesNotMatch(svg, /data-name="pad hole 5"/);
 });
 
 test("an exported rotated pad draws its number upright and unsheared", () => {
