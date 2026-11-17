@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import { unzlibSync } from "fflate";
 import { createBoardAnalysis, createShapesSender } from "#/board/analysis.ts";
-import { boardDisplay } from "#/board/view.ts";
+import { boardDisplay, boardExportShapes } from "#/board/view.ts";
 import { exportDrawingSvg } from "#/drawing/export.ts";
 import {
 	type DrawingPdfOptions,
@@ -347,12 +348,7 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 		zoneFills.map((fill) => fill.shapeId).sort(),
 		zones.map((zone) => zone.id).sort(),
 	);
-	const shapes = boardDisplay(
-		design.board,
-		new Set(),
-		new Set(),
-		"F.Cu",
-	).shapes;
+	const shapes = boardExportShapes(design.board);
 	const exported = { ...options, area: "drawing" as const, layers: true };
 	const pdf = parsePdf(
 		exportDrawingPdf(shapes, { ...exported, title: design.name, zoneFills }),
@@ -396,9 +392,32 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 		zoneFills,
 	});
 	assert.equal(svg.match(/fill-rule="evenodd"/g)?.length, zones.length);
-	for (const zone of zones)
+	const names = [...svg.matchAll(/data-name="([^"]*)"/g)].map(
+		([, name]) => name,
+	);
+	for (const fill of zoneFills) {
+		assert.ok(!names.includes(`rectangle ${fill.shapeId}`));
+		const first = shapes.find(
+			(shape) =>
+				shape.id !== fill.shapeId && shapeLayers(shape).includes(fill.layer),
+		);
+		assert.equal(
+			names[names.indexOf(`zone fill ${fill.shapeId}`) + 1],
+			`${first?.kind} ${first?.id}`,
+			`${fill.layer} fill sits under the first item on its layer`,
+		);
+	}
+	const frontFills = zoneFills.filter((fill) => fill.layer === "F.Cu");
+	const lastFrontFill = Math.max(
+		...frontFills.map((fill) => names.indexOf(`zone fill ${fill.shapeId}`)),
+	);
+	const silkscreen = shapes.filter((shape) =>
+		shapeLayers(shape).includes("F.SilkS"),
+	);
+	assert.ok(silkscreen.length > 0);
+	for (const shape of silkscreen)
 		assert.ok(
-			svg.includes(`data-name="zone fill ${zone.id}"`) &&
-				!svg.includes(`data-name="rectangle ${zone.id}"`),
+			names.indexOf(`${shape.kind} ${shape.id}`) > lastFrontFill,
+			`front silkscreen ${shape.kind} ${shape.id} prints over the front fill`,
 		);
 });

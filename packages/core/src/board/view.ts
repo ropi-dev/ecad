@@ -104,7 +104,7 @@ export function boardDisplay(
 	shapes: readonly EditorShape[],
 	selected: ReadonlySet<number>,
 	hidden: ReadonlySet<FootprintLayer>,
-	active: FootprintLayer,
+	active?: FootprintLayer,
 ): BoardDisplay {
 	const flat: EditorShape[] = [];
 	const shown = new Set(selected);
@@ -124,6 +124,9 @@ export function boardDisplay(
 		selected: shown,
 	};
 }
+
+export const boardExportShapes = (shapes: readonly EditorShape[]) =>
+	boardDisplay(shapes, new Set(), new Set()).shapes;
 
 const ratsnestWidth = 0.05;
 
