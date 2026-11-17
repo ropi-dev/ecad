@@ -44,7 +44,11 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { announceBoardSync } from "#/board/sync-document.ts";
-import { boardDisplay, boardLayerView } from "#/board/view.ts";
+import {
+	boardDisplay,
+	boardExportShapes,
+	boardLayerView,
+} from "#/board/view.ts";
 import {
 	BoardChecksPanel,
 	BoardSetupPanel,
@@ -303,7 +307,7 @@ function EditorCanvas({
 	const everyLayerShapes = useMemo(
 		() =>
 			isBoard
-				? flatBoard(fitTextShapes(drawing.shapes))
+				? boardExportShapes(fitTextShapes(drawing.shapes))
 				: isFootprint
 					? footprintLayerView(fitTextShapes(drawing.shapes), noLayers)
 					: [],
@@ -938,6 +942,7 @@ function EditorCanvas({
 						.finally(() => setExporting(false));
 				},
 				exporting,
+				zoneFills: () => boardEditor.drawingFills(drawing.shapes),
 			}
 		: undefined;
 	const toolbar = (

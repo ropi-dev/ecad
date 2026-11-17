@@ -68,6 +68,7 @@ import {
 import { TooltipButton } from "#/components/viewer/TooltipButton.tsx";
 import { useViewExport } from "#/components/viewer/ViewControls3D.tsx";
 import { viewControlButtonClassName } from "#/components/viewer/viewControlStyles.ts";
+import type { DrawingZoneFill } from "#/drawing/export.ts";
 import type { SelectionEdit } from "#/drawing/selection-edit.ts";
 import type { SymbolDefinition } from "#/drawing/symbols.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
@@ -179,6 +180,7 @@ interface EditorToolbarProps {
 		onFlip: () => void;
 		onExport: () => void;
 		exporting: boolean;
+		zoneFills: () => Promise<readonly DrawingZoneFill[]>;
 	};
 }
 
@@ -481,6 +483,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				sheet={sheet}
 				label={drawingName || "Schematic drawing"}
 				layered={footprint !== undefined}
+				zoneFills={board?.zoneFills}
 				open={exportOpen}
 				onClose={() => setExportOpen(false)}
 			/>

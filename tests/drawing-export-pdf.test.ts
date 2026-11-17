@@ -2,8 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	boardDrawOrder,
+	shapeLayers,
+} from "@ecad/drawing-core/footprint/shapes.ts";
 import { unzlibSync } from "fflate";
-import { boardDisplay } from "#/board/view.ts";
+import { createBoardAnalysis, createShapesSender } from "#/board/analysis.ts";
+import { boardDisplay, boardExportShapes } from "#/board/view.ts";
+import { exportDrawingSvg } from "#/drawing/export.ts";
 import {
 	type DrawingPdfOptions,
 	exportDrawingPdf,
@@ -325,4 +331,102 @@ test("a footprint smaller than its layer caption gets a page wide enough for the
 	assert.ok(Number(height) < points(10));
 	const [, tx] = /^[\d.]+ 0 0 [\d.]+ ([\d.]+) /.exec(pdf.page.content) ?? [];
 	assert.equal(Number(tx), points(caption / 2));
+});
+
+test("a board export draws each zone as its fill, with clearances cut out, in place of its outline", async () => {
+	const design = await exampleDesigns.rp2350a.load();
+	const analyse = createBoardAnalysis();
+	analyse({ type: "board", circuit: design.circuit, rules: design.rules });
+	const reply = analyse({
+		type: "drawing-fills",
+		id: 1,
+		shapes: createShapesSender().patch(design.board),
+	});
+	assert.equal(reply?.type, "drawing-fills");
+	const zoneFills = reply.type === "drawing-fills" ? reply.fills : [];
+	const zones = design.board.filter(
+		(shape) => shape.kind === "rectangle" && shape.zone,
+	);
+	assert.deepEqual(
+		zoneFills.map((fill) => fill.shapeId).sort(),
+		zones.map((zone) => zone.id).sort(),
+	);
+	const shapes = boardExportShapes(design.board);
+	const exported = { ...options, area: "drawing" as const, layers: true };
+	const pdf = parsePdf(
+		exportDrawingPdf(shapes, { ...exported, title: design.name, zoneFills }),
+	);
+	const bare = parsePdf(
+		exportDrawingPdf(shapes, { ...exported, title: design.name }),
+	);
+	const n = (value: number) => String(Math.round(value * 1e4) / 1e4);
+	for (const [page, layer] of [
+		[0, "F.Cu"],
+		[1, "B.Cu"],
+	] as const) {
+		const rings = zoneFills
+			.filter((fill) => fill.layer === layer)
+			.flatMap((fill) => fill.polygons.flat());
+		assert.ok(rings.length > 1, `${layer} has a fill with clearance holes`);
+		const lines = pdf.pages[page].content.split("\n");
+		const painted = lines.flatMap((line, index) => {
+			if (line !== "f*") return [];
+			let start = index;
+			while (start > 0 && lines[start - 1].endsWith(" h")) start--;
+			return lines.slice(start, index);
+		});
+		assert.equal(painted.length, rings.length, layer);
+		for (const ring of rings)
+			assert.ok(
+				pdf.pages[page].content.includes(
+					`${n(ring[0][0])} ${n(ring[0][1])} m `,
+				),
+				layer,
+			);
+		assert.doesNotMatch(bare.pages[page].content, /\nf\*/);
+	}
+	for (const page of pdf.pages.slice(2))
+		assert.doesNotMatch(page.content, /\nf\*/, page.text[0]);
+	const backOnly = (shape: EditorShape) =>
+		!zones.includes(shape) &&
+		shapeLayers(shape).length === 1 &&
+		shapeLayers(shape)[0] === "B.Cu";
+	assert.ok(design.board.some(backOnly));
+	for (const board of [
+		design.board,
+		design.board.filter((shape) => !backOnly(shape)),
+	]) {
+		const stacked = boardExportShapes(board);
+		const svg = exportDrawingSvg(stacked, {
+			...options,
+			area: "drawing",
+			width: 1000,
+			height: 1000,
+			zoneFills,
+		});
+		assert.equal(svg.match(/fill-rule="evenodd"/g)?.length, zones.length);
+		const names = [...svg.matchAll(/data-name="([^"]*)"/g)].map(
+			([, name]) => name,
+		);
+		const top = (shape: EditorShape) =>
+			Math.max(
+				-1,
+				...shapeLayers(shape).map((layer) => boardDrawOrder.indexOf(layer)),
+			);
+		for (const fill of zoneFills) {
+			assert.ok(!names.includes(`rectangle ${fill.shapeId}`));
+			const at = names.indexOf(`zone fill ${fill.shapeId}`);
+			const rank = boardDrawOrder.indexOf(fill.layer);
+			for (const shape of stacked) {
+				if (zones.includes(shape)) continue;
+				const index = names.indexOf(`${shape.kind} ${shape.id}`);
+				assert.ok(index >= 0, `${shape.kind} ${shape.id}`);
+				assert.equal(
+					index > at,
+					top(shape) >= rank,
+					`${shape.kind} ${shape.id} on ${shapeLayers(shape).join(", ")} against the ${fill.layer} fill`,
+				);
+			}
+		}
+	}
 });

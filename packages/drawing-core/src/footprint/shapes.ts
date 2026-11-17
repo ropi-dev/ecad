@@ -116,7 +116,7 @@ export function shapeLayers(shape: EditorShape): readonly FootprintLayer[] {
 	return paste ? [copper, paste] : [copper];
 }
 
-const boardDrawOrder: readonly FootprintLayer[] = [
+export const boardDrawOrder: readonly FootprintLayer[] = [
 	"B.Fab",
 	"B.CrtYd",
 	"B.SilkS",

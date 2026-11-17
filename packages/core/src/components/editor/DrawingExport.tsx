@@ -13,6 +13,7 @@ import {
 } from "#/components/ui/Dialog.tsx";
 import { toastManager } from "#/components/ui/toast.ts";
 import { downloadPng } from "#/components/viewer/exportPng.ts";
+import type { DrawingZoneFill } from "#/drawing/export.ts";
 import type { DrawingExportFormat } from "#/drawing/export-client.ts";
 import type { SheetSize } from "#/drawing/worksheet.ts";
 import { measurePerformanceAsync } from "#/performance/runtime.ts";
@@ -23,6 +24,7 @@ export function DrawingExport({
 	sheet,
 	label,
 	layered = false,
+	zoneFills,
 	open,
 	onClose,
 }: {
@@ -30,6 +32,7 @@ export function DrawingExport({
 	sheet: SheetSize;
 	label: string;
 	layered?: boolean;
+	zoneFills?: () => Promise<readonly DrawingZoneFill[]>;
 	open: boolean;
 	onClose: () => void;
 }) {
@@ -82,9 +85,10 @@ export function DrawingExport({
 									await measurePerformanceAsync(
 										"drawing.export",
 										async () => {
-											const { exportDrawing } = await import(
-												"#/drawing/export-client.ts"
-											);
+											const [{ exportDrawing }, fills] = await Promise.all([
+												import("#/drawing/export-client.ts"),
+												zoneFills?.(),
+											]);
 											downloadPng(
 												await exportDrawing(
 													shapes,
@@ -96,6 +100,7 @@ export function DrawingExport({
 														sheet,
 														title: label,
 														layers: layered,
+														...(fills ? { zoneFills: fills } : {}),
 													},
 													format,
 												),

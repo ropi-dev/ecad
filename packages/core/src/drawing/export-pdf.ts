@@ -305,6 +305,15 @@ function itemContent(item: SceneItem, fonts: GlyphFonts) {
 			);
 		return `${parts.join("\n")}\nf`;
 	}
+	if (item.kind === "rings")
+		return `${item.rings
+			.map((ring) => {
+				const parts: string[] = [];
+				for (let i = 0; i + 1 < ring.length; i += 2)
+					parts.push(`${n(ring[i])} ${n(ring[i + 1])} ${i ? "l" : "m"}`);
+				return `${parts.join(" ")} h`;
+			})
+			.join("\n")}\nf*`;
 	if (item.kind !== "text") return "";
 	const [a, b, c, d, e, f] = item.matrix;
 	if (!(Math.abs(a * d - b * c) > 1e-12)) return "";
