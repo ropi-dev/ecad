@@ -579,8 +579,8 @@ describe("copper pours", () => {
 
 	test("where pours on two nets overlap, the one drawn first keeps the copper and the other keeps clear", () => {
 		const { shapes, netlist, pour, at } = dividerBoard();
-		const gndPour = pour("gnd", -6, 16);
-		const midPour = pour("mid", 6, 16);
+		const gndPour = pour("gnd", -7, 16);
+		const midPour = pour("mid", 5, 16);
 		const board = [...shapes, gndPour, midPour];
 		const overlap = at(0, -7);
 		const copperAt = (zone: EditorShape) =>
@@ -835,6 +835,598 @@ describe("copper pours", () => {
 		const closed = [...open, edge(at(-15, 10), at(-15, -10))];
 		assert.equal(pourCopper(closed, netlist).length, 1);
 		assert.ok(!kinds(designRulesCheck(closed, netlist)).includes("outline"));
+	});
+});
+
+describe("thermal reliefs", () => {
+	test("a spoke that runs along a neighbouring pad's gap keeps its full width", () => {
+		const circuit = {
+			...dividerCircuit(),
+			nets: [
+				{
+					id: "gnd",
+					names: ["GND"],
+					pinIds: ["R1.1", "R1.2", "R2.1", "R2.2"],
+				},
+			],
+		};
+		const netlist = boardNetlist(circuit);
+		const { outline, pour } = dividerBoard();
+		const [r1, r2] = updateFromSchematic(circuit).place;
+		const moved = { ...r2, x: r2.x - 3.25, y: r2.y - 1.25 } as EditorShape;
+		const board = [r1, moved, outline, pour("gnd", 0, 28)];
+		const pad = required(
+			boardPads([moved]).find((pad) => pad.number === "1"),
+		).shape;
+		assert.deepEqual(
+			[-0.2, 0.2].map((side) =>
+				copperAt(board, netlist, {
+					x: pad.x - pad.width / 2 - 0.25,
+					y: pad.y + side,
+				}),
+			),
+			[true, true],
+		);
+		assert.deepEqual(unroutedNets(board, netlist), []);
+	});
+
+	test("with a thermal gap below the clearance, a spoke may pass a same-net pad outside that pad's gap", () => {
+		const circuit = {
+			...dividerCircuit(),
+			nets: [
+				{
+					id: "gnd",
+					names: ["GND"],
+					pinIds: ["R1.1", "R1.2", "R2.1", "R2.2"],
+				},
+			],
+		};
+		const netlist = boardNetlist(circuit);
+		const { outline, pour } = dividerBoard();
+		const [r1, r2] = updateFromSchematic(circuit).place;
+		const moved = { ...r2, x: r2.x - 3.25, y: r2.y - 1.25 } as EditorShape;
+		const board = [r1, moved, outline, pour("gnd", 0, 28)];
+		const pad = required(
+			boardPads([moved]).find((pad) => pad.number === "1"),
+		).shape;
+		const rules = { ...defaultBoardRules, clearance: 0.4, thermalGap: 0.2 };
+		assert.ok(
+			copperAt(
+				board,
+				netlist,
+				{ x: pad.x - pad.width / 2 - 0.1, y: pad.y },
+				rules,
+			),
+		);
+	});
+
+	const gndPour = () => {
+		const { shapes, netlist, footprints, pour } = dividerBoard();
+		const pads = boardPads(footprints).filter(
+			(pad) => netlist.padNet(pad.component, pad.number) === "gnd",
+		);
+		const pad = required(pads[0]).shape;
+		const zone = pour("gnd", 0, 28);
+		const outward = Math.sign(pad.x - zone.x);
+		const beside = (dx: number, dy: number) => ({
+			x: pad.x + outward * (pad.width / 2 + dx),
+			y: pad.y + Math.sign(dy) * (pad.height / 2 + Math.abs(dy)),
+		});
+		return { shapes, netlist, pad, zone, outward, beside };
+	};
+	const copperAt = (
+		board: readonly EditorShape[],
+		netlist: BoardNetlist,
+		point: Point,
+		rules: BoardRules = defaultBoardRules,
+	) => containsPoint(pourCopper(board, netlist, rules), point);
+	const via = (center: Point, net: string): EditorShape => ({
+		id: nextId++,
+		kind: "circle",
+		layer: "F.Cu",
+		...center,
+		width: 0.3,
+		height: 0.3,
+		rotation: 0,
+		lineWidth: 0.1,
+		filled: true,
+		via: { drill: 0.15 },
+		net,
+	});
+
+	test("a GND pad in a GND pour gets a 0.5 mm gap with spokes across it and stays connected", () => {
+		const { shapes, netlist, pad, zone, beside } = gndPour();
+		const board = [...shapes, zone];
+		const corner = beside(0.2, 0.2);
+		const above = { x: pad.x, y: pad.y + pad.height / 2 + 0.25 };
+		const outside = beside(0.25, 0);
+		assert.deepEqual(
+			[corner, above, outside, pad].map((point) =>
+				copperAt(board, netlist, point),
+			),
+			[false, true, true, true],
+		);
+		assert.ok(copperAt(board, netlist, beside(0.6, 0.6)));
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+		assert.deepEqual(kinds(designRulesCheck(board, netlist)), ["unconnected"]);
+	});
+
+	test("a zone set to solid pad connections fills right up to the pad", () => {
+		const { shapes, netlist, zone, beside } = gndPour();
+		const solid = { ...zone, zone: { padConnection: "solid" } } as EditorShape;
+		assert.ok(copperAt([...shapes, solid], netlist, beside(0.2, 0.2)));
+	});
+
+	test("the zone's thermal gap overrides the board's, which sets the gap otherwise", () => {
+		const { shapes, netlist, zone, beside } = gndPour();
+		const corner = beside(0.3, 0.3);
+		const narrow = { ...zone, zone: { thermalGap: 0.25 } } as EditorShape;
+		const rules = { ...defaultBoardRules, thermalGap: 0.25 };
+		assert.deepEqual(
+			[
+				copperAt([...shapes, zone], netlist, corner),
+				copperAt([...shapes, narrow], netlist, corner),
+				copperAt([...shapes, zone], netlist, corner, rules),
+			],
+			[false, true, true],
+		);
+	});
+
+	test("spokes take the board's or the zone's width, and never get wider than the pad", () => {
+		const { shapes, netlist, pad, zone } = gndPour();
+		const above = (dx: number) => ({
+			x: pad.x + dx,
+			y: pad.y + pad.height / 2 + 0.25,
+		});
+		const narrow = { ...defaultBoardRules, thermalSpokeWidth: 0.2 };
+		const wide = {
+			...zone,
+			zone: { thermalSpokeWidth: 3 },
+		} as EditorShape;
+		assert.deepEqual(
+			[
+				copperAt([...shapes, zone], netlist, above(0.15)),
+				copperAt([...shapes, zone], netlist, above(0.15), narrow),
+				copperAt([...shapes, wide], netlist, above(0.45)),
+				copperAt([...shapes, wide], netlist, above(0.6)),
+			],
+			[true, false, true, false],
+		);
+	});
+
+	test("when vias on another net block the spokes along the pad's axes, the spokes turn 45 degrees", () => {
+		const { shapes, netlist, pad, zone, outward, beside } = gndPour();
+		const blockers = [
+			beside(0.45, 0),
+			{ x: pad.x, y: pad.y + pad.height / 2 + 0.45 },
+			{ x: pad.x, y: pad.y - pad.height / 2 - 0.45 },
+		].map((center) => via(center, "mid"));
+		const board = [...shapes, zone, ...blockers];
+		const diagonal = (along: number) => ({
+			x: pad.x + outward * along,
+			y: pad.y + along,
+		});
+		const reach = (pad.width + pad.height) / 4;
+		const betweenSpokes = {
+			x: pad.x - outward * 0.4,
+			y: pad.y + pad.height / 2 + 0.2,
+		};
+		assert.deepEqual(
+			[diagonal(reach + 0.35), betweenSpokes, beside(0.2, 0)].map((point) =>
+				copperAt(board, netlist, point),
+			),
+			[true, false, false],
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+		assert.deepEqual(kinds(designRulesCheck(board, netlist)), ["unconnected"]);
+	});
+
+	test("when each spoke set reaches only one spoke, the pad keeps both", () => {
+		const { shapes, netlist, pad, zone, outward, beside } = gndPour();
+		const reach = (pad.width + pad.height) / 4;
+		const diagonal = (along: number, up: number) => ({
+			x: pad.x + (outward * along) / Math.SQRT2,
+			y: pad.y + (up * along) / Math.SQRT2,
+		});
+		const blockers = [
+			beside(0.45, 0),
+			{ x: pad.x, y: pad.y + pad.height / 2 + 0.45 },
+			diagonal(reach + 0.35, -1),
+		].map((center) => via(center, "mid"));
+		const board = [...shapes, zone, ...blockers];
+		assert.deepEqual(
+			[
+				{ x: pad.x, y: pad.y - pad.height / 2 - 0.25 },
+				diagonal(reach + 0.35, 1),
+			].map((point) => copperAt(board, netlist, point)),
+			[true, true],
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+	});
+
+	test("a via on the zone's net inside a pad's gap is not joined to the fill", () => {
+		const { shapes, netlist, pad, zone } = gndPour();
+		const inGap = via(
+			{ x: pad.x + 0.45, y: pad.y + pad.height / 2 + 0.3 },
+			"gnd",
+		);
+		assert.ok(unroutedNets([...shapes, zone, inGap], netlist).includes("gnd"));
+	});
+
+	test("a round pad's spokes run at 45 degrees to its axes", () => {
+		const { netlist, outline, pour } = dividerBoard();
+		const header = {
+			library: "builtin",
+			id: "pinheader_1x02_p2.54mm_vertical",
+		} as const;
+		const footprints = updateFromSchematic(dividerCircuit(), [], (reference) =>
+			reference === "R2" ? header : r0805,
+		).place;
+		const pad = required(
+			boardPads(footprints).find(
+				(pad) => pad.component === "R2" && pad.number === "2",
+			),
+		).shape;
+		assert.equal(pad.kind, "circle");
+		const board = [...footprints, outline, pour("gnd", 0, 28)];
+		const out = pad.width / 2 + 0.25;
+		const diagonal = out / Math.SQRT2;
+		assert.deepEqual(
+			[
+				{ x: pad.x + diagonal, y: pad.y + diagonal },
+				{ x: pad.x - diagonal, y: pad.y - diagonal },
+				{ x: pad.x + out, y: pad.y },
+				{ x: pad.x, y: pad.y + out },
+			].map((point) => copperAt(board, netlist, point)),
+			[true, true, false, false],
+		);
+	});
+
+	test("a zone edge through a pad clips the spokes that run along it instead of dropping them", () => {
+		const { shapes, netlist, pad, zone, beside } = gndPour();
+		for (const offset of [-0.15, 0.1]) {
+			const top = pad.y + offset;
+			const bottom = zone.y - zone.height / 2;
+			const below = {
+				...zone,
+				y: (top + bottom) / 2,
+				height: top - bottom,
+			} as EditorShape;
+			const board = [...shapes, below];
+			const under = { x: pad.x, y: pad.y - pad.height / 2 - 0.25 };
+			const outward = { ...beside(0.25, 0), y: pad.y - 0.1 };
+			assert.deepEqual(
+				[under, outward].map((point) => copperAt(board, netlist, point)),
+				[true, offset > 0],
+			);
+			assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+		}
+	});
+
+	test("a spoke crossing a neighbouring pad's gap opens it only where it crosses", () => {
+		const { netlist, footprints, outline, pour } = dividerBoard();
+		const [r1, r2] = footprints;
+		const pads = boardPads(footprints);
+		const below = required(
+			pads.find((pad) => pad.component === "R1" && pad.number === "1"),
+		).shape;
+		const above = required(
+			pads.find((pad) => pad.component === "R2" && pad.number === "2"),
+		).shape;
+		const rise = below.height + 0.5 + 0.125 + 0.51;
+		const moved = {
+			...r2,
+			x: r2.x + below.x - above.x + 0.5,
+			y: r2.y + below.y - above.y + rise,
+		} as EditorShape;
+		const board = [r1, moved, outline, pour("gnd", 0, 28)];
+		const neighbour = { x: below.x + 0.5, y: below.y + rise };
+		assert.deepEqual(
+			[
+				{ x: below.x + 0.1, y: below.y + below.height / 2 + 0.5 + 0.2 },
+				{
+					x: neighbour.x + above.width / 2 + 0.2,
+					y: neighbour.y - above.height / 2 - 0.2,
+				},
+			].map((point) => copperAt(board, netlist, point)),
+			[true, false],
+		);
+		assert.ok(
+			copperAt(board, netlist, {
+				x: below.x,
+				y: below.y - below.height / 2 - 0.25,
+			}),
+		);
+	});
+
+	test("neighbouring pins on the zone's net closer than the thermal gap both get spokes", () => {
+		const { netlist, footprints, outline, pour } = dividerBoard();
+		const [r1, r2] = footprints as BoardFootprint[];
+		const first = required(
+			r1.children.find(
+				(child) =>
+					isPad(child as EditorShape) &&
+					"pad" in child &&
+					child.pad?.number === "1",
+			),
+		);
+		const narrow = { ...first, height: 0.3 } as typeof first;
+		const twin: BoardFootprint = {
+			...r1,
+			children: [
+				...r1.children.map((child) => (child === first ? narrow : child)),
+				{
+					...narrow,
+					id: Math.max(...r1.children.map((child) => child.id)) + 1,
+					y: narrow.y + 0.65,
+				} as BoardFootprint["children"][number],
+			],
+		};
+		const pins = boardPads([twin])
+			.filter((pad) => pad.number === "1")
+			.map((pad) => pad.shape);
+		assert.equal(pins.length, 2);
+		const outward = Math.sign(required(pins[0]).x - r1.x);
+		const board = [twin, r2, outline, pour("gnd", 0, 28)];
+		assert.deepEqual(
+			pins.map((pin) =>
+				copperAt(board, netlist, {
+					x: pin.x + outward * (pin.width / 2 + 0.25),
+					y: pin.y,
+				}),
+			),
+			[true, true],
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+	});
+
+	test("pads stacked on one spot share a relief instead of blocking each other's spokes", () => {
+		const { netlist, footprints, outline, pour } = dividerBoard();
+		const [r1, r2] = footprints as BoardFootprint[];
+		const smd = required(
+			r1.children.find(
+				(child) =>
+					isPad(child as EditorShape) &&
+					"pad" in child &&
+					child.pad?.number === "1",
+			),
+		);
+		const stacked: BoardFootprint = {
+			...r1,
+			children: [
+				...r1.children,
+				{
+					...smd,
+					id: Math.max(...r1.children.map((child) => child.id)) + 1,
+					kind: "circle",
+					width: 1,
+					height: 1,
+					pad: { number: "1", type: "through-hole", drill: 0.5 },
+				} as BoardFootprint["children"][number],
+			],
+		};
+		const pad = required(
+			boardPads([stacked]).find(
+				(pad) => pad.shape.kind === "rectangle" && pad.number === "1",
+			),
+		).shape;
+		const board = [stacked, r2, outline, pour("gnd", 0, 28)];
+		assert.ok(
+			copperAt(board, netlist, { x: pad.x, y: pad.y + pad.height / 2 + 0.25 }),
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+	});
+
+	test("a rounded pad's gap follows its rounded corners", () => {
+		const { netlist, footprints, outline, pour } = dividerBoard();
+		const [r1, r2] = footprints as BoardFootprint[];
+		const rounded: BoardFootprint = {
+			...r1,
+			children: r1.children.map((child) =>
+				"pad" in child && child.pad?.number === "1"
+					? ({
+							...child,
+							pad: { ...child.pad, cornerRatio: 0.25 },
+						} as BoardFootprint["children"][number])
+					: child,
+			),
+		};
+		const pad = required(
+			boardPads([rounded]).find((pad) => pad.number === "1"),
+		).shape;
+		const outward = Math.sign(pad.x - r1.x);
+		const pastCorner = {
+			x: pad.x + outward * (pad.width / 2 + 0.3),
+			y: pad.y + pad.height / 2 + 0.3,
+		};
+		const zone = pour("gnd", 0, 28);
+		assert.deepEqual(
+			[rounded, r1].map((footprint) =>
+				copperAt([footprint, r2, outline, zone], netlist, pastCorner),
+			),
+			[true, false],
+		);
+		assert.deepEqual(unroutedNets([rounded, r2, outline, zone], netlist), [
+			"mid",
+		]);
+	});
+
+	test("an oval through-hole pad with a slot gets spokes along its axes and a gap that follows its round ends", () => {
+		const { netlist, footprints, outline, pour } = dividerBoard();
+		const [r1, r2] = footprints as BoardFootprint[];
+		const oval: BoardFootprint = {
+			...r1,
+			children: r1.children.map((child) =>
+				"pad" in child && child.pad?.number === "1"
+					? ({
+							...child,
+							pad: {
+								number: "1",
+								type: "through-hole",
+								drill: 0.3,
+								slot: 0.7,
+								cornerRatio: 0.5,
+							},
+						} as BoardFootprint["children"][number])
+					: child,
+			),
+		};
+		const pad = required(
+			boardPads([oval]).find((pad) => pad.number === "1"),
+		).shape;
+		const outward = Math.sign(pad.x - r1.x);
+		const board = [oval, r2, outline, pour("gnd", 0, 28)];
+		assert.deepEqual(
+			[
+				{ x: pad.x, y: pad.y + pad.height / 2 + 0.25 },
+				{ x: pad.x, y: pad.y - pad.height / 2 - 0.25 },
+				{
+					x: pad.x + outward * (pad.width / 2 + 0.3),
+					y: pad.y + pad.height / 2 + 0.3,
+				},
+				{
+					x: pad.x + outward * 0.35,
+					y: pad.y + pad.height / 2 + 0.15,
+				},
+			].map((point) => copperAt(board, netlist, point)),
+			[true, true, true, false],
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+	});
+
+	test("a spoke keeps the board clearance from an unplated hole", () => {
+		const { shapes, netlist, pad, zone } = gndPour();
+		const hole = {
+			...createHole(nextId++, { x: pad.x, y: pad.y + pad.height / 2 + 0.6 }),
+			width: 0.3,
+			height: 0.3,
+			hole: { drill: 0.3 },
+		} as EditorShape;
+		const board = [...shapes, zone, hole];
+		assert.ok(
+			!copperAt(board, netlist, {
+				x: pad.x,
+				y: pad.y + pad.height / 2 + 0.25,
+			}),
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+		assert.deepEqual(kinds(designRulesCheck(board, netlist)), ["unconnected"]);
+	});
+
+	test("a pad just outside the zone keeps its gap and leaves no spoke stubs in the fill", () => {
+		const { shapes, netlist, pad, zone } = gndPour();
+		const top = pad.y - pad.height / 2 - 0.2;
+		const bottom = zone.y - zone.height / 2;
+		const below = {
+			...zone,
+			y: (top + bottom) / 2,
+			height: top - bottom,
+		} as EditorShape;
+		const anchor = via({ x: pad.x + 3, y: top - 3 }, "gnd");
+		const board = [...shapes, below, anchor];
+		const band = Array.from({ length: 17 }, (_, step) => ({
+			x: pad.x - 0.8 + step * 0.1,
+			y: top - 0.1,
+		}));
+		assert.ok(!band.some((point) => copperAt(board, netlist, point)));
+		assert.ok(copperAt(board, netlist, { x: pad.x, y: top - 0.45 }));
+	});
+
+	test("a via on the zone's net in open fill joins it solid", () => {
+		const { shapes, netlist, pad, zone } = gndPour();
+		const center = { x: pad.x, y: pad.y + 4 };
+		const board = [...shapes, zone, via(center, "gnd")];
+		assert.ok(
+			[0, 1, 2, 3, 4, 5, 6, 7].every((step) => {
+				const angle = (step * Math.PI) / 4;
+				return copperAt(board, netlist, {
+					x: center.x + 0.2 * Math.cos(angle),
+					y: center.y + 0.2 * Math.sin(angle),
+				});
+			}),
+		);
+	});
+
+	test("a pad inside a polygon zone gets spokes into its fill", () => {
+		const { shapes, netlist, pad, zone, beside } = gndPour();
+		const diamond = {
+			...zone,
+			zone: {
+				outline: [
+					{ x: 0, y: -0.5 },
+					{ x: 0.5, y: 0 },
+					{ x: 0, y: 0.5 },
+					{ x: -0.5, y: 0 },
+				],
+			},
+		} as EditorShape;
+		const board = [...shapes, diamond];
+		assert.deepEqual(
+			[
+				{ x: pad.x, y: pad.y + pad.height / 2 + 0.25 },
+				beside(0.2, 0.2),
+				{
+					x: zone.x + zone.width / 2 - 0.5,
+					y: zone.y + zone.height / 2 - 0.5,
+				},
+			].map((point) => copperAt(board, netlist, point)),
+			[true, false, false],
+		);
+		assert.deepEqual(unroutedNets(board, netlist), ["mid"]);
+	});
+
+	test("a spoke keeps clear of a higher-priority zone on another net, even one listed later", () => {
+		const { shapes, netlist, pad, zone, outward } = gndPour();
+		const island = {
+			...zone,
+			id: nextId++,
+			net: "mid",
+			x: pad.x + outward * (pad.width / 2 + 1.5),
+			y: pad.y,
+			width: 2,
+			height: 1,
+			zone: { priority: 1 },
+		} as EditorShape;
+		const board = [...shapes, zone, island];
+		const outwardSpoke = {
+			x: pad.x + outward * (pad.width / 2 + 0.25),
+			y: pad.y,
+		};
+		assert.ok(!copperAt(board, netlist, outwardSpoke));
+		assert.ok(
+			copperAt(board, netlist, {
+				x: pad.x,
+				y: pad.y + pad.height / 2 + 0.25,
+			}),
+		);
+		assert.ok(
+			!kinds(designRulesCheck(board, netlist)).some(
+				(kind) => kind === "short" || kind === "clearance",
+			),
+		);
+	});
+
+	test("a pad boxed in by another net gets no dangling spokes and shows as unconnected", () => {
+		const { shapes, netlist, pad, zone } = gndPour();
+		const x = pad.width / 2 + 0.35;
+		const y = pad.height / 2 + 0.35;
+		const corners = [
+			{ x: pad.x - x, y: pad.y - y },
+			{ x: pad.x + x, y: pad.y - y },
+			{ x: pad.x + x, y: pad.y + y },
+			{ x: pad.x - x, y: pad.y + y },
+			{ x: pad.x - x, y: pad.y - y },
+		];
+		const box = trackSegments(6000, corners, "F.Cu", 0.1, "mid");
+		const board = [...shapes, zone, ...box];
+		const inside = { x: pad.x, y: pad.y + pad.height / 2 + 0.1 };
+		assert.ok(!copperAt(board, netlist, inside));
+		assert.ok(unroutedNets(board, netlist).includes("gnd"));
+		assert.ok(
+			!kinds(designRulesCheck(board, netlist)).some(
+				(kind) => kind === "short" || kind === "clearance",
+			),
+		);
 	});
 });
 

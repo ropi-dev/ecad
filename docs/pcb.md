@@ -45,7 +45,7 @@ New tracks use the board's track width. A track's width is its line width in Att
 
 ## Copper zones
 
-**Routing → Copper zone** draws a rectangle on the active copper layer. **Routing → Polygon copper zone** draws a zone corner by corner: click each corner, then click the first or last corner again, or press Enter, to close it. Escape cancels it. A polygon closes only once its corners enclose an area, and a click on a corner already placed adds nothing. A selected polygon zone has a handle on each corner and a round one in the middle of each edge. Drag a corner to move it, drag an edge's handle to add a corner there (dropped on one of that edge's ends, it adds nothing), and drop a corner within ¾ of a grid step of its neighbour to remove it. The grid step follows the zoom. A zone fills its rectangle or polygon with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads, tracks and vias on the zone's net inside the fill connect to it directly, without thermal reliefs. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline. Where zones on different nets overlap, the zone with the higher **Zone priority** keeps the copper and the other keeps its clearance from it. Between zones of equal priority, the one drawn first wins. A zone's priority starts at 0. Nested power islands inside a ground zone need a higher priority than the ground zone. An island of a higher-priority zone that reaches nothing on its net is removed after the lower zones keep clear of it, so it leaves a gap in them, as in KiCad. Overlapping zones on one net connect where their fills touch, and an island that touches another zone's copper on the same net is kept.
+**Routing → Copper zone** draws a rectangle on the active copper layer. **Routing → Polygon copper zone** draws a zone corner by corner: click each corner, then click the first or last corner again, or press Enter, to close it. Escape cancels it. A polygon closes only once its corners enclose an area, and a click on a corner already placed adds nothing. A selected polygon zone has a handle on each corner and a round one in the middle of each edge. Drag a corner to move it, drag an edge's handle to add a corner there (dropped on one of that edge's ends, it adds nothing), and drop a corner within ¾ of a grid step of its neighbour to remove it. The grid step follows the zoom. A zone fills its rectangle or polygon with copper on its net, inside the board outline and the edge clearance, and keeps the clearance from copper on other nets. A fill island that reaches nothing on the zone's net is removed. Pads on the zone's net connect through thermal reliefs: the fill keeps a gap around the pad and joins it with spokes, four along the pad's axes, or at 45 degrees to them for a round pad. When fewer than two of those spokes would reach fill, the spokes turn 45 degrees if that reaches more, and if neither set reaches two the pad keeps the spokes of both, up to eight. Pads that touch share one gap. A spoke may cross the gap of a neighbouring pad on the same net if it keeps the clearance from that pad, or the space the two pads already leave if that is less, and it opens that gap where it crosses. A spoke that would cross copper on another net, an unplated hole, the board edge or an earlier zone's fill, come closer than that to another pad inside its gap, or end inside another pad's gap is left out, and a pad with no spoke left stays unconnected, so the ratsnest and DRC show it. Tracks and vias on the zone's net connect to the fill directly, except that a via inside a pad's gap only connects where a spoke covers it. A spoke that a zone's own edge cuts through is clipped rather than removed, as long as it still finds fill beyond its gap. A pad on the zone's net just outside the zone still has its gap cut from the fill but gets no spokes, so a zone whose only copper on its net is such a pad keeps no fill. **Pad connection** in Attributes switches a zone to solid pad connections, and **Thermal gap** and **Spoke width** override the board's sizes for one zone. A spoke is never wider than the pad. Choose the zone's **Net** in Attributes; a new zone starts with the net under the pointer, or GND. **Zone clearance** raises the clearance for one zone. It never goes below the board clearance. Fills are recomputed after each edit and draw under the other items of their layer. Zones stay empty until the board has a closed outline. Where zones on different nets overlap, the zone with the higher **Zone priority** keeps the copper and the other keeps its clearance from it. Between zones of equal priority, the one drawn first wins. A zone's priority starts at 0. Nested power islands inside a ground zone need a higher priority than the ground zone. An island of a higher-priority zone that reaches nothing on its net is removed after the lower zones keep clear of it, so it leaves a gap in them, as in KiCad. Overlapping zones on one net connect where their fills touch, and an island that touches another zone's copper on the same net is kept.
 
 ## Board outline
 
@@ -57,7 +57,7 @@ The sparkle button in the Layers panel header draws the board as manufactured, i
 
 ## Design rules
 
-**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, the clearance between copper and the board edge, and the solder mask margin. The board saves them with its items.
+**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, the clearance between copper and the board edge, the solder mask margin, and the thermal gap and spoke width of zone pad connections (0.5 mm each by default). The board saves them with its items.
 
 **Design rules check** runs on demand and lists:
 
@@ -66,7 +66,7 @@ The sparkle button in the Layers panel header draws the board as manufactured, i
 - copper that overlaps an unplated hole or comes closer than the clearance, holes from different footprints or on the board that overlap each other, and holes that cross the board edge or lie outside it. Copper and holes of one footprint are not checked against each other.
 - a missing board outline, or one whose ends don't meet.
 - a component with no footprint on the board, and a pin on a net whose footprint has no pad with its number.
-- copper on a net the circuit no longer has, and a zone with no copper because nothing on its net is inside it.
+- copper on a net the circuit no longer has, and a zone with no copper because its fill reaches nothing on its net.
 - each unrouted connection.
 
 Select a finding to select the items involved. Results go stale after an edit; run the check again.
@@ -108,7 +108,9 @@ A board is the `board` field of its drawing's `.ecaddraw` file, next to the sche
       "viaDiameter": 0.6,
       "viaDrill": 0.3,
       "edgeClearance": 0.3,
-      "solderMaskMargin": 0.05
+      "solderMaskMargin": 0.05,
+      "thermalGap": 0.5,
+      "thermalSpokeWidth": 0.5
     },
     "shapes": []
   }
@@ -121,7 +123,7 @@ The board belongs to the file's circuit and takes its name. A drawing without a 
 | --- | --- |
 | `layer: "Edge.Cuts"` | An outline item. |
 | `net` | On a copper line (a track), via or zone: the circuit net ID. |
-| `zone` | Makes a copper rectangle a zone. `clearance` optionally overrides the board clearance. `priority`, a whole number from 0 to 1000, sets the fill order: higher first, then list order. `outline` makes it a polygon zone: at least three corners `{ "x", "y" }` as fractions of the rectangle's width and height from -0.5 to 0.5 around its center, before rotation. Moving, turning and resizing the rectangle moves, turns and stretches the polygon. |
+| `zone` | Makes a copper rectangle a zone. `clearance` optionally overrides the board clearance. `priority`, a whole number from 0 to 1000, sets the fill order: higher first, then list order. `outline` makes it a polygon zone: at least three corners `{ "x", "y" }` as fractions of the rectangle's width and height from -0.5 to 0.5 around its center, before rotation. Moving, turning and resizing the rectangle moves, turns and stretches the polygon. `padConnection` is `"thermal"` (the default) or `"solid"`, and `thermalGap` and `thermalSpokeWidth` optionally override the board's thermal sizes. |
 | `kind: "symbol"` with `footprint` | A placed footprint. `children` are its items in footprint coordinates, `component` is the circuit component ID, and `flipped` marks a footprint on the back, whose children are already mirrored. |
 
 ## Code

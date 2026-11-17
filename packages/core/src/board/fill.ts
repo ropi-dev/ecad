@@ -15,14 +15,17 @@ import {
 import {
 	boundsOverlap,
 	type Hull,
+	hullBounds,
 	hullDistance,
 	hullPolygon,
+	pointHullDistance,
 	zoneCorners,
 } from "@ecad/drawing-core/board/geometry.ts";
 import type { BoardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
+import { unionFind } from "@ecad/drawing-core/lib/union-find.ts";
 import ClipperLib from "clipper-lib";
 import {
 	combinePolygons,
@@ -95,11 +98,35 @@ function fillPaths(polygons: MultiPolygon): ClipperLib.Paths {
 	);
 }
 
-function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
-	if (!polygons.length) return [];
+function grown(
+	polygons: MultiPolygon,
+	margin: number,
+	near: Bounds,
+): ClipperLib.Paths {
+	const window = {
+		minX: near.minX - margin,
+		minY: near.minY - margin,
+		maxX: near.maxX + margin,
+		maxY: near.maxY + margin,
+	};
+	const kept = polygons.flatMap(([outer, ...holes]) =>
+		boundsOverlap(boundsOfRing(outer), window)
+			? [
+					[
+						outer,
+						...holes.filter((hole) =>
+							boundsOverlap(boundsOfRing(hole), window),
+						),
+					],
+				]
+			: [],
+	);
+	if (!kept.length) return [];
+	const top = (path: ClipperLib.Path) =>
+		path.reduce((highest, point) => Math.max(highest, point.Y), -Infinity);
 	const offset = new ClipperLib.ClipperOffset(2, offsetTolerance * scale);
 	offset.AddPaths(
-		fillPaths(polygons),
+		fillPaths(kept).sort((a, b) => top(a) - top(b)),
 		ClipperLib.JoinType.jtRound,
 		ClipperLib.EndType.etClosedPolygon,
 	);
@@ -254,6 +281,45 @@ function polygonEdges(polygon: MultiPolygon[number]): EdgeGrid {
 	return grid;
 }
 
+const ringBounds = new WeakMap<Ring, Bounds>();
+
+function boundsOfRing(path: Ring): Bounds {
+	let bounds = ringBounds.get(path);
+	if (!bounds) {
+		bounds = {
+			minX: Infinity,
+			minY: Infinity,
+			maxX: -Infinity,
+			maxY: -Infinity,
+		};
+		for (const [x, y] of path) {
+			bounds.minX = Math.min(bounds.minX, x);
+			bounds.minY = Math.min(bounds.minY, y);
+			bounds.maxX = Math.max(bounds.maxX, x);
+			bounds.maxY = Math.max(bounds.maxY, y);
+		}
+		ringBounds.set(path, bounds);
+	}
+	return bounds;
+}
+
+function inRing(path: Ring, point: Point) {
+	const bounds = boundsOfRing(path);
+	return (
+		point.x >= bounds.minX &&
+		point.x <= bounds.maxX &&
+		point.y >= bounds.minY &&
+		point.y <= bounds.maxY &&
+		containsPoint([[path]], point)
+	);
+}
+
+const insideFill = (polygons: MultiPolygon, point: Point) =>
+	polygons.some(
+		([outer, ...holes]) =>
+			inRing(outer, point) && !holes.some((hole) => inRing(hole, point)),
+	);
+
 /** @return The gap from `item` to the fill, at most `within`; below zero inside it. */
 function fillDistance(
 	polygons: MultiPolygon,
@@ -262,7 +328,7 @@ function fillDistance(
 ): number {
 	if (
 		item.hulls.some((hull) =>
-			hull.points.some((point) => containsPoint(polygons, point)),
+			hull.points.some((point) => insideFill(polygons, point)),
 		)
 	)
 		return -Infinity;
@@ -288,7 +354,7 @@ function fillDistance(
 }
 
 const touchesFill = (polygons: MultiPolygon, item: CopperItem) =>
-	fillDistance(polygons, item) <= 1e-6;
+	fillDistance(polygons, item, 1e-3) <= 1e-6;
 
 const islandTouches = new WeakMap<
 	MultiPolygon[number],
@@ -314,11 +380,335 @@ const arcError = 1e-5;
 const circumscribed = (hull: Hull, margin: number) =>
 	(hull.radius + margin) / Math.cos(arc / 2) - hull.radius;
 
+function cutouts(rings: readonly Ring[], spokes: readonly Ring[]) {
+	const clipper = new ClipperLib.Clipper();
+	clipper.AddPaths(rings.map(clipperPath), ClipperLib.PolyType.ptSubject, true);
+	clipper.AddPaths(spokes.map(clipperPath), ClipperLib.PolyType.ptClip, true);
+	const result: ClipperLib.Paths = [];
+	clipper.Execute(
+		ClipperLib.ClipType.ctDifference,
+		result,
+		ClipperLib.PolyFillType.pftNonZero,
+		ClipperLib.PolyFillType.pftNonZero,
+	);
+	return result;
+}
+
+function crossesEdge(cells: CellGrid<Hull>, hull: Hull, skip: readonly Hull[]) {
+	const inside = (other: Hull, point: Point) =>
+		pointHullDistance(other, point) <= 1e-9;
+	const bounds = hullBounds(hull);
+	let crossed = false;
+	forCells(bounds, (key) => {
+		crossed ||= (cells.get(key) ?? []).some(
+			(edge) =>
+				boundsOverlap(hullBounds(edge), bounds) &&
+				hullDistance(edge, hull) <= 1e-9 &&
+				!skip.some(
+					(other) =>
+						inside(other, edge.points[0]) && inside(other, edge.points[1]),
+				),
+		);
+	});
+	return crossed;
+}
+
+interface Relief {
+	pad: CopperItem;
+	gap: number;
+	group: number;
+}
+
+function padSpokes(
+	relief: Relief,
+	allowed: (point: Point) => boolean,
+	edges: CellGrid<Hull>,
+	joined: readonly Relief[],
+	nearby: (bounds: Bounds) => Iterable<Relief>,
+	width: number,
+	clearance: number,
+): Ring[] {
+	const { pad, gap } = relief;
+	const center = pad.points[0];
+	const copper = joined.flatMap((other) => other.pad.hulls);
+	const extent = (angle: number) => {
+		const d = { x: Math.cos(angle), y: Math.sin(angle) };
+		let reach = 0;
+		let across = 0;
+		for (const hull of pad.hulls)
+			for (const point of hull.points) {
+				const x = point.x - center.x;
+				const y = point.y - center.y;
+				reach = Math.max(reach, x * d.x + y * d.y + hull.radius);
+				across = Math.max(across, Math.abs(y * d.x - x * d.y) + hull.radius);
+			}
+		return { d, reach, across };
+	};
+	const narrowest = Math.min(
+		extent(pad.shape.rotation).across,
+		extent(pad.shape.rotation + Math.PI / 2).across,
+	);
+	const spoke = (angle: number): Ring | undefined => {
+		const { d, reach, across } = extent(angle);
+		const half = Math.min(width / 2, across, narrowest);
+		const at = (along: number, side: number) => ({
+			x: center.x + d.x * along - d.y * side,
+			y: center.y + d.y * along + d.x * side,
+		});
+		const end = reach + gap + half;
+		const corners = [at(0, -half), at(end, -half), at(end, half), at(0, half)];
+		const reaches = (point: Point) =>
+			allowed(point) &&
+			![
+				...joined,
+				...nearby({
+					minX: point.x,
+					minY: point.y,
+					maxX: point.x,
+					maxY: point.y,
+				}),
+			].some(
+				(other) =>
+					other !== relief &&
+					other.pad.hulls.some(
+						(hull) => pointHullDistance(hull, point) < other.gap,
+					),
+			);
+		const insidePad = (point: Point) =>
+			pad.hulls.some((hull) => pointHullDistance(hull, point) <= 0);
+		const exit = (side: number) => {
+			if (!insidePad(at(0, side))) return 0;
+			let inside = 0;
+			let outside = reach;
+			while (outside - inside > 1e-4) {
+				const middle = (inside + outside) / 2;
+				if (insidePad(at(middle, side))) inside = middle;
+				else outside = middle;
+			}
+			return inside;
+		};
+		const start = Math.min(exit(-half), exit(half));
+		const outer = [
+			at(start, -half),
+			at(end, -half),
+			at(end, half),
+			at(start, half),
+		];
+		if (
+			![half / 2, half / 4].some((offset) =>
+				reaches(at(reach + gap + offset, 0)),
+			) ||
+			crossesEdge(edges, { points: outer, radius: 0 }, copper)
+		)
+			return undefined;
+		const body: Hull = { points: outer, radius: 0 };
+		const bounds = hullBounds(body);
+		const tooClose = [...nearby(bounds)].some((other) => {
+			if (
+				other.group === relief.group ||
+				!boundsOverlap(other.pad.bounds, bounds, clearance)
+			)
+				return false;
+			const room = Math.min(clearance, itemDistance(pad, other.pad)) - 1e-9;
+			return other.pad.hulls.some(
+				(hull) => hullDistance(body, hull) < Math.min(room, other.gap),
+			);
+		});
+		return tooClose ? undefined : ring(corners);
+	};
+	const round = pad.hulls.every((hull) => hull.points.length === 1);
+	const first = pad.shape.rotation + (round ? Math.PI / 4 : 0);
+	const set = (base: number) =>
+		[0, 1, 2, 3].flatMap((quarter) => {
+			const found = spoke(base + (quarter * Math.PI) / 2);
+			return found ? [found] : [];
+		});
+	const straight = set(first);
+	if (straight.length >= 2) return straight;
+	const turned = set(first + Math.PI / 4);
+	return turned.length >= 2 ? turned : [...straight, ...turned];
+}
+
+type CellGrid<T> = Map<number, T[]>;
+
+function forCells(bounds: Bounds, visit: (key: number) => void) {
+	for (
+		let cx = Math.floor(bounds.minX / gridSize);
+		cx <= bounds.maxX / gridSize;
+		cx++
+	)
+		for (
+			let cy = Math.floor(bounds.minY / gridSize);
+			cy <= bounds.maxY / gridSize;
+			cy++
+		)
+			visit(cellKey(cx, cy));
+}
+
+const cellKey = (cx: number, cy: number) => cx * 65536 + cy;
+
+function addToCells<T>(
+	grid: CellGrid<T> | undefined,
+	near: ReadonlySet<number> | undefined,
+	bounds: Bounds,
+	value: T,
+) {
+	let added = false;
+	forCells(bounds, (key) => {
+		if (near && !near.has(key)) return;
+		added = true;
+		if (!grid) return;
+		const list = grid.get(key);
+		if (list) list.push(value);
+		else grid.set(key, [value]);
+	});
+	return added;
+}
+
+function thermalCutouts(
+	region: MultiPolygon,
+	obstacles: readonly Ring[],
+	earlier: ClipperLib.Paths,
+	pads: readonly CopperItem[],
+	inside: Bounds,
+	gap: number,
+	width: number,
+	clearance: number,
+): ClipperLib.Paths {
+	const spread = (bounds: Bounds, margin: number): Bounds => ({
+		minX: bounds.minX - margin,
+		minY: bounds.minY - margin,
+		maxX: bounds.maxX + margin,
+		maxY: bounds.maxY + margin,
+	});
+	const padCells: CellGrid<number> = new Map();
+	const ringGap = pads.map((pad) =>
+		Math.max(...pad.hulls.map((hull) => circumscribed(hull, gap))),
+	);
+	pads.forEach((pad, index) => {
+		addToCells(padCells, undefined, spread(pad.bounds, ringGap[index]), index);
+	});
+	const padsNear = (bounds: Bounds) => {
+		const found = new Set<number>();
+		forCells(bounds, (key) => {
+			for (const index of padCells.get(key) ?? []) found.add(index);
+		});
+		return found;
+	};
+	const touching = unionFind(pads.length);
+	pads.forEach((pad, index) => {
+		for (const other of padsNear(pad.bounds))
+			if (
+				other > index &&
+				boundsOverlap(pad.bounds, pads[other].bounds) &&
+				itemDistance(pad, pads[other]) <= 1e-9
+			)
+				touching.union(index, other);
+	});
+	const reliefs: Relief[] = pads.map((pad, index) => ({
+		pad,
+		gap: ringGap[index],
+		group: touching.find(index),
+	}));
+	const nearby = (bounds: Bounds) =>
+		[...padsNear(bounds)].map((index) => reliefs[index]);
+	const near = new Set<number>();
+	for (const relief of reliefs) {
+		const { minX, minY, maxX, maxY } = relief.pad.bounds;
+		const margin =
+			relief.gap + width + Math.hypot(maxX - minX, maxY - minY) / 2;
+		forCells(spread(relief.pad.bounds, margin), (key) => near.add(key));
+	}
+	const edges: CellGrid<Hull> = new Map();
+	const blocking: CellGrid<Ring> = new Map();
+	const index = (path: Ring, grid: CellGrid<Ring> | undefined) => {
+		if (!addToCells(grid, near, boundsOfRing(path), path)) return;
+		for (let at = 0; at < path.length; at++) {
+			const [x, y] = path[at];
+			const [nx, ny] = path[(at + 1) % path.length];
+			const edge: Hull = {
+				points: [
+					{ x, y },
+					{ x: nx, y: ny },
+				],
+				radius: 0,
+			};
+			addToCells(edges, near, hullBounds(edge), edge);
+		}
+	};
+	for (const obstacle of obstacles) index(obstacle, blocking);
+	const earlierRings: CellGrid<{ path: Ring; sign: number }> = new Map();
+	for (const path of earlier) {
+		const back = path.map(({ X, Y }): [number, number] => [
+			X / scale,
+			Y / scale,
+		]);
+		index(back, undefined);
+		addToCells(earlierRings, near, boundsOfRing(back), {
+			path: back,
+			sign: ClipperLib.Clipper.Orientation(path) ? 1 : -1,
+		});
+	}
+	const allowed = (point: Point) => {
+		if (!insideFill(region, point)) return false;
+		const key = cellKey(
+			Math.floor(point.x / gridSize),
+			Math.floor(point.y / gridSize),
+		);
+		if (blocking.get(key)?.some((obstacle) => inRing(obstacle, point)))
+			return false;
+		let winding = 0;
+		for (const { path, sign } of earlierRings.get(key) ?? [])
+			if (inRing(path, point)) winding += sign;
+		return winding <= 0;
+	};
+	const groups = new Map<number, Relief[]>();
+	for (const relief of reliefs) {
+		const group = groups.get(relief.group);
+		if (group) group.push(relief);
+		else groups.set(relief.group, [relief]);
+	}
+	const spokeCells: CellGrid<Ring> = new Map();
+	for (const group of groups.values())
+		for (const relief of group)
+			if (boundsOverlap(relief.pad.bounds, inside))
+				for (const spoke of padSpokes(
+					relief,
+					allowed,
+					edges,
+					group,
+					nearby,
+					width,
+					clearance,
+				))
+					addToCells(spokeCells, undefined, boundsOfRing(spoke), spoke);
+	return [...groups.values()].flatMap((group) => {
+		const rings = group.flatMap((relief) =>
+			relief.pad.hulls.map((hull) =>
+				ring(hullPolygon(hull, circumscribed(hull, gap), arc)),
+			),
+		);
+		const reach = rings.map(boundsOfRing).reduce((all, bounds) => ({
+			minX: Math.min(all.minX, bounds.minX),
+			minY: Math.min(all.minY, bounds.minY),
+			maxX: Math.max(all.maxX, bounds.maxX),
+			maxY: Math.max(all.maxY, bounds.maxY),
+		}));
+		const spokes = new Set<Ring>();
+		forCells(reach, (key) => {
+			for (const spoke of spokeCells.get(key) ?? [])
+				if (boundsOverlap(boundsOfRing(spoke), reach)) spokes.add(spoke);
+		});
+		return spokes.size ? cutouts(rings, [...spokes]) : rings.map(clipperPath);
+	});
+}
+
 /**
  * Fills each zone, highest priority first and in list order among equals: its
  * polygon or rectangle inside the board outline, less the edge clearance, the
  * copper of other nets, unplated holes and the fills of earlier zones on other
- * nets, each grown by the clearance. Islands that reach nothing on the zone's
+ * nets, each grown by the clearance, and less a thermal relief gap around each
+ * pad on its net, crossed by spokes. Islands that reach nothing on the zone's
  * net, directly or through a touching island of another zone on that net, are
  * removed.
  */
@@ -374,9 +764,15 @@ export function fillZones(
 						(zone.net === undefined || fill.net !== zone.net),
 				)
 				.flatMap((fill) =>
-					grown(fill.polygons, Math.max(clearance, zoneClearance(fill.zone))),
+					grown(
+						fill.polygons,
+						Math.max(clearance, zoneClearance(fill.zone)),
+						zone.bounds,
+					),
 				);
-			if (region.length) region = subtractObstacles(region, obstacles, earlier);
+			const settings =
+				zone.shape.kind === "rectangle" ? zone.shape.zone : undefined;
+			const thermalGap = settings?.thermalGap ?? rules.thermalGap;
 			const members = items.filter(
 				(item) =>
 					item !== zone &&
@@ -384,8 +780,36 @@ export function fillZones(
 					zone.net !== undefined &&
 					item.net === zone.net &&
 					item.layers.includes(layer) &&
-					boundsOverlap(item.bounds, zone.bounds),
+					boundsOverlap(
+						item.bounds,
+						zone.bounds,
+						item.kind === "pad" ? thermalGap : 0,
+					),
 			);
+			const pads =
+				settings?.padConnection === "solid"
+					? []
+					: members.filter((item) => item.kind === "pad");
+			if (region.length)
+				region = subtractObstacles(
+					region,
+					obstacles,
+					pads.length
+						? [
+								...earlier,
+								...thermalCutouts(
+									region,
+									obstacles,
+									earlier,
+									pads,
+									zone.bounds,
+									thermalGap,
+									settings?.thermalSpokeWidth ?? rules.thermalSpokeWidth,
+									clearance,
+								),
+							]
+						: earlier,
+				);
 			regions.push({
 				zone,
 				layer,
@@ -397,7 +821,11 @@ export function fillZones(
 	}
 	const kept = regions.map(({ polygons, members }) =>
 		polygons.map((polygon) =>
-			members.some((item) => touchesFill([polygon], item)),
+			members.some(
+				(item) =>
+					boundsOverlap(item.bounds, boundsOfRing(polygon[0]), 1e-6) &&
+					touchesFill([polygon], item),
+			),
 		),
 	);
 	for (let changed = true; changed; ) {

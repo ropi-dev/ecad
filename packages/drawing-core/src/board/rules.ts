@@ -23,6 +23,16 @@ export const boardRulesSchema = z.strictObject({
 		.describe(
 			"How far in millimetres each pad's solder mask opening reaches past its copper. Negative values make the opening smaller than the pad.",
 		),
+	thermalGap: length
+		.default(0.5)
+		.describe(
+			"Gap in millimetres between a pad and the zone fill around it, where spokes join the pad to the fill.",
+		),
+	thermalSpokeWidth: length
+		.default(0.5)
+		.describe(
+			"Width in millimetres of the spokes that join a pad to the zone fill.",
+		),
 });
 
 export type BoardRules = z.output<typeof boardRulesSchema>;
@@ -34,4 +44,6 @@ export const defaultBoardRules: BoardRules = {
 	viaDrill: 0.3,
 	edgeClearance: 0.3,
 	solderMaskMargin: defaultSolderMaskMargin,
+	thermalGap: 0.5,
+	thermalSpokeWidth: 0.5,
 };

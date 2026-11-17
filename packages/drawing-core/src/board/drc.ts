@@ -297,7 +297,7 @@ export function checkBoard(
 			findings.push({
 				id: `zone:${item.index}`,
 				kind: "net",
-				message: `zone on ${netName(netlist, item.net)} has no copper: nothing on its net is inside it`,
+				message: `zone on ${netName(netlist, item.net)} has no copper: its fill reaches nothing on its net`,
 				shapeIds: [item.shapeId],
 				at: center(item.bounds),
 			});
