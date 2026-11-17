@@ -6,6 +6,7 @@ import {
 	itemDistance,
 	type ZoneReach,
 	zoneClearance,
+	zonePriority,
 } from "@ecad/drawing-core/board/connectivity.ts";
 import {
 	boardOutlineSegments,
@@ -16,7 +17,7 @@ import {
 	type Hull,
 	hullDistance,
 	hullPolygon,
-	rectangleCorners,
+	zoneCorners,
 } from "@ecad/drawing-core/board/geometry.ts";
 import type { BoardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
@@ -105,6 +106,20 @@ function grown(polygons: MultiPolygon, margin: number): ClipperLib.Paths {
 	const result: ClipperLib.Paths = [];
 	offset.Execute(result, (margin + 3 * offsetTolerance) * scale);
 	return result;
+}
+
+/** @return The area a zone outline encloses, by the even-odd rule, as hit testing and connectivity read it. */
+function outlineRegion(points: Ring): MultiPolygon {
+	const clipper = new ClipperLib.Clipper();
+	clipper.AddPath(clipperPath(points), ClipperLib.PolyType.ptSubject, true);
+	const tree = new ClipperLib.PolyTree();
+	clipper.Execute(
+		ClipperLib.ClipType.ctUnion,
+		tree,
+		ClipperLib.PolyFillType.pftEvenOdd,
+		ClipperLib.PolyFillType.pftEvenOdd,
+	);
+	return fromClipper(tree);
 }
 
 /** @return `region` less the union of `obstacles` and `keepOut`, computed in integer nanometres. */
@@ -300,11 +315,12 @@ const circumscribed = (hull: Hull, margin: number) =>
 	(hull.radius + margin) / Math.cos(arc / 2) - hull.radius;
 
 /**
- * Fills each zone: its rectangle inside the board outline, less the edge
- * clearance, the copper of other nets, unplated holes and the fills of earlier
- * zones on other nets, each grown by the clearance. Islands that reach nothing
- * on the zone's net, directly or through a touching island of another zone on
- * that net, are removed.
+ * Fills each zone, highest priority first and in list order among equals: its
+ * polygon or rectangle inside the board outline, less the edge clearance, the
+ * copper of other nets, unplated holes and the fills of earlier zones on other
+ * nets, each grown by the clearance. Islands that reach nothing on the zone's
+ * net, directly or through a touching island of another zone on that net, are
+ * removed.
  */
 export function fillZones(
 	shapes: readonly EditorShape[],
@@ -315,7 +331,9 @@ export function fillZones(
 	if (cached?.netlist === netlist && cached.rules === rules)
 		return cached.fills;
 	const items = copperItems(shapes, netlist);
-	const zones = items.filter((item) => item.kind === "zone");
+	const zones = items
+		.filter((item) => item.kind === "zone")
+		.sort((a, b) => zonePriority(b) - zonePriority(a));
 	const regions: (ZoneFill & { members: CopperItem[] })[] = [];
 	if (zones.length) {
 		const interior = boardInterior(shapes);
@@ -328,9 +346,7 @@ export function fillZones(
 		for (const zone of zones) {
 			const layer = zone.layers[0];
 			const clearance = Math.max(zoneClearance(zone), rules.clearance);
-			let region: MultiPolygon = combinePolygons([
-				[ring(rectangleCorners(zone.shape))],
-			]);
+			let region = outlineRegion(ring(zoneCorners(zone.shape)));
 			region = interior.length
 				? combinePolygons(region, combinePolygons(region, interior, true), true)
 				: [];

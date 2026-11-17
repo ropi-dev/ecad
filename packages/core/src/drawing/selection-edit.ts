@@ -91,6 +91,7 @@ export type SelectionEdit =
 	| { readonly kind: "symbol-text-reset" }
 	| { readonly kind: "net"; readonly net: string | undefined }
 	| { readonly kind: "zone-clearance"; readonly clearance: number }
+	| { readonly kind: "zone-priority"; readonly priority: number }
 	| { readonly kind: "side"; readonly back: boolean };
 
 /**
@@ -381,6 +382,26 @@ export function applySelectionEdit(
 						label: "Change zone clearance",
 					}
 				: undefined;
+		case "zone-priority": {
+			if (
+				single?.kind !== "rectangle" ||
+				!single.zone ||
+				!Number.isInteger(edit.priority) ||
+				edit.priority < 0 ||
+				edit.priority > 1000
+			)
+				return undefined;
+			const { priority: _priority, ...zone } = single.zone;
+			return {
+				replacements: [
+					{
+						...single,
+						zone: edit.priority ? { ...zone, priority: edit.priority } : zone,
+					},
+				],
+				label: "Change zone priority",
+			};
+		}
 		case "side":
 			return {
 				replacements: selection.flatMap((shape) =>

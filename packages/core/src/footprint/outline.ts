@@ -3,10 +3,15 @@ import {
 	shapeCenter,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
+import {
+	isPolygonZone,
+	zoneOutlinePoints,
+} from "@ecad/drawing-core/drawing/zone-outline.ts";
 
 const circleSides = 48;
 
 export function shapeOutline(shape: EditorShape): Point[] {
+	if (isPolygonZone(shape)) return zoneOutlinePoints(shape);
 	const center = shapeCenter(shape);
 	const cos = Math.cos(shape.rotation);
 	const sin = Math.sin(shape.rotation);

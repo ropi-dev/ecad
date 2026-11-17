@@ -17,6 +17,11 @@ import { mergeBounds } from "#/drawing/shape-geometry.ts";
 import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
 import {
+	isPolygonZone,
+	outlineOutsideBy,
+	zoneOutlinePoints,
+} from "#/drawing/zone-outline.ts";
+import {
 	type CopperLayer,
 	copperLayers,
 	isCopperLayer,
@@ -50,6 +55,11 @@ const isTrack = (shape: EditorShape) =>
 export const zoneClearance = (item: CopperItem) =>
 	item.kind === "zone" && item.shape.kind === "rectangle"
 		? (item.shape.zone?.clearance ?? 0)
+		: 0;
+
+export const zonePriority = (item: CopperItem) =>
+	item.kind === "zone" && item.shape.kind === "rectangle"
+		? (item.shape.zone?.priority ?? 0)
 		: 0;
 
 export const endsAt = (item: CopperItem, point: Point) =>
@@ -402,7 +412,10 @@ export function copperAt(
 			)
 		)
 			continue;
-		if (!item.hulls.some((hull) => hullDistance(hull, probe) <= 0)) continue;
+		const hit = isPolygonZone(item.shape)
+			? outlineOutsideBy(zoneOutlinePoints(item.shape), point) <= tolerance
+			: item.hulls.some((hull) => hullDistance(hull, probe) <= 0);
+		if (!hit) continue;
 		if (!found || rank(item) < rank(found)) found = item;
 	}
 	return found;

@@ -16,6 +16,8 @@ const groups: Record<string, string> = {
 	Via: "Pads and vias",
 	"Unplated hole": "Pads and vias",
 	Track: "Routing",
+	"Copper zone": "Routing",
+	"Polygon copper zone": "Routing",
 	"Export drawing": "Export",
 	"Export PNG": "Export",
 };

@@ -117,6 +117,9 @@ const netField = z
 		"Circuit net ID of a board track, via or zone. Omit it for an item on no net.",
 	);
 
+const zoneFraction = z.number().min(-0.5).max(0.5);
+const zoneVertex = z.strictObject({ x: zoneFraction, y: zoneFraction });
+
 const zoneSchema = z
 	.strictObject({
 		clearance: z
@@ -126,9 +129,26 @@ const zoneSchema = z
 			.describe(
 				"Gap in millimetres between the fill and copper on other nets. Omit it for the board's clearance.",
 			),
+		priority: z
+			.number()
+			.int()
+			.min(0)
+			.max(1000)
+			.optional()
+			.describe(
+				"Fill priority. A zone fills before zones of lower priority, and where those are on other nets they keep clear of its fill. Omit it for priority 0.",
+			),
+		outline: z
+			.array(zoneVertex)
+			.min(3)
+			.max(10_000)
+			.optional()
+			.describe(
+				"Polygon corners in order, as fractions of the width and height from -0.5 to 0.5 around the center, before rotation. The zone fills this polygon instead of the whole rectangle. Omit it for a rectangular zone.",
+			),
 	})
 	.describe(
-		"Makes a board copper rectangle a zone: copper that fills the rectangle and keeps clear of other nets.",
+		"Makes a board copper rectangle a zone: copper that fills the rectangle, or the polygon in outline, and keeps clear of other nets.",
 	);
 
 const viaSchema = z
@@ -746,6 +766,7 @@ export interface FillableShape extends z.output<typeof fillableShapeSchema> {}
 export type ShapePad = z.output<typeof padSchema>;
 export type ShapeVia = z.output<typeof viaSchema>;
 export type ShapeHole = z.output<typeof holeSchema>;
+export type ShapeZone = z.output<typeof zoneSchema>;
 export interface LineShape extends z.output<typeof lineShapeSchema> {}
 export interface WireShape extends z.output<typeof wireShapeSchema> {}
 export interface PinShape extends z.output<typeof pinShapeSchema> {}

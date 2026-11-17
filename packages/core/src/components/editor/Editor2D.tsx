@@ -1000,11 +1000,13 @@ function EditorCanvas({
 					const handled =
 						key === "v"
 							? gestures.placeTrackVia()
-							: key === "/"
-								? gestures.flipTrackPosture()
-								: key === "f" && flatShown && !getDrag()
-									? boardEditor.flipSelection()
-									: false;
+							: key === "enter"
+								? gestures.closeZone()
+								: key === "/"
+									? gestures.flipTrackPosture()
+									: key === "f" && flatShown && !getDrag()
+										? boardEditor.flipSelection()
+										: false;
 					if (handled) {
 						event.preventDefault();
 						event.stopPropagation();

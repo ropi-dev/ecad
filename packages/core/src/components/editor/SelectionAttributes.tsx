@@ -277,7 +277,8 @@ function AttributeInput({
 						(!positive || next > 0) &&
 						(!nonNegative || next >= 0) &&
 						next < below &&
-						(step !== "90" || next % 90 === 0)
+						(step !== "90" || next % 90 === 0) &&
+						(step !== "1" || Number.isInteger(next))
 					) {
 						if (next !== value && entered !== displayValue) onChange(next);
 					} else event.currentTarget.value = String(displayValue);
@@ -672,6 +673,20 @@ function boardRows(
 				unit={unit}
 				positive
 				onChange={(clearance) => onEdit({ kind: "zone-clearance", clearance })}
+			/>,
+		]);
+	if (zone?.zone)
+		rows.push([
+			"Zone priority",
+			<AttributeInput
+				key={`${zone.id}:priority`}
+				label="Zone priority"
+				value={zone.zone.priority ?? 0}
+				unit=""
+				nonNegative
+				below={1001}
+				step="1"
+				onChange={(priority) => onEdit({ kind: "zone-priority", priority })}
 			/>,
 		]);
 	const footprints = shapes.filter(
