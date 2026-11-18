@@ -131,6 +131,7 @@ interface KeyResources {
 export function createDrawingRenderer(
 	worksheet: WorksheetDisplay | null,
 	theme: SchematicTheme = schematicTheme(),
+	layered = false,
 ) {
 	const lifetime = createLifecycle();
 	const own = <A extends { dispose(): void }>(acquire: () => A) =>
@@ -218,7 +219,7 @@ export function createDrawingRenderer(
 				]),
 			) as Record<DrawingAppearance, MeshBasicMaterial>;
 		const flatMaterial = (color: string) =>
-			new MeshBasicMaterial({ color, depthTest: false });
+			new MeshBasicMaterial({ color, depthTest: false, transparent: layered });
 		const colors = palette(flatMaterial);
 		const dimColors = palette(flatMaterial, true);
 		const halos = palette(

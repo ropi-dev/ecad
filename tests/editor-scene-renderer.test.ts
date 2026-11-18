@@ -492,3 +492,30 @@ test("centred free text paints its overbar over the centred glyphs", () => {
 		renderer.dispose();
 	}
 });
+
+test("a layered renderer draws every shape from one queue, so layer order alone sets the stack", () => {
+	const shapes = [
+		drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 10, y: 10 }),
+		drawShape(2, "wire", { x: 0, y: 0 }, { x: 10, y: 0 }),
+	];
+	const transparency = (layered: boolean) => {
+		const renderer = createDrawingRenderer(null, undefined, layered);
+		const root = new Group();
+		try {
+			renderer.update(root, {
+				...buildStaticDisplay(shapes, new Set()),
+				previews: [],
+			});
+			const transparent = new Set<boolean>();
+			root.traverse((object) => {
+				if (object instanceof Mesh)
+					transparent.add((object.material as MeshBasicMaterial).transparent);
+			});
+			return [...transparent].sort();
+		} finally {
+			renderer.dispose();
+		}
+	};
+	assert.deepEqual(transparency(false), [false, true]);
+	assert.deepEqual(transparency(true), [true]);
+});

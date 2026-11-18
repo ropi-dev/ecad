@@ -35,6 +35,7 @@ export function useEditorScene(
 		shapeCount: number,
 		measure: typeof measureText,
 	) => DisplayShape[] = buildPreviewDisplay,
+	layered = false,
 ) {
 	const [renderer, setRenderer] = useState<DrawingRenderer>();
 	const theme = useSchematicTheme();
@@ -45,10 +46,11 @@ export function useEditorScene(
 				? null
 				: buildWorksheetDisplay(JSON.parse(sheetKey) as SheetSize),
 			theme,
+			layered,
 		);
 		setRenderer(next);
 		return () => next.dispose();
-	}, [sheetKey, theme]);
+	}, [sheetKey, theme, layered]);
 	// Wire and symbol previews change on every pointer move; the document does not.
 	const document = useMemo(
 		() =>

@@ -9,7 +9,7 @@ import {
 } from "three";
 import type { BoardFill } from "#/board/fill.ts";
 
-const fillOpacity = 0.6;
+const focusedFillOpacity = 0.6;
 
 /** Zone fills for the flat view, drawn under the items of their layer. */
 export function createZoneScene() {
@@ -29,7 +29,6 @@ export function createZoneScene() {
 		const material = new MeshBasicMaterial({
 			color,
 			transparent: true,
-			opacity: fillOpacity,
 			depthTest: false,
 			depthWrite: false,
 		});
@@ -45,6 +44,7 @@ export function createZoneScene() {
 			colors: Readonly<Record<FootprintLayer, string>>,
 			order: (layer: FootprintLayer) => number,
 			hidden: ReadonlySet<FootprintLayer>,
+			focused: boolean,
 		) {
 			if (fills !== shown) {
 				const kept = new Set(fills);
@@ -67,6 +67,7 @@ export function createZoneScene() {
 			for (const [fill, mesh] of meshes) {
 				mesh.visible = !hidden.has(fill.layer);
 				mesh.material.color.set(colors[fill.layer]);
+				mesh.material.opacity = focused ? focusedFillOpacity : 1;
 				mesh.renderOrder = order(fill.layer);
 			}
 			if (group.parent !== root) root.add(group);

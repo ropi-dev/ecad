@@ -543,6 +543,7 @@ function EditorCanvas({
 				? buildFootprintDisplay
 				: undefined,
 		isBoard ? boardEditor.buildPreview : undefined,
+		isFootprint,
 	);
 	const { updateZones } = boardEditor;
 	const updateScene = useCallback(
