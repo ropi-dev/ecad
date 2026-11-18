@@ -8,6 +8,11 @@ import {
 	upgradeSavedShapes,
 } from "@ecad/drawing-core/drawing/schema.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	boardCopperLayers,
+	fewestCopperLayers,
+	isInnerCopperLayer,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import { z } from "zod";
 
 const shapeLimit = 50_000;
@@ -64,16 +69,65 @@ const boardName = z
 		"Use a name without control characters.",
 	);
 
-export const boardDataSchema = z.strictObject({
+const boardDataFields = {
 	units: z.literal("mm"),
 	rules: boardRulesSchema.default(defaultBoardRules),
 	shapes: boardShapesSchema,
-});
+};
 
-export const boardFileSchema = boardDataSchema.extend({
-	circuitId: z.string().min(1).max(200),
-	name: boardName,
-});
+const layersInUse = new WeakMap<readonly EditorShape[], number>();
+
+/** @return The fewest copper layers that keep every inner layer the board's items use. */
+export function boardCopperLayersInUse(shapes: readonly EditorShape[]): number {
+	let fewest = layersInUse.get(shapes);
+	if (fewest === undefined) {
+		fewest = fewestCopperLayers(
+			(function* () {
+				for (const shape of shapes) {
+					yield shape.layer;
+					if (shape.kind === "symbol")
+						for (const child of shape.children ?? []) yield child.layer;
+				}
+			})(),
+		);
+		layersInUse.set(shapes, fewest);
+	}
+	return fewest;
+}
+
+function checkBoardLayers(
+	board: { rules: BoardRules; shapes: EditorShape[] },
+	context: z.RefinementCtx,
+) {
+	const stack = new Set<string>(boardCopperLayers(board.rules.copperLayers));
+	for (const [index, shape] of board.shapes.entries()) {
+		const layer =
+			shape.kind === "symbol"
+				? (shape.children ?? []).find(
+						(child) =>
+							isInnerCopperLayer(child.layer) && !stack.has(child.layer),
+					)?.layer
+				: shape.layer;
+		if (isInnerCopperLayer(layer) && !stack.has(layer))
+			context.addIssue({
+				code: "custom",
+				message: `${layer} is not one of the board's ${board.rules.copperLayers} copper layers.`,
+				path: ["shapes", index, "layer"],
+			});
+	}
+}
+
+export const boardDataSchema = z
+	.strictObject(boardDataFields)
+	.superRefine(checkBoardLayers);
+
+export const boardFileSchema = z
+	.strictObject({
+		...boardDataFields,
+		circuitId: z.string().min(1).max(200),
+		name: boardName,
+	})
+	.superRefine(checkBoardLayers);
 
 export type BoardFile = z.output<typeof boardFileSchema>;
 

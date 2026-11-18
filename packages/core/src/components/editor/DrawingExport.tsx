@@ -17,6 +17,7 @@ export function DrawingExport({
 	layered = false,
 	zoneFills,
 	maskMargin,
+	copperLayers,
 	open,
 	onClose,
 }: {
@@ -26,6 +27,7 @@ export function DrawingExport({
 	layered?: boolean;
 	zoneFills?: () => Promise<readonly DrawingZoneFill[]>;
 	maskMargin?: number | undefined;
+	copperLayers?: number | undefined;
 	open: boolean;
 	onClose: () => void;
 }) {
@@ -114,6 +116,7 @@ export function DrawingExport({
 											layers: layered,
 											...(fills ? { zoneFills: fills } : {}),
 											...(maskMargin === undefined ? {} : { maskMargin }),
+											...(copperLayers === undefined ? {} : { copperLayers }),
 										},
 										format,
 									),

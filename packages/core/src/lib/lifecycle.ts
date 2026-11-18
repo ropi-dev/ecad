@@ -1,4 +1,4 @@
-import { Effect, Either, Exit, Scope } from "effect";
+import { Effect, Exit, Scope } from "effect";
 
 /** An Effect scope for framework lifetimes whose setup and teardown are synchronous. */
 export function createLifecycle() {
@@ -8,14 +8,14 @@ export function createLifecycle() {
 		acquire<A>(acquire: () => A, release: (resource: A) => void): A {
 			if (disposed)
 				throw new Error("The resource lifecycle is already disposed.");
-			const result = Effect.runSync(
-				Effect.acquireRelease(
-					Effect.try({ try: acquire, catch: (error) => error }),
-					(resource) => Effect.sync(() => release(resource)),
-				).pipe(Scope.extend(scope), Effect.either),
+			const resource = acquire();
+			Effect.runSync(
+				Scope.addFinalizer(
+					scope,
+					Effect.sync(() => release(resource)),
+				),
 			);
-			if (Either.isLeft(result)) throw result.left;
-			return result.right;
+			return resource;
 		},
 		addFinalizer(finalize: () => void): void {
 			Effect.runSync(Scope.addFinalizer(scope, Effect.sync(finalize)));

@@ -17,6 +17,7 @@ import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	footprintLayerView,
 	shapeLayers,
+	stackDrawOrder,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 
 /** Display IDs of footprint items start here, clear of document IDs. */
@@ -59,9 +60,9 @@ export function boardLayerView(
 			Number((b.flipped ?? false) === activeSide),
 	);
 	return [
-		...footprintLayerView(zones, hidden, active),
+		...footprintLayerView(zones, hidden, active, stackDrawOrder),
 		...footprints,
-		...footprintLayerView(rest, hidden, active),
+		...footprintLayerView(rest, hidden, active, stackDrawOrder),
 	];
 }
 
@@ -120,7 +121,7 @@ export function boardDisplay(
 		}
 	}
 	return {
-		shapes: footprintLayerView(flat, hidden, active),
+		shapes: footprintLayerView(flat, hidden, active, stackDrawOrder),
 		selected: shown,
 	};
 }

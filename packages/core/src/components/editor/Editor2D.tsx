@@ -21,7 +21,11 @@ import {
 	formatInches,
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
-import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
+import {
+	boardLayers,
+	type FootprintLayer,
+	footprintLayers,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import type { ModelReference } from "@ecad/drawing-core/footprint/model.ts";
 import {
 	footprintFitBounds,
@@ -148,6 +152,7 @@ export interface Editor2DProps {
 }
 
 const noLayers: ReadonlySet<FootprintLayer> = new Set();
+const noRulesSubscription = () => () => {};
 const footprintPixelsPerMmAt100 = 100;
 
 export type EditorCanvasProps = Editor2DProps & {
@@ -199,7 +204,15 @@ function EditorCanvas({
 				? "Symbol"
 				: "Schematic";
 	const unit = isFootprint ? "mm" : "mil";
-	const layers = useFootprintLayers();
+	const boardRules = useSyncExternalStore(
+		board?.rules.subscribe ?? noRulesSubscription,
+		() => board?.rules.get(),
+		() => board?.rules.get(),
+	);
+	const copperLayerCount = boardRules?.copperLayers ?? 2;
+	const layers = useFootprintLayers(
+		isBoard ? boardLayers(copperLayerCount) : footprintLayers,
+	);
 	const [boardView, setBoardView] = useState<"closed" | "open" | "closing">(
 		"closed",
 	);
@@ -437,10 +450,10 @@ function EditorCanvas({
 	useLayoutEffect(() => {
 		if (!isFootprint) return;
 		cameraView.setSurfaces((onLayers, eyeZ) =>
-			layerSurfaceZ(onLayers, layers.hidden, eyeZ),
+			layerSurfaceZ(onLayers, layers.hidden, eyeZ, copperLayerCount),
 		);
 		return () => cameraView.setSurfaces(null);
-	}, [isFootprint, layers.hidden, cameraView]);
+	}, [isFootprint, layers.hidden, cameraView, copperLayerCount]);
 	const [tool, setTool] = useState<Tool>("select");
 	const [symbolDefinition, setSymbolDefinition] =
 		useState<SymbolDefinition | null>(null);
@@ -668,7 +681,7 @@ function EditorCanvas({
 		session,
 		enabled: () => ready && !creatingSymbol && !getDrag() && !getWire(),
 		target: isFootprint
-			? { footprintLayer: layers.active }
+			? { footprintLayer: layers.active, layers: layers.layers }
 			: sheetless
 				? "symbol"
 				: "drawing",
@@ -816,6 +829,7 @@ function EditorCanvas({
 				footprint={isFootprint}
 				footprintChoices={footprintChoices}
 				hiddenLayers={layers.hidden}
+				layers={layers.layers}
 				boardNets={boardNets}
 				unit={unit}
 				snapStep={
@@ -844,6 +858,7 @@ function EditorCanvas({
 			isFootprint,
 			footprintChoices,
 			layers.hidden,
+			layers.layers,
 			boardNets,
 			unit,
 			gridStep,
@@ -945,6 +960,7 @@ function EditorCanvas({
 				exporting,
 				zoneFills: () => boardEditor.drawingFills(drawing.shapes),
 				maskMargin: boardEditor.rules?.solderMaskMargin,
+				copperLayers: boardEditor.rules?.copperLayers,
 			}
 		: undefined;
 	const toolbar = (
@@ -1012,13 +1028,15 @@ function EditorCanvas({
 					const handled =
 						key === "v"
 							? gestures.placeTrackVia()
-							: key === "enter"
-								? gestures.closeZone()
-								: key === "/"
-									? gestures.flipTrackPosture()
-									: key === "f" && flatShown && !getDrag()
-										? boardEditor.flipSelection()
-										: false;
+							: key === "pageup" || key === "pagedown"
+								? gestures.stepCopperLayer(key === "pageup" ? -1 : 1)
+								: key === "enter"
+									? gestures.closeZone()
+									: key === "/"
+										? gestures.flipTrackPosture()
+										: key === "f" && flatShown && !getDrag()
+											? boardEditor.flipSelection()
+											: false;
 					if (handled) {
 						event.preventDefault();
 						event.stopPropagation();
@@ -1102,6 +1120,7 @@ function EditorCanvas({
 							controlsLabel={`${editorKind} tools`}
 							hiddenLayers={layers.hidden}
 							focusedLayer={layers.focused}
+							copperLayers={isBoard ? copperLayerCount : undefined}
 							flat={boardView !== "open"}
 							onFlatChange={showBoardFlat}
 							realistic={realisticBoard}
@@ -1185,6 +1204,7 @@ function EditorCanvas({
 					/>
 					{isFootprint && (
 						<FootprintLayerPanel
+							layers={layers.layers}
 							active={layers.active}
 							hidden={layers.hidden}
 							itemCounts={layerItemCounts}
@@ -1223,6 +1243,7 @@ function EditorCanvas({
 					{isBoard && boardPanel === "setup" && board && boardEditor.rules && (
 						<BoardSetupPanel
 							rules={boardEditor.rules}
+							shapes={drawing.shapes}
 							onChange={(rules) => board.rules.set(rules)}
 							onClose={() => setBoardPanel(null)}
 						/>

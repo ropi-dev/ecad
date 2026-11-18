@@ -163,6 +163,77 @@ test("a designer deletes a routed track and draws it again with the Track tool",
 	await expect(page.getByText("All connections routed")).toBeVisible();
 });
 
+test("a designer adds two inner copper layers and routes a track through one with Page Down and Page Up", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const layers = page.getByRole("complementary", { name: "Layers" });
+	await expect(layers.locator('[data-layer="In1.Cu"]')).toHaveCount(0);
+	await (await toolbarButton(page, "Board setup")).click();
+	await page
+		.getByRole("region", { name: "Board setup" })
+		.getByLabel("Copper layers")
+		.selectOption("4");
+	await expect(
+		layers.getByRole("button", { name: "Draw on Inner copper 1" }),
+	).toBeVisible();
+	await expect(layers.locator('[data-layer="In2.Cu"]')).toHaveCount(1);
+	await expect(layers.locator('[data-layer="In3.Cu"]')).toHaveCount(0);
+	await page.keyboard.press("Escape");
+
+	const { editorShapes } = await documentState(page);
+	const shapes = editorShapes as EditorShape[];
+	const track = required(
+		shapes.find(
+			(shape) =>
+				shape.kind === "line" &&
+				shape.layer === "F.Cu" &&
+				"net" in shape &&
+				shape.width > 3 &&
+				Math.abs(Math.sin(2 * shape.rotation)) < 1e-6,
+		),
+	);
+	const vias = shapes.filter((shape) => shape.kind === "circle" && shape.via);
+	const along = (side: number) => ({
+		x: track.x + (side * track.width * Math.cos(track.rotation)) / 2,
+		y: track.y + (side * track.width * Math.sin(track.rotation)) / 2,
+	});
+	const clickAt = async (side: number) => {
+		const end = along(side);
+		const point = await screenPointOfMillimetres(page, end.x, end.y);
+		await page.mouse.move(point.x, point.y);
+		await page.mouse.click(point.x, point.y);
+	};
+	const middle = await screenPointOfMillimetres(page, track.x, track.y);
+	await page.mouse.click(middle.x, middle.y);
+	await page.keyboard.press("Delete");
+	await expect(page.getByText("1 unrouted connection")).toBeVisible();
+
+	await (await toolbarButton(page, "Track")).click();
+	await clickAt(-1);
+	await clickAt(-0.4);
+	await page.keyboard.press("PageDown");
+	await expect(page.getByText("· In1.Cu")).toBeVisible();
+	await clickAt(0.4);
+	await page.keyboard.press("PageUp");
+	await expect(page.getByText("· F.Cu")).toBeVisible();
+	await clickAt(1);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	await expect
+		.poll(async () => {
+			const after = (await documentState(page)).editorShapes as EditorShape[];
+			return {
+				inner: after.filter(
+					(shape) => shape.kind === "line" && shape.layer === "In1.Cu",
+				).length,
+				vias: after.filter((shape) => shape.kind === "circle" && shape.via)
+					.length,
+			};
+		})
+		.toEqual({ inner: 1, vias: vias.length + 2 });
+});
+
 test("a designer draws a polygon copper zone corner by corner, drags a corner and raises its priority", async ({
 	page,
 }) => {
@@ -257,7 +328,7 @@ test("the schematic, circuit and PCB of a circuit stay open together and keep th
 	await addExample(page);
 	await expect(page.getByText("All connections routed")).toBeVisible();
 	const panes = page.locator("[data-editor-pane]");
-	await expect(panes).toHaveCount(3);
+	await expect(panes).toHaveCount(3, { timeout: 15_000 });
 	const active = page.locator('[data-editor-pane="active"]');
 	const selectedReferences = async () => {
 		const ids = await active

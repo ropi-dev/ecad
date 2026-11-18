@@ -13,8 +13,15 @@ export function fabricationArchive(
 	shapes: readonly EditorShape[],
 	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
 	maskMargin: number,
+	copperLayers = 2,
 ): FabricationArchive {
-	const files = exportFabrication(name, shapes, fills, maskMargin);
+	const files = exportFabrication(
+		name,
+		shapes,
+		fills,
+		maskMargin,
+		copperLayers,
+	);
 	return {
 		archive: zipSync(
 			Object.fromEntries(

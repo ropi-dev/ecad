@@ -1,3 +1,7 @@
+import {
+	type InnerCopperLayer,
+	innerCopperLayers,
+} from "@ecad/drawing-core/footprint/layers.ts";
 import type { DrawingAppearance } from "#/drawing/display.ts";
 
 export interface SchematicTheme {
@@ -40,6 +44,33 @@ const lightLayerColors: Record<keyof typeof darkLayerColors, string> = {
 	"B.Fab": "#5a61a0",
 	"Edge.Cuts": "#8d8f12",
 };
+const innerLayerColors = (palette: readonly string[]) =>
+	Object.fromEntries(
+		innerCopperLayers.map((layer, index) => [
+			layer,
+			palette[index % palette.length],
+		]),
+	) as Record<InnerCopperLayer, string>;
+const darkInnerColors = innerLayerColors([
+	"#7fc87f",
+	"#ce7d2c",
+	"#4fcbcb",
+	"#db628b",
+	"#a7a5c6",
+	"#28cc3e",
+	"#c6a5a5",
+	"#b8b84a",
+]);
+const lightInnerColors = innerLayerColors([
+	"#3f8f3f",
+	"#a85a14",
+	"#2a9a9a",
+	"#b23d66",
+	"#6e6c99",
+	"#1a8f2b",
+	"#8f6b6b",
+	"#7a7a22",
+]);
 const throughHolePad = "#c9a23c";
 
 export const printSchematicTheme: SchematicTheme = {
@@ -61,6 +92,7 @@ export const printSchematicTheme: SchematicTheme = {
 		note: "#0000c2",
 		label: "#0f0f0f",
 		...lightLayerColors,
+		...lightInnerColors,
 		"pad-through": throughHolePad,
 		via: "#8c8c8c",
 		"pad-hole": "#ffffff",
@@ -89,6 +121,7 @@ export const lightSchematicTheme: SchematicTheme = {
 		note: "#2458c9",
 		label: "#181c22",
 		...lightLayerColors,
+		...lightInnerColors,
 		"pad-through": "#a8801a",
 		via: "#8a8a8a",
 		"pad-hole": "#30353d",
@@ -117,6 +150,7 @@ export const darkSchematicTheme: SchematicTheme = {
 		note: "#8fb3ff",
 		label: "#e8edf5",
 		...darkLayerColors,
+		...darkInnerColors,
 		"pad-through": throughHolePad,
 		via: "#c4c4c4",
 		"pad-hole": "#161a21",

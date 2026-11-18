@@ -139,7 +139,7 @@ export function selectionPasteError(text: string): string | undefined {
 export type PasteDestination =
 	| "drawing"
 	| "symbol"
-	| { footprintLayer: FootprintLayer };
+	| { footprintLayer: FootprintLayer; layers?: readonly FootprintLayer[] };
 
 export function pasteSelection(
 	source: readonly EditorShape[],
@@ -155,6 +155,18 @@ export function pasteSelection(
 			if (footprint && !source.every(isFootprintShape))
 				throw new Error(
 					"A footprint takes rectangles, circles, triangles, lines and text. Pins, schematic wires, net labels and symbols cannot be pasted into it.",
+				);
+			const missing = footprint
+				? source.find(
+						(shape) =>
+							shape.layer !== undefined &&
+							destination.layers !== undefined &&
+							!destination.layers.includes(shape.layer),
+					)?.layer
+				: undefined;
+			if (missing)
+				throw new Error(
+					`The copied items include ${missing}, which is not one of the layers here.`,
 				);
 			if (
 				destination === "symbol" &&

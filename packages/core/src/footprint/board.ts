@@ -6,8 +6,12 @@ import {
 	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
+	boardCopperLayers,
+	copperLayerFunction,
 	type FootprintLayer,
 	isCopperLayer,
+	isInnerCopperLayer,
+	maxCopperLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	footprintFitBounds,
@@ -47,9 +51,7 @@ export const DRILL_LAYER_ID = "footprint:drill";
 export const NPTH_LAYER_ID = "footprint:npth";
 export const BOARD_LAYER_ID = "footprint:board";
 
-const stackLayers: readonly (readonly [FootprintLayer, string])[] = [
-	["F.Cu", "Copper,L1,Top"],
-	["B.Cu", "Copper,L2,Bot"],
+const surfaceLayers: readonly (readonly [FootprintLayer, string])[] = [
 	["F.SilkS", "Legend,Top"],
 	["B.SilkS", "Legend,Bot"],
 	["F.Mask", "Soldermask,Top"],
@@ -67,17 +69,33 @@ const padNumberSides = [
 	["F.Cu", "Other,PadNumbers,Top", 1],
 	["B.Cu", "Other,PadNumbers,Bot", -1],
 ] as const;
-const boardLayers: readonly (readonly [FootprintLayer, string])[] = [
-	...stackLayers,
-	...drawingLayers.map(
-		([layer, fileFunction]) => [layer, fileFunction] as const,
-	),
-];
+const copperStack = (count: number) =>
+	boardCopperLayers(count).map(
+		(layer) => [layer, copperLayerFunction(layer, count)] as const,
+	);
+const layerLists = new Map<
+	number,
+	readonly (readonly [FootprintLayer, string])[]
+>();
+const boardLayers = (count: number) => {
+	let layers = layerLists.get(count);
+	if (!layers) {
+		layers = [
+			...copperStack(count),
+			...surfaceLayers,
+			...drawingLayers.map(
+				([layer, fileFunction]) => [layer, fileFunction] as const,
+			),
+		];
+		layerLists.set(count, layers);
+	}
+	return layers;
+};
 const fileFunctionAttribute = (fileFunction: string) => ({
 	".FileFunction": fileFunction.split(","),
 });
-const placements = new Map<string, BoardPlacement>([
-	...stackLayers.map(
+const fixedPlacements: readonly (readonly [string, BoardPlacement])[] = [
+	...[...copperStack(2), ...surfaceLayers].map(
 		([layer, fileFunction]) =>
 			[
 				layer,
@@ -110,7 +128,26 @@ const placements = new Map<string, BoardPlacement>([
 				},
 			] as const,
 	),
-]);
+];
+const placementMaps = new Map<number, ReadonlyMap<string, BoardPlacement>>();
+function placementsFor(count: number): ReadonlyMap<string, BoardPlacement> {
+	let placements = placementMaps.get(count);
+	if (!placements) {
+		const inner = boardCopperLayers(count).slice(1, -1);
+		const placed = placeBoardLayers(
+			inner.map((layer) => ({
+				name: layer,
+				metadata: fileFunctionAttribute(copperLayerFunction(layer, count)),
+			})),
+		);
+		placements = new Map([
+			...fixedPlacements,
+			...inner.map((layer, index) => [layer, placed[index]] as const),
+		]);
+		placementMaps.set(count, placements);
+	}
+	return placements;
+}
 function padNumberLayerName(layer: FootprintLayer) {
 	return `${layer} pad numbers`;
 }
@@ -119,7 +156,7 @@ const textObjectId = (layer: FootprintLayer) => `footprint:${layer}:text`;
 const padNumberObjectId = (layer: FootprintLayer) =>
 	`footprint:${layer}:pad-numbers`;
 const layersByObjectId = new Map([
-	...boardLayers.flatMap(([layer]) => [
+	...boardLayers(maxCopperLayers).flatMap(([layer]) => [
 		[layerObjectId(layer), layer] as const,
 		[textObjectId(layer), layer] as const,
 	]),
@@ -130,20 +167,40 @@ const layersByObjectId = new Map([
 
 export const BOARD_SURFACE_Z = BOARD_LEGEND_TOP;
 
-export const placeFootprintBoard: typeof placeBoardLayers = (layers) => {
-	const stack = placeBoardLayers(layers);
-	return layers.map(
-		(layer, index) => placements.get(layer.name) ?? stack[index],
-	);
-};
+const placers = new Map<number, typeof placeBoardLayers>();
+
+/** @return Places the 3D layers of a board with `copperLayers` copper layers. */
+export function footprintBoardPlacer(
+	copperLayers = 2,
+): typeof placeBoardLayers {
+	let placer = placers.get(copperLayers);
+	if (!placer) {
+		const placements = placementsFor(copperLayers);
+		placer = (layers) => {
+			const stack = placeBoardLayers(layers);
+			return layers.map(
+				(layer, index) => placements.get(layer.name) ?? stack[index],
+			);
+		};
+		placers.set(copperLayers, placer);
+	}
+	return placer;
+}
+
+export const placeFootprintBoard = footprintBoardPlacer();
 
 export function layerSurfaceZ(
 	layers: readonly FootprintLayer[],
 	hidden: ReadonlySet<FootprintLayer>,
 	eyeZ: number,
+	copperLayers = 2,
 ): number {
-	const shown = layers.filter((layer) => !hidden.has(layer));
-	const heights = (shown.length ? shown : layers).map(
+	const placements = placementsFor(copperLayers);
+	const present = layers.filter(
+		(layer) => !isInnerCopperLayer(layer) || placements.has(layer),
+	);
+	const shown = present.filter((layer) => !hidden.has(layer));
+	const heights = (shown.length ? shown : present).map(
 		(layer) => (placements.get(layer)?.z ?? 0) - BOARD_SURFACE_Z,
 	);
 	return heights.reduce(
@@ -453,6 +510,7 @@ export interface BoardRegion {
 interface BoardPlanOptions {
 	regions?: readonly BoardRegion[];
 	colors?: SchematicTheme["appearance"];
+	copperLayers?: number;
 }
 
 const regionBounds = (polygons: MultiPolygon): Bounds => {
@@ -543,6 +601,9 @@ export function planFootprintBoard(
 	}
 	const edge = boardEdgeBounds(shapes);
 	const colors = options.colors ?? schematicTheme().appearance;
+	const copperLayers = options.copperLayers ?? 2;
+	const layers = boardLayers(copperLayers);
+	const placements = placementsFor(copperLayers);
 	const boardEdgeObjects = (): SceneObject[] =>
 		outline.length
 			? outline.flatMap(edgeObjects)
@@ -570,7 +631,7 @@ export function planFootprintBoard(
 					boardEdgeObjects(),
 				),
 		},
-		...boardLayers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
+		...layers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
 			const onLayer = members.get(layer);
 			const layerRegions = regions.get(layer) ?? [];
 			return onLayer || layerRegions.length
@@ -598,7 +659,7 @@ export function planFootprintBoard(
 					]
 				: [];
 		}),
-		...boardLayers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
+		...layers.flatMap(([layer, fileFunction]): BoardLayerPlan[] => {
 			const onLayer = texts.get(layer);
 			return onLayer
 				? [
@@ -653,7 +714,7 @@ export function planFootprintBoard(
 								DRILL_LAYER_ID,
 								"Drills",
 								colors["pad-through"],
-								"Plated,1,2,PTH",
+								`Plated,1,${copperLayers},PTH`,
 								drilled.flatMap(drillObjects),
 							),
 					},
@@ -670,7 +731,7 @@ export function planFootprintBoard(
 								NPTH_LAYER_ID,
 								"Unplated holes",
 								colors["pad-hole"],
-								"NonPlated,1,2,NPTH",
+								`NonPlated,1,${copperLayers},NPTH`,
 								unplated.flatMap(drillObjects),
 							),
 					},
@@ -745,8 +806,10 @@ export function boardObjectOnLayer(id: string, layer: FootprintLayer) {
 export function boardObjectVisible(
 	id: string,
 	hidden: ReadonlySet<FootprintLayer>,
+	copperLayers = 2,
 ): boolean {
-	if (id === DRILL_LAYER_ID) return !hidden.has("F.Cu") || !hidden.has("B.Cu");
+	if (id === DRILL_LAYER_ID)
+		return boardCopperLayers(copperLayers).some((layer) => !hidden.has(layer));
 	if (id === NPTH_LAYER_ID)
 		return !hidden.has("F.Mask") || !hidden.has("B.Mask");
 	const layer = layersByObjectId.get(id);

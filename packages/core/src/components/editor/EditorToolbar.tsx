@@ -182,6 +182,7 @@ interface EditorToolbarProps {
 		exporting: boolean;
 		zoneFills: () => Promise<readonly DrawingZoneFill[]>;
 		maskMargin?: number | undefined;
+		copperLayers?: number | undefined;
 	};
 }
 
@@ -486,6 +487,7 @@ export const EditorToolbar = memo(function EditorToolbar({
 				layered={footprint !== undefined}
 				zoneFills={board?.zoneFills}
 				maskMargin={board?.maskMargin}
+				copperLayers={board?.copperLayers}
 				open={exportOpen}
 				onClose={() => setExportOpen(false)}
 			/>

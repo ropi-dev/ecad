@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { maxCopperLayers } from "#/footprint/layers.ts";
 
 const length = z.number().positive().max(100);
 
@@ -6,6 +7,16 @@ const solderMaskMarginLimit = 0.5;
 const defaultSolderMaskMargin = 0.05;
 
 export const boardRulesSchema = z.strictObject({
+	copperLayers: z
+		.number()
+		.int()
+		.min(2)
+		.max(maxCopperLayers)
+		.multipleOf(2)
+		.default(2)
+		.describe(
+			"Number of copper layers: F.Cu, then the inner layers In1.Cu, In2.Cu and so on, then B.Cu. An even number from 2 to 32.",
+		),
 	clearance: length.describe(
 		"Smallest gap in millimetres between copper on different nets, and between copper and an unplated hole.",
 	),
@@ -38,6 +49,7 @@ export const boardRulesSchema = z.strictObject({
 export type BoardRules = z.output<typeof boardRulesSchema>;
 
 export const defaultBoardRules: BoardRules = {
+	copperLayers: 2,
 	clearance: 0.2,
 	trackWidth: 0.25,
 	viaDiameter: 0.6,

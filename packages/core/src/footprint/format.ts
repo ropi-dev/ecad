@@ -3,6 +3,7 @@ import {
 	upgradeSavedShapes,
 } from "@ecad/drawing-core/drawing/schema.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { isInnerCopperLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import { modelReferenceSchema } from "@ecad/drawing-core/footprint/model.ts";
 import {
 	isFootprintShape,
@@ -28,6 +29,12 @@ const footprintShapesSchema = z.preprocess(
 								? "A footprint cannot contain net labels."
 								: `A footprint cannot contain a ${shape.kind}.`,
 						path: [index, "kind"],
+					});
+				if (isInnerCopperLayer(shape.layer))
+					context.addIssue({
+						code: "custom",
+						message: "Footprints use the outer layers only, not inner copper.",
+						path: [index, "layer"],
 					});
 				if (shape.page !== undefined)
 					context.addIssue({

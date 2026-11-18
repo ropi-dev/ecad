@@ -10,6 +10,8 @@ import type { Bounds, Point } from "#/drawing/types.ts";
 import {
 	copperLayers,
 	type FootprintLayer,
+	innerCopperLayers,
+	isOuterCopperLayer,
 	type PadType,
 } from "#/footprint/layers.ts";
 
@@ -116,13 +118,15 @@ export function shapeLayers(shape: EditorShape): readonly FootprintLayer[] {
 	return paste ? [copper, paste] : [copper];
 }
 
-export const boardDrawOrder: readonly FootprintLayer[] = [
+const backLayers: readonly FootprintLayer[] = [
 	"B.Fab",
 	"B.CrtYd",
 	"B.SilkS",
 	"B.Mask",
 	"B.Paste",
 	"B.Cu",
+];
+const frontLayers: readonly FootprintLayer[] = [
 	"F.Mask",
 	"F.Paste",
 	"F.Cu",
@@ -132,28 +136,38 @@ export const boardDrawOrder: readonly FootprintLayer[] = [
 	"Edge.Cuts",
 ];
 
+export const boardDrawOrder: readonly FootprintLayer[] = [
+	...backLayers,
+	...frontLayers,
+];
+
+export const stackDrawOrder: readonly FootprintLayer[] = [
+	...backLayers,
+	...[...innerCopperLayers].reverse(),
+	...frontLayers,
+];
+
+/** @return The shapes on a layer of `drawOrder` that is not hidden, bottom first, with `onTop` drawn last. */
 export function footprintLayerView(
 	shapes: readonly EditorShape[],
 	hidden: ReadonlySet<FootprintLayer>,
 	onTop?: FootprintLayer,
+	drawOrder: readonly FootprintLayer[] = boardDrawOrder,
 ): EditorShape[] {
-	const drawOrder = onTop
-		? [...boardDrawOrder.filter((layer) => layer !== onTop), onTop]
-		: boardDrawOrder;
+	const ranks = new Map(
+		(onTop && drawOrder.includes(onTop)
+			? [...drawOrder.filter((layer) => layer !== onTop), onTop]
+			: drawOrder
+		).map((layer, index) => [layer, index]),
+	);
 	return shapes
 		.flatMap((shape, index) => {
-			const visible = shapeLayers(shape).filter((layer) => !hidden.has(layer));
-			return visible.length
-				? [
-						{
-							shape,
-							index,
-							rank: Math.max(
-								...visible.map((layer) => drawOrder.indexOf(layer)),
-							),
-						},
-					]
-				: [];
+			let rank = -1;
+			for (const layer of shapeLayers(shape)) {
+				const own = ranks.get(layer);
+				if (own !== undefined && own > rank && !hidden.has(layer)) rank = own;
+			}
+			return rank >= 0 ? [{ shape, index, rank }] : [];
 		})
 		.sort((a, b) => a.rank - b.rank || a.index - b.index)
 		.map(({ shape }) => shape);
@@ -183,7 +197,7 @@ export function nextPadNumber(shapes: readonly EditorShape[]): string {
 }
 
 const smdPadLayer = (active: FootprintLayer): FootprintLayer =>
-	copperLayers.includes(active) ? active : "F.Cu";
+	isOuterCopperLayer(active) ? active : "F.Cu";
 
 export const newPadLayers = (
 	type: PadType,
@@ -415,7 +429,7 @@ export function setShapeLayer(
 ): EditorShape {
 	if (shape.kind === "symbol" || isVia(shape) || isHole(shape)) return shape;
 	if (isPad(shape))
-		return shape.pad.type === "smd" && copperLayers.includes(layer)
+		return shape.pad.type === "smd" && isOuterCopperLayer(layer)
 			? { ...shape, layer }
 			: shape;
 	return { ...shape, layer };

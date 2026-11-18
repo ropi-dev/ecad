@@ -58,7 +58,7 @@ A copper area of a footprint that one component lead solders to, identified by i
 _Avoid_: Pin, land
 
 **Via**:
-A plated hole in a footprint that joins front and back copper. Nothing solders to it, so it has no number.
+A plated hole in a footprint or on a board that joins every copper layer. Nothing solders to it, so it has no number.
 _Avoid_: Through-hole pad, hole
 
 **Footprint wire**:
@@ -87,6 +87,10 @@ _Avoid_: Layout, board file
 
 **Placed footprint**:
 A footprint on a PCB that stands for one circuit component. Its pads take the nets of the component's pins with the same numbers.
+
+**Inner copper layer**:
+A copper layer between front and back copper, on a board with more than two copper layers. KiCad's names number them from the front: In1.Cu, In2.Cu and so on. Vias and through-hole pads reach every one; pads and footprints have no copper on them.
+_Avoid_: Plane, internal layer
 
 **Track**:
 A straight copper line on one copper layer of a PCB, on a net.

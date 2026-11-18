@@ -234,10 +234,19 @@ export function routingGrid(
 			}
 	};
 	const items = copperItems(shapes, netlist);
+	let innerTracks: Int32Array[] | undefined;
 	for (const item of [...items, ...boardHoles(shapes)]) {
 		if (item.kind === "zone") continue;
 		const owner = indexOf(item.net);
-		for (const layer of item.layers)
+		const outer = item.layers.filter((layer) => layers.includes(layer));
+		if (!outer.length) {
+			innerTracks ??= grids();
+			const target = { track: innerTracks, via: base.via };
+			for (const hull of item.hulls)
+				for (let z = 0; z < layers.length; z++) mark(hull, z, owner, target);
+			continue;
+		}
+		for (const layer of outer)
 			for (const hull of item.hulls)
 				mark(
 					hull,
@@ -267,6 +276,7 @@ export function routingGrid(
 		const result: number[] = [];
 		for (const layer of item.layers) {
 			const z = layers.indexOf(layer);
+			if (z < 0) continue;
 			const { minX, minY, maxX, maxY } = item.bounds;
 			for (
 				let row = Math.max(0, Math.ceil((minY - originY) / pitch));

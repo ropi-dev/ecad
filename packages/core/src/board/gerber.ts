@@ -14,6 +14,8 @@ import {
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
+	boardCopperLayers,
+	copperLayerFunction,
 	type FootprintLayer,
 	isCopperLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
@@ -39,9 +41,20 @@ interface GerberLayer {
 	polarity?: "Positive" | "Negative";
 }
 
-const gerberLayers: readonly GerberLayer[] = [
-	{ layer: "F.Cu", file: "F_Cu.gtl", function: "Copper,L1,Top" },
-	{ layer: "B.Cu", file: "B_Cu.gbl", function: "Copper,L2,Bot" },
+/** @return The Gerber file of each copper layer, front first, named and numbered as KiCad does. */
+export const copperGerberLayers = (count: number): GerberLayer[] =>
+	boardCopperLayers(count).map((layer, index) => ({
+		layer,
+		file:
+			layer === "F.Cu"
+				? "F_Cu.gtl"
+				: layer === "B.Cu"
+					? "B_Cu.gbl"
+					: `${layer.replace(".", "_")}.g${index}`,
+		function: copperLayerFunction(layer, count),
+	}));
+
+const otherGerberLayers: readonly GerberLayer[] = [
 	{
 		layer: "F.Mask",
 		file: "F_Mask.gts",
@@ -459,7 +472,8 @@ interface FabricationFile {
 }
 
 /**
- * Gerber X2 files for copper, mask, paste, silkscreen and the outline, an
+ * Gerber X2 files for each of the board's `copperLayers` copper layers, mask,
+ * paste, silkscreen and the outline, an
  * Excellon drill file for plated holes, and one for unplated holes when the
  * board has any. Zone fills come first on their copper layer, with their
  * holes cut, so later copper draws over them. Mask openings reach
@@ -470,6 +484,7 @@ export function exportFabrication(
 	shapes: readonly EditorShape[],
 	fills: readonly Pick<ZoneFill, "layer" | "polygons">[],
 	maskMargin: number,
+	copperLayers = 2,
 ): FabricationFile[] {
 	const items = flatItems(shapes);
 	const tracks = new Set(
@@ -478,7 +493,10 @@ export function exportFabrication(
 		),
 	);
 	const files: FabricationFile[] = [];
-	for (const target of gerberLayers) {
+	for (const target of [
+		...copperGerberLayers(copperLayers),
+		...otherGerberLayers,
+	]) {
 		const writer = new GerberWriter(name, target.function, target.polarity);
 		const copperLayer = isCopperLayer(target.layer) ? target.layer : undefined;
 		if (copperLayer) {
@@ -544,14 +562,14 @@ export function exportFabrication(
 		name: `${name}-PTH.drl`,
 		content: drillFile(
 			holes.filter((hole) => hole.plated),
-			"Plated,1,2,PTH",
+			`Plated,1,${copperLayers},PTH`,
 		),
 	});
 	const unplated = holes.filter((hole) => !hole.plated);
 	if (unplated.length)
 		files.push({
 			name: `${name}-NPTH.drl`,
-			content: drillFile(unplated, "NonPlated,1,2,NPTH"),
+			content: drillFile(unplated, `NonPlated,1,${copperLayers},NPTH`),
 		});
 	return files;
 }

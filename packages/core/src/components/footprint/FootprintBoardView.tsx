@@ -21,7 +21,7 @@ import {
 	boardObjectOnLayer,
 	boardObjectVisible,
 	createBoardBuilder,
-	placeFootprintBoard,
+	footprintBoardPlacer,
 } from "#/footprint/board.ts";
 import {
 	type BoardObject,
@@ -45,6 +45,8 @@ export function FootprintBoardView({
 	models = [],
 	onModelError,
 	maskMargin,
+	copperLayers,
+
 	...viewer
 }: Pick<
 	Viewer2DProps,
@@ -74,6 +76,7 @@ export function FootprintBoardView({
 		models?: readonly ModelPlacement[];
 		onModelError?: (message: string) => void;
 		maskMargin?: number;
+		copperLayers?: number | undefined;
 	}) {
 	const [builder] = useState(() => createBoardBuilder(createBoardObjects()));
 	useEffect(() => () => builder.dispose(), [builder]);
@@ -87,7 +90,12 @@ export function FootprintBoardView({
 			setBoard(
 				measurePerformance(
 					"footprint.board-build",
-					() => builder.build(shapes, { regions, colors }),
+					() =>
+						builder.build(shapes, {
+							regions,
+							colors,
+							...(copperLayers ? { copperLayers } : {}),
+						}),
 					{ shapes: shapes.length },
 				),
 			);
@@ -97,14 +105,14 @@ export function FootprintBoardView({
 			setBoard([]);
 			onBuildError("Unable to build the 3D view of this footprint.");
 		}
-	}, [builder, shapes, regions, colors, onBuildError]);
+	}, [builder, shapes, regions, colors, copperLayers, onBuildError]);
 	const scene = useMemo(
 		() =>
 			board?.map((object) => ({
 				...object,
-				visible: boardObjectVisible(object.id, hiddenLayers),
+				visible: boardObjectVisible(object.id, hiddenLayers, copperLayers),
 			})),
-		[board, hiddenLayers],
+		[board, hiddenLayers, copperLayers],
 	);
 	const focusedLayerIds = useMemo(
 		() =>
@@ -160,7 +168,7 @@ export function FootprintBoardView({
 			realistic={realistic}
 			boardShape={boardShape}
 			models={modelObjects}
-			placeLayers={placeFootprintBoard}
+			placeLayers={footprintBoardPlacer(copperLayers)}
 			keepView
 			projection="orthographic"
 			lockProjection

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
 	chmod,
 	mkdir,
@@ -476,7 +477,17 @@ test("a stalled download fails instead of waiting forever", () =>
 		assert.equal(installed.length, 0);
 	}));
 
-test("a restart starts the app again only after the old process exits, without no_new_privs", async () => {
+const runnerHasNoNewPrivs = /^NoNewPrivs:\s+1$/m.test(
+	(() => {
+		try {
+			return readFileSync("/proc/self/status", "utf8");
+		} catch {
+			return "";
+		}
+	})(),
+);
+
+test("a restart starts the app again only after the old process exits, without no_new_privs", async (context) => {
 	const directory = await mkdtemp(join(tmpdir(), "ecad-relaunch-"));
 	const marker = join(directory, "started");
 	const old = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"]);
@@ -494,7 +505,11 @@ test("a restart starts the app again only after the old process exits, without n
 		for (let i = 0; i < 50; i++) {
 			const text = await readFile(marker, "utf8").catch(() => "");
 			if (text) {
-				assert.match(text, /^NoNewPrivs:\s+0$/m);
+				if (runnerHasNoNewPrivs)
+					context.diagnostic(
+						"The test runner already has no_new_privs, which every process it starts inherits, so only the restart order is checked.",
+					);
+				else assert.match(text, /^NoNewPrivs:\s+0$/m);
 				return;
 			}
 			await new Promise((resolve) => setTimeout(resolve, 100));

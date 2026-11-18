@@ -12,8 +12,9 @@ import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-sto
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
+	allLayers,
+	boardCopperLayers,
 	type FootprintLayer,
-	footprintLayers,
 	isCopperLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
@@ -185,7 +186,7 @@ export function useBoardEditor({
 		() =>
 			focused
 				? (Object.fromEntries(
-						footprintLayers.map((layer) => [
+						allLayers.map((layer) => [
 							layer,
 							layer === focused
 								? theme.appearance[layer]
@@ -242,7 +243,10 @@ export function useBoardEditor({
 		},
 		[enabled, zoneScene, fills, layerColors, layerOrder, hidden, focused],
 	);
-	const copperLayer: CopperLayer = isCopperLayer(active) ? active : "F.Cu";
+	const [lastCopper, setLastCopper] = useState<CopperLayer>("F.Cu");
+	if (isCopperLayer(active) && active !== lastCopper) setLastCopper(active);
+	const copperLayers = boardCopperLayers(rules?.copperLayers ?? 2);
+	const copperLayer = copperLayers.includes(lastCopper) ? lastCopper : "F.Cu";
 	const visibleItems = useCallback(
 		() =>
 			copperItems(session.shapes(), netlist).filter((item) =>
@@ -256,13 +260,22 @@ export function useBoardEditor({
 			items: visibleItems,
 			rules,
 			copperLayer,
+			copperLayers,
 			setCopperLayer: setActive,
 			netAt: (point: Point) =>
 				copperAt(visibleItems(), point, copperLayer, 0.05)?.net ??
 				[...netlist.nets.values()].find((net) => /^(gnd|vss)$/i.test(net.name))
 					?.id,
 		};
-	}, [enabled, rules, visibleItems, copperLayer, setActive, netlist]);
+	}, [
+		enabled,
+		rules,
+		visibleItems,
+		copperLayer,
+		copperLayers,
+		setActive,
+		netlist,
+	]);
 
 	const [syncReport, setSyncReport] = useState<BoardSyncReport | null>(null);
 	const synchronize = useCallback(async () => {

@@ -17,7 +17,13 @@ import {
 	horizontalAlignments,
 	verticalAlignments,
 } from "#/drawing/text-alignment.ts";
-import { footprintLayers, padTypes } from "#/footprint/layers.ts";
+import {
+	allLayers,
+	type FootprintLayer,
+	isCopperLayer,
+	isInnerCopperLayer,
+	padTypes,
+} from "#/footprint/layers.ts";
 import { footprintReferenceSchema } from "#/footprint/reference.ts";
 
 /*
@@ -65,10 +71,10 @@ const geometryFields = {
 			"ID of the schematic page the shape is on. Omit it for the first page. Symbol children ignore it.",
 		),
 	layer: z
-		.enum(footprintLayers)
+		.enum(allLayers)
 		.optional()
 		.describe(
-			"Board layer of a footprint item, such as F.Cu or F.SilkS. Schematic and symbol shapes omit it.",
+			"Board layer of a footprint item, such as F.Cu, In1.Cu or F.SilkS. Inner copper layers In1.Cu to In30.Cu exist only on boards with enough copper layers. Schematic and symbol shapes omit it.",
 		),
 	x: z.number().describe("Shape center X in millimetres."),
 	y: z
@@ -286,11 +292,14 @@ const validPad = (shape: {
 	kind: string;
 	width: number;
 	height: number;
+	layer?: string;
 	pad?: z.output<typeof padSchema>;
 }) => {
 	const { pad } = shape;
 	if (!pad) return true;
 	if (shape.kind !== "rectangle" && shape.kind !== "circle") return false;
+	if (isInnerCopperLayer(shape.layer as FootprintLayer | undefined))
+		return false;
 	if (pad.cornerRatio !== undefined && shape.kind !== "rectangle") return false;
 	if (pad.type === "smd")
 		return pad.drill === undefined && pad.slot === undefined;
@@ -303,7 +312,7 @@ const validPad = (shape: {
 };
 const validPadError = {
 	error:
-		"A pad must be a rectangle or a circle, and only a rectangle has rounded corners. A through-hole pad needs a drill smaller than the pad, a slot longer than the drill and shorter than the pad's width, and no paste setting. A surface mount pad has no drill or slot.",
+		"A pad must be a rectangle or a circle on an outer layer, and only a rectangle has rounded corners. A through-hole pad needs a drill smaller than the pad, a slot longer than the drill and shorter than the pad's width, and no paste setting. A surface mount pad has no drill or slot.",
 };
 const validVia = (shape: {
 	kind: string;
@@ -352,7 +361,7 @@ const validZone = (shape: {
 		shape.pad === undefined &&
 		shape.via === undefined &&
 		shape.hole === undefined &&
-		(shape.layer === "F.Cu" || shape.layer === "B.Cu"));
+		isCopperLayer(shape.layer as FootprintLayer | undefined));
 const validZoneError = {
 	error:
 		"A zone must be a rectangle on a copper layer that is not a pad or via.",

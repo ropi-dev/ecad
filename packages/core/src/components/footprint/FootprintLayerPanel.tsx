@@ -1,4 +1,5 @@
 import {
+	allLayers,
 	type FootprintLayer,
 	footprintLayerLabels,
 	footprintLayers,
@@ -11,16 +12,23 @@ import {
 	EyeOff,
 	Sparkles,
 } from "lucide-react";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 import { useSchematicTheme } from "#/settings/theme.ts";
 
-export function useFootprintLayers() {
-	const [active, setActive] = useState<FootprintLayer>("F.Cu");
-	const [hidden, setHidden] = useState<ReadonlySet<FootprintLayer>>(
+export function useFootprintLayers(
+	layers: readonly FootprintLayer[] = footprintLayers,
+) {
+	const [chosen, setActive] = useState<FootprintLayer>("F.Cu");
+	const [hiddenChoice, setHidden] = useState<ReadonlySet<FootprintLayer>>(
 		() => new Set(["F.Paste", "B.Paste"]),
 	);
+	const hidden = useMemo(() => {
+		const absent = allLayers.filter((layer) => !layers.includes(layer));
+		return absent.length ? new Set([...hiddenChoice, ...absent]) : hiddenChoice;
+	}, [hiddenChoice, layers]);
+	const active = layers.includes(chosen) ? chosen : "F.Cu";
 	const toggle = useCallback(
 		(layer: FootprintLayer) =>
 			setHidden((current) => {
@@ -50,6 +58,7 @@ export function useFootprintLayers() {
 		[active, activate],
 	);
 	return {
+		layers,
 		active,
 		hidden,
 		focused: focused ? active : undefined,
@@ -60,6 +69,7 @@ export function useFootprintLayers() {
 }
 
 export function FootprintLayerPanel({
+	layers = footprintLayers,
 	active,
 	hidden,
 	focused,
@@ -69,6 +79,7 @@ export function FootprintLayerPanel({
 	realistic,
 	models,
 }: {
+	layers?: readonly FootprintLayer[];
 	active: FootprintLayer;
 	hidden: ReadonlySet<FootprintLayer>;
 	focused: FootprintLayer | undefined;
@@ -142,7 +153,7 @@ export function FootprintLayerPanel({
 				hidden={collapsed}
 				className="m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-1.5"
 			>
-				{footprintLayers.map((layer) => {
+				{layers.map((layer) => {
 					const visible = !hidden.has(layer);
 					const count = itemCounts.get(layer) ?? 0;
 					const color = layerColors[layer];
