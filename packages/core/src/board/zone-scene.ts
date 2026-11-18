@@ -28,6 +28,7 @@ export function createZoneScene() {
 		geometry.setAttribute("position", new BufferAttribute(positions, 3));
 		const material = new MeshBasicMaterial({
 			color,
+			transparent: true,
 			depthTest: false,
 			depthWrite: false,
 		});
@@ -66,12 +67,7 @@ export function createZoneScene() {
 			for (const [fill, mesh] of meshes) {
 				mesh.visible = !hidden.has(fill.layer);
 				mesh.material.color.set(colors[fill.layer]);
-				const { material } = mesh;
-				if (material.transparent !== focused) {
-					material.transparent = focused;
-					material.opacity = focused ? focusedFillOpacity : 1;
-					material.needsUpdate = true;
-				}
+				mesh.material.opacity = focused ? focusedFillOpacity : 1;
 				mesh.renderOrder = order(fill.layer);
 			}
 			if (group.parent !== root) root.add(group);
