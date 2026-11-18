@@ -375,7 +375,7 @@ function UsageDataSettings() {
 							setError("");
 							setTelemetryEnabled(next).catch((cause) =>
 								setError(
-									`${errorMessage(cause, "The choice could not be saved.")} Sending stays ${enabled ? "on" : "off"}.`,
+									`The choice could not be saved. ${errorMessage(cause, "")}`.trim(),
 								),
 							);
 						}}

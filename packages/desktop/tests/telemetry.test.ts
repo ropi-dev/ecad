@@ -151,6 +151,42 @@ test("a running app hears when another one changes consent", async () => {
 	}
 });
 
+test("an older consent read never replaces a newer one", async () => {
+	const off = { enabled: false, revision: "dddddddd-off", since: 5 };
+	const on = { enabled: true, revision, since: 1 };
+	const pending: ((value: TelemetryConsent) => void)[] = [];
+	let notify = () => {};
+	let startup = true;
+	const storage = await createDesktopConsentStorage({
+		loadConsent: () => {
+			if (startup) {
+				startup = false;
+				return Promise.resolve(on);
+			}
+			return new Promise((resolve) => pending.push(resolve));
+		},
+		saveConsent: async () => {},
+		onConsentChanged: (listener) => {
+			notify = listener;
+			return () => {};
+		},
+	});
+	storage.subscribe?.(() => {});
+	notify();
+	assert.equal(pending.length, 2);
+	pending[1](off);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	pending[0](on);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(storage.load()?.enabled, false);
+
+	notify();
+	await storage.save(off);
+	pending[2](on);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.equal(storage.load()?.enabled, false);
+});
+
 test("telemetry requests must be PostHog batches of known events", () => {
 	assert.deepEqual(
 		parseIpcArguments(telemetryChannels.send, [batch, revision]),

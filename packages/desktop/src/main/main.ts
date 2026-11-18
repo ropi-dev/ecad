@@ -323,20 +323,18 @@ function registerSettingsHandlers() {
 
 function registerTelemetryHandlers() {
 	const consent = new DesktopTelemetryConsent();
-	let watching = false;
-	handle(telemetryChannels.loadConsent, () => {
-		if (!watching) {
-			watching = true;
-			void consent
-				.watch(() => {
-					if (window && !window.isDestroyed())
-						window.webContents.send(telemetryEvents.consentChanged);
-				})
-				.then(
-					(stop) => app.on("will-quit", stop),
-					() => undefined,
-				);
-		}
+	let watching: Promise<unknown> | undefined;
+	handle(telemetryChannels.loadConsent, async () => {
+		watching ??= consent
+			.watch(() => {
+				if (window && !window.isDestroyed())
+					window.webContents.send(telemetryEvents.consentChanged);
+			})
+			.then(
+				(stop) => app.on("will-quit", stop),
+				() => undefined,
+			);
+		await watching;
 		return consent.load();
 	});
 	handle(telemetryChannels.saveConsent, (next) => consent.save(next));
