@@ -116,7 +116,7 @@ A board is the `board` field of its drawing's `.ecaddraw` file, next to the sche
       "edgeClearance": 0.3,
       "solderMaskMargin": 0.05,
       "thermalGap": 0.5,
-            "thermalSpokeWidth": 0.5,
+      "thermalSpokeWidth": 0.5,
       "copperLayers": 2
     },
     "shapes": []
