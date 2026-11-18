@@ -315,18 +315,15 @@ function registerSettingsHandlers() {
 	handle(settingsChannels.load, () => settings.load());
 	handle(settingsChannels.save, async (next) => {
 		await settings.save(next);
-		telemetryEnabled = next.telemetry === true;
 		applyTheme(next.theme);
 		void updater?.setChannel(next.releaseChannel ?? "stable");
 	});
 }
 
-let telemetryEnabled = false;
-
 function registerTelemetryHandlers() {
 	handle(telemetryChannels.send, async (batch) => {
 		await sendTelemetry(batch, {
-			enabled: telemetryEnabled,
+			enabled: (await settings.load()).settings.telemetry === true,
 			version: app.getVersion(),
 			fetch: (url, init) => net.fetch(url, init),
 		});
@@ -581,7 +578,6 @@ void app.whenReady().then(async () => {
 	registerSettingsHandlers();
 	registerDisplayHandlers();
 	const initial = (await settings.load()).settings;
-	telemetryEnabled = initial.telemetry === true;
 	registerTelemetryHandlers();
 	registerUpdateHandlers(initial.releaseChannel);
 	registerMcpHandlers();

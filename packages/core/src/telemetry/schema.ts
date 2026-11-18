@@ -7,8 +7,21 @@ export const telemetryEvents = ["perf_operation", "perf_summary"] as const;
 
 export const telemetryKeyPattern = /^phc_[A-Za-z0-9]{16,64}$/;
 
+const STRING_PROPERTIES = new Set([
+	"distinct_id",
+	"metric",
+	"status",
+	"platform",
+	"app_version",
+	"$lib",
+	"$os",
+	"$browser",
+	"gpu_vendor",
+]);
+const STRING_VALUE = /^[A-Za-z0-9._+~-]{1,64}$/;
+
 const propertyName = z.string().regex(/^[$a-z][a-z0-9_.-]{0,95}$/i);
-const propertyValue = z.union([z.number(), z.boolean(), z.string().max(128)]);
+const propertyValue = z.union([z.number(), z.boolean(), z.string()]);
 
 export const telemetryEventSchema = z.strictObject({
 	event: z.enum(telemetryEvents),
@@ -23,6 +36,15 @@ export const telemetryEventSchema = z.strictObject({
 		.refine(
 			(properties) => typeof properties.distinct_id === "string",
 			"Events need a distinct_id.",
+		)
+		.refine(
+			(properties) =>
+				Object.entries(properties).every(
+					([key, value]) =>
+						typeof value !== "string" ||
+						(STRING_PROPERTIES.has(key) && STRING_VALUE.test(value)),
+				),
+			"Only known properties can hold text, and only short identifiers.",
 		),
 });
 

@@ -75,6 +75,18 @@ test("telemetry requests must be PostHog batches of known events", () => {
 				},
 			],
 		},
+		{
+			...batch,
+			batch: [
+				{
+					...batch.batch[0],
+					properties: {
+						...batch.batch[0].properties,
+						file: "drawings/sample-board.ecaddraw",
+					},
+				},
+			],
+		},
 	])
 		assert.throws(
 			() => parseIpcArguments(telemetryChannels.send, [invalid]),

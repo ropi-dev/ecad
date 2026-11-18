@@ -38,12 +38,6 @@ export const getAppPerformance = () =>
 let acquired: AppPerformance | undefined;
 let holders = 0;
 
-/**
- * Starts the recorder when the build or page left it off, for the debug stats
- * window and for telemetry, so production builds collect only while one of
- * them needs it. `?perf=0` keeps it off. The recorder stops when every
- * returned function has been called.
- */
 export function acquirePerformance(): () => void {
 	if (typeof window === "undefined") return noop;
 	if (window.__ecadPerformance && window.__ecadPerformance !== acquired)

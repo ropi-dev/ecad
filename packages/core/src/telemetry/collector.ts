@@ -11,9 +11,9 @@ const DATA_KEY = /^[a-zA-Z][a-zA-Z0-9]{0,31}$/;
 const DATA_LIMIT = 8;
 const SUMMARY_METRIC_LIMIT = 60;
 
-const BUCKET_BASE = 0.1;
+const BUCKET_BASE = 0.001;
 const BUCKET_GROWTH = 1.1;
-const BUCKET_COUNT = 170;
+const BUCKET_COUNT = 220;
 
 const round = (value: number) => Math.round(value * 100) / 100;
 

@@ -8,8 +8,10 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 	page,
 }) => {
 	const batches: TelemetryBatch[] = [];
+	const referrers: (string | undefined)[] = [];
 	await page.route("**/ingest/batch/", async (route) => {
 		batches.push(route.request().postDataJSON());
+		referrers.push((await route.request().allHeaders()).referer);
 		await route.fulfill({ status: 200, body: "{}" });
 	});
 	await page.evaluate(() =>
@@ -48,6 +50,7 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 			platform: "web",
 		});
 	expect(JSON.stringify(batches)).not.toMatch(/Untitled|seeded/);
+	expect(referrers.filter(Boolean)).toEqual([]);
 
 	const settings = page.getByRole("dialog", { name: "Settings" });
 	await page
@@ -75,6 +78,7 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 	for (const event of events(batches))
 		if (event.properties.distinct_id === session)
 			expect(Date.parse(event.timestamp)).toBeLessThanOrEqual(disabledAt);
+		else expect(event.properties.metric).not.toBe("app.ready");
 	expect(
 		await page.evaluate(() =>
 			JSON.parse(localStorage.getItem("ecad.settings.v1") ?? "{}"),

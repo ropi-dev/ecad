@@ -84,6 +84,12 @@ test("summaries report per-window percentiles and reset after each window", () =
 	assert.ok(!Object.keys(properties).some((key) => key.startsWith("react.")));
 	assert.ok(!Object.keys(properties).some((key) => key.includes("Weird")));
 	assert.equal(collector.takeSummary(), undefined);
+
+	collector.receive(sample("editor.pin-hit-test", 0.01));
+	collector.receive(sample("editor.pin-hit-test", 0.09));
+	const small = collector.takeSummary()?.properties;
+	const median = small?.["editor.pin-hit-test.p50"] as number;
+	assert.ok(median >= 0.01 && median <= 0.011, `p50 ${median}`);
 });
 
 test("collected events pass the batch schema the desktop app enforces", () => {
@@ -110,13 +116,20 @@ test("collected events pass the batch schema the desktop app enforces", () => {
 		}).success,
 		false,
 	);
-	assert.equal(
-		telemetryBatchSchema.safeParse({
-			api_key: "phc_0123456789abcdefABCDEF",
-			batch: [{ ...events[0], properties: { metric: "app.ready" } }],
-		}).success,
-		false,
-	);
+	for (const properties of [
+		{ metric: "app.ready" },
+		{ ...events[0].properties, file: "drawings/board.ecaddraw" },
+		{ ...events[0].properties, metric: "drawings/board.ecaddraw" },
+		{ ...events[0].properties, $os: "Customer board" },
+	])
+		assert.equal(
+			telemetryBatchSchema.safeParse({
+				api_key: "phc_0123456789abcdefABCDEF",
+				batch: [{ ...events[0], properties }],
+			}).success,
+			false,
+			JSON.stringify(properties),
+		);
 });
 
 test("device details are reduced to coarse categories", () => {

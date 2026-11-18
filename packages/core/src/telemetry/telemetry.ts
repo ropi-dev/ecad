@@ -31,6 +31,7 @@ export const webTelemetryTransport: TelemetryTransport = (batch) =>
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(batch),
 		credentials: "omit",
+		referrerPolicy: "no-referrer",
 		keepalive: true,
 	});
 
@@ -44,6 +45,7 @@ function sessionId() {
 function beginSession(
 	transport: TelemetryTransport,
 	platform: TelemetryPlatform,
+	since: number,
 ) {
 	const release = acquirePerformance();
 	const recorder = getAppPerformance();
@@ -89,6 +91,7 @@ function beginSession(
 		if (document.visibilityState === "hidden") flushAll();
 	};
 	const unsubscribe = recorder.subscribe((sample) => {
+		if (sample.startTime < since) return;
 		collector.receive(sample);
 		if (collector.pendingOperations >= OPERATION_BATCH) flushOperations();
 	});
@@ -119,9 +122,15 @@ export function startTelemetry({
 	if (typeof window === "undefined" || !telemetryAvailable || stopWatching)
 		return;
 	let stop: (() => void) | undefined;
+	let starting = true;
 	const sync = () => {
 		const enabled = getAppSettings().telemetry === true;
-		if (enabled && !stop) stop = beginSession(transport, platform);
+		if (enabled && !stop)
+			stop = beginSession(
+				transport,
+				platform,
+				starting ? 0 : performance.now(),
+			);
 		else if (!enabled && stop) {
 			stop();
 			stop = undefined;
@@ -135,6 +144,7 @@ export function startTelemetry({
 		stopWatching = undefined;
 	};
 	sync();
+	starting = false;
 }
 
 export function stopTelemetry() {
