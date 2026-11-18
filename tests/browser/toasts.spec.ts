@@ -30,6 +30,10 @@ test("a notification raised before the page mounts appears, and dismissing one w
 	const input = page.getByRole("textbox", { name: "Drawing name" });
 	await input.focus();
 	await notify(page, { type: "error", title: "Project save failed" });
+	await expect(
+		page.getByText("Project save failed", { exact: true }),
+	).toBeVisible();
+	await expect(input).toBeFocused();
 	await page.keyboard.press("F8");
 	await page.keyboard.press("Tab");
 	await page.keyboard.press("Tab");
