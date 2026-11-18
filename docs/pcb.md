@@ -83,7 +83,7 @@ Select a finding to select the items involved. Results go stale after an edit; r
 
 ## Autorouting
 
-Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over front and back copper and keep the board's clearances. They leave inner layers alone, apart from keeping clear of the vias and through-hole pads that pass through them. Neither is in the editor yet; the reference design below uses both.
+Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over front and back copper and keep the board's clearances. They don't route on inner layers. Their vias keep clear of other nets' inner copper, inner copper passed to `autoroute` as `rippable` stays where it is, and a connection to copper that is only on inner layers stays unrouted. Neither is in the editor yet; the reference design below uses both.
 
 `negotiatedRoute` (`negotiated-route.ts`) is the main one. It routes every net in turn, letting routes share space with other nets at a price. After each round the price rises and cells that were shared keep a history cost, until no two nets share space. Nets that still overlap after the last round are left unrouted.
 

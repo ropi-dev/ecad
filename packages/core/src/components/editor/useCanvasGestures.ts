@@ -766,6 +766,8 @@ export function useCanvasGestures({
 			tolerance: 4 / scale,
 		});
 	};
+	const startAnchorAt = (point: Point) =>
+		anchorAt(point, { layer: board?.copperLayer }) ?? anchorAt(point);
 	/** The preview of the track from the chain's start to `point`, and its end. */
 	const previewTrack = (point: Point) => {
 		const active = getTrack();
@@ -818,7 +820,7 @@ export function useCanvasGestures({
 		(layer: CopperLayer | undefined, stack: typeof boardStack) => {
 			if (stack !== shownStack.current) {
 				shownStack.current = stack;
-				const active = getTrack();
+				const active = getTrack() ?? getZoneChain();
 				if (active && stack && !stack.includes(active.layer)) finishWire();
 				return;
 			}
@@ -842,8 +844,7 @@ export function useCanvasGestures({
 			if (!board) return;
 			const active = getTrack();
 			if (!active) {
-				const anchor =
-					anchorAt(point, { layer: board.copperLayer }) ?? anchorAt(point);
+				const anchor = startAnchorAt(point);
 				let layer = board.copperLayer;
 				if (anchor && !anchor.item.layers.includes(layer)) {
 					layer = anchor.item.layers[0];
@@ -902,7 +903,7 @@ export function useCanvasGestures({
 				return true;
 			}
 			if (!board) return false;
-			const anchor = anchorAt(point);
+			const anchor = startAnchorAt(point);
 			setConnectionHover(anchor?.point ?? null);
 			canvas.style.cursor = "crosshair";
 			return true;

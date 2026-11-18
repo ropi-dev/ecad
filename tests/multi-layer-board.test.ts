@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { generateDefaultFootprints } from "@ecad/default-footprints";
+import { autoroute } from "@ecad/drawing-core/board/autoroute.ts";
 import {
 	analyzeConnectivity,
 	copperItems,
@@ -503,4 +504,27 @@ test("a track started where tracks on two layers meet starts on the active layer
 		trackAnchor(items, end, { ...options, layer: "F.Cu" })?.item.net,
 		"gnd",
 	);
+});
+
+test("the autorouter keeps rippable inner copper in place and routes around its vias", () => {
+	const { netlist, footprints, outline, center } = dividerBoard();
+	const inner = trackSegment(
+		nextId++,
+		{ x: center.x - 4, y: center.y - 5 },
+		{ x: center.x + 4, y: center.y - 5 },
+		"In1.Cu",
+		0.25,
+		undefined,
+	);
+	const result = autoroute([...footprints, outline], netlist, 9000, {
+		rules: fourLayers,
+		rippable: [inner],
+	});
+	assert.deepEqual(
+		result.shapes
+			.filter((shape) => shape.layer === "In1.Cu")
+			.map(({ x, y, width }) => ({ x, y, width })),
+		[{ x: inner.x, y: inner.y, width: inner.width }],
+	);
+	assert.deepEqual(result.failed, []);
 });

@@ -244,8 +244,9 @@ export function useBoardEditor({
 		[enabled, zoneScene, fills, layerColors, layerOrder, hidden, focused],
 	);
 	const [lastCopper, setLastCopper] = useState<CopperLayer>("F.Cu");
-	if (isCopperLayer(active) && active !== lastCopper) setLastCopper(active);
 	const copperLayers = boardCopperLayers(rules?.copperLayers ?? 2);
+	if (isCopperLayer(active) && active !== lastCopper) setLastCopper(active);
+	else if (!copperLayers.includes(lastCopper)) setLastCopper("F.Cu");
 	const copperLayer = copperLayers.includes(lastCopper) ? lastCopper : "F.Cu";
 	const visibleItems = useCallback(
 		() =>
