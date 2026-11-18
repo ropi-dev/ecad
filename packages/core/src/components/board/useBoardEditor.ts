@@ -231,9 +231,16 @@ export function useBoardEditor({
 	const updateZones = useCallback(
 		(root: Object3D) => {
 			if (!enabled) return;
-			zoneScene.update(root, fills, layerColors, layerOrder, hidden);
+			zoneScene.update(
+				root,
+				fills,
+				layerColors,
+				layerOrder,
+				hidden,
+				focused !== undefined,
+			);
 		},
-		[enabled, zoneScene, fills, layerColors, layerOrder, hidden],
+		[enabled, zoneScene, fills, layerColors, layerOrder, hidden, focused],
 	);
 	const copperLayer: CopperLayer = isCopperLayer(active) ? active : "F.Cu";
 	const visibleItems = useCallback(
