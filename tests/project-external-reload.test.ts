@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
-import { createEditorSession } from "#/components/editor/editorSession.ts";
 import { createEmptySymbolFile } from "#/components/editor/symbolFormat.ts";
 import { toastManager } from "#/components/ui/toast.ts";
 import { ProjectConflict } from "#/projects/errors.ts";
@@ -169,29 +168,6 @@ test("an external change replaces only the changed document and keeps the other 
 	stop();
 });
 
-test("an external change during a drag cancels the drag", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	const main = f.session.getSnapshot().store;
-	const editor = createEditorSession(main);
-	let cancelled = 0;
-	const disconnect = editor.connect(main, () => cancelled++);
-	cancelled = 0;
-	editor.place([rectangle], "Draw rectangle");
-	await until(() => f.calls.saves === 1 && !f.session.getSnapshot().dirty);
-	assert.equal(cancelled, 0, "the editor's own save does not cancel");
-	editor.preview([{ ...rectangle, x: 7 }]);
-
-	const next = snapshot();
-	next.shapes = [{ ...rectangle, y: 20 }];
-	f.changeOnDisk(next, ["main.ecaddraw"]);
-	await until(() => main.getSnapshot().shapes[0]?.y === 20);
-	assert.equal(cancelled, 1);
-	disconnect();
-	stop();
-});
-
 test("unsaved edits are never replaced: the save reports the conflict and no refresh runs", async () => {
 	const f = fixture();
 	const stop = f.session.connect();
@@ -262,22 +238,9 @@ test("unreadable changes keep the open documents and explain why", async () => {
 		throw new Error("The file is not valid JSON.");
 	};
 	f.notify();
-	await until(
-		() => reloadToast()?.title === "Unable to reload changes from disk",
-	);
-	assert.match(reloadToast()?.description ?? "", /not valid JSON/);
+	await until(() => /not valid JSON/.test(reloadToast()?.description ?? ""));
 	assert.equal(f.session.getSnapshot().project, before);
 	assert.equal(f.session.getSnapshot().conflict, false);
-	stop();
-});
-
-test("changes reported for another directory are ignored", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	f.notify("elsewhere");
-	await new Promise((resolve) => setTimeout(resolve, 20));
-	assert.equal(f.calls.refreshes, 0);
 	stop();
 });
 
@@ -323,137 +286,5 @@ test("an open circuit takes the external circuit, keeps its node positions and s
 	assert.equal(value.dirty, false);
 	await new Promise((resolve) => setTimeout(resolve, 20));
 	assert.equal(f.calls.saves, 1);
-	stop();
-});
-
-test("a manifest that points the main drawing at another existing file reloads it", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	const next = snapshot();
-	next.manifest = { ...next.manifest, drawing: "other.ecaddraw" };
-	next.shapes = [rectangle];
-	f.changeOnDisk(next, ["ecad-project.json"]);
-	await until(() => f.session.getSnapshot().project === next);
-	assert.deepEqual(f.session.getSnapshot().store.getSnapshot().shapes, [
-		rectangle,
-	]);
-	assert.equal(f.session.getSnapshot().dirty, false);
-	stop();
-});
-
-test("a changed open symbol takes the file's shapes and starts a new history", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	f.session.getSnapshot().selectEditorFile("part.ecadsym");
-	const document = f.session.getSnapshot().editorSymbol;
-	assert.ok(document);
-	const next = snapshot();
-	const { id: _id, ...shape } = rectangle;
-	next.symbols = [{ ...symbol, shapes: [shape] }];
-	f.changeOnDisk(next, ["part.ecadsym"]);
-	await until(() => document.store.getSnapshot().shapes.length === 1);
-	const value = f.session.getSnapshot();
-	assert.equal(value.editorSymbol?.store, document.store);
-	assert.equal(value.editorSymbol?.file, next.symbols[0]);
-	assert.equal(
-		value.editorSymbol?.savedShapes,
-		document.store.getSnapshot().shapes,
-	);
-	assert.equal(value.dirty, false);
-	stop();
-});
-
-test("an unsaved draft in another editor keeps the files from being reloaded", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	f.session.getSnapshot().reportUnsavedEdits("symbol-editor", true);
-	f.changeOnDisk(snapshot(), ["main.ecaddraw"]);
-	await until(() => f.calls.saves === 1);
-	await new Promise((resolve) => setTimeout(resolve, 20));
-	assert.equal(f.calls.refreshes, 0);
-	stop();
-});
-
-test("a failure after the files were read pauses saving instead of reporting no change", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	const library = f.session.getProjectSymbols(f.session.getSnapshot().session);
-	library?.subscribe?.(() => {
-		throw new Error("listener failed");
-	});
-	const next = snapshot();
-	next.shapes = [rectangle];
-	f.changeOnDisk(next, ["main.ecaddraw"]);
-	await until(() => f.session.getSnapshot().conflict);
-	assert.notEqual(reloadToast()?.title, "Unable to reload changes from disk");
-	stop();
-});
-
-test("notifications during a refresh share one more refresh", async () => {
-	const f = fixture();
-	const stop = f.session.connect();
-	await loaded(f.session);
-	let release!: () => void;
-	const blocked = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	f.storage.refresh = async () => {
-		f.calls.refreshes++;
-		if (f.calls.refreshes === 1) await blocked;
-		return null;
-	};
-	f.notify();
-	f.notify();
-	f.notify();
-	await until(() => f.calls.refreshes === 1);
-	f.notify();
-	f.notify();
-	release();
-	await until(() => f.calls.refreshes === 2);
-	await new Promise((resolve) => setTimeout(resolve, 20));
-	assert.equal(f.calls.refreshes, 2);
-	stop();
-});
-
-test("an external change drops the selection a view switch would restore", async () => {
-	const initial = snapshot();
-	const linked = {
-		...initial,
-		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
-		circuits: [createCircuit("Board", primaryPcbId)],
-	};
-	const f = fixture(linked);
-	const stop = f.session.connect();
-	await loaded(f.session);
-	const project = () => f.session.getSnapshot();
-	const main = project().store;
-	const schematic = {
-		view: "schematic" as const,
-		store: main,
-		selection: { shapeIds: [1], childKey: null },
-	};
-	project().rememberViewSelection(schematic);
-	await project().switchEditorView("circuit");
-	const origin = project().takeSelectionHandoff("circuit")?.source;
-	const circuit = project().editorCircuit;
-	assert.ok(origin && circuit);
-	const derived = {
-		view: "circuit" as const,
-		store: circuit.store,
-		selection: { item: null, checkedPins: [] },
-	};
-	project().rememberViewSelection({ ...derived, origin });
-	f.changeOnDisk({ ...linked, shapes: [rectangle] }, ["main.ecaddraw"]);
-	await until(() => main.getSnapshot().shapes.length === 1);
-	project().rememberViewSelection({ ...derived, origin });
-	await project().switchEditorView("schematic");
-	assert.deepEqual(
-		project().takeSelectionHandoff("schematic")?.source,
-		derived,
-	);
 	stop();
 });

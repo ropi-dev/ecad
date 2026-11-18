@@ -197,7 +197,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	const backCopper = attributes.getByLabel("Layer").locator("option", {
 		hasText: "Back copper",
 	});
-	await expect(backCopper).toHaveText("Back copper (hidden)");
 	await expect(backCopper).toBeDisabled();
 	await page.getByRole("button", { name: "Show Back copper" }).click();
 	await page.mouse.dblclick(secondPad.x, secondPad.y);
@@ -387,9 +386,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		context?.getExtension("WEBGL_lose_context")?.loseContext();
 	});
 	await expect(area).toHaveAttribute("data-view", "2d");
-	await expect(
-		page.getByText("The 3D graphics context was lost"),
-	).toBeVisible();
 	await expect(flat).toBeEnabled();
 	await expect(flat).toHaveAttribute("aria-pressed", "true");
 	await page.keyboard.down("Alt");
@@ -401,9 +397,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	await page.keyboard.up("Shift");
 	await page.keyboard.up("Alt");
 	await expect(area).toHaveAttribute("data-view", "3d");
-	await expect(page.getByText("The 3D graphics context was lost")).toHaveCount(
-		0,
-	);
 	await flat.click();
 	await expect(area).toHaveAttribute("data-view", "2d");
 

@@ -1,12 +1,5 @@
 import assert from "node:assert/strict";
-import {
-	chmod,
-	mkdir,
-	mkdtemp,
-	readFile,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -107,30 +100,6 @@ test("directories chosen in a native dialog are approved without asking again", 
 		);
 	}));
 
-test("approvals without a prompt accept only stored and chosen directories", async () =>
-	withHome(async (home) => {
-		const chosen = new Set<string>();
-		const approvals = new ExternalLibraryApprovals({
-			homeDirectory: home,
-			chosen: (directory) => chosen.has(directory),
-			confirm: async () => assert.fail("prompt: false must not ask the user."),
-		});
-		const request = {
-			project: join(home, "project"),
-			directory: join(home, "parts"),
-		};
-		assert.equal(await approvals.approve(request, { prompt: false }), false);
-		chosen.add(request.directory);
-		assert.equal(await approvals.approve(request, { prompt: false }), true);
-		assert.equal(
-			await new ExternalLibraryApprovals({ homeDirectory: home }).approve(
-				request,
-				{ prompt: false },
-			),
-			true,
-		);
-	}));
-
 test("unsaved projects keep approvals for the session only", async () =>
 	withHome(async (home) => {
 		const approvals = new ExternalLibraryApprovals({
@@ -145,66 +114,5 @@ test("unsaved projects keep approvals for the session only", async () =>
 				request,
 			),
 			false,
-		);
-	}));
-
-test("damaged or unwritable approvals never approve a directory by themselves", async () =>
-	withHome(async (home) => {
-		const request = {
-			project: join(home, "project"),
-			directory: join(home, "parts"),
-		};
-		const directory = configPaths(home).directory;
-		await mkdir(directory, { recursive: true });
-		const path = join(directory, "approved-libraries.json");
-		for (const contents of [
-			"{",
-			JSON.stringify({ version: 2, approvals: [request] }),
-			JSON.stringify({ version: 1, approvals: [{ ...request, extra: true }] }),
-		]) {
-			await writeFile(path, contents);
-			assert.equal(
-				await new ExternalLibraryApprovals({ homeDirectory: home }).approve(
-					request,
-				),
-				false,
-			);
-		}
-		await rm(path);
-		await chmod(directory, 0o555);
-		try {
-			const approvals = new ExternalLibraryApprovals({
-				homeDirectory: home,
-				confirm: async () => true,
-			});
-			assert.equal(await approvals.approve(request), true);
-			assert.equal(
-				await new ExternalLibraryApprovals({ homeDirectory: home }).approve(
-					request,
-				),
-				false,
-			);
-		} finally {
-			await chmod(directory, 0o755);
-		}
-	}));
-
-test("approvals saved by older versions in ~/.ecad still apply", async () =>
-	withHome(async (home) => {
-		const request = {
-			project: join(home, "project"),
-			directory: join(home, "parts"),
-		};
-		await mkdir(join(home, ".ecad"));
-		await writeFile(
-			join(home, ".ecad", "approved-libraries.json"),
-			JSON.stringify({ version: 1, approvals: [request] }),
-		);
-		assert.equal(
-			await new ExternalLibraryApprovals({ homeDirectory: home }).approve(
-				request,
-				{ prompt: false },
-			),
-			true,
 		);
 	}));

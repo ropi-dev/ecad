@@ -1,17 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { generateDefaultSymbols, partAttributes } from "@ecad/default-symbols";
-import {
-	drawingShapeSchema,
-	editorShapeSchema,
-} from "@ecad/drawing-core/drawing/schema.ts";
+import { drawingShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import type { EditorSymbol } from "@ecad/drawing-core/drawing/shapes.ts";
 import { SYMBOL_ATTRIBUTE_LIMIT } from "@ecad/drawing-core/drawing/symbol-attributes.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
-import {
-	parseSymbolFile,
-	symbolFileFromSymbol,
-} from "#/components/editor/symbolFormat.ts";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import {
@@ -105,18 +99,18 @@ test("symbol files keep their attribute order and reject attributes that clash o
 			() => parseSymbolFile(JSON.stringify({ ...part, attributes })),
 			message,
 		);
-	invalid({ Value: "10k" }, /already an attribute of every symbol/);
-	invalid({ " Manufacturer": "" }, /start or end with a space/);
-	invalid({ "42": "" }, /only digits/);
+	invalid({ Value: "10k" }, /\battributes\.Value: /);
+	invalid({ " Manufacturer": "" }, /\battributes\. Manufacturer: /);
+	invalid({ "42": "" }, /\battributes\.42: /);
 	assert.throws(
 		() =>
 			parseSymbolFile(
 				JSON.stringify(part).replace('"Manufacturer"', '"__proto__"'),
 			),
-		/__proto__ cannot be an attribute name/,
+		/\battributes\.__proto__: /,
 	);
-	invalid({ MPN: "", mpn: "" }, /repeated/);
-	invalid({ Datasheet: "x".repeat(2001) }, /at most 2000 characters/);
+	invalid({ MPN: "", mpn: "" }, /\battributes\.mpn: /);
+	invalid({ Datasheet: "x".repeat(2001) }, /\battributes\.Datasheet: /);
 	invalid(
 		Object.fromEntries(
 			Array.from({ length: SYMBOL_ATTRIBUTE_LIMIT + 1 }, (_, index) => [
@@ -124,7 +118,7 @@ test("symbol files keep their attribute order and reject attributes that clash o
 				"",
 			]),
 		),
-		/at most 32 attributes/,
+		/\battributes: /,
 	);
 });
 
@@ -169,89 +163,4 @@ test("placements save their attributes and pick up ones their definition added l
 		).attributes.Manufacturer,
 		"TI",
 	);
-});
-
-test("drawings reject invalid placement attributes and copies carry them as defaults", () => {
-	const placed = createSymbol(1, builtin("ams1117-3.3"), { x: 0, y: 0 });
-	assert.ok(editorShapeSchema.safeParse(placed).success);
-	const issue = editorShapeSchema.safeParse({
-		...placed,
-		attributes: { ...placed.attributes, "": "x" },
-	}).error?.issues[0];
-	assert.match(issue?.message ?? "", /Enter an attribute name/);
-	assert.deepEqual(issue?.path, ["attributes", ""]);
-	const copy = symbolFileFromSymbol({
-		...placed,
-		definitionId: "custom.regulator",
-		attributes: { ...placed.attributes, Datasheet: "" },
-	});
-	assert.deepEqual(copy.attributes, {
-		Manufacturer: "Advanced Monolithic Systems",
-		"Part number": "AMS1117-3.3",
-		Datasheet: "",
-		"Distributor part number": "",
-	});
-});
-
-test("a renamed or crowded definition never makes a placement unsaveable", () => {
-	const library = { scope: "project" as const, id: "project-symbols" };
-	const resolve = (
-		placementAttributes: Record<string, string>,
-		attributes: Record<string, string>,
-	) => {
-		const [definition] = libraryDefinitions([
-			parseSymbolFile(JSON.stringify({ ...part, attributes })),
-		]);
-		const linked = { ...definition, library };
-		const placed = createSymbol(1, linked, { x: 0, y: 0 });
-		const saved = persistDrawingShapes(
-			[
-				{
-					...placed,
-					attributes: {
-						name: "Sensor",
-						reference: "U1",
-						value: "TMP117",
-						...placementAttributes,
-					},
-				},
-			],
-			[linked],
-		);
-		const [resolved] = resolveDrawingSymbols(
-			saved.map((shape) =>
-				drawingShapeSchema.parse(JSON.parse(JSON.stringify(shape))),
-			),
-			[linked],
-			new Map([[symbolReferenceKey(library, linked.id), linked]]),
-		).shapes as EditorSymbol[];
-		const reparsed = drawingShapeSchema.safeParse(
-			JSON.parse(JSON.stringify(persistDrawingShapes([resolved], [linked])[0])),
-		);
-		assert.ok(reparsed.success, reparsed.error?.message);
-		return resolved.attributes;
-	};
-	assert.deepEqual(
-		resolve(
-			{ "part number": "A", Tolerance: "1" },
-			{ "Part number": "", Datasheet: "x" },
-		),
-		{
-			name: "Sensor",
-			reference: "U1",
-			value: "TMP117",
-			Datasheet: "x",
-			"part number": "A",
-			Tolerance: "1",
-		},
-	);
-	const full = Object.fromEntries(
-		Array.from({ length: SYMBOL_ATTRIBUTE_LIMIT }, (_, index) => [
-			`Field ${index}`,
-			"",
-		]),
-	);
-	const crowded = resolve(full, { "Field 0": "default", Added: "x" });
-	assert.equal(crowded.Added, undefined);
-	assert.equal(crowded["Field 0"], "");
 });

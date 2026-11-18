@@ -2,23 +2,14 @@
 
 `pnpm run test:browser` runs the same scenarios locally and in CI. There is no separate smoke or extended suite. CI divides them across two shards with two workers each.
 
-| Browser coverage | Scenarios | Detailed lower-level coverage |
-| --- | ---: | --- |
-| Schematic drawing, previews, symbol creation, text, and undo | 6 | `tests/editor-shapes.test.ts`, `tests/editor-commands.test.ts`, `tests/editor-history.test.ts`, `tests/editor-display.test.ts` |
-| Circuit connectivity, pointer and keyboard input, persistence, and navigation races | 5 | `tests/circuit.test.ts`, `tests/circuit-symbol-components.test.ts`, `tests/circuit-net-labels.test.ts` |
-| Project files, independent drawings and symbols, save recovery, search, mobile layout, and menus | 8 | `packages/web/tests/projects.test.ts`, `packages/web/tests/symbol-storage.test.ts`, `packages/desktop/tests/projects.test.ts`, `packages/desktop/tests/storage.test.ts` |
-| Symbols, labels, attributes, locks, rotation, thumbnails, and reusable definitions | 14 | `tests/default-symbols.test.ts`, `tests/symbol-attributes.test.ts`, `tests/symbol-library-editing.test.ts`, `tests/symbol-children.test.ts`, `tests/item-locks.test.ts`, `tests/text-alignment.test.ts`, `tests/symbol-text-positions.test.ts`, `tests/pin-label-visibility.test.ts` |
-| Footprint pads, layer graphics, hidden layers, and selecting, moving and placing in the 3D board | 1 | `tests/footprint.test.ts` |
-| The RP2350A example PCB: routing state, design rules check and view switches | 1 | `tests/board.test.ts`, `tests/board-example.test.ts` |
-| Toolbar keyboard and touch input | 2 | `tests/navigation.test.ts` |
-| STEP, Gerber and KiCad import, exports, layers, hover, cameras, and gestures | 14 | `tests/import-effect.test.ts`, `tests/drawing-export.test.ts`, `tests/gerber.test.ts`, `tests/gerber-partial-import.test.ts`, `tests/step.test.ts`, `tests/kicad-import.test.ts`, `tests/scene-hover.test.ts` |
+Each browser test is one workflow a user goes through, such as drawing shapes, wiring pins, routing a track, importing a KiCad schematic or exporting a PDF. One test costs 4 to 15 seconds on CI, so the suite stays at about 80 tests. Geometry, normalization, serialization, validation and command combinations belong in the Node tests under `tests/*.test.ts`, which run in milliseconds.
 
-The browser suite samples user workflows. Node tests cover geometry, normalization, serialization, validation, and command combinations. Keep each browser scenario focused on one workflow and use representative inputs rather than repeating the same interaction for every model variant.
+Before adding a browser test, read "Tests" in `AGENTS.md`. Extend an existing scenario when the new behaviour is a step in a workflow that already has one. Use one representative input instead of repeating an interaction for every shape, symbol, viewport or platform.
 
 Run a feature or scenario directly:
 
 ```sh
-pnpm run test:browser tests/browser/item-locks.spec.ts
+pnpm run test:browser tests/browser/pcb.spec.ts
 pnpm run test:browser --grep 'circuit'
 pnpm test
 ```

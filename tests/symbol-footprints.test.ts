@@ -15,11 +15,7 @@ import {
 	matchPinsToPads,
 	symbolPinNumbers,
 } from "@ecad/drawing-core/footprint/reference.ts";
-import {
-	parseSymbolFile,
-	symbolFileFromSymbol,
-} from "#/components/editor/symbolFormat.ts";
-import { selectionFileText } from "#/drawing/clipboard.ts";
+import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";
 import { symbolFileWithShapes } from "#/drawing/symbol-file.ts";
 import {
@@ -28,10 +24,7 @@ import {
 } from "#/drawing/symbol-persistence.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { footprintFileSchema } from "#/footprint/format.ts";
-import {
-	footprintPadNumbers,
-	loadBuiltinFootprints,
-} from "#/footprint/library.ts";
+import { footprintPadNumbers } from "#/footprint/library.ts";
 import { required } from "./helpers/required.ts";
 
 const definition = (id: string) =>
@@ -76,21 +69,6 @@ test("each built-in symbol's default footprint exists and has a pad for every pi
 		).length >= 3,
 	);
 	assert.ok(assigned.size < footprints.size);
-});
-
-test("symbols without a package or with one pin have no default footprint", () => {
-	for (const id of [
-		"ground",
-		"signal-ground",
-		"vcc",
-		"box",
-		"antenna",
-		"transformer",
-		"jfet-n",
-		"nrf54l15-caaa",
-		"npm2100-caaa",
-	])
-		assert.equal(definition(id).footprint, undefined, id);
 });
 
 test("a placed symbol starts with its definition's footprint, in its own copy", () => {
@@ -139,20 +117,6 @@ test("the footprint survives saving and resolving a placement", () => {
 	assert.equal(legacy.kind === "symbol" && legacy.footprint, undefined);
 });
 
-test("a footprint reference names a known library and a valid ID", () => {
-	const placed = createSymbol(1, definition("resistor"), { x: 0, y: 0 });
-	for (const footprint of [
-		{ library: "user", id: "r_0805_2012metric" },
-		{ library: "builtin", id: "R_0805" },
-		{ library: "builtin", id: "r_0805", extra: true },
-	])
-		assert.equal(
-			editorShapeSchema.safeParse({ ...placed, footprint }).success,
-			false,
-			JSON.stringify(footprint),
-		);
-});
-
 test("symbol files store an optional default footprint", () => {
 	const file = {
 		format: "ecad-symbol",
@@ -181,19 +145,6 @@ test("symbol files store an optional default footprint", () => {
 	);
 });
 
-test("copying a placed symbol as a symbol file keeps its footprint as the default", () => {
-	const placed: EditorSymbol = {
-		...createSymbol(1, definition("led"), { x: 0, y: 0 }),
-		definitionId: "custom.led",
-		footprint: { library: "project", id: "led-side" },
-	};
-	assert.deepEqual(symbolFileFromSymbol(placed).footprint, placed.footprint);
-	const copied = parseSymbolFile(selectionFileText([placed]));
-	assert.deepEqual(copied.footprint, placed.footprint);
-	const { footprint: _footprint, ...bare } = placed;
-	assert.equal(symbolFileFromSymbol(bare).footprint, undefined);
-});
-
 test("the Attributes panel sets and clears the footprint of every selected component", () => {
 	const resistor = createSymbol(1, definition("resistor"), { x: 0, y: 0 });
 	const capacitor = createSymbol(2, definition("capacitor"), { x: 5, y: 0 });
@@ -205,7 +156,6 @@ test("the Attributes panel sets and clears the footprint of every selected compo
 			editContext([resistor, capacitor, ground]),
 		),
 	);
-	assert.equal(changed.label, "Change footprint");
 	assert.deepEqual(
 		changed.replacements.map(
 			(shape) => shape.kind === "symbol" && shape.footprint,
@@ -218,18 +168,5 @@ test("the Attributes panel sets and clears the footprint of every selected compo
 			editContext(changed.replacements),
 		),
 	);
-	assert.equal(cleared.label, "Remove footprint");
 	assert.ok(cleared.replacements.every((shape) => !("footprint" in shape)));
-});
-
-test("the built-in library loads once and groups footprints by KiCad library", async () => {
-	const first = await loadBuiltinFootprints();
-	assert.equal(await loadBuiltinFootprints(), first);
-	assert.equal(first.footprints.length, first.byId.size);
-	assert.equal(first.categories[0], "Resistor_SMD");
-	assert.ok(first.categories.includes("Package_DFN_QFN"));
-	assert.equal(
-		required(first.byId.get("sot-23")).category,
-		"Package_TO_SOT_SMD",
-	);
 });

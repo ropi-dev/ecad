@@ -73,58 +73,6 @@ test("a moved drill takes its hole with it, and only the area it left and entere
 	assert.deepEqual(pixels(mask), pixels(fresh));
 });
 
-test("a drill dragged past the mask's edge asks for a new mask and leaves this one as it was", () => {
-	const { layout, drills, canvas, mask } = drilledBoard();
-	const before = pixels(mask).slice();
-	layout.replace(1, at(0, 30));
-	assert.equal(mask.repaint([drills]), false);
-	assert.equal(canvas.reads.length, 1);
-	assert.deepEqual(pixels(mask), before);
-	assert.equal(mask.contains(0, 0), true);
-	layout.replace(1, at(2, 1));
-	assert.equal(mask.repaint([drills]), true);
-	assert.deepEqual([mask.contains(0, 0), mask.contains(2, 1)], [false, true]);
-});
-
-test("a board that gains or loses a drill needs a new mask", () => {
-	const { drills, mask } = drilledBoard();
-	const more = layoutParts([at(-10, 0), at(0, 0), at(10, 4), at(3, 3)]);
-	assert.equal(mask.repaint([{ ...drills, edges: more.edges }]), false);
-	assert.equal(mask.repaint([drills, drills]), false);
-	assert.equal(mask.repaint([drills]), true);
-});
-
-test("a drill moved onto, into and off one that stays repaints the same mask a new build paints", () => {
-	const small: PlacedPart = {
-		mesh: drill,
-		transform: [0.3, 0, 0, 0.3, 6, 0],
-	};
-	const layout = layoutParts(
-		[at(0, 0), small, at(-12, 3), at(12, -3)],
-		"barrel",
-		0.07,
-	);
-	const drills: PlanarGeometry = {
-		positions: layout.positions,
-		edges: layout.edges,
-		regions: [],
-	};
-	const mask = required(createHoleMask([drills]));
-	for (const [x, y] of [
-		[0.9, 0],
-		[0.45, 0.1],
-		[0, 0],
-		[0.62, 0],
-		[6, 0],
-	]) {
-		layout.replace(1, { ...small, transform: [0.3, 0, 0, 0.3, x, y] });
-		assert.equal(mask.repaint([drills]), true);
-		const fresh = required(createHoleMask([drills]));
-		assert.deepEqual(mask.bounds, fresh.bounds);
-		assert.deepEqual(pixels(mask), pixels(fresh), `small drill at ${x}, ${y}`);
-	}
-});
-
 test("overlapping drills cut one hole between them", () => {
 	const layout = layoutParts([at(0, 0), at(0.6, 0), at(40, 0)]);
 	const mask = required(

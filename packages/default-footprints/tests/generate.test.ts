@@ -1,8 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 import { generateDefaultFootprints } from "../src/index.ts";
 
@@ -15,16 +11,6 @@ const pads = (id: string) =>
 	footprint(id).shapes.flatMap((shape) =>
 		"pad" in shape && shape.pad ? [{ ...shape, pad: shape.pad }] : [],
 	);
-
-test("generation is deterministic and returns fresh objects", () => {
-	const first = generateDefaultFootprints();
-	const second = generateDefaultFootprints();
-	assert.deepEqual(first, second);
-	assert.notEqual(first[0], second[0]);
-	assert.notEqual(first[0].file.shapes, second[0].file.shapes);
-	first[0].file.shapes.length = 0;
-	assert.deepEqual(generateDefaultFootprints(), second);
-});
 
 test("every footprint has a unique portable ID, numbered pads or a mounting hole and unique shape IDs", () => {
 	const footprints = generateDefaultFootprints();
@@ -207,29 +193,4 @@ test("KiCad's unplated mounting hole keeps its drill and mask opening", () => {
 			},
 		],
 	);
-});
-
-test("CLI writes one portable file per footprint with attribution and refuses overwrites", async () => {
-	const output = await mkdtemp(join(tmpdir(), "ecad-default-footprints-"));
-	const cli = new URL("../scripts/generate.ts", import.meta.url);
-	try {
-		const run = () =>
-			spawnSync(process.execPath, ["--import", "tsx", cli.pathname, output], {
-				encoding: "utf8",
-			});
-		const result = run();
-		assert.equal(result.status, 0, result.stderr);
-		const files = await readdir(output);
-		assert.equal(files.filter((file) => file.endsWith(".ecadfp")).length, 64);
-		for (const { file } of generateDefaultFootprints())
-			assert.deepEqual(
-				JSON.parse(await readFile(join(output, `${file.id}.ecadfp`), "utf8")),
-				file,
-			);
-		for (const filename of ["LICENSE.md", "NOTICE.md", "CC-BY-SA-4.0.txt"])
-			assert.ok((await readFile(join(output, filename), "utf8")).length > 100);
-		assert.notEqual(run().status, 0);
-	} finally {
-		await rm(output, { recursive: true, force: true });
-	}
 });

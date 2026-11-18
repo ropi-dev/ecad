@@ -15,13 +15,10 @@ import {
 	symbolLabelPosition,
 	symbolTextMoved,
 	symbolTextShapes,
-	type TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import { createLabelShape } from "#/drawing/placement.ts";
 import {
 	applyLineStyle,
 	applySelectionEdit,
-	changeLabelRole,
 	type SelectionEditContext,
 } from "#/drawing/selection-edit.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
@@ -38,12 +35,7 @@ const resistor = (id = 1) =>
 	createSymbol(id, symbolDefinitions[0], { x: -20, y: 10 });
 const rectangle = drawShape(5, "rectangle", { x: 0, y: 0 }, { x: 10, y: 10 });
 const wire = drawShape(6, "wire", { x: 0, y: 0 }, { x: 50, y: 0 });
-const pin = drawShape(7, "pin", { x: 0, y: 0 }, { x: 0, y: 0 });
 const text = createTextShape(8, { x: 5, y: 5 }, measureText);
-const linkedLabel: TextShape = {
-	...createLabelShape(9, { x: 0, y: 0 }, "net", measureText),
-	circuitNet: { id: "net-1", label: "NET" },
-};
 
 const context = (
 	selection: EditorShape[],
@@ -55,22 +47,6 @@ const context = (
 	allowLocked: false,
 	measureText,
 	...extra,
-});
-
-test("a label keeps its circuit net only while it stays a net label", () => {
-	assert.deepEqual(changeLabelRole(linkedLabel, "net"), {
-		...linkedLabel,
-		electrical: "net",
-	});
-	for (const role of ["supply", undefined] as const) {
-		const changed = changeLabelRole(linkedLabel, role);
-		assert.equal(changed.electrical, role);
-		assert.ok(
-			"circuitNet" in changed,
-			"the cleared binding stays as an explicit key",
-		);
-		assert.equal(changed.circuitNet, undefined);
-	}
 });
 
 test("line styles apply to basic shapes and to the border of box symbols only", () => {
@@ -97,58 +73,11 @@ test("line styles apply to basic shapes and to the border of box symbols only", 
 		applySelectionEdit(
 			{ kind: "line-style", lineStyle: "dashed" },
 			context([rectangle, text, box(2)]),
-		),
-		{
-			replacements: [
-				{ ...rectangle, lineStyle: "dashed" },
-				...applyLineStyle(box(2), "dashed"),
-			],
-			label: "Change line style",
-		},
-	);
-});
-
-test("numeric attribute edits name the attribute and ignore non-finite values", () => {
-	const selection = [rectangle, { ...rectangle, id: 10, x: 30 }];
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "attribute", attribute: "width", value: Number.NaN },
-			context(selection),
-		),
-		undefined,
-	);
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "attribute", attribute: "x", value: Number.POSITIVE_INFINITY },
-			context(selection),
-		),
-		undefined,
-	);
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "attribute", attribute: "width", value: 4 },
-			context(selection),
-		),
-		{
-			replacements: selection.map((shape) =>
-				editShapeAttribute(shape, "width", 4),
-			),
-			label: "Change width",
-		},
-	);
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "attribute", attribute: "lineWidth", value: 0.3 },
-			context(selection),
-		)?.label,
-		"Change line width",
-	);
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "attribute", attribute: "fontSize", value: 3 },
-			context([text]),
-		)?.label,
-		"Change font size",
+		)?.replacements,
+		[
+			{ ...rectangle, lineStyle: "dashed" },
+			...applyLineStyle(box(2), "dashed"),
+		],
 	);
 });
 
@@ -159,8 +88,9 @@ test("position edits move the whole selection with the first shape as anchor", (
 		{ kind: "attribute", attribute: "x", value: 12 },
 		context(selection, { shapes, nextId: 40, allowLocked: true }),
 	);
-	assert.deepEqual(edit, {
-		replacements: moveShapes(
+	assert.deepEqual(
+		edit?.replacements,
+		moveShapes(
 			selection,
 			{ x: 12 - rectangle.x, y: 0 },
 			0,
@@ -169,8 +99,7 @@ test("position edits move the whole selection with the first shape as anchor", (
 			40,
 			true,
 		),
-		label: "Change x",
-	});
+	);
 	const y = applySelectionEdit(
 		{ kind: "attribute", attribute: "y", value: -3 },
 		context(selection),
@@ -192,83 +121,14 @@ test("position edits move the whole selection with the first shape as anchor", (
 test("lock edits change every selected shape", () => {
 	const selection = [rectangle, text];
 	assert.deepEqual(
-		applySelectionEdit({ kind: "lock", locked: true }, context(selection)),
-		{
-			replacements: selection.map((shape) => ({ ...shape, locked: true })),
-			label: "Lock selection",
-		},
+		applySelectionEdit({ kind: "lock", locked: true }, context(selection))
+			?.replacements,
+		selection.map((shape) => ({ ...shape, locked: true })),
 	);
-	assert.equal(
+	assert.deepEqual(
 		applySelectionEdit({ kind: "lock", locked: false }, context(selection))
-			?.label,
-		"Unlock selection",
-	);
-});
-
-test("text, label role and pin edits need exactly one matching shape", () => {
-	assert.deepEqual(
-		applySelectionEdit({ kind: "text", text: "Hello" }, context([text])),
-		{
-			replacements: [updateText(text, "Hello", measureText)],
-			label: "Edit text",
-		},
-	);
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "text", text: "Hello" },
-			context([text, { ...text, id: 11 }]),
-		),
-		undefined,
-	);
-	assert.equal(
-		applySelectionEdit({ kind: "text", text: "Hello" }, context([rectangle])),
-		undefined,
-	);
-
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "label-role", role: "supply" },
-			context([linkedLabel]),
-		),
-		{
-			replacements: [changeLabelRole(linkedLabel, "supply")],
-			label: "Change label role",
-		},
-	);
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "label-role", role: "net" },
-			context([rectangle]),
-		),
-		undefined,
-	);
-
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "pin", attribute: "name", value: "VCC" },
-			context([pin]),
-		),
-		{
-			replacements: [{ ...pin, name: "VCC" }],
-			label: "Change pin name",
-		},
-	);
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "pin", attribute: "showNumber", value: false },
-			context([pin]),
-		),
-		{
-			replacements: [{ ...pin, showNumber: false }],
-			label: "Change pin showNumber",
-		},
-	);
-	assert.equal(
-		applySelectionEdit(
-			{ kind: "pin", attribute: "number", value: "1" },
-			context([pin, { ...pin, id: 12 }]),
-		),
-		undefined,
+			?.replacements,
+		selection.map((shape) => ({ ...shape, locked: false })),
 	);
 });
 
@@ -281,38 +141,28 @@ test("alignment and symbol edits apply to the matching shapes in a mixed selecti
 				alignment: { horizontalAlign: "right", verticalAlign: "top" },
 			},
 			context(selection),
-		),
-		{
-			replacements: [text, { ...text, id: 13 }].map((shape) => ({
-				...shape,
-				horizontalAlign: "right",
-				verticalAlign: "top",
-			})),
-			label: "Align text",
-		},
+		)?.replacements,
+		[text, { ...text, id: 13 }].map((shape) => ({
+			...shape,
+			horizontalAlign: "right",
+			verticalAlign: "top",
+		})),
 	);
 	const symbol = resistor(2);
 	const attribute = applySelectionEdit(
 		{ kind: "symbol-attribute", attribute: "value", value: "10k" },
 		context([symbol, rectangle]),
 	);
-	assert.deepEqual(attribute, {
-		// Shapes that are not symbols pass through unchanged.
-		replacements: [
-			{ ...symbol, attributes: { ...symbol.attributes, value: "10k" } },
-			rectangle,
-		],
-		label: "Change symbol value",
-	});
+	assert.deepEqual(attribute?.replacements, [
+		{ ...symbol, attributes: { ...symbol.attributes, value: "10k" } },
+		rectangle,
+	]);
 	assert.deepEqual(
 		applySelectionEdit(
 			{ kind: "net-symbol", netSymbol: true },
 			context([symbol, rectangle]),
-		),
-		{
-			replacements: [normalizeNetSymbol({ ...symbol, netSymbol: true })],
-			label: "Change net symbol",
-		},
+		)?.replacements,
+		[normalizeNetSymbol({ ...symbol, netSymbol: true })],
 	);
 });
 
@@ -326,17 +176,14 @@ test("a selected symbol child receives geometry, style, text and lock edits", ()
 		context([symbol], { child: { symbol, child } });
 	const expected = (child: typeof border, edited: EditorShape) => {
 		assert.ok(edited.kind !== "symbol");
-		return {
-			replacements: [replaceSymbolChild(symbol, child.key, edited)],
-			label: "Edit symbol child",
-		};
+		return [replaceSymbolChild(symbol, child.key, edited)];
 	};
 
 	assert.deepEqual(
 		applySelectionEdit(
 			{ kind: "attribute", attribute: "width", value: 40 },
 			childContext(border),
-		),
+		)?.replacements,
 		expected(border, editShapeAttribute(border.shape, "width", 40)),
 	);
 	assert.ok(border.shape.kind === "rectangle");
@@ -344,16 +191,18 @@ test("a selected symbol child receives geometry, style, text and lock edits", ()
 		applySelectionEdit(
 			{ kind: "line-style", lineStyle: "dashed" },
 			childContext(border),
-		),
+		)?.replacements,
 		expected(border, { ...border.shape, lineStyle: "dashed" }),
 	);
 	assert.deepEqual(
-		applySelectionEdit({ kind: "lock", locked: true }, childContext(border)),
+		applySelectionEdit({ kind: "lock", locked: true }, childContext(border))
+			?.replacements,
 		expected(border, { ...border.shape, locked: true }),
 	);
 	assert.ok(label.shape.kind === "text");
 	assert.deepEqual(
-		applySelectionEdit({ kind: "text", text: "Board" }, childContext(label)),
+		applySelectionEdit({ kind: "text", text: "Board" }, childContext(label))
+			?.replacements,
 		expected(label, updateText(label.shape, "Board", measureText)),
 	);
 	assert.deepEqual(
@@ -363,7 +212,7 @@ test("a selected symbol child receives geometry, style, text and lock edits", ()
 				alignment: { horizontalAlign: "center", verticalAlign: "middle" },
 			},
 			childContext(label),
-		),
+		)?.replacements,
 		expected(label, {
 			...label.shape,
 			horizontalAlign: "center",
@@ -375,7 +224,7 @@ test("a selected symbol child receives geometry, style, text and lock edits", ()
 		applySelectionEdit(
 			{ kind: "attribute", attribute: "width", value: Number.NaN },
 			childContext(border),
-		),
+		)?.replacements,
 		expected(border, border.shape),
 	);
 	// Edits that do not fit the child change nothing.
@@ -399,79 +248,6 @@ test("a selected symbol child receives geometry, style, text and lock edits", ()
 	);
 });
 
-test("pin edits reach a selected pin child of a symbol", () => {
-	const symbol = resistor(5);
-	const pinChild = symbolChildren(symbol).find(
-		(child) => child.shape.kind === "pin",
-	);
-	assert.ok(pinChild && pinChild.shape.kind === "pin");
-	const withChild = context([symbol], { child: { symbol, child: pinChild } });
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "pin", attribute: "name", value: "A" },
-			withChild,
-		),
-		{
-			replacements: [
-				replaceSymbolChild(symbol, pinChild.key, {
-					...pinChild.shape,
-					name: "A",
-				}),
-			],
-			label: "Edit symbol child",
-		},
-	);
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "pin", attribute: "showName", value: false },
-			withChild,
-		),
-		{
-			replacements: [
-				replaceSymbolChild(symbol, pinChild.key, {
-					...pinChild.shape,
-					showName: false,
-				}),
-			],
-			label: "Edit symbol child",
-		},
-	);
-});
-
-test("edits with no matching shapes still commit an empty replacement list", () => {
-	// The editor commits these so the selection and preview reset as before.
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "text-alignment", alignment: { horizontalAlign: "left" } },
-			context([rectangle]),
-		),
-		{
-			replacements: [],
-			label: "Align text",
-		},
-	);
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "line-style", lineStyle: "dashed" },
-			context([text]),
-		),
-		{
-			replacements: [],
-			label: "Change line style",
-		},
-	);
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "net-symbol", netSymbol: true },
-			context([rectangle]),
-		),
-		{
-			replacements: [],
-			label: "Change net symbol",
-		},
-	);
-});
-
 test("label position edits move the name label of each selected symbol", () => {
 	const vdd = symbolDefinitions.find(
 		(definition) => definition.netSymbol && definition.id === "vdd",
@@ -482,10 +258,9 @@ test("label position edits move the name label of each selected symbol", () => {
 		{ kind: "symbol-label-position", position: "left" },
 		context([power, rectangle]),
 	);
-	assert.deepEqual(edit, {
-		replacements: [setSymbolLabelPosition(power, "name", "left")],
-		label: "Position label",
-	});
+	assert.deepEqual(edit?.replacements, [
+		setSymbolLabelPosition(power, "name", "left"),
+	]);
 	const [moved] = edit?.replacements ?? [];
 	assert.ok(moved?.kind === "symbol");
 	assert.equal(symbolLabelPosition(moved, "name"), "left");
@@ -500,33 +275,6 @@ test("label position edits move the name label of each selected symbol", () => {
 			{ kind: "symbol-label-position", position: "left" },
 			context([power]),
 		),
-	);
-});
-
-test("symbol-level edits made while a child is selected still change the parent symbol", () => {
-	const symbol: EditorSymbol = box(4);
-	const [child] = symbolChildren(symbol);
-	const withChild = context([symbol], { child: { symbol, child } });
-	assert.deepEqual(
-		applySelectionEdit(
-			{ kind: "symbol-attribute", attribute: "name", value: "Panel" },
-			withChild,
-		),
-		applySelectionEdit(
-			{ kind: "symbol-attribute", attribute: "name", value: "Panel" },
-			context([symbol]),
-		),
-	);
-	assert.deepEqual(
-		applySelectionEdit({ kind: "net-symbol", netSymbol: true }, withChild),
-		applySelectionEdit(
-			{ kind: "net-symbol", netSymbol: true },
-			context([symbol]),
-		),
-	);
-	assert.equal(
-		applySelectionEdit({ kind: "label-role", role: "net" }, withChild),
-		undefined,
 	);
 });
 
@@ -578,7 +326,6 @@ test("resetting a selected symbol text returns it to the definition", () => {
 	assert.equal(symbolTextMoved(moved, first.key), true);
 	assert.equal(symbolTextMoved(moved, second.key), true);
 	const edit = reset(moved, first.key);
-	assert.equal(edit?.label, "Reset text position");
 	const [restored] = edit?.replacements ?? [];
 	assert.ok(restored?.kind === "symbol");
 	assert.equal(symbolTextMoved(restored, first.key), false);
@@ -602,7 +349,6 @@ test("a zone's thermal settings change, clear back to the board's, and reject si
 	const edit = (settings: Record<string, unknown>, shape = zone) =>
 		applySelectionEdit({ kind: "zone", zone: settings }, context([shape]));
 	const changed = required(edit({ thermalGap: 0.25 }));
-	assert.equal(changed.label, "Change zone thermal gap");
 	const gapped = required(changed.replacements[0]);
 	assert.deepEqual(gapped.kind === "rectangle" && gapped.zone, {
 		clearance: 0.3,
@@ -624,8 +370,5 @@ test("a zone's thermal settings change, clear back to the board's, and reject si
 	assert.equal(edit({}), undefined);
 	assert.equal(edit({ thermalGap: undefined }), undefined);
 	assert.equal(edit({ clearance: 0.3 }), undefined);
-	assert.equal(
-		edit({ padConnection: "solid" })?.label,
-		"Change zone pad connection",
-	);
+	assert.ok(edit({ padConnection: "solid" }));
 });

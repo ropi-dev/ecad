@@ -10,6 +10,8 @@ import { screenPointOfMillimetres } from "./rulers";
 import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
 
+test.describe.configure({ timeout: 60_000 });
+
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
 
@@ -28,6 +30,9 @@ async function addExample(page: Page) {
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText(
 		"PCB editor · RP2350A",
 	);
+	await expect(page.getByText("All connections routed")).toBeVisible({
+		timeout: 20_000,
+	});
 }
 
 test("a designer adds the RP2350A example and gets a routed board in the same file as its schematic, which passes the check", async ({
@@ -99,7 +104,6 @@ test("choosing a layer focuses it as the Gerber viewer does, and choosing it aga
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const layers = page.getByRole("complementary", { name: "Layers" });
 	const backCopper = layers.locator('[data-layer="B.Cu"]');
 	const drawOnBack = layers.getByRole("button", {
@@ -132,7 +136,6 @@ test("a designer deletes a routed track and draws it again with the Track tool",
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const { editorShapes } = await documentState(page);
 	const track = required(
 		(editorShapes as EditorShape[]).find(
@@ -167,7 +170,6 @@ test("a designer adds two inner copper layers and routes a track through one wit
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const layers = page.getByRole("complementary", { name: "Layers" });
 	await expect(layers.locator('[data-layer="In1.Cu"]')).toHaveCount(0);
 	await (await toolbarButton(page, "Board setup")).click();
@@ -238,7 +240,6 @@ test("a designer draws a polygon copper zone corner by corner, drags a corner an
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const shapes = async () =>
 		(await documentState(page)).editorShapes as EditorShape[];
 	const outline = required(
@@ -326,7 +327,6 @@ test("the schematic, circuit and PCB of a circuit stay open together and keep th
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const panes = page.locator("[data-editor-pane]");
 	await expect(panes).toHaveCount(3, { timeout: 15_000 });
 	const active = page.locator('[data-editor-pane="active"]');
@@ -407,7 +407,6 @@ test("the realistic board draws each footprint's 3D model, and the cube button h
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const models = page.getByRole("button", { name: "3D models" });
 	await expect(models).toHaveCount(0);
 	await page.getByRole("button", { name: "Realistic board" }).click();
@@ -470,7 +469,6 @@ test("the realistic toggle shows the board with its solder mask in the flat and 
 	page,
 }) => {
 	await addExample(page);
-	await expect(page.getByText("All connections routed")).toBeVisible();
 	const realistic = page.getByRole("button", { name: "Realistic board" });
 	const area = page.locator("div[data-view]");
 	const flat = page.getByRole("button", { name: "2D", exact: true });

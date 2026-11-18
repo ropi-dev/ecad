@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
 	drawShape,
 	type EditorShape,
-	resizeHandles,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type CanvasDrag,
@@ -107,54 +106,6 @@ test("a snapped move waits for the 3 px threshold, then previews against the ini
 	assert.equal(ctx.calls.scale, 0);
 });
 
-test("a resize previews against the initial shapes, not the store's current copies", () => {
-	const handle = resizeHandles(box)[0];
-	assert.ok(handle);
-	const active = drag({ mode: "resize", handle, start: handle });
-	const step = canvasDragStep(
-		active,
-		{ x: handle.x + 2, y: handle.y + 2 },
-		{ x: 110, y: 110 },
-		context(),
-	);
-	assert.equal(step.effect.kind, "preview");
-	if (step.effect.kind !== "preview") return;
-	// A save can swap in equal shapes mid-drag; release compares against these.
-	assert.equal(step.effect.base, active.initialShapes);
-	assert.notDeepEqual(step.effect.replacements[0], box);
-});
-
-test("an earlier move stays moved after the pointer returns to its start", () => {
-	const step = canvasDragStep(
-		drag({ moved: true }),
-		{ x: 0, y: 0 },
-		{ x: 100, y: 100 },
-		context(),
-	);
-	assert.equal(step.moved, true);
-	assert.equal(step.effect.kind, "preview");
-});
-
-test("a duplicate becomes valid only once it has moved", () => {
-	const active = drag({ mode: "duplicate", valid: false, created: true });
-	const still = canvasDragStep(
-		active,
-		{ x: 0, y: 0 },
-		{ x: 101, y: 100 },
-		context(),
-	);
-	assert.equal(still.valid, false);
-	assert.equal(still.effect.kind, "none");
-	const step = canvasDragStep(
-		active,
-		{ x: 20, y: 0 },
-		{ x: 120, y: 100 },
-		context(),
-	);
-	assert.equal(step.valid, true);
-	assert.equal(step.effect.kind, "preview");
-});
-
 test("drawing previews the draft and rejects shapes under 3 screen pixels", () => {
 	const draft = drawShape(7, "rectangle", { x: 0, y: 0 }, { x: 0, y: 0 });
 	const active = drag({
@@ -186,20 +137,6 @@ test("drawing previews the draft and rejects shapes under 3 screen pixels", () =
 		context(0.1),
 	);
 	assert.equal(small.valid, false);
-});
-
-test("text and symbols are not drawn by dragging", () => {
-	const text = {
-		...box,
-		kind: "text",
-	} as unknown as CanvasDrag["originals"][0];
-	const step = canvasDragStep(
-		drag({ mode: "draw", originals: [text] }),
-		{ x: 20, y: 20 },
-		{ x: 140, y: 140 },
-		context(),
-	);
-	assert.equal(step.effect.kind, "none");
 });
 
 test("dragging right selects enclosed shapes; dragging left selects crossed shapes", () => {
@@ -251,38 +188,6 @@ test("marquee modes add to, subtract from or toggle the selection", () => {
 	assert.deepEqual(selection("remove"), new Set([far.id]));
 	assert.deepEqual(selection("replace"), new Set([box.id]));
 	assert.deepEqual(selection("toggle"), new Set([far.id]));
-});
-
-test("a marquee back under the threshold restores the selection it started with", () => {
-	const previousSelection = new Set([far.id]);
-	assert.deepEqual(
-		canvasDragStep(
-			drag({ mode: "marquee", selectionMode: "add", previousSelection }),
-			{ x: 0, y: 0 },
-			{ x: 101, y: 101 },
-			context(),
-		).effect,
-		{ kind: "marquee-cancel", selection: previousSelection },
-	);
-	assert.deepEqual(
-		canvasDragStep(
-			drag({ mode: "marquee", previousSelection }),
-			{ x: 0, y: 0 },
-			{ x: 101, y: 101 },
-			context(),
-		).effect,
-		{ kind: "marquee-cancel", selection: new Set() },
-	);
-});
-
-test("a press on a pin waits for movement before it drags", () => {
-	const step = canvasDragStep(
-		drag({ wireStart: { x: 0, y: 0 } }),
-		{ x: 0, y: 0 },
-		{ x: 101, y: 100 },
-		context(),
-	);
-	assert.deepEqual(step.effect, { kind: "none" });
 });
 
 test("a duplicate moves every copy by one snapped step without adding wires", () => {

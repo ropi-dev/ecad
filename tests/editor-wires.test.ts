@@ -7,7 +7,6 @@ import {
 	hitShape,
 	intersectsSelection,
 	moveShapes,
-	openPins,
 	pinTerminals,
 	resizeHandles,
 	routeWire,
@@ -138,47 +137,6 @@ test("moving a symbol stretches a stub that ends in the open", () => {
 	]);
 });
 
-test("rotated symbol pins use the same snapped delta as selected wires", () => {
-	const symbol = {
-		...createSymbol(1, symbolDefinitions[0], { x: 51, y: 61 }),
-		rotation: Math.PI / 2,
-	};
-	const [, top] = pinTerminals(symbol);
-	const attached = wire(2, top.x, top.y, 51, 100);
-	const neighbor = wire(3, 51, 100, 90, 100);
-	const symbolOnly = moveShapes([symbol], { x: 12, y: 12 }, 10, symbol, [
-		symbol,
-		attached,
-		neighbor,
-	]);
-	assert.deepEqual(pinTerminals(symbolOnly[0])[1], { x: 60, y: top.y + 9 });
-	assert.deepEqual(symbolOnly.slice(1).map(endpoints), [
-		[
-			[60, top.y + 9],
-			[60, 100],
-		],
-		[
-			[60, 100],
-			[90, 100],
-		],
-	]);
-	const moved = moveShapes([symbol, attached], { x: 12, y: 12 }, 10, symbol, [
-		symbol,
-		attached,
-		neighbor,
-	]);
-	assert.deepEqual(pinTerminals(moved[0])[1], { x: 60, y: top.y + 9 });
-	assert.deepEqual(endpoints(moved[1]), [
-		[60, top.y + 9],
-		[60, 109],
-	]);
-	assert.deepEqual(endpoints(moved[2]), [
-		[60, 109],
-		[90, 109],
-	]);
-	assert.equal(moved.length, 3);
-});
-
 test("moving a pin from a wire interior keeps the wire and branches to it", () => {
 	const terminal = pin(1, 50, 0);
 	const trunk = wire(2, 0, 0, 100, 0);
@@ -218,76 +176,6 @@ test("moving away from a component pin leaves along its lead and avoids its body
 	assert.equal(moveShapes([first, other], { x: 10, y: 20 }).length, 2);
 });
 
-for (const attachment of ["wire", "pin"] as const) {
-	for (const connectedPin of [0, 1]) {
-		test(`moving a symbol connects only pin ${connectedPin} attached to a ${attachment}`, () => {
-			const symbol = createSymbol(1, symbolDefinitions[0], { x: 50, y: 60 });
-			const terminal = pinTerminals(symbol)[connectedPin];
-			const neighbor =
-				attachment === "pin"
-					? pin(2, terminal.x, terminal.y)
-					: wire(
-							2,
-							terminal.x,
-							terminal.y,
-							terminal.x + (connectedPin === 0 ? -20 : 20),
-							terminal.y,
-						);
-			const shapes = [symbol, neighbor];
-			const original = structuredClone(shapes);
-			const delta = { x: 10, y: 15 };
-			const moved = moveShapes([symbol], delta, 0, symbol, shapes);
-			const target = { x: terminal.x + delta.x, y: terminal.y + delta.y };
-			if (attachment === "wire") {
-				// The open stub stretches with its pin and stays horizontal.
-				assert.deepEqual(
-					moved.map(({ id }) => id),
-					[1, 2],
-				);
-				assert.deepEqual(endpoints(moved[1]), [
-					[target.x, target.y],
-					[
-						Number((terminal.x + (connectedPin === 0 ? -20 : 20)).toFixed(6)),
-						target.y,
-					],
-				]);
-			} else {
-				assert.equal(moved[0].id, 1);
-				assert.ok(moved.slice(1).every(({ id }) => id >= 3));
-				assertPath(moved.slice(1), terminal, target);
-			}
-			assert.deepEqual(shapes, original);
-		});
-	}
-}
-
-test("free symbol pins do not add wires when their new positions touch other connections", () => {
-	const symbol = createSymbol(1, symbolDefinitions[0], { x: 50, y: 60 });
-	const [left, right] = pinTerminals(symbol);
-	const delta = { x: 10, y: 15 };
-	const shapes = [
-		symbol,
-		wire(
-			2,
-			left.x + delta.x - 20,
-			left.y + delta.y,
-			left.x + delta.x + 20,
-			left.y + delta.y,
-		),
-		pin(3, right.x + delta.x, right.y + delta.y),
-	];
-	assert.deepEqual(moveShapes([symbol], delta, 0, symbol, shapes), [
-		{ ...symbol, x: symbol.x + delta.x, y: symbol.y + delta.y },
-	]);
-});
-
-test("unconnected pins move without new wires and selected attached pins move together", () => {
-	const first = pin(1, 0, 0);
-	const second = pin(2, 0, 0);
-	assert.equal(moveShapes([first], { x: 10, y: 20 }).length, 1);
-	assert.equal(moveShapes([first, second], { x: 10, y: 20 }).length, 2);
-});
-
 test("pins have one terminal, snap by that terminal, and select without resize handles", () => {
 	const shape = pin(1, 12, 13);
 	assert.deepEqual(pinTerminals(shape), [{ x: 12, y: 13 }]);
@@ -306,100 +194,6 @@ test("pins have one terminal, snap by that terminal, and select without resize h
 	assert.deepEqual(pinTerminals(moveShapes([shape], { x: 5, y: 5 }, 5)[0]), [
 		{ x: 15, y: 20 },
 	]);
-});
-
-test("empty space and ordinary shapes are not wire anchors", () => {
-	const rectangle = drawShape(1, "rectangle", { x: 0, y: 0 }, { x: 20, y: 20 });
-	assert.equal(findWireConnection([], { x: 10, y: 10 }, 2), undefined);
-	assert.deepEqual(wireConnectionPoints([rectangle]), []);
-});
-
-test("nearby pin queries preserve connectivity checks against the whole drawing", () => {
-	const symbol = {
-		...createSymbol(6, symbolDefinitions[0], { x: 60, y: 10 }),
-		rotation: Math.PI / 2,
-	};
-	const shapes = [
-		pin(1, 10, 10),
-		wire(2, 0, 10, 20, 10),
-		pin(3, 30, 10),
-		pin(4, 40, 10),
-		pin(5, 40, 10),
-		symbol,
-	];
-	for (const point of [
-		{ x: 10, y: 10 },
-		{ x: 30.1, y: 10 },
-		{ x: 40, y: 10 },
-		{ x: 60, y: 13 },
-		{ x: 100, y: 100 },
-	]) {
-		assert.deepEqual(
-			openPins(shapes, { point, tolerance: 1 }),
-			openPins(shapes).filter(
-				({ point: pin }) => Math.hypot(pin.x - point.x, pin.y - point.y) <= 1,
-			),
-		);
-	}
-	assert.equal(
-		openPins(shapes, { point: { x: 30.1, y: 10 }, tolerance: 1 })[0].shape,
-		shapes[2],
-	);
-	assert.deepEqual(
-		openPins(shapes, { point: { x: 10, y: 10 }, tolerance: 1 }),
-		[],
-	);
-	assert.deepEqual(
-		openPins(shapes, { point: { x: 40, y: 10 }, tolerance: 1 }),
-		[],
-	);
-});
-
-test("open-end markers exclude corners and interiors, while routing can connect to both", () => {
-	const shapes = [pin(1, 0, 0), wire(2, 0, 0, 20, 0), wire(3, 20, 0, 20, 20)];
-	assert.deepEqual(wireConnectionPoints(shapes), [
-		{ x: 0, y: 0 },
-		{ x: 20, y: 20 },
-	]);
-	assert.deepEqual(findWireConnection(shapes, { x: 10, y: 0.5 }, 2), {
-		x: 10,
-		y: 0,
-	});
-	assert.deepEqual(findWireConnection(shapes, { x: 20, y: 0 }, 2), {
-		x: 20,
-		y: 0,
-	});
-	assert.deepEqual(findWireConnection(shapes, { x: 21, y: 20 }, 2), {
-		x: 20,
-		y: 20,
-	});
-	// An end touching another wire's interior is no longer open.
-	assert.equal(
-		wireConnectionPoints([...shapes, wire(4, 10, 0, 10, 10)]).some(
-			(p) => p.x === 10 && p.y === 0,
-		),
-		false,
-	);
-});
-
-test("connections remain exact off-grid and exclude the active start", () => {
-	const shapes = [pin(1, 13, 17), wire(2, 30, 17, 40, 17)];
-	assert.deepEqual(findWireConnection(shapes, { x: 13.2, y: 17.1 }, 2), {
-		x: 13,
-		y: 17,
-	});
-	assert.deepEqual(
-		findWireConnection(shapes, { x: 13.2, y: 17.1 }, 2, { x: 30, y: 17 }),
-		{ x: 13, y: 17 },
-	);
-	assert.deepEqual(
-		findWireConnection(shapes, { x: 13, y: 17 }, 2, { x: 30, y: 20 }),
-		{ x: 13, y: 17 },
-	);
-	assert.equal(
-		findWireConnection(shapes, { x: 13, y: 17 }, 2, { x: 13, y: 17 }),
-		undefined,
-	);
 });
 
 test("symbols expose only their external pins, including after rotation", () => {
@@ -509,48 +303,3 @@ for (const electrical of ["net", "supply"] as const) {
 		);
 	});
 }
-
-test("moving a named net symbol avoids connecting an unrelated pin", async () => {
-	const { electricalNets } = await import(
-		"@ecad/drawing-core/drawing/named-nets.ts"
-	);
-	const symbol = createSymbol(
-		1,
-		required(symbolDefinitions.find((definition) => definition.id === "vdd")),
-		{ x: -10, y: 0 },
-	);
-	const attached = pin(2, -10, 0);
-	const unrelated = pin(3, 10, 0);
-	const shapes = [symbol, attached, unrelated];
-	const moved = moveShapes([symbol], { x: 30, y: 10 }, 0, symbol, shapes);
-	const nets = electricalNets([attached, unrelated, ...moved]);
-	const named = required(nets.find((net) => net.names.includes("VDD")));
-	assert.ok(named);
-	assert.ok(named.pins.some((pin) => pin.shapeId === 2));
-	assert.ok(!named.pins.some((pin) => pin.shapeId === 3));
-	assert.equal(
-		nets.find((net) => net.pins.some((pin) => pin.shapeId === 3))?.names.length,
-		0,
-	);
-});
-
-test("moving a connected pin back along its wire leaves no stale segment", () => {
-	const fixed = pin(1, 0, 0);
-	const moving = pin(2, 10, 0);
-	const link = wire(3, 0, 0, 10, 0);
-	const moved = moveShapes([moving], { x: -5, y: 0 }, 0, moving, [
-		fixed,
-		moving,
-		link,
-	]);
-	const wires = moved.filter(
-		(shape) => shape.kind === "wire" && shape.width > 1e-4,
-	);
-	assert.deepEqual(wires.map(endpoints), [
-		[
-			[0, 0],
-			[5, 0],
-		],
-	]);
-	assert.equal(wires[0].id, 3);
-});

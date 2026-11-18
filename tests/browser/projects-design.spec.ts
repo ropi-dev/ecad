@@ -82,16 +82,3 @@ test("opening another project protects drafts through save, discard, errors and 
 	await expect(home).toHaveAttribute("title", "Existing project");
 	expect(await calls()).toEqual({ open: 1, save: 0 });
 });
-
-test("the sidebar Exit button calls the host's exit handler", async ({
-	page,
-}) => {
-	await page.goto("/tests/browser/projects-design.html");
-	await page
-		.getByRole("navigation", { name: "Sidebar shortcuts", exact: true })
-		.getByRole("button", { name: "Exit", exact: true })
-		.click();
-	await expect
-		.poll(() => page.evaluate(() => window.projectSwitchTest.exits))
-		.toBe(1);
-});

@@ -1,6 +1,7 @@
 import { electricalNets } from "@ecad/drawing-core/drawing/named-nets.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
-export interface ReferenceNetGroup {
+
+interface ReferenceNetGroup {
 	names: string[];
 	pins: string[];
 }

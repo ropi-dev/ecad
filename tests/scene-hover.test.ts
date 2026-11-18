@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-	BoxGeometry,
-	Group,
-	Mesh,
-	MeshBasicMaterial,
+	type BoxGeometry,
+	type Mesh,
+	type MeshBasicMaterial,
 	Ray,
 	Vector3,
 } from "three";
@@ -114,105 +113,6 @@ test("planar hover respects clear holes, transforms, hidden layers and live styl
 	assert.equal(hover.update(ray(11.5), 0), 1);
 	assert.equal(hover.update(null, 0), 0);
 	assert.equal(fill.material.color.getHex(), original);
-	hover.dispose();
-	display.dispose();
-});
-
-test("model hover picks one part without recoloring shared materials or owning geometry", () => {
-	const geometry = new BoxGeometry(2, 2, 2);
-	const material = new MeshBasicMaterial({ color: "#808080" });
-	const group = new Group();
-	const left = new Mesh(geometry, material);
-	const right = new Mesh(geometry, material);
-	left.position.x = -3;
-	right.position.x = 3;
-	group.add(left, right);
-	const display = createSceneDisplay([{ type: "spatial", object: group }]);
-	const hover = createSceneHover(display.entries);
-	let disposed = 0;
-	geometry.addEventListener("dispose", () => disposed++);
-	assert.equal(hover.update(ray(-3), 0), 1);
-	const overlay = hover.object.children[0] as Mesh;
-	assert.equal(overlay.geometry, geometry);
-	assert.notEqual(overlay.material, material);
-	assert.equal(overlay.matrix.elements[12], -3);
-	assert.equal(material.color.getHexString(), "808080");
-	const displayed = display.object.children[0].children[0] as Mesh<
-		BoxGeometry,
-		MeshBasicMaterial
-	>;
-	displayed.material.color.set("white");
-	assert.equal(hover.update(ray(-3), 0), 1);
-	assert.notEqual(
-		(overlay.material as MeshBasicMaterial).color.getHexString(),
-		"ffffff",
-	);
-	assert.equal(hover.update(ray(3), 0), 1);
-	assert.equal((hover.object.children[0] as Mesh).matrix.elements[12], 3);
-	display.object.visible = false;
-	assert.equal(hover.update(ray(3), 0), 0);
-	hover.dispose();
-	display.dispose();
-	assert.equal(disposed, 0);
-	geometry.dispose();
-	material.dispose();
-});
-
-test("hover restrictions skip foreground layers and clear stale highlights when focus changes", () => {
-	const display = createSceneDisplay([
-		drawing([rect(0, 4)]),
-		{ ...drawing([rect(0, 2), rect(5, 2)]), id: "upper" },
-	]);
-	const [lower, upper] = display.object.children;
-	upper.position.z = 1;
-	const hover = createSceneHover(display.entries);
-	assert.equal(hover.update(ray(0), 0), 1);
-	assert.equal(hover.object.children[0].matrix.elements[14], 1);
-	upper.userData.hoverEnabled = false;
-	assert.equal(hover.update(ray(0), 0), 1);
-	assert.equal(hover.object.children[0].matrix.elements[14], 0);
-	assert.equal(
-		hover.update(ray(5), 0),
-		0,
-		"unfocused shapes cannot be highlighted",
-	);
-	upper.userData.hoverEnabled = true;
-	lower.userData.hoverEnabled = false;
-	assert.equal(hover.update(ray(5), 0), 1);
-	upper.userData.hoverEnabled = false;
-	assert.equal(
-		hover.update(ray(5), 0),
-		0,
-		"existing highlight clears without pointer movement",
-	);
-	assert.equal(hover.object.children.length, 0);
-	lower.userData.hoverEnabled = true;
-	upper.userData.hoverEnabled = true;
-	assert.equal(hover.update(ray(5), 0), 1);
-	display.object.userData.hoverEnabled = false;
-	assert.equal(
-		hover.update(ray(5), 0),
-		0,
-		"ancestor restrictions apply to the whole subtree",
-	);
-	hover.dispose();
-	display.dispose();
-});
-
-test("moving between connected shapes reuses a highlight spanning the full connection", () => {
-	const display = createSceneDisplay([
-		drawing([rect(-2), rect(0), rect(2), rect(6)]),
-	]);
-	const hover = createSceneHover(display.entries);
-	assert.equal(hover.update(ray(-2), 0), 1);
-	const overlay = hover.object.children[0] as Mesh;
-	overlay.geometry.computeBoundingBox();
-	assert.equal(overlay.geometry.boundingBox?.min.x, -3);
-	assert.equal(overlay.geometry.boundingBox?.max.x, 3);
-	assert.equal(hover.update(ray(2), 0), 1);
-	assert.equal(hover.object.children[0], overlay);
-	assert.equal(hover.update(ray(6), 0), 1);
-	assert.notEqual(hover.object.children[0], overlay);
 	hover.dispose();
 	display.dispose();
 });

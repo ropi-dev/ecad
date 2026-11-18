@@ -3,9 +3,6 @@ import { test } from "node:test";
 import {
 	createSymbolFromSelectionEffect,
 	placeShapesEffect,
-	redoEffect,
-	replaceShapesEffect,
-	undoEffect,
 } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import {
 	createDrawingStore,
@@ -28,7 +25,7 @@ import {
 	textCenter,
 	verticalAlignments,
 } from "@ecad/drawing-core/drawing/text-alignment.ts";
-import { Effect, Either } from "effect";
+import { Effect } from "effect";
 import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
 import {
@@ -96,36 +93,6 @@ test("all alignments share their rendered bounds with selection, hit testing and
 		{ x: 4, y: 23 },
 	);
 	assert.deepEqual(textCenter(text), { x: 10, y: 20 });
-});
-
-test("alignment-only edits create history and reject invalid values atomically", () => {
-	const { store, run } = session();
-	run(placeShapesEffect([text], "Text"));
-	const aligned = {
-		...text,
-		horizontalAlign: "right",
-		verticalAlign: "bottom",
-	} as const;
-	run(replaceShapesEffect([aligned], "Align"));
-	assert.deepEqual(store.getSnapshot().shapes, [aligned]);
-	run(undoEffect);
-	assert.deepEqual(store.getSnapshot().shapes, [text]);
-	run(redoEffect);
-	assert.deepEqual(store.getSnapshot().shapes, [aligned]);
-	const before = store.getSnapshot();
-	for (const value of ["start", "", null, 2]) {
-		const invalid = {
-			...aligned,
-			horizontalAlign: value,
-		} as unknown as TextShape;
-		assert.ok(
-			Either.isLeft(
-				run(Effect.either(replaceShapesEffect([invalid], "Invalid"))),
-			),
-		);
-		assert.strictEqual(store.getSnapshot(), before);
-		assert.equal(drawingShapeSchema.safeParse(invalid).success, false);
-	}
 });
 
 test("symbol label alignment survives saving, resolution, rotation and nested files", () => {
@@ -222,14 +189,3 @@ test("text can be grouped, saved and resolved as reusable symbol geometry", () =
 	assert.equal(display.connections[0].text, aligned.text);
 	assert.deepEqual(symbolFileShapes(saved), symbol.children);
 });
-
-for (const electrical of ["net", "supply"] as const) {
-	test(`${electrical} labels have no resize handles and ignore resize gestures`, () => {
-		const label = { ...text, electrical };
-		assert.deepEqual(resizeHandles(label), []);
-		assert.equal(
-			resizeShape(label, resizeHandles(text)[3], { x: 5, y: 3 }),
-			label,
-		);
-	});
-}

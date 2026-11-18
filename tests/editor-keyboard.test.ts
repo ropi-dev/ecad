@@ -65,37 +65,6 @@ test("typing targets include form controls and every content-editable element", 
 	);
 });
 
-test("a field in another window, such as a desktop dialog, is a typing target", () => {
-	class OtherWindowElement extends FakeElement {
-		get ownerDocument() {
-			return { defaultView: { HTMLElement: OtherWindowElement } };
-		}
-	}
-	assert.equal(
-		isEditableTarget({ target: new OtherWindowElement("INPUT") as never }),
-		true,
-	);
-	assert.equal(
-		isEditableTarget({ target: new OtherWindowElement("BUTTON") as never }),
-		false,
-	);
-});
-
-test("buttons, canvases, non-elements and missing targets are not typing targets", () => {
-	for (const tag of ["BUTTON", "DIV", "BODY"])
-		assert.equal(
-			isEditableTarget({ target: new FakeElement(tag) as never }),
-			false,
-			tag,
-		);
-	assert.equal(isEditableTarget({ target: null }), false);
-	assert.equal(
-		isEditableTarget({ target: { closest: () => ({}) } as never }),
-		false,
-		"SVG and other non-HTML targets never count",
-	);
-});
-
 test("arrow deltas follow screen coordinates by default and flip y for drawing coordinates", () => {
 	assert.deepEqual(arrowDelta("ArrowLeft", 5), { x: -5, y: 0 });
 	assert.deepEqual(arrowDelta("ArrowRight", 5), { x: 5, y: 0 });

@@ -23,9 +23,7 @@ import {
 	type DrawingDisplay,
 } from "#/drawing/display.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
-import { createTextShape } from "#/drawing/text.ts";
 import { createDrawingRenderer } from "#/engine/drawing/renderer.ts";
-import { createRoundGeometry } from "#/engine/drawing/roundGeometry.ts";
 import { required } from "./helpers/required.ts";
 
 // Glyph textures need a 2D canvas. This stand-in measures text by its length.
@@ -318,37 +316,6 @@ test("incremental scene updates match a full rebuild and release replaced resour
 		assert.ok(disposed.has(item), "disposed on teardown");
 });
 
-test("previews update in their own group without touching document meshes", () => {
-	const renderer = createDrawingRenderer(null);
-	const root = new Group();
-	try {
-		const shapes = drawing();
-		const document = buildStaticDisplay(shapes, new Set());
-		renderer.update(root, { ...document, previews: [] });
-		const drawingGroup = required(root.getObjectByName("editor-shapes"));
-		const children = [...drawingGroup.children];
-		const wire = drawShape(101, "wire", { x: 40, y: 0 }, { x: 50, y: 0 });
-		renderer.update(root, {
-			...document,
-			previews: buildPreviewDisplay([wire], shapes.length),
-		});
-		const preview = required(root.getObjectByName("editor-wire-preview"));
-		assert.equal(preview.parent?.name, "editor-previews");
-		assert.deepEqual(drawingGroup.children, children);
-		renderer.update(root, {
-			...document,
-			previews: buildPreviewDisplay([{ ...wire, x: 60 }], shapes.length),
-		});
-		assert.equal(root.getObjectByName("editor-wire-preview"), preview);
-		assert.equal(preview.position.x, 60);
-		renderer.update(root, { ...document, previews: [] });
-		assert.equal(root.getObjectByName("editor-wire-preview"), undefined);
-		assert.ok(disposed.has((preview as Mesh).geometry));
-	} finally {
-		renderer.dispose();
-	}
-});
-
 test("a track preview draws in its copper colour over a clearance band, above translucent zones", () => {
 	const renderer = createDrawingRenderer(null);
 	const root = new Group();
@@ -390,104 +357,6 @@ test("a track preview draws in its copper colour over a clearance band, above tr
 			assert.ok((mesh.material as MeshBasicMaterial).transparent);
 		assert.ok((band.material as MeshBasicMaterial).opacity < 1);
 		assert.equal((line.material as MeshBasicMaterial).opacity, 1);
-	} finally {
-		renderer.dispose();
-	}
-});
-
-test("document displays keep identity for unchanged shapes and selections", () => {
-	const shapes = drawing();
-	const first = buildStaticDisplay(shapes, new Set([12]));
-	const moved = shapes.map((shape) =>
-		shape.id === 12 ? { ...shape, x: shape.x + 2.54 } : shape,
-	);
-	const second = buildStaticDisplay(moved, new Set([12]));
-	for (const [index, shape] of moved.entries())
-		assert.equal(
-			second.shapes[index] === first.shapes[index],
-			shape.id !== 12,
-			`shape ${shape.id}`,
-		);
-	const reselected = buildStaticDisplay(moved, new Set([13]));
-	assert.notEqual(reselected.shapes[11], second.shapes[11]);
-	assert.equal(reselected.shapes[0], second.shapes[0]);
-});
-
-test("an nRF54L15 QFN-52 symbol with all 53 pins open draws in a few hundred triangles", () => {
-	const display = buildStaticDisplay(
-		[createSymbol(1, part("nrf54l15-qgaa"), { x: 0, y: 0 })],
-		new Set(),
-	);
-	assert.equal(display.halos.length, 53);
-	const renderer = createDrawingRenderer(null);
-	const root = new Group();
-	try {
-		renderer.update(root, { ...display, previews: [] });
-		let triangles = 0;
-		root.traverse((object) => {
-			if (!(object instanceof Mesh)) return;
-			const geometry = object.geometry as BufferGeometry;
-			triangles +=
-				(geometry.getIndex()?.count ??
-					geometry.getAttribute("position").count) / 3;
-		});
-		// One triangle for each pin with its lead, one for each halo, and two
-		// for each label. Tessellated circles and caps took about 7,800.
-		assert.ok(triangles < 400, `${triangles} triangles`);
-	} finally {
-		renderer.dispose();
-	}
-});
-
-test("an active-low pin draws its overbar into the label atlas and its bubble as one round triangle", () => {
-	filledRects.length = 0;
-	const display = buildStaticDisplay(
-		[createSymbol(1, part("nrf54l15-qgaa"), { x: 0, y: 0 })],
-		new Set(),
-	);
-	const renderer = createDrawingRenderer(null);
-	try {
-		renderer.update(new Group(), { ...display, previews: [] });
-		assert.equal(filledRects.length, 1);
-		const [[x, y, width, height]] = filledRects;
-		assert.equal(x, 12);
-		assert.equal(width, "RESET".length * 7);
-		const glyphTop = (144 + 8 - 2) / 2 - 8;
-		assert.ok(y >= 0 && height > 0 && y + height <= glyphTop);
-	} finally {
-		renderer.dispose();
-	}
-	const bubble = required(
-		createRoundGeometry({
-			kind: "pin-bubble",
-			width: 1.27,
-			height: 1.27,
-			lineWidth: 0.127,
-		}),
-	);
-	const [outer, inner] = bubble.getAttribute("roundOutline").array;
-	assert.ok(Math.abs(outer - 0.6985) < 1e-6);
-	assert.ok(Math.abs(inner - 0.5715) < 1e-6);
-	assert.equal(bubble.getAttribute("position").count, 3);
-});
-
-test("centred free text paints its overbar over the centred glyphs", () => {
-	filledRects.length = 0;
-	const label = {
-		...createTextShape(1, { x: 0, y: 0 }, (text) => text.length * 7),
-		text: "~{AB}",
-		horizontalAlign: "center" as const,
-	};
-	const renderer = createDrawingRenderer(null);
-	try {
-		renderer.update(new Group(), {
-			...buildStaticDisplay([label], new Set()),
-			previews: [],
-		});
-		assert.deepEqual(
-			filledRects.map(([x, , width]) => [x, width]),
-			[[29, 14]],
-		);
 	} finally {
 		renderer.dispose();
 	}

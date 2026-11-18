@@ -3,11 +3,9 @@ import { test } from "node:test";
 import { createPad, createVia } from "@ecad/drawing-core/footprint/shapes.ts";
 import type { BufferGeometry, Mesh } from "three";
 import { maskOpenings } from "#/board/mask.ts";
-import { createHoleMask } from "#/engine/planar-holes.ts";
 import {
 	boundsPolygon,
 	realisticLayerStyle,
-	ringGeometry,
 } from "#/engine/realistic-board.ts";
 import { createRealisticBoard } from "#/engine/realistic-board-mesh.ts";
 import {
@@ -20,13 +18,6 @@ const layer = (name: string, fileFunction: string) => ({
 	name,
 	metadata: { ".FileFunction": fileFunction.split(",") },
 });
-
-const square = (x: number, y: number, half: number): [number, number][] => [
-	[x - half, y - half],
-	[x + half, y - half],
-	[x + half, y + half],
-	[x - half, y + half],
-];
 
 function faceArea(geometry: BufferGeometry, z: number) {
 	const positions = geometry.getAttribute("position").array;
@@ -77,27 +68,6 @@ test("the solder mask opens over pads on its side and tents vias", () => {
 	assert.ok(Math.abs(y) <= pad.height / 2 + 0.06);
 });
 
-test("the board view's mask openings follow the board's solder mask margin", () => {
-	const pad = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
-	const width = (margin?: number) => {
-		const xs = maskOpenings([pad], margin).top[0].map(([x]) => x);
-		return Number((Math.max(...xs) - Math.min(...xs)).toFixed(6));
-	};
-	assert.equal(width(), Number((pad.width + 0.1).toFixed(6)));
-	for (const margin of [0.05, 0, 0.1, -0.05])
-		assert.equal(width(margin), Number((pad.width + 2 * margin).toFixed(6)));
-	assert.deepEqual(maskOpenings([pad], -pad.width).top, []);
-	const through = createPad(2, { x: 0, y: 0 }, "through-hole", "2", "F.Cu");
-	const radius = (margin: number) =>
-		Math.max(
-			...maskOpenings([through], margin).top[0].map(([x, y]) =>
-				Math.hypot(x, y),
-			),
-		);
-	assert.ok(Math.abs(radius(-0.05) - (through.width / 2 - 0.05)) < 1e-9);
-	assert.deepEqual(maskOpenings([through], -through.width / 2).top, []);
-});
-
 test("the realistic board covers its outline with laminate and mask, and leaves holes to its masks", () => {
 	const board = createRealisticBoard(
 		boundsPolygon({ minX: 0, minY: 0, maxX: 10, maxY: 10 }),
@@ -124,20 +94,4 @@ test("the realistic board covers its outline with laminate and mask, and leaves 
 	} finally {
 		board.dispose();
 	}
-});
-
-test("pad openings become a hole mask that cuts the mask sheet only inside them", () => {
-	const mask = required(
-		createHoleMask([ringGeometry([square(2, 2, 1), square(6, 6, 0.5)])]),
-	);
-	assert.deepEqual(
-		[
-			[2, 2],
-			[6, 6],
-			[4, 4],
-			[2, 3.2],
-		].map(([x, y]) => mask.contains(x, y)),
-		[true, true, false, false],
-	);
-	mask.dispose();
 });

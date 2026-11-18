@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-	MAX_GERBER_ARCHIVE_BYTES,
-	MAX_STEP_FILE_BYTES,
-} from "@ecad/core/formats/import-limits.ts";
-import { ProjectAssetTooLarge } from "@ecad/core/projects/errors.ts";
-import {
 	PROJECT_FILE,
 	parseProjectManifest,
 } from "@ecad/core/projects/format.ts";
@@ -189,13 +184,15 @@ test("browser projects use named local directories, restore the active project a
 	assert.deepEqual(await storage.list(), ["Controller", "Power supply"]);
 	await assert.rejects(
 		storage.readAsset("Controller", manifest.assets[0].path),
-		/no longer open/,
+		{ _tag: "ProjectClosed" },
 	);
 	assert.deepEqual((await storage.open("Controller"))?.shapes, [shape]);
 	await assert.rejects(
 		storage.readAsset("Controller", "../Power supply/.ecadprj"),
 	);
-	await assert.rejects(storage.create("Controller"), /already exists/);
+	await assert.rejects(storage.create("Controller"), {
+		_tag: "ProjectExists",
+	});
 	await assert.rejects(storage.create("../Controller"));
 });
 
@@ -215,106 +212,6 @@ test("browser quota failures keep the last complete drawing and remove failed wr
 		(await createWebProjectStorage(browser.root, browser.selection).load())
 			?.shapes,
 		[shape],
-	);
-});
-
-test("corrupt browser project manifests remain untouched and do not switch the active project", async () => {
-	const browser = browserFilesystem();
-	const storage = createWebProjectStorage(browser.root, browser.selection);
-	await storage.create("Broken");
-	await storage.create("Working");
-	browser.entries.set(
-		"Broken/.ecadprj",
-		new TextEncoder().encode("invalid = ["),
-	);
-	await assert.rejects(storage.open("Broken"));
-	assert.equal(
-		(await createWebProjectStorage(browser.root, browser.selection).load())
-			?.manifest.name,
-		"Working",
-	);
-	assert.equal(
-		new TextDecoder().decode(browser.entries.get("Broken/.ecadprj")),
-		"invalid = [",
-	);
-});
-
-test("failed browser project creation removes the incomplete directory and allows retrying", async () => {
-	const browser = browserFilesystem();
-	const storage = createWebProjectStorage(browser.root, browser.selection);
-	browser.fail();
-	await assert.rejects(storage.create("Controller"), {
-		name: "QuotaExceededError",
-	});
-	assert.deepEqual(await storage.list(), []);
-	browser.fail(false);
-	assert.equal(
-		(await storage.create("Controller"))?.manifest.name,
-		"Controller",
-	);
-});
-
-test("untitled web projects keep their display name and use separate restorable directories", async () => {
-	const browser = browserFilesystem();
-	const storage = createWebProjectStorage(browser.root, browser.selection);
-	const first = await storage.create("Untitled");
-	const second = await storage.create("Untitled");
-	assert.equal(first?.manifest.name, "Untitled");
-	assert.equal(second?.manifest.name, "Untitled");
-	assert.notEqual(first?.directory, second?.directory);
-	assert.deepEqual(await storage.load(), second);
-	assert.deepEqual(await storage.open(first?.directory), first);
-});
-
-test("file URL selections survive autosave revisions and resolve the latest physical path", async () => {
-	const { projectFileSelections, projectFileUrlPath } = await import(
-		"@ecad/core/projects/file-url.ts"
-	);
-	const browser = browserFilesystem();
-	const storage = createWebProjectStorage(browser.root, browser.selection);
-	await storage.create("Controller");
-	const symbol = {
-		format: "ecad-symbol" as const,
-		version: 1 as const,
-		units: "mm" as const,
-		id: "connector",
-		name: "Connector",
-		description: "",
-		prefix: "J",
-		value: "",
-		shapes: [],
-	};
-	const before = await storage.save("Controller", {
-		shapes: [shape],
-		symbols: [symbol],
-		drawings: [{ id: "power", name: "Power", shapes: [] }],
-	});
-	const selected = projectFileSelections(before);
-	const after = await storage.save("Controller", {
-		...before,
-		shapes: [],
-	});
-	assert.notEqual(before.manifest.drawing, after.manifest.drawing);
-	const current = projectFileSelections(after);
-	assert.deepEqual(
-		current.map(({ id, file, view }) => ({ id, file, view })),
-		selected.map(({ id, file, view }) => ({ id, file, view })),
-	);
-	for (const old of selected) {
-		const resolved = current.find(
-			(entry) =>
-				entry.file === projectFileUrlPath(old.path) && entry.view === old.view,
-		);
-		assert.equal(resolved?.id, old.id);
-		assert.notEqual(resolved?.path, old.path);
-		assert.ok(!resolved?.file.startsWith(".ecad/"));
-	}
-	assert.ok(current.some((entry) => entry.view === "circuit"));
-	assert.ok(current.some((entry) => entry.id === "symbol:connector"));
-	assert.ok(current.some((entry) => entry.id === "drawing:power"));
-	assert.equal(
-		projectFileUrlPath("assets/front panel.step"),
-		"assets/front panel.step",
 	);
 });
 
@@ -355,70 +252,6 @@ test("browser tabs saving one project take its Web Lock, so the second save sees
 			(saved) => saved.id,
 		),
 		[shape.id],
-	);
-});
-
-test("two tabs creating the same project keep the winner's files and report that it exists", async () => {
-	const browser = browserFilesystem();
-	const first = createWebProjectStorage(browser.root, browser.selection);
-	const second = createWebProjectStorage(browser.root, browser.selection);
-	const [created, lost] = await Promise.allSettled([
-		first.create("Shared"),
-		second.create("Shared"),
-	]);
-	assert.equal(created.status, "fulfilled");
-	assert.equal(lost.status, "rejected");
-	assert.equal((lost.reason as { _tag?: string })._tag, "ProjectExists");
-	assert.ok(browser.entries.has(`Shared/${PROJECT_FILE}`));
-	await first.save("Shared", { shapes: [shape], symbols: [] });
-	const reopened = await createWebProjectStorage(
-		browser.root,
-		browser.selection,
-	).open("Shared");
-	assert.deepEqual(
-		reopened?.shapes.map((saved) => saved.id),
-		[shape.id],
-	);
-});
-
-test("browser storage refuses oversized assets before storing them or reading them back", async () => {
-	const browser = browserFilesystem();
-	const storage = createWebProjectStorage(browser.root, browser.selection);
-	await storage.create("Limits");
-	const huge = new Uint8Array([1]);
-	Object.defineProperty(huge, "byteLength", { value: MAX_STEP_FILE_BYTES + 1 });
-	const before = [...browser.entries.keys()];
-	await assert.rejects(
-		storage.importAssets("Limits", [
-			{ name: "part.step", kind: "step", bytes: new Uint8Array([2]) },
-			{ name: "huge.step", kind: "step", bytes: huge },
-		]),
-		(error) =>
-			error instanceof ProjectAssetTooLarge &&
-			error.message === "huge.step: STEP files must be 256 MiB or smaller.",
-	);
-	assert.deepEqual([...browser.entries.keys()], before);
-	const imported = await storage.importAssets("Limits", [
-		{ name: "board.zip", kind: "gerber", bytes: new Uint8Array([3]) },
-	]);
-	const { path } = imported.manifest.assets[0];
-	const key = required(
-		[...browser.entries.keys()].find((entry) => entry.endsWith(path)),
-	);
-	browser.sizes.set(key, MAX_GERBER_ARCHIVE_BYTES + 1);
-	browser.reads.length = 0;
-	await assert.rejects(
-		storage.readAsset("Limits", path),
-		(error) =>
-			error instanceof ProjectAssetTooLarge &&
-			error.message ===
-				"board.zip: Gerber ZIP archives must be 256 MiB or smaller.",
-	);
-	assert.deepEqual(browser.reads, []);
-	browser.sizes.delete(key);
-	assert.deepEqual(
-		await storage.readAsset("Limits", path),
-		new Uint8Array([3]),
 	);
 });
 

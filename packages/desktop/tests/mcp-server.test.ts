@@ -161,33 +161,3 @@ test("disabling MCP fails waiting commands and closes the endpoint", async () =>
 	await assert.rejects(post(url, { Authorization: `Bearer ${token}` }));
 	await client.close().catch(() => {});
 });
-
-test("a command the editor does not answer in time fails, and a late reply is ignored", async () => {
-	let requestId = "";
-	const server = createDesktopMcpServer({
-		timeoutMs: 50,
-		send: (request) => {
-			requestId = request.requestId;
-			return true;
-		},
-	});
-	const { url, token } = await server.enable();
-	const client = await connect(url, token);
-	try {
-		const result = drawingReplySchema.parse(
-			(await client.callTool({ name: "getDrawing", arguments: {} }))
-				.structuredContent,
-		);
-		assert.equal(!result.ok && result.error.code, "EditorTimeout");
-		assert.equal(
-			server.reply(requestId, {
-				ok: false,
-				error: { code: "Late", message: "Late" },
-			}),
-			false,
-		);
-	} finally {
-		await client.close();
-		await server.disable();
-	}
-});

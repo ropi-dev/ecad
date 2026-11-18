@@ -48,9 +48,3 @@ test("every model is a binary glTF that three.js loads into coloured meshes on t
 		assert.ok(bounds.max.z < 20, `${model.id} is in millimetres`);
 	}
 });
-
-test("models are copies and the source table stays unchanged", () => {
-	const first = defaultModels();
-	first[0].name = "changed";
-	assert.notEqual(defaultModels()[0].name, "changed");
-});

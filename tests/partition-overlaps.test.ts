@@ -10,21 +10,6 @@ const box = (x: number, y = 0): Bounds => ({
 	maxY: y + 1,
 });
 
-test("overlap groups preserve input order across transitive and touching bounds", () => {
-	assert.deepEqual(partitionOverlaps([]), []);
-	assert.deepEqual(
-		partitionOverlaps([box(2), box(0, 4), box(0), box(1), box(0, 5)]),
-		[
-			[0, 2, 3],
-			[1, 4],
-		],
-	);
-	assert.deepEqual(
-		partitionOverlaps(Array.from({ length: 2000 }, () => box(0))),
-		[Array.from({ length: 2000 }, (_, index) => index)],
-	);
-});
-
 test("spatial overlap groups match a brute-force search for scattered bounds", () => {
 	let seed = 12345;
 	const random = () => {

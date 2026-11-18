@@ -5,14 +5,21 @@ import type {
 	EditorSymbol,
 	TextShape,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import { parseSymbolFile } from "#/components/editor/symbolFormat.ts";
+import {
+	parseSymbolFile,
+	SymbolFormatError,
+} from "#/components/editor/symbolFormat.ts";
 import { libraryDefinitions } from "#/drawing/symbol-file.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
 test("every generated default is valid portable geometry and has a reserved built-in ID", () => {
 	for (const { file, texts, category, packaging } of generateDefaultSymbols()) {
-		assert.throws(() => parseSymbolFile(JSON.stringify(file)), /reserved/);
+		assert.throws(
+			() => parseSymbolFile(JSON.stringify(file)),
+			(error) =>
+				error instanceof SymbolFormatError && error.message.includes(file.id),
+		);
 		const custom = { ...file, id: `custom.${file.id}` };
 		assert.deepEqual(parseSymbolFile(JSON.stringify(custom)), custom);
 		const definition = libraryDefinitions([file])[0];

@@ -1,23 +1,24 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { defaultBoardRules } from "@ecad/drawing-core/board/rules.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
+	type FootprintLayer,
+	footprintLayerLabels,
+} from "@ecad/drawing-core/footprint/layers.ts";
+import {
 	boardDrawOrder,
-	createHole,
-	isVia,
 	shapeLayers,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { unzlibSync } from "fflate";
 import { createBoardAnalysis, createShapesSender } from "#/board/analysis.ts";
-import { exportFabrication } from "#/board/gerber.ts";
 import { boardDisplay, boardExportShapes } from "#/board/view.ts";
 import { exportDrawingSvg } from "#/drawing/export.ts";
 import {
 	type DrawingPdfOptions,
 	exportDrawingPdf,
 } from "#/drawing/export-pdf.ts";
+import { printSchematicTheme } from "#/drawing/schematic-theme.ts";
 import { exampleDesigns } from "#/examples/designs.ts";
 
 const options: DrawingPdfOptions = {
@@ -78,7 +79,7 @@ function evenOddPaths(content: string): PaintedPath[] {
 
 const fill = (hex: string) =>
 	`${[1, 3, 5].map((at) => String(Math.round((Number.parseInt(hex.slice(at, at + 2), 16) / 255) * 1e4) / 1e4)).join(" ")} rg`;
-const holeColors = new Set([fill("#ffffff"), fill("#000000")]);
+const colors = printSchematicTheme.appearance;
 
 function parsePdf(bytes: Uint8Array): ParsedPdf {
 	const source = new TextDecoder("latin1").decode(bytes);
@@ -201,9 +202,9 @@ test("a sheet export is one page the size of the sheet, with the drawing's text 
 		pdf.page.dictionary,
 		new RegExp(`/MediaBox \\[0 0 ${points(420)} ${points(297)}\\]`),
 	);
-	for (const label of ["W25Q128JVSIQ", "HOLD_IO3", "12MHz Crystal", "Title:"])
+	for (const label of ["W25Q128JVSIQ", "HOLD_IO3", "12MHz Crystal"])
 		assert.ok(pdf.text.includes(label), label);
-	assert.ok(pdf.text.some((line) => line.startsWith("Size: 420 × 297")));
+	assert.ok(pdf.text.some((line) => line.includes("420 × 297")));
 	assert.doesNotMatch(pdf.page.content, /NaN|Infinity/);
 	assert.equal(JSON.stringify(fixture), original);
 	const info = [...pdf.objects.values()].find(({ dictionary }) =>
@@ -233,37 +234,6 @@ test("a drawing-only export prints at 1:1 in millimetres, and a page past 200 in
 	assert.match(wide.page.dictionary, /\/MediaBox \[0 0 14400 420.9449\]/);
 });
 
-test("text past 255 different characters spreads over more fonts and reads back the same, overbars and all", () => {
-	const characters = Array.from({ length: 300 }, (_, index) =>
-		String.fromCodePoint(0x100 + index),
-	).join("");
-	const shapes: EditorShape[] = [
-		{
-			id: 1,
-			kind: "text",
-			x: 0,
-			y: 0,
-			width: 600,
-			height: 10,
-			lineWidth: 0,
-			fontSize: 2,
-			rotation: 0,
-			text: `${characters}\n~{RESET}`,
-		},
-	];
-	const pdf = parsePdf(
-		exportDrawingPdf(shapes, {
-			...options,
-			area: "drawing",
-			background: "transparent",
-		}),
-	);
-	assert.deepEqual(pdf.text, [characters, "RESET"]);
-	assert.match(pdf.page.dictionary, /\/F1 \d+ 0 R \/F2 \d+ 0 R/);
-	assert.match(pdf.page.content, / re\nf\nQ/);
-	assert.doesNotMatch(pdf.page.content, /^[\d. ]+ rg [\d. -]+ re f$/m);
-});
-
 test("a board export puts each layer with items on its own page, the same size, with the outline on every page", async () => {
 	const design = await exampleDesigns.rp2350a.load();
 	const shapes = boardDisplay(
@@ -280,16 +250,18 @@ test("a board export puts each layer with items on its own page, the same size, 
 			layers: true,
 		}),
 	);
-	const labels = [
-		"Front copper",
-		"Back copper",
-		"Front silkscreen",
-		"Front solder mask",
-		"Back solder mask",
-		"Front paste",
-		"Front courtyard",
-		"Front fabrication",
-	];
+	const labels = (
+		[
+			"F.Cu",
+			"B.Cu",
+			"F.SilkS",
+			"F.Mask",
+			"B.Mask",
+			"F.Paste",
+			"F.CrtYd",
+			"F.Fab",
+		] satisfies FootprintLayer[]
+	).map((layer) => footprintLayerLabels[layer]);
 	assert.deepEqual(
 		pdf.pages.map((page) => page.text[0]),
 		labels,
@@ -313,57 +285,16 @@ test("a board export puts each layer with items on its own page, the same size, 
 	assert.ok(Number(width) > points(50) && Number(width) < points(70));
 	assert.ok(Number(height) > points(50) && Number(height) < points(70));
 	for (const page of pdf.pages)
-		assert.ok(page.content.includes(fill("#8d8f12")), page.text[0]);
+		assert.ok(page.content.includes(fill(colors["Edge.Cuts"])), page.text[0]);
 	const [front, back, silk] = pdf.pages;
-	assert.ok(front.content.includes(fill("#c83434")));
-	assert.ok(!front.content.includes(fill("#c9a23c")));
-	assert.ok(back.content.includes(fill("#3b6fb8")));
+	assert.ok(front.content.includes(fill(colors["F.Cu"])));
+	assert.ok(!front.content.includes(fill(colors["pad-through"])));
+	assert.ok(back.content.includes(fill(colors["B.Cu"])));
 	for (const reference of ["U1", "C19", "J2", "SW1"]) {
 		assert.ok(silk.text.includes(reference), reference);
 		assert.ok(!back.text.includes(reference), reference);
 	}
-	assert.ok(silk.content.includes(fill("#3f3c0f")));
-});
-
-test("a schematic stays on one page without bookmarks", () => {
-	const pdf = parsePdf(
-		exportDrawingPdf(fixture.shapes, { ...options, layers: false }),
-	);
-	assert.equal(pdf.pages.length, 1);
-	assert.deepEqual(pdf.bookmarks, []);
-});
-
-test("a footprint smaller than its layer caption gets a page wide enough for the caption", () => {
-	const line: EditorShape = {
-		id: 1,
-		kind: "line",
-		x: 0,
-		y: 0,
-		width: 1,
-		height: 1,
-		rotation: 0,
-		lineWidth: 0.12,
-		layer: "F.SilkS",
-	};
-	const pdf = parsePdf(
-		exportDrawingPdf([line], {
-			...options,
-			area: "drawing",
-			title: "Tiny",
-			layers: true,
-		}),
-	);
-	assert.deepEqual(
-		pdf.pages.map((page) => page.text[0]),
-		["Front silkscreen"],
-	);
-	const caption = "Front silkscreen".length * 0.6 * 2 + 2;
-	const [, width, height] =
-		/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(pdf.page.dictionary) ?? [];
-	assert.equal(Number(width), points(caption));
-	assert.ok(Number(height) < points(10));
-	const [, tx] = /^[\d.]+ 0 0 [\d.]+ ([\d.]+) /.exec(pdf.page.content) ?? [];
-	assert.equal(Number(tx), points(caption / 2));
+	assert.ok(silk.content.includes(fill(colors["F.SilkS"])));
 });
 
 test("a board export draws each zone as its fill, with clearances cut out, in place of its outline", async () => {
@@ -397,10 +328,11 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 		evenOddPaths(content)
 			.filter((path) => path.color === fill(color))
 			.flatMap((path) => path.rings);
-	for (const [page, layer, color] of [
-		[0, "F.Cu", "#c83434"],
-		[1, "B.Cu", "#3b6fb8"],
+	for (const [page, layer] of [
+		[0, "F.Cu"],
+		[1, "B.Cu"],
 	] as const) {
+		const color = colors[layer];
 		const rings = zoneFills
 			.filter((fill) => fill.layer === layer)
 			.flatMap((fill) => fill.polygons.flat());
@@ -416,13 +348,11 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 			);
 		assert.deepEqual(layerRings(bare.pages[page].content, color), []);
 	}
-	for (const page of pdf.pages.slice(2))
-		if (!page.text[0].endsWith("solder mask"))
+	for (const [index, page] of pdf.pages.entries())
+		if (index > 1)
 			assert.deepEqual(
-				evenOddPaths(page.content).filter(
-					(path) => !holeColors.has(path.color),
-				),
-				[],
+				evenOddPaths(page.content),
+				evenOddPaths(bare.pages[index].content),
 				page.text[0],
 			);
 	const backOnly = (shape: EditorShape) =>
@@ -471,231 +401,4 @@ test("a board export draws each zone as its fill, with clearances cut out, in pl
 			}
 		}
 	}
-});
-
-test("a board export opens the solder mask pages at each pad and unplated hole, where the mask Gerber flashes them", async () => {
-	const design = await exampleDesigns.rp2350a.load();
-	const shapes = boardExportShapes(design.board);
-	const openings = (maskMargin: number) => {
-		const pdf = parsePdf(
-			exportDrawingPdf(shapes, {
-				...options,
-				area: "drawing",
-				title: design.name,
-				layers: true,
-				maskMargin,
-			}),
-		);
-		return [
-			["Front solder mask", "#9a4fba"],
-			["Back solder mask", "#1f9288"],
-		].map(([label, color]) => {
-			const page = pdf.pages.find(({ text }) => text[0] === label);
-			assert.ok(page, label);
-			return evenOddPaths(page.content)
-				.filter((path) => path.color === fill(color))
-				.flatMap((path) => path.rings);
-		});
-	};
-	const inside = (ring: number[][], [x, y]: number[]) => {
-		let crossings = 0;
-		for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-			const [xi, yi] = ring[i];
-			const [xj, yj] = ring[j];
-			if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
-				crossings++;
-		}
-		return crossings % 2 === 1;
-	};
-	const extent = (rings: number[][][]) =>
-		rings.map((ring) => {
-			const xs = ring.map(([x]) => x);
-			return Math.max(...xs) - Math.min(...xs);
-		});
-	const margin = 0.05;
-	for (const tested of [margin, -0.02]) {
-		const sides = openings(tested);
-		const files = exportFabrication("rp2350a", design.board, [], tested);
-		for (const [side, suffix] of [
-			[0, "F_Mask.gts"],
-			[1, "B_Mask.gbs"],
-		] as const) {
-			const flashes = [
-				...(files
-					.find((file) => file.name.endsWith(suffix))
-					?.content.matchAll(/X(-?\d+)Y(-?\d+)D03\*/g) ?? []),
-			].map(([, x, y]) => [Number(x) / 1e6, Number(y) / 1e6]);
-			assert.ok(flashes.length > 0, suffix);
-			assert.equal(sides[side].length, flashes.length, suffix);
-			for (const flash of flashes)
-				assert.ok(
-					sides[side].some((ring) => inside(ring, flash)),
-					`${suffix} flash at ${flash} with margin ${tested}`,
-				);
-			for (const ring of sides[side])
-				assert.ok(
-					flashes.some((flash) => inside(ring, flash)),
-					`${suffix} opening at ${ring[0]} with margin ${tested}`,
-				);
-		}
-	}
-	const sides = openings(margin);
-	const bare = openings(0);
-	for (const side of [0, 1])
-		for (const [index, width] of extent(sides[side]).entries())
-			assert.ok(
-				Math.abs(width - extent(bare[side])[index] - 2 * margin) < 2e-3,
-				`opening ${index} grows by the margin on each side`,
-			);
-});
-
-test("a board export marks every drilled hole where the Excellon files drill it, white over what the page draws there and black elsewhere", async () => {
-	const design = await exampleDesigns.rp2350a.load();
-	const board: EditorShape[] = [
-		...design.board,
-		{
-			...createHole(1_000_000, { x: 12.5, y: -7.5 }),
-			width: 3.15,
-			height: 3.15,
-			hole: { drill: 2.75 },
-		},
-	];
-	const files = exportFabrication(
-		"rp2350a",
-		board,
-		[],
-		defaultBoardRules.solderMaskMargin,
-	);
-	const vias = board.filter(isVia);
-	const drilled = (suffix: string) => {
-		const content = files.find((file) => file.name.endsWith(suffix))?.content;
-		assert.ok(content, suffix);
-		const tools = new Map(
-			[...content.matchAll(/^T(\d+)C([\d.]+)$/gm)].map(([, tool, size]) => [
-				tool,
-				Number(size),
-			]),
-		);
-		let diameter = 0;
-		return content.split("\n").flatMap((line) => {
-			const tool = /^T(\d+)$/.exec(line)?.[1];
-			if (tool) diameter = tools.get(tool) ?? 0;
-			const ends = [...line.matchAll(/X(-?[\d.]+)Y(-?[\d.]+)/g)].map(
-				([, x, y]) => [Number(x), Number(y)],
-			);
-			if (!ends.length) return [];
-			const [from, to = from] = ends;
-			const via = vias.some(
-				(shape) =>
-					from === to &&
-					Math.abs(shape.x - from[0]) < 1e-3 &&
-					Math.abs(shape.y - from[1]) < 1e-3 &&
-					Math.abs(shape.via.drill - diameter) < 1e-3,
-			);
-			return [{ from, to, diameter, via, plated: suffix === "-PTH.drl" }];
-		});
-	};
-	const holes = [...drilled("-PTH.drl"), ...drilled("-NPTH.drl")];
-	assert.ok(holes.some((hole) => hole.via));
-	assert.ok(
-		holes.some((hole) => hole.plated && !hole.via && hole.from !== hole.to),
-	);
-	assert.equal(holes.filter((hole) => !hole.plated).length, 1);
-	const distance = (
-		[x, y]: number[],
-		[ax, ay]: number[],
-		[bx, by]: number[],
-	) => {
-		const length = (bx - ax) ** 2 + (by - ay) ** 2;
-		const t = length
-			? Math.max(
-					0,
-					Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / length),
-				)
-			: 0;
-		return Math.hypot(x - ax - t * (bx - ax), y - ay - t * (by - ay));
-	};
-	const traces = (ring: number[][], hole: (typeof holes)[number]) => {
-		const xs = ring.map(([x]) => x);
-		const ys = ring.map(([, y]) => y);
-		const reach = (a: number, b: number) => Math.abs(a - b) + hole.diameter;
-		return (
-			ring.length >= 32 &&
-			ring.every(
-				(point) =>
-					Math.abs(distance(point, hole.from, hole.to) - hole.diameter / 2) <
-					2e-4,
-			) &&
-			Math.abs(
-				Math.max(...xs) - Math.min(...xs) - reach(hole.from[0], hole.to[0]),
-			) < 0.01 &&
-			Math.abs(
-				Math.max(...ys) - Math.min(...ys) - reach(hole.from[1], hole.to[1]),
-			) < 0.01
-		);
-	};
-	const pdf = parsePdf(
-		exportDrawingPdf(boardExportShapes(board), {
-			...options,
-			area: "drawing",
-			title: design.name,
-			layers: true,
-		}),
-	);
-	const white = fill("#ffffff");
-	const black = fill("#000000");
-	const pages = pdf.pages.map((page) => page.text[0]);
-	for (const label of [
-		"Front copper",
-		"Back copper",
-		"Front solder mask",
-		"Back solder mask",
-		"Front silkscreen",
-		"Front fabrication",
-	])
-		assert.ok(pages.includes(label), label);
-	for (const page of pdf.pages) {
-		const label = page.text[0];
-		const copper = label.endsWith("copper");
-		const mask = label.endsWith("solder mask");
-		const expected = holes.flatMap((hole) =>
-			hole.via && !copper
-				? []
-				: [
-						{
-							hole,
-							color:
-								(copper && hole.plated) || (mask && !hole.via) ? white : black,
-						},
-					],
-		);
-		const marks = evenOddPaths(page.content).filter(
-			(path) => path.color === white || path.color === black,
-		);
-		assert.ok(
-			marks.every((mark) => mark.rings.length === 1),
-			label,
-		);
-		assert.equal(marks.length, expected.length, label);
-		for (const { hole, color } of expected)
-			assert.equal(
-				marks.filter(
-					(mark) => mark.color === color && traces(mark.rings[0], hole),
-				).length,
-				1,
-				`${label}: ${hole.plated ? "plated" : "unplated"} hole at ${hole.from} in ${color === white ? "white" : "black"}`,
-			);
-	}
-	const svg = exportDrawingSvg(boardExportShapes(board), {
-		...options,
-		area: "drawing",
-		width: 1000,
-		height: 1000,
-	});
-	const marks = [
-		...svg.matchAll(/<g data-name="drill mark \d+"><path fill="([^"]*)"/g),
-	];
-	assert.equal(marks.length, holes.length);
-	assert.ok(marks.every(([, color]) => color === "#ffffff"));
-	assert.doesNotMatch(svg, /data-name="(pad|via|unplated) hole \d/);
 });

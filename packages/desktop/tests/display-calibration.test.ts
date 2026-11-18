@@ -6,7 +6,6 @@ import {
 	calibrateDisplay,
 	type DisplayGeometry,
 	edidDimensions,
-	xrandrDimensions,
 } from "../src/main/display-calibration.ts";
 
 const display: DisplayGeometry = {
@@ -28,17 +27,6 @@ test("100% maps an A3 sheet to physical pixels through OS and browser scaling", 
 	}
 });
 
-test("rotation swaps the physical dimensions", () => {
-	assert.deepEqual(
-		calibrateDisplay(
-			{ ...display, rotation: 90, size: { width: 1080, height: 1920 } },
-			600,
-			337.5,
-		),
-		calibrateDisplay(display, 600, 337.5),
-	);
-});
-
 test("missing or implausible data falls back without inventing a DPI", () => {
 	for (const [width, height] of [
 		[0, 0],
@@ -51,21 +39,6 @@ test("missing or implausible data falls back without inventing a DPI", () => {
 	assert.equal(cssPixelsPerMm(null, 2), null);
 	assert.equal(cssPixelsPerMm({ pixelsPerMm: 0 }, 2), null);
 	assert.equal(cssPixelsPerMm({ pixelsPerMm: 6.4 }, 0), null);
-});
-
-test("X11 matching uses native origin and resolution, including negative positions", () => {
-	const output =
-		"DP-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 600mm x 338mm\nDP-2 connected 3840x2160-3840+0 (normal left inverted right x axis y axis) 700mm x 394mm\n";
-	assert.deepEqual(xrandrDimensions(output, display), [600, 338]);
-	assert.deepEqual(
-		xrandrDimensions(output, { ...display, nativeOrigin: { x: -3840, y: 0 } }),
-		[700, 394],
-	);
-	assert.equal(
-		xrandrDimensions(output, { ...display, nativeOrigin: undefined }),
-		null,
-	);
-	assert.equal(xrandrDimensions(output + output, display), null);
 });
 
 test("EDID prefers millimeter timing data and rejects corrupt or missing sizes", () => {

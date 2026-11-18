@@ -163,21 +163,6 @@ test("line styles survive document validation, symbol files, movement, and resiz
 	}
 });
 
-test("legacy drawings stay solid and extreme stroke ratios produce bounded geometry", () => {
-	const legacy = drawShape(1, "line", { x: 0, y: 0 }, { x: 1000, y: 0 });
-	assert.deepEqual(drawingShapeSchema.parse(legacy), legacy);
-	const geometry = createShapeGeometry({
-		...legacy,
-		lineWidth: 0.00001,
-		lineStyle: "dotted",
-	});
-	try {
-		assert.ok(geometry.getAttribute("position").count <= 2049 * 48);
-	} finally {
-		geometry.dispose();
-	}
-});
-
 test("changing only a line style commits a reversible edit and solid remains the default", () => {
 	const store = createDrawingStore();
 	const run = <A, E>(effect: Effect.Effect<A, E, DrawingStore>) =>

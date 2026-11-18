@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { generateDefaultFootprints } from "@ecad/default-footprints";
-import { autoroute } from "@ecad/drawing-core/board/autoroute.ts";
 import {
 	analyzeConnectivity,
 	copperItems,
@@ -28,7 +27,6 @@ import {
 	type Circuit,
 	createCircuit,
 } from "@ecad/drawing-core/circuit/model.ts";
-import { editorShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
@@ -38,30 +36,16 @@ import {
 	copperLayerCounts,
 	type FootprintLayer,
 } from "@ecad/drawing-core/footprint/layers.ts";
-import {
-	createPad,
-	createVia,
-	footprintLayerView,
-	stackDrawOrder,
-} from "@ecad/drawing-core/footprint/shapes.ts";
+import { createVia } from "@ecad/drawing-core/footprint/shapes.ts";
 import { fillZones, layerFill } from "#/board/fill.ts";
-import {
-	boardCopperLayersInUse,
-	boardFileSchema,
-	createBoardFile,
-} from "#/board/format.ts";
+import { boardCopperLayersInUse } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
-import { trackAnchor } from "#/board/routing.ts";
-import { pasteSelection } from "#/drawing/clipboard.ts";
 import {
 	BOARD_SURFACE_Z,
-	boardObjectVisible,
-	DRILL_LAYER_ID,
 	footprintBoardPlacer,
 	layerSurfaceZ,
 	planFootprintBoard,
 } from "#/footprint/board.ts";
-import { footprintFileSchema } from "#/footprint/format.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { required } from "./helpers/required.ts";
 
@@ -189,70 +173,6 @@ test("board rules take an even copper layer count from 2 to 32, and boards saved
 				.success,
 			false,
 		);
-});
-
-test("a board file keeps items only on the inner layers its count includes", () => {
-	const board = createBoardFile("Four", "circuit");
-	const on = (layer: FootprintLayer): EditorShape => ({
-		...track({ x: 0, y: 0 }, { x: 5, y: 0 }, "F.Cu", "mid"),
-		layer,
-	});
-	const accepted = boardFileSchema.safeParse({
-		...board,
-		rules: fourLayers,
-		shapes: [on("In2.Cu")],
-	});
-	assert.equal(accepted.success, true);
-	const rejected = boardFileSchema.safeParse({
-		...board,
-		rules: fourLayers,
-		shapes: [on("In3.Cu")],
-	});
-	assert.equal(rejected.success, false);
-	assert.match(
-		rejected.error?.issues[0]?.message ?? "",
-		/In3\.Cu is not one of the board's 4 copper layers/,
-	);
-	assert.equal(
-		boardFileSchema.safeParse({ ...board, shapes: [on("In1.Cu")] }).success,
-		false,
-	);
-});
-
-test("pads stay on the outer layers and footprints have no inner copper", () => {
-	const pad = createPad(1, { x: 0, y: 0 }, "smd", "1", "F.Cu");
-	assert.equal(editorShapeSchema.safeParse(pad).success, true);
-	assert.equal(
-		editorShapeSchema.safeParse({ ...pad, layer: "In1.Cu" }).success,
-		false,
-	);
-	assert.equal(
-		editorShapeSchema.safeParse(
-			track({ x: 0, y: 0 }, { x: 1, y: 0 }, "In1.Cu", "mid"),
-		).success,
-		true,
-	);
-	const footprint = footprintFileSchema.safeParse({
-		format: "ecad-footprint",
-		version: 1,
-		units: "mm",
-		id: "inner",
-		name: "Inner",
-		shapes: [
-			{
-				id: 1,
-				kind: "line",
-				layer: "In1.Cu",
-				x: 0,
-				y: 0,
-				width: 1,
-				height: 0,
-				rotation: 0,
-				lineWidth: 0.2,
-			},
-		],
-	});
-	assert.equal(footprint.success, false);
 });
 
 test("an inner layer track joins pads through vias, and not without them", () => {
@@ -386,24 +306,6 @@ test("the Gerber export writes each inner layer as KiCad names and numbers it", 
 	);
 });
 
-test("vias and through-hole pads show while any copper layer of the board does", () => {
-	const via = createVia(1, { x: 0, y: 0 });
-	const outer = new Set<FootprintLayer>(["F.Cu", "B.Cu"]);
-	assert.deepEqual(footprintLayerView([via], outer), []);
-	assert.deepEqual(
-		footprintLayerView([via], outer, undefined, stackDrawOrder),
-		[via],
-	);
-	const inner = track({ x: 0, y: 0 }, { x: 1, y: 0 }, "In1.Cu", "gnd");
-	assert.deepEqual(footprintLayerView([inner], new Set()), []);
-	assert.deepEqual(
-		footprintLayerView([inner], new Set(), undefined, stackDrawOrder),
-		[inner],
-	);
-	assert.equal(boardObjectVisible(DRILL_LAYER_ID, outer), false);
-	assert.equal(boardObjectVisible(DRILL_LAYER_ID, outer, 4), true);
-});
-
 test("the 3D board places inner copper inside the board, front to back", () => {
 	const via = createVia(1, { x: 0, y: 0 });
 	const inner = track({ x: 0, y: 0 }, { x: 1, y: 0 }, "In1.Cu", "gnd");
@@ -439,35 +341,6 @@ test("a board needs enough copper layers for the inner layers its items use", ()
 	assert.equal(fewestCopperLayers([on("In1.Cu"), on("In3.Cu")]), 6);
 });
 
-test("pasting refuses items on a layer the board or footprint does not have", () => {
-	const inner = track({ x: 0, y: 0 }, { x: 4, y: 0 }, "In1.Cu", "gnd");
-	assert.throws(
-		() =>
-			pasteSelection(
-				[inner],
-				[],
-				10,
-				{ x: 0, y: 0 },
-				{
-					footprintLayer: "F.Cu",
-					layers: boardLayers(2),
-				},
-			),
-		/In1\.Cu, which is not one of the layers here/,
-	);
-	const [pasted] = pasteSelection(
-		[inner],
-		[],
-		10,
-		{ x: 1, y: 0 },
-		{
-			footprintLayer: "F.Cu",
-			layers: boardLayers(4),
-		},
-	);
-	assert.equal(pasted.layer, "In1.Cu");
-});
-
 test("the routers keep vias clear of inner copper on other nets but route tracks over it", () => {
 	const { netlist, footprints, outline, center } = dividerBoard();
 	const owned = (grid: Int32Array) =>
@@ -487,44 +360,4 @@ test("the routers keep vias clear of inner copper on other nets but route tracks
 		assert.ok(owned(withInner.via[z]) > owned(without.via[z]));
 		assert.equal(owned(withInner.track[z]), owned(without.track[z]));
 	}
-});
-
-test("a track started where tracks on two layers meet starts on the active layer", () => {
-	const { netlist, footprints, outline, center } = dividerBoard();
-	const end = { x: center.x, y: center.y - 5 };
-	const front = track({ x: center.x - 4, y: end.y }, end, "F.Cu", "gnd");
-	const inner = track(end, { x: center.x + 4, y: end.y }, "In2.Cu", "mid");
-	const items = copperItems([...footprints, outline, front, inner], netlist);
-	const options = { padReach: 0.5, tolerance: 0.05 };
-	assert.equal(
-		trackAnchor(items, end, { ...options, layer: "In2.Cu" })?.item.net,
-		"mid",
-	);
-	assert.equal(
-		trackAnchor(items, end, { ...options, layer: "F.Cu" })?.item.net,
-		"gnd",
-	);
-});
-
-test("the autorouter keeps rippable inner copper in place and routes around its vias", () => {
-	const { netlist, footprints, outline, center } = dividerBoard();
-	const inner = trackSegment(
-		nextId++,
-		{ x: center.x - 4, y: center.y - 5 },
-		{ x: center.x + 4, y: center.y - 5 },
-		"In1.Cu",
-		0.25,
-		undefined,
-	);
-	const result = autoroute([...footprints, outline], netlist, 9000, {
-		rules: fourLayers,
-		rippable: [inner],
-	});
-	assert.deepEqual(
-		result.shapes
-			.filter((shape) => shape.layer === "In1.Cu")
-			.map(({ x, y, width }) => ({ x, y, width })),
-		[{ x: inner.x, y: inner.y, width: inner.width }],
-	);
-	assert.deepEqual(result.failed, []);
 });

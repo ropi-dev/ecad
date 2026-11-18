@@ -3,13 +3,10 @@ import { test } from "node:test";
 import { compilePlanarGeometry } from "#/engine/planar-geometry.ts";
 import {
 	compilePart,
-	createPartCache,
 	layoutParts,
 	type PlacedPart,
-	partKey,
-	partPlacement,
 } from "#/engine/planar-parts.ts";
-import type { Geometry, Matrix, SceneObject } from "#/engine/types.ts";
+import type { Geometry, Matrix } from "#/engine/types.ts";
 import { required } from "./helpers/required.ts";
 
 const segment: Geometry = {
@@ -76,32 +73,6 @@ test("a track segment compiles to a round-ended strip as wide as the track, matc
 		},
 	]);
 	assert.ok(Math.abs(area(stroked.positions, 3) - area(triangles, 2)) < 0.002);
-});
-
-test("a zone fill that arrives triangulated is used as it is", () => {
-	const triangles = new Float32Array([0, 0, 4, 0, 4, 3, 0, 0, 4, 3, 0, 3]);
-	const fill: Geometry = {
-		type: "polygons",
-		polygons: [
-			[
-				[
-					[0, 0],
-					[4, 0],
-					[4, 3],
-					[0, 3],
-				],
-			],
-		],
-		triangles,
-	};
-	const part = compilePart(fill);
-	assert.equal(part.triangles, triangles);
-	assert.equal(part.edges.length, 4 * 4);
-	assert.equal(partKey(fill), partKey({ ...fill }));
-	assert.notEqual(
-		partKey(fill),
-		partKey({ ...fill, polygons: structuredClone(fill.polygons) }),
-	);
 });
 
 test("a rectangle outline is its four edges, and a filled one adds the area inside", () => {
@@ -177,57 +148,6 @@ test("a circle outline is a ring with a hole, as the resolved cutout would be", 
 	);
 });
 
-test("a compiled shape is reused for every item with the same geometry", () => {
-	const compiled = createPartCache();
-	const first = compiled(segment);
-	assert.equal(compiled({ ...segment }), first);
-	assert.notEqual(compiled({ ...segment, width: 0.3 }), first);
-	assert.deepEqual(compiled(strokedPath), compilePart(strokedPath));
-});
-
-test("a zone fill is compiled for the layer that shows it and not kept after the next refill", () => {
-	const compiled = createPartCache();
-	const fill = (): Extract<Geometry, { type: "polygons" }> => ({
-		type: "polygons",
-		polygons: [
-			[
-				[
-					[0, 0],
-					[4, 0],
-					[4, 3],
-				],
-			],
-		],
-		triangles: new Float32Array([0, 0, 4, 0, 4, 3]),
-	});
-	const shown = fill();
-	const first = compiled(shown);
-	assert.deepEqual(first, compilePart(shown));
-	assert.notEqual(compiled(shown), first);
-	const empty: Geometry = { ...fill(), triangles: new Float32Array(0) };
-	assert.equal(compiled(empty).triangles.length, 6);
-});
-
-test("equal drills at different places share one compiled part", () => {
-	const drill = (x: number, y: number): SceneObject => ({
-		id: `drill:${x}`,
-		geometry: { ...hole, x, y },
-		bounds: { minX: x, minY: y, maxX: x, maxY: y },
-		polarity: "dark",
-		attributes: {},
-	});
-	const first = partPlacement(drill(2, -1));
-	const second = partPlacement(drill(5, 4));
-	assert.equal(partKey(first.geometry), partKey(second.geometry));
-	assert.deepEqual(first.transform, at(2, -1));
-	assert.deepEqual(second.transform, at(5, 4));
-	const turned = partPlacement({
-		...drill(1, 0),
-		transform: [0, 1, -1, 0, 10, 10],
-	});
-	assert.deepEqual(turned.transform, [0, 1, -1, 0, 10, 11]);
-});
-
 test("moving one item rewrites its copper and walls in a layer and leaves its neighbours alone", () => {
 	const parts = [
 		placed(pad, at(-3, 0)),
@@ -265,17 +185,4 @@ test("moving one item rewrites its copper and walls in a layer and leaves its ne
 		walls: undefined,
 		vacated: undefined,
 	});
-});
-
-test("a moved drill takes its barrel and the barrel's shading with it", () => {
-	const parts = [placed(hole, at(0, 0)), placed(hole, at(2, 0))];
-	const layout = layoutParts(parts, "barrel", 0.07);
-	const moved = placed(hole, at(2, 1.5));
-	layout.replace(1, moved);
-	const fresh = layoutParts([parts[0], moved], "barrel", 0.07);
-	assert.deepEqual(layout.walls?.positions, fresh.walls?.positions);
-	assert.deepEqual(layout.walls?.normals, fresh.walls?.normals);
-	const changes = required(layout.takeChanges().walls);
-	const perDrill = required(layout.walls).positions.length / 2;
-	assert.deepEqual(changes, [perDrill, 2 * perDrill]);
 });

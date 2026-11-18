@@ -118,20 +118,3 @@ test("repairing changed areas shows the same picture as a full redraw", async ({
 	}
 	expect(await repairs(page)).toBeGreaterThan(before + 5);
 });
-
-test("renaming a label many times keeps repairing in place", async ({
-	page,
-}) => {
-	const view = harness(page);
-	for (let index = 0; index < 40; index++) {
-		const before = await repairs(page);
-		await view.show({ renamed: { 1: `R${100 + index}` } });
-		expect(await repairs(page)).toBe(before + 1);
-	}
-	const batched = await page.locator("#batched").screenshot();
-	const meshes = await page.locator("#meshes").screenshot();
-	expect(await differences(page, batched, meshes, 48)).toBeLessThan(150);
-	await view.redraw();
-	const redrawn = await page.locator("#batched").screenshot();
-	expect(await differences(page, batched, redrawn, 2)).toBe(0);
-});

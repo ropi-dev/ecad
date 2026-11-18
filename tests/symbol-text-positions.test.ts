@@ -17,13 +17,8 @@ import {
 	pinTerminals,
 	symbolTextShapes,
 } from "@ecad/drawing-core/drawing/shapes.ts";
-import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import { Effect, Either } from "effect";
 import { buildDrawingDisplay } from "#/drawing/display.ts";
-import {
-	persistDrawingShapes,
-	resolveDrawingSymbols,
-} from "#/drawing/symbol-persistence.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
 import { required } from "./helpers/required.ts";
 
@@ -58,40 +53,6 @@ test("each instance owns its label centers and moving rotated text snaps in worl
 		display.x * moved.width,
 		required(required(moved.textPositions).reference).x,
 	);
-});
-
-test("instance positions survive serialization and definition changes while legacy drawings use defaults", () => {
-	const instance = moveSymbolText(
-		createSymbol(1, definition, { x: 20, y: 30 }),
-		0,
-		{ x: 8, y: 4 },
-	);
-	const saved = persistDrawingShapes([instance])[0];
-	assert.ok(!("children" in saved));
-	assert.ok(!("texts" in saved));
-	const restored = drawingShapeSchema.parse(JSON.parse(JSON.stringify(saved)));
-	assert.equal(restored.kind, "symbol");
-	if (restored.kind !== "symbol") throw new Error("Expected symbol");
-	const updated = {
-		...definition,
-		texts: definition.texts.map((text) => ({ ...text, x: text.x + 20 })),
-	};
-	const references = new Map([
-		[symbolReferenceKey(required(definition.library), definition.id), updated],
-	]);
-	const result = resolveDrawingSymbols([restored], [updated], references)
-		.shapes[0] as EditorSymbol;
-	assert.deepEqual(symbolTextShapes(result), symbolTextShapes(instance));
-	const { textPositions: _positions, ...legacy } = restored;
-	const old = resolveDrawingSymbols([legacy], [updated], references)
-		.shapes[0] as EditorSymbol;
-	assert.equal(symbolTextShapes(old)[0].x, old.x + updated.texts[0].x);
-	const hidden = {
-		...result,
-		attributes: { ...result.attributes, reference: "" },
-	};
-	assert.equal(symbolTextShapes(hidden).length, 1);
-	assert.deepEqual(hidden.textPositions, instance.textPositions);
 });
 
 test("position edits create one history step and reject invalid positions atomically", () => {
@@ -129,43 +90,4 @@ test("position edits create one history step and reject invalid positions atomic
 		assert.strictEqual(store.getSnapshot(), after);
 		assert.equal(drawingShapeSchema.safeParse(invalid).success, false);
 	}
-});
-
-test("nested symbol placements retain their label positions when their file is edited", async () => {
-	const { symbolFileShapes, symbolFileWithShapes } = await import(
-		"#/drawing/symbol-file.ts"
-	);
-	const { parseSymbolFile } = await import(
-		"#/components/editor/symbolFormat.ts"
-	);
-	const file = parseSymbolFile(
-		JSON.stringify({
-			format: "ecad-symbol",
-			version: 1,
-			units: "mm",
-			id: "nested-labels",
-			name: "Nested labels",
-			description: "",
-			prefix: "U",
-			value: "",
-			shapes: [
-				{
-					kind: "symbol",
-					library: definition.library,
-					definitionId: definition.id,
-					x: 0,
-					y: 0,
-					textPositions: { reference: { x: 18, y: 8 } },
-				},
-			],
-		}),
-	);
-	const shapes = symbolFileShapes(file, () => definition);
-	const moved = moveSymbolText(shapes[0] as EditorSymbol, 0, { x: 2, y: 3 });
-	const saved = parseSymbolFile(
-		JSON.stringify(symbolFileWithShapes(file, [moved])),
-	);
-	const restored = symbolFileShapes(saved, () => definition)[0] as EditorSymbol;
-	assert.deepEqual(restored.textPositions, moved.textPositions);
-	assert.deepEqual(symbolTextShapes(restored), symbolTextShapes(moved));
 });

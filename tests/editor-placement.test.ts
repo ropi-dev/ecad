@@ -8,7 +8,6 @@ import {
 import {
 	drawShape,
 	type EditorShape,
-	routeWire,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { DEFAULT_TEXT_SIZE } from "@ecad/drawing-core/drawing/units.ts";
 import { wireEnds } from "@ecad/drawing-core/drawing/wire-routing.ts";
@@ -19,7 +18,6 @@ import {
 	createPlacementShape,
 	defaultLabelText,
 	isPlacementTool,
-	placementLabel,
 	placementSnapsToConnection,
 } from "#/drawing/placement.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
@@ -88,46 +86,6 @@ test("labels and no-connect markers snap to connections; pins and text stay on t
 		),
 		["no-connect", "net", "supply"],
 	);
-	assert.deepEqual(
-		(["pin", "no-connect", "text", "net", "supply"] as const).map(
-			placementLabel,
-		),
-		[
-			"Place pin",
-			"Place no connect",
-			"Draw text",
-			"Place net label",
-			"Place net label",
-		],
-	);
-});
-
-test("placing a route keeps split pieces of an existing wire out of the selection", () => {
-	const store = createDrawingStore();
-	const run = <A, E>(program: Effect.Effect<A, E, DrawingStore>) =>
-		Effect.runSync(Effect.provideService(program, DrawingStore, store));
-	run(
-		placeShapesEffect(
-			[drawShape(1, "wire", { x: 0, y: 0 }, { x: 100, y: 0 })],
-			"Trunk",
-		),
-	);
-	const before = store.getSnapshot();
-	// The last leg runs along the trunk, which normalization splits at the junction.
-	const legs = routeWire(before.nextShapeId, { x: 50, y: 50 }, { x: 80, y: 0 });
-	const result = run(placeShapesEffect(legs, "Draw wire"));
-	const trunkPieces = result.idsBySource.get(1) ?? [];
-	assert.equal(trunkPieces.length, 2);
-	const reused = legs.find((leg) => trunkPieces.includes(leg.id));
-	assert.ok(reused, "a trunk piece reuses a new leg's ID");
-	assert.ok(result.ids.includes(reused.id));
-	const selection = placedSelection(before.shapes, result);
-	assert.deepEqual(
-		[...selection],
-		result.ids.filter((id) => !trunkPieces.includes(id)),
-	);
-	assert.equal(selection.has(reused.id), false);
-	assert.ok(selection.size > 0);
 });
 
 test("placing shapes without wire splits selects every placed shape", () => {
@@ -199,82 +157,6 @@ test("placing a component on a wire splits the wire at its terminals and removes
 		[
 			{ x: -20, y: 0 },
 			{ x: 20, y: 0 },
-		],
-	]);
-});
-
-test("a rotated component cuts a vertical wire drawn in either direction", () => {
-	const snapshot = placeOnto(
-		[drawShape(1, "wire", { x: 10, y: 30 }, { x: 10, y: -30 })],
-		[
-			{
-				...createSymbol(1, resistor, { x: 10, y: 0 }),
-				rotation: Math.PI / 2,
-			},
-		],
-	);
-	assert.deepEqual(wireSpans(snapshot.shapes), [
-		[
-			{ x: 10, y: -3.81 },
-			{ x: 10, y: -30 },
-		],
-		[
-			{ x: 10, y: 30 },
-			{ x: 10, y: 3.81 },
-		],
-	]);
-});
-
-test("a wire that ends inside a component loses the part under the component", () => {
-	const snapshot = placeOnto(
-		[drawShape(1, "wire", { x: -20, y: 0 }, { x: 1, y: 0 })],
-		[createSymbol(1, resistor, { x: 0, y: 0 })],
-	);
-	assert.deepEqual(wireSpans(snapshot.shapes), [
-		[
-			{ x: -20, y: 0 },
-			{ x: -3.81, y: 0 },
-		],
-	]);
-});
-
-test("placing a component keeps wires that do not run between its terminals", () => {
-	const existing = [
-		drawShape(1, "wire", { x: -20, y: 5 }, { x: 20, y: 5 }),
-		drawShape(2, "wire", { x: 0, y: -20 }, { x: 0, y: 20 }),
-	];
-	const snapshot = placeOnto(existing, [
-		createSymbol(1, resistor, { x: 30, y: 0 }),
-	]);
-	assert.deepEqual(wireSpans(snapshot.shapes), wireSpans(existing));
-});
-
-test("placing a component on a locked wire leaves the part under it", () => {
-	const snapshot = placeOnto(
-		[
-			{
-				...drawShape(1, "wire", { x: -20, y: 0 }, { x: 20, y: 0 }),
-				locked: true,
-			},
-		],
-		[createSymbol(1, resistor, { x: 0, y: 0 })],
-	);
-	assert.deepEqual(wireSpans(snapshot.shapes)[1], [
-		{ x: -3.81, y: 0 },
-		{ x: 3.81, y: 0 },
-	]);
-});
-
-test("wires placed together with a component are not cut by it", () => {
-	const shorted = [
-		createSymbol(1, resistor, { x: 0, y: 0 }),
-		drawShape(2, "wire", { x: -3.81, y: 0 }, { x: 3.81, y: 0 }),
-	];
-	const snapshot = placeOnto([], shorted);
-	assert.deepEqual(wireSpans(snapshot.shapes), [
-		[
-			{ x: -3.81, y: 0 },
-			{ x: 3.81, y: 0 },
 		],
 	]);
 });

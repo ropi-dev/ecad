@@ -40,10 +40,3 @@ export async function toolbarButton(page: Page, name: string) {
 	}
 	return page.getByRole("button", { name, exact: true });
 }
-
-export async function toolbarTooltip(page: Page, name: string) {
-	await (await toolbarButton(page, name)).hover();
-	const tooltip = page.getByRole("tooltip");
-	await tooltip.waitFor();
-	return tooltip;
-}

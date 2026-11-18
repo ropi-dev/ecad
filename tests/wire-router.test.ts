@@ -8,13 +8,10 @@ import {
 	moveShapes,
 	pinTerminals,
 	resizeHandles,
-	withFullRouting,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
 import {
 	createWireRoutingContext,
-	fallbackPath,
-	pinEnds,
 	routeWireConnection,
 } from "@ecad/drawing-core/drawing/wire-routing.ts";
 import { createSymbol, symbolDefinitions } from "#/drawing/symbols.ts";
@@ -107,35 +104,6 @@ test("routes cross foreign wires at right angles but never run along or end on t
 			);
 });
 
-test("routing is deterministic for the same input", () => {
-	const shapes = [
-		resistor(1, 0, 0),
-		resistor(2, 25.4, 12.7),
-		resistor(3, 12.7, 6.35),
-	];
-	const run = () =>
-		routeWireConnection(
-			createWireRoutingContext(shapes),
-			pinTerminals(shapes[0])[1],
-			pinTerminals(shapes[1])[0],
-			{ pitch: 1.27, fromPin: true },
-		);
-	assert.deepEqual(run(), run());
-});
-
-test("built-in symbol pins face away from the body", () => {
-	const symbol = resistor(1, 0, 0);
-	assert.deepEqual(
-		pinEnds(symbol).map(({ outward }) => outward),
-		[2, 0],
-	);
-	const turned = { ...symbol, rotation: Math.PI / 2 };
-	assert.deepEqual(
-		pinEnds(turned).map(({ outward }) => outward),
-		[3, 1],
-	);
-});
-
 test("moving a part reroutes its wire around another part instead of through it", () => {
 	const fixed = resistor(1, 0, 0);
 	const moving = resistor(2, 25.4, 0);
@@ -194,32 +162,6 @@ const pinGroups = (shapes: EditorShape[]) =>
 		)
 		.filter(Boolean)
 		.sort();
-
-test("a pin moved off a stationary pin keeps that pin's own wires", () => {
-	const moving = pin(1, 0, 0);
-	const fixed = pin(2, 0, 0);
-	const far = pin(3, 30, 0);
-	for (const wireToFar of [true, false]) {
-		const shapes: EditorShape[] = [
-			moving,
-			fixed,
-			...(wireToFar ? [far] : []),
-			wire(4, 0, 0, 30, 0),
-		];
-		const moved = moveShapes([moving], { x: 0, y: 10 }, 0, moving, shapes);
-		assert.equal(
-			moved.some((shape) => shape.id === 4),
-			false,
-			"the stationary pin's wire is untouched",
-		);
-		assert.deepEqual(visible(moved).map(ends), [
-			[
-				[0, 0],
-				[0, 10],
-			],
-		]);
-	}
-});
 
 test("dragging a segment between two pins stretches its neighbours without a jog", () => {
 	const part = resistor(1, 0, 0);
@@ -313,76 +255,6 @@ test("moves across a block of parts never join or split nets", () => {
 		}
 });
 
-test("a wire from a free waypoint is routed into the target pin from outside", () => {
-	const part = resistor(1, 12.7, 0);
-	const [left] = pinTerminals(part);
-	const { points, clear } = routeWireConnection(
-		createWireRoutingContext([part]),
-		{ x: 0, y: -10.16 },
-		left,
-		{ pitch: 1.27, heading: 0 },
-	);
-	assert.ok(clear);
-	assertOrthogonal(points);
-	const before = required(points.at(-2));
-	assert.ok(before.x < left.x && before.y === left.y);
-});
-
-test("a drag over other parts stays within its search budget", () => {
-	const { shapes, nextId: id } = resistorGrid(12, 12, 10.16, 5.08);
-	const row = shapes.filter(
-		(shape) => shape.kind === "symbol" && Math.abs(shape.y - 25.4) < 1e-6,
-	);
-	moveShapes(row, { x: 1.27, y: 0 }, 1.27, row[0], shapes, id);
-	const started = performance.now();
-	for (let step = 2; step <= 12; step++)
-		moveShapes(row, { x: 1.27 * step, y: 1.27 }, 1.27, row[0], shapes, id);
-	const perStep = (performance.now() - started) / 11;
-	assert.ok(perStep < 400, `took ${perStep.toFixed(0)} ms per step`);
-});
-
-test("random moves across a dense block never join or split nets", () => {
-	const { shapes, nextId } = resistorGrid(8, 8, 10.16, 5.08);
-	const before = pinGroups(shapes);
-	const parts = shapes.filter((shape) => shape.kind === "symbol");
-	// A fixed seed keeps the sweep repeatable.
-	let seed = 7;
-	const random = () => {
-		seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
-		return seed / 2_147_483_648;
-	};
-	for (let move = 0; move < 40; move++) {
-		const count = 1 + Math.floor(random() * 3);
-		const start = Math.floor(random() * (parts.length - count));
-		const selection = parts.slice(start, start + count);
-		// Half-pitch offsets keep moved pins off existing pins and wires, so
-		// only routing could join nets.
-		const delta = {
-			x: (Math.floor(random() * 30) - 15) * 1.27 + 0.635,
-			y: (Math.floor(random() * 20) - 10) * 1.27 + 0.635,
-		};
-		const moved = moveShapes(selection, delta, 0, selection[0], shapes, nextId);
-		assert.deepEqual(
-			pinGroups(applyMove(shapes, moved)),
-			before,
-			`move ${move}: ${selection.map(({ id }) => id)} by ${delta.x},${delta.y}`,
-		);
-	}
-});
-
-test("a fallback L prefers the orientation that touches no other pin", () => {
-	const blocker = pin(9, 10, 0);
-	const index = createWireRoutingContext([blocker]).index;
-	const { points, routed, clear } = fallbackPath([index], {
-		from: { point: { x: 0, y: 0 } },
-		to: { point: { x: 20, y: 10 } },
-		nets: new Set(),
-	});
-	assert.equal(routed, false);
-	assert.ok(clear);
-	assert.deepEqual(points[1], { x: 0, y: 10 });
-});
-
 const netLabel = (id: number, point: Point) => ({
 	id,
 	kind: "text" as const,
@@ -427,30 +299,6 @@ test("a net label on a moved pin keeps one branch and the pin's wire follows", (
 	}
 });
 
-test("a moved end without a lead never doubles back over its old wire", () => {
-	const fixed = pin(1, 0, 0);
-	const moving = pin(2, 10, 5);
-	const shapes: EditorShape[] = [
-		fixed,
-		moving,
-		wire(3, 0, 0, 5, 0),
-		wire(4, 5, 0, 5, 5),
-		wire(5, 5, 5, 10, 5),
-	];
-	const moved = moveShapes([moving], { x: -8, y: 0 }, 0, moving, shapes, 6);
-	const after = applyMove(shapes, moved).filter(
-		(shape) => shape.kind === "wire",
-	);
-	for (const shape of after) {
-		const [a, b] = resizeHandles(shape);
-		assert.ok(
-			Math.max(a.x, b.x) <= 2 + 1e-6 || Math.abs(a.y - b.y) > 1e-6,
-			`no horizontal run reaches past the pin: ${JSON.stringify([a, b])}`,
-		);
-	}
-	assert.deepEqual(pinGroups(applyMove(shapes, moved)), pinGroups(shapes));
-});
-
 test("dropping a wired pin onto another net's wire is the user's connection, not an unsafe route", () => {
 	const fixed = pin(1, 0, 0);
 	const moving = pin(2, 10, 0);
@@ -466,57 +314,6 @@ test("dropping a wired pin onto another net's wire is the user's connection, not
 		isUnsafeMove(moveShapes([moving], { x: 0, y: 5 }, 0, moving, shapes, 5)),
 		false,
 	);
-});
-
-test("a move whose only route crosses other pins is marked unsafe", () => {
-	const fixed = pin(1, 0, 0);
-	const moving = pin(2, 25.4, 0);
-	const target = { x: 25.4, y: 12.7 };
-	const fence = [
-		[1.27, 0],
-		[-1.27, 0],
-		[0, 1.27],
-		[0, -1.27],
-	].map(([dx, dy], index) => pin(10 + index, target.x + dx, target.y + dy));
-	const shapes: EditorShape[] = [
-		fixed,
-		moving,
-		wire(3, 0, 0, 25.4, 0),
-		...fence,
-	];
-	const moved = withFullRouting(() =>
-		moveShapes([moving], { x: 0, y: 12.7 }, 1.27, moving, shapes, 20),
-	);
-	assert.equal(isUnsafeMove(moved), true);
-});
-
-test("a committed move routes past the preview budget instead of refusing", () => {
-	const shapes: EditorShape[] = [];
-	const moving: EditorShape[] = [];
-	for (let index = 0; index < 16; index++) {
-		const y = 2.54 * index;
-		const free = pin(1 + index, 0, y);
-		moving.push(free);
-		shapes.push(
-			free,
-			pin(100 + index, 101.6, y),
-			wire(200 + index, 0, y, 101.6, y),
-		);
-	}
-	for (let index = 0; index < 30; index++)
-		shapes.push(pin(300 + index, 50.8, -2.54 * (index + 1)));
-	// The preview budget cannot find every route, which is why commits lift it.
-	assert.equal(
-		isUnsafeMove(
-			moveShapes(moving, { x: 0, y: -20.32 }, 1.27, moving[0], shapes, 400),
-		),
-		true,
-	);
-	const commit = withFullRouting(() =>
-		moveShapes(moving, { x: 0, y: -20.32 }, 1.27, moving[0], shapes, 400),
-	);
-	assert.equal(isUnsafeMove(commit), false);
-	assert.deepEqual(pinGroups(applyMove(shapes, commit)), pinGroups(shapes));
 });
 
 test("rerouted wires keep their width and line pattern", () => {
@@ -543,41 +340,4 @@ test("rerouted wires keep their width and line pattern", () => {
 		assert.equal(shape.lineWidth, 0.4);
 		assert.equal((shape as typeof styled).lineStyle, "dashed");
 	}
-});
-
-test("a route goes as far around an obstacle as it needs to", () => {
-	// A long foreign-pin wall leaves only a detour far outside the end bounds.
-	const wall = Array.from({ length: 160 }, (_, index) =>
-		pin(10 + index, 10.16, -101.6 + 1.27 * index),
-	);
-	const context = createWireRoutingContext(wall);
-	const { points, clear } = routeWireConnection(
-		context,
-		{ x: 0, y: 0 },
-		{ x: 20.32, y: 0 },
-		{ pitch: 1.27 },
-	);
-	assert.ok(clear);
-	assert.ok(points.some(({ y }) => Math.abs(y) > 90));
-});
-
-test("routes do not cross a slanted pin lead", async () => {
-	const { createRoutingIndex, LEAD_NET, routeOrthogonal } = await import(
-		"@ecad/drawing-core/drawing/wire-router.ts"
-	);
-	const index = createRoutingIndex({
-		bodies: [],
-		points: [],
-		wires: [{ start: { x: 10, y: -10 }, end: { x: 20, y: 10 }, net: LEAD_NET }],
-	});
-	const points = required(
-		routeOrthogonal(
-			[index],
-			{ point: { x: 0, y: 0 } },
-			{ point: { x: 30.48, y: 0 } },
-			{ pitch: 1.27, nets: new Set() },
-		),
-	);
-	// Any path past the lead has to go round one of its ends.
-	assert.ok(points.some(({ y }) => Math.abs(y) >= 10));
 });

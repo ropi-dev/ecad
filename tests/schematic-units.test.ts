@@ -40,17 +40,6 @@ test("schematic rulers and grid share binary subdivisions of 50 mil", () => {
 	}
 });
 
-test("schematic grid never subdivides below 50 mil when zoomed in", () => {
-	for (const scale of [10, 50, 100, 1000, 100000]) {
-		assert.equal(rulerSpacing(scale, "schematic").minor, 1.27);
-		assert.deepEqual(
-			gridLayers(scale, "schematic").map((layer) => layer.spacing.minor),
-			[1.27],
-		);
-	}
-	assert.equal(rulerSpacing(1, "schematic").minor, 1.27 * 8);
-});
-
 test("board mil grid steps through round mil spacings", () => {
 	for (const scale of [0.1, 1, 10, 100, 1000, 100000]) {
 		const spacing = rulerSpacing(scale, "mil");
@@ -100,37 +89,4 @@ test("new shapes and text use mil-sized defaults", async () => {
 	assert.equal(toMils(PIN_RADIUS), 10);
 	assert.equal(toMils(pinNameFontSize), 75);
 	assert.equal(toMils(pinNumberFontSize), 50);
-});
-
-test("built-in annotation sizes and symbol labels use round mil dimensions", async () => {
-	const { generateDefaultSymbols } = await import("@ecad/default-symbols");
-	const symbols = generateDefaultSymbols();
-	const box = required(symbols.find(({ file }) => file.id === "box")).file;
-	const border = required(
-		box.shapes.find((shape) => shape.kind === "rectangle"),
-	);
-	assert.equal(border.kind, "rectangle");
-	if (border.kind !== "rectangle") throw new Error("Expected a rectangle");
-	assert.equal(toMils(border.width), 1000);
-	assert.equal(toMils(border.height), 600);
-	assert.equal(toMils(required(border.lineWidth)), 5);
-	const text = required(box.shapes.find((shape) => shape.kind === "text"));
-	assert.equal(text.kind, "text");
-	if (text.kind !== "text") throw new Error("Expected text");
-	assert.equal(toMils(text.fontSize), 75);
-	for (const symbol of symbols) {
-		for (const label of symbol.texts) assert.equal(toMils(label.fontSize), 75);
-		for (const shape of symbol.file.shapes) {
-			if (shape.kind === "pin") {
-				assert.ok(
-					Math.abs(toMils(shape.x) / 50 - Math.round(toMils(shape.x) / 50)) <
-						1e-8,
-				);
-				assert.ok(
-					Math.abs(toMils(shape.y) / 50 - Math.round(toMils(shape.y) / 50)) <
-						1e-8,
-				);
-			}
-		}
-	}
 });

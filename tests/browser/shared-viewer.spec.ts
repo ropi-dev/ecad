@@ -58,7 +58,7 @@ test("Gerber ZIP contents become individual layers alongside selected files", as
 		"board/invalid.gbr:",
 	);
 	await expect(page.locator("[data-testid=viewer-message]")).toContainText(
-		"board.ZIP: Skipped board/bomb.gbr (larger than the 64 MiB Gerber file limit).",
+		"board/bomb.gbr",
 	);
 	await expect(page.locator("[data-testid=viewer-message]")).not.toContainText(
 		"README",

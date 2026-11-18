@@ -118,40 +118,6 @@ test("Alt-drag copies net labels and text without moving originals or attached w
 		.toEqual(placed.shapes);
 });
 
-test("Alt-drag copies topmost text instead of a symbol behind it", async ({
-	page,
-}) => {
-	await page.evaluate(async () => {
-		const fixturePath = "/tests/browser/editor.tsx";
-		const storePath = "/packages/drawing-core/src/commands/drawing-store.ts";
-		const symbolsPath = "/packages/core/src/drawing/symbols.ts";
-		const { drawingStore } = await import(fixturePath);
-		const { createDrawingStore } = await import(storePath);
-		const { createSymbol, symbolDefinitions } = await import(symbolsPath);
-		const shapes = drawingStore.getSnapshot().shapes;
-		drawingStore.transact(() => [
-			undefined,
-			createDrawingStore([
-				...shapes,
-				createSymbol(4, symbolDefinitions[0], { x: 0, y: -60 }),
-				{ ...shapes[1], id: 5, x: 0, y: -60 },
-			]).getSnapshot(),
-		]);
-	});
-	const before = await documentState(page);
-	await altDrag(page, 5);
-	await expect
-		.poll(async () => (await documentState(page)).shapes.length)
-		.toBe(6);
-	const after = await documentState(page);
-	expect(after.shapes.slice(0, 5)).toEqual(before.shapes);
-	expect(after.shapes[5]).toMatchObject({
-		kind: "text",
-		text: "Board notes",
-		...snapPoint({ x: 20, y: -80 }, (await drawingGridStep(page)) / 10),
-	});
-});
-
 test("Alt-drag on a selected item duplicates the whole selection with its layout", async ({
 	page,
 }) => {

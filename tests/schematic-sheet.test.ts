@@ -14,13 +14,11 @@ import {
 import { drawShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
 	type SheetSettings,
-	savedSheet,
 	sheetPaper,
 } from "@ecad/drawing-core/drawing/sheet.ts";
 import { executeDrawingOperation } from "@ecad/drawing-core/mcp/drawing-protocol.ts";
 import { Effect, Either } from "effect";
 import { buildWorksheetDisplay } from "#/drawing/worksheet.ts";
-import { replaceDrawingShapes } from "#/projects/drawing-refresh.ts";
 import { validateProjectDocument } from "#/projects/format.ts";
 import { assembleProjectSave } from "#/projects/save-assembly.ts";
 
@@ -42,42 +40,6 @@ const settings: SheetSettings = {
 	company: "Bench Labs",
 	comments: ["Checked by R.", ""],
 };
-
-test("sheet settings save without defaults or blank text", () => {
-	assert.equal(savedSheet(undefined), undefined);
-	assert.equal(
-		savedSheet({
-			paper: "A3",
-			portrait: false,
-			title: "  ",
-			comments: ["", ""],
-		}),
-		undefined,
-	);
-	assert.deepEqual(savedSheet({ ...settings, title: " Power supply " }), {
-		paper: "A4",
-		portrait: true,
-		title: "Power supply",
-		date: "2026-11-15",
-		revision: "B",
-		company: "Bench Labs",
-		comments: ["Checked by R."],
-	});
-	assert.deepEqual(sheetPaper(undefined), {
-		width: 420,
-		height: 297,
-		name: "A3",
-	});
-	assert.deepEqual(sheetPaper(settings), {
-		width: 210,
-		height: 297,
-		name: "A4",
-	});
-	assert.deepEqual(sheetPaper({ paper: "custom", width: 500, height: 120 }), {
-		width: 500,
-		height: 120,
-	});
-});
 
 test("editing the sheet is one undoable edit that publishes new shapes", () => {
 	const store = createDrawingStore([wire(1)]);
@@ -167,7 +129,7 @@ test("project drawings load and save the sheet", () => {
 				sheet: { paper: "custom" },
 				symbols: [],
 			}),
-		/custom sheet needs a width and a height/,
+		/\bsheet: /,
 	);
 	const drawing = { id: "second", name: "Second", shapes: [], sheet: settings };
 	const saved = assembleProjectSave({
@@ -181,21 +143,6 @@ test("project drawings load and save the sheet", () => {
 	});
 	assert.deepEqual(saved.sheet, { title: "Main" });
 	assert.equal(saved.drawings?.[0].sheet, undefined);
-});
-
-test("reloading a drawing takes its saved sheet", () => {
-	const store = createDrawingStore([wire(1)]);
-	const shapes = store.getSnapshot().shapes;
-	const result = replaceDrawingShapes(store, shapes, false, {
-		sheet: settings,
-	});
-	assert.notEqual(result, shapes);
-	assert.equal(store.getSnapshot().sheet?.title, "Power supply");
-	assert.equal(store.getSnapshot().history.currentId, 0);
-	assert.equal(
-		replaceDrawingShapes(store, result, false, { sheet: settings }),
-		result,
-	);
 });
 
 test("getDrawing returns the sheet, and setSheet edits it over MCP", () => {

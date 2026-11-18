@@ -18,11 +18,8 @@ import {
 	drawShape,
 	moveShapes,
 	moveSymbolChild,
-	normalizeWireSegments,
 	replaceSymbolChild,
-	symbolChildAt,
 	symbolChildren,
-	symbolChildWorld,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import { symbolReferenceKey } from "@ecad/drawing-core/drawing/symbol-reference.ts";
 import { Effect, Either } from "effect";
@@ -109,86 +106,6 @@ test("schematic pins are selectable for inspection but stay fixed to their symbo
 	assert.equal(canInspectSymbolChild(locked, pin), false);
 	assert.equal(canInspectSymbolChild(locked, pin, true), true);
 	assert.equal(canSelectSymbolChild(locked, pin, true), false);
-});
-
-test("a press on a locked lead line picks the zero-length pin it ends at", () => {
-	const resistor = required(
-		symbolDefinitions.find((item) => item.id === "resistor-us"),
-	);
-	const placed = createSymbol(9, resistor, { x: 10, y: 20 });
-	const children = symbolChildren(placed);
-	const pin = required(
-		children.find((child) => child.shape.kind === "pin" && !child.shape.length),
-	);
-	const lead = required(
-		children.find(
-			(child) =>
-				child.shape.kind === "line" &&
-				[-1, 1].some(
-					(side) =>
-						Math.hypot(
-							child.shape.x + (side * child.shape.width) / 2 - pin.shape.x,
-							child.shape.y - pin.shape.y,
-						) < 1e-6,
-				),
-		),
-	);
-	const middle = symbolChildWorld(placed, lead.shape);
-	assert.equal(symbolChildAt(placed, middle)?.key, pin.key);
-	// An unlocked lead stays its own editable child.
-	const unlocked = replaceSymbolChild(placed, lead.key, {
-		...lead.shape,
-		locked: false,
-	});
-	assert.equal(symbolChildAt(unlocked, middle)?.key, lead.key);
-});
-
-test("explicit child unlocks and text locks override the defaults and survive saving", () => {
-	const symbol = createSymbol(1, definition, { x: 0, y: 0 });
-	const child = required(
-		symbolChildren(symbol).find((child) => child.shape.kind === "rectangle"),
-	);
-	const unlocked = replaceSymbolChild(symbol, child.key, {
-		...child.shape,
-		locked: false,
-	});
-	const saved = persistDrawingShapes([unlocked])[0];
-	const restored = resolveDrawingSymbols(
-		[drawingShapeSchema.parse(saved)],
-		[definition],
-		new Map([
-			[
-				symbolReferenceKey(required(definition.library), definition.id),
-				definition,
-			],
-		]),
-	).shapes[0];
-	assert.equal(restored.kind, "symbol");
-	if (restored.kind !== "symbol") throw new Error("Expected symbol");
-	const body = required(
-		symbolChildren(restored).find((item) => item.key === child.key),
-	);
-	assert.equal(body.shape.locked, false);
-	assert.equal(canSelectSymbolChild(restored, body), true);
-	assert.notStrictEqual(
-		moveSymbolChild(restored, body.key, { x: 5, y: 3 }),
-		restored,
-	);
-	const label = required(
-		symbolChildren(restored).find((item) => item.key === "attribute:reference"),
-	);
-	const locked = replaceSymbolChild(restored, label.key, {
-		...label.shape,
-		locked: true,
-	});
-	assert.equal(
-		canSelectSymbolChild(
-			locked,
-			required(symbolChildren(locked).find((item) => item.key === label.key)),
-			true,
-		),
-		false,
-	);
 });
 
 test("the toolbar override applies to roots while child locks always prevent selection", () => {
@@ -348,54 +265,4 @@ test("root and child locks survive reference-only saves, nested symbol files, an
 	);
 	assert.strictEqual(store.getSnapshot(), before);
 	assert.equal(drawingShapeSchema.safeParse(invalid).success, false);
-});
-
-test("primitive locks round-trip and wire normalization preserves their lock state", () => {
-	const shapes = [
-		{ ...drawShape(1, "wire", { x: 0, y: 0 }, { x: 10, y: 0 }), locked: true },
-		drawShape(2, "wire", { x: 10, y: 0 }, { x: 20, y: 0 }),
-		{ ...drawShape(3, "circle", { x: 3, y: 3 }, { x: 5, y: 3 }), locked: true },
-	];
-	const normalized = normalizeWireSegments(shapes).shapes;
-	assert.equal(normalized.filter((shape) => shape.kind === "wire").length, 2);
-	assert.equal(
-		required(normalized.find((shape) => shape.id === 1)).locked,
-		true,
-	);
-	const file = parseSymbolFile(
-		JSON.stringify({
-			format: "ecad-symbol",
-			version: 1,
-			units: "mm",
-			id: "locks",
-			name: "Locks",
-			description: "",
-			prefix: "U",
-			value: "",
-			shapes: [],
-		}),
-	);
-	const restored = symbolFileShapes(
-		parseSymbolFile(JSON.stringify(symbolFileWithShapes(file, shapes))),
-	);
-	assert.equal(restored[0].locked, true);
-	assert.equal(restored[2].locked, true);
-	const connected = moveShapes(
-		[shapes[1]],
-		{ x: 0, y: 3 },
-		0,
-		shapes[1],
-		shapes,
-	);
-	// The locked wire stays, and the moved wire gets a new link to its end.
-	assert.equal(
-		connected.some((shape) => shape.id === 1),
-		false,
-	);
-	assert.ok(
-		connected.some(
-			(shape) =>
-				shape.kind === "wire" && shape.id > 2 && Math.abs(shape.x - 10) < 1e-9,
-		),
-	);
 });

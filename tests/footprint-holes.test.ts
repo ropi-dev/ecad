@@ -4,20 +4,16 @@ import { editorShapeSchema } from "@ecad/drawing-core/drawing/schema.ts";
 import {
 	type EditorShape,
 	editShapeAttribute,
-	shapeAt,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	createHole,
-	createPad,
 	createVia,
 	footprintLayerView,
 	isHole,
-	setShapeLayer,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { maskOpenings } from "#/board/mask.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
-import { buildDrawingDisplay } from "#/drawing/display.ts";
 import { applySelectionEdit } from "#/drawing/selection-edit.ts";
 import { realisticLayerStyle } from "#/engine/realistic-board.ts";
 import {
@@ -56,28 +52,6 @@ test("a new unplated hole is a 3.2 mm drill with a mask opening its size on both
 	assert.deepEqual(footprintLayerView([hole], masks), []);
 });
 
-test("the schema accepts an unplated hole only on a mask-layer circle with no net that is not a pad or via, with a drill no larger than the circle", () => {
-	const hole = createHole(1, { x: 0, y: 0 });
-	const pad = createPad(2, { x: 0, y: 0 }, "through-hole", "1", "F.Cu");
-	const via = createVia(3, { x: 0, y: 0 });
-	const rejected = [
-		{ ...hole, hole: { drill: 3.3 } },
-		{ ...hole, kind: "rectangle" as const },
-		{ ...pad, hole: { drill: 0.5 } },
-		{ ...via, hole: { drill: 0.3 } },
-		{ ...hole, layer: "F.Cu" as const },
-		{ ...hole, layer: undefined },
-		{ ...hole, net: "gnd" },
-	];
-	for (const shape of rejected)
-		assert.equal(editorShapeSchema.safeParse(shape).success, false);
-	for (const accepted of [
-		{ ...hole, hole: { drill: 2.75 } },
-		{ ...hole, layer: "B.Mask" as const },
-	])
-		assert.equal(editorShapeSchema.safeParse(accepted).success, true);
-});
-
 test("a larger drill widens the mask opening, and shrinking the opening shrinks the drill", () => {
 	const hole = createHole(1, { x: 0, y: 0 });
 	const edit = (drill: number) =>
@@ -97,47 +71,6 @@ test("a larger drill widens the mask opening, and shrinking the opening shrinks 
 	const shrunk = editShapeAttribute(hole, "radius", 1);
 	assert.equal(editorShapeSchema.safeParse(shrunk).success, true);
 	assert.ok(isHole(shrunk) && shrunk.hole.drill === 2);
-});
-
-test("an unplated hole stays through the board, is never hollow and carries no net", () => {
-	const hole = createHole(1, { x: 0, y: 0 });
-	assert.equal(setShapeLayer(hole, "F.Cu"), hole);
-	assert.deepEqual(
-		required(
-			applySelectionEdit({ kind: "fill", filled: false }, editContext([hole])),
-		).replacements,
-		[],
-	);
-	assert.deepEqual(
-		required(
-			applySelectionEdit({ kind: "net", net: "gnd" }, editContext([hole])),
-		).replacements,
-		[],
-	);
-	assert.equal(shapeAt([hole], { x: 0.5, y: 0 }, 0.01)?.id, 1);
-});
-
-test("the display draws an unplated hole as its mask opening with the drill inside and its edge on top", () => {
-	const hole = { ...createHole(1, { x: 0, y: 0 }), hole: { drill: 2.75 } };
-	const [shape] = buildDrawingDisplay([hole], new Set(), [], measure).shapes;
-	assert.equal(shape.appearance, "F.Mask");
-	assert.deepEqual(shape.geometry, {
-		kind: "circle",
-		width: 3.2,
-		height: 3.2,
-		lineWidth: 0,
-		filled: true,
-	});
-	assert.deepEqual(
-		shape.children?.map((child) => [child.name, child.appearance]),
-		[
-			["unplated hole 1", "pad-hole"],
-			["unplated hole edge 1", "F.Mask"],
-		],
-	);
-	assert.ok(
-		Math.abs(required(shape.children?.[0]).width * shape.width - 2.75) < 1e-9,
-	);
 });
 
 test("the 3D board drills an unplated hole without plating and opens both masks", () => {

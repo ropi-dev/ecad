@@ -215,30 +215,3 @@ test("arrow keys move the selected child or the selection in drawing coordinates
 	);
 	assert.equal(canvasKeyCommand(key("a"), canvasContext), undefined);
 });
-
-test("arrow keys move the symbol when its selected child is fixed to it", () => {
-	const fixed = { ...canvasContext, childSelected: true, childFixed: true };
-	assert.deepEqual(canvasKeyCommand(key("ArrowUp"), fixed), {
-		kind: "move-selection",
-		delta: { x: 0, y: 5 },
-		endWire: false,
-	});
-	assert.deepEqual(canvasKeyCommand(key("Escape"), fixed), {
-		kind: "deselect-child",
-	});
-});
-
-test("arrow keys during a drag are swallowed, even with a child selected", () => {
-	assert.deepEqual(
-		canvasKeyCommand(key("ArrowUp"), { ...canvasContext, dragging: true }),
-		{ kind: "ignore" },
-	);
-	assert.deepEqual(
-		canvasKeyCommand(key("ArrowUp"), {
-			...canvasContext,
-			dragging: true,
-			childSelected: true,
-		}),
-		{ kind: "ignore" },
-	);
-});

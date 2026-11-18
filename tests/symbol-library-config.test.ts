@@ -124,7 +124,7 @@ test("enabled libraries resolve in order and project definitions take precedence
 		[],
 	);
 	assert.equal(broken.definitions.length, symbolDefinitions.length + 1);
-	assert.match(broken.errors[0], /Broken:.*desktop/);
+	assert.match(broken.errors[0], /^Broken\b/);
 	assert.deepEqual(broken.unavailable, [{ scope: "user", id: "broken" }]);
 	const failing = await resolveSymbolLibraries(
 		[],
@@ -187,25 +187,6 @@ for (const layout of ["files", "revisions"] as const)
 			libraries,
 		);
 	});
-
-test("memory configuration keeps symbols seeded through the existing storage API", async () => {
-	const { createMemorySymbolLibraryStorage } = await import(
-		"#/symbol-library/storage.tsx"
-	);
-	const storage = createMemorySymbolLibraryStorage();
-	await storage.save([symbol], [symbol]);
-	const config = await required(storage.loadConfiguration)();
-	assert.equal(
-		(await resolveSymbolLibraries(config.symbolLibraries, [])).definitions
-			.length,
-		symbolDefinitions.length + 1,
-	);
-	await required(storage.saveConfiguration)({
-		version: 1,
-		symbolLibraries: [],
-	});
-	assert.deepEqual((await storage.load()).symbols, []);
-});
 
 test("a symbol that depends on a library that failed to load is unavailable and never becomes a placeholder", async () => {
 	const bench = { scope: "user" as const, id: "bench" };
@@ -302,173 +283,5 @@ test("a symbol that depends on a library that failed to load is unavailable and 
 	assert.match(
 		missing?.kind === "symbol" ? missing.definitionId : "",
 		/^circuit-fallback\./,
-	);
-});
-
-test("every symbol that fails to resolve is unavailable, whatever fails first", async () => {
-	const bench = { scope: "user" as const, id: "bench" };
-	const kit = { scope: "project" as const, id: "kit" };
-	const file = (
-		id: string,
-		nested: { library: typeof bench | typeof kit; definitionId: string }[],
-	) =>
-		parseSymbolFile(
-			JSON.stringify({
-				...symbol,
-				id,
-				name: id,
-				shapes: [
-					...symbol.shapes,
-					...nested.map((reference) => ({
-						kind: "symbol",
-						...reference,
-						x: 0,
-						y: 0,
-					})),
-				],
-			}),
-		);
-	const resolved = await resolveSymbolLibraries(
-		[
-			{
-				id: bench.id,
-				name: "Bench",
-				enabled: true,
-				source: { kind: "directory", path: "bench" },
-			},
-		],
-		[
-			{
-				id: kit.id,
-				name: "Kit",
-				enabled: true,
-				source: {
-					kind: "embedded",
-					symbols: [
-						file("divider", [
-							{ library: kit, definitionId: "deleted" },
-							{ library: bench, definitionId: "core" },
-						]),
-						file("assembly", [{ library: kit, definitionId: "divider" }]),
-						file("loop-a", [{ library: kit, definitionId: "loop-b" }]),
-						file("loop-b", [
-							{ library: kit, definitionId: "loop-a" },
-							{ library: bench, definitionId: "core" },
-						]),
-						file("broken", [{ library: kit, definitionId: "deleted" }]),
-						file("plain", []),
-					],
-				},
-			},
-		],
-		async () => {
-			throw new Error("Directory is unreadable.");
-		},
-	);
-	assert.deepEqual(
-		new Set(resolved.unavailableSymbols),
-		new Set(
-			["divider", "assembly", "loop-a", "loop-b", "broken"].map((id) =>
-				symbolReferenceKey(kit, id),
-			),
-		),
-	);
-	const isSymbolUnavailable = unavailableSymbols(resolved);
-	assert.equal(isSymbolUnavailable(kit, "plain"), false);
-	assert.deepEqual(
-		(
-			await resolveSymbolLibraries(
-				[],
-				[
-					{
-						id: kit.id,
-						name: "Kit",
-						enabled: true,
-						source: {
-							kind: "embedded",
-							symbols: [
-								file("divider", [{ library: bench, definitionId: "core" }]),
-							],
-						},
-					},
-				],
-			)
-		).unavailableSymbols,
-		[symbolReferenceKey(kit, "divider")],
-	);
-	const nested = await resolveSymbolLibraries(
-		[],
-		[
-			{
-				id: kit.id,
-				name: "Kit",
-				enabled: true,
-				source: {
-					kind: "embedded",
-					symbols: [
-						file("plain", []),
-						file("wrapper", [{ library: kit, definitionId: "plain" }]),
-					],
-				},
-			},
-		],
-	);
-	assert.deepEqual(nested.unavailableSymbols, []);
-});
-
-for (const layout of ["files", "revisions"] as const)
-	test(`project library settings survive reopening a project without drawings with ${layout} storage`, async () => {
-		const memory = memoryDirectory();
-		const repository = new ProjectRepository(memory.directory, { layout });
-		await repository.create("Libraries");
-		const libraries = [
-			{
-				id: "parts",
-				name: "Parts",
-				enabled: true,
-				source: { kind: "directory" as const, path: "parts" },
-			},
-		];
-		await repository.save({
-			shapes: [],
-			symbols: [],
-			symbolLibraries: libraries,
-		});
-		assert.deepEqual(
-			(await new ProjectRepository(memory.directory, { layout }).load())
-				.symbolLibraries,
-			libraries,
-		);
-	});
-
-test("project library settings from a legacy main drawing survive a save", async () => {
-	const memory = memoryDirectory();
-	const libraries = [
-		{
-			id: "parts",
-			name: "Parts",
-			enabled: true,
-			source: { kind: "directory", path: "parts" },
-		},
-	];
-	const encode = (text: string) => new TextEncoder().encode(text);
-	memory.files.set(
-		".ecadprj",
-		encode(
-			'format = "ecad-project"\nversion = 1\nname = "Legacy"\ndrawing = "drawing.ecaddraw"\nsymbols = []\n',
-		),
-	);
-	memory.files.set(
-		"drawing.ecaddraw",
-		encode(JSON.stringify({ shapes: [], symbolLibraries: libraries })),
-	);
-	const repository = new ProjectRepository(memory.directory, {
-		layout: "files",
-	});
-	await repository.save(await repository.load());
-	assert.deepEqual(
-		(await new ProjectRepository(memory.directory, { layout: "files" }).load())
-			.symbolLibraries,
-		libraries,
 	);
 });

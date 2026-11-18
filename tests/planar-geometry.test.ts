@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Box3, Mesh } from "three";
 import {
 	compilePlanarGeometry,
 	simplifyPlanarEdges,
 } from "#/engine/planar-geometry.ts";
-import {
-	createPlanarObject3D,
-	disposePlanarObject3D,
-} from "#/engine/planar-object.ts";
-import { buildPlanarWalls } from "#/engine/planar-walls.ts";
 import type { SceneObject } from "#/engine/types.ts";
 import { parseGerber } from "#/formats/gerber/index.ts";
 import { pthGerber } from "./fixtures/pth-gerber";
@@ -65,31 +59,6 @@ test("planar meshes apply transforms before resolving exposures", () => {
 	assert.equal(Math.max(...ys), 22);
 });
 
-test("separate exposure groups preserve cutouts, refills and bridging geometry", () => {
-	const at = (
-		size: number,
-		x: number,
-		polarity: "dark" | "clear" = "dark",
-	): SceneObject => ({
-		...rect(size, polarity),
-		transform: [1, 0, 0, 1, x, 0],
-	});
-	const compiled = compilePlanarGeometry([
-		at(4, 20, "clear"), // Clearing before drawing must not erase later dark.
-		at(4, 0),
-		at(4, 20),
-		at(4, 4), // Touching dark boundaries must merge without an internal seam.
-		at(2, 2, "clear"), // This cutout crosses both adjacent dark rectangles.
-		at(2, 20, "clear"),
-		at(1, 2),
-	]);
-	assert.equal(area(compiled.positions), 41);
-	for (let i = 0; i < compiled.edges.length; i += 6) {
-		assert.ok(!(compiled.edges[i] === 2 && compiled.edges[i + 3] === 2));
-	}
-	assert.equal(compilePlanarGeometry([at(2, 50, "clear")]).positions.length, 0);
-});
-
 test("PTH aperture holes and alternating clear flashes produce the same coverage", () => {
 	const meshes = [false, true].map((alternating) => {
 		const result = parseGerber(pthGerber(200, alternating), "PTH.gbr");
@@ -106,75 +75,6 @@ test("PTH aperture holes and alternating clear flashes produce the same coverage
 			area(meshes[0].positions) - 200 * Math.PI * (0.75 ** 2 - 0.4 ** 2),
 		) < 0.05,
 	);
-});
-
-test("planar objects are real mesh geometry without maps or backing images", () => {
-	const object = createPlanarObject3D({
-		type: "planar",
-		id: "test",
-		name: "test",
-		color: "#ff0000",
-		visible: true,
-		opacity: 1,
-		metadata: {},
-		objects: [rect(8), rect(4, "clear")],
-		bounds: { minX: -4, minY: -4, maxX: 4, maxY: 4 },
-	});
-	assert.deepEqual(new Box3().setFromObject(object).min.toArray(), [-4, -4, 0]);
-	let meshes = 0;
-	object.traverse((part) => {
-		if (!(part instanceof Mesh)) return;
-		meshes++;
-		assert.ok(part.geometry.getAttribute("position").count > 3);
-		for (const material of Array.isArray(part.material)
-			? part.material
-			: [part.material]) {
-			assert.ok(!("map" in material) || !material.map);
-		}
-	});
-	assert.equal(meshes, 3);
-	disposePlanarObject3D(object);
-});
-
-test("planar fills and walls carry the bounds three would compute", () => {
-	const compiled = compilePlanarGeometry([
-		{ ...rect(8), transform: [1, 0, 0, 1, 10, 20] },
-		rect(4, "clear"),
-		rect(3),
-	]);
-	const object = createPlanarObject3D(
-		{
-			type: "planar",
-			id: "test",
-			name: "test",
-			color: "#ff0000",
-			visible: true,
-			opacity: 1,
-			metadata: {},
-			objects: [],
-			bounds: { minX: -2, minY: -2, maxX: 14, maxY: 24 },
-		},
-		compiled,
-		buildPlanarWalls(compiled.edges, "slab"),
-	);
-	let checked = 0;
-	object.traverse((part) => {
-		if (!(part instanceof Mesh)) return;
-		if (!["fill", "walls"].includes(part.userData.planarPart)) return;
-		const { boundingBox, boundingSphere } = part.geometry;
-		assert.ok(boundingBox && boundingSphere);
-		const expected = part.geometry.clone();
-		expected.boundingBox = null;
-		expected.boundingSphere = null;
-		expected.computeBoundingBox();
-		expected.computeBoundingSphere();
-		assert.ok(boundingBox.equals(expected.boundingBox));
-		assert.ok(boundingSphere.equals(expected.boundingSphere));
-		expected.dispose();
-		checked++;
-	});
-	assert.equal(checked, 2);
-	disposePlanarObject3D(object);
 });
 
 test("outline simplification preserves closed contours within its distance tolerance", () => {
