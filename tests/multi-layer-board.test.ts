@@ -50,6 +50,7 @@ import {
 	createBoardFile,
 } from "#/board/format.ts";
 import { exportFabrication } from "#/board/gerber.ts";
+import { trackAnchor } from "#/board/routing.ts";
 import { pasteSelection } from "#/drawing/clipboard.ts";
 import {
 	BOARD_SURFACE_Z,
@@ -485,4 +486,21 @@ test("the routers keep vias clear of inner copper on other nets but route tracks
 		assert.ok(owned(withInner.via[z]) > owned(without.via[z]));
 		assert.equal(owned(withInner.track[z]), owned(without.track[z]));
 	}
+});
+
+test("a track started where tracks on two layers meet starts on the active layer", () => {
+	const { netlist, footprints, outline, center } = dividerBoard();
+	const end = { x: center.x, y: center.y - 5 };
+	const front = track({ x: center.x - 4, y: end.y }, end, "F.Cu", "gnd");
+	const inner = track(end, { x: center.x + 4, y: end.y }, "In2.Cu", "mid");
+	const items = copperItems([...footprints, outline, front, inner], netlist);
+	const options = { padReach: 0.5, tolerance: 0.05 };
+	assert.equal(
+		trackAnchor(items, end, { ...options, layer: "In2.Cu" })?.item.net,
+		"mid",
+	);
+	assert.equal(
+		trackAnchor(items, end, { ...options, layer: "F.Cu" })?.item.net,
+		"gnd",
+	);
 });

@@ -227,12 +227,10 @@ export function BoardSetupPanel({
 					<select
 						className="ui-select w-full tabular-nums"
 						value={rules.copperLayers}
-						onChange={(event) =>
-							onChange({
-								...rules,
-								copperLayers: Number(event.currentTarget.value),
-							})
-						}
+						onChange={(event) => {
+							const count = Number(event.currentTarget.value);
+							if (count >= fewest) onChange({ ...rules, copperLayers: count });
+						}}
 					>
 						{copperLayerCounts.map((count) => (
 							<option key={count} value={count} disabled={count < fewest}>
