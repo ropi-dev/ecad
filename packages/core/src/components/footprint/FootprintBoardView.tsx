@@ -58,6 +58,7 @@ export function FootprintBoardView({
 	| "onReady"
 	| "onError"
 	| "interactionHint"
+	| "rulerUnit"
 > &
 	Pick<
 		ComponentProps<typeof GerberViewer>,
@@ -173,7 +174,6 @@ export function FootprintBoardView({
 			projection="orthographic"
 			lockProjection
 			selectionEnabled={false}
-			rulerUnit="mm"
 			groupedControls
 			controlsLabel={controlsLabel}
 			{...viewer}

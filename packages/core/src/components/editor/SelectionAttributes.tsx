@@ -840,9 +840,9 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 	if (symbol?.kind === "symbol")
 		return (
 			<SymbolInstanceAttributeForm
-				key={symbol.id}
+				key={`${symbol.id}:${props.unit}`}
 				symbol={symbol}
-				millimetres={props.footprint}
+				millimetres={props.unit === "mm"}
 			>
 				<SelectionAttributesPanel {...props} />
 			</SymbolInstanceAttributeForm>
@@ -964,12 +964,12 @@ function SelectionAttributesPanel({
 				name={attribute}
 				label={label}
 				value={value}
-				unit={attribute === "angle" ? "°" : footprint ? "mm" : "mil"}
+				unit={attribute === "angle" ? "°" : unit}
 				step={attribute === "angle" ? "90" : "any"}
 				onCommit={(next) =>
 					onAttributeChange(
 						attribute,
-						attribute === "angle" || footprint ? next : fromMils(next),
+						attribute === "angle" || unit === "mm" ? next : fromMils(next),
 					)
 				}
 			/>
@@ -1489,13 +1489,13 @@ function SelectionAttributesPanel({
 										name="lineWidth"
 										label="Line width"
 										value={lineWidth}
-										unit={footprint ? "mm" : "mil"}
+										unit={unit}
 										positive
 										onCommit={(value) => {
 											if (value !== null)
 												onAttributeChange(
 													"lineWidth",
-													footprint ? value : fromMils(value),
+													unit === "mm" ? value : fromMils(value),
 												);
 										}}
 									/>

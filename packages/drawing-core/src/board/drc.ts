@@ -27,6 +27,7 @@ import type { BoardRules } from "#/board/rules.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import { symbolShapes } from "#/drawing/symbol-instances.ts";
 import type { Bounds, Point } from "#/drawing/types.ts";
+import { type LengthUnit, MM_PER_MIL } from "#/drawing/units.ts";
 
 export type DrcKind =
 	| "short"
@@ -138,6 +139,7 @@ const describe = (item: CopperItem) =>
 
 interface DrcOptions {
 	zoneReach?: ZoneReach;
+	unit?: LengthUnit;
 }
 
 export function checkBoard(
@@ -147,6 +149,13 @@ export function checkBoard(
 	options: DrcOptions = {},
 ): DrcFinding[] {
 	const findings: DrcFinding[] = [];
+	const mils = options.unit === "mil";
+	const measured = (value: number) =>
+		mils
+			? `${(Math.max(0, value) / MM_PER_MIL).toFixed(2)} mil`
+			: `${Math.max(0, value).toFixed(3)} mm`;
+	const needs = (value: number) =>
+		mils ? `${Number((value / MM_PER_MIL).toFixed(2))} mil` : `${value} mm`;
 	const items = copperItems(shapes, netlist);
 	const widest = Math.max(rules.clearance, ...items.map(zoneClearance));
 	nearbyPairs(items, widest, (a, b) => {
@@ -181,7 +190,7 @@ export function checkBoard(
 			kind: short ? "short" : "clearance",
 			message: short
 				? `Short between ${describe(a)} on ${netName(netlist, a.net)} and ${describe(b)} on ${netName(netlist, b.net)}`
-				: `Clearance ${Math.max(0, distance).toFixed(3)} mm between ${describe(a)} on ${netName(netlist, a.net)} and ${describe(b)} on ${netName(netlist, b.net)}, needs ${needed} mm`,
+				: `Clearance ${measured(distance)} between ${describe(a)} on ${netName(netlist, a.net)} and ${describe(b)} on ${netName(netlist, b.net)}, needs ${needs(needed)}`,
 			shapeIds: [...new Set([a.shapeId, b.shapeId])],
 			at,
 		});
@@ -216,7 +225,7 @@ export function checkBoard(
 				message:
 					distance <= 1e-6
 						? `${describe(item)} on ${netName(netlist, item.net)} overlaps an unplated hole`
-						: `Clearance ${distance.toFixed(3)} mm between ${describe(item)} on ${netName(netlist, item.net)} and an unplated hole, needs ${needed} mm`,
+						: `Clearance ${measured(distance)} between ${describe(item)} on ${netName(netlist, item.net)} and an unplated hole, needs ${needs(needed)}`,
 				shapeIds: [...new Set([item.shapeId, hole.shapeId])],
 				at: center(hole.bounds),
 			});
@@ -258,7 +267,7 @@ export function checkBoard(
 				id: `edge:${item.index}`,
 				kind: "edge",
 				message: inside
-					? `${describe(item)} is ${Math.max(0, gap).toFixed(3)} mm from the board edge, needs ${rules.edgeClearance} mm`
+					? `${describe(item)} is ${measured(gap)} from the board edge, needs ${needs(rules.edgeClearance)}`
 					: `${describe(item)} is outside the board outline`,
 				shapeIds: [item.shapeId],
 				at: center(item.bounds),

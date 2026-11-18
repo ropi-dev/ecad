@@ -31,6 +31,7 @@ import {
 } from "#/components/viewer/ViewportRulers.tsx";
 import { schematicThemes } from "#/drawing/schematic-theme.ts";
 import type { OrbitGesture } from "#/engine/controls3d.ts";
+import type { GridUnit } from "#/engine/ruler.ts";
 import type { ViewerScene } from "#/engine/scene.ts";
 import {
 	createSceneViewport,
@@ -70,7 +71,7 @@ export interface SceneViewportProps {
 	/** Keep the grid at full opacity here and fade it to 30% outside these world bounds. */
 	gridBounds?: Bounds;
 	showGrid?: boolean;
-	rulerUnit?: "mm" | "mil";
+	rulerUnit?: GridUnit;
 	onChange?: (snapshot: Viewer2DSnapshot) => void;
 	/** Updates the existing object without replacing the scene or resetting the camera. */
 	updateScene?: (object: Object3D) => void;

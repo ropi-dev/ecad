@@ -4,10 +4,15 @@ import {
 	boardRulesSchema,
 } from "@ecad/drawing-core/board/rules.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import {
+	fromMils,
+	type LengthUnit,
+	toMils,
+} from "@ecad/drawing-core/drawing/units.ts";
 import { copperLayerCounts } from "@ecad/drawing-core/footprint/layers.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { OctagonAlert, TriangleAlert, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { boardCopperLayersInUse } from "#/board/format.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
@@ -41,20 +46,26 @@ function PanelHeader({ title, onClose }: { title: string; onClose(): void }) {
 	);
 }
 
-/** Runs the design rules on demand. Results go stale when `revision` changes. */
+/**
+ * Runs the design rules on demand. Results go stale when `revision` changes,
+ * and run again in the new unit when `unit` changes.
+ */
 export function BoardChecksPanel({
 	revision,
+	unit,
 	run,
 	onClose,
 	onSelect,
 }: {
 	revision: unknown;
-	run(): Promise<DrcFinding[]>;
+	unit: LengthUnit;
+	run(unit: LengthUnit): Promise<DrcFinding[]>;
 	onClose(): void;
 	onSelect(finding: DrcFinding): void;
 }) {
 	const [result, setResult] = useState<{
 		revision: unknown;
+		unit: LengthUnit;
 		findings: DrcFinding[];
 	} | null>(null);
 	const [error, setError] = useState("");
@@ -68,6 +79,31 @@ export function BoardChecksPanel({
 	).length;
 	const problems = findings.length - unrouted;
 	const current = result !== null && !stale && !error;
+	const start = () => {
+		const started = ++latestRun.current;
+		setRunning(true);
+		run(unit)
+			.then(
+				(findings) => {
+					if (started !== latestRun.current) return;
+					setResult({ revision, unit, findings });
+					setError("");
+					setActiveId(null);
+				},
+				(cause: unknown) => {
+					if (started === latestRun.current)
+						setError(errorMessage(cause, "DRC failed."));
+				},
+			)
+			.finally(() => {
+				if (started === latestRun.current) setRunning(false);
+			});
+	};
+	const rerun = current && result.unit !== unit;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only a unit change reruns the check
+	useEffect(() => {
+		if (rerun) start();
+	}, [rerun]);
 	return (
 		<FloatingPanel
 			label="Design rules check"
@@ -113,26 +149,7 @@ export function BoardChecksPanel({
 						className="ui-button shrink-0"
 						data-variant="primary"
 						aria-busy={running}
-						onClick={() => {
-							const started = ++latestRun.current;
-							setRunning(true);
-							run()
-								.then(
-									(findings) => {
-										if (started !== latestRun.current) return;
-										setResult({ revision, findings });
-										setError("");
-										setActiveId(null);
-									},
-									(cause: unknown) => {
-										if (started === latestRun.current)
-											setError(errorMessage(cause, "DRC failed."));
-									},
-								)
-								.finally(() => {
-									if (started === latestRun.current) setRunning(false);
-								});
-						}}
+						onClick={start}
 					>
 						Run DRC
 					</button>
@@ -199,11 +216,13 @@ const ruleFields: readonly {
 export function BoardSetupPanel({
 	rules,
 	shapes,
+	unit,
 	onChange,
 	onClose,
 }: {
 	rules: BoardRules;
 	shapes: readonly EditorShape[];
+	unit: LengthUnit;
 	onChange(rules: BoardRules): void;
 	onClose(): void;
 }) {
@@ -246,9 +265,10 @@ export function BoardSetupPanel({
 				)}
 				{ruleFields.map(({ key, label }) => (
 					<RuleField
-						key={`${key}:${rules[key]}`}
+						key={`${key}:${rules[key]}:${unit}`}
 						label={label}
 						value={rules[key]}
+						unit={unit}
 						onCommit={(value) => {
 							if (!boardRulesSchema.shape[key].safeParse(value).success)
 								return false;
@@ -267,17 +287,25 @@ export function BoardSetupPanel({
 function RuleField({
 	label,
 	value,
+	unit,
 	onCommit,
 }: {
 	label: string;
 	value: number;
+	unit: LengthUnit;
 	onCommit(value: number): boolean;
 }) {
-	const [text, setText] = useState(String(value));
+	const shown = String(unit === "mil" ? toMils(value) : value);
+	const [text, setText] = useState(shown);
 	const commit = () => {
 		const next = Number(text);
-		if (!text.trim() || !Number.isFinite(next) || !onCommit(next))
-			setText(String(value));
+		if (text.trim() === shown) return;
+		if (
+			!text.trim() ||
+			!Number.isFinite(next) ||
+			!onCommit(unit === "mil" ? fromMils(next) : next)
+		)
+			setText(shown);
 	};
 	return (
 		<label className="contents">
@@ -293,7 +321,7 @@ function RuleField({
 						if (event.key === "Enter") commit();
 					}}
 				/>
-				<span className="text-fg-faint">mm</span>
+				<span className="text-fg-faint">{unit}</span>
 			</span>
 		</label>
 	);

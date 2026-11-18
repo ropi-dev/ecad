@@ -18,11 +18,11 @@ import {
 	Vector4,
 	type WebGLRenderer,
 } from "three";
-import { gridLayers } from "#/engine/ruler.ts";
+import { type GridUnit, gridLayers } from "#/engine/ruler.ts";
 import type { Bounds } from "#/engine/types.ts";
 
 export interface ViewportGridOptions {
-	unit: "mm" | "mil";
+	unit: GridUnit;
 	color: string;
 	/** Every tenth dot. */
 	majorColor: string;

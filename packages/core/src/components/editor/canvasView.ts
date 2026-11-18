@@ -4,10 +4,9 @@ import {
 	intersectsSelection,
 } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Bounds, Point } from "@ecad/drawing-core/drawing/types.ts";
-import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
-import { rulerSpacing } from "#/engine/ruler.ts";
+import { type GridUnit, rulerSpacing } from "#/engine/ruler.ts";
 import { type ViewMapping, viewMapping } from "#/engine/view-projection.ts";
 import type { Viewer2DSnapshot } from "#/engine/viewport-types.ts";
 import { outlineInBox, shapeOutline } from "#/footprint/outline.ts";
@@ -107,7 +106,8 @@ function project(
 
 export type CanvasView = ReturnType<typeof createCanvasView>;
 
-export function createCanvasView(unit: LengthUnit = "mil") {
+export function createCanvasView(initialUnit: GridUnit = "schematic") {
+	let unit = initialUnit;
 	let snapshot: Viewer2DSnapshot | null = null;
 	let surfaces: SurfaceHeights | null = null;
 	let projection: CanvasProjection | null = null;
@@ -151,6 +151,11 @@ export function createCanvasView(unit: LengthUnit = "mil") {
 		clear() {
 			if (!snapshot) return;
 			snapshot = null;
+			changed();
+		},
+		setUnit(value: GridUnit) {
+			if (value === unit) return;
+			unit = value;
 			changed();
 		},
 		setSurfaces(value: SurfaceHeights | null) {

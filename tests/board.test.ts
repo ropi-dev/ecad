@@ -1957,6 +1957,20 @@ describe("unplated holes", () => {
 				"Clearance 0.150 mm between track on MID and an unplated hole, needs 0.2 mm",
 			],
 		]);
+		assert.deepEqual(
+			spacingProblems(
+				checkBoard(
+					[...shapes, footprint, ...across(center.y + 1.6 + 0.1 + 0.15)],
+					netlist,
+					defaultBoardRules,
+					{ unit: "mil" },
+				),
+				footprint,
+			).map((finding) => finding.message),
+			[
+				"Clearance 5.91 mil between track on MID and an unplated hole, needs 7.87 mil",
+			],
+		);
 		assert.deepEqual(findings(center.y + 1.6 + 0.1 + 0.25), []);
 	});
 

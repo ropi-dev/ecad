@@ -54,6 +54,7 @@ test("settings from another build keep unknown keys and drop only invalid fields
 				density: "compact",
 				antialiasing: "sometimes",
 				releaseChannel: "beta",
+				boardUnit: "inch",
 				ercSeverity: { "unconnected-pin": "off", "similar-net-names": "info" },
 			}),
 		),
@@ -66,6 +67,10 @@ test("settings from another build keep unknown keys and drop only invalid fields
 	assert.equal(
 		parseAppSettings('{"version":1,"releaseChannel":"nightly"}').releaseChannel,
 		"nightly",
+	);
+	assert.equal(
+		parseAppSettings('{"version":1,"boardUnit":"mil"}').boardUnit,
+		"mil",
 	);
 	assert.throws(() => parseAppSettings('{"version":2}'), {
 		message: /^version: /,
