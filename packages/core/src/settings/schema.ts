@@ -12,6 +12,8 @@ export type ThemeMode = (typeof themeModes)[number];
 export const releaseChannels = ["stable", "nightly"] as const;
 export type ReleaseChannel = (typeof releaseChannels)[number];
 
+export const boardUnits = ["mm", "mil"] as const;
+
 export const ercSeverityLevels = ["error", "warning", "off"] as const;
 export type ErcSeverityLevel = (typeof ercSeverityLevels)[number];
 
@@ -39,6 +41,7 @@ const appShape = {
 	debugStats: z.boolean().optional(),
 	releaseChannel: z.enum(releaseChannels).optional(),
 	ercSeverity: ercSeveritySchema.optional(),
+	boardUnit: z.enum(boardUnits).optional(),
 };
 const projectShape = {
 	ercSeverity: ercSeveritySchema.optional(),

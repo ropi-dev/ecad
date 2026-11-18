@@ -135,6 +135,7 @@ import {
 import type { BoardDocument } from "#/projects/ProjectSession.ts";
 import { projectIndex } from "#/projects/project-index.ts";
 import { useEditorControlsRegistration } from "#/projects/WorkspaceControls.tsx";
+import { setBoardUnit, useBoardUnit } from "#/settings/useBoardUnit.ts";
 import type { SymbolEditTarget } from "#/symbol-library/storage.tsx";
 
 const SchematicErcPanel = lazy(() =>
@@ -203,7 +204,9 @@ function EditorCanvas({
 			: sheetless
 				? "Symbol"
 				: "Schematic";
-	const unit = isFootprint ? "mm" : "mil";
+	const boardUnit = useBoardUnit();
+	const unit = isFootprint ? boardUnit : "mil";
+	const gridUnit = isFootprint ? boardUnit : "schematic";
 	const boardRules = useSyncExternalStore(
 		board?.rules.subscribe ?? noRulesSubscription,
 		() => board?.rules.get(),
@@ -243,7 +246,7 @@ function EditorCanvas({
 	);
 	const latestProject = useLatestProjectSnapshot();
 	const store = suppliedStore ?? project?.store ?? ownedStore;
-	const viewport = useEditorViewport(store, unit);
+	const viewport = useEditorViewport(store, gridUnit);
 	const { cameraView, gridStep } = viewport;
 	const ready = viewport.ready && boardView !== "closing";
 	const registerEditor = useEditorControlsRegistration();
@@ -751,9 +754,11 @@ function EditorCanvas({
 						available: !boardBuildError,
 						onToggleFlat: toggleBoard,
 						toggle: viewToggle,
+						unit: boardUnit,
+						onUnitChange: setBoardUnit,
 					}
 				: undefined,
-		[isFootprint, boardView, boardBuildError, toggleBoard],
+		[isFootprint, boardView, boardBuildError, toggleBoard, boardUnit],
 	);
 
 	const editAttributes = useCallback(
@@ -928,7 +933,7 @@ function EditorCanvas({
 							board.file.name.replace(/[^A-Za-z0-9_-]+/g, "_") || "board",
 							exported,
 						),
-						boardEditor.runChecks(exported),
+						boardEditor.runChecks(unit, exported),
 					])
 						.then(([{ archive, files }, checks]) => {
 							downloadPng(
@@ -1145,6 +1150,7 @@ function EditorCanvas({
 							onReady={viewport.onReady}
 							onChange={cameraView.update}
 							controls={toolbar}
+							rulerUnit={gridUnit}
 							interactionHint={footprintInteractionHint}
 						/>
 					)}
@@ -1153,7 +1159,7 @@ function EditorCanvas({
 							projection="orthographic"
 							lockProjection
 							focusOutline={false}
-							rulerUnit={unit}
+							rulerUnit={gridUnit}
 							scene={scene}
 							cameraState={viewport.cameraState}
 							fitZoom={1.1}
@@ -1231,7 +1237,8 @@ function EditorCanvas({
 					{isBoard && boardPanel === "checks" && (
 						<BoardChecksPanel
 							revision={drawing.shapes}
-							run={() => boardEditor.runChecks()}
+							unit={unit}
+							run={boardEditor.runChecks}
 							onClose={() => setBoardPanel(null)}
 							onSelect={(finding) => {
 								if (!finding.shapeIds.length) return;
@@ -1244,6 +1251,7 @@ function EditorCanvas({
 						<BoardSetupPanel
 							rules={boardEditor.rules}
 							shapes={drawing.shapes}
+							unit={unit}
 							onChange={(rules) => board.rules.set(rules)}
 							onClose={() => setBoardPanel(null)}
 						/>
@@ -1294,7 +1302,7 @@ function EditorCanvas({
 						ready={ready}
 						cameraView={cameraView}
 						canvasArea={canvasArea}
-						unit={unit}
+						unit={gridUnit}
 						layer={isFootprint ? layers.active : undefined}
 						besideAxes={boardView !== "closed"}
 					/>

@@ -11,6 +11,7 @@ import {
 } from "@ecad/drawing-core/board/rules.ts";
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type { FabricationArchive } from "#/board/fabrication.ts";
 import {
@@ -37,10 +38,11 @@ export type AnalysisKind =
 export type AnalysisRequest =
 	| { type: "board"; circuit: Circuit | undefined; rules: BoardRules }
 	| {
-			type: "fills" | "drawing-fills" | "connectivity" | "check";
+			type: "fills" | "drawing-fills" | "connectivity";
 			id: number;
 			shapes: ShapesPatch;
 	  }
+	| { type: "check"; id: number; shapes: ShapesPatch; unit: LengthUnit }
 	| { type: "fabrication"; id: number; shapes: ShapesPatch; name: string };
 
 export type AnalysisReply =
@@ -196,6 +198,7 @@ export function createBoardAnalysis(
 				id,
 				findings: checkBoard(current, netlist, rules, {
 					zoneReach: fillReach(fillZones(current, netlist, rules)),
+					unit: request.type === "check" ? request.unit : "mm",
 				}),
 			};
 		} catch (cause) {

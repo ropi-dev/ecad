@@ -31,7 +31,7 @@ import {
 	verticalAlignments,
 } from "@ecad/drawing-core/drawing/text-alignment.ts";
 import {
-	formatMils,
+	formatLength,
 	fromMils,
 	type LengthUnit,
 	SCHEMATIC_STEP,
@@ -835,14 +835,15 @@ export function SelectionAttributes(props: SelectionAttributesProps) {
 				onEditSymbol={props.onEditSymbol}
 				onCopySymbol={props.onCopySymbol}
 				onEdit={props.onEdit}
+				unit={props.unit}
 			/>
 		);
 	if (symbol?.kind === "symbol")
 		return (
 			<SymbolInstanceAttributeForm
-				key={symbol.id}
+				key={`${symbol.id}:${props.unit}`}
 				symbol={symbol}
-				millimetres={props.footprint}
+				millimetres={props.unit === "mm"}
 			>
 				<SelectionAttributesPanel {...props} />
 			</SymbolInstanceAttributeForm>
@@ -938,10 +939,7 @@ function SelectionAttributesPanel({
 	const right = Math.max(...bounds.map((box) => box.maxX));
 	const bottom = Math.min(...bounds.map((box) => box.minY));
 	const top = Math.max(...bounds.map((box) => box.maxY));
-	const distance =
-		unit === "mil"
-			? formatMils
-			: (value: number) => `${Number(value.toFixed(4))} mm`;
+	const distance = (value: number) => formatLength(value, unit);
 	const pad = single && isPad(single) ? single : undefined;
 	const via = single && isVia(single) ? single : undefined;
 	const hole = single && isHole(single) ? single : undefined;
@@ -964,12 +962,12 @@ function SelectionAttributesPanel({
 				name={attribute}
 				label={label}
 				value={value}
-				unit={attribute === "angle" ? "°" : footprint ? "mm" : "mil"}
+				unit={attribute === "angle" ? "°" : unit}
 				step={attribute === "angle" ? "90" : "any"}
 				onCommit={(next) =>
 					onAttributeChange(
 						attribute,
-						attribute === "angle" || footprint ? next : fromMils(next),
+						attribute === "angle" || unit === "mm" ? next : fromMils(next),
 					)
 				}
 			/>
@@ -1489,13 +1487,13 @@ function SelectionAttributesPanel({
 										name="lineWidth"
 										label="Line width"
 										value={lineWidth}
-										unit={footprint ? "mm" : "mil"}
+										unit={unit}
 										positive
 										onCommit={(value) => {
 											if (value !== null)
 												onAttributeChange(
 													"lineWidth",
-													footprint ? value : fromMils(value),
+													unit === "mm" ? value : fromMils(value),
 												);
 										}}
 									/>
@@ -1539,13 +1537,16 @@ function FixedChildAttributes({
 	onEditSymbol,
 	onCopySymbol,
 	onEdit,
+	unit = "mil",
 }: {
 	shape: EditorShape;
 	onClear: () => void;
 	onEditSymbol?: () => void;
 	onCopySymbol?: () => Promise<void>;
 	onEdit: (edit: SelectionEdit) => void;
+	unit?: LengthUnit;
 }) {
+	const length = (value: number) => formatLength(value, unit);
 	const degrees = (((shape.rotation * 180) / Math.PI) % 360) + 360;
 	const angle = `${Number((degrees % 360).toFixed(2))}°`;
 	const attributes: [string, ReactNode][] =
@@ -1555,15 +1556,15 @@ function FixedChildAttributes({
 					["Number", shape.number || "—"],
 					["Name", shape.name || "—"],
 					...pinSignalRows(shape, onEdit),
-					["Center X", formatMils(shape.x)],
-					["Center Y", formatMils(shape.y)],
-					["Lead length", formatMils(shape.length ?? 0)],
+					["Center X", length(shape.x)],
+					["Center Y", length(shape.y)],
+					["Lead length", length(shape.length ?? 0)],
 					["Angle", angle],
 				]
 			: [
 					["Type", shape.kind],
-					["Center X", formatMils(shape.x)],
-					["Center Y", formatMils(shape.y)],
+					["Center X", length(shape.x)],
+					["Center Y", length(shape.y)],
 					["Angle", angle],
 				];
 	return (

@@ -1,6 +1,7 @@
 import { jumpHistoryEffect } from "@ecad/drawing-core/commands/drawing-commands.ts";
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	Cable,
 	Circle,
@@ -146,6 +147,8 @@ interface EditorToolbarProps {
 		available: boolean;
 		onToggleFlat: () => void;
 		toggle: Ref<HTMLButtonElement>;
+		unit: LengthUnit;
+		onUnitChange: (unit: LengthUnit) => void;
 	};
 	symbolLibrary: ComponentProps<typeof SymbolPicker>["library"];
 	finishDrag: (cancel?: boolean) => void;
@@ -450,6 +453,17 @@ export const EditorToolbar = memo(function EditorToolbar({
 							: "Show the flat top view",
 						onClick: footprint.onToggleFlat,
 						children: "2D",
+					})}
+					{toggle({
+						className: `${viewControlButtonClassName} w-11`,
+						"aria-label": `Units: ${footprint.unit}`,
+						tooltip:
+							footprint.unit === "mm"
+								? "Show lengths in mils"
+								: "Show lengths in millimetres",
+						onClick: () =>
+							footprint.onUnitChange(footprint.unit === "mm" ? "mil" : "mm"),
+						children: footprint.unit,
 					})}
 					<ToolbarSeparator />
 				</>

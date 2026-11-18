@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	formatInches,
+	formatLength,
 	formatMils,
 	fromMils,
 	toMils,
@@ -14,21 +15,23 @@ test("schematic display units preserve physical dimensions", () => {
 	assert.equal(toMils(1.27), 50);
 	assert.equal(formatInches(25.4), "1");
 	assert.equal(formatMils(-2.54), "-100 mil");
+	assert.equal(formatLength(-2.54, "mil"), "-100 mil");
+	assert.equal(formatLength(0.15, "mm"), "0.15 mm");
 	for (const value of [-1234.5, 0, 50, 100, 1000]) {
 		assert.equal(toMils(fromMils(value)), value);
 	}
 });
 
-test("mil rulers and grid share binary subdivisions of 50 mil", () => {
-	assert.equal(rulerSpacing(10, "mil").minor, 1.27);
+test("schematic rulers and grid share binary subdivisions of 50 mil", () => {
+	assert.equal(rulerSpacing(10, "schematic").minor, 1.27);
 	for (const scale of [0.1, 1, 10, 100, 1000]) {
-		const spacing = rulerSpacing(scale, "mil");
+		const spacing = rulerSpacing(scale, "schematic");
 		assert.ok(spacing.minor * scale >= 10);
-		const ticks = rulerTicks(0, scale, 800, false, "mil");
+		const ticks = rulerTicks(0, scale, 800, false, "schematic");
 		for (const tick of ticks.filter((tick) => tick.label !== undefined)) {
 			assert.ok(Math.abs(Number(tick.label) * 0.0254 - tick.value) < 1e-8);
 		}
-		const layers = gridLayers(scale, "mil");
+		const layers = gridLayers(scale, "schematic");
 		assert.ok(
 			Math.abs(layers.reduce((sum, layer) => sum + layer.opacity, 0) - 1) <
 				1e-8,
@@ -37,15 +40,34 @@ test("mil rulers and grid share binary subdivisions of 50 mil", () => {
 	}
 });
 
-test("mil grid never subdivides below 50 mil when zoomed in", () => {
+test("schematic grid never subdivides below 50 mil when zoomed in", () => {
 	for (const scale of [10, 50, 100, 1000, 100000]) {
-		assert.equal(rulerSpacing(scale, "mil").minor, 1.27);
+		assert.equal(rulerSpacing(scale, "schematic").minor, 1.27);
 		assert.deepEqual(
-			gridLayers(scale, "mil").map((layer) => layer.spacing.minor),
+			gridLayers(scale, "schematic").map((layer) => layer.spacing.minor),
 			[1.27],
 		);
 	}
-	assert.equal(rulerSpacing(1, "mil").minor, 1.27 * 8);
+	assert.equal(rulerSpacing(1, "schematic").minor, 1.27 * 8);
+});
+
+test("board mil grid steps through round mil spacings", () => {
+	for (const scale of [0.1, 1, 10, 100, 1000, 100000]) {
+		const spacing = rulerSpacing(scale, "mil");
+		assert.ok(spacing.minor * scale >= 10);
+		const mils = toMils(spacing.minor);
+		assert.ok(
+			[1, 2].includes(
+				Number((mils / 10 ** Math.floor(Math.log10(mils))).toFixed(6)),
+			),
+			`${mils} mil`,
+		);
+		const ticks = rulerTicks(0, scale, 800, false, "mil");
+		for (const tick of ticks.filter((tick) => tick.label !== undefined))
+			assert.ok(Math.abs(Number(tick.label) * 0.0254 - tick.value) < 1e-8);
+	}
+	assert.equal(toMils(rulerSpacing(1000, "mil").minor), 1);
+	assert.equal(toMils(rulerSpacing(10, "mil").minor), 100);
 });
 
 test("new shapes and text use mil-sized defaults", async () => {

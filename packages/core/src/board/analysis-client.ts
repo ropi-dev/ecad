@@ -3,6 +3,7 @@ import type { DrcFinding } from "@ecad/drawing-core/board/drc.ts";
 import type { BoardRules } from "@ecad/drawing-core/board/rules.ts";
 import type { Circuit } from "@ecad/drawing-core/circuit/model.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	type AnalysisKind,
 	type AnalysisReply,
@@ -23,7 +24,10 @@ export interface BoardAnalysisState {
 export interface BoardAnalysisClient {
 	configure(circuit: Circuit | undefined, rules: BoardRules): void;
 	show(committed: readonly EditorShape[], live: readonly EditorShape[]): void;
-	check(shapes: readonly EditorShape[]): Promise<DrcFinding[]>;
+	check(
+		shapes: readonly EditorShape[],
+		unit?: LengthUnit,
+	): Promise<DrcFinding[]>;
 	drawingFills(shapes: readonly EditorShape[]): Promise<DrawingZoneFill[]>;
 	fabricate(
 		name: string,
@@ -43,6 +47,7 @@ interface Flight extends Settle {
 	type: AnalysisKind;
 	shapes: Shapes;
 	name: string;
+	unit: LengthUnit;
 }
 
 const CLOSED = "The board was closed.";
@@ -116,12 +121,14 @@ export function createBoardAnalysisClient(
 		worker?.postMessage(request);
 	};
 
-	const send = (id: number, { type, shapes, name }: Flight) => {
+	const send = (id: number, { type, shapes, name, unit }: Flight) => {
 		const patch = sender.patch(shapes);
 		post(
 			type === "fabrication"
 				? { type, id, shapes: patch, name }
-				: { type, id, shapes: patch },
+				: type === "check"
+					? { type, id, shapes: patch, unit }
+					: { type, id, shapes: patch },
 		);
 	};
 
@@ -138,7 +145,12 @@ export function createBoardAnalysisClient(
 		restart();
 	};
 
-	const requested = (type: AnalysisKind, shapes: Shapes, name = "") =>
+	const requested = (
+		type: AnalysisKind,
+		shapes: Shapes,
+		name = "",
+		unit: LengthUnit = "mm",
+	) =>
 		new Promise<AnalysisReply>((resolve, reject) => {
 			if (disposed) {
 				reject(new Error(CLOSED));
@@ -146,7 +158,7 @@ export function createBoardAnalysisClient(
 			}
 			const id = nextId++;
 			if (type === "fills") fillsRequested++;
-			const flight = { type, shapes, name, resolve, reject };
+			const flight = { type, shapes, name, unit, resolve, reject };
 			flights.set(id, flight);
 			send(id, flight);
 		});
@@ -229,8 +241,8 @@ export function createBoardAnalysisClient(
 			pump("fills");
 			pump("connectivity");
 		},
-		async check(shapes) {
-			const reply = await requested("check", shapes);
+		async check(shapes, unit) {
+			const reply = await requested("check", shapes, "", unit);
 			return reply.type === "check" ? reply.findings : [];
 		},
 		async drawingFills(shapes) {

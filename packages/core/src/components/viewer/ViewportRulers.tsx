@@ -12,7 +12,7 @@ import {
 	createTickLayer,
 	type TickLayer,
 } from "#/components/viewer/rulerTickLayer.ts";
-import { rulerTicks } from "#/engine/ruler.ts";
+import { type GridUnit, rulerTicks } from "#/engine/ruler.ts";
 import type { Bounds, Camera } from "#/engine/types.ts";
 
 interface RulerView {
@@ -78,7 +78,7 @@ export function ViewportRulers({
 }: {
 	ref: Ref<ViewportRulersHandle>;
 	gridBounds?: Bounds;
-	unit?: "mm" | "mil";
+	unit?: GridUnit;
 }) {
 	const descriptionId = useId();
 	const [size, setSize] = useState<{ width: number; height: number }>();
@@ -234,12 +234,12 @@ export function ViewportRulers({
 			<div
 				className="pointer-events-none absolute inset-0 z-2 overflow-clip [&_line]:stroke-1 [&_text]:fill-current [&_text]:font-mono [&_text]:text-[10px] [&_text]:tabular-nums text-fg-muted [&_line]:stroke-ruler-tick [&_.ruler-band]:fill-ruler [&_.ruler-edge]:stroke-line [&_svg]:absolute"
 				role="img"
-				aria-label={`Drawing rulers in ${unit === "mil" ? "mils" : "millimetres"}`}
+				aria-label={`Drawing rulers in ${unit === "mm" ? "millimetres" : "mils"}`}
 				aria-describedby={descriptionId}
 				data-shortcut-mutations="ignore"
 			>
 				<span id={descriptionId} className="sr-only">
-					Coordinates in {unit === "mil" ? "mils" : "millimetres"}. X increases
+					Coordinates in {unit === "mm" ? "millimetres" : "mils"}. X increases
 					to the right; Y increases upward.
 				</span>
 				<div
@@ -298,7 +298,7 @@ export function ViewportRulers({
 					>
 						<path className="ruler-band" d={`M1 0H${BAND + 1}V${BAND}H1Z`} />
 						<text x={BAND / 2 + 1} y="15" textAnchor="middle">
-							{unit}
+							{unit === "mm" ? "mm" : "mil"}
 						</text>
 					</svg>
 				</div>

@@ -1,4 +1,4 @@
-import { type LengthUnit, toMils } from "@ecad/drawing-core/drawing/units.ts";
+import { toMils } from "@ecad/drawing-core/drawing/units.ts";
 import type { FootprintLayer } from "@ecad/drawing-core/footprint/layers.ts";
 import {
 	type RefObject,
@@ -8,16 +8,17 @@ import {
 } from "react";
 import type { CanvasView } from "#/components/editor/canvasView.ts";
 import { useCursorPoint } from "#/components/editor/useCursorPoint.ts";
+import type { GridUnit } from "#/engine/ruler.ts";
 
 export function CursorReadout({
 	ready,
 	cameraView,
 	canvasArea,
-	unit = "mil",
+	unit = "schematic",
 	layer,
 	besideAxes = false,
 }: {
-	unit?: LengthUnit;
+	unit?: GridUnit;
 	layer?: FootprintLayer;
 	besideAxes?: boolean;
 	ready: boolean;
@@ -81,9 +82,11 @@ export function CursorReadout({
 					<span className="text-fg-faint">{axis.toUpperCase()}</span>
 					<span className="font-medium">
 						{cursor &&
-							(unit === "mil"
+							(unit === "schematic"
 								? Math.round(toMils(cursor[axis]))
-								: cursor[axis].toFixed(2))}
+								: unit === "mil"
+									? toMils(cursor[axis]).toFixed(1)
+									: cursor[axis].toFixed(2))}
 					</span>
 				</span>
 			))}

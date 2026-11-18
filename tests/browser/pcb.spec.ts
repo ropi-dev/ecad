@@ -553,3 +553,38 @@ test("the PCB's Unplated hole tool places a hole through the board with no net",
 	await expect(attributes.getByLabel("Drill")).toHaveValue("3.2");
 	await expect(attributes.getByLabel("Net")).toHaveCount(0);
 });
+
+test("the unit button switches the PCB's lengths between millimetres and mils and keeps the choice", async ({
+	page,
+}) => {
+	await addExample(page);
+	await expect(page.getByText("All connections routed")).toBeVisible();
+	const rulers = page.getByRole("img", { name: /^Drawing rulers in / });
+	await expect(rulers).toHaveAccessibleName("Drawing rulers in millimetres");
+	await (await toolbarButton(page, "Board setup")).click();
+	const trackWidth = page
+		.getByRole("region", { name: "Board setup" })
+		.getByLabel("Track width");
+	const millimetres = Number(await trackWidth.inputValue());
+
+	await page.getByRole("button", { name: "Units: mm" }).click();
+	await expect(rulers).toHaveAccessibleName("Drawing rulers in mils");
+	await expect(trackWidth).toHaveValue(
+		String(Number((millimetres / 0.0254).toFixed(4))),
+	);
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					JSON.parse(localStorage.getItem("ecad.settings.v1") ?? "{}")
+						.boardUnit,
+			),
+		)
+		.toBe("mil");
+	await trackWidth.fill("10");
+	await trackWidth.press("Enter");
+
+	await page.getByRole("button", { name: "Units: mil" }).click();
+	await expect(rulers).toHaveAccessibleName("Drawing rulers in millimetres");
+	await expect(trackWidth).toHaveValue("0.254");
+});

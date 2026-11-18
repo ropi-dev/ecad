@@ -1,7 +1,11 @@
 import {
+	type LengthUnit,
 	MM_PER_MIL,
 	SCHEMATIC_STEP,
 } from "@ecad/drawing-core/drawing/units.ts";
+
+/** "schematic" is mils on a grid no finer than 50 mil. */
+export type GridUnit = LengthUnit | "schematic";
 
 export interface RulerTick {
 	position: number;
@@ -20,17 +24,18 @@ const subdivisions = 10;
 const minimumMinorPixels = 10;
 
 /** Shared by the visible grid, ruler ticks, and editor snapping. */
-export function rulerSpacing(scale: number, unit: "mm" | "mil" = "mm") {
+export function rulerSpacing(scale: number, unit: GridUnit = "mm") {
 	const desired = minimumMinorPixels / scale;
-	if (unit === "mil") {
+	if (unit === "schematic") {
 		// 50 mil is the finest grid; zooming in further only spreads the dots.
 		const minor =
 			SCHEMATIC_STEP *
 			2 ** Math.max(0, Math.ceil(Math.log2(desired / SCHEMATIC_STEP)));
 		return { major: minor * subdivisions, minor };
 	}
-	const decade = 10 ** Math.ceil(Math.log10(desired));
-	const minor = decade / 5 >= desired ? decade / 5 : decade;
+	const base = unit === "mil" ? MM_PER_MIL : 1;
+	const decade = 10 ** Math.ceil(Math.log10(desired / base));
+	const minor = (decade / 5 >= desired / base ? decade / 5 : decade) * base;
 	return { major: minor * subdivisions, minor };
 }
 
@@ -40,7 +45,7 @@ export function rulerTicks(
 	scale: number,
 	length: number,
 	reversed = false,
-	unit: "mm" | "mil" = "mm",
+	unit: GridUnit = "mm",
 ): RulerTick[] {
 	return ticksForSpacing(
 		center,
@@ -53,7 +58,7 @@ export function rulerTicks(
 		label:
 			tick.label === undefined
 				? undefined
-				: unit === "mil"
+				: unit !== "mm"
 					? String(Number((tick.value / MM_PER_MIL).toPrecision(12)))
 					: tick.label,
 	}));
@@ -131,7 +136,7 @@ export function gridTicks(
 	);
 }
 
-export function gridLayers(scale: number, unit: "mm" | "mil" = "mm") {
+export function gridLayers(scale: number, unit: GridUnit = "mm") {
 	if (!Number.isFinite(scale) || scale <= 0) return [];
 	const halfBand = 0.125;
 	const coarse = rulerSpacing(scale / (1 + halfBand), unit);

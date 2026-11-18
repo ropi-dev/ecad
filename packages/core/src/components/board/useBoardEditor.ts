@@ -11,6 +11,7 @@ import { boardNetlist } from "@ecad/drawing-core/board/netlist.ts";
 import type { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import type { Point } from "@ecad/drawing-core/drawing/types.ts";
+import type { LengthUnit } from "@ecad/drawing-core/drawing/units.ts";
 import {
 	allLayers,
 	boardCopperLayers,
@@ -299,8 +300,10 @@ export function useBoardEditor({
 	}, [session]);
 
 	const runChecks = useCallback(
-		async (shapes: readonly EditorShape[] = store.getSnapshot().shapes) =>
-			(await analysis?.check(shapes)) ?? [],
+		async (
+			unit: LengthUnit,
+			shapes: readonly EditorShape[] = store.getSnapshot().shapes,
+		) => (await analysis?.check(shapes, unit)) ?? [],
 		[analysis, store],
 	);
 	const fabricate = useCallback(
