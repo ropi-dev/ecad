@@ -102,10 +102,9 @@ const importTypes = [
 	["step", "STEP", Box, ".step,.stp", "STEP models..."],
 ] as const;
 const newFileTypes = [
-	["drawing", CircuitBoard],
+	["circuit", Workflow],
 	["symbol", Component],
 	["footprint", Cpu],
-	["circuit", Workflow],
 ] as const;
 const fileIcons: Record<string, LucideIcon> = {
 	Drawing: CircuitBoard,
@@ -154,7 +153,6 @@ export function ProjectFilesSidebar({
 		({
 			busy,
 			createCircuit,
-			createDrawing,
 			createFootprint,
 			createSymbol,
 			importAssets,
@@ -168,7 +166,6 @@ export function ProjectFilesSidebar({
 		}) => ({
 			busy,
 			createCircuit,
-			createDrawing,
 			createFootprint,
 			createSymbol,
 			importAssets,
@@ -217,7 +214,7 @@ export function ProjectFilesSidebar({
 	const [error, setError] = useState("");
 	const [importReport, setImportReport] = useState<KiCadImportReport>();
 	const [creatingFile, setCreatingFile] = useState<
-		"drawing" | "symbol" | "footprint" | "circuit" | null
+		"symbol" | "footprint" | "circuit" | null
 	>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [railAddMenuOpen, setRailAddMenuOpen] = useState(false);
@@ -1335,11 +1332,9 @@ export function ProjectFilesSidebar({
 								try {
 									const path = await (creatingFile === "circuit"
 										? project.createCircuit(name)
-										: creatingFile === "drawing"
-											? project.createDrawing(name)
-											: creatingFile === "footprint"
-												? project.createFootprint(name)
-												: project.createSymbol(name));
+										: creatingFile === "footprint"
+											? project.createFootprint(name)
+											: project.createSymbol(name));
 									if (creatingFile === "circuit")
 										await project.openCircuit(path);
 									else project.selectEditorFile(path);

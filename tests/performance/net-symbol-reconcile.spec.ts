@@ -135,18 +135,16 @@ test(
 			.getByRole("button", { name: "Add file", exact: true })
 			.click();
 		await page
-			.getByRole("menuitem", { name: "New drawing", exact: true })
+			.getByRole("menuitem", { name: "New circuit", exact: true })
 			.click();
-		await page.getByLabel("Drawing name", { exact: true }).fill("Other");
+		await page.getByLabel("Circuit name", { exact: true }).fill("Other");
 		await page
-			.getByRole("button", { name: "Create drawing", exact: true })
+			.getByRole("button", { name: "Create circuit", exact: true })
 			.click();
 		await expect(
-			page.getByRole("button", { name: "Switch to circuit view", exact: true }),
-		).toBeEnabled();
-		await page
-			.getByRole("button", { name: "Switch to circuit view", exact: true })
-			.click();
+			page.getByRole("heading", { level: 1, name: "Other", exact: true }),
+		).toBeVisible();
+		await expect(page).not.toHaveURL(circuitUrl);
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("view"))
 			.toBe("circuit");

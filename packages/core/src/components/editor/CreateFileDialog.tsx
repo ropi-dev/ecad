@@ -7,9 +7,9 @@ export function CreateFileDialog({
 	onCreate,
 	description = kind === "symbol"
 		? "Name this symbol to add it to your Symbols list."
-		: "Name this drawing to add it to your project.",
+		: `Name this ${kind} to add it to your project.`,
 }: {
-	kind: "drawing" | "symbol" | "footprint" | "circuit";
+	kind: "symbol" | "footprint" | "circuit";
 	onClose: () => void;
 	onCreate: (name: string) => Promise<string | undefined>;
 	description?: string;

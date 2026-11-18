@@ -86,16 +86,16 @@ test("the sidebar keeps an icon rail beside the workspace and slides out beside 
 	// A file created from the rail opens without the sidebar.
 	await rail.getByRole("button", { name: "Add file", exact: true }).click();
 	await page
-		.getByRole("menuitem", { name: "New drawing", exact: true })
+		.getByRole("menuitem", { name: "New circuit", exact: true })
 		.click();
 	const dialog = page.getByRole("dialog");
 	await expect(dialog).toBeVisible();
 	await expect(sidebar).toHaveAttribute("data-open", "false");
-	await dialog.getByRole("textbox").fill("Rail drawing");
+	await dialog.getByRole("textbox").fill("Rail circuit");
 	await dialog.getByRole("textbox").press("Enter");
 	await expect(dialog).toHaveCount(0);
 	await expect(
-		page.getByRole("heading", { level: 1, name: /^Schematic editor/ }),
+		page.getByRole("heading", { level: 1, name: "Rail circuit", exact: true }),
 	).toBeVisible();
 	await expect(sidebar).toHaveAttribute("data-open", "false");
 	// Settings opened from the rail leaves the sidebar closed.

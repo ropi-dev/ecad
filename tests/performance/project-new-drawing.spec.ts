@@ -26,13 +26,16 @@ test(
 				.getByRole("button", { name: "Add file", exact: true })
 				.click();
 			await page
-				.getByRole("menuitem", { name: "New drawing", exact: true })
+				.getByRole("menuitem", { name: "New circuit", exact: true })
 				.click();
 			await page
-				.getByLabel("Drawing name", { exact: true })
+				.getByLabel("Circuit name", { exact: true })
 				.fill("Power stage");
 			await page
-				.getByRole("button", { name: "Create drawing", exact: true })
+				.getByRole("button", { name: "Create circuit", exact: true })
+				.click();
+			await page
+				.getByRole("button", { name: "Switch to schematic view", exact: true })
 				.click();
 			await page.waitForFunction(
 				() =>

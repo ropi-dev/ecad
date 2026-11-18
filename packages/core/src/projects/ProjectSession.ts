@@ -95,7 +95,6 @@ export interface ProjectContextValue {
 		id: string,
 		model: ModelReference | undefined,
 	): Promise<void>;
-	createDrawing(name: string): Promise<string>;
 	/** Adds an example design's schematic, circuit and board. Resolves to its drawing's path. */
 	importExample(
 		example: import("#/examples/designs.ts").ExampleDesignId,
