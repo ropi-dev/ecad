@@ -245,7 +245,7 @@ export function checkBoard(
 				id: "outline-open",
 				kind: "outline",
 				message:
-					"The board outline is not closed. Zones stay unfilled until its ends meet.",
+					"The board outline is not closed. Zones fill their whole shape until its ends meet.",
 				shapeIds: [],
 				at: outline[0][0],
 			});
