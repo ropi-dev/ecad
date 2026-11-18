@@ -26,6 +26,8 @@ import {
 	projectChannels,
 	projectEvents,
 	settingsChannels,
+	telemetryChannels,
+	telemetryEvents,
 	updateChannels,
 	updateEvents,
 } from "#/bridge.ts";
@@ -40,6 +42,7 @@ import { createDesktopMcpServer } from "#/main/mcp-server.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
+import { DesktopTelemetryConsent, sendTelemetry } from "#/main/telemetry.ts";
 import {
 	DesktopUpdater,
 	readPackagedDistribution,
@@ -318,6 +321,32 @@ function registerSettingsHandlers() {
 	});
 }
 
+function registerTelemetryHandlers() {
+	const consent = new DesktopTelemetryConsent();
+	let watching: Promise<unknown> | undefined;
+	handle(telemetryChannels.loadConsent, async () => {
+		watching ??= consent
+			.watch(() => {
+				if (window && !window.isDestroyed())
+					window.webContents.send(telemetryEvents.consentChanged);
+			})
+			.then(
+				(stop) => app.on("will-quit", stop),
+				() => undefined,
+			);
+		await watching;
+		return consent.load();
+	});
+	handle(telemetryChannels.saveConsent, (next) => consent.save(next));
+	handle(telemetryChannels.send, async (batch, revision) => {
+		await sendTelemetry(batch, revision, {
+			consent: await consent.load(),
+			version: app.getVersion(),
+			fetch: (url, init) => net.fetch(url, init),
+		});
+	});
+}
+
 function createUpdater(channel: AppSettings["releaseChannel"]) {
 	const distribution =
 		app.isPackaged &&
@@ -566,6 +595,7 @@ void app.whenReady().then(async () => {
 	registerSettingsHandlers();
 	registerDisplayHandlers();
 	const initial = (await settings.load()).settings;
+	registerTelemetryHandlers();
 	registerUpdateHandlers(initial.releaseChannel);
 	registerMcpHandlers();
 	handle(appChannels.quit, () => app.quit());

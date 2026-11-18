@@ -1,6 +1,12 @@
 import { schematicErcRules } from "@ecad/drawing-core/erc/schematic-rules.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
-import { CircleArrowUp, CircuitBoard, Library, Monitor } from "lucide-react";
+import {
+	Activity,
+	CircleArrowUp,
+	CircuitBoard,
+	Library,
+	Monitor,
+} from "lucide-react";
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { AppDialog } from "#/components/ui/Dialog.tsx";
 import { automaticAntialiasing } from "#/components/viewer/antialiasing.ts";
@@ -21,6 +27,11 @@ import {
 	useSettingsStatus,
 } from "#/settings/store.ts";
 import { useTheme } from "#/settings/theme.ts";
+import {
+	setTelemetryEnabled,
+	useTelemetryEnabled,
+} from "#/telemetry/consent.ts";
+import { telemetryAvailable } from "#/telemetry/telemetry.ts";
 
 const SymbolLibrarySettings = lazy(() =>
 	import("#/projects/SymbolLibrarySettings.tsx").then((module) => ({
@@ -28,7 +39,12 @@ const SymbolLibrarySettings = lazy(() =>
 	})),
 );
 
-export type SettingsSection = "display" | "erc" | "libraries" | "updates";
+export type SettingsSection =
+	| "display"
+	| "erc"
+	| "libraries"
+	| "updates"
+	| "usage";
 
 const sections: {
 	id: SettingsSection;
@@ -39,6 +55,7 @@ const sections: {
 	{ id: "erc", label: "Electrical rules", icon: CircuitBoard },
 	{ id: "libraries", label: "Symbol libraries", icon: Library },
 	{ id: "updates", label: "Updates", icon: CircleArrowUp },
+	{ id: "usage", label: "Usage data", icon: Activity },
 ];
 
 const levelLabels: Record<ErcSeverityLevel, string> = {
@@ -57,7 +74,10 @@ export function SettingsDialog({
 	section?: SettingsSection;
 }) {
 	const { updates } = useSettingsStatus();
-	const shown = sections.filter(({ id }) => id !== "updates" || updates);
+	const shown = sections.filter(
+		({ id }) =>
+			(id !== "updates" || updates) && (id !== "usage" || telemetryAvailable),
+	);
 	const requested = shown.some(({ id }) => id === section)
 		? section
 		: "display";
@@ -160,8 +180,10 @@ export function SettingsDialog({
 							>
 								<SymbolLibrarySettings />
 							</Suspense>
-						) : updates ? (
-							<UpdateSettings />
+						) : active === "updates" ? (
+							updates && <UpdateSettings />
+						) : active === "usage" && telemetryAvailable ? (
+							<UsageDataSettings />
 						) : null}
 					</div>
 				</div>
@@ -328,6 +350,43 @@ function UpdateSettings() {
 				ECAD checks the new channel as soon as you switch. Going back to stable
 				keeps an installed nightly until a newer stable release comes out.
 			</p>
+		</section>
+	);
+}
+
+function UsageDataSettings() {
+	const enabled = useTelemetryEnabled();
+	const [error, setError] = useState("");
+	return (
+		<section aria-label="Usage data" className="flex flex-col">
+			<h3 className="ui-section-label m-0 mb-1">Usage data</h3>
+			<SettingRow
+				label="Send performance data"
+				description="Operation timings and device type, sent to PostHog in the EU. Never project contents, names or paths."
+			>
+				{(id) => (
+					<input
+						id={id}
+						type="checkbox"
+						className="ui-checkbox shrink-0"
+						checked={enabled}
+						onChange={(event) => {
+							const next = event.currentTarget.checked;
+							setError("");
+							setTelemetryEnabled(next).catch((cause) =>
+								setError(
+									`The choice could not be saved. ${errorMessage(cause, "")}`.trim(),
+								),
+							);
+						}}
+					/>
+				)}
+			</SettingRow>
+			{error && (
+				<p role="alert" className="m-0 text-xs text-danger">
+					{error}
+				</p>
+			)}
 		</section>
 	);
 }

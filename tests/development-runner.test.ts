@@ -19,6 +19,9 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const sandbox = resolve(root, "scripts/development/sandbox.ts");
+const hostOnly =
+	process.env.ECAD_SANDBOX === "1" &&
+	"the launchers write host artifact directories the container cannot create";
 
 function fixtureCommands(directory: string): void {
 	for (const [name, output] of Object.entries({
@@ -36,7 +39,7 @@ function fixtureCommands(directory: string): void {
 }
 
 test("sandbox forwards perf settings and confines custom baselines to persistent artifacts", {
-	skip: process.platform !== "linux",
+	skip: process.platform !== "linux" || hostOnly,
 }, () => {
 	const directory = mkdtempSync(join(tmpdir(), "ecad-runner-env-"));
 	const engine = join(directory, "engine");
@@ -138,7 +141,7 @@ test("sandbox forwards perf settings and confines custom baselines to persistent
 });
 
 test("native perf executes its worker on simulated non-Linux hosts", {
-	skip: process.platform !== "linux",
+	skip: process.platform !== "linux" || hostOnly,
 }, () => {
 	const directory = mkdtempSync(join(tmpdir(), "ecad-native-platform-"));
 	const calls = join(directory, "calls");

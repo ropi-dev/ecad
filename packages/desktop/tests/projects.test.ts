@@ -550,8 +550,11 @@ test(
 			const lockFile = join(created.directory, `${PROJECT_FILE}.lock`);
 			const exited = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
 			await once(exited, "exit");
-			const text = async (path: string) =>
-				(await readFile(path, "utf8")).trim();
+			const text = (path: string) =>
+				readFile(path, "utf8").then(
+					(value) => value.trim() || undefined,
+					() => undefined,
+				);
 			await writeFile(
 				lockFile,
 				JSON.stringify({

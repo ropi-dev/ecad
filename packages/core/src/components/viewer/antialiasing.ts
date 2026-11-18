@@ -4,12 +4,12 @@ import { useAppSettings } from "#/settings/store.ts";
 const SOFTWARE_RENDERER =
 	/swiftshader|llvmpipe|softpipe|software|basic render/i;
 
-function detectSoftwareRenderer() {
-	if (typeof document === "undefined") return false;
+function detectRenderer() {
+	if (typeof document === "undefined") return "";
 	try {
 		const canvas = document.createElement("canvas");
 		const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
-		if (!context) return false;
+		if (!context) return "";
 		const info = context.getExtension("WEBGL_debug_renderer_info");
 		const renderer = String(
 			context.getParameter(
@@ -17,18 +17,20 @@ function detectSoftwareRenderer() {
 			),
 		);
 		context.getExtension("WEBGL_lose_context")?.loseContext();
-		return SOFTWARE_RENDERER.test(renderer);
+		return renderer;
 	} catch {
-		return false;
+		return "";
 	}
 }
 
-let software: boolean | undefined;
+let renderer: string | undefined;
 
-export function automaticAntialiasing() {
-	software ??= detectSoftwareRenderer();
-	return !software;
-}
+export const webglRenderer = () => (renderer ??= detectRenderer());
+
+export const isSoftwareRenderer = (name: string) =>
+	SOFTWARE_RENDERER.test(name);
+
+export const automaticAntialiasing = () => !isSoftwareRenderer(webglRenderer());
 
 export function resolveAntialiasing(mode: AntialiasingMode = "auto") {
 	return mode === "auto" ? automaticAntialiasing() : mode === "on";

@@ -3,6 +3,11 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
 	publicDir: "packages/web/public",
+	define: {
+		"import.meta.env.VITE_POSTHOG_KEY": JSON.stringify(
+			"phc_browserTestProjectKey",
+		),
+	},
 	resolve: { tsconfigPaths: true },
 	// Keep fixture dependency optimization separate from the running app.
 	cacheDir: "node_modules/.vite-browser-tests",

@@ -2,10 +2,15 @@ import type { ProjectStorage } from "@ecad/core/projects/storage.ts";
 import type { AppSettings } from "@ecad/core/settings/schema.ts";
 import type { SettingsStorage } from "@ecad/core/settings/store.ts";
 import type { SymbolLibraryStorage } from "@ecad/core/symbol-library/storage.tsx";
+import type {
+	ConsentStorage,
+	TelemetryConsent,
+} from "@ecad/core/telemetry/consent.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import type {
 	DesktopSettingsBridge,
 	DesktopSymbolLibraryBridge,
+	DesktopTelemetryBridge,
 	DesktopUpdatesBridge,
 	LoadedDesktopSettings,
 } from "#/bridge.ts";
@@ -121,6 +126,43 @@ export async function createDesktopSettingsStorage(
 			await save(next);
 			settings = next;
 			error = undefined;
+		},
+	};
+}
+
+export async function createDesktopConsentStorage(
+	bridge: Pick<
+		DesktopTelemetryBridge,
+		"loadConsent" | "saveConsent" | "onConsentChanged"
+	>,
+): Promise<ConsentStorage> {
+	const load = async () =>
+		(await bridge.loadConsent().catch(() => null)) ?? undefined;
+	let consent: TelemetryConsent | undefined = await load();
+	let generation = 0;
+	let reload: (() => Promise<void>) | undefined;
+	const save = decodeIpcErrors((next: TelemetryConsent) =>
+		bridge.saveConsent(next),
+	);
+	return {
+		load: () => consent,
+		async save(next) {
+			await save(next);
+			generation++;
+			consent = next;
+			void reload?.();
+		},
+		subscribe(listener) {
+			reload = async () => {
+				const started = ++generation;
+				const loaded = await load();
+				if (started !== generation) return;
+				consent = loaded;
+				listener();
+			};
+			const stop = bridge.onConsentChanged(() => void reload?.());
+			void reload();
+			return stop;
 		},
 	};
 }

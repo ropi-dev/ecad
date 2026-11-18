@@ -10,6 +10,8 @@ import type {
 	SymbolLibrarySnapshot,
 	SymbolLibraryStorage,
 } from "@ecad/core/symbol-library/storage.tsx";
+import type { TelemetryConsent } from "@ecad/core/telemetry/consent.ts";
+import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import type {
 	DrawingEnvelope,
 	DrawingReply,
@@ -72,6 +74,7 @@ declare global {
 		ecadSettings: DesktopSettingsBridge;
 		ecadUpdates: DesktopUpdatesBridge;
 		ecadMcp: DesktopMcpBridge;
+		ecadTelemetry: DesktopTelemetryBridge;
 	}
 }
 
@@ -158,6 +161,23 @@ export const mcpEvents = {
 	request: "mcp:request",
 } as const;
 
+export interface DesktopTelemetryBridge {
+	send(batch: TelemetryBatch, revision: string): Promise<void>;
+	loadConsent(): Promise<TelemetryConsent | null>;
+	saveConsent(consent: TelemetryConsent): Promise<void>;
+	onConsentChanged(listener: () => void): () => void;
+}
+
+export const telemetryChannels = {
+	send: "telemetry:send",
+	loadConsent: "telemetry:load-consent",
+	saveConsent: "telemetry:save-consent",
+} as const;
+
+export const telemetryEvents = {
+	consentChanged: "telemetry:consent-changed",
+} as const;
+
 export const displayChannels = {
 	getCalibration: "display:calibration",
 	changed: "display:changed",
@@ -170,5 +190,6 @@ export type InvokeChannel =
 	| (typeof settingsChannels)[keyof typeof settingsChannels]
 	| (typeof updateChannels)[keyof typeof updateChannels]
 	| (typeof mcpChannels)[keyof typeof mcpChannels]
+	| (typeof telemetryChannels)[keyof typeof telemetryChannels]
 	| typeof displayChannels.getCalibration
 	| typeof appChannels.quit;

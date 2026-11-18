@@ -7,6 +7,7 @@ import {
 	type DesktopMcpBridge,
 	type DesktopSettingsBridge,
 	type DesktopSymbolLibraryBridge,
+	type DesktopTelemetryBridge,
 	type DesktopUpdateState,
 	type DesktopUpdatesBridge,
 	displayChannels,
@@ -16,6 +17,8 @@ import {
 	projectChannels,
 	projectEvents,
 	settingsChannels,
+	telemetryChannels,
+	telemetryEvents,
 	updateChannels,
 	updateEvents,
 } from "#/bridge.ts";
@@ -134,3 +137,19 @@ const mcp: DesktopMcpBridge = {
 	},
 };
 contextBridge.exposeInMainWorld("ecadMcp", mcp);
+
+const telemetry: DesktopTelemetryBridge = {
+	send: (batch, revision) =>
+		ipcRenderer.invoke(telemetryChannels.send, batch, revision),
+	loadConsent: () => ipcRenderer.invoke(telemetryChannels.loadConsent),
+	saveConsent: (consent) =>
+		ipcRenderer.invoke(telemetryChannels.saveConsent, consent),
+	onConsentChanged: (listener) => {
+		const handle = () => listener();
+		ipcRenderer.on(telemetryEvents.consentChanged, handle);
+		return () => {
+			ipcRenderer.removeListener(telemetryEvents.consentChanged, handle);
+		};
+	},
+};
+contextBridge.exposeInMainWorld("ecadTelemetry", telemetry);

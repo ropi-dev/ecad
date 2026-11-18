@@ -7,6 +7,7 @@ import { StepWorkspace } from "#/components/step/StepWorkspace.tsx";
 import { ProjectProvider, useProject } from "#/projects/ProjectProvider.tsx";
 import { ProjectShell } from "#/projects/ProjectShell.tsx";
 import { WorkspaceStart } from "#/projects/WorkspaceStart.tsx";
+import { startTelemetry } from "#/telemetry/telemetry.ts";
 import { createWebProjectStorage } from "#web/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import "#/styles.css";
@@ -124,6 +125,8 @@ function App() {
 		</ProjectProvider>
 	);
 }
+
+startTelemetry();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
 	<StrictMode>
