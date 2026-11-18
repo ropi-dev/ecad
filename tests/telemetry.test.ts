@@ -197,6 +197,18 @@ test("consent is its own record, and a newer revision retires older sessions", a
 	assert.ok(second && isCurrentConsent(second.revision));
 	assert.ok(first && !isCurrentConsent(first.revision));
 
+	assert.ok(second && second.since >= (first?.since ?? 0));
+
+	setConsentStorage({
+		load: () => second,
+		save: async () => {
+			throw new Error("Disk full.");
+		},
+	});
+	await assert.rejects(setTelemetryEnabled(false), /Disk full/);
+	assert.equal(getTelemetryConsent(), second);
+	setConsentStorage(storage);
+
 	values.set(TELEMETRY_CONSENT_KEY, '{"enabled":true}');
 	assert.equal(storage.load(), undefined);
 	assert.ok(second && !isCurrentConsent(second.revision));

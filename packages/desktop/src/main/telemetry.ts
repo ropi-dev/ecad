@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { watch } from "node:fs";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createSerialQueue } from "@ecad/core/lib/serial-queue.ts";
 import {
 	parseTelemetryConsent,
@@ -28,6 +29,23 @@ export class DesktopTelemetryConsent {
 		} catch {
 			return null;
 		}
+	}
+
+	async watch(onChange: () => void): Promise<() => void> {
+		const directory = dirname(this.path);
+		const name = basename(this.path);
+		await mkdir(directory, { recursive: true });
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const watcher = watch(directory, (_event, changed) => {
+			if (changed !== null && changed !== name) return;
+			clearTimeout(timer);
+			timer = setTimeout(onChange, 50);
+		});
+		watcher.on("error", () => undefined);
+		return () => {
+			clearTimeout(timer);
+			watcher.close();
+		};
 	}
 
 	save(consent: TelemetryConsent): Promise<void> {

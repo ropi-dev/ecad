@@ -139,7 +139,6 @@ export function startTelemetry({
 		return;
 	let stop: (() => void) | undefined;
 	let revision: string | undefined;
-	let starting = true;
 	const sync = () => {
 		const consent = getTelemetryConsent();
 		const next = consent?.enabled ? consent.revision : undefined;
@@ -147,11 +146,11 @@ export function startTelemetry({
 		stop?.();
 		stop = undefined;
 		revision = next;
-		if (next)
+		if (consent && next)
 			stop = beginSession(
 				transport,
 				platform,
-				starting ? 0 : performance.now(),
+				Math.max(0, consent.since - performance.timeOrigin),
 				next,
 			);
 	};
@@ -164,7 +163,6 @@ export function startTelemetry({
 		stopWatching = undefined;
 	};
 	sync();
-	starting = false;
 }
 
 export function stopTelemetry() {

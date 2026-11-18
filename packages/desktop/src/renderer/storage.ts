@@ -131,15 +131,27 @@ export async function createDesktopSettingsStorage(
 }
 
 export async function createDesktopConsentStorage(
-	bridge: Pick<DesktopTelemetryBridge, "loadConsent" | "saveConsent">,
+	bridge: Pick<
+		DesktopTelemetryBridge,
+		"loadConsent" | "saveConsent" | "onConsentChanged"
+	>,
 ): Promise<ConsentStorage> {
-	let consent: TelemetryConsent | undefined =
+	const load = async () =>
 		(await bridge.loadConsent().catch(() => null)) ?? undefined;
+	let consent: TelemetryConsent | undefined = await load();
+	const save = decodeIpcErrors((next: TelemetryConsent) =>
+		bridge.saveConsent(next),
+	);
 	return {
 		load: () => consent,
 		async save(next) {
-			await bridge.saveConsent(next);
+			await save(next);
 			consent = next;
 		},
+		subscribe: (listener) =>
+			bridge.onConsentChanged(async () => {
+				consent = await load();
+				listener();
+			}),
 	};
 }

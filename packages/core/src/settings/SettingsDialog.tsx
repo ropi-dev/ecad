@@ -356,6 +356,7 @@ function UpdateSettings() {
 
 function UsageDataSettings() {
 	const enabled = useTelemetryEnabled();
+	const [error, setError] = useState("");
 	return (
 		<section aria-label="Usage data" className="flex flex-col">
 			<h3 className="ui-section-label m-0 mb-1">Usage data</h3>
@@ -369,12 +370,23 @@ function UsageDataSettings() {
 						type="checkbox"
 						className="ui-checkbox shrink-0"
 						checked={enabled}
-						onChange={(event) =>
-							void setTelemetryEnabled(event.currentTarget.checked)
-						}
+						onChange={(event) => {
+							const next = event.currentTarget.checked;
+							setError("");
+							setTelemetryEnabled(next).catch((cause) =>
+								setError(
+									`${errorMessage(cause, "The choice could not be saved.")} Sending stays ${enabled ? "on" : "off"}.`,
+								),
+							);
+						}}
 					/>
 				)}
 			</SettingRow>
+			{error && (
+				<p role="alert" className="m-0 text-xs text-danger">
+					{error}
+				</p>
+			)}
 		</section>
 	);
 }

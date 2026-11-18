@@ -27,6 +27,7 @@ import {
 	projectEvents,
 	settingsChannels,
 	telemetryChannels,
+	telemetryEvents,
 	updateChannels,
 	updateEvents,
 } from "#/bridge.ts";
@@ -322,7 +323,22 @@ function registerSettingsHandlers() {
 
 function registerTelemetryHandlers() {
 	const consent = new DesktopTelemetryConsent();
-	handle(telemetryChannels.loadConsent, () => consent.load());
+	let watching = false;
+	handle(telemetryChannels.loadConsent, () => {
+		if (!watching) {
+			watching = true;
+			void consent
+				.watch(() => {
+					if (window && !window.isDestroyed())
+						window.webContents.send(telemetryEvents.consentChanged);
+				})
+				.then(
+					(stop) => app.on("will-quit", stop),
+					() => undefined,
+				);
+		}
+		return consent.load();
+	});
 	handle(telemetryChannels.saveConsent, (next) => consent.save(next));
 	handle(telemetryChannels.send, async (batch, revision) => {
 		await sendTelemetry(batch, revision, {

@@ -6,6 +6,7 @@ export const TELEMETRY_CONSENT_KEY = "ecad.telemetry.v1";
 export const telemetryConsentSchema = z.strictObject({
 	enabled: z.boolean(),
 	revision: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
+	since: z.number().int().nonnegative(),
 });
 
 export type TelemetryConsent = z.infer<typeof telemetryConsentSchema>;
@@ -113,12 +114,12 @@ export function subscribeTelemetryConsent(listener: () => void) {
 	};
 }
 
-export function setTelemetryEnabled(enabled: boolean) {
-	const next = { enabled, revision: newConsentRevision() };
+export async function setTelemetryEnabled(enabled: boolean) {
+	const next = { enabled, revision: newConsentRevision(), since: Date.now() };
+	await storage.save(next);
 	current = next;
 	loaded = true;
 	notify();
-	return storage.save(next).catch(() => undefined);
 }
 
 export function useTelemetryEnabled() {

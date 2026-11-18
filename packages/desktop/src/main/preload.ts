@@ -18,6 +18,7 @@ import {
 	projectEvents,
 	settingsChannels,
 	telemetryChannels,
+	telemetryEvents,
 	updateChannels,
 	updateEvents,
 } from "#/bridge.ts";
@@ -143,5 +144,12 @@ const telemetry: DesktopTelemetryBridge = {
 	loadConsent: () => ipcRenderer.invoke(telemetryChannels.loadConsent),
 	saveConsent: (consent) =>
 		ipcRenderer.invoke(telemetryChannels.saveConsent, consent),
+	onConsentChanged: (listener) => {
+		const handle = () => listener();
+		ipcRenderer.on(telemetryEvents.consentChanged, handle);
+		return () => {
+			ipcRenderer.removeListener(telemetryEvents.consentChanged, handle);
+		};
+	},
 };
 contextBridge.exposeInMainWorld("ecadTelemetry", telemetry);

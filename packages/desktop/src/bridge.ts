@@ -165,12 +165,17 @@ export interface DesktopTelemetryBridge {
 	send(batch: TelemetryBatch, revision: string): Promise<void>;
 	loadConsent(): Promise<TelemetryConsent | null>;
 	saveConsent(consent: TelemetryConsent): Promise<void>;
+	onConsentChanged(listener: () => void): () => void;
 }
 
 export const telemetryChannels = {
 	send: "telemetry:send",
 	loadConsent: "telemetry:load-consent",
 	saveConsent: "telemetry:save-consent",
+} as const;
+
+export const telemetryEvents = {
+	consentChanged: "telemetry:consent-changed",
 } as const;
 
 export const displayChannels = {

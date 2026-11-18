@@ -17,7 +17,11 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 	await page.evaluate(() =>
 		localStorage.setItem(
 			"ecad.telemetry.v1",
-			JSON.stringify({ enabled: true, revision: "browser-test-consent" }),
+			JSON.stringify({
+				enabled: true,
+				revision: "browser-test-consent",
+				since: 0,
+			}),
 		),
 	);
 	await page.goto("/tests/browser/projects.html");
@@ -98,7 +102,11 @@ test("a settings save in another tab cannot turn usage data back on", async ({
 	await page.evaluate(() =>
 		localStorage.setItem(
 			"ecad.telemetry.v1",
-			JSON.stringify({ enabled: true, revision: "browser-test-consent" }),
+			JSON.stringify({
+				enabled: true,
+				revision: "browser-test-consent",
+				since: 0,
+			}),
 		),
 	);
 	const open = async (tab: typeof page) => {
