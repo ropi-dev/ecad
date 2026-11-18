@@ -1,7 +1,7 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
+	boardLayers,
 	footprintLayerLabels,
-	footprintLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import { shapeLayers } from "@ecad/drawing-core/footprint/shapes.ts";
 import { zlibSync } from "fflate";
@@ -355,33 +355,36 @@ function layerPages(
 	const layers = shapes.map(shapeLayers);
 	const mask = maskOpenings(shapes, options.maskMargin);
 	const holes = drillHoles(shapes);
-	const pages = footprintLayers.flatMap((layer): PdfPage[] => {
-		const openings =
-			layer === "F.Mask" ? mask.top : layer === "B.Mask" ? mask.bottom : [];
-		if (
-			layer === "Edge.Cuts" ||
-			(!openings.length && !layers.some((onLayers) => onLayers.includes(layer)))
-		)
-			return [];
-		return [
-			{
-				label: footprintLayerLabels[layer],
-				scene: buildDrawingScene(
-					shapes.filter(
-						(_, index) =>
-							layers[index].includes(layer) ||
-							layers[index].includes("Edge.Cuts"),
+	const pages = boardLayers(options.copperLayers ?? 2).flatMap(
+		(layer): PdfPage[] => {
+			const openings =
+				layer === "F.Mask" ? mask.top : layer === "B.Mask" ? mask.bottom : [];
+			if (
+				layer === "Edge.Cuts" ||
+				(!openings.length &&
+					!layers.some((onLayers) => onLayers.includes(layer)))
+			)
+				return [];
+			return [
+				{
+					label: footprintLayerLabels[layer],
+					scene: buildDrawingScene(
+						shapes.filter(
+							(_, index) =>
+								layers[index].includes(layer) ||
+								layers[index].includes("Edge.Cuts"),
+						),
+						{
+							...options,
+							layer,
+							drillHoles: holes,
+							...(openings.length ? { maskOpenings: openings } : {}),
+						},
 					),
-					{
-						...options,
-						layer,
-						drillHoles: holes,
-						...(openings.length ? { maskOpenings: openings } : {}),
-					},
-				),
-			},
-		];
-	});
+				},
+			];
+		},
+	);
 	if (!pages.length) return [{ scene: buildDrawingScene(shapes, options) }];
 	const left = Math.min(...pages.map(({ scene }) => scene.view.x));
 	const top = Math.min(...pages.map(({ scene }) => scene.view.y));

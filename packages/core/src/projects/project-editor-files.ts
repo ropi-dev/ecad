@@ -1,6 +1,10 @@
 import type { CircuitFile } from "@ecad/drawing-core/circuit/model.ts";
 import { createDrawingStore } from "@ecad/drawing-core/commands/drawing-store.ts";
-import { type BoardFile, createBoardFile } from "#/board/format.ts";
+import {
+	type BoardFile,
+	boardCopperLayersInUse,
+	createBoardFile,
+} from "#/board/format.ts";
 import { createBoardRulesStore } from "#/board/rules-store.ts";
 import type { ViewSelection } from "#/circuit/selection-sync.ts";
 import { symbolFileShapes } from "#/drawing/symbol-file.ts";
@@ -359,6 +363,12 @@ export function createProjectEditorFiles(
 				{ shapes: board.shapes.length },
 			);
 			const rules = createBoardRulesStore(board.rules);
+			const stopLayers = boardStore.subscribe(() => {
+				const needed = boardCopperLayersInUse(boardStore.getSnapshot().shapes);
+				const current = rules.get();
+				if (needed > current.copperLayers)
+					rules.set({ ...current, copperLayers: needed });
+			});
 			const stopShapes = subscribeDrawing(boardStore);
 			const stopRules = rules.subscribe(() => {
 				if (state.synchronizing) return;
@@ -373,6 +383,7 @@ export function createProjectEditorFiles(
 				rules,
 				savedRules: board.rules,
 				unsubscribe: () => {
+					stopLayers();
 					stopShapes();
 					stopRules();
 				},

@@ -21,9 +21,15 @@ A toast lists what changed and names components without a footprint, or whose fo
 
 A placed footprint moves, rotates and locks as one item. Its pads take their nets from the circuit: a pad gets the net of the component pin with the same number. In the flat view, press **F**, or **Flip to the other side** in the toolbar, to move the selected footprints to the back. Locked footprints stay put. In the 3D view F fits the view instead. Flipping mirrors a footprint about its origin and moves each item to the matching back layer. The **Side** field in Attributes does the same.
 
+## Copper layers
+
+A new board has front and back copper. **Copper layers** in Board setup gives it 4, 6 or any even number up to 32. The inner layers go between front and back copper and take KiCad's names, In1.Cu nearest the front, then In2.Cu and so on. The Layers panel lists them between Front copper and Back copper, and choosing one there makes it the active layer for tracks, zones and copper shapes. Board setup won't remove an inner layer that still has items on it. If an undo, a history jump or another edit brings back items on a layer the board no longer has, the board gets enough copper layers for them again. Pasting items onto a board without their layer is refused.
+
+Pads stay on the outer layers, and footprints have no inner copper. Every via and through-hole pad reaches all of the board's copper layers, so a track on an inner layer joins one wherever they touch. There are no blind or buried vias yet. The 3D view draws the inner layers inside the board, evenly spaced between front and back copper.
+
 ## Ratsnest
 
-Thin white lines join pads that should be connected and are not yet. Copper on the same net that touches on a shared layer counts as connected: pads, tracks, vias and zone fills. Through-hole pads and vias join both copper layers. Each net's unconnected groups are joined by the shortest lines that reach all of them. The status at the bottom right counts these connections and names the active layer.
+Thin white lines join pads that should be connected and are not yet. Copper on the same net that touches on a shared layer counts as connected: pads, tracks, vias and zone fills. Through-hole pads and vias join every copper layer. Each net's unconnected groups are joined by the shortest lines that reach all of them. The status at the bottom right counts these connections and names the active layer.
 
 Selecting a track, via or zone highlights the rest of its net.
 
@@ -31,7 +37,7 @@ Selecting a track, via or zone highlights the rest of its net.
 
 Open **Routing** in the toolbar and choose **Track**. Click a pad, via or track to start; the track takes its net and goes on the active copper layer. Starting on a surface mount pad on the other side switches the active layer. Each click places the track up to the pointer as one straight run and one 45 degree run. Press **/** to put the diagonal run first. Clicking on a pad, via or track of the same net, or with no net, finishes the track there. Escape ends it and returns to Select. Segments placed before the track reaches anything take its net once it does.
 
-Press **V** while routing to place a via at the end of the last placed run and continue on the other copper layer.
+Press **V** while routing to place a via at the end of the last placed run and continue on back copper, or on front copper when the track is already on the back or an inner layer. **Page Down** and **Page Up** place the via and continue on the next copper layer towards the back or the front, and choosing a copper layer in the Layers panel places the via and continues on that layer. A track that already reaches every layer at that point, through a via placed there or a through-hole pad it started on, changes layer without another via. A new track starts on copper of the active layer under the pointer before copper of other layers. Outside a track, Page Down and Page Up only change the active copper layer.
 
 New tracks use the board's track width. A track's width is its line width in Attributes, and its **Net** can be changed there.
 
@@ -57,7 +63,7 @@ The sparkle button in the Layers panel header draws the board as manufactured, i
 
 ## Design rules
 
-**Board setup** holds the clearance between copper on different nets, the width of new tracks, the via diameter and drill, the clearance between copper and the board edge, the solder mask margin, and the thermal gap and spoke width of zone pad connections (0.5 mm each by default). The board saves them with its items.
+**Board setup** holds the number of copper layers, the clearance between copper on different nets, the width of new tracks, the via diameter and drill, the clearance between copper and the board edge, the solder mask margin, and the thermal gap and spoke width of zone pad connections (0.5 mm each by default). The board saves them with its items.
 
 **Design rules check** runs on demand and lists:
 
@@ -73,11 +79,11 @@ Select a finding to select the items involved. Results go stale after an edit; r
 
 ## Fabrication files
 
-**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for both copper layers, solder mask, paste, silkscreen and the board outline, and Excellon drill files: `<name>-PTH.drl` for plated holes and, when the board has any, `<name>-NPTH.drl` for unplated holes. Zone fills on each layer are merged and exported as regions. Each pad and unplated hole opens the solder mask by the board's mask margin past its copper or circle, 0.05 mm unless Board setup says otherwise. It can be anything from -0.5 mm to 0.5 mm. A negative margin makes the opening smaller than the pad or hole circle, and one that shrinks away stays covered. Vias stay covered. A pad with rounded corners is flashed on copper, paste and mask with a RoundRect aperture macro in KiCad's form, so fabrication CAM still finds it as a pad. When its corners meet, it flashes an obround (O) aperture, or an Oval macro when it is turned off the axes. A pad with equal sides and fully round corners flashes a circle. Slotted holes are routed in the drill file with G85 between the centres of their round ends. A negative mask margin shrinks a rounded pad's corners first. Past the corner radius, a pad with straight sides left gets a square-cornered opening, and a stadium or circle shrinks away. Text goes to the Gerber of its layer as filled glyph outlines, placed, sized, rotated and aligned as the editor draws it, including each footprint's reference label. Text on the back reads mirrored from above, as it does in the editor, so it reads correctly on the board's underside. So the silkscreen prints, small text grows until the inner diagonals of M, W and w, its thinnest full strokes, are 0.15 mm wide. That thickens regular text below a font size of about 3.3 mm and bold text below about 2.4 mm. Finer details stay thinner than 0.15 mm: the narrow joins where a curve meets its stem, as in m, n, r, h and 5, and parts of @ and *. At about 1 mm and below, the growth closes the smallest openings, such as those in $ and a, and the dot in 0 can touch its ring. The export uses the editor font's Latin, Latin Extended and Greek letters; other characters, such as emoji or Cyrillic, are left out, and the letters around them can shift because the editor sized the text with a fallback font. Fabrication and courtyard text stays out, and so does text on copper and on the board outline, because zone fills and the design rules check don't keep clearance around copper text yet. The export runs the design rules check and warns when it has findings.
+**Export → Export Gerber and drill files** downloads a ZIP of Gerber X2 files for each copper layer, solder mask, paste, silkscreen and the board outline, and Excellon drill files. Inner layers are named as KiCad names them: `<name>-In1_Cu.g1`, `<name>-In2_Cu.g2` and so on, with the file function `Copper,L2,Inr` for In1.Cu, and back copper is the board's last layer, `Copper,L4,Bot` on a 4-layer board. The drill files are `<name>-PTH.drl` for plated holes and, when the board has any, `<name>-NPTH.drl` for unplated holes. Zone fills on each layer are merged and exported as regions. Each pad and unplated hole opens the solder mask by the board's mask margin past its copper or circle, 0.05 mm unless Board setup says otherwise. It can be anything from -0.5 mm to 0.5 mm. A negative margin makes the opening smaller than the pad or hole circle, and one that shrinks away stays covered. Vias stay covered. A pad with rounded corners is flashed on copper, paste and mask with a RoundRect aperture macro in KiCad's form, so fabrication CAM still finds it as a pad. When its corners meet, it flashes an obround (O) aperture, or an Oval macro when it is turned off the axes. A pad with equal sides and fully round corners flashes a circle. Slotted holes are routed in the drill file with G85 between the centres of their round ends. A negative mask margin shrinks a rounded pad's corners first. Past the corner radius, a pad with straight sides left gets a square-cornered opening, and a stadium or circle shrinks away. Text goes to the Gerber of its layer as filled glyph outlines, placed, sized, rotated and aligned as the editor draws it, including each footprint's reference label. Text on the back reads mirrored from above, as it does in the editor, so it reads correctly on the board's underside. So the silkscreen prints, small text grows until the inner diagonals of M, W and w, its thinnest full strokes, are 0.15 mm wide. That thickens regular text below a font size of about 3.3 mm and bold text below about 2.4 mm. Finer details stay thinner than 0.15 mm: the narrow joins where a curve meets its stem, as in m, n, r, h and 5, and parts of @ and *. At about 1 mm and below, the growth closes the smallest openings, such as those in $ and a, and the dot in 0 can touch its ring. The export uses the editor font's Latin, Latin Extended and Greek letters; other characters, such as emoji or Cyrillic, are left out, and the letters around them can shift because the editor sized the text with a fallback font. Fabrication and courtyard text stays out, and so does text on copper and on the board outline, because zone fills and the design rules check don't keep clearance around copper text yet. The export runs the design rules check and warns when it has findings.
 
 ## Autorouting
 
-Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over both copper layers and keep the board's clearances. Neither is in the editor yet; the reference design below uses both.
+Two routers in `@ecad/drawing-core/board/` route on a 0.1 mm grid over front and back copper and keep the board's clearances. They don't route on inner layers. Their vias keep clear of other nets' inner copper, inner copper passed to `autoroute` as `rippable` stays where it is, and a connection to copper that is only on inner layers stays unrouted. Neither is in the editor yet; the reference design below uses both.
 
 `negotiatedRoute` (`negotiated-route.ts`) is the main one. It routes every net in turn, letting routes share space with other nets at a price. After each round the price rises and cells that were shared keep a history cost, until no two nets share space. Nets that still overlap after the last round are left unrouted.
 
@@ -110,7 +116,8 @@ A board is the `board` field of its drawing's `.ecaddraw` file, next to the sche
       "edgeClearance": 0.3,
       "solderMaskMargin": 0.05,
       "thermalGap": 0.5,
-      "thermalSpokeWidth": 0.5
+      "thermalSpokeWidth": 0.5,
+      "copperLayers": 2
     },
     "shapes": []
   }
@@ -122,6 +129,7 @@ The board belongs to the file's circuit and takes its name. A drawing without a 
 | Field | Meaning |
 | --- | --- |
 | `layer: "Edge.Cuts"` | An outline item. |
+| `layer: "In1.Cu"` to `"In30.Cu"` | A track, zone or copper shape on an inner layer. `rules.copperLayers` must include the layer: a 4-layer board has In1.Cu and In2.Cu. Boards saved without `copperLayers` have 2. |
 | `net` | On a copper line (a track), via or zone: the circuit net ID. |
 | `zone` | Makes a copper rectangle a zone. `clearance` optionally overrides the board clearance. `priority`, a whole number from 0 to 1000, sets the fill order: higher first, then list order. `outline` makes it a polygon zone: at least three corners `{ "x", "y" }` as fractions of the rectangle's width and height from -0.5 to 0.5 around its center, before rotation. Moving, turning and resizing the rectangle moves, turns and stretches the polygon. `padConnection` is `"thermal"` (the default) or `"solid"`, and `thermalGap` and `thermalSpokeWidth` optionally override the board's thermal sizes. |
 | `kind: "symbol"` with `footprint` | A placed footprint. `children` are its items in footprint coordinates, `component` is the circuit component ID, and `flipped` marks a footprint on the back, whose children are already mirrored. |

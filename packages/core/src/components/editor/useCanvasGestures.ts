@@ -134,6 +134,8 @@ interface TrackChain {
 	netless: number[];
 	pointerId: number;
 	posture: TrackPosture;
+	/** Where the chain last reached every copper layer, through a via or through-hole pad. */
+	through?: Point;
 }
 
 interface ZoneChain {
@@ -159,6 +161,8 @@ export interface BoardGestures {
 	rules: BoardRules;
 	/** The copper layer new tracks, zones and copper graphics go on. */
 	copperLayer: CopperLayer;
+	/** The board's copper layers, front first. */
+	copperLayers: readonly CopperLayer[];
 	setCopperLayer(layer: CopperLayer): void;
 	/** The net a new zone or via takes at a point. */
 	netAt(point: Point): string | undefined;
@@ -750,7 +754,7 @@ export function useCanvasGestures({
 	};
 	const anchorAt = (
 		point: Point,
-		chain?: Pick<TrackChain, "layer" | "net" | "start">,
+		chain?: Partial<Pick<TrackChain, "layer" | "net" | "start">>,
 	) => {
 		if (!board) return undefined;
 		const scale = cameraView.getProjection()?.scale ?? 1;
@@ -762,6 +766,8 @@ export function useCanvasGestures({
 			tolerance: 4 / scale,
 		});
 	};
+	const startAnchorAt = (point: Point) =>
+		anchorAt(point, { layer: board?.copperLayer }) ?? anchorAt(point);
 	/** The preview of the track from the chain's start to `point`, and its end. */
 	const previewTrack = (point: Point) => {
 		const active = getTrack();
@@ -779,17 +785,52 @@ export function useCanvasGestures({
 		setConnectionHover(joins && segments.length ? joins.point : null);
 		return { segments, end, joins };
 	};
-	const placeTrackVia = useEffectEvent(() => {
+	const switchTrackLayer = useEffectEvent((layer: CopperLayer) => {
 		const active = getTrack();
-		if (!active || !board) return false;
-		const via = boardVia(session.nextId(), active.start, active.net);
-		session.place([via], "Place via");
-		if (active.net === undefined) active.netless.push(via.id);
-		active.layer = otherCopperLayer(active.layer);
-		board.setCopperLayer(active.layer);
+		if (!active || !board || active.layer === layer) return false;
+		const { start, through } = active;
+		if (through?.x !== start.x || through.y !== start.y) {
+			const via = boardVia(session.nextId(), start, active.net);
+			session.place([via], "Place via");
+			if (active.net === undefined) active.netless.push(via.id);
+			active.through = { ...start };
+		}
+		active.layer = layer;
+		board.setCopperLayer(layer);
 		setWirePreview(null);
 		return true;
 	});
+	const placeTrackVia = useEffectEvent(() => {
+		const active = getTrack();
+		return active ? switchTrackLayer(otherCopperLayer(active.layer)) : false;
+	});
+	const stepCopperLayer = useEffectEvent((step: 1 | -1) => {
+		if (!board) return false;
+		const current = getTrack()?.layer ?? board.copperLayer;
+		const next = board.copperLayers[board.copperLayers.indexOf(current) + step];
+		if (!next) return false;
+		if (getTrack()) return switchTrackLayer(next);
+		board.setCopperLayer(next);
+		return true;
+	});
+	const boardCopperLayer = board?.copperLayer;
+	const boardStack = board?.copperLayers;
+	const shownStack = useRef(boardStack);
+	const followCopperLayer = useEffectEvent(
+		(layer: CopperLayer | undefined, stack: typeof boardStack) => {
+			if (stack !== shownStack.current) {
+				shownStack.current = stack;
+				const active = getTrack() ?? getZoneChain();
+				if (active && stack && !stack.includes(active.layer)) finishWire();
+				return;
+			}
+			if (layer) switchTrackLayer(layer);
+		},
+	);
+	useEffect(
+		() => followCopperLayer(boardCopperLayer, boardStack),
+		[boardCopperLayer, boardStack],
+	);
 	const flipTrackPosture = useEffectEvent(() => {
 		const active = getTrack();
 		if (!active) return false;
@@ -803,7 +844,7 @@ export function useCanvasGestures({
 			if (!board) return;
 			const active = getTrack();
 			if (!active) {
-				const anchor = anchorAt(point);
+				const anchor = startAnchorAt(point);
 				let layer = board.copperLayer;
 				if (anchor && !anchor.item.layers.includes(layer)) {
 					layer = anchor.item.layers[0];
@@ -818,6 +859,9 @@ export function useCanvasGestures({
 						netless: [],
 						pointerId: event.pointerId,
 						posture: "straight-first",
+						...(anchor && anchor.item.layers.length > 1
+							? { through: { ...anchor.point } }
+							: {}),
 					},
 				};
 				previewTrack(point);
@@ -859,7 +903,7 @@ export function useCanvasGestures({
 				return true;
 			}
 			if (!board) return false;
-			const anchor = anchorAt(point);
+			const anchor = startAnchorAt(point);
 			setConnectionHover(anchor?.point ?? null);
 			canvas.style.cursor = "crosshair";
 			return true;
@@ -1388,6 +1432,7 @@ export function useCanvasGestures({
 		finishDrag,
 		finishWire,
 		placeTrackVia,
+		stepCopperLayer,
 		flipTrackPosture,
 		closeZone,
 		pointerHandlers,

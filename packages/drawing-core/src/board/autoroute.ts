@@ -18,6 +18,7 @@ import {
 import type { BoardRules } from "#/board/rules.ts";
 import type { EditorShape } from "#/drawing/schema.ts";
 import type { Point } from "#/drawing/types.ts";
+import { isInnerCopperLayer } from "#/footprint/layers.ts";
 
 interface AutorouteOptions {
 	rules: BoardRules;
@@ -50,7 +51,14 @@ export function autoroute(
 	options: AutorouteOptions,
 ): RoutingResult {
 	const { rules } = options;
-	const grid = routingGrid(shapes, netlist, rules);
+	const fixed = (options.rippable ?? []).filter((shape) =>
+		isInnerCopperLayer(shape.layer),
+	);
+	const rippable = (options.rippable ?? []).filter(
+		(shape) => !isInnerCopperLayer(shape.layer),
+	);
+	const board = fixed.length ? [...shapes, ...fixed] : shapes;
+	const grid = routingGrid(board, netlist, rules);
 	if (!grid) return { shapes: [], failed: [] };
 	const {
 		cells,
@@ -67,8 +75,8 @@ export function autoroute(
 	const routeGrid = grid.grids();
 
 	const routes: Route[] = [];
-	if (options.rippable?.length) {
-		const items = copperItems(options.rippable, netlist);
+	if (rippable.length) {
+		const items = copperItems(rippable, netlist);
 		const { group } = analyzeConnectivity(items);
 		const chains = new Map<number, Route>();
 		for (const item of items) {
@@ -190,7 +198,7 @@ export function autoroute(
 		`${line.net}:${line.from.x},${line.from.y}:${line.to.x},${line.to.y}`;
 	for (let iteration = 0; iteration < 1500; iteration++) {
 		const current = [
-			...shapes,
+			...board,
 			...routes.flatMap((route) => (route.alive ? route.shapes : [])),
 		];
 		const items = copperItems(current, netlist);
@@ -261,9 +269,10 @@ export function autoroute(
 		routes.push({ net: line.net, owner, shapes: added, alive: true });
 	}
 	let id = nextId;
-	const output = routes
-		.filter((route) => route.alive)
-		.flatMap((route) => route.shapes.map((shape) => ({ ...shape, id: id++ })));
+	const output = [
+		...fixed,
+		...routes.filter((route) => route.alive).flatMap((route) => route.shapes),
+	].map((shape) => ({ ...shape, id: id++ }));
 	const finalItems = copperItems([...shapes, ...output], netlist);
 	return {
 		shapes: output,

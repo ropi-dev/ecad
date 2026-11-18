@@ -3,9 +3,12 @@ import {
 	type BoardRules,
 	boardRulesSchema,
 } from "@ecad/drawing-core/board/rules.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
+import { copperLayerCounts } from "@ecad/drawing-core/footprint/layers.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { OctagonAlert, TriangleAlert, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { boardCopperLayersInUse } from "#/board/format.ts";
 import { FloatingPanel } from "#/components/viewer/FloatingPanel.tsx";
 import { panelIconButtonClassName } from "#/components/viewer/viewControlStyles.ts";
 
@@ -179,7 +182,7 @@ export function BoardChecksPanel({
 }
 
 const ruleFields: readonly {
-	key: keyof BoardRules;
+	key: Exclude<keyof BoardRules, "copperLayers">;
 	label: string;
 }[] = [
 	{ key: "clearance", label: "Clearance" },
@@ -195,13 +198,16 @@ const ruleFields: readonly {
 /** The board's design rules. New tracks and vias use their sizes. */
 export function BoardSetupPanel({
 	rules,
+	shapes,
 	onChange,
 	onClose,
 }: {
 	rules: BoardRules;
+	shapes: readonly EditorShape[];
 	onChange(rules: BoardRules): void;
 	onClose(): void;
 }) {
+	const fewest = boardCopperLayersInUse(shapes);
 	return (
 		<FloatingPanel
 			label="Board setup"
@@ -216,6 +222,28 @@ export function BoardSetupPanel({
 		>
 			<PanelHeader title="Board setup" onClose={onClose} />
 			<div className="grid grid-cols-[1fr_6rem] items-center gap-x-2 gap-y-1.5 p-3 text-xs">
+				<label className="contents">
+					<span className="text-fg-muted">Copper layers</span>
+					<select
+						className="ui-select w-full tabular-nums"
+						value={rules.copperLayers}
+						onChange={(event) => {
+							const count = Number(event.currentTarget.value);
+							if (count >= fewest) onChange({ ...rules, copperLayers: count });
+						}}
+					>
+						{copperLayerCounts.map((count) => (
+							<option key={count} value={count} disabled={count < fewest}>
+								{count}
+							</option>
+						))}
+					</select>
+				</label>
+				{fewest > 2 && (
+					<p className="col-span-2 m-0 text-2xs text-fg-faint">
+						Fewer than {fewest} layers would drop items on inner copper.
+					</p>
+				)}
 				{ruleFields.map(({ key, label }) => (
 					<RuleField
 						key={`${key}:${rules[key]}`}

@@ -145,6 +145,7 @@ const groundVias: [x: number, y: number][] = [
 const sourceCentre = { x: 100, y: 95.5 };
 
 const rp2350aRules: BoardRules = {
+	copperLayers: 2,
 	clearance: 0.15,
 	trackWidth: 0.15,
 	viaDiameter: 0.6,

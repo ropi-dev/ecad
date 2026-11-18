@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { trackSegment } from "@ecad/drawing-core/board/geometry.ts";
 import { createCircuit } from "@ecad/drawing-core/circuit/model.ts";
 import {
 	redoEffect,
+	removeShapesEffect,
 	setPagesEffect,
 	setSheetEffect,
 	undoEffect,
@@ -948,5 +950,38 @@ test("a sheet-only edit marks the project dirty and saves the sheet", async () =
 		title: "Amplifier",
 	});
 	disconnect();
+	stop();
+});
+
+test("undoing the removal of inner copper gives the board its copper layers back", async () => {
+	const initial = snapshot();
+	const { session } = fixture({
+		...initial,
+		manifest: { ...initial.manifest, circuits: [{ circuit: "main.ecaddraw" }] },
+		circuits: [createCircuit("Main", primaryPcbId)],
+	});
+	const stop = session.connect();
+	await loaded(session);
+	const project = () => session.getSnapshot();
+	await project().switchEditorView("pcb");
+	const board = required(project().editorBoard);
+	board.rules.set({ ...board.rules.get(), copperLayers: 6 });
+	const editor = createEditorSession(board.store);
+	const track = trackSegment(
+		editor.nextId(),
+		{ x: 0, y: 0 },
+		{ x: 5, y: 0 },
+		"In3.Cu",
+		0.25,
+		undefined,
+	);
+	editor.place([track], "Route track");
+	editor.commit(removeShapesEffect([track.id]));
+	board.rules.set({ ...board.rules.get(), copperLayers: 2 });
+	editor.restore(undoEffect);
+	assert.ok(
+		board.store.getSnapshot().shapes.some((shape) => shape.id === track.id),
+	);
+	assert.equal(board.rules.get().copperLayers, 6);
 	stop();
 });

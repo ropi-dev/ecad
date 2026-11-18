@@ -105,6 +105,7 @@ function exportPdf(
 		layers = false,
 		zoneFills,
 		maskMargin,
+		copperLayers,
 	}: Omit<DrawingExportOptions, "measureText" | "coverOutput"> & {
 		title?: string;
 		layers?: boolean;
@@ -119,6 +120,7 @@ function exportPdf(
 		layers,
 		...(zoneFills ? { zoneFills } : {}),
 		...(maskMargin === undefined ? {} : { maskMargin }),
+		...(copperLayers === undefined ? {} : { copperLayers }),
 	};
 	const pdfBlob = (bytes: Uint8Array<ArrayBuffer>) =>
 		new Blob([bytes], { type: "application/pdf" });

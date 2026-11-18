@@ -93,9 +93,9 @@ export function copperItems(
 		});
 	};
 	for (const pad of boardPads(shapes)) {
-		const layers: CopperLayer[] =
+		const layers: readonly CopperLayer[] =
 			pad.shape.pad.type === "through-hole"
-				? ["F.Cu", "B.Cu"]
+				? copperLayers
 				: [shapeLayer(pad.shape) as CopperLayer];
 		const net = netlist.padNet(pad.component, pad.number);
 		add({
@@ -132,7 +132,7 @@ export function copperItems(
 						kind: "via",
 						shape: part,
 						...(pad?.net ? { net: pad.net } : {}),
-						layers: copperLayers as CopperLayer[],
+						layers: copperLayers,
 						hulls,
 						points: [{ x: part.x, y: part.y }],
 					});
@@ -154,7 +154,7 @@ export function copperItems(
 				kind: "via",
 				shape,
 				...(shape.net ? { net: shape.net } : {}),
-				layers: copperLayers as CopperLayer[],
+				layers: copperLayers,
 				hulls: shapeHulls(shape),
 				points: [{ x: shape.x, y: shape.y }],
 			});
@@ -205,7 +205,7 @@ export function boardHoles(shapes: readonly EditorShape[]): CopperItem[] {
 					shapeId: shape.id,
 					kind: "hole",
 					shape: part,
-					layers: copperLayers as CopperLayer[],
+					layers: copperLayers,
 					hulls,
 					bounds: mergeBounds(hulls.map(hullBounds)),
 					points: [],

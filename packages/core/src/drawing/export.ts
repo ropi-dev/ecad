@@ -1,12 +1,12 @@
 import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import {
+	allLayers,
 	type CopperLayer,
 	type FootprintLayer,
-	footprintLayers,
 } from "@ecad/drawing-core/footprint/layers.ts";
 import {
-	boardDrawOrder,
 	shapeLayers,
+	stackDrawOrder,
 } from "@ecad/drawing-core/footprint/shapes.ts";
 import { Matrix4, Vector3 } from "three";
 import {
@@ -56,11 +56,18 @@ export interface DrawingExportOptions {
 	coverOutput?: boolean;
 	zoneFills?: readonly DrawingZoneFill[];
 	maskMargin?: number;
+	copperLayers?: number;
 }
 
 export type DrawingSceneOptions = Pick<
 	DrawingExportOptions,
-	"area" | "background" | "sheet" | "measureText" | "zoneFills" | "maskMargin"
+	| "area"
+	| "background"
+	| "sheet"
+	| "measureText"
+	| "zoneFills"
+	| "maskMargin"
+	| "copperLayers"
 > & {
 	layer?: FootprintLayer;
 	maskOpenings?: readonly (readonly [number, number])[][];
@@ -68,7 +75,7 @@ export type DrawingSceneOptions = Pick<
 };
 
 const layerAppearances = new Set<string>([
-	...footprintLayers.filter((layer) => layer !== "Edge.Cuts"),
+	...allLayers.filter((layer) => layer !== "Edge.Cuts"),
 	"pad-through",
 	"via",
 ]);
@@ -82,7 +89,7 @@ export interface SceneTextLine {
 
 export type SceneItem = { order: number; name: string; color: string } & (
 	| { kind: "triangles"; points: number[] }
-	| { kind: "rings"; rings: number[][] }
+	| { kind: "rings"; rings: (readonly number[])[] }
 	| {
 			kind: "text";
 			matrix: readonly [number, number, number, number, number, number];
@@ -288,9 +295,9 @@ export function buildDrawingScene(
 	])
 		visit(shape);
 	for (const fill of fills) {
-		const rank = boardDrawOrder.indexOf(fill.layer);
+		const rank = stackDrawOrder.indexOf(fill.layer);
 		const above = drawn.findIndex((shape) =>
-			shapeLayers(shape).some((layer) => boardDrawOrder.indexOf(layer) >= rank),
+			shapeLayers(shape).some((layer) => stackDrawOrder.indexOf(layer) >= rank),
 		);
 		const first = above < 0 ? drawn.length : above;
 		const rings = fill.polygons.flat().map((ring) =>

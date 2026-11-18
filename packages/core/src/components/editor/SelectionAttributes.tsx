@@ -42,6 +42,8 @@ import {
 	type FootprintLayer,
 	footprintLayerLabels,
 	footprintLayers,
+	isCopperLayer,
+	isOuterCopperLayer,
 	type PadType,
 	padTypeLabels,
 	padTypes,
@@ -326,6 +328,7 @@ interface SelectionAttributesProps {
 	/** Shows a symbol's footprint and the footprints it can use. */
 	footprintChoices?: FootprintChoices;
 	hiddenLayers?: ReadonlySet<FootprintLayer>;
+	layers?: readonly FootprintLayer[];
 	/** The board's nets, for tracks, vias and zones on a board. */
 	boardNets?: readonly { id: string; name: string }[];
 	unit?: LengthUnit;
@@ -683,8 +686,7 @@ function boardRows(
 	const rows: [string, ReactNode][] = [];
 	const copper = shapes.filter(
 		(shape) =>
-			canCarryNet(shape) &&
-			(isVia(shape) || shape.layer === "F.Cu" || shape.layer === "B.Cu"),
+			canCarryNet(shape) && (isVia(shape) || isCopperLayer(shape.layer)),
 	);
 	if (copper.length === shapes.length && copper.length) {
 		const first = "net" in copper[0] ? copper[0].net : undefined;
@@ -858,6 +860,7 @@ function SelectionAttributesPanel({
 	footprint = false,
 	footprintChoices,
 	hiddenLayers,
+	layers = footprintLayers,
 	boardNets,
 	unit = "mil",
 	onEdit,
@@ -1005,7 +1008,14 @@ function SelectionAttributesPanel({
 			? []
 			: single &&
 					copperLayers.every((copper) => shapeLayers(single).includes(copper))
-				? [["Layer", "Both copper layers"] as [string, ReactNode]]
+				? [
+						[
+							"Layer",
+							layers.filter(isCopperLayer).length > 2
+								? "Every copper layer"
+								: "Both copper layers",
+						] as [string, ReactNode],
+					]
 				: shapes.every(isHole)
 					? [["Layer", "Through the board"] as [string, ReactNode]]
 					: [
@@ -1028,8 +1038,8 @@ function SelectionAttributesPanel({
 											Mixed
 										</option>
 									)}
-									{footprintLayers
-										.filter((item) => !pad || copperLayers.includes(item))
+									{layers
+										.filter((item) => !pad || isOuterCopperLayer(item))
 										.map((item) => (
 											<option
 												key={item}

@@ -44,15 +44,25 @@ export function drillHoles(shapes: readonly EditorShape[]): DrillHole[] {
 
 const markStep = Math.PI / 32;
 
+const outlines = new WeakMap<DrillHole, readonly number[]>();
+
 /** @return The hole's outline, as a flat list of x, y pairs. */
-export function holeOutline({
-	diameter,
-	ends: [from, to],
-}: DrillHole): number[] {
-	const points = from.x === to.x && from.y === to.y ? [from] : [from, to];
-	return hullPolygon({ points, radius: diameter / 2 }, 0, markStep).flatMap(
-		({ x, y }) => [x, y],
-	);
+export function holeOutline(hole: DrillHole): readonly number[] {
+	let outline = outlines.get(hole);
+	if (!outline) {
+		const {
+			diameter,
+			ends: [from, to],
+		} = hole;
+		const points = from.x === to.x && from.y === to.y ? [from] : [from, to];
+		outline = hullPolygon(
+			{ points, radius: diameter / 2 },
+			0,
+			markStep,
+		).flatMap(({ x, y }) => [x, y]);
+		outlines.set(hole, outline);
+	}
+	return outline;
 }
 
 /**
