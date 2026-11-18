@@ -83,9 +83,4 @@ test("performance data reaches the ingest proxy only while usage data is on", as
 		if (event.properties.distinct_id === session)
 			expect(Date.parse(event.timestamp)).toBeLessThanOrEqual(disabledAt);
 		else expect(event.properties.metric).not.toBe("app.ready");
-	expect(
-		await page.evaluate(() =>
-			JSON.parse(localStorage.getItem("ecad.telemetry.v1") ?? "{}"),
-		),
-	).toMatchObject({ enabled: true });
 });

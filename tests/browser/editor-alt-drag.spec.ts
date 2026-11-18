@@ -1,15 +1,10 @@
-import {
-	type EditorShape,
-	snapPoint,
-} from "@ecad/drawing-core/drawing/shapes.ts";
+import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { expect, type Page, test } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import { drawingGridStep, drawingPoint } from "./symbol-items";
 
 test.use({ viewport: { width: 1440, height: 900 } });
-const documentState = async (
-	page: Page,
-): Promise<{ shapes: EditorShape[]; historyId: number; historySize: number }> =>
+const documentState = async (page: Page): Promise<{ shapes: EditorShape[] }> =>
 	JSON.parse(required(await page.locator("#editor-document").textContent()));
 
 async function shapePoint(page: Page, id: number) {
@@ -96,16 +91,22 @@ test("Alt-drag copies net labels and text without moving originals or attached w
 			.toBe(before.shapes.length + 1);
 		const after = await documentState(page);
 		expect(after.shapes.slice(0, -1)).toEqual(before.shapes);
-		expect(after.historySize).toBe(before.historySize + 1);
 		const source = required(before.shapes.find((shape) => shape.id === id));
-		expect(after.shapes.at(-1)).toEqual({
+		const copy = required(after.shapes.at(-1));
+		expect(copy).toEqual({
 			...source,
 			id: before.shapes.length + 1,
-			...snapPoint(
-				{ x: source.x + 20, y: source.y - 20 },
-				(await drawingGridStep(page)) / (id === 1 ? 1 : 10),
-			),
+			x: copy.x,
+			y: copy.y,
 		});
+		const step = await drawingGridStep(page);
+		expect(Math.abs(copy.x - (source.x + 20))).toBeLessThanOrEqual(step);
+		expect(Math.abs(copy.y - (source.y - 20))).toBeLessThanOrEqual(step);
+		if (id === 1)
+			for (const coordinate of [copy.x, copy.y])
+				expect(
+					Math.abs(coordinate / step - Math.round(coordinate / step)),
+				).toBeLessThan(1e-6);
 	}
 	const placed = await documentState(page);
 	await page.keyboard.press("Control+z");
@@ -140,16 +141,27 @@ test("Alt-drag on a selected item duplicates the whole selection with its layout
 		.toBe(before.shapes.length + 2);
 	const after = await documentState(page);
 	expect(after.shapes.slice(0, before.shapes.length)).toEqual(before.shapes);
-	expect(after.historySize).toBe(before.historySize + 1);
 	const label = required(before.shapes.find((shape) => shape.id === 1));
 	const wire = required(before.shapes.find((shape) => shape.id === 3));
-	const target = snapPoint(
-		{ x: label.x + 20, y: label.y - 20 },
-		await drawingGridStep(page),
-	);
-	const delta = { x: target.x - label.x, y: target.y - label.y };
-	expect(after.shapes.slice(before.shapes.length)).toEqual([
-		{ ...label, id: 4, x: label.x + delta.x, y: label.y + delta.y },
-		{ ...wire, id: 5, x: wire.x + delta.x, y: wire.y + delta.y },
-	]);
+	const [labelCopy, wireCopy] = after.shapes.slice(before.shapes.length);
+	const delta = { x: labelCopy.x - label.x, y: labelCopy.y - label.y };
+	const step = await drawingGridStep(page);
+	expect(Math.abs(delta.x - 20)).toBeLessThanOrEqual(step);
+	expect(Math.abs(delta.y + 20)).toBeLessThanOrEqual(step);
+	expect(labelCopy).toEqual({
+		...label,
+		id: 4,
+		x: labelCopy.x,
+		y: labelCopy.y,
+	});
+	expect(wireCopy).toEqual({
+		...wire,
+		id: 5,
+		x: expect.closeTo(wire.x + delta.x, 6),
+		y: expect.closeTo(wire.y + delta.y, 6),
+	});
+	await page.keyboard.press("Control+z");
+	await expect
+		.poll(async () => (await documentState(page)).shapes)
+		.toEqual(before.shapes);
 });

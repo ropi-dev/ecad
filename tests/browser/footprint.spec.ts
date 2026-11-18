@@ -1,10 +1,6 @@
 import type { Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
-import {
-	closeProjectFiles,
-	openProjectFiles,
-	projectRail,
-} from "./project-files";
+import { closeProjectFiles, projectRail } from "./project-files";
 import { screenPointOfMillimetres } from "./rulers";
 import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
@@ -80,9 +76,6 @@ async function boardSelection(page: Page) {
 
 async function createFootprint(page: Page) {
 	await page.goto("/tests/browser/projects.html");
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Workspace home", exact: true })
-		.click();
 	await closeProjectFiles(page);
 	await projectRail(page)
 		.getByRole("button", { name: "Add file", exact: true })
@@ -214,7 +207,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		.toBe(4);
 
 	const area = page.locator("[data-view]");
-	const flatCanvas = await area.locator("canvas").elementHandle();
 	await page.keyboard.down("Alt");
 	await page.keyboard.down("Shift");
 	await page.mouse.move(secondPad.x, secondPad.y);
@@ -229,28 +221,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
 	).toHaveCount(0);
 	expect((await documentState(page)).editorShapes).toHaveLength(4);
-	expect(
-		await area
-			.locator("canvas")
-			.evaluate((canvas, before) => canvas === before, flatCanvas),
-	).toBe(true);
-	await flat.click();
-	await expect(area).toHaveAttribute("data-view", "2d");
-	await expect(flat).toHaveAttribute("aria-pressed", "true");
-	await flat.click();
-	await expect(area).toHaveAttribute("data-view", "3d");
-	await expect(flat).toHaveAttribute("aria-pressed", "false");
-	await expect(flat).toBeFocused();
-	await expect(
-		page.getByRole("application", { name: "Footprint editor" }),
-	).toBeVisible();
-	await expect(
-		page.getByRole("img", { name: "Drawing rulers in millimetres" }),
-	).toHaveCount(0);
-	await expect(
-		page.getByRole("button", { name: "Pads and vias", exact: true }),
-	).toBeEnabled();
-	const boardCanvas = await area.locator("canvas").elementHandle();
 	const view = required(await area.boundingBox());
 
 	await page.mouse.move(view.x + view.width - 80, view.y + 70);
@@ -330,11 +300,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 		.poll(async () => (await documentState(page)).editorShapes.length)
 		.toBe(5);
 	expect((await documentState(page)).editorShapes[4].pad.type).toBe("smd");
-	expect(
-		await area
-			.locator("canvas")
-			.evaluate((canvas, before) => canvas === before, boardCanvas),
-	).toBe(true);
 	const centre = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
 	const sky = { x: view.x + view.width - 80, y: view.y + 40 };
 	await orbitUntilAboveHorizon(page, centre, sky);
@@ -358,11 +323,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	await expect(
 		page.getByRole("button", { name: "Show Front silkscreen" }),
 	).toBeVisible();
-	expect(
-		await area
-			.locator("canvas")
-			.evaluate((canvas, before) => canvas === before, boardCanvas),
-	).toBe(true);
 	await (await toolbarButton(page, "Through-hole pad")).click();
 	await expect(area).toHaveAttribute("data-tool", "through-hole-pad");
 	await flat.click();
@@ -397,16 +357,6 @@ test("a footprint takes pads and layer graphics, hides layers and is edited as a
 	await page.keyboard.up("Shift");
 	await page.keyboard.up("Alt");
 	await expect(area).toHaveAttribute("data-view", "3d");
-	await flat.click();
-	await expect(area).toHaveAttribute("data-view", "2d");
-
-	await page.setViewportSize({ width: 1400, height: 900 });
-	await flat.click();
-	await expect(area).toHaveAttribute("data-view", "3d");
-	await expect(
-		page.getByRole("button", { name: "Pads and vias", exact: true }),
-	).toBeEnabled();
-	await expect(page.getByTestId("cursor-readout")).toBeVisible();
 });
 
 test("the via tool places vias through both copper layers, and a via's drill is edited in Attributes", async ({

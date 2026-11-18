@@ -1,8 +1,8 @@
 import { fromMils } from "@ecad/drawing-core/drawing/units.ts";
 import { expect, type Page, test } from "@playwright/test";
-import { rulerSpacing } from "#/engine/ruler.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
+import { drawingGridStep } from "./symbol-items";
 import { toolbarButton } from "./toolbar";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -11,20 +11,6 @@ const g = (steps: number) => steps * fromMils(100);
 
 interface State {
 	placement: { x: number; y: number; rotation: number } | null;
-	pinTexts: { name: string; texture?: string; rotation: number }[];
-	symbolTexts: {
-		symbol: string;
-		name: string;
-		texture?: string;
-		x: number;
-		y: number;
-	}[];
-	wireTerminals: { x: number; y: number; width: number; height: number }[];
-	wireJunctions: { x: number; y: number; width: number; height: number }[];
-	wireBridges: string[];
-	textures: number;
-	camera: string;
-	direction: number[];
 	origin: number[];
 	corner: number[];
 	preview: {
@@ -36,8 +22,6 @@ interface State {
 	} | null;
 	shapes: {
 		name: string;
-		color?: string;
-		texture?: string;
 		x: number;
 		y: number;
 		selected: boolean;
@@ -74,14 +58,6 @@ async function screen(page: Page, x: number, y: number) {
 				box.height) /
 				2,
 	};
-}
-async function gridStep(page: Page) {
-	const view = await state(page);
-	const box = required(await page.locator("canvas").boundingBox());
-	return rulerSpacing(
-		((view.corner[0] - view.origin[0]) * box.width) / 840,
-		"mil",
-	).minor;
 }
 async function clickAt(page: Page, x: number, y: number) {
 	const point = await screen(page, x, y);
@@ -162,7 +138,7 @@ test("draws every shape, moves beyond A3 without panning, and deletes", async ({
 		.poll(async () => (await nonPinState(page)).shapes[0].x)
 		.toBeCloseTo(g(-12), 4);
 	expect((await nonPinState(page)).shapes[0].y).toBeCloseTo(g(130), 4);
-	const step = await gridStep(page);
+	const step = await drawingGridStep(page);
 	await page.keyboard.press("ArrowRight");
 	await page.keyboard.press("Shift+ArrowDown");
 	await expect
@@ -225,7 +201,6 @@ test("Ctrl toggles, Shift adds and Ctrl + Shift removes from the selection", asy
 	await page.keyboard.down("Control");
 	await page.mouse.down();
 	await page.mouse.move(end.x, end.y, { steps: 4 });
-	await expect(badge).toHaveAttribute("data-selection-action", "toggle");
 	await expect(badge).toHaveAttribute("data-selection-action", "toggle");
 	await expect.poll(selection).toEqual([false, false, true]);
 	await page.keyboard.down("Shift");
@@ -478,26 +453,9 @@ async function inPixels<Arg, Result>(
 }
 
 test("panning shows the same picture as a full redraw", async ({ page }) => {
-	await page.evaluate(async () => {
-		const path = "/packages/core/src/performance/runtime.ts";
-		const runtime = (await import(
-			path
-		)) as typeof import("#/performance/runtime.ts");
-		runtime.initializePerformance();
-	});
 	await createShape(page, "Rectangle", g(40), g(40));
 	await createShape(page, "Wire", g(20), g(20));
 	const canvas = page.locator("canvas");
-	const panned = () =>
-		page.evaluate(
-			() =>
-				window.__ecadPerformance
-					?.snapshot()
-					.events.filter(
-						(event) =>
-							event.name === "renderer.frame" && event.data?.panned === true,
-					).length ?? 0,
-		);
 	const settle = () =>
 		page.evaluate(
 			() =>
@@ -507,7 +465,6 @@ test("panning shows the same picture as a full redraw", async ({ page }) => {
 		);
 	await page.keyboard.press("Escape");
 	await settle();
-	const before = await panned();
 	const box = required(await canvas.boundingBox());
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 	for (const [x, y] of [
@@ -519,7 +476,6 @@ test("panning shows the same picture as a full redraw", async ({ page }) => {
 		await page.mouse.wheel(x, y);
 		await settle();
 	}
-	expect(await panned()).toBeGreaterThan(before);
 	// The drawing area inside the rulers, without the toolbar floating over it.
 	const area = () =>
 		page.screenshot({

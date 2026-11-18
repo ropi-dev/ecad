@@ -1,9 +1,5 @@
 import type { Page } from "@playwright/test";
-import {
-	closeProjectFiles,
-	openProjectFiles,
-	projectRail,
-} from "./project-files";
+import { closeProjectFiles, projectRail } from "./project-files";
 import { screenPointOfMillimetres } from "./rulers";
 import { expect, test } from "./seeded-project";
 import { toolbarButton } from "./toolbar";
@@ -17,9 +13,6 @@ test("a rectangular pad's corner radius is edited in Attributes and scales with 
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Workspace home", exact: true })
-		.click();
 	await closeProjectFiles(page);
 	await projectRail(page)
 		.getByRole("button", { name: "Add file", exact: true })

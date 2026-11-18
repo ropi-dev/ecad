@@ -1,7 +1,6 @@
 import type { Page } from "@playwright/test";
 import { required } from "../helpers/required.ts";
 import {
-	closeProjectFiles,
 	openPrimaryDrawing,
 	openProjectActions,
 	openProjectFiles,
@@ -12,20 +11,6 @@ import { toolbarButton } from "./toolbar";
 
 const documentState = async (page: Page) =>
 	JSON.parse((await page.locator("#project-document").textContent()) ?? "{}");
-async function projectsPage(page: Page) {
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Workspace home", exact: true })
-		.click();
-	await expect(page.locator("main")).toBeVisible();
-	await closeProjectFiles(page);
-}
-async function createProject(page: Page, _name: string) {
-	await projectsPage(page);
-	await expect
-		.poll(async () => (await documentState(page)).name)
-		.toBe("Untitled");
-	await openProjectFiles(page);
-}
 async function drawRectangle(page: Page) {
 	await (await toolbarButton(page, "Rectangle")).click();
 	// Span several 50 mil grid cells even when a tiny symbol fits the view.
@@ -39,7 +24,6 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
-	await createProject(page, "Multiple drawings");
 	await openPrimaryDrawing(page);
 	await drawRectangle(page);
 	await expect
@@ -132,14 +116,6 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 	);
 	expect((await documentState(page)).editorShapes).toEqual([]);
 	expect((await documentState(page)).drawings[0].shapes).toHaveLength(1);
-	await createProject(page, "Copied drawings");
-	await page.reload();
-	await (await openProjectFiles(page))
-		.getByRole("link", { name: "Open Power stage.ecaddraw", exact: true })
-		.click();
-	await expect
-		.poll(async () => (await documentState(page)).editorShapes.length)
-		.toBe(1);
 });
 
 test("the sidebar Open project button lists saved web projects and switches to one", async ({

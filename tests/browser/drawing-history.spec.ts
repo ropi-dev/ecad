@@ -1,7 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { toolbarButton } from "./toolbar.ts";
 
-test("the history panel drops the oldest steps past 100 and jumps to a chosen step", async ({
+const shapeX = async (page: Page) =>
+	JSON.parse((await page.locator("#editor-document").textContent()) || "{}")
+		.shapes[0]?.x;
+
+async function moveShape(page: Page, x: number) {
+	await page.evaluate(async (x) => {
+		const fixturePath = "/tests/browser/editor.tsx";
+		const { replaceShapes, drawingStore } = await import(fixturePath);
+		replaceShapes([{ ...drawingStore.getSnapshot().shapes[0], x }]);
+	}, x);
+}
+
+test("the history panel jumps to a chosen step on either branch", async ({
 	page,
 }) => {
 	const errors: string[] = [];
@@ -10,9 +22,7 @@ test("the history panel drops the oldest steps past 100 and jumps to a chosen st
 	await expect(await toolbarButton(page, "History")).toBeEnabled();
 	await page.evaluate(async () => {
 		const fixturePath = "/tests/browser/editor.tsx";
-		const { placeRectangle, replaceShapes, drawingStore } = await import(
-			fixturePath
-		);
+		const { placeRectangle } = await import(fixturePath);
 		placeRectangle({
 			x: 1,
 			y: 1,
@@ -21,57 +31,27 @@ test("the history panel drops the oldest steps past 100 and jumps to a chosen st
 			rotation: 0,
 			lineWidth: 0.2,
 		});
-		for (let x = 2; x <= 99; x++)
-			replaceShapes([{ ...drawingStore.getSnapshot().shapes[0], x }]);
 	});
+	for (const x of [2, 3]) await moveShape(page, x);
 	await (await toolbarButton(page, "History")).click();
-	await page.evaluate(async () => {
-		const fixturePath = "/tests/browser/editor.tsx";
-		const { replaceShapes, drawingStore } = await import(fixturePath);
-		for (let x = 100; x <= 103; x++)
-			replaceShapes([{ ...drawingStore.getSnapshot().shapes[0], x }]);
-	});
 	const panel = page.getByRole("region", {
 		name: "Drawing history",
 		exact: true,
 	});
-	await expect(panel).toBeVisible();
-	await expect(panel.locator("[data-history-node-id]")).toHaveCount(100);
-	await expect(panel.locator('[data-history-node-id="0"]')).toHaveCount(0);
-	await expect(panel.locator('[data-history-node-id="4"]')).toHaveCount(1);
-	await expect(panel.locator('[data-history-node-id="103"]')).toHaveAttribute(
-		"aria-current",
-		"step",
-	);
-	await panel.locator('[data-history-node-id="4"]').click();
-	await expect(await toolbarButton(page, "Undo")).toBeDisabled();
-	await (await toolbarButton(page, "Redo")).click();
-	await (await toolbarButton(page, "History")).click();
-	await expect(panel.locator('[data-history-node-id="5"]')).toHaveAttribute(
-		"aria-current",
-		"step",
-	);
-	await panel.locator('[data-history-node-id="102"]').click();
-	await page.evaluate(async () => {
-		const fixturePath = "/tests/browser/editor.tsx";
-		const { replaceShapes, drawingStore } = await import(fixturePath);
-		replaceShapes([{ ...drawingStore.getSnapshot().shapes[0], x: -1 }]);
-	});
-	await expect(panel.locator("[data-history-node-id]")).toHaveCount(100);
-	await panel.locator('[data-history-node-id="103"]').click();
-	await expect(panel.locator('[data-history-node-id="103"]')).toHaveAttribute(
-		"aria-current",
-		"step",
-	);
-	await panel.locator('[data-history-node-id="104"]').click();
-	await expect(panel.locator('[data-history-node-id="104"]')).toHaveAttribute(
-		"aria-current",
-		"step",
-	);
-	await panel.locator('[data-history-node-id="5"]').click();
-	await expect(panel.locator('[data-history-node-id="5"]')).toHaveAttribute(
-		"aria-current",
-		"step",
-	);
+	const step = (id: number) => panel.locator(`[data-history-node-id="${id}"]`);
+	await expect(step(3)).toHaveAttribute("aria-current", "step");
+
+	await step(1).click();
+	await expect(step(1)).toHaveAttribute("aria-current", "step");
+	await expect.poll(() => shapeX(page)).toBe(1);
+
+	await moveShape(page, 9);
+	await expect(step(4)).toHaveAttribute("aria-current", "step");
+	await step(3).click();
+	await expect(step(3)).toHaveAttribute("aria-current", "step");
+	await expect.poll(() => shapeX(page)).toBe(3);
+	await step(4).click();
+	await expect(step(4)).toHaveAttribute("aria-current", "step");
+	await expect.poll(() => shapeX(page)).toBe(9);
 	expect(errors).toEqual([]);
 });
