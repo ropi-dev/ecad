@@ -728,7 +728,9 @@ export function fillZones(
 	const regions: (ZoneFill & { members: CopperItem[] })[] = [];
 	if (zones.length) {
 		const interior = boardInterior(shapes);
-		const edges = boardOutlineSegments(shapes).map((segment) => {
+		const outline = boardOutlineSegments(shapes);
+		const closed = outlineClosed(outline);
+		const edges = outline.map((segment) => {
 			const hull = { points: segment, radius: 0 };
 			return ring(
 				hullPolygon(hull, circumscribed(hull, rules.edgeClearance), arc),
@@ -738,12 +740,14 @@ export function fillZones(
 			const layer = zone.layers[0];
 			const clearance = Math.max(zoneClearance(zone), rules.clearance);
 			let region = outlineRegion(ring(zoneCorners(zone.shape)));
-			if (interior.length)
-				region = combinePolygons(
-					region,
-					combinePolygons(region, interior, true),
-					true,
-				);
+			if (closed)
+				region = interior.length
+					? combinePolygons(
+							region,
+							combinePolygons(region, interior, true),
+							true,
+						)
+					: [];
 			const obstacles: Ring[] = [...edges];
 			const others = items.filter(
 				(item) =>
