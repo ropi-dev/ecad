@@ -98,6 +98,14 @@ A PCB reuses the footprint editor's canvas with placed footprints, tracks, vias 
 
 The viewport runtime owns the renderer, camera, controls, input listeners, and animation scheduling. React creates and disposes that runtime with the component lifetime and updates it through explicit methods. React effects handle this resource binding; they do not trigger document commands.
 
+## Dialogs
+
+`AppDialog` in `packages/core/src/components/ui/Dialog.tsx` is the app's dialog. The web app shows it over a dimmed page. The desktop app shows each dialog in a modal child window of the editor window.
+
+The page opens that window with `window.open` and a name that starts with `ecad-dialog-`. The main process allows only blank windows with that prefix, makes them frameless modal children, and shows one after the page has sized it. React renders the dialog into the window through a portal, so the dialog keeps the page's state, context and preload bridge. The page copies its stylesheets and `data-theme` into the window and keeps them in step. The window is as wide as the dialog's size, as tall as its content up to 85% of the screen, and follows the content when it changes. Its header moves it.
+
+Dialog code runs in the page's JavaScript realm, but its elements belong to the dialog window. `element instanceof HTMLElement` is false for them, so check against `element.ownerDocument.defaultView.HTMLElement`, as `isEditableTarget` does. Radix primitives that read the global `document`, such as roving focus in `Tabs`, misbehave inside a dialog window, which is why the settings dialog has its own tab list. React events from a dialog window stop at its root, so bubbling handlers on the page never see them. Capture handlers on the dialog's ancestors still do, so they must ignore targets from another document.
+
 ## Work that runs in workers
 
 Computation that needs no DOM and can take longer than a frame runs in a Web Worker, so the page keeps painting and answering input.

@@ -16,8 +16,12 @@ export function isEditableTarget({
 }: {
 	readonly target: EventTarget | null;
 }) {
+	const view =
+		target && "ownerDocument" in target
+			? (target as Node).ownerDocument?.defaultView
+			: undefined;
 	return (
-		target instanceof HTMLElement &&
+		target instanceof (view?.HTMLElement ?? HTMLElement) &&
 		(target.isContentEditable ||
 			target.closest("input, textarea, select") !== null)
 	);

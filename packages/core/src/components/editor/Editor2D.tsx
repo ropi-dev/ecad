@@ -997,6 +997,7 @@ function EditorCanvas({
 			className="relative flex h-dvh flex-col overflow-hidden"
 			{...clipboard}
 			onKeyDownCapture={(event) => {
+				if ((event.target as Node).ownerDocument !== document) return;
 				if (
 					isBoard &&
 					ready &&

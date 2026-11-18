@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { runInNewContext } from "node:vm";
+import { dialogWindowPrefix } from "@ecad/core/components/ui/dialog-window.ts";
 import { transform } from "esbuild";
 import * as bridge from "#/bridge.ts";
 import { libraryChannels } from "#/bridge.ts";
@@ -25,9 +26,15 @@ async function boot() {
 	let loads = 0;
 	const fetched: string[] = [];
 	const frame = { url: "ecad://app/index.html" };
+	let openWindow!: (details: { url: string; frameName: string }) => {
+		action: string;
+		overrideBrowserWindowOptions?: Record<string, unknown>;
+	};
 	const contents = {
 		mainFrame: frame,
-		setWindowOpenHandler() {},
+		setWindowOpenHandler(handler: typeof openWindow) {
+			openWindow = handler;
+		},
 		on() {},
 		session: { setPermissionRequestHandler() {} },
 	};
@@ -100,6 +107,7 @@ async function boot() {
 		},
 		"#/main/symbol-library.ts": { DesktopSymbolLibrary: Library },
 		"#/main/updates.ts": { readPackagedDistribution: () => null },
+		"@ecad/core/components/ui/dialog-window.ts": { dialogWindowPrefix },
 	};
 	const source = await readFile(
 		new URL("../src/main/main.ts", import.meta.url),
@@ -125,6 +133,8 @@ async function boot() {
 		contents,
 		frame,
 		fetched,
+		openWindow: (details: { url: string; frameName: string }) =>
+			openWindow(details),
 		loads: () => loads,
 	};
 }
@@ -175,4 +185,21 @@ test("the packaged protocol confines requests and applies separate worker CSP", 
 			pathToFileURL(resolve("/tmp/ecad-test-main/renderer", name)).href,
 		);
 	}
+});
+
+test("the editor opens only blank dialog windows, as modal children", async () => {
+	const app = await boot();
+	const dialog = app.openWindow({
+		url: "about:blank",
+		frameName: `${dialogWindowPrefix}1`,
+	});
+	assert.equal(dialog.action, "allow");
+	assert.equal(dialog.overrideBrowserWindowOptions?.modal, true);
+	assert.ok(dialog.overrideBrowserWindowOptions?.parent);
+	for (const details of [
+		{ url: "about:blank", frameName: "" },
+		{ url: "https://example.com/", frameName: `${dialogWindowPrefix}2` },
+		{ url: "ecad://app/index.html", frameName: `${dialogWindowPrefix}3` },
+	])
+		assert.equal(app.openWindow(details).action, "deny");
 });

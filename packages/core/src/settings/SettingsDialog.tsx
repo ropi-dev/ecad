@@ -1,7 +1,6 @@
 import { schematicErcRules } from "@ecad/drawing-core/erc/schematic-rules.ts";
 import { errorMessage } from "@ecad/drawing-core/lib/error-message.ts";
 import { CircleArrowUp, CircuitBoard, Library, Monitor } from "lucide-react";
-import { Tabs } from "radix-ui";
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { AppDialog } from "#/components/ui/Dialog.tsx";
 import { automaticAntialiasing } from "#/components/viewer/antialiasing.ts";
@@ -63,6 +62,7 @@ export function SettingsDialog({
 		? section
 		: "display";
 	const [active, setActive] = useState(requested);
+	const tabsId = useId();
 	const [opened, setOpened] = useState(open);
 	if (open !== opened) {
 		setOpened(open);
@@ -90,53 +90,82 @@ export function SettingsDialog({
 				</>
 			}
 		>
-			<Tabs.Root
-				value={active}
-				onValueChange={(value) => setActive(value as SettingsSection)}
-				orientation="vertical"
-				className="flex min-h-0 flex-[1_1_34rem] max-[640px]:flex-col"
-			>
-				<Tabs.List
+			<div className="flex min-h-0 flex-[1_1_34rem] max-[640px]:flex-col">
+				<div
+					role="tablist"
 					aria-label="Settings sections"
+					aria-orientation="vertical"
 					className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-line-subtle p-2 max-[640px]:w-auto max-[640px]:flex-row max-[640px]:overflow-x-auto max-[640px]:border-r-0 max-[640px]:border-b"
+					onKeyDown={(event) => {
+						const index = shown.findIndex(({ id }) => id === active);
+						const step =
+							event.key === "ArrowDown" || event.key === "ArrowRight"
+								? 1
+								: event.key === "ArrowUp" || event.key === "ArrowLeft"
+									? -1
+									: 0;
+						const next =
+							event.key === "Home"
+								? 0
+								: event.key === "End"
+									? shown.length - 1
+									: step
+										? (index + step + shown.length) % shown.length
+										: -1;
+						const section = shown[next];
+						if (!section) return;
+						event.preventDefault();
+						setActive(section.id);
+						event.currentTarget
+							.querySelectorAll<HTMLElement>('[role="tab"]')
+							[next]?.focus();
+					}}
 				>
 					{shown.map(({ id, label, icon: Icon }) => (
-						<Tabs.Trigger
+						<button
 							key={id}
-							value={id}
+							type="button"
+							role="tab"
+							id={`${tabsId}-${id}-tab`}
+							aria-selected={active === id}
+							aria-controls={`${tabsId}-${id}-panel`}
+							tabIndex={active === id ? 0 : -1}
 							data-active={active === id}
 							className="ui-button ui-toggle justify-start whitespace-nowrap"
+							onClick={() => setActive(id)}
 						>
 							<Icon size={15} aria-hidden="true" />
 							{label}
-						</Tabs.Trigger>
+						</button>
 					))}
-				</Tabs.List>
-				<div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4">
-					<Tabs.Content value="display" className="outline-none">
-						<DisplaySettings />
-					</Tabs.Content>
-					<Tabs.Content value="erc" className="outline-none">
-						<ErcSettings />
-					</Tabs.Content>
-					<Tabs.Content value="libraries" className="outline-none">
-						<Suspense
-							fallback={
-								<output className="text-sm text-fg-muted">
-									Loading libraries...
-								</output>
-							}
-						>
-							<SymbolLibrarySettings />
-						</Suspense>
-					</Tabs.Content>
-					{updates && (
-						<Tabs.Content value="updates" className="outline-none">
-							<UpdateSettings />
-						</Tabs.Content>
-					)}
 				</div>
-			</Tabs.Root>
+				<div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4">
+					<div
+						role="tabpanel"
+						id={`${tabsId}-${active}-panel`}
+						aria-labelledby={`${tabsId}-${active}-tab`}
+						className="outline-none"
+					>
+						{active === "display" ? (
+							<DisplaySettings />
+						) : active === "erc" ? (
+							<ErcSettings />
+						) : active === "libraries" ? (
+							<Suspense
+								fallback={
+									<output className="text-sm text-fg-muted">
+										Loading libraries...
+									</output>
+								}
+							>
+								<SymbolLibrarySettings />
+							</Suspense>
+						) : updates ? (
+							<UpdateSettings />
+						) : null}
+					</div>
+				</div>
+			</div>
 		</AppDialog>
 	);
 }
