@@ -3,7 +3,11 @@ import { test } from "node:test";
 import type { TelemetryBatch } from "@ecad/core/telemetry/schema.ts";
 import { telemetryChannels } from "#/bridge.ts";
 import { parseIpcArguments } from "#/main/ipc.ts";
-import { POSTHOG_BATCH_URL, sendTelemetry } from "#/main/telemetry.ts";
+import {
+	keepStoredTelemetry,
+	POSTHOG_BATCH_URL,
+	sendTelemetry,
+} from "#/main/telemetry.ts";
 
 const batch: TelemetryBatch = {
 	api_key: "phc_0123456789abcdefABCDEF",
@@ -59,6 +63,28 @@ test("the main process drops batches while usage data is off and ignores network
 	assert.equal(calls, 1);
 });
 
+test("a save that leaves usage data alone keeps the stored choice from other windows", () => {
+	const stale = {
+		version: 1 as const,
+		theme: "dark" as const,
+		telemetry: true,
+	};
+	assert.deepEqual(keepStoredTelemetry(stale, true, false), {
+		version: 1,
+		theme: "dark",
+		telemetry: false,
+	});
+	assert.deepEqual(keepStoredTelemetry(stale, true, undefined), {
+		version: 1,
+		theme: "dark",
+	});
+	assert.equal(
+		keepStoredTelemetry({ ...stale, telemetry: false }, true, true).telemetry,
+		false,
+	);
+	assert.equal(keepStoredTelemetry(stale, undefined, false).telemetry, true);
+});
+
 test("telemetry requests must be PostHog batches of known events", () => {
 	assert.deepEqual(parseIpcArguments(telemetryChannels.send, [batch]), [batch]);
 	for (const invalid of [
@@ -75,18 +101,20 @@ test("telemetry requests must be PostHog batches of known events", () => {
 				},
 			],
 		},
-		{
+		...[
+			{ file: "drawings/sample-board.ecaddraw" },
+			{ metric: "sample-board.ecaddraw" },
+			{ "sample-board.ecaddraw.count": 1 },
+			{ "sample-board.ecaddraw": 1 },
+		].map((extra) => ({
 			...batch,
 			batch: [
 				{
 					...batch.batch[0],
-					properties: {
-						...batch.batch[0].properties,
-						file: "drawings/sample-board.ecaddraw",
-					},
+					properties: { ...batch.batch[0].properties, ...extra },
 				},
 			],
-		},
+		})),
 	])
 		assert.throws(
 			() => parseIpcArguments(telemetryChannels.send, [invalid]),

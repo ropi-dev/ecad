@@ -33,7 +33,7 @@ test("operations become events with only numeric and boolean data", () => {
 		timestamp: "2023-11-14T22:13:20.000Z",
 		properties: {
 			metric: "project.open",
-			duration_ms: 41.24,
+			duration_ms: 41.237,
 			status: "ok",
 			"data.shapes": 663,
 			"data.cached": false,
@@ -90,6 +90,11 @@ test("summaries report per-window percentiles and reset after each window", () =
 	const small = collector.takeSummary()?.properties;
 	const median = small?.["editor.pin-hit-test.p50"] as number;
 	assert.ok(median >= 0.01 && median <= 0.011, `p50 ${median}`);
+	collector.receive(sample("editor.pin-hit-test", 0.004));
+	assert.equal(
+		collector.takeSummary()?.properties["editor.pin-hit-test.max"],
+		0.004,
+	);
 });
 
 test("collected events pass the batch schema the desktop app enforces", () => {
@@ -121,6 +126,8 @@ test("collected events pass the batch schema the desktop app enforces", () => {
 		{ ...events[0].properties, file: "drawings/board.ecaddraw" },
 		{ ...events[0].properties, metric: "drawings/board.ecaddraw" },
 		{ ...events[0].properties, $os: "Customer board" },
+		{ ...events[0].properties, metric: "board.ecaddraw" },
+		{ ...events[0].properties, "board.ecaddraw.p95": 1 },
 	])
 		assert.equal(
 			telemetryBatchSchema.safeParse({

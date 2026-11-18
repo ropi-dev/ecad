@@ -1,12 +1,12 @@
 import type { PerformanceSample } from "#/performance/recorder.ts";
-import type {
-	TelemetryEvent,
-	TelemetryProperties,
+import {
+	type TelemetryEvent,
+	type TelemetryProperties,
+	telemetryMetricPattern,
 } from "#/telemetry/schema.ts";
 
 const OPERATIONS =
 	/^(?:app\.ready|navigation\.ready|renderer\.initialize|browser\.(?:lcp|first-contentful-paint)|project\.|import\.|drawing\.export|editor\.open-|circuit\.untangle|pcb\.synchronize|symbol-library\.load|footprint\.model-load)/;
-const METRIC_NAME = /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)*$/;
 const DATA_KEY = /^[a-zA-Z][a-zA-Z0-9]{0,31}$/;
 const DATA_LIMIT = 8;
 const SUMMARY_METRIC_LIMIT = 60;
@@ -15,7 +15,7 @@ const BUCKET_BASE = 0.001;
 const BUCKET_GROWTH = 1.1;
 const BUCKET_COUNT = 220;
 
-const round = (value: number) => Math.round(value * 100) / 100;
+const round = (value: number) => Math.round(value * 1000) / 1000;
 
 const bucketOf = (value: number) =>
 	value <= BUCKET_BASE
@@ -45,7 +45,7 @@ function percentile(aggregate: Aggregate, fraction: number) {
 }
 
 export function isTelemetryMetric(name: string) {
-	return METRIC_NAME.test(name) && !name.startsWith("react.");
+	return telemetryMetricPattern.test(name);
 }
 
 export function isTelemetryOperation(name: string) {

@@ -41,7 +41,7 @@ import { createDesktopMcpServer } from "#/main/mcp-server.ts";
 import { DesktopProjects } from "#/main/projects.ts";
 import { DesktopSettings } from "#/main/settings.ts";
 import { DesktopSymbolLibrary } from "#/main/symbol-library.ts";
-import { sendTelemetry } from "#/main/telemetry.ts";
+import { keepStoredTelemetry, sendTelemetry } from "#/main/telemetry.ts";
 import {
 	DesktopUpdater,
 	readPackagedDistribution,
@@ -312,9 +312,16 @@ function applyTheme(theme: AppSettings["theme"]) {
 }
 
 function registerSettingsHandlers() {
-	handle(settingsChannels.load, () => settings.load());
+	let telemetryChoice: boolean | undefined;
+	handle(settingsChannels.load, async () => {
+		const loaded = await settings.load();
+		telemetryChoice = loaded.settings.telemetry;
+		return loaded;
+	});
 	handle(settingsChannels.save, async (next) => {
-		await settings.save(next);
+		const stored = (await settings.load()).settings.telemetry;
+		await settings.save(keepStoredTelemetry(next, telemetryChoice, stored));
+		telemetryChoice = next.telemetry;
 		applyTheme(next.theme);
 		void updater?.setChannel(next.releaseChannel ?? "stable");
 	});
