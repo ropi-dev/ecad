@@ -62,6 +62,11 @@ test("the sidebar keeps an icon rail beside the workspace and slides out beside 
 	// The pointer reaching the rail slides the sidebar out beside it at once.
 	await page.mouse.move(24, 400);
 	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await sidebar.evaluate(async (element) => {
+		await Promise.all(
+			element.getAnimations().map((animation) => animation.finished),
+		);
+	});
 	// Moving from the rail into the sidebar keeps it open.
 	await page.mouse.move(150, 400);
 	await page.waitForTimeout(600);
