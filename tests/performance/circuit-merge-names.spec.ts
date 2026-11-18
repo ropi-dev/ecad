@@ -36,10 +36,14 @@ test(
 					await page
 						.getByRole("textbox", { name: "Net name", exact: true })
 						.press("Enter");
-					await expect(page.locator(".circuit-net")).toHaveCount(16);
-					await expect(page.locator(".circuit-editor")).toHaveAttribute(
-						"data-pending-changes",
-						"false",
+					await page.waitForFunction(
+						() =>
+							document.querySelectorAll(".circuit-net").length === 16 &&
+							document
+								.querySelector(".circuit-editor")
+								?.getAttribute("data-pending-changes") === "false",
+						undefined,
+						{ polling: "raf" },
 					);
 				}),
 			);

@@ -70,12 +70,6 @@ for (const scenario of [
 					mimeType: "application/json",
 					buffer: Buffer.from(JSON.stringify(symbol)),
 				});
-			await (await openProjectFiles(page))
-				.getByRole("link", {
-					name: "Open labeled-package.ecadsym",
-					exact: true,
-				})
-				.click();
 			await editorReady(page, "Symbol editor · Labeled package");
 			await (await toolbarButton(page, "Pin")).click();
 			const canvas = page.locator("canvas");
