@@ -705,10 +705,11 @@ function thermalCutouts(
 
 /**
  * Fills each zone, highest priority first and in list order among equals: its
- * polygon or rectangle inside the board outline, less the edge clearance, the
- * copper of other nets, unplated holes and the fills of earlier zones on other
- * nets, each grown by the clearance, and less a thermal relief gap around each
- * pad on its net, crossed by spokes. Islands that reach nothing on the zone's
+ * polygon or rectangle inside the board outline, or all of it until the
+ * outline closes, less the edge clearance, the copper of other nets, unplated
+ * holes and the fills of earlier zones on other nets, each grown by the
+ * clearance, and less a thermal relief gap around each pad on its net, crossed
+ * by spokes. Islands that reach nothing on the zone's
  * net, directly or through a touching island of another zone on that net, are
  * removed.
  */
@@ -737,9 +738,12 @@ export function fillZones(
 			const layer = zone.layers[0];
 			const clearance = Math.max(zoneClearance(zone), rules.clearance);
 			let region = outlineRegion(ring(zoneCorners(zone.shape)));
-			region = interior.length
-				? combinePolygons(region, combinePolygons(region, interior, true), true)
-				: [];
+			if (interior.length)
+				region = combinePolygons(
+					region,
+					combinePolygons(region, interior, true),
+					true,
+				);
 			const obstacles: Ring[] = [...edges];
 			const others = items.filter(
 				(item) =>

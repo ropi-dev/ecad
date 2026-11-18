@@ -580,7 +580,7 @@ describe("copper pours", () => {
 		);
 	});
 
-	test("a pour stays empty until the board outline closes, and the check says the outline is open", () => {
+	test("a pour fills its whole shape until the board outline closes, then stays inside it", () => {
 		const { footprints, netlist, pour, at } = dividerBoard();
 		const edge = (from: Point, to: Point) =>
 			({
@@ -592,10 +592,14 @@ describe("copper pours", () => {
 			edge(at(15, -10), at(15, 10)),
 			edge(at(15, 10), at(-15, 10)),
 		];
-		const open = [...footprints, ...threeSides, pour("gnd", 0, 28)];
-		assert.deepEqual(pourCopper(open, netlist), []);
+		const beyondLeftEdge = at(-18, 0);
+		const bare = [...footprints, pour("gnd", 0, 40)];
+		assert.ok(containsPoint(pourCopper(bare, netlist), beyondLeftEdge));
+		const open = [...bare, ...threeSides];
+		assert.ok(containsPoint(pourCopper(open, netlist), beyondLeftEdge));
 		assert.ok(kinds(designRulesCheck(open, netlist)).includes("outline"));
 		const closed = [...open, edge(at(-15, 10), at(-15, -10))];
+		assert.ok(!containsPoint(pourCopper(closed, netlist), beyondLeftEdge));
 		assert.equal(pourCopper(closed, netlist).length, 1);
 		assert.ok(!kinds(designRulesCheck(closed, netlist)).includes("outline"));
 	});
