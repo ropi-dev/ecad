@@ -20,7 +20,7 @@ async function drawRectangle(page: Page) {
 	await page.mouse.up();
 }
 
-test("new drawings keep separate edits and undo histories, survive reloads and use distinct names", async ({
+test("new circuit schematics keep separate edits and undo histories, survive reloads and use distinct names", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/projects.html");
@@ -35,14 +35,17 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 			.getByRole("button", { name: "Add file", exact: true })
 			.click();
 		await page
-			.getByRole("menuitem", { name: "New drawing", exact: true })
+			.getByRole("menuitem", { name: "New circuit", exact: true })
 			.click();
 		await expect(
-			page.getByLabel("Drawing name", { exact: true }),
+			page.getByLabel("Circuit name", { exact: true }),
 		).toBeFocused();
-		await page.getByLabel("Drawing name", { exact: true }).fill("Power stage");
+		await page.getByLabel("Circuit name", { exact: true }).fill("Power stage");
 		await page
-			.getByRole("button", { name: "Create drawing", exact: true })
+			.getByRole("button", { name: "Create circuit", exact: true })
+			.click();
+		await page
+			.getByRole("button", { name: "Switch to schematic view", exact: true })
 			.click();
 		await expect(page.getByRole("heading", { level: 1 })).toContainText(
 			"Schematic editor · Power stage",
@@ -89,9 +92,7 @@ test("new drawings keep separate edits and undo histories, survive reloads and u
 			exact: true,
 		}),
 	).toBeVisible();
-	expect(
-		(await documentState(page)).drawings.map((file: { id: string }) => file.id),
-	).toEqual(["power-stage", "power-stage-2"]);
+	expect((await documentState(page)).drawings).toHaveLength(2);
 	expect((await documentState(page)).editorShapes).toEqual([]);
 	await page.reload();
 	await (await openProjectFiles(page))

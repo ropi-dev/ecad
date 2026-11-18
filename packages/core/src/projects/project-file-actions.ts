@@ -9,7 +9,6 @@ type FileActions = Pick<
 	ProjectContextValue,
 	| "importCircuit"
 	| "createCircuit"
-	| "createDrawing"
 	| "importSchematic"
 	| "createSymbol"
 	| "saveSymbolAttributes"
@@ -72,51 +71,6 @@ export function createProjectFileActions(
 				)?.path;
 				if (!path) throw new Error("Unable to open the new circuit file.");
 				return path;
-			}),
-		createDrawing: (name) =>
-			enqueue(async () => {
-				if (!state.active || state.generation !== epoch)
-					throw new Error("Open a project before creating a drawing.");
-				return measurePerformanceAsync("project.create-drawing", async () => {
-					const parsedName = projectNameSchema.safeParse(name);
-					if (!parsedName.success)
-						throw new Error(
-							"Use a valid drawing name without slashes or reserved filename characters.",
-						);
-					name = parsedName.data;
-					const drawings = state.active?.drawings ?? [];
-					const stem =
-						name
-							.normalize("NFKD")
-							.toLowerCase()
-							.replace(/[^a-z0-9]+/g, "-")
-							.replace(/^-|-$/g, "") || "drawing";
-					const base = projectNameSchema.safeParse(stem).success
-						? stem
-						: `drawing-${stem}`;
-					let id = base;
-					for (
-						let suffix = 2;
-						drawings.some((drawing) => drawing.id === id);
-						suffix++
-					)
-						id = `${base}-${suffix}`;
-					const { uniquePcbName } = await import("#/projects/pcb.ts");
-					const current = state.active;
-					if (!current)
-						throw new Error("Open a project before creating a drawing.");
-					name = uniquePcbName(name, current, current.manifest.name);
-					await persist(undefined, undefined, [
-						...drawings,
-						{ id, name, shapes: [] },
-					]);
-					const snapshot = state.active;
-					const path = snapshot
-						? projectIndex(snapshot).drawingsById.get(id)?.path
-						: undefined;
-					if (!path) throw new Error("Unable to open the new drawing file.");
-					return path;
-				});
 			}),
 		importSchematic: (file) =>
 			enqueue(async () => {
