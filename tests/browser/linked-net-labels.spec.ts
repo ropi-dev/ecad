@@ -3,14 +3,11 @@ import type { EditorShape } from "@ecad/drawing-core/drawing/shapes.ts";
 import { synchronizePcb } from "#/circuit/linked-schematic.ts";
 import { componentFromSymbol } from "#/circuit/symbol-components.ts";
 import { symbolDefinitions } from "#/drawing/symbols.ts";
-import { rulerSpacing } from "#/engine/ruler.ts";
 import { required } from "../helpers/required.ts";
 import { captureArtifacts } from "./artifacts";
 import { closeProjectFiles, openProjectFiles } from "./project-files";
 import { expect, test } from "./seeded-project";
-
-type LabelView = { x: number; y: number; scale: number };
-type LabelWindow = typeof window & { labelView: LabelView };
+import { drawingGridStep, drawingPoint } from "./symbol-items";
 
 test("dragging a generated label adds wires and persists through autosave, undo and reload", async ({
 	page,
@@ -58,59 +55,40 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 		.click();
 	await closeProjectFiles(page);
 	await expect(page.locator("canvas")).toBeVisible();
-	await page.evaluate(async () => {
-		const path = "/node_modules/.vite-browser-tests/deps/three.js";
-		const { Scene, Vector3 } = (await import(path)) as typeof import("three");
-		const previous = Scene.prototype.onAfterRender;
-		Scene.prototype.onAfterRender = function (...args) {
-			previous.apply(this, args);
-			const camera = args[2];
-			const origin = new Vector3(0, 0, 0).project(camera);
-			const corner = new Vector3(1, 1, 0).project(camera);
-			(window as LabelWindow).labelView = {
-				x: origin.x,
-				y: origin.y,
-				scale: corner.x - origin.x,
-			};
-		};
-	});
 	for (let index = 0; index < 7; index++)
 		await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-	await page.evaluate(
-		() =>
-			new Promise((resolve) =>
-				requestAnimationFrame(() => requestAnimationFrame(resolve)),
-			),
-	);
-	await page.waitForFunction(() => (window as LabelWindow).labelView);
-	const view = await page.evaluate(() => (window as LabelWindow).labelView);
 	const { shapeBounds } = await import("@ecad/drawing-core/drawing/shapes.ts");
 	const bounds = shapeBounds(label);
-	const canvas = required(await page.locator("canvas").boundingBox());
-	const scale = (view.scale * canvas.width) / 2;
-	const x =
-		canvas.x +
-		((1 + view.x) * canvas.width) / 2 +
-		((bounds.minX + bounds.maxX) / 2) * scale;
-	const y =
-		canvas.y +
-		((1 - view.y) * canvas.height) / 2 -
-		((bounds.minY + bounds.maxY) / 2) * scale;
+	const center = {
+		x: (bounds.minX + bounds.maxX) / 2,
+		y: (bounds.minY + bounds.maxY) / 2,
+	};
+	let from = await drawingPoint(page, center);
+	await expect
+		.poll(async () => {
+			const previous = from;
+			from = await drawingPoint(page, center);
+			return previous.x === from.x && previous.y === from.y;
+		})
+		.toBe(true);
+	const to = await drawingPoint(page, { x: center.x + 12, y: center.y - 10 });
 	const document = async () =>
 		JSON.parse(required(await page.locator("#project-document").textContent()));
-	const step = rulerSpacing(scale, "mil").minor;
-	await page.mouse.move(x, y);
+	const step = await drawingGridStep(page);
+	await page.mouse.move(from.x, from.y);
 	await page.mouse.down();
-	await page.mouse.move(x + 12 * scale, y + 10 * scale, { steps: 8 });
+	await page.mouse.move(to.x, to.y, { steps: 8 });
 	await page.mouse.up();
 	await expect
-		.poll(
-			async () =>
+		.poll(async () =>
+			Math.abs(
 				(await document()).shapes.find(
 					(shape: EditorShape) => shape.id === label.id,
-				)?.x,
+				)?.x -
+					(label.x + 12),
+			),
 		)
-		.toBeCloseTo(Math.round((label.x + 12) / step) * step, 4);
+		.toBeLessThanOrEqual(step);
 	await expect.poll(async () => (await document()).dirty).toBe(false);
 	expect(
 		(await document()).shapes.filter(
@@ -137,10 +115,8 @@ test("dragging a generated label adds wires and persists through autosave, undo 
 	const component = required(
 		moved.find((shape: EditorShape) => shape.kind === "symbol"),
 	);
-	await page.mouse.click(
-		canvas.x + ((1 + view.x) * canvas.width) / 2 + component.x * scale,
-		canvas.y + ((1 - view.y) * canvas.height) / 2 - component.y * scale,
-	);
+	const part = await drawingPoint(page, component);
+	await page.mouse.click(part.x, part.y);
 	await page.keyboard.press("r");
 	await expect
 		.poll(

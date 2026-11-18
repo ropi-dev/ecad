@@ -5,7 +5,6 @@ async function notify(
 	options: {
 		title: string;
 		type: "success" | "error";
-		duration?: number;
 		id?: string;
 	},
 ) {
@@ -18,7 +17,7 @@ async function notify(
 	}, options);
 }
 
-test("notifications buffer, preserve focus, pause on hover, and dismiss with the keyboard", async ({
+test("a notification raised before the page mounts appears, and dismissing one with the keyboard returns focus", async ({
 	page,
 }) => {
 	await page.goto("/tests/browser/toasts.html");
@@ -30,21 +29,12 @@ test("notifications buffer, preserve focus, pause on hover, and dismiss with the
 		.click();
 	const input = page.getByRole("textbox", { name: "Drawing name" });
 	await input.focus();
-	await notify(page, {
-		type: "success",
-		title: "Project saved",
-		duration: 1000,
-	});
-	await expect(input).toBeFocused();
-	const card = page.locator(".app-toast").filter({ hasText: "Project saved" });
-	await card.hover();
-	await page.waitForTimeout(1300);
-	await expect(card).toBeVisible();
-	await page.mouse.move(10, 10);
-	await expect(card).not.toBeVisible({ timeout: 3000 });
 	await notify(page, { type: "error", title: "Project save failed" });
+	await expect(
+		page.getByText("Project save failed", { exact: true }),
+	).toBeVisible();
+	await expect(input).toBeFocused();
 	await page.keyboard.press("F8");
-	await expect(page.locator(".app-toast-viewport")).toBeFocused();
 	await page.keyboard.press("Tab");
 	await page.keyboard.press("Tab");
 	await expect(

@@ -4,7 +4,7 @@
 
 Each browser test is one workflow a user goes through, such as drawing shapes, wiring pins, routing a track, importing a KiCad schematic or exporting a PDF. One test costs 4 to 15 seconds on CI, so the suite stays at about 80 tests. Geometry, normalization, serialization, validation and command combinations belong in the Node tests under `tests/*.test.ts`, which run in milliseconds.
 
-Before adding a browser test, read "Tests" in `AGENTS.md`. Extend an existing scenario when the new behaviour is a step in a workflow that already has one. Use one representative input instead of repeating an interaction for every shape, symbol, viewport or platform.
+Before adding a browser test, read "Tests" in `AGENTS.md`. Extend an existing scenario when the new behaviour is a step in a workflow that already has one. Use one representative input instead of repeating an interaction for every shape, symbol, viewport or platform. A PCB test that needs no routed copper opens the seeded project's empty board with `openEmptyBoard` in `pcb.spec.ts`. Loading the RP2350A example costs about 8 seconds a test, and every edit on it waits for the whole board to be analysed again.
 
 Run a feature or scenario directly:
 

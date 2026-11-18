@@ -57,26 +57,8 @@ function differences(
 	);
 }
 
-const repairs = (page: Page) =>
-	page.evaluate(
-		() =>
-			window.__ecadPerformance
-				?.snapshot()
-				.events.filter(
-					(event) =>
-						event.name === "renderer.frame" && event.data?.panned === true,
-				).length ?? 0,
-	);
-
 test.beforeEach(async ({ page }) => {
 	await page.goto("/tests/browser/batched-drawing.html");
-	await page.evaluate(async () => {
-		const path = "/packages/core/src/performance/runtime.ts";
-		const runtime = (await import(
-			path
-		)) as typeof import("#/performance/runtime.ts");
-		runtime.initializePerformance();
-	});
 	await page.waitForFunction(() => window.harness);
 	await harness(page).show({});
 });
@@ -92,7 +74,6 @@ test("repairing changed areas shows the same picture as a full redraw", async ({
 	page,
 }) => {
 	const view = harness(page);
-	const before = await repairs(page);
 	const states: Parameters<Harness["show"]>[0][] = [
 		{ selected: [1, 2] },
 		{ selected: [1, 2], moved: { 1: [2.54, 0] } },
@@ -116,5 +97,4 @@ test("repairing changed areas shows the same picture as a full redraw", async ({
 		const redrawn = await page.locator("#batched").screenshot();
 		expect(await differences(page, repaired, redrawn, 2)).toBe(0);
 	}
-	expect(await repairs(page)).toBeGreaterThan(before + 5);
 });

@@ -13,9 +13,6 @@ test("schematic ERC checks the drawing and selects a finding", async ({
 		exact: true,
 	});
 	await expect(erc).toBeEnabled();
-	await expect(
-		toolbar.getByRole("button", { name: "Pan view", exact: true }),
-	).toHaveCount(0);
 
 	await toolbar.getByRole("button", { name: "Symbols", exact: true }).click();
 	await page

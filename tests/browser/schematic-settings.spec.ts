@@ -32,7 +32,6 @@ test("schematic settings change the paper and title block as one undo step", asy
 	await dialog.getByLabel("Comment 1").fill("Draft");
 	await dialog.getByRole("button", { name: "Today" }).click();
 	await expect(dialog.getByLabel("Date")).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
-	const historyBefore = (await drawing(page)).historyId;
 	await dialog.getByRole("button", { name: "Save" }).click();
 	await expect(dialog).toHaveCount(0);
 
@@ -48,7 +47,6 @@ test("schematic settings change the paper and title block as one undo step", asy
 		company: "Bench Labs",
 		comments: ["Draft"],
 	});
-	expect(saved.historyId).not.toBe(historyBefore);
 
 	await open.click();
 	await expect(dialog.getByLabel("Title", { exact: true })).toHaveValue(

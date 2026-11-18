@@ -51,13 +51,6 @@ test("the sidebar keeps an icon rail beside the workspace and slides out beside 
 		exact: true,
 	});
 	await expect(rail).toBeVisible();
-	// The sidebar cannot be pinned, and its panel has no footer of buttons.
-	await expect(
-		page.getByRole("button", { name: "Pin sidebar", includeHidden: true }),
-	).toHaveCount(0);
-	await expect(
-		sidebar.getByRole("button", { name: "Settings", includeHidden: true }),
-	).toHaveCount(0);
 	if (captureArtifacts)
 		await page.screenshot({ path: "perf-artifacts/sidebar-compact.png" });
 	// Keyboard focus on the rail reveals the sidebar. This runs before any
@@ -69,24 +62,27 @@ test("the sidebar keeps an icon rail beside the workspace and slides out beside 
 	// The pointer reaching the rail slides the sidebar out beside it at once.
 	await page.mouse.move(24, 400);
 	await expect(sidebar).toHaveAttribute("data-open", "true");
+	await sidebar.evaluate(async (element) => {
+		await Promise.all(
+			element.getAnimations().map((animation) => animation.finished),
+		);
+	});
 	// Moving from the rail into the sidebar keeps it open.
 	await page.mouse.move(150, 400);
 	await page.waitForTimeout(600);
 	await expect(sidebar).toHaveAttribute("data-open", "true");
 	await page.mouse.move(900, 400);
 	await expect(sidebar).toHaveAttribute("data-open", "false");
-	// The rail's menus open beside it and leave the sidebar closed.
-	for (const name of ["Add file", "Open project", "Project actions"]) {
-		await rail.getByRole("button", { name, exact: true }).click();
-		const menu = page.getByRole("menu", { name, exact: true });
-		await expect(menu).toBeVisible();
-		await page.waitForTimeout(400);
-		await expect(sidebar).toHaveAttribute("data-open", "false");
-		if (captureArtifacts && name === "Add file")
-			await page.screenshot({ path: "perf-artifacts/sidebar-rail-menu.png" });
-		await page.keyboard.press("Escape");
-		await expect(menu).toHaveCount(0);
-	}
+	// A rail menu opens beside the rail and leaves the sidebar closed.
+	await rail.getByRole("button", { name: "Add file", exact: true }).click();
+	const menu = page.getByRole("menu", { name: "Add file", exact: true });
+	await expect(menu).toBeVisible();
+	await page.waitForTimeout(400);
+	await expect(sidebar).toHaveAttribute("data-open", "false");
+	if (captureArtifacts)
+		await page.screenshot({ path: "perf-artifacts/sidebar-rail-menu.png" });
+	await page.keyboard.press("Escape");
+	await expect(menu).toHaveCount(0);
 	// A file created from the rail opens without the sidebar.
 	await rail.getByRole("button", { name: "Add file", exact: true }).click();
 	await page

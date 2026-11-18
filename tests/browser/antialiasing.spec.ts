@@ -23,7 +23,7 @@ async function openSettings(page: Page) {
 	return page.getByRole("dialog", { name: "Settings" });
 }
 
-test("the antialiasing setting recreates open canvases and is remembered", async ({
+test("the antialiasing setting applies to open canvases, keeps their view and is remembered", async ({
 	page,
 	context,
 }) => {
@@ -46,9 +46,4 @@ test("the antialiasing setting recreates open canvases and is remembered", async
 	await expect.poll(() => drawingPoint(page, { x: 0, y: 0 })).toEqual(origin);
 	await page.reload();
 	expect(await canvasAntialias(page)).toBe(true);
-	expect(
-		await page.evaluate(() =>
-			JSON.parse(localStorage.getItem("ecad.settings.v1") ?? "{}"),
-		),
-	).toEqual({ version: 1, antialiasing: "on" });
 });

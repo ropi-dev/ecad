@@ -147,11 +147,3 @@ test("symbol picker search, arrow keys, and Enter choose a symbol", async ({
 		page.getByRole("textbox", { name: "Name", exact: true }),
 	).toHaveValue("Polarized capacitor");
 });
-
-test.describe("mobile touch scrolling", () => {
-	test.use({
-		hasTouch: true,
-		isMobile: true,
-		viewport: { width: 320, height: 844 },
-	});
-});

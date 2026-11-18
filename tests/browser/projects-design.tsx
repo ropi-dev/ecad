@@ -58,7 +58,6 @@ declare global {
 	interface Window {
 		projectSwitchTest: {
 			calls: { open: number; save: number };
-			exits: number;
 			cancelOpen: boolean;
 			cancelSave: boolean;
 			failSave: boolean;
@@ -67,7 +66,6 @@ declare global {
 }
 const switching = {
 	calls: { open: 0, save: 0 },
-	exits: 0,
 	cancelOpen: false,
 	cancelSave: false,
 	failSave: false,
@@ -98,8 +96,6 @@ const storage: ProjectStorage = {
 		return snapshot;
 	},
 	save: async (_directory, document) => {
-		if (parameters.has("save-error"))
-			throw new Error("The project changed on disk. Reopen it before saving.");
 		snapshot = { ...snapshot, ...document };
 		return snapshot;
 	},
@@ -118,11 +114,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
 		storage={storage}
 		symbolStorage={createMemorySymbolLibraryStorage()}
 	>
-		<ProjectShell
-			onExit={() => {
-				switching.exits++;
-			}}
-		>
+		<ProjectShell>
 			<WorkspaceStart />
 		</ProjectShell>
 	</ProjectProvider>,

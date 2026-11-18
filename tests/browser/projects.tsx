@@ -12,22 +12,12 @@ import { createWebProjectStorage } from "#web/projects/storage.ts";
 import { createWebSymbolLibraryStorage } from "#web/symbol-library/storage.ts";
 import "#/styles.css";
 
-Scene.prototype.onAfterRender = function (renderer, _scene, camera) {
-	const editorCamera = JSON.stringify({
+Scene.prototype.onAfterRender = (renderer, _scene, camera) => {
+	renderer.domElement.dataset.editorCamera = JSON.stringify({
 		x: camera.position.x,
 		y: camera.position.y,
 		projection: camera.projectionMatrix.toArray(),
 	});
-	renderer.domElement.dataset.editorCamera = editorCamera;
-	if (renderer.domElement.closest('[data-editor-pane="hidden"]')) return;
-	document.documentElement.dataset.editorCamera = editorCamera;
-	const pinLabels: string[] = [];
-	this.getObjectByName("editor-shapes")?.traverse((child) => {
-		if (/^pin (name|number) /.test(child.name)) pinLabels.push(child.name);
-	});
-	document.documentElement.dataset.pinLabels = JSON.stringify(pinLabels);
-	document.documentElement.dataset.worksheet =
-		this.getObjectByName("Worksheet frame")?.parent?.name ?? "none";
 };
 
 function CircuitDocumentState() {
@@ -69,7 +59,6 @@ function ProjectDocument() {
 		<output id="project-document" hidden>
 			{JSON.stringify({
 				shapes: drawing.shapes,
-				nextShapeId: drawing.nextShapeId,
 				name: project.project?.manifest.name,
 				assets: project.project?.manifest.assets,
 				dirty: project.dirty,

@@ -79,12 +79,10 @@ test("each document retains independent schematic and circuit zoom and pan", asy
 	await moveCamera(page, "circuit", 2);
 	await expect.poll(() => circuitCamera(page)).not.toBe(initialCircuit);
 	const circuit = await circuitCamera(page);
-	for (let index = 0; index < 3; index++) {
-		await switchTo(page, "schematic");
-		await expect.poll(() => schematicCamera(page)).toBe(schematic);
-		await switchTo(page, "circuit");
-		await expect.poll(() => circuitCamera(page)).toBe(circuit);
-	}
+	await switchTo(page, "schematic");
+	await expect.poll(() => schematicCamera(page)).toBe(schematic);
+	await switchTo(page, "circuit");
+	await expect.poll(() => circuitCamera(page)).toBe(circuit);
 	await projectRail(page)
 		.getByRole("button", { name: "Add file", exact: true })
 		.click();

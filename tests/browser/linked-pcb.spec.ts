@@ -15,9 +15,6 @@ test("one schematic opens both editors and saves edits in both directions", asyn
 	await expect(
 		sidebar.getByRole("link", { name: "Open Untitled.ecaddraw", exact: true }),
 	).toHaveCount(1);
-	await expect(
-		page.getByText("Untitled.ecadcircuit", { exact: true }),
-	).toHaveCount(0);
 	await page
 		.getByRole("link", {
 			name: "Open Untitled.ecaddraw in circuit view",

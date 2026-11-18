@@ -80,6 +80,12 @@ async function readProjectFile(page: Page, path: string) {
 	}, path);
 }
 
+function drawingPath(manifest: string) {
+	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
+	if (!drawing) throw new Error("The project has no drawing.");
+	return drawing;
+}
+
 test("a project changed on disk stops autosave and offers to reload from disk", async ({
 	page,
 }) => {
@@ -98,29 +104,15 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 		"\n# Edited in another tab\n",
 		"append",
 	);
-	await page.evaluate(() => {
-		const counts = { manifestReads: 0, writes: 0 };
-		Object.assign(window, { projectFileAccess: counts });
-		const getFile = FileSystemFileHandle.prototype.getFile;
-		FileSystemFileHandle.prototype.getFile = function () {
-			if (this.name === ".ecadprj") counts.manifestReads++;
-			return getFile.call(this);
+	const onDisk = async () => {
+		const manifest = await readProjectFile(page, ".ecadprj");
+		return {
+			edited: manifest.includes("Edited in another tab"),
+			shapes: JSON.parse(await readProjectFile(page, drawingPath(manifest)))
+				.shapes.length,
 		};
-		const createWritable = FileSystemFileHandle.prototype.createWritable;
-		FileSystemFileHandle.prototype.createWritable = function (...args) {
-			counts.writes++;
-			return createWritable.apply(this, args);
-		};
-	});
-	const access = () =>
-		page.evaluate(
-			() =>
-				(
-					window as unknown as {
-						projectFileAccess: { manifestReads: number; writes: number };
-					}
-				).projectFileAccess,
-		);
+	};
+	const untouched = { edited: true, shapes: 1 };
 
 	await drawRectangle(page, 40);
 	const notice = page.getByRole("alert").filter({
@@ -134,14 +126,13 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	expect((await documentState(page)).shapes).toHaveLength(2);
 	await screenshot(page, "project-conflict.png");
 
-	const afterConflict = await access();
-	expect(afterConflict.writes).toBe(0);
+	expect(await onDisk()).toEqual(untouched);
 	await drawRectangle(page, 80);
 	await expect
 		.poll(async () => (await documentState(page)).shapes.length)
 		.toBe(3);
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
-	expect(await access()).toEqual(afterConflict);
+	expect(await onDisk()).toEqual(untouched);
 	await expect(notice).toBeVisible();
 
 	const switchView = page.getByRole("button", {
@@ -150,7 +141,6 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 	});
 	await switchView.click();
 	await expect(switchView).toBeEnabled();
-	expect(await access()).toEqual(afterConflict);
 	expect((await documentState(page)).shapes).toHaveLength(3);
 	await (await openProjectFiles(page))
 		.getByRole("link", {
@@ -159,7 +149,7 @@ test("a project changed on disk stops autosave and offers to reload from disk", 
 		})
 		.click();
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
-	expect(await access()).toEqual(afterConflict);
+	expect(await onDisk()).toEqual(untouched);
 	await closeProjectFiles(page);
 
 	await notice
@@ -229,9 +219,7 @@ test("a part whose symbol needs a library it depends on that fails to load is re
 	await expect
 		.poll(async () => (await documentState(page)).name)
 		.toBe("Untitled");
-	const manifest = await readProjectFile(page, ".ecadprj");
-	const drawing = /^drawing = "(.+)"$/m.exec(manifest)?.[1];
-	if (!drawing) throw new Error("The project has no drawing.");
+	const drawing = drawingPath(await readProjectFile(page, ".ecadprj"));
 	const saved = JSON.parse(await readProjectFile(page, drawing));
 	await editProjectFile(
 		page,
