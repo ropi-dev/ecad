@@ -65,6 +65,22 @@ test("typing targets include form controls and every content-editable element", 
 	);
 });
 
+test("a field in another window, such as a desktop dialog, is a typing target", () => {
+	class OtherWindowElement extends FakeElement {
+		get ownerDocument() {
+			return { defaultView: { HTMLElement: OtherWindowElement } };
+		}
+	}
+	assert.equal(
+		isEditableTarget({ target: new OtherWindowElement("INPUT") as never }),
+		true,
+	);
+	assert.equal(
+		isEditableTarget({ target: new OtherWindowElement("BUTTON") as never }),
+		false,
+	);
+});
+
 test("buttons, canvases, non-elements and missing targets are not typing targets", () => {
 	for (const tag of ["BUTTON", "DIV", "BODY"])
 		assert.equal(

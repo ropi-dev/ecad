@@ -2,6 +2,7 @@ import "@ecad/core/performance/initialize.ts";
 import { Editor2D } from "@ecad/core/components/editor/Editor2D.tsx";
 import { GerberWorkspace } from "@ecad/core/components/gerber/GerberWorkspace.tsx";
 import { StepWorkspace } from "@ecad/core/components/step/StepWorkspace.tsx";
+import { setDialogWindows } from "@ecad/core/components/ui/dialog-window.ts";
 import { PerformanceBoundary } from "@ecad/core/performance/PerformanceBoundary.tsx";
 import { ProjectFilesSidebar } from "@ecad/core/projects/ProjectFilesSidebar.tsx";
 import { ProjectProvider } from "@ecad/core/projects/ProjectProvider.tsx";
@@ -24,6 +25,7 @@ type Workspace = "home" | "editor" | "gerber" | "step";
 const storage = createDesktopSymbolLibraryStorage(window.ecadSymbolLibrary);
 const projects = createDesktopProjectStorage(window.ecadProjects);
 const mcp = createDesktopMcpConnector(window.ecadMcp);
+setDialogWindows(true);
 function App() {
 	const [workspace, setWorkspace] = useState<Workspace>("home");
 	useEffect(() => {

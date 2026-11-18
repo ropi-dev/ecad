@@ -1,6 +1,7 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { dialogWindowPrefix } from "@ecad/core/components/ui/dialog-window.ts";
 import { viewerThemes } from "@ecad/core/drawing/schematic-theme.ts";
 import type { ProjectSnapshot } from "@ecad/core/projects/format.ts";
 import type { AppSettings } from "@ecad/core/settings/schema.ts";
@@ -417,6 +418,37 @@ function isDevToolsShortcut(input: Electron.Input) {
 	);
 }
 
+function prepareDialogWindow(dialogWindow: BrowserWindow) {
+	dialogWindow.removeMenu();
+	const contents = dialogWindow.webContents;
+	contents.setWindowOpenHandler(() => ({ action: "deny" }));
+	contents.on("will-navigate", (event) => event.preventDefault());
+	contents.on("before-input-event", (event, input) => {
+		if (input.type !== "keyDown" || !isDevToolsShortcut(input)) return;
+		event.preventDefault();
+		contents.toggleDevTools();
+	});
+	const show = () => {
+		clearTimeout(fallback);
+		if (dialogWindow.isDestroyed() || dialogWindow.isVisible()) return;
+		const parent = dialogWindow.getParentWindow()?.getBounds();
+		const [width = 0, height = 0] = dialogWindow.getSize();
+		if (parent)
+			dialogWindow.setPosition(
+				Math.round(parent.x + (parent.width - width) / 2),
+				Math.round(parent.y + (parent.height - height) / 2),
+			);
+		dialogWindow.show();
+	};
+	const fallback = setTimeout(show, 1000);
+	contents.on("content-bounds-updated", (event, bounds) => {
+		event.preventDefault();
+		dialogWindow.setContentSize(bounds.width, bounds.height);
+		show();
+	});
+	dialogWindow.once("closed", () => clearTimeout(fallback));
+}
+
 function createWindow() {
 	window = new BrowserWindow({
 		width: 1400,
@@ -449,7 +481,27 @@ function createWindow() {
 		event.preventDefault();
 		window?.webContents.toggleDevTools();
 	});
-	window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+	window.webContents.setWindowOpenHandler(({ url, frameName }) =>
+		window && url === "about:blank" && frameName.startsWith(dialogWindowPrefix)
+			? {
+					action: "allow",
+					overrideBrowserWindowOptions: {
+						parent: window,
+						modal: true,
+						show: false,
+						frame: false,
+						minimizable: false,
+						maximizable: false,
+						fullscreenable: false,
+						backgroundColor: windowBackground(),
+					},
+				}
+			: { action: "deny" },
+	);
+	window.webContents.on("did-create-window", prepareDialogWindow);
+	window.webContents.on("did-start-loading", () => {
+		for (const child of window?.getChildWindows() ?? []) child.destroy();
+	});
 	window.webContents.on("will-prevent-unload", (event) => {
 		if (!window) return;
 		const choice = dialog.showMessageBoxSync(window, {

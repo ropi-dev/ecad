@@ -26,3 +26,12 @@
 	) {
 	-webkit-app-region: no-drag;
 }
+
+.dialog-window .ui-dialog > header {
+	-webkit-app-region: drag;
+}
+
+.dialog-window
+	:is(button, a, input, select, textarea, [role="tab"], [role="tablist"]) {
+	-webkit-app-region: no-drag;
+}
